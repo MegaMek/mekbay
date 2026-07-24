@@ -14,12 +14,13 @@ import {
 } from '../testing/test-entities';
 import { EntityMountedEquipment } from '../types';
 import { MountedEngine, MountedStructure, STANDARD_STRUCTURE_EQUIPMENT } from '../components';
+import { EquipmentFlag } from '../../equipment-flags.type';
 
 describe('EntityMountedEquipment.getTonnage', () => {
     const entity = new BipedMekEntity();
     entity.setTonnage(75);
 
-    const cases: Array<[string, string[], number]> = [
+    const cases: Array<[string, EquipmentFlag[], number]> = [
         ['hatchet', ['F_CLUB', 'S_HATCHET'], 5],
         ['sword', ['F_CLUB', 'S_SWORD'], 4],
         ['lance', ['F_CLUB', 'S_LANCE'], 4],
@@ -77,7 +78,7 @@ describe('EntityMountedEquipment.getTonnage', () => {
         expect(ammoMount(ammo, 40).getTonnage(entity)).toBe(1);
     });
 
-    const chassisCases: Array<[string, string[], number]> = [
+    const chassisCases: Array<[string, EquipmentFlag[], number]> = [
         ['IS partial wing', ['F_PARTIAL_WING', 'F_MEK_EQUIPMENT'], 5.5],
         ['chain drape', ['F_CHAIN_DRAPE'], 7.5],
         ['industrial structure', ['F_INDUSTRIAL_STRUCTURE'], 15],
@@ -346,7 +347,7 @@ describe('EntityMountedEquipment.getTonnage', () => {
         expect(sealing.getTonnage(supportTank)).toBe(0);
     });
 
-    const variableSizeCases: Array<[string, string[], number, number]> = [
+    const variableSizeCases: Array<[string, EquipmentFlag[], number, number]> = [
         ['drone carrier control', ['F_DRONE_CARRIER_CONTROL'], 4, 4],
         ['MASH', ['F_MASH'], 4, 6.5],
         ['cargo', ['F_CARGO'], 2.2, 2.5],
@@ -391,7 +392,7 @@ describe('EntityMountedEquipment.getTonnage', () => {
     });
 });
 
-function variableEquipment(name: string, flags: string[], techBase: 'IS' | 'Clan' | 'All' = 'IS'): MiscEquipment {
+function variableEquipment(name: string, flags: EquipmentFlag[], techBase: 'IS' | 'Clan' | 'All' = 'IS'): MiscEquipment {
     return new MiscEquipment({
         id: name,
         name,
@@ -416,7 +417,7 @@ function mount(equipment: Equipment, size?: number): EntityMountedEquipment {
     });
 }
 
-function weaponMount(name: string, tonnage: number, flags: string[]): EntityMountedEquipment {
+function weaponMount(name: string, tonnage: number, flags: EquipmentFlag[]): EntityMountedEquipment {
     return new EntityMountedEquipment({
         mountId: name,
         equipmentId: name,

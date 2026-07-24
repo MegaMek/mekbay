@@ -12,6 +12,7 @@ import { Equipment } from './equipment.model';
 import { PpcCapacitorHandler, PPC_CAPACITOR_STATE_KEY } from '../equipment-handlers/ppc-capacitor.handler';
 import { TWAeroRules, TWInfantryRules, TWMekRules } from './rules/tw-rules';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
+import { EquipmentFlag } from './equipment-flags.type';
 
 interface TurnStateHarnessOptions {
     critSlots?: CriticalSlot[];
@@ -48,7 +49,7 @@ function createCritSlot(
     };
 }
 
-function createEquipment(name: string, flags: string[]): Equipment {
+function createEquipment(name: string, flags: EquipmentFlag[]): Equipment {
     return new Equipment({
         id: name,
         name,
@@ -57,7 +58,7 @@ function createEquipment(name: string, flags: string[]): Equipment {
     });
 }
 
-function getCritSlotEquipmentFlags(name: string): string[] {
+function getCritSlotEquipmentFlags(name: string): EquipmentFlag[] {
     if (name === 'Improved Jump Jet') return ['F_JUMP_JET', 'S_IMPROVED'];
     if (name === 'Prototype Improved Jump Jet') return ['F_JUMP_JET', 'S_IMPROVED', 'S_PROTOTYPE'];
     if (name === 'RISC Super-Cooled Myomer') return ['F_SCM'];

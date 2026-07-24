@@ -11,6 +11,7 @@ import { BV_MOVEMENT_CALCULATION } from '../../types';
 import { getPpcCapacitorBV } from '../equipment-bv';
 import { vehicleTypeModifier, targetMovementModifier } from './rules';
 import { BVCalculator } from './bv-calculator';
+import { getVibrobladeHeat } from '../../../rules/vibroblade-rules';
 
 import {
   canMakeAntiMekAttacks,
@@ -20,7 +21,7 @@ import {
   infantryDamageDivisor,
   prostheticDamageBonus,
 } from './infantry-rules';
-
+import { EquipmentFlag } from '../../../equipment-flags.type';
 /** Shared Java HeatTrackingBVCalculator behavior for pristine mounts. */
 export class HeatTrackingBVCalculator extends BVCalculator {
   protected heatEfficiency(): number { return Number.MAX_SAFE_INTEGER; }
@@ -37,6 +38,10 @@ export class HeatTrackingBVCalculator extends BVCalculator {
 
   protected weaponHeat(mount: EntityMountedEquipment): number {
     const weapon = mount.equipment;
+    if (weapon instanceof MiscEquipment) {
+      if (this.entity.unitType() !== 'Mek' || !['LA', 'RA'].includes(mount.location)) return 0;
+      return getVibrobladeHeat(weapon);
+    }
     if (!(weapon instanceof WeaponEquipment)) return 0;
     let heat = weapon.heat;
     if (weapon.weapon.heatAdjustmentForBvCalculation) {
@@ -105,7 +110,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
     let multiplier = 1;
     const structures = [...this.entity.structureByLocation().values()];
     if (structures.length > 0 && structures.every(s => s.structure.hasAnyFlag([
-      'F_INDUSTRIAL_STRUCTURE', 'F_COMPOSITE', 'F_COMPOSITE_STRUCTURE',
+      'F_INDUSTRIAL_STRUCTURE', 'F_COMPOSITE',
     ]))) multiplier = 0.5;
     else if (structures.length > 0 && structures.every(s => s.structure.hasFlag('F_REINFORCED'))) {
       multiplier = 2;
@@ -163,7 +168,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
     if (armoredBV > 0) this.addValueLine('Armored Components', `+ ${this.format(armoredBV)}`, before);
   }
 
-  private locationHas(location: string, flag: string): boolean {
+  private locationHas(location: string, flag: EquipmentFlag): boolean {
     if (flag === 'F_CASE' && this.entity.locationHasCaseProtection(location)) return true;
     return this.entity.equipment().some(mount => mount.getOccupiedLocations().includes(location)
       && mount.equipment?.hasFlag(flag));
@@ -197,15 +202,27 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
         if (['AC_ROTARY', 'AC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC', 'LAC'].includes(equipment.ammoType)) continue;
       }
 
-      const reduced = equipment.hasAnyFlag([
-        'F_PPC', 'F_PPC_CAPACITOR', 'F_RISC_LASER_PULSE_MODULE',
-        'F_EMERGENCY_COOLANT_SYSTEM', 'F_JUMP_JET', 'F_B_POD', 'F_M_POD', 'F_TASER',
-      ]) || (equipment instanceof AmmoEquipment && equipment.ammoType === 'COOLANT_POD')
-        || (equipment instanceof WeaponEquipment && equipment.hasFlag('F_GAUSS'));
+      const reducedWeapon = equipment instanceof WeaponEquipment && (
+        equipment.hasAnyFlag([
+          'F_GAUSS', 'F_HVAC', 'F_HYPER', 'F_TSEMP', 'F_B_POD', 'F_M_POD',
+        ])
+        || (equipment.hasFlag('F_TASER') && equipment.hasFlag('F_MEK_WEAPON'))
+        || (equipment.hasFlag('F_LASER') && equipment.hasFlag('S_IMPROVED'))
+        || equipment.hasFlag('F_PPC')
+      );
+      const reducedMisc = equipment instanceof MiscEquipment && equipment.hasAnyFlag([
+        'F_PPC_CAPACITOR', 'F_RISC_LASER_PULSE_MODULE',
+        'F_EMERGENCY_COOLANT_SYSTEM', 'F_JUMP_JET',
+      ]);
+      const reducedAmmo = equipment instanceof AmmoEquipment && equipment.ammoType === 'COOLANT_POD';
+      const reduced = reducedWeapon || reducedMisc || reducedAmmo;
       const placedSlots = mount.placements?.length;
       const requiredSlots = mount.getCriticalSlotRequirement(this.entity);
-      const slots = placedSlots && placedSlots > 0 ? placedSlots
-        : typeof requiredSlots === 'number' ? requiredSlots : 1;
+      const slots = equipment instanceof WeaponEquipment && equipment.hasFlag('F_HVAC')
+        && !mount.isSplit && !this.entity.isSuperHeavy()
+        ? 1
+        : placedSlots && placedSlots > 0 ? placedSlots
+          : typeof requiredSlots === 'number' ? requiredSlots : 1;
       const itemBefore = this.defensiveValue;
       const penalty = (reduced ? 1 : 15) * Math.max(1, slots);
       this.defensiveValue -= penalty;
@@ -287,7 +304,9 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
   }
 
   private movementHeat(): { heat: number; type: 'Jump' | 'Run' } {
-    const runHeat = this.has('F_SCM') ? 0 : this.entity.mountedEngine().descriptor().movementHeat.run;
+    const runHeat = this.entity.isIndustrial() || this.has('F_SCM')
+      ? 0
+      : this.entity.mountedEngine().descriptor().movementHeat.run;
     const jumpMP = this.entity.computeJumpMP({
       ...BV_MOVEMENT_CALCULATION,
       includeAlternateJumpSystems: false,

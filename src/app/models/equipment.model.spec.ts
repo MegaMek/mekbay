@@ -12,6 +12,7 @@ import {
     createEquipment,
 } from './equipment.model';
 import { getStructureByName, getStructureByTypeId } from './entity/components';
+import { EquipmentFlag } from './equipment-flags.type';
 
 describe('equipment model', () => {
     it('deserializes structure records as StructureEquipment', () => {
@@ -168,7 +169,7 @@ function weapon(
     ammoType: AmmoType,
     damage: string | number | number[],
     rackSize: number,
-    flags: string[],
+    flags: EquipmentFlag[],
 ): WeaponEquipment {
     return new WeaponEquipment({
         id, name, type: 'weapon', flags,

@@ -1,17 +1,18 @@
+import { EquipmentFlag } from '../../../equipment-flags.type';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
 import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import type { SmallCraftEntity } from '../../entities/aero/small-craft-entity';
 import { ceilToHalfTon, ceilToWholeTon } from './weight-rounding';
 
-const SYSTEM_FLAGS = [
+const SYSTEM_FLAGS: EquipmentFlag[] = [
   'F_FERRO_ALUMINUM', 'F_FERRO_ALUMINUM_PROTO', 'F_LIGHT_FERRO', 'F_HEAVY_FERRO',
   'F_REACTIVE', 'F_REFLECTIVE', 'F_HARDENED_ARMOR', 'F_PRIMITIVE_ARMOR',
   'F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE',
 ] as const;
-const ALL_CRAFT_SLOT_FLAGS = ['F_CHAFF_POD', 'F_SPACE_MINE_DISPENSER', 'F_MOBILE_HPG',
+const ALL_CRAFT_SLOT_FLAGS: EquipmentFlag[] = ['F_CHAFF_POD', 'F_SPACE_MINE_DISPENSER', 'F_MOBILE_HPG',
   'F_RECON_CAMERA', 'F_HIRES_IMAGER', 'F_HYPERSPECTRAL_IMAGER', 'F_INFRARED_IMAGER',
   'F_LOOKDOWN_RADAR'] as const;
-const SMALL_CRAFT_SLOT_FLAGS = ['F_BAP', 'F_WATCHDOG', 'F_ECM', 'F_ANGEL_ECM',
+const SMALL_CRAFT_SLOT_FLAGS: EquipmentFlag[] = ['F_BAP', 'F_WATCHDOG', 'F_ECM', 'F_ANGEL_ECM',
   'F_EW_EQUIPMENT', 'F_BOOBY_TRAP', 'F_SENSOR_DISPENSER'] as const;
 
 export interface SmallCraftWeightBreakdown {

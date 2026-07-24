@@ -1,3 +1,4 @@
+import { EquipmentFlag } from '../../../equipment-flags.type';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
 import { isQuartersBay } from '../../bays/bay-definitions';
 import type { SupportVehicle } from '../../entities/support-vehicle';
@@ -9,7 +10,7 @@ import { ceilToHalfTon } from './weight-rounding';
 
 const TECH_RATINGS: readonly TechRating[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 const STRUCTURAL_RATING_MULTIPLIERS = [1.6, 1.3, 1.15, 1, 0.85, 0.66] as const;
-const CHASSIS_MODIFIERS: ReadonlyArray<readonly [string, number]> = [
+const CHASSIS_MODIFIERS: ReadonlyArray<readonly [EquipmentFlag, number]> = [
   ['F_AMPHIBIOUS', 1.75], ['F_ARMORED_CHASSIS', 1.5], ['F_BICYCLE', 0.75],
   ['F_CONVERTIBLE', 1.1], ['F_DUNE_BUGGY', 1.5], ['F_ENVIRONMENTAL_SEALING', 2],
   ['F_EXTERNAL_POWER_PICKUP', 1.1], ['F_HYDROFOIL', 1.7], ['F_MONOCYCLE', 0.5],

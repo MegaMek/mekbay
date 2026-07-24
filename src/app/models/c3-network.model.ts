@@ -31,6 +31,7 @@
  * affiliated with Microsoft.
  */
 
+import { EquipmentFlag } from './equipment-flags.type';
 import type { ForceUnit } from './force-unit.model';
 import type { UnitComponent } from './units.model';
 
@@ -134,7 +135,7 @@ export const C3_BOOSTED_FLAGS = [
 /**
  * Network compatibility groups - units can only link within the same group
  */
-export const C3_COMPATIBLE_NETWORKS: { type: C3NetworkType; flags: string[] }[] = [
+export const C3_COMPATIBLE_NETWORKS: { type: C3NetworkType; flags: EquipmentFlag[] }[] = [
     {
         type: C3NetworkType.C3,
         flags: [C3_FLAGS.C3S, C3_FLAGS.C3SBS, C3_FLAGS.C3EM, C3_FLAGS.C3M, C3_FLAGS.C3MBS]

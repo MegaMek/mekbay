@@ -31,12 +31,13 @@
  * affiliated with Microsoft.
  */
 
+import { EquipmentFlag } from '../../equipment-flags.type';
 import { MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import type { EntityMountedEquipment } from '../types';
 
-const ARTEMIS_FLAGS = ['F_ARTEMIS', 'F_ARTEMIS_V', 'F_ARTEMIS_PROTO'];
-const LASER_MODULE_FLAGS = ['F_LASER_INSULATOR', 'F_RISC_LASER_PULSE_MODULE'];
-const WEAPON_ENHANCEMENT_FLAGS = [
+const ARTEMIS_FLAGS: EquipmentFlag[] = ['F_ARTEMIS', 'F_ARTEMIS_V', 'F_ARTEMIS_PROTO'];
+const LASER_MODULE_FLAGS: EquipmentFlag[] = ['F_LASER_INSULATOR', 'F_RISC_LASER_PULSE_MODULE'];
+const WEAPON_ENHANCEMENT_FLAGS: EquipmentFlag[] = [
   ...ARTEMIS_FLAGS,
   'F_APOLLO',
   'F_PPC_CAPACITOR',

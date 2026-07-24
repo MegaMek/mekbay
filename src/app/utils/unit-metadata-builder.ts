@@ -46,6 +46,7 @@ import { EntityType, MoveType } from '../models/entity/types';
 import { getBayTransporterType, isQuartersBay } from '../models/entity/bays/bay-definitions';
 import { buildUnitCargoMetadata } from './unit-cargo-metadata-builder';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 
 /**
  * Builds a `Partial<Unit>` metadata object from a parsed entity.
@@ -215,7 +216,7 @@ export class UnitMetadataBuilder {
       features.push(...chassisMods);
     }
 
-    const hasEquipmentFlag = (flag: string): boolean => entity.equipment().some(
+    const hasEquipmentFlag = (flag: EquipmentFlag): boolean => entity.equipment().some(
       mount => mount.equipment?.hasFlag(flag),
     );
     if (hasEquipmentFlag('F_ADVANCED_FIRE_CONTROL')) features.push('Advanced Fire Control');

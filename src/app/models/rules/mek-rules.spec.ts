@@ -18,6 +18,7 @@ import { INVENTORY_CONTROL_MODE_STATE } from '../../utils/inventory-control.util
 import { OptionsService } from '../../services/options.service';
 import { TWMekRules } from './tw-rules';
 import { VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../../equipment-handlers/vibroblade.handler';
+import { EquipmentFlag } from '../equipment-flags.type';
 
 class TestCBTForce extends CBTForce {
     override emitChanged(): void {
@@ -163,7 +164,7 @@ function droneOperatingSystemEntry(forceUnit: CBTForceUnit, destroyed = false): 
     });
 }
 
-function miscEquipment(id: string, name: string, flags: string[]): Equipment {
+function miscEquipment(id: string, name: string, flags: EquipmentFlag[]): Equipment {
     return new Equipment({
         id,
         name,
@@ -181,7 +182,7 @@ function miscEntry(forceUnit: CBTForceUnit, equipment: Equipment): MountedEquipm
     });
 }
 
-function directFireWeaponEntry(forceUnit: CBTForceUnit, flags: string[] = []): MountedEquipment {
+function directFireWeaponEntry(forceUnit: CBTForceUnit, flags: EquipmentFlag[] = []): MountedEquipment {
     const equipment = new WeaponEquipment({
         id: 'DirectFireWeapon',
         name: 'Direct Fire Weapon',
@@ -209,7 +210,10 @@ function hagWeaponEntry(forceUnit: CBTForceUnit, mode: string): MountedWeapon {
         id: 'CLHAG20',
         name: 'HAG/20',
         type: 'weapon',
-        flags: ['F_HAG', 'F_BALLISTIC', 'F_DIRECT_FIRE', 'F_EXPLOSIVE'],
+        flags: ['F_HAG', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+        stats: {
+            explosive: true
+        },
         weapon: {
             ammoType: 'HAG',
             damage: 'cluster',
@@ -230,7 +234,7 @@ function criticalAutocannonEntry(
     forceUnit: CBTForceUnit,
     ammoType: AmmoType,
     critSlots: CriticalSlot[],
-    flags = ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+    flags: EquipmentFlag[] = ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
 ): MountedEquipment {
     const equipment = new WeaponEquipment({
         id: `Autocannon-${ammoType}`,
@@ -927,7 +931,7 @@ describe('MekRules', () => {
     });
 
     it('uses the one-slot threshold when a Core2026 autocannon signature does not match', () => {
-        const cases: { ammoType: AmmoType; flags: string[]; description: string }[] = [
+        const cases: { ammoType: AmmoType; flags: EquipmentFlag[]; description: string }[] = [
             { ammoType: 'AC', flags: ['F_BALLISTIC'], description: 'missing direct-fire flag' },
             { ammoType: 'AC', flags: ['F_DIRECT_FIRE'], description: 'missing ballistic flag' },
             { ammoType: 'NA', flags: ['F_BALLISTIC', 'F_DIRECT_FIRE'], description: 'non-autocannon ammo type' },

@@ -1,4 +1,5 @@
-import { MiscEquipment } from '../../equipment.model';
+import { EquipmentFlag } from '../../equipment-flags.type';
+import { Equipment, MiscEquipment } from '../../equipment.model';
 import type { BaseEntity } from '../base-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
 import { isVehicleEntity } from './entity-type-guards';
@@ -49,7 +50,7 @@ export function getPintleTurretTonnage(
     return weaponWeight === undefined ? undefined : round(weaponWeight / 20);
 }
 
-function countEquipmentWithFlag(entity: BaseEntity, flag: string): number {
+function countEquipmentWithFlag(entity: BaseEntity, flag: EquipmentFlag): number {
     return entity.equipment().filter(mount => mount.equipment?.hasFlag(flag)).length;
 }
 

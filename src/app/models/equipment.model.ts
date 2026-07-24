@@ -52,6 +52,8 @@ import type { Unit } from './units.model';
 import type { CBTGameRules } from './rules/game-rules';
 import { AmmoValidityUtil } from '../utils/ammo-validity.util';
 import { resolveAmmoWeaponProfile, type AmmoWeaponProfile } from './ammo-weapon-profile.model';
+import type { EquipmentFlag } from './equipment-flags.type';
+import { AmmoMunitionFlag } from './ammo-munition-flags.type';
 
 /*
  * Author: Drake
@@ -291,7 +293,7 @@ export interface AmmoData {
     capital: boolean;
     ammoRatio: number;
     subMunition: string;
-    munitionType: string[];
+    munitionType: AmmoMunitionFlag[];
     mutatorName?: string;
     baseAmmo?: string;
     category: AmmoCategory;
@@ -334,7 +336,7 @@ export interface EquipmentRawData {
     stats?: Partial<EquipmentStats>;
     tech?: Partial<WireEquipmentTechData>;
     type: EquipmentType;
-    flags?: string[];
+    flags?: EquipmentFlag[];
     modes?: string[];
     weapon?: Partial<WeaponData>;
     infantry?: Partial<InfantryData>;
@@ -460,7 +462,7 @@ export class Equipment {
     protected readonly stats: EquipmentStats;
     readonly tech: TechData;
     readonly type: EquipmentType;
-    readonly flags: Set<string>;
+    readonly flags: Set<EquipmentFlag>;
     readonly modes: string[];
 
     constructor(data: EquipmentRawData) {
@@ -515,9 +517,9 @@ export class Equipment {
         return this.stats.toHitModifier; 
     }
 
-    hasFlag(flag: string): boolean { return this.flags.has(flag); }
-    hasAnyFlag(flags: string[]): boolean { return flags.some(f => this.flags.has(f)); }
-    hasAllFlags(flags: string[]): boolean { return flags.every(f => this.flags.has(f)); }
+    hasFlag(flag: EquipmentFlag): boolean { return this.flags.has(flag); }
+    hasAnyFlag(flags: EquipmentFlag[]): boolean { return flags.some(f => this.flags.has(f)); }
+    hasAllFlags(flags: EquipmentFlag[]): boolean { return flags.every(f => this.flags.has(f)); }
     hasMode(mode: string): boolean { return this.modes.includes(mode); }
     isExplosive() { return this.stats.explosive ?? false; }
     getNumCriticalSlots(entity: BaseEntity, size: number = 1): number | undefined {
@@ -851,7 +853,7 @@ export class AmmoEquipment extends Equipment {
         return this.ammo.kgPerShot > 0 ? this.ammo.kgPerShot : (this.shots > 0 ? 1000 / this.shots : 0);
     }
 
-    hasMunitionType(type: string): boolean {
+    hasMunitionType(type: AmmoMunitionFlag): boolean {
         return this.munitionType.has(type);
     }
 
@@ -867,7 +869,7 @@ export class AmmoEquipment extends Equipment {
         if (this.hasAnyMunitionType(['M_FRAGMENTATION', 'M_FLECHETTE'])) types.add('AI');
         if (this.hasAnyMunitionType(['M_ECM', 'M_HAYWIRE', 'M_NEMESIS'])) types.add('E');
         if (this.hasMunitionType('M_FLAK')) types.add('F');
-        if (this.hasAnyMunitionType(['M_INFERNO', 'M_INFERNO_IV', 'M_THUNDER_INFERNO', 'M_INCENDIARY_AC', 'M_INCENDIARY_LRM'])) types.add('H');
+        if (this.hasAnyMunitionType(['M_INFERNO', 'M_INFERNO_IV', 'M_THUNDER_INFERNO', 'M_INCENDIARY', 'M_INCENDIARY_LRM'])) types.add('H');
         if (this.hasAnyMunitionType(['M_EXPLOSIVE', 'M_NARC_EX', 'M_DAVY_CROCKETT_M'])) types.add('X');
         return orderedWeaponTypes(types);
     }
@@ -879,7 +881,7 @@ export class AmmoEquipment extends Equipment {
         return [];
     }
 
-    private hasAnyMunitionType(types: readonly string[]): boolean {
+    private hasAnyMunitionType(types: readonly AmmoMunitionFlag[]): boolean {
         return types.some(type => this.hasMunitionType(type));
     }
 

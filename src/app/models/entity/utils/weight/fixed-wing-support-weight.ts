@@ -1,3 +1,4 @@
+import { EquipmentFlag } from '../../../equipment-flags.type';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
 import { isQuartersBay } from '../../bays/bay-definitions';
 import type { FixedWingSupportEntity } from '../../entities/aero/fixed-wing-support-entity';
@@ -13,7 +14,7 @@ const KG_PER_FUEL_POINT = [
   [63, 38, 25, 20, 18, 15],
   [83, 50, 35, 28, 23, 20],
 ] as const;
-const CHASSIS_MODIFIERS: ReadonlyArray<readonly [string, number]> = [
+const CHASSIS_MODIFIERS: ReadonlyArray<readonly [EquipmentFlag, number]> = [
   ['F_AMPHIBIOUS', 1.75], ['F_ARMORED_CHASSIS', 1.5], ['F_BICYCLE', 0.75],
   ['F_CONVERTIBLE', 1.1], ['F_DUNE_BUGGY', 1.5], ['F_ENVIRONMENTAL_SEALING', 2],
   ['F_EXTERNAL_POWER_PICKUP', 1.1], ['F_HYDROFOIL', 1.7], ['F_MONOCYCLE', 0.5],

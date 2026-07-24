@@ -10,6 +10,7 @@ import { VehicleRules } from './vehicle-rules';
 import { MascHandler, MASC_ACTIVE_STATE_KEY } from '../../equipment-handlers/masc.handler';
 import { TWVehicleRules } from './tw-rules';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './game-rules';
+import { EquipmentFlag } from '../equipment-flags.type';
 
 const mascHandler = new MascHandler();
 
@@ -17,7 +18,7 @@ function crit(id: string, destroyed: number): CriticalSlot {
     return { id, destroyed, destroying: destroyed };
 }
 
-function weapon(id: string, flags: string[] = []): WeaponEquipment {
+function weapon(id: string, flags: EquipmentFlag[] = []): WeaponEquipment {
     return new WeaponEquipment({
         id,
         name: id,
@@ -27,7 +28,7 @@ function weapon(id: string, flags: string[] = []): WeaponEquipment {
     });
 }
 
-function equipment(id: string, flags: string[] = []): Equipment {
+function equipment(id: string, flags: EquipmentFlag[] = []): Equipment {
     return new Equipment({
         id,
         name: id,

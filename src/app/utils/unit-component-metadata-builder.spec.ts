@@ -8,6 +8,7 @@ import {
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import { EntityMountedEquipment } from '../models/entity/types/equipment';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 
 describe('buildUnitComponentMetadata', () => {
   it('exports ordinary non-Mek weapons and aggregates ammunition by location', () => {
@@ -127,7 +128,7 @@ function weapon(
   options: {
     damage: number | string;
     ranges: number[];
-    flags: string[];
+    flags: EquipmentFlag[];
     ammoType?: 'MINE';
     rackSize?: number;
     av?: number[];

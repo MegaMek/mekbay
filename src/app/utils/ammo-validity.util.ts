@@ -1,4 +1,5 @@
 import { effectiveTechDateYear, TechAdvancementDates } from '../models/entity/types/tech';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { AmmoEquipment, AmmoType, WeaponEquipment } from '../models/equipment.model';
 import type { Era } from '../models/eras.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
@@ -42,7 +43,7 @@ export class AmmoValidityUtil {
         if (!this.isAmmoValid(candidateAmmo, { unitType: unit?.type })) return false;
         if (originalAmmo.ammoType !== candidateAmmo.ammoType) return false;
         if (!this.hasCompatibleTechBase(originalAmmo, candidateAmmo, unit)) return false;
-        if (originalAmmo.hasFlag('M_CASELESS') !== candidateAmmo.hasFlag('M_CASELESS')) return false;
+        if (originalAmmo.hasMunitionType('M_CASELESS') !== candidateAmmo.hasMunitionType('M_CASELESS')) return false;
         if (originalAmmo.hasFlag('F_BATTLEARMOR') !== candidateAmmo.hasFlag('F_BATTLEARMOR')) return false;
 
         if (originalAmmo.ammoType === 'AR10') return true;
@@ -87,11 +88,11 @@ export class AmmoValidityUtil {
         return reasons;
     }
 
-    private static hasArtemisMunitionSupport(ammo: AmmoEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly string[]): boolean {
+    private static hasArtemisMunitionSupport(ammo: AmmoEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly EquipmentFlag[]): boolean {
         return inventory.some(entry => this.isArtemisSupportedWeaponEntry(entry, ammo, inventory, artemisFlags));
     }
 
-    private static isArtemisSupportedWeaponEntry(entry: MountedEquipment, ammo: AmmoEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly string[]): boolean {
+    private static isArtemisSupportedWeaponEntry(entry: MountedEquipment, ammo: AmmoEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly EquipmentFlag[]): boolean {
         const equipment = entry.equipment;
         return this.isWeaponEquipment(equipment)
             && equipment.hasFlag('F_ARTEMIS_COMPATIBLE')
@@ -111,7 +112,7 @@ export class AmmoValidityUtil {
         return weapon.ammoType === ammo.ammoType && weapon.rackSize === ammo.rackSize;
     }
 
-    private static hasArtemisEnhancementForWeapon(weaponEntry: MountedEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly string[]): boolean {
+    private static hasArtemisEnhancementForWeapon(weaponEntry: MountedEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly EquipmentFlag[]): boolean {
         if (weaponEntry.linkedWith?.some(entry => this.isArtemisEnhancement(entry, artemisFlags))) return true;
 
         const weaponLocations = this.getMountedLocations(weaponEntry);
@@ -124,7 +125,7 @@ export class AmmoValidityUtil {
         });
     }
 
-    private static isArtemisEnhancement(entry: MountedEquipment, artemisFlags: readonly string[]): boolean {
+    private static isArtemisEnhancement(entry: MountedEquipment, artemisFlags: readonly EquipmentFlag[]): boolean {
         return !!entry.equipment?.hasFlag('F_WEAPON_ENHANCEMENT')
             && artemisFlags.some(flag => entry.equipment?.hasFlag(flag));
     }

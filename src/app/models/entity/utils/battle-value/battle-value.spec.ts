@@ -83,6 +83,32 @@ describe('battle value family dispatch', () => {
     expect(new ExposedMekCalculator(entity).heatOf(mount(prototype, 'RA'))).toBe(15);
   });
 
+  it('uses semantic vibroblade sizes for Mek BV heat', () => {
+    class ExposedMekCalculator extends MekBVCalculator {
+      heatOf(item: EntityMountedEquipment): number { return this.weaponHeat(item); }
+    }
+    const calculator = new ExposedMekCalculator(new TestBipedMekEntity());
+    const vibroblade = (sizeFlag: string) => new MiscEquipment({
+      id: sizeFlag, name: sizeFlag, type: 'misc', flags: ['F_CLUB', sizeFlag], stats: { bv: 1 },
+    });
+    const unrelated = new MiscEquipment({ id: 'club', name: 'Club', type: 'misc', flags: ['F_CLUB'] });
+
+    expect(calculator.heatOf(mount(vibroblade('S_VIBRO_SMALL'), 'LA'))).toBe(3);
+    expect(calculator.heatOf(mount(vibroblade('S_VIBRO_MEDIUM'), 'LA'))).toBe(5);
+    expect(calculator.heatOf(mount(vibroblade('S_VIBRO_LARGE'), 'LA'))).toBe(7);
+    expect(calculator.heatOf(mount(vibroblade('S_VIBRO_SMALL'), 'LT'))).toBe(0);
+    expect(calculator.heatOf(mount(vibroblade('S_VIBRO_SMALL'), 'RA'))).toBe(3);
+    expect(calculator.heatOf(mount(unrelated, 'LA'))).toBe(0);
+
+    const leftBlade = mount(vibroblade('S_VIBRO_MEDIUM'), 'LA');
+    const rightBlade = mount(vibroblade('S_VIBRO_LARGE'), 'RA');
+    const twoArmEntity = new TestBipedMekEntity();
+    twoArmEntity.setEquipment([leftBlade, rightBlade]);
+    const twoArmCalculator = new ExposedMekCalculator(twoArmEntity);
+    expect(twoArmCalculator.heatOf(leftBlade)).toBe(5);
+    expect(twoArmCalculator.heatOf(rightBlade)).toBe(7);
+  });
+
   it('applies arm AES to offensive club equipment', () => {
     class ExposedMekCalculator extends MekBVCalculator {
       modifier(item: EntityMountedEquipment): number { return this.offensiveEquipmentModifier(item); }
@@ -301,6 +327,47 @@ describe('structured battle value details', () => {
     expect(heatEfficiency?.calculation).toContain('- 3 (Jump)');
   });
 
+  it('does not apply running heat to IndustrialMek BV heat efficiency', () => {
+    const industrialStructure = new StructureEquipment({
+      id: 'industrial-structure', name: 'Industrial Structure', type: 'structure',
+      flags: ['F_INDUSTRIAL_STRUCTURE'],
+    });
+    const industrialMek = new TestBipedMekEntity();
+    industrialMek.originalWalkMP.set(4);
+    industrialMek.mountedEngine().type.set('Fusion');
+    industrialMek.setStructureAt('CT', new MountedStructure({
+      tonnage: 5,
+      structure: industrialStructure,
+    }));
+
+    const battleMek = new TestBipedMekEntity();
+    battleMek.originalWalkMP.set(4);
+    battleMek.mountedEngine().type.set('Fusion');
+
+    expect(findDetail(calculateBattleValueDetails(industrialMek).details, 'Heat Efficiency')?.calculation)
+      .toContain('- 0 (Run)');
+    expect(findDetail(calculateBattleValueDetails(battleMek).details, 'Heat Efficiency')?.calculation)
+      .toContain('- 2 (Run)');
+  });
+
+  it('still applies jump heat to IndustrialMek BV heat efficiency', () => {
+    const industrialStructure = new StructureEquipment({
+      id: 'industrial-structure', name: 'Industrial Structure', type: 'structure',
+      flags: ['F_INDUSTRIAL_STRUCTURE'],
+    });
+    const jumpJet = new MiscEquipment({
+      id: 'jump-jet', name: 'Jump Jet', type: 'misc', flags: ['F_JUMP_JET'],
+    });
+    const entity = new TestBipedMekEntity();
+    entity.originalWalkMP.set(4);
+    entity.mountedEngine().type.set('Fusion');
+    entity.setStructureAt('CT', new MountedStructure({ tonnage: 5, structure: industrialStructure }));
+    entity.setEquipment(Array.from({ length: 4 }, () => mount(jumpJet, 'LT')));
+
+    expect(findDetail(calculateBattleValueDetails(entity).details, 'Heat Efficiency')?.calculation)
+      .toContain('- 4 (Jump)');
+  });
+
   it('uses the reduced explosive penalty for Magshot Gauss rifles', () => {
     const entity = new TestBipedMekEntity();
     const magshot = new WeaponEquipment({
@@ -313,6 +380,81 @@ describe('structured battle value details', () => {
 
     const explosive = findDetail(calculateBattleValueDetails(entity).details, 'Explosive Equipment');
     expect(explosive?.delta).toBe(-2);
+  });
+
+  it('uses semantic weapon flags for reduced explosive penalties', () => {
+    const reducedWeaponFlags = [
+      ['F_HYPER'],
+      ['F_TSEMP'],
+      ['F_B_POD'],
+      ['F_M_POD'],
+      ['F_TASER', 'F_MEK_WEAPON'],
+      ['F_LASER', 'S_IMPROVED'],
+    ];
+
+    for (const [index, flags] of reducedWeaponFlags.entries()) {
+      const entity = new TestBipedMekEntity();
+      const weapon = new WeaponEquipment({
+        id: `reduced-${index}`, name: `Reduced ${index}`, type: 'weapon',
+        stats: { explosive: true, criticalSlots: 2 }, flags,
+      });
+      entity.setEquipment([mount(weapon, 'LT')]);
+
+      const explosive = findDetail(calculateBattleValueDetails(entity).details, 'Explosive Equipment');
+      expect(explosive?.delta).withContext(flags.join(' + ')).toBe(-2);
+    }
+  });
+
+  it('requires both laser and improved flags for the improved-heavy-laser penalty', () => {
+    for (const flags of [['F_LASER'], ['S_IMPROVED']]) {
+      const entity = new TestBipedMekEntity();
+      const weapon = new WeaponEquipment({
+        id: flags[0], name: flags[0], type: 'weapon',
+        stats: { explosive: true, criticalSlots: 2 }, flags,
+      });
+      entity.setEquipment([mount(weapon, 'LT')]);
+
+      const explosive = findDetail(calculateBattleValueDetails(entity).details, 'Explosive Equipment');
+      expect(explosive?.delta).withContext(flags[0]).toBe(-30);
+    }
+  });
+
+  it('requires the Mek weapon flag for the reduced taser penalty', () => {
+    const entity = new TestBipedMekEntity();
+    const battleArmorTaser = new WeaponEquipment({
+      id: 'ba-taser', name: 'BA Taser', type: 'weapon',
+      stats: { explosive: true, criticalSlots: 1 }, flags: ['F_TASER', 'F_BA_WEAPON'],
+    });
+    entity.setEquipment([mount(battleArmorTaser, 'LT')]);
+
+    const explosive = findDetail(calculateBattleValueDetails(entity).details, 'Explosive Equipment');
+    expect(explosive?.delta).toBe(-15);
+  });
+
+  it('applies one total explosive penalty to a non-split HVAC', () => {
+    const entity = new TestBipedMekEntity();
+    const hvac = new WeaponEquipment({
+      id: 'hvac', name: 'HVAC', type: 'weapon',
+      stats: { explosive: true, criticalSlots: 4 }, flags: ['F_HVAC'],
+    });
+    entity.setEquipment([mount(hvac, 'LT')]);
+
+    const explosive = findDetail(calculateBattleValueDetails(entity).details, 'Explosive Equipment');
+    expect(explosive?.delta).toBe(-1);
+  });
+
+  it('counts occupied slots for a split HVAC', () => {
+    const entity = new TestBipedMekEntity();
+    const hvac = new WeaponEquipment({
+      id: 'split-hvac', name: 'Split HVAC', type: 'weapon',
+      stats: { explosive: true, criticalSlots: 4 }, flags: ['F_HVAC'],
+    });
+    const splitMount = mount(hvac, 'LT');
+    splitMount.isSplit = true;
+    entity.setEquipment([splitMount]);
+
+    const explosive = findDetail(calculateBattleValueDetails(entity).details, 'Explosive Equipment');
+    expect(explosive?.delta).toBe(-4);
   });
 
   it('groups equivalent large-aero PPCs and applies arc factors before capacitor BV', () => {

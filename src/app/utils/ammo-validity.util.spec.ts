@@ -3,6 +3,7 @@ import type { WireSplitTechDates } from '../models/equipment-tech-codec';
 import type { Era } from '../models/eras.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { AmmoValidityUtil } from './ammo-validity.util';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 
 function createEra(from: number | undefined, to: number | undefined): Era {
     return {
@@ -37,7 +38,7 @@ function createSrmAmmo(id: string, munitionType: string[] = []): AmmoEquipment {
     });
 }
 
-function createSrmWeapon(flags: string[] = ['F_ARTEMIS_COMPATIBLE']): WeaponEquipment {
+function createSrmWeapon(flags: EquipmentFlag[] = ['F_ARTEMIS_COMPATIBLE']): WeaponEquipment {
     return new WeaponEquipment({
         id: 'ISSRM4',
         name: 'SRM 4',
@@ -47,7 +48,7 @@ function createSrmWeapon(flags: string[] = ['F_ARTEMIS_COMPATIBLE']): WeaponEqui
     });
 }
 
-function createArtemis(flags: string[] = ['F_ARTEMIS']): MiscEquipment {
+function createArtemis(flags: EquipmentFlag[] = ['F_ARTEMIS']): MiscEquipment {
     return new MiscEquipment({
         id: flags.includes('F_ARTEMIS_V') ? 'ISArtemisV' : 'ISArtemisIV',
         name: flags.includes('F_ARTEMIS_V') ? 'Artemis V FCS' : 'Artemis IV FCS',

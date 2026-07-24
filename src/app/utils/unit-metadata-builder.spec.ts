@@ -31,6 +31,7 @@ import { UnitMetadataBuilder } from './unit-metadata-builder';
 import { getOffensiveSpeedFactor, offensiveSpeedFactor } from '../models/entity/utils/battle-value';
 import type { Sourcebook } from '../models/sourcebook.model';
 import type { UnitSubtype } from '../models/entity/types';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 
 describe('UnitMetadataBuilder', () => {
   const builder = new UnitMetadataBuilder();
@@ -487,7 +488,7 @@ function sourcebook(abbrev: string, canon = true): Sourcebook {
   return { id: 0, sku: '', abbrev, title: abbrev, canon };
 }
 
-function miscMount(id: string, flags: readonly string[]): EntityMountedEquipment {
+function miscMount(id: string, flags: readonly EquipmentFlag[]): EntityMountedEquipment {
   return new EntityMountedEquipment({
     mountId: id,
     equipmentId: id,

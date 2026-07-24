@@ -45,6 +45,7 @@ import type { UnitHeatSource } from '../models/rules/unit-type-rules';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
 import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-control-physical-damage.util';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 
 /**
  * Context passed to handlers containing additional information
@@ -81,7 +82,7 @@ export abstract class EquipmentInteractionHandler {
     /**
      * The equipment flags this handler responds to ('F_ECM', 'F_MASC', etc.). If multiple flags, it has to match all.
      */
-    readonly flags: string[] = [];
+    readonly flags: EquipmentFlag[] = [];
 
     /**
      * Optional method to determine if this handler applies to the given equipment

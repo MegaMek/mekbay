@@ -1,3 +1,4 @@
+import { EquipmentFlag } from '../../../equipment-flags.type';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
 import { isQuartersBay } from '../../bays/bay-definitions';
 import type { AeroEntity } from '../../entities/aero/aero-entity';
@@ -6,7 +7,7 @@ import { calculateHeatNeutralRequirement, calculatePowerAmplifierWeight } from '
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
 import { ceilToHalfTon } from './weight-rounding';
 
-const SYSTEM_MISC_FLAGS = [
+const SYSTEM_MISC_FLAGS: EquipmentFlag[] = [
   'F_FERRO_ALUMINUM', 'F_FERRO_ALUMINUM_PROTO', 'F_LIGHT_FERRO', 'F_HEAVY_FERRO',
   'F_REACTIVE', 'F_REFLECTIVE', 'F_HARDENED_ARMOR', 'F_HEAT_SINK',
   'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE',
