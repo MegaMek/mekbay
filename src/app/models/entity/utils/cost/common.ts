@@ -1,5 +1,6 @@
 import type { BaseEntity } from '../../base-entity';
 import { MiscEquipment } from '../../../equipment.model';
+import { EquipmentFlag } from '../../../equipment-flags.type';
 
 export function nextHalfTon(tonnage: number): number {
   const truncated = Math.round(tonnage * 1000000) / 1000000;
@@ -85,6 +86,6 @@ export function calculateHeatNeutralRequirement(entity: BaseEntity): number {
   return weaponHeat + capacitorHeat + miscHeat + (hasStealth ? 10 : 0);
 }
 
-export function hasAnyEquipmentFlag(entity: BaseEntity, flags: readonly string[]): boolean {
+export function hasAnyEquipmentFlag(entity: BaseEntity, flags: readonly EquipmentFlag[]): boolean {
   return entity.equipment().some(mount => mount.equipment?.hasAnyFlag([...flags]));
 }

@@ -1,3 +1,4 @@
+import { EquipmentFlag } from '../../../equipment-flags.type';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
 import type { BaseEntity } from '../../base-entity';
 import { BV_MOVEMENT_CALCULATION, type EntityMountedEquipment } from '../../types';
@@ -344,7 +345,7 @@ export class BVCalculator {
   protected processOffensiveEquipment(): void {
     const before = this.offensiveValue;
     const details = this.captureDetails(() => {
-    const excluded = [
+    const excluded: EquipmentFlag[] = [
       'F_AP_POD', 'F_VIRAL_JAMMER_DECOY', 'F_VIRAL_JAMMER_HOMING',
       'F_LIGHT_BRIDGE_LAYER', 'F_MEDIUM_BRIDGE_LAYER', 'F_HEAVY_BRIDGE_LAYER',
       'F_CHAFF_POD', 'F_BULLDOZER', 'F_BAP', 'F_TARGETING_COMPUTER', 'F_SPIKES',
@@ -385,7 +386,7 @@ export class BVCalculator {
     return value * (this.has('F_DRONE_OPERATING_SYSTEM') ? 0.95 : 1);
   }
 
-  protected has(flag: string): boolean {
+  protected has(flag: EquipmentFlag): boolean {
     return this.entity.equipment().some(mount => mount.equipment?.hasFlag(flag));
   }
 

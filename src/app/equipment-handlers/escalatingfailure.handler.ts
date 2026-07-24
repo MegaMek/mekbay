@@ -1,4 +1,5 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../models/rules/unit-type-rules';
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
@@ -25,7 +26,7 @@ const ESCALATING_FAILURE_FAILURE_CHOICE_COLORS = {
 
 export class EscalatingFailureHandler extends EquipmentInteractionHandler {
     readonly id: string = ESCALATING_FAILURE_HANDLER_ID;
-    override readonly flags = ['F_ESCALATING_FAILURE'];
+    override readonly flags: EquipmentFlag[] = [];
     override readonly priority = 10;
 
     protected static readonly sequenceStateKey: string = ESCALATING_FAILURE_STATE_KEY;

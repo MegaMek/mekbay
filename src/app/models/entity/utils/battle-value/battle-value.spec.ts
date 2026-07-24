@@ -33,6 +33,7 @@ import {
   MekBVCalculator,
   ProtoMekBVCalculator,
 } from './family-calculators';
+import { EquipmentFlag } from '../../../equipment-flags.type';
 
 let mountSequence = 0;
 
@@ -88,7 +89,7 @@ describe('battle value family dispatch', () => {
       heatOf(item: EntityMountedEquipment): number { return this.weaponHeat(item); }
     }
     const calculator = new ExposedMekCalculator(new TestBipedMekEntity());
-    const vibroblade = (sizeFlag: string) => new MiscEquipment({
+    const vibroblade = (sizeFlag: EquipmentFlag) => new MiscEquipment({
       id: sizeFlag, name: sizeFlag, type: 'misc', flags: ['F_CLUB', sizeFlag], stats: { bv: 1 },
     });
     const unrelated = new MiscEquipment({ id: 'club', name: 'Club', type: 'misc', flags: ['F_CLUB'] });
@@ -383,7 +384,7 @@ describe('structured battle value details', () => {
   });
 
   it('uses semantic weapon flags for reduced explosive penalties', () => {
-    const reducedWeaponFlags = [
+    const reducedWeaponFlags: EquipmentFlag[][] = [
       ['F_HYPER'],
       ['F_TSEMP'],
       ['F_B_POD'],

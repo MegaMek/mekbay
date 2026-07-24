@@ -1,3 +1,4 @@
+import { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
 import { effectiveTechDateYear, TechAdvancementDates } from '../models/entity/types/tech';
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { AmmoEquipment, AmmoType, WeaponEquipment } from '../models/equipment.model';
@@ -166,7 +167,7 @@ export class AmmoValidityUtil {
     }
 
     private static canAeroUseAlternateArtilleryMunition(ammo: AmmoEquipment): boolean {
-        const allowedMunitionsByAmmoType: Partial<Record<AmmoType, readonly string[]>> = {
+        const allowedMunitionsByAmmoType: Partial<Record<AmmoType, readonly AmmoMunitionFlag[]>> = {
             ARROW_IV: ['M_FLARE', 'M_CLUSTER', 'M_HOMING', 'M_INFERNO_IV', 'M_LASER_INHIB', 'M_SMOKE', 'M_FASCAM', 'M_DAVY_CROCKETT_M', 'M_VIBRABOMB_IV', 'M_STANDARD'],
             LONG_TOM: ['M_FLARE', 'M_CLUSTER', 'M_HOMING', 'M_FLECHETTE', 'M_SMOKE', 'M_FASCAM', 'M_DAVY_CROCKETT_M', 'M_STANDARD'],
             SNIPER: ['M_FLARE', 'M_CLUSTER', 'M_HOMING', 'M_FLECHETTE', 'M_SMOKE', 'M_FASCAM', 'M_STANDARD'],
@@ -181,7 +182,7 @@ export class AmmoValidityUtil {
         return ammo.munitionType.size === 0 || ammo.hasMunitionType('M_STANDARD');
     }
 
-    private static hasAnyMunition(ammo: AmmoEquipment, munitionTypes: readonly string[]): boolean {
+    private static hasAnyMunition(ammo: AmmoEquipment, munitionTypes: readonly AmmoMunitionFlag[]): boolean {
         return munitionTypes.some(munitionType => ammo.hasMunitionType(munitionType));
     }
 

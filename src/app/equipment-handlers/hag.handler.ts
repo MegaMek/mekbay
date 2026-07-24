@@ -32,6 +32,7 @@
  */
 
 import type { PickerChoice } from '../components/picker/picker.interface';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 import { WeaponEquipment, type WeaponType } from '../models/equipment.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
@@ -43,7 +44,7 @@ export const HAG_FLAK_MODE = 'Flak';
 
 export class HagHandler extends EquipmentInteractionHandler {
     readonly id = 'hag-handler';
-    override readonly flags = ['F_HAG'];
+    override readonly flags: EquipmentFlag[] = ['F_HAG'];
     override readonly priority = 100;
 
     override applicableTo(equipment: MountedEquipment): boolean {

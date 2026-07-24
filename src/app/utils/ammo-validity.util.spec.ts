@@ -4,6 +4,7 @@ import type { Era } from '../models/eras.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { AmmoValidityUtil } from './ammo-validity.util';
 import { EquipmentFlag } from '../models/equipment-flags.type';
+import { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
 
 function createEra(from: number | undefined, to: number | undefined): Era {
     return {
@@ -28,7 +29,7 @@ function createAmmo(id: string, advancement: WireSplitTechDates): AmmoEquipment 
     });
 }
 
-function createSrmAmmo(id: string, munitionType: string[] = []): AmmoEquipment {
+function createSrmAmmo(id: string, munitionType: AmmoMunitionFlag[] = []): AmmoEquipment {
     return new AmmoEquipment({
         id,
         name: id,

@@ -554,7 +554,7 @@ class TestCBTForce extends CBTForce {
 
 class EndTurnTestHandler extends EquipmentInteractionHandler {
     readonly id = 'end-turn-test-handler';
-    override readonly flags = ['F_END_TURN_TEST'];
+    override readonly flags: EquipmentFlag[] = ['F_END_TURN_TEST'];
     calls = 0;
 
     getChoices(): [] {
@@ -572,7 +572,7 @@ class EndTurnTestHandler extends EquipmentInteractionHandler {
 
 class RunMovementBonusTestHandler extends EquipmentInteractionHandler {
     readonly id = 'run-movement-bonus-test-handler';
-    override readonly flags = ['F_RUN_MOVEMENT_BONUS_TEST'];
+    override readonly flags: EquipmentFlag[] = ['F_RUN_MOVEMENT_BONUS_TEST'];
 
     getChoices(): [] {
         return [];

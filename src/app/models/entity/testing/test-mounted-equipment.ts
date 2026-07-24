@@ -1,3 +1,4 @@
+import { EquipmentFlag } from '../../equipment-flags.type';
 import { createEquipment, type Equipment } from '../../equipment.model';
 import { BaseEntity } from '../base-entity';
 import {
@@ -36,7 +37,7 @@ export function addTestEquipment(
 /** Install minimal miscellaneous equipment carrying the requested flags. */
 export function addTestEquipmentWithFlags(
   entity: BaseEntity,
-  flags: string | readonly string[],
+  flags: EquipmentFlag | readonly EquipmentFlag[],
   options: TestEquipmentMountOptions = {},
 ): EntityMountedEquipment {
   const flagList = typeof flags === 'string' ? [flags] : [...flags];

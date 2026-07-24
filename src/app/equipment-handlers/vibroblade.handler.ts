@@ -7,6 +7,7 @@ import { EquipmentInteractionHandler, type HandlerContext } from '../services/eq
 import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions } from '../utils/inventory-control.util';
 import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-control-physical-damage.util';
 import { getVibrobladeProfile } from '../models/rules/vibroblade-rules';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 
 export const VIBROBLADE_MODE_STATE = 'vibroblade_mode';
 export const VIBROBLADE_ON_MODE = 'ON';
@@ -34,7 +35,7 @@ export function getVibrobladeBaseDamage(mounted: MountedEquipment): number | nul
 
 export class VibrobladeHandler extends EquipmentInteractionHandler {
     readonly id = 'vibroblade-handler';
-    override readonly flags = ['F_CLUB'];
+    override readonly flags: EquipmentFlag[] = ['F_CLUB'];
     override readonly priority = 20;
 
     override applicableTo(mounted: MountedEquipment): boolean {

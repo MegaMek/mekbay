@@ -3,6 +3,7 @@ import { SmallCraftEntity } from './small-craft-entity';
 import { createTestEquipmentRegistry } from '../../testing/test-equipment-registry';
 import { addTestEquipment } from '../../testing/test-mounted-equipment';
 import { calculateMountedEquipmentCost } from '../../utils/cost';
+import { EquipmentFlag } from '../../../equipment-flags.type';
 
 describe('SmallCraftEntity implicit equipment', () => {
   it('derives its automatic ECM from entity state', () => {
@@ -82,7 +83,7 @@ describe('SmallCraftEntity implicit equipment', () => {
   });
 });
 
-function createWeapon(id: string, flags: string[] = []): WeaponEquipment {
+function createWeapon(id: string, flags: EquipmentFlag[] = []): WeaponEquipment {
   return createEquipment({
     id, name: id, type: 'weapon', flags,
     weapon: { damage: 10, ranges: [5, 10, 15, 20] },

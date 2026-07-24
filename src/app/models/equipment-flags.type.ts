@@ -32,6 +32,10 @@
  */
 
 export type EquipmentFlag =
+    // Extra flags specific for MekBay
+    | "F_ESCALATING_FAILURE"
+
+    // MegaMek's Flags
     | "ANY_C3"
     | "F_AC"
     | "F_ACTUATOR_ENHANCEMENT_SYSTEM"

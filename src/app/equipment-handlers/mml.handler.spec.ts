@@ -1,3 +1,4 @@
+import { EquipmentFlag } from '../models/equipment-flags.type';
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
@@ -31,7 +32,7 @@ function weaponWithSvgMode(mode: string, persist = false): MountedEquipment {
     return entry;
 }
 
-function ammo(id: string, name: string, flags: string[] = []): AmmoEquipment {
+function ammo(id: string, name: string, flags: EquipmentFlag[] = []): AmmoEquipment {
     return new AmmoEquipment({ id, name, shortName: name, type: 'ammo', flags, ammo: { type: 'MML', rackSize: 9, shots: 10 } });
 }
 

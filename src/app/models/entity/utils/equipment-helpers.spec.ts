@@ -1,3 +1,4 @@
+import { EquipmentFlag } from '../../equipment-flags.type';
 import { ArmorEquipment, MiscEquipment } from '../../equipment.model';
 import { MountedArmor, MountedEngine } from '../components';
 import {
@@ -71,7 +72,7 @@ describe('Equipment.getNumCriticalSlots', () => {
             .getNumCriticalSlots(entity)).toBe(3);
     });
 
-    const patchworkCases: Array<[string, ArmorType, string, number]> = [
+    const patchworkCases: Array<[string, ArmorType, EquipmentFlag, number]> = [
         ['Reflective', 'REFLECTIVE', 'F_REFLECTIVE', 3],
         ['Light Ferro-Fibrous', 'LIGHT_FERRO', 'F_LIGHT_FERRO', 2],
         ['Heavy Ferro-Fibrous', 'HEAVY_FERRO', 'F_HEAVY_FERRO', 6],
@@ -171,7 +172,7 @@ describe('Equipment.getNumCriticalSlots', () => {
 
 function variableEquipment(
     name: string,
-    flags: string[],
+    flags: EquipmentFlag[],
     techBase: 'IS' | 'Clan' | 'All' = 'IS',
 ): MiscEquipment {
     return miscEquipment(name, flags, 'variable', techBase);
@@ -179,7 +180,7 @@ function variableEquipment(
 
 function miscEquipment(
     name: string,
-    flags: string[],
+    flags: EquipmentFlag[],
     criticalSlots: number | 'variable',
     techBase: 'IS' | 'Clan' | 'All' = 'IS',
 ): MiscEquipment {

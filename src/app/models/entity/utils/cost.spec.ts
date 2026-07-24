@@ -19,6 +19,7 @@ import { TestBipedMekEntity, TestHandheldWeaponEntity } from '../testing/test-en
 import { calculateMountedEquipmentCost } from './cost';
 import { calculateEntityCost, calculateEntityCostDetails } from './cost/entity-cost';
 import { amount, buildCostReport, multiplier } from './cost/cost-report';
+import { EquipmentFlag } from '../../equipment-flags.type';
 
 describe('entity cost', () => {
     it('applies additive and multiplier steps with running subtotals', () => {
@@ -646,7 +647,7 @@ describe('EntityMountedEquipment.getCost', () => {
     });
 });
 
-function variableEquipment(name: string, flags: string[], techBase: 'IS' | 'Clan' | 'All' = 'IS'): MiscEquipment {
+function variableEquipment(name: string, flags: EquipmentFlag[], techBase: 'IS' | 'Clan' | 'All' = 'IS'): MiscEquipment {
     return new MiscEquipment({
         id: name,
         name,
@@ -660,7 +661,7 @@ function variableEquipment(name: string, flags: string[], techBase: 'IS' | 'Clan
 function weaponMount(
     name: string,
     tonnage: number,
-    flags: string[],
+    flags: EquipmentFlag[],
     cost = 0,
 ): EntityMountedEquipment {
     return new EntityMountedEquipment({
@@ -681,7 +682,7 @@ function weaponMount(
     });
 }
 
-function variableCostEquipment(name: string, flags: string[], tonnage: number): MiscEquipment {
+function variableCostEquipment(name: string, flags: EquipmentFlag[], tonnage: number): MiscEquipment {
     return new MiscEquipment({
         id: name,
         name,

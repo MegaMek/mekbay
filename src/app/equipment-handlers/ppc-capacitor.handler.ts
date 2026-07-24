@@ -18,7 +18,7 @@ export const PPC_CAPACITOR_CHARGED_TEXT_COLOR = '#001829';
 
 export class PpcCapacitorHandler extends EquipmentInteractionHandler {
     readonly id = 'ppc-capacitor-handler';
-    override readonly flags = ['F_PPC'];
+    override readonly flags: EquipmentFlag[] = ['F_PPC'];
     override readonly priority = 20;
 
     override applicableTo(equipment: MountedEquipment): boolean {

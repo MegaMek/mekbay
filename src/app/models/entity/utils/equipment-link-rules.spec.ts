@@ -1,3 +1,4 @@
+import { EquipmentFlag } from '../../equipment-flags.type';
 import { MiscEquipment, WeaponEquipment, type WeaponData } from '../../equipment.model';
 import { EntityMountedEquipment } from '../types';
 import { canLinkEquipment, isWeaponEnhancement } from './equipment-link-rules';
@@ -42,14 +43,14 @@ describe('equipment link rules', () => {
   });
 });
 
-function enhancement(id: string, flag: string, location = 'Front'): EntityMountedEquipment {
+function enhancement(id: string, flag: EquipmentFlag, location = 'Front'): EntityMountedEquipment {
   return mount(new MiscEquipment({ id, name: id, type: 'misc', flags: [flag] }), location);
 }
 
 function weapon(
   id: string,
   weaponStats: Partial<WeaponData>,
-  flags: string[] = [],
+  flags: EquipmentFlag[] = [],
   techBase: 'IS' | 'Clan' = 'IS',
   location = 'Front',
 ): EntityMountedEquipment {

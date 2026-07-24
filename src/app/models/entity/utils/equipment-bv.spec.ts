@@ -1,3 +1,4 @@
+import { EquipmentFlag } from '../../equipment-flags.type';
 import { MiscEquipment } from '../../equipment.model';
 import {
     TestBipedMekEntity as BipedMekEntity,
@@ -14,7 +15,7 @@ describe('getEquipmentBV', () => {
         entity.originalWalkMP.set(3);
     });
 
-    const cases: Array<[string, string[], number]> = [
+    const cases: Array<[string, EquipmentFlag[], number]> = [
         ['hatchet', ['F_CLUB', 'S_HATCHET'], 22.5],
         ['sword', ['F_CLUB', 'S_SWORD'], 15.525],
         ['lance', ['F_CLUB', 'S_LANCE'], 15],
@@ -69,11 +70,11 @@ describe('getEquipmentBV', () => {
     });
 });
 
-function variableEquipment(name: string, flags: string[]): MiscEquipment {
+function variableEquipment(name: string, flags: EquipmentFlag[]): MiscEquipment {
     return new MiscEquipment({ id: name, name, type: 'misc', flags, stats: { bv: 'variable' } });
 }
 
-function fixedEquipment(name: string, flags: string[], bv = 0): MiscEquipment {
+function fixedEquipment(name: string, flags: EquipmentFlag[], bv = 0): MiscEquipment {
     return new MiscEquipment({ id: name, name, type: 'misc', flags, stats: { bv } });
 }
 

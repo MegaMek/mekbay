@@ -4,6 +4,7 @@ import { writeBlkInfantry } from '../writers/blk-infantry-writer';
 import { BuildingBlock } from './building-block';
 import { parseBlkInfantry } from './blk-infantry-parser';
 import { ParseContext } from './parse-context';
+import { EquipmentFlag } from '../../equipment-flags.type';
 
 describe('BLK conventional infantry codec', () => {
   const primary = infantryWeapon('InfantryRifle');
@@ -124,7 +125,7 @@ ${armorKit.id}
   }
 });
 
-function infantryWeapon(id: string, extraFlags: string[] = []): InfantryWeaponEquipment {
+function infantryWeapon(id: string, extraFlags: EquipmentFlag[] = []): InfantryWeaponEquipment {
   const weapon = new WeaponEquipment({
     id,
     name: id,

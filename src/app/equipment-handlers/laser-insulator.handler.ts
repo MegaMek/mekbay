@@ -1,11 +1,12 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
 import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 
 export class LaserInsulatorHandler extends EquipmentInteractionHandler {
     readonly id = 'laser-insulator-handler';
-    override readonly flags = ['F_WEAPON_ENHANCEMENT', 'F_LASER_INSULATOR'];
+    override readonly flags: EquipmentFlag[] = ['F_WEAPON_ENHANCEMENT', 'F_LASER_INSULATOR'];
 
     getChoices(_equipment: MountedEquipment, _context: HandlerContext): PickerChoice[] {
         return [];

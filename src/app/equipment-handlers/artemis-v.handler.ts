@@ -6,7 +6,7 @@ import { EquipmentInteractionHandler, type HandlerContext, type ToHitAdjustmentC
 
 export class ArtemisVHandler extends EquipmentInteractionHandler {
     readonly id = 'artemis-v-handler';
-    override readonly flags = ['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V'];
+    override readonly flags: EquipmentFlag[] = ['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V'];
 
     getChoices(_equipment: MountedEquipment, _context: HandlerContext): PickerChoice[] {
         return [];

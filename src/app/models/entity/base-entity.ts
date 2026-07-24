@@ -107,6 +107,7 @@ import {
 import { reconcileEquipmentRelationships } from './utils/equipment-relationship-rules';
 import { canLinkEquipment as isCompatibleEquipmentLink } from './utils/equipment-link-rules';
 import { calculateEntityEffectiveTonnage } from './utils/weight/entity-weight';
+import { EquipmentFlag } from '../equipment-flags.type';
 
 export interface AddEquipmentOptions {
   /** Enhancement target. The newly installed enhancement becomes the link source. */
@@ -877,7 +878,7 @@ export abstract class BaseEntity implements EntityTechnology {
   /** Number of independently tracked crew positions, not physical complement. */
   readonly crewSlotCount = computed<number>(() => this.entityType === 'HandheldWeapon' ? 0 : 1);
 
-  protected hasEquipmentFlag(flag: string): boolean {
+  protected hasEquipmentFlag(flag: EquipmentFlag): boolean {
     return this.equipment().some(mount => mount.equipment?.hasFlag(flag));
   }
 

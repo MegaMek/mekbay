@@ -7,12 +7,14 @@ import {
     MML_SRM_PROFILE,
     resolveAmmoWeaponProfile
 } from './ammo-weapon-profile.model';
+import { AmmoMunitionFlag } from './ammo-munition-flags.type';
+import { EquipmentFlag } from './equipment-flags.type';
 
 describe('ammo weapon profiles', () => {
     function ammo(
         id: string,
         type: 'ATM' | 'IATM' | 'MML' | 'LRM',
-        options: { flags?: string[]; munitionType?: string[] } = {}
+        options: { flags?: EquipmentFlag[]; munitionType?: AmmoMunitionFlag[] } = {}
     ): AmmoEquipment {
         return new AmmoEquipment({
             id,
