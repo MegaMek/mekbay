@@ -165,6 +165,111 @@ describe('battle value family dispatch', () => {
     expect(new ExposedMekCalculator(new ImmobileLamHarness()).runningModifier()).toBe(0);
   });
 
+  it('applies Mek summary modifier precedence without stacking cockpit and drone reductions', () => {
+    class ExposedMekCalculator extends MekBVCalculator {
+      summary(value: number): number { return this.summarize(value); }
+    }
+    const drone = new MiscEquipment({
+      id: 'Drone OS', name: 'Drone OS', type: 'misc', flags: ['F_DRONE_OPERATING_SYSTEM'],
+    });
+    const standard = new TestBipedMekEntity();
+    standard.setEquipment([mount(drone, 'CT')]);
+    expect(new ExposedMekCalculator(standard).summary(100)).toBe(95);
+
+    const small = new TestBipedMekEntity();
+    small.cockpitType.set('Small');
+    small.setEquipment([mount(drone, 'CT')]);
+    expect(new ExposedMekCalculator(small).summary(100)).toBe(95);
+
+    const virtualReality = new TestBipedMekEntity();
+    virtualReality.cockpitType.set('Virtual Reality Piloting Pod');
+    expect(new ExposedMekCalculator(virtualReality).summary(100)).toBe(140);
+    virtualReality.hasRiscHeatSinkOverrideKit.set(true);
+    expect(new ExposedMekCalculator(virtualReality).summary(100)).toBeCloseTo(141.4, 10);
+  });
+
+  it('counts both equipment items in a superheavy combined critical slot', () => {
+    class ExposedMekCalculator extends MekBVCalculator {
+      mountedItems(): EntityMountedEquipment[] { return this.equipmentMounts(); }
+    }
+    const primary = new AmmoEquipment({
+      id: 'primary-ammo', name: 'Primary Ammo', type: 'ammo', stats: { bv: 10 },
+      ammo: { type: 'AC', rackSize: 10, shots: 10 },
+    });
+    const secondary = new AmmoEquipment({
+      id: 'secondary-ammo', name: 'Secondary Ammo', type: 'ammo', stats: { bv: 20 },
+      ammo: { type: 'GAUSS', rackSize: 15, shots: 8 },
+    });
+    const combined = mount(primary, 'RT');
+    combined.secondEquipmentId = secondary.id;
+    combined.secondEquipment = secondary;
+    const entity = new TestBipedMekEntity();
+    entity.setEquipment([combined]);
+
+    const items = new ExposedMekCalculator(entity).mountedItems();
+    expect(items.map(item => item.equipment?.id)).toEqual([primary.id, secondary.id]);
+    expect(items[1].location).toBe('RT');
+    expect(items[1].secondEquipment).toBeUndefined();
+  });
+
+  it('treats a PPC as explosive only when linked to a capacitor', () => {
+    class ExposedMekCalculator extends MekBVCalculator {
+      explosive(mounted: EntityMountedEquipment): boolean { return this.isExplosive(mounted); }
+    }
+    const ppc = new WeaponEquipment({
+      id: 'ppc', name: 'PPC', type: 'weapon', flags: ['F_PPC', 'F_PPC_CAPACITOR_COMPATIBLE'],
+      stats: { explosive: false }, weapon: { heat: 10, damage: 10, ammoType: 'NA' },
+    });
+    const capacitor = new MiscEquipment({
+      id: 'capacitor', name: 'PPC Capacitor', type: 'misc', flags: ['F_PPC_CAPACITOR'],
+    });
+    const ppcMount = mount(ppc, 'RA');
+    const capacitorMount = mount(capacitor, 'RA');
+    const entity = new TestBipedMekEntity();
+    entity.setEquipment([ppcMount, capacitorMount]);
+    const calculator = new ExposedMekCalculator(entity);
+    expect(calculator.explosive(ppcMount)).toBeFalse();
+
+    entity.linkEquipment(capacitorMount, ppcMount);
+    expect(calculator.explosive(ppcMount)).toBeTrue();
+  });
+
+  it('applies MegaMek switched-arc turret semantics to superheavy vehicles', () => {
+    class ExposedVehicleCalculator extends CombatVehicleBVCalculator {
+      switchedRear(mounted: EntityMountedEquipment): boolean {
+        this.switchRearAndFront = true;
+        return this.isNominalRear(mounted);
+      }
+    }
+    const weapon = new WeaponEquipment({
+      id: 'test-weapon', name: 'Test Weapon', type: 'weapon', weapon: { ammoType: 'NA' },
+    });
+    const ordinary = new TestTankEntity();
+    const ordinaryCalculator = new ExposedVehicleCalculator(ordinary);
+    expect(ordinaryCalculator.switchedRear(mount(weapon, 'Turret'))).toBeFalse();
+
+    const superheavy = new TestTankEntity();
+    superheavy.setTonnage(200);
+    const superheavyCalculator = new ExposedVehicleCalculator(superheavy);
+    expect(superheavyCalculator.switchedRear(mount(weapon, 'Turret'))).toBeTrue();
+    expect(superheavyCalculator.switchedRear(mount(weapon, 'Rear Left'))).toBeFalse();
+    expect(superheavyCalculator.switchedRear(mount(weapon, 'Rear'))).toBeFalse();
+  });
+
+  it('does not grant vehicle stealth TMM when movement is zero', () => {
+    const entity = new TestTankEntity();
+    const stealth = new ArmorEquipment({
+      id: 'vehicle-stealth', name: 'Vehicle Stealth', type: 'armor',
+      armor: { type: 'STEALTH_VEHICLE' },
+    });
+    entity.armorValues.set(new Map([['Front', { front: 10, rear: 0 }]]));
+    entity.setUniformArmor(new MountedArmor({ armor: stealth, techBase: 'IS' }));
+
+    const result = calculateBattleValueDetails(entity);
+    const factor = findDetail(result.details, 'Defensive Factor');
+    expect(factor?.calculation).toContain('x 1');
+  });
+
   it('applies arm AES to offensive club equipment', () => {
     class ExposedMekCalculator extends MekBVCalculator {
       modifier(item: EntityMountedEquipment): number { return this.offensiveEquipmentModifier(item); }

@@ -197,6 +197,15 @@ export const BLK_CRIT_QUAD: readonly (readonly [string, string])[] = [
 // ============================================================================
 
 export const VEHICLE_ARMOR_LOCS = ['Front', 'Right', 'Left', 'Rear', 'Turret', 'Rear Turret'] as const;
+export const VEHICLE_DUAL_TURRET_ARMOR_LOCS = [
+  'Front', 'Right', 'Left', 'Rear', 'Rear Turret', 'Front Turret',
+] as const;
+
+export function ordinaryVehicleArmorLocations(entryCount: number): readonly string[] {
+  return entryCount >= VEHICLE_DUAL_TURRET_ARMOR_LOCS.length
+    ? VEHICLE_DUAL_TURRET_ARMOR_LOCS
+    : VEHICLE_ARMOR_LOCS;
+}
 export const VTOL_ARMOR_LOCS = ['Front', 'Right', 'Left', 'Rear', 'Rotor', 'Turret'] as const;
 export const SUPERHEAVY_ARMOR_LOCS = ['Front', 'Front Right', 'Front Left', 'Rear Right', 'Rear Left', 'Rear', 'Turret', 'Rear Turret'] as const;
 export const LST_ARMOR_LOCS = ['Front', 'Front Right', 'Front Left', 'Rear Right', 'Rear Left', 'Rear', 'Turret'] as const;

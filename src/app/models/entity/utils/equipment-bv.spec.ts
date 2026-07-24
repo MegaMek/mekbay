@@ -49,6 +49,20 @@ describe('getEquipmentBV', () => {
         expect(mount('ram-plate', 'CT', variableEquipment('ram plate', ['F_RAM_PLATE'])).getBV(entity)).toBe(22);
     });
 
+    it('uses BV-effective boosted movement for ram plate damage', () => {
+        const masc = fixedEquipment('masc', ['F_MASC']);
+        entity.setTonnage(50);
+        entity.originalWalkMP.set(5);
+        entity.setEquipment([
+            mount('masc', 'LT', masc),
+            mount('supercharger', 'RT', masc),
+        ]);
+
+        expect(entity.runMP()).toBe(8);
+        expect(entity.maxRunMP()).toBe(13);
+        expect(mount('ram-plate', 'CT', variableEquipment('ram plate', ['F_RAM_PLATE'])).getBV(entity)).toBe(35.2);
+    });
+
     it('passes through fixed BV', () => {
         expect(mount('fixed', 'CT', fixedEquipment('fixed', [], 25)).getBV(entity)).toBe(25);
     });

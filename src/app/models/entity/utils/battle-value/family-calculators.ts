@@ -6,6 +6,7 @@ import { BattleArmorEntity } from '../../entities/infantry/battle-armor-entity';
 import { InfantryEntity } from '../../entities/infantry/infantry-entity';
 import { MekEntity } from '../../entities/mek/mek-entity';
 import { ProtoMekEntity } from '../../entities/protomek/protomek-entity';
+import { VehicleEntity } from '../../entities/vehicle/vehicle-entity';
 import { getMekLegLocations, isQuadMekConfig } from '../../types/mek';
 import { BV_MOVEMENT_CALCULATION } from '../../types';
 import { getPpcCapacitorBV } from '../equipment-bv';
@@ -62,7 +63,7 @@ export class HeatTrackingBVCalculator extends BVCalculator {
 
   protected override processWeapons(): void {
     const before = this.offensiveValue;
-    const records = this.entity.equipment()
+    const records = this.equipmentMounts()
       .filter(mount => this.countsAsOffensiveWeapon(mount))
       .map(mount => ({ mount, bv: this.weaponBV(mount, true), heat: this.weaponHeat(mount) }))
       .sort((a, b) => a.heat === 0 ? -1 : b.heat === 0 ? 1 : b.bv - a.bv || a.heat - b.heat);
@@ -218,13 +219,11 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
     }
     for (const mount of this.entity.equipment()) {
       const equipment = mount.equipment;
-      if (!equipment?.isExplosive() || mount.location === 'Unallocated'
+      if (!equipment || !this.isExplosive(mount) || mount.location === 'Unallocated'
         || equipment.hasFlag('F_BLUE_SHIELD')
         || !mount.getOccupiedLocations().some(location => this.hasExplosivePenalty(location))) continue;
       if (equipment instanceof AmmoEquipment && (mount.getAmmoShots() ?? 0) <= 0) continue;
       if (equipment instanceof WeaponEquipment) {
-        if (equipment.hasFlag('F_PPC')
-          && !this.entity.getLinkingMount(mount)?.equipment?.hasFlag('F_PPC_CAPACITOR')) continue;
         if (['AC_ROTARY', 'AC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC', 'LAC'].includes(equipment.ammoType)) continue;
       }
 
@@ -381,13 +380,21 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
   }
 
   protected override summarize(value: number): number {
-    let result = value * this.entity.mountedCockpit().bvMultiplier;
+    const cockpitType = this.entity.cockpitType();
+    let modifier = 1;
+    if (['Small', 'Torso-Mounted', 'Small Command Console'].includes(cockpitType)) modifier = 0.95;
+    else if (this.has('F_DRONE_OPERATING_SYSTEM')) modifier = 0.95;
+    else if (cockpitType === 'Interface') modifier = 1.3;
+    else if (cockpitType === 'Virtual Reality Piloting Pod') modifier = 1.4;
+    let result = value * modifier;
     if (this.entity.hasRiscHeatSinkOverrideKit()) result *= 1.01;
     return result;
   }
 }
 
 export class CombatVehicleBVCalculator extends BVCalculator {
+  declare readonly entity: VehicleEntity;
+
   protected override processTypeModifier(): void {
     const before = this.defensiveValue;
     let modifier = vehicleTypeModifier(this.entity.motiveType());
@@ -409,12 +416,15 @@ export class CombatVehicleBVCalculator extends BVCalculator {
   protected override processDefensiveFactor(): void {
     const airborne = this.entity.entityType === 'VTOL' || this.entity.entityType === 'SupportVTOL'
       || this.entity.motiveType() === 'WiGE';
-    let running = targetMovementModifier(this.runMP, false, airborne);
-    let jumping = targetMovementModifier(this.jumpMP, true);
+    let running = this.runMP === 0 ? 0 : targetMovementModifier(this.runMP, false, airborne);
+    let jumping = this.jumpMP === 0 ? 0 : targetMovementModifier(this.jumpMP, true);
     const stealth = !this.entity.hasPatchworkArmor()
       && [...this.entity.armorByLocation().values()]
         .some(value => ['STEALTH', 'STEALTH_VEHICLE'].includes(value.armor.armorType));
-    if (stealth) { running += 2; jumping += 2; }
+    if (stealth) {
+      if (this.runMP > 0) running += 2;
+      if (this.jumpMP > 0) jumping += 2;
+    }
     this.addReportLine('TMMs', `${running} (R), ${jumping} (J), 0 (U)`);
     const before = this.defensiveValue;
     const factor = 1 + Math.max(running, jumping) / 10;
@@ -425,8 +435,12 @@ export class CombatVehicleBVCalculator extends BVCalculator {
   protected override frontWeapon(mount: EntityMountedEquipment): boolean { return mount.location === 'Front'; }
   protected override rearWeapon(mount: EntityMountedEquipment): boolean { return mount.location === 'Rear'; }
   protected override isNominalRear(mount: EntityMountedEquipment): boolean {
-    return !['Turret', 'Front Turret', 'Rear Turret'].includes(mount.location)
-      && super.isNominalRear(mount);
+    // MegaMek compares inherited Tank turret indices. On a superheavy those
+    // indices correspond to Rear Left and Rear, not its actual turret(s).
+    const excluded = this.entity.isSuperHeavy()
+      ? ['Rear Left', 'Rear']
+      : ['Turret', 'Front Turret', 'Rear Turret'];
+    return !excluded.includes(mount.location) && super.isNominalRear(mount);
   }
   protected override processWeight(): void {
     const before = this.offensiveValue;
@@ -464,13 +478,12 @@ export class AeroBVCalculator extends HeatTrackingBVCalculator {
       let otherExplosives = 0;
       for (const mount of this.entity.equipment()) {
         const equipment = mount.equipment;
-        if (!equipment?.isExplosive() || mount.location === 'Unallocated') continue;
+        if (!this.isExplosive(mount) || mount.location === 'Unallocated') continue;
         if (equipment instanceof AmmoEquipment) {
           if ((mount.getAmmoShots() ?? 0) > 0) ammoTypes.add(equipment.id);
         } else if (!(equipment instanceof WeaponEquipment)
           || !['AC_ROTARY', 'AC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC', 'LAC'].includes(equipment.ammoType)) {
-          if (!(equipment instanceof WeaponEquipment && equipment.hasFlag('F_PPC')
-            && !this.entity.getLinkingMount(mount)?.equipment?.hasFlag('F_PPC_CAPACITOR'))) otherExplosives++;
+          otherExplosives++;
         }
       }
       this.defensiveValue -= ammoTypes.size * 15 + otherExplosives;

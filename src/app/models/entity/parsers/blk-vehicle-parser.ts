@@ -51,8 +51,8 @@ import { BuildingBlock } from './building-block';
 import {
   LST_EXTRA_EQUIP_TAGS,
   LST_ARMOR_LOCS,
+  ordinaryVehicleArmorLocations,
   SUPERHEAVY_ARMOR_LOCS,
-  VEHICLE_ARMOR_LOCS,
   VEHICLE_EQUIP_TAGS,
   VTOL_ARMOR_LOCS,
 } from './blk-constants';
@@ -207,9 +207,10 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
         entity.hasDualTurret.set(true);
       }
     } else {
-      // Tank: Front, Right, Left, Rear[, Turret[, Rear Turret]]
-      for (let i = 0; i < VEHICLE_ARMOR_LOCS.length && i < ints.length; i++) {
-        armorMap.set(VEHICLE_ARMOR_LOCS[i], locationArmor(ints[i]));
+      // Tank: Front, Right, Left, Rear[, Turret] or Rear Turret, Front Turret
+      const locations = ordinaryVehicleArmorLocations(ints.length);
+      for (let i = 0; i < locations.length && i < ints.length; i++) {
+        armorMap.set(locations[i], locationArmor(ints[i]));
       }
       // Infer turret presence from armor array length
       if (ints.length >= 5 && !entity.hasTurret()) {

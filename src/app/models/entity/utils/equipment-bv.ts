@@ -60,7 +60,7 @@ export function getEquipmentBV(entity: BaseEntity, mount: EntityMountedEquipment
                 .map(mount => mount.location)
                 .filter(location => location === 'CT' || location === 'LT' || location === 'RT'),
         ).size;
-        const damage = Math.trunc(Math.trunc(tonnage * entity.runMP() * 0.1) / 2)
+        const damage = Math.trunc(Math.trunc(tonnage * entity.maxRunMP() * 0.1) / 2)
             + torsoSpikeLocations;
         bv = damage * 1.1;
     } else {
