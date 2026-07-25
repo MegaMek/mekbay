@@ -243,7 +243,7 @@ export interface Units {
     units: Unit[];
 }
 
-export type ASUnitTypeCode = 'BM' | 'IM' | 'CV' | 'SV' | 'PM' | 'BA' | 'CI' | 'AF' | 'CF' | 'SC' | 'WS' | 'SS' | 'JS' | 'DA' | 'DS' | 'MS' | 'BD';
+export type ASUnitTypeCode = 'BM' | 'IM' | 'CV' | 'SV' | 'PM' | 'BA' | 'CI' | 'AF' | 'CF' | 'SC' | 'WS' | 'SS' | 'JS' | 'DA' | 'DS' | 'MS' | 'BD' | 'UNKNOWN';
 
 export interface AlphaStrikeUnitStats {
     TP: ASUnitTypeCode;
@@ -254,6 +254,7 @@ export interface AlphaStrikeUnitStats {
     OV: number;
     MV: string;
     MVm: { [mode: string]: number }; // e.g. { j: 6 }
+    MVp: string;
     usesTh: boolean;
     Th: number;
     Arm: number;

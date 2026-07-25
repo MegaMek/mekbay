@@ -28,6 +28,7 @@ function createEmptyAlphaStrikeStats(overrides: TestAlphaStrikeOverrides = {}): 
         OV: 0,
         MV: '0',
         MVm: {},
+        MVp: '',
         usesTh: false,
         Th: 0,
         Arm: 0,

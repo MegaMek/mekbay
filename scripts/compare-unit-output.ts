@@ -200,27 +200,27 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'unitFile',       compare: 'exact', parity: 'verified' },
 
   // ── Phase 2: Alpha Strike ──────────────────────────────────────────
-  { field: 'as.Arm',       compare: 'exact', parity: 'missing' },
-  { field: 'as.MV',        compare: 'exact', parity: 'missing' },
-  { field: 'as.MVm',       compare: 'exact', parity: 'missing' },
-  { field: 'as.MVp',       compare: 'exact', parity: 'missing' },
-  { field: 'as.OV',        compare: 'exact', parity: 'missing' },
-  { field: 'as.PV',        compare: 'exact', parity: 'missing' },
-  { field: 'as.SZ',        compare: 'exact', parity: 'missing' },
-  { field: 'as.Str',       compare: 'exact', parity: 'missing' },
-  { field: 'as.TMM',       compare: 'exact', parity: 'missing' },
-  { field: 'as.TP',        compare: 'exact', parity: 'missing' },
-  { field: 'as.Th',        compare: 'exact', parity: 'missing' },
-  { field: 'as.dmg',       compare: 'exact', parity: 'missing' },
-  { field: 'as.frontArc',  compare: 'exact', parity: 'missing' },
-  { field: 'as.leftArc',   compare: 'exact', parity: 'missing' },
-  { field: 'as.rearArc',   compare: 'exact', parity: 'missing' },
-  { field: 'as.rightArc',  compare: 'exact', parity: 'missing' },
-  { field: 'as.specials',  compare: 'setCompare', parity: 'missing' },
-  { field: 'as.usesArcs',  compare: 'exact', parity: 'missing' },
-  { field: 'as.usesE',     compare: 'exact', parity: 'missing' },
-  { field: 'as.usesOV',    compare: 'exact', parity: 'missing' },
-  { field: 'as.usesTh',    compare: 'exact', parity: 'missing' },
+  { field: 'as.Arm',       compare: 'exact', parity: 'partial' },
+  { field: 'as.MV',        compare: 'exact', parity: 'partial' },
+  { field: 'as.MVm',       compare: 'exact', parity: 'partial' },
+  { field: 'as.MVp',       compare: 'exact', parity: 'partial' },
+  { field: 'as.OV',        compare: 'exact', parity: 'partial' },
+  { field: 'as.PV',        compare: 'exact', parity: 'partial' },
+  { field: 'as.SZ',        compare: 'exact', parity: 'partial' },
+  { field: 'as.Str',       compare: 'exact', parity: 'partial' },
+  { field: 'as.TMM',       compare: 'exact', parity: 'partial' },
+  { field: 'as.TP',        compare: 'exact', parity: 'partial' },
+  { field: 'as.Th',        compare: 'exact', parity: 'partial' },
+  { field: 'as.dmg',       compare: 'exact', parity: 'partial' },
+  { field: 'as.frontArc',  compare: 'exact', parity: 'partial' },
+  { field: 'as.leftArc',   compare: 'exact', parity: 'partial' },
+  { field: 'as.rearArc',   compare: 'exact', parity: 'partial' },
+  { field: 'as.rightArc',  compare: 'exact', parity: 'partial' },
+  { field: 'as.specials',  compare: 'setCompare', parity: 'partial' },
+  { field: 'as.usesArcs',  compare: 'exact', parity: 'partial' },
+  { field: 'as.usesE',     compare: 'exact', parity: 'partial' },
+  { field: 'as.usesOV',    compare: 'exact', parity: 'partial' },
+  { field: 'as.usesTh',    compare: 'exact', parity: 'partial' },
 
   // ── Phase 3: Composite name (only after complete `.as` parity) ─────
   { field: 'name', compare: 'exact', parity: 'partial' },
@@ -804,7 +804,10 @@ function getReportExpectations(
   }
 
   if ([...activeFields].some(field => field === 'pv' || field.startsWith('as.'))) {
-    const report = parse('alpha-strike-report', reports.alphaStrike, parseAlphaStrikeReport);
+    const oracleType = getFieldValue(oracle, 'as.TP');
+    const report = oracleType === 'UNKNOWN'
+      ? undefined
+      : parse('alpha-strike-report', reports.alphaStrike, parseAlphaStrikeReport);
     if (report) {
       add('alpha-strike-report', 'pv', report.pointValue);
       add('alpha-strike-report', 'as.PV', report.pointValue);
@@ -816,7 +819,8 @@ function getReportExpectations(
       add('alpha-strike-report', 'as.Th', report.threshold ?? -1);
       add('alpha-strike-report', 'as.OV', report.overheat);
       add('alpha-strike-report', 'as.dmg', report.damage);
-      add('alpha-strike-report', 'as.usesArcs', report.usesArcs);
+      // The damage converter runs before special abilities add LG/VLG/SLG,
+      // so arc sections do not reliably describe the final element state.
       add('alpha-strike-report', 'as.usesTh', report.threshold !== undefined);
     }
   }

@@ -47,6 +47,7 @@ import { getBayTransporterType, isQuartersBay } from '../models/entity/bays/bay-
 import { buildUnitCargoMetadata } from './unit-cargo-metadata-builder';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
 import { EquipmentFlag } from '../models/equipment-flags.type';
+import { convertEntityToAlphaStrike } from '../models/entity/utils/alpha-strike/alpha-strike-converter';
 
 /**
  * Builds a `Partial<Unit>` metadata object from a parsed entity.
@@ -130,6 +131,7 @@ export class UnitMetadataBuilder {
       cost: Math.round(entity.cost()),
       bv: entity.battleValue(),
       offSpeedFactor: entity.offensiveSpeedFactor(),
+      as: convertEntityToAlphaStrike(entity),
     };
   }
 

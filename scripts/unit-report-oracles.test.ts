@@ -124,9 +124,28 @@ Damage Conversion:
 Point Value:
    Base Point Value               round normal                                                  466`);
   assert.equal(arcUnit.usesArcs, true);
-  assert.equal(arcUnit.structure, undefined);
+    assert.equal(arcUnit.structure, 75);
   assert.equal(arcUnit.threshold, 16);
   assert.equal(arcUnit.damage, undefined);
+
+    const infantry = parseAlphaStrikeReport(`
+  Basic Info:
+    Chassis: Infantry
+    Model:
+    MUL ID: 1
+    Unit Type: Infantry  CI
+    Size: Infantry  1
+  Armor:
+    Armor: #Men x Divisor / 2 = 1
+  Structure:
+    CI, JS or PM 1
+  Damage Conversion:
+    Final S damage: 0.3, dual rounded = 0*
+  Point Value:
+    Base Point Value round normal 5`);
+    assert.equal(infantry.armor, 1);
+    assert.equal(infantry.structure, 1);
+    assert.deepEqual(infantry.damage, { dmgS: '0*', dmgM: '0', dmgL: '0', dmgE: '0' });
   assertThrowsMessage(() => parseAlphaStrikeReport(`
    Chassis: X
    Model:
