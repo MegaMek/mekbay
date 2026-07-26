@@ -181,8 +181,11 @@ export class UnitMetadataBuilder {
     if (entity instanceof AeroEntity) {
       if (entity.cockpitType() === 'Small') features.push('Small Cockpit');
       else if (entity.cockpitType() === 'Command Console') features.push('Command Console');
-      if ((entity instanceof ConvFighterEntity || entity instanceof FixedWingSupportEntity)
-        && entity.vstol()) features.push('VSTOL Equipment');
+      if (entity instanceof ConvFighterEntity && entity.vstol()) features.push('VSTOL Equipment');
+      if (entity instanceof FixedWingSupportEntity && entity.equipment().some(mount =>
+        mount.equipment?.hasFlag('F_VSTOL_CHASSIS'))) {
+        features.push('VSTOL Equipment');
+      }
       if (entity instanceof JumpShipEntity && entity.lithiumFusion()) features.push('LF Battery');
     }
 
