@@ -1,6 +1,7 @@
 import { firstValueFrom } from 'rxjs';
 import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../components/set-ammo-dialog/set-ammo.dialog.component';
-import { AmmoEquipment, findIntrinsicAmmoForWeapon, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
+import { AmmoEquipment, findIntrinsicAmmoForWeapon, WeaponEquipment } from '../models/equipment.model';
+import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { getMountedOneShotConsumed, MountedAmmo, MountedEquipment } from '../models/mounted-equipment.model';
 import { parseInventoryComponentReference } from '../models/inventory-component-reference.model';
@@ -86,15 +87,15 @@ function getOriginalTotalAmmo(unit: CBTForceUnit, criticalSlot: CriticalSlot): n
     return elementTotal || criticalSlot.totalAmmo || 0;
 }
 
-function resolveOriginalAmmo(criticalSlot: CriticalSlot, equipmentMap: EquipmentMap): AmmoEquipment | null {
-    const originalEquipment = criticalSlot.originalName ? equipmentMap[criticalSlot.originalName] : criticalSlot.eq;
+function resolveOriginalAmmo(criticalSlot: CriticalSlot, equipmentCatalog: EquipmentRegistry): AmmoEquipment | null {
+    const originalEquipment = criticalSlot.originalName ? equipmentCatalog.findEquipment(criticalSlot.originalName) : criticalSlot.eq;
     if (originalEquipment instanceof AmmoEquipment) return originalEquipment;
     return criticalSlot.eq instanceof AmmoEquipment ? criticalSlot.eq : null;
 }
 
-export function getAmmoControlEntryForCriticalSlot(unit: CBTForceUnit, criticalSlot: CriticalSlot, equipmentMap: EquipmentMap): AmmoControlEntry | null {
+export function getAmmoControlEntryForCriticalSlot(unit: CBTForceUnit, criticalSlot: CriticalSlot, equipmentCatalog: EquipmentRegistry): AmmoControlEntry | null {
     if (!(criticalSlot.eq instanceof AmmoEquipment)) return null;
-    const originalAmmo = resolveOriginalAmmo(criticalSlot, equipmentMap);
+    const originalAmmo = resolveOriginalAmmo(criticalSlot, equipmentCatalog);
     if (!originalAmmo) return null;
 
     const totalAmmo = getCriticalSlotTotalAmmo(unit, criticalSlot);
@@ -132,15 +133,15 @@ function getInventoryOriginalTotalAmmo(entry: MountedEquipment): number {
     return baseBinAmmo + (componentRef && componentRef.binIndex < extraBinAmmo ? 1 : 0);
 }
 
-function getInventoryCurrentAmmo(entry: MountedEquipment, equipmentMap: EquipmentMap): AmmoEquipment | null {
-    const currentAmmo = entry.ammo ? equipmentMap[entry.ammo] : entry.equipment;
+function getInventoryCurrentAmmo(entry: MountedEquipment, equipmentCatalog: EquipmentRegistry): AmmoEquipment | null {
+    const currentAmmo = entry.ammo ? equipmentCatalog.findEquipment(entry.ammo) : entry.equipment;
     if (currentAmmo instanceof AmmoEquipment) return currentAmmo;
     return entry.equipment instanceof AmmoEquipment ? entry.equipment : null;
 }
 
-function createInventoryAmmoControlEntry(unit: CBTForceUnit, inventoryEntry: MountedEquipment, equipmentMap: EquipmentMap): AmmoControlEntry | null {
+function createInventoryAmmoControlEntry(unit: CBTForceUnit, inventoryEntry: MountedEquipment, equipmentCatalog: EquipmentRegistry): AmmoControlEntry | null {
     if (!(inventoryEntry.equipment instanceof AmmoEquipment)) return null;
-    const currentAmmo = getInventoryCurrentAmmo(inventoryEntry, equipmentMap);
+    const currentAmmo = getInventoryCurrentAmmo(inventoryEntry, equipmentCatalog);
     if (!currentAmmo) return null;
 
     const originalTotalAmmo = getInventoryOriginalTotalAmmo(inventoryEntry);
@@ -188,14 +189,14 @@ export function getIntrinsicOneShotAmmoMount(weaponEntry: MountedEquipment): Mou
  */
 export function getCompatibleCatalogAmmo(
     originalAmmo: AmmoEquipment,
-    equipmentMap: EquipmentMap,
+    equipmentCatalog: EquipmentRegistry,
     unit: Unit,
     inventory: readonly MountedEquipment[],
 ): AmmoEquipment[] {
-    return sortCompatibleAmmo(Object.values(equipmentMap)
-        .filter((equipment): equipment is AmmoEquipment =>
-            equipment instanceof AmmoEquipment
-            && originalAmmo.compatibleAmmo(equipment, unit, inventory)));
+    return sortCompatibleAmmo(
+        equipmentCatalog.getAmmoForAmmo(originalAmmo)
+            .filter(ammo => originalAmmo.compatibleAmmo(ammo, unit, inventory)),
+    );
 }
 
 /**
@@ -205,16 +206,16 @@ export function getCompatibleCatalogAmmo(
  */
 export function materializeIntrinsicOneShotAmmoForInventory(
     inventory: readonly MountedEquipment[],
-    equipmentMap: EquipmentMap,
+    equipmentCatalog: EquipmentRegistry,
 ): MountedAmmo[] {
     return inventory
-        .map(weaponEntry => materializeIntrinsicOneShotAmmo(weaponEntry, equipmentMap, inventory))
+        .map(weaponEntry => materializeIntrinsicOneShotAmmo(weaponEntry, equipmentCatalog, inventory))
         .filter((entry): entry is MountedAmmo => entry !== null);
 }
 
 function materializeIntrinsicOneShotAmmo(
     weaponEntry: MountedEquipment,
-    equipmentMap: EquipmentMap,
+    equipmentCatalog: EquipmentRegistry,
     inventory: readonly MountedEquipment[],
 ): MountedAmmo | null {
     if (!(weaponEntry.equipment instanceof WeaponEquipment)
@@ -222,12 +223,12 @@ function materializeIntrinsicOneShotAmmo(
         return null;
     }
 
-    const originalAmmo = findIntrinsicAmmoForWeapon(weaponEntry.equipment, equipmentMap);
+    const originalAmmo = findIntrinsicAmmoForWeapon(weaponEntry.equipment, equipmentCatalog);
     if (!originalAmmo) return null;
 
     const compatibleAmmo = getCompatibleCatalogAmmo(
         originalAmmo,
-        equipmentMap,
+        equipmentCatalog,
         weaponEntry.owner.getUnit(),
         inventory,
     );
@@ -355,29 +356,29 @@ function compareAmmoControlEntryOrder(a: AmmoControlEntry, b: AmmoControlEntry):
 
 export function getAmmoControlEntriesForWeapon(equipment: MountedEquipment, context: HandlerContext): AmmoControlEntry[] {
     if (!(equipment.equipment instanceof WeaponEquipment)) return [];
-    const equipmentMap = context.dataService.getEquipments();
+    const equipmentCatalog = context.dataService.getEquipmentRegistry();
     const intrinsicAmmo = getIntrinsicOneShotAmmoMount(equipment);
     if (equipment.equipment.oneShotCount) {
         const intrinsicAmmoEntry = intrinsicAmmo
-            ? createInventoryAmmoControlEntry(equipment.owner, intrinsicAmmo, equipmentMap)
+            ? createInventoryAmmoControlEntry(equipment.owner, intrinsicAmmo, equipmentCatalog)
             : null;
         return intrinsicAmmoEntry ? [intrinsicAmmoEntry] : [];
     }
 
     const critEntries = equipment.owner.getCritSlots()
         .filter(criticalSlot => criticalSlot.eq instanceof AmmoEquipment && ammoMatchesWeapon(equipment.equipment as WeaponEquipment, criticalSlot.eq))
-        .map(criticalSlot => getAmmoControlEntryForCriticalSlot(equipment.owner, criticalSlot, equipmentMap))
+        .map(criticalSlot => getAmmoControlEntryForCriticalSlot(equipment.owner, criticalSlot, equipmentCatalog))
         .filter((entry): entry is AmmoControlEntry => !!entry);
     const inventoryEntries = equipment.owner.getInventory()
         .filter(entry => !isIntrinsicOneShotAmmoMount(entry)
             && entry.equipment instanceof AmmoEquipment
-            && ammoMatchesWeapon(equipment.equipment as WeaponEquipment, getInventoryCurrentAmmo(entry, equipmentMap) ?? entry.equipment))
-        .map(entry => createInventoryAmmoControlEntry(equipment.owner, entry, equipmentMap))
+            && ammoMatchesWeapon(equipment.equipment as WeaponEquipment, getInventoryCurrentAmmo(entry, equipmentCatalog) ?? entry.equipment))
+        .map(entry => createInventoryAmmoControlEntry(equipment.owner, entry, equipmentCatalog))
         .filter((entry): entry is AmmoControlEntry => !!entry);
     return sortAmmoControlEntries([...critEntries, ...inventoryEntries]);
 }
 
-export function getAmmoControlEntriesForUnitWeapons(unit: CBTForceUnit, equipmentMap: EquipmentMap): AmmoControlEntry[] {
+export function getAmmoControlEntriesForUnitWeapons(unit: CBTForceUnit, equipmentCatalog: EquipmentRegistry): AmmoControlEntry[] {
     const weaponAmmoKeys = new Set(
         unit.getInventory()
             .map(entry => entry.equipment)
@@ -390,20 +391,20 @@ export function getAmmoControlEntriesForUnitWeapons(unit: CBTForceUnit, equipmen
 
     const critEntries = unit.getCritSlots()
         .filter(criticalSlot => criticalSlot.eq instanceof AmmoEquipment && weaponAmmoKeys.has(getAmmoCompatibilityKey(criticalSlot.eq)))
-        .map(criticalSlot => getAmmoControlEntryForCriticalSlot(unit, criticalSlot, equipmentMap))
+        .map(criticalSlot => getAmmoControlEntryForCriticalSlot(unit, criticalSlot, equipmentCatalog))
         .filter((entry): entry is AmmoControlEntry => !!entry);
     const inventoryEntries = unit.getInventory()
         .filter(entry => {
             if (isIntrinsicOneShotAmmoMount(entry)) return false;
-            const ammo = getInventoryCurrentAmmo(entry, equipmentMap);
+            const ammo = getInventoryCurrentAmmo(entry, equipmentCatalog);
             return ammo && weaponAmmoKeys.has(getAmmoCompatibilityKey(ammo));
         })
-        .map(entry => createInventoryAmmoControlEntry(unit, entry, equipmentMap))
+        .map(entry => createInventoryAmmoControlEntry(unit, entry, equipmentCatalog))
         .filter((entry): entry is AmmoControlEntry => !!entry);
     const intrinsicEntries = unit.getInventory()
         .map(entry => getIntrinsicOneShotAmmoMount(entry))
         .filter((entry): entry is MountedAmmo => entry !== null)
-        .map(entry => createInventoryAmmoControlEntry(unit, entry, equipmentMap))
+        .map(entry => createInventoryAmmoControlEntry(unit, entry, equipmentCatalog))
         .filter((entry): entry is AmmoControlEntry => !!entry);
 
     return sortAmmoControlEntries([...critEntries, ...inventoryEntries, ...intrinsicEntries]);
@@ -513,10 +514,10 @@ function sortAmmoControlGroups(groups: AmmoControlGroup[]): AmmoControlGroup[] {
     });
 }
 
-function syncEntryFromSource(entry: AmmoControlEntry, equipmentMap: EquipmentMap): void {
+function syncEntryFromSource(entry: AmmoControlEntry, equipmentCatalog: EquipmentRegistry): void {
     if (entry.sourceType === 'inventory') {
         const source = entry.source as MountedEquipment;
-        const currentAmmo = getInventoryCurrentAmmo(source, equipmentMap);
+        const currentAmmo = getInventoryCurrentAmmo(source, equipmentCatalog);
         if (currentAmmo) {
             entry.currentAmmo = currentAmmo;
             entry.displayName = getAmmoControlDisplayName(currentAmmo);
@@ -537,7 +538,7 @@ function syncEntryFromSource(entry: AmmoControlEntry, equipmentMap: EquipmentMap
         entry.currentAmmo = currentAmmo;
         entry.displayName = getAmmoControlDisplayName(currentAmmo);
     }
-    entry.originalAmmo = resolveOriginalAmmo(entry.source as CriticalSlot, equipmentMap) ?? entry.currentAmmo;
+    entry.originalAmmo = resolveOriginalAmmo(entry.source as CriticalSlot, equipmentCatalog) ?? entry.currentAmmo;
     entry.originalTotalAmmo = getOriginalTotalAmmo(entry.owner, entry.source as CriticalSlot);
     entry.totalAmmo = getCriticalSlotTotalAmmo(entry.owner, entry.source as CriticalSlot);
     entry.consumed = (entry.source as CriticalSlot).consumed ?? 0;
@@ -571,7 +572,7 @@ export function changeAmmoEntryRemaining(entry: AmmoControlEntry, deltaRemaining
     if (appliedDelta === 0) return false;
 
     setAmmoEntryValue(entry, entry.currentAmmo, entry.totalAmmo, nextRemaining);
-    syncEntryFromSource(entry, context.dataService.getEquipments());
+    syncEntryFromSource(entry, context.dataService.getEquipmentRegistry());
     showAmmoToast(entry, appliedDelta, context);
     return true;
 }
@@ -629,10 +630,10 @@ function getTotalAmmoForAmmoType(originalAmmo: AmmoEquipment, originalTotalAmmo:
 export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerContext): Promise<boolean> {
     if (entry.destroyed) return false;
 
-    const equipmentMap = context.dataService.getEquipments();
+    const equipmentRegistry = context.dataService.getEquipmentRegistry();
     const unitBlueprint = entry.owner.getUnit();
     const inventory = entry.owner.getInventory();
-    const compatibleAmmo = getCompatibleCatalogAmmo(entry.originalAmmo, equipmentMap, unitBlueprint, inventory);
+    const compatibleAmmo = getCompatibleCatalogAmmo(entry.originalAmmo, equipmentRegistry, unitBlueprint, inventory);
 
     const previousRemaining = getAmmoEntryRemaining(entry);
     const ref = context.dialogsService.createDialog<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
@@ -653,15 +654,16 @@ export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerCont
     const newAmmoValue = await firstValueFrom(ref.closed);
     if (!newAmmoValue) return false;
 
-    const selectedAmmo = equipmentMap[newAmmoValue.name] instanceof AmmoEquipment
-        ? equipmentMap[newAmmoValue.name] as AmmoEquipment
+    const selectedEquipment = equipmentRegistry.findEquipment(newAmmoValue.name);
+    const selectedAmmo = selectedEquipment instanceof AmmoEquipment
+        ? selectedEquipment
         : entry.currentAmmo;
     const intrinsic = isIntrinsicOneShotAmmoMount(entry.source as MountedEquipment);
     const newTotalAmmo = intrinsic
         ? entry.totalAmmo
         : getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo, entry.owner.gameRules);
     setAmmoEntryValue(entry, selectedAmmo, newTotalAmmo, newAmmoValue.quantity);
-    syncEntryFromSource(entry, equipmentMap);
+    syncEntryFromSource(entry, equipmentRegistry);
 
     const appliedDelta = getAmmoEntryRemaining(entry) - previousRemaining;
     if (appliedDelta !== 0) {
@@ -675,13 +677,12 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
     if (group.destroyed) return false;
 
     const firstEntry = group.entries[0];
-    const equipmentMap = context.dataService.getEquipments();
+    const equipmentRegistry = context.dataService.getEquipmentRegistry();
     const unitBlueprint = firstEntry.owner.getUnit();
     const inventory = firstEntry.owner.getInventory();
     const originalTotalAmmo = group.entries.reduce((total, entry) => total + entry.originalTotalAmmo, 0);
     const previousRemaining = getAmmoGroupRemaining(group);
-    const compatibleAmmo = sortCompatibleAmmo(Object.values(equipmentMap)
-        .filter((equipment): equipment is AmmoEquipment => (equipment instanceof AmmoEquipment) && firstEntry.originalAmmo.compatibleAmmo(equipment, unitBlueprint, inventory)));
+    const compatibleAmmo = getCompatibleCatalogAmmo(firstEntry.originalAmmo, equipmentRegistry, unitBlueprint, inventory);
 
     const ref = context.dialogsService.createDialog<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
         data: {
@@ -701,8 +702,9 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
     const newAmmoValue = await firstValueFrom(ref.closed);
     if (!newAmmoValue) return false;
 
-    const selectedAmmo = equipmentMap[newAmmoValue.name] instanceof AmmoEquipment
-        ? equipmentMap[newAmmoValue.name] as AmmoEquipment
+    const selectedEquipment = equipmentRegistry.findEquipment(newAmmoValue.name);
+    const selectedAmmo = selectedEquipment instanceof AmmoEquipment
+        ? selectedEquipment
         : firstEntry.currentAmmo;
     let remainingToAllocate = clamp(newAmmoValue.quantity, 0, getTotalAmmoForAmmoType(firstEntry.originalAmmo, originalTotalAmmo, selectedAmmo, firstEntry.owner.gameRules));
 
@@ -713,7 +715,7 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
         const newRemaining = Math.min(newTotalAmmo, remainingToAllocate);
         remainingToAllocate -= newRemaining;
         setAmmoEntryValue(entry, selectedAmmo, newTotalAmmo, newRemaining);
-        syncEntryFromSource(entry, equipmentMap);
+        syncEntryFromSource(entry, equipmentRegistry);
     }
 
     syncGroupTotals(group);

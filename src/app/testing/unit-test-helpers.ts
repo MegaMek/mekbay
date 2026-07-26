@@ -2,6 +2,7 @@ import type { Unit } from '../models/units.model';
 import { CBTInventoryControlRuntime } from '../models/cbt-inventory-control-runtime.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { AmmoEquipment, Equipment, EquipmentMap } from '../models/equipment.model';
+import { EquipmentRegistry } from '../models/equipment-lookup';
 import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
 import { type MountedEquipmentInit, MountedEquipment  } from '../models/mounted-equipment.model';
 import { type CriticalSlot, type HeatProfile } from '../models/force-serialization';
@@ -180,6 +181,7 @@ export class CBTForceUnitTestHarness {
     readonly components: MountedEquipment[] = [];
     readonly criticalSlots: CriticalSlot[] = [];
     readonly equipment: EquipmentMap;
+    equipmentRegistry: EquipmentRegistry;
     readonly entryStates: Map<MountedEquipment, CBTForceUnitTestEntryState>;
     readonly heat: HeatProfile;
     readonly turnState: CBTForceUnitTestTurnState;
@@ -194,6 +196,7 @@ export class CBTForceUnitTestHarness {
 
     constructor(readonly options: CBTForceUnitTestHarnessOptions = {}) {
         this.equipment = { ...options.equipment };
+        this.equipmentRegistry = new EquipmentRegistry(this.equipment);
         this.entryStates = new Map(options.entryStates);
         this.heat = {
             current: options.heat?.current ?? 2,
@@ -256,7 +259,8 @@ export class CBTForceUnitTestHarness {
             gameRules: options.gameRules ?? CORE_2026_GAME_RULES,
             getInventory: () => this.components,
             getCritSlots: () => this.criticalSlots,
-            getAvailableEquipment: () => this.equipment,
+            getEquipmentRegistry: () => this.equipmentRegistry,
+            findEquipment: (name: string) => this.equipmentRegistry.findEquipment(name) ?? undefined,
             getUnit: () => baseUnit,
             getHeat: () => this.heat,
             setHeat: (value: number) => this.heat.next = value,
@@ -311,6 +315,7 @@ export class CBTForceUnitTestHarness {
 
     addEquipment(equipment: Equipment): Equipment {
         this.equipment[equipment.internalName] = equipment;
+        this.equipmentRegistry = new EquipmentRegistry(this.equipment);
         return equipment;
     }
 

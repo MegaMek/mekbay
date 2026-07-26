@@ -1,7 +1,7 @@
 import { AmmoEquipment, WeaponEquipment, ammoMatchesWeapon } from '../../../../equipment.model';
 import type { BattleArmorEntity } from '../../../entities';
 import type { EntityMountedEquipment } from '../../../types';
-import { dualRoundedUpDamage } from './damage-rounding';
+import { toStandardDamage } from './damage-rounding';
 import type { AlphaStrikeDamage, RawDamageVector } from './damage-types';
 import { battleForceDamageForMount, type AlphaStrikeRangeIndex } from './weapon-damage-profile';
 
@@ -60,12 +60,7 @@ export function calculateBattleArmorStandardDamage(
     0,
   ];
   return {
-    standard: {
-      dmgS: dualRoundedUpDamage(raw[0]),
-      dmgM: dualRoundedUpDamage(raw[1]),
-      dmgL: dualRoundedUpDamage(raw[2]),
-      dmgE: '0',
-    },
+    standard: toStandardDamage(raw),
     breakdown: {
       shootingStrength,
       troopFactor,

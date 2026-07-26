@@ -201,17 +201,17 @@ export abstract class ForceUnit {
 
     /** Deserialize a plain object to a ForceUnit instance - must be implemented by subclasses */
     public static deserialize(
-        data: SerializedUnit,
-        force: Force,
-        dataService: DataService,
-        unitInitializer: UnitInitializerService,
-        injector: Injector
+        _data: SerializedUnit,
+        _force: Force,
+        _dataService: DataService,
+        _unitInitializer: UnitInitializerService,
+        _injector: Injector
     ): ForceUnit {
         throw new Error('ForceUnit.deserialize must be implemented by subclass');
     }
 
-    public getAvailableEquipment() {
-        return this.dataService.getEquipments();
+    public getEquipmentRegistry() {
+        return this.dataService.getEquipmentRegistry();
     }
 
 }

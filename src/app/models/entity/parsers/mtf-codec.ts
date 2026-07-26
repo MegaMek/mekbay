@@ -154,7 +154,7 @@ export function resolveMtfArmorEquipment(
   }
   if (!/\sArmor$/i.test(lookupName)) lookupName += ' Armor';
 
-  const equipment = equipmentRegistry.find(lookupName);
+  const equipment = equipmentRegistry.findEquipment(lookupName);
   return equipment instanceof ArmorEquipment ? equipment : null;
 }
 

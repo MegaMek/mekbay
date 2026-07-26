@@ -139,7 +139,7 @@ export class WeaponsEquipmentPanelComponent {
         this.inventoryControl().inventoryViewVersion();
         return getInventoryControlGroups(
             this.unit(),
-            this.context().dataService.getEquipments(),
+            this.context().dataService.getEquipmentRegistry(),
             this.unit().getInventoryControlRules()
         );
     });
@@ -487,7 +487,8 @@ export class WeaponsEquipmentPanelComponent {
                     selectedRange: weaponRuleRange === 'short' || weaponRuleRange === 'medium' || weaponRuleRange === 'long'
                         ? weaponRuleRange
                         : null,
-                    selectedAmmo
+                    selectedAmmo,
+                    equipmentCatalog: this.context().dataService.getEquipmentRegistry(),
                 },
                 this.unit().getInventoryControlRules()
             ) ?? row.display.damage,

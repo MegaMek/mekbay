@@ -1,4 +1,5 @@
-import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
+import { AmmoEquipment, Equipment, WeaponEquipment } from '../models/equipment.model';
+import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { type CriticalSlot } from '../models/force-serialization';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
@@ -15,7 +16,11 @@ function createAmmo(id: string, shortName: string): AmmoEquipment {
     });
 }
 
-function createContext(equipment: Record<string, AmmoEquipment>): HandlerContext {
+function createEquipmentCatalog(equipment: Record<string, Equipment>): EquipmentRegistry {
+    return new EquipmentRegistry(equipment);
+}
+
+function createContext(equipment: Record<string, Equipment>): HandlerContext {
     const toasts: Array<{ id: string; message: string; type: 'info' | 'success' | 'error'; data?: Record<string, unknown> }> = [];
     const showToast = jasmine.createSpy('showToast').and.callFake((message: string, type: 'info' | 'success' | 'error', id?: string, data?: Record<string, unknown>) => {
         const toastId = id ?? `toast-${toasts.length + 1}`;
@@ -29,7 +34,7 @@ function createContext(equipment: Record<string, AmmoEquipment>): HandlerContext
     });
     return {
         dataService: {
-            getEquipments: () => equipment,
+            getEquipmentRegistry: () => new EquipmentRegistry(equipment),
         },
         toastService: {
             showToast,
@@ -244,10 +249,10 @@ describe('ammo interaction direct inventory groups', () => {
             isEquipmentUnavailable: testEquipmentUnavailable,
         } as unknown as CBTForceUnit;
 
-        const entries = getAmmoControlEntriesForUnitWeapons(owner, {
+        const entries = getAmmoControlEntriesForUnitWeapons(owner, createEquipmentCatalog({
             [gaussWeapon.internalName]: gaussWeapon,
             [gaussAmmo.internalName]: gaussAmmo,
-        });
+        }));
 
         expect(entries.length).toBe(1);
         expect(entries[0].displayName).toBe('Gauss Rifle Ammo [Clan]');
@@ -275,10 +280,10 @@ describe('ammo interaction direct inventory groups', () => {
         weaponEntry.owner = owner;
         ammoEntry.owner = owner;
 
-        const entries = getAmmoControlEntriesForUnitWeapons(owner, {
+        const entries = getAmmoControlEntriesForUnitWeapons(owner, createEquipmentCatalog({
             [weapon.internalName]: weapon,
             [standardAmmo.internalName]: standardAmmo,
-        });
+        }));
 
         expect(entries.length).toBe(2);
         expect(entries.every(entry => entry.destroyed)).toBeTrue();
@@ -417,10 +422,11 @@ describe('intrinsic one-shot ammo mounts', () => {
     it('materializes one linked mount for a one-shot weapon', () => {
         const { standard, incendiary, mounted, owner } = createOneShotFixture();
 
-        const [intrinsic] = materializeIntrinsicOneShotAmmoForInventory([mounted], {
+        const catalog = createEquipmentCatalog({
             [standard.internalName]: standard,
             [incendiary.internalName]: incendiary,
         });
+        const [intrinsic] = materializeIntrinsicOneShotAmmoForInventory([mounted], catalog);
 
         expect(intrinsic).toBeDefined();
         expect(isIntrinsicOneShotAmmoMount(intrinsic)).toBeTrue();
@@ -429,22 +435,19 @@ describe('intrinsic one-shot ammo mounts', () => {
         expect(intrinsic.consumed).toBeUndefined();
         expect(intrinsic.equipment).toBe(standard);
         expect(mounted.linkedWith).toEqual([intrinsic]);
-        expect(materializeIntrinsicOneShotAmmoForInventory([mounted], {
+        expect(materializeIntrinsicOneShotAmmoForInventory([mounted], catalog)[0]).toBe(intrinsic);
+        expect(getAmmoControlEntriesForUnitWeapons(owner, createEquipmentCatalog({
             [standard.internalName]: standard,
             [incendiary.internalName]: incendiary,
-        })[0]).toBe(intrinsic);
-        expect(getAmmoControlEntriesForUnitWeapons(owner, {
-            [standard.internalName]: standard,
-            [incendiary.internalName]: incendiary,
-        }).map(entry => entry.source)).toEqual([intrinsic]);
+        })).map(entry => entry.source)).toEqual([intrinsic]);
     });
 
     it('keeps intrinsic one-shot capacity on the parent while changing the linked ammo type', () => {
         const { standard, incendiary, mounted, owner } = createOneShotFixture();
-        const intrinsic = materializeIntrinsicOneShotAmmoForInventory([mounted], {
+        const intrinsic = materializeIntrinsicOneShotAmmoForInventory([mounted], createEquipmentCatalog({
             [standard.internalName]: standard,
             [incendiary.internalName]: incendiary,
-        })[0];
+        }))[0];
         const entry: AmmoControlEntry = {
             id: `inventory:${intrinsic.id}`,
             owner,
@@ -473,10 +476,10 @@ describe('intrinsic one-shot ammo mounts', () => {
 
     it('keeps an intrinsic round separate from a matching physical ammo group', () => {
         const { standard, incendiary, mounted, owner } = createOneShotFixture();
-        const intrinsic = materializeIntrinsicOneShotAmmoForInventory([mounted], {
+        const intrinsic = materializeIntrinsicOneShotAmmoForInventory([mounted], createEquipmentCatalog({
             [standard.internalName]: standard,
             [incendiary.internalName]: incendiary,
-        })[0];
+        }))[0];
         const intrinsicEntry: AmmoControlEntry = {
             id: `inventory:${intrinsic.id}`,
             owner,
@@ -524,7 +527,10 @@ describe('intrinsic one-shot ammo mounts', () => {
         const owner = { getInventory: () => [], getUnit: () => ({ techBase: 'IS', type: 'Battle Armor', comp: [] }) } as unknown as CBTForceUnit;
         const mounted = new MountedWeapon({ owner, id: 'mine-launcher@T1#0', name: weapon.internalName, equipment: weapon });
 
-        const [intrinsic] = materializeIntrinsicOneShotAmmoForInventory([mounted], { [mine.internalName]: mine });
+        const [intrinsic] = materializeIntrinsicOneShotAmmoForInventory(
+            [mounted],
+            createEquipmentCatalog({ [mine.internalName]: mine }),
+        );
 
         expect(intrinsic.equipment).toBe(mine);
         expect(intrinsic.parent).toBe(mounted);

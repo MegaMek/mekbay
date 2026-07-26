@@ -32,7 +32,7 @@
  */
 
 import { EquipmentRegistry } from '../../equipment-lookup';
-import { Equipment, EquipmentMap } from '../../equipment.model';
+import { Equipment } from '../../equipment.model';
 import { Sourcebook, SourcebookReference } from '../../sourcebook.model';
 import type { Quirk } from '../../quirks.model';
 import { EntityQuirk, EntityTechBase } from '../types';
@@ -110,9 +110,6 @@ export class ParseContext {
   /** File being parsed (for diagnostic display) */
   readonly fileName: string;
 
-  /** Equipment database for name resolution */
-  readonly equipmentDb: EquipmentMap;
-
   /** Canonical equipment collection and lookup index */
   readonly equipmentRegistry: EquipmentRegistry;
 
@@ -133,7 +130,6 @@ export class ParseContext {
   ) {
     this.fileName = fileName;
     this.equipmentRegistry = equipmentRegistry;
-    this.equipmentDb = equipmentRegistry.equipment;
     this.equipmentFallback = options.equipmentFallback ?? null;
     this.sourcebookResolver = options.sourcebookResolver ?? null;
     this.quirkResolver = options.quirkResolver ?? null;
@@ -256,7 +252,7 @@ export class ParseContext {
     // 1. Try the local DB and its derived lookup index
     const local = techBase
       ? this.equipmentRegistry.findForTechBase(name, techBase)
-      : this.equipmentRegistry.find(name);
+      : this.equipmentRegistry.findEquipment(name);
     if (local) return local;
 
     // 2. Try fallback (future: remote/UUID lookup)

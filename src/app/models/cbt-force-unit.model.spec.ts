@@ -1,6 +1,6 @@
 import { computed, Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { AmmoEquipment, Equipment, MiscEquipment, WeaponEquipment, type EquipmentMap } from './equipment.model';
+import { AmmoEquipment, Equipment, MiscEquipment, resolveWeaponDamage, WeaponEquipment, type EquipmentMap } from './equipment.model';
 import { CBTForce } from './cbt-force.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
 import { DEAD_CREW_HIT_THRESHOLD } from './crew-member.model';
@@ -20,12 +20,12 @@ import { RISC_LASER_PULSE_MODE, RiscLaserPulseModuleHandler } from '../equipment
 import { DialogsService } from '../services/dialogs.service';
 import { ToastService } from '../services/toast.service';
 import { getInventoryControlGroups, INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
-import { resolveWeaponDamage } from '../utils/inventory-control-damage.util';
 import { AtmHandler } from '../equipment-handlers/atm.handler';
 import { MmlHandler } from '../equipment-handlers/mml.handler';
 import { ATM_EXTENDED_RANGE_PROFILE, ATM_HIGH_EXPLOSIVE_PROFILE, ATM_STANDARD_PROFILE } from './ammo-weapon-profile.model';
 import { VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../equipment-handlers/vibroblade.handler';
 import { EquipmentFlag } from './equipment-flags.type';
+import { EquipmentRegistry } from './equipment-lookup';
 
 function createEquipment(): EquipmentMap {
     const ultraAc20 = new WeaponEquipment({
@@ -604,8 +604,9 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
     beforeEach(() => {
         equipment = createEquipment();
-        dataService = jasmine.createSpyObj<DataService>('DataService', ['getEquipments', 'getUnitByName']);
-        dataService.getEquipments.and.returnValue(equipment);
+        dataService = jasmine.createSpyObj<DataService>('DataService', ['getEquipmentRegistry', 'findEquipment', 'getUnitByName']);
+        dataService.getEquipmentRegistry.and.callFake(() => new EquipmentRegistry(equipment));
+        dataService.findEquipment.and.callFake((name: string) => dataService.getEquipmentRegistry().findEquipment(name) ?? undefined);
 
         TestBed.configureTestingModule({
             providers: [
@@ -1379,7 +1380,6 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             flags: ['F_CLUB', 'S_VIBRO_MEDIUM'],
         });
         equipment[vibroblade.internalName] = vibroblade;
-        dataService.getEquipments.and.returnValue(equipment);
         TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new VibrobladeHandler());
         const unit = createMekUnit();
         unit.tons = 40;
@@ -1462,7 +1462,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(heatText.textContent).toBe('3');
         expect(heatText.classList.contains('damaged')).toBeTrue();
 
-        const row = getInventoryControlGroups(forceUnit, equipment, forceUnit.getInventoryControlRules())
+        const row = getInventoryControlGroups(forceUnit, new EquipmentRegistry(equipment), forceUnit.getInventoryControlRules())
             .find(group => group.id === 'ranged')!.rows[0];
         expect(row.base.heat).toBe('3');
         expect(row.firingHeat).toBe(3);
@@ -1473,7 +1473,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(heatText.textContent).toBe('2*');
         expect(heatText.classList.contains('damaged')).toBeFalse();
 
-        const repairedRow = getInventoryControlGroups(forceUnit, equipment, forceUnit.getInventoryControlRules())
+        const repairedRow = getInventoryControlGroups(forceUnit, new EquipmentRegistry(equipment), forceUnit.getInventoryControlRules())
             .find(group => group.id === 'ranged')!.rows[0];
         expect(repairedRow.firingHeat).toBe(2);
         expect(repairedRow.display.heat).toBe('2*');
@@ -1818,7 +1818,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             .toContain('8/Msl');
     });
 
-    it('uses ammunition profiles only as fallback when incorporated ATM ammo is unavailable', () => {
+    it('uses catalog ammunition selected by the firing profile when incorporated ammo is unavailable', () => {
         const atmWeapon = new WeaponEquipment({
             id: 'ISATM6',
             name: 'ATM 6',
@@ -1833,13 +1833,19 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             flags: ['F_MISSILE'],
             weapon: { ammoType: 'IATM', rackSize: 6, heat: 4, damage: 'cluster', ranges: [0, 0, 0, 0] }
         });
+        const iatmStandardAmmo = new AmmoEquipment({
+            id: 'IATMStandardAmmo', name: 'IATM Standard Ammo', type: 'ammo',
+            ammo: { type: 'IATM', rackSize: 6, damagePerShot: 2, munitionType: ['M_STANDARD'] },
+        });
+        const equipmentMap = { ...equipment, [iatmStandardAmmo.id]: iatmStandardAmmo };
+        const equipmentCatalog = new EquipmentRegistry(equipmentMap);
 
-        expect(resolveWeaponDamage(atmWeapon, { selectedRange: null, selectedAmmo: null, fallbackAmmoProfile: ATM_EXTENDED_RANGE_PROFILE }))
-            .toEqual({ kind: 'per-missile', value: 1 });
-        expect(resolveWeaponDamage(atmWeapon, { selectedRange: null, selectedAmmo: null, fallbackAmmoProfile: ATM_HIGH_EXPLOSIVE_PROFILE }))
-            .toEqual({ kind: 'per-missile', value: 3 });
-        expect(resolveWeaponDamage(iatmWeapon, { selectedRange: null, selectedAmmo: null, fallbackAmmoProfile: ATM_STANDARD_PROFILE }))
-            .toEqual({ kind: 'per-missile', value: 2 });
+        expect(resolveWeaponDamage(atmWeapon, equipmentCatalog, { ammoProfile: ATM_EXTENDED_RANGE_PROFILE }))
+            .toEqual({ values: [7], maximum: 6, unit: 'missile' });
+        expect(resolveWeaponDamage(atmWeapon, equipmentCatalog, { ammoProfile: ATM_HIGH_EXPLOSIVE_PROFILE }))
+            .toEqual({ values: [8], maximum: 6, unit: 'missile' });
+        expect(resolveWeaponDamage(iatmWeapon, equipmentCatalog, { ammoProfile: ATM_STANDARD_PROFILE }))
+            .toEqual({ values: [2], maximum: 6, unit: 'missile' });
     });
 
     it('renders vehicle stabilizer hit modifiers without using the range wildcard', () => {

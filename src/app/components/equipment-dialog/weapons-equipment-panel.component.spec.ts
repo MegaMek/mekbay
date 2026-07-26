@@ -25,6 +25,7 @@ import { TW_GAME_RULES, type CBTGameRules } from '../../models/rules/game-rules'
 import { createCBTForceUnitTestHarness, type CBTForceUnitTestEntryState, type TestUnitOverrides } from '../../testing/unit-test-helpers';
 import { getVibrobladeMode, VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../../equipment-handlers/vibroblade.handler';
 import { EquipmentFlag } from '../../models/equipment-flags.type';
+import { EquipmentRegistry } from '../../models/equipment-lookup';
 import { AmmoMunitionFlag } from '../../models/ammo-munition-flags.type';
 
 function weapon(id: string, ammoType: Extract<AmmoType, 'NA' | 'AC' | 'ATM' | 'MML' | 'MRM' | 'AC_ULTRA' | 'NARC'> = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4], toHitModifier = 0, heat = 0): WeaponEquipment {
@@ -184,7 +185,9 @@ function createComponent(
     const context = {
         toastService,
         dialogsService,
-        dataService: { getEquipments: () => unitHarness.equipment },
+        dataService: {
+            getEquipmentRegistry: () => unitHarness.equipmentRegistry,
+        },
         registry
     } as unknown as EquipmentDialogContext;
     const equipmentRules = registry.inventoryControlRules(context);
@@ -281,7 +284,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
         const { unit } = createCBTForceUnitTestHarness({ components: [laser, punch, hatchet, ecm, broken] });
 
-        const groups = getInventoryControlGroups(unit);
+        const groups = getInventoryControlGroups(unit, new EquipmentRegistry({}));
 
         expect(groups.find(group => group.id === 'ranged')?.rows.map(row => row.id)).toEqual(['laser', 'broken']);
         expect(groups.find(group => group.id === 'physical')?.rows.map(row => row.id)).toEqual(['punch', 'hatchet']);
@@ -299,7 +302,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             isEquipmentUnavailable: source => source === ammoBin
         });
 
-        const row = getInventoryControlGroups(unit, { [ac2Ammo.internalName]: ac2Ammo }).find(group => group.id === 'ranged')!.rows[0];
+        const row = getInventoryControlGroups(unit, new EquipmentRegistry({ [ac2Ammo.internalName]: ac2Ammo })).find(group => group.id === 'ranged')!.rows[0];
 
         expect(row.ammo.remaining).toBe(0);
         expect(row.ammo.total).toBe(0);
@@ -311,7 +314,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
         const { unit } = createCBTForceUnitTestHarness({ components: [broken, laser] });
 
-        const groups = getInventoryControlGroups(unit);
+        const groups = getInventoryControlGroups(unit, new EquipmentRegistry({}));
 
         expect(groups.find(group => group.id === 'ranged')?.rows.map(row => row.id)).toEqual(['broken', 'laser']);
     });
@@ -391,7 +394,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             }
         });
 
-        const rangedRows = getInventoryControlGroups(unit, { [narcAmmo.internalName]: narcAmmo })
+        const rangedRows = getInventoryControlGroups(unit, new EquipmentRegistry({ [narcAmmo.internalName]: narcAmmo }))
             .find(group => group.id === 'ranged')!.rows;
 
         expect(rangedRows.map(row => row.id)).toEqual(trooperLabels.map(location => `${narcEntryId}:${location}`));
@@ -426,7 +429,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         const { unit } = createCBTForceUnitTestHarness({ components: [uac] });
 
-        const row = getInventoryControlGroups(unit).find(group => group.id === 'ranged')!.rows[0];
+        const row = getInventoryControlGroups(unit, new EquipmentRegistry({})).find(group => group.id === 'ranged')!.rows[0];
 
         expect(row.disabled).toBeTrue();
         expect(uac.el!.classList.contains('disabledInventory')).toBeTrue();
@@ -495,7 +498,18 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         mml.equipment!.flags.add('F_MISSILE');
         (mml.equipment as WeaponEquipment).weapon.damage = 'cluster';
-        const { component } = createComponent([mml]);
+        const lrmAmmo = new AmmoEquipment({
+            id: 'mml-lrm', name: 'MML 9 LRM Ammo', type: 'ammo', flags: ['F_MML_LRM'],
+            ammo: { type: 'MML', rackSize: 9, damagePerShot: 1, munitionType: ['M_STANDARD'] },
+        });
+        const srmAmmo = new AmmoEquipment({
+            id: 'mml-srm', name: 'MML 9 SRM Ammo', type: 'ammo', flags: ['F_MML_SRM'],
+            ammo: { type: 'MML', rackSize: 9, damagePerShot: 2, munitionType: ['M_STANDARD'] },
+        });
+        const { component } = createComponent([mml], {
+            [lrmAmmo.id]: lrmAmmo,
+            [srmAmmo.id]: srmAmmo,
+        });
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         expect(row.modes.map(mode => mode.mode)).toEqual(['LRM', 'SRM']);

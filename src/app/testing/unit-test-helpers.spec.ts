@@ -15,7 +15,7 @@ describe('CBTForceUnitTestHarness', () => {
         expect(mounted).toBeInstanceOf(MountedEquipment);
         expect(mounted.owner).toBe(harness.unit);
         expect(harness.unit.getInventory()).toEqual([mounted]);
-        expect(harness.unit.getAvailableEquipment()[weapon.internalName]).toBe(weapon);
+        expect(harness.unit.getEquipmentRegistry().findEquipment(weapon.internalName)).toBe(weapon);
     });
 
     it('adds critical slots and exposes inventory-control runtime state', () => {

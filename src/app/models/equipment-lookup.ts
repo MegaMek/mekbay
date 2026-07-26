@@ -1,4 +1,4 @@
-import { Equipment, EquipmentMap } from './equipment.model';
+import { AmmoEquipment, Equipment, EquipmentMap, WeaponEquipment } from './equipment.model';
 
 function normalizeEquipmentLookupKey(name: string): string {
     return name.trim().toLowerCase();
@@ -10,6 +10,8 @@ export class EquipmentRegistry {
     readonly #internalNames = new Map<string, Equipment>();
     readonly #aliases = new Map<string, Equipment>();
     readonly #variants = new Map<string, Equipment[]>();
+    readonly #ammoByType = new Map<string, readonly AmmoEquipment[]>();
+    readonly #ammoByWeapon = new Map<string, readonly AmmoEquipment[]>();
 
     constructor(equipment: EquipmentMap) {
         this.equipment = Object.freeze({ ...equipment });
@@ -27,6 +29,8 @@ export class EquipmentRegistry {
                 this.addVariant(key, item);
             }
         }
+
+        this.indexAmmo();
     }
 
     get size(): number {
@@ -37,7 +41,7 @@ export class EquipmentRegistry {
         return new Set([...this.#internalNames.keys(), ...this.#aliases.keys()]).size;
     }
 
-    find(name: string): Equipment | null {
+    findEquipment(name: string): Equipment | null {
         if (!name) return null;
         const exact = this.equipment[name];
         if (exact) return exact;
@@ -56,13 +60,57 @@ export class EquipmentRegistry {
         const variants = this.#variants.get(key) ?? [];
         return variants.find(item => item.techBase === techBase)
             ?? variants.find(item => item.techBase === 'All')
-            ?? this.find(name);
+            ?? this.findEquipment(name);
+    }
+
+    /** Returns catalog ammo matching a weapon's ammo type, rack size, and BA class. */
+    getAmmoForWeapon(weapon: WeaponEquipment): readonly AmmoEquipment[] {
+        if (weapon.ammoType === 'NA') return [];
+        const battleArmor = weapon.hasFlag('F_BA_WEAPON');
+        if (weapon.rackSize <= 0) return this.#ammoByType.get(ammoTypeKey(weapon.ammoType, battleArmor)) ?? [];
+        return this.#ammoByWeapon.get(ammoWeaponKey(weapon.ammoType, weapon.rackSize, battleArmor)) ?? [];
+    }
+
+    /** Returns catalog ammo in the same type and Battle Armor class for loadout selection. */
+    getAmmoForAmmo(ammo: AmmoEquipment): readonly AmmoEquipment[] {
+        return this.#ammoByType.get(ammoTypeKey(ammo.ammoType, ammo.hasFlag('F_BATTLEARMOR'))) ?? [];
     }
 
     private addVariant(key: string, item: Equipment): void {
         const variants = this.#variants.get(key) ?? [];
         if (!variants.includes(item)) this.#variants.set(key, [...variants, item]);
     }
+
+    private indexAmmo(): void {
+        const byType = new Map<string, AmmoEquipment[]>();
+        const byWeapon = new Map<string, AmmoEquipment[]>();
+        const indexed = new Set<AmmoEquipment>();
+
+        for (const item of Object.values(this.equipment)) {
+            if (!(item instanceof AmmoEquipment) || indexed.has(item)) continue;
+            indexed.add(item);
+            const battleArmor = item.hasFlag('F_BATTLEARMOR');
+            addIndexedAmmo(byType, ammoTypeKey(item.ammoType, battleArmor), item);
+            addIndexedAmmo(byWeapon, ammoWeaponKey(item.ammoType, item.rackSize, battleArmor), item);
+        }
+
+        byType.forEach((ammo, key) => this.#ammoByType.set(key, Object.freeze(ammo)));
+        byWeapon.forEach((ammo, key) => this.#ammoByWeapon.set(key, Object.freeze(ammo)));
+    }
+}
+
+function ammoTypeKey(ammoType: string, battleArmor: boolean): string {
+    return `${ammoType}:${battleArmor ? 'ba' : 'standard'}`;
+}
+
+function ammoWeaponKey(ammoType: string, rackSize: number, battleArmor: boolean): string {
+    return `${ammoTypeKey(ammoType, battleArmor)}:${rackSize}`;
+}
+
+function addIndexedAmmo(index: Map<string, AmmoEquipment[]>, key: string, ammo: AmmoEquipment): void {
+    const entries = index.get(key) ?? [];
+    entries.push(ammo);
+    index.set(key, entries);
 }
 
 export const EMPTY_EQUIPMENT_REGISTRY = new EquipmentRegistry({});

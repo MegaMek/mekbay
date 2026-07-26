@@ -909,7 +909,6 @@ export class SvgInteractionService {
     private setupCritSlotInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         const unit = this.unit();
         if (!unit) return;
-        const equipmentList = this.dataService.getEquipments();
         svg.querySelectorAll('.critSlot').forEach(el => {
             if (el.getAttribute('hittable') != '1') return; // Only add handlers to hittable crit slots
             const svgEl = el as SVGElement;
@@ -1019,7 +1018,7 @@ export class SvgInteractionService {
                             this.toastService.showToast(`Emptied ${labelText}`, 'info');
                         } else if (choice.value == 'Set Ammo') {
                             if (unit.isEquipmentUnavailable(critSlot)) return;
-                            const entry = getAmmoControlEntryForCriticalSlot(unit, critSlot, equipmentList);
+                            const entry = getAmmoControlEntryForCriticalSlot(unit, critSlot, this.dataService.getEquipmentRegistry());
                             if (!entry) return;
                             if (await setAmmoEntry(entry, {
                                 toastService: this.toastService,
@@ -1072,7 +1071,7 @@ export class SvgInteractionService {
             const unit = this.unit();
             const rules = unit?.getInventoryControlRules?.()
                 ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext());
-            syncSvgMode(entry, getSelectedInventoryControlMode(entry, this.dataService.getEquipments(), rules));
+            syncSvgMode(entry, getSelectedInventoryControlMode(entry, this.dataService.getEquipmentRegistry(), rules));
 
             const selectEntry = (button: SVGElement) => {
                 const unit = this.unit();
@@ -1193,7 +1192,7 @@ export class SvgInteractionService {
         const rules = unit?.getInventoryControlRules?.()
             ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext());
         return entry.states.get(INVENTORY_CONTROL_MODE_STATE)
-            ?? getSelectedInventoryControlMode(entry, this.dataService.getEquipments(), rules);
+            ?? getSelectedInventoryControlMode(entry, this.dataService.getEquipmentRegistry(), rules);
     }
 
     private toggleRiscLaserPulseMode(module: MountedEquipment): void {
@@ -1264,12 +1263,12 @@ export class SvgInteractionService {
         const gameRules = unit.gameRules ?? CORE_2026_GAME_RULES;
         const rules = unit.getInventoryControlRules?.()
             ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext());
-        const ammoSummary = getInventoryControlModeAmmoSummary(entry, this.dataService.getEquipments(), rules);
+        const ammoSummary = getInventoryControlModeAmmoSummary(entry, this.dataService.getEquipmentRegistry(), rules);
         const selectedAmmo = resolveInventoryControlSelectedAmmoOption(
             ammoSummary.options,
             unit.getInventoryControlEntryAmmoOption?.(entry.id)
         )?.ammo ?? null;
-        const row = getInventoryControlGroups(unit, this.dataService.getEquipments(), rules)
+        const row = getInventoryControlGroups(unit, this.dataService.getEquipmentRegistry(), rules)
             .flatMap(group => group.rows)
             .find(candidate => candidate.entry.id === entry.id);
         if (!row) return '';

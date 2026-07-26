@@ -145,7 +145,7 @@ function testWeapon(
     name: id,
     type: 'weapon',
     flags,
-    weapon: { damage, rackSize: ammoType === 'SRM' || ammoType === 'SRM_TORPEDO' ? 2 : 0,
+    weapon: { damage, rackSize: ammoType === 'AC' ? 10 : ammoType === 'SRM' || ammoType === 'SRM_TORPEDO' ? 2 : 0,
       ranges: [5, 10, 20, 24], ammoType },
   });
 }

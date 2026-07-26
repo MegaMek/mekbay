@@ -6,6 +6,7 @@ import { DEAD_CREW_HIT_THRESHOLD, type CrewMemberState } from '../crew-member.mo
 import { MountedEquipment, MountedWeapon } from '../mounted-equipment.model';
 import { type CriticalSlot, type LocationData } from '../force-serialization';
 import { AmmoEquipment, Equipment, WeaponEquipment, type AmmoType } from '../equipment.model';
+import { EquipmentRegistry } from '../equipment-lookup';
 import type { Unit, UnitSubtype } from '../units.model';
 import { DataService } from '../../services/data.service';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
@@ -279,8 +280,9 @@ function criticalAutocannonEntry(
 
 describe('MekRules', () => {
     beforeEach(() => {
-        dataService = jasmine.createSpyObj<DataService>('DataService', ['getUnitByName', 'getEquipments']);
-        dataService.getEquipments.and.returnValue({});
+        dataService = jasmine.createSpyObj<DataService>('DataService', ['getEquipmentRegistry', 'findEquipment', 'getUnitByName']);
+        dataService.getEquipmentRegistry.and.returnValue(new EquipmentRegistry({}));
+        dataService.findEquipment.and.returnValue(undefined);
         TestBed.configureTestingModule({
             providers: [
                 UnitInitializerService,

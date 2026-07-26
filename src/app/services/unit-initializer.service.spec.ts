@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { CBTForce } from '../models/cbt-force.model';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
+import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { isIntrinsicOneShotAmmoMount } from '../utils/ammo-interaction.util';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
@@ -47,12 +48,16 @@ function createEquipment(): EquipmentMap {
 
 describe('UnitInitializerService', () => {
     let dataService: jasmine.SpyObj<DataService>;
+    let equipmentRegistry: EquipmentRegistry;
     let injector: Injector;
     let service: UnitInitializerService;
 
     beforeEach(() => {
-        dataService = jasmine.createSpyObj<DataService>('DataService', ['getEquipments']);
-        dataService.getEquipments.and.returnValue(createEquipment());
+        const equipment = createEquipment();
+        equipmentRegistry = new EquipmentRegistry(equipment);
+        dataService = jasmine.createSpyObj<DataService>('DataService', ['getEquipmentRegistry', 'findEquipment']);
+        dataService.getEquipmentRegistry.and.returnValue(equipmentRegistry);
+        dataService.findEquipment.and.callFake((name: string) => dataService.getEquipmentRegistry().findEquipment(name) ?? undefined);
         TestBed.configureTestingModule({
             providers: [
                 UnitInitializerService,
@@ -181,12 +186,12 @@ describe('UnitInitializerService', () => {
             id: 'IS BA Ammo LRM-5 w/ Incendiary', name: 'BA LRM 5 Incendiary Ammo', type: 'ammo', flags: ['F_BATTLEARMOR'],
             ammo: { type: 'LRM', rackSize: 5, munitionType: ['M_STANDARD', 'M_INCENDIARY_LRM'] },
         });
-        dataService.getEquipments.and.returnValue({
+        dataService.getEquipmentRegistry.and.returnValue(new EquipmentRegistry({
             ...equipment,
             [weapon.internalName]: weapon,
             [standard.internalName]: standard,
             [incendiary.internalName]: incendiary,
-        });
+        }));
         const forceUnit = createForceUnit();
         const svg = createSvg(`
             <g class="inventoryEntry" id="ISBALRM5OS@RA#0">
@@ -214,7 +219,7 @@ describe('UnitInitializerService', () => {
             id: 'ISBATaser', name: 'BA Taser', type: 'weapon', flags: ['F_BA_WEAPON'],
             weapon: { ammoType: 'TASER', damage: 1 },
         });
-        dataService.getEquipments.and.returnValue({ ...equipment, [taser.internalName]: taser });
+        dataService.getEquipmentRegistry.and.returnValue(new EquipmentRegistry({ ...equipment, [taser.internalName]: taser }));
         const forceUnit = createForceUnit(createEmptyUnit({
             name: 'BATaserSquad', type: 'Infantry', subtype: 'Battle Armor',
             comp: [
@@ -248,7 +253,7 @@ describe('UnitInitializerService', () => {
             id: 'CLBAERMicroLaser', name: 'BA ER Micro Laser', type: 'weapon', flags: ['F_BA_WEAPON', 'F_ENERGY'],
             weapon: { ammoType: 'NA', damage: 1 },
         });
-        dataService.getEquipments.and.returnValue({ ...equipment, [laser.internalName]: laser });
+        dataService.getEquipmentRegistry.and.returnValue(new EquipmentRegistry({ ...equipment, [laser.internalName]: laser }));
         const forceUnit = createForceUnit(createEmptyUnit({
             name: 'BALaserSquad', type: 'Infantry', subtype: 'Battle Armor',
             comp: [

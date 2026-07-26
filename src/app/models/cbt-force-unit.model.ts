@@ -153,11 +153,11 @@ export class CBTForceUnit extends ForceUnit {
             // ammo summary also evaluates the source's availability, which checks
             // this parent weapon's rule state and causes a reactive self-cycle.
             const selectedAmmo = intrinsicAmmo.ammo
-                ? this.getAvailableEquipment()[intrinsicAmmo.ammo]
+                ? this.dataService.findEquipment(intrinsicAmmo.ammo)
                 : intrinsicAmmo.equipment;
             return selectedAmmo instanceof AmmoEquipment ? selectedAmmo : null;
         }
-        const summary = getInventoryControlModeAmmoSummary(entry, this.getAvailableEquipment(), this.getInventoryControlRules(), mode);
+        const summary = getInventoryControlModeAmmoSummary(entry, this.getEquipmentRegistry(), this.getInventoryControlRules(), mode);
         return resolveInventoryControlSelectedAmmoOption(
             summary.options,
             this.getInventoryControlEntryAmmoOption(entry.id)
@@ -881,13 +881,12 @@ export class CBTForceUnit extends ForceUnit {
 
     public customAmmoBvVariation = computed<number>(() => {
         if (!this.isLoaded()) return 0; // Ensure unit is loaded so that inventory and crits are available
-        const equipmentList = this.getAvailableEquipment();
         let bvVariation = 0;
         if (this.getUnit().type === 'Mek') {
             const crits = this.getCritSlots();
             for (const crit of crits) {
                 if (crit.eq instanceof AmmoEquipment && crit.originalName && crit.originalName !== crit.name) {
-                    const originalAmmo = equipmentList[crit.originalName] as AmmoEquipment | undefined;
+                    const originalAmmo = this.dataService.findEquipment(crit.originalName) as AmmoEquipment | undefined;
                     if (originalAmmo) {
                         if (!originalAmmo.hasFixedBV() || !crit.eq.hasFixedBV()) {
                             continue; // Skip variable BV. TODO: need to be handle when we have BaseEntity
@@ -900,7 +899,7 @@ export class CBTForceUnit extends ForceUnit {
             const inventory = this.getInventory();
             for (const item of inventory) {
                 if (item.equipment instanceof AmmoEquipment && item.ammo && item.ammo !== item.name) {
-                    const customAmmo = equipmentList[item.ammo] as AmmoEquipment | undefined;
+                    const customAmmo = this.dataService.findEquipment(item.ammo) as AmmoEquipment | undefined;
                     if (customAmmo) {
                         if (!item.equipment.hasFixedBV() || !customAmmo.hasFixedBV()) {
                             continue; // Skip variable BV. TODO: need to be handle when we have BaseEntity

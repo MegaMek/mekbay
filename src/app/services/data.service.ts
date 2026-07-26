@@ -39,7 +39,6 @@ import { DbService, type TagData } from './db.service';
 import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
 
-import { type Equipment, type EquipmentMap } from '../models/equipment.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { Quirk } from '../models/quirks.model';
 import { WsService } from './ws.service';
@@ -337,20 +336,13 @@ export class DataService {
         return this.unitsFluffCatalog.getUnitFluff(unit);
     }
 
-    public getEquipments(): EquipmentMap {
-        return this.equipmentCatalog.getEquipments();
-    }
-
     public getEquipmentRegistry(): EquipmentRegistry {
         return this.equipmentCatalog.getEquipmentRegistry();
     }
 
-    public getEquipmentByName(internalName: string): Equipment | undefined {
-        return this.equipmentCatalog.getEquipmentByName(internalName);
-    }
-
-    public findEquipment(name: string): Equipment | undefined {
-        return this.equipmentCatalog.findEquipment(name);
+    /** Resolves an equipment internal name or alias using the canonical registry. */
+    public findEquipment(name: string) {
+        return this.getEquipmentRegistry().findEquipment(name) ?? undefined;
     }
 
     public getFactions(): Faction[] {
@@ -502,7 +494,7 @@ export class DataService {
     private postprocessData(): void {
         this.applyNoneFactionMemberships(this.getUnits(), this.getEras(), this.getFactions());
         this.unitRuntimeService.postprocessUnits(this.getUnits(), this.getEras());
-        this.unitRuntimeService.linkEquipmentToUnits(this.getUnits(), this.getEquipments());
+        this.unitRuntimeService.linkEquipmentToUnits(this.getUnits(), this.getEquipmentRegistry());
         const extinctFaction = this.getFactionById(MULFACTION_EXTINCT);
         this.unitSearchIndexService.rebuildIndexes(this.getUnits(), this.getEras(), this.getFactions(), extinctFaction);
     }
@@ -677,7 +669,7 @@ export class DataService {
         } catch (error) {
             this.logger.error(`Failed to initialize data: ${this.describeError(error)}`);
             // Check if we have any data loaded despite the error
-            const hasData = this.getUnits().length > 0 && Object.keys(this.getEquipments()).length > 0;
+            const hasData = this.getUnits().length > 0 && this.getEquipmentRegistry().size > 0;
             if (hasData) {
                 // Apply public tags even on partial load
                 this.applyPublicTagsToUnits();

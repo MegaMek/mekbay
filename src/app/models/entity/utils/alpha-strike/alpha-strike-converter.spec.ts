@@ -1,6 +1,6 @@
 import { MountedArmor, MountedEngine } from '../../components';
 import { locationArmor } from '../../types';
-import { ArmorEquipment, WeaponEquipment } from '../../../equipment.model';
+import { AmmoEquipment, ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
 import {
   TestAeroSpaceFighterEntity as AeroSpaceFighterEntity,
   TestBattleArmorEntity as BattleArmorEntity,
@@ -9,9 +9,12 @@ import {
   TestDropShipEntity as DropShipEntity,
   TestFixedWingSupportEntity as FixedWingSupportEntity,
   TestInfantryEntity as InfantryEntity,
+  TestJumpShipEntity as JumpShipEntity,
   TestLamEntity as LamEntity,
   TestSmallCraftEntity as SmallCraftEntity,
+  TestSpaceStationEntity as SpaceStationEntity,
   TestSupportTankEntity as SupportTankEntity,
+  TestVtolEntity as VtolEntity,
   TestWarShipEntity as WarShipEntity,
 } from '../../testing/test-entities';
 import { addTestEquipment, addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
@@ -132,6 +135,70 @@ describe('Alpha Strike conversion', () => {
     expect(convertEntityToAlphaStrike(fixedWingSupport).specials).toContain('VSTOL');
   });
 
+  it('grants ATMO to VTOL combat vehicles only', () => {
+    expect(convertEntityToAlphaStrike(new VtolEntity()).specials).toContain('ATMO');
+    expect(convertEntityToAlphaStrike(new SupportTankEntity()).specials).not.toContain('ATMO');
+  });
+
+  it('grants SPC to aerospace fighters and large aerospace, but not atmospheric fighters', () => {
+    const aerospaceFighter = new AeroSpaceFighterEntity();
+    expect(convertEntityToAlphaStrike(aerospaceFighter).specials).toContain('SPC');
+
+    for (const entity of [
+      new SmallCraftEntity(), new DropShipEntity(), new JumpShipEntity(),
+      new SpaceStationEntity(), new WarShipEntity(),
+    ]) {
+      expect(convertEntityToAlphaStrike(entity).specials).toContain('SPC');
+    }
+
+    expect(convertEntityToAlphaStrike(new ConvFighterEntity()).specials).not.toContain('SPC');
+    expect(convertEntityToAlphaStrike(new FixedWingSupportEntity()).specials).not.toContain('SPC');
+  });
+
+  it('derives fighter BOMB and aerospace-fighter FUEL from family, size, and fuel', () => {
+    const aerospaceFighter = new AeroSpaceFighterEntity();
+    aerospaceFighter.setTonnage(75);
+    aerospaceFighter.fuel.set(30);
+    expect(convertEntityToAlphaStrike(aerospaceFighter).specials)
+      .toEqual(jasmine.arrayContaining(['BOMB3', 'FUEL2']));
+
+    const conventionalFighter = new ConvFighterEntity();
+    conventionalFighter.setTonnage(50);
+    expect(convertEntityToAlphaStrike(conventionalFighter).specials).toContain('BOMB2');
+    expect(convertEntityToAlphaStrike(conventionalFighter).specials).not.toContain('FUEL0');
+  });
+
+  it('derives fixed-wing support BOMB from its bomb capacity', () => {
+    const entity = new FixedWingSupportEntity();
+    addTestEquipmentWithFlags(entity, 'F_EXTERNAL_STORES_HARDPOINT');
+    addTestEquipmentWithFlags(entity, 'F_EXTERNAL_STORES_HARDPOINT');
+    addTestEquipmentWithFlags(entity, 'F_EXTERNAL_STORES_HARDPOINT');
+    addTestEquipmentWithFlags(entity, 'F_EXTERNAL_STORES_HARDPOINT');
+    addTestEquipmentWithFlags(entity, 'F_EXTERNAL_STORES_HARDPOINT');
+
+    expect(convertEntityToAlphaStrike(entity).specials).toContain('BOMB1');
+  });
+
+  it('derives Java large-craft size, drive, fusion, and crew specials', () => {
+    const smallCraft = new SmallCraftEntity();
+    smallCraft.setTonnage(2_500);
+    expect(convertEntityToAlphaStrike(smallCraft).specials).toContain('VLG');
+
+    const dropShip = new DropShipEntity();
+    dropShip.crew.set(90);
+    expect(convertEntityToAlphaStrike(dropShip).specials)
+      .toEqual(jasmine.arrayContaining(['CRW2', 'LG']));
+
+    const jumpShip = new JumpShipEntity();
+    jumpShip.crew.set(180);
+    jumpShip.lithiumFusion.set(true);
+    expect(convertEntityToAlphaStrike(jumpShip).specials)
+      .toEqual(jasmine.arrayContaining(['CRW2', 'KF', 'LF']));
+
+    jumpShip.driveCoreType.set('None');
+    expect(convertEntityToAlphaStrike(jumpShip).specials).not.toContain('KF');
+  });
+
   it('grants VSTOL to spheroid small craft intrinsically', () => {
     const entity = new SmallCraftEntity();
     entity.motiveType.set('Spheroid');
@@ -150,6 +217,63 @@ describe('Alpha Strike conversion', () => {
     expect(convertEntityToAlphaStrike(entity).dmg.dmgE).toBe('0');
   });
 
+  it('counts each non-compact double heat sink as two Alpha Strike heat-capacity points', () => {
+    const entity = new BipedMekEntity();
+    for (let index = 0; index < 17; index++) {
+      addTestEquipment(entity, new MiscEquipment({
+        id: `double-heat-sink-${index}`, name: 'Double Heat Sink', type: 'misc',
+        flags: ['F_DOUBLE_HEAT_SINK'],
+      }), { location: 'CT' });
+    }
+    for (let index = 0; index < 3; index++) {
+      addTestEquipment(entity, new WeaponEquipment({
+        id: `hot-laser-${index}`, name: 'Hot Laser', type: 'weapon', flags: ['F_LASER'],
+        weapon: { heat: 20, damage: 10, ranges: [3, 6, 9, 12], ammoType: 'NA' },
+      }), { location: 'RA' });
+    }
+
+    expect(convertEntityToAlphaStrike(entity).OV).toBe(1);
+  });
+
+  it('excludes artillery and torpedo launchers from generic standard damage', () => {
+    const entity = new BipedMekEntity();
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'srt-6', name: 'SRT 6', type: 'weapon',
+      weapon: { damage: 'cluster', rackSize: 6, ranges: [3, 6, 9, 12], ammoType: 'SRM_TORPEDO' },
+    }), { location: 'RA' });
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'sniper', name: 'Sniper', type: 'weapon', flags: ['F_ARTILLERY'],
+      weapon: { damage: 'artillery', ranges: [6, 12, 18, 24], ammoType: 'SNIPER' },
+    }), { location: 'LA' });
+
+    expect(convertEntityToAlphaStrike(entity).dmg).toEqual({
+      dmgS: '0', dmgM: '0', dmgL: '0', dmgE: '0',
+    });
+  });
+
+  it('converts front-mounted weapon heat damage into HT after Java thresholds', () => {
+    const entity = new BipedMekEntity();
+    for (let index = 0; index < 3; index++) {
+      addTestEquipment(entity, new WeaponEquipment({
+        id: `flamer-${index}`, name: 'Flamer', type: 'weapon', flags: ['F_FLAMER'],
+        weapon: { heat: 3, damage: 2, ranges: [1, 2, 3, 4], ammoType: 'NA' },
+      }), { location: 'RA' });
+    }
+
+    expect(convertEntityToAlphaStrike(entity).specials).toContain('HT1/-/-');
+  });
+
+  it('applies the Battle Armor troop factor before deriving HT', () => {
+    const entity = new BattleArmorEntity();
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'ba-heavy-flamer', name: 'BA Heavy Flamer', type: 'weapon',
+      flags: ['F_FLAMER', 'F_BA_WEAPON'],
+      weapon: { heat: 5, damage: 4, ranges: [2, 3, 4, 6], ammoType: 'NA' },
+    }), { location: 'Squad' });
+
+    expect(convertEntityToAlphaStrike(entity).specials).toContain('HT2/-/-');
+  });
+
   it('converts conventional-infantry field guns without a troop factor', () => {
     const fieldGun = new WeaponEquipment({
       id: 'field-gun', name: 'Field Gun', type: 'weapon',
@@ -162,6 +286,56 @@ describe('Alpha Strike conversion', () => {
     expect(convertEntityToAlphaStrike(entity).dmg).toEqual({
       dmgS: '2', dmgM: '2', dmgL: '2', dmgE: '0',
     });
+  });
+
+  it('derives conventional-infantry HT from its canonical primary weapon', () => {
+    const entity = new InfantryEntity();
+    entity.squadSize.set(30);
+    entity.squadCount.set(1);
+    const flamer = new WeaponEquipment({
+      id: 'infantry-flamer', name: 'Infantry Flamer', type: 'weapon',
+      flags: ['F_INFANTRY', 'F_FLAMER'],
+      weapon: { ammoType: 'NA' },
+      infantry: { damage: 1, range: 1 },
+    });
+    if (!flamer.isInfantryWeapon()) throw new Error('Expected infantry flamer');
+    entity.primaryWeapon.set(flamer);
+
+    expect(convertEntityToAlphaStrike(entity).specials).toContain('HT2/-/-');
+  });
+
+  it('uses field guns instead of infantry weapons when deriving infantry HT', () => {
+    const entity = new InfantryEntity();
+    entity.squadSize.set(30);
+    entity.squadCount.set(1);
+    const flamer = new WeaponEquipment({
+      id: 'infantry-flamer', name: 'Infantry Flamer', type: 'weapon',
+      flags: ['F_INFANTRY', 'F_FLAMER'],
+      weapon: { ammoType: 'NA' }, infantry: { damage: 1, range: 1 },
+    });
+    if (!flamer.isInfantryWeapon()) throw new Error('Expected infantry flamer');
+    entity.primaryWeapon.set(flamer);
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'field-ac', name: 'Field AC', type: 'weapon',
+      weapon: { damage: 10, ranges: [3, 6, 9, 12], ammoType: 'AC' },
+    }), { location: 'Field Guns' });
+
+    expect(convertEntityToAlphaStrike(entity).specials).not.toContain('HT2/-/-');
+  });
+
+  it('does not treat MFUK plasma as conventional-infantry HT', () => {
+    const entity = new InfantryEntity();
+    entity.squadSize.set(30);
+    entity.squadCount.set(1);
+    const plasma = new WeaponEquipment({
+      id: 'infantry-mfuk', name: 'Infantry MFUK Plasma', type: 'weapon',
+      flags: ['F_INFANTRY', 'F_PLASMA_MFUK'],
+      weapon: { ammoType: 'NA' }, infantry: { damage: 1, range: 1 },
+    });
+    if (!plasma.isInfantryWeapon()) throw new Error('Expected infantry plasma weapon');
+    entity.primaryWeapon.set(plasma);
+
+    expect(convertEntityToAlphaStrike(entity).specials).not.toContain('HT2/-/-');
   });
 
   it('uses four arcs for large aerospace threshold and movement', () => {
@@ -252,6 +426,63 @@ describe('Alpha Strike conversion', () => {
     expect(result.dmg.dmgS).toBe('1');
     expect(result.frontArc?.STD.dmgS).toBe('0');
     expect(result.leftArc?.specials).toEqual([]);
+  });
+
+  it('duplicates vehicle turret damage globally and in a TUR damage vector', () => {
+    const entity = new VtolEntity();
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'turret-laser', name: 'Turret Laser', type: 'weapon',
+      weapon: { damage: 10, rackSize: 0, ranges: [5, 10, 15, 20], ammoType: 'NA' },
+    }), { location: 'Turret' });
+
+    const result = convertEntityToAlphaStrike(entity);
+
+    expect(result.dmg).toEqual({ dmgS: '1', dmgM: '1', dmgL: '0', dmgE: '0' });
+    expect(result.specials).toContain('TUR(1/1/-)');
+  });
+
+  it('preserves sub-minimum turret damage as 0* and omits absent turret damage', () => {
+    const entity = new VtolEntity();
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'light-turret-laser', name: 'Light Turret Laser', type: 'weapon',
+      weapon: { damage: 1, rackSize: 0, ranges: [5, 10, 15, 20], ammoType: 'NA' },
+    }), { location: 'Turret' });
+
+    expect(convertEntityToAlphaStrike(entity).specials).toContain('TUR(0*/0*/-)');
+    expect(convertEntityToAlphaStrike(new VtolEntity()).specials.some(special => special.startsWith('TUR('))).toBeFalse();
+  });
+
+  it('serializes ability-only and combined nested TUR contents deterministically', () => {
+    const amsEntity = new VtolEntity();
+    addTestEquipment(amsEntity, new WeaponEquipment({
+      id: 'turret-ams', name: 'Turret AMS', type: 'weapon', flags: ['F_AMS'],
+      weapon: { damage: 0, rackSize: 0, ranges: [0, 0, 0, 0], ammoType: 'NA' },
+    }), { location: 'Turret' });
+    expect(convertEntityToAlphaStrike(amsEntity).specials).toContain('TUR(AMS)');
+
+    const entity = new VtolEntity();
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'turret-lrm', name: 'Turret LRM', type: 'weapon', flags: ['F_LRM', 'F_MISSILE', 'F_TAG'],
+      weapon: { damage: 'cluster', rackSize: 20, ranges: [7, 14, 21, 28], ammoType: 'LRM' },
+    }), { location: 'Turret' });
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'turret-flamer', name: 'Turret Flamer', type: 'weapon', flags: ['F_FLAMER'],
+      weapon: { damage: 1, rackSize: 0, ranges: [1, 1, 1, 1], ammoType: 'NA' },
+    }), { location: 'Turret' });
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'turret-flamer-2', name: 'Turret Flamer 2', type: 'weapon', flags: ['F_FLAMER'],
+      weapon: { damage: 1, rackSize: 0, ranges: [1, 1, 1, 1], ammoType: 'NA' },
+    }), { location: 'Turret' });
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'turret-flamer-3', name: 'Turret Flamer 3', type: 'weapon', flags: ['F_FLAMER'],
+      weapon: { damage: 1, rackSize: 0, ranges: [1, 1, 1, 1], ammoType: 'NA' },
+    }), { location: 'Turret' });
+    addTestEquipment(entity, new AmmoEquipment({
+      id: 'turret-lrm-ammo', name: 'Turret LRM Ammo', type: 'ammo',
+      ammo: { type: 'LRM', rackSize: 20, shots: 20 },
+    }), { location: 'Body', shotsCount: 20 });
+
+    expect(convertEntityToAlphaStrike(entity).specials).toContain('TUR(2/2/2,HT1/-/-,IF1,LRM1/1/1,TAG)');
   });
 
   it('converts every TMM boundary', () => {

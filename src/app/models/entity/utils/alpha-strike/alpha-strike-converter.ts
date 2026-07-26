@@ -31,10 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { type BaseEntity, AeroEntity, ConvFighterEntity, FixedWingSupportEntity,
-  BattleArmorEntity, InfantryEntity, MekEntity,
+import { type BaseEntity, AeroEntity, BattleArmorEntity, InfantryEntity, MekEntity,
   VehicleEntity } from '../../entities';
-import { AmmoEquipment, MiscEquipment, WeaponEquipment, ammoMatchesWeapon, getAmmoCategory } from '../../../equipment.model';
+import { MiscEquipment } from '../../../equipment.model';
 import type { AlphaStrikeArcStats, AlphaStrikeUnitStats, ASUnitTypeCode } from '../../../units.model';
 import {
   CalculationReportBuilder,
@@ -50,7 +49,6 @@ import {
   AEROSPACE_EXPORT_TYPES,
   alphaStrikeSize,
   alphaStrikeUnitType,
-  hasAlphaStrikeVstolCapability,
   isAerospaceElement,
   isFighter,
   usesArcs as alphaStrikeUsesArcs,
@@ -68,31 +66,31 @@ import {
   alphaStrikeThreshold,
 } from './foundation/integrity';
 import { alphaStrikeDamageFamily } from './damage/damage-dispatch';
-import { dualRoundedUpDamage } from './damage/damage-rounding';
-import { createEmptyArcs } from './damage/damage-types';
+import { toStandardDamage } from './damage/damage-rounding';
+import { createEmptyArcs, type AlphaStrikeStandardDamageResult } from './damage/damage-types';
 import { calculateBattleArmorStandardDamage } from './damage/battle-armor-damage';
+import { calculateConventionalInfantryDamage } from './damage/conventional-infantry-damage';
+import { alphaStrikeDamageLocationMultiplier } from './damage/generic-location-mapper';
+import { alphaStrikeHeatSpecial, sumAlphaStrikeHeatDamage } from './damage/heat-damage';
 import { calculateLargeAerospaceDamage } from './damage/large-aerospace-damage';
+import { alphaStrikeHeatCapacityForEntity } from './damage/heat-capacity';
 import {
   adjustAlphaStrikeDamageForHeat,
-  alphaStrikeHeatCapacity,
   alphaStrikeMovementHeat,
-  alphaStrikeWeaponHeat,
+  alphaStrikeWeaponHeatForConversion,
   type AlphaStrikeJumpSystem,
 } from './damage/heat-adjustment';
 import {
   baseBattleForceDamageForWeapon,
-  battleForceDamageForMount,
-  type AlphaStrikeRangeIndex,
 } from './damage/weapon-damage-profile';
-import { alphaStrikeCoreSpecials } from './specials/core-specials';
+import { sumAlphaStrikeWeaponDamage } from './damage/weapon-damage-aggregation';
+import { alphaStrikeSpecialsForEntity } from './specials/specials-converter';
 
 export { alphaStrikeSize, alphaStrikeUnitType } from './foundation/unit-classification';
 export { tmmForMovement } from './foundation/movement';
 
-type Damage = AlphaStrikeUnitStats['dmg'];
 type ArcName = 'frontArc' | 'leftArc' | 'rightArc' | 'rearArc';
-
-const ZERO_DAMAGE: Damage = { dmgS: '0', dmgM: '0', dmgL: '0', dmgE: '0' };
+type Damage = AlphaStrikeUnitStats['dmg'];
 
 export interface AlphaStrikeConversionWithReport {
   readonly stats: AlphaStrikeUnitStats;
@@ -143,14 +141,15 @@ export function convertEntityToAlphaStrike(
     Th: usesTh ? alphaStrikeThreshold(Arm, isFighter(entity, TP)) : -1,
     Arm,
     Str,
-    specials: [...new Set([
-      ...alphaStrikeSpecials(entity, TP, SZ),
-      ...alphaStrikeCoreSpecials(entity, {
-        type: TP,
-        hasStandardDamage: Object.values(damage.standard).some(value => Number(value) > 0),
-      }),
-      ...(damage.overheatLong ? ['OVL'] : []),
-    ])].sort(),
+    specials: alphaStrikeSpecialsForEntity(entity, {
+      type: TP,
+      size: SZ,
+      movement,
+      usesArcs,
+      hasStandardDamage: Object.values(damage.standard).some(value => Number(value) > 0),
+      heatSpecials: damage.heatSpecials,
+      overheatLong: damage.overheatLong ?? false,
+    }),
     dmg: damage.standard,
     usesE,
     usesArcs,
@@ -259,105 +258,41 @@ function alphaStrikeDamage(
   entity: BaseEntity,
   TP: ASUnitTypeCode,
   movement: AlphaStrikeMovement,
-): { standard: Damage; overheat: number; overheatLong?: boolean; arcs: Partial<Record<ArcName, AlphaStrikeArcStats>> } {
+): AlphaStrikeStandardDamageResult {
   const family = alphaStrikeDamageFamily(entity, TP);
-  if (family === 'conventional-infantry') return conventionalInfantryDamage(entity as InfantryEntity);
+  if (family === 'conventional-infantry') return calculateConventionalInfantryDamage(entity as InfantryEntity);
   if (family === 'battle-armor') {
-    return { standard: calculateBattleArmorStandardDamage(entity as BattleArmorEntity).standard, overheat: 0, arcs: {} };
+    const battleArmor = calculateBattleArmorStandardDamage(entity as BattleArmorEntity);
+    const rawHeat = sumAlphaStrikeHeatDamage(entity.mountedWeapons(), mount =>
+      !mount.isSSWM && isBattleArmorRepresentativeLocation(mount.location));
+    const heatSpecial = alphaStrikeHeatSpecial(rawHeat.map(value =>
+      Math.floor(value * battleArmor.breakdown.troopFactor)) as [number, number, number]);
+    return {
+      standard: battleArmor.standard,
+      overheat: 0,
+      arcs: {},
+      heatSpecials: heatSpecial ? [heatSpecial] : [],
+    };
   }
-  if (family === 'arced') return arcedDamage(entity);
+  if (family === 'arced') return { ...calculateLargeAerospaceDamage(entity), heatSpecials: [] };
 
-  const raw = sumWeaponDamage(entity, mount => isFrontWeapon(entity, mount.location, mount.rearMounted));
+  const raw = sumAlphaStrikeWeaponDamage(entity, mount =>
+    alphaStrikeDamageLocationMultiplier(entity, 'standard', mount) > 0);
   if (family === 'generic') raw[3] = 0;
   const adjusted = applyHeatAdjustment(entity, TP, raw, movement);
+  const heatSpecial = alphaStrikeHeatSpecial(sumAlphaStrikeHeatDamage(entity.mountedWeapons(), mount =>
+    alphaStrikeDamageLocationMultiplier(entity, 'standard', mount) > 0));
   return {
-    standard: damageVector(adjusted.front),
+    standard: toStandardDamage(adjusted.front),
     overheat: adjusted.overheat,
     overheatLong: adjusted.overheatLong,
     arcs: {},
+    heatSpecials: heatSpecial ? [heatSpecial] : [],
   };
 }
 
-function conventionalInfantryDamage(entity: InfantryEntity): { standard: Damage; overheat: number; arcs: {} } {
-  const fieldGuns = entity.mountedWeapons().filter(mount => mount.location === 'Field Guns');
-  const hasActiveFieldArtillery = fieldGuns.some(mount =>
-    getAmmoCategory(mount.equipment.ammoType) === 'Artillery');
-  if (fieldGuns.length > 0 && !hasActiveFieldArtillery) {
-    const raw = sumWeaponDamage(entity, mount => mount.location === 'Field Guns');
-    raw[3] = 0;
-    return { standard: damageVector(raw), overheat: 0, arcs: {} };
-  }
-
-  const weapon = entity.rangeWeapon();
-  if (!weapon?.infantry) return { standard: ZERO_DAMAGE, overheat: 0, arcs: {} };
-  const troopFactors = [0,0,1,2,3,3,4,4,5,5,6,7,8,8,9,9,10,10,11,11,12,13,14,15,16,16,17,17,17,18,18];
-  const factor = troopFactors[Math.min(entity.totalInternalPoints(), 30)];
-  const primary = entity.primaryWeapon();
-  const secondary = entity.secondaryWeapon();
-  const secondaryCount = entity.secondaryCount();
-  const squadSize = Math.max(entity.squadSize(), 1);
-  const primaryDamage = Math.min(0.6, primary?.infantry.damage ?? 0);
-  const damagePerTrooper = (
-    primaryDamage * Math.max(0, squadSize - secondaryCount)
-    + (secondary?.infantry.damage ?? 0) * secondaryCount
-  ) / squadSize;
-  const damage = damagePerTrooper * factor / 10;
-  const rounded = dualRoundedUpDamage(damage);
-  const range = weapon.infantry.range * 3;
-  return {
-    standard: {
-      dmgS: rounded,
-      dmgM: range > 3 ? rounded : '0',
-      dmgL: range > 15 ? rounded : '0',
-      dmgE: '0',
-    },
-    overheat: 0,
-    arcs: {},
-  };
-}
-
-function sumWeaponDamage(
-  entity: BaseEntity,
-  include: (mount: ReturnType<BaseEntity['mountedWeapons']>[number]) => boolean,
-): number[] {
-  const weapons = entity.mountedWeapons();
-  const targetingComputer = entity.equipment().some(mount => mount.equipment?.hasFlag('F_TARGETING_COMPUTER'));
-  const ammo = entity.equipment().filter(mount => mount.equipment instanceof AmmoEquipment);
-  return weapons.reduce((total, mount) => {
-    if (!include(mount) || mount.equipment.hasFlag('F_ARTILLERY')) return total;
-    const weapon = mount.equipment;
-    let modifier = ammoModifier(weapon, weapons, ammo);
-    if (weapon.oneShotCount && weapon.id !== 'CLFussilade') modifier *= 0.1;
-    if (targetingComputer && weapon.hasFlag('F_DIRECT_FIRE')) modifier *= 1.1;
-    if (entity instanceof MekEntity && ['LA', 'RA'].includes(mount.location)
-      && entity.getEquipmentAtLocation(mount.location).some(candidate =>
-        candidate.equipment?.hasFlag('F_ACTUATOR_ENHANCEMENT_SYSTEM'))) modifier *= 1.05;
-    for (let index = 0; index < 4; index++) {
-      total[index] += battleForceDamageForMount(entity, mount, index as AlphaStrikeRangeIndex) * modifier;
-    }
-    return total;
-  }, [0, 0, 0, 0]);
-}
-
-function ammoModifier(
-  weapon: WeaponEquipment,
-  weapons: readonly ReturnType<BaseEntity['mountedWeapons']>[number][],
-  ammo: readonly ReturnType<BaseEntity['equipment']>[number][],
-): number {
-  if (weapon.ammoType === 'NA' || weapon.oneShotCount) return 1;
-  const weaponCount = weapons.filter(mount => mount.equipment.id === weapon.id).length;
-  const shots = ammo.reduce((sum, mount) => mount.equipment instanceof AmmoEquipment
-    && ammoMatchesWeapon(weapon, mount.equipment) ? sum + (mount.getAmmoShots() ?? 0) : sum, 0);
-  const divisor = weapon.ammoType === 'AC_ROTARY' ? 6
-    : weapon.ammoType === 'AC_ULTRA' || weapon.ammoType === 'AC_ULTRA_THB' ? 2 : 1;
-  return shots / Math.max(weaponCount, 1) >= 10 * divisor ? 1 : shots > 0 ? 0.75 : 0;
-}
-
-function isFrontWeapon(entity: BaseEntity, location: string, rearMounted: boolean): boolean {
-  if (rearMounted) return false;
-  if (entity instanceof AeroEntity && location === 'Aft') return false;
-  if (entity instanceof VehicleEntity && location === 'Rear') return false;
-  return true;
+function isBattleArmorRepresentativeLocation(location: string): boolean {
+  return location === 'Squad' || location === 'Trooper 1';
 }
 
 function applyHeatAdjustment(
@@ -370,11 +305,13 @@ function applyHeatAdjustment(
   if (!(TP === 'BM' || TP === 'IM' || TP === 'AF')) {
     return { front, overheat: 0, overheatLong: false };
   }
-  const frontWeapons = entity.mountedWeapons().filter(mount => isFrontWeapon(entity, mount.location, mount.rearMounted));
-  const mediumWeaponHeat = frontWeapons.reduce((sum, mount) => sum + mountedWeaponHeat(mount.equipment), 0);
+  const frontWeapons = entity.mountedWeapons().filter(mount =>
+    alphaStrikeDamageLocationMultiplier(entity, 'standard', mount) > 0);
+  const mediumWeaponHeat = frontWeapons.reduce((sum, mount) =>
+    sum + alphaStrikeWeaponHeatForConversion(mount.equipment), 0);
   const longWeaponHeat = frontWeapons.reduce((sum, mount) =>
     sum + (baseBattleForceDamageForWeapon(mount.equipment, 2) > 0
-      ? mountedWeaponHeat(mount.equipment)
+      ? alphaStrikeWeaponHeatForConversion(mount.equipment)
       : 0), 0);
   let movementHeat = 0;
   let signatureHeat = 0;
@@ -404,17 +341,10 @@ function applyHeatAdjustment(
     const multiplier = heatSink.isCompactHeatSink || heatSink.hasFlag('F_HEAT_SINK') ? 1 : 2;
     return capacity + heatSink.heatSinkUnitsPerMount * multiplier;
   }, 0) : Math.max(0, entity.heatCapacity(false));
-  const capacity = alphaStrikeHeatCapacity({
-    baseCapacity,
-    coolantPodCount: equipment.filter(mount => mount.equipment instanceof AmmoEquipment
-      && mount.equipment.ammoType === 'COOLANT_POD').length,
-    partialWing: equipment.some(mount => mount.equipment?.hasFlag('F_PARTIAL_WING')),
-    radicalHeatSink: equipment.some(mount => mount.equipment?.hasFlag('F_RADICAL_HEATSINK')),
-    emergencyCoolantSystem: equipment.some(mount => mount.equipment?.hasFlag('F_EMERGENCY_COOLANT_SYSTEM')),
-  });
+  const capacity = alphaStrikeHeatCapacityForEntity(entity, baseCapacity);
   const rearWeaponHeat = entity.mountedWeapons().reduce((sum, mount) =>
-    sum + (!isFrontWeapon(entity, mount.location, mount.rearMounted)
-      ? mountedWeaponHeat(mount.equipment)
+    sum + (alphaStrikeDamageLocationMultiplier(entity, 'rear', mount) > 0
+      ? alphaStrikeWeaponHeatForConversion(mount.equipment)
       : 0), 0);
   return adjustAlphaStrikeDamageForHeat(front, {
     capacity,
@@ -431,36 +361,6 @@ function alphaStrikeJumpSystem(entity: MekEntity): AlphaStrikeJumpSystem {
   return jumpJet.hasFlag('S_IMPROVED') ? 'improved' : 'standard';
 }
 
-function mountedWeaponHeat(weapon: WeaponEquipment): number {
-  return alphaStrikeWeaponHeat({
-    equipmentId: weapon.id,
-    twHeat: weapon.heat,
-    ammoType: weapon.ammoType,
-    oneShot: (weapon.oneShotCount ?? 0) > 0,
-  });
-}
 
-function arcedDamage(entity: BaseEntity): { standard: Damage; overheat: number; arcs: Record<ArcName, AlphaStrikeArcStats> } {
-  return calculateLargeAerospaceDamage(entity);
-}
-
-function damageVector(values: readonly number[]): Damage {
-  return {
-    dmgS: dualRoundedUpDamage(values[0] ?? 0),
-    dmgM: dualRoundedUpDamage(values[1] ?? 0),
-    dmgL: dualRoundedUpDamage(values[2] ?? 0),
-    dmgE: dualRoundedUpDamage(values[3] ?? 0),
-  };
-}
-
-function alphaStrikeSpecials(entity: BaseEntity, TP: ASUnitTypeCode, size: number): string[] {
-  const specials: string[] = [];
-  if (TP === 'SV' && size === 3) specials.push('LG');
-  else if (TP === 'SV' && size === 4) specials.push('VLG');
-  else if (TP === 'SV' && size === 5) specials.push('SLG');
-  if (entity instanceof FixedWingSupportEntity || entity instanceof ConvFighterEntity) specials.push('ATMO');
-  if (hasAlphaStrikeVstolCapability(entity, TP)) specials.push('VSTOL');
-  return specials.sort();
-}
 
 

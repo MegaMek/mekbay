@@ -2,6 +2,7 @@ import { Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { DataService } from '../../services/data.service';
+import { EquipmentRegistry } from '../../models/equipment-lookup';
 import { DialogsService } from '../../services/dialogs.service';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -104,7 +105,9 @@ describe('SvgInteractionService', () => {
         TestBed.configureTestingModule({
             providers: [
                 SvgInteractionService,
-                { provide: DataService, useValue: { getEquipments: () => ({}) } },
+                { provide: DataService, useValue: {
+                    getEquipmentRegistry: () => new EquipmentRegistry({}),
+                } },
                 { provide: DialogsService, useValue: dialogsService },
                 {
                     provide: EquipmentInteractionRegistryService,

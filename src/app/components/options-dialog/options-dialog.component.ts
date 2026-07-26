@@ -196,7 +196,7 @@ export class OptionsDialogComponent {
         return draft.some((url, i) => url !== saved[i]);
     });
     unitsCount = computed(() => this.dataService.getUnits().length);
-    equipmentCount = computed(() => Object.keys(this.dataService.getEquipments()).length);
+    equipmentCount = computed(() => this.dataService.getEquipmentRegistry().size);
 
     /** Subscriber counts for own tags: tagId (lowercase) -> count */
     tagSubscriberCounts = signal<Record<string, number>>({});

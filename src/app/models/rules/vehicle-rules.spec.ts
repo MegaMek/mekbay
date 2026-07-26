@@ -5,6 +5,7 @@ import { type CriticalSlot } from '../force-serialization';
 import type { MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
 import { AmmoEquipment, Equipment, WeaponEquipment } from '../equipment.model';
+import { EquipmentRegistry } from '../equipment-lookup';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { VehicleRules } from './vehicle-rules';
 import { MascHandler, MASC_ACTIVE_STATE_KEY } from '../../equipment-handlers/masc.handler';
@@ -93,8 +94,8 @@ function createRulesHarness(options: {
         gameRules: options.rulesId === 'tw' ? TW_GAME_RULES : CORE_2026_GAME_RULES,
         getCritSlots: () => options.crits ?? [],
         getInventory: () => options.inventory ?? [],
-        getAvailableEquipment: () => Object.fromEntries((options.inventory ?? [])
-            .flatMap(entry => entry.equipment ? [[entry.equipment.internalName, entry.equipment]] : [])),
+        getEquipmentRegistry: () => new EquipmentRegistry(Object.fromEntries((options.inventory ?? [])
+            .flatMap(entry => entry.equipment ? [[entry.equipment.internalName, entry.equipment]] : []))),
         getInventoryControlSelectedAmmo: () => options.selectedAmmo ?? null,
         getInventoryControlRules: () => ({}),
         getUnit: () => baseUnit,

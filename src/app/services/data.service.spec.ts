@@ -28,6 +28,8 @@ import { ForceNameWordsCatalogService } from './catalogs/force-name-words-catalo
 import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { MULFACTION_NONE } from '../models/mulfactions.model';
+import { EquipmentRegistry } from '../models/equipment-lookup';
+import { MiscEquipment } from '../models/equipment.model';
 
 function createUnit(name: string): Unit {
     return createEmptyUnit({ name });
@@ -64,8 +66,7 @@ describe('DataService', () => {
     };
     const equipmentCatalogMock = {
         initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
-        getEquipments: jasmine.createSpy('getEquipments').and.returnValue({}),
-        getEquipmentByName: jasmine.createSpy('getEquipmentByName').and.returnValue(undefined),
+        getEquipmentRegistry: jasmine.createSpy('getEquipmentRegistry').and.returnValue(new EquipmentRegistry({})),
     };
     const erasCatalogMock = {
         initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
@@ -158,10 +159,8 @@ describe('DataService', () => {
         unitsCatalogMock.getUnits.and.returnValue([]);
         equipmentCatalogMock.initialize.calls.reset();
         equipmentCatalogMock.initialize.and.resolveTo(undefined);
-        equipmentCatalogMock.getEquipments.calls.reset();
-        equipmentCatalogMock.getEquipments.and.returnValue({});
-        equipmentCatalogMock.getEquipmentByName.calls.reset();
-        equipmentCatalogMock.getEquipmentByName.and.returnValue(undefined);
+        equipmentCatalogMock.getEquipmentRegistry.calls.reset();
+        equipmentCatalogMock.getEquipmentRegistry.and.returnValue(new EquipmentRegistry({}));
         erasCatalogMock.initialize.calls.reset();
         erasCatalogMock.initialize.and.resolveTo(undefined);
         erasCatalogMock.getEras.calls.reset();
@@ -276,6 +275,21 @@ describe('DataService', () => {
         service.getUnitByName('Mad Cat Prime');
 
         expect(unitRuntimeServiceMock.getUnitByName).toHaveBeenCalledOnceWith('Mad Cat Prime');
+    });
+
+    it('resolves equipment names through the catalog registry', () => {
+        const equipment = new MiscEquipment({
+            id: 'Canonical Equipment',
+            name: 'Canonical Equipment',
+            type: 'misc',
+            aliases: ['Legacy Equipment'],
+        });
+        equipmentCatalogMock.getEquipmentRegistry.and.returnValue(new EquipmentRegistry({
+            [equipment.internalName]: equipment,
+        }));
+
+        expect(service.findEquipment('  Legacy Equipment  ')).toBe(equipment);
+        expect(service.findEquipment('Missing Equipment')).toBeUndefined();
     });
 
     it('delegates Sarna page-title lookup to the Sarna catalog', () => {

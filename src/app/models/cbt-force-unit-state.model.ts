@@ -525,7 +525,6 @@ export class CBTForceUnitState extends ForceUnitState {
     }
 
     deserializeInventory(serializedInventory: SerializedInventory[]) {
-        const allEquipment = this.unit.getAvailableEquipment();
         const inventory: MountedEquipment[] = [];
         const existingInventory = this.inventory();
         serializedInventory.forEach(entry => {
@@ -557,11 +556,8 @@ export class CBTForceUnitState extends ForceUnitState {
                 newItem.consumed = entry.consumed;
             }
             newItem.setPendingDestroyed(entry.destroying);
-            if (allEquipment && newItem.name && !newItem.equipment) {
-                if (allEquipment) {
-                    const equipment = allEquipment[newItem.name];
-                    newItem.equipment = equipment;
-                }
+            if (newItem.name && !newItem.equipment) {
+                newItem.equipment = this.unit.getEquipmentRegistry().findEquipment(newItem.name) ?? undefined;
             }
             inventory.push(newItem);
         });
