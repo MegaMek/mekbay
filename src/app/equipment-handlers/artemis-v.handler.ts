@@ -20,8 +20,8 @@ export class ArtemisVHandler extends EquipmentInteractionHandler {
     override getToHitAdjustments(equipment: MountedEquipment, context: ToHitAdjustmentContext): readonly ToHitAdjustment[] {
         if (!context.parent) return [];
         const selectedAmmo = context.selectedAmmo;
-        const offset = equipment.isUnavailable()
+        const weakened = equipment.isUnavailable()
             || (selectedAmmo !== undefined && !selectedAmmo?.hasMunitionType('M_ARTEMIS_V_CAPABLE'));
-        return [{ kind: 'add', value: offset ? 1 : 0 }];
+        return [{ kind: 'add', value: weakened ? 0 : -1, weakened }];
     }
 }

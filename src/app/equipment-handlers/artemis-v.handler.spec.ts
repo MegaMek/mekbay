@@ -21,19 +21,26 @@ function ammo(munitionTypes: AmmoMunitionFlag[] = []): AmmoEquipment {
 describe('ArtemisVHandler', () => {
     const handler = new ArtemisVHandler();
 
-    it('does not offset intact Artemis V when Artemis V-capable ammo is selected', () => {
-        expect(handler.getToHitAdjustments(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), { parent: entry(), selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) })).toEqual([{ kind: 'add', value: 0 }]);
+    it('applies the Artemis V bonus when linked to a launcher using Artemis V-capable ammo', () => {
+        expect(handler.getToHitAdjustments(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), { parent: entry(), selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) })).toEqual([{ kind: 'add', value: -1 }]);
     });
 
-    it('offsets Artemis V when selected ammo is not Artemis V-capable', () => {
-        expect(handler.getToHitAdjustments(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), { parent: entry(), selectedAmmo: ammo(['M_ARTEMIS_CAPABLE']) })).toEqual([{ kind: 'add', value: 1 }]);
+    it('no Artemis V hit modifier bonus when selected ammo is not Artemis V-capable', () => {
+        expect(handler.getToHitAdjustments(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), { parent: entry(), selectedAmmo: ammo(['M_ARTEMIS_CAPABLE']) })).toEqual([{ kind: 'add', value: 0 }]);
         expect(handler.getToHitAdjustments(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), { parent: entry(), selectedAmmo: null })).toEqual([{ kind: 'add', value: 1 }]);
     });
 
-    it('offsets Artemis V when the linked enhancement is unavailable', () => {
+    it('no Artemis V hit modifier bonus when the linked enhancement is unavailable', () => {
         const artemis = entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']);
         artemis.owner = owner(artemis);
 
         expect(handler.getToHitAdjustments(artemis, { parent: entry(), selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) })).toEqual([{ kind: 'add', value: 1 }]);
+    });
+
+    it('does not apply a modifier when Artemis V is not linked to a launcher', () => {
+        expect(handler.getToHitAdjustments(
+            entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']),
+            { selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) }
+        )).toEqual([]);
     });
 });
