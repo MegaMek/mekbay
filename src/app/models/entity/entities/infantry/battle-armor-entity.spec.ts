@@ -50,3 +50,52 @@ describe('BattleArmorEntity movement', () => {
     expect(entity.jumpMP()).toBe(1);
   });
 });
+
+describe('BattleArmorEntity mechanized capability', () => {
+  it('rejects quad squads even when they mount magnetic clamps', () => {
+    const entity = new BattleArmorEntity();
+    entity.chassisType.set('Quad');
+    addTestEquipmentWithFlags(entity, 'F_MAGNETIC_CLAMP');
+
+    expect(entity.mechanizedCapable()).toBeFalse();
+  });
+
+  it('accepts a non-quad squad with magnetic clamps', () => {
+    const entity = new BattleArmorEntity();
+    addTestEquipmentWithFlags(entity, 'F_MAGNETIC_CLAMP');
+
+    expect(entity.mechanizedCapable()).toBeTrue();
+  });
+
+  it('applies the light-class armored glove threshold', () => {
+    const entity = new BattleArmorEntity();
+    entity.declaredWeightClass.set('Light');
+    addTestEquipmentWithFlags(entity, 'F_ARMORED_GLOVE');
+
+    expect(entity.mechanizedCapable()).toBeFalse();
+
+    addTestEquipmentWithFlags(entity, 'F_ARMORED_GLOVE');
+    expect(entity.mechanizedCapable()).toBeTrue();
+  });
+
+  it('accepts basic manipulators and battle claws only through heavy weight', () => {
+    const entity = new BattleArmorEntity();
+    entity.declaredWeightClass.set('Medium');
+    addTestEquipmentWithFlags(entity, 'F_BASIC_MANIPULATOR');
+    expect(entity.mechanizedCapable()).toBeTrue();
+
+    entity.declaredWeightClass.set('Heavy');
+    entity.setEquipment([]);
+    addTestEquipmentWithFlags(entity, 'F_BATTLE_CLAW');
+    expect(entity.mechanizedCapable()).toBeTrue();
+
+    entity.declaredWeightClass.set('Assault');
+    expect(entity.mechanizedCapable()).toBeFalse();
+  });
+
+  it('rejects squads without qualifying equipment', () => {
+    const entity = new BattleArmorEntity();
+
+    expect(entity.mechanizedCapable()).toBeFalse();
+  });
+});

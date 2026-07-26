@@ -40,6 +40,7 @@ import type { UnitSubtype } from '../../types';
 /** Conventional Fighter - ICE-powered, limited tech, optional VSTOL. */
 export class ConvFighterEntity extends AeroEntity {
   override readonly entityType: EntityType = 'ConvFighter';
+  vstol = signal<boolean>(false);
 
   override unitSubtype(): UnitSubtype {
     return this.withOmniSubtype('Conventional Fighter');
@@ -51,9 +52,6 @@ export class ConvFighterEntity extends AeroEntity {
       this.mountedCockpitTech(),
     ];
   }
-
-  /** VSTOL (Vertical/Short Take-Off and Landing) capability */
-  vstol = signal<boolean>(false);
 
   get locationOrder(): readonly string[] {
     return AERO_LOCATIONS;

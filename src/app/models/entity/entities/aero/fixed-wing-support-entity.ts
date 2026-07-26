@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { signal } from '@angular/core';
+import { computed } from '@angular/core';
 import { SupportVehicleData, type SupportVehicle } from '../support-vehicle';
 import { AERO_LOCATIONS, EntityType, FIXED_WING_EQUIP_LOCATIONS, WeightClass } from '../../types';
 import { AeroEntity } from './aero-entity';
@@ -55,12 +55,21 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
     return this.withOmniSubtype('Fixed Wing Support Vehicle');
   }
 
-  /** VSTOL (Vertical/Short Take-Off and Landing) capability */
-  vstol = signal<boolean>(false);
   readonly supportVehicle = new SupportVehicleData(10);
   readonly barRating = this.supportVehicle.barRating;
   readonly structuralTechRating = this.supportVehicle.structuralTechRating;
   readonly engineTechRating = this.supportVehicle.engineTechRating;
+  
+  /** Maximum bomb payload, derived from external hardpoints and Internal Bomb Bay cargo space. */
+  readonly maxBombPoints = computed(() => {
+    const externalHardpoints = this.equipment().filter(mount =>
+      mount.equipment?.hasFlag('F_EXTERNAL_STORES_HARDPOINT')).length;
+    const internalCapacity = this.transporters().reduce((total, transporter) =>
+      total + (transporter.kind === 'bay' && transporter.configuration.type === 'cargo'
+        ? Math.floor(transporter.capacity)
+        : 0), 0);
+    return externalHardpoints + internalCapacity;
+  });
 
   override isSupportVehicle(): this is this & SupportVehicle {
     return true;

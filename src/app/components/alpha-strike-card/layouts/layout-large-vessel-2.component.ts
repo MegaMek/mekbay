@@ -141,7 +141,7 @@ export class AsLayoutLargeVessel2Component extends AsLayoutBaseComponent {
                 mslM: d(stats.frontArc?.MSL.dmgM),
                 mslL: d(stats.frontArc?.MSL.dmgL),
                 mslE: d(stats.frontArc?.MSL.dmgE),
-                spe: stats.frontArc?.specials,
+                spe: stats.frontArc?.specials.join(', '),
             },
             {
                 label: 'AFT ARC DAMAGE',
@@ -162,7 +162,7 @@ export class AsLayoutLargeVessel2Component extends AsLayoutBaseComponent {
                 mslM: d(stats.rearArc?.MSL.dmgM),
                 mslL: d(stats.rearArc?.MSL.dmgL),
                 mslE: d(stats.rearArc?.MSL.dmgE),
-                spe: stats.rearArc?.specials,
+                spe: stats.rearArc?.specials.join(', '),
             },
             {
                 label: 'LEFT SIDE DAMAGE',
@@ -183,7 +183,7 @@ export class AsLayoutLargeVessel2Component extends AsLayoutBaseComponent {
                 mslM: d(stats.leftArc?.MSL.dmgM),
                 mslL: d(stats.leftArc?.MSL.dmgL),
                 mslE: d(stats.leftArc?.MSL.dmgE),
-                spe: stats.leftArc?.specials,
+                spe: stats.leftArc?.specials.join(', '),
             },
             {
                 label: 'RIGHT SIDE DAMAGE',
@@ -204,7 +204,7 @@ export class AsLayoutLargeVessel2Component extends AsLayoutBaseComponent {
                 mslM: d(stats.rightArc?.MSL.dmgM),
                 mslL: d(stats.rightArc?.MSL.dmgL),
                 mslE: d(stats.rightArc?.MSL.dmgE),
-                spe: stats.rightArc?.specials,
+                spe: stats.rightArc?.specials.join(', '),
             },
         ];
     });

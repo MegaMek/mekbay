@@ -91,9 +91,9 @@ export function writeBlkAero(entity: AeroEntity): string {
   // 5. SafeThrust
   w.addBlock('SafeThrust', entity.originalWalkMP());
 
-  // 6. Cockpit / vstol
+  // 6. Cockpit / VSTOL
   w.addBlock('cockpit_type', encodeBlkAeroCockpitType(entity.cockpitType()));
-  if ((entity instanceof ConvFighterEntity || entity instanceof FixedWingSupportEntity) && entity.vstol()) {
+  if (writesVstolBlock(entity)) {
     w.addBlock('vstol', 1);
   }
 
@@ -147,4 +147,11 @@ export function writeBlkAero(entity: AeroEntity): string {
   }
 
   return w.toString();
+}
+
+/** Mirrors BLKFile's conventional-fighter type-flag and Aero.isVSTOL condition. */
+function writesVstolBlock(entity: AeroEntity): boolean {
+  if (entity instanceof ConvFighterEntity) return entity.vstol();
+  return entity instanceof FixedWingSupportEntity
+    && entity.equipment().some(mount => mount.equipment?.hasFlag('F_VSTOL_CHASSIS'));
 }
