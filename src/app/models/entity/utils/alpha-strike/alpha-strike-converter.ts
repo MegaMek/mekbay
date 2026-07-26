@@ -31,33 +31,102 @@
  * affiliated with Microsoft.
  */
 
-import { type BaseEntity, AeroEntity, ConvFighterEntity, DropShipEntity, FixedWingSupportEntity, 
-    SmallCraftEntity, BattleArmorEntity, InfantryEntity, JumpShipEntity, SpaceStationEntity, 
-    WarShipEntity, MekEntity, LamEntity, QuadVeeEntity, ProtoMekEntity, VehicleEntity } from '../../entities';
-import { AmmoEquipment, WeaponEquipment, ammoMatchesWeapon } from '../../../equipment.model';
+import { type BaseEntity, AeroEntity, ConvFighterEntity, FixedWingSupportEntity,
+  BattleArmorEntity, InfantryEntity, MekEntity,
+  VehicleEntity } from '../../entities';
+import { AmmoEquipment, MiscEquipment, WeaponEquipment, ammoMatchesWeapon, getAmmoCategory } from '../../../equipment.model';
 import type { AlphaStrikeArcStats, AlphaStrikeUnitStats, ASUnitTypeCode } from '../../../units.model';
-import { AS_MOVEMENT_CALCULATION } from '../../types';
-import { infantryDamageDivisor } from '../battle-value/infantry-rules';
+import {
+  CalculationReportBuilder,
+  NULL_CALCULATION_REPORT,
+  type CalculationReportEvent,
+  type CalculationReportSink,
+} from './report/calculation-report';
+import {
+  renderTextCalculationReport,
+  type TextCalculationReportOptions,
+} from './report/text-calculation-report-renderer';
+import {
+  AEROSPACE_EXPORT_TYPES,
+  alphaStrikeSize,
+  alphaStrikeUnitType,
+  hasAlphaStrikeVstolCapability,
+  isAerospaceElement,
+  isFighter,
+  usesArcs as alphaStrikeUsesArcs,
+} from './foundation/unit-classification';
+import {
+  alphaStrikeMovement,
+  type AlphaStrikeMovement,
+  movementString,
+  primaryTmmMovement,
+  tmmForMovement,
+} from './foundation/movement';
+import {
+  alphaStrikeArmor,
+  alphaStrikeStructure,
+  alphaStrikeThreshold,
+} from './foundation/integrity';
+import { alphaStrikeDamageFamily } from './damage/damage-dispatch';
+import { dualRoundedUpDamage } from './damage/damage-rounding';
+import { createEmptyArcs } from './damage/damage-types';
+import { calculateBattleArmorStandardDamage } from './damage/battle-armor-damage';
+import { calculateLargeAerospaceDamage } from './damage/large-aerospace-damage';
+import {
+  adjustAlphaStrikeDamageForHeat,
+  alphaStrikeHeatCapacity,
+  alphaStrikeMovementHeat,
+  alphaStrikeWeaponHeat,
+  type AlphaStrikeJumpSystem,
+} from './damage/heat-adjustment';
+import {
+  baseBattleForceDamageForWeapon,
+  battleForceDamageForMount,
+  type AlphaStrikeRangeIndex,
+} from './damage/weapon-damage-profile';
+import { alphaStrikeCoreSpecials } from './specials/core-specials';
 
-type MovementMap = Record<string, number>;
+export { alphaStrikeSize, alphaStrikeUnitType } from './foundation/unit-classification';
+export { tmmForMovement } from './foundation/movement';
+
 type Damage = AlphaStrikeUnitStats['dmg'];
 type ArcName = 'frontArc' | 'leftArc' | 'rightArc' | 'rearArc';
 
 const ZERO_DAMAGE: Damage = { dmgS: '0', dmgM: '0', dmgL: '0', dmgE: '0' };
-const AEROSPACE_EXPORT_TYPES = new Set<ASUnitTypeCode>(['AF', 'CF', 'SC', 'DS', 'DA', 'SS', 'JS', 'WS']);
-const LARGE_AEROSPACE_TYPES = new Set<ASUnitTypeCode>(['SC', 'DS', 'DA', 'SS', 'JS', 'WS']);
+
+export interface AlphaStrikeConversionWithReport {
+  readonly stats: AlphaStrikeUnitStats;
+  readonly reportEvents: readonly CalculationReportEvent[];
+  readonly report: string;
+}
+
+/** Pristine-conversion options. Alpha Strike skill is the pilot's Gunnery value. */
+export interface AlphaStrikeConversionOptions {
+  /** Gunnery skill; defaults to the standard skill 4. */
+  readonly skill?: number;
+  /** Optional structured calculation-report receiver. */
+  readonly report?: CalculationReportSink;
+}
+
+export interface AlphaStrikeConversionReportOptions
+  extends AlphaStrikeConversionOptions, TextCalculationReportOptions {}
 
 /** Converts a pristine canonical entity to the Alpha Strike data exported by MegaMekLab. */
-export function convertEntityToAlphaStrike(entity: BaseEntity): AlphaStrikeUnitStats {
+export function convertEntityToAlphaStrike(
+  entity: BaseEntity,
+  options: AlphaStrikeConversionOptions = {},
+): AlphaStrikeUnitStats {
+  const skill = resolveAlphaStrikeSkill(options.skill);
+  const report = options.report ?? NULL_CALCULATION_REPORT;
   const TP = alphaStrikeUnitType(entity);
   const SZ = alphaStrikeSize(entity);
-  const movement = alphaStrikeMovement(entity, TP);
-  const usesArcs = LARGE_AEROSPACE_TYPES.has(TP) || (TP === 'SV' && SZ >= 3);
+  const movement = alphaStrikeMovement(entity);
+  const usesArcs = alphaStrikeUsesArcs(TP, SZ);
   const usesTh = isAerospaceElement(entity, TP);
   const usesE = usesTh;
   const Arm = alphaStrikeArmor(entity);
   const Str = alphaStrikeStructure(entity);
-  const damage = alphaStrikeDamage(entity, TP, usesArcs);
+  const damage = alphaStrikeDamage(entity, TP, movement);
   const result: AlphaStrikeUnitStats = {
     TP,
     PV: 0,
@@ -71,279 +140,154 @@ export function convertEntityToAlphaStrike(entity: BaseEntity): AlphaStrikeUnitS
     MVm: movement.values,
     MVp: movement.primary,
     usesTh,
-    Th: usesTh ? alphaStrikeRoundUp(Arm / 3 / (isFighter(entity, TP) ? 1 : 4)) : -1,
+    Th: usesTh ? alphaStrikeThreshold(Arm, isFighter(entity, TP)) : -1,
     Arm,
     Str,
-    specials: alphaStrikeSpecials(entity, TP, SZ),
+    specials: [...new Set([
+      ...alphaStrikeSpecials(entity, TP, SZ),
+      ...alphaStrikeCoreSpecials(entity, {
+        type: TP,
+        hasStandardDamage: Object.values(damage.standard).some(value => Number(value) > 0),
+      }),
+      ...(damage.overheatLong ? ['OVL'] : []),
+    ])].sort(),
     dmg: damage.standard,
     usesE,
     usesArcs,
   };
-  Object.assign(result, damage.arcs);
+  Object.assign(result, usesArcs ? { ...createEmptyArcs(), ...damage.arcs } : damage.arcs);
+  writeConversionReport(entity, result, skill, report);
   return result;
 }
 
-export function alphaStrikeUnitType(entity: BaseEntity): ASUnitTypeCode {
-  if (entity instanceof MekEntity) return entity.isIndustrial() ? 'IM' : 'BM';
-  if (entity instanceof ProtoMekEntity) return 'PM';
-  if (entity instanceof VehicleEntity) return entity.isSupportVehicle() ? 'SV' : 'CV';
-  if (entity instanceof BattleArmorEntity) return 'BA';
-  if (entity instanceof InfantryEntity) return 'CI';
-  if (entity instanceof SpaceStationEntity) return 'SS';
-  if (entity instanceof WarShipEntity) return 'WS';
-  if (entity instanceof JumpShipEntity) return 'JS';
-  if (entity instanceof DropShipEntity) return entity.motiveType() === 'Spheroid' ? 'DS' : 'DA';
-  if (entity instanceof SmallCraftEntity) return 'SC';
-  if (entity instanceof FixedWingSupportEntity) return 'SV';
-  if (entity instanceof ConvFighterEntity) return 'CF';
-  if (entity instanceof AeroEntity) return 'AF';
-  return 'UNKNOWN';
+/** Converts an entity and returns both serialized stats and a Java-compatible text report. */
+export function convertEntityToAlphaStrikeWithReport(
+  entity: BaseEntity,
+  options: AlphaStrikeConversionReportOptions = {},
+): AlphaStrikeConversionWithReport {
+  const reportBuilder = new CalculationReportBuilder();
+  const stats = convertEntityToAlphaStrike(entity, { ...options, report: reportBuilder });
+  const reportEvents = reportBuilder.events();
+  return {
+    stats,
+    reportEvents,
+    report: renderTextCalculationReport(reportEvents, { eol: options.eol }),
+  };
 }
 
-export function alphaStrikeSize(entity: BaseEntity): number {
-  const tons = entity.tonnage();
-  if (entity instanceof VehicleEntity && entity.isSupportVehicle()) {
-    if (tons < 5) return 1;
-    const limits: Partial<Record<string, readonly number[]>> = {
-      Tracked: [100, 200], Wheeled: [80, 160], Hover: [50, 100],
-      Naval: [300, 6000, 30000], Hydrofoil: [300, 6000, 30000],
-      Submarine: [300, 6000, 30000], WiGE: [80, 240], Rail: [300, 600],
-      Airship: [300, 600, 900], VTOL: [30, 60],
-    };
-    const [medium = 0, large = 0, veryLarge = 0] = limits[entity.motiveType()] ?? [];
-    if (tons <= medium) return 2;
-    if (tons <= large) return 3;
-    if (veryLarge === 0 || tons <= veryLarge) return 4;
-    return 5;
+function resolveAlphaStrikeSkill(skill: number | undefined): number {
+  const resolved = skill ?? 4;
+  if (!Number.isInteger(resolved) || resolved < 0) {
+    throw new RangeError('Alpha Strike skill must be a non-negative integer.');
   }
-  if (entity instanceof InfantryEntity || entity instanceof BattleArmorEntity) return 1;
-  if (entity instanceof WarShipEntity) return tons < 500_000 ? 1 : tons < 800_000 ? 2 : tons < 1_200_000 ? 3 : 4;
-  if (entity instanceof JumpShipEntity) return tons < 100_000 ? 1 : tons < 300_000 ? 2 : 3;
-  if (entity instanceof SmallCraftEntity) return tons < 2_500 ? 1 : tons < 10_000 ? 2 : 3;
-  if (entity instanceof FixedWingSupportEntity) return tons < 5 ? 1 : tons <= 100 ? 2 : 3;
-  if (entity instanceof AeroEntity) return tons < 50 ? 1 : tons < 75 ? 2 : 3;
-  return tons < 40 ? 1 : tons < 60 ? 2 : tons < 80 ? 3 : 4;
+  return resolved;
 }
 
-function alphaStrikeMovement(entity: BaseEntity, TP: ASUnitTypeCode): { values: MovementMap; primary: string } {
-  if (entity instanceof AeroEntity) {
-    if (entity instanceof WarShipEntity) return { values: { '': entity.walkMP() }, primary: '' };
-    if (entity instanceof JumpShipEntity) return { values: { k: 2 }, primary: 'k' };
-    const primary = movementCode(entity);
-    return { values: { [primary]: entity.walkMP() }, primary };
+function writeConversionReport(
+  entity: BaseEntity,
+  stats: AlphaStrikeUnitStats,
+  skill: number,
+  report: CalculationReportSink,
+): void {
+  const name = entity.displayName();
+  if (name.length < 15) report.addHeader(`Alpha Strike Conversion for ${name}`);
+  else report.addHeader('Alpha Strike Conversion for').addHeader(name);
+
+  report.addEmptyLine().addSubHeader('Basic Info:')
+    .addLine('Chassis:', entity.chassis())
+    .addLine('Model:', entity.model())
+    .addLine('MUL ID:', String(entity.mulId()))
+    .addLine('Unit Role:', entity.role())
+    .addLine('Unit Type:', alphaStrikeUnitTypeName(stats.TP), stats.TP)
+    .addLine('Size:', alphaStrikeSizeDescription(stats.TP, stats.SZ), String(stats.SZ))
+    .addLine('Skill:', '', String(skill))
+    .addEmptyLine()
+    .addSubHeader('Movement:')
+    .addLine('Standard Movement', '', stats.MV);
+  if (!AEROSPACE_EXPORT_TYPES.has(stats.TP)) {
+    report.addLine('TMM', `of ${stats.MVm[stats.MVp] ?? 0}`, String(stats.TMM ?? 0));
   }
 
-  if (entity instanceof InfantryEntity || entity instanceof BattleArmorEntity) {
-    const walk = entity.computeWalkMP(AS_MOVEMENT_CALCULATION);
-    const jump = entity.computeJumpMP(AS_MOVEMENT_CALCULATION);
-    const code = movementCode(entity);
-    const values: MovementMap = {};
-    const minimalWalk = entity instanceof InfantryEntity && walk === 0;
-    const walkMove = minimalWalk ? 2 : minimumConvertedMovement(walk * 2);
-    const jumpMove = minimumConvertedMovement(jump * 2);
-    let primary = code;
-    if (walk > jump || jump === 0) values[code] = walkMove;
-    else {
-      primary = code === 'v' ? code : 'j';
-      values[primary] = jumpMove;
-    }
-    addUmuMovement(values, entity);
-    return { values, primary };
+  writeIntegrityReport(report, 'Armor:', 'Final Armor Value', stats.Arm);
+  writeIntegrityReport(report, 'Structure:', 'Structure', stats.Str);
+  if (stats.usesTh) {
+    report.addEmptyLine().addSubHeader('Threshold:')
+      .addLine('Threshold', 'Armor / 3 / Arcs, round up', String(stats.Th));
   }
 
-  let walk = entity.originalWalkMP();
-  const equipment = entity.equipment();
-  const hasSupercharger = equipment.some(mount => mount.equipment?.hasFlag('F_MASC') && mount.equipment.hasFlag('S_SUPERCHARGER'));
-  const hasMasc = entity instanceof MekEntity && equipment.some(mount => mount.equipment?.hasFlag('F_MASC') && !mount.equipment.hasFlag('S_SUPERCHARGER'));
-  const hasSingleBooster = hasSupercharger || hasMasc
-    || equipment.some(mount => mount.equipment?.hasFlag('F_JET_BOOSTER'))
-    || (entity instanceof ProtoMekEntity && equipment.some(mount => mount.equipment?.hasFlag('F_MASC')));
-  if (hasSupercharger && hasMasc) walk *= 1.5;
-  else if (hasSingleBooster) walk *= 1.25;
-  walk = Math.round(walk);
-  if (entity instanceof MekEntity && entity.locationOrder.some(location =>
-    entity.locationIsLeg(location) && entity.armorAt(location).type === 'HARDENED')) walk--;
-  if (equipment.some(mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'))) walk--;
-  if (equipment.some(mount => mount.equipment?.hasFlag('F_CLUB')
-    && mount.equipment.hasAnyFlag(['S_SHIELD_LARGE', 'S_SHIELD_MEDIUM']))) walk--;
-  const baseMove = Math.max(0, Math.round(walk) * 2);
-  const jumpMove = entity.computeJumpMP({ ...AS_MOVEMENT_CALCULATION, includeAlternateJumpSystems: true }) * 2;
-  const code = movementCode(entity);
-  const values: MovementMap = {};
-  let primary = code;
-  if (jumpMove === baseMove && jumpMove > 0 && code === '') {
-    values['j'] = baseMove;
-    primary = 'j';
-  } else {
-    values[code] = baseMove;
-    if (jumpMove > 0) values['j'] = jumpMove;
-  }
-  addUmuMovement(values, entity);
-  if (Object.keys(values).length > 1) primary = code;
-  if (entity instanceof LamEntity) {
-    values['a'] = entity.computeJumpMP(AS_MOVEMENT_CALCULATION);
-    if (entity.lamType().toLowerCase() !== 'bimodal') {
-      values['g'] = entity.computeJumpMP(AS_MOVEMENT_CALCULATION) * 6;
-    }
-  }
-  return { values, primary };
+  report.addEmptyLine().addSubHeader('Damage Conversion:')
+    .addLine('Final S damage:', '', stats.dmg.dmgS)
+    .addLine('Final M damage:', '', stats.dmg.dmgM)
+    .addLine('Final L damage:', '', stats.dmg.dmgL);
+  if (stats.usesE) report.addLine('Final E damage:', '', stats.dmg.dmgE);
+  if (stats.usesOV) report.addLine('Overheat:', '', String(stats.OV));
+  report.addEmptyLine().addSubHeader('Weapon-based Special Abilities:')
+    .addLine('None')
+    .addEmptyLine().addSubHeader('Further Special Abilities:');
+  if (stats.specials.length === 0) report.addLine('None');
+  else stats.specials.forEach(special => report.addLine('', '', special));
+
+  report.addEmptyLine().addSubHeader('Point Value:')
+    .addResultLine('Base Point Value', 'round normal', String(stats.PV));
 }
 
-function movementCode(entity: BaseEntity): string {
-  if (entity instanceof QuadVeeEntity) return entity.motiveType() === 'Track' ? 'qt' : 'qw';
-  const motiveType = entity instanceof InfantryEntity && entity.mount()
-    ? entity.mount()!.movementMode
-    : entity.motiveType();
-  switch (motiveType) {
-    case 'None': case 'Biped': case 'Quad': case 'Tripod': return '';
-    case 'Track': case 'Tracked': return 't';
-    case 'Wheel': case 'Wheeled': return 'w';
-    case 'Hover': return 'h';
-    case 'VTOL': return 'v';
-    case 'Naval': case 'Hydrofoil': return 'n';
-    case 'Submarine': case 'UMU': return 's';
-    case 'Leg': return 'f';
-    case 'Motorized': return 'm';
-    case 'Jump': return entity.jumpMP() > 0 ? 'j' : 'f';
-    case 'WiGE': return 'g';
-    case 'Rail': return 'r';
-    case 'Aerodyne': case 'Aerospace': return 'a';
-    case 'Spheroid': return 'p';
-    default: return 'ERROR';
-  }
+function writeIntegrityReport(
+  report: CalculationReportSink,
+  heading: string,
+  label: string,
+  value: number,
+): void {
+  report.addEmptyLine().addSubHeader(heading).addLine(label, '', String(value));
 }
 
-function addUmuMovement(values: MovementMap, entity: BaseEntity): void {
-  if (entity.umuMP() > 0) values['s'] = entity.umuMP() * 2;
+function alphaStrikeUnitTypeName(type: ASUnitTypeCode): string {
+  const names: Partial<Record<ASUnitTypeCode, string>> = {
+    BM: 'BattleMek', IM: 'Industrial Mek', CV: 'Combat Vehicle', SV: 'Support Vehicle',
+    PM: 'ProtoMek', BA: 'Battle Armor', CI: 'Conventional Infantry', AF: 'Aerospace Fighter',
+    CF: 'Conventional Fighter', SC: 'Small Craft', WS: 'WarShip', SS: 'Space Station',
+    JS: 'JumpShip', DA: 'Aerodyne DropShip', DS: 'Spheroid DropShip',
+  };
+  return names[type] ?? 'Unknown';
 }
 
-function minimumConvertedMovement(value: number): number {
-  return value > 0 ? Math.max(value, 2) : value;
-}
-
-function primaryTmmMovement(entity: BaseEntity, movement: { values: MovementMap; primary: string }): number {
-  let value = movement.values[movement.primary] ?? 0;
-  if (entity instanceof InfantryEntity || entity instanceof BattleArmorEntity) {
-    const alternative = Object.entries(movement.values).find(([mode]) => mode !== 'f');
-    if (alternative) value = alternative[1];
-  }
-  return value;
-}
-
-export function tmmForMovement(movement: number): number {
-  return movement > 34 ? 5 : movement > 18 ? 4 : movement > 12 ? 3 : movement > 8 ? 2 : movement > 4 ? 1 : 0;
-}
-
-function movementString(TP: ASUnitTypeCode, movement: MovementMap): string {
-  return Object.entries(movement)
-    .filter(([mode]) => TP !== 'BM' || (mode !== 'a' && mode !== 'g'))
-    .map(([mode, value]) => {
-    if (mode === 'k') return `0.${value}k`;
-    if (mode === 'a' || mode === 'p') return `${value}${mode}`;
-    if (['DS', 'WS', 'DA', 'JS', 'SS'].includes(TP) && mode === '') return String(value);
-    return `${value}\"${mode}`;
-    }).join('/');
-}
-
-function alphaStrikeArmor(entity: BaseEntity): number {
-  if (entity instanceof InfantryEntity) {
-    let divisor = infantryDamageDivisor(entity);
-    if (['Tracked', 'Wheeled', 'Hover', 'VTOL', 'Submarine'].includes(entity.motiveType())) divisor /= 2;
-    return Math.round(divisor / 15 * entity.totalInternalPoints());
-  }
-  if (entity instanceof BattleArmorEntity) return Math.round(entity.totalArmorPoints() / 30);
-  let points = 0;
-  for (const [location, armor] of entity.armorValues()) {
-    if (!armor || (armor.front <= 0 && armor.rear <= 0)) continue;
-    const type = entity.armorByLocation().get(location)?.type ?? entity.uniformArmor()?.type ?? 'STANDARD';
-    let modifier = type === 'COMMERCIAL' ? 0.5 : type === 'FERRO_LAMELLOR' ? 1.2 : type === 'HARDENED' ? 2 : 1;
-    if (entity.isSupportVehicle() && entity.barRating() < 9 && type !== 'COMMERCIAL') modifier *= entity.barRating() / 10;
-    points += Math.max(0, armor.front * modifier) + Math.max(0, armor.rear * modifier);
-  }
-  points += entity.equipment().filter(mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR')).length * 10;
-  return entity instanceof JumpShipEntity ? Math.round(points * 0.33) : Math.round(points / 30);
-}
-
-const AS_MEK_STRUCTURE: readonly (readonly number[])[] = [
-  [1,1,2,2,3,3,3,4,4,5,5,5,6,6,6,7,7,8,8,8,8,9,9,10,10,10,11,11,11,12,12,13,13,13,14,14,14,15,15],
-  [1,2,2,3,3,4,4,5,5,6,7,7,7,8,8,9,10,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20],
-  [1,1,1,2,2,2,2,3,3,4,4,4,4,5,5,5,6,6,6,6,7,7,7,8,8,8,8,9,9,9,10,10,10,11,11,11,11,12,12],
-  [1,1,1,1,2,2,2,2,3,3,3,4,4,4,4,5,5,5,5,5,6,6,6,6,7,7,7,7,8,8,8,8,9,9,9,9,10,10,10],
-  [1,1,1,1,1,2,2,2,2,3,3,3,3,3,4,4,4,4,4,5,5,5,5,5,6,6,6,6,6,7,7,7,7,8,8,8,8,8,9],
-  [1,1,1,1,1,1,2,2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,5,5,5,5,5,6,6,6,6,6,6,7,7,7,7,7,8],
-  [1,1,1,1,1,1,1,1,2,2,2,2,2,2,3,3,3,3,3,3,3,4,4,4,4,4,4,4,5,5,5,5,5,5,5,6,6,6,6],
-  [1,1,1,1,1,1,1,2,2,2,2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,6,6,6,6,6,6,7,7],
-  [1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5],
-];
-
-function alphaStrikeStructure(entity: BaseEntity): number {
-  if (entity instanceof MekEntity) {
-    const weightIndex = Math.trunc(entity.tonnage() / 5) - 2;
-    let structure = AS_MEK_STRUCTURE[mekEngineIndex(entity)]?.[weightIndex] ?? -1;
-    const typeId = entity.uniformStructureMaterial()?.structure.structureTypeId;
-    if (typeId === 5) structure = Math.ceil(structure * 0.5);
-    else if (typeId === 4) structure *= 2;
-    return structure;
-  }
-  if (entity instanceof WarShipEntity) return entity.structuralIntegrity();
-  if (entity instanceof BattleArmorEntity) return 2;
-  if (entity instanceof InfantryEntity || entity instanceof JumpShipEntity || entity instanceof ProtoMekEntity) return 1;
-  if (entity instanceof VehicleEntity) {
-    let divisor = 10;
-    if (entity.isSupportVehicle() && ['Naval', 'Hydrofoil', 'Submarine'].includes(entity.motiveType())) {
-      const tons = entity.tonnage();
-      divisor = tons >= 30000.5 ? 35 : tons >= 12000.5 ? 30 : tons >= 6000.5 ? 25
-        : tons >= 500.5 ? 20 : tons >= 300.5 ? 15 : 10;
-    }
-    const internalPoints = !entity.isSupportVehicle() && entity.isSuperHeavy()
-      ? entity.totalInternalPoints() - 1
-      : entity.totalInternalPoints();
-    return Math.ceil(internalPoints / divisor);
-  }
-  if (entity instanceof AeroEntity) return Math.ceil(entity.structuralIntegrity() * 0.5);
-  return -1;
-}
-
-function mekEngineIndex(entity: MekEntity): number {
-  const engine = entity.mountedEngine();
-  const clan = engine.techBase === 'Clan';
-  const large = engine.isLarge;
-  switch (engine.type()) {
-    case 'Compact': return clan ? 0 : 1;
-    case 'Light': return clan ? 0 : large ? 4 : 3;
-    case 'XL': return clan ? (large ? 4 : 3) : 4;
-    case 'XXL': return clan ? (large ? 7 : 5) : large ? 8 : 6;
-    default: return clan ? 0 : large ? 2 : 0;
-  }
-}
-
-function isAerospaceElement(entity: BaseEntity, TP: ASUnitTypeCode): boolean {
-  return AEROSPACE_EXPORT_TYPES.has(TP) || entity instanceof FixedWingSupportEntity;
-}
-
-function isFighter(entity: BaseEntity, TP: ASUnitTypeCode): boolean {
-  return TP === 'AF' || TP === 'CF' || entity instanceof FixedWingSupportEntity;
-}
-
-function alphaStrikeRoundUp(value: number): number {
-  return Math.round(value + 0.4);
+function alphaStrikeSizeDescription(type: ASUnitTypeCode, size: number): string {
+  if (type === 'CI' || type === 'BA') return 'Infantry';
+  return `Size ${size}`;
 }
 
 function alphaStrikeDamage(
   entity: BaseEntity,
   TP: ASUnitTypeCode,
-  usesArcs: boolean,
-): { standard: Damage; overheat: number; arcs: Partial<Record<ArcName, AlphaStrikeArcStats>> } {
-  if (entity instanceof InfantryEntity) return conventionalInfantryDamage(entity);
-  if (entity instanceof BattleArmorEntity) return battleArmorDamage(entity);
-  if (usesArcs) return arcedDamage(entity);
+  movement: AlphaStrikeMovement,
+): { standard: Damage; overheat: number; overheatLong?: boolean; arcs: Partial<Record<ArcName, AlphaStrikeArcStats>> } {
+  const family = alphaStrikeDamageFamily(entity, TP);
+  if (family === 'conventional-infantry') return conventionalInfantryDamage(entity as InfantryEntity);
+  if (family === 'battle-armor') {
+    return { standard: calculateBattleArmorStandardDamage(entity as BattleArmorEntity).standard, overheat: 0, arcs: {} };
+  }
+  if (family === 'arced') return arcedDamage(entity);
 
   const raw = sumWeaponDamage(entity, mount => isFrontWeapon(entity, mount.location, mount.rearMounted));
-  const adjusted = applyHeatAdjustment(entity, TP, raw);
-  return { standard: damageVector(adjusted.values), overheat: adjusted.overheat, arcs: {} };
+  if (family === 'generic') raw[3] = 0;
+  const adjusted = applyHeatAdjustment(entity, TP, raw, movement);
+  return {
+    standard: damageVector(adjusted.front),
+    overheat: adjusted.overheat,
+    overheatLong: adjusted.overheatLong,
+    arcs: {},
+  };
 }
 
 function conventionalInfantryDamage(entity: InfantryEntity): { standard: Damage; overheat: number; arcs: {} } {
+  const fieldGuns = entity.mountedWeapons().filter(mount => mount.location === 'Field Guns');
+  const hasActiveFieldArtillery = fieldGuns.some(mount =>
+    getAmmoCategory(mount.equipment.ammoType) === 'Artillery');
+  if (fieldGuns.length > 0 && !hasActiveFieldArtillery) {
+    const raw = sumWeaponDamage(entity, mount => mount.location === 'Field Guns');
+    raw[3] = 0;
+    return { standard: damageVector(raw), overheat: 0, arcs: {} };
+  }
+
   const weapon = entity.rangeWeapon();
   if (!weapon?.infantry) return { standard: ZERO_DAMAGE, overheat: 0, arcs: {} };
   const troopFactors = [0,0,1,2,3,3,4,4,5,5,6,7,8,8,9,9,10,10,11,11,12,13,14,15,16,16,17,17,17,18,18];
@@ -358,7 +302,7 @@ function conventionalInfantryDamage(entity: InfantryEntity): { standard: Damage;
     + (secondary?.infantry.damage ?? 0) * secondaryCount
   ) / squadSize;
   const damage = damagePerTrooper * factor / 10;
-  const rounded = asDamage(damage);
+  const rounded = dualRoundedUpDamage(damage);
   const range = weapon.infantry.range * 3;
   return {
     standard: {
@@ -385,7 +329,12 @@ function sumWeaponDamage(
     let modifier = ammoModifier(weapon, weapons, ammo);
     if (weapon.oneShotCount && weapon.id !== 'CLFussilade') modifier *= 0.1;
     if (targetingComputer && weapon.hasFlag('F_DIRECT_FIRE')) modifier *= 1.1;
-    for (let index = 0; index < 4; index++) total[index] += battleForceDamage(weapon, index) * modifier;
+    if (entity instanceof MekEntity && ['LA', 'RA'].includes(mount.location)
+      && entity.getEquipmentAtLocation(mount.location).some(candidate =>
+        candidate.equipment?.hasFlag('F_ACTUATOR_ENHANCEMENT_SYSTEM'))) modifier *= 1.05;
+    for (let index = 0; index < 4; index++) {
+      total[index] += battleForceDamageForMount(entity, mount, index as AlphaStrikeRangeIndex) * modifier;
+    }
     return total;
   }, [0, 0, 0, 0]);
 }
@@ -411,96 +360,97 @@ function isFrontWeapon(entity: BaseEntity, location: string, rearMounted: boolea
   return true;
 }
 
-function applyHeatAdjustment(entity: BaseEntity, TP: ASUnitTypeCode, raw: number[]): { values: number[]; overheat: number } {
-  if (!(TP === 'BM' || TP === 'IM' || TP === 'AF')) return { values: raw, overheat: 0 };
-  const frontWeapons = entity.mountedWeapons().filter(mount => isFrontWeapon(entity, mount.location, mount.rearMounted));
-  const weaponHeat = frontWeapons.reduce((sum, mount) => {
-    if (mount.equipment.oneShotCount) return sum;
-    const multiplier = mount.equipment.ammoType === 'AC_ROTARY' ? 6
-      : mount.equipment.ammoType === 'AC_ULTRA' || mount.equipment.ammoType === 'AC_ULTRA_THB' ? 2 : 1;
-    return sum + mount.equipment.heat * multiplier;
-  }, 0);
-  let movementHeat = 0;
-  if (entity instanceof MekEntity) {
-    movementHeat = entity.jumpMP() > 0 ? Math.max(3, entity.jumpMP())
-      : entity.isIndustrial() || !entity.mountedEngine().installed ? 0 : entity.mountedEngine().movementHeat.run;
+function applyHeatAdjustment(
+  entity: BaseEntity,
+  TP: ASUnitTypeCode,
+  raw: number[],
+  movement: AlphaStrikeMovement,
+): { front: [number, number, number, number]; overheat: number; overheatLong: boolean } {
+  const front = raw as [number, number, number, number];
+  if (!(TP === 'BM' || TP === 'IM' || TP === 'AF')) {
+    return { front, overheat: 0, overheatLong: false };
   }
-  const heat = weaponHeat + movementHeat;
-  let capacity = Math.max(0, entity.heatCapacity(false));
-  capacity += entity.equipment().filter(mount => mount.equipment instanceof AmmoEquipment
-    && mount.equipment.ammoType === 'COOLANT_POD').length;
-  if (entity.equipment().some(mount => mount.equipment?.hasFlag('F_PARTIAL_WING'))) capacity += 3;
-  if (entity.equipment().some(mount => mount.equipment?.hasFlag('F_RADICAL_HEATSINK'))) capacity++;
-  if (entity.equipment().some(mount => mount.equipment?.hasFlag('F_EMERGENCY_COOLANT_SYSTEM'))) capacity++;
-  if (heat - 4 <= capacity) return { values: raw, overheat: 0 };
-  const factor = capacity / (heat - 4);
-  const adjusted = raw.map(value => value * factor);
-  const rawDamage = alphaStrikeRoundUp(roundUpToTenth(raw[1] || raw[0]));
-  const adjustedDamage = alphaStrikeRoundUp(roundUpToTenth(adjusted[1] || adjusted[0]));
-  return { values: adjusted, overheat: Math.min(Math.max(0, rawDamage - adjustedDamage), 4) };
+  const frontWeapons = entity.mountedWeapons().filter(mount => isFrontWeapon(entity, mount.location, mount.rearMounted));
+  const mediumWeaponHeat = frontWeapons.reduce((sum, mount) => sum + mountedWeaponHeat(mount.equipment), 0);
+  const longWeaponHeat = frontWeapons.reduce((sum, mount) =>
+    sum + (baseBattleForceDamageForWeapon(mount.equipment, 2) > 0
+      ? mountedWeaponHeat(mount.equipment)
+      : 0), 0);
+  let movementHeat = 0;
+  let signatureHeat = 0;
+  if (entity instanceof MekEntity) {
+    movementHeat = alphaStrikeMovementHeat({
+      jumpMove: movement.values['j'] ?? 0,
+      jumpSystem: alphaStrikeJumpSystem(entity),
+      xxlEngine: entity.mountedEngine().type() === 'XXL',
+      industrial: entity.isIndustrial(),
+      engineInstalled: entity.mountedEngine().installed,
+      runHeat: entity.mountedEngine().movementHeat.run,
+    });
+    const hasStealthArmor = [...entity.armorByLocation().values()].some(armor =>
+      armor.armor.hasFlag('F_STEALTH') || armor.armor.armorType === 'STEALTH');
+    const hasSignature = hasStealthArmor || entity.equipment().some(mount =>
+      mount.equipment?.hasAnyFlag(['F_STEALTH', 'F_VOID_SIG', 'F_NULL_SIG']));
+    signatureHeat = (hasSignature ? 10 : 0) + (entity.equipment().some(mount =>
+      mount.equipment?.hasFlag('F_CHAMELEON_SHIELD')) ? 6 : 0);
+  } else if (entity instanceof AeroEntity && entity.equipment().some(mount =>
+    mount.equipment?.hasFlag('F_STEALTH'))) {
+    signatureHeat = 10;
+  }
+  const equipment = entity.equipment();
+  const baseCapacity = entity instanceof MekEntity ? equipment.reduce((capacity, mount) => {
+    const heatSink = mount.equipment;
+    if (!(heatSink instanceof MiscEquipment) || !heatSink.isHeatSink) return capacity;
+    const multiplier = heatSink.isCompactHeatSink || heatSink.hasFlag('F_HEAT_SINK') ? 1 : 2;
+    return capacity + heatSink.heatSinkUnitsPerMount * multiplier;
+  }, 0) : Math.max(0, entity.heatCapacity(false));
+  const capacity = alphaStrikeHeatCapacity({
+    baseCapacity,
+    coolantPodCount: equipment.filter(mount => mount.equipment instanceof AmmoEquipment
+      && mount.equipment.ammoType === 'COOLANT_POD').length,
+    partialWing: equipment.some(mount => mount.equipment?.hasFlag('F_PARTIAL_WING')),
+    radicalHeatSink: equipment.some(mount => mount.equipment?.hasFlag('F_RADICAL_HEATSINK')),
+    emergencyCoolantSystem: equipment.some(mount => mount.equipment?.hasFlag('F_EMERGENCY_COOLANT_SYSTEM')),
+  });
+  const rearWeaponHeat = entity.mountedWeapons().reduce((sum, mount) =>
+    sum + (!isFrontWeapon(entity, mount.location, mount.rearMounted)
+      ? mountedWeaponHeat(mount.equipment)
+      : 0), 0);
+  return adjustAlphaStrikeDamageForHeat(front, {
+    capacity,
+    mediumFront: movementHeat + signatureHeat + mediumWeaponHeat,
+    mediumRear: movementHeat + signatureHeat + rearWeaponHeat,
+    longFront: movementHeat + signatureHeat + longWeaponHeat,
+  });
+}
+
+function alphaStrikeJumpSystem(entity: MekEntity): AlphaStrikeJumpSystem {
+  const jumpJet = entity.equipment().find(mount => mount.equipment?.hasFlag('F_JUMP_JET'))?.equipment;
+  if (!jumpJet) return 'none';
+  if (jumpJet.hasFlag('S_IMPROVED') && jumpJet.hasFlag('S_PROTOTYPE')) return 'prototype-improved';
+  return jumpJet.hasFlag('S_IMPROVED') ? 'improved' : 'standard';
+}
+
+function mountedWeaponHeat(weapon: WeaponEquipment): number {
+  return alphaStrikeWeaponHeat({
+    equipmentId: weapon.id,
+    twHeat: weapon.heat,
+    ammoType: weapon.ammoType,
+    oneShot: (weapon.oneShotCount ?? 0) > 0,
+  });
 }
 
 function arcedDamage(entity: BaseEntity): { standard: Damage; overheat: number; arcs: Record<ArcName, AlphaStrikeArcStats> } {
-  const arcDefinitions: readonly [ArcName, (location: string, rear: boolean) => number][] = [
-    ['frontArc', (location, rear) => arcMultiplier(entity, 0, location, rear)],
-    ['leftArc', (location, rear) => arcMultiplier(entity, 1, location, rear)],
-    ['rightArc', (location, rear) => arcMultiplier(entity, 2, location, rear)],
-    ['rearArc', (location, rear) => arcMultiplier(entity, 3, location, rear)],
-  ];
-  const arcs = Object.fromEntries(arcDefinitions.map(([name, multiplier]) => {
-    const damage = entity.mountedWeapons().reduce((sum, mount) => {
-      const factor = multiplier(mount.location, mount.rearMounted);
-      if (factor === 0) return sum;
-      for (let index = 0; index < 4; index++) sum[index] += battleForceDamage(mount.equipment, index) * factor;
-      return sum;
-    }, [0, 0, 0, 0]);
-    return [name, emptyArc(damageVector(damage))];
-  })) as Record<ArcName, AlphaStrikeArcStats>;
-  return { standard: ZERO_DAMAGE, overheat: 0, arcs };
-}
-
-function arcMultiplier(entity: BaseEntity, arc: number, location: string, rear: boolean): number {
-  if (entity instanceof WarShipEntity) {
-    if (arc === 0) return ['Nose', 'FLS', 'FRS'].includes(location) ? 1 : 0;
-    if (arc === 1) return ['Left Broadside', 'ALS'].includes(location) ? 1 : 0;
-    if (arc === 2) return ['Right Broadside', 'ARS'].includes(location) ? 1 : 0;
-    return location === 'Aft' ? 1 : 0;
-  }
-  if (entity instanceof JumpShipEntity) {
-    if (arc === 0) return location === 'Nose' ? 1 : ['FLS', 'FRS'].includes(location) ? 0.5 : 0;
-    if (arc === 1) return ['FLS', 'ALS'].includes(location) ? 0.5 : 0;
-    if (arc === 2) return ['FRS', 'ARS'].includes(location) ? 0.5 : 0;
-    return location === 'Aft' ? 1 : ['ALS', 'ARS'].includes(location) ? 0.5 : 0;
-  }
-  if (entity instanceof SmallCraftEntity) {
-    if (arc === 0) return location === 'Nose' ? 1 : entity.motiveType() === 'Spheroid'
-      && ['Left Wing', 'Right Wing'].includes(location) && !rear ? 0.5 : 0;
-    if (arc === 1 || arc === 2) {
-      const side = arc === 1 ? 'Left Wing' : 'Right Wing';
-      return location === side && !rear ? entity.motiveType() === 'Spheroid' ? 0.5 : 1 : 0;
-    }
-    return location === 'Aft' ? 1 : rear && ['Left Wing', 'Right Wing'].includes(location)
-      ? entity.motiveType() === 'Spheroid' ? 0.5 : 1 : 0;
-  }
-  return arc === 0 && location !== 'Rear' ? 1 : arc === 3 && location === 'Rear' ? 1 : 0;
-}
-
-function emptyArc(STD: Damage): AlphaStrikeArcStats {
-  return { STD, CAP: { ...ZERO_DAMAGE }, SCAP: { ...ZERO_DAMAGE }, MSL: { ...ZERO_DAMAGE }, specials: '' };
+  return calculateLargeAerospaceDamage(entity);
 }
 
 function damageVector(values: readonly number[]): Damage {
-  return { dmgS: asDamage(values[0]), dmgM: asDamage(values[1]), dmgL: asDamage(values[2]), dmgE: asDamage(values[3]) };
-}
-
-function asDamage(value = 0): string {
-  const roundedTenth = roundUpToTenth(value);
-  if (roundedTenth > 0 && roundedTenth < 0.5) return '0*';
-  return String(roundedTenth < 0.5 ? 0 : alphaStrikeRoundUp(roundedTenth));
-}
-
-function roundUpToTenth(value: number): number {
-  return Math.ceil((value - 0.0000001) * 10) / 10;
+  return {
+    dmgS: dualRoundedUpDamage(values[0] ?? 0),
+    dmgM: dualRoundedUpDamage(values[1] ?? 0),
+    dmgL: dualRoundedUpDamage(values[2] ?? 0),
+    dmgE: dualRoundedUpDamage(values[3] ?? 0),
+  };
 }
 
 function alphaStrikeSpecials(entity: BaseEntity, TP: ASUnitTypeCode, size: number): string[] {
@@ -509,40 +459,8 @@ function alphaStrikeSpecials(entity: BaseEntity, TP: ASUnitTypeCode, size: numbe
   else if (TP === 'SV' && size === 4) specials.push('VLG');
   else if (TP === 'SV' && size === 5) specials.push('SLG');
   if (entity instanceof FixedWingSupportEntity || entity instanceof ConvFighterEntity) specials.push('ATMO');
+  if (hasAlphaStrikeVstolCapability(entity, TP)) specials.push('VSTOL');
   return specials.sort();
 }
 
-function battleForceDamage(weapon: WeaponEquipment, alphaStrikeRange: number): number {
-  const range = [0, 4, 16, 24][alphaStrikeRange];
-  if (range > (weapon.ranges[2] ?? 0)) return 0;
 
-  let avIndex = alphaStrikeRange;
-  while (avIndex > 0 && (weapon.weapon.av[avIndex] ?? 0) === 0) avIndex--;
-  let damage = weapon.weapon.av[avIndex] ?? 0;
-  if (damage === 0) {
-    if (typeof weapon.damage === 'number' && weapon.damage >= 0) damage = weapon.damage;
-    else if (weapon.damage === 'cluster') {
-      damage = weapon.rackSize * (weapon.hasFlag('F_SRM') || weapon.ammoType === 'MML' ? 2 : 0.6);
-    }
-  }
-  if (range === 0 && weapon.minimumRange > 0) damage *= (12 - weapon.minimumRange) / 12;
-  const toHitModifier = typeof weapon.toHitModifier === 'number'
-    ? weapon.toHitModifier
-    : weapon.toHitModifier[0] ?? 0;
-  if (toHitModifier !== 0) damage -= damage * toHitModifier * 0.05;
-  return damage / 10;
-}
-
-function battleArmorDamage(entity: BattleArmorEntity): { standard: Damage; overheat: number; arcs: {} } {
-  const troopFactors = [0,0,1,2,3,3,4,4,5,5,6,7,8,8,9,9,10,10,11,11,12,13,14,15,16,16,17,17,17,18,18];
-  const troopFactor = troopFactors[Math.min(entity.trooperCount(), 30)] + 0.5;
-  const normal = sumWeaponDamage(entity, mount => !mount.isAPM && !mount.isSSWM);
-  const squadSupport = sumWeaponDamage(entity, mount => !!mount.isSSWM);
-  const equipment = entity.equipment();
-  if (equipment.some(mount => mount.equipment?.hasFlag('F_ARMORED_GLOVE'))) normal[0] += 0.1;
-  else if (equipment.some(mount => mount.equipment?.hasFlag('F_AP_MOUNT'))) normal[0] += 0.05;
-  const vibroclaws = equipment.filter(mount => mount.equipment?.hasFlag('F_VIBROCLAW')).length;
-  const values = normal.map((value, index) => value * troopFactor + squadSupport[index]);
-  values[0] += vibroclaws * 0.1;
-  return { standard: damageVector(values), overheat: 0, arcs: {} };
-}
