@@ -65,6 +65,11 @@ describe('AeroEntity movement', () => {
 
   it('derives fixed-wing bomb capacity from hardpoints and cargo bays', () => {
     const entity = new FixedWingSupportEntity();
+    entity.quirks.set([{
+      quirk: {
+        key: 'internal_bomb', name: 'Internal Bomb Bay', description: '', type: 'positive',
+      },
+    }]);
     entity.transporters.set([
       cargoBay(2.9),
       { ...cargoBay(8), id: 'fighter-bay', configuration: { type: 'fighter', arts: false } },
@@ -73,6 +78,25 @@ describe('AeroEntity movement', () => {
     addTestEquipmentWithFlags(entity, 'F_EXTERNAL_STORES_HARDPOINT', { location: 'Left Wing' });
 
     expect(entity.maxBombPoints()).toBe(4);
+  });
+
+  it('ignores fixed-wing cargo capacity without the Internal Bomb Bay quirk', () => {
+    const entity = new FixedWingSupportEntity();
+    entity.transporters.set([cargoBay(100)]);
+
+    expect(entity.maxBombPoints()).toBe(0);
+  });
+
+  it('floors each Internal Bomb Bay cargo capacity before summing', () => {
+    const entity = new FixedWingSupportEntity();
+    entity.quirks.set([{
+      quirk: {
+        key: 'internal_bomb', name: 'Internal Bomb Bay', description: '', type: 'positive',
+      },
+    }]);
+    entity.transporters.set([cargoBay(0.9), { ...cargoBay(0.9), id: 'second-cargo-bay' }]);
+
+    expect(entity.maxBombPoints()).toBe(0);
   });
 
   it('reports zero bomb capacity without hardpoints or cargo space', () => {

@@ -239,8 +239,15 @@ describe('Alpha Strike conversion', () => {
     const entity = new BipedMekEntity();
     addTestEquipment(entity, new WeaponEquipment({
       id: 'srt-6', name: 'SRT 6', type: 'weapon',
-      weapon: { damage: 'cluster', rackSize: 6, ranges: [3, 6, 9, 12], ammoType: 'SRM_TORPEDO' },
+      weapon: {
+        damage: 'cluster', rackSize: 6, ranges: [3, 6, 9, 12], ammoType: 'SRM_TORPEDO',
+        alphaStrike: { battleForceClass: 'TORPEDO' },
+      },
     }), { location: 'RA' });
+    addTestEquipment(entity, new AmmoEquipment({
+      id: 'long-tom-cannon-ammo', name: 'Long Tom Cannon Ammo', type: 'ammo',
+      ammo: { type: 'LONG_TOM_CANNON', rackSize: 0, shots: 20 },
+    }), { location: 'RT', shotsCount: 20 });
     addTestEquipment(entity, new WeaponEquipment({
       id: 'sniper', name: 'Sniper', type: 'weapon', flags: ['F_ARTILLERY'],
       weapon: { damage: 'artillery', ranges: [6, 12, 18, 24], ammoType: 'SNIPER' },
@@ -251,12 +258,34 @@ describe('Alpha Strike conversion', () => {
     });
   });
 
+  it('retains artillery-cannon standard damage despite its artillery flag', () => {
+    const entity = new AeroSpaceFighterEntity();
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'long-tom-cannon', name: 'Long Tom Cannon', type: 'weapon', flags: ['F_ARTILLERY'],
+      weapon: {
+        damage: 'artillery', rackSize: 20, ranges: [4, 10, 20, 30], ammoType: 'LONG_TOM_CANNON',
+        alphaStrike: { damage: [1.32, 3, 3, 0] },
+      },
+    }), { location: 'Fuselage' });
+    addTestEquipment(entity, new AmmoEquipment({
+      id: 'long-tom-cannon-ammo', name: 'Long Tom Cannon Ammo', type: 'ammo',
+      ammo: { type: 'LONG_TOM_CANNON', rackSize: 20, shots: 20 },
+    }), { location: 'Fuselage', shotsCount: 20 });
+
+    expect(convertEntityToAlphaStrike(entity).dmg).toEqual({
+      dmgS: '2', dmgM: '3', dmgL: '3', dmgE: '0',
+    });
+  });
+
   it('converts front-mounted weapon heat damage into HT after Java thresholds', () => {
     const entity = new BipedMekEntity();
     for (let index = 0; index < 3; index++) {
       addTestEquipment(entity, new WeaponEquipment({
         id: `flamer-${index}`, name: 'Flamer', type: 'weapon', flags: ['F_FLAMER'],
-        weapon: { heat: 3, damage: 2, ranges: [1, 2, 3, 4], ammoType: 'NA' },
+        weapon: {
+          heat: 3, damage: 2, ranges: [1, 2, 3, 4], ammoType: 'NA',
+          alphaStrike: { heatDamage: [2, 0, 0, 0] },
+        },
       }), { location: 'RA' });
     }
 
@@ -268,7 +297,10 @@ describe('Alpha Strike conversion', () => {
     addTestEquipment(entity, new WeaponEquipment({
       id: 'ba-heavy-flamer', name: 'BA Heavy Flamer', type: 'weapon',
       flags: ['F_FLAMER', 'F_BA_WEAPON'],
-      weapon: { heat: 5, damage: 4, ranges: [2, 3, 4, 6], ammoType: 'NA' },
+      weapon: {
+        heat: 5, damage: 4, ranges: [2, 3, 4, 6], ammoType: 'NA',
+        alphaStrike: { heatDamage: [4, 0, 0, 0] },
+      },
     }), { location: 'Squad' });
 
     expect(convertEntityToAlphaStrike(entity).specials).toContain('HT2/-/-');
@@ -462,20 +494,33 @@ describe('Alpha Strike conversion', () => {
 
     const entity = new VtolEntity();
     addTestEquipment(entity, new WeaponEquipment({
-      id: 'turret-lrm', name: 'Turret LRM', type: 'weapon', flags: ['F_LRM', 'F_MISSILE', 'F_TAG'],
-      weapon: { damage: 'cluster', rackSize: 20, ranges: [7, 14, 21, 28], ammoType: 'LRM' },
+      id: 'turret-lrm', name: 'Turret LRM', type: 'weapon',
+      flags: ['F_LRM', 'F_MISSILE', 'F_TAG', 'F_INDIRECT_FIRE'],
+      weapon: {
+        damage: 'cluster', rackSize: 20, ranges: [7, 14, 21, 28], ammoType: 'LRM',
+        alphaStrike: { battleForceClass: 'LRM' },
+      },
     }), { location: 'Turret' });
     addTestEquipment(entity, new WeaponEquipment({
       id: 'turret-flamer', name: 'Turret Flamer', type: 'weapon', flags: ['F_FLAMER'],
-      weapon: { damage: 1, rackSize: 0, ranges: [1, 1, 1, 1], ammoType: 'NA' },
+      weapon: {
+        damage: 1, rackSize: 0, ranges: [1, 1, 1, 1], ammoType: 'NA',
+        alphaStrike: { heatDamage: [2, 0, 0, 0] },
+      },
     }), { location: 'Turret' });
     addTestEquipment(entity, new WeaponEquipment({
       id: 'turret-flamer-2', name: 'Turret Flamer 2', type: 'weapon', flags: ['F_FLAMER'],
-      weapon: { damage: 1, rackSize: 0, ranges: [1, 1, 1, 1], ammoType: 'NA' },
+      weapon: {
+        damage: 1, rackSize: 0, ranges: [1, 1, 1, 1], ammoType: 'NA',
+        alphaStrike: { heatDamage: [2, 0, 0, 0] },
+      },
     }), { location: 'Turret' });
     addTestEquipment(entity, new WeaponEquipment({
       id: 'turret-flamer-3', name: 'Turret Flamer 3', type: 'weapon', flags: ['F_FLAMER'],
-      weapon: { damage: 1, rackSize: 0, ranges: [1, 1, 1, 1], ammoType: 'NA' },
+      weapon: {
+        damage: 1, rackSize: 0, ranges: [1, 1, 1, 1], ammoType: 'NA',
+        alphaStrike: { heatDamage: [2, 0, 0, 0] },
+      },
     }), { location: 'Turret' });
     addTestEquipment(entity, new AmmoEquipment({
       id: 'turret-lrm-ammo', name: 'Turret LRM Ammo', type: 'ammo',
@@ -498,7 +543,7 @@ describe('Alpha Strike conversion', () => {
 
     const converted = convertEntityToAlphaStrikeWithReport(entity);
 
-    expect(converted.stats.PV).toBe(0);
+    expect(converted.stats.PV).toBeGreaterThan(0);
     expect(converted.stats.specials).toEqual(['AECM', 'ENE', 'OMNI', 'PRB', 'RCN']);
     expect(converted.report).toContain('Further Special Abilities:\n');
     expect(converted.report).toContain('AECM\n');

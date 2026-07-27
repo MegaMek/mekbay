@@ -17,30 +17,39 @@ function weapon(
 }
 
 describe('large aerospace damage', () => {
-  it('keeps STD, CAP, SCAP, and subcapital missiles mutually exclusive', () => {
+  it('keeps STD, CAP, SCAP, and subcapital-missile MSL damage mutually exclusive', () => {
     const entity = new DropShipEntity();
     entity.heatSinkCount.set(200);
     addTestEquipment(entity, weapon('Medium Laser'), { location: 'Nose' });
     addTestEquipment(entity, weapon('Naval Autocannon (NAC/10)', [], {
-      weapon: { capital: true, damage: 100, ranges: [6, 12, 20, 25], ammoType: 'NAC' },
+      weapon: {
+        capital: true, damage: 100, ranges: [6, 12, 20, 25], ammoType: 'NAC',
+        alphaStrike: { battleForceClass: 'CAPITAL' },
+      },
     }), { location: 'Nose' });
     addTestEquipment(entity, weapon('Sub-Capital Laser /1', [], {
-      weapon: { subCapital: true, damage: 10, ranges: [6, 12, 20, 25], ammoType: 'NA' },
+      weapon: {
+        subCapital: true, damage: 10, ranges: [6, 12, 20, 25], ammoType: 'NA',
+        alphaStrike: { battleForceClass: 'SUBCAPITAL' },
+      },
     }), { location: 'Nose' });
     addTestEquipment(entity, weapon('Sub-Capital Missile Launcher (Piranha)', ['F_MISSILE'], {
-      weapon: { subCapital: true, damage: 30, ranges: [6, 12, 20, 25], ammoType: 'PIRANHA' },
+      weapon: {
+        subCapital: true, damage: 30, ranges: [6, 12, 20, 25], ammoType: 'PIRANHA',
+        alphaStrike: { battleForceClass: 'CAPITAL_MISSILE' },
+      },
     }), { location: 'Nose' });
 
     const arc = calculateLargeAerospaceDamage(entity).arcs.frontArc;
 
     expect(arc.STD.dmgS).toBe('1');
     expect(arc.CAP.dmgS).toBe('100');
-    expect(arc.SCAP.dmgS).toBe('40');
-    expect(arc.MSL.dmgS).toBe('0');
+    expect(arc.SCAP.dmgS).toBe('10');
+    expect(arc.MSL.dmgS).toBe('30');
     expect(calculateLargeAerospaceDamage(entity).arcs.leftArc.STD.dmgS).toBe('0');
-    expect(arc.specials).not.toContain('CAP');
-    expect(arc.specials).not.toContain('SCAP');
-    expect(arc.specials).not.toContain('MSL');
+    expect(arc.specials).toContain('CAP');
+    expect(arc.specials).toContain('SCAP');
+    expect(arc.specials).toContain('MSL');
   });
 
   it('applies one-shot and targeting-computer damage multipliers without ammo penalties', () => {
@@ -65,9 +74,14 @@ describe('large aerospace damage', () => {
     const entity = new DropShipEntity();
     entity.heatSinkCount.set(100);
     addTestEquipment(entity, weapon('CLLBXAC10', [], {
-      weapon: { rackSize: 10, ranges: [6, 12, 18, 24], ammoType: 'AC_LBX' },
+      weapon: {
+        rackSize: 10, ranges: [6, 12, 18, 24], ammoType: 'AC_LBX',
+        alphaStrike: { battleForceClass: 'FLAK', damage: [0.63, 0.63, 0.63, 0] },
+      },
     }), { location: 'Nose' });
-    addTestEquipment(entity, weapon('Laser AMS', ['F_AMS']), { location: 'Nose' });
+    addTestEquipment(entity, weapon('Laser AMS', ['F_AMS'], {
+      weapon: { alphaStrike: { pointDefense: true } },
+    }), { location: 'Nose' });
 
     expect(calculateLargeAerospaceDamage(entity).arcs.frontArc.specials)
       .toEqual(['ENE', 'FLK1/1/1/-', 'PNT1']);
@@ -76,7 +90,9 @@ describe('large aerospace damage', () => {
   it('assigns fixed short-range point-defense damage to AMS', () => {
     const entity = new DropShipEntity();
     entity.heatSinkCount.set(100);
-    addTestEquipment(entity, weapon('ISAntiMissileSystem', ['F_AMS']), { location: 'Nose' });
+    addTestEquipment(entity, weapon('ISAntiMissileSystem', ['F_AMS'], {
+      weapon: { alphaStrike: { pointDefense: true } },
+    }), { location: 'Nose' });
 
     const arc = calculateLargeAerospaceDamage(entity).arcs.frontArc;
 
@@ -102,10 +118,12 @@ describe('large aerospace damage', () => {
   it('emits canonical tele-missile and Narc-family arc abilities', () => {
     const entity = new DropShipEntity();
     entity.heatSinkCount.set(500);
-    addTestEquipment(entity, weapon('ISNarcBeacon (OS)', ['F_NARC', 'F_ONE_SHOT'], {
+    addTestEquipment(entity, weapon('ISNarcBeacon', ['F_NARC'], {
       weapon: { ammoType: 'NARC' },
     }), { location: 'Nose' });
-    addTestEquipment(entity, weapon('Tele-operated Missile', ['F_TELE_MISSILE']), {
+    addTestEquipment(entity, weapon('Tele-operated Missile', [], {
+      weapon: { atClass: 'TELE_MISSILE' },
+    }), {
       location: 'Nose',
     });
 
@@ -143,7 +161,10 @@ describe('large aerospace damage', () => {
     const entity = new DropShipEntity();
     entity.heatSinkCount.set(10);
     const nac = () => weapon('Naval Autocannon (NAC/10)', [], {
-      weapon: { capital: true, damage: 100, heat: 30, ranges: [6, 12, 20, 25], ammoType: 'NAC' },
+      weapon: {
+        capital: true, damage: 100, heat: 30, ranges: [6, 12, 20, 25], ammoType: 'NAC',
+        alphaStrike: { battleForceClass: 'CAPITAL' },
+      },
     });
     addTestEquipment(entity, nac(), { location: 'Nose' });
     addTestEquipment(entity, nac(), { location: 'Aft' });
@@ -169,7 +190,10 @@ describe('large aerospace damage', () => {
     const entity = new DropShipEntity();
     entity.heatSinkCount.set(10);
     addTestEquipment(entity, weapon('ISERLargeLaserPrototype', [], {
-      weapon: { heat: 12, damage: 10, ranges: [7, 14, 21, 28], ammoType: 'NA' },
+      weapon: {
+        heat: 12, damage: 10, ranges: [7, 14, 21, 28], ammoType: 'NA',
+        alphaStrike: { heat: 15 },
+      },
     }), { location: 'Nose' });
     addTestEquipment(entity, weapon('One-Shot Laser', ['F_ONE_SHOT'], {
       weapon: { heat: 5, damage: 10, ranges: [7, 14, 21, 28], ammoType: 'NA' },

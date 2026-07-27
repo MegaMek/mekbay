@@ -1,6 +1,7 @@
 import type { AlphaStrikeArcStats } from '../../../../units.model';
 import { WeaponEquipment } from '../../../../equipment.model';
 import type { BaseEntity } from '../../../entities';
+import { JumpShipEntity } from '../../../entities';
 import type { EntityMountedWeapon } from '../../../types/equipment';
 import { blocksExplosiveNullification } from '../specials/explosive-components';
 import { alphaStrikeRoundUp, dualRoundedNormalDamage, dualRoundedUpDamage, roundUpToTenth, toStandardDamage } from './damage-rounding';
@@ -76,7 +77,7 @@ function calculateArc(
     }
     if (metadata.arcSUA) weaponArcSUAs.add(metadata.arcSUA);
     let damageMultiplier = locationMultiplier;
-    if ((weapon.oneShotCount ?? 0) > 0 && weapon.id !== 'CLFussilade') damageMultiplier *= 0.1;
+    if (weapon.oneShotCount === 1) damageMultiplier *= 0.1;
     if (targetingComputer && weapon.hasFlag('F_DIRECT_FIRE')) damageMultiplier *= 1.1;
     const damage = damageForMount(entity, mount, damageMultiplier * heatFactor);
     if (metadata.primaryClass) addDamage(vectors.get(metadata.primaryClass)!, damage);
@@ -89,6 +90,11 @@ function calculateArc(
   }
 
   const specials: string[] = [];
+  if (!(entity instanceof JumpShipEntity)) {
+    for (const primaryClass of ['CAP', 'SCAP', 'MSL'] as const) {
+      if (hasDamage(vectors.get(primaryClass)!)) specials.push(primaryClass);
+    }
+  }
   for (const [sua, count] of artilleryCounts) specials.push(`${sua}-${count}`);
   specials.push(...weaponArcSUAs);
   const flak = vectors.get('FLK')!;
@@ -106,7 +112,7 @@ function calculateArc(
 }
 
 function hasExplosiveArcComponent(entity: BaseEntity, arc: AlphaStrikeArcName): boolean {
-  return entity.equipment().some(mount => blocksExplosiveNullification(mount)
+  return entity.equipment().some(mount => blocksExplosiveNullification(entity, mount)
     && largeAerospaceArcMultiplier(entity, arc, mount as EntityMountedWeapon) > 0);
 }
 

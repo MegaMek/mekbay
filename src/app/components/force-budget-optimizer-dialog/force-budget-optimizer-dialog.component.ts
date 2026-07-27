@@ -42,7 +42,7 @@ import type { ForceUnit } from '../../models/force-unit.model';
 import type { Unit } from '../../models/units.model';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import { getEffectivePilotingSkill } from '../../utils/cbt-common.util';
-import { PVCalculatorUtil } from '../../utils/pv-calculator.util';
+import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { OptionsService } from '../../services/options.service';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
@@ -275,7 +275,7 @@ export class ForceBudgetOptimizerDialogComponent {
         const [minSkill, maxSkill] = this.gunnerySkillRange();
 
         for (let skill = minSkill; skill <= maxSkill; skill += 1) {
-            const cost = Math.max(0, PVCalculatorUtil.calculateAdjustedPV(unit.as.PV, skill));
+            const cost = Math.max(0, adjustPointValueForSkill(unit.as.PV, skill));
             const option: OptimizationChoice = {
                 forceUnit,
                 cost,

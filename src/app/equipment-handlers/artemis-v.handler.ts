@@ -18,7 +18,7 @@ export class ArtemisVHandler extends EquipmentInteractionHandler {
     }
 
     override getToHitAdjustments(equipment: MountedEquipment, context: ToHitAdjustmentContext): readonly ToHitAdjustment[] {
-        if (!context.parent) return [];
+        if (!context.parent?.equipment?.hasFlag('F_ARTEMIS_COMPATIBLE')) return [];
         const selectedAmmo = context.selectedAmmo;
         const weakened = equipment.isUnavailable()
             || (selectedAmmo !== undefined && !selectedAmmo?.hasMunitionType('M_ARTEMIS_V_CAPABLE'));

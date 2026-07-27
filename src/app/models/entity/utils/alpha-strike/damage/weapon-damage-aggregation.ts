@@ -4,6 +4,7 @@ import { MekEntity } from '../../../entities';
 import type { EntityMountedWeapon } from '../../../types';
 import {
   battleForceDamageForMount,
+  hasAlphaStrikeBattleForceClass,
   type AlphaStrikeRangeIndex,
 } from './weapon-damage-profile';
 import { alphaStrikeAmmoDamageMultiplier } from './weapon-modifiers';
@@ -12,6 +13,7 @@ import { alphaStrikeAmmoDamageMultiplier } from './weapon-modifiers';
 export function sumAlphaStrikeWeaponDamage(
   entity: BaseEntity,
   include: (mount: EntityMountedWeapon) => boolean,
+  includeArtilleryDamage = false,
 ): [number, number, number, number] {
   const weapons = entity.mountedWeapons();
   const ammunition = entity.equipment().filter(mount => mount.equipment instanceof AmmoEquipment);
@@ -19,8 +21,10 @@ export function sumAlphaStrikeWeaponDamage(
   const total: [number, number, number, number] = [0, 0, 0, 0];
 
   for (const mount of weapons) {
-    if (!include(mount) || isExcludedFromStandardDamage(mount.equipment)) continue;
-    const modifier = weaponDamageModifier(entity, mount, weapons, ammunition, targetingComputer);
+    if (!include(mount) || isExcludedFromStandardDamage(mount.equipment, includeArtilleryDamage)) continue;
+    const modifier = alphaStrikeWeaponDamageModifier(
+      entity, mount, weapons, ammunition, targetingComputer,
+    );
     for (let range = 0; range < 4; range++) {
       total[range] += battleForceDamageForMount(entity, mount, range as AlphaStrikeRangeIndex) * modifier;
     }
@@ -29,21 +33,22 @@ export function sumAlphaStrikeWeaponDamage(
 }
 
 /** Java ASDamageConverter excludes artillery and BattleForce torpedo damage from standard damage. */
-function isExcludedFromStandardDamage(weapon: WeaponEquipment): boolean {
-  return weapon.damage === 'artillery' || weapon.hasFlag('F_ARTILLERY')
-    || ['LRM_TORPEDO', 'SRM_TORPEDO', 'LRM_TORPEDO_COMBO'].includes(weapon.ammoType);
+function isExcludedFromStandardDamage(weapon: WeaponEquipment, includeArtilleryDamage: boolean): boolean {
+  return (!includeArtilleryDamage && weapon.damage === 'artillery')
+    || hasAlphaStrikeBattleForceClass(weapon, 'TORPEDO');
 }
 
-function weaponDamageModifier(
+export function alphaStrikeWeaponDamageModifier(
   entity: BaseEntity,
   mount: EntityMountedWeapon,
   weapons: readonly EntityMountedWeapon[],
   ammunition: readonly ReturnType<BaseEntity['equipment']>[number][],
   targetingComputer: boolean,
+  battleArmor = false,
 ): number {
   const weapon = mount.equipment;
-  let modifier = alphaStrikeAmmoDamageMultiplier(weapon, weapons, ammunition);
-  if (weapon.oneShotCount && weapon.id !== 'CLFussilade') modifier *= 0.1;
+  let modifier = alphaStrikeAmmoDamageMultiplier(weapon, weapons, ammunition, battleArmor);
+  if (weapon.oneShotCount === 1) modifier *= 0.1;
   if (targetingComputer && weapon.hasFlag('F_DIRECT_FIRE')) modifier *= 1.1;
   if (entity instanceof MekEntity && ['LA', 'RA'].includes(mount.location)
     && entity.getEquipmentAtLocation(mount.location).some(candidate =>

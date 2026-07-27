@@ -1,15 +1,20 @@
 import type { BaseEntity } from '../../../base-entity';
 import { dualRoundedUpDamage } from '../damage/damage-rounding';
-import { alphaStrikeDamageLocationMultiplier } from '../damage/generic-location-mapper';
+import { alphaStrikeDamageLocationMultiplier, hasAlphaStrikeTurretLocation } from '../damage/generic-location-mapper';
 import { alphaStrikeHeatSpecial, sumAlphaStrikeHeatDamage } from '../damage/heat-damage';
 import { sumAlphaStrikeWeaponDamage } from '../damage/weapon-damage-aggregation';
 import { alphaStrikeWeaponSpecials } from './weapon-specials';
 
 /** Serializes the scoped standard damage and special abilities in a TUR ability. */
-export function alphaStrikeTurretSpecial(entity: BaseEntity): string | undefined {
+export function alphaStrikeTurretSpecial(
+  entity: BaseEntity,
+  heatFactors: readonly [number, number, number, number] = [1, 1, 1, 1],
+): string | undefined {
+  if (!hasAlphaStrikeTurretLocation(entity)) return undefined;
   const rawDamage = sumAlphaStrikeWeaponDamage(entity, mount =>
-    alphaStrikeDamageLocationMultiplier(entity, 'turret', mount) > 0);
-  const abilities = alphaStrikeWeaponSpecials(entity, 'turret');
+    alphaStrikeDamageLocationMultiplier(entity, 'turret', mount) > 0)
+    .map((damage, range) => damage * heatFactors[range]);
+  const abilities = alphaStrikeWeaponSpecials(entity, 'turret', heatFactors);
   const heat = alphaStrikeHeatSpecial(sumAlphaStrikeHeatDamage(entity.mountedWeapons(), mount =>
     alphaStrikeDamageLocationMultiplier(entity, 'turret', mount) > 0));
   if (heat) abilities.push(heat);

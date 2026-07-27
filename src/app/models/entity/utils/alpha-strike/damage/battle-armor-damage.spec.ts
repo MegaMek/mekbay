@@ -60,8 +60,12 @@ describe('Battle Armor standard damage', () => {
   it('excludes anti-personnel mounted, artillery, and torpedo weapons', () => {
     const entity = new BattleArmorEntity();
     addTestEquipment(entity, testWeapon('apm'), { location: 'Squad', isAPM: true });
-    addTestEquipment(entity, testWeapon('artillery', 'NA', ['F_ARTILLERY']), { location: 'Squad' });
-    addTestEquipment(entity, testWeapon('torpedo', 'SRM_TORPEDO', ['F_MISSILE']), { location: 'Squad' });
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'artillery', name: 'Artillery', type: 'weapon', flags: ['F_ARTILLERY'],
+      weapon: { damage: 'artillery', ranges: [5, 10, 20, 24], ammoType: 'NA' },
+    }), { location: 'Squad' });
+    addTestEquipment(entity, testWeapon('torpedo', 'SRM_TORPEDO', ['F_MISSILE'], 10, 'TORPEDO'),
+      { location: 'Squad' });
 
     expect(calculateBattleArmorStandardDamage(entity).standard)
       .toEqual({ dmgS: '0', dmgM: '0', dmgL: '0', dmgE: '0' });
@@ -139,6 +143,7 @@ function testWeapon(
   ammoType: 'NA' | 'AC' | 'SRM' | 'SRM_TORPEDO' = 'NA',
   flags: ConstructorParameters<typeof WeaponEquipment>[0]['flags'] = [],
   damage = 10,
+  battleForceClass?: 'TORPEDO',
 ): WeaponEquipment {
   return new WeaponEquipment({
     id,
@@ -146,6 +151,7 @@ function testWeapon(
     type: 'weapon',
     flags,
     weapon: { damage, rackSize: ammoType === 'AC' ? 10 : ammoType === 'SRM' || ammoType === 'SRM_TORPEDO' ? 2 : 0,
-      ranges: [5, 10, 20, 24], ammoType },
+      ranges: [5, 10, 20, 24], ammoType,
+      alphaStrike: battleForceClass ? { battleForceClass } : undefined },
   });
 }

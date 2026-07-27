@@ -6,26 +6,8 @@ export type AlphaStrikeHeatDamage = readonly [short: number, medium: number, lon
 const NO_HEAT_DAMAGE: AlphaStrikeHeatDamage = [0, 0, 0];
 
 export function alphaStrikeHeatDamageForWeapon(weapon: WeaponEquipment): AlphaStrikeHeatDamage {
-  if (weapon.hasFlag('F_ER_FLAMER')) return [2, 2, 0];
-
-  if (weapon.hasFlag('F_FLAMER')) {
-    if (weapon.ammoType === 'HEAVY_FLAMER'
-      || weapon.hasFlag('F_BA_WEAPON') && weapon.heat === 5 && weapon.damage === 4) {
-      return [4, 0, 0];
-    }
-    return [2, 0, 0];
-  }
-
-  if (weapon.hasFlag('F_PLASMA_MFUK')) return [3, 3, 0];
-  if (!weapon.hasFlag('F_PLASMA')) return NO_HEAT_DAMAGE;
-  if (weapon.hasFlag('F_BA_WEAPON')) return [2, 2, 0];
-  if (weapon.ammoType === 'PLASMA' && weapon.damage === 'variable' && weapon.rackSize === 2) {
-    return [7, 7, 7];
-  }
-  if (weapon.ammoType === 'PLASMA' && weapon.damage === 10 && weapon.rackSize === 1) {
-    return [3, 3, 0];
-  }
-  return NO_HEAT_DAMAGE;
+  const exportedDamage = weapon.alphaStrike?.heatDamage;
+  return exportedDamage ? [exportedDamage[0], exportedDamage[1], exportedDamage[2]] : NO_HEAT_DAMAGE;
 }
 
 /** Sums raw weapon HT values before Alpha Strike threshold conversion. */

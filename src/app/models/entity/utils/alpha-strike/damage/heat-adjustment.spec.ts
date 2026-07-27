@@ -60,6 +60,18 @@ describe('Alpha Strike heat adjustment', () => {
     expect(sameRounded.front[2]).toBe(0.4);
   });
 
+  it('uses long heat for aerospace extreme damage without OVL', () => {
+    const result = adjustAlphaStrikeDamageForHeat(
+      [9.14, 9.14, 6.8, 4.4],
+      { capacity: 50, mediumFront: 71, mediumRear: 0, longFront: 58 },
+    );
+
+    expect(result.overheat).toBe(3);
+    expect(result.overheatLong).toBeFalse();
+    expect(result.front[2]).toBe(6.8);
+    expect(result.front[3]).toBeCloseTo(4.4 * 50 / 54, 12);
+  });
+
   it('applies independent long heat when no overheat is produced', () => {
     const result = adjustAlphaStrikeDamageForHeat(
       [1, 0.4, 4, 2],
@@ -67,7 +79,7 @@ describe('Alpha Strike heat adjustment', () => {
     );
     expect(result.overheat).toBe(0);
     expect(result.front[2]).toBe(3);
-    expect(result.front[3]).toBeCloseTo(12 / 7, 12);
+    expect(result.front[3]).toBe(1.5);
   });
 
   it('rejects invalid inputs without mutating vectors', () => {
@@ -125,38 +137,30 @@ describe('Alpha Strike heat capacity', () => {
 });
 
 describe('Alpha Strike weapon heat', () => {
-  it('uses each known Alpha Strike heat override', () => {
-    const overrides: Readonly<Record<string, number>> = {
-      ISERLargeLaserPrototype: 15,
-      ISLargePulseLaserPrototype: 13,
-      ISMediumPulseLaserPrototype: 7,
-      ISMediumPulseLaserRecovered: 7,
-      ISSmallPulseLaserPrototype: 4,
-    };
-    for (const [equipmentId, expected] of Object.entries(overrides)) {
-      expect(alphaStrikeWeaponHeat({ equipmentId, twHeat: 1, ammoType: 'NA', oneShot: false }))
-        .withContext(equipmentId).toBe(expected);
-    }
+  it('uses an exported Alpha Strike heat override', () => {
+    expect(alphaStrikeWeaponHeat({
+      heat: 1, alphaStrikeHeatOverride: 15, ammoType: 'NA', oneShot: false,
+    })).toBe(15);
   });
 
   it('applies rapid-fire multipliers after resolving base heat', () => {
     expect(alphaStrikeWeaponHeat({
-      equipmentId: 'RAC', twHeat: 2, ammoType: 'AC_ROTARY', oneShot: false,
+      heat: 2, ammoType: 'AC_ROTARY', oneShot: false,
     })).toBe(12);
     expect(alphaStrikeWeaponHeat({
-      equipmentId: 'UAC', twHeat: 2, ammoType: 'AC_ULTRA', oneShot: false,
+      heat: 2, ammoType: 'AC_ULTRA', oneShot: false,
     })).toBe(4);
     expect(alphaStrikeWeaponHeat({
-      equipmentId: 'UAC-THB', twHeat: 2, ammoType: 'AC_ULTRA_THB', oneShot: false,
+      heat: 2, ammoType: 'AC_ULTRA_THB', oneShot: false,
     })).toBe(4);
   });
 
   it('excludes one-shot weapons and rejects invalid heat', () => {
     expect(alphaStrikeWeaponHeat({
-      equipmentId: 'OneShot', twHeat: 100, ammoType: 'NA', oneShot: true,
+      heat: 100, ammoType: 'NA', oneShot: true,
     })).toBe(0);
     expect(() => alphaStrikeWeaponHeat({
-      equipmentId: 'Invalid', twHeat: -1, ammoType: 'NA', oneShot: false,
+      heat: -1, ammoType: 'NA', oneShot: false,
     })).toThrowError(RangeError);
   });
 

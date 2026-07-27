@@ -1,9 +1,13 @@
 import type { ASUnitTypeCode } from '../../../../units.model';
-import { BattleArmorEntity, MekEntity, type BaseEntity, VehicleEntity } from '../../../entities';
+import { ArmorEquipment, WeaponEquipment } from '../../../../equipment.model';
+import { BattleArmorEntity, InfantryEntity, MekEntity, ProtoMekEntity, type BaseEntity, VehicleEntity } from '../../../entities';
 import { isAerospaceElement, isFighter, LARGE_AEROSPACE_TYPES } from '../foundation/unit-classification';
 import { tmmForMovement, type AlphaStrikeMovement } from '../foundation/movement';
 import { hasExplosiveComponent } from './explosive-components';
 import { AlphaStrikeSpecialAbilityCollector } from './special-ability-collector';
+import { isAeroEntity, isMekEntity } from '../../entity-type-guards';
+import { CommandCockpits } from '../../../types';
+import { alphaStrikeArmor } from '../foundation/integrity';
 
 export interface AlphaStrikeCoreSpecialContext {
   readonly type: ASUnitTypeCode;
@@ -45,6 +49,13 @@ export function alphaStrikeCoreSpecials(
   entity: BaseEntity,
   context: AlphaStrikeCoreSpecialContext,
 ): string[] {
+  return collectAlphaStrikeCoreSpecials(entity, context).toArray();
+}
+
+export function collectAlphaStrikeCoreSpecials(
+  entity: BaseEntity,
+  context: AlphaStrikeCoreSpecialContext,
+): AlphaStrikeSpecialAbilityCollector {
   const specials = new AlphaStrikeSpecialAbilityCollector();
   const explosive = hasExplosiveComponent(entity);
 
@@ -53,7 +64,7 @@ export function alphaStrikeCoreSpecials(
   addUnitSpecials(entity, context.type, specials);
   addMovementSpecials(context.movement, specials);
   finalizeSpecials(specials);
-  return specials.toArray();
+  return specials;
 }
 
 function eligibleForENE(entity: BaseEntity, context: AlphaStrikeCoreSpecialContext): boolean {
@@ -75,10 +86,39 @@ function addEquipmentSpecials(
     const equipment = mount.equipment;
     if (!equipment) continue;
     addCommonEquipmentSpecials(equipment, specials);
-    if (equipment.hasFlag('F_NOVA')) {
+    if (equipment.hasFlag('F_DRONE_CARRIER_CONTROL')) {
+      specials.addNumeric('DCC', Math.trunc(mount.size ?? 1));
+    } else if (equipment.hasFlag('F_REMOTE_DRONE_COMMAND_CONSOLE')) {
+      specials.addNumeric('DCC', 1);
+    }
+    if (equipment.hasFlag('F_MASH')) {
+      specials.addNumeric('MASH', Math.trunc(mount.size ?? 1));
+    }
+    if (equipment.hasFlag('F_ATAC')) {
+      specials.addNumeric('ATAC', Math.trunc(mount.size ?? 1));
+    }
+    if (equipment instanceof WeaponEquipment && equipment.ammoType === 'SCREEN_LAUNCHER') {
+      specials.addNumeric('SCR', 1);
+    }
+    if (equipment.hasFlag('F_BOOBY_TRAP') && !['PM', 'CI', 'BA'].includes(type)) specials.add('BT');
+    if (equipment.hasFlag('F_COMMUNICATIONS')) {
+      const tonnage = mount.getTonnage(entity);
+      if (tonnage !== undefined) {
+        addCommandSpecial(specials, 'MHQ', Math.trunc(tonnage));
+        if (tonnage >= entity.tonnage() / 20) specials.add('RCN');
+      }
+    }
+    if (equipment.hasAnyFlag(['F_VEHICLE_MINE_DISPENSER', 'F_SPACE_MINE_DISPENSER'])) {
+      specials.addNumeric('MDS', 2);
+    }
+    if (equipment.hasFlag('F_EW_EQUIPMENT')) {
+      specials.add('ECM');
+      specials.add('LPRB');
+    } else if (equipment.hasFlag('F_NOVA')) {
       specials.add('PRB');
       specials.add('ECM');
       specials.add('NOVA');
+      addCommandSpecial(specials, 'MHQ', 1.5);
     } else if (equipment.hasFlag('F_WATCHDOG')) {
       specials.add('LPRB');
       specials.add('ECM');
@@ -86,7 +126,7 @@ function addEquipmentSpecials(
     } else if (equipment.hasFlag('F_BLOODHOUND')) {
       specials.add('BH');
     } else if (equipment.hasFlag('F_BAP')) {
-      specials.add('PRB');
+      specials.add(probeAbility(entity, mount.getTonnage(entity)));
     } else if (equipment.hasFlag('F_ECM')) {
       if (equipment.hasFlag('F_ANGEL_ECM')) specials.add('AECM');
       else if (equipment.hasFlag('F_SINGLE_HEX_ECM')) specials.add('LECM');
@@ -101,48 +141,86 @@ function addEquipmentSpecials(
   }
 }
 
+function probeAbility(entity: BaseEntity, tonnage: number | undefined): 'PRB' | 'LPRB' | 'RCN' {
+  if (tonnage === undefined) return 'PRB';
+  if (entity instanceof BattleArmorEntity) {
+    if (tonnage === 0.045 || tonnage === 0.065) return 'RCN';
+    if (tonnage === 0.15 || tonnage === 0.25) return 'LPRB';
+  } else if (tonnage === 0.5) {
+    return 'LPRB';
+  }
+  return 'PRB';
+}
+
 function addCommonEquipmentSpecials(
   equipment: NonNullable<ReturnType<BaseEntity['equipment']>[number]['equipment']>,
   specials: AlphaStrikeSpecialAbilityCollector,
 ): void {
   if (equipment.hasFlag('F_ADVANCED_FIRE_CONTROL')) specials.add('AFC');
   if (equipment.hasFlag('F_BASIC_FIRE_CONTROL')) specials.add('BFC');
-  if (equipment.hasAnyFlag(['F_HAND_WEAPON', 'F_TALON', 'F_CLUB', 'F_SPIKES'])) specials.add('MEL');
+  if (equipment.hasAnyFlag(['F_HAND_WEAPON', 'F_TALON', 'F_CLUB', 'F_SPIKES', 'F_PROTOMEK_MELEE'])) specials.add('MEL');
+  if (equipment.hasFlag('F_CLUB')
+    && equipment.hasAnyFlag(['S_SHIELD_SMALL', 'S_SHIELD_MEDIUM', 'S_SHIELD_LARGE'])) {
+    specials.add('SHLD');
+  }
   if (equipment.hasAnyFlag(['S_DUAL_SAW', 'S_CHAINSAW', 'S_BUZZSAW', 'S_RETRACTABLE_BLADE'])) specials.add('SAW');
-  if (equipment.hasAnyFlag(['S_BACKHOE', 'S_PILE_DRIVER', 'S_MINING_DRILL', 'S_ROCK_CUTTER', 'S_WRECKING_BALL'])) specials.add('ENG');
+  if (equipment.hasFlag('F_BULLDOZER')
+    || equipment.hasAnyFlag(['S_BACKHOE', 'S_PILE_DRIVER', 'S_MINING_DRILL', 'S_ROCK_CUTTER', 'S_WRECKING_BALL'])) {
+    specials.add('ENG');
+  }
   if (equipment.hasFlag('F_FIRE_RESISTANT')) specials.add('FR');
   if (equipment.hasFlag('F_DRONE_OPERATING_SYSTEM')) specials.add('DRO');
+  if (equipment.hasAnyFlag(['F_SRCS', 'F_SASRCS', 'F_CASPAR', 'F_CASPAR_II'])) {
+    specials.add('RBT');
+    if (equipment.hasFlag('F_CASPAR')) specials.add('SDCS');
+    if (equipment.hasFlag('F_SASRCS')) specials.add('ECM');
+  }
   if (equipment.hasFlag('F_EJECTION_SEAT')) specials.add('ES');
+  if (equipment.hasFlag('F_HARJEL')) specials.add('BHJ');
+  if (equipment.hasFlag('F_HARJEL_II')) specials.add('BHJ2');
+  if (equipment.hasFlag('F_HARJEL_III')) specials.add('BHJ3');
   if (equipment.hasFlag('F_RADICAL_HEATSINK')) specials.add('RHS');
   if (equipment.hasFlag('F_EMERGENCY_COOLANT_SYSTEM')) specials.add('ECS');
   if (equipment.hasFlag('F_TSM')) specials.add('TSM');
   if (equipment.hasFlag('F_INDUSTRIAL_TSM')) specials.add('I-TSM');
+  if (equipment.hasAnyFlag(['F_NULL_SIG', 'F_CHAMELEON_SHIELD'])) specials.add('STL');
+  if (equipment.hasFlag('F_VOID_SIG')) specials.add('MAS');
+  if (equipment.hasFlag('F_VIRAL_JAMMER_DECOY')) specials.add('DJ');
+  if (equipment.hasFlag('F_VIRAL_JAMMER_HOMING')) specials.add('HJ');
+  if (equipment.hasFlag('F_ARMORED_MOTIVE_SYSTEM')) specials.add('ARS');
   if (equipment.hasFlag('F_UMU')) specials.add('UMU');
   if (equipment.hasFlag('F_MOBILE_HPG')) specials.add('HPG');
   if (equipment.hasFlag('F_MOBILE_FIELD_BASE')) specials.add('MFB');
+  if (equipment.hasFlag('F_MINESWEEPER')) specials.add('MSW');
+  if (equipment.hasAnyFlag(['F_AMPHIBIOUS', 'F_FULLY_AMPHIBIOUS', 'F_LIMITED_AMPHIBIOUS'])) {
+    specials.add('AMP');
+  }
+  if (equipment.hasFlag('F_OFF_ROAD')) specials.add('ORO');
+  if (equipment.hasFlag('F_DUNE_BUGGY')) specials.add('DUN');
+  if (equipment.hasAnyFlag(['F_LIGHT_BRIDGE_LAYER', 'F_MEDIUM_BRIDGE_LAYER', 'F_HEAVY_BRIDGE_LAYER'])) {
+    specials.add('BRID');
+  }
   if (equipment.hasAnyFlag(['F_TRACTOR_MODIFICATION', 'F_TRAILER_MODIFICATION', 'F_HITCH'])) {
     specials.add('HTC');
   }
   if (equipment.hasFlag('F_SEARCHLIGHT') || equipment.hasFlag('F_BA_SEARCHLIGHT')) specials.add('SRCH');
   if (equipment.hasFlag('F_C3I')) {
     specials.add('C3I');
-    addCommandSpecial(specials, 'MHQ', 2);
+    addCommandSpecial(specials, 'MHQ', equipment.hasFlag('F_BA_EQUIPMENT') ? 2 : 2.5);
   }
   if (equipment.hasFlag('F_C3S')) {
     specials.add('C3S');
     addCommandSpecial(specials, 'MHQ', equipment.hasFlag('F_C3EM') ? 2 : 1);
-    if (equipment.hasFlag('F_C3EM')) specials.add('C3EM1');
+    if (equipment.hasFlag('F_C3EM')) specials.addOptionalCount('C3EM');
   }
   if (equipment.hasFlag('F_C3SBS')) {
     specials.add('C3BSS');
     addCommandSpecial(specials, 'MHQ', 2);
   }
+  if (equipment.hasFlag('F_NAVAL_C3')) specials.add('NC3');
   if (equipment.hasFlag('F_COMMAND_CONSOLE')) addCommandSpecial(specials, 'MHQ', 1);
-  if (equipment.hasFlag('F_COMMUNICATIONS') && equipment.hasFixedTonnage()) {
-    addCommandSpecial(specials, 'MHQ', Math.floor(equipment.tonnage));
-  }
   if (equipment.hasFlag('F_SENSOR_DISPENSER')) {
-    specials.add('RSD1');
+    specials.addNumeric('RSD', 1);
     specials.add('RCN');
   }
   if (equipment.hasAnyFlag(['F_LOOKDOWN_RADAR', 'F_RECON_CAMERA', 'F_HIRES_IMAGER', 'F_HYPERSPECTRAL_IMAGER', 'F_INFRARED_IMAGER'])) {
@@ -169,8 +247,10 @@ function addUnitSpecials(
   specials: AlphaStrikeSpecialAbilityCollector,
 ): void {
   addInfantrySpecials(entity, type, specials);
+  addIntrinsicCommandSpecial(entity, specials);
   addCargoSpecials(entity, type, specials);
-  addTransportSpecials(entity, specials);
+  addTransportSpecials(entity, type, specials);
+  if (entity.quirks().some(({ quirk }) => quirk.key === 'trailer_hitch')) specials.add('HTC');
   const armor = entity.uniformArmor()?.armor;
   if (!entity.hasPatchworkArmor() && armor && STEALTH_ARMOR_TYPES.has(armor.armorType)) {
     specials.add('STL');
@@ -178,7 +258,11 @@ function addUnitSpecials(
   if (!entity.hasPatchworkArmor() && armor) {
     const armorSpecial = ARMOR_SPECIALS[armor.armorType];
     if (armorSpecial) specials.add(armorSpecial);
-    if (armor.armorType === 'COMMERCIAL' || (armor.armor.bar >= 1 && armor.armor.bar <= 9)) specials.add('BAR');
+    if (alphaStrikeArmor(entity) > 0
+      && (armor.armorType === 'COMMERCIAL'
+        || entity.isSupportVehicle() && entity.barRating() >= 1 && entity.barRating() <= 9)) {
+      specials.add('BAR');
+    }
   }
   const engine = entity.mountedEngine();
   if (engine.installed && !LARGE_AEROSPACE_TYPES.has(type)) {
@@ -188,6 +272,8 @@ function addUnitSpecials(
   if (entity.equipment().some(mount => mount.armored)
     || entity instanceof MekEntity && entity.armoredSystemSlots().size > 0) specials.add('ARM');
   if (entity instanceof MekEntity) {
+    if (entity.chassisConfig === 'QuadVee') specials.add('QV');
+    if (entity.isSuperHeavy()) specials.add('LG');
     if (entity.isIndustrial()) {
       specials.add(entity.mountedCockpit().isIndustrial ? 'BFC' : 'AFC');
     }
@@ -195,12 +281,36 @@ function addUnitSpecials(
   if ((entity instanceof MekEntity || entity instanceof VehicleEntity) && entity.omni()) {
     specials.add('OMNI');
   }
+  if (entity instanceof ProtoMekEntity) {
+    if (entity.isGlider()) specials.add('GLD');
+    if (entity.equipment().some(mount => mount.equipment?.hasFlag('F_MAGNETIC_CLAMP'))) {
+      specials.add(entity.tonnage() < 10 ? 'MCS' : 'UCS');
+    }
+  }
   if (entity instanceof VehicleEntity && !entity.isSupportVehicle()) specials.add('SRCH');
-  if (entity instanceof VehicleEntity && entity.equipment().some(mount =>
-    mount.equipment?.hasFlag('F_ENVIRONMENTAL_SEALING'))) {
-    specials.add('SEAL');
-    const engine = entity.mountedEngine();
-    if (engine.isFusion || engine.isFission || engine.type() === 'Fuel Cell') specials.add('SOA');
+  addSpaceOperationsSpecials(entity, type, specials);
+}
+
+function addSpaceOperationsSpecials(
+  entity: BaseEntity,
+  type: ASUnitTypeCode,
+  specials: AlphaStrikeSpecialAbilityCollector,
+): void {
+  const equipment = entity.equipment();
+  if ((type === 'BA' || type === 'CI')
+    && equipment.some(mount => mount.equipment?.hasFlag('F_SPACE_ADAPTATION'))) {
+    specials.add('SOA');
+  }
+
+  const supportsEnvironmentalSealing = entity instanceof VehicleEntity
+    || entity instanceof MekEntity && entity.isIndustrial();
+  if (!supportsEnvironmentalSealing
+    || !equipment.some(mount => mount.equipment?.hasFlag('F_ENVIRONMENTAL_SEALING'))) return;
+
+  specials.add('SEAL');
+  const engine = entity.mountedEngine();
+  if (engine.installed && (engine.isFusion || engine.isFission || engine.type() === 'Fuel Cell')) {
+    specials.add('SOA');
   }
 }
 
@@ -224,10 +334,10 @@ function addCargoSpecials(
   if (capacity <= 0) return;
 
   if (capacity > 1000) {
-    addCargoSpecial('CK', Math.round(capacity / 1000), doors, specials);
+    addCargoSpecial('CK', Math.round(capacity / 1000), doors, LARGE_AEROSPACE_TYPES.has(type), specials);
   } else {
     const finalCapacity = LARGE_AEROSPACE_TYPES.has(type) ? Math.round(capacity) : capacity;
-    addCargoSpecial('CT', finalCapacity, doors, specials);
+    addCargoSpecial('CT', finalCapacity, doors, LARGE_AEROSPACE_TYPES.has(type), specials);
   }
 }
 
@@ -235,16 +345,21 @@ function addCargoSpecial(
   ability: 'CT' | 'CK',
   capacity: number,
   doors: number,
+  showDoors: boolean,
   specials: AlphaStrikeSpecialAbilityCollector,
 ): void {
-  specials.add(`${ability}${capacity}${doors > 0 ? `-D${doors}` : ''}`);
+  specials.add(`${ability}${capacity}${showDoors && doors > 0 ? `-D${doors}` : ''}`);
 }
 
 const MOBILE_FIELD_BASE_BAY_TYPES = new Set([
   'fighter', 'mek', 'protomek', 'small-craft', 'light-vehicle', 'heavy-vehicle', 'naval-repair',
 ]);
 
-function addTransportSpecials(entity: BaseEntity, specials: AlphaStrikeSpecialAbilityCollector): void {
+function addTransportSpecials(
+  entity: BaseEntity,
+  type: ASUnitTypeCode,
+  specials: AlphaStrikeSpecialAbilityCollector,
+): void {
   const capacities = new Map<string, number>();
   const doors = new Map<string, number>();
   const addCapacity = (ability: string, capacity: number, doorCount?: number): void => {
@@ -263,7 +378,8 @@ function addTransportSpecials(entity: BaseEntity, specials: AlphaStrikeSpecialAb
     }
   }
   for (const [ability, capacity] of capacities) {
-    specials.add(`${ability}${capacity}${doors.has(ability) ? `-D${doors.get(ability)}` : ''}`);
+    const doorSuffix = LARGE_AEROSPACE_TYPES.has(type) && doors.has(ability) ? `-D${doors.get(ability)}` : '';
+    specials.add(`${ability}${capacity}${doorSuffix}`);
   }
   const mobileFieldBaseBays = entity.transporters().filter(transporter =>
     transporter.kind === 'bay' && MOBILE_FIELD_BASE_BAY_TYPES.has(transporter.configuration.type)).length;
@@ -293,7 +409,27 @@ function addInfantrySpecials(
   if (type !== 'CI' && type !== 'BA') return;
   specials.add(`CAR${Math.ceil(entity.tonnage())}`);
 
+  if (entity instanceof InfantryEntity && entity.specializations().has('mine-engineers')) {
+    specials.add('MSW');
+  }
+  if (entity instanceof InfantryEntity) {
+    if (entity.specializations().has('fire-engineers')) specials.add('FF');
+    if (entity.specializations().has('mountain-troops')) specials.add('MTN');
+    if (entity.specializations().has('trench-engineers')) specials.add('TRN');
+    if (entity.umuMP() > 0 || entity.specializations().has('scuba')) specials.add('UMU');
+    if (entity.specializations().has('paratroops')) specials.add('PAR');
+    if (entity.augmentations().includes('tsm_implant')) specials.add('TSI');
+  }
+
   if (!(entity instanceof BattleArmorEntity)) return;
+  if (entity.equipment().some(mount =>
+    mount.equipment?.hasFlag('F_VISUAL_CAMO')
+      && !(mount.equipment instanceof ArmorEquipment && mount.equipment.armorType === 'BA_MIMETIC'))) {
+    specials.add('LMAS');
+  }
+  if (entity.equipment().some(mount =>
+    mount.equipment?.hasFlag('F_TOOLS') && mount.equipment.hasFlag('S_MINESWEEPER'))) specials.add('MSW');
+  if (entity.equipment().some(mount => mount.equipment?.hasFlag('F_PARAFOIL'))) specials.add('PAR');
   if (entity.equipment().some(mount => mount.equipment?.hasFlag('F_MAGNETIC_CLAMP'))) {
     specials.add('XMEC');
   }
@@ -344,4 +480,16 @@ function finalizeSpecials(specials: AlphaStrikeSpecialAbilityCollector): void {
     specials.delete('CASEP');
   }
   if (specials.has('XMEC')) specials.delete('MEC');
+}
+
+function addIntrinsicCommandSpecial(
+  entity: BaseEntity,
+  specials: AlphaStrikeSpecialAbilityCollector,
+): void {
+  if (isMekEntity(entity) || isAeroEntity(entity)) {
+    if (entity.cockpitType() === 'Interface') specials.add('DN');
+    if (CommandCockpits.has(entity.cockpitType())) {
+      addCommandSpecial(specials, 'MHQ', 1);
+    }
+  }
 }

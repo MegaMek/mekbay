@@ -124,6 +124,32 @@ export class BattleArmorEntity extends InfantryBaseEntity {
     }
   });
 
+  /** Whether the technical specs indicate that this unit can make Leg Attacks. */
+  readonly legAttackCapable = computed(() => this.hasAntiMekManipulators());
+
+  /** Whether the technical specs indicate that this unit can make Swarm Attacks. */
+  readonly swarmAttackCapable = computed(() =>
+    this.motiveType() !== 'UMU' && this.hasAntiMekManipulators());
+
+  private hasAntiMekManipulators(): boolean {
+    if (this.chassisType().toLowerCase().includes('quad')) return false;
+
+    const count = (flag: 'F_BASIC_MANIPULATOR' | 'F_ARMORED_GLOVE' | 'F_BATTLE_CLAW') =>
+      this.equipment().filter(mount => mount.equipment?.hasFlag(flag)).length;
+    const basicManipulators = count('F_BASIC_MANIPULATOR');
+    const battleClaws = count('F_BATTLE_CLAW');
+
+    switch (this.weightClass()) {
+      case 'Ultra Light':
+      case 'Light':
+        return count('F_ARMORED_GLOVE') > 1 || basicManipulators > 1 || battleClaws > 0;
+      case 'Medium':
+        return basicManipulators > 1 || battleClaws > 0;
+      default:
+        return false;
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   //  OVERRIDES - BA uses canonical motive values (no compound infantry strings)
   // ═══════════════════════════════════════════════════════════════════════════

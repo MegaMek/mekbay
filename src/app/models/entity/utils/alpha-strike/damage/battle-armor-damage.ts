@@ -3,12 +3,12 @@ import type { BattleArmorEntity } from '../../../entities';
 import type { EntityMountedEquipment } from '../../../types';
 import { toStandardDamage } from './damage-rounding';
 import type { AlphaStrikeDamage, RawDamageVector } from './damage-types';
-import { battleForceDamageForMount, type AlphaStrikeRangeIndex } from './weapon-damage-profile';
-
-const TROOP_FACTORS = [
-  0, 0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 7, 8, 8, 9, 9,
-  10, 10, 11, 11, 12, 13, 14, 15, 16, 16, 17, 17, 17, 18, 18,
-] as const;
+import {
+  battleForceDamageForMount,
+  hasAlphaStrikeBattleForceClass,
+  type AlphaStrikeRangeIndex,
+} from './weapon-damage-profile';
+import { alphaStrikeTroopFactor } from './troop-factor';
 
 export interface BattleArmorDamageOptions {
   readonly shootingStrength?: number;
@@ -31,10 +31,7 @@ export interface BattleArmorDamageResult {
 }
 
 export function battleArmorTroopFactor(shootingStrength: number): number {
-  if (!Number.isInteger(shootingStrength) || shootingStrength < 0) {
-    throw new RangeError('Battle Armor shooting strength must be a nonnegative integer');
-  }
-  return TROOP_FACTORS[Math.min(shootingStrength, 30)] + 0.5;
+  return alphaStrikeTroopFactor(shootingStrength) + 0.5;
 }
 
 export function calculateBattleArmorStandardDamage(
@@ -83,9 +80,10 @@ function sumBattleArmorWeaponDamage(
     mount.equipment?.hasFlag('F_TARGETING_COMPUTER'));
   return weapons.reduce<RawDamageVector>((total, mount) => {
     const weapon = mount.equipment;
-    if (!include(mount) || weapon.hasFlag('F_ARTILLERY') || isTorpedoWeapon(weapon)) return total;
+    if (!include(mount) || weapon.damage === 'artillery'
+      || hasAlphaStrikeBattleForceClass(weapon, 'TORPEDO')) return total;
     let modifier = battleArmorAmmoModifier(weapon, weapons, ammo);
-    if (weapon.oneShotCount && weapon.id !== 'CLFussilade') modifier *= 0.1;
+    if (weapon.oneShotCount === 1) modifier *= 0.1;
     if (targetingComputer && weapon.hasFlag('F_DIRECT_FIRE')) modifier *= 1.1;
     for (let range = 0; range < 3; range++) {
       total[range] += battleForceDamageForMount(
@@ -120,8 +118,3 @@ function isRepresentativeLocation(location: string): boolean {
   return location === 'Squad' || location === 'Trooper 1';
 }
 
-function isTorpedoWeapon(weapon: WeaponEquipment): boolean {
-  return weapon.ammoType === 'LRM_TORPEDO'
-    || weapon.ammoType === 'SRM_TORPEDO'
-    || weapon.ammoType === 'LRM_TORPEDO_COMBO';
-}

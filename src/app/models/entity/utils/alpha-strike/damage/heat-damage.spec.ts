@@ -9,43 +9,25 @@ import {
 } from './heat-damage';
 
 describe('Alpha Strike weapon heat damage', () => {
-  it('ports every Java flamer override from semantic Classic fields', () => {
-    expect(alphaStrikeHeatDamageForWeapon(weapon('flamer', ['F_FLAMER']))).toEqual([2, 0, 0]);
-    expect(alphaStrikeHeatDamageForWeapon(weapon('er-flamer', ['F_FLAMER', 'F_ER_FLAMER']))).toEqual([2, 2, 0]);
-    expect(alphaStrikeHeatDamageForWeapon(weapon('heavy-flamer', ['F_FLAMER'], {
-      ammoType: 'HEAVY_FLAMER', heat: 5, damage: 4,
-    }))).toEqual([4, 0, 0]);
-    expect(alphaStrikeHeatDamageForWeapon(weapon('ba-heavy-flamer', ['F_FLAMER', 'F_BA_WEAPON'], {
-      heat: 5, damage: 4,
-    }))).toEqual([4, 0, 0]);
-  });
-
-  it('ports every Java plasma override from semantic Classic fields', () => {
-    expect(alphaStrikeHeatDamageForWeapon(weapon('is-plasma', ['F_PLASMA'], {
-      ammoType: 'PLASMA', damage: 10, rackSize: 1,
-    }))).toEqual([3, 3, 0]);
-    expect(alphaStrikeHeatDamageForWeapon(weapon('clan-plasma-cannon', ['F_PLASMA'], {
-      ammoType: 'PLASMA', damage: 'variable', rackSize: 2,
+  it('uses exported Alpha Strike heat damage without Classic weapon inference', () => {
+    expect(alphaStrikeHeatDamageForWeapon(weapon('flamer', ['F_FLAMER'], {
+      alphaStrike: { heatDamage: [2, 0, 0, 0] },
+    }))).toEqual([2, 0, 0]);
+    expect(alphaStrikeHeatDamageForWeapon(weapon('plasma', ['F_PLASMA'], {
+      alphaStrike: { heatDamage: [7, 7, 7, 0] },
     }))).toEqual([7, 7, 7]);
-    expect(alphaStrikeHeatDamageForWeapon(weapon('ba-plasma', ['F_PLASMA', 'F_BA_WEAPON'], {
-      damage: 2,
-    }))).toEqual([2, 2, 0]);
-    expect(alphaStrikeHeatDamageForWeapon(weapon('mfuk-plasma', ['F_PLASMA_MFUK'], {
-      damage: 10, rackSize: 1, heat: 15,
-    }))).toEqual([3, 3, 0]);
   });
 
-  it('returns no heat damage for ordinary weapons and unrecognized plasma signatures', () => {
+  it('returns no heat damage when no Alpha Strike override is exported', () => {
     expect(alphaStrikeHeatDamageForWeapon(weapon('laser'))).toEqual([0, 0, 0]);
-    expect(alphaStrikeHeatDamageForWeapon(weapon('plasma-infantry', ['F_PLASMA', 'F_INFANTRY'], {
-      ammoType: 'INFANTRY', damage: 2,
-    }))).toEqual([0, 0, 0]);
+    expect(alphaStrikeHeatDamageForWeapon(weapon('flamer', ['F_FLAMER']))).toEqual([0, 0, 0]);
   });
 
   it('sums eligible mounts and excludes other locations', () => {
     const entity = new BipedMekEntity();
-    const front = addTestEquipment(entity, weapon('flamer', ['F_FLAMER']), { location: 'RA' });
-    addTestEquipment(entity, weapon('rear-flamer', ['F_FLAMER']), { location: 'RT', rearMounted: true });
+    const heatDamage = { alphaStrike: { heatDamage: [2, 0, 0, 0] as [number, number, number, number] } };
+    const front = addTestEquipment(entity, weapon('flamer', ['F_FLAMER'], heatDamage), { location: 'RA' });
+    addTestEquipment(entity, weapon('rear-flamer', ['F_FLAMER'], heatDamage), { location: 'RT', rearMounted: true });
 
     expect(sumAlphaStrikeHeatDamage(entity.mountedWeapons())).toEqual([4, 0, 0]);
     expect(sumAlphaStrikeHeatDamage(entity.mountedWeapons(), mount => mount === front)).toEqual([2, 0, 0]);

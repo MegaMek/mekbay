@@ -33,7 +33,7 @@
  */
 
 import { Pipe, type PipeTransform } from "@angular/core";
-import { PVCalculatorUtil } from "../utils/pv-calculator.util";
+import { adjustPointValueForSkill } from '../utils/pv-skill-adjustment.util';
 
 /*
  * Author: Drake
@@ -46,6 +46,6 @@ export class AdjustedPV implements PipeTransform {
 
     transform(pv: number, skill: number): number {
         if (pv === undefined) return 0;
-        return PVCalculatorUtil.calculateAdjustedPV(pv, skill);
+        return adjustPointValueForSkill(pv, skill);
     }
 }

@@ -43,7 +43,7 @@ import { Sanitizer } from '../utils/sanitizer.util';
 import { ASForceUnitState } from './as-force-unit-state.model';
 import type { CrewMember } from './crew-member.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
-import { PVCalculatorUtil } from '../utils/pv-calculator.util';
+import { adjustPointValueForSkill } from '../utils/pv-skill-adjustment.util';
 import type { SpecialAbilityState } from './as-special-ability-state.model';
 import type { ASAbilityCriticalHitRollResolution, ASAbilityEffectContext, ASAbilityEffectMode, ASAbilityEffectRef, ASAbilityRollModifierComment, ASMovementDisplayValue } from './as-ability-effects.model';
 import {
@@ -137,7 +137,7 @@ export class ASForceUnit extends ForceUnit {
     })
 
     public adjustedPv = computed<number>(() => {
-        return PVCalculatorUtil.calculateAdjustedPV(
+        return adjustPointValueForSkill(
             this.getBaseBv(),
             this.pilotSkill()
         );

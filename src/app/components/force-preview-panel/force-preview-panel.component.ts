@@ -73,7 +73,7 @@ import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-
 import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force-tags.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { GameSystem } from '../../models/common.model';
-import { PVCalculatorUtil } from '../../utils/pv-calculator.util';
+import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 
@@ -993,7 +993,7 @@ export class ForcePreviewPanelComponent {
             return '';
         }
         if (this.force().type == GameSystem.ALPHA_STRIKE) {
-            const adjustedPV = PVCalculatorUtil.calculateAdjustedPV(loadForceUnit.unit.as.PV, loadForceUnit.skill ?? DEFAULT_GUNNERY_SKILL);
+            const adjustedPV = adjustPointValueForSkill(loadForceUnit.unit.as.PV, loadForceUnit.skill ?? DEFAULT_GUNNERY_SKILL);
             return `PV: ${adjustedPV}`;
         }
         const adjustedBV = BVCalculatorUtil.calculateAdjustedBV(loadForceUnit.unit, loadForceUnit.unit.bv, loadForceUnit.gunnery ?? DEFAULT_GUNNERY_SKILL, loadForceUnit.piloting ?? DEFAULT_PILOTING_SKILL);

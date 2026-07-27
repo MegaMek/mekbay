@@ -99,3 +99,63 @@ describe('BattleArmorEntity mechanized capability', () => {
     expect(entity.mechanizedCapable()).toBeFalse();
   });
 });
+
+describe('BattleArmorEntity anti-Mek attack capabilities', () => {
+  it('derives light-unit Leg and Swarm capability from manipulator thresholds', () => {
+    const entity = new BattleArmorEntity();
+    entity.declaredWeightClass.set('Light');
+    addTestEquipmentWithFlags(entity, 'F_ARMORED_GLOVE');
+
+    expect(entity.legAttackCapable()).toBeFalse();
+    expect(entity.swarmAttackCapable()).toBeFalse();
+
+    addTestEquipmentWithFlags(entity, 'F_ARMORED_GLOVE');
+    expect(entity.legAttackCapable()).toBeTrue();
+    expect(entity.swarmAttackCapable()).toBeTrue();
+  });
+
+  it('requires two basic manipulators or a battle claw for medium units', () => {
+    const entity = new BattleArmorEntity();
+    addTestEquipmentWithFlags(entity, 'F_BASIC_MANIPULATOR');
+    expect(entity.legAttackCapable()).toBeFalse();
+
+    addTestEquipmentWithFlags(entity, 'F_BASIC_MANIPULATOR');
+    expect(entity.legAttackCapable()).toBeTrue();
+
+    entity.setEquipment([]);
+    addTestEquipmentWithFlags(entity, 'F_BATTLE_CLAW');
+    expect(entity.legAttackCapable()).toBeTrue();
+  });
+
+  it('allows UMU units to make Leg Attacks but not Swarm Attacks', () => {
+    const entity = new BattleArmorEntity();
+    entity.declaredWeightClass.set('Light');
+    entity.motiveType.set('UMU');
+    addTestEquipmentWithFlags(entity, 'F_BATTLE_CLAW');
+
+    expect(entity.legAttackCapable()).toBeTrue();
+    expect(entity.swarmAttackCapable()).toBeFalse();
+  });
+
+  it('rejects quad, heavy, assault, and magnetic-clamp-only units', () => {
+    const quad = new BattleArmorEntity();
+    quad.declaredWeightClass.set('Light');
+    quad.chassisType.set('Quad');
+    addTestEquipmentWithFlags(quad, 'F_BATTLE_CLAW');
+    expect(quad.legAttackCapable()).toBeFalse();
+
+    for (const weightClass of ['Heavy', 'Assault'] as const) {
+      const entity = new BattleArmorEntity();
+      entity.declaredWeightClass.set(weightClass);
+      addTestEquipmentWithFlags(entity, 'F_BATTLE_CLAW');
+      expect(entity.legAttackCapable()).toBeFalse();
+      expect(entity.swarmAttackCapable()).toBeFalse();
+    }
+
+    const clamps = new BattleArmorEntity();
+    clamps.declaredWeightClass.set('Light');
+    addTestEquipmentWithFlags(clamps, 'F_MAGNETIC_CLAMP');
+    expect(clamps.legAttackCapable()).toBeFalse();
+    expect(clamps.swarmAttackCapable()).toBeFalse();
+  });
+});

@@ -31,10 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { type BaseEntity, AeroEntity, BattleArmorEntity, InfantryEntity, MekEntity,
-  VehicleEntity } from '../../entities';
-import { MiscEquipment } from '../../../equipment.model';
-import type { AlphaStrikeArcStats, AlphaStrikeUnitStats, ASUnitTypeCode } from '../../../units.model';
+import { type BaseEntity, AeroEntity, BattleArmorEntity, InfantryEntity, MekEntity } from '../../entities';
+import { WeaponEquipment } from '../../../equipment.model';
+import type { AlphaStrikeUnitStats, ASUnitTypeCode } from '../../../units.model';
 import {
   CalculationReportBuilder,
   NULL_CALCULATION_REPORT,
@@ -85,6 +84,7 @@ import {
 } from './damage/weapon-damage-profile';
 import { sumAlphaStrikeWeaponDamage } from './damage/weapon-damage-aggregation';
 import { alphaStrikeSpecialsForEntity } from './specials/specials-converter';
+import { calculateAlphaStrikePointValue } from './point-value/point-value-calculator';
 
 export { alphaStrikeSize, alphaStrikeUnitType } from './foundation/unit-classification';
 export { tmmForMovement } from './foundation/movement';
@@ -146,15 +146,19 @@ export function convertEntityToAlphaStrike(
       size: SZ,
       movement,
       usesArcs,
-      hasStandardDamage: Object.values(damage.standard).some(value => Number(value) > 0),
+      usesArcedDamage: alphaStrikeDamageFamily(entity, TP) === 'arced',
+      hasStandardDamage: Object.values(damage.standard).some(value => value !== '0' && value !== '-'),
       heatSpecials: damage.heatSpecials,
       overheatLong: damage.overheatLong ?? false,
+      specialDamageHeatFactors: damage.specialDamageHeatFactors,
+      rearSpecialDamageHeatFactors: damage.rearSpecialDamageHeatFactors,
     }),
     dmg: damage.standard,
     usesE,
     usesArcs,
   };
   Object.assign(result, usesArcs ? { ...createEmptyArcs(), ...damage.arcs } : damage.arcs);
+  result.PV = calculateAlphaStrikePointValue(result, skill);
   writeConversionReport(entity, result, skill, report);
   return result;
 }
@@ -277,7 +281,8 @@ function alphaStrikeDamage(
   if (family === 'arced') return { ...calculateLargeAerospaceDamage(entity), heatSpecials: [] };
 
   const raw = sumAlphaStrikeWeaponDamage(entity, mount =>
-    alphaStrikeDamageLocationMultiplier(entity, 'standard', mount) > 0);
+    alphaStrikeDamageLocationMultiplier(entity, 'standard', mount) > 0,
+  family === 'aerospace');
   if (family === 'generic') raw[3] = 0;
   const adjusted = applyHeatAdjustment(entity, TP, raw, movement);
   const heatSpecial = alphaStrikeHeatSpecial(sumAlphaStrikeHeatDamage(entity.mountedWeapons(), mount =>
@@ -286,6 +291,8 @@ function alphaStrikeDamage(
     standard: toStandardDamage(adjusted.front),
     overheat: adjusted.overheat,
     overheatLong: adjusted.overheatLong,
+    specialDamageHeatFactors: adjusted.specialDamageHeatFactors,
+    rearSpecialDamageHeatFactors: adjusted.rearSpecialDamageHeatFactors,
     arcs: {},
     heatSpecials: heatSpecial ? [heatSpecial] : [],
   };
@@ -300,17 +307,27 @@ function applyHeatAdjustment(
   TP: ASUnitTypeCode,
   raw: number[],
   movement: AlphaStrikeMovement,
-): { front: [number, number, number, number]; overheat: number; overheatLong: boolean } {
+): {
+  front: [number, number, number, number];
+  overheat: number;
+  overheatLong: boolean;
+  specialDamageHeatFactors: [number, number, number, number];
+  rearSpecialDamageHeatFactors: [number, number, number, number];
+} {
   const front = raw as [number, number, number, number];
   if (!(TP === 'BM' || TP === 'IM' || TP === 'AF')) {
-    return { front, overheat: 0, overheatLong: false };
+    return {
+      front, overheat: 0, overheatLong: false,
+      specialDamageHeatFactors: [1, 1, 1, 1],
+      rearSpecialDamageHeatFactors: [1, 1, 1, 1],
+    };
   }
   const frontWeapons = entity.mountedWeapons().filter(mount =>
     alphaStrikeDamageLocationMultiplier(entity, 'standard', mount) > 0);
   const mediumWeaponHeat = frontWeapons.reduce((sum, mount) =>
     sum + alphaStrikeWeaponHeatForConversion(mount.equipment), 0);
   const longWeaponHeat = frontWeapons.reduce((sum, mount) =>
-    sum + (baseBattleForceDamageForWeapon(mount.equipment, 2) > 0
+    sum + (countsForAlphaStrikeLongRangeHeat(mount.equipment)
       ? alphaStrikeWeaponHeatForConversion(mount.equipment)
       : 0), 0);
   let movementHeat = 0;
@@ -334,24 +351,41 @@ function applyHeatAdjustment(
     mount.equipment?.hasFlag('F_STEALTH'))) {
     signatureHeat = 10;
   }
-  const equipment = entity.equipment();
-  const baseCapacity = entity instanceof MekEntity ? equipment.reduce((capacity, mount) => {
-    const heatSink = mount.equipment;
-    if (!(heatSink instanceof MiscEquipment) || !heatSink.isHeatSink) return capacity;
-    const multiplier = heatSink.isCompactHeatSink || heatSink.hasFlag('F_HEAT_SINK') ? 1 : 2;
-    return capacity + heatSink.heatSinkUnitsPerMount * multiplier;
-  }, 0) : Math.max(0, entity.heatCapacity(false));
+  const baseCapacity = Math.max(0, entity instanceof MekEntity
+    ? entity.alphaStrikeBaseHeatCapacity()
+    : entity.heatCapacity(false));
   const capacity = alphaStrikeHeatCapacityForEntity(entity, baseCapacity);
   const rearWeaponHeat = entity.mountedWeapons().reduce((sum, mount) =>
     sum + (alphaStrikeDamageLocationMultiplier(entity, 'rear', mount) > 0
       ? alphaStrikeWeaponHeatForConversion(mount.equipment)
       : 0), 0);
-  return adjustAlphaStrikeDamageForHeat(front, {
+  const adjusted = adjustAlphaStrikeDamageForHeat(front, {
     capacity,
     mediumFront: movementHeat + signatureHeat + mediumWeaponHeat,
     mediumRear: movementHeat + signatureHeat + rearWeaponHeat,
     longFront: movementHeat + signatureHeat + longWeaponHeat,
   });
+  const longFactor = adjusted.overheatLong ? adjusted.factors.mediumFront : adjusted.factors.longFront;
+  return {
+    ...adjusted,
+    specialDamageHeatFactors: [
+      adjusted.factors.mediumFront,
+      adjusted.factors.mediumFront,
+      longFactor,
+      longFactor,
+    ],
+    rearSpecialDamageHeatFactors: [
+      adjusted.factors.mediumRear,
+      adjusted.factors.mediumRear,
+      longFactor,
+      longFactor,
+    ],
+  };
+}
+
+function countsForAlphaStrikeLongRangeHeat(weapon: WeaponEquipment): boolean {
+  return baseBattleForceDamageForWeapon(weapon, 2) > 0
+    || (weapon.techBase === 'Clan' && weapon.hasFlag('F_PLASMA') && weapon.damage === 'variable');
 }
 
 function alphaStrikeJumpSystem(entity: MekEntity): AlphaStrikeJumpSystem {

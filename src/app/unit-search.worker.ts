@@ -11,7 +11,7 @@ import {
 import { BVCalculatorUtil } from './utils/bv-calculator.util';
 import { getEffectivePilotingSkill } from './utils/cbt-common.util';
 import { parseSemanticQueryAST } from './utils/semantic-filter-ast.util';
-import { PVCalculatorUtil } from './utils/pv-calculator.util';
+import { adjustPointValueForSkill } from './utils/pv-skill-adjustment.util';
 import { parseSearchQuery } from './utils/search.util';
 import { executeUnitSearch } from './utils/unit-search-executor.util';
 import { getNowMs } from './utils/unit-search-shared.util';
@@ -268,7 +268,7 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
             if (request.pilotGunnerySkill === DEFAULT_GUNNERY_SKILL) {
                 return unit.as.PV;
             }
-            return PVCalculatorUtil.calculateAdjustedPV(unit.as.PV, request.pilotGunnerySkill);
+            return adjustPointValueForSkill(unit.as.PV, request.pilotGunnerySkill);
         },
         unitBelongsToEra: (unit: Unit, eraName: string, scope?: AvailabilityFilterScope) => getScopedEraUnitNames(eraName, scope).has(unit.name),
         unitBelongsToFaction: (unit: Unit, factionName: string, eraNames?: readonly string[]) => getScopedFactionUnitNames(factionName, eraNames).has(unit.name),

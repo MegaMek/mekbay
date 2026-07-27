@@ -1,5 +1,6 @@
-import { AeroEntity, ConvFighterEntity, DropShipEntity, FixedWingSupportEntity, JumpShipEntity, VtolEntity, type BaseEntity } from '../../../entities';
+import { AeroEntity, ConvFighterEntity, DropShipEntity, FixedWingSupportEntity, JumpShipEntity, LamEntity, SmallCraftEntity, VtolEntity, type BaseEntity } from '../../../entities';
 import type { ASUnitTypeCode } from '../../../../units.model';
+import type { AlphaStrikeMovement } from '../foundation/movement';
 import { LARGE_AEROSPACE_TYPES, hasAlphaStrikeVstolCapability } from '../foundation/unit-classification';
 
 /** Converts special abilities intrinsic to a unit's chassis, class, and crew. */
@@ -7,8 +8,10 @@ export function alphaStrikeEntitySpecials(
   entity: BaseEntity,
   type: ASUnitTypeCode,
   size: number,
+  movement?: AlphaStrikeMovement,
 ): string[] {
   const specials: string[] = [];
+  if (entity instanceof LamEntity && movement) addLamSpecials(entity, movement, specials);
   if (entity instanceof VtolEntity) specials.push('ATMO');
   if (type === 'AF' || LARGE_AEROSPACE_TYPES.has(type)) specials.push('SPC');
   if (type === 'AF' || type === 'CF') specials.push(`BOMB${size}`);
@@ -22,6 +25,11 @@ export function alphaStrikeEntitySpecials(
   }
   if (type === 'SC' || type === 'DS' || type === 'DA') {
     specials.push(size === 1 ? 'LG' : size === 2 ? 'VLG' : 'SLG');
+  }
+  if (entity instanceof SmallCraftEntity && entity.entityType === 'SmallCraft'
+    && entity.isMilitary()
+    && !entity.equipment().some(mount => mount.equipment?.hasFlag('F_ECM'))) {
+    specials.push('LECM');
   }
   if (entity instanceof JumpShipEntity) {
     if (entity.driveCoreType() !== 'None') specials.push('KF');
@@ -37,4 +45,25 @@ export function alphaStrikeEntitySpecials(
   if (entity instanceof FixedWingSupportEntity || entity instanceof ConvFighterEntity) specials.push('ATMO');
   if (hasAlphaStrikeVstolCapability(entity, type)) specials.push('VSTOL');
   return specials;
+}
+
+function addLamSpecials(
+  entity: LamEntity,
+  movement: AlphaStrikeMovement,
+  specials: string[],
+): void {
+  const additionalFuelTanks = entity.equipment()
+    .filter(mount => mount.equipment?.hasFlag('F_LAM_FUEL_TANK')).length;
+  specials.push(`FUEL${4 * (1 + additionalFuelTanks)}`);
+
+  const airMovement = movement.values['a'] ?? 0;
+  if (entity.lamType().toLowerCase() === 'bimodal') {
+    specials.push(`BIM(${airMovement}a)`);
+  } else {
+    specials.push(`LAM(${movement.values['g'] ?? 0}\"g/${airMovement}a)`);
+  }
+
+  const bombBays = entity.equipment()
+    .filter(mount => mount.equipment?.hasFlag('F_BOMB_BAY')).length;
+  if (bombBays > 0) specials.push(`BOMB${Math.ceil(bombBays / 5)}`);
 }

@@ -40,7 +40,7 @@ import { AsAbilityLookupService } from '../../../services/as-ability-lookup.serv
 import { COMMAND_ABILITIES } from '../../../models/command-abilities.model';
 import { PILOT_ABILITIES, type PilotAbility, type ASCustomPilotAbility } from '../../../models/pilot-abilities.model';
 import { type CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
-import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
+import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.util';
 import { formatMovement, formatMovementWithAlternate } from '../../../utils/as-common.util';
 import { FormationAbilityAssignmentUtil } from '../../../utils/formation-ability-assignment.util';
 import type { SpecialAbilityState } from '../../../models/as-special-ability-state.model';
@@ -118,7 +118,7 @@ export abstract class AsLayoutBaseComponent {
     skill = computed<number>(() => this.forceUnit()?.getPilotStats() ?? 4);
     basePV = computed<number>(() => this.asStats().PV);
     adjustedPV = computed<number>(() => {
-        return PVCalculatorUtil.calculateAdjustedPV(this.asStats().PV, this.skill());
+        return adjustPointValueForSkill(this.asStats().PV, this.skill());
     });
     pilotAbilities = computed<AbilitySelection[]>(() => {
         const forceUnit = this.forceUnit();

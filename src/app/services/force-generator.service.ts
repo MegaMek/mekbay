@@ -72,7 +72,7 @@ import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { getPositiveDropdownNamesFromFilter, resolveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
 import { ForceNamerUtil } from '../utils/force-namer.util';
-import { PVCalculatorUtil } from '../utils/pv-calculator.util';
+import { adjustPointValueForSkill } from '../utils/pv-skill-adjustment.util';
 import { normalizeMultiStateSelection } from '../utils/unit-search-shared.util';
 import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 import { DataService } from './data.service';
@@ -1465,7 +1465,7 @@ function resolveUnitCountRangeWithEditedMax(
 
 function getBudgetMetric(unit: Unit, gameSystem: GameSystem, gunnery: number, piloting: number): number {
     if (gameSystem === GameSystem.ALPHA_STRIKE) {
-        return Math.max(0, PVCalculatorUtil.calculateAdjustedPV(unit.as.PV, gunnery));
+        return Math.max(0, adjustPointValueForSkill(unit.as.PV, gunnery));
     }
 
     return Math.max(0, BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, getEffectivePilotingSkill(unit, piloting)));

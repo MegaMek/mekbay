@@ -1473,18 +1473,20 @@ describe('WeaponsEquipmentPanelComponent', () => {
         ]);
     });
 
-    it('only keeps the Artemis V linked hit modifier when Artemis V-capable ammo is selected', () => {
-        const standardAmmo = ammo('Narc Standard', 'NARC', 4);
-        const artemisVAmmo = ammo('Narc Artemis V', 'NARC', 4, ['M_ARTEMIS_V_CAPABLE']);
+    it('adds the Artemis V linked hit modifier only when Artemis V-capable ammo is selected', () => {
+        const standardAmmo = ammo('LRM 15 Standard', 'MML', 15);
+        const artemisVAmmo = ammo('LRM 15 Artemis V', 'MML', 15, ['M_ARTEMIS_V_CAPABLE']);
         const artemisV = entry({
             id: 'ArtemisV@RT#1',
             equipment: misc('ArtemisV', ['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']),
         });
+        const launcherEquipment = weapon('LRM 15', 'MML', 15, [7, 14, 21, 28]);
+        launcherEquipment.flags.add('F_ARTEMIS_COMPATIBLE');
         const launcher = entry({
             id: 'launcher',
-            equipment: weapon('Narc Launcher', 'NARC', 4, [1, 2, 3, 4], -1),
+            equipment: launcherEquipment,
             linkedWith: [artemisV],
-            el: svgEntry('<g><g class="name"><text>Narc Launcher</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>')
+            el: svgEntry('<g><g class="name"><text>LRM 15</text></g><text class="range_short">7</text><text class="range_medium">14</text><text class="range_long">21</text></g>')
         });
         const standardBin = entry({ id: 'standard-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 0, locations: new Set(['RT']) });
         const artemisVBin = entry({ id: 'artemis-v-ammo', equipment: artemisVAmmo, totalAmmo: 10, consumed: 0, locations: new Set(['RT']) });

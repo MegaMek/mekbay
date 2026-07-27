@@ -2,7 +2,7 @@ import { MountedArmor } from '../components/armor';
 import { ArmorEquipment, createEquipment } from '../../equipment.model';
 import type { GyroType } from '../components/gyro-data';
 import type { AeroDesignType, DriveCoreType, DropShipCollarType, EngineType, HeatSinkType } from '../types';
-import type { CockpitType } from '../types/mek';
+import type { CockpitType } from '../types/cockpit';
 import {
   encodeBlkAeroCockpitType,
   decodeBlkAeroDesignType,

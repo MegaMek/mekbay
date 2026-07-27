@@ -31,6 +31,7 @@ function context(usesArcs: boolean) {
     size: 2,
     movement: { values: { v: 10 }, primary: 'v' },
     usesArcs,
+    usesArcedDamage: usesArcs,
     hasStandardDamage: true,
     heatSpecials: ['HT1/-/-', 'HT1/-/-'],
     overheatLong: true,

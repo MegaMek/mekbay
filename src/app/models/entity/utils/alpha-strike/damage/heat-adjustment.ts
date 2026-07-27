@@ -22,19 +22,11 @@ export interface AlphaStrikeCapacityInput {
 }
 
 export interface AlphaStrikeWeaponHeatInput {
-  readonly equipmentId: string;
-  readonly twHeat: number;
+  readonly heat: number;
+  readonly alphaStrikeHeatOverride?: number;
   readonly ammoType: string;
   readonly oneShot: boolean;
 }
-
-const ALPHA_STRIKE_WEAPON_HEAT_OVERRIDES: Readonly<Record<string, number>> = {
-  ISERLargeLaserPrototype: 15,
-  ISLargePulseLaserPrototype: 13,
-  ISMediumPulseLaserPrototype: 7,
-  ISMediumPulseLaserRecovered: 7,
-  ISSmallPulseLaserPrototype: 4,
-};
 
 export interface AlphaStrikeHeatProfile {
   readonly capacity: number;
@@ -80,9 +72,9 @@ export function alphaStrikeHeatCapacity(input: AlphaStrikeCapacityInput): number
 }
 
 export function alphaStrikeWeaponHeat(input: AlphaStrikeWeaponHeatInput): number {
-  validateFiniteNonnegative([input.twHeat]);
+  validateFiniteNonnegative([input.heat]);
   if (input.oneShot) return 0;
-  const heat = ALPHA_STRIKE_WEAPON_HEAT_OVERRIDES[input.equipmentId] ?? input.twHeat;
+  const heat = input.alphaStrikeHeatOverride ?? input.heat;
   const multiplier = input.ammoType === 'AC_ROTARY' ? 6
     : input.ammoType === 'AC_ULTRA' || input.ammoType === 'AC_ULTRA_THB' ? 2 : 1;
   return heat * multiplier;
@@ -94,8 +86,8 @@ export function alphaStrikeWeaponHeatForConversion(
   includeOneShotHeat = false,
 ): number {
   return alphaStrikeWeaponHeat({
-    equipmentId: weapon.id,
-    twHeat: weapon.heat,
+    heat: weapon.heat,
+    alphaStrikeHeatOverride: weapon.alphaStrike?.heat,
     ammoType: weapon.ammoType,
     oneShot: !includeOneShotHeat && (weapon.oneShotCount ?? 0) > 0,
   });
@@ -131,14 +123,11 @@ export function adjustAlphaStrikeDamageForHeat(
     if (trialLong < rawLong) {
       overheatLong = true;
       adjusted[2] *= mediumFront;
-      adjusted[3] *= mediumFront;
     }
   } else if (longFront < 1) {
     adjusted[2] *= longFront;
-    // MegaMek's aero converter intentionally preserves this established behavior:
-    // E checks the long adjustment but applies the medium factor.
-    adjusted[3] *= mediumFront;
   }
+  if (longFront < 1) adjusted[3] *= overheatLong ? mediumFront : longFront;
 
   return {
     front: adjusted,

@@ -3,11 +3,7 @@ import type { InfantryEntity } from '../../../entities';
 import { toStandardDamage } from './damage-rounding';
 import { type AlphaStrikeStandardDamageResult, ZERO_DAMAGE } from './damage-types';
 import { sumAlphaStrikeWeaponDamage } from './weapon-damage-aggregation';
-
-const TROOP_FACTORS = [
-  0, 0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 7, 8, 8, 9, 9,
-  10, 10, 11, 11, 12, 13, 14, 15, 16, 16, 17, 17, 17, 18, 18,
-] as const;
+import { alphaStrikeTroopFactor } from './troop-factor';
 
 /** Converts conventional infantry and field-gun standard damage plus HT. */
 export function calculateConventionalInfantryDamage(
@@ -25,7 +21,7 @@ export function calculateConventionalInfantryDamage(
 
   const weapon = entity.rangeWeapon();
   if (!weapon?.infantry) return emptyResult({ ...ZERO_DAMAGE });
-  const factor = TROOP_FACTORS[Math.min(entity.totalInternalPoints(), 30)];
+  const factor = alphaStrikeTroopFactor(entity.totalInternalPoints());
   const primary = entity.primaryWeapon();
   const secondary = entity.secondaryWeapon();
   const secondaryCount = entity.secondaryCount();
@@ -59,7 +55,7 @@ function heatSpecial(
   const fieldGuns = entity.mountedWeapons().filter(mount => mount.location === 'Field Guns');
   const eligibleWeapons = fieldGuns.length > 0
     ? fieldGuns.map(mount => mount.equipment)
-    : [entity.primaryWeapon(), entity.secondaryWeapon()];
+    : [entity.rangeWeapon()];
   const hasHeatWeapon = eligibleWeapons.some(weapon => weapon?.hasAnyFlag(['F_FLAMER', 'F_PLASMA']));
   const shortDamage = Number.parseInt(standard.dmgS, 10) || 0;
   if (!hasHeatWeapon || shortDamage < 1) return [];

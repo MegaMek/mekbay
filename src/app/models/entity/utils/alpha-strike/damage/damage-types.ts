@@ -14,6 +14,8 @@ export interface AlphaStrikeDamageResult {
 export interface AlphaStrikeStandardDamageResult extends AlphaStrikeDamageResult {
   readonly overheatLong?: boolean;
   readonly heatSpecials: readonly string[];
+  readonly specialDamageHeatFactors?: Readonly<RawDamageVector>;
+  readonly rearSpecialDamageHeatFactors?: Readonly<RawDamageVector>;
 }
 
 export const ZERO_DAMAGE: Readonly<AlphaStrikeDamage> = Object.freeze({

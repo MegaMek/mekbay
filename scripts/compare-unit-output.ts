@@ -124,6 +124,8 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'role',          compare: 'exact', parity: 'verified' },
   { field: 'source',        compare: 'setCompare', parity: 'verified' },
   { field: 'published',     compare: 'setCompare', parity: 'verified' },
+  // Legacy compatibility mirror; as.PV is authoritative.
+  { field: 'pv',            compare: 'skip', parity: 'missing' },
   { field: 'type',          compare: 'exact', parity: 'verified' },
   { field: 'id',            compare: 'exact', parity: 'verified' },
   { field: 'engine',        compare: 'exact', parity: 'verified' },
