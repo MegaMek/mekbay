@@ -186,6 +186,9 @@ export abstract class ForceUnit {
 
     abstract getBaseBv: Signal<number>;
 
+    /** BV/PV after force modifiers, but before the final skill adjustment. */
+    abstract getPreSkillBv: Signal<number>;
+
     abstract getBv: Signal<number>;
 
     abstract getPilotStats: Signal<any>;

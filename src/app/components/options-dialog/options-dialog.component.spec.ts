@@ -20,6 +20,49 @@ import { UserStateService } from '../../services/userState.service';
 import { OptionsDialogComponent } from './options-dialog.component';
 
 describe('OptionsDialogComponent', () => {
+    function configureComponent(optionsService: object): OptionsDialogComponent {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: AccountAuthService, useValue: { authInFlight: signal(false) } },
+                { provide: AppUpdateService, useValue: {} },
+                { provide: DataService, useValue: { getUnits: () => [], getEquipmentRegistry: () => new EquipmentRegistry({}) } },
+                { provide: DbService, useValue: { getSheetsStoreSize: () => Promise.resolve({ memorySize: 0, count: 0 }), getCanvasStoreSize: () => Promise.resolve(0) } },
+                { provide: DialogRef, useValue: { close: () => undefined } },
+                { provide: DialogsService, useValue: {} },
+                { provide: GameService, useValue: {} },
+                { provide: LoggerService, useValue: {} },
+                { provide: OptionsService, useValue: optionsService },
+                { provide: PublicTagsService, useValue: { version: signal(0), getOwnTagSubscriberCounts: () => Promise.resolve({}) } },
+                { provide: SpriteStorageService, useValue: { getIconCount: () => Promise.resolve(0) } },
+                { provide: TaggingService, useValue: {} },
+                { provide: TagsService, useValue: { version: signal(0) } },
+                { provide: ToastService, useValue: {} },
+                {
+                    provide: UserStateService,
+                    useValue: {
+                        uuid: signal(''),
+                        publicId: signal(''),
+                        availableAuthProviders: signal([]),
+                        oauthProviders: signal([]),
+                        hasOAuth: signal(false),
+                    },
+                },
+            ],
+        });
+        return TestBed.runInInjectionContext(() => new OptionsDialogComponent());
+    }
+
+    it('persists the selected force viewer BV/PV display mode', () => {
+        const setOption = jasmine.createSpy('setOption');
+        const component = configureComponent({ options: () => ({ unitServers: [] }), setOption });
+        const select = document.createElement('select');
+        select.innerHTML = '<option value="both">Both</option>';
+        select.value = 'both';
+
+        component.onForceViewerBVPVDisplayChange({ target: select } as unknown as Event);
+        expect(setOption).toHaveBeenCalledOnceWith('forceViewerBVPVDisplay', 'both');
+    });
+
     it('counts canonical equipment registry entries rather than lookup aliases', () => {
         const registry = new EquipmentRegistry({
             CanonicalOne: createEquipment({

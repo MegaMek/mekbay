@@ -39,6 +39,7 @@ import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { OptionsService } from '../../services/options.service';
 import { CommonModule } from '@angular/common';
 import { getFactionImg } from '../../models/factions.model';
+import { formatForceUnitsBVPV } from '../../utils/force-viewer-bv-pv-display.util';
 
 /*
  * Author: Drake
@@ -70,9 +71,9 @@ import { getFactionImg } from '../../models/factions.model';
                 {{ f.gameSystem === GameSystem.ALPHA_STRIKE ? 'AS' : 'CBT' }}
             </span>
             @if (f.gameSystem === GameSystem.ALPHA_STRIKE) {
-                <span class="force-bv">PV: {{ f.totalBv() | number }}</span>
+                <span class="force-bv">PV: {{ displayedBvPv() }}</span>
             } @else {
-                <span class="force-bv">BV: {{ f.totalBv() | number }}</span>
+                <span class="force-bv">BV: {{ displayedBvPv() }}</span>
             }
         </span>
     </div>
@@ -332,6 +333,11 @@ import { getFactionImg } from '../../models/factions.model';
 })
 export class ForcePreviewComponent {
     optionsService = inject(OptionsService);
+
+    displayedBvPv = computed(() => formatForceUnitsBVPV(
+        this.force().units(),
+        this.optionsService.options().forceViewerBVPVDisplay,
+    ));
     readonly GameSystem = GameSystem;
 
     /** The force to display. */

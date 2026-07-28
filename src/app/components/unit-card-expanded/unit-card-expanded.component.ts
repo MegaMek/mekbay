@@ -73,6 +73,8 @@ import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew
 import { formatMovement, isAerospace } from '../../utils/as-common.util';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import type { MegaMekUnitAvailabilityDetail } from '../../services/unit-availability-source.service';
+import { OptionsService } from '../../services/options.service';
+import { formatForceUnitBVPV } from '../../utils/force-viewer-bv-pv-display.util';
 
 /**
  * Author: Drake
@@ -105,6 +107,7 @@ export class UnitCardExpandedComponent {
     gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
     private abilityLookup = inject(AsAbilityLookupService);
+    private optionsService = inject(OptionsService);
     private expandedComponentsPipe = new ExpandedComponentsPipe();
     readonly unitTypeDisplayNames = AS_TYPE_DISPLAY_NAMES;
     readonly megaMekRequisitionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
@@ -206,13 +209,21 @@ export class UnitCardExpandedComponent {
         return null;
     });
 
-    /** Resolved BV/PV value - uses ForceUnit's getBv if available, otherwise calculates from skills */
-    readonly resolvedBv = computed<number | null>(() => {
+    /** Resolved BV/PV display for a live ForceUnit; standalone Units continue using skill pipes. */
+    readonly resolvedBv = computed<string | null>(() => {
         const u = this.unit();
         if (this.isForceUnit(u)) {
-            return u.getBv();
+            return formatForceUnitBVPV(u, this.optionsService.options().forceViewerBVPVDisplay);
         }
         return null; // Let the pipe calculate it
+    });
+
+    readonly resolvedCompactBv = computed<string | null>(() => {
+        const u = this.unit();
+        if (this.isForceUnit(u)) {
+            return formatForceUnitBVPV(u, this.optionsService.options().forceViewerBVPVDisplay);
+        }
+        return null;
     });
 
     readonly expandedComponents = computed<UnitComponent[]>(() => {

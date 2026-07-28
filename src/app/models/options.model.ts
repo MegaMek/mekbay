@@ -69,6 +69,8 @@ export interface ForceGeneratorOptions {
     useUnitTagsAsChassisTags: boolean;
 }
 
+export type ForceViewerBVPVDisplay = 'adjusted' | 'base' | 'both';
+
 export interface Options {
     colorScheme: ColorScheme;
     pickerStyle: 'default' | 'radial' | 'linear';
@@ -79,7 +81,7 @@ export interface Options {
     gameSystem: GameSystem;
     availabilitySource: AvailabilitySource;
     megaMekAvailabilityFiltersUseAllScopedOptions: boolean;
-    forceViewerBVPVDisplay: 'adjusted' | 'base' | 'both';
+    forceViewerBVPVDisplay: ForceViewerBVPVDisplay;
     recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
     recordSheetDoubleTapZoomReset: RecordSheetDoubleTapZoomResetMode;
     lastCanvasState?: {

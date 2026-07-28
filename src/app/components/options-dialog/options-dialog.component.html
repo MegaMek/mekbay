@@ -60,6 +60,35 @@
                     <option value="both">Chassis, model and pilot</option>
                 </select>
             </div>
+            <div class="option-row">
+                <label for="forceViewerBVPVDisplay">Force viewer BV/PV:</label>
+                <select id="forceViewerBVPVDisplay" class="bt-select"
+                    [value]="optionsService.options().forceViewerBVPVDisplay"
+                    (change)="onForceViewerBVPVDisplayChange($event)">
+                    <option value="adjusted">Adjusted for skill (default)</option>
+                    <option value="base">Before skill adjustment</option>
+                    <option value="both">Adjusted and before skill</option>
+                </select>
+            </div>
+            <div class="option-section-title">Printing</div>
+            <div class="option-col">
+                <div class="option-row">
+                    <label for="printRosterSummary">Include roster summary:</label>
+                    <select id="printRosterSummary" class="bt-select"
+                        [value]="optionsService.options().printRosterSummary"
+                        (change)="onprintRosterSummaryChange($event)">
+                        <option value="false">No (default)</option>
+                        <option value="true">Yes</option>
+                    </select>
+                </div>
+                <div class="description">
+                    <p>Include a summary of the roster in the print output.</p>
+                </div>
+            </div>
+        </div>
+            }
+            @case ('Search') {
+            <div class="settings-view-content">
             <div class="option-col">
                 <div class="option-row">
                     <label for="availabilitySource">Units availability source:</label>
@@ -119,21 +148,6 @@
                 </div>
                 <div class="description">
                     <p>Choose the panel arrangement in expanded unit search view on wide screens.</p>
-                </div>
-            </div>
-            <div class="option-section-title">Printing</div>
-            <div class="option-col">
-                <div class="option-row">
-                    <label for="printRosterSummary">Include roster summary:</label>
-                    <select id="printRosterSummary" class="bt-select"
-                        [value]="optionsService.options().printRosterSummary"
-                        (change)="onprintRosterSummaryChange($event)">
-                        <option value="false">No (default)</option>
-                        <option value="true">Yes</option>
-                    </select>
-                </div>
-                <div class="description">
-                    <p>Include a summary of the roster in the print output.</p>
                 </div>
             </div>
         </div>

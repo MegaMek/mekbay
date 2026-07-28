@@ -53,6 +53,7 @@ import { DataService } from '../../services/data.service';
 import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
+import { formatForceUnitsBVPV } from '../../utils/force-viewer-bv-pv-display.util';
 
 
 /*
@@ -72,7 +73,7 @@ export class ForceBuilderViewerComponent {
     protected layoutService = inject(LayoutService);
     compactModeService = inject(CompactModeService);
     private dialogsService = inject(DialogsService);
-    private optionsService = inject(OptionsService);
+    protected optionsService = inject(OptionsService);
     private injector = inject(Injector);
     private dataService = inject(DataService);
     private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
@@ -133,17 +134,20 @@ export class ForceBuilderViewerComponent {
     /** Combined BV/PV totals across all visible loaded forces. */
     combinedTotals = computed(() => {
         const slots = this.loadedSlots();
-        let totalBV = 0;
-        let totalPV = 0;
-        for (const slot of slots) {
-            if (slot.force.gameSystem === 'as') {
-                totalPV += slot.force.totalBv();
-            } else {
-                totalBV += slot.force.totalBv();
-            }
-        }
-        return { totalBV, totalPV, hasBV: totalBV > 0, hasPV: totalPV > 0 };
+        const bvUnits = slots.filter(slot => slot.force.gameSystem !== 'as').flatMap(slot => slot.force.units());
+        const pvUnits = slots.filter(slot => slot.force.gameSystem === 'as').flatMap(slot => slot.force.units());
+        const mode = this.optionsService.options().forceViewerBVPVDisplay;
+        return {
+            totalBV: formatForceUnitsBVPV(bvUnits, mode),
+            totalPV: formatForceUnitsBVPV(pvUnits, mode),
+            hasBV: bvUnits.length > 0,
+            hasPV: pvUnits.length > 0,
+        };
     });
+
+    displayedBvPv(units: readonly ForceUnit[]): string {
+        return formatForceUnitsBVPV(units, this.optionsService.options().forceViewerBVPVDisplay);
+    }
 
     // --- Collapsed/Expanded State ---
     /** Set of group IDs that are currently collapsed. */

@@ -54,6 +54,15 @@ describe('ASForceUnit ability effects', () => {
         });
     }
 
+    it('keeps pre-skill PV separate from the final skill adjustment', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.setPilotSkill(3);
+
+        expect(forceUnit.getBaseBv()).toBe(30);
+        expect(forceUnit.getPreSkillBv()).toBe(30);
+        expect(forceUnit.getBv()).toBeGreaterThan(30);
+    });
+
     it('keeps default heat behavior without Hot Dog', () => {
         const forceUnit = createForceUnit();
         forceUnit.getState().heat.set(4);

@@ -946,16 +946,18 @@ export class CBTForceUnit extends ForceUnit {
         return 0;
     });
 
+    public getPreSkillBv = computed<number>(() => {
+        return this.getBaseBv() + this.tagBV() + this.c3Tax() + this.externalStoresBv();
+    });
+
     public pilotBV = computed<number>(() => {
-        const finalBv = this.getBv();
-        return finalBv - this.getBaseBv() - this.tagBV() - this.c3Tax() - this.externalStoresBv();
+        return this.getBv() - this.getPreSkillBv();
     });
 
     getBv = computed<number>(() => {
-        const preSkillRatingBv = this.getBaseBv() + this.tagBV() + this.c3Tax() + this.externalStoresBv();
         return BVCalculatorUtil.calculateAdjustedBV(
             this.getUnit(),
-            preSkillRatingBv,
+            this.getPreSkillBv(),
             this.gunnerySkill(),
             this.pilotingSkill()
         );

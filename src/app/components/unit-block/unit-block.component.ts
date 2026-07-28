@@ -35,7 +35,6 @@ import { Component, ChangeDetectionStrategy, computed, input, output, inject } f
 import { UpperCasePipe } from '@angular/common';
 import type { ForceUnit } from '../../models/force-unit.model';
 import type { Unit } from '../../models/units.model';
-import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { OptionsService } from '../../services/options.service';
 import { CdkMenuModule } from '@angular/cdk/menu';
@@ -51,6 +50,7 @@ import { GameSystem } from '../../models/common.model';
 import { formatMovement, formatMovementWithAlternate } from '../../utils/as-common.util';
 import { getUnitConditionDefinition, unitConditionSortIndex } from '../../models/rules/unit-type-rules';
 import type { CrewMember } from '../../models/crew-member.model';
+import { formatForceUnitBVPV } from '../../utils/force-viewer-bv-pv-display.util';
 
 interface UnitConditionDisplay {
     key: string;
@@ -69,7 +69,7 @@ export interface UnitBlockPilotEditEvent {
 @Component({
     selector: 'unit-block',
     standalone: true,
-    imports: [CdkMenuModule, FormatNumberPipe, FormatTonsPipe, UnitIconComponent, TooltipDirective, UpperCasePipe],
+    imports: [CdkMenuModule, FormatTonsPipe, UnitIconComponent, TooltipDirective, UpperCasePipe],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './unit-block.component.html',
     styleUrls: ['./unit-block.component.scss'],
@@ -96,6 +96,11 @@ export class UnitBlockComponent {
         const forceUnit = this.forceUnit();
         return forceUnit instanceof ASForceUnit ? forceUnit.getPilotSkill() : undefined;
     });
+
+    displayedBvPv = computed(() => formatForceUnitBVPV(
+        this.forceUnit(),
+        this.optionsService.options().forceViewerBVPVDisplay,
+    ));
 
     /** Derives Alpha Strike status from the unit's own force, not the global game system. */
     isAlphaStrike = computed<boolean>(() => this.forceUnit()?.force?.gameSystem === GameSystem.ALPHA_STRIKE);
