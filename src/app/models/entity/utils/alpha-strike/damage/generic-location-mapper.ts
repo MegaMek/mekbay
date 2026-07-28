@@ -49,8 +49,8 @@ export function alphaStrikeSpecialLocationMultiplier(
 export function hasAlphaStrikeTurretLocation(entity: BaseEntity): boolean {
   return entity instanceof TripodMekEntity
     || entity instanceof QuadVeeEntity
-    || entity instanceof VehicleEntity && entity.mountedWeapons().some(mount => isVehicleTurret(mount.location))
-    || entity instanceof MekEntity && entity.mountedWeapons().some(mount => mount.turretMounted);
+    || entity instanceof VehicleEntity && entity.rangedWeapons().some(mount => isVehicleTurret(mount.location))
+    || entity instanceof MekEntity && entity.rangedWeapons().some(mount => mount.turretMounted);
 }
 
 function vehicleLocationMultiplier(target: AlphaStrikeDamageLocation, location: string): number {

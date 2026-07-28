@@ -9,7 +9,7 @@ import { alphaStrikeTroopFactor } from './troop-factor';
 export function calculateConventionalInfantryDamage(
   entity: InfantryEntity,
 ): AlphaStrikeStandardDamageResult {
-  const fieldGuns = entity.mountedWeapons().filter(mount => mount.location === 'Field Guns');
+  const fieldGuns = entity.rangedWeapons().filter(mount => mount.location === 'Field Guns');
   const hasActiveFieldArtillery = fieldGuns.some(mount =>
     getAmmoCategory(mount.equipment.ammoType) === 'Artillery');
   if (fieldGuns.length > 0 && !hasActiveFieldArtillery) {
@@ -52,7 +52,7 @@ function heatSpecial(
   entity: InfantryEntity,
   standard: AlphaStrikeStandardDamageResult['standard'],
 ): string[] {
-  const fieldGuns = entity.mountedWeapons().filter(mount => mount.location === 'Field Guns');
+  const fieldGuns = entity.rangedWeapons().filter(mount => mount.location === 'Field Guns');
   const eligibleWeapons = fieldGuns.length > 0
     ? fieldGuns.map(mount => mount.equipment)
     : [entity.rangeWeapon()];

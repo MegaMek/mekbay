@@ -81,7 +81,7 @@ export interface InventoryTargetNumberInput {
 export type InventoryTargetDisplay = Pick<InventoryControlDisplayData, InventoryRangeKey | 'min'>;
 
 export function inventoryTargetCategory(entry: MountedEquipment): InventoryControlGroupId {
-    if (isPhysicalInventoryTargetNumberEntry(entry)) return 'physical';
+    if (entry.isPhysicalWeapon()) return 'physical';
     if (entry.equipment instanceof WeaponEquipment) return 'ranged';
     return 'equipment';
 }

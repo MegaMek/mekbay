@@ -46,6 +46,10 @@ function addOrdinaryEquipment(components: Map<string, ExportComponent>, entity: 
       continue;
     } else if (equipment instanceof AmmoEquipment) {
       addAmmo(components, entity, mount, equipment);
+    } else if (mount.isPhysicalWeapon()) {
+      if (equipment instanceof WeaponEquipment && skipWeapon(entity, mount, equipment)) continue;
+      if (equipment instanceof MiscEquipment && skipMisc(entity, mount, equipment)) continue;
+      addPhysicalEquipment(components, entity, mount, equipment);
     } else if (equipment instanceof WeaponEquipment) {
       if (skipWeapon(entity, mount, equipment)) continue;
       addWeapon(components, entity, mount, equipment);
@@ -233,7 +237,7 @@ function addMisc(
   mount: EntityMountedEquipment, equipment: MiscEquipment,
 ): void {
   const structural = isStructuralMisc(entity, equipment);
-  const type: ComponentType = mount.isPhysicalWeapon() ? 'P' : structural ? 'S' : 'C';
+  const type: ComponentType = structural ? 'S' : 'C';
 
   if (equipment.isSpreadable && mount.placements?.length) {
     const countByLocation = new Map<string, number>();
@@ -250,6 +254,42 @@ function addMisc(
   addMiscAtLocation(components, entity, mount, equipment, type, location.name, 1, location.id);
 }
 
+function addPhysicalEquipment(
+  components: Map<string, ExportComponent>, entity: BaseEntity,
+  mount: EntityMountedEquipment, equipment: Equipment,
+): void {
+  if (equipment.isSpreadable && mount.placements?.length) {
+    const countByLocation = new Map<string, number>();
+    for (const placement of mount.placements) {
+      countByLocation.set(placement.location, (countByLocation.get(placement.location) ?? 0) + 1);
+    }
+    for (const [location, count] of countByLocation) {
+      addPhysicalEquipmentAtLocation(components, entity, mount, equipment, location, count);
+    }
+    return;
+  }
+
+  const location = componentLocation(entity, mount);
+  addPhysicalEquipmentAtLocation(components, entity, mount, equipment, location.name, 1, location.id);
+}
+
+function addPhysicalEquipmentAtLocation(
+  components: Map<string, ExportComponent>, entity: BaseEntity, mount: EntityMountedEquipment,
+  equipment: Equipment, location: string, quantity: number, position = locationId(entity, location),
+): void {
+  const displayLocation = locationAbbreviation(entity, location);
+  const key = `${equipment.id}_${displayLocation}_P`;
+  const existing = components.get(key);
+  if (existing) { existing.q += quantity; return; }
+
+  components.set(key, {
+    ...baseComponent(
+      equipment, quantity, position, displayLocation, 'P', criticals(equipment, entity, mount),
+    ),
+    ...physicalDamage(mount),
+  });
+}
+
 function addMiscAtLocation(
   components: Map<string, ExportComponent>, entity: BaseEntity, mount: EntityMountedEquipment,
   equipment: MiscEquipment, type: ComponentType, location: string, quantity: number,
@@ -263,7 +303,6 @@ function addMiscAtLocation(
   const entry = baseComponent(
     equipment, quantity, position, displayLocation, type, criticals(equipment, entity, mount),
   );
-  if (type === 'P') Object.assign(entry, physicalDamage(mount));
   components.set(key, entry);
 }
 

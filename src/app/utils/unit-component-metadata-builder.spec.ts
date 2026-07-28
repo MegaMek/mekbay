@@ -33,6 +33,20 @@ describe('buildUnitComponentMetadata', () => {
     }));
   });
 
+  it('exports physically flagged weapon equipment as physical rather than ranged', () => {
+    const entity = new BipedMekEntity();
+    entity.setTonnage(55);
+    const hatchet = weapon('hatchet', {
+      damage: 99, ranges: [3, 6, 9, 12], flags: ['F_CLUB', 'S_HATCHET'],
+    });
+    entity.setEquipment([mount(hatchet, 'RA')]);
+
+    const component = buildUnitComponentMetadata(entity)!.find(entry => entry.id === hatchet.id)!;
+    expect(component).toEqual(jasmine.objectContaining({ t: 'P', l: 'RA', d: '11', md: '11' }));
+    expect(component.r).toBeUndefined();
+    expect(component.m).toBeUndefined();
+  });
+
   it('uses aerospace AV and bracket names', () => {
     const entity = new AeroSpaceFighterEntity();
     const laser = weapon('aero-laser', {

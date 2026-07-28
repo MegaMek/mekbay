@@ -1501,7 +1501,7 @@ export class MekRules extends UnitTypeRulesBase {
         let attackType: 'punch' | 'kick' | 'club' | 'physWeapon' | null = null;
         let location: string | undefined;
         let ignoreMyomer = false;
-        if (entry.isIntrinsicPhysicalWeapon()) {
+        if (entry.isIntrinsicPhysicalAttack()) {
             switch (entry.name.toLowerCase()) {
                 case 'punch':
                     attackType = 'punch';
@@ -1644,7 +1644,7 @@ export class MekRules extends UnitTypeRulesBase {
 
         if (fire.globalMod !== 0) hitMod += fire.globalMod;
 
-        if (entry.isIntrinsicPhysicalWeapon()) {
+        if (entry.isIntrinsicPhysicalAttack()) {
             switch (entry.name) {
                 case 'punch': {
                     const loc = Array.from(entry.locations!)[0] as ArmLocation;

@@ -56,7 +56,7 @@ export abstract class CBTGameRules {
         const hasBaseReplacement = replacement !== undefined;
         if (unsupported || (entry && !this.supportsToHit(entry) && !hasBaseReplacement)) return emptyToHitResolution();
 
-        if (entry?.isIntrinsicPhysicalWeapon()) {
+        if (entry?.isIntrinsicPhysicalAttack()) {
             const physicalValue = this.physicalBaseHitModifiers[entry.name.toLowerCase()] ?? null;
             if (physicalValue === null || physicalValue === 'Vs') {
                 return { profile: [], value: physicalValue, changed: false, weakened: request.stateWeakened ?? false };

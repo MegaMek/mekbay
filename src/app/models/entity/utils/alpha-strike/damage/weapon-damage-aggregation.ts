@@ -15,7 +15,7 @@ export function sumAlphaStrikeWeaponDamage(
   include: (mount: EntityMountedWeapon) => boolean,
   includeArtilleryDamage = false,
 ): [number, number, number, number] {
-  const weapons = entity.mountedWeapons();
+  const weapons = entity.rangedWeapons();
   const ammunition = entity.equipment().filter(mount => mount.equipment instanceof AmmoEquipment);
   const targetingComputer = entity.equipment().some(mount => mount.equipment?.hasFlag('F_TARGETING_COMPUTER'));
   const total: [number, number, number, number] = [0, 0, 0, 0];

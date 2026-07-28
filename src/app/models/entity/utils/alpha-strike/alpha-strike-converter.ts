@@ -264,7 +264,7 @@ function alphaStrikeDamage(
   if (family === 'conventional-infantry') return calculateConventionalInfantryDamage(entity as InfantryEntity);
   if (family === 'battle-armor') {
     const battleArmor = calculateBattleArmorStandardDamage(entity as BattleArmorEntity);
-    const rawHeat = sumAlphaStrikeHeatDamage(entity.mountedWeapons(), mount =>
+    const rawHeat = sumAlphaStrikeHeatDamage(entity.rangedWeapons(), mount =>
       !mount.isSSWM && isBattleArmorRepresentativeLocation(mount.location));
     const heatSpecial = alphaStrikeHeatSpecial(rawHeat.map(value =>
       Math.floor(value * battleArmor.breakdown.troopFactor)) as [number, number, number]);
@@ -282,7 +282,7 @@ function alphaStrikeDamage(
   family === 'aerospace');
   if (family === 'generic') raw[3] = 0;
   const adjusted = applyHeatAdjustment(entity, TP, raw, movement);
-  const heatSpecial = alphaStrikeHeatSpecial(sumAlphaStrikeHeatDamage(entity.mountedWeapons(), mount =>
+  const heatSpecial = alphaStrikeHeatSpecial(sumAlphaStrikeHeatDamage(entity.rangedWeapons(), mount =>
     alphaStrikeDamageLocationMultiplier(entity, 'standard', mount) > 0));
   return {
     standard: toStandardDamage(adjusted.front),
@@ -319,7 +319,7 @@ function applyHeatAdjustment(
       rearSpecialDamageHeatFactors: [1, 1, 1, 1],
     };
   }
-  const frontWeapons = entity.mountedWeapons().filter(mount =>
+  const frontWeapons = entity.rangedWeapons().filter(mount =>
     alphaStrikeDamageLocationMultiplier(entity, 'standard', mount) > 0);
   const mediumWeaponHeat = frontWeapons.reduce((sum, mount) =>
     sum + alphaStrikeWeaponHeatForConversion(mount.equipment), 0);
@@ -352,7 +352,7 @@ function applyHeatAdjustment(
     ? entity.alphaStrikeBaseHeatCapacity()
     : entity.heatCapacity(false));
   const capacity = alphaStrikeHeatCapacityForEntity(entity, baseCapacity);
-  const rearWeaponHeat = entity.mountedWeapons().reduce((sum, mount) =>
+  const rearWeaponHeat = entity.rangedWeapons().reduce((sum, mount) =>
     sum + (alphaStrikeDamageLocationMultiplier(entity, 'rear', mount) > 0
       ? alphaStrikeWeaponHeatForConversion(mount.equipment)
       : 0), 0);

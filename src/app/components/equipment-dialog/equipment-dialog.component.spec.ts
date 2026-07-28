@@ -28,7 +28,7 @@ function weaponEntry(id: string): MountedEquipment {
         name: id,
         equipment,
         destroyed: false,
-        physical: false,
+        intrinsicPhysicalAttack: false,
         states: new Map<string, string>(),
         linkedWith: null,
         el,

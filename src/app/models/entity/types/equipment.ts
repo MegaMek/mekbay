@@ -207,10 +207,15 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
 
   /** Associate a parsed or externally-created mount with its canonical entity context. */
   attachToEntity(entity: BaseEntity): void {
+    this.assertCanAttachToEntity(entity);
+    this.owner = entity;
+  }
+
+  /** Validate installation ownership without mutating the mount. */
+  assertCanAttachToEntity(entity: BaseEntity): void {
     if (this.owner && this.owner !== entity) {
       throw new Error('Equipment mount is already attached to another entity');
     }
-    this.owner = entity;
   }
 
   getOccupiedLocations(): readonly string[] {

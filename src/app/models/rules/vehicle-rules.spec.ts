@@ -42,7 +42,7 @@ function entry(options: {
     id?: string;
     equipment?: Equipment;
     locations?: string[];
-    physical?: boolean;
+    intrinsicPhysicalAttack?: boolean;
     destroyed?: boolean;
     critSlots?: CriticalSlot[];
 } = {}): MountedEquipment {
@@ -53,7 +53,7 @@ function entry(options: {
         equipment: options.equipment,
         locations: new Set(options.locations ?? []),
         states: new Map<string, string>(),
-        physical: options.physical,
+        intrinsicPhysicalAttack: options.intrinsicPhysicalAttack,
         destroyed: options.destroyed,
         critSlots: options.critSlots,
     });
@@ -601,7 +601,7 @@ describe('VehicleRules', () => {
 
     it('disables non-physical weapons at sensor hit level four', () => {
         const weaponEntry = entry({ equipment: weapon('AC/5') });
-        const chargeEntry = entry({ id: 'Charge', physical: true });
+        const chargeEntry = entry({ id: 'Charge', intrinsicPhysicalAttack: true });
         const rules = createRulesHarness({
             crits: [crit('sensor_hit_4', 10)],
             inventory: [weaponEntry, chargeEntry],

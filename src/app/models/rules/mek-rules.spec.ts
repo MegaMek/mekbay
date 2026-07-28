@@ -398,7 +398,7 @@ describe('MekRules', () => {
             id: 'punch@LA',
             name: 'punch',
             locations: new Set(['LA']),
-            physical: true,
+            intrinsicPhysicalAttack: true,
         });
         const sword = (forceUnit: CBTForceUnit) => new MountedEquipment({
             owner: forceUnit,
@@ -432,7 +432,7 @@ describe('MekRules', () => {
                 owner: forceUnit,
                 id: name,
                 name,
-                physical: true,
+                intrinsicPhysicalAttack: true,
             });
 
             expect(forceUnit.rules.computeEntryState(physical('club')))
@@ -461,7 +461,7 @@ describe('MekRules', () => {
                 owner: forceUnit,
                 id: 'kick',
                 name: 'kick',
-                physical: true,
+                intrinsicPhysicalAttack: true,
             });
 
             expect(forceUnit.rules.computeEntryState(kick))
@@ -500,7 +500,7 @@ describe('MekRules', () => {
             owner: forceUnit,
             id: 'Charge',
             name: 'charge',
-            physical: true,
+            intrinsicPhysicalAttack: true,
         });
 
         expect((forceUnit.rules as MekRules).physicalCombat()?.chargeDamage).toEqual({

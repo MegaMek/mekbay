@@ -221,7 +221,7 @@ export class UnitSvgMekService extends UnitSvgService {
                 if (!state) return;
 
                 // Physical / melee damage display (reads base values from DOM, computes via rules)
-                if (entry.isIntrinsicPhysicalWeapon()) {
+                if (entry.isIntrinsicPhysicalAttack()) {
                     switch (entry.name) {
                         case 'charge':
                             this.renderChargeDamage(entry, physical.chargeDamage);

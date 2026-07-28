@@ -27,7 +27,7 @@ export interface LargeAerospaceDamageResult {
 
 /** Converts mutually exclusive large-aerospace damage classes and arc weapon abilities. */
 export function calculateLargeAerospaceDamage(entity: BaseEntity): LargeAerospaceDamageResult {
-  const weapons = entity.mountedWeapons();
+  const weapons = entity.rangedWeapons();
   const heatAdjustmentFactor = largeAerospaceHeatAdjustmentFactor(entity, weapons);
   const targetingComputer = entity.equipment().some(mount =>
     mount.equipment?.hasFlag('F_TARGETING_COMPUTER'));
@@ -39,7 +39,7 @@ export function calculateLargeAerospaceDamage(entity: BaseEntity): LargeAerospac
 
 export function largeAerospaceHeatAdjustmentFactor(
   entity: BaseEntity,
-  weapons: readonly EntityMountedWeapon[] = entity.mountedWeapons(),
+  weapons: readonly EntityMountedWeapon[] = entity.rangedWeapons(),
 ): number {
   const equipment = entity.equipment();
   const capacity = alphaStrikeHeatCapacityForEntity(entity, entity.heatCapacity(false));

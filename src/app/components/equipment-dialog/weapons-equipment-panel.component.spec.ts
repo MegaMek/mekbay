@@ -73,7 +73,7 @@ function svgEntry(html: string): SVGElement {
 function entry(params: {
     id: string;
     equipment?: WeaponEquipment | MiscEquipment | AmmoEquipment;
-    physical?: boolean;
+    intrinsicPhysicalAttack?: boolean;
     destroyed?: boolean;
     el?: SVGElement;
     states?: Map<string, string>;
@@ -87,7 +87,7 @@ function entry(params: {
         id: params.id,
         name: params.id,
         equipment: params.equipment,
-        physical: params.physical ?? false,
+        intrinsicPhysicalAttack: params.intrinsicPhysicalAttack ?? false,
         destroyed: params.destroyed ?? false,
         states: params.states ?? new Map<string, string>(),
         el: params.el,
@@ -226,7 +226,7 @@ function createComponent(
 describe('WeaponsEquipmentPanelComponent', () => {
     it('updates inventory display fields directly from reactive unit rules', () => {
         const ruleDamage = signal('5');
-        const charge = entry({ id: 'Charge', physical: true });
+        const charge = entry({ id: 'Charge', intrinsicPhysicalAttack: true });
         const { fixture } = createComponent([charge], {}, [], new Map(), {
             applyUnitDisplayEffects: (_entry, display) => ({ ...display, damage: ruleDamage() })
         });
@@ -278,7 +278,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
     it('groups ranged, physical, equipment, and destroyed entries', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
-        const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
+        const punch = entry({ id: 'punch', intrinsicPhysicalAttack: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
         const hatchet = entry({ id: 'hatchet', equipment: misc('Hatchet', ['F_CLUB']), el: svgEntry('<g><g class="name"><text>Hatchet</text></g></g>') });
         const ecm = entry({ id: 'ecm', equipment: misc('ECM'), el: svgEntry('<g><g class="name"><text>ECM</text></g></g>') });
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
@@ -1207,7 +1207,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const second = entry({ id: 'second', equipment: weapon('second'), el: svgEntry('<g><g class="name"><text>Second</text></g></g>') });
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
         const disabled = entry({ id: 'disabled', equipment: weapon('disabled'), el: svgEntry('<g><g class="name"><text>Disabled</text></g></g>') });
-        const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
+        const punch = entry({ id: 'punch', intrinsicPhysicalAttack: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
         const entryStates = new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>([
             [disabled, { isDamaged: false, isDisabled: true, hitMod: 0 }]
         ]);
@@ -1510,7 +1510,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
     });
 
     it('uses piloting skill for physical target numbers', () => {
-        const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
+        const punch = entry({ id: 'punch', intrinsicPhysicalAttack: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
         const { component, unit } = createComponent([punch], {}, [], new Map(), { pilotingSkill: 6, moveMode: 'stationary' });
         const row = component.groups().find(group => group.id === 'physical')!.rows[0];
         unit.createInventoryControlTarget();
@@ -1559,7 +1559,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const second = entry({ id: 'second', equipment: weapon('second'), el: svgEntry('<g><g class="name"><text>Second</text></g></g>') });
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
         const disabled = entry({ id: 'disabled', equipment: weapon('disabled'), el: svgEntry('<g><g class="name"><text>Disabled</text></g></g>') });
-        const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
+        const punch = entry({ id: 'punch', intrinsicPhysicalAttack: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
         const entryStates = new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>([
             [disabled, { isDamaged: false, isDisabled: true, hitMod: 0 }]
         ]);
@@ -1602,7 +1602,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
     it('resets entry and range selections from the dialog state', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
-        const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g><text class="range_short">1</text><text class="range_medium">2</text><text class="range_long">3</text></g>') });
+        const punch = entry({ id: 'punch', intrinsicPhysicalAttack: true, el: svgEntry('<g><g class="name"><text>Punch</text></g><text class="range_short">1</text><text class="range_medium">2</text><text class="range_long">3</text></g>') });
         const { component, unit } = createComponent([laser, punch]);
         const rows = component.groups().flatMap(group => group.rows);
         const laserRow = rows.find(row => row.id === 'laser')!;
@@ -2014,7 +2014,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             el: svgEntry('<g><g class="name"><text>ATM 6</text></g><g class="alternativeMode" mode="Standard"><g class="name"><text>Standard</text></g><g class="damage"><text>2/Msl</text></g><text class="range_short">5</text></g></g>')
         });
         const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 2, locations: new Set(['CT']) });
-        const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g><text class="range_short">1</text><text class="range_medium">2</text><text class="range_long">3</text></g>') });
+        const punch = entry({ id: 'punch', intrinsicPhysicalAttack: true, el: svgEntry('<g><g class="name"><text>Punch</text></g><text class="range_short">1</text><text class="range_medium">2</text><text class="range_long">3</text></g>') });
         const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
         const { component, fixture } = createComponent([atm, ammoBin, punch], equipmentMap, [], new Map(), { readOnly: true });
         const rangedGroup = component.groups().find(group => group.id === 'ranged')!;
@@ -2056,7 +2056,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             el: svgEntry('<g><g class="name"><text>ATM 6</text></g><g class="alternativeMode" mode="Standard"><g class="name"><text>Standard</text></g><g class="damage"><text>2/Msl</text></g><text class="range_short">5</text></g></g>')
         });
         const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 2, locations: new Set(['CT']) });
-        const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g><text class="range_short">1</text><text class="range_medium">2</text><text class="range_long">3</text></g>') });
+        const punch = entry({ id: 'punch', intrinsicPhysicalAttack: true, el: svgEntry('<g><g class="name"><text>Punch</text></g><text class="range_short">1</text><text class="range_medium">2</text><text class="range_long">3</text></g>') });
         const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
         const { component, fixture } = createComponent([atm, ammoBin, punch], equipmentMap);
         const rangedGroup = component.groups().find(group => group.id === 'ranged')!;

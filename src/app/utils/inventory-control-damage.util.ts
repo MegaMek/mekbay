@@ -78,7 +78,7 @@ export function resolveInventoryControlWeaponDamage(
     context: InventoryControlDamageContext,
     rules: InventoryControlDamageRules = {}
 ): InventoryControlDamageResolution | null {
-    if (!(entry.equipment instanceof WeaponEquipment)) return null;
+    if (entry.isPhysicalWeapon() || !(entry.equipment instanceof WeaponEquipment)) return null;
 
     const ammo = resolveWeaponAmmo(entry.equipment, context.equipmentCatalog, {
         ammo: context.selectedAmmo,
@@ -109,7 +109,7 @@ export function getInventoryControlDamageTypes(
     selectedAmmo?: AmmoEquipment | null,
     rules: InventoryControlDamageRules = {}
 ): WeaponType[] {
-    if (!(entry.equipment instanceof WeaponEquipment)) return [];
+    if (entry.isPhysicalWeapon() || !(entry.equipment instanceof WeaponEquipment)) return [];
 
     const baseTypes = entry instanceof MountedWeapon
         ? new Set(entry.getWeaponTypes(selectedAmmo))

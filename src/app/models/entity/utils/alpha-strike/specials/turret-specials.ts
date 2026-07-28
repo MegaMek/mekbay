@@ -15,7 +15,7 @@ export function alphaStrikeTurretSpecial(
     alphaStrikeDamageLocationMultiplier(entity, 'turret', mount) > 0)
     .map((damage, range) => damage * heatFactors[range]);
   const abilities = alphaStrikeWeaponSpecials(entity, 'turret', heatFactors);
-  const heat = alphaStrikeHeatSpecial(sumAlphaStrikeHeatDamage(entity.mountedWeapons(), mount =>
+  const heat = alphaStrikeHeatSpecial(sumAlphaStrikeHeatDamage(entity.rangedWeapons(), mount =>
     alphaStrikeDamageLocationMultiplier(entity, 'turret', mount) > 0));
   if (heat) abilities.push(heat);
 

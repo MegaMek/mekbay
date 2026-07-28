@@ -41,7 +41,7 @@ function mountedWeapon(toHitModifier: number | number[], linkedWith: MountedEqui
 }
 
 function physicalAttack(name: string): MountedEquipment {
-    return new MountedEquipment({ owner: owner(), id: name, name, physical: true });
+    return new MountedEquipment({ owner: owner(), id: name, name, intrinsicPhysicalAttack: true });
 }
 
 describe('game rules', () => {

@@ -163,7 +163,7 @@ export class UnitSvgVehicleService extends UnitSvgService {
         try {
             this.unit.getInventory().forEach(entry => {
                 if (!entry.el) return;
-                if (entry.isIntrinsicPhysicalWeapon()) {
+                if (entry.isIntrinsicPhysicalAttack()) {
                     if (entry.name === 'charge') {
                         this.renderChargeDamage(entry, this.vehicleRules.chargeDamage());
                     }

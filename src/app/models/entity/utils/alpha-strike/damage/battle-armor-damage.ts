@@ -74,7 +74,7 @@ function sumBattleArmorWeaponDamage(
   entity: BattleArmorEntity,
   include: (mount: EntityMountedEquipment) => boolean,
 ): RawDamageVector {
-  const weapons = entity.mountedWeapons();
+  const weapons = entity.rangedWeapons();
   const ammo = entity.equipment().filter(mount => mount.equipment instanceof AmmoEquipment);
   const targetingComputer = entity.equipment().some(mount =>
     mount.equipment?.hasFlag('F_TARGETING_COMPUTER'));

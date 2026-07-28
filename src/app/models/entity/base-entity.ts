@@ -198,7 +198,7 @@ export abstract class BaseEntity implements EntityTechnology {
     let totalDamage = 0;
     let hasRangeSixPlus = false;
 
-    for (const mount of this.mountedWeapons()) {
+    for (const mount of this.rangedWeapons()) {
       const weapon = mount.equipment;
       const damage = weapon.damage;
       if (damage === 'variable' || damage === 'artillery' || damage === 'cluster') {
@@ -1186,6 +1186,7 @@ export abstract class BaseEntity implements EntityTechnology {
     if (new Set(mountIds).size !== mountIds.length) {
       throw new Error('Equipment mount IDs must be unique within an entity');
     }
+    for (const mount of mounts) mount.assertCanAttachToEntity(this);
     for (const mount of mounts) mount.attachToEntity(this);
     this.#equipmentRelationships.update(relationships => relationships.withMounts(mounts));
     this.#equipment.set(mounts);

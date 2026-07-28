@@ -71,6 +71,24 @@ describe('EntityMountedEquipment characteristics', () => {
       .toThrowError('Physical weapon damage requires an attached entity');
   });
 
+  it('does not partially attach mounts when setEquipment ownership validation fails', () => {
+    const target = new BipedMekEntity();
+    const other = new BipedMekEntity();
+    const detached = mounted(new MiscEquipment({
+      id: 'detached', name: 'Detached Hatchet', type: 'misc', flags: ['F_CLUB', 'S_HATCHET'],
+    }), { mountId: 'detached' });
+    const foreign = mounted(new MiscEquipment({
+      id: 'foreign', name: 'Foreign Hatchet', type: 'misc', flags: ['F_CLUB', 'S_HATCHET'],
+    }), { mountId: 'foreign' });
+    other.setEquipment([foreign]);
+
+    expect(() => target.setEquipment([detached, foreign]))
+      .toThrowError('Equipment mount is already attached to another entity');
+    expect(target.equipment()).toEqual([]);
+    expect(() => detached.getPhysicalWeaponDamage())
+      .toThrowError('Physical weapon damage requires an attached entity');
+  });
+
   it('resolves variable critical slots from the mounted size', () => {
     const cargo = new MiscEquipment({
       id: 'cargo', name: 'Cargo', type: 'misc',

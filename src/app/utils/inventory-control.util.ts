@@ -269,7 +269,7 @@ export function selectInventoryControlEntry(
 
 export function getInventoryControlModes(entry: MountedEquipment): InventoryControlMode[] {
     const base = readTypedEquipmentDisplayData(entry, '');
-    if (!(entry.equipment instanceof WeaponEquipment)) return [];
+    if (entry.isPhysicalWeapon() || !(entry.equipment instanceof WeaponEquipment)) return [];
     if (entry.equipment.ammoType === 'MML') {
         return MML_AMMO_PROFILES.map(profile => createAmmoProfileMode(base, profile));
     }
@@ -478,7 +478,7 @@ function buildInventoryControlRow(
 ): InventoryControlRow | null {
     const unitRules = entry.owner.rules;
     const fieldGunComponent = unitRules instanceof InfantryRules ? unitRules.getFieldGunComponent(entry) : null;
-    const hasModelDisplay = entry.isIntrinsicPhysicalWeapon()
+    const hasModelDisplay = entry.isIntrinsicPhysicalAttack()
         || (!!entry.equipment && !(entry.equipment instanceof AmmoEquipment));
     const linkedWeaponEnhancement = isLinkedWeaponEnhancement(entry);
     if (entry.el && !entry.el.classList.contains('inventoryEntry') && !fieldGunComponent && !linkedWeaponEnhancement) return null;
@@ -656,8 +656,9 @@ function readEntryDisplayData(el: SVGElement, hit: string): InventoryControlDisp
 
 function readTypedEquipmentDisplayData(entry: MountedEquipment, hit: string): InventoryControlDisplayData {
     const equipment = entry.equipment;
-    const weapon = equipment instanceof WeaponEquipment ? equipment : null;
-    const physicalDamage = !weapon && entry.el && entry.isPhysicalWeapon()
+    const physical = entry.isPhysicalWeapon();
+    const weapon = !physical && equipment instanceof WeaponEquipment ? equipment : null;
+    const physicalDamage = physical && entry.el
         ? normalizeCell(readDamageText(entry.el))
         : '—';
     return {

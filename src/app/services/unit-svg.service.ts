@@ -1455,7 +1455,7 @@ export class UnitSvgService {
         if (!svg) return;
         this.unit.getInventory().forEach(entry => {
             if (!entry.el) return;
-            if (entry.isIntrinsicPhysicalWeapon()) {
+            if (entry.isIntrinsicPhysicalAttack()) {
                 if (entry.name === 'charge') {
                     this.renderChargeDamage(entry, this.unit.rules.chargeDamage());
                 }

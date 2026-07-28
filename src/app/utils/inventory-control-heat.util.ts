@@ -56,7 +56,7 @@ export function resolveInventoryControlHeatEffect(
     entry: MountedEquipment,
     rules: InventoryControlHeatRules = {}
 ): InventoryControlHeatEffect | null {
-    if (!(entry.equipment instanceof WeaponEquipment)) return null;
+    if (entry.isPhysicalWeapon() || !(entry.equipment instanceof WeaponEquipment)) return null;
     const baseEffect: InventoryControlHeatEffect = { value: entry.equipment.heat, weakened: false };
     const effect = rules.applyHeatEffects?.(entry, baseEffect) ?? baseEffect;
     return Number.isFinite(effect.value)

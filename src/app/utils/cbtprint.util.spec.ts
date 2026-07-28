@@ -75,6 +75,7 @@ describe('CBTPrintUtil', () => {
                 type: 'weapon',
                 weapon: { ammoType: 'ATM', rackSize: 6 }
             }),
+            isPhysicalWeapon: () => false,
             deleteState(name: string): boolean {
                 if (!this.states.has(name)) return false;
                 this.states = new Map(this.states);
