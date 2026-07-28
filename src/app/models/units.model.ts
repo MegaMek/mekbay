@@ -243,7 +243,7 @@ export interface Units {
     units: Unit[];
 }
 
-export type ASUnitTypeCode = 'BM' | 'IM' | 'CV' | 'SV' | 'PM' | 'BA' | 'CI' | 'AF' | 'CF' | 'SC' | 'WS' | 'SS' | 'JS' | 'DA' | 'DS' | 'MS' | 'BD' | 'UNKNOWN';
+export type ASUnitTypeCode = 'BM' | 'IM' | 'CV' | 'SV' | 'PM' | 'BA' | 'CI' | 'AF' | 'CF' | 'SC' | 'WS' | 'SS' | 'JS' | 'DA' | 'DS' | 'MS' | 'BD' | 'XX';
 
 export interface AlphaStrikeUnitStats {
     TP: ASUnitTypeCode;

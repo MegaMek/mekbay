@@ -816,7 +816,7 @@ describe('SvgInteractionService', () => {
                 <g class="name"><text>Punch</text></g>
             </g>
         `);
-        entry.physical = true;
+        entry.setIntrinsicPhysicalWeapon(true);
         entry.name = 'punch';
         unit.createInventoryControlTarget();
         unit.createInventoryControlTarget();

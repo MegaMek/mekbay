@@ -434,7 +434,7 @@ describe('MekEntity jumpMP', () => {
 });
 
 describe('MekEntity weapons', () => {
-  it('derives a typed reactive weapon index from canonical equipment', () => {
+  it('derives separate reactive ranged and physical weapon indexes from canonical equipment', () => {
     const entity = new BipedMekEntity();
     const laser = new WeaponEquipment({
       id: 'laser', name: 'Laser', type: 'weapon', weapon: { damage: 5 },
@@ -442,30 +442,42 @@ describe('MekEntity weapons', () => {
     const heatSink = new MiscEquipment({
       id: 'heat-sink', name: 'Heat Sink', type: 'misc', flags: ['F_HEAT_SINK'],
     });
+    const hatchet = new WeaponEquipment({
+      id: 'hatchet', name: 'Hatchet', type: 'weapon', flags: ['F_CLUB', 'S_HATCHET'],
+    });
 
     const laserMount = addTestEquipment(entity, laser, { location: 'CT' });
-    addTestEquipment(entity, heatSink, { location: 'CT' });
-    expect(entity.mountedWeapons().map(mount => mount.equipment.id)).toEqual(['laser']);
-    expect(entity.weapons().some(weapon => weapon.source === 'mounted' && weapon.id === laserMount.mountId)).toBeTrue();
+    const hatchetMount = addTestEquipment(entity, hatchet, { location: 'RA' });
+    const heatSinkMount = addTestEquipment(entity, heatSink, { location: 'CT' });
+    expect(entity.equipment()).toEqual([laserMount, hatchetMount, heatSinkMount]);
+    expect(entity.mountedWeapons().map(mount => mount.equipment.id)).toEqual(['laser', 'hatchet']);
+    expect(entity.rangedWeapons().map(mount => mount.mountId)).toEqual([laserMount.mountId]);
+    expect(entity.rangedWeapons()[0] as EntityMountedEquipment).toBe(laserMount);
+    expect(entity.physicalWeapons().some(weapon =>
+      'mountId' in weapon && weapon.mountId === hatchetMount.mountId)).toBeTrue();
+    expect(entity.physicalWeapons()[0] as EntityMountedEquipment).toBe(hatchetMount);
+    expect(entity.physicalWeapons().filter(weapon => 'source' in weapon).length).toBe(6);
 
     entity.setEquipment([]);
     addTestEquipment(entity, heatSink, { location: 'CT' });
     expect(entity.mountedWeapons()).toEqual([]);
+    expect(entity.rangedWeapons()).toEqual([]);
+    expect(entity.physicalWeapons().every(weapon => 'source' in weapon)).toBeTrue();
   });
 
   it('exposes semantic intrinsic weapons', () => {
     const entity = new BipedMekEntity();
     entity.setTonnage(55);
 
-    const intrinsic = entity.intrinsicWeapons();
-    expect(intrinsic.map(weapon => weapon.name)).toEqual([
+    const attacks = entity.intrinsicWeapons();
+    expect(attacks.map(attack => attack.name)).toEqual([
       'Punch', 'Punch', 'Club', 'Kick', 'Charge', 'Push',
     ]);
-    expect(intrinsic.find(weapon => weapon.id === 'intrinsic:punch:LA')?.damage).toEqual({
-      kind: 'physical-fixed', primary: { damage: 6 },
+    expect(attacks.find(attack => attack.id === 'intrinsic:punch:LA')?.damage).toEqual({
+      kind: 'fixed', value: 6,
     });
-    expect(intrinsic.find(weapon => weapon.id === 'intrinsic:kick')?.hitModifiers).toEqual([-2]);
-    expect(entity.weapons().filter(weapon => weapon.source === 'intrinsic').length).toBe(6);
+    expect(attacks.find(attack => attack.id === 'intrinsic:kick')?.hitModifiers).toEqual([-2]);
+    expect(attacks.every(attack => attack.source === 'intrinsic')).toBeTrue();
   });
 
   it('reacts to actuator, AES, claw, TSM, talon, and jump equipment state', () => {
@@ -476,25 +488,26 @@ describe('MekEntity weapons', () => {
     addTestEquipmentWithFlags(entity, ['F_ACTUATOR_ENHANCEMENT_SYSTEM'], { location: 'LA' });
     addTestEquipmentWithFlags(entity, ['F_HAND_WEAPON', 'S_CLAW'], { location: 'RA' });
     addTestEquipmentWithFlags(entity, 'F_TSM', { location: 'CT' });
-    addTestEquipmentWithFlags(entity, 'F_TALON', { location: 'CT' });
+    addTestEquipmentWithFlags(entity, 'F_TALON', { location: 'LL' });
+    addTestEquipmentWithFlags(entity, 'F_TALON', { location: 'RL' });
     addTestEquipmentWithFlags(entity, 'F_JUMP_JET', { location: 'CT' });
     addTestEquipmentWithFlags(entity, 'S_SHIELD_LARGE', { location: 'CT' });
 
-    const intrinsic = entity.intrinsicWeapons();
-    expect(intrinsic.find(weapon => weapon.id === 'intrinsic:punch:LA')).toEqual(
+    const attacks = entity.intrinsicWeapons();
+    expect(attacks.find(attack => attack.id === 'intrinsic:punch:LA')).toEqual(
       jasmine.objectContaining({
-        damage: { kind: 'physical-fixed', primary: { damage: 3, tsmDamage: 6 } },
+        damage: { kind: 'fixed', value: 3, boostedValue: 6 },
         hitModifiers: [2],
       }),
     );
-    expect(intrinsic.some(weapon => weapon.id === 'intrinsic:punch:RA')).toBeFalse();
-    expect(intrinsic.find(weapon => weapon.id === 'intrinsic:kick')).toEqual(
+    expect(attacks.some(attack => attack.id === 'intrinsic:punch:RA')).toBeFalse();
+    expect(attacks.find(attack => attack.id === 'intrinsic:kick')).toEqual(
       jasmine.objectContaining({
         name: 'Kick [Talons]',
-        damage: { kind: 'physical-fixed', primary: { damage: 17, tsmDamage: 34 } },
+        damage: { kind: 'fixed', value: 17, boostedValue: 34 },
       }),
     );
-    expect(intrinsic.some(weapon => weapon.kind === 'death-from-above')).toBeTrue();
+    expect(attacks.some(attack => attack.kind === 'death-from-above')).toBeTrue();
     expect(entity.jumpMP()).toBe(0);
   });
 
@@ -502,12 +515,23 @@ describe('MekEntity weapons', () => {
     const entity = new LamEntity();
     entity.setTonnage(55);
 
-    expect(entity.intrinsicWeapons().find(weapon => weapon.kind === 'kick')?.damage).toEqual({
-      kind: 'physical-fixed',
-      primary: { damage: 11 },
-      alternate: { mode: 'airmek', value: { damage: 6 } },
+    expect(entity.intrinsicWeapons().find(attack => attack.kind === 'kick')?.damage).toEqual({
+      kind: 'fixed',
+      value: 11,
+      alternatives: { airmek: { kind: 'fixed', value: 6 } },
     });
-    expect(entity.intrinsicWeapons().some(weapon => weapon.kind === 'airmek-ram')).toBeTrue();
+    expect(entity.intrinsicWeapons().some(attack => attack.kind === 'airmek-ram')).toBeTrue();
+  });
+
+  it('requires talons in every leg before advertising talon attacks', () => {
+    const entity = new BipedMekEntity();
+    entity.setTonnage(55);
+    addTestEquipmentWithFlags(entity, 'F_TALON', { location: 'LL' });
+
+    expect(entity.intrinsicWeapons().find(attack => attack.kind === 'kick')?.name).toBe('Kick');
+
+    addTestEquipmentWithFlags(entity, 'F_TALON', { location: 'RL' });
+    expect(entity.intrinsicWeapons().find(attack => attack.kind === 'kick')?.name).toBe('Kick [Talons]');
   });
 });
 

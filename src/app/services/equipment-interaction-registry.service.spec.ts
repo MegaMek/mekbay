@@ -3,6 +3,7 @@ import { ApolloHandler } from '../equipment-handlers/apollo.handler';
 import { AtmHandler } from '../equipment-handlers/atm.handler';
 import { InventoryModeHandler, INVENTORY_MODE_HANDLER_ID } from '../equipment-handlers/inventory-mode.handler';
 import { type Equipment, WeaponEquipment } from '../models/equipment.model';
+import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
 import { EquipmentInteractionHandler, EquipmentInteractionRegistryService, type HandlerContext } from './equipment-interaction-registry.service';
@@ -37,10 +38,12 @@ function atmEntry(): MountedEquipment {
 
 function context(): HandlerContext {
     return {
-        dataService: { getEquipments: () => ({}) },
+        dataService: {
+            getEquipmentRegistry: () => new EquipmentRegistry({}),
+        },
         dialogsService: {},
         toastService: {}
-    } as HandlerContext;
+    } as unknown as HandlerContext;
 }
 
 class ExtraDropdownHandler extends EquipmentInteractionHandler {
@@ -64,6 +67,31 @@ class SelectionHandler extends EquipmentInteractionHandler {
 
     handleSelection(_equipment: MountedEquipment, _value: PickerChoice, _context: HandlerContext): boolean {
         return true;
+    }
+}
+
+class DamageHandler extends EquipmentInteractionHandler {
+    constructor(readonly id: string, readonly amount: number, override readonly priority: number) {
+        super();
+    }
+
+    override applyInventoryControlDamageEffects(
+        _equipment: MountedEquipment,
+        damage: { readonly values: readonly number[]; readonly maximum: number; readonly unit?: 'shot' },
+    ) {
+        return {
+            ...damage,
+            values: damage.values.map(value => value + this.amount),
+            maximum: damage.maximum + this.amount,
+        };
+    }
+
+    override getChoices(): PickerChoice[] {
+        return [];
+    }
+
+    override handleSelection(): boolean {
+        return false;
     }
 }
 
@@ -109,6 +137,21 @@ describe('EquipmentInteractionRegistryService', () => {
         const choice = registry.getChoices(entry, context())[0];
 
         expect(registry.handleSelection(entry, choice, context())).toBeTrue();
+    });
+
+    it('composes structured damage by priority without mutating the input', () => {
+        const registry = new EquipmentInteractionRegistryService().getRegistry();
+        registry.register(new DamageHandler('late', 10, 1));
+        registry.register(new DamageHandler('early', 1, 10));
+        const input = { values: [5] as const, maximum: 10, unit: 'shot' as const };
+
+        const result = registry.applyInventoryControlDamageEffects(
+            atmEntry(), input, {} as never, context(),
+        );
+
+        expect(result).toEqual({ values: [16], maximum: 21, unit: 'shot' });
+        expect(input).toEqual({ values: [5], maximum: 10, unit: 'shot' });
+        expect(registry.getAllHandlers().map(handler => handler.id)).toEqual(['late', 'early']);
     });
 
     it('aggregates the TW Apollo bonus for a linked MRM launcher', () => {

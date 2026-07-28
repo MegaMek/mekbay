@@ -1,8 +1,8 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import { EquipmentFlag } from '../models/equipment-flags.type';
-import type { AmmoEquipment } from '../models/equipment.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
+import { isArtemisCompatibleWeapon } from '../models/entity/utils/equipment-link-rules';
 import { EquipmentInteractionHandler, type HandlerContext, type ToHitAdjustmentContext } from '../services/equipment-interaction-registry.service';
 
 export class ArtemisVHandler extends EquipmentInteractionHandler {
@@ -18,7 +18,8 @@ export class ArtemisVHandler extends EquipmentInteractionHandler {
     }
 
     override getToHitAdjustments(equipment: MountedEquipment, context: ToHitAdjustmentContext): readonly ToHitAdjustment[] {
-        if (!context.parent?.equipment?.hasFlag('F_ARTEMIS_COMPATIBLE')) return [];
+        const weapon = context.parent?.equipment;
+        if (!weapon || !isArtemisCompatibleWeapon(weapon)) return [];
         const selectedAmmo = context.selectedAmmo;
         const weakened = equipment.isUnavailable()
             || (selectedAmmo !== undefined && !selectedAmmo?.hasMunitionType('M_ARTEMIS_V_CAPABLE'));

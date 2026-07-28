@@ -89,9 +89,6 @@ import { calculateAlphaStrikePointValue } from './point-value/point-value-calcul
 export { alphaStrikeSize, alphaStrikeUnitType } from './foundation/unit-classification';
 export { tmmForMovement } from './foundation/movement';
 
-type ArcName = 'frontArc' | 'leftArc' | 'rightArc' | 'rearArc';
-type Damage = AlphaStrikeUnitStats['dmg'];
-
 export interface AlphaStrikeConversionWithReport {
   readonly stats: AlphaStrikeUnitStats;
   readonly reportEvents: readonly CalculationReportEvent[];

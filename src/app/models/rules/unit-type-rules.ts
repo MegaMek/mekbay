@@ -668,7 +668,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     applyInventoryControlDisplayEffects(entry: MountedEquipment, display: InventoryControlDisplayData): InventoryControlDisplayData {
-        if (!entry.physical || entry.name.toLowerCase() !== 'charge') return display;
+        if (!entry.isIntrinsicPhysicalWeapon() || entry.name.toLowerCase() !== 'charge') return display;
         const chargeDamage = this.chargeDamage();
         if (chargeDamage.damage === null || chargeDamage.maxDamage === null) {
             return chargeDamage.bonusDamage > 0

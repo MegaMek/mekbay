@@ -3,7 +3,9 @@ import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { TurnState } from '../models/turn-state.model';
 import type { UnitHeatSource } from '../models/rules/unit-type-rules';
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
-import type { InventoryControlDamage, InventoryControlDamageContext } from '../utils/inventory-control-damage.util';
+import type { WeaponDamage } from '../models/equipment.model';
+import { isPpcCapacitorCompatibleWeapon } from '../models/entity/utils/equipment-link-rules';
+import type { InventoryControlDamageContext } from '../utils/inventory-control-damage.util';
 import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 import type { WeaponType } from '../models/equipment.model';
 import { EquipmentFlag } from '../models/equipment-flags.type';
@@ -97,12 +99,17 @@ export class PpcCapacitorHandler extends EquipmentInteractionHandler {
 
     override applyInventoryControlDamageEffects(
         equipment: MountedEquipment,
-        damage: InventoryControlDamage,
+        damage: WeaponDamage,
         _damageContext: InventoryControlDamageContext,
         _context: HandlerContext
-    ): InventoryControlDamage {
-        if (!chargedLinkedPpcCapacitor(equipment)) return damage;
-        return addDamageBonus(damage, PPC_CAPACITOR_DAMAGE_BONUS);
+    ): WeaponDamage {
+        return chargedLinkedPpcCapacitor(equipment)
+            ? {
+                ...damage,
+                values: damage.values.map(value => value + PPC_CAPACITOR_DAMAGE_BONUS),
+                maximum: damage.maximum + PPC_CAPACITOR_DAMAGE_BONUS,
+            }
+            : damage;
     }
 
     override applyInventoryControlWeaponTypes(
@@ -139,6 +146,8 @@ function linkedPpcCapacitor(weapon: MountedEquipment): MountedEquipment | null {
 
 function isPpcCapacitorUsable(weapon: MountedEquipment, capacitor: MountedEquipment): boolean {
     return isPpcCapacitor(capacitor)
+        && weapon.equipment != null
+        && isPpcCapacitorCompatibleWeapon(weapon.equipment)
         && !weapon.isUnavailable()
         && !capacitor.isUnavailable();
 }
@@ -166,10 +175,4 @@ function setPpcCapacitorState(
     return capacitor.deleteState(PPC_CAPACITOR_STATE_KEY);
 }
 
-function addDamageBonus(damage: InventoryControlDamage, bonus: number): InventoryControlDamage {
-    if (damage.kind === 'simple') return { kind: 'simple', value: damage.value + bonus };
-    if (damage.kind === 'profile') { // not used
-        return { kind: 'profile', values: damage.values.map(value => addDamageBonus(value, bonus)) };
-    }
-    return damage;
-}
+

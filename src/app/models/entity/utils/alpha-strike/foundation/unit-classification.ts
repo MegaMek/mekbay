@@ -38,7 +38,7 @@ export function alphaStrikeUnitType(entity: BaseEntity): ASUnitTypeCode {
   if (entity instanceof FixedWingSupportEntity) return 'SV';
   if (entity instanceof ConvFighterEntity) return 'CF';
   if (entity instanceof AeroEntity) return 'AF';
-  return 'UNKNOWN';
+  return 'XX';
 }
 
 export function alphaStrikeSize(entity: BaseEntity): number {

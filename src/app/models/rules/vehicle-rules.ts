@@ -396,9 +396,7 @@ export class VehicleRules extends UnitTypeRulesBase {
     }
 
     private isPhysicalEntry(entry: MountedEquipment): boolean {
-        return !!entry.physical
-            || !!entry.equipment?.flags.has('F_CLUB')
-            || !!entry.equipment?.flags.has('F_HAND_WEAPON');
+        return entry.isPhysicalWeapon();
     }
 
     private isSuperchargerEntry(entry: MountedEquipment): boolean {

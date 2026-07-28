@@ -56,7 +56,7 @@ export abstract class CBTGameRules {
         const hasBaseReplacement = replacement !== undefined;
         if (unsupported || (entry && !this.supportsToHit(entry) && !hasBaseReplacement)) return emptyToHitResolution();
 
-        if (entry?.physical) {
+        if (entry?.isIntrinsicPhysicalWeapon()) {
             const physicalValue = this.physicalBaseHitModifiers[entry.name.toLowerCase()] ?? null;
             if (physicalValue === null || physicalValue === 'Vs') {
                 return { profile: [], value: physicalValue, changed: false, weakened: request.stateWeakened ?? false };
@@ -94,7 +94,7 @@ export abstract class CBTGameRules {
 
     private supportsToHit(entry: MountedEquipment): boolean {
         const equipment = entry.equipment;
-        if (entry.physical) return true;
+        if (entry.isPhysicalWeapon()) return true;
         if (!equipment) return false;
         if (!(equipment instanceof WeaponEquipment)
             && !equipment.flags.has('F_CLUB')

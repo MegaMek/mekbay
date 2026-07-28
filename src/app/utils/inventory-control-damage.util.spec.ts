@@ -1,295 +1,168 @@
-import { AmmoEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
+import { AmmoEquipment, EquipmentMap, StructureEquipment, WeaponEquipment, type AmmoType } from '../models/equipment.model';
+import { EquipmentRegistry } from '../models/equipment-lookup';
+import type { EquipmentFlag } from '../models/equipment-flags.type';
+import type { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { resolveInventoryControlDamageText, resolveInventoryControlWeaponDamage, resolveWeaponDamage, resolveWeaponDamageText, type InventoryControlDamage } from './inventory-control-damage.util';
+import {
+    resolveDefaultWeaponDamageText,
+    resolveInventoryControlDamageText,
+    resolveInventoryControlWeaponDamage,
+} from './inventory-control-damage.util';
 import { MML_LRM_PROFILE, MML_SRM_PROFILE } from '../models/ammo-weapon-profile.model';
 
+function catalog(equipment: EquipmentMap = {}): EquipmentRegistry {
+    return new EquipmentRegistry(equipment);
+}
+
 describe('inventory-control damage resolution', () => {
-    it('resolves range damage with effective handler weapon types', () => {
-        const weapon = new WeaponEquipment({
-            id: 'MRM10',
-            name: 'MRM 10',
-            type: 'weapon',
-            flags: ['F_MRM'],
-            weapon: { ammoType: 'MRM', damage: [3, 2, 1] }
-        });
-        const mounted = new MountedWeapon({ owner: {} as CBTForceUnit, id: weapon.id, name: weapon.name, equipment: weapon });
+    const mount = (weapon: WeaponEquipment) =>
+        new MountedWeapon({ owner: {} as CBTForceUnit, id: weapon.id, name: weapon.name, equipment: weapon });
 
-        const damage = resolveInventoryControlDamageText(mounted, {
+    it('resolves range damage and applies damage modifiers once', () => {
+        const weapon = new WeaponEquipment({
+            id: 'VariableLaser',
+            name: 'Variable Laser',
+            type: 'weapon',
+            flags: ['F_ENERGY'],
+            weapon: { damage: [10, 8, 5] },
+        });
+        const applyDamageEffects = jasmine.createSpy('applyDamageEffects').and.callFake((_entry, damage: any) => ({
+            ...damage,
+            values: damage.values.map((value: number) => value + 1),
+            maximum: damage.maximum + 1,
+        }));
+
+        expect(resolveInventoryControlDamageText(mount(weapon), {
             selectedRange: 'medium',
-            selectedAmmo: null
+            selectedAmmo: null,
+            equipmentCatalog: catalog(),
         }, {
-            applyWeaponTypes: (_entry, types) => new Set([...types, 'AE'])
-        });
-
-        expect(damage).toBe('2 [AE,M,V]');
-    });
-
-    it('applies damage modifiers once before formatting weapon types', () => {
-        const weapon = new WeaponEquipment({
-            id: 'LightPPC',
-            name: 'Light PPC',
-            type: 'weapon',
-            flags: ['F_DIRECT_FIRE', 'F_ENERGY'],
-            weapon: { damage: 5 }
-        });
-        const mounted = new MountedWeapon({ owner: {} as CBTForceUnit, id: weapon.id, name: weapon.name, equipment: weapon });
-        const applyDamageEffects = jasmine.createSpy('applyDamageEffects')
-            .and.callFake((_entry, damage: InventoryControlDamage): InventoryControlDamage =>
-                damage.kind === 'simple' ? { kind: 'simple', value: damage.value + 5 } : damage);
-
-        const damage = resolveInventoryControlDamageText(mounted, {
-            selectedRange: null,
-            selectedAmmo: null
-        }, { applyDamageEffects });
-
-        expect(damage).toBe('10 [DE]');
+            applyDamageEffects,
+        })).toBe('9 [V]');
         expect(applyDamageEffects).toHaveBeenCalledTimes(1);
     });
 
-    it('resolves fixed damage from the weapon model rather than presentation text', () => {
-        const weapon = new WeaponEquipment({
-            id: 'MediumLaser',
-            name: 'Medium Laser',
-            type: 'weapon',
-            flags: ['F_DIRECT_FIRE', 'F_ENERGY'],
-            weapon: { damage: 5 }
-        });
-        const mounted = new MountedWeapon({ owner: {} as CBTForceUnit, id: weapon.id, name: weapon.name, equipment: weapon });
-
-        const damage = resolveInventoryControlDamageText(mounted, {
-            selectedRange: null,
-            selectedAmmo: null
-        });
-
-        expect(damage).toBe('5 [DE]');
-    });
-
-    it('formats TAG and AMS with weapon types but no numeric damage', () => {
+    it('formats non-damaging weapon classifications without a zero', () => {
         const tag = new WeaponEquipment({
             id: 'TAG',
             name: 'TAG',
             type: 'weapon',
             flags: ['F_TAG'],
-            weapon: { damage: 0 }
+            weapon: { damage: 0 },
         });
         const ams = new WeaponEquipment({
             id: 'AMS',
             name: 'AMS',
             type: 'weapon',
             flags: ['F_AMS'],
-            weapon: { damage: 2 }
+            weapon: { damage: 2 },
         });
 
-        expect(resolveWeaponDamageText(tag)).toBe('[E]');
-        expect(resolveWeaponDamageText(ams)).toBe('[PB]');
-
-        const mountedTag = new MountedWeapon({ owner: {} as CBTForceUnit, id: tag.id, name: tag.name, equipment: tag });
-        expect(resolveInventoryControlDamageText(mountedTag, {
-            selectedRange: null,
-            selectedAmmo: null
-        })).toBe('[E]');
+        expect(resolveDefaultWeaponDamageText(tag, catalog())).toBe('[E]');
+        expect(resolveDefaultWeaponDamageText(ams, catalog())).toBe('[PB]');
     });
 
-    it('omits numeric zero damage while preserving weapon types', () => {
-        const grenadeLauncher = new WeaponEquipment({
-            id: 'ISVehicularGrenadeLauncher',
-            name: 'Vehicular Grenade Launcher',
+    it('preserves fractional catalog damage precision', () => {
+        const infantryWeapon = new WeaponEquipment({
+            id: 'rifle',
+            name: 'Rifle',
             type: 'weapon',
-            flags: ['F_BALLISTIC', 'F_ONE_SHOT', 'F_VGL'],
-            weapon: { ammoType: 'VGL', rackSize: 1, damage: 0 }
+            weapon: { damage: 0.52 },
         });
 
-        expect(resolveWeaponDamageText(grenadeLauncher)).toBe('[AE,OS]');
+        expect(resolveDefaultWeaponDamageText(infantryWeapon, catalog())).toBe('0.52');
     });
 
-    it('uses selected ammo damage for cluster weapons regardless of mode', () => {
-        const weapon = new WeaponEquipment({
-            id: 'ATM6',
-            name: 'ATM 6',
-            type: 'weapon',
-            flags: ['F_MISSILE', 'F_ATM'],
-            weapon: { ammoType: 'ATM', rackSize: 6, damage: 'cluster' }
-        });
-        const ammo = new AmmoEquipment({
-            id: 'ATM6HE',
-            name: 'ATM 6 HE Ammo',
-            type: 'ammo',
-            ammo: { type: 'ATM', rackSize: 6, damagePerShot: 7, munitionType: ['M_HIGH_EXPLOSIVE'] }
-        });
-        const mounted = new MountedWeapon({ owner: {} as CBTForceUnit, id: weapon.id, name: weapon.name, equipment: weapon });
+    it('uses mounted ammunition when it is compatible', () => {
+        const weapon = missile('ATM6', 'ATM', 6);
+        const ammo = ammunition('ATM6HE', 'ATM', 6, 3, ['M_HIGH_EXPLOSIVE']);
 
-        expect(resolveInventoryControlDamageText(mounted, {
+        const resolution = resolveInventoryControlWeaponDamage(mount(weapon), {
             selectedRange: null,
-            selectedAmmo: ammo
-        })).toBe('7/Msl [C6,M,S]');
-        expect(resolveWeaponDamage(weapon, { selectedRange: null, selectedAmmo: ammo })).toEqual({ kind: 'per-missile', value: 7 });
-    });
-
-    it('resolves matching large-missile ammunition as fixed damage', () => {
-        const weapon = new WeaponEquipment({
-            id: 'Thunderbolt15',
-            name: 'Thunderbolt 15',
-            type: 'weapon',
-            flags: ['F_MISSILE', 'F_LARGE_MISSILE'],
-            weapon: { ammoType: 'TBOLT_15', rackSize: 15, damage: 'cluster' }
-        });
-        const matchingAmmo = new AmmoEquipment({
-            id: 'Thunderbolt15Ammo',
-            name: 'Thunderbolt 15 Ammo',
-            type: 'ammo',
-            ammo: { type: 'TBOLT_15', rackSize: 15, damagePerShot: 15, munitionType: ['M_STANDARD'] }
-        });
-        const incompatibleAmmo = new AmmoEquipment({
-            id: 'Thunderbolt10Ammo',
-            name: 'Thunderbolt 10 Ammo',
-            type: 'ammo',
-            ammo: { type: 'TBOLT_15', rackSize: 10, damagePerShot: 10, munitionType: ['M_STANDARD'] }
-        });
-        const mounted = new MountedWeapon({ owner: {} as CBTForceUnit, id: weapon.id, name: weapon.name, equipment: weapon });
-
-        expect(resolveWeaponDamage(weapon, { selectedRange: null, selectedAmmo: matchingAmmo }))
-            .toEqual({ kind: 'simple', value: 15 });
-        expect(resolveWeaponDamageText(weapon, { selectedRange: null, selectedAmmo: matchingAmmo })).toBe('15 [M]');
-        expect(resolveInventoryControlDamageText(mounted, {
-            selectedRange: null,
-            selectedAmmo: matchingAmmo
-        })).toBe('15 [M]');
-        expect(resolveWeaponDamage(weapon, { selectedRange: null, selectedAmmo: incompatibleAmmo }))
-            .toEqual({ kind: 'per-missile', value: 10 });
-    });
-
-    it('uses catalog ammo damage for a built-in one-shot weapon', () => {
-        const weapon = new WeaponEquipment({
-            id: 'BAMineLauncher',
-            name: 'Pop-up Mine',
-            type: 'weapon',
-            flags: ['F_ONE_SHOT'],
-            weapon: { ammoType: 'MINE', rackSize: 1, damage: 'special' }
-        });
-        const ammo = new AmmoEquipment({
-            id: 'BA-Mine Launcher Ammo',
-            name: 'Pop-up Mine Ammo',
-            type: 'ammo',
-            ammo: { type: 'MINE', rackSize: 1, damagePerShot: 4, munitionType: ['M_STANDARD'] }
+            selectedAmmo: ammo,
+            equipmentCatalog: catalog(),
         });
 
-        expect(resolveWeaponDamageText(weapon, { selectedRange: null, selectedAmmo: ammo })).toBe('4 [OS]');
-        expect(resolveWeaponDamageText(weapon)).toBe('special [OS]');
-    });
-
-    it('renders quantified cluster types capped at rack size', () => {
-        const mml3 = new WeaponEquipment({
-            id: 'ISMML3',
-            name: 'MML 3',
-            type: 'weapon',
-            flags: ['F_MISSILE', 'F_MML'],
-            weapon: { ammoType: 'MML', rackSize: 3, damage: 'cluster' }
-        });
-        const mounted = new MountedWeapon({ owner: {} as CBTForceUnit, id: mml3.id, name: mml3.name, equipment: mml3 });
-
-        expect(resolveWeaponDamageText(mml3, {
-            selectedRange: null,
-            selectedAmmo: null,
-            fallbackAmmoProfile: MML_LRM_PROFILE
-        })).toBe('1/Msl [C3,M,S]');
-        const resolution = resolveInventoryControlWeaponDamage(mounted, {
-            selectedRange: null,
-            selectedAmmo: null,
-            fallbackAmmoProfile: MML_LRM_PROFILE
-        });
-        expect(resolution?.text).toBe('1/Msl [C3,M,S]');
+        expect(resolution?.text).toBe('3/Msl [C6,M,S]');
         expect(resolution?.damageTypes).toEqual(['C', 'M', 'S']);
+        expect(resolveInventoryControlDamageText(mount(weapon), {
+            selectedRange: null,
+            selectedAmmo: ammo,
+            equipmentCatalog: catalog(),
+        })).toBe('3/Msl [C6,M,S]');
     });
 
-    it('renders incorporated MML damage from its fallback ammunition profile', () => {
-        const mml9 = new WeaponEquipment({
-            id: 'ISMML9',
-            name: 'MML 9',
-            type: 'weapon',
-            flags: ['F_MISSILE', 'F_MML'],
-            weapon: { ammoType: 'MML', rackSize: 9, damage: 'cluster' }
-        });
-        const mml3 = new WeaponEquipment({
-            id: 'ISMML3',
-            name: 'MML 3',
-            type: 'weapon',
-            flags: ['F_MISSILE', 'F_MML'],
-            weapon: { ammoType: 'MML', rackSize: 3, damage: 'cluster' }
-        });
+    it('falls back to catalog ammunition when mounted ammo is absent', () => {
+        const weapon = missile('ATM6', 'ATM', 6);
+        const standard = ammunition('ATM6Standard', 'ATM', 6, 2, ['M_STANDARD']);
 
-        expect(resolveWeaponDamageText(mml9, { selectedRange: null, selectedAmmo: null, fallbackAmmoProfile: MML_LRM_PROFILE }))
-            .toBe('1/Msl [C5,M,S]');
-        expect(resolveWeaponDamageText(mml9, { selectedRange: null, selectedAmmo: null, fallbackAmmoProfile: MML_SRM_PROFILE }))
-            .toBe('2/Msl [C2,M,S]');
-        expect(resolveWeaponDamageText(mml3, { selectedRange: null, selectedAmmo: null, fallbackAmmoProfile: MML_LRM_PROFILE }))
-            .toBe('1/Msl [C3,M,S]');
-        expect(resolveWeaponDamageText(mml3, { selectedRange: null, selectedAmmo: null, fallbackAmmoProfile: MML_SRM_PROFILE }))
-            .toBe('2/Msl [C2,M,S]');
+        expect(resolveInventoryControlDamageText(mount(weapon), {
+            selectedRange: null,
+            selectedAmmo: null,
+            equipmentCatalog: catalog({ [standard.id]: standard }),
+        })).toBe('2/Msl [C6,M,S]');
+    });
+
+    it('falls back to catalog ammunition when mounted ammo is incompatible', () => {
+        const weapon = missile('ATM6', 'ATM', 6);
+        const wrongRack = ammunition('ATM3HE', 'ATM', 3, 9, ['M_HIGH_EXPLOSIVE']);
+        const standard = ammunition('ATM6Standard', 'ATM', 6, 2, ['M_STANDARD']);
+
+        expect(resolveInventoryControlDamageText(mount(weapon), {
+            selectedRange: null,
+            selectedAmmo: wrongRack,
+            equipmentCatalog: catalog({ [standard.id]: standard }),
+        })).toBe('2/Msl [C6,M,S]');
+    });
+
+    it('uses the selected catalog profile for an unloaded MML', () => {
+        const weapon = missile('MML9', 'MML', 9);
+        const lrm = ammunition('MML9LRM', 'MML', 9, 1, ['M_STANDARD'], ['F_MML_LRM']);
+        const srm = ammunition('MML9SRM', 'MML', 9, 2, ['M_STANDARD'], ['F_MML_SRM']);
+        const equipmentCatalog = catalog({ [lrm.id]: lrm, [srm.id]: srm });
+
+        expect(resolveInventoryControlDamageText(mount(weapon), {
+            selectedRange: null,
+            selectedAmmo: null,
+            equipmentCatalog,
+            ammoProfile: MML_LRM_PROFILE,
+        })).toBe('1/Msl [C5,M,S]');
+        expect(resolveInventoryControlDamageText(mount(weapon), {
+            selectedRange: null,
+            selectedAmmo: null,
+            equipmentCatalog,
+            ammoProfile: MML_SRM_PROFILE,
+        })).toBe('2/Msl [C2,M,S]');
     });
 
     it('uses loaded MML ammunition without requiring a weapon mode', () => {
-        const mml9 = new WeaponEquipment({
-            id: 'ISMML9',
-            name: 'MML 9',
-            type: 'weapon',
-            flags: ['F_MISSILE', 'F_MML'],
-            weapon: { ammoType: 'MML', rackSize: 9, damage: 'cluster' }
-        });
-        const srmAmmo = new AmmoEquipment({
-            id: 'ISMML9SRMAmmo',
-            name: 'MML 9 SRM Ammo',
-            type: 'ammo',
-            flags: ['F_MML_SRM'],
-            ammo: { type: 'MML', rackSize: 9, damagePerShot: 4 }
-        });
+        const weapon = missile('MML9', 'MML', 9);
+        const srmAmmo = ammunition('MML9SRMAmmo', 'MML', 9, 4, ['M_STANDARD'], ['F_MML_SRM']);
 
-        expect(resolveWeaponDamageText(mml9, { selectedRange: null, selectedAmmo: srmAmmo }))
-            .toBe('4/Msl [C2,M,S]');
+        expect(resolveInventoryControlDamageText(mount(weapon), {
+            selectedRange: null,
+            selectedAmmo: srmAmmo,
+            equipmentCatalog: catalog(),
+        })).toBe('4/Msl [C2,M,S]');
     });
 
-    it('renders quantified rapid-fire types for Ultra and Rotary autocannons', () => {
-        const autocannon = (ammoType: 'AC_ULTRA' | 'AC_ROTARY') => new WeaponEquipment({
-            id: ammoType,
-            name: ammoType,
+    it('formats rapid-fire, HAG, Mek Mortar, and BA Tube semantics', () => {
+        const ultra = new WeaponEquipment({
+            id: 'UAC5',
+            name: 'UAC/5',
             type: 'weapon',
             flags: ['F_BALLISTIC', 'F_DIRECT_FIRE'],
-            weapon: { ammoType, damage: 5 }
+            weapon: { ammoType: 'AC_ULTRA', damage: 5 },
         });
+        const hag = missile('HAG20', 'HAG', 20, ['F_HAG']);
+        const mortar = missile('Mortar4', 'MEK_MORTAR', 4);
+        const tube = missile('ISBATubeArtillery', 'BA_TUBE', 3, ['F_ARTILLERY', 'F_MEK_MORTAR']);
 
-        expect(resolveWeaponDamageText(autocannon('AC_ULTRA'))).toBe('5/Sht [DB,R2]');
-        expect(resolveWeaponDamageText(autocannon('AC_ROTARY'))).toBe('5/Sht [DB,R6,S]');
-    });
-
-    it('keeps C unquantified when the weapon has no corresponding cluster count', () => {
-        const repeatingCluster = new WeaponEquipment({
-            id: 'RepeatingCluster',
-            name: 'Repeating Cluster',
-            type: 'weapon',
-            flags: ['F_REPEATING'],
-            weapon: { damage: 'cluster', rackSize: 10 }
-        });
-
-        expect(resolveWeaponDamageText(repeatingCluster)).toBe('1/Msl [C]');
-    });
-
-    it('does not apply point bonuses to per-missile or special damage', () => {
-        const weapon = new WeaponEquipment({
-            id: 'ClusterWeapon',
-            name: 'Cluster Weapon',
-            type: 'weapon',
-            weapon: { ammoType: 'MRM', damage: 'cluster' }
-        });
-        const mounted = new MountedWeapon({ owner: {} as CBTForceUnit, id: weapon.id, name: weapon.name, equipment: weapon });
-
-        expect(resolveInventoryControlDamageText(mounted, {
-            selectedRange: null,
-            selectedAmmo: null
-        }, {
-            applyDamageEffects: (_entry, damage) => damage.kind === 'simple'
-                ? { kind: 'simple', value: damage.value + 5 }
-                : damage
-        })).toBe('1/Msl [C,M]');
+        expect(resolveDefaultWeaponDamageText(ultra, catalog())).toBe('5/Sht [DB,R2]');
+        expect(resolveDefaultWeaponDamageText(hag, catalog())).toBe('20 [C5,M]');
+        expect(resolveDefaultWeaponDamageText(mortar, catalog())).toBe('special [C,M,S]');
+        expect(resolveDefaultWeaponDamageText(tube, catalog())).toBe('Cluster [AE,C,F,M,S]');
     });
 
     it('returns null for non-weapon entries', () => {
@@ -298,7 +171,40 @@ describe('inventory-control damage resolution', () => {
 
         expect(resolveInventoryControlDamageText(mounted, {
             selectedRange: null,
-            selectedAmmo: null
+            selectedAmmo: null,
+            equipmentCatalog: catalog(),
         })).toBeNull();
     });
 });
+
+function missile(
+    id: string,
+    ammoType: AmmoType,
+    rackSize: number,
+    extraFlags: EquipmentFlag[] = [],
+): WeaponEquipment {
+    return new WeaponEquipment({
+        id,
+        name: id,
+        type: 'weapon',
+        flags: ['F_MISSILE', ...extraFlags],
+        weapon: { ammoType, rackSize, damage: 'cluster' },
+    });
+}
+
+function ammunition(
+    id: string,
+    type: AmmoType,
+    rackSize: number,
+    damagePerShot: number,
+    munitionType: AmmoMunitionFlag[],
+    flags: EquipmentFlag[] = [],
+): AmmoEquipment {
+    return new AmmoEquipment({
+        id,
+        name: id,
+        type: 'ammo',
+        flags,
+        ammo: { type, rackSize, damagePerShot, munitionType },
+    });
+}

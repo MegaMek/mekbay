@@ -1,4 +1,4 @@
-import { WeaponEquipment } from './equipment.model';
+import { MiscEquipment, WeaponEquipment } from './equipment.model';
 import { getMountedOneShotConsumed, MountedEquipment } from './mounted-equipment.model';
 
 describe('mounted one-shot accounting', () => {
@@ -45,3 +45,46 @@ describe('mounted one-shot accounting', () => {
         expect(getMountedOneShotConsumed(entry)).toBe(0);
     });
 });
+describe('MountedEquipment physical classification', () => {
+    it('classifies intrinsic physical attacks', () => {
+        const entry = new MountedEquipment({
+            owner: null as never,
+            id: 'punch',
+            name: 'Punch',
+            physical: true,
+        });
+
+        expect(entry.isIntrinsicPhysicalWeapon()).toBeTrue();
+        expect(entry.isPhysicalWeapon()).toBeTrue();
+    });
+
+    it('classifies mounted physical equipment without treating it as intrinsic', () => {
+        const entry = new MountedEquipment({
+            owner: null as never,
+            id: 'hatchet',
+            name: 'Hatchet',
+            equipment: new MiscEquipment({
+                id: 'hatchet', name: 'Hatchet', type: 'misc', flags: ['F_CLUB', 'S_HATCHET'],
+            }),
+        });
+
+        expect(entry.isIntrinsicPhysicalWeapon()).toBeFalse();
+        expect(entry.isPhysicalWeapon()).toBeTrue();
+    });
+
+    it('rejects ordinary equipment', () => {
+        const entry = new MountedEquipment({
+            owner: null as never,
+            id: 'laser',
+            name: 'Laser',
+            equipment: new WeaponEquipment({
+                id: 'laser', name: 'Laser', type: 'weapon', flags: ['F_ENERGY'],
+                weapon: { ammoType: 'NA', damage: 5 },
+            }),
+        });
+
+        expect(entry.isIntrinsicPhysicalWeapon()).toBeFalse();
+        expect(entry.isPhysicalWeapon()).toBeFalse();
+    });
+});
+

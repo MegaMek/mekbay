@@ -1010,12 +1010,12 @@ export class CBTForceUnit extends ForceUnit {
                 item.setCommittedDestroyed(false);
             }
             if (item.consumed) {
-                item.consumed = 0;
+                item.setAmmoState({ consumed: 0 });
             }
             if (item instanceof MountedAmmo) {
-                item.ammo = undefined;
+                let totalAmmo: number | undefined;
                 if (item.intrinsicOneShotAmmo && item.parent?.equipment instanceof WeaponEquipment) {
-                    item.totalAmmo = item.parent.equipment.oneShotCount;
+                    totalAmmo = item.parent.equipment.oneShotCount;
                 } else {
                     const componentRef = parseInventoryComponentReference(item.id);
                     const component = componentRef ? this.unit.comp[componentRef.componentIndex] : undefined;
@@ -1024,14 +1024,11 @@ export class CBTForceUnit extends ForceUnit {
                     const originalTotalAmmo = component?.q2 || (item.getMaxShots() * binCount) || 0;
                     const baseBinAmmo = Math.floor(originalTotalAmmo / binCount);
                     const extraBinAmmo = originalTotalAmmo % binCount;
-                    item.totalAmmo = baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0) || undefined;
+                    totalAmmo = baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0) || undefined;
                 }
+                item.setAmmoState({ ammo: undefined, totalAmmo });
             }
-            if (item.states && item.states.size > 0) {
-                item.states.forEach((value, key) => {
-                    item.states!.set(key, ''); // Clear all states, assuming empty string will fallback to default
-                });
-            }
+            if (item.states.size > 0) item.clearStateValues();
             return item;
         });
         this.state.inventory.set([...inventory]);

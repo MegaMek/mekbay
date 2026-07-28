@@ -1501,7 +1501,7 @@ export class MekRules extends UnitTypeRulesBase {
         let attackType: 'punch' | 'kick' | 'club' | 'physWeapon' | null = null;
         let location: string | undefined;
         let ignoreMyomer = false;
-        if (entry.physical) {
+        if (entry.isIntrinsicPhysicalWeapon()) {
             switch (entry.name.toLowerCase()) {
                 case 'punch':
                     attackType = 'punch';
@@ -1515,9 +1515,9 @@ export class MekRules extends UnitTypeRulesBase {
                     attackType = 'kick';
                     break;
             }
-        } else if (entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) {
+        } else if (entry.isPhysicalWeapon()) {
             attackType = 'physWeapon';
-            ignoreMyomer = entry.equipment.flags.has('S_FLAIL');
+            ignoreMyomer = !!entry.equipment?.flags.has('S_FLAIL');
         }
         const baseDamage = Number.parseInt(display.damage, 10);
         if (!attackType || !Number.isFinite(baseDamage)) return display;
@@ -1644,7 +1644,7 @@ export class MekRules extends UnitTypeRulesBase {
 
         if (fire.globalMod !== 0) hitMod += fire.globalMod;
 
-        if (entry.physical) {
+        if (entry.isIntrinsicPhysicalWeapon()) {
             switch (entry.name) {
                 case 'punch': {
                     const loc = Array.from(entry.locations!)[0] as ArmLocation;
@@ -1671,7 +1671,7 @@ export class MekRules extends UnitTypeRulesBase {
                     if (systemsStatus.hasLegAES && !systemsStatus.hasFunctionalLegAES) weakenedHitMod = true;
                     break;
             }
-        } else if (entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) {
+        } else if (entry.isPhysicalWeapon()) {
             entry.locations?.forEach(loc => {
                 if ((loc in physical.canPhysWeapon) && !physical.canPhysWeapon[loc as ArmLocation]) isDisabled = true;
                 if (loc in physical.physWeaponMod) hitMod += physical.physWeaponMod[loc as ArmLocation];

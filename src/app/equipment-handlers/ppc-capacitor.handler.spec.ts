@@ -1,5 +1,6 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import { MiscEquipment, WeaponEquipment } from '../models/equipment.model';
+import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { EquipmentInteractionRegistry, type HandlerContext } from '../services/equipment-interaction-registry.service';
@@ -12,7 +13,7 @@ import {
     PpcCapacitorHandler
 } from './ppc-capacitor.handler';
 
-function setup(destroyed = false) {
+function setup(destroyed = false, compatible = true) {
     const owner = {
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         rules: {
@@ -43,7 +44,10 @@ function setup(destroyed = false) {
             id: 'Light PPC',
             name: 'Light PPC',
             type: 'weapon',
-            flags: ['F_PPC', 'F_DIRECT_FIRE', 'F_ENERGY'],
+            flags: [
+                'F_PPC', 'F_DIRECT_FIRE', 'F_ENERGY',
+                ...(compatible ? ['F_PPC_CAPACITOR_COMPATIBLE' as const] : []),
+            ],
             weapon: { damage: 5 }
         }),
         linkedWith: [capacitor]
@@ -64,7 +68,8 @@ describe('PpcCapacitorHandler', () => {
 
         const damage = resolveInventoryControlDamageText(weapon, {
             selectedRange: null,
-            selectedAmmo: null
+            selectedAmmo: null,
+            equipmentCatalog: new EquipmentRegistry({}),
         }, {
             applyDamageEffects: (entry, value, damageContext) =>
                 handler.applyInventoryControlDamageEffects(entry, value, damageContext, context)
@@ -77,7 +82,8 @@ describe('PpcCapacitorHandler', () => {
         const discharged = setup();
         expect(resolveInventoryControlDamageText(discharged.weapon, {
             selectedRange: null,
-            selectedAmmo: null
+            selectedAmmo: null,
+            equipmentCatalog: new EquipmentRegistry({}),
         }, {
             applyDamageEffects: (entry, value, damageContext) =>
                 handler.applyInventoryControlDamageEffects(entry, value, damageContext, context)
@@ -87,7 +93,22 @@ describe('PpcCapacitorHandler', () => {
         unavailable.capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
         expect(resolveInventoryControlDamageText(unavailable.weapon, {
             selectedRange: null,
-            selectedAmmo: null
+            selectedAmmo: null,
+            equipmentCatalog: new EquipmentRegistry({}),
+        }, {
+            applyDamageEffects: (entry, value, damageContext) =>
+                handler.applyInventoryControlDamageEffects(entry, value, damageContext, context)
+        })).toBe('5 [DE]');
+    });
+
+    it('ignores a charged capacitor linked to an incompatible weapon', () => {
+        const { weapon, capacitor } = setup(false, false);
+        capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
+
+        expect(resolveInventoryControlDamageText(weapon, {
+            selectedRange: null,
+            selectedAmmo: null,
+            equipmentCatalog: new EquipmentRegistry({}),
         }, {
             applyDamageEffects: (entry, value, damageContext) =>
                 handler.applyInventoryControlDamageEffects(entry, value, damageContext, context)

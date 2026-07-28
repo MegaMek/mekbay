@@ -135,7 +135,7 @@ describe('UnitSearchComponent card virtualization', () => {
     };
 
     function createUnit(name: string, overrides: TestUnitOverrides = {}): Unit {
-        return createEmptyUnit({ name, ...overrides });
+        return createEmptyUnit({ name, ...overrides, as: { PV: 1, ...overrides.as } });
     }
 
     function dispatchWindowKey(key: string): KeyboardEvent {

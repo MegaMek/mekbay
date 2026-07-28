@@ -38,6 +38,39 @@ describe('EntityMountedEquipment characteristics', () => {
     expect(mounted(ammo, { shotsCount: 7 }).getAmmoShots()).toBe(7);
   });
 
+  it('classifies physical weapons and resolves damage from its attached entity', () => {
+    const entity = new BipedMekEntity();
+    entity.setTonnage(55);
+    const hatchet = mounted(new MiscEquipment({
+      id: 'hatchet', name: 'Hatchet', type: 'misc', flags: ['F_CLUB', 'S_HATCHET'],
+    }));
+    entity.setEquipment([hatchet]);
+
+    expect(hatchet.isPhysicalWeapon()).toBeTrue();
+    expect(hatchet.getPhysicalWeaponDamage()).toEqual({ kind: 'fixed', value: 11 });
+
+    entity.setTonnage(60);
+    expect(hatchet.getPhysicalWeaponDamage()).toEqual({ kind: 'fixed', value: 12 });
+  });
+
+  it('returns no physical damage for nonphysical equipment', () => {
+    const ammo = mounted(new AmmoEquipment({
+      id: 'ammo', name: 'Ammo', type: 'ammo', ammo: { type: 'AC', shots: 20 },
+    }));
+
+    expect(ammo.isPhysicalWeapon()).toBeFalse();
+    expect(ammo.getPhysicalWeaponDamage()).toBeUndefined();
+  });
+
+  it('requires entity context to resolve physical weapon damage', () => {
+    const detachedHatchet = mounted(new MiscEquipment({
+      id: 'hatchet', name: 'Hatchet', type: 'misc', flags: ['F_CLUB', 'S_HATCHET'],
+    }));
+
+    expect(() => detachedHatchet.getPhysicalWeaponDamage())
+      .toThrowError('Physical weapon damage requires an attached entity');
+  });
+
   it('resolves variable critical slots from the mounted size', () => {
     const cargo = new MiscEquipment({
       id: 'cargo', name: 'Cargo', type: 'misc',

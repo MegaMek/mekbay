@@ -323,20 +323,17 @@ export class CBTForceUnitState extends ForceUnitState {
                     if (item.setPendingDestroyed(incoming.destroying)) {
                         inventoryChanged = true;
                     }
-                    if (item.consumed !== incoming.consumed) {
-                        item.consumed = incoming.consumed;
-                        inventoryChanged = true;
-                    }
-                    if (item.ammo !== incoming.ammo) {
-                        item.ammo = incoming.ammo;
-                        inventoryChanged = true;
-                    }
-                    if (item.totalAmmo !== incoming.totalAmmo) {
-                        item.totalAmmo = incoming.totalAmmo;
+                    if (item.consumed !== incoming.consumed || item.ammo !== incoming.ammo
+                        || item.totalAmmo !== incoming.totalAmmo) {
+                        item.setAmmoState({
+                            consumed: incoming.consumed,
+                            ammo: incoming.ammo,
+                            totalAmmo: incoming.totalAmmo,
+                        });
                         inventoryChanged = true;
                     }
                     if (incoming.states !== undefined) {
-                        item.states = new Map(incoming.states.map(s => [s.name, s.value]));
+                        item.replaceStates(new Map(incoming.states.map(s => [s.name, s.value])));
                         inventoryChanged = true;
                     }
                 } else {
@@ -346,12 +343,8 @@ export class CBTForceUnitState extends ForceUnitState {
                         (item.states && item.states.size > 0 && Array.from(item.states.values()).some(v => v !== ''))) {
                         item.setCommittedDestroyed(undefined);
                         item.setPendingDestroyed(undefined);
-                        item.consumed = undefined;
-                        item.ammo = undefined;
-                        item.totalAmmo = undefined;
-                        if (item.states) {
-                            item.states.forEach((_v, k) => item.states!.set(k, ''));
-                        }
+                        item.setAmmoState({ consumed: undefined, ammo: undefined, totalAmmo: undefined });
+                        item.clearStateValues();
                         inventoryChanged = true;
                     }
                 }
@@ -544,20 +537,14 @@ export class CBTForceUnitState extends ForceUnitState {
             }
             newItem.setCommittedDestroyed(entry.destroyed);
             if (entry.states !== undefined) {
-                newItem.states = new Map(entry.states.map(s => [s.name, s.value]));
+                newItem.replaceStates(new Map(entry.states.map(s => [s.name, s.value])));
             }
-            if (entry.ammo !== undefined) {
-                newItem.ammo = entry.ammo;
-            }
-            if (entry.totalAmmo !== undefined) {
-                newItem.totalAmmo = entry.totalAmmo;
-            }
-            if (entry.consumed !== undefined) {
-                newItem.consumed = entry.consumed;
-            }
+            newItem.setAmmoState({ ammo: entry.ammo, totalAmmo: entry.totalAmmo, consumed: entry.consumed });
             newItem.setPendingDestroyed(entry.destroying);
             if (newItem.name && !newItem.equipment) {
-                newItem.equipment = this.unit.getEquipmentRegistry().findEquipment(newItem.name) ?? undefined;
+                newItem = newItem.clone({
+                    equipment: this.unit.getEquipmentRegistry().findEquipment(newItem.name) ?? undefined,
+                });
             }
             inventory.push(newItem);
         });

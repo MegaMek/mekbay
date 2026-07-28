@@ -1,20 +1,28 @@
 import { MountedWeapon } from './mounted-equipment.model';
 import type { CBTForceUnit } from './cbt-force-unit.model';
-import { MML_LRM_PROFILE } from './ammo-weapon-profile.model';
+import { MML_LRM_PROFILE, MML_SRM_PROFILE } from './ammo-weapon-profile.model';
 import {
     AmmoEquipment,
+    ArmorEquipment,
     type AmmoType,
     Equipment,
     EquipmentMap,
+    findStandardAmmoForWeapon,
     findIntrinsicAmmoForWeapon,
     isBombEquipment,
     MiscEquipment,
+    resolveWeaponDamage,
     StructureEquipment,
     WeaponEquipment,
     createEquipment,
 } from './equipment.model';
 import { getStructureByName, getStructureByTypeId } from './entity/components';
 import { EquipmentFlag } from './equipment-flags.type';
+import { EquipmentRegistry } from './equipment-lookup';
+
+function catalog(equipment: EquipmentMap = {}): EquipmentRegistry {
+    return new EquipmentRegistry(equipment);
+}
 
 describe('equipment model', () => {
     it('identifies fixed and variable equipment stats in one place', () => {
@@ -53,9 +61,21 @@ describe('equipment model', () => {
         });
 
         expect(equipment).toBeInstanceOf(StructureEquipment);
+        expect(equipment).not.toBeInstanceOf(MiscEquipment);
         expect(equipment.type).toBe('structure');
         expect((equipment as StructureEquipment).structureTypeId).toBe(6);
         expect(equipment.techBase).toBe('IS');
+    });
+
+    it('models armor separately from miscellaneous equipment', () => {
+        const equipment = createEquipment({
+            id: 'Standard Armor', name: 'Standard Armor', type: 'armor',
+            armor: { type: 'STANDARD' },
+        });
+
+        expect(equipment).toBeInstanceOf(ArmorEquipment);
+        expect(equipment).not.toBeInstanceOf(MiscEquipment);
+        expect(equipment.type).toBe('armor');
     });
 
     it('preserves exported structure type IDs without interpreting them', () => {
@@ -86,27 +106,33 @@ describe('equipment model', () => {
             }),
         };
 
-        expect(getStructureByTypeId(2, 'IS', equipmentDb)?.id).toBe('IS Endo Steel');
-        expect(getStructureByName('Endo Steel', 'Clan', equipmentDb)?.id).toBe('Clan Endo Steel');
-        expect(getStructureByTypeId(0, 'Clan', equipmentDb)?.id).toBe('Standard');
+        const equipmentCatalog = catalog(equipmentDb);
+
+        expect(getStructureByTypeId(2, 'IS', equipmentCatalog)?.id).toBe('IS Endo Steel');
+        expect(getStructureByName('Endo Steel', 'Clan', equipmentCatalog)?.id).toBe('Clan Endo Steel');
+        expect(getStructureByTypeId(0, 'Clan', equipmentCatalog)?.id).toBe('Standard');
     });
 
     it('derives intrinsic weapon categories and damage profiles', () => {
-        const srm = weapon('srm-6', 'SRM 6', 'SRM', 'cluster', 6, ['F_MISSILE']);
+        const srm = weapon('srm-6', 'SRM 6', 'SRM', 'cluster', 6, ['F_MISSILE', 'F_SRM']);
+        const srmAmmo = new AmmoEquipment({
+            id: 'srm-ammo', name: 'SRM Ammo', type: 'ammo',
+            ammo: { type: 'SRM', rackSize: 6, damagePerShot: 2, munitionType: ['M_STANDARD'] },
+        });
         const ultra = weapon('uac-10', 'Ultra AC/10', 'AC_ULTRA', 10, 10, ['F_BALLISTIC']);
         const variable = weapon('variable', 'Variable Laser', 'NA', [10, 8, 5], 0, ['F_ENERGY']);
 
         expect(srm.getWeaponCategory()).toBe('missile');
-        expect(srm.getDamageProfile()).toEqual({
-            kind: 'missile-cluster', damagePerMissile: 2, maximum: 12,
+        expect(resolveWeaponDamage(srm, catalog({ [srmAmmo.id]: srmAmmo }), { ammo: srmAmmo })).toEqual({
+            values: [2], maximum: 12, unit: 'missile',
         });
         expect(ultra.getWeaponCategory()).toBe('ballistic');
-        expect(ultra.getDamageProfile()).toEqual({
-            kind: 'simple', damage: 10, maximum: 20, perShot: true,
+        expect(resolveWeaponDamage(ultra, catalog())).toEqual({
+            values: [10], maximum: 20, unit: 'shot',
         });
         expect(variable.getWeaponCategory()).toBe('energy');
-        expect(variable.getDamageProfile()).toEqual({
-            kind: 'range', damage: [10, 8, 5], maximum: 10,
+        expect(resolveWeaponDamage(variable, catalog())).toEqual({
+            values: [10, 8, 5], maximum: 10,
         });
     });
 
@@ -123,6 +149,15 @@ describe('equipment model', () => {
         expect(doubleOneShot.oneShotCount).toBe(2);
     });
 
+    it('preserves raw catalog damage for non-damaging UI classifications', () => {
+        const ams = weapon('ams', 'AMS', 'NA', 2, 0, ['F_AMS']);
+        const tag = weapon('tag', 'TAG', 'NA', 0, 0, ['F_TAG']);
+
+        expect(ams.damage).toBe('');
+        expect(resolveWeaponDamage(ams, catalog())).toEqual({ values: [2], maximum: 2 });
+        expect(resolveWeaponDamage(tag, catalog())).toEqual({ values: [0], maximum: 0 });
+    });
+
     it('uses standard ammunition damage for large-missile launchers', () => {
         const thunderbolt = weapon('thunderbolt-5', 'Thunderbolt 5', 'TBOLT_5', 'cluster', 1,
             ['F_MISSILE', 'F_LARGE_MISSILE']);
@@ -131,9 +166,9 @@ describe('equipment model', () => {
             ammo: { type: 'TBOLT_5', rackSize: 1, damagePerShot: 5, munitionType: ['M_STANDARD'] },
         });
 
-        expect(findIntrinsicAmmoForWeapon(thunderbolt, { [ammo.id]: ammo })).toBe(ammo);
-        expect(thunderbolt.getDamageProfile(ammo)).toEqual({
-            kind: 'simple', damage: 5, maximum: 5, perShot: false,
+        expect(findIntrinsicAmmoForWeapon(thunderbolt, catalog({ [ammo.id]: ammo }))).toBe(ammo);
+        expect(resolveWeaponDamage(thunderbolt, catalog({ [ammo.id]: ammo }))).toEqual({
+            values: [5], maximum: 5,
         });
     });
 
@@ -152,19 +187,21 @@ describe('equipment model', () => {
             ammo: { type: 'MINE', rackSize: 1, damagePerShot: 4, munitionType: ['M_STANDARD'] },
         });
 
-        expect(findIntrinsicAmmoForWeapon(mineLauncher, { wrongRack, alternate, standard })).toBe(standard);
-        expect(mineLauncher.getDamageProfile(standard)).toEqual({
-            kind: 'simple', damage: 4, maximum: 4, perShot: false,
-        });
-        expect(mineLauncher.getDamageProfile()).toEqual({ kind: 'special', maximum: 0 });
+        expect(findIntrinsicAmmoForWeapon(mineLauncher, catalog({ wrongRack, alternate, standard }))).toBe(standard);
+        expect(resolveWeaponDamage(mineLauncher, catalog({ standard }), { ammo: standard }))
+            .toEqual({ values: [4], maximum: 4 });
+        expect(resolveWeaponDamage(mineLauncher, catalog()))
+            .toEqual({ values: [], maximum: 0, label: 'Special' });
 
         const repeating = weapon('repeating', 'Repeating', 'MINE', 'special', 1, []);
-        expect(findIntrinsicAmmoForWeapon(repeating, { standard })).toBeNull();
-        expect(repeating.getDamageProfile(standard)).toEqual({ kind: 'special', maximum: 0 });
+        expect(findIntrinsicAmmoForWeapon(repeating, catalog({ standard }))).toBeNull();
+        expect(resolveWeaponDamage(repeating, catalog({ standard }), { ammo: standard }))
+            .toEqual({ values: [], maximum: 0, label: 'Special' });
 
         const noAmmo = weapon('no-ammo', 'No Ammo', 'NA', 'special', 0, ['F_ONE_SHOT']);
-        expect(findIntrinsicAmmoForWeapon(noAmmo, { standard })).toBeNull();
-        expect(noAmmo.getDamageProfile(standard)).toEqual({ kind: 'special', maximum: 0 });
+        expect(findIntrinsicAmmoForWeapon(noAmmo, catalog({ standard }))).toBeNull();
+        expect(resolveWeaponDamage(noAmmo, catalog({ standard }), { ammo: standard }))
+            .toEqual({ values: [], maximum: 0, label: 'Special' });
     });
 
     it('prefers plain standard intrinsic ammo over modified standard ammunition', () => {
@@ -182,7 +219,64 @@ describe('equipment model', () => {
             ammo: { type: 'LRM', rackSize: 5, munitionType: ['M_STANDARD'] },
         });
 
-        expect(findIntrinsicAmmoForWeapon(launcher, { conventionalStandard, incendiary, standard })).toBe(standard);
+        expect(findIntrinsicAmmoForWeapon(launcher, catalog({ conventionalStandard, incendiary, standard }))).toBe(standard);
+    });
+
+    it('resolves cluster damage from catalog ammo when the unit carries none', () => {
+        const atm = weapon('atm-6', 'ATM 6', 'ATM', 'cluster', 6, ['F_MISSILE', 'F_ATM']);
+        const standard = new AmmoEquipment({
+            id: 'atm-standard', name: 'ATM 6 Ammo', type: 'ammo',
+            ammo: { type: 'ATM', rackSize: 6, damagePerShot: 2, munitionType: ['M_STANDARD'] },
+        });
+        const wrongRack = new AmmoEquipment({
+            id: 'atm-wrong-rack', name: 'ATM 3 Ammo', type: 'ammo',
+            ammo: { type: 'ATM', rackSize: 3, damagePerShot: 9, munitionType: ['M_STANDARD'] },
+        });
+
+        expect(findStandardAmmoForWeapon(atm, catalog({ wrongRack, standard }))).toBe(standard);
+        expect(resolveWeaponDamage(atm, catalog({ wrongRack, standard }))).toEqual({
+            values: [2], maximum: 12, unit: 'missile',
+        });
+    });
+
+    it('uses compatible selected ammo and rejects incompatible selected ammo', () => {
+        const atm = weapon('atm-6', 'ATM 6', 'ATM', 'cluster', 6, ['F_MISSILE', 'F_ATM']);
+        const standard = new AmmoEquipment({
+            id: 'atm-standard', name: 'ATM 6 Ammo', type: 'ammo',
+            ammo: { type: 'ATM', rackSize: 6, damagePerShot: 2, munitionType: ['M_STANDARD'] },
+        });
+        const selected = new AmmoEquipment({
+            id: 'atm-he', name: 'ATM 6 HE Ammo', type: 'ammo',
+            ammo: { type: 'ATM', rackSize: 6, damagePerShot: 3, munitionType: ['M_HIGH_EXPLOSIVE'] },
+        });
+        const wrongRack = new AmmoEquipment({
+            id: 'atm-3-he', name: 'ATM 3 HE Ammo', type: 'ammo',
+            ammo: { type: 'ATM', rackSize: 3, damagePerShot: 9, munitionType: ['M_HIGH_EXPLOSIVE'] },
+        });
+
+        expect(resolveWeaponDamage(atm, catalog({ standard }), { ammo: selected })).toEqual({
+            values: [3], maximum: 18, unit: 'missile',
+        });
+        expect(resolveWeaponDamage(atm, catalog({ standard }), { ammo: wrongRack })).toEqual({
+            values: [2], maximum: 12, unit: 'missile',
+        });
+    });
+
+    it('selects MML catalog damage by firing profile', () => {
+        const mml = weapon('mml-7', 'MML 7', 'MML', 'cluster', 7, ['F_MISSILE', 'F_MML']);
+        const lrm = new AmmoEquipment({
+            id: 'mml-lrm', name: 'MML 7 LRM Ammo', type: 'ammo', flags: ['F_MML_LRM'],
+            ammo: { type: 'MML', rackSize: 7, damagePerShot: 1, munitionType: ['M_STANDARD'] },
+        });
+        const srm = new AmmoEquipment({
+            id: 'mml-srm', name: 'MML 7 SRM Ammo', type: 'ammo', flags: ['F_MML_SRM'],
+            ammo: { type: 'MML', rackSize: 7, damagePerShot: 2, munitionType: ['M_STANDARD'] },
+        });
+
+        expect(resolveWeaponDamage(mml, catalog({ lrm, srm }), { ammoProfile: MML_LRM_PROFILE }))
+            .toEqual({ values: [1], maximum: 7, unit: 'missile' });
+        expect(resolveWeaponDamage(mml, catalog({ lrm, srm }), { ammoProfile: MML_SRM_PROFILE }))
+            .toEqual({ values: [2], maximum: 14, unit: 'missile' });
     });
 
     it('exposes intrinsic equipment classifications', () => {
@@ -469,7 +563,7 @@ describe('equipment damage types', () => {
         });
         const owner = {
             getInventoryControlEntryAmmoOption: () => `${flak.internalName}:Front`,
-            getAvailableEquipment: () => ({ [flak.internalName]: flak })
+            getEquipmentRegistry: () => new EquipmentRegistry({ [flak.internalName]: flak })
         } as unknown as CBTForceUnit;
         const mounted = new MountedWeapon({ owner, id: weapon.id, name: weapon.name, equipment: weapon });
 

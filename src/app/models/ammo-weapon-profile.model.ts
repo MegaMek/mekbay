@@ -14,7 +14,6 @@ export interface AmmoWeaponProfile {
     readonly minimumRange: number;
     readonly ranges: readonly [short: number, medium: number, long: number, extreme: number];
     readonly clusterSize: number;
-    readonly fallbackDamagePerShot: number;
 }
 
 interface AmmoProfileSource {
@@ -30,8 +29,7 @@ export const MML_LRM_PROFILE: AmmoWeaponProfile = {
     displayName: 'LRM',
     minimumRange: 6,
     ranges: [7, 14, 21, 28],
-    clusterSize: 5,
-    fallbackDamagePerShot: 1
+    clusterSize: 5
 };
 
 export const MML_SRM_PROFILE: AmmoWeaponProfile = {
@@ -39,8 +37,7 @@ export const MML_SRM_PROFILE: AmmoWeaponProfile = {
     displayName: 'SRM',
     minimumRange: 0,
     ranges: [3, 6, 9, 12],
-    clusterSize: 2,
-    fallbackDamagePerShot: 2
+    clusterSize: 2
 };
 
 export const ATM_STANDARD_PROFILE: AmmoWeaponProfile = {
@@ -48,8 +45,7 @@ export const ATM_STANDARD_PROFILE: AmmoWeaponProfile = {
     displayName: 'Standard',
     minimumRange: 4,
     ranges: [5, 10, 15, 20],
-    clusterSize: 6,
-    fallbackDamagePerShot: 2
+    clusterSize: 6
 };
 
 export const ATM_EXTENDED_RANGE_PROFILE: AmmoWeaponProfile = {
@@ -57,8 +53,7 @@ export const ATM_EXTENDED_RANGE_PROFILE: AmmoWeaponProfile = {
     displayName: 'Extended Range',
     minimumRange: 4,
     ranges: [9, 18, 27, 36],
-    clusterSize: 6,
-    fallbackDamagePerShot: 1
+    clusterSize: 6
 };
 
 export const ATM_HIGH_EXPLOSIVE_PROFILE: AmmoWeaponProfile = {
@@ -66,8 +61,7 @@ export const ATM_HIGH_EXPLOSIVE_PROFILE: AmmoWeaponProfile = {
     displayName: 'High Explosive',
     minimumRange: 0,
     ranges: [3, 6, 9, 12],
-    clusterSize: 6,
-    fallbackDamagePerShot: 3
+    clusterSize: 6
 };
 
 export const MML_AMMO_PROFILES: readonly AmmoWeaponProfile[] = [MML_LRM_PROFILE, MML_SRM_PROFILE];

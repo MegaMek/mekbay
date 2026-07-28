@@ -162,13 +162,8 @@ export class ProtoMekEntity extends BaseEntity {
       kind: 'frenzy',
       name: 'Frenzy',
       locations: [],
-      category: 'physical',
-      heat: 0,
-      damage: { kind: 'physical-fixed', primary: { damage } },
+      damage: { kind: 'fixed', value: damage },
       hitModifiers: ['variable'],
-      minimumRange: 0,
-      ranges: [],
-      optional: false,
     }];
   }
 

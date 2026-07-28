@@ -224,10 +224,7 @@ export function inventoryTargetNumberBreakdown(
 }
 
 export function isPhysicalInventoryTargetNumberEntry(entry: MountedEquipment, category?: string): boolean {
-    return category === 'physical'
-        || !!entry.physical
-        || !!entry.equipment?.flags.has('F_CLUB')
-        || !!entry.equipment?.flags.has('F_HAND_WEAPON');
+    return category === 'physical' || entry.isPhysicalWeapon();
 }
 
 export function parseInventoryTargetNumberCell(value: string): number | null {

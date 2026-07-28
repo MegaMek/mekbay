@@ -39,7 +39,8 @@ import type { DialogsService } from './dialogs.service';
 import type { DataService } from './data.service';
 import type { AmmoEquipment, WeaponType } from '../models/equipment.model';
 import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions, InventoryControlRules } from '../utils/inventory-control.util';
-import type { InventoryControlDamage, InventoryControlDamageContext } from '../utils/inventory-control-damage.util';
+import type { WeaponDamage } from '../models/equipment.model';
+import type { InventoryControlDamageContext } from '../utils/inventory-control-damage.util';
 import type { TurnState } from '../models/turn-state.model';
 import type { UnitHeatSource } from '../models/rules/unit-type-rules';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
@@ -136,10 +137,10 @@ export abstract class EquipmentInteractionHandler {
      */
     applyInventoryControlDamageEffects?(
         equipment: MountedEquipment,
-        damage: InventoryControlDamage,
+        damage: WeaponDamage,
         damageContext: InventoryControlDamageContext,
         context: HandlerContext
-    ): InventoryControlDamage;
+    ): WeaponDamage;
 
     /** Applies equipment mode/state to a physical weapon's base damage policy. */
     applyInventoryControlPhysicalDamageEffects?(
@@ -263,6 +264,10 @@ export class EquipmentInteractionRegistry {
     getHandler(handlerId: string): EquipmentInteractionHandler | undefined {
         return this.handlers.get(handlerId);
     }
+
+    getAllHandlers(): readonly EquipmentInteractionHandler[] {
+        return [...this.handlers.values()];
+    }
     
     /**
      * Get all applicable handlers for an equipment, sorted by priority
@@ -367,10 +372,10 @@ export class EquipmentInteractionRegistry {
 
     applyInventoryControlDamageEffects(
         equipment: MountedEquipment,
-        damage: InventoryControlDamage,
+        damage: WeaponDamage,
         damageContext: InventoryControlDamageContext,
         context: HandlerContext
-    ): InventoryControlDamage {
+    ): WeaponDamage {
         let nextDamage = damage;
         for (const handler of this.getHandlers(equipment)) {
             nextDamage = handler.applyInventoryControlDamageEffects?.(equipment, nextDamage, damageContext, context) ?? nextDamage;

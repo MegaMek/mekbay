@@ -40,6 +40,12 @@ import type { BaseEntity } from '../base-entity';
 import { getEquipmentBV } from '../utils/equipment-bv';
 import { getEquipmentCost } from '../utils/cost/equipment-pricing';
 import { getEquipmentTonnage } from '../utils/equipment-tonnage';
+import {
+  isPhysicalWeaponEquipment,
+  resolvePhysicalWeaponDamage,
+  type EntityMountedPhysicalWeapon,
+} from '../utils/physical-weapon';
+import type { FixedPhysicalDamage } from './weapon';
 
 // ============================================================================
 // Mount Placement - Mek crit slot positions
@@ -138,6 +144,7 @@ export interface EntityMountedEquipmentInit {
 export type EntityMountedEquipmentInput = Omit<EntityMountedEquipmentInit, 'mountId'>;
 
 export class EntityMountedEquipment implements EntityMountedEquipmentInit {
+  private owner?: BaseEntity;
   readonly mountId: MountId;
   equipmentId: string;
   equipment?: Equipment;
@@ -154,8 +161,9 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
   isSSWM?: boolean;
   isAPM?: boolean;
   shotsCount?: number;
-  constructor(data: EntityMountedEquipmentInit) {
+  constructor(data: EntityMountedEquipmentInit, owner?: BaseEntity) {
     Object.assign(this, data);
+    this.owner = owner;
     this.mountId = createMountId(data.mountId);
     this.equipmentId = data.equipmentId;
     this.allocation = data.allocation;
@@ -194,7 +202,15 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
   }
 
   clone(overrides: Partial<EntityMountedEquipmentInit> = {}): EntityMountedEquipment {
-    return new EntityMountedEquipment({ ...this, ...overrides });
+    return new EntityMountedEquipment({ ...this, ...overrides }, this.owner);
+  }
+
+  /** Associate a parsed or externally-created mount with its canonical entity context. */
+  attachToEntity(entity: BaseEntity): void {
+    if (this.owner && this.owner !== entity) {
+      throw new Error('Equipment mount is already attached to another entity');
+    }
+    this.owner = entity;
   }
 
   getOccupiedLocations(): readonly string[] {
@@ -214,6 +230,16 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
   getAmmoShots(): number | undefined {
     if (!(this.equipment instanceof AmmoEquipment)) return undefined;
     return this.shotsCount ?? this.equipment.shots;
+  }
+
+  isPhysicalWeapon(): this is EntityMountedPhysicalWeapon {
+    return isPhysicalWeaponEquipment(this.equipment);
+  }
+
+  getPhysicalWeaponDamage(): FixedPhysicalDamage | undefined {
+    if (!this.isPhysicalWeapon()) return undefined;
+    if (!this.owner) throw new Error('Physical weapon damage requires an attached entity');
+    return resolvePhysicalWeaponDamage(this.equipment, this.owner.tonnage());
   }
 
   getBV(entity: BaseEntity): number {

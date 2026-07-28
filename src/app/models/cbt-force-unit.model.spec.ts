@@ -1841,11 +1841,11 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const equipmentCatalog = new EquipmentRegistry(equipmentMap);
 
         expect(resolveWeaponDamage(atmWeapon, equipmentCatalog, { ammoProfile: ATM_EXTENDED_RANGE_PROFILE }))
-            .toEqual({ values: [7], maximum: 6, unit: 'missile' });
+            .toEqual({ values: [7], maximum: 42, unit: 'missile' });
         expect(resolveWeaponDamage(atmWeapon, equipmentCatalog, { ammoProfile: ATM_HIGH_EXPLOSIVE_PROFILE }))
-            .toEqual({ values: [8], maximum: 6, unit: 'missile' });
+            .toEqual({ values: [8], maximum: 48, unit: 'missile' });
         expect(resolveWeaponDamage(iatmWeapon, equipmentCatalog, { ammoProfile: ATM_STANDARD_PROFILE }))
-            .toEqual({ values: [2], maximum: 6, unit: 'missile' });
+            .toEqual({ values: [2], maximum: 12, unit: 'missile' });
     });
 
     it('renders vehicle stabilizer hit modifiers without using the range wildcard', () => {

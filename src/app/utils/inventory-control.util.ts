@@ -31,10 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import { AmmoEquipment, WeaponEquipment, type EquipmentMap, type WeaponType } from '../models/equipment.model';
+import { AmmoEquipment, WeaponEquipment, type WeaponType } from '../models/equipment.model';
+import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { MountedAmmo, MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { parseInventoryComponentReference } from '../models/inventory-component-reference.model';
+import { resolveInventoryOriginalAmmoTotal } from '../models/inventory-ammo-capacity.model';
 import { type CriticalSlot } from '../models/force-serialization';
 import type { UnitComponent } from '../models/units.model';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
@@ -47,7 +49,8 @@ import {
     getIntrinsicOneShotAmmoMount,
     isIntrinsicOneShotAmmoMount,
 } from './ammo-interaction.util';
-import { resolveInventoryControlWeaponDamage, type InventoryControlDamage, type InventoryControlDamageRules } from './inventory-control-damage.util';
+import { resolveInventoryControlWeaponDamage, type InventoryControlDamageRules } from './inventory-control-damage.util';
+import type { WeaponDamage } from '../models/equipment.model';
 import { formatInventoryControlHeat, resolveInventoryControlHeatEffect, type InventoryControlHeatRules } from './inventory-control-heat.util';
 import type { InventoryControlPhysicalDamageEffect } from './inventory-control-physical-damage.util';
 import { ATM_AMMO_PROFILES, MML_AMMO_PROFILES, resolveAmmoWeaponProfile, type AmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
@@ -113,16 +116,16 @@ export interface InventoryControlRow {
     entry: MountedEquipment;
     category: InventoryControlGroupId;
     tracksAmmo: boolean;
-    additionalHitModifier: number;
     destroyed: boolean;
     disabled: boolean;
     originalIndex: number;
     base: InventoryControlDisplayData;
     display: InventoryControlDisplayData;
-    damage: InventoryControlDamage | null;
+    damage: WeaponDamage | null;
     damageTypes: WeaponType[];
     firingHeat: number | null;
     heatWeakened: boolean;
+    additionalHitModifier: number;
     hitResolution: ToHitResolution;
     selectedAmmoOption?: InventoryControlAmmoOption;
     modes: InventoryControlMode[];
@@ -206,15 +209,15 @@ export function setInventoryControlMode(entry: MountedEquipment, mode: string): 
 
 export function getInventoryControlGroups(
     unit: CBTForceUnit,
-    equipmentMap: EquipmentMap = {},
+    equipmentCatalog: EquipmentRegistry,
     rules: InventoryControlRules = {}
 ): InventoryControlGroup[] {
     const entryStates = getEntryStates(unit);
-    const ammoSources = getAmmoSources(unit, equipmentMap);
+    const ammoSources = getAmmoSources(unit, equipmentCatalog);
     const rows = unit.getInventory()
         .map((entry, index) => {
             const locationLock = getBattleArmorWeaponLocation(entry);
-            return buildInventoryControlRow(entry, index, entryStates, ammoSources, rules, equipmentMap, {
+            return buildInventoryControlRow(entry, index, entryStates, ammoSources, rules, equipmentCatalog, {
                 locationLock,
                 destroyed: locationLock
                     ? unit.isEquipmentUnavailable(entry, locationLock)
@@ -278,31 +281,31 @@ export function getInventoryControlModes(entry: MountedEquipment): InventoryCont
 
 export function getSelectedInventoryControlMode(
     entry: MountedEquipment,
-    equipmentMap: EquipmentMap = {},
+    equipmentCatalog: EquipmentRegistry,
     rules: InventoryControlRules = {}
 ): string | null {
     const ammoSources = entry.equipment instanceof WeaponEquipment && entry.equipment.ammoType === 'MML'
-        ? getAmmoSources(entry.owner, equipmentMap)
+        ? getAmmoSources(entry.owner, equipmentCatalog)
         : [];
     return getSelectedMode(entry, getInventoryControlModes(entry), ammoSources, rules.matchesAmmo);
 }
 
 export function getInventoryControlModeAmmoSummary(
     entry: MountedEquipment,
-    equipmentMap: EquipmentMap,
+    equipmentCatalog: EquipmentRegistry,
     rules: InventoryControlRules = {},
-    mode: string | null = getSelectedInventoryControlMode(entry, equipmentMap, rules)
+    mode: string | null = getSelectedInventoryControlMode(entry, equipmentCatalog, rules)
 ): InventoryControlAmmoSummary {
-    return getInventoryControlAmmoSummary(entry, getAmmoSources(entry.owner, equipmentMap), mode, rules.matchesAmmo, undefined, equipmentMap);
+    return getInventoryControlAmmoSummary(entry, getAmmoSources(entry.owner, equipmentCatalog), mode, equipmentCatalog, rules.matchesAmmo);
 }
 
 function getInventoryControlAmmoSummary(
     entry: MountedEquipment,
     ammoSources: AmmoSource[],
     mode: string | null,
+    equipmentCatalog: EquipmentRegistry,
     matchesAmmo?: (entry: MountedEquipment, ammo: AmmoEquipment, mode: string | null) => boolean | null,
     locationLock?: string,
-    equipmentMap: EquipmentMap = {}
 ): InventoryControlAmmoSummary {
     if (!(entry.equipment instanceof WeaponEquipment)) {
         return { tracksAmmo: false, remaining: 0, total: 0, options: [] };
@@ -310,7 +313,7 @@ function getInventoryControlAmmoSummary(
 
     const intrinsicAmmo = getIntrinsicOneShotAmmoMount(entry);
     if (intrinsicAmmo) {
-        const source = createInventoryAmmoSource(intrinsicAmmo, equipmentMap);
+        const source = createInventoryAmmoSource(intrinsicAmmo, equipmentCatalog);
         return createAmmoSummary(source ? [source] : []);
     }
 
@@ -431,7 +434,7 @@ function formatAmmoOptionLabel(source: AmmoSource, showLocation: boolean): strin
     return `${location}${source.ammo.shortName} (${remaining}/${source.total})`;
 }
 
-export function getInventoryControlModeChoices(entry: MountedEquipment, _equipmentMap: EquipmentMap): Array<{ label: string; value: string; disabled?: boolean }> {
+export function getInventoryControlModeChoices(entry: MountedEquipment): Array<{ label: string; value: string; disabled?: boolean }> {
     return getInventoryControlModes(entry).map(mode => ({
         label: formatInventoryControlModeName(mode.name),
         value: mode.mode,
@@ -470,12 +473,13 @@ function buildInventoryControlRow(
     entryStates: Map<MountedEquipment, MountedEquipmentRuleState>,
     ammoSources: AmmoSource[],
     rules: InventoryControlRules,
-    equipmentMap: EquipmentMap,
+    equipmentCatalog: EquipmentRegistry,
     options: InventoryControlRowOptions = {}
 ): InventoryControlRow | null {
     const unitRules = entry.owner.rules;
     const fieldGunComponent = unitRules instanceof InfantryRules ? unitRules.getFieldGunComponent(entry) : null;
-    const hasModelDisplay = entry.physical || (!!entry.equipment && !(entry.equipment instanceof AmmoEquipment));
+    const hasModelDisplay = entry.isIntrinsicPhysicalWeapon()
+        || (!!entry.equipment && !(entry.equipment instanceof AmmoEquipment));
     const linkedWeaponEnhancement = isLinkedWeaponEnhancement(entry);
     if (entry.el && !entry.el.classList.contains('inventoryEntry') && !fieldGunComponent && !linkedWeaponEnhancement) return null;
     if (!entry.el && !fieldGunComponent && !hasModelDisplay) return null;
@@ -487,7 +491,7 @@ function buildInventoryControlRow(
     const { modes, modifiers } = readInventoryControlModesAndModifiers(entry);
     const selectedMode = getSelectedMode(entry, modes, ammoSources, rules.matchesAmmo, options.locationLock);
     syncSvgMode(entry, selectedMode, disabled);
-    const ammo = getInventoryControlAmmoSummary(entry, ammoSources, selectedMode, rules.matchesAmmo, options.locationLock, equipmentMap);
+    const ammo = getInventoryControlAmmoSummary(entry, ammoSources, selectedMode, equipmentCatalog, rules.matchesAmmo, options.locationLock);
     const selectedAmmoOption = resolveInventoryControlSelectedAmmoOption(ammo.options, entry.owner.getInventoryControlEntryAmmoOption?.(entry.id));
     const selectedAmmo = selectedAmmoOption?.ammo ?? null;
     const additionalHitModifier = state?.hitMod ?? 0;
@@ -513,7 +517,8 @@ function buildInventoryControlRow(
     const damageResolution = resolveInventoryControlWeaponDamage(entry, {
         selectedRange,
         selectedAmmo,
-        fallbackAmmoProfile: selectedAmmo ? null : selectedAmmoProfile
+        equipmentCatalog,
+        ammoProfile: selectedAmmo ? null : selectedAmmoProfile,
     }, rules);
     const heatResolution = resolveInventoryControlHeatEffect(entry, rules);
     const firingHeat = heatResolution?.value ?? null;
@@ -586,12 +591,8 @@ function getEntryStates(unit: CBTForceUnit): Map<MountedEquipment, MountedEquipm
 }
 
 function getEntryCategory(entry: MountedEquipment): InventoryControlGroupId {
-    if (entry.physical || entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) {
-        return 'physical';
-    }
-    if (entry.equipment instanceof WeaponEquipment) {
-        return 'ranged';
-    }
+    if (entry.isPhysicalWeapon()) return 'physical';
+    if (entry.equipment instanceof WeaponEquipment) return 'ranged';
     return 'equipment';
 }
 
@@ -656,15 +657,14 @@ function readEntryDisplayData(el: SVGElement, hit: string): InventoryControlDisp
 function readTypedEquipmentDisplayData(entry: MountedEquipment, hit: string): InventoryControlDisplayData {
     const equipment = entry.equipment;
     const weapon = equipment instanceof WeaponEquipment ? equipment : null;
-    const physicalDamage = !weapon && entry.el
-        && (equipment?.flags.has('F_CLUB') || equipment?.flags.has('F_HAND_WEAPON'))
+    const physicalDamage = !weapon && entry.el && entry.isPhysicalWeapon()
         ? normalizeCell(readDamageText(entry.el))
         : '—';
     return {
         name: equipment?.name ?? entry.name,
         location: normalizeCell(Array.from(entry.locations ?? []).join('/')),
         heat: weapon ? formatInventoryControlHeat(weapon.heat) : '—',
-        damage: weapon ? formatModelValue(weapon.damage) : physicalDamage,
+        damage: weapon ? '—' : physicalDamage,
         hit,
         min: weapon ? formatInventoryRange(weapon.minRange) : '—',
         short: weapon ? formatInventoryRange(weapon.ranges[0]) : '—',
@@ -686,10 +686,6 @@ function readModelDisplayData(entry: MountedEquipment, hit: string): InventoryCo
 
 function formatInventoryRange(value: number | undefined): string {
     return Number.isFinite(value) && value! > 0 ? value!.toString() : '—';
-}
-
-function formatModelValue(value: string | number | number[]): string {
-    return Array.isArray(value) ? value.join('/') : `${value}`;
 }
 
 function readInventoryControlModesAndModifiers(entry: MountedEquipment): { modes: InventoryControlMode[]; modifiers: InventoryControlModifier[] } {
@@ -755,13 +751,13 @@ function isModifierDestroyed(entry: MountedEquipment, modifierName: string): boo
     });
 }
 
-function getAmmoSources(unit: CBTForceUnit, equipmentMap: EquipmentMap): AmmoSource[] {
+function getAmmoSources(unit: CBTForceUnit, equipmentCatalog: EquipmentRegistry): AmmoSource[] {
     const critSources = unit.getCritSlots()
         .map(criticalSlot => createCriticalSlotAmmoSource(unit, criticalSlot))
         .filter((source): source is AmmoSource => !!source);
     const inventorySources = unit.getInventory()
         .filter(entry => !isIntrinsicOneShotAmmoMount(entry))
-        .map(entry => createInventoryAmmoSource(entry, equipmentMap))
+        .map(entry => createInventoryAmmoSource(entry, equipmentCatalog))
         .filter((source): source is AmmoSource => !!source);
 
     return [...critSources, ...inventorySources];
@@ -781,8 +777,8 @@ function createCriticalSlotAmmoSource(unit: CBTForceUnit, criticalSlot: Critical
     };
 }
 
-function createInventoryAmmoSource(entry: MountedEquipment, equipmentMap: EquipmentMap): AmmoSource | null {
-    const currentAmmo = entry.ammo ? equipmentMap[entry.ammo] : entry.equipment;
+function createInventoryAmmoSource(entry: MountedEquipment, equipmentCatalog: EquipmentRegistry): AmmoSource | null {
+    const currentAmmo = entry.ammo ? equipmentCatalog.findEquipment(entry.ammo) : entry.equipment;
     const ammo = currentAmmo instanceof AmmoEquipment
         ? currentAmmo
         : entry.equipment instanceof AmmoEquipment ? entry.equipment : null;
@@ -807,14 +803,12 @@ function createInventoryAmmoSource(entry: MountedEquipment, equipmentMap: Equipm
 }
 
 function getInventoryOriginalTotalAmmo(entry: MountedAmmo): number {
-    const componentRef = parseInventoryComponentReference(entry.id);
-    const component = componentRef === null ? undefined : entry.owner.getUnit().comp[componentRef.componentIndex];
-    const binCount = Math.max(1, component?.q ?? 1);
-    const totalAmmo = component?.q2 || (entry.getMaxShots() * binCount) || entry.totalAmmo || 0;
-    if (componentRef?.binIndex === null) return totalAmmo;
-    const baseBinAmmo = Math.floor(totalAmmo / binCount);
-    const extraBinAmmo = totalAmmo % binCount;
-    return baseBinAmmo + (componentRef && componentRef.binIndex < extraBinAmmo ? 1 : 0);
+    return resolveInventoryOriginalAmmoTotal({
+        entryId: entry.id,
+        components: entry.owner.getUnit().comp,
+        maximumShotsPerBin: entry.getMaxShots(),
+        storedTotalAmmo: entry.totalAmmo,
+    });
 }
 
 function readInfantryFieldGunDisplayData(entry: MountedEquipment, component: UnitComponent, hit: string): InventoryControlDisplayData {

@@ -106,7 +106,7 @@ export interface UnitTypeLayoutConfig {
  * - MS: Mobile Structure
  */
 export const UNIT_TYPE_LAYOUTS: Record<ASUnitTypeCode, UnitTypeLayoutConfig> = {
-    'UNKNOWN': {
+    'XX': {
         cards: [{
             design: 'standard',
             criticalHits: 'none'

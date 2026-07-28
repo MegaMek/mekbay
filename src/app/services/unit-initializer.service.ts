@@ -112,12 +112,10 @@ export class UnitInitializerService {
 
         // Clear element references from inventory
         for (const item of unit.getInventory()) {
-            item.el = undefined;
-            item.critSlots = [];
+            item.detachRuntimeContext();
             if (item.linkedWith) {
                 for (const linked of item.linkedWith) {
-                    linked.el = undefined;
-                    linked.critSlots = [];
+                    linked.detachRuntimeContext();
                 }
             }
         }
@@ -358,16 +356,16 @@ export class UnitInitializerService {
             let inventoryEntry: MountedEquipment;
             const existingEntry = currentInventory.find(item => item.id === id);
             if (existingEntry) {
-                inventoryEntry = existingEntry.clone();
-                // full refresh (but is it really needed?)
-                inventoryEntry.name = iPhysAtk || name;
-                inventoryEntry.locations = locations;
-                inventoryEntry.equipment = eq;
-                inventoryEntry.physical = !!iPhysAtk;
-                inventoryEntry.linkedWith = null;
-                inventoryEntry.parent = null;
-                inventoryEntry.critSlots = critSlots;
-                inventoryEntry.el = entryEl;
+                inventoryEntry = MountedEquipment.from(existingEntry.clone({
+                    name: iPhysAtk || name,
+                    locations,
+                    equipment: eq,
+                    physical: !!iPhysAtk,
+                    linkedWith: null,
+                    parent: null,
+                    critSlots,
+                    el: entryEl,
+                }));
             } else {
                 inventoryEntry = new MountedEquipment({
                     owner: unit,
@@ -387,10 +385,7 @@ export class UnitInitializerService {
             const subElements = entryEl.querySelectorAll('.inventoryEntry') as NodeListOf<SVGElement>;
             if (subElements.length > 0) {
                 const linkedWith = this.getInventoryElements(unit, svg, subElements);
-                linkedWith.forEach(linkedEntry => {
-                    linkedEntry.parent = inventoryEntry;
-                });
-                inventoryEntry.linkedWith = linkedWith;
+                inventoryEntry.setLinkedEquipment(linkedWith);
             }
 
             inventoryEntries.push(inventoryEntry);

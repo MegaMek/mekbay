@@ -34,20 +34,20 @@
 import { BaseEntity } from '../models/entity/base-entity';
 import { AeroEntity } from '../models/entity/entities/aero/aero-entity';
 import { ConvFighterEntity } from '../models/entity/entities/aero/conv-fighter-entity';
-import { DropShipEntity } from '../models/entity/entities/aero/dropship-entity';
 import { FixedWingSupportEntity } from '../models/entity/entities/aero/fixed-wing-support-entity';
 import { InfantryBaseEntity } from '../models/entity/entities/infantry/infantry-base-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
 import { JumpShipEntity } from '../models/entity/entities/largecraft/jumpship-entity';
 import { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import { VehicleEntity } from '../models/entity/entities/vehicle/vehicle-entity';
-import { ASUnitTypeCode, Unit } from '../models/units.model';
+import { AlphaStrikeUnitStats, Unit } from '../models/units.model';
 import { EntityType, MoveType } from '../models/entity/types';
 import { getBayTransporterType, isQuartersBay } from '../models/entity/bays/bay-definitions';
 import { buildUnitCargoMetadata } from './unit-cargo-metadata-builder';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import { convertEntityToAlphaStrike } from '../models/entity/utils/alpha-strike/alpha-strike-converter';
+import { alphaStrikeUnitType } from '../models/entity/utils/alpha-strike/foundation/unit-classification';
 
 /**
  * Builds a `Partial<Unit>` metadata object from a parsed entity.
@@ -68,6 +68,7 @@ export class UnitMetadataBuilder {
    */
   build(entity: BaseEntity, unitFile?: string): Partial<Unit> {
     const me = entity.mountedEngine();
+    const alphaStrikeUnitStats = convertEntityToAlphaStrike(entity);
     return {
       // ── Phase 0: Identity ──────────────────────────────────────────
       name: this.buildName(entity),
@@ -131,7 +132,7 @@ export class UnitMetadataBuilder {
       cost: Math.round(entity.cost()),
       bv: entity.battleValue(),
       offSpeedFactor: entity.offensiveSpeedFactor(),
-      as: convertEntityToAlphaStrike(entity),
+      as: alphaStrikeUnitStats,
     };
   }
 
@@ -162,8 +163,8 @@ export class UnitMetadataBuilder {
    *  4. Trim leading/trailing underscores
    */
   buildName(entity: BaseEntity): string {
-    const prefix = this.getASUnitTypePrefix(entity);
-    const raw = `${prefix}${entity.chassis()}_${entity.model()}`;
+    const tp = alphaStrikeUnitType(entity);
+    const raw = `${tp!=='XX'?tp:''}${entity.chassis()}_${entity.model()}`;
     return raw
       .replace(/[^a-zA-Z0-9_]/g, '')
       .replace(/_+/g, '_')
@@ -266,51 +267,6 @@ export class UnitMetadataBuilder {
       default:
         return entity.motiveType() as MoveType;
     }
-  }
-
-  /**
-   * Returns the Alpha Strike unit type prefix code for name generation.
-   *
-   * This is a simplified mapping based on entityType. The full Java logic
-   * inspects subclass (industrial, support, spheroid, etc.) but we handle
-   * the common cases here and refine incrementally.
-   *
-   * TODO: Detect industrial meks (IM), support vehicles (SV),
-   *       aerodyne vs spheroid dropships (DA vs DS), etc.
-   */
-  private getASUnitTypePrefix(entity: BaseEntity): ASUnitTypeCode | '' {
-    // Industrial Meks use 'IM' prefix instead of 'BM'
-    if (entity instanceof MekEntity) {
-      if (entity.isIndustrial()) {
-        return 'IM';
-      }
-    }
-    if (entity instanceof DropShipEntity) {
-      return entity.motiveType() === 'Spheroid' ? 'DS' : 'DA';
-    }
-
-    const ENTITY_TO_AS_PREFIX: Partial<Record<EntityType, ASUnitTypeCode>> = {
-      'Mek': 'BM',
-      'Tank': 'CV',               // TODO: SV for support
-      'Naval': 'CV',
-      'VTOL': 'CV',
-      'SupportTank': 'SV',
-      'SupportNaval': 'SV',
-      'SupportVTOL': 'SV',
-      'LargeSupportTank': 'SV',
-      'Infantry': 'CI',
-      'BattleArmor': 'BA',
-      'ProtoMek': 'PM',
-      'Aero': 'AF',               // TODO: CF for conventional
-      'ConvFighter': 'CF',
-      'FixedWingSupport': 'SV',
-      'SmallCraft': 'SC',
-      'DropShip': 'DS',
-      'JumpShip': 'JS',
-      'WarShip': 'WS',
-      'SpaceStation': 'SS',
-    };
-    return ENTITY_TO_AS_PREFIX[entity.entityType] ?? '';
   }
 
   /** Unit metadata tech-base description. */

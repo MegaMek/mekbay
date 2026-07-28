@@ -37,6 +37,7 @@ import type { CBTForceUnit } from './cbt-force-unit.model';
 import { AmmoEquipment, MiscEquipment, WEAPON_TYPES, WeaponEquipment, type Equipment, type WeaponType } from './equipment.model';
 import type { CriticalSlot } from './force-serialization';
 import type { MountedEquipmentRuleState } from './rules/unit-type-rules';
+import { isPhysicalWeaponEquipment } from './entity/utils/physical-weapon';
 
 export interface MountedEquipmentInit {
     owner: CBTForceUnit;
@@ -44,7 +45,6 @@ export interface MountedEquipmentInit {
     name: string;
     locations?: Set<string>;
     equipment?: Equipment;
-    hitModVariation?: null | number;
     physical?: boolean;
     linkedWith?: null | MountedEquipment[];
     parent?: null | MountedEquipment;
@@ -74,14 +74,12 @@ export interface MountedMiscInit extends MountedEquipmentInit {
 export class MountedEquipment {
     private readonly destroyedState: WritableSignal<boolean | undefined>;
     private readonly destroyingState: WritableSignal<boolean | undefined>;
-
+    private intrinsicPhysical: boolean;
     owner: CBTForceUnit;
     id: string;
     name: string;
     locations?: Set<string>;
     equipment?: Equipment;
-    hitModVariation?: null | number;
-    physical?: boolean;
     linkedWith?: null | MountedEquipment[];
     parent?: null | MountedEquipment;
     critSlots?: CriticalSlot[];
@@ -107,6 +105,56 @@ export class MountedEquipment {
         return true;
     }
 
+    replaceStates(states: ReadonlyMap<string, string>): void {
+        this.states = new Map(states);
+    }
+
+    clearStateValues(): void {
+        this.states = new Map([...this.states.keys()].map(name => [name, '']));
+    }
+
+    setLinkedEquipment(entries: readonly MountedEquipment[]): void {
+        for (const previous of this.linkedWith ?? []) {
+            if (previous.parent === this) previous.parent = null;
+        }
+        this.linkedWith = [...entries];
+        for (const entry of entries) entry.parent = this;
+    }
+
+    clearEquipmentLinks(): void {
+        this.setLinkedEquipment([]);
+        this.linkedWith = null;
+        this.parent = null;
+    }
+
+    attachRuntimeContext(element: SVGElement, critSlots: readonly CriticalSlot[] = []): void {
+        this.el = element;
+        this.critSlots = [...critSlots];
+    }
+
+    detachRuntimeContext(): void {
+        this.el = undefined;
+        this.critSlots = [];
+    }
+
+    setAmmoState(state: { ammo?: string; totalAmmo?: number; consumed?: number }): void {
+        if ('ammo' in state) this.ammo = state.ammo;
+        if ('totalAmmo' in state) this.totalAmmo = state.totalAmmo;
+        if ('consumed' in state) this.consumed = state.consumed;
+    }
+
+    isIntrinsicPhysicalWeapon(): boolean {
+        return this.intrinsicPhysical;
+    }
+
+    setIntrinsicPhysicalWeapon(physical: boolean): void {
+        this.intrinsicPhysical = physical;
+    }
+
+    isPhysicalWeapon(): boolean {
+        return this.isIntrinsicPhysicalWeapon() || isPhysicalWeaponEquipment(this.equipment);
+    }
+
     constructor(data: MountedEquipmentInit) {
         // A mount may be constructed from an Angular computed context.
         // Initialize the signals with their values; calling `.set()` here would
@@ -116,14 +164,13 @@ export class MountedEquipment {
         this.owner = data.owner;
         this.id = data.id;
         this.name = data.name;
-        this.locations = data.locations;
+        this.locations = data.locations ? new Set(data.locations) : undefined;
         this.equipment = data.equipment;
-        this.hitModVariation = data.hitModVariation;
-        this.physical = data.physical;
-        this.linkedWith = data.linkedWith;
+        this.intrinsicPhysical = data.physical === true;
+        this.linkedWith = data.linkedWith ? [...data.linkedWith] : data.linkedWith;
         this.parent = data.parent;
-        this.critSlots = data.critSlots;
-        this.states = data.states ?? new Map<string, string>();
+        this.critSlots = data.critSlots ? [...data.critSlots] : undefined;
+        this.states = new Map(data.states);
         this.el = data.el;
         this.ammo = data.ammo;
         this.totalAmmo = data.totalAmmo;
@@ -158,15 +205,14 @@ export class MountedEquipment {
             owner: this.owner,
             id: this.id,
             name: this.name,
-            locations: this.locations,
+            locations: this.locations ? new Set(this.locations) : undefined,
             equipment: this.equipment,
-            hitModVariation: this.hitModVariation,
-            physical: this.physical,
-            linkedWith: this.linkedWith,
+            physical: this.intrinsicPhysical,
+            linkedWith: this.linkedWith ? [...this.linkedWith] : this.linkedWith,
             parent: this.parent,
             destroyed: this.committedDestroyedState(),
             destroying: this.pendingDestroyed(),
-            critSlots: this.critSlots,
+            critSlots: this.critSlots ? [...this.critSlots] : undefined,
             states: new Map(this.states),
             el: this.el,
             ammo: this.ammo,

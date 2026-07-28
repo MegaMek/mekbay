@@ -32,7 +32,7 @@
  */
 
 import { EquipmentFlag } from '../../equipment-flags.type';
-import { MiscEquipment, WeaponEquipment } from '../../equipment.model';
+import { Equipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import type { EntityMountedEquipment } from '../types';
 
 const ARTEMIS_FLAGS: EquipmentFlag[] = ['F_ARTEMIS', 'F_ARTEMIS_V', 'F_ARTEMIS_PROTO'];
@@ -46,6 +46,19 @@ const WEAPON_ENHANCEMENT_FLAGS: EquipmentFlag[] = [
 
 export interface EquipmentLinkContext {
   readonly year: number;
+}
+
+export function isArtemisCompatibleWeapon(weapon: Equipment): boolean {
+  return weapon.hasFlag('F_ARTEMIS_COMPATIBLE');
+}
+
+export function isPpcCapacitorCompatibleWeapon(
+  weapon: Equipment,
+  context?: EquipmentLinkContext,
+): boolean {
+  return weapon.hasFlag('F_PPC')
+    && weapon.hasFlag('F_PPC_CAPACITOR_COMPATIBLE')
+    && !(context && weapon.id === 'CLERPPC' && context.year < 3101);
 }
 
 export function isWeaponEnhancement(mount: EntityMountedEquipment): boolean {
@@ -67,11 +80,10 @@ export function canLinkEquipment(
   if (!(enhancement instanceof MiscEquipment) || !(weapon instanceof WeaponEquipment)) return false;
   if (source.mountId === target.mountId || source.location !== target.location) return false;
 
-  if (enhancement.hasAnyFlag(ARTEMIS_FLAGS)) return weapon.hasFlag('F_ARTEMIS_COMPATIBLE');
+  if (enhancement.hasAnyFlag(ARTEMIS_FLAGS)) return isArtemisCompatibleWeapon(weapon);
   if (enhancement.hasFlag('F_APOLLO')) return weapon.ammoType === 'MRM';
   if (enhancement.hasFlag('F_PPC_CAPACITOR')) {
-    return weapon.hasFlag('F_PPC') && weapon.hasFlag('F_PPC_CAPACITOR_COMPATIBLE')
-      && !(weapon.id === 'CLERPPC' && context.year < 3101);
+    return isPpcCapacitorCompatibleWeapon(weapon, context);
   }
   if (enhancement.hasFlag('F_RISC_LASER_PULSE_MODULE')) {
     return weapon.hasFlag('F_LASER') && !weapon.hasFlag('F_PULSE') && weapon.techBase !== 'Clan';

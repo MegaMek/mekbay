@@ -4,7 +4,7 @@ import { AmmoEquipment, findIntrinsicAmmoForWeapon, WeaponEquipment } from '../m
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { getMountedOneShotConsumed, MountedAmmo, MountedEquipment } from '../models/mounted-equipment.model';
-import { parseInventoryComponentReference } from '../models/inventory-component-reference.model';
+import { resolveInventoryOriginalAmmoTotal } from '../models/inventory-ammo-capacity.model';
 import { type CriticalSlot, type LocationData } from '../models/force-serialization';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import type { CBTGameRules } from '../models/rules/game-rules';
@@ -119,18 +119,16 @@ export function getAmmoControlEntryForCriticalSlot(unit: CBTForceUnit, criticalS
 
 function getInventoryOriginalTotalAmmo(entry: MountedEquipment): number {
     if (isIntrinsicOneShotAmmoMount(entry)) return entry.totalAmmo ?? 0;
-    const componentRef = parseInventoryComponentReference(entry.id);
-    const component = componentRef === null ? undefined : entry.owner.getUnit().comp[componentRef.componentIndex];
     const originalAmmo = entry.equipment instanceof AmmoEquipment ? entry.equipment : null;
-    const binCount = Math.max(1, component?.q ?? 1);
     const mountedMaxShots = entry instanceof MountedAmmo
         ? entry.getMaxShots()
         : originalAmmo ? (entry.owner.gameRules ? originalAmmo.getShots(entry.owner.gameRules) : originalAmmo.shots) : 0;
-    const totalAmmo = component?.q2 || (mountedMaxShots * binCount) || entry.totalAmmo || 0;
-    if (componentRef?.binIndex === null) return totalAmmo;
-    const baseBinAmmo = Math.floor(totalAmmo / binCount);
-    const extraBinAmmo = totalAmmo % binCount;
-    return baseBinAmmo + (componentRef && componentRef.binIndex < extraBinAmmo ? 1 : 0);
+    return resolveInventoryOriginalAmmoTotal({
+        entryId: entry.id,
+        components: entry.owner.getUnit().comp,
+        maximumShotsPerBin: mountedMaxShots,
+        storedTotalAmmo: entry.totalAmmo,
+    });
 }
 
 function getInventoryCurrentAmmo(entry: MountedEquipment, equipmentCatalog: EquipmentRegistry): AmmoEquipment | null {
@@ -248,16 +246,15 @@ function materializeIntrinsicOneShotAmmo(
         intrinsicOneShotAmmo: true,
     });
 
-    mount.parent = weaponEntry;
-    mount.locations = weaponEntry.locations;
-    mount.ammo = selectedAmmo.internalName === originalAmmo.internalName ? undefined : selectedAmmo.internalName;
-    mount.totalAmmo = capacity;
-    mount.consumed = consumed || undefined;
-    mount.intrinsicOneShotAmmo = true;
-    weaponEntry.linkedWith = [
+    mount.setAmmoState({
+        ammo: selectedAmmo.internalName === originalAmmo.internalName ? undefined : selectedAmmo.internalName,
+        totalAmmo: capacity,
+        consumed: consumed || undefined,
+    });
+    weaponEntry.setLinkedEquipment([
         ...(weaponEntry.linkedWith ?? []).filter(linked => linked !== existing),
         mount,
-    ];
+    ]);
     return mount;
 }
 
@@ -277,7 +274,7 @@ function persistIntrinsicOneShotAmmo(
             parent.critSlots[0].consumed = source.consumed || undefined;
             parent.owner.setCritSlot(parent.critSlots[0]);
         } else {
-            parent.consumed = source.consumed || undefined;
+            parent.setAmmoState({ consumed: source.consumed || undefined });
         }
         parent.owner.setInventoryEntry(parent);
     }

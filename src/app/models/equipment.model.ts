@@ -54,6 +54,7 @@ import { AmmoValidityUtil } from '../utils/ammo-validity.util';
 import { resolveAmmoWeaponProfile, type AmmoWeaponProfile } from './ammo-weapon-profile.model';
 import type { EquipmentFlag } from './equipment-flags.type';
 import { AmmoMunitionFlag } from './ammo-munition-flags.type';
+import type { EquipmentRegistry } from './equipment-lookup';
 
 /*
  * Author: Drake
@@ -68,24 +69,15 @@ export type TechLevel = 'Introductory' | 'Standard' | 'Advanced' | 'Experimental
 export type RangeBrackets = 'short' | 'medium' | 'long' | 'extreme';
 export type WeaponCategory = 'energy' | 'missile' | 'ballistic' | 'artillery' | 'other';
 
-export type WeaponDamageProfile =
-    | { kind: 'simple'; damage: number; maximum: number; perShot: boolean }
-    | { kind: 'missile-cluster'; damagePerMissile: number; maximum: number }
-    | { kind: 'cluster'; damage: number | 'Cluster' | 'Special'; maximum: number }
-    | { kind: 'artillery'; damage: number; maximum: number }
-    | { kind: 'range'; damage: readonly number[]; maximum: number }
-    | { kind: 'variable'; maximum: number }
-    | { kind: 'special'; maximum: 0 };
+export type WeaponDamageUnit = 'missile' | 'shot' | 'artillery';
+export type WeaponDamageLabel = 'Cluster' | 'Special' | 'Variable';
 
-export interface WeaponCharacteristics {
-    readonly name: string;
-    readonly heat: number;
-    readonly category: WeaponCategory;
-    readonly ranges: readonly number[];
-    readonly minimumRange: number;
-    readonly damage: WeaponDamageProfile;
-    readonly hitModifiers: readonly number[];
-    readonly oneShotCount?: 1 | 2;
+/** Fully resolved damage. Values contains one fixed value or a short/medium/long sequence. */
+export interface WeaponDamage {
+    readonly values: readonly number[];
+    readonly maximum: number;
+    readonly label?: WeaponDamageLabel;
+    readonly unit?: WeaponDamageUnit;
 }
 export const WEAPON_TYPES = ['A', 'AE', 'AI', 'B', 'C', 'DB', 'DE', 'E', 'F', 'H', 'M', 'N', 'OS', 'P', 'PB', 'R', 'S', 'V', 'X'] as const;
 export type WeaponType = typeof WEAPON_TYPES[number];
@@ -265,6 +257,8 @@ export interface WeaponData {
     explosionDamage: number;
     rackSize: number;
     ammoType: AmmoType;
+    atClass?: string;
+    missileArmor?: number;
     ranges: number[];      // [short, medium, long, extreme]
     wRanges: number[];     // Water ranges [short, medium, long, extreme]
     minRange: number;
@@ -272,6 +266,21 @@ export interface WeaponData {
     av: number[];          // Aerospace attack values [short, medium, long, extreme]
     capital: boolean;
     subCapital: boolean;
+    alphaStrike?: AlphaStrikeWeaponData;
+}
+
+export type AlphaStrikeBattleForceClass =
+    | 'LRM' | 'SRM' | 'MML' | 'TORPEDO' | 'AC' | 'FLAK' | 'IATM' | 'REL'
+    | 'CAPITAL' | 'SUBCAPITAL' | 'CAPITAL_MISSILE';
+
+/** Static Alpha Strike conversion values exported by MegaMek's WeaponType. */
+export interface AlphaStrikeWeaponData {
+    battleForceClass?: AlphaStrikeBattleForceClass;
+    pointDefense?: boolean;
+    indirectFire?: boolean;
+    damage?: [number, number, number, number];
+    heat?: number;
+    heatDamage?: [number, number, number, number];
 }
 
 export interface InfantryData {
@@ -597,6 +606,11 @@ export class WeaponEquipment extends Equipment {
     get maxRangeBracket(): RangeBrackets { return this.weapon.maxRangeBracket; }
     get capital(): boolean { return this.weapon.capital; }
     get subCapital(): boolean { return this.weapon.subCapital; }
+    get alphaStrike(): AlphaStrikeWeaponData | undefined { return this.weapon.alphaStrike; }
+    /** Resolves the sparse Alpha Strike exception over the general indirect-fire flag. */
+    get alphaStrikeIndirectFire(): boolean {
+        return this.alphaStrike?.indirectFire ?? this.hasFlag('F_INDIRECT_FIRE');
+    }
 
     hasNoRange(): boolean {
         return this.weapon.ranges.every(r => r === 0);
@@ -718,20 +732,6 @@ export class WeaponEquipment extends Equipment {
         return undefined;
     }
 
-    get characteristics(): WeaponCharacteristics {
-        const normalizedToHitModifier = (typeof this.toHitModifier === 'number') ? [this.toHitModifier] : this.toHitModifier.length > 0 ? [...this.toHitModifier] : [0];
-        return {
-            name: this.shortName,
-            heat: this.heat,
-            category: this.getWeaponCategory(),
-            ranges: this.ranges,
-            minimumRange: this.minimumRange,
-            damage: this.getDamageProfile(),
-            hitModifiers: normalizedToHitModifier,
-            oneShotCount: this.oneShotCount,
-        };
-    }
-
     getWeaponCategory(): WeaponCategory {
         const ammoCategory = getAmmoCategory(this.ammoType);
         if (this.hasFlag('F_ENERGY') || ammoCategory === 'Energy') return 'energy';
@@ -741,77 +741,139 @@ export class WeaponEquipment extends Equipment {
         return 'other';
     }
 
-    getDamageProfile(ammo?: AmmoEquipment | null): WeaponDamageProfile {
-        const damage = this.damage;
-        if (damage === 'special' && this.oneShotCount && ammoMatchesWeapon(this, ammo)) {
-            return { kind: 'simple', damage: ammo.damagePerShot, maximum: ammo.damagePerShot, perShot: false };
-        }
-        if (damage === 'cluster' && this.hasFlag('F_LARGE_MISSILE') && ammoMatchesWeapon(this, ammo)) {
-            return { kind: 'simple', damage: ammo.damagePerShot, maximum: ammo.damagePerShot, perShot: false };
-        }
-        if (damage === 'cluster') {
-            if (this.ammoType === 'HAG') {
-                return { kind: 'cluster', damage: this.rackSize, maximum: this.rackSize };
-            }
-            if (this.ammoType === 'MEK_MORTAR') {
-                return { kind: 'cluster', damage: 'Special', maximum: this.rackSize };
-            }
-            const damagePerMissile = DOUBLE_DAMAGE_AMMO_TYPES.has(this.ammoType) ? 2 : 1;
-            return {
-                kind: 'missile-cluster',
-                damagePerMissile,
-                maximum: this.rackSize * damagePerMissile,
-            };
-        }
-        if (damage === 'artillery') {
-            return { kind: 'artillery', damage: this.rackSize, maximum: this.rackSize };
-        }
-        if (damage === 'variable') {
-            return { kind: 'variable', maximum: 0 };
-        }
-        if (Array.isArray(damage)) {
-            return { kind: 'range', damage, maximum: Math.max(0, ...damage) };
-        }
-        if (typeof damage !== 'number' || damage < 0) {
-            return { kind: 'special', maximum: 0 };
-        }
+}
 
-        const perShot = this.ammoType === 'AC_ULTRA' || this.ammoType === 'AC_ULTRA_THB';
-        const multiplier = this.ammoType === 'AC_ROTARY' ? 6 : perShot ? 2 : 1;
-        return { kind: 'simple', damage, maximum: damage * multiplier, perShot };
+export interface WeaponDamageOptions {
+    readonly ammo?: AmmoEquipment | null;
+    readonly ammoProfile?: AmmoWeaponProfile | null;
+    readonly range?: 'short' | 'medium' | 'long' | null;
+}
+
+const DAMAGE_RANGE_INDEX = { short: 0, medium: 1, long: 2 } as const;
+
+/** Uses compatible selected ammo, falling back to the canonical catalog ammo. */
+export function resolveWeaponDamage(
+    weapon: WeaponEquipment,
+    equipmentRegistry: EquipmentRegistry,
+    options: WeaponDamageOptions = {},
+): WeaponDamage {
+    const ammo = resolveWeaponAmmo(weapon, equipmentRegistry, options);
+    const damage = resolveWeaponDamageWithAmmo(weapon, ammo);
+    if (!options.range || damage.values.length < 2) return damage;
+    return { ...damage, values: [damage.values[DAMAGE_RANGE_INDEX[options.range]] ?? 0] };
+}
+
+/** Resolves compatible mounted ammo or the canonical catalog fallback. */
+export function resolveWeaponAmmo(
+    weapon: WeaponEquipment,
+    equipmentRegistry: EquipmentRegistry,
+    options: Pick<WeaponDamageOptions, 'ammo' | 'ammoProfile'> = {},
+): AmmoEquipment | null {
+    return ammoMatchesWeapon(weapon, options.ammo)
+        ? options.ammo
+        : findStandardAmmoForWeapon(weapon, equipmentRegistry, options.ammoProfile);
+}
+
+function resolveWeaponDamageWithAmmo(weapon: WeaponEquipment, ammo: AmmoEquipment | null): WeaponDamage {
+    const damage = weapon.weapon.damage;
+    if (damage === '') return fixedDamage(0);
+    if (damage === 'special' && weapon.oneShotCount && ammo) return fixedDamage(ammo.damagePerShot);
+    if (damage === 'cluster') return resolveClusterDamage(weapon, ammo);
+    if (damage === 'artillery') return fixedDamage(weapon.rackSize, 'artillery');
+    if (damage === 'variable') return labeledDamage('Variable');
+    if (Array.isArray(damage)) return { values: damage, maximum: Math.max(0, ...damage) };
+    if (typeof damage !== 'number' || damage < 0) return labeledDamage('Special');
+
+    const shots = weapon.getRapidFireCount();
+    return {
+        values: [damage],
+        maximum: damage * Math.max(1, shots),
+        ...(shots > 0 && { unit: 'shot' as const }),
+    };
+}
+
+function resolveClusterDamage(weapon: WeaponEquipment, ammo: AmmoEquipment | null): WeaponDamage {
+    if (weapon.hasFlag('F_LARGE_MISSILE')) return fixedDamage(ammo?.damagePerShot ?? 0);
+    if (weapon.ammoType === 'HAG') return fixedDamage(weapon.rackSize);
+    if (weapon.ammoType === 'MEK_MORTAR') return labeledDamage('Special', weapon.rackSize);
+    if (weapon.ammoType === 'BA_TUBE' || !weapon.hasFlag('F_MISSILE')) {
+        return labeledDamage('Cluster', weapon.rackSize);
     }
+    return {
+        values: [ammo?.damagePerShot ?? 0],
+        maximum: ammo ? weapon.rackSize * ammo.damagePerShot : 0,
+        unit: 'missile',
+    };
+}
+
+function fixedDamage(value: number, unit?: WeaponDamageUnit): WeaponDamage {
+    return { values: [value], maximum: value, ...(unit && { unit }) };
+}
+
+function labeledDamage(label: WeaponDamageLabel, maximum = 0): WeaponDamage {
+    return { values: [], maximum, label };
+}
+
+/** Finds the canonical damage-bearing ammo definition; it does not imply carried ammo. */
+export function findStandardAmmoForWeapon(
+    weapon: WeaponEquipment,
+    equipmentRegistry: EquipmentRegistry,
+    ammoProfile?: AmmoWeaponProfile | null,
+): AmmoEquipment | null {
+    if (weapon.ammoType === 'NA') return null;
+
+    let compatibleAmmo = getAmmoForWeapon(weapon, equipmentRegistry);
+
+    if (ammoProfile) {
+        compatibleAmmo = compatibleAmmo.filter(ammo => ammoMatchesProfile(ammo, ammoProfile));
+    } else if (weapon.ammoType === 'MML') {
+        compatibleAmmo = compatibleAmmo.filter(ammo => resolveAmmoWeaponProfile(ammo)?.id === 'mml-lrm');
+    } else {
+        compatibleAmmo = compatibleAmmo.filter(ammo =>
+            ammo.hasMunitionType('M_STANDARD') || ammo.munitionType.size === 0);
+    }
+
+    return compatibleAmmo.sort(compareStandardAmmo)[0] ?? null;
+}
+
+function ammoMatchesProfile(ammo: AmmoEquipment, profile?: AmmoWeaponProfile | null): boolean {
+    return !profile || resolveAmmoWeaponProfile(ammo)?.id === profile.id;
+}
+
+function compareStandardAmmo(left: AmmoEquipment, right: AmmoEquipment): number {
+    const rank = (ammo: AmmoEquipment): number =>
+        ammo.munitionType.size === 1 && ammo.hasMunitionType('M_STANDARD') ? 0
+            : ammo.hasMunitionType('M_STANDARD') ? 1
+                : ammo.munitionType.size === 0 ? 2 : 3;
+    return rank(left) - rank(right) || left.id.localeCompare(right.id);
 }
 
 /** Finds the standard ammunition definition carried intrinsically by a one-shot weapon. */
 export function findIntrinsicAmmoForWeapon(
     weapon: WeaponEquipment,
-    equipmentMap: EquipmentMap,
+    equipmentRegistry: EquipmentRegistry,
 ): AmmoEquipment | null {
     if ((!weapon.oneShotCount && !weapon.hasFlag('F_LARGE_MISSILE')) || weapon.ammoType === 'NA') return null;
 
-    const compatibleAmmo = Object.values(equipmentMap)
-        .filter((equipment): equipment is AmmoEquipment =>
-            equipment instanceof AmmoEquipment
-            && ammoMatchesWeapon(weapon, equipment)
-            && weapon.hasFlag('F_BA_WEAPON') === equipment.hasFlag('F_BATTLEARMOR'));
-    return compatibleAmmo.find(ammo => ammo.munitionType.size === 1 && ammo.hasMunitionType('M_STANDARD'))
-        ?? compatibleAmmo.find(ammo => ammo.hasMunitionType('M_STANDARD'))
-        ?? compatibleAmmo.find(ammo => ammo.munitionType.size === 0)
-        ?? compatibleAmmo[0]
-        ?? null;
+    return getAmmoForWeapon(weapon, equipmentRegistry)
+        .sort(compareStandardAmmo)[0] ?? null;
 }
 
-function ammoMatchesWeapon(weapon: WeaponEquipment, ammo?: AmmoEquipment | null): ammo is AmmoEquipment {
+function getAmmoForWeapon(
+    weapon: WeaponEquipment,
+    equipmentRegistry: EquipmentRegistry,
+): AmmoEquipment[] {
+    return [...equipmentRegistry.getAmmoForWeapon(weapon)];
+}
+
+export function ammoMatchesWeapon(weapon: WeaponEquipment, ammo?: AmmoEquipment | null): ammo is AmmoEquipment {
     if (!ammo || ammo.ammoType !== weapon.ammoType) return false;
+    if (weapon.hasFlag('F_BA_WEAPON') !== ammo.hasFlag('F_BATTLEARMOR')) return false;
     return weapon.rackSize <= 0 || ammo.rackSize === weapon.rackSize;
 }
 
 /** A weapon definition validated as a conventional infantry weapon. */
 export type InfantryWeaponEquipment = WeaponEquipment & { readonly infantry: InfantryData };
-
-const DOUBLE_DAMAGE_AMMO_TYPES = new Set<AmmoType>([
-    'SRM', 'SRM_TORPEDO', 'SRM_STREAK', 'SRM_ADVANCED', 'SRM_IMP', 'MML',
-]);
 
 // ============================================================================
 // Ammo Equipment Class

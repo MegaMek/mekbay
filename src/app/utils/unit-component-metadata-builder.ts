@@ -2,10 +2,8 @@ import {
   AmmoEquipment,
   ArmorEquipment,
   Equipment,
-  findIntrinsicAmmoForWeapon,
   MiscEquipment,
   StructureEquipment,
-  WeaponDamageProfile,
   WeaponEquipment,
 } from '../models/equipment.model';
 import { BaseEntity } from '../models/entity/base-entity';
@@ -13,9 +11,10 @@ import { AeroEntity } from '../models/entity/entities/aero/aero-entity';
 import { BattleArmorEntity } from '../models/entity/entities/infantry/battle-armor-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
 import { MekEntity, MekWithArmsEntity } from '../models/entity/entities/mek/mek-entity';
-import { EntityMountedEquipment } from '../models/entity/types/equipment';
+import { EntityMountedEquipment, EntityMountedWeapon } from '../models/entity/types/equipment';
 import { weaponBayEquipmentId } from '../models/entity/utils/implicit-equipment';
 import { UnitComponent } from '../models/units.model';
+import { formatWeaponDamage } from './weapon-damage.util';
 
 type ExportComponent = Omit<UnitComponent, 'l' | 'bay'> & {
   l?: string;
@@ -179,7 +178,7 @@ function addWeapon(
   if (existing) { existing.q++; return; }
 
   components.set(key, weaponComponent(
-    entity, equipment, 1, location.id, location.name, mount.rearMounted,
+    entity, mount as EntityMountedWeapon, 1, location.id, location.name,
     criticals(equipment, entity, mount),
   ));
   if (entity instanceof InfantryEntity && mount.location === 'Field Guns') {
@@ -188,21 +187,24 @@ function addWeapon(
 }
 
 function weaponComponent(
-  entity: BaseEntity, equipment: WeaponEquipment, quantity: number,
-  position: number, location: string | undefined, rear: boolean, criticalSlots: string,
+  entity: BaseEntity, mount: EntityMountedWeapon, quantity: number,
+  position: number, location: string | undefined, criticalSlots: string,
 ): ExportComponent {
+  const equipment = mount.equipment;
   const aero = entity instanceof AeroEntity;
-  const intrinsicAmmo = findIntrinsicAmmoForWeapon(equipment, entity.getEquipmentRegistry().equipment);
-  const damageProfile = equipment.getDamageProfile(intrinsicAmmo);
+  const damage = entity.resolveMountedWeaponDamage(mount);
   const entry = baseComponent(
     equipment, quantity, position, location, weaponCategory(equipment), criticalSlots,
   );
-  if (rear) entry.rear = true;
+  if (mount.rearMounted) entry.rear = true;
   entry.r = aero ? aeroRange(equipment) : equipment.isInfantryWeapon()
     ? String(equipment.infantry.range) : equipment.ranges.slice(0, 3).join('/');
   entry.m = aero ? '-' : String(equipment.minimumRange);
-  entry.d = aero ? aeroDamage(equipment) : formatWeaponDamage(damageProfile);
-  entry.md = formatDecimal(aero ? maximumAeroDamage(equipment) : damageProfile.maximum);
+  entry.d = aero ? aeroDamage(equipment) : formatWeaponDamage(damage, {
+    showZero: true,
+    variableLabel: '0',
+  });
+  entry.md = formatDecimal(aero ? maximumAeroDamage(equipment) : damage?.maximum ?? 0);
   entry.os = equipment.oneShotCount ?? 0;
   return entry;
 }
@@ -231,7 +233,7 @@ function addMisc(
   mount: EntityMountedEquipment, equipment: MiscEquipment,
 ): void {
   const structural = isStructuralMisc(entity, equipment);
-  const type: ComponentType = isPhysicalEquipment(equipment) ? 'P' : structural ? 'S' : 'C';
+  const type: ComponentType = mount.isPhysicalWeapon() ? 'P' : structural ? 'S' : 'C';
 
   if (equipment.isSpreadable && mount.placements?.length) {
     const countByLocation = new Map<string, number>();
@@ -261,7 +263,7 @@ function addMiscAtLocation(
   const entry = baseComponent(
     equipment, quantity, position, displayLocation, type, criticals(equipment, entity, mount),
   );
-  if (type === 'P') Object.assign(entry, physicalDamage(entity, equipment));
+  if (type === 'P') Object.assign(entry, physicalDamage(mount));
   components.set(key, entry);
 }
 
@@ -304,7 +306,7 @@ function addWeaponBays(components: Map<string, ExportComponent>, entity: BaseEnt
       const key = `${equipment.id}_${member.rearMounted}`;
       const existing = nested.get(key);
       if (existing) existing.q++;
-      else nested.set(key, weaponComponent(entity, equipment, 1, 0, undefined, member.rearMounted,
+      else nested.set(key, weaponComponent(entity, member as EntityMountedWeapon, 1, 0, undefined,
         criticals(equipment, entity, member)));
     }
     bay.bay = [...nested.values()];
@@ -379,33 +381,8 @@ function isStructuralMisc(entity: BaseEntity, equipment: MiscEquipment): boolean
   ]) || (equipment.hasFlag('F_AP_MOUNT') && !equipment.hasFlag('F_BA_MANIPULATOR'));
 }
 
-function isPhysicalEquipment(equipment: MiscEquipment): boolean {
-  return equipment.hasAnyFlag(['F_CLUB', 'F_HAND_WEAPON', 'F_TALON']);
-}
-
-function physicalDamage(entity: BaseEntity, equipment: MiscEquipment): Pick<ExportComponent, 'd' | 'md'> {
-  const weight = entity.tonnage();
-  let damage: number;
-  if (equipment.hasFlag('F_TALON')) damage = Math.round(Math.floor(weight / 5) * 1.5);
-  else if (equipment.hasAllFlags(['F_HAND_WEAPON', 'S_CLAW'])) damage = Math.ceil(weight / 7);
-  else if (equipment.hasFlag('S_SWORD')) damage = Math.ceil(weight / 10) + 1;
-  else if (equipment.hasFlag('S_RETRACTABLE_BLADE')) damage = Math.ceil(weight / 10);
-  else if (equipment.hasFlag('S_MACE')) damage = Math.ceil(weight / 4);
-  else if (equipment.hasFlag('S_PILE_DRIVER')) damage = 10;
-  else if (equipment.hasFlag('S_FLAIL')) damage = 9;
-  else if (equipment.hasFlag('S_DUAL_SAW')) damage = 7;
-  else if (equipment.hasFlag('S_CHAINSAW')) damage = 5;
-  else if (equipment.hasFlag('S_BACKHOE')) damage = 6;
-  else if (equipment.hasFlag('S_MINING_DRILL')) damage = 4;
-  else if (equipment.hasFlag('S_WRECKING_BALL')) damage = 8;
-  else if (equipment.hasFlag('S_VIBRO_LARGE')) damage = 14;
-  else if (equipment.hasFlag('S_VIBRO_MEDIUM')) damage = 10;
-  else if (equipment.hasFlag('S_VIBRO_SMALL')) damage = 7;
-  else if (equipment.hasFlag('S_CHAIN_WHIP')) damage = 3;
-  else if (equipment.hasFlag('S_COMBINE')) damage = 3;
-  else if (equipment.hasAnyFlag(['S_ROCK_CUTTER', 'S_SPOT_WELDER'])) damage = 5;
-  else damage = Math.floor(weight / 5);
-
+function physicalDamage(mount: EntityMountedEquipment): Pick<ExportComponent, 'd' | 'md'> {
+  const damage = mount.getPhysicalWeaponDamage()?.value ?? 0;
   return { d: String(damage), md: String(damage) };
 }
 
@@ -425,18 +402,6 @@ function maximumAeroDamage(equipment: WeaponEquipment): number {
 function activeAeroValues(equipment: WeaponEquipment): number[] {
   const count = ({ short: 1, medium: 2, long: 3, extreme: 4 })[equipment.maxRangeBracket];
   return equipment.weapon.av.slice(0, count).map(Math.round);
-}
-
-function formatWeaponDamage(profile: WeaponDamageProfile): string {
-  switch (profile.kind) {
-    case 'simple': return profile.damage === 0 ? '' : `${profile.damage}${profile.perShot ? '/Shot' : ''}`;
-    case 'missile-cluster': return `${profile.damagePerMissile}/Msl`;
-    case 'cluster': return String(profile.damage);
-    case 'artillery': return `${profile.damage}A`;
-    case 'range': return profile.damage.join('/');
-    case 'variable': return '0';
-    case 'special': return 'Special';
-  }
 }
 
 function formatDecimal(value: number): string {

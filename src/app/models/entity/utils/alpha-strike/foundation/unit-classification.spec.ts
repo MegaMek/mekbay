@@ -51,7 +51,7 @@ describe('Alpha Strike unit classification', () => {
       alphaStrikeUnitType(new AeroSpaceFighterEntity()),
       alphaStrikeUnitType(new HandheldWeaponEntity()),
     ]).toEqual([
-      'BM', 'PM', 'CV', 'SV', 'BA', 'CI', 'SS', 'WS', 'JS', 'DS', 'DA', 'SC', 'SV', 'CF', 'AF', 'UNKNOWN',
+      'BM', 'PM', 'CV', 'SV', 'BA', 'CI', 'SS', 'WS', 'JS', 'DS', 'DA', 'SC', 'SV', 'CF', 'AF', 'XX',
     ]);
   });
 

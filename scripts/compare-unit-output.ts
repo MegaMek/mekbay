@@ -201,7 +201,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'as.usesTh',    compare: 'exact', parity: 'verified' },
 
   // ── Phase 3: Composite name (only after complete `.as` parity) ─────
-  { field: 'name', compare: 'exact', parity: 'partial' },
+  { field: 'name', compare: 'exact', parity: 'verified' },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -691,6 +691,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
     it('charges linked PPC capacitors from the PPC row and discharges them when fired', async () => {
         const ppcEquipment = weapon('Light PPC');
         ppcEquipment.flags.add('F_PPC');
+        ppcEquipment.flags.add('F_PPC_CAPACITOR_COMPATIBLE');
         ppcEquipment.flags.add('F_ENERGY');
         ppcEquipment.flags.add('F_DIRECT_FIRE');
         ppcEquipment.weapon.damage = 5;

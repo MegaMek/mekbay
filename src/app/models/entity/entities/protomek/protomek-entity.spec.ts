@@ -34,20 +34,29 @@ describe('ProtoMekEntity intrinsic weapons', () => {
     const entity = new ProtoMekEntity();
     entity.setTonnage(10);
 
-    expect(entity.intrinsicWeapons()[0].damage).toEqual({
-      kind: 'physical-fixed', primary: { damage: 3 },
-    });
+    expect(entity.intrinsicWeapons()[0].damage).toEqual({ kind: 'fixed', value: 3 });
 
     addTestEquipmentWithFlags(entity, ['F_PROTOMEK_MELEE'], { location: 'Torso' });
-    expect(entity.intrinsicWeapons()[0].damage).toEqual({
-      kind: 'physical-fixed', primary: { damage: 5 },
-    });
+    expect(entity.intrinsicWeapons()[0].damage).toEqual({ kind: 'fixed', value: 5 });
 
     entity.setEquipment([]);
     addTestEquipmentWithFlags(entity, ['F_PROTOMEK_MELEE', 'S_PROTO_QMS'], { location: 'Torso' });
-    expect(entity.intrinsicWeapons()[0].damage).toEqual({
-      kind: 'physical-fixed', primary: { damage: 7 },
-    });
+    expect(entity.intrinsicWeapons()[0].damage).toEqual({ kind: 'fixed', value: 7 });
+  });
+
+  it('applies weight boundaries and the record-sheet glider reduction', () => {
+    const entity = new ProtoMekEntity();
+    const damageAt = (tonnage: number, glider = false) => {
+      entity.setTonnage(tonnage);
+      entity.isGlider.set(glider);
+      return entity.intrinsicWeapons()[0].damage;
+    };
+
+    expect(damageAt(5)).toEqual({ kind: 'fixed', value: 1 });
+    expect(damageAt(6)).toEqual({ kind: 'fixed', value: 2 });
+    expect(damageAt(9)).toEqual({ kind: 'fixed', value: 2 });
+    expect(damageAt(10)).toEqual({ kind: 'fixed', value: 3 });
+    expect(damageAt(10, true)).toEqual({ kind: 'fixed', value: 2 });
   });
 });
 

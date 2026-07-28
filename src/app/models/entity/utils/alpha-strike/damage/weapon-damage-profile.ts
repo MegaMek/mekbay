@@ -6,6 +6,7 @@
 import { WeaponEquipment } from '../../../../equipment.model';
 import type { BaseEntity } from '../../../base-entity';
 import type { EntityMountedWeapon } from '../../../types';
+import { isArtemisCompatibleWeapon } from '../../equipment-link-rules';
 import { alphaStrikeArtilleryAbility } from '../specials/artillery-special';
 
 export type AlphaStrikeRangeIndex = 0 | 1 | 2 | 3;
@@ -138,7 +139,7 @@ function torpedoArtemisProfileDamage(
   linked: { hasFlag(flag: Parameters<WeaponEquipment['hasFlag']>[0]): boolean } | undefined,
 ): number | null {
   if (!hasAlphaStrikeBattleForceClass(weapon, 'TORPEDO')
-    || !weapon.hasFlag('F_ARTEMIS_COMPATIBLE')) return null;
+    || !isArtemisCompatibleWeapon(weapon)) return null;
   if (weapon.techBase === 'Clan' && weapon.ammoType === 'LRM_TORPEDO') {
     const multiplier = linked?.hasFlag('F_ARTEMIS_V') ? 1.4
       : linked?.hasFlag('F_ARTEMIS') ? 1.2
@@ -173,7 +174,7 @@ function clanSrmArtemisProfileDamage(
 ): number | null {
   if (weapon.techBase !== 'Clan'
     || !hasAlphaStrikeBattleForceClass(weapon, 'SRM')
-    || !weapon.hasFlag('F_ARTEMIS_COMPATIBLE')) return null;
+    || !isArtemisCompatibleWeapon(weapon)) return null;
   const artemisIV: Readonly<Partial<Record<number, number>>> = { 2: 0.4, 4: 0.6, 6: 1 };
   const artemisV: Readonly<Partial<Record<number, number>>> = { 2: 0.42, 4: 0.63, 6: 1.05 };
   const damage = linked?.hasFlag('F_ARTEMIS_V') ? artemisV[weapon.rackSize]
@@ -205,7 +206,7 @@ function clanLrmArtemisDamageMultiplier(
 ): number | null {
   if (weapon.techBase !== 'Clan'
     || !hasAlphaStrikeBattleForceClass(weapon, 'LRM')
-    || !weapon.hasFlag('F_ARTEMIS_COMPATIBLE')) return null;
+    || !isArtemisCompatibleWeapon(weapon)) return null;
   if (linked?.hasFlag('F_ARTEMIS_V')) return 1.4;
   if (linked?.hasFlag('F_ARTEMIS') || linked?.hasFlag('F_ARTEMIS_PROTO')) return 4 / 3;
   return null;

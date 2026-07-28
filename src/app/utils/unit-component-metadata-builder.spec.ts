@@ -84,7 +84,7 @@ describe('buildUnitComponentMetadata', () => {
       .toEqual(jasmine.objectContaining({ d: '4', md: '4.0', os: 1 }));
   });
 
-  it('exports no numeric damage for a zero-damage weapon', () => {
+  it('exports numeric zero damage for a zero-damage weapon', () => {
     const entity = new TankEntity();
     const launcher = weapon('grenade-launcher', {
       damage: 0, ranges: [1, 1, 1, 1], flags: ['F_BALLISTIC', 'F_ONE_SHOT'],
@@ -92,7 +92,7 @@ describe('buildUnitComponentMetadata', () => {
     entity.setEquipment([mount(launcher, 'Front')]);
 
     expect(buildUnitComponentMetadata(entity)!.find(component => component.id === launcher.id))
-      .toEqual(jasmine.objectContaining({ d: '', md: '0.0', os: 1 }));
+      .toEqual(jasmine.objectContaining({ d: '0', md: '0.0', os: 1 }));
   });
 
   it('exports large-missile damage from its matching ammunition', () => {
