@@ -154,7 +154,7 @@ export class SvgInteractionService {
 
     /** When automations are off, damage/heat changes consolidate immediately (no pending state). */
     private get consolidateImmediately(): boolean {
-        return !this.optionsService.options().useAutomations;
+        return !this.optionsService.options().trackPhaseAndTurn;
     }
 
     constructor() {

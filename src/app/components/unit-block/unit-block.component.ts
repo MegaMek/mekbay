@@ -120,7 +120,7 @@ export class UnitBlockComponent {
     });
 
     dirty = computed<boolean>(() => {
-        if (!this.optionsService.options().useAutomations) {
+        if (!this.optionsService.options().trackPhaseAndTurn) {
             return false;
         }
         const unit = this.forceUnit();
@@ -148,7 +148,7 @@ export class UnitBlockComponent {
     });
 
     hasPendingEffects = computed<boolean>(() => {
-        if (!this.optionsService.options().useAutomations) {
+        if (!this.optionsService.options().trackPhaseAndTurn) {
             return false;
         }
         const unit = this.forceUnit();

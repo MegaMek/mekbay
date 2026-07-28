@@ -89,7 +89,7 @@ export interface Options {
         eraserSize: number;
     },
     sidebarLipPosition?: string;
-    useAutomations: boolean;
+    trackPhaseAndTurn: boolean;
     CBTRules: 'tw' | `core2026`;
     ASUseHex: boolean;
     ASPrintPageBreakOnGroups: boolean;

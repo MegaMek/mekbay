@@ -523,9 +523,9 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('swipeToNextSheet', value);
     }
 
-    onUseAutomationsChange(event: Event) {
+    onTrackPhaseAndTurn(event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
-        this.optionsService.setOption('useAutomations', value);
+        this.optionsService.setOption('trackPhaseAndTurn', value);
     }
 
     onASUseHexChange(event: Event) {
