@@ -84,6 +84,7 @@ export function createEmptyUnit(overrides: TestUnitOverrides = {}): Unit {
         source: [],
         published: [],
         canon: true,
+        canAntiMech: false,
         role: '',
         armorType: '',
         structureType: '',

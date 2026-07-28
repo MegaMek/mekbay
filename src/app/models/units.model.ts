@@ -168,6 +168,7 @@ export interface Unit {
     source: string[]; // Sourcebook abbreviations exported from units.json.
     published: string[]; // Record sheet source(s), e.g. "RS:AS".
     canon: boolean; // True if the unit is canon, false if is not (e.g. alt-universe or april fools units)
+    canAntiMech: boolean; // Whether the unit's Anti-Mech skill can be assigned below its restricted default
     role: string;
     armorType: string;
     structureType: string | null;

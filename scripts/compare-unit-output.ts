@@ -62,6 +62,8 @@ import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { UnitMetadataBuilder } from '../src/app/utils/unit-metadata-builder';
+import type { SpriteManifest } from '../src/app/services/sprite-storage.service';
+import { createUnitIconResolver } from '../src/app/utils/unit-sprite-resolver';
 import type { Sourcebook } from '../src/app/models/sourcebook.model';
 import type { Quirk } from '../src/app/models/quirks.model';
 import { getOracleFieldName, isCalculableLoadoutTons } from './loadout-tonnage-oracle';
@@ -161,7 +163,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'features',       compare: 'setCompare', parity: 'verified' },
   { field: 'fluff',          compare: 'exact', parity: 'missing' },
   { field: 'heat',           compare: 'numeric', tolerance: 0, parity: 'verified' },
-  { field: 'icon',           compare: 'exact', parity: 'missing' },
+  { field: 'icon',           compare: 'exact', parity: 'verified' },
   { field: 'internal',       compare: 'exact', parity: 'verified' },
   { field: 'level',          compare: 'exact', parity: 'verified' },
   { field: 'moveType',       compare: 'exact', parity: 'verified' },
@@ -220,6 +222,7 @@ const hasFlag = (name: string) => args.includes(`--${name}`);
 const FIXTURE_ROOT = path.join(PROJECT_ROOT, 'scripts', 'fixtures');
 const UNITS_JSON_PATH = path.resolve(getArg('oracle', path.join(FIXTURE_ROOT, 'units.json')));
 const UNIT_FILES_DIR = path.resolve(getArg('unitfiles', path.join(WORKSPACE_ROOT, 'mm-data', 'data', 'mekfiles')));
+const SPRITE_MANIFEST_PATH = path.join(PROJECT_ROOT, 'public', 'sprites', 'unit-icons.json');
 const TYPE_FILTER = getArg('type', '');
 const UNIT_FILTER = getArg('unit', '');
 const FIELDS_FILTER = getArg('fields', '');
@@ -980,7 +983,8 @@ function main() {
   const equipmentRegistry = loadEquipmentRegistry();
   const sourcebooks = loadSourcebooks();
   const quirks = loadQuirks();
-  const builder = new UnitMetadataBuilder();
+  const spriteManifest = JSON.parse(fs.readFileSync(SPRITE_MANIFEST_PATH, 'utf8')) as SpriteManifest;
+  const builder = new UnitMetadataBuilder(createUnitIconResolver(spriteManifest.assignments));
   const selectedChecks = getActiveChecks();
   const comparedChecks = selectedChecks.filter(check => check.parity !== 'missing');
   console.log(`Selected checks: ${selectedChecks.map(c => c.field).join(', ')}`);
