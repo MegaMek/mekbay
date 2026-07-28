@@ -36,6 +36,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { setFileContentTimestamp, writeFileWithContentTimestamp } = require('./lib/deterministic-output.js');
 const { loadOptionalEnvFile, resolveMmDataRoot } = require('./lib/script-paths.js');
+const { loadMeksetAssignments } = require('./lib/mekset-assignments.js');
 
 const root = path.resolve(__dirname, '..');
 
@@ -43,6 +44,7 @@ loadOptionalEnvFile(root, { logPrefix: 'SpriteMap' });
 
 const mmDataRoot = resolveMmDataRoot(root, { allowMissing: true });
 const unitIconsDir = path.join(mmDataRoot, 'data/images/units');
+const meksetPath = path.join(unitIconsDir, 'mekset.txt');
 const outputDir = path.join(root, 'public', 'sprites');
 
 // Sprite configuration
@@ -262,10 +264,19 @@ async function generateSprites() {
   }
 
   let totalImages = 0;
+  const availableIcons = new Set();
   for (const images of imagesByType.values()) {
     totalImages += images.length;
+    for (const image of images) {
+      availableIcons.add(image.path.toLowerCase());
+    }
   }
   console.log(`[SpriteMap] Found ${totalImages} images in ${imagesByType.size} unit types.`);
+
+  const assignments = loadMeksetAssignments(meksetPath, { availableIcons });
+  if (assignments.missingIcons.length > 0) {
+    console.warn(`[SpriteMap] Ignored ${assignments.missingIcons.length} mekset assignments whose images are unavailable.`);
+  }
 
   const sharp = require('sharp');
   // Limit sharp concurrency to avoid memory issues
@@ -293,7 +304,11 @@ async function generateSprites() {
         }];
       })
     ),
-    icons: spriteData
+    icons: spriteData,
+    assignments: {
+      exact: assignments.exact,
+      chassis: assignments.chassis
+    }
   };
   const manifestJson = JSON.stringify(manifest);
   writeFileWithContentTimestamp(spriteJsonPath, manifestJson);
