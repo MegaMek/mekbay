@@ -53,6 +53,7 @@ import { StatBarSpecsPipe } from '../../pipes/stat-bar-specs.pipe';
 import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 import { ExpandedComponentsPipe } from '../../pipes/expanded-components.pipe';
 import { TooltipDirective } from '../../directives/tooltip.directive';
+import type { ColorScheme } from '../../models/options.model';
 import { type SearchTokensGroup, highlightMatches } from '../../utils/search.util';
 import { formatASDamageValue, isASDamageFilterKey } from '../../utils/as-damage.util';
 import type { TooltipLine } from '../tooltip/tooltip.component';
@@ -295,7 +296,7 @@ export class UnitCardExpandedComponent {
     showSelectCheckbox = input(false);
 
     /** Card style for alpha-strike card view */
-    cardStyle = input<'colored' | 'monochrome'>('monochrome');
+    cardStyle = input<ColorScheme>('default');
 
     /** Emitted when the info button is clicked */
     infoClick = output<void>();

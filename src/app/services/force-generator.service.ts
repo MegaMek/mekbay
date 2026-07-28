@@ -54,7 +54,7 @@ import type {
 import { LoadForceEntry } from '../models/load-force-entry.model';
 import { MAX_UNITS as FORCE_MAX_UNITS } from '../models/force.model';
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY, MULFACTION_NONE } from '../models/mulfactions.model';
-import type { Options } from '../models/options.model';
+import type { ForceGeneratorOptions } from '../models/options.model';
 import { getUnitsAverageTechBase } from '../models/tech.model';
 import type { Unit } from '../models/units.model';
 import { resolveOrgDefinition } from '../utils/org/org-registry.util';
@@ -1901,11 +1901,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     public resolveInitialBudgetDefaults(
-        options: Pick<Options,
-            'forceGenLastBVMin'
-            | 'forceGenLastBVMax'
-            | 'forceGenLastPVMin'
-            | 'forceGenLastPVMax'>,
+        options: Pick<ForceGeneratorOptions, 'lastBudget'>,
         unitSearchLimit: number,
         unitSearchGameSystem: GameSystem,
     ): ForceGeneratorBudgetDefaults {
@@ -1913,84 +1909,42 @@ export class ForceGeneratorService implements OnDestroy {
 
         return {
             classic: normalizeInitialBudgetRange(
-                options.forceGenLastBVMin,
+                options.lastBudget.classic.min,
                 unitSearchGameSystem === GameSystem.CLASSIC && hasUnitSearchLimit
                     ? unitSearchLimit
-                    : options.forceGenLastBVMax,
+                    : options.lastBudget.classic.max,
             ),
             alphaStrike: normalizeInitialBudgetRange(
-                options.forceGenLastPVMin,
+                options.lastBudget.alphaStrike.min,
                 unitSearchGameSystem === GameSystem.ALPHA_STRIKE && hasUnitSearchLimit
                     ? unitSearchLimit
-                    : options.forceGenLastPVMax,
+                    : options.lastBudget.alphaStrike.max,
             ),
         };
     }
 
     public resolveInitialUnitCountDefaults(
-        options: Pick<Options,
-            'forceGenLastMinUnitCount'
-            | 'forceGenLastMaxUnitCount'>,
+        options: Pick<ForceGeneratorOptions, 'lastUnitCount'>,
     ): ForceGeneratorUnitCountDefaults {
         return normalizeInitialUnitCountRange(
-            options.forceGenLastMinUnitCount,
-            options.forceGenLastMaxUnitCount,
+            options.lastUnitCount.min,
+            options.lastUnitCount.max,
         );
     }
 
     public resolveInitialSkillDefaults(
-        options: Pick<Options,
-            'forceGenLastGunnerySkillMin'
-            | 'forceGenLastGunnerySkillMax'
-            | 'forceGenLastPilotingSkillMin'
-            | 'forceGenLastPilotingSkillMax'
-            | 'forceGenLastMaxPilotSkillDelta'>,
+        options: Pick<ForceGeneratorOptions, 'lastSkills'>,
     ): ForceGeneratorSkillDefaults {
         return {
             gunnery: normalizeForceGenerationSkillRange({
-                min: options.forceGenLastGunnerySkillMin,
-                max: options.forceGenLastGunnerySkillMax,
+                min: options.lastSkills.gunnery.min,
+                max: options.lastSkills.gunnery.max,
             }, 4),
             piloting: normalizeForceGenerationSkillRange({
-                min: options.forceGenLastPilotingSkillMin,
-                max: options.forceGenLastPilotingSkillMax,
+                min: options.lastSkills.piloting.min,
+                max: options.lastSkills.piloting.max,
             }, 5),
-            maxDelta: normalizeForceGenerationMaxSkillDelta(options.forceGenLastMaxPilotSkillDelta),
-        };
-    }
-
-    public getStoredBudgetOptionKeys(gameSystem: GameSystem): {
-        min: 'forceGenLastBVMin' | 'forceGenLastPVMin';
-        max: 'forceGenLastBVMax' | 'forceGenLastPVMax';
-    } {
-        return gameSystem === GameSystem.ALPHA_STRIKE
-            ? { min: 'forceGenLastPVMin', max: 'forceGenLastPVMax' }
-            : { min: 'forceGenLastBVMin', max: 'forceGenLastBVMax' };
-    }
-
-    public getStoredUnitCountOptionKeys(): {
-        min: 'forceGenLastMinUnitCount';
-        max: 'forceGenLastMaxUnitCount';
-    } {
-        return {
-            min: 'forceGenLastMinUnitCount',
-            max: 'forceGenLastMaxUnitCount',
-        };
-    }
-
-    public getStoredSkillOptionKeys(): {
-        gunneryMin: 'forceGenLastGunnerySkillMin';
-        gunneryMax: 'forceGenLastGunnerySkillMax';
-        pilotingMin: 'forceGenLastPilotingSkillMin';
-        pilotingMax: 'forceGenLastPilotingSkillMax';
-        maxDelta: 'forceGenLastMaxPilotSkillDelta';
-    } {
-        return {
-            gunneryMin: 'forceGenLastGunnerySkillMin',
-            gunneryMax: 'forceGenLastGunnerySkillMax',
-            pilotingMin: 'forceGenLastPilotingSkillMin',
-            pilotingMax: 'forceGenLastPilotingSkillMax',
-            maxDelta: 'forceGenLastMaxPilotSkillDelta',
+            maxDelta: normalizeForceGenerationMaxSkillDelta(options.lastSkills.maxDelta),
         };
     }
 
@@ -5985,7 +5939,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private resolveFailureSearchWindowMs(): number {
-        const configuredMs = this.optionsService.options().forceGenFailureSearchWindowMs;
+        const configuredMs = this.optionsService.options().forceGenerator?.failureSearchWindowMs;
         const normalizedMs = Number.isFinite(configuredMs)
             ? Math.floor(configuredMs)
             : DEFAULT_FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS;

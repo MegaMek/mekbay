@@ -46,7 +46,7 @@ import { AsCritPipsComponent } from './crit-pips.component';
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [AsCritPipsComponent],
     host: {
-        '[class.monochrome]': 'cardStyle() === "monochrome"',
+        '[class.monochrome]': 'cardStyle() === "default"',
     },
     template: `
         <div class="critical-hits-box autoheight frame">

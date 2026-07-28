@@ -53,6 +53,7 @@ import { vibrate } from '../../utils/vibrate.util';
 import { firstValueFrom } from 'rxjs';
 import { OptionsService } from '../../services/options.service';
 import { PickerFactoryService } from '../../services/picker-factory.service';
+import type { ColorScheme } from '../../models/options.model';
 
 /*
  * Author: Drake
@@ -69,7 +70,7 @@ import { PickerFactoryService } from '../../services/picker-factory.service';
     templateUrl: './alpha-strike-card.component.html',
     styleUrl: './alpha-strike-card.component.scss',
     host: {
-        '[class.monochrome]': 'cardStyle() === "monochrome"',
+        '[class.monochrome]': 'cardStyle() === "default"',
         '[class.selected]': 'isSelected()',
         '[class.interactive]': 'interactive()',
         '(click)': 'onCardClick()'
@@ -93,7 +94,7 @@ export class AlphaStrikeCardComponent {
     /** Optional: provide a plain Unit (used when no forceUnit is available). */
     unit = input<Unit | undefined>(undefined);
     useHex = input<boolean>(false);
-    cardStyle = input<'colored' | 'monochrome'>('colored');
+    cardStyle = input<ColorScheme>('default');
     isSelected = input<boolean>(false);
     /** Which card index to render (0 for first/only card, 1 for second card) */
     cardIndex = input<number>(0);
@@ -941,7 +942,7 @@ export class AlphaStrikeCardComponent {
         
         // Store anchor element for position updates on scroll
         this.pickerAnchorElement = config.anchorElement;
-        const lightTheme = this.cardStyle() === 'colored';
+        const lightTheme = this.cardStyle() === 'night';
         
         // Check user's picker style preference
         const pickerStyle = this.optionsService.options().pickerStyle;
@@ -1011,7 +1012,7 @@ export class AlphaStrikeCardComponent {
             values: config.values,
             position,
             title: config.title,
-            lightTheme: this.cardStyle() === 'colored',
+            lightTheme: this.cardStyle() === 'night',
             align: 'top',
             horizontal: true,
             onPick: config.onPick,

@@ -182,7 +182,7 @@ export class UnitSearchComponent {
     private keyboardShortcutService = inject(KeyboardShortcutService);
 
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
-    readonly cardStyle = computed(() => this.optionsService.options().ASCardStyle);
+    readonly cardStyle = computed(() => this.optionsService.options().colorScheme);
     readonly megaMekAvailabilitySourceSelected = computed(() => this.optionsService.options().availabilitySource === 'megamek');
     /** Whether the layout is filters-list-panel (filters on left) */
     readonly filtersOnLeft = computed(() => this.optionsService.options().unitSearchExpandedViewLayout === 'filters-list-panel');

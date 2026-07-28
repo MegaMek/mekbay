@@ -36,7 +36,15 @@
             @case ('General') {
             <div class="settings-view-content">
             <div class="option-row">
-                <label for="gameSystem">Default Game system:</label>
+                <label for="colorScheme">Color scheme:</label>
+                <select id="colorScheme" class="bt-select" [value]="optionsService.options().colorScheme"
+                    (change)="onColorSchemeChange($event)">
+                    <option value="default">Normal (default)</option>
+                    <option value="night">Night mode</option>
+                </select>
+            </div>
+            <div class="option-row">
+                <label for="gameSystem">Default game system:</label>
                 <select id="gameSystem" class="bt-select" [value]="optionsService.options().gameSystem"
                     (change)="onGameSystemChange($event)">
                     <option value="cbt">BattleTech Classic (default)</option>
@@ -54,7 +62,7 @@
             </div>
             <div class="option-col">
                 <div class="option-row">
-                    <label for="availabilitySource">Units Availability Source:</label>
+                    <label for="availabilitySource">Units availability source:</label>
                     <select id="availabilitySource" class="bt-select"
                         [value]="optionsService.options().availabilitySource"
                         (change)="onAvailabilitySourceChange($event)">
@@ -399,14 +407,6 @@
             }
             @case ('Classic BattleTech') {
             <div class="settings-view-content">
-            <div class="option-row">
-                <label for="sheetsColor">Color schema:</label>
-                <select id="sheetsColor" class="bt-select" [value]="optionsService.options().sheetsColor"
-                    (change)="onSheetsColorChange($event)">
-                    <option value="normal">Normal (default)</option>
-                    <option value="night">Night mode</option>
-                </select>
-            </div>
             <div class="option-col">
                 <div class="option-row">
                     <label for="CBTRules">Rules:</label>
@@ -493,14 +493,6 @@
             }
             @case ('Alpha Strike') {
             <div class="settings-view-content">
-            <div class="option-row">
-                <label for="ASCardStyle">Card theme:</label>
-                <select id="ASCardStyle" class="bt-select" [value]="optionsService.options().ASCardStyle"
-                    (change)="onASCardStyleChange($event)">
-                    <option value="monochrome">Light (default)</option>
-                    <option value="colored">Dark</option>
-                </select>
-            </div>
             <div class="option-row">
                 <label for="ASUseHex">Measures:</label>
                 <select id="ASUseHex" class="bt-select" [value]="optionsService.options().ASUseHex"

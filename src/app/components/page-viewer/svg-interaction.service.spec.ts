@@ -65,7 +65,7 @@ describe('SvgInteractionService', () => {
     let forceBuilderService: { selectUnit: jasmine.Spy; editPilotOfUnit: jasmine.Spy };
     let pickerFactory: { createChoicePicker: jasmine.Spy; createNumericPicker: jasmine.Spy };
     let pageViewerState: PageViewerStateService;
-    let options: { pickerStyle: 'default' | 'linear' | 'radial'; sheetsColor: string; useAutomations: boolean };
+    let options: { pickerStyle: 'default' | 'linear' | 'radial'; colorScheme: 'default' | 'night'; useAutomations: boolean };
     let registryGetChoices: jasmine.Spy;
     let registryHandleSelection: jasmine.Spy;
 
@@ -98,7 +98,7 @@ describe('SvgInteractionService', () => {
         registryHandleSelection = jasmine.createSpy('handleSelection').and.returnValue(false);
         options = {
             pickerStyle: 'default',
-            sheetsColor: 'day',
+            colorScheme: 'default',
             useAutomations: true
         };
 

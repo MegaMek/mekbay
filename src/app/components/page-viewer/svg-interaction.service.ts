@@ -2027,7 +2027,7 @@ export class SvgInteractionService {
         this.state.isPickerOpen.set(true);
 
         const rect = opts.el.getBoundingClientRect();
-        const lightTheme = this.optionsService.options().sheetsColor === 'night';
+        const lightTheme = this.optionsService.options().colorScheme === 'night';
 
         // Calculate position based on target type
         let position: PickerPosition;
@@ -2101,7 +2101,7 @@ export class SvgInteractionService {
         this.state.isPickerOpen.set(true);
 
         const rect = opts.el.getBoundingClientRect();
-        const lightTheme = this.optionsService.options().sheetsColor === 'night';
+        const lightTheme = this.optionsService.options().colorScheme === 'night';
 
         const position: PickerPosition = {
             x: opts.position?.x ?? (rect.left + rect.width / 2),

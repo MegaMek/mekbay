@@ -195,7 +195,7 @@ export class App {
             this.toastService.showToast(msg, 'error');
         });
         effect(() => {
-            const colorMode = this.optionsService.options().sheetsColor;
+            const colorMode = this.optionsService.options().colorScheme;
             document.documentElement.classList.toggle('night-mode', (colorMode === 'night'));
         });
         effect(() => {

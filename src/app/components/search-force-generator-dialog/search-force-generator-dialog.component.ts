@@ -175,15 +175,15 @@ export class SearchForceGeneratorDialogComponent {
     private readonly initialGameSystem = this.gameService.currentGameSystem();
     private readonly selectedGameSystem = signal<GameSystem>(this.initialGameSystem);
     private readonly initialBudgetDefaults = this.forceGeneratorService.resolveInitialBudgetDefaults(
-        this.initialOptions,
+        this.initialOptions.forceGenerator,
         0,
         this.initialGameSystem,
     );
     private readonly initialUnitCountDefaults = this.forceGeneratorService.resolveInitialUnitCountDefaults(
-        this.initialOptions,
+        this.initialOptions.forceGenerator,
     );
     private readonly initialSkillDefaults = this.forceGeneratorService.resolveInitialSkillDefaults(
-        this.initialOptions,
+        this.initialOptions.forceGenerator,
     );
 
     readonly gameSystem = this.selectedGameSystem.asReadonly();
@@ -378,11 +378,11 @@ export class SearchForceGeneratorDialogComponent {
         return null;
     });
     readonly targetFormationSummary = computed(() => this.formatTargetFormationSummary(this.targetFormations()));
-    readonly preventDuplicateChassis = signal(this.initialOptions.forceGenPreventDuplicateChassis);
+    readonly preventDuplicateChassis = signal(this.initialOptions.forceGenerator.preventDuplicateChassis);
     readonly useTaggedQuantities = signal(
-        this.initialOptions.forceGenUseTaggedQuantities && !this.initialOptions.forceGenPreventDuplicateChassis,
+        this.initialOptions.forceGenerator.useTaggedQuantities && !this.initialOptions.forceGenerator.preventDuplicateChassis,
     );
-    readonly useUnitTagsAsChassisTags = signal(this.initialOptions.forceGenUseUnitTagsAsChassisTags);
+    readonly useUnitTagsAsChassisTags = signal(this.initialOptions.forceGenerator.useUnitTagsAsChassisTags);
     readonly preventDuplicateChassisTooltip = computed(() => (
         'Blocks additional copies that share the same chassis and type as an already selected unit. Useful when you want one variant per chassis pair.'
     ));
@@ -715,27 +715,33 @@ export class SearchForceGeneratorDialogComponent {
 
     onPreventDuplicateChassisChange(event: Event): void {
         const checked = (event.target as HTMLInputElement).checked;
-        if (this.preventDuplicateChassis() !== checked) {
+        const disablesTaggedQuantities = checked && this.useTaggedQuantities();
+        if (this.preventDuplicateChassis() !== checked || disablesTaggedQuantities) {
             this.preventDuplicateChassis.set(checked);
-            void this.optionsService.setOption('forceGenPreventDuplicateChassis', checked);
-        }
-
-        if (checked && this.useTaggedQuantities()) {
-            this.useTaggedQuantities.set(false);
-            void this.optionsService.setOption('forceGenUseTaggedQuantities', false);
+            if (disablesTaggedQuantities) {
+                this.useTaggedQuantities.set(false);
+            }
+            void this.optionsService.updateForceGeneratorOptions((options) => ({
+                ...options,
+                preventDuplicateChassis: checked,
+                useTaggedQuantities: disablesTaggedQuantities ? false : options.useTaggedQuantities,
+            }));
         }
     }
 
     onUseTaggedQuantitiesChange(event: Event): void {
         const checked = (event.target as HTMLInputElement).checked;
-        if (this.useTaggedQuantities() !== checked) {
+        const disablesDuplicatePrevention = checked && this.preventDuplicateChassis();
+        if (this.useTaggedQuantities() !== checked || disablesDuplicatePrevention) {
             this.useTaggedQuantities.set(checked);
-            void this.optionsService.setOption('forceGenUseTaggedQuantities', checked);
-        }
-
-        if (checked && this.preventDuplicateChassis()) {
-            this.preventDuplicateChassis.set(false);
-            void this.optionsService.setOption('forceGenPreventDuplicateChassis', false);
+            if (disablesDuplicatePrevention) {
+                this.preventDuplicateChassis.set(false);
+            }
+            void this.optionsService.updateForceGeneratorOptions((options) => ({
+                ...options,
+                useTaggedQuantities: checked,
+                preventDuplicateChassis: disablesDuplicatePrevention ? false : options.preventDuplicateChassis,
+            }));
         }
     }
 
@@ -743,7 +749,10 @@ export class SearchForceGeneratorDialogComponent {
         const checked = (event.target as HTMLInputElement).checked;
         if (this.useUnitTagsAsChassisTags() !== checked) {
             this.useUnitTagsAsChassisTags.set(checked);
-            void this.optionsService.setOption('forceGenUseUnitTagsAsChassisTags', checked);
+            void this.optionsService.updateForceGeneratorOptions((options) => ({
+                ...options,
+                useUnitTagsAsChassisTags: checked,
+            }));
         }
     }
 
@@ -1503,8 +1512,6 @@ export class SearchForceGeneratorDialogComponent {
     private setBudgetRangeForSystem(gameSystem: GameSystem, range: { min: number; max: number }): void {
         const nextMin = Math.max(0, Math.floor(range.min));
         const nextMax = Math.max(0, Math.floor(range.max));
-        const optionKeys = this.forceGeneratorService.getStoredBudgetOptionKeys(gameSystem);
-
         if (gameSystem === GameSystem.ALPHA_STRIKE) {
             const didChangeMin = this.alphaStrikeBudgetMin() !== nextMin;
             const didChangeMax = this.alphaStrikeBudgetMax() !== nextMax;
@@ -1515,12 +1522,10 @@ export class SearchForceGeneratorDialogComponent {
             this.alphaStrikeBudgetMin.set(nextMin);
             this.alphaStrikeBudgetMax.set(nextMax);
 
-            if (didChangeMin) {
-                void this.optionsService.setOption(optionKeys.min, nextMin);
-            }
-            if (didChangeMax) {
-                void this.optionsService.setOption(optionKeys.max, nextMax);
-            }
+            void this.optionsService.updateForceGeneratorOptions((options) => ({
+                ...options,
+                lastBudget: { ...options.lastBudget, alphaStrike: { min: nextMin, max: nextMax } },
+            }));
         } else {
             const didChangeMin = this.classicBudgetMin() !== nextMin;
             const didChangeMax = this.classicBudgetMax() !== nextMax;
@@ -1531,19 +1536,16 @@ export class SearchForceGeneratorDialogComponent {
             this.classicBudgetMin.set(nextMin);
             this.classicBudgetMax.set(nextMax);
 
-            if (didChangeMin) {
-                void this.optionsService.setOption(optionKeys.min, nextMin);
-            }
-            if (didChangeMax) {
-                void this.optionsService.setOption(optionKeys.max, nextMax);
-            }
+            void this.optionsService.updateForceGeneratorOptions((options) => ({
+                ...options,
+                lastBudget: { ...options.lastBudget, classic: { min: nextMin, max: nextMax } },
+            }));
         }
     }
 
     private setUnitCountRange(range: { min: number; max: number }): void {
         const nextMin = Math.max(1, Math.floor(range.min));
         const nextMax = Math.max(nextMin, Math.floor(range.max));
-        const optionKeys = this.forceGeneratorService.getStoredUnitCountOptionKeys();
         const didChangeMin = this.minUnitCount() !== nextMin;
         const didChangeMax = this.maxUnitCount() !== nextMax;
 
@@ -1554,12 +1556,10 @@ export class SearchForceGeneratorDialogComponent {
         this.minUnitCount.set(nextMin);
         this.maxUnitCount.set(nextMax);
 
-        if (didChangeMin) {
-            void this.optionsService.setOption(optionKeys.min, nextMin);
-        }
-        if (didChangeMax) {
-            void this.optionsService.setOption(optionKeys.max, nextMax);
-        }
+        void this.optionsService.updateForceGeneratorOptions((options) => ({
+            ...options,
+            lastUnitCount: { min: nextMin, max: nextMax },
+        }));
     }
 
     private setSkillRange(type: 'gunnery' | 'piloting', range: readonly [number, number]): void {
@@ -1580,16 +1580,13 @@ export class SearchForceGeneratorDialogComponent {
             this.pilotingSkillRange.set(nextRange);
         }
 
-        const optionKeys = this.forceGeneratorService.getStoredSkillOptionKeys();
-        const minOptionKey = type === 'gunnery' ? optionKeys.gunneryMin : optionKeys.pilotingMin;
-        const maxOptionKey = type === 'gunnery' ? optionKeys.gunneryMax : optionKeys.pilotingMax;
-
-        if (didChangeMin) {
-            void this.optionsService.setOption(minOptionKey, nextRange[0]);
-        }
-        if (didChangeMax) {
-            void this.optionsService.setOption(maxOptionKey, nextRange[1]);
-        }
+        void this.optionsService.updateForceGeneratorOptions((options) => ({
+            ...options,
+            lastSkills: {
+                ...options.lastSkills,
+                [type]: { min: nextRange[0], max: nextRange[1] },
+            },
+        }));
     }
 
     private setMaxPilotSkillDelta(value: number): void {
@@ -1599,10 +1596,10 @@ export class SearchForceGeneratorDialogComponent {
         }
 
         this.maxPilotSkillDelta.set(nextValue);
-        void this.optionsService.setOption(
-            this.forceGeneratorService.getStoredSkillOptionKeys().maxDelta,
-            nextValue,
-        );
+        void this.optionsService.updateForceGeneratorOptions((options) => ({
+            ...options,
+            lastSkills: { ...options.lastSkills, maxDelta: nextValue },
+        }));
     }
 
     private normalizeSkillValue(value: number, fallback: number): number {

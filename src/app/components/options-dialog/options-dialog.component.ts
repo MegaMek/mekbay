@@ -161,7 +161,7 @@ export class OptionsDialogComponent {
     forceGenFailureSearchWindowMinMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS;
     forceGenFailureSearchWindowMaxMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS;
     forceGenFailureSearchWindowStepMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS;
-    forceGenFailureSearchWindowMs = computed(() => this.normalizeForceGenFailureSearchWindowMs(this.optionsService.options().forceGenFailureSearchWindowMs));
+    forceGenFailureSearchWindowMs = computed(() => this.normalizeForceGenFailureSearchWindowMs(this.optionsService.options().forceGenerator.failureSearchWindowMs));
 
     uuidInput = viewChild<ElementRef<HTMLInputElement>>('uuidInput');
     subscriptionInput = viewChild<ElementRef<HTMLInputElement>>('subscriptionInput');
@@ -397,9 +397,9 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('megaMekAvailabilityFiltersUseAllScopedOptions', value);
     }
 
-    onSheetsColorChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value as 'normal' | 'night';
-        this.optionsService.setOption('sheetsColor', value);
+    onColorSchemeChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as 'default' | 'night';
+        this.optionsService.setOption('colorScheme', value);
     }
 
     async onCBTRulesChange(event: Event) {
@@ -524,11 +524,6 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('ASUseHex', value);
     }
 
-    onASCardStyleChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value as 'colored' | 'monochrome';
-        this.optionsService.setOption('ASCardStyle', value);
-    }
-
     onASPrintPageBreakOnGroupsChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.optionsService.setOption('ASPrintPageBreakOnGroups', value);
@@ -556,7 +551,10 @@ export class OptionsDialogComponent {
 
     onForceGenFailureSearchWindowMsChange(value: number) {
         const nextValue = this.normalizeForceGenFailureSearchWindowMs(value);
-        this.optionsService.setOption('forceGenFailureSearchWindowMs', nextValue);
+        this.optionsService.updateForceGeneratorOptions((options) => ({
+            ...options,
+            failureSearchWindowMs: nextValue,
+        }));
     }
 
     private normalizeForceGenFailureSearchWindowMs(value: number): number {

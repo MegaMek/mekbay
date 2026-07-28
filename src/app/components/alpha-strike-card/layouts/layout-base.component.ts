@@ -33,6 +33,7 @@
 
 import { Directive, input, output, computed, inject, signal } from '@angular/core';
 import type { ASForceUnit, AbilitySelection } from '../../../models/as-force-unit.model';
+import type { ColorScheme } from '../../../models/options.model';
 import type { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
 import type { Era } from '../../../models/eras.model';
 import { DataService } from '../../../services/data.service';
@@ -86,7 +87,7 @@ export abstract class AsLayoutBaseComponent {
     forceUnit = input<ASForceUnit>();
     unit = input.required<Unit>();
     useHex = input<boolean>(false);
-    cardStyle = input<'colored' | 'monochrome'>('colored');
+    cardStyle = input<ColorScheme>('default');
     imageUrl = input<string>('');
     interactive = input<boolean>(false);
 

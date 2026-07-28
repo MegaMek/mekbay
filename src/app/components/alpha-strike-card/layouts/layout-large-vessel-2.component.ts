@@ -94,7 +94,7 @@ interface EffectiveArcDamage extends ArcDamage {
     ],
     host: {
         '[class.interactive]': 'interactive()',
-        '[class.monochrome]': 'cardStyle() === "monochrome"',
+        '[class.monochrome]': 'cardStyle() === "default"',
     }
 })
 export class AsLayoutLargeVessel2Component extends AsLayoutBaseComponent {
