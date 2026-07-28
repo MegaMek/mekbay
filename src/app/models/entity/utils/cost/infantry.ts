@@ -98,7 +98,7 @@ export function calculateInfantryCostReport(entity: InfantryEntity): EntityCostR
 }
 
 function calculateInfantryPriceMultiplier(entity: InfantryEntity): number {
-  let multiplier = entity.hasAntiMekGear() ? 5 : 1;
+  let multiplier = entity.canAntiMech() ? 5 : 1;
   const costMotiveType = entity.mount()?.movementMode ?? entity.motiveType();
   switch (costMotiveType) {
     case 'UMU': multiplier *= entity.umuMP() > 1 ? 2.5 : 2; break;

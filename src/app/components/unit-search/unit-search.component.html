@@ -241,9 +241,7 @@
                         <span class="chassis-view-chassis-name">{{ group.chassis }}</span>
                         <span class="chassis-view-type">{{ formatVariantGroupType(group) }}@if (group.omni) {<span class="chassis-view-omni">(omni)</span>}</span>
                     </div>
-                    <div class="chassis-view-td chassis-view-td-value">{{ gameService.isAlphaStrike()
-                        ? (group.minPV === group.maxPV ? '' + group.minPV : group.minPV + '–' + group.maxPV)
-                        : (group.minBV === group.maxBV ? '' + group.minBV : group.minBV + '–' + group.maxBV) }}</div>
+                    <div class="chassis-view-td chassis-view-td-value">{{ formatChassisGroupBvPv(group) }}</div>
                     @if (chassisSortSlotHeader()) {
                     <div class="chassis-view-td chassis-view-td-sort-slot">{{ getChassisGroupSortSlot(group) }}</div>
                     }
@@ -269,6 +267,8 @@
                         (longPress)="multiSelectUnit(unit)">
                         <alpha-strike-card
                             [unit]="unit"
+                            [skillOverride]="gunnery"
+                            [bvPvDisplayMode]="optionsService.options().forceViewerBVPVDisplay"
                             [useHex]="useHex()"
                             [cardStyle]="cardStyle()"
                             [isSelected]="isUnitSelected(unit)" />
@@ -330,7 +330,7 @@
             </ng-template>
 
             <ng-template #tablePvCell let-unit>
-                <div class="as-td as-td-pv">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</div>
+                <div class="as-td as-td-pv">{{ formatAlphaStrikePv(unit, gunnery) }}</div>
             </ng-template>
 
             <ng-template #tableMovementCell let-unit>
@@ -375,6 +375,7 @@
                             (longPress)="multiSelectUnit(unit, $event)"
                             [unit]="unit"
                             [gunnery]="gunnery"
+                            [useBvPvDisplayOption]="true"
                             [useHex]="useHex()"
                             [megaMekAvailability]="getSearchResultMegaMekAvailability(unit)"
                             [sortKey]="currentSortKey()"
@@ -393,6 +394,7 @@
                             [unit]="unit"
                             [gunnery]="gunnery"
                             [piloting]="piloting"
+                            [useBvPvDisplayOption]="true"
                             [megaMekAvailability]="getSearchResultMegaMekAvailability(unit)"
                             [isSelected]="isUnitSelected(unit)"
                             [sortKey]="currentSortKey()"
@@ -411,6 +413,7 @@
                             [unit]="unit"
                             [gunnery]="gunnery"
                             [piloting]="piloting"
+                            [useBvPvDisplayOption]="true"
                             [expandedView]="false"
                             [showSelectCheckbox]="true"
                             [megaMekAvailability]="getSearchResultMegaMekAvailability(unit)"

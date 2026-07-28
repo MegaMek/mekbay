@@ -40,7 +40,7 @@ import { InfantryEntity } from '../models/entity/entities/infantry/infantry-enti
 import { JumpShipEntity } from '../models/entity/entities/largecraft/jumpship-entity';
 import { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import { VehicleEntity } from '../models/entity/entities/vehicle/vehicle-entity';
-import { AlphaStrikeUnitStats, Unit } from '../models/units.model';
+import { Unit } from '../models/units.model';
 import { EntityType, MoveType } from '../models/entity/types';
 import { getBayTransporterType, isQuartersBay } from '../models/entity/bays/bay-definitions';
 import { buildUnitCargoMetadata } from './unit-cargo-metadata-builder';
@@ -48,6 +48,7 @@ import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import { convertEntityToAlphaStrike } from '../models/entity/utils/alpha-strike/alpha-strike-converter';
 import { alphaStrikeUnitType } from '../models/entity/utils/alpha-strike/foundation/unit-classification';
+import type { UnitIconResolver } from './unit-sprite-resolver';
 
 /**
  * Builds a `Partial<Unit>` metadata object from a parsed entity.
@@ -60,6 +61,8 @@ import { alphaStrikeUnitType } from '../models/entity/utils/alpha-strike/foundat
  * interface is a metadata/export concern, not a game-mechanics concern.
  */
 export class UnitMetadataBuilder {
+  constructor(private readonly resolveIcon: UnitIconResolver = () => '') {}
+
   /**
    * Build metadata for a single entity.
    *
@@ -72,6 +75,7 @@ export class UnitMetadataBuilder {
     return {
       // ── Phase 0: Identity ──────────────────────────────────────────
       name: this.buildName(entity),
+      icon: this.resolveIcon(entity),
       chassis: entity.fullChassis(),
       model: entity.model(),
       year: entity.year(),
@@ -84,6 +88,7 @@ export class UnitMetadataBuilder {
       type: entity.unitType(),
       id: entity.mulId(),
       canon: entity.canon(),
+      canAntiMech: this.buildCanAntiMech(entity),
       unitFile: unitFile,
 
       // ── Phase 0: Direct signals ────────────────────────────────────
@@ -145,6 +150,10 @@ export class UnitMetadataBuilder {
       }
       throw error;
     }
+  }
+
+  private buildCanAntiMech(entity: BaseEntity): boolean {
+    return entity instanceof InfantryBaseEntity ? entity.canAntiMech() : false;
   }
 
   // ═══════════════════════════════════════════════════════════════════════

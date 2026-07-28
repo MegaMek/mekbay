@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { signal } from '@angular/core';
+import { Signal, signal } from '@angular/core';
 import { BaseEntity } from '../../base-entity';
 import { EquipmentRegistry } from '../../../equipment-lookup';
 import type { MovementCalculationOptions, UnitSubtype, UnitType } from '../../types';
@@ -47,6 +47,7 @@ export abstract class InfantryBaseEntity extends BaseEntity {
   }
 
   abstract override unitSubtype(): UnitSubtype;
+  abstract readonly canAntiMech: Signal<boolean>;
   readonly squadSize = signal<number>(1);
   readonly squadCount = signal<number>(1);
 

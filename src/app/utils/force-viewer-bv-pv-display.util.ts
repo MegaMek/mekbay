@@ -30,11 +30,10 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
-import type { ForceUnit } from '../models/force-unit.model';
 import type { ForceViewerBVPVDisplay } from '../models/options.model';
 import { FormatNumberPipe } from '../pipes/format-number.pipe';
 
-export function formatForceViewerBVPV(
+export function formatBvPv(
     adjusted: number,
     base: number,
     mode: ForceViewerBVPVDisplay,
@@ -44,26 +43,4 @@ export function formatForceViewerBVPV(
     if (mode === 'base') return format(base);
     if (mode === 'both' && adjusted !== base) return `${format(adjusted)} (${format(base)})`;
     return format(adjusted);
-}
-
-export function formatForceUnitBVPV(
-    forceUnit: ForceUnit | undefined,
-    mode: ForceViewerBVPVDisplay,
-): string {
-    if (!forceUnit) return '';
-    return formatForceViewerBVPV(forceUnit.getBv(), forceUnit.getPreSkillBv(), mode);
-}
-
-export function formatForceUnitsBVPV(
-    forceUnits: readonly ForceUnit[],
-    mode: ForceViewerBVPVDisplay,
-): string {
-    const totals = forceUnits.reduce(
-        (sum, unit) => ({
-            adjusted: sum.adjusted + unit.getBv(),
-            base: sum.base + unit.getPreSkillBv(),
-        }),
-        { adjusted: 0, base: 0 },
-    );
-    return formatForceViewerBVPV(totals.adjusted, totals.base, mode);
 }

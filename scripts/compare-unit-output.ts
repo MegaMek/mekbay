@@ -150,6 +150,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'bv',             compare: 'numeric', tolerance: 0, parity: 'verified' },
   { field: 'c3',             compare: 'exact', parity: 'verified' },
   { field: 'canon',          compare: 'exact', parity: 'verified' },
+  { field: 'canAntiMech',    compare: 'exact', parity: 'verified' },
   { field: 'capital',        compare: 'exact', parity: 'verified' },
   { field: 'cargo',          compare: 'exact', parity: 'verified' },
   { field: 'comp',           compare: 'componentSet', parity: 'partial' },
@@ -324,6 +325,7 @@ interface OracleDocument {
 type PlainObject = Record<string, unknown>;
 
 const OPTIONAL_FIELDS = new Set(['capital', 'cargo', 'diss', 'fluff']);
+const BOOLEAN_FIELDS = new Set(['canAntiMech', 'canon']);
 const STRING_FIELDS = new Set([
   'armorType', 'c3', 'chassis', 'icon', 'level', 'model', 'moveType', 'name',
   'role', 'subtype', 'techBase', 'techRating', 'type', 'unitFile', 'weightClass',
@@ -493,7 +495,7 @@ function validateNonAsField(field: string, value: unknown): string | null {
   }
   if (NUMBER_FIELDS.has(field)) return validateFiniteNumber(value);
   if (STRING_ARRAY_FIELDS.has(field)) return validateStringArray(value);
-  if (field === 'canon') {
+  if (BOOLEAN_FIELDS.has(field)) {
     return typeof value === 'boolean' ? null : `expected a boolean, received ${describeValue(value)}`;
   }
   if (field === 'diss') return validateNumberArray(value);

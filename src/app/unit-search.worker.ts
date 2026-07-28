@@ -262,7 +262,7 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
             if (gunnery === DEFAULT_GUNNERY_SKILL && piloting === DEFAULT_PILOTING_SKILL) {
                 return unit.bv;
             }
-            return BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
+            return Math.round(unit.bv * BVCalculatorUtil.getSkillMultiplier(gunnery, piloting));
         },
         getAdjustedPV: (unit: Unit) => {
             if (request.pilotGunnerySkill === DEFAULT_GUNNERY_SKILL) {

@@ -108,10 +108,12 @@ describe('BattleArmorEntity anti-Mek attack capabilities', () => {
 
     expect(entity.legAttackCapable()).toBeFalse();
     expect(entity.swarmAttackCapable()).toBeFalse();
+    expect(entity.canAntiMech()).toBeFalse();
 
     addTestEquipmentWithFlags(entity, 'F_ARMORED_GLOVE');
     expect(entity.legAttackCapable()).toBeTrue();
     expect(entity.swarmAttackCapable()).toBeTrue();
+    expect(entity.canAntiMech()).toBeTrue();
   });
 
   it('requires two basic manipulators or a battle claw for medium units', () => {
@@ -135,6 +137,7 @@ describe('BattleArmorEntity anti-Mek attack capabilities', () => {
 
     expect(entity.legAttackCapable()).toBeTrue();
     expect(entity.swarmAttackCapable()).toBeFalse();
+    expect(entity.canAntiMech()).toBeTrue();
   });
 
   it('rejects quad, heavy, assault, and magnetic-clamp-only units', () => {

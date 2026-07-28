@@ -131,6 +131,10 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   readonly swarmAttackCapable = computed(() =>
     this.motiveType() !== 'UMU' && this.hasAntiMekManipulators());
 
+  override readonly canAntiMech = computed(() =>
+    this.legAttackCapable() || this.swarmAttackCapable(),
+  );
+
   private hasAntiMekManipulators(): boolean {
     if (this.chassisType().toLowerCase().includes('quad')) return false;
 

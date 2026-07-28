@@ -50,7 +50,7 @@ import { GameSystem } from '../../models/common.model';
 import { formatMovement, formatMovementWithAlternate } from '../../utils/as-common.util';
 import { getUnitConditionDefinition, unitConditionSortIndex } from '../../models/rules/unit-type-rules';
 import type { CrewMember } from '../../models/crew-member.model';
-import { formatForceUnitBVPV } from '../../utils/force-viewer-bv-pv-display.util';
+import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 
 interface UnitConditionDisplay {
     key: string;
@@ -97,10 +97,15 @@ export class UnitBlockComponent {
         return forceUnit instanceof ASForceUnit ? forceUnit.getPilotSkill() : undefined;
     });
 
-    displayedBvPv = computed(() => formatForceUnitBVPV(
-        this.forceUnit(),
-        this.optionsService.options().forceViewerBVPVDisplay,
-    ));
+    displayedBvPv = computed(() => {
+        const unit = this.forceUnit();
+        if (!unit) return '';
+        return formatBvPv(
+            unit.getBv(),
+            unit.getPreSkillBv(),
+            this.optionsService.options().forceViewerBVPVDisplay,
+        );
+    });
 
     /** Derives Alpha Strike status from the unit's own force, not the global game system. */
     isAlphaStrike = computed<boolean>(() => this.forceUnit()?.force?.gameSystem === GameSystem.ALPHA_STRIKE);

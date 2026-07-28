@@ -1,6 +1,21 @@
 import { EquipmentFlag } from '../../../equipment-flags.type';
 import { InfantryWeaponEquipment, WeaponEquipment } from '../../../equipment.model';
 import { TestInfantryEntity as InfantryEntity } from '../../testing/test-entities';
+import { addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
+
+describe('InfantryEntity anti-Mek capability', () => {
+  it('reacts to anti-Mek gear installation and removal', () => {
+    const infantry = new InfantryEntity();
+
+    expect(infantry.canAntiMech()).toBeFalse();
+
+    const antiMekGear = addTestEquipmentWithFlags(infantry, 'F_ANTI_MEK_GEAR');
+    expect(infantry.canAntiMech()).toBeTrue();
+
+    infantry.removeEquipment(antiMekGear);
+    expect(infantry.canAntiMech()).toBeFalse();
+  });
+});
 
 describe('InfantryEntity movement', () => {
   const supportWeapon = infantryWeapon('InfantrySupportTest', ['F_INF_SUPPORT']);

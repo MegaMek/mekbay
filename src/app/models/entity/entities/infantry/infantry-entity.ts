@@ -232,9 +232,9 @@ export class InfantryEntity extends InfantryBaseEntity {
     );
   }
 
-  hasAntiMekGear(): boolean {
-    return this.equipment().some(mounted => mounted.equipment?.hasFlag('F_ANTI_MEK_GEAR'));
-  }
+  override readonly canAntiMech = computed(() =>
+    this.equipment().some(mounted => mounted.equipment?.hasFlag('F_ANTI_MEK_GEAR')),
+  );
 
   /**
    * Overrides base-entity to handle compound infantry motive strings:

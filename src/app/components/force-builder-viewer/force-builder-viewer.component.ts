@@ -53,7 +53,7 @@ import { DataService } from '../../services/data.service';
 import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
-import { formatForceUnitsBVPV } from '../../utils/force-viewer-bv-pv-display.util';
+import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 
 
 /*
@@ -138,15 +138,22 @@ export class ForceBuilderViewerComponent {
         const pvUnits = slots.filter(slot => slot.force.gameSystem === 'as').flatMap(slot => slot.force.units());
         const mode = this.optionsService.options().forceViewerBVPVDisplay;
         return {
-            totalBV: formatForceUnitsBVPV(bvUnits, mode),
-            totalPV: formatForceUnitsBVPV(pvUnits, mode),
+            totalBV: this.displayedBvPv(bvUnits, mode),
+            totalPV: this.displayedBvPv(pvUnits, mode),
             hasBV: bvUnits.length > 0,
             hasPV: pvUnits.length > 0,
         };
     });
 
-    displayedBvPv(units: readonly ForceUnit[]): string {
-        return formatForceUnitsBVPV(units, this.optionsService.options().forceViewerBVPVDisplay);
+    displayedBvPv(
+        units: readonly ForceUnit[],
+        mode = this.optionsService.options().forceViewerBVPVDisplay,
+    ): string {
+        return formatBvPv(
+            units.reduce((total, unit) => total + unit.getBv(), 0),
+            units.reduce((total, unit) => total + unit.getPreSkillBv(), 0),
+            mode,
+        );
     }
 
     // --- Collapsed/Expanded State ---

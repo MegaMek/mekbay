@@ -67,7 +67,7 @@ import { DataTableComponent, type DataTableCellContext, type DataTableColumn, ty
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { FORCE_NOTE_MAX_LENGTH } from '../../models/force-serialization';
 import { naturalCompare } from '../../utils/sort.util';
-import { formatForceUnitBVPV, formatForceUnitsBVPV } from '../../utils/force-viewer-bv-pv-display.util';
+import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 
 export interface ForceOverviewDialogData {
     force: Force;
@@ -301,13 +301,14 @@ export class ForceOverviewDialogComponent {
     };
 
     /** Total BV/PV of the force using the selected display mode. */
-    totalBv = computed(() => formatForceUnitsBVPV(
-        this.data.force.units(),
-        this.optionsService.options().forceViewerBVPVDisplay,
-    ));
+    totalBv = computed(() => this.displayedBvPv(this.data.force.units()));
 
     displayedBvPv(units: readonly ForceUnit[]): string {
-        return formatForceUnitsBVPV(units, this.optionsService.options().forceViewerBVPVDisplay);
+        return formatBvPv(
+            units.reduce((total, unit) => total + unit.getBv(), 0),
+            units.reduce((total, unit) => total + unit.getPreSkillBv(), 0),
+            this.optionsService.options().forceViewerBVPVDisplay,
+        );
     }
 
     /** Whether the force is read-only */
@@ -415,7 +416,11 @@ export class ForceOverviewDialogComponent {
                 header: 'PV',
                 track: '45px',
                 value: row => row.kind === 'unit'
-                    ? formatForceUnitBVPV(row.vm.forceUnit, this.optionsService.options().forceViewerBVPVDisplay)
+                    ? formatBvPv(
+                        row.vm.forceUnit.getBv(),
+                        row.vm.forceUnit.getPreSkillBv(),
+                        this.optionsService.options().forceViewerBVPVDisplay,
+                    )
                     : '',
                 sortKey: 'as.PV',
                 sortActive: this.isSortActive('as.PV'),

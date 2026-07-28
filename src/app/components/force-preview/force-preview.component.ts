@@ -39,7 +39,7 @@ import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { OptionsService } from '../../services/options.service';
 import { CommonModule } from '@angular/common';
 import { getFactionImg } from '../../models/factions.model';
-import { formatForceUnitsBVPV } from '../../utils/force-viewer-bv-pv-display.util';
+import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 
 /*
  * Author: Drake
@@ -334,10 +334,14 @@ import { formatForceUnitsBVPV } from '../../utils/force-viewer-bv-pv-display.uti
 export class ForcePreviewComponent {
     optionsService = inject(OptionsService);
 
-    displayedBvPv = computed(() => formatForceUnitsBVPV(
-        this.force().units(),
-        this.optionsService.options().forceViewerBVPVDisplay,
-    ));
+    displayedBvPv = computed(() => {
+        const units = this.force().units();
+        return formatBvPv(
+            units.reduce((total, unit) => total + unit.getBv(), 0),
+            units.reduce((total, unit) => total + unit.getPreSkillBv(), 0),
+            this.optionsService.options().forceViewerBVPVDisplay,
+        );
+    });
     readonly GameSystem = GameSystem;
 
     /** The force to display. */

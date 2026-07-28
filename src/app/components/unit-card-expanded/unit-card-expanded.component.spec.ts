@@ -6,6 +6,7 @@ import type { Unit } from '../../models/units.model';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { GameService } from '../../services/game.service';
+import { OptionsService } from '../../services/options.service';
 import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from '../../services/unit-search-filters.model';
 import { MEGAMEK_AVAILABILITY_BADGE_COLORS, MEGAMEK_AVAILABILITY_RARITY_ICON_COLORS, MEGAMEK_AVAILABILITY_UNKNOWN } from '../../models/megamek/availability.model';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
@@ -25,6 +26,10 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
 
     const abilityLookupServiceStub = {
         parseAbility: jasmine.createSpy('parseAbility').and.returnValue(null),
+    };
+
+    const optionsServiceStub = {
+        options: signal({ forceViewerBVPVDisplay: 'both' }),
     };
 
     function createUnit(): Unit {
@@ -47,6 +52,7 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
                 { provide: GameService, useValue: gameServiceStub },
                 { provide: DialogsService, useValue: dialogsServiceStub },
                 { provide: AsAbilityLookupService, useValue: abilityLookupServiceStub },
+                { provide: OptionsService, useValue: optionsServiceStub },
             ],
         })
             .overrideComponent(UnitCardExpandedComponent, {
@@ -136,5 +142,28 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
             value: 'Rare',
             label: 'RAT Rarity (P)',
         });
+    });
+
+    it('uses the configured BV display for compact search results only', () => {
+        const fixture = TestBed.createComponent(UnitCardExpandedComponent);
+        const unit = createEmptyUnit({ bv: 12_600 });
+
+        fixture.componentRef.setInput('unit', unit);
+        fixture.componentRef.setInput('gunnery', 3);
+        fixture.componentRef.setInput('piloting', 4);
+        fixture.componentRef.setInput('useBvPvDisplayOption', true);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.resolvedCompactBv()).toBe('16,632 (12,600)');
+        expect(fixture.componentInstance.resolvedBv()).toBeNull();
+    });
+
+    it('leaves compact standalone units to the skill pipes outside search results', () => {
+        const fixture = TestBed.createComponent(UnitCardExpandedComponent);
+
+        fixture.componentRef.setInput('unit', createEmptyUnit({ bv: 12_600 }));
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.resolvedCompactBv()).toBeNull();
     });
 });

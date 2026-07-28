@@ -36,6 +36,45 @@ import { EquipmentFlag } from '../models/equipment-flags.type';
 describe('UnitMetadataBuilder', () => {
   const builder = new UnitMetadataBuilder();
 
+  it('exports the path returned by the unit icon resolver', () => {
+    const entity = new BipedMekEntity();
+    const resolver = jasmine.createSpy('resolver').and.returnValue('meks/Test.png');
+    const metadata = new UnitMetadataBuilder(resolver).build(entity);
+
+    expect(resolver).toHaveBeenCalledOnceWith(entity);
+    expect(metadata.icon).toBe('meks/Test.png');
+    expect(builder.build(entity).icon).toBe('');
+  });
+
+  it('exports conventional infantry anti-Mek training from installed gear', () => {
+    const entity = new InfantryEntity();
+
+    expect(builder.build(entity).canAntiMech).toBeFalse();
+
+    addTestEquipmentWithFlags(entity, 'F_ANTI_MEK_GEAR');
+    expect(entity.canAntiMech()).toBeTrue();
+    expect(builder.build(entity).canAntiMech).toBeTrue();
+  });
+
+  it('exports Battle Armor anti-Mek capability from its attack requirements', () => {
+    const entity = new BattleArmorEntity();
+    entity.declaredWeightClass.set('Medium');
+
+    addTestEquipmentWithFlags(entity, 'F_BASIC_MANIPULATOR');
+    expect(builder.build(entity).canAntiMech).toBeFalse();
+
+    addTestEquipmentWithFlags(entity, 'F_BASIC_MANIPULATOR');
+    expect(entity.legAttackCapable()).toBeTrue();
+    expect(builder.build(entity).canAntiMech).toBeTrue();
+
+    entity.declaredWeightClass.set('Heavy');
+    expect(builder.build(entity).canAntiMech).toBeFalse();
+  });
+
+  it('exports false anti-Mek capability for non-infantry units', () => {
+    expect(builder.build(new BipedMekEntity()).canAntiMech).toBeFalse();
+  });
+
   it('exports the Java offensive speed factor from BV movement', () => {
     const entity = new BipedMekEntity();
     entity.originalWalkMP.set(4);

@@ -74,7 +74,9 @@ import { formatMovement, isAerospace } from '../../utils/as-common.util';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import type { MegaMekUnitAvailabilityDetail } from '../../services/unit-availability-source.service';
 import { OptionsService } from '../../services/options.service';
-import { formatForceUnitBVPV } from '../../utils/force-viewer-bv-pv-display.util';
+import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
+import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 
 /**
  * Author: Drake
@@ -129,6 +131,9 @@ export class UnitCardExpandedComponent {
 
     /** To force view of pilot skills even when we don't have a ForceUnit (e.g., force generator) */
     forceShowPilotInfo = input(false);
+
+    /** Apply the configured adjusted/base/both display to a plain search-result Unit. */
+    useBvPvDisplayOption = input(false);
 
     /** Forcibly override game system detection */
     gameSystemOverride = input<GameSystem | null>(null);
@@ -213,17 +218,31 @@ export class UnitCardExpandedComponent {
     readonly resolvedBv = computed<string | null>(() => {
         const u = this.unit();
         if (this.isForceUnit(u)) {
-            return formatForceUnitBVPV(u, this.optionsService.options().forceViewerBVPVDisplay);
+            return formatBvPv(
+                u.getBv(),
+                u.getPreSkillBv(),
+                this.optionsService.options().forceViewerBVPVDisplay,
+            );
         }
         return null; // Let the pipe calculate it
     });
 
+    /** Resolved BV/PV display for compact cards, including plain unit-search results. */
     readonly resolvedCompactBv = computed<string | null>(() => {
-        const u = this.unit();
-        if (this.isForceUnit(u)) {
-            return formatForceUnitBVPV(u, this.optionsService.options().forceViewerBVPVDisplay);
+        const resolvedForceUnitValue = this.resolvedBv();
+        if (resolvedForceUnitValue !== null) {
+            return resolvedForceUnitValue;
         }
-        return null;
+        if (!this.useBvPvDisplayOption()) {
+            return null;
+        }
+
+        const unit = this.resolvedUnit();
+        const base = this.isAlphaStrike() ? unit.as.PV : unit.bv;
+        const adjusted = this.isAlphaStrike()
+            ? adjustPointValueForSkill(base, this.gunnery())
+            : BVCalculatorUtil.calculateAdjustedBV(unit, base, this.gunnery(), this.piloting());
+        return formatBvPv(adjusted, base, this.optionsService.options().forceViewerBVPVDisplay);
     });
 
     readonly expandedComponents = computed<UnitComponent[]>(() => {
