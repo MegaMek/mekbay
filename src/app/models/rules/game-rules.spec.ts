@@ -1,7 +1,7 @@
 import { EquipmentFlag } from '../equipment-flags.type';
 import { AmmoEquipment, MiscEquipment, WeaponEquipment, type Equipment } from '../equipment.model';
 import { MountedEquipment } from '../mounted-equipment.model';
-import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './game-rules';
+import { CORE_2026_GAME_RULES, TW_GAME_RULES, separateHeatFireModifier } from './game-rules';
 
 let entryId = 0;
 
@@ -189,7 +189,62 @@ describe('game rules', () => {
             adjustments: [{ kind: 'add', value: 0, weakened: true }]
         });
 
-        expect(resolution).toEqual({ profile: [-1], value: -1, changed: true, weakened: true });
+        expect(resolution).toEqual({
+            profile: [-1], value: -1, changed: true, weakened: true,
+            modifierBreakdown: [{ label: 'Hit Modifier', modifier: -2 }, { label: 'Hit Modifier', modifier: 1 }]
+        });
+    });
+
+    it('preserves named state and equipment adjustment sources', () => {
+        const resolution = CORE_2026_GAME_RULES.resolveToHit({
+            subject: mountedWeapon(0),
+            range: 'medium',
+            stateModifier: -1,
+            stateModifierBreakdown: [{ label: 'Targeting Computer', modifier: -1 }],
+            adjustments: [{
+                kind: 'add', value: -1,
+                breakdown: [{ label: 'Apollo MRM FCS', modifier: -1 }]
+            }]
+        });
+
+        expect(resolution.value).toBe(-2);
+        expect(resolution.modifierBreakdown).toEqual([
+            { label: 'Targeting Computer', modifier: -1 },
+            { label: 'Apollo MRM FCS', modifier: -1 }
+        ]);
+    });
+
+    it('uses a named replacement source and rejects an invalid source total', () => {
+        const resolution = CORE_2026_GAME_RULES.resolveToHit({
+            subject: mountedWeapon(1),
+            stateModifier: 2,
+            stateModifierBreakdown: [{ label: 'Wrong', modifier: 1 }],
+            adjustments: [{ kind: 'replace-base', value: -2, label: 'Vibroblade' }]
+        });
+
+        expect(resolution.modifierBreakdown).toEqual([
+            { label: 'Vibroblade', modifier: -2 },
+            { label: 'Hit Modifier', modifier: 2 }
+        ]);
+    });
+
+    it('separates heat by typed provenance without relying on its label', () => {
+        const separated = separateHeatFireModifier({
+            profile: [2],
+            value: 2,
+            changed: true,
+            weakened: true,
+            modifierBreakdown: [
+                { label: 'Targeting Computer', modifier: -1 },
+                { label: 'Localized heat label', modifier: 3, negative: true, kind: 'heat' }
+            ]
+        });
+
+        expect(separated).toEqual({
+            hitModifier: -1,
+            hitModifierBreakdown: [{ label: 'Targeting Computer', modifier: -1 }],
+            heatFireModifier: 3
+        });
     });
 
     it('supports explicit rejection and no-range boundary cases', () => {

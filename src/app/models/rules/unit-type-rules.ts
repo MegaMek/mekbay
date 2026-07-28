@@ -33,6 +33,7 @@
 
 import { computed, signal, type Signal } from '@angular/core';
 import { MountedWeapon, type MountedEquipment } from '../mounted-equipment.model';
+import type { ToHitModifierBreakdownEntry } from './game-rules';
 import type { WeaponType } from '../equipment.model';
 import type { CriticalSlot, SerializedC3NetworkGroup } from '../force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../motiveModes.model';
@@ -82,6 +83,7 @@ export interface MountedEquipmentRuleState {
     isDamaged: boolean;
     isDisabled: boolean;
     hitMod: number;
+    hitModifierBreakdown?: ToHitModifierBreakdownEntry[];
     weakenedHitMod: boolean;
 }
 
@@ -450,27 +452,34 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
             isDamaged: entry.committedDestroyed() || this.entryCriticalSlots(entry).some(slot => !!slot.destroyed),
             isDisabled: this.isEntryStateDisabled(entry),
             hitMod: targetingComputer.modifier,
+            hitModifierBreakdown: targetingComputer.breakdown,
             weakenedHitMod: targetingComputer.weakened
         };
     }
 
-    protected getMountedTargetingComputerModifier(entry: MountedEquipment): { modifier: number; weakened: boolean } {
+    protected getMountedTargetingComputerModifier(entry: MountedEquipment): { modifier: number; weakened: boolean; breakdown: ToHitModifierBreakdownEntry[] } {
         if (!this.isTargetingComputerEligible(entry)) {
-            return { modifier: 0, weakened: false };
+            return { modifier: 0, weakened: false, breakdown: [] };
         }
 
         const targetingComputers = this.unit.getInventory()
             .filter(candidate => candidate.equipment?.flags.has('F_TARGETING_COMPUTER'));
-        if (targetingComputers.length === 0) return { modifier: 0, weakened: false };
+        if (targetingComputers.length === 0) return { modifier: 0, weakened: false, breakdown: [] };
 
-        const hasFunctionalTargetingComputer = targetingComputers.some(candidate =>
+        const functionalTargetingComputer = targetingComputers.find(candidate =>
             !candidate.committedDestroyed()
             && !this.isEntryStateDisabled(candidate)
             && !this.entryCriticalSlots(candidate).some(slot => !!slot.destroyed)
         );
-        return hasFunctionalTargetingComputer
-            ? { modifier: -1, weakened: false }
-            : { modifier: 0, weakened: true };
+        const targetingComputer = functionalTargetingComputer ?? targetingComputers[0];
+        const label = targetingComputer.equipment?.shortName ?? targetingComputer.name;
+        return functionalTargetingComputer
+            ? { modifier: -1, weakened: false, breakdown: [{ label, modifier: -1 }] }
+            : {
+                modifier: 0,
+                weakened: true,
+                breakdown: [{ label: `${label} Destroyed`, modifier: 0, negative: true }]
+            };
     }
 
     canMakeTargetingComputerAimedShot(entry: MountedEquipment, targetIsMobile: boolean): boolean {

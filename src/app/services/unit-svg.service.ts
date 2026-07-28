@@ -50,7 +50,7 @@ import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRang
 import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, readInventoryControlDisplayData, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
 import { resolveInventoryControlDamageText } from '../utils/inventory-control-damage.util';
 import { formatInventoryControlHeat, resolveInventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
-import type { ToHitResolution } from '../models/rules/game-rules';
+import { separateHeatFireModifier, type ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import { isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, selectedRiscLaserMode } from '../equipment-handlers/risc-laser-pulse-module.handler';
 import { resolveInventoryOriginalAmmoTotal } from '../models/inventory-ammo-capacity.model';
@@ -1083,26 +1083,16 @@ export class UnitSvgService {
     }
 
     protected resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): ToHitResolution {
+        const state = this.unit.rules.computeEntryState(entry);
         const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
         return this.unit.gameRules.resolveToHit({
             subject: entry,
+            stateModifier: state.hitMod,
+            stateModifierBreakdown: state.hitModifierBreakdown,
+            stateWeakened: state.weakenedHitMod,
             range,
             adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
         });
-    }
-
-    protected resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
-        return this.resolveInventoryControlToHit(entry, range).value;
-    }
-
-    /** Override to inject entry-specific effective hit modifiers. */
-    protected getInventoryTargetHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
-        const hitModifier = this.resolveInventoryControlHitModifier(entry, range);
-        return typeof hitModifier === 'number' ? hitModifier - this.inventoryTargetHeatFireModifier(entry) : hitModifier;
-    }
-
-    inventoryTargetHeatFireModifier(entry: MountedEquipment): number {
-        return 0;
     }
 
     inventoryTargetNumberText(entry: MountedEquipment, target: InventoryControlRuntimeTarget): string | null {
@@ -1110,6 +1100,8 @@ export class UnitSvgService {
         const row = this.inventoryControlRow(entry);
         if (!row) return null;
         const hitModifierRange = this.inventoryControlRangeForTarget(entry, target, false);
+        const hitResolution = this.resolveInventoryControlToHit(entry, hitModifierRange);
+        const { hitModifier, heatFireModifier } = separateHeatFireModifier(hitResolution);
         const text = inventoryTargetNumberText({
             entry,
             category: inventoryTargetCategory(entry),
@@ -1123,8 +1115,8 @@ export class UnitSvgService {
             pilotingModifierBreakdown: this.unit.rules.getTargetNumberPilotingModifierBreakdown(),
             missingMovementModifier,
             attackModifierBreakdown: this.unit.turnState().getAttackModifierBreakdown(),
-            hitModifier: this.getInventoryTargetHitModifier(entry, hitModifierRange),
-            heatFireModifier: this.inventoryTargetHeatFireModifier(entry),
+            hitModifier,
+            heatFireModifier,
             gameRules: this.unit.gameRules
         });
         return text || null;
@@ -1469,7 +1461,7 @@ export class UnitSvgService {
             }
             // Hit modifier badge
             if (entry.isDestroyed()) {
-                this.renderHitModEntry(entry, { profile: [], value: null, changed: false, weakened: false });
+                this.renderHitModEntry(entry, { profile: [], value: null, changed: false, weakened: false, modifierBreakdown: [] });
             } else {
                 this.renderHitModEntry(
                     entry,

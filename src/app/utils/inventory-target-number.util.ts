@@ -34,7 +34,8 @@
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { WeaponEquipment, type AmmoEquipment } from '../models/equipment.model';
 import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
-import { CORE_2026_GAME_RULES, type CBTGameRules, type HitModifier } from '../models/rules/game-rules';
+import { CORE_2026_GAME_RULES, validatedToHitModifierBreakdown, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry } from '../models/rules/game-rules';
+import { orderHitTargetTooltipLines } from './hit-target-tooltip.util';
 import type { UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
 import type { InventoryControlDisplayData, InventoryControlGroupId, InventoryRangeKey } from './inventory-control.util';
 import type { TooltipLine } from '../components/tooltip/tooltip.component';
@@ -74,6 +75,7 @@ export interface InventoryTargetNumberInput {
     missingMovementModifier?: boolean;
     attackModifierBreakdown: readonly UnitModifierBreakdownEntry[];
     hitModifier: HitModifier;
+    hitModifierBreakdown?: readonly ToHitModifierBreakdownEntry[];
     heatFireModifier?: number;
     gameRules?: CBTGameRules;
 }
@@ -202,25 +204,39 @@ export function inventoryTargetNumberBreakdown(
         }
     }
     if (minimumRangeModifier !== 0) {
-        terms.push({ label: 'Minimum Range', value: formatInventoryTargetSignedModifier(minimumRangeModifier) });
+        terms.push({ label: 'Minimum Range', value: formatInventoryTargetSignedModifier(minimumRangeModifier), negative: true });
     }
-    if (input.hitModifier !== 0) {
-        terms.push({ label: 'Hit Modifier', value: formatInventoryTargetSignedModifier(input.hitModifier) });
-    }
+    const hitModifierBreakdown = validatedToHitModifierBreakdown(input.hitModifier, input.hitModifierBreakdown);
+    terms.push(...hitModifierBreakdown.map(entry => ({
+        label: entry.label,
+        value: formatInventoryTargetSignedModifier(entry.modifier),
+        ...(entry.negative && { negative: true }),
+        ...(entry.kind && { kind: entry.kind })
+    })));
     if (numericAmmoToHitModifier !== 0 && input.selectedAmmo) {
         terms.push({ label: `Ammo (${input.selectedAmmo.shortName})`, value: formatInventoryTargetSignedModifier(numericAmmoToHitModifier) });
     }
     if (heatFireModifier !== 0) {
-        terms.push({ label: 'Heat - Fire Modifier', value: formatInventoryTargetSignedModifier(heatFireModifier) });
+        terms.push({
+            label: 'Heat - Fire Modifier',
+            value: formatInventoryTargetSignedModifier(heatFireModifier),
+            negative: true,
+            kind: 'heat'
+        });
     }
 
     const attackModifier = input.attackModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
     const skillModifier = skillModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
     const total = skill + skillModifier + attackModifier + target.tnModifier + rangeModifier + minimumRangeModifier + input.hitModifier + numericAmmoToHitModifier + heatFireModifier;
-    terms.push({ isBreak: true });
-    terms.push({ label: 'Total', value: total.toString(), isHeader: true });
-
-    return { total, lines: terms, rangeSelection };
+    return {
+        total,
+        lines: [
+            ...orderHitTargetTooltipLines(terms),
+            { isBreak: true },
+            { label: 'Total', value: total.toString(), isHeader: true }
+        ],
+        rangeSelection
+    };
 }
 
 export function isPhysicalInventoryTargetNumberEntry(entry: MountedEquipment, category?: string): boolean {

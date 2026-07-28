@@ -7,7 +7,7 @@ import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget, In
 import { type MountedEquipmentInit, MountedEquipment  } from '../models/mounted-equipment.model';
 import { type CriticalSlot, type HeatProfile } from '../models/force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../models/motiveModes.model';
-import { CORE_2026_GAME_RULES, type CBTGameRules, type ToHitAdjustment } from '../models/rules/game-rules';
+import { CORE_2026_GAME_RULES, type CBTGameRules, type ToHitAdjustment, type ToHitModifierBreakdownEntry } from '../models/rules/game-rules';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE, type UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
 import type { InventoryControlDisplayData, InventoryControlRules } from '../utils/inventory-control.util';
 
@@ -139,6 +139,7 @@ export interface CBTForceUnitTestEntryState {
     isDamaged: boolean;
     isDisabled: boolean;
     hitMod: number;
+    hitModifierBreakdown?: readonly ToHitModifierBreakdownEntry[];
     weakenedHitMod?: boolean;
 }
 
@@ -268,7 +269,7 @@ export class CBTForceUnitTestHarness {
             gunnerySkill: () => options.gunnerySkill ?? 4,
             pilotingSkill: () => options.pilotingSkill ?? 5,
             turnState: () => this.turnState,
-            svgService: { inventoryTargetHeatFireModifier: () => 0 },
+            svgService: {},
             hasLinkedC3Network: () => options.hasLinkedC3Network ?? false,
             readOnly: () => options.readOnly ?? false,
             hasDirectInventory: () => options.hasDirectInventory ?? true,

@@ -65,7 +65,7 @@ describe('SvgInteractionService', () => {
     let forceBuilderService: { selectUnit: jasmine.Spy; editPilotOfUnit: jasmine.Spy };
     let pickerFactory: { createChoicePicker: jasmine.Spy; createNumericPicker: jasmine.Spy };
     let pageViewerState: PageViewerStateService;
-    let options: { pickerStyle: 'default' | 'linear' | 'radial'; colorScheme: 'default' | 'night'; useAutomations: boolean };
+    let options: { pickerStyle: 'default' | 'linear' | 'radial'; colorScheme: 'default' | 'night'; trackPhaseAndTurn: boolean };
     let registryGetChoices: jasmine.Spy;
     let registryHandleSelection: jasmine.Spy;
 
@@ -99,7 +99,7 @@ describe('SvgInteractionService', () => {
         options = {
             pickerStyle: 'default',
             colorScheme: 'default',
-            useAutomations: true
+            trackPhaseAndTurn: true
         };
 
         TestBed.configureTestingModule({

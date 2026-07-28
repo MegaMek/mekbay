@@ -414,6 +414,103 @@ describe('MekRules', () => {
         expect(destroyedForceUnit.rules.computeEntryState(sword(destroyedForceUnit))).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: true }));
     });
 
+    it('identifies every damaged actuator contributing to a punch modifier', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [
+                { ...crit('Hand'), loc: 'LA' },
+                { ...crit('Upper Arm'), loc: 'LA' },
+                { ...crit('Lower Arm'), loc: 'LA' }
+            ],
+            internalLocations: ['LA', 'RA', 'LL', 'RL']
+        });
+        const punch = new MountedEquipment({
+            owner: forceUnit,
+            id: 'punch@LA',
+            name: 'punch',
+            locations: new Set(['LA']),
+            intrinsicPhysicalAttack: true,
+        });
+
+        expect(forceUnit.rules.computeEntryState(punch)).toEqual(jasmine.objectContaining({
+            hitMod: 5,
+            hitModifierBreakdown: [
+                { label: 'Hand Actuator Destroyed (LA)', modifier: 1, negative: true },
+                { label: 'Upper Arm Actuator Destroyed (LA)', modifier: 2, negative: true },
+                { label: 'Lower Arm Actuator Destroyed (LA)', modifier: 2, negative: true }
+            ]
+        }));
+    });
+
+    it('identifies shoulder and paired AES modifiers for push attacks', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [
+                { ...crit('Shoulder'), loc: 'LA' },
+                { ...crit('AES', false), loc: 'LA' },
+                { ...crit('AES', false), loc: 'RA' }
+            ],
+            internalLocations: ['LA', 'RA', 'LL', 'RL']
+        });
+        const push = new MountedEquipment({ owner: forceUnit, id: 'push', name: 'push', intrinsicPhysicalAttack: true });
+
+        expect(forceUnit.rules.computeEntryState(push)).toEqual(jasmine.objectContaining({
+            hitMod: 1,
+            hitModifierBreakdown: [
+                { label: 'Shoulder Destroyed (LA)', modifier: 2, negative: true },
+                { label: 'Paired Arm AES', modifier: -1 }
+            ]
+        }));
+    });
+
+    it('identifies aggregate leg actuator, foot, and AES modifiers for kicks', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [
+                { ...crit('Upper Leg'), loc: 'LL' },
+                { ...crit('Lower Leg'), loc: 'RL' },
+                { ...crit('Foot'), loc: 'LL' },
+                { ...crit('AES', false), loc: 'LL' },
+                { ...crit('AES', false), loc: 'RL' }
+            ],
+            internalLocations: ['LA', 'RA', 'LL', 'RL']
+        });
+        const kick = new MountedEquipment({ owner: forceUnit, id: 'kick', name: 'kick', intrinsicPhysicalAttack: true });
+
+        expect(forceUnit.rules.computeEntryState(kick)).toEqual(jasmine.objectContaining({
+            hitMod: 4,
+            hitModifierBreakdown: [
+                { label: 'Leg Actuators Destroyed ×2', modifier: 4, negative: true },
+                { label: 'Foot Actuator Destroyed', modifier: 1, negative: true },
+                { label: 'Leg AES', modifier: -1 }
+            ]
+        }));
+    });
+
+    it('identifies mounted physical weapon actuator modifiers without a generic fallback', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [
+                { ...crit('Upper Arm'), loc: 'LA' },
+                { ...crit('Lower Arm'), loc: 'LA' },
+                { ...crit('AES', false), loc: 'LA' }
+            ],
+            internalLocations: ['LA', 'RA', 'LL', 'RL']
+        });
+        const sword = new MountedEquipment({
+            owner: forceUnit,
+            id: 'sword@LA',
+            name: 'Sword',
+            equipment: miscEquipment('Sword', 'Sword', ['F_HAND_WEAPON']),
+            locations: new Set(['LA']),
+        });
+
+        expect(forceUnit.rules.computeEntryState(sword)).toEqual(jasmine.objectContaining({
+            hitMod: 3,
+            hitModifierBreakdown: [
+                { label: 'Upper Arm Actuator Destroyed (LA)', modifier: 2, negative: true },
+                { label: 'Lower Arm Actuator Destroyed (LA)', modifier: 2, negative: true },
+                { label: 'Arm AES (LA)', modifier: -1 }
+            ]
+        }));
+    });
+
     it('marks paired-arm AES modifiers as weakened when damage removes their attack bonus', () => {
         const scenarios = [
             { label: 'one functional', slots: [{ loc: 'LA', destroyed: false }], club: { hitMod: -1, weakenedHitMod: false }, push: { hitMod: 0, weakenedHitMod: false } },

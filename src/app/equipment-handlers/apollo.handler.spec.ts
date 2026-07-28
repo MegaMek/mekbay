@@ -37,14 +37,20 @@ describe('ApolloHandler', () => {
         const apollo = entry(['F_WEAPON_ENHANCEMENT', 'F_APOLLO']);
         apollo.owner = owner(undefined, TW_GAME_RULES);
 
-        expect(handler.getToHitAdjustments(apollo, { parent: weapon('MRM', TW_GAME_RULES) })).toEqual([{ kind: 'add', value: -1, weakened: false }]);
+        expect(handler.getToHitAdjustments(apollo, { parent: weapon('MRM', TW_GAME_RULES) })).toEqual([{
+            kind: 'add', value: -1, weakened: false,
+            breakdown: [{ label: 'Entry', modifier: -1 }]
+        }]);
     });
 
     it('does not apply the TW Apollo bonus when Apollo is unavailable', () => {
         const apollo = entry(['F_WEAPON_ENHANCEMENT', 'F_APOLLO']);
         apollo.owner = owner(apollo, TW_GAME_RULES);
 
-        expect(handler.getToHitAdjustments(apollo, { parent: weapon('MRM', TW_GAME_RULES) })).toEqual([{ kind: 'add', value: 0, weakened: true }]);
+        expect(handler.getToHitAdjustments(apollo, { parent: weapon('MRM', TW_GAME_RULES) })).toEqual([{
+            kind: 'add', value: 0, weakened: true,
+            breakdown: [{ label: 'Entry Destroyed', modifier: 0, negative: true }]
+        }]);
     });
 
     it('keeps the Core 2026 Apollo modifier neutral for MRMs', () => {
@@ -67,7 +73,10 @@ describe('ApolloHandler', () => {
         apollo.owner = owner(undefined, TW_GAME_RULES);
 
         expect(handler.getToHitAdjustments(apollo, { parent: weapon('MRM', TW_GAME_RULES, []) })).toEqual([]);
-        expect(handler.getToHitAdjustments(apollo, { parent: weapon('LRM', TW_GAME_RULES, ['F_MRM']) })).toEqual([{ kind: 'add', value: -1, weakened: false }]);
+        expect(handler.getToHitAdjustments(apollo, { parent: weapon('LRM', TW_GAME_RULES, ['F_MRM']) })).toEqual([{
+            kind: 'add', value: -1, weakened: false,
+            breakdown: [{ label: 'Entry', modifier: -1 }]
+        }]);
     });
 
     it('adds AE to Core 2026 MRM damage in saturation mode', () => {

@@ -34,6 +34,7 @@
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CrewStateControlDefinition, CrewStateDefinition, UnitConditionControl, MountedEquipmentRuleState, UnitSkillModifier } from './unit-type-rules';
+import type { ToHitModifierBreakdownEntry } from './game-rules';
 import { crewStateDefinitions, unitConditionControls, UnitTypeRulesBase } from './unit-type-rules';
 import type { PSRCheck, TurnState } from '../turn-state.model';
 import type { MountedEquipment } from '../mounted-equipment.model';
@@ -343,12 +344,14 @@ export class VehicleRules extends UnitTypeRulesBase {
         const isDamaged = this.entryCriticalSlots(entry).some(slot => slot.destroyed) || entry.committedDestroyed();
         let isDisabled = this.isEntryStateDisabled(entry);
         let hitMod = 0;
+        const hitModifierBreakdown: ToHitModifierBreakdownEntry[] = [];
         let weakenedHitMod = false;
         const isPhysical = this.isPhysicalEntry(entry);
 
         if (!isPhysical) {
             const targetingComputer = this.getMountedTargetingComputerModifier(entry);
             hitMod += targetingComputer.modifier;
+            hitModifierBreakdown.push(...targetingComputer.breakdown);
             weakenedHitMod ||= targetingComputer.weakened;
             if (status.engineHit && entry.equipment?.flags.has('F_ENERGY')) {
                 isDisabled = true;
@@ -356,9 +359,13 @@ export class VehicleRules extends UnitTypeRulesBase {
             if (status.sensorHits >= 4 && entry.equipment instanceof WeaponEquipment) {
                 isDisabled = true;
             }
-            hitMod += this.stabilizerHitModifier(entry, status);
+            const stabilizerModifier = this.stabilizerHitModifier(entry, status);
+            hitMod += stabilizerModifier;
+            if (stabilizerModifier !== 0) {
+                hitModifierBreakdown.push({ label: 'Stabilizer Hit', modifier: stabilizerModifier, negative: true });
+            }
         }
-        return { isDamaged, isDisabled, hitMod, weakenedHitMod };
+        return { isDamaged, isDisabled, hitMod, hitModifierBreakdown, weakenedHitMod };
     }
 
     hasDamagedStabilizerAffectingEntry(entry: MountedEquipment): boolean {

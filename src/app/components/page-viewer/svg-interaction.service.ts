@@ -62,7 +62,7 @@ import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dial
 import { getInventoryControlGroups, getInventoryControlModeAmmoSummary, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_MODE_STATE, resolveInventoryControlSelectedAmmoOption, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
-import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
+import { CORE_2026_GAME_RULES, separateHeatFireModifier } from '../../models/rules/game-rules';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
 import { UnitStateDropdownComponent, type UnitStateDropdownChoice } from './unit-state-dropdown.component';
@@ -1279,10 +1279,12 @@ export class SvgInteractionService {
         const hitResolution = gameRules.resolveToHit({
             subject: entry,
             stateModifier: state.hitMod,
+            stateModifierBreakdown: state.hitModifierBreakdown,
             stateWeakened: state.weakenedHitMod ?? false,
             range: rangeSelection?.range ?? null,
             adjustments: rules.resolveToHitAdjustments?.(entry, selectedAmmo)
         });
+        const { hitModifier, heatFireModifier } = separateHeatFireModifier(hitResolution);
         const missingMovementModifier = unit.turnState().missingAttackMovementModifier();
         return inventoryTargetNumberText({
             entry,
@@ -1297,7 +1299,8 @@ export class SvgInteractionService {
             pilotingModifierBreakdown: unit.rules.getTargetNumberPilotingModifierBreakdown(),
             missingMovementModifier,
             attackModifierBreakdown: unit.turnState().getAttackModifierBreakdown(),
-            hitModifier: hitResolution.value,
+            hitModifier,
+            heatFireModifier,
             gameRules
         });
     }

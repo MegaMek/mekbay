@@ -905,7 +905,7 @@ export class RsPolyfillUtil {
 
         inventoryEntries.forEach(group => {
             const id = group.getAttribute('id')?.replaceAll(' ', '_');
-            group.classList.add(`eq-${id}`);
+            if (id) group.classList.add(`eq-${id}`);
 
             // Avoid duplicate insertion
             const existingHitModRect = group.querySelector<SVGElement>(':scope > .hitMod-rect');
@@ -918,14 +918,15 @@ export class RsPolyfillUtil {
                 return;
             }
 
-            // Find .name elements for alignment
-            let nameEl = group.querySelector('.name');
-            if (!nameEl) return;
+            // Prefer the name wrapper for alignment. Some Aero sheets do not
+            // provide one, so fall back to the inventory row itself.
+            const nameEl = group.querySelector('.name');
+            const alignmentEl = (nameEl ?? group) as SVGGraphicsElement;
 
-            // Get bounding box from .name element
+            // Get the bounding box from the best available alignment element.
             let bbox: DOMRect | null = null;
             try {
-                bbox = (nameEl as SVGGraphicsElement).getBBox();
+                bbox = alignmentEl.getBBox();
             } catch {
                 bbox = null;
             }
@@ -933,21 +934,25 @@ export class RsPolyfillUtil {
 
             // Try to get the font size from the .name element
             let fontSize = 9; // default
-            const fs = nameEl.querySelector('text')?.getAttribute('font-size');
+            const labelText = nameEl?.querySelector('text') ?? group.querySelector('text');
+            const fs = labelText?.getAttribute('font-size');
             if (fs) {
                 const parsed = parseFloat(fs);
                 if (!isNaN(parsed)) fontSize = parsed * 1.1;
             }
 
-            if (nameEl?.querySelector('text')) {
-                const subTextEl = nameEl.querySelector('text') as SVGGraphicsElement;
-                const subTextBBox = subTextEl.getBBox();
-                bbox.height = subTextBBox.height;
+            if (labelText) {
+                try {
+                    const labelBBox = (labelText as SVGGraphicsElement).getBBox();
+                    if (labelBBox.height > 0) bbox.height = labelBBox.height;
+                } catch {
+                    // Keep the row/name bounding box when text cannot be measured.
+                }
             }
 
             const rectWidth = 10;
-            let rectHeight = bbox.height;
-            let rectX = 0 - (rectWidth / 2);
+            let rectHeight = bbox.height || fontSize;
+            const rectX = nameEl ? 0 - (rectWidth / 2) : bbox.x - rectWidth;
             let rectY = bbox.y;
 
             if (fontSize > 6) {
@@ -955,8 +960,9 @@ export class RsPolyfillUtil {
                 rectY -= 0.5;
             }
 
-            // Create rect
-            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            const parent = nameEl?.parentElement ?? group;
+            const rect = existingHitModRect
+                ?? document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             rect.setAttribute('x', rectX.toString());
             rect.setAttribute('y', rectY.toString());
             rect.setAttribute('width', rectWidth.toString());
@@ -965,8 +971,8 @@ export class RsPolyfillUtil {
             rect.setAttribute('class', 'hitMod-rect');
             rect.setAttribute('display', 'none');
 
-            // // Create text
-            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            const text = existingHitModText
+                ?? document.createElementNS('http://www.w3.org/2000/svg', 'text');
             text.setAttribute('x', (rectX + rectWidth / 2).toString());
             text.setAttribute('y', (rectY + rectHeight / 2 + fontSize / 3).toString());
             text.setAttribute('text-anchor', 'middle');
@@ -977,30 +983,31 @@ export class RsPolyfillUtil {
             text.setAttribute('class', 'hitMod-text');
             text.setAttribute('display', 'none');
 
-            nameEl.parentElement?.appendChild(rect);
-            nameEl.parentElement?.appendChild(text);
-            this.addTargetTnOverlay(nameEl.parentElement ?? group, rect, text);
+            text.textContent = '';
+            if (!existingHitModRect) parent.appendChild(rect);
+            if (!existingHitModText) parent.appendChild(text);
+            this.addTargetTnOverlay(parent, rect, text);
         });
     }
 
     private static addTargetTnOverlay(parent: Element, hitModRect: SVGElement, hitModText: SVGElement): void {
-        if (parent.querySelector(':scope > .targetTn-rect') || parent.querySelector(':scope > .targetTn-text')) return;
-
-        const targetTnRect = hitModRect.cloneNode(false) as SVGRectElement;
+        const existingRect = parent.querySelector<SVGRectElement>(':scope > .targetTn-rect');
+        const existingText = parent.querySelector<SVGTextElement>(':scope > .targetTn-text');
+        const targetTnRect = existingRect ?? hitModRect.cloneNode(false) as SVGRectElement;
         targetTnRect.setAttribute('class', 'targetTn-rect');
         targetTnRect.setAttribute('fill', '#fff');
         targetTnRect.setAttribute('stroke', '#000');
         targetTnRect.setAttribute('stroke-width', '0.8');
         targetTnRect.setAttribute('display', 'none');
 
-        const targetTnText = hitModText.cloneNode(false) as SVGTextElement;
+        const targetTnText = existingText ?? hitModText.cloneNode(false) as SVGTextElement;
         targetTnText.setAttribute('class', 'targetTn-text');
         targetTnText.setAttribute('fill', '#000');
         targetTnText.setAttribute('display', 'none');
         targetTnText.textContent = '';
 
-        parent.appendChild(targetTnRect);
-        parent.appendChild(targetTnText);
+        if (!existingRect) parent.appendChild(targetTnRect);
+        if (!existingText) parent.appendChild(targetTnText);
     }
 
 

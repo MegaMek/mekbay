@@ -173,4 +173,47 @@ describe('RsPolyfillUtil', () => {
         expect(entry.querySelectorAll('.hitMod-rect').length).toBe(1);
         expect(entry.querySelectorAll('.hitMod-text').length).toBe(1);
     });
+
+    it('adds hit modifier and target TN elements to inventory rows without a name wrapper', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = `
+            <g class="inventoryEntry" id="AeroLaser">
+                <text x="20" y="10" font-size="8">Medium Laser</text>
+            </g>
+        `;
+        const entry = svg.querySelector('.inventoryEntry') as unknown as SVGGraphicsElement;
+        entry.getBBox = () => ({ x: 20, y: 2, width: 60, height: 10 } as DOMRect);
+
+        RsPolyfillUtil.addHitMod(svg);
+
+        expect(entry.querySelector(':scope > .hitMod-rect')).not.toBeNull();
+        expect(entry.querySelector(':scope > .hitMod-text')).not.toBeNull();
+        expect(entry.querySelector(':scope > .targetTn-rect')).not.toBeNull();
+        expect(entry.querySelector(':scope > .targetTn-text')).not.toBeNull();
+        expect(entry.querySelector('.hitMod-rect')?.getAttribute('display')).toBe('none');
+        expect(entry.querySelector('.targetTn-rect')?.getAttribute('display')).toBe('none');
+    });
+
+    it('repairs incomplete hit and target TN element pairs idempotently', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = `
+            <g class="inventoryEntry">
+                <g class="name"><text>Laser</text></g>
+                <rect class="hitMod-rect"></rect>
+                <text class="targetTn-text"></text>
+            </g>
+        `;
+        const name = svg.querySelector('.name') as unknown as SVGGraphicsElement;
+        name.getBBox = () => ({ x: 0, y: 2, width: 50, height: 10 } as DOMRect);
+
+        RsPolyfillUtil.addHitMod(svg);
+        RsPolyfillUtil.addHitMod(svg);
+
+        const entry = svg.querySelector('.inventoryEntry')!;
+        expect(entry.classList.contains('eq-undefined')).toBeFalse();
+        expect(entry.querySelectorAll(':scope > .hitMod-rect').length).toBe(1);
+        expect(entry.querySelectorAll(':scope > .hitMod-text').length).toBe(1);
+        expect(entry.querySelectorAll(':scope > .targetTn-rect').length).toBe(1);
+        expect(entry.querySelectorAll(':scope > .targetTn-text').length).toBe(1);
+    });
 });

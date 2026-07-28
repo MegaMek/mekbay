@@ -40,7 +40,7 @@ import { resolveInventoryOriginalAmmoTotal } from '../models/inventory-ammo-capa
 import { type CriticalSlot } from '../models/force-serialization';
 import type { UnitComponent } from '../models/units.model';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
-import type { ToHitAdjustment, ToHitResolution } from '../models/rules/game-rules';
+import type { ToHitAdjustment, ToHitModifierBreakdownEntry, ToHitResolution } from '../models/rules/game-rules';
 import { FIELD_GUN_LOCATION, InfantryRules } from '../models/rules/infantry-rules';
 import type { MountedEquipmentRuleState } from '../models/rules/unit-type-rules';
 import { getBattleArmorTrooperNumber } from '../models/battle-armor-location.model';
@@ -126,6 +126,7 @@ export interface InventoryControlRow {
     firingHeat: number | null;
     heatWeakened: boolean;
     additionalHitModifier: number;
+    hitModifierBreakdown?: readonly ToHitModifierBreakdownEntry[];
     hitResolution: ToHitResolution;
     selectedAmmoOption?: InventoryControlAmmoOption;
     modes: InventoryControlMode[];
@@ -495,7 +496,8 @@ function buildInventoryControlRow(
     const selectedAmmoOption = resolveInventoryControlSelectedAmmoOption(ammo.options, entry.owner.getInventoryControlEntryAmmoOption?.(entry.id));
     const selectedAmmo = selectedAmmoOption?.ammo ?? null;
     const additionalHitModifier = state?.hitMod ?? 0;
-    const hitResolution = resolveInventoryControlHitModifier(entry, additionalHitModifier, selectedAmmo, rules);
+    const hitModifierBreakdown = state?.hitModifierBreakdown ?? [];
+    const hitResolution = resolveInventoryControlHitModifier(entry, additionalHitModifier, hitModifierBreakdown, selectedAmmo, rules);
     const hit = formatInventoryControlHitResolution(hitResolution);
     const base = fieldGunComponent
         ? readInfantryFieldGunDisplayData(entry, fieldGunComponent, hit)
@@ -542,6 +544,7 @@ function buildInventoryControlRow(
         category,
         tracksAmmo: ammo.tracksAmmo,
         additionalHitModifier,
+        hitModifierBreakdown,
         destroyed,
         disabled,
         originalIndex,
@@ -564,12 +567,14 @@ function buildInventoryControlRow(
 function resolveInventoryControlHitModifier(
     entry: MountedEquipment,
     additionalHitModifier: number,
+    hitModifierBreakdown: readonly ToHitModifierBreakdownEntry[],
     selectedAmmo: AmmoEquipment | null,
     rules: InventoryControlRules
 ): ToHitResolution {
     return entry.owner.gameRules.resolveToHit({
         subject: entry,
         stateModifier: additionalHitModifier,
+        stateModifierBreakdown: hitModifierBreakdown,
         adjustments: rules.resolveToHitAdjustments?.(entry, selectedAmmo)
     });
 }

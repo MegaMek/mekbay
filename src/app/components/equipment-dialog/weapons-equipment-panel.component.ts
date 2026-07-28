@@ -16,7 +16,7 @@ import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget, In
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import { formatInventoryTargetSignedModifier, inventoryTargetNumberState, inventoryTargetRangeSelection, type InventoryTargetNumberInput, type InventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
-import type { HitModifier, ToHitResolution } from '../../models/rules/game-rules';
+import { separateHeatFireModifier, type ToHitResolution } from '../../models/rules/game-rules';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import {
     formatInventoryControlModeName,
@@ -34,6 +34,7 @@ import { resolveInventoryControlDamageText } from '../../utils/inventory-control
 import { MASC_HANDLER_ID } from '../../equipment-handlers/masc.handler';
 import { ESCALATING_FAILURE_HANDLER_ID } from '../../equipment-handlers/escalatingfailure.handler';
 import { TN_IMMOBILE } from '../../models/target-number-calculator.model';
+import { orderHitTargetTooltipLines } from '../../utils/hit-target-tooltip.util';
 
 const RANGE_LABELS: Record<InventoryRangeKey, string> = {
     short: 'Sht',
@@ -69,6 +70,7 @@ interface TargetRowState {
     invalidTargetReason?: 'type' | 'out-of-range';
     rangeSelection: InventoryTargetRangeSelection | null;
     hitText: string;
+    hitModifierTooltip: TooltipLine[] | null;
     hitModifierWeakened: boolean;
     damageText: string;
     targetNumberText: string;
@@ -378,6 +380,7 @@ export class WeaponsEquipmentPanelComponent {
         return this.unit().gameRules.resolveToHit({
             subject: row.entry,
             stateModifier: row.additionalHitModifier,
+            stateModifierBreakdown: row.hitModifierBreakdown ?? [],
             stateWeakened: this.unit().rules.computeEntryState(row.entry).weakenedHitMod,
             range,
             adjustments: rules.resolveToHitAdjustments?.(row.entry, selectedAmmo)
@@ -390,6 +393,16 @@ export class WeaponsEquipmentPanelComponent {
         if (hitModifier === null) return '';
         if (hitModifier === 'Vs' || hitModifier === '*') return hitModifier;
         return formatInventoryTargetSignedModifier(hitModifier);
+    }
+
+    private hitModifierTooltip(resolution: ToHitResolution): TooltipLine[] | null {
+        if (resolution.modifierBreakdown.length === 0) return null;
+        return orderHitTargetTooltipLines(resolution.modifierBreakdown.map(entry => ({
+            label: entry.label,
+            value: formatInventoryTargetSignedModifier(entry.modifier),
+            ...(entry.negative && { negative: true }),
+            ...(entry.kind && { kind: entry.kind })
+        })));
     }
 
     rangeValue(row: InventoryControlRow, range: InventoryRangeKey): string {
@@ -416,12 +429,11 @@ export class WeaponsEquipmentPanelComponent {
         return this.createTargetState(row, target).targetNumberText;
     }
 
-    private targetNumberInput(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null, hitModifier: HitModifier): InventoryTargetNumberInput {
+    private targetNumberInput(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null, hitResolution: ToHitResolution): InventoryTargetNumberInput {
         this.inventoryControl().inventoryViewVersion();
         const missingMovementModifier = this.unit().turnState().missingAttackMovementModifier();
-        const heatFireModifier = this.unit().svgService?.inventoryTargetHeatFireModifier(row.entry) ?? 0;
         const selectedAmmo = this.resolvedSelectedAmmoOption(row)?.ammo ?? null;
-        const stateWithoutHeat = typeof hitModifier === 'number' ? hitModifier - heatFireModifier : hitModifier;
+        const { hitModifier, hitModifierBreakdown, heatFireModifier } = separateHeatFireModifier(hitResolution);
         return {
             entry: row.entry,
             category: row.category,
@@ -435,7 +447,8 @@ export class WeaponsEquipmentPanelComponent {
             pilotingModifierBreakdown: this.unit().rules.getTargetNumberPilotingModifierBreakdown(),
             missingMovementModifier,
             attackModifierBreakdown: this.unit().turnState().getAttackModifierBreakdown(),
-            hitModifier: stateWithoutHeat,
+            hitModifier,
+            hitModifierBreakdown,
             heatFireModifier,
             gameRules: this.unit().gameRules
         };
@@ -449,6 +462,9 @@ export class WeaponsEquipmentPanelComponent {
     private createTargetState(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): TargetRowState {
         const calculationTarget = this.targetForTargetNumber(row, target);
         const selectedAmmo = this.resolvedSelectedAmmoOption(row)?.ammo ?? null;
+        const selectedAmmoProfile = selectedAmmo
+            ? null
+            : row.modes.find(mode => mode.mode === row.selectedMode)?.ammoProfile ?? null;
         const rangeSelection = inventoryTargetRangeSelection({
             entry: row.entry,
             category: row.category,
@@ -468,7 +484,7 @@ export class WeaponsEquipmentPanelComponent {
         const weaponRuleRange = weaponRuleRangeSelection?.range ?? this.unit().getInventoryControlEntryRange(row.id) ?? null;
         const hitResolution = this.resolveHitForRange(row, weaponRuleRange);
         const hitText = this.hitTextForResolution(row, hitResolution, !!target);
-        const input = this.targetNumberInput(row, calculationTarget, hitResolution.value);
+        const input = this.targetNumberInput(row, calculationTarget, hitResolution);
         const targetNumber = inventoryTargetNumberState(input, rangeSelection);
         const breakdown = targetNumber.breakdown === null ? null : { total: targetNumber.breakdown.total, lines: targetNumber.breakdown.lines };
         const invalidTargetType = false; // target !== null && !this.canTarget(row, target);
@@ -480,6 +496,7 @@ export class WeaponsEquipmentPanelComponent {
             invalidTargetReason,
             rangeSelection,
             hitText,
+            hitModifierTooltip: this.hitModifierTooltip(hitResolution),
             hitModifierWeakened: hitResolution.weakened,
             damageText: resolveInventoryControlDamageText(
                 row.entry,
@@ -488,6 +505,7 @@ export class WeaponsEquipmentPanelComponent {
                         ? weaponRuleRange
                         : null,
                     selectedAmmo,
+                    ammoProfile: selectedAmmoProfile,
                     equipmentCatalog: this.context().dataService.getEquipmentRegistry(),
                 },
                 this.unit().getInventoryControlRules()

@@ -12,6 +12,7 @@ import { UnitInitializerService } from '../services/unit-initializer.service';
 import { UnitSvgService } from '../services/unit-svg.service';
 import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
 import { UnitSvgMekService } from '../services/unit-svg-mek.service';
+import { UnitSvgAeroService } from '../services/unit-svg-aero.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { Unit } from './units.model';
 import { EquipmentInteractionHandler, EquipmentInteractionRegistryService, type HandlerContext } from '../services/equipment-interaction-registry.service';
@@ -540,6 +541,12 @@ class ExposedUnitSvgVehicleService extends UnitSvgVehicleService {
 }
 
 class ExposedUnitSvgMekService extends UnitSvgMekService {
+    refreshInventory(): void {
+        this.updateInventory();
+    }
+}
+
+class ExposedUnitSvgAeroService extends UnitSvgAeroService {
     refreshInventory(): void {
         this.updateInventory();
     }
@@ -1864,6 +1871,54 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.turnState().moveMode.set('run');
         svgService.refreshInventory();
         expect(hitModText.textContent).toBe('+2');
+    });
+
+    it('renders Aero heat fire modifiers in the SVG hit modifier elements', () => {
+        const unit = createEmptyUnit({
+            name: 'Aero Hit Modifier Test',
+            chassis: 'Aero Hit Modifier Test',
+            model: 'A1',
+            type: 'Aero',
+            subtype: 'Aerospace Fighter',
+            heat: 10,
+            dissipation: 10,
+            comp: [{
+                id: 'ISMediumLaser', q: 1, q2: 0, n: 'Medium Laser', t: 'E', p: 1,
+                l: 'NOS', r: '3/6/9', m: '0', d: '5', md: '5', c: '1', os: 0,
+                eq: equipment['ISMediumLaser']
+            }]
+        });
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <g class="inventoryEntry" id="ISMediumLaser@NOS#0" hitMod="0">
+                    <g class="name"><text>Medium Laser</text></g>
+                    <text class="location">NOS</text>
+                    <rect class="hitMod-rect" display="none"></rect>
+                    <text class="hitMod-text" display="none"></text>
+                </g>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        const forceUnit = createForceUnit(unit);
+        initialize(forceUnit, svg);
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        const hitModRect = weaponEntry.el!.querySelector(':scope > .hitMod-rect') as SVGRectElement;
+        const hitModText = weaponEntry.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgAeroService(forceUnit, unitInitializer));
+
+        forceUnit.setHeatData({ current: 7, previous: 7 });
+        svgService.refreshInventory();
+        expect(hitModRect.getAttribute('display')).toBe('none');
+        expect(hitModText.getAttribute('display')).toBe('none');
+
+        forceUnit.setHeatData({ current: 8, previous: 8 });
+        svgService.refreshInventory();
+        expect(hitModRect.getAttribute('display')).toBe('block');
+        expect(hitModText.getAttribute('display')).toBe('block');
+        expect(hitModText.textContent).toBe('+1');
+
+        forceUnit.setHeatData({ current: 24, previous: 24 });
+        svgService.refreshInventory();
+        expect(hitModText.textContent).toBe('+4');
     });
 
     it('shows explicit zero hit modifiers only when changed from the equipment modifier', () => {

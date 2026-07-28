@@ -63,4 +63,70 @@ describe('inventory target number rules profiles', () => {
     it('keeps targets beyond long range out of range before resolving hit state', () => {
         expect(inventoryTargetNumberState({ ...artilleryInput(31), hitModifier: 'Vs' }).text).toBe('X');
     });
+
+    it('renders identified hit modifiers as separate lines', () => {
+        const state = inventoryTargetNumberState({
+            ...artilleryInput(8),
+            selectedAmmo: null,
+            hitModifier: -2,
+            hitModifierBreakdown: [
+                { label: 'ER Medium Laser', modifier: -1 },
+                { label: 'Targeting Computer', modifier: -1 }
+            ]
+        });
+
+        expect(state.breakdown?.total).toBe(2);
+        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({ label: 'ER Medium Laser', value: '-1' }));
+        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({ label: 'Targeting Computer', value: '-1' }));
+        expect(state.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'Hit Modifier' }));
+    });
+
+    it('retains a concise negative destruction detail without changing the total', () => {
+        const state = inventoryTargetNumberState({
+            ...artilleryInput(8),
+            selectedAmmo: null,
+            hitModifier: 0,
+            hitModifierBreakdown: [{ label: 'Targeting Computer Destroyed', modifier: 0, negative: true }]
+        });
+
+        expect(state.breakdown?.total).toBe(4);
+        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({
+            label: 'Targeting Computer Destroyed', value: '+0', negative: true
+        }));
+    });
+
+    it('falls back to the generic label when source totals are incomplete', () => {
+        const state = inventoryTargetNumberState({
+            ...artilleryInput(8),
+            selectedAmmo: null,
+            hitModifier: 2,
+            hitModifierBreakdown: [{ label: 'Incomplete', modifier: 1 }]
+        });
+
+        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({ label: 'Hit Modifier', value: '+2' }));
+        expect(state.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'Incomplete' }));
+    });
+
+    it('orders regular terms before negative terms and heat last', () => {
+        const state = inventoryTargetNumberState({
+            ...artilleryInput(8),
+            selectedAmmo: null,
+            hitModifier: 0,
+            hitModifierBreakdown: [
+                { label: 'Damaged Fire Control', modifier: 1, negative: true },
+                { label: 'Targeting Computer', modifier: -1 }
+            ],
+            heatFireModifier: 2
+        });
+
+        expect(state.breakdown?.lines.map(line => line.label ?? (line.isBreak ? 'BREAK' : ''))).toEqual([
+            'Gunnery',
+            'Range (Short)',
+            'Targeting Computer',
+            'Damaged Fire Control',
+            'Heat - Fire Modifier',
+            'BREAK',
+            'Total'
+        ]);
+    });
 });

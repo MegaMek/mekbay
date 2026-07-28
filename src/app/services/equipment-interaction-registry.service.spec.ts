@@ -177,7 +177,10 @@ describe('EquipmentInteractionRegistryService', () => {
         });
 
         const adjustments = registry.getToHitAdjustments(mrm, context());
-        expect(adjustments).toEqual([{ kind: 'add', value: -1, weakened: false }]);
+        expect(adjustments).toEqual([{
+            kind: 'add', value: -1, weakened: false,
+            breakdown: [{ label: 'Apollo', modifier: -1 }]
+        }]);
         expect(TW_GAME_RULES.resolveToHit({ subject: mrm, adjustments }).value).toBe(0);
     });
 
@@ -207,7 +210,10 @@ describe('EquipmentInteractionRegistryService', () => {
         });
 
         const adjustments = registry.getToHitAdjustments(mrm, context());
-        expect(adjustments).toEqual([{ kind: 'add', value: 0, weakened: true }]);
+        expect(adjustments).toEqual([{
+            kind: 'add', value: 0, weakened: true,
+            breakdown: [{ label: 'Apollo Destroyed', modifier: 0, negative: true }]
+        }]);
         expect(TW_GAME_RULES.resolveToHit({ subject: mrm, adjustments }).weakened).toBeTrue();
     });
 });

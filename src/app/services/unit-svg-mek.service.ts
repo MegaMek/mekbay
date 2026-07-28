@@ -260,6 +260,7 @@ export class UnitSvgMekService extends UnitSvgService {
         return this.unit.gameRules.resolveToHit({
             subject: entry,
             stateModifier: state.hitMod,
+            stateModifierBreakdown: state.hitModifierBreakdown,
             stateWeakened: state.weakenedHitMod,
             range,
             adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
@@ -272,11 +273,6 @@ export class UnitSvgMekService extends UnitSvgService {
     ) {
         const state = this.currentEntryStates?.get(entry) ?? this.mekRules.computeEntryState(entry);
         super.renderHitModEntry(entry, resolution, !!state.weakenedHitMod);
-    }
-
-    override inventoryTargetHeatFireModifier(entry: MountedEquipment): number {
-        if (entry.isPhysicalWeapon()) return 0;
-        return MekRules.getHeatEffects(this.unit.getHeat().current).fireModifier;
     }
 
     protected override updateTurnState() {

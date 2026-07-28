@@ -64,8 +64,8 @@ export class VibrobladeHandler extends EquipmentInteractionHandler {
         return false;
     }
 
-    override getToHitAdjustments(): readonly ToHitAdjustment[] {
-        return [{ kind: 'replace-base', value: -2 }];
+    override getToHitAdjustments(mounted: MountedEquipment): readonly ToHitAdjustment[] {
+        return [{ kind: 'replace-base', value: -2, label: mounted.equipment?.shortName ?? mounted.name }];
     }
 
     override applyInventoryControlDisplayEffects(
