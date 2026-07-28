@@ -44,7 +44,7 @@ import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import { getEffectivePilotingSkill } from '../../utils/cbt-common.util';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { OptionsService } from '../../services/options.service';
-import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
+import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { ThousandsIntegerInputComponent } from '../thousands-integer-input/thousands-integer-input.component';
 
@@ -111,13 +111,14 @@ export class ForceBudgetOptimizerDialogComponent {
     private readonly dialogRef = inject(DialogRef<null, ForceBudgetOptimizerDialogComponent>);
     private readonly data: ForceBudgetOptimizerDialogData = inject(DIALOG_DATA) as ForceBudgetOptimizerDialogData;
     private readonly optionsService = inject(OptionsService);
+    private readonly unitSearchFiltersService = inject(UnitSearchFiltersService);
 
     readonly force = this.data.force;
     private readonly initialSkillSettings = this.optionsService.options().forceBudgetOptimizerLastSkills;
     readonly minPilotSkill = MIN_PILOT_SKILL;
     readonly maxPilotSkill = MAX_PILOT_SKILL;
     readonly pilotSkillAvailableRange: [number, number] = [MIN_PILOT_SKILL, MAX_PILOT_SKILL];
-    readonly targetBudget = signal(Math.max(0, this.force.totalBv()));
+    readonly targetBudget = signal(this.resolveInitialTargetBudget());
     readonly gunnerySkillRange = signal<[number, number]>(this.resolveInitialGunnerySkillRange());
     readonly pilotingSkillRange = signal<[number, number]>(this.normalizeRange([
         this.initialSkillSettings.piloting.min,
@@ -554,6 +555,11 @@ export class ForceBudgetOptimizerDialogComponent {
             ? this.initialSkillSettings.skill
             : this.initialSkillSettings.gunnery;
         return this.normalizeRange([range.min, range.max]);
+    }
+
+    private resolveInitialTargetBudget(): number {
+        const budgetLimit = this.unitSearchFiltersService.bvPvLimit();
+        return budgetLimit > 0 ? budgetLimit : Math.max(0, this.force.totalBv());
     }
 
     private yieldToBrowser(): Promise<void> {
