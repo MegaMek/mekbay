@@ -96,6 +96,8 @@ export class AlphaStrikeCardComponent {
     useHex = input<boolean>(false);
     cardStyle = input<ColorScheme>('default');
     isSelected = input<boolean>(false);
+    /** Optional skill used when rendering a plain unit outside a force. */
+    skillOverride = input<number | undefined>(undefined);
     /** Which card index to render (0 for first/only card, 1 for second card) */
     cardIndex = input<number>(0);
     /** Enable interactive mode (damage/crit pickers) */

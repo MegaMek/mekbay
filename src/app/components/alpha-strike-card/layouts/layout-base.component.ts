@@ -45,6 +45,7 @@ import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.uti
 import { formatMovement, formatMovementWithAlternate } from '../../../utils/as-common.util';
 import { FormationAbilityAssignmentUtil } from '../../../utils/formation-ability-assignment.util';
 import type { SpecialAbilityState } from '../../../models/as-special-ability-state.model';
+import { DEFAULT_GUNNERY_SKILL } from '../../../models/crew-member.model';
 
 /*
  * Author: Drake
@@ -90,6 +91,7 @@ export abstract class AsLayoutBaseComponent {
     cardStyle = input<ColorScheme>('default');
     imageUrl = input<string>('');
     interactive = input<boolean>(false);
+    skillOverride = input<number | undefined>(undefined);
 
     // Image loading state (hidden on error)
     protected imageLoadFailed = signal(false);
@@ -116,7 +118,7 @@ export abstract class AsLayoutBaseComponent {
 
     // Skill and PV
     isCommander = computed<boolean>(() => this.forceUnit()?.commander() ?? false);
-    skill = computed<number>(() => this.forceUnit()?.getPilotStats() ?? 4);
+    skill = computed<number>(() => this.forceUnit()?.getPilotStats() ?? this.skillOverride() ?? DEFAULT_GUNNERY_SKILL);
     basePV = computed<number>(() => this.asStats().PV);
     adjustedPV = computed<number>(() => {
         return adjustPointValueForSkill(this.asStats().PV, this.skill());
