@@ -91,6 +91,8 @@ export interface HeatDissipationState {
     heatsinksOff: number;
     /** Effective dissipation after damage & turned-off HS. */
     totalDissipation: number;
+    /** Effective dissipation including partial-wing cooling when applicable. */
+    totalDissipationWithWings?: number;
 }
 
 // ── Heatsink Profile ─────────────────────────────────────────────────────────

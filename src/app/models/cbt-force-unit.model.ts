@@ -36,7 +36,7 @@ import { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { MountedAmmo, MountedEquipment } from './mounted-equipment.model';
-import { type CriticalSlot, type HeatProfile, type LocationData, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type SerializedCrewMember, committedConditionData, conditionsForSerialization, conditionsHasActive, conditionsHasCommittedActive, conditionsMapFromSerialization, normalizeConditionData, normalizeConditionKey } from './force-serialization';
+import { type CriticalSlot, type HeatProfile, type LocationData, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, TURN_STATE_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type SerializedCrewMember, committedConditionData, conditionsForSerialization, conditionsHasActive, conditionsHasCommittedActive, conditionsMapFromSerialization, normalizeConditionData, normalizeConditionKey } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
 import type { ConditionData } from './force-unit-state.model';
 import type { CBTForce } from './cbt-force.model';
@@ -67,6 +67,7 @@ import { getBattleArmorTrooperNumber, normalizeBattleArmorTrooperLocation } from
 import { parseInventoryComponentReference } from './inventory-component-reference.model';
 import { CBTGameRulesService } from '../services/cbt-game-rules.service';
 import type { CBTGameRules } from './rules/game-rules';
+import { OptionsService } from '../services/options.service';
 
 export class CBTForceUnit extends ForceUnit {
     override get force(): CBTForce { return super.force as CBTForce; }
@@ -119,6 +120,10 @@ export class CBTForceUnit extends ForceUnit {
 
     /** Unit-type-specific game rules (destruction, PSR, systems status for Meks). */
     get rules(): UnitTypeRules { return this._rules; }
+
+    useAutomations(): boolean {
+        return this.injector.get(OptionsService, null, { optional: true })?.options().cbtAutomations ?? true;
+    }
 
     private getEquipmentInteractionRegistry(): EquipmentInteractionRegistry {
         return this.injector.get(EquipmentInteractionRegistryService).getRegistry();
@@ -202,6 +207,7 @@ export class CBTForceUnit extends ForceUnit {
      */
     writeCrits(crits: CriticalSlot[]): void {
         this.state.crits.set(crits);
+        this.turnState().reconcileHeatSources();
         this.inventoryControl.markInventoryViewChanged();
     }
 
@@ -299,12 +305,21 @@ export class CBTForceUnit extends ForceUnit {
         this.setModified();
     }
 
+    override setCondition(condition: string, active: boolean): void {
+        const wasActive = this.getCondition(condition);
+        super.setCondition(condition, active);
+        if (wasActive !== this.getCondition(condition)) {
+            this.turnState().reconcileHeatSources();
+        }
+    }
+
     get getCritSlots() {
         return this.state.crits;
     }
 
     setCritSlots(critSlots: CriticalSlot[], initialization: boolean = false) {
         this.state.crits.set(critSlots);
+        this.turnState().reconcileHeatSources();
         this.inventoryControl.markInventoryViewChanged();
         if (!initialization) {
             this.evaluateDestroyed();
@@ -377,6 +392,7 @@ export class CBTForceUnit extends ForceUnit {
 
     setInventory(inventory: MountedEquipment[], initialization: boolean = false) {
         this.state.inventory.set(MountedEquipment.fromAll(inventory));
+        this.turnState().reconcileHeatSources();
         if (!initialization) {
             this.turnState().clampMoveDistanceToCurrentModeRange();
         }
@@ -1045,6 +1061,7 @@ export class CBTForceUnit extends ForceUnit {
     public evaluateDestroyed(): void {
         if (!this.isLoaded()) return;
         this._rules.evaluateDestroyed();
+        this.turnState().reconcileHeatSources();
     }
 
     public getAvailableMotiveModes(airborne: boolean): MotiveModeOption[] {
@@ -1068,10 +1085,21 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     applyHeat() {
+        const heat = this.getHeat();
+        if (heat.next === undefined) {
+            if (!this.useAutomations()) return;
+            this.setHeat(this.turnState().heatProjection().projected);
+        }
         this.state.consolidateHeat();
+        if (this.useAutomations()) {
+            this.turnState().acknowledgeHeatSources();
+        }
     }
     
     public endTurn() {
+        if (this.useAutomations() && (this.getHeat().next !== undefined || this.turnState().heatProjectionVisible())) {
+            this.applyHeat();
+        }
         this.clearInventoryControlSelection();
         // deselect all inventory items
         this.getInventory().forEach(entry => {
@@ -1146,7 +1174,6 @@ export class CBTForceUnit extends ForceUnit {
         this.state.destroyed.set(typeof state.destroyed === 'boolean' ? state.destroyed : false);
         this.state.setConditions(state.conditions ?? []);
         this.state.inventory.update(inventory => inventory.map(item => item.clone({ destroying: undefined })));
-        this.state.turnState().update(state.turnState);
         
         if (state.inventory) {
             const inventoryData = Sanitizer.sanitizeArray(state.inventory, INVENTORY_SCHEMA);
@@ -1157,6 +1184,10 @@ export class CBTForceUnit extends ForceUnit {
         if (state.c3Position) {
             this.state.c3Position.set(Sanitizer.sanitize(state.c3Position, C3_POSITION_SCHEMA));
         }
+        const turnState = state.turnState
+            ? Sanitizer.sanitize(state.turnState, TURN_STATE_SCHEMA)
+            : undefined;
+        this.state.turnState().update(turnState);
     }
 
     /** Deserialize a plain object to a CBTForceUnit instance */

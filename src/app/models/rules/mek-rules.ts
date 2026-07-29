@@ -608,6 +608,7 @@ export class MekRules extends UnitTypeRulesBase {
                 id: 'damaged-engine',
                 label: 'Damaged Engine',
                 value: damagedEngineHeat,
+                signature: this.damagedEngineSignature(),
             });
         }
         sources.push(...super.heatSources(turnState));
@@ -678,6 +679,14 @@ export class MekRules extends UnitTypeRulesBase {
         const critSlots = this.unit.getCritSlots();
         const engineHits = critSlots.filter(slot => this.isNamedCrit(slot, 'Engine') && this.isDestroyedOrDestroyingCrit(slot)).length;
         return Math.min(10, engineHits * 5);
+    }
+
+    private damagedEngineSignature(): string {
+        return this.unit.getCritSlots()
+            .filter(slot => this.isNamedCrit(slot, 'Engine') && this.isDestroyedOrDestroyingCrit(slot))
+            .map(slot => slot.id)
+            .sort()
+            .join('|');
     }
 
     override isCrewCockpitDestroyed(crewId: number): boolean {

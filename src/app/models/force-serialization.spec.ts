@@ -1,4 +1,5 @@
-import { FORCE_TAG_MAX_COUNT, sanitizeForceTagLabels, sanitizeForceTags } from './force-serialization';
+import { FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
+import { Sanitizer } from '../utils/sanitizer.util';
 
 describe('force tag sanitization', () => {
     const manyTags = [
@@ -22,5 +23,29 @@ describe('force tag sanitization', () => {
         expect(tags).toEqual(manyTags.slice(0, FORCE_TAG_MAX_COUNT));
         expect(tags).not.toContain('aa');
         expect(tags).not.toContain('zz');
+    });
+});
+
+describe('heat state sanitization', () => {
+    it('discards malformed optional values instead of creating a zero target', () => {
+        expect(Sanitizer.sanitize({ current: 4, previous: 3, next: 'invalid', heatsinksOff: Infinity }, HEAT_SCHEMA)).toEqual({
+            current: 4,
+            previous: 3,
+        });
+
+        expect(Sanitizer.sanitize({
+            moveDistance: 'invalid',
+            dmgReceived: Number.NaN,
+            weaponsHeat: Number.POSITIVE_INFINITY,
+        }, TURN_STATE_SCHEMA)).toEqual({});
+    });
+
+    it('normalizes valid optional numeric values to non-negative values', () => {
+        expect(Sanitizer.sanitize({ current: 4, previous: 3, next: '7', heatsinksOff: -2 }, HEAT_SCHEMA)).toEqual({
+            current: 4,
+            previous: 3,
+            next: 7,
+            heatsinksOff: 0,
+        });
     });
 });

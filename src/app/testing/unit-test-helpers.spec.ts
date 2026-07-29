@@ -40,4 +40,19 @@ describe('CBTForceUnitTestHarness', () => {
         expect(harness.unit.gameRules).toBe(CORE_2026_GAME_RULES);
         expect(harness.unit.rules.computeEntryState(mounted).isDisabled).toBeTrue();
     });
+
+    it('reports no active conditions by default', () => {
+        const harness = createCBTForceUnitTestHarness();
+
+        expect(harness.unit.getCondition('jammed')).toBeFalse();
+        expect(harness.unit.getConditions().has('jammed')).toBeFalse();
+    });
+
+    it('reports configured active conditions', () => {
+        const harness = createCBTForceUnitTestHarness({ conditions: ['jammed'] });
+
+        expect(harness.unit.getCondition('jammed')).toBeTrue();
+        expect(harness.unit.getCondition('shutdown')).toBeFalse();
+        expect(harness.unit.getConditions().has('jammed')).toBeTrue();
+    });
 });

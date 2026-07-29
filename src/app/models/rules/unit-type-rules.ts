@@ -70,6 +70,8 @@ export interface UnitHeatSource {
     id: string;
     label: string;
     value: number;
+    /** Source state that must reactivate heat even when its aggregate value is unchanged. */
+    signature?: string;
     /** 
      * Inventory entry whose selected firing heat replaces this passive source.
      * It goes in priority order (handlers) so the highest priority that replaces will

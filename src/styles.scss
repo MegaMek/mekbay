@@ -2832,7 +2832,7 @@ hr.divider {
             transition: stroke 0.2s, fill 0.2s;
         }
 
-        .dirtyHeat.hot {
+        .heatApplicationAvailable.hot {
             .applyHeatButtonFrame {
                 fill: hsl(0, 100%, 95%) !important;
                 stroke: var(--hot-color) !important;
@@ -2847,7 +2847,7 @@ hr.divider {
             }
         }
 
-        .dirtyHeat.cold {
+        .heatApplicationAvailable.cold {
             .applyHeatButtonFrame {
                 fill: hsl(240, 100%, 95%) !important;
                 stroke: var(--cold-color) !important;
@@ -2866,7 +2866,7 @@ hr.divider {
             display: none;
         }
 
-        .dirtyHeat #applyHeatButton.interactive {
+        .heatApplicationAvailable #applyHeatButton.interactive {
             display: block;
 
             path {

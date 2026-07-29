@@ -146,6 +146,7 @@ export interface CBTForceUnitTestEntryState {
 export interface CBTForceUnitTestHarnessOptions {
     id?: string;
     unit?: TestUnitOverrides;
+    conditions?: readonly string[];
     gameRules?: CBTGameRules;
     components?: readonly MountedEquipment[];
     criticalSlots?: readonly CriticalSlot[];
@@ -154,6 +155,7 @@ export interface CBTForceUnitTestHarnessOptions {
     heat?: Partial<HeatProfile>;
     tracksHeat?: boolean;
     heatDissipation?: number;
+    heatApplied?: boolean;
     heatSources?: number;
     gunnerySkill?: number;
     pilotingSkill?: number;
@@ -176,6 +178,7 @@ export interface CBTForceUnitTestTurnState {
     missingAttackMovementModifier(): boolean;
     getSpottingModifier(): number;
     heatSources(): Array<{ id: string; label: string; value: number }>;
+    effectiveHeatDissipation(): number;
     addFiredHeat(amount: number): void;
 }
 
@@ -205,6 +208,7 @@ export class CBTForceUnitTestHarness {
             previous: options.heat?.previous ?? 1,
             next: options.heat?.next
         };
+        const conditions = new Map((options.conditions ?? []).map(condition => [condition, undefined] as const));
 
         const baseUnit = createEmptyUnit({ id: -1, name: options.id ?? 'Test Unit', ...options.unit });
         const attackMovementModifier = (): number => {
@@ -225,6 +229,7 @@ export class CBTForceUnitTestHarness {
             missingAttackMovementModifier: () => (options.moveMode ?? null) === null && (options.attackMovementCanAffectTargetNumbers ?? true),
             getSpottingModifier: () => 0,
             heatSources: () => options.heatSources ? [{ id: 'test-source', label: 'Test Source', value: options.heatSources }] : [],
+            effectiveHeatDissipation: () => options.heatApplied ? 0 : options.heatDissipation ?? 0,
             addFiredHeat: () => undefined
         };
 
@@ -264,6 +269,8 @@ export class CBTForceUnitTestHarness {
             getEquipmentRegistry: () => this.equipmentRegistry,
             findEquipment: (name: string) => this.equipmentRegistry.findEquipment(name) ?? undefined,
             getUnit: () => baseUnit,
+            getCondition: (condition: string) => conditions.has(condition),
+            getConditions: () => conditions,
             getHeat: () => this.heat,
             setHeat: (value: number) => this.heat.next = value,
             gunnerySkill: () => options.gunnerySkill ?? 4,

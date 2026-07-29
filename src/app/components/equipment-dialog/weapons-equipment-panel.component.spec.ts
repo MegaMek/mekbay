@@ -102,8 +102,10 @@ function entry(params: {
 interface CreateComponentOptions {
     readOnly?: boolean;
     hasDirectInventory?: boolean;
+    conditions?: readonly string[];
     tracksHeat?: boolean;
     heatDissipation?: number;
+    heatApplied?: boolean;
     heatNext?: number;
     heatSources?: number;
     gunnerySkill?: number;
@@ -157,12 +159,14 @@ function createComponent(
     const unitHarness = createCBTForceUnitTestHarness({
         components: entries,
         unit: options.unit,
+        conditions: options.conditions,
         equipment: equipmentMap,
         criticalSlots: critSlots,
         entryStates,
         heat: { next: options.heatNext },
         tracksHeat: options.tracksHeat,
         heatDissipation: options.heatDissipation,
+        heatApplied: options.heatApplied,
         heatSources: options.heatSources,
         gunnerySkill: options.gunnerySkill,
         pilotingSkill: options.pilotingSkill,
@@ -1927,6 +1931,28 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(unit.setHeat).not.toHaveBeenCalled();
         expect(turnState.addFiredHeat).toHaveBeenCalledWith(7);
         expect(heat.next).toBeUndefined();
+    });
+
+    it('does not apply dissipation again after heat was already applied this turn', () => {
+        const laser = entry({
+            id: 'laser',
+            equipment: weapon('Large Laser', 'NA', 8, [1, 2, 3, 4], 0, 8),
+            el: svgEntry('<g><g class="name"><text>Large Laser</text></g><text class="heat">8</text></g>')
+        });
+        const { component } = createComponent([laser], {}, [], new Map(), {
+            heatDissipation: 5,
+            heatApplied: true,
+        });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+
+        expect(component.selectedHeatProjection()).toEqual(jasmine.objectContaining({
+            current: 2,
+            selection: 8,
+            dissipation: 0,
+            final: 10,
+        }));
     });
 
     it('shows post-consumption ammo counts in the fired summary', async () => {

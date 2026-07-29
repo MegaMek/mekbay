@@ -188,7 +188,6 @@ export class CBTForceUnitState extends ForceUnitState {
 
     endTurn() {
         this.consolidateHeat();
-        this.turnState().resetTurnHeatSources();
         this.cleanupEndTurnConditions();
         this.endPhase();
     }
@@ -198,7 +197,6 @@ export class CBTForceUnitState extends ForceUnitState {
         this.destroyed.set(data.destroyed);
         this.setConditions(data.conditions ?? []);
         this.heat.set(data.heat);
-        this.turnState().update(data.turnState);
         if (data.c3Position) {
             this.c3Position.set(Sanitizer.sanitize(data.c3Position, C3_POSITION_SCHEMA));
         }
@@ -374,6 +372,7 @@ export class CBTForceUnitState extends ForceUnitState {
             return CrewMember.deserialize(crewData, this.unit);
         });
         this.crew.set(updatedCrew);
+        this.turnState().update(data.turnState);
     }
 
     /**

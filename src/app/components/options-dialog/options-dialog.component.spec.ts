@@ -63,6 +63,18 @@ describe('OptionsDialogComponent', () => {
         expect(setOption).toHaveBeenCalledOnceWith('forceViewerBVPVDisplay', 'both');
     });
 
+    it('persists the CBT automations selection as a boolean', () => {
+        const setOption = jasmine.createSpy('setOption');
+        const component = configureComponent({ options: () => ({ unitServers: [] }), setOption });
+        const select = document.createElement('select');
+        select.innerHTML = '<option value="true">Enabled</option><option value="false">Disabled</option>';
+        select.value = 'false';
+
+        component.onCbtAutomationsChange({ target: select } as unknown as Event);
+
+        expect(setOption).toHaveBeenCalledOnceWith('cbtAutomations', false);
+    });
+
     it('counts canonical equipment registry entries rather than lookup aliases', () => {
         const registry = new EquipmentRegistry({
             CanonicalOne: createEquipment({

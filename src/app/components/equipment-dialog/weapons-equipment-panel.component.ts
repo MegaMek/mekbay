@@ -37,6 +37,7 @@ import { ESCALATING_FAILURE_HANDLER_ID } from '../../equipment-handlers/escalati
 import { TN_IMMOBILE } from '../../models/target-number-calculator.model';
 import { orderHitTargetTooltipLines } from '../../utils/hit-target-tooltip.util';
 import { STANDARD_AEROSPACE_RANGE_LIMITS, aerospaceRangeCaptions } from '../../utils/aerospace-range.util';
+import { calculateHeatProjection } from '../../models/turn-state.model';
 
 interface RangeColumn {
     key: InventoryRangeDisplayKey;
@@ -58,8 +59,6 @@ const AERO_RANGE_COLUMNS: readonly RangeColumn[] = [
 ];
 const HEAT_BAR_SCALE = 30;
 const WEAPON_TARGET_CHOICE_OVERLAY_KEY = 'weapon-equipment-target-choice';
-
-type HeatDissipationWithWings = HeatDissipationState & { totalDissipationWithWings?: number };
 
 interface SelectedHeatProjection {
     current: number;
@@ -186,13 +185,17 @@ export class WeaponsEquipmentPanelComponent {
         const heat = this.unit().getHeat();
         const base = heat.next ?? heat.current;
         const selectedEntryIds = new Set(this.selectedRows().map(row => row.entry.id));
-        const sources = this.unit().turnState().heatSources()
-            .filter(source => !source.replacedByFiringEntryId || !selectedEntryIds.has(source.replacedByFiringEntryId))
-            .reduce((total, source) => total + Math.max(0, source.value), 0);
+        const activeSources = this.unit().turnState().heatSources()
+            .filter(source => !source.replacedByFiringEntryId || !selectedEntryIds.has(source.replacedByFiringEntryId));
         const selection = this.selectedHeatTotal();
-        const dissipation = this.heatDissipationValue(dissipationState);
-        const pending = base + sources + selection;
-        const final = Math.max(0, pending - dissipation);
+        const dissipation = this.unit().turnState().effectiveHeatDissipation();
+        const projection = calculateHeatProjection(base, [
+            ...activeSources,
+            { id: 'selected-weapons', label: 'Selected Weapons', value: selection },
+        ], dissipation);
+        const sources = projection.sourceHeat - Math.max(0, selection);
+        const pending = base + projection.sourceHeat;
+        const final = projection.projected;
         return {
             current: base,
             base,
@@ -753,12 +756,8 @@ export class WeaponsEquipmentPanelComponent {
         return !option.destroyed && option.remaining > 0;
     }
 
-    private heatDissipationState(): HeatDissipationWithWings | null {
-        return this.unit().rules.heatDissipation() as HeatDissipationWithWings | null;
-    }
-
-    private heatDissipationValue(state: HeatDissipationWithWings): number {
-        return Math.max(0, state.totalDissipationWithWings ?? state.totalDissipation);
+    private heatDissipationState(): HeatDissipationState | null {
+        return this.unit().rules.heatDissipation();
     }
 
     private heatPercent(value: number, scale: number): number {
