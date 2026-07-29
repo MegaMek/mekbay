@@ -67,6 +67,7 @@ const DEFAULT_OPTIONS: Options = {
     syncZoomBetweenSheets: true,
     trackPhaseAndTurn: true,
     cbtAutomations: false,
+    CBTExtremeRange: false,
     allowMultipleActiveSheets: false,
     CBTRules: 'tw',
     
@@ -198,6 +199,7 @@ export class OptionsService {
         recordSheetDoubleTapZoomReset: DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
         trackPhaseAndTurn: DEFAULT_OPTIONS.trackPhaseAndTurn,
         cbtAutomations: DEFAULT_OPTIONS.cbtAutomations,
+        CBTExtremeRange: DEFAULT_OPTIONS.CBTExtremeRange,
         CBTRules: DEFAULT_OPTIONS.CBTRules,
         ASUseHex: DEFAULT_OPTIONS.ASUseHex,
         ASPrintPageBreakOnGroups: DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
@@ -242,6 +244,7 @@ export class OptionsService {
             sidebarLipPosition: saved?.sidebarLipPosition,
             trackPhaseAndTurn: saved?.trackPhaseAndTurn ?? DEFAULT_OPTIONS.trackPhaseAndTurn,
             cbtAutomations: saved?.cbtAutomations ?? DEFAULT_OPTIONS.cbtAutomations,
+            CBTExtremeRange: saved?.CBTExtremeRange ?? DEFAULT_OPTIONS.CBTExtremeRange,
             CBTRules: saved?.CBTRules ?? DEFAULT_OPTIONS.CBTRules,
             ASUseHex: saved?.ASUseHex ?? DEFAULT_OPTIONS.ASUseHex,
             ASPrintPageBreakOnGroups: saved?.ASPrintPageBreakOnGroups ?? DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,

@@ -91,6 +91,7 @@ export interface Options {
     sidebarLipPosition?: string;
     trackPhaseAndTurn: boolean;
     cbtAutomations: boolean;
+    CBTExtremeRange: boolean;
     CBTRules: 'tw' | `core2026`;
     ASUseHex: boolean;
     ASPrintPageBreakOnGroups: boolean;
