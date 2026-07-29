@@ -4,9 +4,10 @@ import { ArtemisVHandler } from './artemis-v.handler';
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
 
-function owner(unavailableEntry?: MountedEquipment) {
+function owner(unavailableEntry?: MountedEquipment, jammed = false) {
     return {
-        rules: { computeEntryState: (candidate: MountedEquipment) => ({ isDamaged: candidate === unavailableEntry || candidate.committedDestroyed(), isDisabled: false, hitMod: 0 }) }
+        rules: { computeEntryState: (candidate: MountedEquipment) => ({ isDamaged: candidate === unavailableEntry || candidate.committedDestroyed(), isDisabled: false, hitMod: 0 }) },
+        getCondition: (condition: string) => condition === 'jammed' && jammed
     } as never;
 }
 
@@ -55,6 +56,16 @@ describe('ArtemisVHandler', () => {
         expect(handler.getToHitAdjustments(artemis, { parent: entry(['F_ARTEMIS_COMPATIBLE']), selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) })).toEqual([{
             kind: 'add', value: 0, weakened: true,
             breakdown: [{ label: 'Entry Destroyed', modifier: 0, negative: true }]
+        }]);
+    });
+
+    it('does not apply the Artemis V bonus when the unit is jammed', () => {
+        const artemis = entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']);
+        artemis.owner = owner(undefined, true);
+
+        expect(handler.getToHitAdjustments(artemis, { parent: entry(['F_ARTEMIS_COMPATIBLE']), selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) })).toEqual([{
+            kind: 'add', value: 0, weakened: true,
+            breakdown: [{ label: 'Unit Jammed', modifier: 0, negative: true }]
         }]);
     });
 

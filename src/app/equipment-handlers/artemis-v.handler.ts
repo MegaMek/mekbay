@@ -22,14 +22,17 @@ export class ArtemisVHandler extends EquipmentInteractionHandler {
         if (!weapon || !isArtemisCompatibleWeapon(weapon)) return [];
         const selectedAmmo = context.selectedAmmo;
         const unavailable = equipment.isUnavailable();
+        const unitJammed = equipment.owner.getCondition('jammed');
         const incompatibleAmmo = selectedAmmo !== undefined && !selectedAmmo?.hasMunitionType('M_ARTEMIS_V_CAPABLE');
-        const weakened = unavailable || incompatibleAmmo;
+        const weakened = unavailable || unitJammed || incompatibleAmmo;
         const label = equipment.equipment?.shortName ?? equipment.name;
         const unavailableLabel = unavailable
             ? `${label} Destroyed`
-            : selectedAmmo
-                ? `Incompatible Ammo (${selectedAmmo.shortName})`
-                : 'Artemis V Ammo Not Selected';
+            : unitJammed
+                ? 'Unit Jammed'
+                : selectedAmmo
+                    ? `Incompatible Ammo (${selectedAmmo.shortName})`
+                    : 'Artemis V Ammo Not Selected';
         return [{
             kind: 'add',
             value: weakened ? 0 : -1,
