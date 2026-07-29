@@ -503,7 +503,14 @@ function buildInventoryControlRow(
     const selectedAmmo = selectedAmmoOption?.ammo ?? null;
     const additionalHitModifier = state?.hitMod ?? 0;
     const hitModifierBreakdown = state?.hitModifierBreakdown ?? [];
-    const hitResolution = resolveInventoryControlHitModifier(entry, additionalHitModifier, hitModifierBreakdown, selectedAmmo, rules);
+    const hitResolution = resolveInventoryControlHitModifier(
+        entry,
+        additionalHitModifier,
+        hitModifierBreakdown,
+        state?.weakenedHitMod ?? false,
+        selectedAmmo,
+        rules
+    );
     const hit = formatInventoryControlHitResolution(hitResolution);
     const base = fieldGunComponent
         ? readInfantryFieldGunDisplayData(entry, fieldGunComponent, hit)
@@ -575,6 +582,7 @@ function resolveInventoryControlHitModifier(
     entry: MountedEquipment,
     additionalHitModifier: number,
     hitModifierBreakdown: readonly ToHitModifierBreakdownEntry[],
+    weakenedHitModifier: boolean,
     selectedAmmo: AmmoEquipment | null,
     rules: InventoryControlRules
 ): ToHitResolution {
@@ -582,6 +590,7 @@ function resolveInventoryControlHitModifier(
         subject: entry,
         stateModifier: additionalHitModifier,
         stateModifierBreakdown: hitModifierBreakdown,
+        stateWeakened: weakenedHitModifier,
         adjustments: rules.resolveToHitAdjustments?.(entry, selectedAmmo)
     });
 }

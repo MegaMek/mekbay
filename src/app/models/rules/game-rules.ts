@@ -163,8 +163,10 @@ export abstract class CBTGameRules {
         const value = !request.range && profile.length > 1 ? '*' : valueAtRange(profile, request.range);
         const selectedValue = valueAtRange(profile, request.range);
         const changed = !sameProfile(profile, rulesProfile);
+        const stateBreakdown = validatedToHitModifierBreakdown(stateModifier, request.stateModifierBreakdown);
         const weakened = request.stateWeakened === true
             || adjustments.some(adjustment => adjustment.kind === 'add' && adjustment.weakened === true)
+            || stateBreakdown.some(entry => entry.negative === true && entry.modifier > 0)
             || selectedValue > baseValue;
         const modifierBreakdown = typeof value === 'number'
             ? this.resolveModifierBreakdown(baseValue, stateModifier, request.stateModifierBreakdown, adjustments, replacement?.label)

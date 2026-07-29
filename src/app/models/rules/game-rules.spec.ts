@@ -195,6 +195,37 @@ describe('game rules', () => {
         });
     });
 
+    it('marks a canceled adverse state modifier as weakened', () => {
+        const resolution = CORE_2026_GAME_RULES.resolveToHit({
+            subject: mountedWeapon(0),
+            stateModifier: 0,
+            stateModifierBreakdown: [
+                { label: 'Targeting Computer', modifier: -1 },
+                { label: 'Heat - Fire Modifier', modifier: 1, negative: true, kind: 'heat' }
+            ]
+        });
+
+        expect(resolution.value).toBe(0);
+        expect(resolution.changed).toBeFalse();
+        expect(resolution.weakened).toBeTrue();
+        expect(resolution.modifierBreakdown).toEqual([
+            { label: 'Targeting Computer', modifier: -1 },
+            { label: 'Heat - Fire Modifier', modifier: 1, negative: true, kind: 'heat' }
+        ]);
+    });
+
+    it('does not trust adverse provenance whose total differs from the state modifier', () => {
+        const resolution = CORE_2026_GAME_RULES.resolveToHit({
+            subject: mountedWeapon(0),
+            stateModifier: 0,
+            stateModifierBreakdown: [{ label: 'Heat - Fire Modifier', modifier: 1, negative: true, kind: 'heat' }]
+        });
+
+        expect(resolution.value).toBe(0);
+        expect(resolution.weakened).toBeFalse();
+        expect(resolution.modifierBreakdown).toEqual([]);
+    });
+
     it('preserves named state and equipment adjustment sources', () => {
         const resolution = CORE_2026_GAME_RULES.resolveToHit({
             subject: mountedWeapon(0),

@@ -695,6 +695,61 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(hitCell.hasAttribute('data-tooltip-host')).toBeTrue();
     });
 
+    it('shows a weakened +0 when heat cancels a targeting computer modifier', () => {
+        const laser = entry({
+            id: 'ER Medium Laser',
+            equipment: weapon('ER Medium Laser'),
+            el: svgEntry('<g><g class="name"><text>ER Medium Laser</text></g><text class="range_short">5</text><text class="range_medium">10</text><text class="range_long">15</text></g>')
+        });
+        const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([[laser, {
+            isDamaged: false,
+            isDisabled: false,
+            hitMod: 0,
+            hitModifierBreakdown: [
+                { label: 'Heat - Fire Modifier', modifier: 1, negative: true, kind: 'heat' },
+                { label: 'Targeting Computer', modifier: -1 }
+            ],
+            weakenedHitMod: false
+        }]]);
+        const { component, fixture } = createComponent([laser], {}, [], entryStates);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        const targetState = component.targetState(row);
+        const hitCell = fixture.nativeElement.querySelector('.hit-cell') as HTMLElement;
+
+        expect(row.display.hit).toBe('+0');
+        expect(row.hitResolution.weakened).toBeTrue();
+        expect(targetState.hitText).toBe('+0');
+        expect(targetState.hitModifierWeakened).toBeTrue();
+        expect(targetState.hitModifierTooltip).toEqual([
+            { label: 'Targeting Computer', value: '-1' },
+            { label: 'Heat - Fire Modifier', value: '+1', negative: true, kind: 'heat' }
+        ]);
+        expect(hitCell.classList.contains('weakened')).toBeTrue();
+    });
+
+    it('preserves weakened row metadata when a targeting computer is destroyed', () => {
+        const laser = entry({
+            id: 'ER Medium Laser',
+            equipment: weapon('ER Medium Laser'),
+            el: svgEntry('<g><g class="name"><text>ER Medium Laser</text></g><text class="range_short">5</text><text class="range_medium">10</text><text class="range_long">15</text></g>')
+        });
+        const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([[laser, {
+            isDamaged: false,
+            isDisabled: false,
+            hitMod: 0,
+            hitModifierBreakdown: [{ label: 'Targeting Computer Destroyed', modifier: 0, negative: true }],
+            weakenedHitMod: true
+        }]]);
+        const { component, fixture } = createComponent([laser], {}, [], entryStates);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        const hitCell = fixture.nativeElement.querySelector('.hit-cell') as HTMLElement;
+
+        expect(row.display.hit).toBe('+0');
+        expect(row.hitResolution.weakened).toBeTrue();
+        expect(component.targetState(row).hitModifierWeakened).toBeTrue();
+        expect(hitCell.classList.contains('weakened')).toBeTrue();
+    });
+
     it('shows the specific modifier breakdown on the Hit cell', () => {
         const laser = entry({
             id: 'laser',
