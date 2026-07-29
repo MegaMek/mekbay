@@ -1,4 +1,5 @@
-import { FORCE_TAG_MAX_COUNT, sanitizeForceTagLabels, sanitizeForceTags } from './force-serialization';
+import { FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
+import { Sanitizer } from '../utils/sanitizer.util';
 
 describe('force tag sanitization', () => {
     const manyTags = [
@@ -22,5 +23,49 @@ describe('force tag sanitization', () => {
         expect(tags).toEqual(manyTags.slice(0, FORCE_TAG_MAX_COUNT));
         expect(tags).not.toContain('aa');
         expect(tags).not.toContain('zz');
+    });
+});
+
+describe('heat state sanitization', () => {
+    it('discards malformed optional values instead of creating a zero target', () => {
+        expect(Sanitizer.sanitize({ current: 4, previous: 3, next: 'invalid', heatsinksOff: Infinity }, HEAT_SCHEMA)).toEqual({
+            current: 4,
+            previous: 3,
+        });
+
+        expect(Sanitizer.sanitize({
+            moveDistance: 'invalid',
+            dmgReceived: Number.NaN,
+            weaponsHeat: Number.POSITIVE_INFINITY,
+            heatDissipationConsumed: Number.POSITIVE_INFINITY,
+        }, TURN_STATE_SCHEMA)).toEqual({});
+    });
+
+    it('normalizes valid optional numeric values to non-negative values', () => {
+        expect(Sanitizer.sanitize({ current: 4, previous: 3, next: '7', heatsinksOff: -2 }, HEAT_SCHEMA)).toEqual({
+            current: 4,
+            previous: 3,
+            next: 7,
+            heatsinksOff: 0,
+        });
+    });
+
+    it('sanitizes consumed heat dissipation as a non-negative finite number', () => {
+        expect(Sanitizer.sanitize({ heatDissipationConsumed: '6' }, TURN_STATE_SCHEMA)).toEqual({
+            heatDissipationConsumed: 6,
+        });
+        expect(Sanitizer.sanitize({ heatDissipationConsumed: -2 }, TURN_STATE_SCHEMA)).toEqual({
+            heatDissipationConsumed: 0,
+        });
+    });
+
+    it('normalizes PSR locations and rejects non-positive or fractional hit counts', () => {
+        expect(Sanitizer.sanitize({
+            psrChecks: {
+                legActuators: { ' LL ': 2, RL: -1, LA: 0, RA: 1.5 }
+            }
+        }, TURN_STATE_SCHEMA)).toEqual({
+            psrChecks: { legActuators: { LL: 2 } }
+        });
     });
 });

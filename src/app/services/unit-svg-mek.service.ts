@@ -183,9 +183,7 @@ export class UnitSvgMekService extends UnitSvgService {
             const el = svg.getElementById('partialWingBonus');
             if (el) {
                 el.textContent = `(Partial Wing +${systemsStatus.partialWingsHeatBonus})`;
-                if (systemsStatus.destroyedPartialWingsCount > 0) {
-                    el.classList.add('damaged');
-                }
+                el.classList.toggle('damaged',  (systemsStatus.destroyedPartialWingsCount > 0));
             }
         }
 

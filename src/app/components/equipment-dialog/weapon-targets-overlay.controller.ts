@@ -1,4 +1,4 @@
-import { type DestroyRef, Injector, type ComponentRef } from '@angular/core';
+import { effect, type DestroyRef, type EffectRef, Injector, type ComponentRef } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { type Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
@@ -40,6 +40,8 @@ export interface WeaponTargetsOverlayOpenOptions {
 
 export class WeaponTargetsOverlayController {
     private targetsCompRef: ComponentRef<WeaponTargetsMenuComponent> | null = null;
+    private targetsSyncEffect: EffectRef | null = null;
+    private tnCalculatorCompRef: ComponentRef<TnCalculatorDialogComponent> | null = null;
     private tnCalculatorTargetId: string | null = null;
 
     constructor(private readonly deps: WeaponTargetsOverlayControllerDeps) {}
@@ -50,15 +52,18 @@ export class WeaponTargetsOverlayController {
 
     close(overlayKey: string): void {
         this.closeTnCalculator(overlayKey);
+        this.destroyTargetsSyncEffect();
         this.deps.overlayManager.closeManagedOverlay(overlayKey);
         this.targetsCompRef = null;
     }
 
     clearRef(): void {
+        this.destroyTargetsSyncEffect();
         this.targetsCompRef = null;
     }
 
     open(options: WeaponTargetsOverlayOpenOptions): void {
+        this.destroyTargetsSyncEffect();
         const portal = new ComponentPortal(WeaponTargetsMenuComponent, null, this.deps.injector);
         const { componentRef, closed } = this.deps.overlayManager.createManagedOverlay(options.overlayKey, options.target, portal, {
             hasBackdrop: false,
@@ -71,6 +76,10 @@ export class WeaponTargetsOverlayController {
         });
         this.targetsCompRef = componentRef;
         this.syncInputs(options);
+        this.targetsSyncEffect = effect(() => {
+            options.unit.inventoryControl.inventoryViewVersion();
+            this.syncInputs(options);
+        }, { injector: this.deps.injector });
 
         outputToObservable(componentRef.instance.addRequest).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(() => {
             options.unit.createInventoryControlTarget();
@@ -94,6 +103,7 @@ export class WeaponTargetsOverlayController {
         closed.pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(() => {
             this.closeTnCalculator(options.overlayKey);
             if (this.targetsCompRef === componentRef) {
+                this.destroyTargetsSyncEffect();
                 this.targetsCompRef = null;
             }
         });
@@ -110,7 +120,14 @@ export class WeaponTargetsOverlayController {
         this.targetsCompRef.setInput('readOnly', options.readOnly ? options.readOnly() : options.unit.readOnly());
         this.targetsCompRef.setInput('unassignedMovement', options.unit.turnState().missingAttackMovementModifier());
         this.targetsCompRef.setInput('showC3Distance', this.showC3Distance(options.unit));
+        const c3Degraded = options.unit.c3DegradationSource() !== 'none';
+        this.targetsCompRef.setInput('c3Degraded', c3Degraded);
+        this.targetsCompRef.setInput('c3DegradationLabel', options.unit.gameRules.c3DegradationLabel);
         this.targetsCompRef.changeDetectorRef.detectChanges();
+        if (this.tnCalculatorCompRef) {
+            this.tnCalculatorCompRef.instance.setC3Degraded(c3Degraded);
+            this.tnCalculatorCompRef.changeDetectorRef.detectChanges();
+        }
         this.deps.overlayManager.repositionAll();
     }
 
@@ -134,7 +151,7 @@ export class WeaponTargetsOverlayController {
         };
         const portal = new ComponentPortal(TnCalculatorDialogComponent, null, Injector.create({
             providers: [
-                { provide: DIALOG_DATA, useValue: { target, showC3Distance: this.showC3Distance(options.unit), indirectFireBaseModifier: options.unit.rules.getSpottingModifier() } satisfies TnCalculatorDialogData },
+                { provide: DIALOG_DATA, useValue: { target, gameRules: options.unit.gameRules, showC3Distance: this.showC3Distance(options.unit), c3Degraded: options.unit.c3DegradationSource() !== 'none', indirectFireBaseModifier: options.unit.rules.getSpottingModifier() } satisfies TnCalculatorDialogData },
                 { provide: DialogRef, useValue: { close: closeWithResult } },
             ],
             parent: this.deps.injector,
@@ -143,7 +160,7 @@ export class WeaponTargetsOverlayController {
         this.deps.overlayManager.blockCloseUntil(options.overlayKey);
         const fullscreen = this.tnCalculatorFullscreen();
         const overlayOrigin = fullscreen ? null : request.origin;
-        const { closed } = this.deps.overlayManager.createManagedOverlay(overlayKey, overlayOrigin, portal, {
+        const { componentRef, closed } = this.deps.overlayManager.createManagedOverlay(overlayKey, overlayOrigin, portal, {
             hasBackdrop: fullscreen,
             backdropClass: fullscreen ? 'cdk-overlay-dark-backdrop' : undefined,
             panelClass: 'tn-calculator-overlay-panel',
@@ -152,6 +169,7 @@ export class WeaponTargetsOverlayController {
             scrollStrategy: this.deps.overlay.scrollStrategies.reposition(),
             positions: TN_CALCULATOR_OVERLAY_POSITIONS
         });
+        this.tnCalculatorCompRef = componentRef;
         this.tnCalculatorTargetId = request.targetId;
         closed.pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(() => {
             this.tnCalculatorTargetId = null;
@@ -161,6 +179,7 @@ export class WeaponTargetsOverlayController {
 
     private closeTnCalculator(parentOverlayKey: string): void {
         this.deps.overlayManager.closeManagedOverlay(this.tnCalculatorOverlayKey(parentOverlayKey));
+        this.tnCalculatorCompRef = null;
         this.tnCalculatorTargetId = null;
         this.deps.overlayManager.unblockClose(parentOverlayKey);
     }
@@ -174,6 +193,11 @@ export class WeaponTargetsOverlayController {
     }
 
     private showC3Distance(unit: CBTForceUnit): boolean {
-        return unit.hasLinkedC3Network?.() ?? false;
+        return unit.hasLinkedC3Network();
+    }
+
+    private destroyTargetsSyncEffect(): void {
+        this.targetsSyncEffect?.destroy();
+        this.targetsSyncEffect = null;
     }
 }

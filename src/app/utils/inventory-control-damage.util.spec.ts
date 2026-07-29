@@ -5,6 +5,7 @@ import type { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import {
+    inventoryControlDamageRange,
     resolveDefaultWeaponDamageText,
     resolveInventoryControlDamageText,
     resolveInventoryControlWeaponDamage,
@@ -41,6 +42,76 @@ describe('inventory-control damage resolution', () => {
             applyDamageEffects,
         })).toBe('9 [V]');
         expect(applyDamageEffects).toHaveBeenCalledTimes(1);
+    });
+
+    it('preserves Extreme range for its dedicated damage rules', () => {
+        expect(inventoryControlDamageRange('extreme')).toBe('extreme');
+        expect(inventoryControlDamageRange('medium')).toBe('medium');
+        expect(inventoryControlDamageRange(null)).toBeNull();
+    });
+
+    it('uses Long variable damage at Extreme range', () => {
+        const weapon = new WeaponEquipment({
+            id: 'VariableLaser',
+            name: 'Variable Laser',
+            type: 'weapon',
+            weapon: { damage: [10, 8, 5] },
+        });
+
+        expect(resolveInventoryControlDamageText(mount(weapon), {
+            selectedRange: 'extreme',
+            selectedAmmo: null,
+            equipmentCatalog: catalog(),
+        })).toBe('5 [V]');
+    });
+
+    it('halves Pulse Weapon damage at Extreme range, rounding down', () => {
+        const weapon = directWeapon('PulseLaser', 'Pulse Laser', 9, ['F_ENERGY', 'F_PULSE']);
+
+        expect(extremeDamageText(weapon)).toBe('4 [P]');
+        expect(damageTextAtRange(weapon, 'long')).toBe('9 [P]');
+    });
+
+    it('subtracts one damage from Direct-Fire Energy weapons at Extreme range', () => {
+        const weapon = directWeapon('LargeLaser', 'Large Laser', 8, ['F_ENERGY']);
+
+        expect(extremeDamageText(weapon)).toBe('7 [DE]');
+    });
+
+    it('subtracts one damage from Gauss weapons except HAGs at Extreme range', () => {
+        const gauss = directWeapon('GaussRifle', 'Gauss Rifle', 15, ['F_BALLISTIC', 'F_GAUSS']);
+        const hag = new WeaponEquipment({
+            id: 'HAG20',
+            name: 'HAG/20',
+            type: 'weapon',
+            flags: ['F_DIRECT_FIRE', 'F_BALLISTIC', 'F_GAUSS', 'F_HAG'],
+            weapon: { damage: 20, ammoType: 'HAG', rackSize: 20 },
+        });
+
+        expect(extremeDamageText(gauss)).toBe('14 [DB]');
+        expect(extremeDamageText(hag)).toBe('20 [C5,DB]');
+    });
+
+    it('multiplies non-Gauss Direct-Fire Ballistic damage by 0.75 at Extreme range', () => {
+        const weapon = directWeapon('AC10', 'AC/10', 10, ['F_BALLISTIC']);
+
+        expect(extremeDamageText(weapon)).toBe('7 [DB]');
+    });
+
+    it('applies Extreme reductions after equipment damage effects', () => {
+        const weapon = directWeapon('ModifiedLaser', 'Modified Laser', 8, ['F_ENERGY']);
+
+        expect(resolveInventoryControlDamageText(mount(weapon), {
+            selectedRange: 'extreme',
+            selectedAmmo: null,
+            equipmentCatalog: catalog(),
+        }, {
+            applyDamageEffects: (_entry, damage) => ({
+                ...damage,
+                values: damage.values.map(value => value + 5),
+                maximum: damage.maximum + 5,
+            }),
+        })).toBe('12 [DE]');
     });
 
     it('formats non-damaging weapon classifications without a zero', () => {
@@ -206,5 +277,41 @@ function ammunition(
         type: 'ammo',
         flags,
         ammo: { type, rackSize, damagePerShot, munitionType },
+    });
+}
+
+function directWeapon(
+    id: string,
+    name: string,
+    damage: number,
+    flags: EquipmentFlag[],
+): WeaponEquipment {
+    return new WeaponEquipment({
+        id,
+        name,
+        type: 'weapon',
+        flags: ['F_DIRECT_FIRE', ...flags],
+        weapon: { damage },
+    });
+}
+
+function extremeDamageText(weapon: WeaponEquipment): string | null {
+    return damageTextAtRange(weapon, 'extreme');
+}
+
+function damageTextAtRange(
+    weapon: WeaponEquipment,
+    selectedRange: 'short' | 'medium' | 'long' | 'extreme',
+): string | null {
+    const mounted = new MountedWeapon({
+        owner: {} as CBTForceUnit,
+        id: weapon.id,
+        name: weapon.name,
+        equipment: weapon,
+    });
+    return resolveInventoryControlDamageText(mounted, {
+        selectedRange,
+        selectedAmmo: null,
+        equipmentCatalog: catalog(),
     });
 }

@@ -528,6 +528,16 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('trackPhaseAndTurn', value);
     }
 
+    onCbtAutomationsChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('cbtAutomations', value);
+    }
+
+    onCBTExtremeRangeChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('CBTExtremeRange', value);
+    }
+
     onASUseHexChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.optionsService.setOption('ASUseHex', value);

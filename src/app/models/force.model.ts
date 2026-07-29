@@ -936,13 +936,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             this.timestamp = sanitizedData.timestamp ?? null;
             if (sanitizedData.c3Networks) {
                 const sanitizedNetworks = Sanitizer.sanitizeArray(sanitizedData.c3Networks, C3_NETWORK_GROUP_SCHEMA);
-                const unitMap = new Map<string, Unit>();
-                for (const group of parsedGroups) {
-                    for (const forceUnit of group.units()) {
-                        unitMap.set(forceUnit.id, forceUnit.getUnit());
-                    }
-                }
-                this.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitizedNetworks, unitMap));
+                this.setNetwork(sanitizedNetworks);
             }
         } finally {
             this.loading = false;
@@ -1045,13 +1039,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             // Update C3 networks with sanitization and validation
             if (sanitizedData.c3Networks) {
                 const sanitizedNetworks = Sanitizer.sanitizeArray(sanitizedData.c3Networks, C3_NETWORK_GROUP_SCHEMA);
-                const unitMap = new Map<string, Unit>();
-                for (const group of this.groups()) {
-                    for (const forceUnit of group.units()) {
-                        unitMap.set(forceUnit.id, forceUnit.getUnit());
-                    }
-                }
-                this.setNetwork(C3NetworkUtil.validateAndCleanNetworks(sanitizedNetworks, unitMap));
+                this.setNetwork(sanitizedNetworks);
             } else {
                 this.setNetwork([]);
             }

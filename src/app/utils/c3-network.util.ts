@@ -32,7 +32,8 @@
  */
 
 import type { ForceUnit } from '../models/force-unit.model';
-import type { Unit, UnitComponent } from '../models/units.model';
+import type { Equipment } from '../models/equipment.model';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import {
     type C3Component,
     C3NetworkType,
@@ -67,11 +68,28 @@ export interface NetworkMutationResult {
 /** Context for network operations using C3Nodes */
 export interface C3NetworkContext {
     networks: SerializedC3NetworkGroup[];
-    nodesById: Map<string, C3Node>;
     /** Function to get the next available color */
     getNextColor: () => string;
     /** Pre-assigned colors for master pins */
     masterPinColors?: Map<string, string>;
+}
+
+export interface C3ConnectedEndpoint {
+    unitId: string;
+    compIndex: number;
+}
+
+export interface C3RuntimeLink {
+    network: SerializedC3NetworkGroup;
+    source: C3ConnectedEndpoint;
+    target: C3ConnectedEndpoint;
+    operational: boolean;
+}
+
+export interface C3RuntimeUnitState {
+    linked: boolean;
+    degraded: boolean;
+    color?: string;
 }
 
 /**
@@ -81,86 +99,66 @@ export class C3NetworkUtil {
 
     // ==================== Component Detection ====================
 
-    /** Check if a component has any C3 equipment flag */
-    public static hasC3Flag(component: UnitComponent): boolean {
-        if (!component.eq?.flags) return false;
-        return ALL_C3_FLAGS.some(flag => component.eq!.flags.has(flag));
+    /** Check if mounted equipment has any C3 capability. */
+    public static hasC3Flag(equipment?: Equipment): boolean {
+        return !!equipment && ALL_C3_FLAGS.some(flag => equipment.flags.has(flag));
     }
 
-    /** Get the C3 network type for a component */
-    public static getNetworkType(component: UnitComponent): C3NetworkType | null {
-        if (!component.eq?.flags) return null;
+    /** Get the C3 network type for equipment. */
+    public static getNetworkType(equipment?: Equipment): C3NetworkType | null {
+        if (!equipment) return null;
         for (const network of C3_COMPATIBLE_NETWORKS) {
-            if (network.flags.some(flag => component.eq!.flags.has(flag))) {
+            if (network.flags.some(flag => equipment.flags.has(flag))) {
                 return network.type;
             }
         }
         return null;
     }
 
-    /** Get the C3 role for a component */
-    public static getRole(component: UnitComponent): C3Role | null {
-        if (!component.eq?.flags) return null;
-        if (C3_MASTER_FLAGS.some(flag => component.eq!.flags.has(flag))) return C3Role.MASTER;
-        if (C3_SLAVE_FLAGS.some(flag => component.eq!.flags.has(flag))) return C3Role.SLAVE;
-        if (C3_PEER_FLAGS.some(flag => component.eq!.flags.has(flag))) return C3Role.PEER;
+    /** Get the C3 role for equipment. */
+    public static getRole(equipment?: Equipment): C3Role | null {
+        if (!equipment) return null;
+        if (C3_MASTER_FLAGS.some(flag => equipment.flags.has(flag))) return C3Role.MASTER;
+        if (C3_SLAVE_FLAGS.some(flag => equipment.flags.has(flag))) return C3Role.SLAVE;
+        if (C3_PEER_FLAGS.some(flag => equipment.flags.has(flag))) return C3Role.PEER;
         return null;
     }
 
-    /** Check if a component is boosted C3 */
-    public static isBoosted(component: UnitComponent): boolean {
-        if (!component.eq?.flags) return false;
-        return C3_BOOSTED_FLAGS.some(flag => component.eq!.flags.has(flag));
+    /** Check if equipment is boosted C3. */
+    public static isBoosted(equipment?: Equipment): boolean {
+        return !!equipment && C3_BOOSTED_FLAGS.some(flag => equipment.flags.has(flag));
     }
 
-    /** Get all C3 components from a unit (supports both CBT components and AS specials) */
-    public static getC3Components(unit: Unit): C3Component[] {
-        const components: C3Component[] = [];
-        let index = 0;
-        
-        // Check CBT component flags first
-        for (const comp of unit.comp) {
-            if (this.hasC3Flag(comp)) {
-                const networkType = this.getNetworkType(comp);
-                const role = this.getRole(comp);
-                if (networkType && role) {
-                    // Create one C3Component entry per quantity
-                    const count = comp.q > 1 ? comp.q : 1;
-                    for (let i = 0; i < count; i++) {
-                        components.push({
-                            component: comp,
-                            networkType,
-                            role,
-                            boosted: this.isBoosted(comp),
-                            index: index++
-                        });
-                    }
-                }
-            }
+    /** Get normalized C3 endpoints from CBT mounts or Alpha Strike specials. */
+    public static getC3Components(forceUnit: ForceUnit): C3Component[] {
+        const mounts = this.getMountedInventory(forceUnit);
+        if (mounts) {
+            return mounts.flatMap((mount): C3Component[] => {
+                const networkType = this.getNetworkType(mount.equipment);
+                const role = this.getRole(mount.equipment);
+                if (!networkType || !role) return [];
+                return [{
+                    mount,
+                    networkType,
+                    role,
+                    boosted: this.isBoosted(mount.equipment),
+                    index: 0,
+                }];
+            }).map((component, index) => ({ ...component, index }));
         }
-        
-        // If no CBT components found, check Alpha Strike specials
-        if (components.length === 0 && unit.as?.specials) {
-            const asC3Info = parseASC3Specials(unit.as.specials);
+
+        const components: C3Component[] = [];
+        const specials = forceUnit.getUnit().as?.specials;
+        if (specials) {
+            const asC3Info = parseASC3Specials(specials);
             for (const info of asC3Info) {
-                // For masters with count > 1, create multiple components
                 const count = info.role === C3Role.MASTER ? info.count : 1;
                 for (let i = 0; i < count; i++) {
-                    // Create a synthetic component for AS units
-                    const syntheticComp: UnitComponent = {
-                        id: `as-c3-${info.flag}-${i}`,
-                        q: 1,
-                        n: this.getNetworkTypeName(info.networkType),
-                        t: 'O',
-                        p: 0,
-                        l: 'N/A'
-                    };
                     components.push({
-                        component: syntheticComp,
                         networkType: info.networkType,
                         role: info.role,
                         boosted: info.boosted,
-                        index: index++
+                        index: components.length,
                     });
                 }
             }
@@ -169,18 +167,13 @@ export class C3NetworkUtil {
         return components;
     }
 
-    /** Check if a unit has any C3 capability (supports both CBT components and AS specials) */
-    public static hasC3(unit: Unit): boolean {
-        // Check CBT component flags
-        if (unit.comp.some(comp => this.hasC3Flag(comp))) {
-            return true;
-        }
-        // Check Alpha Strike specials
-        if (unit.as?.specials) {
-            const asC3Info = parseASC3Specials(unit.as.specials);
-            return asC3Info.length > 0;
-        }
-        return false;
+    private static getMountedInventory(forceUnit: ForceUnit): readonly MountedEquipment[] | null {
+        const candidate = forceUnit as ForceUnit & { getInventory?: () => readonly MountedEquipment[] };
+        return typeof candidate.getInventory === 'function' ? candidate.getInventory() : null;
+    }
+
+    public static hasC3(forceUnit: ForceUnit): boolean {
+        return this.getC3Components(forceUnit).length > 0;
     }
 
     // ==================== Network Queries ====================
@@ -188,9 +181,11 @@ export class C3NetworkUtil {
     /** Find a peer network containing a unit */
     public static findPeerNetwork(
         unitId: string,
-        networks: SerializedC3NetworkGroup[]
+        networks: SerializedC3NetworkGroup[],
+        networkType?: C3NetworkType,
     ): SerializedC3NetworkGroup | null {
-        return networks.find(n => n.peerIds?.includes(unitId)) ?? null;
+        return networks.find(n => n.peerIds?.includes(unitId)
+            && (networkType === undefined || n.type === networkType)) ?? null;
     }
 
     /** Find a master network by master unit and component */
@@ -219,6 +214,296 @@ export class C3NetworkUtil {
     /** Check if a unit is connected to any network */
     public static isUnitConnected(unitId: string, networks: SerializedC3NetworkGroup[]): boolean {
         return this.findNetworksContainingUnit(unitId, networks).length > 0;
+    }
+
+    /** Resolve serialized topology into exact endpoint links and runtime availability. */
+    public static getRuntimeLinks(
+        networks: readonly SerializedC3NetworkGroup[],
+        unitsById: ReadonlyMap<string, ForceUnit>,
+        isEndpointOperational: (unit: ForceUnit, componentIndex: number) => boolean,
+    ): C3RuntimeLink[] {
+        const links: C3RuntimeLink[] = [];
+        for (const network of networks) {
+            if (network.peerIds) {
+                const endpoints = network.peerIds.flatMap(unitId => {
+                    const unit = unitsById.get(unitId);
+                    if (!unit) return [];
+                    const compIndex = this.resolveConnectedComponentIndex(unitId, unit, network, C3Role.PEER);
+                    return compIndex === undefined ? [] : [{ unitId, compIndex }];
+                });
+                for (let sourceIndex = 0; sourceIndex < endpoints.length; sourceIndex++) {
+                    for (let targetIndex = sourceIndex + 1; targetIndex < endpoints.length; targetIndex++) {
+                        links.push(this.runtimeLink(
+                            network,
+                            endpoints[sourceIndex],
+                            endpoints[targetIndex],
+                            unitsById,
+                            isEndpointOperational,
+                        ));
+                    }
+                }
+                continue;
+            }
+
+            if (!network.masterId || network.masterCompIndex === undefined) continue;
+            const source = { unitId: network.masterId, compIndex: network.masterCompIndex };
+            for (const member of network.members ?? []) {
+                const parsed = this.parseMember(member);
+                const unit = unitsById.get(parsed.unitId);
+                if (!unit) continue;
+                const role = parsed.compIndex === undefined ? C3Role.SLAVE : C3Role.MASTER;
+                const explicitComponent = parsed.compIndex === undefined
+                    ? undefined
+                    : this.getC3Components(unit)[parsed.compIndex];
+                const compIndex = explicitComponent?.role === role && explicitComponent.networkType === network.type
+                    ? parsed.compIndex
+                    : parsed.compIndex === undefined
+                        ? this.resolveConnectedComponentIndex(parsed.unitId, unit, network, role)
+                        : undefined;
+                if (compIndex === undefined) continue;
+                links.push(this.runtimeLink(
+                    network,
+                    source,
+                    { unitId: parsed.unitId, compIndex },
+                    unitsById,
+                    isEndpointOperational,
+                ));
+            }
+        }
+        return links;
+    }
+
+    public static hasOnlyBrokenIncidentLinks(
+        networkId: string,
+        unitId: string,
+        links: readonly C3RuntimeLink[],
+    ): boolean {
+        const incidentLinks = links.filter(link => link.network.id === networkId
+            && (link.source.unitId === unitId || link.target.unitId === unitId));
+        return incidentLinks.length === 0 || incidentLinks.every(link => !link.operational);
+    }
+
+    public static isChildLinkBroken(
+        networkId: string,
+        unitId: string,
+        componentIndex: number | undefined,
+        links: readonly C3RuntimeLink[],
+    ): boolean {
+        return !links.some(link => link.network.id === networkId
+            && link.target.unitId === unitId
+            && (componentIndex === undefined || link.target.compIndex === componentIndex)
+            && link.operational);
+    }
+
+    /** Runtime state for one unit/network type, based only on operational exact-pin links. */
+    public static getRuntimeUnitState(
+        unitId: string,
+        networkType: C3NetworkType,
+        links: readonly C3RuntimeLink[],
+        isUnitJammed: (unitId: string) => boolean,
+    ): C3RuntimeUnitState {
+        const typedLinks = links.filter(link => link.network.type === networkType);
+        const localEndpointKeys = new Set<string>();
+        for (const link of typedLinks) {
+            if (link.source.unitId === unitId) localEndpointKeys.add(this.endpointKey(link.source));
+            if (link.target.unitId === unitId) localEndpointKeys.add(this.endpointKey(link.target));
+        }
+        if (localEndpointKeys.size === 0) return { linked: false, degraded: false };
+
+        const operationalLinks = typedLinks.filter(link => link.operational);
+        const adjacency = new Map<string, Set<string>>();
+        const incidentLinks = new Map<string, C3RuntimeLink[]>();
+        for (const link of operationalLinks) {
+            const sourceKey = this.endpointKey(link.source);
+            const targetKey = this.endpointKey(link.target);
+            this.addAdjacent(adjacency, sourceKey, targetKey);
+            this.addAdjacent(adjacency, targetKey, sourceKey);
+            this.addIncidentLink(incidentLinks, sourceKey, link);
+            this.addIncidentLink(incidentLinks, targetKey, link);
+        }
+
+        const linkedLocalKeys = [...localEndpointKeys].filter(key => (adjacency.get(key)?.size ?? 0) > 0);
+        if (linkedLocalKeys.length === 0) {
+            const configuredLink = typedLinks.find(link =>
+                localEndpointKeys.has(this.endpointKey(link.source)) || localEndpointKeys.has(this.endpointKey(link.target)));
+            return { linked: false, degraded: false, color: configuredLink?.network.color };
+        }
+
+        const componentKeys = new Set<string>();
+        const componentLinks = new Map<string, C3RuntimeLink>();
+        const stack = [...linkedLocalKeys];
+        while (stack.length > 0) {
+            const key = stack.pop()!;
+            if (componentKeys.has(key)) continue;
+            componentKeys.add(key);
+            for (const link of incidentLinks.get(key) ?? []) componentLinks.set(this.runtimeLinkKey(link), link);
+            for (const neighbor of adjacency.get(key) ?? []) stack.push(neighbor);
+        }
+
+        const componentUnitIds = new Set([...componentKeys].map(key => this.endpointUnitId(key)));
+        const degraded = networkType === C3NetworkType.C3
+            ? [...componentUnitIds].some(isUnitJammed)
+            : isUnitJammed(unitId) || [...componentUnitIds]
+                .filter(componentUnitId => componentUnitId !== unitId)
+                .every(isUnitJammed);
+        return {
+            linked: true,
+            degraded,
+            color: this.operationalRootColor([...componentLinks.values()], networkType),
+        };
+    }
+
+    private static runtimeLink(
+        network: SerializedC3NetworkGroup,
+        source: C3ConnectedEndpoint,
+        target: C3ConnectedEndpoint,
+        unitsById: ReadonlyMap<string, ForceUnit>,
+        isEndpointOperational: (unit: ForceUnit, componentIndex: number) => boolean,
+    ): C3RuntimeLink {
+        const sourceUnit = unitsById.get(source.unitId);
+        const targetUnit = unitsById.get(target.unitId);
+        return {
+            network,
+            source,
+            target,
+            operational: !!sourceUnit && !!targetUnit
+                && isEndpointOperational(sourceUnit, source.compIndex)
+                && isEndpointOperational(targetUnit, target.compIndex),
+        };
+    }
+
+    private static operationalRootColor(links: readonly C3RuntimeLink[], networkType: C3NetworkType): string | undefined {
+        if (links.length === 0) return undefined;
+        if (networkType !== C3NetworkType.C3) return links[0].network.color;
+        const incomingTargets = new Set(links.map(link => this.endpointKey(link.target)));
+        return links.find(link => !incomingTargets.has(this.endpointKey(link.source)))?.network.color
+            ?? links[0].network.color;
+    }
+
+    private static endpointKey(endpoint: C3ConnectedEndpoint): string {
+        return `${endpoint.unitId}:${endpoint.compIndex}`;
+    }
+
+    private static endpointUnitId(endpointKey: string): string {
+        return endpointKey.slice(0, endpointKey.lastIndexOf(':'));
+    }
+
+    private static runtimeLinkKey(link: C3RuntimeLink): string {
+        return `${link.network.id}:${this.endpointKey(link.source)}>${this.endpointKey(link.target)}`;
+    }
+
+    private static addAdjacent(adjacency: Map<string, Set<string>>, key: string, adjacent: string): void {
+        const values = adjacency.get(key) ?? new Set<string>();
+        values.add(adjacent);
+        adjacency.set(key, values);
+    }
+
+    private static addIncidentLink(linksByEndpoint: Map<string, C3RuntimeLink[]>, key: string, link: C3RuntimeLink): void {
+        const links = linksByEndpoint.get(key) ?? [];
+        links.push(link);
+        linksByEndpoint.set(key, links);
+    }
+
+    /** Resolve the exact C3 pins used by a unit's serialized network links. */
+    public static findConnectedComponentIndexes(
+        unitId: string,
+        unit: ForceUnit,
+        networks: SerializedC3NetworkGroup[]
+    ): number[] {
+        const components = this.getC3Components(unit);
+        const indexes = new Set<number>();
+        for (const network of networks) {
+            if (network.masterId === unitId && (network.members?.length ?? 0) > 0) {
+                const component = components[network.masterCompIndex ?? -1];
+                if (component?.role === C3Role.MASTER && component.networkType === network.type) indexes.add(component.index);
+            }
+
+            const member = network.members?.find(value => this.parseMember(value).unitId === unitId);
+            if (member) {
+                const parsed = this.parseMember(member);
+                const compIndex = parsed.compIndex
+                    ?? this.uniqueComponentIndex(components, C3Role.SLAVE, network.type);
+                const component = compIndex === undefined ? undefined : components[compIndex];
+                const expectedRole = parsed.compIndex === undefined ? C3Role.SLAVE : C3Role.MASTER;
+                if (component?.role === expectedRole && component.networkType === network.type) indexes.add(component.index);
+            }
+
+            if (network.peerIds?.includes(unitId)) {
+                const compIndex = this.uniqueComponentIndex(components, C3Role.PEER, network.type);
+                const component = compIndex === undefined ? undefined : components[compIndex];
+                if (component?.role === C3Role.PEER && component.networkType === network.type) indexes.add(component.index);
+            }
+        }
+        return [...indexes];
+    }
+
+    /** Return only the remote endpoints directly connected to this unit in one network. */
+    public static findConnectedCounterpartEndpoints(
+        unitId: string,
+        unitsById: ReadonlyMap<string, ForceUnit>,
+        network: SerializedC3NetworkGroup
+    ): C3ConnectedEndpoint[] {
+        if (network.peerIds?.includes(unitId)) {
+            return network.peerIds
+                .filter(peerId => peerId !== unitId)
+                .flatMap(peerId => {
+                    const peer = unitsById.get(peerId);
+                    if (!peer) return [];
+                    const indexes = this.findConnectedComponentIndexes(peerId, peer, [network]);
+                    return indexes.map(compIndex => ({ unitId: peerId, compIndex }));
+                });
+        }
+
+        if (network.masterId === unitId) {
+            return (network.members ?? []).flatMap(member => {
+                const { unitId: memberId } = this.parseMember(member);
+                if (memberId === unitId) return [];
+                const memberUnit = unitsById.get(memberId);
+                if (!memberUnit) return [];
+                return this.findConnectedComponentIndexes(memberId, memberUnit, [network])
+                    .map(compIndex => ({ unitId: memberId, compIndex }));
+            });
+        }
+
+        if (network.members?.some(member => this.parseMember(member).unitId === unitId)
+            && network.masterId) {
+            const master = unitsById.get(network.masterId);
+            if (!master) return [];
+            return this.findConnectedComponentIndexes(network.masterId, master, [network])
+                .map(compIndex => ({ unitId: network.masterId!, compIndex }));
+        }
+        return [];
+    }
+
+    /** Resolve an explicit master pin or the unique slave/peer pin for the network type. */
+    public static resolveConnectedComponentIndex(
+        unitId: string,
+        unit: ForceUnit,
+        network: SerializedC3NetworkGroup,
+        role: C3Role
+    ): number | undefined {
+        const components = this.getC3Components(unit);
+        const explicitMasterIndex = role === C3Role.MASTER
+            ? network.masterId === unitId ? network.masterCompIndex : this.parseMember(
+                network.members?.find(member => this.parseMember(member).unitId === unitId) ?? ''
+            ).compIndex
+            : undefined;
+        if (explicitMasterIndex !== undefined) {
+            const component = components[explicitMasterIndex];
+            return component?.role === role && component.networkType === network.type
+                ? explicitMasterIndex
+                : undefined;
+        }
+        return this.uniqueComponentIndex(components, role, network.type);
+    }
+
+    private static uniqueComponentIndex(
+        components: C3Component[],
+        role: C3Role,
+        networkType: C3NetworkType
+    ): number | undefined {
+        const candidates = components.filter(component => component.role === role && component.networkType === networkType);
+        return candidates.length === 1 ? candidates[0].index : undefined;
     }
 
     /** Check if a unit's Master component is connected */
@@ -478,7 +763,7 @@ export class C3NetworkUtil {
 
         // Master to Master
         if (sourceComp.role === C3Role.MASTER && targetComp.role === C3Role.MASTER) {
-            return this.canMasterConnectToMaster(targetNode, targetCompIdx, sourceNode, sourceCompIdx, networks);
+            return this.canMasterConnectToMaster(sourceNode, sourceCompIdx, targetNode, targetCompIdx, networks);
         }
 
         return { valid: false, reason: 'Incompatible connection types' };
@@ -490,8 +775,8 @@ export class C3NetworkUtil {
         networkType: C3NetworkType,
         networks: SerializedC3NetworkGroup[]
     ): { valid: boolean; reason?: string } {
-        const net1 = this.findPeerNetwork(unitId1, networks);
-        const net2 = this.findPeerNetwork(unitId2, networks);
+        const net1 = this.findPeerNetwork(unitId1, networks, networkType);
+        const net2 = this.findPeerNetwork(unitId2, networks, networkType);
         
         if (net1 && net2 && net1.type !== net2.type) {
             return { valid: false, reason: 'Incompatible network types' };
@@ -762,7 +1047,7 @@ export class C3NetworkUtil {
             || this.isChildOfMaster(ctx.networks, targetNode.unit.id, targetCompIdx, sourceNode.unit.id, sourceCompIdx)) {
                 return { networks: ctx.networks, success: false, message: 'Already connected' };
             }
-            return this.addMemberToMaster(ctx, targetNode, targetCompIdx, sourceNode.unit.id, sourceCompIdx);
+            return this.addMemberToMaster(ctx, sourceNode, sourceCompIdx, targetNode.unit.id, targetCompIdx);
         }
 
         return { networks: ctx.networks, success: false, message: 'Incompatible roles' };
@@ -776,15 +1061,18 @@ export class C3NetworkUtil {
         networkType: C3NetworkType
     ): NetworkMutationResult {
         const networks = [...ctx.networks];
-        const net1 = this.findPeerNetwork(node1.unit.id, networks);
-        const net2 = this.findPeerNetwork(node2.unit.id, networks);
+        const net1 = this.findPeerNetwork(node1.unit.id, networks, networkType);
+        const net2 = this.findPeerNetwork(node2.unit.id, networks, networkType);
         const limit = C3_NETWORK_LIMITS[networkType];
 
         const removeFromNetwork = (unitId: string, net: SerializedC3NetworkGroup | null) => {
             if (!net) return;
             const idx = networks.findIndex(n => n.id === net.id);
             if (idx < 0) return;
-            networks[idx] = { ...networks[idx], peerIds: networks[idx].peerIds?.filter(id => id !== unitId) };
+            networks[idx] = {
+                ...networks[idx],
+                peerIds: networks[idx].peerIds?.filter(id => id !== unitId)
+            };
             if ((networks[idx].peerIds?.length ?? 0) < 2) {
                 networks.splice(idx, 1);
             }
@@ -793,7 +1081,10 @@ export class C3NetworkUtil {
         const addToNetwork = (unitId: string, net: SerializedC3NetworkGroup) => {
             const idx = networks.findIndex(n => n.id === net.id);
             if (idx >= 0 && !networks[idx].peerIds?.includes(unitId)) {
-                networks[idx] = { ...networks[idx], peerIds: [...(networks[idx].peerIds ?? []), unitId] };
+                networks[idx] = {
+                    ...networks[idx],
+                    peerIds: [...(networks[idx].peerIds ?? []), unitId]
+                };
             }
         };
 
@@ -806,7 +1097,10 @@ export class C3NetworkUtil {
                 const idx1 = networks.findIndex(n => n.id === net1.id);
                 const idx2 = networks.findIndex(n => n.id === net2.id);
                 // We make net2 the surviving network to preserve color
-                networks[idx2] = { ...networks[idx2], peerIds: [...merged] };
+                networks[idx2] = {
+                    ...networks[idx2],
+                    peerIds: [...merged]
+                };
                 networks.splice(idx1, 1);
                 return { networks, success: true, message: 'Networks merged' };
             }
@@ -849,7 +1143,7 @@ export class C3NetworkUtil {
     ): NetworkMutationResult {
         let networks = [...ctx.networks];
         const masterComp = masterNode.c3Components[masterCompIdx];
-        const memberStr = memberCompIdx !== undefined 
+        const memberStr = memberCompIdx !== undefined
             ? this.createMasterMember(memberId, memberCompIdx)
             : memberId;
 
@@ -990,7 +1284,6 @@ export class C3NetworkUtil {
 
         // Get the network's masterId before modifying
         const networkMasterId = result[idx].masterId;
-
         result[idx] = {
             ...result[idx],
             members: result[idx].members!.filter(m => m !== memberStr)
@@ -1016,10 +1309,11 @@ export class C3NetworkUtil {
     /** Remove a unit from a peer network */
     public static removeUnitFromPeerNetwork(
         networks: SerializedC3NetworkGroup[],
-        unitId: string
+        unitId: string,
+        networkType?: C3NetworkType,
     ): NetworkMutationResult {
         const result = [...networks];
-        const net = this.findPeerNetwork(unitId, result);
+        const net = this.findPeerNetwork(unitId, result, networkType);
         if (!net) return { networks: result, success: false, message: 'Unit not in peer network' };
 
         const idx = result.findIndex(n => n.id === net.id);
@@ -1098,7 +1392,8 @@ export class C3NetworkUtil {
         sourceRole: C3Role,
         targetId: string,
         targetCompIdx: number,
-        targetRole: C3Role
+        targetRole: C3Role,
+        networkType?: C3NetworkType
     ): { networkId: string; memberStr?: string } | null {
         // Master -> Slave
         if (sourceRole === C3Role.MASTER && targetRole === C3Role.SLAVE) {
@@ -1133,7 +1428,7 @@ export class C3NetworkUtil {
 
         // Peer -> Peer
         if (sourceRole === C3Role.PEER && targetRole === C3Role.PEER && sourceId !== targetId) {
-            const net = this.findPeerNetwork(sourceId, networks);
+            const net = this.findPeerNetwork(sourceId, networks, networkType);
             if (net?.peerIds?.includes(targetId)) {
                 return { networkId: net.id };
             }
@@ -1147,7 +1442,8 @@ export class C3NetworkUtil {
         networks: SerializedC3NetworkGroup[],
         unitId: string,
         compIdx: number,
-        role: C3Role
+        role: C3Role,
+        networkType?: C3NetworkType,
     ): NetworkMutationResult {
         const result = [...networks];
 
@@ -1166,7 +1462,10 @@ export class C3NetworkUtil {
         }
 
         if (role === C3Role.PEER) {
-            return this.removeUnitFromPeerNetwork(result, unitId);
+            const peerNetwork = this.findPeerNetwork(unitId, result, networkType);
+            return peerNetwork
+                ? this.removeUnitFromPeerNetwork(result, unitId, peerNetwork.type)
+                : { networks: result, success: false, message: 'No connection found' };
         }
 
         return { networks: result, success: false, message: 'No connection found' };
@@ -1210,7 +1509,7 @@ export class C3NetworkUtil {
         if (networkedUnits.length < 2) return 0;
 
         const networkTaxRate = Math.min(0.4, networkedUnits.length * C3_TAX_RATE);
-        const hasBoosted = this.getC3Components(unit.getUnit()).some(component => component.boosted);
+        const hasBoosted = this.getC3Components(unit).some(component => component.boosted);
         const unitTaxRate = networkTaxRate + (hasBoosted ? C3_TAX_RATE : 0);
         return Math.round((unit.getBaseBv() + unit.tagBV()) * unitTaxRate);
     }
@@ -1229,18 +1528,18 @@ export class C3NetworkUtil {
         const networkedUnits = this.getNetworkTreeUnits(rootNet, networks, allUnits);
         if (networkedUnits.length < 2) return 0; // No tax for single unit
 
-        const hasBoosted = this.getC3Components(unit.getUnit()).some(c => c.boosted);
+        const hasBoosted = this.getC3Components(unit).some(c => c.boosted);
         const taxRate = hasBoosted ? C3_BOOSTED_TAX_RATE : C3_TAX_RATE;
         const networkTotalBv = networkedUnits.reduce((sum, u) => sum + u.getBaseBv() + u.tagBV(), 0);
         return Math.round(networkTotalBv * taxRate);
     }
 
     private static calculateNovaC3Tax(unit: CBTForceUnit, allUnits: CBTForceUnit[]): number | null {
-        const c3Comps = this.getC3Components(unit.getUnit());
+        const c3Comps = this.getC3Components(unit);
         if (!c3Comps.some(component => component.networkType === C3NetworkType.NOVA)) return null;
 
         const unitsCountWithNovaCews = allUnits.filter(candidate =>
-            this.getC3Components(candidate.getUnit()).some(component => component.networkType === C3NetworkType.NOVA)
+            this.getC3Components(candidate).some(component => component.networkType === C3NetworkType.NOVA)
         ).length;
         if (unitsCountWithNovaCews < 2) return 0;
         const baseForceBV = allUnits.reduce((sum, candidate) => sum + candidate.getBaseBv() + candidate.tagBV(), 0);
@@ -1304,7 +1603,7 @@ export class C3NetworkUtil {
 
     public static validateAndCleanNetworks(
         networks: SerializedC3NetworkGroup[],
-        unitMap: Map<string, Unit>
+        unitMap: Map<string, ForceUnit>
     ): SerializedC3NetworkGroup[] {
         if (!networks || networks.length === 0) return [];
 
@@ -1329,13 +1628,16 @@ export class C3NetworkUtil {
 
     private static validateNetwork(
         network: SerializedC3NetworkGroup,
-        unitMap: Map<string, Unit>,
+        unitMap: Map<string, ForceUnit>,
         unitC3Map: Map<string, C3Component[]>
     ): SerializedC3NetworkGroup | null {
-        if (network.peerIds?.length) {
+        if (!Object.values(C3NetworkType).includes(network.type)) return null;
+        if (network.peerIds && network.peerIds.length > 0) {
+            if (network.type === C3NetworkType.C3 || network.masterId !== undefined) return null;
             return this.validatePeerNetwork(network, unitMap, unitC3Map);
         }
         if (network.masterId !== undefined) {
+            if (network.type !== C3NetworkType.C3) return null;
             return this.validateC3MasterNetwork(network, unitMap, unitC3Map);
         }
         return null;
@@ -1343,37 +1645,45 @@ export class C3NetworkUtil {
 
     private static validatePeerNetwork(
         network: SerializedC3NetworkGroup,
-        unitMap: Map<string, Unit>,
+        unitMap: Map<string, ForceUnit>,
         unitC3Map: Map<string, C3Component[]>
     ): SerializedC3NetworkGroup | null {
         if (!network.peerIds) return null;
         const networkType = network.type;
-        const validPeerIds: string[] = [];
+        const validPeerIds = new Set<string>();
 
         for (const peerId of network.peerIds) {
             if (!unitMap.has(peerId)) continue;
             const c3Comps = unitC3Map.get(peerId);
             if (!c3Comps) continue;
             if (c3Comps.some(c => c.role === C3Role.PEER && c.networkType === networkType)) {
-                validPeerIds.push(peerId);
+                validPeerIds.add(peerId);
             }
         }
 
-        if (validPeerIds.length < 2) return null;
+        if (validPeerIds.size < 2) return null;
         const limit = C3_NETWORK_LIMITS[networkType];
-        return { ...network, peerIds: validPeerIds.slice(0, limit) };
+        if (limit === undefined) return null;
+        return {
+            id: network.id,
+            type: network.type,
+            color: network.color,
+            peerIds: [...validPeerIds].slice(0, limit),
+        };
     }
 
     private static validateC3MasterNetwork(
         network: SerializedC3NetworkGroup,
-        unitMap: Map<string, Unit>,
+        unitMap: Map<string, ForceUnit>,
         unitC3Map: Map<string, C3Component[]>
     ): SerializedC3NetworkGroup | null {
         if (network.masterId === undefined || network.masterCompIndex === undefined) return null;
         if (!unitMap.has(network.masterId)) return null;
 
         const masterC3Comps = unitC3Map.get(network.masterId);
-        if (!masterC3Comps?.some(c => c.index === network.masterCompIndex && c.role === C3Role.MASTER)) {
+        if (!masterC3Comps?.some(c => c.index === network.masterCompIndex
+            && c.role === C3Role.MASTER
+            && c.networkType === network.type)) {
             return null;
         }
 
@@ -1389,12 +1699,14 @@ export class C3NetworkUtil {
 
             if (compIndex !== undefined) {
                 // Master member (sub-master)
-                if (memberC3.some(c => c.index === compIndex && c.role === C3Role.MASTER)) {
+                if (memberC3.some(c => c.index === compIndex
+                    && c.role === C3Role.MASTER
+                    && c.networkType === network.type)) {
                     validMasterMembers.push(member);
                 }
             } else {
                 // Slave member
-                if (memberC3.some(c => c.role === C3Role.SLAVE)) {
+                if (memberC3.some(c => c.role === C3Role.SLAVE && c.networkType === network.type)) {
                     validSlaveMembers.push(member);
                 }
             }
@@ -1410,9 +1722,17 @@ export class C3NetworkUtil {
             validMembers = [...validMasterMembers, ...validSlaveMembers];
         }
 
+        validMembers = [...new Set(validMembers)];
         if (validMembers.length === 0) return null;
         const limit = C3_NETWORK_LIMITS[network.type];
-        return { ...network, members: validMembers.slice(0, limit) };
+        return {
+            id: network.id,
+            type: network.type,
+            color: network.color,
+            masterId: network.masterId,
+            masterCompIndex: network.masterCompIndex,
+            members: validMembers.slice(0, limit),
+        };
     }
 
     private static validateNetworkDepth(networks: SerializedC3NetworkGroup[]): SerializedC3NetworkGroup[] {
@@ -1536,19 +1856,24 @@ export class C3NetworkUtil {
     private static validateUnitSingleNetworkTree(networks: SerializedC3NetworkGroup[]): SerializedC3NetworkGroup[] {
         let result = [...networks];
         
-        // Count how many networks each unit appears in
+        // A unit may participate independently in different C3 network types.
         const unitNetworkCount = new Map<string, number>();
         for (const net of result) {
             for (const id of this.getNetworkUnitIds(net)) {
-                unitNetworkCount.set(id, (unitNetworkCount.get(id) ?? 0) + 1);
+                const key = `${id}\u0000${net.type}`;
+                unitNetworkCount.set(key, (unitNetworkCount.get(key) ?? 0) + 1);
             }
         }
 
-        // Only check units that appear in multiple networks
-        for (const [unitId, count] of unitNetworkCount) {
+        // Only check units that appear in multiple trees of the same type.
+        for (const [unitTypeKey, count] of unitNetworkCount) {
             if (count <= 1) continue;
+            const separatorIndex = unitTypeKey.lastIndexOf('\u0000');
+            const unitId = unitTypeKey.slice(0, separatorIndex);
+            const networkType = unitTypeKey.slice(separatorIndex + 1) as C3NetworkType;
 
-            const containingNetworks = this.findNetworksContainingUnit(unitId, result);
+            const containingNetworks = this.findNetworksContainingUnit(unitId, result)
+                .filter(network => network.type === networkType);
             if (containingNetworks.length <= 1) continue;
 
             // Get unique root network IDs

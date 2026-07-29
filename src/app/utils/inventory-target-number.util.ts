@@ -35,7 +35,7 @@ import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { WeaponEquipment, type AmmoEquipment } from '../models/equipment.model';
 import { resolveAmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
 import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
-import { CORE_2026_GAME_RULES, validatedToHitModifierBreakdown, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry } from '../models/rules/game-rules';
+import { CORE_2026_GAME_RULES, validatedToHitModifierBreakdown, type C3DegradationSource, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry } from '../models/rules/game-rules';
 import { orderHitTargetTooltipLines } from './hit-target-tooltip.util';
 import type { UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
 import type { InventoryControlDisplayData, InventoryControlGroupId, InventoryRangeKey } from './inventory-control.util';
@@ -44,6 +44,7 @@ import { aerospaceRangeBracket, aerospaceRangeLimits, effectiveAerospaceMaximumB
 
 export interface InventoryTargetRangeSelection {
     range: InventoryControlRuntimeRangeKey;
+    maximumRange: InventoryControlRuntimeRangeKey;
     outOfRange: boolean;
     outOfLongRange: boolean;
     outOfExtremeRange: boolean;
@@ -69,6 +70,7 @@ export interface InventoryTargetNumberInput {
     category: InventoryControlGroupId;
     display: Pick<InventoryControlDisplayData, InventoryRangeKey | 'min'>;
     extremeRange?: number | null;
+    allowExtremeRange?: boolean;
     selectedAmmo?: AmmoEquipment | null;
     target: InventoryControlRuntimeTarget | null;
     gunnerySkill: number;
@@ -80,6 +82,7 @@ export interface InventoryTargetNumberInput {
     hitModifier: HitModifier;
     hitModifierBreakdown?: readonly ToHitModifierBreakdownEntry[];
     heatFireModifier?: number;
+    c3DegradationSource?: C3DegradationSource;
     gameRules?: CBTGameRules;
 }
 
@@ -91,12 +94,20 @@ export function inventoryTargetCategory(entry: MountedEquipment): InventoryContr
     return 'equipment';
 }
 
-export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberInput, 'entry' | 'category' | 'display' | 'extremeRange' | 'target' | 'selectedAmmo'>): InventoryTargetRangeSelection | null {
+export function inventoryTargetAllowsC3(target: InventoryControlRuntimeTarget): boolean {
+    return target.tnCalculator?.indirectFire !== true;
+}
+
+export function inventoryTargetUsesC3(target: InventoryControlRuntimeTarget): boolean {
+    return target.useC3 === true && inventoryTargetAllowsC3(target);
+}
+
+export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberInput, 'entry' | 'category' | 'display' | 'extremeRange' | 'allowExtremeRange' | 'target' | 'selectedAmmo'>): InventoryTargetRangeSelection | null {
     const target = input.target;
     if (!target) return null;
-    const c3Distance = target.useC3 === true ? target.c3Distance ?? null : null;
+    const c3Distance = inventoryTargetUsesC3(target) ? target.c3Distance ?? null : null;
     const rangeDistance = c3Distance === null ? target.distance : Math.min(target.distance, c3Distance);
-    if (isPhysicalInventoryTargetNumberEntry(input.entry, input.category)) return { range: 'short', outOfRange: false, outOfLongRange: false, outOfExtremeRange: false, minimumRangeModifier: 0, distance: target.distance, c3Distance };
+    if (isPhysicalInventoryTargetNumberEntry(input.entry, input.category)) return { range: 'short', maximumRange: 'short', outOfRange: false, outOfLongRange: false, outOfExtremeRange: false, minimumRangeModifier: 0, distance: target.distance, c3Distance };
 
     if (isAerospaceWeaponAttack(input.entry)) {
         return aerospaceTargetRangeSelection(input.entry, target, input.selectedAmmo ?? null, c3Distance);
@@ -104,7 +115,7 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
 
     const artilleryMinimumDistance = input.selectedAmmo?.category === 'Artillery' ? 7 : null;
     if (artilleryMinimumDistance !== null && target.distance <= artilleryMinimumDistance) {
-        return { range: 'short', outOfRange: true, outOfLongRange: true, outOfExtremeRange: false, minimumRangeModifier: 0, distance: target.distance, c3Distance };
+        return { range: 'short', maximumRange: 'short', outOfRange: true, outOfLongRange: true, outOfExtremeRange: false, minimumRangeModifier: 0, distance: target.distance, c3Distance };
     }
 
     const minimumRangeModifier = inventoryTargetMinimumRangeModifier(input.display.min, target.distance);
@@ -113,22 +124,29 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
         .map(range => ({ range, value: parseInventoryTargetNumberCell(input.display[range]) }))
         .filter((item): item is { range: InventoryRangeKey; value: number } => item.value !== null);
     if (thresholds.length === 0) return null;
-    const longRange = thresholds.find(threshold => threshold.range === 'long')?.value ?? null;
-    const outOfLongRange = longRange !== null && target.distance > longRange;
+    const normalMaximum = thresholds[thresholds.length - 1];
     const extremeRange = input.extremeRange ?? null;
-    const actualOutOfExtremeRange = outOfLongRange && extremeRange !== null && target.distance > extremeRange;
+    const extremeEnabled = input.allowExtremeRange === true
+        && normalMaximum.range === 'long'
+        && extremeRange !== null
+        && extremeRange > normalMaximum.value;
+    const maximumRange = extremeEnabled ? 'extreme' : normalMaximum.range;
+    const maximumDistance = extremeEnabled ? extremeRange : normalMaximum.value;
+    const outOfLongRange = target.distance > normalMaximum.value;
+    const actualOutOfExtremeRange = extremeRange !== null && target.distance > extremeRange;
+    const outOfRange = target.distance > maximumDistance;
 
-    for (const threshold of thresholds) {
-        if (rangeDistance <= threshold.value) {
-            return { range: threshold.range, outOfRange: outOfLongRange, outOfLongRange, outOfExtremeRange: actualOutOfExtremeRange, minimumRangeModifier, distance: target.distance, c3Distance };
-        }
-    }
+    const closestUnitRange = thresholds.find(threshold => rangeDistance <= threshold.value)?.range ?? 'extreme';
+    const range = c3Distance !== null && !outOfRange && outOfLongRange
+        ? nextInventoryRangeBracket(closestUnitRange)
+        : closestUnitRange;
 
     return {
-        range: 'extreme',
-        outOfRange: true,
-        outOfLongRange: true,
-        outOfExtremeRange: extremeRange !== null && rangeDistance > extremeRange,
+        range,
+        maximumRange,
+        outOfRange,
+        outOfLongRange,
+        outOfExtremeRange: actualOutOfExtremeRange,
         minimumRangeModifier,
         distance: target.distance,
         c3Distance
@@ -163,7 +181,10 @@ function aerospaceTargetRangeSelection(
         || !isRangeBracketWithinMaximum(actualRange, maximumRange);
 
     return {
-        range: effectiveRange ?? 'extreme',
+        range: actualRange === 'extreme' && c3Distance !== null
+            ? nextInventoryRangeBracket(effectiveRange ?? 'extreme')
+            : effectiveRange ?? 'extreme',
+        maximumRange,
         outOfRange,
         outOfLongRange: actualRange === 'extreme' || outOfExtremeRange,
         outOfExtremeRange,
@@ -223,6 +244,11 @@ export function inventoryTargetNumberBreakdown(
     const artilleryRangeModifier = input.selectedAmmo?.category === 'Artillery'
         ? gameRules.artilleryFlatRangeModifier : null;
     const rangeModifier = artilleryRangeModifier ?? inventoryTargetRangeModifier(rangeSelection.range);
+    const c3Modifier = gameRules.resolveC3TargetingModifier(
+        input.c3DegradationSource ?? 'none',
+        c3RangeBracketImprovement(input, rangeSelection)
+    );
+    const c3ModifierValue = c3Modifier?.modifier ?? 0;
     const minimumRangeModifier = rangeSelection.minimumRangeModifier;
     const ammoToHitModifier = physical || !input.selectedAmmo
         ? 0
@@ -255,6 +281,13 @@ export function inventoryTargetNumberBreakdown(
         if (rangeSelection.c3Distance !== null) {
             terms.push({ label: 'C³ Distance', value: `${rangeSelection.c3Distance} (actual ${rangeSelection.distance})` });
         }
+        if (c3Modifier) {
+            terms.push({
+                label: c3Modifier.label,
+                value: formatInventoryTargetSignedModifier(c3Modifier.modifier),
+                ...(c3Modifier.negative && { negative: true })
+            });
+        }
     }
     if (minimumRangeModifier !== 0) {
         terms.push({ label: 'Minimum Range', value: formatInventoryTargetSignedModifier(minimumRangeModifier), negative: true });
@@ -280,7 +313,7 @@ export function inventoryTargetNumberBreakdown(
 
     const attackModifier = input.attackModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
     const skillModifier = skillModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
-    const total = skill + skillModifier + attackModifier + target.tnModifier + rangeModifier + minimumRangeModifier + input.hitModifier + numericAmmoToHitModifier + heatFireModifier;
+    const total = skill + skillModifier + attackModifier + target.tnModifier + rangeModifier + c3ModifierValue + minimumRangeModifier + input.hitModifier + numericAmmoToHitModifier + heatFireModifier;
     return {
         total,
         lines: [
@@ -290,6 +323,61 @@ export function inventoryTargetNumberBreakdown(
         ],
         rangeSelection
     };
+}
+
+function c3RangeBracketImprovement(
+    input: InventoryTargetNumberInput,
+    effectiveSelection: InventoryTargetRangeSelection
+): number {
+    if (effectiveSelection.c3Distance === null) return 0;
+    const target = input.target;
+    if (!target) return 0;
+    const actualSelection = inventoryTargetRangeSelection({
+        ...input,
+        target: { ...target, c3Distance: undefined }
+    });
+    if (actualSelection?.range === 'extreme' && !actualSelection.outOfRange) {
+        return Math.max(0,
+            c3RangeBracketIndex(actualSelection)
+            - c3RangeBracketIndex(effectiveSelection));
+    }
+    const c3Selection = inventoryTargetRangeSelection({
+        ...input,
+        target: {
+            ...target,
+            distance: Math.min(target.distance, effectiveSelection.c3Distance),
+            c3Distance: undefined
+        }
+    });
+    if (!actualSelection || !c3Selection) return 0;
+
+    return Math.max(0,
+        c3RangeBracketIndex(actualSelection)
+        - c3RangeBracketIndex(c3Selection));
+}
+
+function c3RangeBracketIndex(selection: InventoryTargetRangeSelection): number {
+    return selection.outOfRange
+        ? inventoryRangeBracketIndex(selection.maximumRange) + 1
+        : inventoryRangeBracketIndex(selection.range);
+}
+
+function inventoryRangeBracketIndex(range: InventoryControlRuntimeRangeKey): number {
+    switch (range) {
+        case 'short': return 0;
+        case 'medium': return 1;
+        case 'long': return 2;
+        case 'extreme': return 3;
+    }
+}
+
+function nextInventoryRangeBracket(range: InventoryControlRuntimeRangeKey): InventoryControlRuntimeRangeKey {
+    switch (range) {
+        case 'short': return 'medium';
+        case 'medium': return 'long';
+        case 'long':
+        case 'extreme': return 'extreme';
+    }
 }
 
 export function isPhysicalInventoryTargetNumberEntry(entry: MountedEquipment, category?: string): boolean {

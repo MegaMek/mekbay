@@ -10,6 +10,7 @@ import {
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import type { AmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
+import type { InventoryControlRuntimeRangeKey } from '../models/inventory-control-runtime-state.model';
 import {
     formatWeaponDamage,
     type WeaponDamageRange,
@@ -43,6 +44,14 @@ export interface InventoryControlDamageRules {
         entry: MountedEquipment,
         types: ReadonlySet<WeaponType>
     ) => ReadonlySet<WeaponType>;
+}
+
+export function inventoryControlDamageRange(
+    range: InventoryControlRuntimeRangeKey | null
+): WeaponDamageRange | null {
+    return range === 'short' || range === 'medium' || range === 'long' || range === 'extreme'
+        ? range
+        : null;
 }
 
 export function resolveInventoryControlDamageText(
@@ -89,8 +98,11 @@ export function resolveInventoryControlWeaponDamage(
         ammoProfile: context.ammoProfile,
         range: context.selectedRange,
     });
-    const damage = rules.applyDamageEffects?.(entry, baseDamage, context) ?? baseDamage;
     const damageTypes = getInventoryControlDamageTypes(entry, ammo, rules);
+    const modifiedDamage = rules.applyDamageEffects?.(entry, baseDamage, context) ?? baseDamage;
+    const damage = context.selectedRange === 'extreme'
+        ? applyExtremeRangeDamageRules(entry.equipment, modifiedDamage, damageTypes)
+        : modifiedDamage;
     return {
         damage,
         damageTypes,
@@ -101,6 +113,30 @@ export function resolveInventoryControlWeaponDamage(
             ammo,
             context.ammoProfile
         ),
+    };
+}
+
+function applyExtremeRangeDamageRules(
+    weapon: WeaponEquipment,
+    damage: WeaponDamage,
+    damageTypes: readonly WeaponType[],
+): WeaponDamage {
+    let divisor = 1;
+    let subtraction = 0;
+    let multiplier = 1;
+
+    if (weapon.hasFlag('F_PULSE')) divisor = 2;
+    if (damageTypes.includes('DE') || (weapon.hasFlag('F_GAUSS') && !weapon.hasFlag('F_HAG'))) {
+        subtraction = 1;
+    }
+    if (damageTypes.includes('DB') && !weapon.hasFlag('F_GAUSS')) multiplier = 0.75;
+
+    if (divisor === 1 && subtraction === 0 && multiplier === 1) return damage;
+    const adjust = (value: number): number => Math.max(0, Math.floor(((value / divisor) - subtraction) * multiplier));
+    return {
+        ...damage,
+        values: damage.values.map(adjust),
+        maximum: adjust(damage.maximum),
     };
 }
 

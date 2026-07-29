@@ -16,12 +16,43 @@ export interface PSRChecks {
     shutdown?: boolean;
 }
 
+export interface HeatProjection {
+    current: number;
+    sourceHeat: number;
+    dissipation: number;
+    consumedDissipation: number;
+    projected: number;
+    delta: number;
+}
+
+export function calculateHeatProjection(current: number, sources: readonly UnitHeatSource[], dissipation: number): HeatProjection {
+    const normalizedCurrent = Number.isFinite(current) ? Math.max(0, current) : 0;
+    const sourceHeat = sources.reduce((total, source) => (
+        total + (Number.isFinite(source.value) ? Math.max(0, source.value) : 0)
+    ), 0);
+    const normalizedDissipation = Number.isFinite(dissipation) ? Math.max(0, dissipation) : 0;
+    const heatBeforeDissipation = normalizedCurrent + sourceHeat;
+    const consumedDissipation = Math.min(normalizedDissipation, heatBeforeDissipation);
+    const projected = heatBeforeDissipation - consumedDissipation;
+    return {
+        current: normalizedCurrent,
+        sourceHeat,
+        dissipation: normalizedDissipation,
+        consumedDissipation,
+        projected,
+        delta: projected - normalizedCurrent,
+    };
+}
+
 export class TurnState {
+    private static readonly HEAT_DISSIPATION_DEFICIT_SOURCE_ID = 'heat-dissipation-deficit';
     unitState: CBTForceUnitState;
     private suppressModified = false;
-    airborne = this.modifiedSignal<boolean | null>(null);
-    moveMode = this.modifiedSignal<MotiveModes | null>(null);
-    moveDistance = this.modifiedSignal<number | null>(null);
+    private readonly acknowledgedHeatSources = this.modifiedSignal<Record<string, string>>({});
+    private readonly heatDissipationConsumed = this.modifiedSignal<number>(0);
+    airborne = this.modifiedSignal<boolean | null>(null, 'movement');
+    moveMode = this.modifiedSignal<MotiveModes | null>(null, 'movement');
+    moveDistance = this.modifiedSignal<number | null>(null, 'movement');
     dmgReceived = this.modifiedSignal<number>(0);
     weaponsHeat = this.modifiedSignal<number>(0);
     private psrChecks = this.modifiedSignal<PSRChecks>({});
@@ -45,7 +76,10 @@ export class TurnState {
             || this.hasPendingPSRChecks()
             || unconsolidatedCrits
             || unconsolidatedLocations
-                || unconsolidatedInventory
+            || unconsolidatedInventory
+            || this.heatSources().some(source => source.value > 0)
+            || Object.keys(this.acknowledgedHeatSources()).length > 0
+            || this.heatDissipationConsumed() > 0
             || heat.next !== undefined;
     });
 
@@ -138,15 +172,62 @@ export class TurnState {
         }
     });
 
-    heatSources = computed<UnitHeatSource[]>(() => {
+    private allHeatSources = computed<UnitHeatSource[]>(() => {
         return this.unitState.unit.rules.heatSources(this);
     });
+
+    private unresolvedHeatSources = computed<UnitHeatSource[]>(() => {
+        if (!(this.unitState.unit.useAutomations?.() ?? true)) return this.allHeatSources();
+        const acknowledged = this.acknowledgedHeatSources();
+        return this.allHeatSources().filter(source => acknowledged[source.id] !== this.heatSourceSignature(source));
+    });
+
+    private heatDissipationCapacity = computed<number>(() => {
+        const dissipation = this.unitState.unit.rules.heatDissipation();
+        const capacity = dissipation?.totalDissipationWithWings ?? dissipation?.totalDissipation ?? 0;
+        return Number.isFinite(capacity) ? Math.max(0, capacity) : 0;
+    });
+
+    heatDissipationBalance = computed<number>(() => {
+        return this.heatDissipationCapacity() - this.heatDissipationConsumed();
+    });
+
+    effectiveHeatDissipation = computed<number>(() => {
+        return Math.max(0, this.heatDissipationBalance());
+    });
+
+    private heatDissipationDeficit = computed<number>(() => {
+        return Math.max(0, -this.heatDissipationBalance());
+    });
+
+    heatSources = computed<UnitHeatSource[]>(() => {
+        const deficit = this.heatDissipationDeficit();
+        return [
+            ...this.unresolvedHeatSources(),
+            ...(deficit > 0 ? [{
+                id: TurnState.HEAT_DISSIPATION_DEFICIT_SOURCE_ID,
+                label: 'Dissipation',
+                value: deficit,
+            }] : []),
+        ];
+    });
+
+    heatProjection = computed<HeatProjection>(() => {
+        return calculateHeatProjection(this.unitState.heat().current, this.heatSources(), this.effectiveHeatDissipation());
+    });
+
+    hasPendingHeatResolution = computed<boolean>(() => {
+        return this.heatSources().length > 0
+            || this.heatProjection().projected !== this.unitState.heat().current;
+    });
+
+    heatProjectionVisible = computed<boolean>(() => this.hasPendingHeatResolution());
 
     constructor(unitState: CBTForceUnitState) {
         this.unitState = unitState;
     }
 
-    private modifiedSignal<T>(initialValue: T): WritableSignal<T> {
+    private modifiedSignal<T>(initialValue: T, affectedHeatSourceId?: string): WritableSignal<T> {
         const state = signal<T>(initialValue);
         const originalSet = state.set.bind(state);
         const originalUpdate = state.update.bind(state);
@@ -154,11 +235,17 @@ export class TurnState {
             const previousValue = state();
             originalSet(newValue);
             this.markModifiedIfChanged(previousValue, newValue);
+            if (affectedHeatSourceId && !Object.is(previousValue, newValue)) {
+                this.invalidateHeatSource(affectedHeatSourceId);
+            }
         };
         state.update = (updateFn: (value: T) => T) => {
             const previousValue = state();
             originalUpdate(updateFn);
             this.markModifiedIfChanged(previousValue, state());
+            if (affectedHeatSourceId && !Object.is(previousValue, state())) {
+                this.invalidateHeatSource(affectedHeatSourceId);
+            }
         };
         return state;
     }
@@ -213,7 +300,14 @@ export class TurnState {
         if (moveDistance !== null) turnState.moveDistance = moveDistance;
         if (this.dmgReceived() > 0) turnState.dmgReceived = this.dmgReceived();
         if (this.weaponsHeat() > 0) turnState.weaponsHeat = this.weaponsHeat();
+        if (Object.keys(this.acknowledgedHeatSources()).length > 0) {
+            turnState.acknowledgedHeatSources = { ...this.acknowledgedHeatSources() };
+        }
+        if (this.heatDissipationConsumed() > 0) {
+            turnState.heatDissipationConsumed = this.heatDissipationConsumed();
+        }
         if (psrChecks) turnState.psrChecks = psrChecks;
+        if (!this.applyMovePSR()) turnState.applyMovePSR = false;
         if (this.spotting()) turnState.spotting = true;
 
         return Object.keys(turnState).length > 0 ? turnState : undefined;
@@ -226,6 +320,8 @@ export class TurnState {
             this.moveDistance.set(data?.moveDistance ?? null);
             this.dmgReceived.set(data?.dmgReceived ?? 0);
             this.weaponsHeat.set(data?.weaponsHeat ?? 0);
+            this.acknowledgedHeatSources.set({ ...(data?.acknowledgedHeatSources ?? {}) });
+            this.heatDissipationConsumed.set(data?.heatDissipationConsumed ?? 0);
             this.psrChecks.set(this.deserializePSRChecks(data?.psrChecks));
             this.applyMovePSR.set(data?.applyMovePSR ?? true);
             this.spotting.set(data?.spotting ?? false);
@@ -290,11 +386,49 @@ export class TurnState {
 
     addFiredHeat(amount: number) {
         if (!Number.isFinite(amount) || amount <= 0) return;
+        this.invalidateHeatSource('weapons');
         this.weaponsHeat.update((value)=> { return value + amount });
     }
 
-    resetTurnHeatSources() {
-        this.weaponsHeat.set(0);
+    acknowledgeHeatSources(consumedDissipation = 0): void {
+        const acknowledged = { ...this.acknowledgedHeatSources() };
+        this.unresolvedHeatSources().forEach(source => acknowledged[source.id] = this.heatSourceSignature(source));
+        this.acknowledgedHeatSources.set(acknowledged);
+        this.withSuppressedModified(() => this.weaponsHeat.set(0));
+        this.reconcileHeatSources();
+        const normalizedConsumption = Number.isFinite(consumedDissipation) ? Math.max(0, consumedDissipation) : 0;
+        const capacity = this.heatDissipationCapacity();
+        this.heatDissipationConsumed.update(current => Math.min(current, capacity) + normalizedConsumption);
+    }
+
+    settleHeatDissipationDeficit(): void {
+        const capacity = this.heatDissipationCapacity();
+        this.heatDissipationConsumed.update(current => Math.min(current, capacity));
+    }
+
+    reconcileHeatSources(): void {
+        if (this.suppressModified) return;
+        const currentSources = new Map(this.allHeatSources().map(source => [source.id, source]));
+        const acknowledged = this.acknowledgedHeatSources();
+        const next = Object.fromEntries(Object.entries(acknowledged).filter(([id, signature]) => {
+            const source = currentSources.get(id);
+            return source !== undefined && this.heatSourceSignature(source) === signature;
+        }));
+        if (Object.keys(next).length !== Object.keys(acknowledged).length) {
+            this.acknowledgedHeatSources.set(next);
+        }
+    }
+
+    invalidateHeatSource(id: string): void {
+        const acknowledged = this.acknowledgedHeatSources();
+        if (!(id in acknowledged)) return;
+        const next = { ...acknowledged };
+        delete next[id];
+        this.acknowledgedHeatSources.set(next);
+    }
+
+    private heatSourceSignature(source: UnitHeatSource): string {
+        return JSON.stringify([source.value, source.replacedByFiringEntryId ?? null, source.signature ?? null]);
     }
 
     maxDistanceCurrentMoveMode = computed<number>(() => {

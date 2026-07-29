@@ -33,7 +33,7 @@
 
 import { EquipmentFlag } from './equipment-flags.type';
 import type { ForceUnit } from './force-unit.model';
-import type { UnitComponent } from './units.model';
+import type { MountedEquipment } from './mounted-equipment.model';
 
 /**
  * C3 Network Types based on equipment flags
@@ -184,15 +184,15 @@ export const NOVA_MAX_TAX_RATE = 0.35;
  * Represents a C3 component on a unit
  */
 export interface C3Component {
-    /** Component reference */
-    component: UnitComponent;
+    /** Runtime equipment endpoint; absent only for Alpha Strike specials. */
+    mount?: MountedEquipment;
     /** Network type */
     networkType: C3NetworkType;
     /** Role (master/slave/peer) */
     role: C3Role;
     /** Is this a boosted C3 */
     boosted: boolean;
-    /** Component index (for units with multiple C3 masters) */
+    /** Index within this unit's normalized C3 endpoints. */
     index: number;
 }
 

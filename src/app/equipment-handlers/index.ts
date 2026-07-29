@@ -49,6 +49,7 @@ import { HagHandler } from './hag.handler';
 import { MascHandler } from './masc.handler';
 import { DisabledEquipmentHandler } from './disabled-equipment.handler';
 import { VibrobladeHandler } from './vibroblade.handler';
+import { BombastLaserHandler } from './bombast-laser.handler';
 
 /**
  * Register all equipment handlers.
@@ -73,6 +74,7 @@ export function registerAllHandlers(registryService: EquipmentInteractionRegistr
     registry.register(new MascHandler());
     registry.register(new DisabledEquipmentHandler());
     registry.register(new PpcCapacitorHandler());
+    registry.register(new BombastLaserHandler());
     registry.register(new UACJammingHandler());
     registry.register(new C3Handler());
     // registry.register(new WeaponAmmoHandler()); // TODO: is a bit annoying

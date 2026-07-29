@@ -23,6 +23,22 @@
     --weapon-equipment-content-columns: 24px 28px 38px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px);
 }
 
+.weapons-equipment-panel.ground-extreme-ranges {
+    --weapon-equipment-content-columns: 24px 28px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(5, 42px) fit-content(420px);
+}
+
+.weapons-equipment-panel.ground-extreme-ranges.hide-actions-column {
+    --weapon-equipment-content-columns: 24px 28px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(5, 42px);
+}
+
+.weapons-equipment-panel.ground-extreme-ranges.has-targets {
+    --weapon-equipment-content-columns: 24px 28px 38px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(5, 42px) fit-content(420px);
+}
+
+.weapons-equipment-panel.ground-extreme-ranges.has-targets.hide-actions-column {
+    --weapon-equipment-content-columns: 24px 28px 38px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(5, 42px);
+}
+
 .weapon-equipment-grid {
     display: grid;
     grid-template-columns: var(--weapon-equipment-columns);
@@ -342,6 +358,10 @@
     grid-column: 12;
 }
 
+.weapons-equipment-panel.ground-extreme-ranges .range-extreme {
+    grid-column: 13;
+}
+
 .weapons-equipment-panel.aero-ranges .range-short {
     grid-column: 9;
 }
@@ -357,6 +377,10 @@
 .actions-cell {
     grid-column: 13;
     min-width: 0;
+}
+
+.weapons-equipment-panel.ground-extreme-ranges .actions-cell {
+    grid-column: 14;
 }
 
 .weapons-equipment-panel.has-targets .name-cell {
@@ -399,6 +423,10 @@
     grid-column: 13;
 }
 
+.weapons-equipment-panel.has-targets.ground-extreme-ranges .range-extreme {
+    grid-column: 14;
+}
+
 .weapons-equipment-panel.has-targets.aero-ranges .range-short {
     grid-column: 10;
 }
@@ -413,6 +441,10 @@
 
 .weapons-equipment-panel.has-targets .actions-cell {
     grid-column: 14;
+}
+
+.weapons-equipment-panel.has-targets.ground-extreme-ranges .actions-cell {
+    grid-column: 15;
 }
 
 .drag-handle {

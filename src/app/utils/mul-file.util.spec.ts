@@ -11,9 +11,12 @@ import { OptionsService } from '../services/options.service';
 import { CBTGameRulesService } from '../services/cbt-game-rules.service';
 import { CORE_2026_GAME_RULES } from '../models/rules/game-rules';
 import { MekRules } from '../models/rules/mek-rules';
+import { EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
+
+const equipmentInteractionRegistryService = new EquipmentInteractionRegistryService();
 
 const fakeInjector = {
-    get<T>(token: ProviderToken<T>): T {
+    get<T>(token: ProviderToken<T>, notFoundValue?: T): T {
         if (token === OptionsService) {
             return { options: () => ({ CBTRules: 'core2026' }) } as T;
         }
@@ -23,6 +26,10 @@ const fakeInjector = {
                 createUnitRules: (unit: CBTForceUnit) => new MekRules(unit)
             } as T;
         }
+        if (token === EquipmentInteractionRegistryService) {
+            return equipmentInteractionRegistryService as T;
+        }
+        if (notFoundValue !== undefined) return notFoundValue;
         throw new Error(`Unexpected injection token: ${String(token)}`);
     },
 } as Injector;

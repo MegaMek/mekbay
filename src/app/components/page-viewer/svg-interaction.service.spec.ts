@@ -162,6 +162,42 @@ describe('SvgInteractionService', () => {
         expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
     });
 
+    it('gates ground EXT sheet controls behind the Extreme Range option', () => {
+        const disabled = createInventoryInteractionUnit();
+        pageViewerState.setForceUnits([disabled.unit]);
+        service.updateUnit(disabled.unit);
+        service.setupInteractions(disabled.svg);
+        const disabledButton = disabled.entry.el!.querySelector('.extButton') as SVGElement;
+
+        expect(disabledButton.classList).not.toContain('interactive');
+        disabledButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(disabled.unit.getInventoryControlEntryRange(disabled.entry.id)).toBeUndefined();
+
+        const enabled = createInventoryInteractionUnit();
+        enabled.unit.allowsExtremeRangeAttacks = () => true;
+        pageViewerState.setForceUnits([enabled.unit]);
+        service.updateUnit(enabled.unit);
+        service.setupInteractions(enabled.svg);
+        const enabledButton = enabled.entry.el!.querySelector('.extButton') as SVGElement;
+
+        expect(enabledButton.classList).toContain('interactive');
+        enabledButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(enabled.unit.getInventoryControlEntryRange(enabled.entry.id)).toBe('extreme');
+    });
+
+    it('keeps Aero ERV sheet controls available when the ground option is disabled', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit();
+        unit.getUnit = () => ({ type: 'Aero', comp: [] });
+        pageViewerState.setForceUnits([unit]);
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+        const extremeButton = entry.el!.querySelector('.extButton') as SVGElement;
+
+        expect(extremeButton.classList).toContain('interactive');
+        extremeButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(unit.getInventoryControlEntryRange(entry.id)).toBe('extreme');
+    });
+
     it('hides blown-off from torso location condition choices', () => {
         const unit = createSvgInteractionUnit({
             rules: {
@@ -1171,6 +1207,13 @@ function createInventoryInteractionUnit(html = `
         getInventoryControlEntryAmmoOption: () => undefined,
         getInventoryControlRules: () => ({}),
         gameRules: CORE_2026_GAME_RULES,
+        allowsExtremeRangeAttacks: () => false,
+        resolveC3Targeting: (target: any) => ({
+            target: (unit as any).hasLinkedC3Network?.() === true || target.c3Distance === undefined
+                ? target
+                : { ...target, c3Distance: undefined },
+            degradationSource: 'none'
+        }),
         setInventoryControlEntrySelected: (selectedEntry: MountedEquipment, selected: boolean) => runtime.setEntrySelected(selectedEntry, selected),
         setInventoryControlEntryRange: (selectedEntry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null) => runtime.setEntryRange(selectedEntry, range),
         toggleInventoryControlEntryRange: (selectedEntry: MountedEquipment, range: InventoryControlRuntimeRangeKey, forceSelected = false) => runtime.toggleEntryRange(selectedEntry, range, forceSelected),

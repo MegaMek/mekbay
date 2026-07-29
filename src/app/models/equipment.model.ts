@@ -746,10 +746,10 @@ export class WeaponEquipment extends Equipment {
 export interface WeaponDamageOptions {
     readonly ammo?: AmmoEquipment | null;
     readonly ammoProfile?: AmmoWeaponProfile | null;
-    readonly range?: 'short' | 'medium' | 'long' | null;
+    readonly range?: 'short' | 'medium' | 'long' | 'extreme' | null;
 }
 
-const DAMAGE_RANGE_INDEX = { short: 0, medium: 1, long: 2 } as const;
+const DAMAGE_RANGE_INDEX = { short: 0, medium: 1, long: 2, extreme: 2 } as const;
 
 /** Uses compatible selected ammo, falling back to the canonical catalog ammo. */
 export function resolveWeaponDamage(

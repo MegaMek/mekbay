@@ -89,6 +89,7 @@ import type { OpPreviewForce } from '../components/op-preview/op-preview.compone
 import { ForceLoadingOverlayComponent, type ForceLoadingOverlayData, type ForceLoadingProgress } from '../components/force-loading-overlay/force-loading-overlay.component';
 import type { PrintAllOptions } from '../models/print-options.model';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
+import { C3NetworkUtil } from '../utils/c3-network.util';
 import { uuidv7 } from '../utils/uuid.util';
 
 /*
@@ -3069,6 +3070,11 @@ export class ForceBuilderService {
      * @param readOnly Whether the dialog should be read-only
      */
     public async openC3Network(force: Force, readOnly: boolean = false): Promise<void> {
+        await this.loadAllUnitsWithOverlay([force]);
+        if (force.units().some(unit => !unit.isLoaded())) {
+            this.toastService.showToast('Unable to configure C3 until every unit is loaded.', 'error');
+            return;
+        }
         const { C3NetworkDialogComponent, } = await import('../components/c3-network-dialog/c3-network-dialog.component');
         type C3NetworkDialogData = import('../components/c3-network-dialog/c3-network-dialog.component').C3NetworkDialogData;
         type C3NetworkDialogResult = import('../components/c3-network-dialog/c3-network-dialog.component').C3NetworkDialogResult;
@@ -3173,6 +3179,16 @@ export class ForceBuilderService {
             retryResolve = null;
 
             if (skipped) break;
+        }
+
+        for (const force of forces) {
+            if (force.units().some(unit => !unit.isLoaded())) continue;
+            const unitsById = new Map(force.units().map(unit => [unit.id, unit]));
+            const currentNetworks = force.c3Networks();
+            const validatedNetworks = C3NetworkUtil.validateAndCleanNetworks(currentNetworks, unitsById);
+            if (JSON.stringify(validatedNetworks) !== JSON.stringify(currentNetworks)) {
+                force.setNetwork(validatedNetworks);
+            }
         }
 
         dialogRef.close();

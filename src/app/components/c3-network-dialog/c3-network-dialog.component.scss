@@ -164,6 +164,15 @@
     transition: filter 0.2s;
 }
 
+.node-damage-disconnected-overlay {
+    fill: none;
+    stroke: #8b0000;
+    stroke-width: 3;
+    stroke-dasharray: 7, 7;
+    stroke-linecap: square;
+    pointer-events: none;
+}
+
 .node-inner-ring {
     fill: none;
     stroke: rgba(255, 255, 255, 0.08);
@@ -420,11 +429,21 @@
 .animated-line {
     stroke-dasharray: 6, 4;
     animation: dash-animation 0.3s linear infinite;
+
+    &.broken-link {
+        animation: none;
+        stroke-width: 2;
+    }
 }
 
 .animated-line-big {
     stroke-dasharray: 10, 8;
     animation: dash-animation-big 0.3s linear infinite;
+
+    &.broken-link {
+        animation: none;
+        stroke-width: 2.5;
+    }
 }
 
 @keyframes dash-animation {
@@ -553,6 +572,15 @@
         display: flex;
         flex-direction: column;
         gap: 4px;
+
+        &.broken-link {
+            background: #8b0000;
+
+            .network-unit {
+                background: transparent;
+                color: #fff;
+            }
+        }
 
         .row {
             display: flex;

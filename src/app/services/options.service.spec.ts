@@ -32,6 +32,14 @@ describe('OptionsService theme migration', () => {
         expect(service.options().colorScheme).toBe('default');
     });
 
+    it('restores a disabled CBT automations preference', async () => {
+        savedOptions = { cbtAutomations: false };
+
+        const service = await createService();
+
+        expect(service.options().cbtAutomations).toBeFalse();
+    });
+
     it('restores the canonical theme color', async () => {
         savedOptions = { colorScheme: 'night' };
 

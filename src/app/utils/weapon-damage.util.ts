@@ -1,6 +1,6 @@
 import { WeaponDamage } from '../models/equipment.model';
 
-export type WeaponDamageRange = 'short' | 'medium' | 'long';
+export type WeaponDamageRange = 'short' | 'medium' | 'long' | 'extreme';
 
 export interface WeaponDamageFormat {
     readonly showZero?: boolean;

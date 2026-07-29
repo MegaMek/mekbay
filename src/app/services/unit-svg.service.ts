@@ -43,12 +43,11 @@ import { LINKED_LOCATIONS } from "../models/rules/mek-rules";
 import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { formatGunneryDisplay, formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS, unitConditionSortIndex, type ChargeDamage, type UnitHeatSource } from '../models/rules/unit-type-rules';
-import type { HeatDissipationState } from '../models/rules/heat-management';
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../utils/inventory-target-number.util';
 import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, readInventoryControlDisplayData, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
-import { resolveInventoryControlDamageText } from '../utils/inventory-control-damage.util';
+import { inventoryControlDamageRange, resolveInventoryControlDamageText } from '../utils/inventory-control-damage.util';
 import { formatInventoryControlHeat, resolveInventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 import { separateHeatFireModifier, type ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
@@ -66,8 +65,6 @@ const INVENTORY_CONTROL_RANGE_CLASS_NAMES: Record<InventoryControlRuntimeRangeKe
     long: 'selected-range-long',
     extreme: 'selected-range-extreme'
 };
-
-type HeatDissipationWithWings = HeatDissipationState & { totalDissipationWithWings?: number };
 
 /*
  * Author: Drake
@@ -594,11 +591,18 @@ export class UnitSvgService {
 
         if (!svg.getElementById('heatScale')) return;
 
+        const projection = this.unit.turnState().heatProjection();
+        const hasUserTarget = heat.next !== undefined;
+        const automationsEnabled = this.unit.useAutomations();
+        const heatApplicationAvailable = hasUserTarget
+            || (automationsEnabled && this.unit.turnState().hasPendingHeatResolution());
+        const applicationTarget = heat.next ?? projection.projected;
         const heatDataPanel = svg.querySelector('#heatDataPanel');
         if (heatDataPanel && !this.unit.readOnly()) {
-            heatDataPanel.classList.toggle('dirtyHeat', heat.next !== undefined);
-            heatDataPanel.classList.toggle('hot', heat.next !== undefined && heat.current <= heat.next);
-            heatDataPanel.classList.toggle('cold', heat.next !== undefined && heat.current > heat.next);
+            heatDataPanel.classList.toggle('dirtyHeat', hasUserTarget);
+            heatDataPanel.classList.toggle('heatApplicationAvailable', heatApplicationAvailable);
+            heatDataPanel.classList.toggle('hot', heatApplicationAvailable && heat.current <= applicationTarget);
+            heatDataPanel.classList.toggle('cold', heatApplicationAvailable && heat.current > applicationTarget);
         }
 
         const heatValue = heat.next ?? heat.current;
@@ -697,11 +701,12 @@ export class UnitSvgService {
             }
         }
 
-        const updateArrow = (id: string, value: undefined | number, state: 'current' | 'nextHot' | 'nextCold' | 'previous') => {
+        const updateArrow = (id: string, value: undefined | number, state: 'current' | 'nextHot' | 'nextCold' | 'previous' | 'projectionHot' | 'projectionCold') => {
             let arrow = svg.querySelector(`#${id}`) as SVGPolygonElement | null;
 
             if (value === undefined) {
                 arrow?.remove();
+                if (id === 'now-arrow') svg.querySelector('#now-arrow-label')?.remove();
                 return;
             }
             const heatEl = this.getHeatElementFromValue(value);
@@ -733,37 +738,109 @@ export class UnitSvgService {
                     arrow.setAttribute('fill', 'var(--cold-color)');
                     arrow.setAttribute('stroke', 'var(--cold-color)');
                     arrow.setAttribute('stroke-width', '1');
+                } else if (state === 'projectionHot' || state === 'projectionCold') {
+                    arrow.setAttribute('fill', 'none');
+                    arrow.setAttribute('stroke', state === 'projectionHot' ? 'var(--hot-color)' : 'var(--cold-color)');
+                    arrow.setAttribute('stroke-width', '1');
                 } else {
                     arrow.setAttribute('fill', 'none');
                     arrow.setAttribute('stroke', '#aaa');
                     arrow.setAttribute('stroke-width', '1');
                 }
                 arrow.style.display = 'block';
+                heatEl.parentElement?.appendChild(arrow);
+                if (id === 'now-arrow') {
+                    this.updateNowArrowLabel(heatEl.parentElement, x + 11, y);
+                }
             } else if (arrow) {
                 arrow.style.display = 'none';
+                if (id === 'now-arrow') svg.querySelector('#now-arrow-label')?.remove();
             }
         };
 
-        if (heat.next === heat.current) {
-            updateArrow('now-arrow', heat.current, 'current');
-            svg.querySelector('#next-arrow')?.remove();
+        updateArrow('now-arrow', heat.current, 'current');
+        if (heat.next !== undefined) {
+            updateArrow('next-arrow', heat.next, heat.next >= heat.current ? 'nextHot' : 'nextCold');
         } else {
-            if (heat.next !== undefined) {
-                updateArrow('next-arrow', heat.next, heat.next > heat.current ? 'nextHot' : 'nextCold');
-            } else {
-                svg.querySelector('#next-arrow')?.remove();
-            }
-            updateArrow('now-arrow', heat.current, 'current');
+            svg.querySelector('#next-arrow')?.remove();
         }
 
-        if (heat.previous !== heat.current && heat.previous !== heat.next) {
+        const showProjectionArrow = automationsEnabled
+            && !hasUserTarget
+            && this.unit.turnState().hasPendingHeatResolution();
+        const targetHeat = hasUserTarget ? heat.next : showProjectionArrow ? projection.projected : undefined;
+        if (heat.previous !== heat.current && heat.previous !== targetHeat) {
             updateArrow('faded-arrow', heat.previous, 'previous');
         } else {
             svg.querySelector('#faded-arrow')?.remove();
         }
-        if (!this.unit.readOnly()) {
-            this.updateHeatProjectionPreview(heat);
+        if (showProjectionArrow) {
+            updateArrow('projection-arrow', projection.projected, projection.delta > 0 ? 'projectionHot' : 'projectionCold');
+        } else {
+            svg.querySelector('#projection-arrow')?.remove();
         }
+        if (!this.unit.readOnly()) {
+            if (automationsEnabled) {
+                svg.querySelector('#heat-projection-target-marker')?.remove();
+                this.updateHeatProjectionPreview(heat);
+            } else {
+                const heatScale = svg.getElementById('heatScale') as SVGGElement;
+                this.clearHeatProjectionPreview(heatScale);
+                this.updateHeatProjectionTargetMarker(heatScale, heat);
+            }
+        }
+    }
+
+    private updateHeatProjectionTargetMarker(heatScale: SVGGElement, heat: HeatProfile): void {
+        const projection = this.unit.turnState().heatProjection();
+        if (!this.unit.turnState().hasPendingHeatResolution() || projection.projected === heat.current) {
+            heatScale.querySelector('#heat-projection-target-marker')?.remove();
+            return;
+        }
+
+        const targetValue = Math.max(0, Math.min(30, projection.projected));
+        const targetElement = this.getHeatElementFromValue(projection.projected > 30 ? projection.projected : targetValue);
+        const targetCenter = targetElement ? this.heatMarkerCenter(targetElement) : null;
+        const heatZeroElement = heatScale.querySelector('.heat[heat="0"]') as SVGElement | null;
+        if (!targetCenter || !heatZeroElement) {
+            heatScale.querySelector('#heat-projection-target-marker')?.remove();
+            return;
+        }
+
+        let marker = heatScale.querySelector('#heat-projection-target-marker') as SVGPolygonElement | null;
+        if (!marker) {
+            marker = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            marker.setAttribute('id', 'heat-projection-target-marker');
+            marker.setAttribute('class', 'screen-only heatProjectionTargetMarker');
+            marker.setAttribute('pointer-events', 'none');
+            heatScale.appendChild(marker);
+        }
+
+        const tipX = Number(heatZeroElement.getAttribute('x') ?? 0) + 4;
+        const baseX = tipX - 7;
+        marker.setAttribute('fill', projection.delta > 0 ? '#d12020' : '#2070d1');
+        marker.setAttribute('points', `${tipX},${targetCenter.y} ${baseX},${targetCenter.y - 2} ${baseX},${targetCenter.y + 2}`);
+    }
+
+    private updateNowArrowLabel(parent: Element | null, x: number, y: number): void {
+        if (!parent) return;
+        let label = parent.querySelector('#now-arrow-label') as SVGTextElement | null;
+        if (!label) {
+            label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            label.setAttribute('id', 'now-arrow-label');
+            label.setAttribute('class', 'screen-only');
+            label.setAttribute('text-anchor', 'middle');
+            label.setAttribute('dominant-baseline', 'middle');
+            label.setAttribute('font-size', '5');
+            label.setAttribute('font-weight', 'bold');
+            label.setAttribute('fill', '#000');
+            label.setAttribute('pointer-events', 'none');
+            label.textContent = 'NOW';
+            parent.appendChild(label);
+        }
+        label.setAttribute('x', x.toString());
+        label.setAttribute('y', y.toString());
+        label.setAttribute('transform', `rotate(90 ${x} ${y})`);
     }
 
     protected getHeatElementFromValue(value: number): SVGElement | null {
@@ -1102,13 +1179,15 @@ export class UnitSvgService {
         const hitModifierRange = this.inventoryControlRangeForTarget(entry, target, false);
         const hitResolution = this.resolveInventoryControlToHit(entry, hitModifierRange);
         const { hitModifier, heatFireModifier } = separateHeatFireModifier(hitResolution);
+        const c3Resolution = this.unit.resolveC3Targeting(target);
         const text = inventoryTargetNumberText({
             entry,
             category: inventoryTargetCategory(entry),
             display: row.display,
             extremeRange: row.extremeRange,
+            allowExtremeRange: this.unit.allowsExtremeRangeAttacks(),
             selectedAmmo: this.inventoryTargetSelectedAmmo(entry),
-            target: this.inventoryControlTargetForRangeSelection(target, true),
+            target: c3Resolution.target,
             gunnerySkill: this.unit.rules.getTargetNumberGunnerySkill(),
             pilotingSkill: this.unit.rules.getTargetNumberPilotingSkill(),
             gunneryModifierBreakdown: this.unit.rules.getTargetNumberGunneryModifierBreakdown(),
@@ -1117,6 +1196,7 @@ export class UnitSvgService {
             attackModifierBreakdown: this.unit.turnState().getAttackModifierBreakdown(),
             hitModifier,
             heatFireModifier,
+            c3DegradationSource: c3Resolution.degradationSource,
             gameRules: this.unit.gameRules
         });
         return text || null;
@@ -1130,6 +1210,7 @@ export class UnitSvgService {
             category: inventoryTargetCategory(entry),
             display: row.display,
             extremeRange: row.extremeRange,
+            allowExtremeRange: this.unit.allowsExtremeRangeAttacks(),
             target: this.inventoryControlTargetForRangeSelection(target, useC3Distance),
             selectedAmmo: this.inventoryTargetSelectedAmmo(entry),
         })?.range ?? null;
@@ -1295,7 +1376,7 @@ export class UnitSvgService {
         }
 
         const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
-        const selectedRange = range === 'short' || range === 'medium' || range === 'long' ? range : null;
+        const selectedRange = inventoryControlDamageRange(range);
         if (text) {
             const damage = resolveInventoryControlDamageText(
                 entry,
@@ -1398,7 +1479,7 @@ export class UnitSvgService {
     }
 
     private inventoryControlTargetForRangeSelection(target: InventoryControlRuntimeTarget, useC3Distance: boolean): InventoryControlRuntimeTarget {
-        if (useC3Distance && this.unit.hasLinkedC3Network?.() === true) return target;
+        if (useC3Distance) return this.unit.resolveC3Targeting(target).target;
         if (target.c3Distance === undefined) return target;
         return { ...target, c3Distance: undefined };
     }
@@ -1500,7 +1581,14 @@ export class UnitSvgService {
         if (!svg) return;
         const unit = this.unit;
         const turnState = unit.turnState();
-        this.renderHeatSourcesSummary(svg, turnState.heatSources());
+        const heatProjection = turnState.heatProjection();
+        this.renderHeatSourcesSummary(
+            svg,
+            turnState.heatSources(),
+            turnState.heatDissipationBalance(),
+            heatProjection.consumedDissipation,
+            heatProjection.projected
+        );
         // Update move mode display
         const moveMode = turnState.moveMode();
         const moveModifier = turnState.getAttackMovementModifier();
@@ -1569,12 +1657,37 @@ export class UnitSvgService {
         return modifier >= 0 ? `+${modifier}` : modifier.toString();
     }
 
-    private renderHeatSourcesSummary(svg: SVGSVGElement, sources: UnitHeatSource[]): void {
+    private renderHeatSourcesSummary(
+        svg: SVGSVGElement,
+        sources: UnitHeatSource[],
+        dissipationBalance: number,
+        consumedDissipation: number,
+        projectedHeat: number
+    ): void {
         const heatSourcesText = svg.getElementById('damagedEngineHeatText') as SVGTextElement | null;
         if (!heatSourcesText) return;
 
-        const positiveSources = sources.filter(source => source.value > 0);
-        if (positiveSources.length === 0) {
+        const positiveSources = sources.filter(source => source.value > 0 && source.id !== 'heat-dissipation-deficit');
+        const normalizedBalance = Number.isFinite(dissipationBalance) ? dissipationBalance : 0;
+        const normalizedConsumption = Number.isFinite(consumedDissipation) ? Math.max(0, consumedDissipation) : 0;
+        const hasResidualAfterClipping = normalizedBalance > 0
+            && normalizedConsumption > 0
+            && normalizedConsumption < normalizedBalance
+            && projectedHeat === 0;
+        const dissipationLabelSuffix = hasResidualAfterClipping ? ` (-${normalizedBalance})` : '';
+        const dissipationText = hasResidualAfterClipping
+            ? `-${normalizedConsumption}`
+            : `${normalizedBalance > 0 ? '-' : '+'}${Math.abs(normalizedBalance)}`;
+        const lines: Array<{ text: string; fill?: string }> = [
+            ...positiveSources.map(source => ({
+                text: `${this.heatSourceSummaryLabel(source)}: ${this.formatSignedModifier(source.value)}`,
+            })),
+            ...(normalizedBalance !== 0 ? [{
+                text: `Sink${dissipationLabelSuffix}: ${dissipationText}`,
+                fill: normalizedBalance > 0 ? '#2070d1' : '#f00',
+            }] : []),
+        ];
+        if (lines.length === 0) {
             heatSourcesText.textContent = '';
             heatSourcesText.setAttribute('display', 'none');
             heatSourcesText.style.display = 'none';
@@ -1588,11 +1701,12 @@ export class UnitSvgService {
         heatSourcesText.removeAttribute('display');
         heatSourcesText.style.display = 'block';
 
-        positiveSources.forEach((source, index) => {
+        lines.forEach((summaryLine, index) => {
             const line = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
             line.setAttribute('x', x);
-            line.setAttribute('y', (y - ((positiveSources.length - 1 - index) * lineHeight)).toString());
-            line.textContent = `${this.heatSourceSummaryLabel(source)}: ${this.formatSignedModifier(source.value)}`;
+            line.setAttribute('y', (y - ((lines.length - 1 - index) * lineHeight)).toString());
+            if (summaryLine.fill) line.setAttribute('fill', summaryLine.fill);
+            line.textContent = summaryLine.text;
             heatSourcesText.appendChild(line);
         });
     }
@@ -1607,17 +1721,14 @@ export class UnitSvgService {
         const heatScale = svg?.getElementById('heatScale') as SVGGElement | null;
         if (!svg || !heatScale) return;
 
-        const dissipation = this.heatDissipationState();
-        if (!dissipation) {
+        if (!this.unit.turnState().hasPendingHeatResolution()) {
             this.clearHeatProjectionPreview(heatScale);
             return;
         }
 
-        const heatGain = this.unit.turnState().heatSources()
-            .reduce((total, source) => total + Math.max(0, source.value), 0);
-        const heatDissipation = Math.max(0, dissipation.totalDissipationWithWings ?? dissipation.totalDissipation);
-        const netHeat = heatGain - heatDissipation;
-        const projectedHeat = Math.max(0, heat.current + netHeat);
+        const projection = this.unit.turnState().heatProjection();
+        const netHeat = projection.delta;
+        const projectedHeat = projection.projected;
 
         this.updateHeatProjectionOverflow(heatScale, projectedHeat, heat.current);
 
@@ -1646,57 +1757,33 @@ export class UnitSvgService {
             return;
         }
 
-        let bar = heatScale.querySelector('#heat-projection-bar') as SVGRectElement | null;
-        if (!bar) {
-            bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            bar.setAttribute('id', 'heat-projection-bar');
-            bar.setAttribute('class', 'screen-only heatProjectionBar');
-            bar.setAttribute('pointer-events', 'none');
-            heatScale.appendChild(bar);
+        let path = heatScale.querySelector('#heat-projection-path') as SVGPathElement | null;
+        if (!path) {
+            path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('id', 'heat-projection-path');
+            path.setAttribute('class', 'screen-only heatProjectionPath');
+            path.setAttribute('pointer-events', 'none');
+            heatScale.appendChild(path);
         }
         const x = Number(heatZeroEl.getAttribute('x') ?? 0) - 3.8;
         const projectionColor = netHeat > 0 ? '#d12020' : '#2070d1';
         const barTop = Math.min(startCenter.y, targetCenter.y) - 2;
-        bar.setAttribute('x', x.toString());
-        bar.setAttribute('y', barTop.toString());
-        bar.setAttribute('width', '3');
-        bar.setAttribute('height', (height + 4).toString());
-        bar.setAttribute('fill', projectionColor);
         const arrowTipX = Number(heatZeroEl.getAttribute('x') ?? 0) + 4;
         const arrowBaseX = arrowTipX - 5;
-
-        let originArrow = heatScale.querySelector('#heat-projection-origin-arrow') as SVGRectElement | null;
-        if (!originArrow) {
-            originArrow = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            originArrow.setAttribute('id', 'heat-projection-origin-arrow');
-            originArrow.setAttribute('class', 'screen-only heatProjectionOriginArrow');
-            originArrow.setAttribute('pointer-events', 'none');
-            heatScale.appendChild(originArrow);
-        }
-        originArrow.setAttribute('x', (arrowBaseX - 1.5).toString());
-        originArrow.setAttribute('y', (startCenter.y - 2).toString());
-        originArrow.setAttribute('width', '4');
-        originArrow.setAttribute('height', '4');
-        originArrow.setAttribute('fill', projectionColor);
-
-        let targetArrow = heatScale.querySelector('#heat-projection-target-arrow') as SVGPolygonElement | null;
-        if (!targetArrow) {
-            targetArrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-            targetArrow.setAttribute('id', 'heat-projection-target-arrow');
-            targetArrow.setAttribute('class', 'screen-only heatProjectionTargetArrow');
-            targetArrow.setAttribute('pointer-events', 'none');
-            heatScale.appendChild(targetArrow);
-        }
-        targetArrow.setAttribute('fill', projectionColor);
-        if (projectedHeat <= 30) {
-            targetArrow.setAttribute('points', `${arrowTipX},${targetCenter.y} ${arrowBaseX},${targetCenter.y - 2} ${arrowBaseX},${targetCenter.y + 2}`);
-        } else {
-            targetArrow.setAttribute('points', `${arrowTipX},${barTop} ${arrowTipX - 2},${barTop + 5} ${arrowTipX + 2},${barTop + 5}`);
-        }
-    }
-
-    private heatDissipationState(): HeatDissipationWithWings | null {
-        return this.unit.rules.heatDissipation() as HeatDissipationWithWings | null;
+        const originRightX = arrowBaseX + 2.5;
+        const targetTop = targetCenter.y - 2;
+        const targetBottom = targetCenter.y + 2;
+        const originTop = startCenter.y - 2;
+        const originBottom = startCenter.y + 2;
+        const overflowArrowCenterX = (x + arrowBaseX) / 2;
+        const overflowArrowBaseY = barTop + 5;
+        const pathData = projectedHeat > 30
+            ? `M ${x} ${overflowArrowBaseY} L ${overflowArrowCenterX} ${barTop} L ${arrowBaseX} ${overflowArrowBaseY} L ${arrowBaseX} ${originTop} L ${originRightX} ${originTop} L ${originRightX} ${originBottom} L ${x} ${originBottom} Z`
+            : targetCenter.y < startCenter.y
+                ? `M ${x} ${targetTop} L ${arrowBaseX} ${targetTop} L ${arrowTipX} ${targetCenter.y} L ${arrowBaseX} ${targetBottom} L ${arrowBaseX} ${originTop} L ${originRightX} ${originTop} L ${originRightX} ${originBottom} L ${x} ${originBottom} Z`
+                : `M ${x} ${originTop} L ${originRightX} ${originTop} L ${originRightX} ${originBottom} L ${arrowBaseX} ${originBottom} L ${arrowBaseX} ${targetTop} L ${arrowTipX} ${targetCenter.y} L ${arrowBaseX} ${targetBottom} L ${x} ${targetBottom} Z`;
+        path.setAttribute('d', pathData);
+        path.setAttribute('fill', projectionColor);
     }
 
     private updateHeatProjectionOverflow(heatScale: SVGGElement, projectedHeat: number, currentHeat: number): void {
@@ -1745,9 +1832,7 @@ export class UnitSvgService {
     }
 
     private clearHeatProjectionBar(heatScale: SVGGElement): void {
-        heatScale.querySelector('#heat-projection-bar')?.remove();
-        heatScale.querySelector('#heat-projection-origin-arrow')?.remove();
-        heatScale.querySelector('#heat-projection-target-arrow')?.remove();
+        heatScale.querySelector('#heat-projection-path')?.remove();
     }
 
     private restoreHeatProjectionOverflowStroke(overflowFrame: SVGElement): void {

@@ -21,7 +21,7 @@ import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.compon
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import type { MotiveModes } from '../../models/motiveModes.model';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../../models/rules/unit-type-rules';
-import { TW_GAME_RULES, type CBTGameRules } from '../../models/rules/game-rules';
+import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules, type C3DegradationSource } from '../../models/rules/game-rules';
 import { createCBTForceUnitTestHarness, type CBTForceUnitTestEntryState, type TestUnitOverrides } from '../../testing/unit-test-helpers';
 import { getVibrobladeMode, VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../../equipment-handlers/vibroblade.handler';
 import { EquipmentFlag } from '../../models/equipment-flags.type';
@@ -102,8 +102,10 @@ function entry(params: {
 interface CreateComponentOptions {
     readOnly?: boolean;
     hasDirectInventory?: boolean;
+    conditions?: readonly string[];
     tracksHeat?: boolean;
     heatDissipation?: number;
+    heatDissipationConsumed?: number;
     heatNext?: number;
     heatSources?: number;
     gunnerySkill?: number;
@@ -112,6 +114,8 @@ interface CreateComponentOptions {
     attackModifierBreakdown?: UnitModifierBreakdownEntry[];
     attackMovementCanAffectTargetNumbers?: boolean;
     hasLinkedC3Network?: boolean;
+    c3DegradationSource?: C3DegradationSource;
+    allowExtremeRange?: boolean;
     gameRules?: CBTGameRules;
     unit?: TestUnitOverrides;
     handlers?: EquipmentInteractionHandler[];
@@ -157,12 +161,14 @@ function createComponent(
     const unitHarness = createCBTForceUnitTestHarness({
         components: entries,
         unit: options.unit,
+        conditions: options.conditions,
         equipment: equipmentMap,
         criticalSlots: critSlots,
         entryStates,
         heat: { next: options.heatNext },
         tracksHeat: options.tracksHeat,
         heatDissipation: options.heatDissipation,
+        heatDissipationConsumed: options.heatDissipationConsumed,
         heatSources: options.heatSources,
         gunnerySkill: options.gunnerySkill,
         pilotingSkill: options.pilotingSkill,
@@ -170,6 +176,8 @@ function createComponent(
         attackModifierBreakdown: options.attackModifierBreakdown,
         attackMovementCanAffectTargetNumbers: options.attackMovementCanAffectTargetNumbers,
         hasLinkedC3Network: options.hasLinkedC3Network,
+        c3DegradationSource: options.c3DegradationSource,
+        allowExtremeRange: options.allowExtremeRange,
         gameRules: options.gameRules,
         readOnly: options.readOnly,
         hasDirectInventory: options.hasDirectInventory,
@@ -607,7 +615,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         apollo.parent = mrm;
 
-        const { component, unit } = createComponent([mrm, apollo]);
+        const { component, unit } = createComponent([mrm, apollo], {}, [], new Map(), { allowExtremeRange: true });
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         expect(row.damageTypes).toEqual(['AE', 'M', 'V']);
@@ -616,6 +624,10 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.setInventoryControlEntryRange(mrm, 'medium');
 
         expect(component.targetState(row).damageText).toBe('2 [AE,M,V]');
+
+        unit.setInventoryControlEntryRange(mrm, 'extreme');
+
+        expect(component.targetState(row).damageText).toBe('1 [AE,M,V]');
     });
 
     it('keeps a vehicle Apollo modifier active until its standalone-row hit is committed', () => {
@@ -1110,8 +1122,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
                 damage: 8,
                 heat: 12,
                 ranges: [7, 14, 19, 28],
-                av: [8, 8, 8],
-                maxRangeBracket: 'long'
+                av: [8, 8, 8, 8],
+                maxRangeBracket: 'extreme'
             }
         });
         const mountedWeapon = entry({
@@ -1144,7 +1156,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         }));
         expect(row.rangePresentation).toEqual({
             showMinimum: false,
-            values: { short: '8', medium: '8', long: '8', extreme: '—' }
+            values: { short: '8', medium: '8', long: '8', extreme: '8' }
         });
         expect(headers).not.toContain('Min');
         expect(rangeHeaders).toEqual([
@@ -1153,8 +1165,13 @@ describe('WeaponsEquipmentPanelComponent', () => {
             { caption: '(13–20)', label: 'LRV' },
             { caption: '(21–25)', label: 'ERV' }
         ]);
-        expect(values).toEqual(['8', '8', '8', '—']);
-        expect(row.extremeRange).toBe(20);
+        expect(values).toEqual(['8', '8', '8', '8']);
+        expect(row.extremeRange).toBe(25);
+        expect(component.canSelectRange(row, 'extreme')).toBeTrue();
+
+        component.selectRange(row, 'extreme');
+
+        expect(component.isRangeSelected(row, 'extreme')).toBeTrue();
     });
 
     it('rounds individual Aero attack values up and gates unavailable brackets', () => {
@@ -1235,6 +1252,64 @@ describe('WeaponsEquipmentPanelComponent', () => {
             showMinimum: true,
             values: { short: '3', medium: '6', long: '9', extreme: '—' }
         });
+    });
+
+    it('hides ground EXT when the option is disabled', () => {
+        const mountedWeapon = entry({
+            id: 'ground-laser',
+            equipment: weapon('Ground Laser', 'NA', 0, [3, 6, 9, 12])
+        });
+        const { component, fixture } = createComponent([mountedWeapon]);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(component.rangeColumns().map(column => column.key)).toEqual(['short', 'medium', 'long']);
+        expect(fixture.nativeElement.querySelector('.range-extreme')).toBeNull();
+        expect(component.canSelectRange(row, 'extreme')).toBeFalse();
+    });
+
+    it('shows the mode-aware ground EXT value and permits manual selection when enabled', () => {
+        const mountedWeapon = entry({
+            id: 'ground-laser',
+            equipment: weapon('Ground Laser', 'NA', 0, [3, 6, 9, 12])
+        });
+        const { component, fixture, unit } = createComponent([mountedWeapon], {}, [], new Map(), { allowExtremeRange: true });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(component.rangeColumns().map(column => column.key)).toEqual(['short', 'medium', 'long', 'extreme']);
+        expect(fixture.nativeElement.querySelector('.range-extreme')?.textContent.trim()).toBe('12');
+        expect(component.canSelectRange(row, 'extreme')).toBeTrue();
+
+        component.selectRange(row, 'extreme');
+
+        expect(unit.getInventoryControlEntryRange(row.id)).toBe('extreme');
+        expect(component.isRangeSelected(row, 'extreme')).toBeTrue();
+    });
+
+    it('targets within ground Extreme range at +6 and rejects actual distance beyond Extreme', () => {
+        const mountedWeapon = entry({
+            id: 'ground-laser',
+            equipment: weapon('Ground Laser', 'NA', 0, [3, 6, 9, 12])
+        });
+        const { component, unit } = createComponent([mountedWeapon], {}, [], new Map(), {
+            allowExtremeRange: true,
+            gunnerySkill: 4,
+            moveMode: 'stationary',
+            hasLinkedC3Network: true
+        });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 12, c3Distance: 12, useC3: true });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+
+        const legalState = component.targetState(row);
+        expect(legalState.rangeSelection).toEqual(jasmine.objectContaining({ range: 'extreme', outOfRange: false }));
+        expect(legalState.targetNumberText).toBe('10');
+        expect(component.isRangeSelected(row, 'extreme', legalState)).toBeTrue();
+
+        unit.updateInventoryControlTarget('A', { distance: 13, c3Distance: 3 });
+        const illegalState = component.targetState(row);
+        expect(illegalState.rangeSelection).toEqual(jasmine.objectContaining({ range: 'short', outOfRange: true, outOfExtremeRange: true }));
+        expect(illegalState.targetNumberText).toBe('X');
     });
 
     it('uses actual target distance for variable damage arrays when C3 range is shorter', () => {
@@ -1585,6 +1660,48 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.targetNumberText).toBe('10');
     });
 
+    it('ignores C3 distance when Total Warfare C3 is jammed', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [7, 14, 19, 25]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">7</text><text class="range_medium">14</text><text class="range_long">19</text></g>') });
+        const { component, unit } = createComponent([laser], {}, [], new Map(), {
+            gunnerySkill: 4,
+            moveMode: 'stationary',
+            hasLinkedC3Network: true,
+            c3DegradationSource: 'unit',
+            gameRules: TW_GAME_RULES
+        });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 15, c3Distance: 12, useC3: true });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.range).toBe('long');
+        expect(targetState.rangeSelection?.c3Distance).toBeNull();
+        expect(targetState.targetNumberText).toBe('8');
+    });
+
+    it('keeps the Core C3 bracket and adds its ECM degradation penalty', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [7, 14, 19, 25]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">7</text><text class="range_medium">14</text><text class="range_long">19</text></g>') });
+        const { component, unit } = createComponent([laser], {}, [], new Map(), {
+            gunnerySkill: 4,
+            moveMode: 'stationary',
+            hasLinkedC3Network: true,
+            c3DegradationSource: 'network-member',
+            gameRules: CORE_2026_GAME_RULES
+        });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 15, c3Distance: 12, useC3: true });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.range).toBe('medium');
+        expect(targetState.targetNumberText).toBe('7');
+        expect(targetState.breakdown?.lines).toContain(jasmine.objectContaining({ label: 'ECM', value: '+1', negative: true }));
+    });
+
     it('uses actual distance when it is shorter than C3 distance', () => {
         const laserEquipment = weapon('laser', 'NA', 0, [7, 14, 27, 36]);
         laserEquipment.weapon.minRange = 6;
@@ -1929,6 +2046,52 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(heat.next).toBeUndefined();
     });
 
+    it('uses only the remaining dissipation after heat was applied this turn', () => {
+        const laser = entry({
+            id: 'laser',
+            equipment: weapon('Large Laser', 'NA', 8, [1, 2, 3, 4], 0, 8),
+            el: svgEntry('<g><g class="name"><text>Large Laser</text></g><text class="heat">8</text></g>')
+        });
+        const { component } = createComponent([laser], {}, [], new Map(), {
+            heatDissipation: 5,
+            heatDissipationConsumed: 3,
+        });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+
+        expect(component.selectedHeatProjection()).toEqual(jasmine.objectContaining({
+            current: 2,
+            selection: 8,
+            dissipation: 2,
+            final: 8,
+        }));
+    });
+
+    it('includes a heatsink capacity deficit in the selected heat projection', () => {
+        const laser = entry({
+            id: 'laser',
+            equipment: weapon('Large Laser', 'NA', 8, [1, 2, 3, 4], 0, 8),
+            el: svgEntry('<g><g class="name"><text>Large Laser</text></g><text class="heat">8</text></g>')
+        });
+        const { component } = createComponent([laser], {}, [], new Map(), {
+            heatDissipation: 3,
+            heatDissipationConsumed: 5,
+        });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+
+        expect(component.selectedHeatProjection()).toEqual(jasmine.objectContaining({
+            current: 2,
+            sources: 2,
+            selection: 8,
+            pending: 12,
+            dissipation: 0,
+            final: 12,
+        }));
+    });
+
     it('shows post-consumption ammo counts in the fired summary', async () => {
         const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
         const atm = entry({
@@ -2136,7 +2299,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(fragBin.consumed).toBe(5);
     });
 
-    it('starts selected heat projection from existing pending heat', async () => {
+    it('updates an existing heat target to the selected heat projection when firing', async () => {
         const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
         const atm = entry({
             id: 'atm',
@@ -2162,8 +2325,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         await component.consumeSelectedHeatAndAmmo();
 
-        expect(unit.setHeat).not.toHaveBeenCalled();
-        expect(heat.next).toBe(8);
+        expect(unit.setHeat).toHaveBeenCalledOnceWith(9);
+        expect(heat.next).toBe(9);
     });
 
     it('includes current turn heat sources in selected heat projection', () => {
