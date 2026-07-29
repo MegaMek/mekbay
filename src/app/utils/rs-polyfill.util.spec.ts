@@ -216,4 +216,72 @@ describe('RsPolyfillUtil', () => {
         expect(entry.querySelectorAll(':scope > .targetTn-rect').length).toBe(1);
         expect(entry.querySelectorAll(':scope > .targetTn-text').length).toBe(1);
     });
+
+    it('discovers a ground Extreme inventory column when its header is present', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const inventoryBox = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        inventoryBox.setAttribute('id', 'gInventoryBox');
+        ['Sht', 'Med', 'Lng', 'Ext'].forEach((label, index) => {
+            const header = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            header.textContent = label;
+            (header as unknown as { getBBox: () => DOMRect }).getBBox = () => ({
+                x: 100 + index * 20,
+                y: 0,
+                width: 12,
+                height: 8
+            } as DOMRect);
+            inventoryBox.appendChild(header);
+        });
+        svg.appendChild(inventoryBox);
+
+        const columns = (RsPolyfillUtil as unknown as {
+            findInventoryRangeButtonColumns: (svg: SVGSVGElement) => Array<{ className: string }>;
+        }).findInventoryRangeButtonColumns(svg);
+
+        expect(columns.map(column => column.className))
+            .toEqual(['shrButton', 'medButton', 'lngButton', 'extButton']);
+    });
+
+    it('adds inventory hit areas and strike lines idempotently', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const entry = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const name = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        entry.setAttribute('id', 'Laser');
+        entry.setAttribute('class', 'inventoryEntry');
+        name.setAttribute('class', 'name');
+        (entry as unknown as { getBBox: () => DOMRect }).getBBox = () => ({ x: 2, y: 10, width: 100, height: 10 } as DOMRect);
+        (name as unknown as { getBBox: () => DOMRect }).getBBox = () => ({ x: 4, y: 10, width: 40, height: 10 } as DOMRect);
+        entry.appendChild(name);
+        svg.appendChild(entry);
+
+        RsPolyfillUtil.addInventoryLines(svg);
+        RsPolyfillUtil.addInventoryLines(svg);
+
+        expect(entry.querySelectorAll(':scope > .inventoryEntryButton.mainButton').length).toBe(1);
+        expect(entry.querySelectorAll(':scope > .damaged-strike').length).toBe(1);
+    });
+
+    it('adds heat controls idempotently', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = `
+            <g id="heatDataPanel">
+                <g><path></path><text>HEAT</text></g>
+                <path></path>
+                <g class="hsPips"></g>
+            </g>
+        `;
+        svg.querySelectorAll<SVGGraphicsElement>('path, .hsPips').forEach(element => {
+            element.getBBox = () => ({ x: 0, y: 0, width: 20, height: 10 } as DOMRect);
+        });
+        const addApplyHeatButton = (RsPolyfillUtil as unknown as {
+            addApplyHeatButton: (svg: SVGSVGElement) => void;
+        }).addApplyHeatButton.bind(RsPolyfillUtil);
+
+        addApplyHeatButton(svg);
+        addApplyHeatButton(svg);
+
+        expect(svg.querySelectorAll('#applyHeatButton').length).toBe(1);
+        expect(svg.querySelectorAll('#damagedEngineHeatText').length).toBe(1);
+        expect(svg.querySelectorAll('.changeActiveHeatsinksCountButton').length).toBe(1);
+    });
 });

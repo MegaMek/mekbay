@@ -7,6 +7,11 @@ import {
     type InventoryControlRuntimeTargetId
 } from '../../models/inventory-control-runtime-state.model';
 import { TooltipDirective } from '../../directives/tooltip.directive';
+import { getUnitConditionDefinition } from '../../models/rules/unit-type-rules';
+import type { C3DegradationLabel } from '../../models/rules/game-rules';
+import { inventoryTargetAllowsC3, inventoryTargetUsesC3 } from '../../utils/inventory-target-number.util';
+
+const JAMMED_CONDITION_COLOR = getUnitConditionDefinition('jammed')?.color ?? '#ff6be6';
 
 export interface WeaponTargetUpdateRequest {
     targetId: InventoryControlRuntimeTargetId;
@@ -22,6 +27,7 @@ export interface WeaponTargetCalculatorRequest {
     selector: 'weapon-targets-menu',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: { '[style.--jammed-condition-color]': 'jammedConditionColor' },
     imports: [ColorPickerButtonComponent, TooltipDirective],
     template: `
         <div class="weapon-targets-menu glass framed-borders has-shadow">
@@ -29,9 +35,9 @@ export interface WeaponTargetCalculatorRequest {
                 <strong>Targets</strong>
                 <div class="weapon-targets-header-group">
                     @if (targets().length > 0) {
-                        <button class="bt-button targets-delete" type="button" aria-label="Reset targets" title="Reset targets" [disabled]="targets().length === 0" (click)="resetRequest.emit()">CLEAR</button>
+                        <button class="bt-button targets-delete" type="button" aria-label="Reset targets" title="Reset targets" [disabled]="readOnly() || targets().length === 0" (click)="resetTargets()">CLEAR</button>
                     }
-                    <button class="bt-button" type="button" aria-label="Add target" title="Add target" [disabled]="targets().length >= maxTargets()" (click)="addRequest.emit()">ADD TARGET</button>
+                    <button class="bt-button" type="button" aria-label="Add target" title="Add target" [disabled]="readOnly() || targets().length >= maxTargets()" (click)="addTarget()">ADD TARGET</button>
                 </div>
             </div>
             <div class="weapon-targets-list">
@@ -52,30 +58,31 @@ export interface WeaponTargetCalculatorRequest {
                                             class="target-square"
                                             [value]="target.color"
                                             [colors]="colors()"
+                                            [disabled]="readOnly()"
                                             [ariaLabel]="'Choose color for ' + target.name"
                                             (valueChange)="updateColor(target.id, $event)">
                                             {{ target.letter }}
                                         </color-picker-button>
-                                        <input class="bt-input target-name" type="text" [value]="target.name" (input)="updateName(target.id, $any($event.target).value)">
+                                        <input class="bt-input target-name" type="text" [readOnly]="readOnly()" [value]="target.name" (input)="updateName(target.id, $any($event.target).value)">
                                     </div>
                                     <div class="target-controls-row">
                                         <div class="target-number-field">
                                             <span>Distance</span>
                                             <span class="target-stepper">
-                                                <button class="bt-button square-small" type="button" (click)="stepDistance(target, -1)">-</button>
-                                                <input class="value" type="number" min="0" step="1" [value]="target.distance" (input)="updateDistance(target.id, $any($event.target).value)">
-                                                <button class="bt-button square-small" type="button" (click)="stepDistance(target, 1)">+</button>
+                                                <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepDistance(target, -1)">-</button>
+                                                <input class="value" type="number" min="0" step="1" [readOnly]="readOnly()" [value]="target.distance" (input)="updateDistance(target.id, $any($event.target).value)">
+                                                <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepDistance(target, 1)">+</button>
                                             </span>
                                         </div>
                                         <div class="target-number-field">
                                             <span class="tn-modifier-label" [tooltip]="tnModifierTooltip">TN Modifier <span class="info-notice" aria-hidden="true">i</span></span>
                                             <span class="target-stepper">
-                                                <button class="bt-button square-small" type="button" (click)="stepTnModifier(target, -1)">-</button>
-                                                <input class="value" type="number" step="1" [value]="target.tnModifier" (input)="updateTnModifier(target.id, $any($event.target).value)">
-                                                <button class="bt-button square-small" type="button" (click)="stepTnModifier(target, 1)">+</button>
+                                                <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepTnModifier(target, -1)">-</button>
+                                                <input class="value" type="number" step="1" [readOnly]="readOnly()" [value]="target.tnModifier" (input)="updateTnModifier(target.id, $any($event.target).value)">
+                                                <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepTnModifier(target, 1)">+</button>
                                             </span>
                                         </div>
-                                        <button class="bt-button square-small calculator-button" type="button" (click)="openTnCalculator(target.id, $event)" aria-label="Open TN calculator" title="Open TN calculator">
+                                        <button class="bt-button square-small calculator-button" type="button" [disabled]="readOnly()" (click)="openTnCalculator(target.id, $event)" aria-label="Open TN calculator" title="Open TN calculator">
                                             <svg fill="currentColor" width="16px" height="16px" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
                                             <path d="M116,184a12,12,0,0,1-12,12H84v20a12,12,0,0,1-24,0V196H40a12,12,0,0,1,0-24H60V152a12,12,0,0,1,24,0v20h20A12,12,0,0,1,116,184ZM104,60H40a12,12,0,0,0,0,24h64a12,12,0,0,0,0-24Zm48,116.06641h64a12,12,0,0,0,0-24H152a12,12,0,0,0,0,24Zm64,15.86718H152a12,12,0,0,0,0,24h64a12,12,0,0,0,0-24Zm-64.48535-87.44824a12.00033,12.00033,0,0,0,16.9707,0L184,88.9707l15.51465,15.51465a12.0001,12.0001,0,0,0,16.9707-16.9707L200.9707,72l15.51465-15.51465a12.0001,12.0001,0,0,0-16.9707-16.9707L184,55.0293,168.48535,39.51465a12.0001,12.0001,0,0,0-16.9707,16.9707L167.0293,72,151.51465,87.51465A12.00062,12.00062,0,0,0,151.51465,104.48535Z"/>
                                             </svg>
@@ -85,20 +92,22 @@ export interface WeaponTargetCalculatorRequest {
                                 @if (showC3Distance()) {
                                     <div class="target-secondary-row">
                                         <div class="target-identity-spacer" aria-hidden="true"></div>
-                                        <div class="target-controls-row target-c3-controls">
-                                            <div class="target-number-field" [class.disabled-field]="!c3Enabled(target)">
-                                                <span>C³ Distance</span>
-                                                <span class="target-stepper">
-                                                    <button class="bt-button square-small" type="button" [disabled]="!c3Enabled(target)" (click)="stepC3Distance(target, -1)">-</button>
-                                                    <input class="value" type="number" min="0" step="1" [disabled]="!c3Enabled(target)" [value]="c3DistanceInputValue(target)" (input)="updateC3Distance(target, $any($event.target).value)">
-                                                    <button class="bt-button square-small" type="button" [disabled]="!c3Enabled(target)" (click)="stepC3Distance(target, 1)">+</button>
-                                                </span>
-                                            </div>
-                                            <div class="target-number-field use-c3-field">
-                                                <label class="use-c3-toggle">
-                                                    <input type="checkbox" class="bt-checkbox" [checked]="useC3Checked(target)" (change)="updateUseC3(target, $event)">
-                                                    <span>Use C³</span>
-                                                </label>
+                                        <div class="target-controls-row target-c3-controls" [class.c3-degraded]="c3Degraded()">
+                                            <div class="c3-fields">
+                                                <div class="c3-distance-caption">C³ Distance@if (c3Degraded()) { <strong class="c3-status-label"> ({{ c3DegradationLabel() }})</strong> }</div>
+                                                <div class="target-number-field c3-distance-field" [class.disabled-field]="!c3Enabled(target)">
+                                                    <span class="target-stepper">
+                                                        <button class="bt-button square-small" type="button" [disabled]="readOnly() || !c3Enabled(target)" (click)="stepC3Distance(target, -1)">-</button>
+                                                        <input class="value" type="number" min="0" step="1" [disabled]="!c3Enabled(target)" [readOnly]="readOnly()" [value]="c3DistanceInputValue(target)" (input)="updateC3Distance(target, $any($event.target).value)">
+                                                        <button class="bt-button square-small" type="button" [disabled]="readOnly() || !c3Enabled(target)" (click)="stepC3Distance(target, 1)">+</button>
+                                                    </span>
+                                                </div>
+                                                <div class="target-number-field use-c3-field">
+                                                    <label class="use-c3-toggle">
+                                                        <input type="checkbox" class="bt-checkbox" [checked]="useC3Checked(target)" [disabled]="readOnly() || !c3Available(target)" (change)="updateUseC3(target, $event)">
+                                                        <span>Use C³</span>
+                                                    </label>
+                                                </div>
                                             </div>
                                             <span class="calculator-spacer" aria-hidden="true"></span>
                                         </div>
@@ -106,7 +115,7 @@ export interface WeaponTargetCalculatorRequest {
                                 }
                             </div>
                             <div class="target-delete-row">
-                                <button class="target-delete" type="button" aria-label="Delete target" title="Delete target" (click)="deleteRequest.emit(target.id)">
+                                <button class="target-delete" type="button" [disabled]="readOnly()" aria-label="Delete target" title="Delete target" (click)="deleteTarget(target.id)">
                                     <svg _ngcontent-ng-c1165242001="" width="18px" height="18px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c1165242001="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
                                         L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg>
                                 </button>
@@ -230,6 +239,31 @@ export interface WeaponTargetCalculatorRequest {
 
         .target-c3-controls {
             align-items: end;
+            position: relative;
+            overflow: visible;
+        }
+
+        .c3-fields {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            column-gap: 8px;
+            row-gap: 3px;
+            flex: 1 1 0;
+            min-width: 0;
+        }
+
+        .c3-distance-caption {
+            grid-column: 1 / 3;
+            min-width: 0;
+            color: var(--text-color-secondary);
+            font-size: 0.76rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .c3-status-label {
+            color: var(--jammed-condition-color);
         }
 
         .calculator-button,
@@ -282,6 +316,23 @@ export interface WeaponTargetCalculatorRequest {
 
         .disabled-field {
             opacity: 0.45;
+        }
+
+        .target-c3-controls.c3-degraded::after {
+            content: '';
+            position: absolute;
+            inset: -4px;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            background: color-mix(in srgb, var(--jammed-condition-color) 30%, transparent);
+            border: 1px solid var(--jammed-condition-color);
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            pointer-events: none;
+            opacity: 0.5;
         }
 
         .tn-modifier-label {
@@ -412,12 +463,15 @@ export interface WeaponTargetCalculatorRequest {
     `]
 })
 export class WeaponTargetsMenuComponent {
+    readonly jammedConditionColor = JAMMED_CONDITION_COLOR;
     readonly tnModifierTooltip = 'Target-side TN modifier for this target. Use it for target movement, indirect fire, spotter movement, terrain, cover, stance, and similar target conditions. It is added separately from your unit skill, your movement, range, heat, and weapon modifiers. The calculator can fill it, and you can still override it manually.';
     readonly targets = input<InventoryControlRuntimeTarget[]>([]);
     readonly colors = input<readonly string[]>(INVENTORY_CONTROL_TARGET_COLORS);
     readonly maxTargets = input(INVENTORY_CONTROL_TARGET_MAX_COUNT);
     readonly unassignedMovement = input(false);
     readonly showC3Distance = input(false);
+    readonly c3Degraded = input(false);
+    readonly c3DegradationLabel = input<C3DegradationLabel>('DEGRADED');
     readonly readOnly = input(false);
 
     readonly addRequest = output<void>();
@@ -426,24 +480,40 @@ export class WeaponTargetsMenuComponent {
     readonly deleteRequest = output<InventoryControlRuntimeTargetId>();
     readonly calculatorRequest = output<WeaponTargetCalculatorRequest>();
 
+    addTarget(): void {
+        if (!this.readOnly()) this.addRequest.emit();
+    }
+
+    resetTargets(): void {
+        if (!this.readOnly()) this.resetRequest.emit();
+    }
+
+    deleteTarget(targetId: InventoryControlRuntimeTargetId): void {
+        if (!this.readOnly()) this.deleteRequest.emit(targetId);
+    }
+
     updateName(targetId: InventoryControlRuntimeTargetId, name: string): void {
+        if (this.readOnly()) return;
         this.updateRequest.emit({ targetId, patch: { name } });
     }
 
     updateColor(targetId: InventoryControlRuntimeTargetId, color: string): void {
+        if (this.readOnly()) return;
         this.updateRequest.emit({ targetId, patch: { color } });
     }
 
     updateDistance(targetId: InventoryControlRuntimeTargetId, value: string): void {
+        if (this.readOnly()) return;
         this.updateRequest.emit({ targetId, patch: { distance: this.parseNumber(value, 0, true) } });
     }
 
     updateC3Distance(target: InventoryControlRuntimeTarget, value: string): void {
-        if (!this.c3Enabled(target)) return;
+        if (this.readOnly() || !this.c3Enabled(target)) return;
         this.updateRequest.emit({ targetId: target.id, patch: { c3Distance: this.parseNumber(value, 0, true) } });
     }
 
     updateUseC3(target: InventoryControlRuntimeTarget, event: Event): void {
+        if (this.readOnly() || !this.c3Available(target)) return;
         const checked = (event.target as HTMLInputElement).checked;
         this.updateRequest.emit({
             targetId: target.id,
@@ -455,15 +525,17 @@ export class WeaponTargetsMenuComponent {
     }
 
     updateTnModifier(targetId: InventoryControlRuntimeTargetId, value: string): void {
+        if (this.readOnly()) return;
         this.updateRequest.emit({ targetId, patch: { tnModifier: this.parseNumber(value, 0, false) } });
     }
 
     stepDistance(target: InventoryControlRuntimeTarget, delta: number): void {
+        if (this.readOnly()) return;
         this.updateRequest.emit({ targetId: target.id, patch: { distance: Math.max(0, target.distance + delta) } });
     }
 
     stepC3Distance(target: InventoryControlRuntimeTarget, delta: number): void {
-        if (!this.c3Enabled(target)) return;
+        if (this.readOnly() || !this.c3Enabled(target)) return;
         this.updateRequest.emit({ targetId: target.id, patch: { c3Distance: Math.max(0, this.c3DistanceValue(target) + delta) } });
     }
 
@@ -479,15 +551,21 @@ export class WeaponTargetsMenuComponent {
         return this.useC3Checked(target);
     }
 
+    c3Available(target: InventoryControlRuntimeTarget): boolean {
+        return inventoryTargetAllowsC3(target);
+    }
+
     useC3Checked(target: InventoryControlRuntimeTarget): boolean {
-        return target.useC3 === true;
+        return inventoryTargetUsesC3(target);
     }
 
     stepTnModifier(target: InventoryControlRuntimeTarget, delta: number): void {
+        if (this.readOnly()) return;
         this.updateRequest.emit({ targetId: target.id, patch: { tnModifier: target.tnModifier + delta } });
     }
 
     openTnCalculator(targetId: InventoryControlRuntimeTargetId, event: MouseEvent): void {
+        if (this.readOnly()) return;
         this.calculatorRequest.emit({ targetId, origin: event.currentTarget as HTMLElement });
     }
 

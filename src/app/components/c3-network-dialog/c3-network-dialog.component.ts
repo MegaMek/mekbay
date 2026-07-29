@@ -47,7 +47,7 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { ForceUnit } from '../../models/force-unit.model';
-import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { C3NetworkUtil, type C3NetworkContext } from '../../utils/c3-network.util';
 import { C3NetworkType, type C3Node, C3Role, C3_NETWORK_LIMITS, type C3_MAX_NETWORK_TOTAL } from '../../models/c3-network.model';
 import type { Force, UnitGroup } from '../../models/force.model';
@@ -62,6 +62,7 @@ import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3.0;
+const BROKEN_LINK_COLOR = '#8B0000';
 
 export interface C3NetworkDialogData {
     force: Force;
@@ -83,6 +84,7 @@ interface ConnectionLine {
     hasArrow: boolean;
     arrowAngle: number;
     selfConnection: boolean;
+    unavailable: boolean;
 }
 
 interface HubPoint {
@@ -116,6 +118,7 @@ interface SidebarMemberVm {
     name: string;
     role: SidebarMemberRole;
     canRemove: boolean;
+    brokenLink: boolean;
     isSelfConnection?: boolean;
     memberStr?: string;
     node: C3Node | null;
@@ -293,7 +296,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
      * Also syncs positions from unit.c3Position() for existing nodes.
      */
     private syncNodesWithUnits(forceUnits: ForceUnit[]): void {
-        const c3Units = forceUnits.filter(u => C3NetworkUtil.hasC3(u.getUnit()));
+        const c3Units = forceUnits.filter(u => C3NetworkUtil.hasC3(u));
         const currentNodes = this.nodes();
         const currentNodeIds = new Set(currentNodes.map(n => n.unit.id));
         const newUnitIds = new Set(c3Units.map(u => u.id));
@@ -310,6 +313,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 if (updatedUnit !== node.unit) {
                     node.unit = updatedUnit;
                 }
+                const c3Components = C3NetworkUtil.getC3Components(updatedUnit);
+                node.c3Components = c3Components;
+                node.pinOffsetsX = this.computePinOffsetsX(c3Components.length);
                 // Sync position from unit's c3Position if it differs
                 const pos = updatedUnit.c3Position();
                 if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
@@ -335,7 +341,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const pos = unit.c3Position();
                 const x = pos?.x ?? canvasW / 2 + (i * 200);
                 const y = pos?.y ?? canvasH / 2;
-                const c3Components = C3NetworkUtil.getC3Components(unit.getUnit());
+                const c3Components = C3NetworkUtil.getC3Components(unit);
                 const pinOffsetsX = this.computePinOffsetsX(c3Components.length);
 
                 nodesToKeep.push({
@@ -368,7 +374,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     private getNetworkContext(): C3NetworkContext {
         return {
             networks: this.networks(),
-            nodesById: this.nodesById(),
             getNextColor: () => C3NetworkUtil.getNextColor(this.networks(), this.masterPinColors),
             masterPinColors: this.masterPinColors
         };
@@ -448,7 +453,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
                 const existingConnection = C3NetworkUtil.findConnectionBetweenPins(
                     networks, conn.node.unit.id, conn.compIndex, sourceComp.role,
-                    node.unit.id, i, targetComp.role
+                    node.unit.id, i, targetComp.role, sourceComp.networkType
                 );
                 if (existingConnection) {
                     connectedPins.push(i);
@@ -474,17 +479,31 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     protected validTargets = computed(() => this.connectionState().validTargetIds);
 
+    private runtimeLinks = computed(() => {
+        const unitsById = new Map(this.nodes().map(node => [node.unit.id, node.unit]));
+        return C3NetworkUtil.getRuntimeLinks(
+            this.networks(),
+            unitsById,
+            (unit, componentIndex) => unit instanceof CBTForceUnit
+                ? unit.isC3ComponentOperational(componentIndex)
+                : !unit.destroyed,
+        );
+    });
+
     protected connectionLines = computed<ConnectionLine[]>(() => {
         const lines: ConnectionLine[] = [];
         const nodesById = this.nodesById();
+        const runtimeLinks = this.runtimeLinks();
 
         for (const network of this.networks()) {
             if (network.peerIds && network.peerIds.length > 1) {
                 const peerNodes = network.peerIds.map(id => nodesById.get(id)).filter((n): n is C3Node => !!n);
                 if (peerNodes.length >= 2) {
                     const positions = peerNodes.map(node => {
-                        const compIdx = node.c3Components.findIndex(c => c.role === C3Role.PEER);
-                        return this.getPinWorldPosition(node, Math.max(0, compIdx));
+                        const compIdx = C3NetworkUtil.resolveConnectedComponentIndex(
+                            node.unit.id, node.unit, network, C3Role.PEER
+                        );
+                        return this.getPinWorldPosition(node, Math.max(0, compIdx ?? -1));
                     });
                     const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
                     const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
@@ -492,15 +511,21 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     const nodeCy = peerNodes.reduce((s, n) => s + n.y, 0) / peerNodes.length;
 
                     positions.forEach((p, idx) => {
+                        const peerId = peerNodes[idx].unit.id;
+                        const unavailable = runtimeLinks
+                            .filter(link => link.network.id === network.id
+                                && (link.source.unitId === peerId || link.target.unitId === peerId))
+                            .every(link => !link.operational);
                         lines.push({
                             id: `${network.id}-peer-${idx}`,
                             x1: cx, y1: cy, x2: p.x, y2: p.y,
                             nodeX1: nodeCx, nodeY1: nodeCy,
                             nodeX2: peerNodes[idx].x, nodeY2: peerNodes[idx].y,
-                            color: network.color,
+                            color: unavailable ? BROKEN_LINK_COLOR : network.color,
                             hasArrow: false,
                             arrowAngle: 0,
-                            selfConnection: false
+                            selfConnection: false,
+                            unavailable,
                         });
                     });
                 }
@@ -516,15 +541,25 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     const memberNode = nodesById.get(parsed.unitId);
                     if (!memberNode) continue;
 
-                    let memberCompIdx = parsed.compIndex !== undefined
-                        ? parsed.compIndex
-                        : memberNode.c3Components.findIndex(c => c.role === C3Role.SLAVE);
+                    let memberCompIdx = parsed.compIndex ?? C3NetworkUtil.resolveConnectedComponentIndex(
+                        parsed.unitId,
+                        memberNode.unit,
+                        network,
+                        C3Role.SLAVE
+                    ) ?? -1;
                     if (memberCompIdx < 0) memberCompIdx = 0;
 
                     const memberPos = this.getPinWorldPosition(memberNode, memberCompIdx);
                     const angle = Math.atan2(memberPos.y - masterPos.y, memberPos.x - masterPos.x);
                     const isSelfConnection = parsed.unitId === network.masterId;
                     const shortenBy = this.PIN_RADIUS + 10;
+                    const runtimeLink = runtimeLinks.find(link =>
+                        link.network.id === network.id
+                        && link.source.unitId === network.masterId
+                        && link.source.compIndex === compIdx
+                        && link.target.unitId === parsed.unitId
+                        && link.target.compIndex === memberCompIdx);
+                    const unavailable = !runtimeLink?.operational;
 
                     lines.push({
                         id: `${network.id}-member-${member}`,
@@ -536,10 +571,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         nodeY1: masterNode.y,
                         nodeX2: memberNode.x - Math.cos(angle) * 10,
                         nodeY2: memberNode.y - Math.sin(angle) * 10,
-                        color: network.color,
+                        color: unavailable ? BROKEN_LINK_COLOR : network.color,
                         hasArrow: true,
                         arrowAngle: angle,
-                        selfConnection: isSelfConnection
+                        selfConnection: isSelfConnection,
+                        unavailable,
                     });
                 }
             }
@@ -556,8 +592,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const peerNodes = network.peerIds.map(id => nodesById.get(id)).filter((n): n is C3Node => !!n);
                 if (peerNodes.length >= 2) {
                     const positions = peerNodes.map(node => {
-                        const compIdx = node.c3Components.findIndex(c => c.role === C3Role.PEER);
-                        return this.getPinWorldPosition(node, Math.max(0, compIdx));
+                        const compIdx = C3NetworkUtil.resolveConnectedComponentIndex(
+                            node.unit.id, node.unit, network, C3Role.PEER
+                        );
+                        return this.getPinWorldPosition(node, Math.max(0, compIdx ?? -1));
                     });
                     hubs.push({
                         id: `hub-${network.id}`,
@@ -584,6 +622,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected sidebarNetworks = computed<SidebarNetworkVm[]>(() => {
         const networks = this.networks();
         const nodesById = this.nodesById();
+        const runtimeLinks = this.runtimeLinks();
         const topLevel = C3NetworkUtil.getTopLevelNetworks(networks);
         const visited = new Set<string>();
         const isClassic = this.isClassicGame();
@@ -616,6 +655,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     members.push({
                         id, name: node?.unit.getUnit().chassis || 'Unknown',
                         role: 'peer', canRemove: !this.data.readOnly, node,
+                        brokenLink: C3NetworkUtil.hasOnlyBrokenIncidentLinks(network.id, id, runtimeLinks),
                         ...getUnitBvData(node)
                     });
                 }
@@ -625,6 +665,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     id: network.masterId,
                     name: masterNode?.unit.getUnit().chassis || 'Unknown',
                     role: 'master', canRemove: false, node: masterNode, network,
+                    brokenLink: C3NetworkUtil.hasOnlyBrokenIncidentLinks(network.id, network.masterId, runtimeLinks),
                     ...getUnitBvData(masterNode)
                 });
 
@@ -644,6 +685,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                                 name: node?.unit.getUnit().chassis || 'Unknown',
                                 role: 'sub-master', canRemove: !this.data.readOnly, isSelfConnection,
                                 memberStr, node, network: childNet, networkVm: childVm ?? undefined,
+                                brokenLink: C3NetworkUtil.isChildLinkBroken(
+                                    network.id, parsed.unitId, parsed.compIndex, runtimeLinks),
                                 ...getUnitBvData(node)
                             });
                             if (childVm) subNetworks.push(childVm);
@@ -655,6 +698,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         id: parsed.unitId,
                         name: node?.unit.getUnit().chassis || 'Unknown',
                         role: 'slave', canRemove: !this.data.readOnly, isSelfConnection, memberStr, node,
+                        brokenLink: C3NetworkUtil.isChildLinkBroken(
+                            network.id, parsed.unitId, parsed.compIndex, runtimeLinks),
                         ...getUnitBvData(node)
                     });
                 }
@@ -674,21 +719,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             // Calculate network tax for top-level networks only
             let networkTax: number | undefined;
             if (isTopLevel && isClassic) {
-                const uniqueUnitIds = new Set<string>();
-                const collectUnitIds = (vm: SidebarNetworkVm) => {
-                    for (const m of vm.members) {
-                        if (!m.isSelfConnection) uniqueUnitIds.add(m.id);
-                    }
-                    for (const sub of vm.subNetworks) collectUnitIds(sub);
-                };
-                // We need to collect from the current VM we're building
-                for (const m of members) {
-                    if (!m.isSelfConnection) uniqueUnitIds.add(m.id);
-                }
-                for (const sub of subNetworks) collectUnitIds(sub);
-                
                 // Sum the tax of all unique units in the network
-                const collectTaxes = (vm: { members: SidebarMemberVm[], subNetworks: { members: SidebarMemberVm[], subNetworks: any[] }[] }, seen: Set<string>): number => {
+                const collectTaxes = (vm: Pick<SidebarNetworkVm, 'members' | 'subNetworks'>, seen: Set<string>): number => {
                     let sum = 0;
                     for (const m of vm.members) {
                         if (!m.isSelfConnection && m.c3Bv !== undefined && !seen.has(m.id)) {
@@ -770,14 +802,23 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         }
                     }
                 } else if (comp.role === C3Role.SLAVE) {
-                    connected = networks.some(n => n.members?.includes(unitId));
+                    connected = networks.some(n => n.members?.includes(unitId)
+                        && C3NetworkUtil.resolveConnectedComponentIndex(
+                                unitId, node.unit, n, C3Role.SLAVE
+                        ) === compIndex);
                     disabled = C3NetworkUtil.isUnitMasterConnected(unitId, networks);
                     for (const net of networks) {
-                        if (net.members?.includes(unitId)) { color = net.color; break; }
+                        if (net.members?.includes(unitId)
+                            && C3NetworkUtil.resolveConnectedComponentIndex(
+                                    unitId, node.unit, net, C3Role.SLAVE
+                            ) === compIndex) { color = net.color; break; }
                     }
                 } else if (comp.role === C3Role.PEER) {
-                    const net = C3NetworkUtil.findPeerNetwork(unitId, networks);
-                    connected = !!(net?.peerIds && net.peerIds.length >= 2);
+                    const net = C3NetworkUtil.findPeerNetwork(unitId, networks, comp.networkType);
+                    connected = !!(net?.peerIds && net.peerIds.length >= 2
+                        && C3NetworkUtil.resolveConnectedComponentIndex(
+                                unitId, node.unit, net, C3Role.PEER
+                        ) === compIndex);
                     color = net?.color || null;
                 }
 
@@ -840,6 +881,21 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return map;
     });
 
+    protected damageDisconnectedNodes = computed(() => {
+        const operationalUnitIds = new Set<string>();
+        for (const link of this.runtimeLinks()) {
+            if (!link.operational) continue;
+            operationalUnitIds.add(link.source.unitId);
+            operationalUnitIds.add(link.target.unitId);
+        }
+
+        const disconnected = new Set<string>();
+        for (const [unitId, structurallyConnected] of this.unitConnectionStatus()) {
+            if (structurallyConnected && !operationalUnitIds.has(unitId)) disconnected.add(unitId);
+        }
+        return disconnected;
+    });
+
     ngAfterViewInit() {
         this.initializeNodes();
         this.resolveAllNodeCollisions();
@@ -870,7 +926,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     private initializeNodes() {
-        const c3Units = this.getUnits().filter(u => C3NetworkUtil.hasC3(u.getUnit()));
+        const c3Units = this.getUnits().filter(u => C3NetworkUtil.hasC3(u));
         if (c3Units.length === 0) return;
 
         const el = this.svgCanvas()?.nativeElement;
@@ -952,7 +1008,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
         this.nodes.set(c3Units.map((unit, idx) => {
             const pos = positionsById.get(unit.id);
-            const comps = C3NetworkUtil.getC3Components(unit.getUnit());
+            const comps = C3NetworkUtil.getC3Components(unit);
             const numPins = Math.max(1, comps.length);
             const totalWidth = (numPins - 1) * this.PIN_GAP;
             return {
@@ -1177,7 +1233,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const comp = node.c3Components[compIndex];
         if (!comp) return;
 
-        const result = C3NetworkUtil.cancelConnectionForPin(this.networks(), node.unit.id, compIndex, comp.role);
+        const result = C3NetworkUtil.cancelConnectionForPin(
+            this.networks(), node.unit.id, compIndex, comp.role, comp.networkType);
         if (result.success) {
             this.networks.set(result.networks);
             this.hasModifications.set(true);
@@ -1359,7 +1416,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         const targetComp = targetNode.c3Components[targetPin];
                         const existingConnection = C3NetworkUtil.findConnectionBetweenPins(
                             this.networks(), conn.node.unit.id, conn.compIndex, sourceComp.role,
-                            targetNode.unit.id, targetPin, targetComp.role
+                            targetNode.unit.id, targetPin, targetComp.role, sourceComp.networkType
                         );
 
                         if (existingConnection) {
@@ -1376,7 +1433,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                                     const result = C3NetworkUtil.removeMemberFromNetwork(this.networks(), existingConnection.networkId, existingConnection.memberStr);
                                     this.networks.set(result.networks);
                                 } else {
-                                    const result = C3NetworkUtil.cancelConnectionForPin(this.networks(), conn.node.unit.id, conn.compIndex, sourceComp.role);
+                                    const result = C3NetworkUtil.cancelConnectionForPin(
+                                        this.networks(), conn.node.unit.id, conn.compIndex,
+                                        sourceComp.role, sourceComp.networkType);
                                     this.networks.set(result.networks);
                                 }
                                 this.hasModifications.set(true);
@@ -1493,7 +1552,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         if (this.data.readOnly) return;
 
         if (network.peerIds) {
-            const result = C3NetworkUtil.removeUnitFromPeerNetwork(this.networks(), unitId);
+            const result = C3NetworkUtil.removeUnitFromPeerNetwork(this.networks(), unitId, network.type);
             this.networks.set(result.networks);
         } else if (memberStr) {
             const result = C3NetworkUtil.removeMemberFromNetwork(this.networks(), network.id, memberStr);
@@ -1807,16 +1866,16 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     ctx.networks = networks;
                     
                     const canConnect = C3NetworkUtil.canConnectToPin(
-                        masterPin.node, masterPin.compIndex,
                         gmPin.node, gmPin.compIndex,
+                        masterPin.node, masterPin.compIndex,
                         networks
                     );
                     
                     if (canConnect.valid) {
                         const result = C3NetworkUtil.createConnection(
                             ctx,
-                            masterPin.node, masterPin.compIndex,
-                            gmPin.node, gmPin.compIndex
+                            gmPin.node, gmPin.compIndex,
+                            masterPin.node, masterPin.compIndex
                         );
                         if (result.success) {
                             networks = result.networks;
@@ -1913,16 +1972,16 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     ctx.networks = networks;
                     
                     const canConnect = C3NetworkUtil.canConnectToPin(
-                        orphanPin.node, orphanPin.compIndex,
                         gmPin.node, gmPin.compIndex,
+                        orphanPin.node, orphanPin.compIndex,
                         networks
                     );
                     
                     if (canConnect.valid) {
                         const result = C3NetworkUtil.createConnection(
                             ctx,
-                            orphanPin.node, orphanPin.compIndex,
-                            gmPin.node, gmPin.compIndex
+                            gmPin.node, gmPin.compIndex,
+                            orphanPin.node, orphanPin.compIndex
                         );
                         if (result.success) {
                             networks = result.networks;
@@ -2049,10 +2108,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                             const ctx = this.getNetworkContext();
                             ctx.networks = networks;
                             const canConnect = C3NetworkUtil.canConnectToPin(
-                                rootPin.node, rootPin.compIndex, gmPin.node, gmPin.compIndex, networks
+                                gmPin.node, gmPin.compIndex, rootPin.node, rootPin.compIndex, networks
                             );
                             if (canConnect.valid) {
-                                const result = C3NetworkUtil.createConnection(ctx, rootPin.node, rootPin.compIndex, gmPin.node, gmPin.compIndex);
+                                const result = C3NetworkUtil.createConnection(ctx, gmPin.node, gmPin.compIndex, rootPin.node, rootPin.compIndex);
                                 if (result.success) {
                                     networks = result.networks;
                                     changed = true;
@@ -2097,10 +2156,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                             const ctx = this.getNetworkContext();
                             ctx.networks = networks;
                             const canConnect = C3NetworkUtil.canConnectToPin(
-                                orphanPin.node, orphanPin.compIndex, gmPin.node, gmPin.compIndex, networks
+                                gmPin.node, gmPin.compIndex, orphanPin.node, orphanPin.compIndex, networks
                             );
                             if (canConnect.valid) {
-                                const result = C3NetworkUtil.createConnection(ctx, orphanPin.node, orphanPin.compIndex, gmPin.node, gmPin.compIndex);
+                                const result = C3NetworkUtil.createConnection(ctx, gmPin.node, gmPin.compIndex, orphanPin.node, orphanPin.compIndex);
                                 if (result.success) {
                                     networks = result.networks;
                                     changed = true;
@@ -2170,7 +2229,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         }
 
         // Validate and clean the networks
-        const unitsMap = new Map(this.getUnits().map(u => [u.id, u.getUnit()]));
+        const unitsMap = new Map(this.getUnits().map(u => [u.id, u]));
         networks = C3NetworkUtil.validateAndCleanNetworks(networks, unitsMap);
 
         this.networks.set(networks);
@@ -2357,7 +2416,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         for (const node of this.nodes()) {
             node.unit.setC3Position({ x: node.x, y: node.y });
         }
-        const unitsMap = new Map(this.getUnits().map(u => [u.id, u.getUnit()]));
+        const unitsMap = new Map(this.getUnits().map(u => [u.id, u]));
         this.networks.set(C3NetworkUtil.validateAndCleanNetworks(this.networks(), unitsMap));
         this.dialogRef.close({ networks: this.networks(), updated: this.hasModifications() });
     }

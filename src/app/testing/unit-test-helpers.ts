@@ -7,7 +7,7 @@ import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget, In
 import { type MountedEquipmentInit, MountedEquipment  } from '../models/mounted-equipment.model';
 import { type CriticalSlot, type HeatProfile } from '../models/force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../models/motiveModes.model';
-import { CORE_2026_GAME_RULES, type CBTGameRules, type ToHitAdjustment, type ToHitModifierBreakdownEntry } from '../models/rules/game-rules';
+import { CORE_2026_GAME_RULES, type CBTGameRules, type C3DegradationSource, type ToHitAdjustment, type ToHitModifierBreakdownEntry } from '../models/rules/game-rules';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE, type UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
 import type { InventoryControlDisplayData, InventoryControlRules } from '../utils/inventory-control.util';
 
@@ -155,7 +155,7 @@ export interface CBTForceUnitTestHarnessOptions {
     heat?: Partial<HeatProfile>;
     tracksHeat?: boolean;
     heatDissipation?: number;
-    heatApplied?: boolean;
+    heatDissipationConsumed?: number;
     heatSources?: number;
     gunnerySkill?: number;
     pilotingSkill?: number;
@@ -163,6 +163,8 @@ export interface CBTForceUnitTestHarnessOptions {
     attackModifierBreakdown?: UnitModifierBreakdownEntry[];
     attackMovementCanAffectTargetNumbers?: boolean;
     hasLinkedC3Network?: boolean;
+    c3DegradationSource?: C3DegradationSource;
+    allowExtremeRange?: boolean;
     readOnly?: boolean;
     hasDirectInventory?: boolean;
     computeEntryState?: (entry: MountedEquipment) => CBTForceUnitTestEntryState;
@@ -178,6 +180,7 @@ export interface CBTForceUnitTestTurnState {
     missingAttackMovementModifier(): boolean;
     getSpottingModifier(): number;
     heatSources(): Array<{ id: string; label: string; value: number }>;
+    heatDissipationBalance(): number;
     effectiveHeatDissipation(): number;
     addFiredHeat(amount: number): void;
 }
@@ -206,9 +209,11 @@ export class CBTForceUnitTestHarness {
         this.heat = {
             current: options.heat?.current ?? 2,
             previous: options.heat?.previous ?? 1,
-            next: options.heat?.next
+            next: options.heat?.next,
+            heatsinksOff: options.heat?.heatsinksOff,
         };
         const conditions = new Map((options.conditions ?? []).map(condition => [condition, undefined] as const));
+        let firedHeat = 0;
 
         const baseUnit = createEmptyUnit({ id: -1, name: options.id ?? 'Test Unit', ...options.unit });
         const attackMovementModifier = (): number => {
@@ -219,6 +224,10 @@ export class CBTForceUnitTestHarness {
                 default: return 0;
             }
         };
+        const heatDissipationBalance = (): number => (
+            (options.tracksHeat === false ? 0 : options.heatDissipation ?? 0)
+            - (options.heatDissipationConsumed ?? 0)
+        );
         this.turnState = {
             moveMode: () => options.moveMode ?? null,
             airborne: () => false,
@@ -228,9 +237,20 @@ export class CBTForceUnitTestHarness {
                 : []),
             missingAttackMovementModifier: () => (options.moveMode ?? null) === null && (options.attackMovementCanAffectTargetNumbers ?? true),
             getSpottingModifier: () => 0,
-            heatSources: () => options.heatSources ? [{ id: 'test-source', label: 'Test Source', value: options.heatSources }] : [],
-            effectiveHeatDissipation: () => options.heatApplied ? 0 : options.heatDissipation ?? 0,
-            addFiredHeat: () => undefined
+            heatSources: () => [
+                ...(options.heatSources ? [{ id: 'test-source', label: 'Test Source', value: options.heatSources }] : []),
+                ...(firedHeat > 0 ? [{ id: 'weapons', label: 'Weapons', value: firedHeat }] : []),
+                ...(heatDissipationBalance() < 0 ? [{
+                    id: 'heat-dissipation-deficit',
+                    label: 'Dissipation',
+                    value: -heatDissipationBalance(),
+                }] : []),
+            ],
+            heatDissipationBalance,
+            effectiveHeatDissipation: () => Math.max(0, heatDissipationBalance()),
+            addFiredHeat: (amount: number) => {
+                if (Number.isFinite(amount) && amount > 0) firedHeat += amount;
+            }
         };
 
         const rules = {
@@ -242,7 +262,7 @@ export class CBTForceUnitTestHarness {
                 totalPips: 10,
                 healthyPips: 10,
                 damagedCount: 0,
-                heatsinksOff: 0,
+                heatsinksOff: options.heat?.heatsinksOff ?? 0,
                 totalDissipation: options.heatDissipation ?? 0
             },
             getAttackMovementModifier: (moveMode: MotiveModes | null | undefined) => {
@@ -278,6 +298,20 @@ export class CBTForceUnitTestHarness {
             turnState: () => this.turnState,
             svgService: {},
             hasLinkedC3Network: () => options.hasLinkedC3Network ?? false,
+            c3DegradationSource: () => options.c3DegradationSource ?? 'none',
+            allowsExtremeRangeAttacks: () => options.allowExtremeRange ?? false,
+            resolveC3Targeting: (target: InventoryControlRuntimeTarget) => {
+                if (!options.hasLinkedC3Network) {
+                    return {
+                        target: target.c3Distance === undefined ? target : { ...target, c3Distance: undefined },
+                        degradationSource: 'none' as const
+                    };
+                }
+                return (options.gameRules ?? CORE_2026_GAME_RULES).resolveC3Targeting(
+                    target,
+                    options.c3DegradationSource ?? 'none'
+                );
+            },
             readOnly: () => options.readOnly ?? false,
             hasDirectInventory: () => options.hasDirectInventory ?? true,
             setInventoryEntry: (entry: MountedEquipment) => {

@@ -1,4 +1,4 @@
-<div class="weapons-equipment-panel" [class.hide-actions-column]="!hasActionsColumn()" [class.has-targets]="hasTargets()" [class.aero-ranges]="usesAerospaceWeaponValues()">
+<div class="weapons-equipment-panel" [class.hide-actions-column]="!hasActionsColumn()" [class.has-targets]="hasTargets()" [class.aero-ranges]="usesAerospaceWeaponValues()" [class.ground-extreme-ranges]="showsGroundExtremeRange()">
     <div class="weapon-equipment-grid">
             @for (group of groups(); track group.id) {
                 <section class="weapon-equipment-section">
@@ -147,11 +147,11 @@
                                                     [class.range-medium]="column.key === 'medium'"
                                                     [class.range-long]="column.key === 'long'"
                                                     [class.range-extreme]="column.key === 'extreme'"
-                                                    [disabled]="column.key === 'extreme' || !canSelectRange(row, column.key, rowTarget)"
+                                                    [disabled]="!canSelectRange(row, column.key, rowTarget)"
                                                     [class.selected-range]="isRangeSelected(row, column.key, rowTarget)"
                                                     [class.out-of-range]="rowTarget.invalidTarget"
                                                     [style.--range-selection-color]="rowTarget.invalidTarget ? null : rowTarget.target?.color ?? null"
-                                                    (click)="column.key !== 'extreme' && selectRange(row, column.key)">
+                                                    (click)="selectRange(row, column.key)">
                                                     {{ rangeValue(row, column.key) }}
                                                 </button>
                                             }

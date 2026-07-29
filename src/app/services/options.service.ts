@@ -42,7 +42,7 @@ import { GameSystem } from '../models/common.model';
 
 const DEFAULT_OPTIONS: Options = {
     canvasInput: 'all',
-    unitDisplayName: 'chassisModel',
+    unitDisplayName: 'both',
     gameSystem: GameSystem.CLASSIC,
     availabilitySource: 'mul',
     forceViewerBVPVDisplay: 'adjusted',

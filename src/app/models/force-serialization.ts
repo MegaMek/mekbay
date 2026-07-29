@@ -114,7 +114,7 @@ export interface SerializedTurnState {
     dmgReceived?: number;
     weaponsHeat?: number;
     acknowledgedHeatSources?: Record<string, string>;
-    heatApplied?: boolean;
+    heatDissipationConsumed?: number;
     psrChecks?: SerializedPSRChecks;
     applyMovePSR?: boolean;
     spotting?: boolean;
@@ -448,7 +448,7 @@ export const TURN_STATE_SCHEMA = Sanitizer.schema<SerializedTurnState>()
     .custom('dmgReceived', sanitizeOptionalNonNegativeNumber)
     .custom('weaponsHeat', sanitizeOptionalNonNegativeNumber)
     .custom('acknowledgedHeatSources', sanitizeStringRecord)
-    .boolean('heatApplied')
+    .custom('heatDissipationConsumed', sanitizeOptionalNonNegativeNumber)
     .custom('psrChecks', (value: unknown) => {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
         const psrChecks = Sanitizer.sanitize(value, PSR_CHECKS_SCHEMA);
@@ -528,11 +528,12 @@ function sanitizeNumberRecord(value: unknown): Record<string, number> | undefine
     if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
     const result: Record<string, number> = {};
     for (const [key, rawEntry] of Object.entries(value as Record<string, unknown>)) {
+        const normalizedKey = key.trim();
         const entry = typeof rawEntry === 'number' ? rawEntry : Number(rawEntry);
-        if (key.trim().length === 0 || !Number.isFinite(entry) || entry === 0) {
+        if (normalizedKey.length === 0 || !Number.isInteger(entry) || entry <= 0) {
             continue;
         }
-        result[key] = entry;
+        result[normalizedKey] = entry;
     }
     return Object.keys(result).length > 0 ? result : undefined;
 }

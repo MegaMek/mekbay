@@ -72,8 +72,7 @@ export class SidebarFooterComponent {
      */
     hasC3Units = computed(() => {
         return this.forceBuilderService.currentForce()?.units()?.some(forceUnit => {
-            const unit = forceUnit.getUnit();
-            return C3NetworkUtil.getC3Components(unit).length > 0;
+            return C3NetworkUtil.hasC3(forceUnit);
         });
     });
 

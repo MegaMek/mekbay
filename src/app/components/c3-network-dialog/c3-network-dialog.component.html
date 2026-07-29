@@ -143,7 +143,7 @@
                 @if (!line.selfConnection) {
                 <line [attr.x1]="line.nodeX1" [attr.y1]="line.nodeY1" [attr.x2]="line.nodeX2" [attr.y2]="line.nodeY2"
                     [attr.stroke]="line.color" stroke-width="5"
-                    class="animated-line-big"
+                    class="animated-line-big" [class.broken-link]="line.unavailable"
                     [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
                 }
                 }
@@ -189,6 +189,10 @@
                     } @else {
                     <polygon class="node-bg" [attr.points]="NODE_HEX_POINTS" [attr.stroke]="getNodeBorderColor(node)"
                         [attr.stroke-dasharray]="isNodeLinked(node) ? 'none' : '6,3'" />
+                    }
+
+                    @if (damageDisconnectedNodes().has(node.unit.id)) {
+                    <polygon class="node-damage-disconnected-overlay" [attr.points]="NODE_HEX_POINTS" />
                     }
                     }
 
@@ -269,7 +273,7 @@
                 @for (line of connectionLines(); track line.id) {
                 <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
                     [attr.stroke]="line.color" stroke-width="3"
-                    class="animated-line"
+                    class="animated-line" [class.broken-link]="line.unavailable"
                     [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
                 }
 
@@ -284,6 +288,7 @@
                 @if (line.selfConnection) {
                 <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
                     [attr.stroke]="line.color" stroke-width="3"
+                    class="animated-line" [class.broken-link]="line.unavailable"
                     [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
                 }
                 }
@@ -387,8 +392,9 @@
                 }
             </span>
             @if (!data.readOnly) {
-                <button class="remove-btn" (click)="removeNetwork(vm.network)" title="Delete entire network">
-                <svg _ngcontent-ng-c917707860="" width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c917707860="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                <button class="remove-btn" (click)="removeNetwork(vm.network)" title="Delete entire network"
+                    [attr.aria-label]="'Delete ' + vm.displayName">
+                <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
                             L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg>
                 </button>
             }
@@ -398,7 +404,7 @@
             @for (member of vm.members; track member.memberStr ?? member.id) {
             @if (member.role !== 'sub-master'
             && (depth == 0 || member.role !== 'master')) {
-            <div class="network-unit-item">
+            <div class="network-unit-item" [class.broken-link]="member.brokenLink">
                 <div class="row network-unit" [class.master]="member.role === 'master'">
                     <span class="member-label">
                         @if (member.isSelfConnection) {
@@ -417,7 +423,7 @@
                     @if (member.canRemove) {
                     <button class="remove-btn"
                         (click)="removeUnitFromNetwork(vm.network, member.id, member.memberStr)"
-                        title="Remove from network"><svg _ngcontent-ng-c917707860="" width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c917707860="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                        title="Remove from network" [attr.aria-label]="'Remove ' + member.name + ' from network'"><svg width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
                         L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg></button>
                     }
                 </div>
@@ -436,7 +442,7 @@
             }
             @for (member of vm.members; track member.memberStr ?? member.id) {
             @if (member.role == 'sub-master') {
-            <div class="network-unit-item">
+            <div class="network-unit-item" [class.broken-link]="member.brokenLink">
                 <div class="row network-unit">
                     <span class="member-label">
                         @if (member.isSelfConnection) {
@@ -455,7 +461,7 @@
                     @if (member.canRemove) {
                     <button class="remove-btn"
                         (click)="removeUnitFromNetwork(vm.network, member.id, member.memberStr)"
-                        title="Remove from network"><svg _ngcontent-ng-c917707860="" width="14px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c917707860="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                        title="Remove from network" [attr.aria-label]="'Remove ' + member.name + ' from network'"><svg width="14px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
                         L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg></button>
                     }
                 </div>

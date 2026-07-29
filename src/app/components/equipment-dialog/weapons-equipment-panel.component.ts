@@ -16,7 +16,7 @@ import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget, In
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import { formatInventoryTargetSignedModifier, inventoryTargetNumberState, inventoryTargetRangeSelection, type InventoryTargetNumberInput, type InventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
-import { separateHeatFireModifier, type ToHitResolution } from '../../models/rules/game-rules';
+import { separateHeatFireModifier, type C3DegradationSource, type ToHitResolution } from '../../models/rules/game-rules';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import {
     formatInventoryControlModeName,
@@ -31,7 +31,7 @@ import {
     type InventoryRangeDisplayKey,
     type InventoryRangeKey
 } from '../../utils/inventory-control.util';
-import { resolveInventoryControlDamageText } from '../../utils/inventory-control-damage.util';
+import { inventoryControlDamageRange, resolveInventoryControlDamageText } from '../../utils/inventory-control-damage.util';
 import { MASC_HANDLER_ID } from '../../equipment-handlers/masc.handler';
 import { ESCALATING_FAILURE_HANDLER_ID } from '../../equipment-handlers/escalatingfailure.handler';
 import { TN_IMMOBILE } from '../../models/target-number-calculator.model';
@@ -49,6 +49,10 @@ const GROUND_RANGE_COLUMNS: readonly RangeColumn[] = [
     { key: 'short', label: 'Sht' },
     { key: 'medium', label: 'Med' },
     { key: 'long', label: 'Lng' }
+];
+const GROUND_EXTREME_RANGE_COLUMNS: readonly RangeColumn[] = [
+    ...GROUND_RANGE_COLUMNS,
+    { key: 'extreme', label: 'Ext' }
 ];
 const AERO_RANGE_CAPTIONS = aerospaceRangeCaptions(STANDARD_AEROSPACE_RANGE_LIMITS);
 const AERO_RANGE_COLUMNS: readonly RangeColumn[] = [
@@ -149,9 +153,11 @@ export class WeaponsEquipmentPanelComponent {
     private readonly implicitlySelectedAmmo = new Map<string, string>();
     readonly unit = computed(() => this.unitInput());
     readonly usesAerospaceWeaponValues = computed(() => this.unit().getUnit().type === 'Aero');
+    readonly showsGroundExtremeRange = computed(() =>
+        !this.usesAerospaceWeaponValues() && this.unit().allowsExtremeRangeAttacks());
     readonly rangeColumns = computed(() => this.usesAerospaceWeaponValues()
         ? AERO_RANGE_COLUMNS
-        : GROUND_RANGE_COLUMNS);
+        : this.showsGroundExtremeRange() ? GROUND_EXTREME_RANGE_COLUMNS : GROUND_RANGE_COLUMNS);
     readonly context = computed(() => this.contextInput());
     readonly inventoryControl = computed(() => this.unit().inventoryControl);
     readonly groups = computed(() => {
@@ -375,13 +381,14 @@ export class WeaponsEquipmentPanelComponent {
         return this.selectedRows().length > 0;
     }
 
-    canSelectRange(row: InventoryControlRow, range: InventoryRangeKey, state = this.targetState(row)): boolean {
+    canSelectRange(row: InventoryControlRow, range: InventoryRangeDisplayKey, state = this.targetState(row)): boolean {
         if (state.target || row.disabled || row.destroyed) return false;
+        if (range === 'extreme' && !this.usesAerospaceWeaponValues() && !this.showsGroundExtremeRange()) return false;
         const value = this.rangeValue(row, range);
         return this.isSelectable(row) && value !== '—';
     }
 
-    selectRange(row: InventoryControlRow, range: InventoryRangeKey): void {
+    selectRange(row: InventoryControlRow, range: InventoryRangeDisplayKey): void {
         if (!this.canSelectRange(row, range)) return;
         this.unit().toggleInventoryControlEntryRange(row.entry, range);
     }
@@ -392,7 +399,6 @@ export class WeaponsEquipmentPanelComponent {
         if (targetRange) {
             return !targetRange.outOfRange && targetRange.range === range;
         }
-        if (range === 'extreme') return false;
         return this.unit().getInventoryControlEntryRange(row.id) === range;
     }
 
@@ -428,6 +434,9 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     rangeValue(row: InventoryControlRow, range: InventoryRangeDisplayKey): string {
+        if (range === 'extreme' && !this.usesAerospaceWeaponValues()) {
+            return row.extremeRange?.toString() ?? '—';
+        }
         return row.rangePresentation.values[range];
     }
 
@@ -447,7 +456,7 @@ export class WeaponsEquipmentPanelComponent {
         return this.createTargetState(row, target).targetNumberText;
     }
 
-    private targetNumberInput(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null, hitResolution: ToHitResolution): InventoryTargetNumberInput {
+    private targetNumberInput(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null, hitResolution: ToHitResolution, c3DegradationSource: C3DegradationSource = 'none'): InventoryTargetNumberInput {
         this.inventoryControl().inventoryViewVersion();
         const missingMovementModifier = this.unit().turnState().missingAttackMovementModifier();
         const selectedAmmo = this.resolvedSelectedAmmoOption(row)?.ammo ?? null;
@@ -457,6 +466,7 @@ export class WeaponsEquipmentPanelComponent {
             category: row.category,
             display: row.display,
             extremeRange: row.extremeRange,
+            allowExtremeRange: this.unit().allowsExtremeRangeAttacks(),
             selectedAmmo,
             target,
             gunnerySkill: this.unit().rules.getTargetNumberGunnerySkill(),
@@ -468,6 +478,7 @@ export class WeaponsEquipmentPanelComponent {
             hitModifier,
             hitModifierBreakdown,
             heatFireModifier,
+            c3DegradationSource,
             gameRules: this.unit().gameRules
         };
     }
@@ -478,7 +489,10 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     private createTargetState(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): TargetRowState {
-        const calculationTarget = this.targetForTargetNumber(row, target);
+        const c3Resolution = target
+            ? this.unit().resolveC3Targeting(target)
+            : { target: null, degradationSource: 'none' as const };
+        const calculationTarget = this.targetForTargetNumber(row, c3Resolution.target);
         const selectedAmmo = this.resolvedSelectedAmmoOption(row)?.ammo ?? null;
         const selectedAmmoProfile = selectedAmmo
             ? null
@@ -488,6 +502,7 @@ export class WeaponsEquipmentPanelComponent {
             category: row.category,
             display: row.display,
             extremeRange: row.extremeRange,
+            allowExtremeRange: this.unit().allowsExtremeRangeAttacks(),
             target: calculationTarget,
             selectedAmmo
         });
@@ -496,13 +511,14 @@ export class WeaponsEquipmentPanelComponent {
             category: row.category,
             display: row.display,
             extremeRange: row.extremeRange,
+            allowExtremeRange: this.unit().allowsExtremeRangeAttacks(),
             target: this.targetForWeaponRange(target),
             selectedAmmo
         });
         const weaponRuleRange = weaponRuleRangeSelection?.range ?? this.unit().getInventoryControlEntryRange(row.id) ?? null;
         const hitResolution = this.resolveHitForRange(row, weaponRuleRange);
         const hitText = this.hitTextForResolution(row, hitResolution, !!target);
-        const input = this.targetNumberInput(row, calculationTarget, hitResolution);
+        const input = this.targetNumberInput(row, calculationTarget, hitResolution, c3Resolution.degradationSource);
         const targetNumber = inventoryTargetNumberState(input, rangeSelection);
         const breakdown = targetNumber.breakdown === null ? null : { total: targetNumber.breakdown.total, lines: targetNumber.breakdown.lines };
         const invalidTargetType = false; // target !== null && !this.canTarget(row, target);
@@ -519,9 +535,7 @@ export class WeaponsEquipmentPanelComponent {
             damageText: resolveInventoryControlDamageText(
                 row.entry,
                 {
-                    selectedRange: weaponRuleRange === 'short' || weaponRuleRange === 'medium' || weaponRuleRange === 'long'
-                        ? weaponRuleRange
-                        : null,
+                    selectedRange: inventoryControlDamageRange(weaponRuleRange),
                     selectedAmmo,
                     ammoProfile: selectedAmmoProfile,
                     equipmentCatalog: this.context().dataService.getEquipmentRegistry(),
@@ -542,12 +556,10 @@ export class WeaponsEquipmentPanelComponent {
         if (!target) return null;
         const ignoreImmobileModifier = row.damageTypes.includes('AE')
             && target.tnCalculator?.stance === 'immobile';
-        const c3Distance = this.unit().hasLinkedC3Network?.() === true ? target.c3Distance : undefined;
-        if (!ignoreImmobileModifier && c3Distance === target.c3Distance) return target;
+        if (!ignoreImmobileModifier) return target;
         return {
             ...target,
-            ...(ignoreImmobileModifier && { tnModifier: target.tnModifier - TN_IMMOBILE }),
-            ...(c3Distance === undefined && { c3Distance: undefined })
+            tnModifier: target.tnModifier - TN_IMMOBILE
         };
     }
 
@@ -668,6 +680,7 @@ export class WeaponsEquipmentPanelComponent {
         }
 
         const heatProjection = this.selectedHeatProjection();
+        const hasManualHeatTarget = this.unit().getHeat().next !== undefined;
 
         for (const request of requests.values()) {
             this.consumeAmmoFromOption(request.row, request.option.id, request.count);
@@ -675,6 +688,9 @@ export class WeaponsEquipmentPanelComponent {
 
         if (heatProjection) {
             this.unit().turnState().addFiredHeat(heatProjection.selection);
+            if (hasManualHeatTarget) {
+                this.unit().setHeat(heatProjection.final);
+            }
         }
         await this.runSelectedFireHooks(selectedRows);
         this.inventoryControl().markInventoryViewChanged();

@@ -37,6 +37,7 @@ describe('heat state sanitization', () => {
             moveDistance: 'invalid',
             dmgReceived: Number.NaN,
             weaponsHeat: Number.POSITIVE_INFINITY,
+            heatDissipationConsumed: Number.POSITIVE_INFINITY,
         }, TURN_STATE_SCHEMA)).toEqual({});
     });
 
@@ -46,6 +47,25 @@ describe('heat state sanitization', () => {
             previous: 3,
             next: 7,
             heatsinksOff: 0,
+        });
+    });
+
+    it('sanitizes consumed heat dissipation as a non-negative finite number', () => {
+        expect(Sanitizer.sanitize({ heatDissipationConsumed: '6' }, TURN_STATE_SCHEMA)).toEqual({
+            heatDissipationConsumed: 6,
+        });
+        expect(Sanitizer.sanitize({ heatDissipationConsumed: -2 }, TURN_STATE_SCHEMA)).toEqual({
+            heatDissipationConsumed: 0,
+        });
+    });
+
+    it('normalizes PSR locations and rejects non-positive or fractional hit counts', () => {
+        expect(Sanitizer.sanitize({
+            psrChecks: {
+                legActuators: { ' LL ': 2, RL: -1, LA: 0, RA: 1.5 }
+            }
+        }, TURN_STATE_SCHEMA)).toEqual({
+            psrChecks: { legActuators: { LL: 2 } }
         });
     });
 });

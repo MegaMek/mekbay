@@ -6,6 +6,7 @@
 
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import { AmmoEquipment, Equipment, WeaponEquipment, type RangeBrackets } from '../equipment.model';
+import type { InventoryControlRuntimeTarget } from '../inventory-control-runtime-state.model';
 import { MountedEquipment } from '../mounted-equipment.model';
 
 export type HitModifier = number | 'Vs' | '*' | null;
@@ -43,6 +44,14 @@ export interface ToHitHeatSeparation {
     readonly heatFireModifier: number;
 }
 
+export type C3DegradationSource = 'none' | 'unit' | 'network-member';
+export type C3DegradationLabel = 'DEGRADED' | 'JAMMED';
+
+export interface C3TargetingResolution {
+    readonly target: InventoryControlRuntimeTarget;
+    readonly degradationSource: C3DegradationSource;
+}
+
 const TO_HIT_MODIFIER_RANGE_INDEX: Record<RangeBrackets, number> = {
     short: 0,
     medium: 1,
@@ -75,6 +84,7 @@ export function separateHeatFireModifier(resolution: ToHitResolution): ToHitHeat
 
 export abstract class CBTGameRules {
     abstract readonly id: 'core2026' | 'tw';
+    abstract readonly c3DegradationLabel: C3DegradationLabel;
     abstract readonly escalatingFailureLabels: readonly string[];
     abstract readonly usesUacJamming: boolean;
     abstract readonly supportsSkidding: boolean;
@@ -82,6 +92,10 @@ export abstract class CBTGameRules {
     abstract readonly supportsLargeTarget: boolean;
     abstract readonly artilleryFlatRangeModifier: number | null;
     abstract readonly supportsApolloSaturationMode: boolean;
+    abstract readonly supportsBombastLaserRules: boolean;
+
+    abstract resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution;
+    abstract resolveC3TargetingModifier(degradationSource: C3DegradationSource, rangeBracketImprovement: number): ToHitModifierBreakdownEntry | null;
 
     resolveToHit(request: ToHitRequest): ToHitResolution {
         const entry = request.subject instanceof MountedEquipment ? request.subject : null;
@@ -194,6 +208,7 @@ export abstract class CBTGameRules {
 
 export class GameRules extends CBTGameRules {
     readonly id = 'core2026' as const;
+    readonly c3DegradationLabel = 'DEGRADED' as const;
     readonly physicalBaseHitModifiers = {
         punch: -1,
         kick: -1,
@@ -213,7 +228,18 @@ export class GameRules extends CBTGameRules {
     readonly supportsLargeTarget = true;
     readonly artilleryFlatRangeModifier = 4;
     readonly supportsApolloSaturationMode = true;
-    
+    readonly supportsBombastLaserRules = true;
+
+    override resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
+        return { target, degradationSource };
+    }
+
+    override resolveC3TargetingModifier(degradationSource: C3DegradationSource, rangeBracketImprovement: number): ToHitModifierBreakdownEntry | null {
+        return degradationSource !== 'none' && rangeBracketImprovement > 0
+            ? { label: 'ECM', modifier: rangeBracketImprovement, negative: true }
+            : null;
+    }
+
     protected override getRulesProfile(equipment: Equipment): number[] {
         // Claw and Lance has 0 hitmod instead of 1
         if (equipment.flags.has('S_CLAW') || equipment.flags.has('S_LANCE')) {
@@ -237,6 +263,7 @@ export class GameRules extends CBTGameRules {
 
 export class TWGameRules extends CBTGameRules {
     readonly id = 'tw' as const;
+    readonly c3DegradationLabel = 'JAMMED' as const;
     readonly physicalBaseHitModifiers = {
         punch: 0,
         kick: -2,
@@ -256,62 +283,64 @@ export class TWGameRules extends CBTGameRules {
     readonly supportsLargeTarget = false;
     readonly artilleryFlatRangeModifier = null;
     readonly supportsApolloSaturationMode = false;
+    readonly supportsBombastLaserRules = false;
+
+    override resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
+        return {
+            target: degradationSource === 'none' || target.c3Distance === undefined
+                ? target
+                : { ...target, c3Distance: undefined },
+            degradationSource
+        };
+    }
+
+    override resolveC3TargetingModifier(_degradationSource: C3DegradationSource, _rangeBracketImprovement: number): ToHitModifierBreakdownEntry | null {
+        return null;
+    }
 
     /* TARGET ACQUISITION GEAR (TAG)
     Any unit in the battle force equipped with TAG, Light TAG or a C3 Master Computer (flag F_TAG)
     adds BV equal to the BV of each ton of semi-guided (flag M_SEMIGUIDED or M_HOMING) LRM ammunition 
-    carried in the force (use the ammo BV for the appropriate-size LRM launcher). 
-    Units whose only such piece of equipment is rear-mounted add half the BV instead. */
+    carried in the force (use the ammo BV for the appropriate-size LRM launcher). */
     override calculateTagBVCost(unit: CBTForceUnit): number {
-        const components = unit.getUnit().comp;
-        const hasTag = components.some(c => c.eq?.hasFlag('F_TAG'));
-        if (!hasTag) return 0; // No TAG, no BV
-        // Calculate total BV of semi-guided LRM ammo across all units in the force.
-        // We must scan inventory/crits (not unit blueprints) because custom ammo may be loaded.
-        const allUnits = unit.force.units();
-        let totalSemiGuidedBV = 0;
-        for (const forceUnit of allUnits) {
-            if (!forceUnit.isLoaded()) continue; // Ensure unit is loaded so that inventory and crits are available
-            if (forceUnit.getUnit().type === 'Mek') {
-                // Check crit slots (Mek-type units where ammo swapping happens on crits)
-                const crits = forceUnit.getCritSlots();
-                for (const crit of crits) {
-                    if (crit.eq instanceof AmmoEquipment 
-                        && (crit.eq.hasMunitionType('M_SEMIGUIDED') || crit.eq.hasMunitionType('M_HOMING'))) {
-                        const ammo = crit.eq;
-                        const forceUnitComps = forceUnit.getUnit().comp;
-                        // Check if the unit carrying this ammo has any weapon that can use it (matching ammoType and rackSize)
-                        const hasMatchingWeapon = forceUnitComps.some(c =>
-                            c.eq instanceof WeaponEquipment &&
-                            c.eq.ammoType === ammo.ammoType &&
-                            c.eq.rackSize === ammo.rackSize
-                        );
-                        if (!hasMatchingWeapon) continue; // No weapon can use this ammo, skip
-                        // Determine if at least one matching weapon is front-mounted
-                        const hasNonRearWeapon = forceUnitComps.some(c =>
-                            c.eq instanceof WeaponEquipment &&
-                            c.eq.ammoType === ammo.ammoType &&
-                            c.eq.rackSize === ammo.rackSize &&
-                            !c.rear
-                        );
-                        const multiplier = hasNonRearWeapon ? 1 : 0.5;
-                        if (!crit.eq.hasFixedBV()) continue;
-                        totalSemiGuidedBV += Math.round(multiplier * crit.eq.bv);
-                    }
-                }
-            } else {
-                // Check direct inventory entries (vehicles, ProtoMeks, etc.)
-                const inventory = forceUnit.getInventory();
-                for (const item of inventory) {
-                    if (item.equipment instanceof AmmoEquipment 
-                    && (item.equipment.hasMunitionType('M_SEMIGUIDED') || item.equipment.hasMunitionType('M_HOMING'))) {
-                        totalSemiGuidedBV += item.getBV();;
-                    }
-                }
-            }
+        const tagCount = unit.getOperationalMountedEquipmentByFlag('F_TAG').length;
+        if (tagCount === 0) return 0;
+
+        const guidedAmmoBV = unit.force.units().reduce((total, forceUnit) =>
+            total + this.calculateGuidedAmmoBV(forceUnit), 0);
+        return Math.round(guidedAmmoBV * tagCount);
+    }
+
+    private calculateGuidedAmmoBV(unit: CBTForceUnit): number {
+        if (!unit.isLoaded()) return 0;
+        const launchers = unit.getInventory().filter(entry =>
+            entry.equipment instanceof WeaponEquipment && !unit.isEquipmentUnavailable(entry));
+        if (launchers.length === 0) return 0;
+
+        if (unit.getUnit().type === 'Mek') {
+            return unit.getCritSlots().reduce((total, crit) => {
+                const ammo = crit.eq;
+                if (!(ammo instanceof AmmoEquipment)
+                    || !isTagGuidedAmmo(ammo)
+                    || unit.isEquipmentUnavailable(crit)
+                    || !hasUsableAmmo(crit.totalAmmo, crit.consumed)
+                    || !hasCompatibleLauncher(ammo, launchers)
+                    || !ammo.hasFixedBV()) return total;
+                return total + ammo.bv;
+            }, 0);
         }
-        return Math.round(totalSemiGuidedBV);
-    };
+
+        return unit.getInventory().reduce((total, mount) => {
+            const ammo = mount.equipment;
+            if (!(ammo instanceof AmmoEquipment)
+                || !isTagGuidedAmmo(ammo)
+                || unit.isEquipmentUnavailable(mount)
+                || !hasUsableAmmo(mount.totalAmmo, mount.consumed)
+                || !hasCompatibleLauncher(ammo, launchers)) return total;
+            const bv = mount.getBV();
+            return total + (bv > 0 ? bv : 0);
+        }, 0);
+    }
 }
 
 export const CORE_2026_GAME_RULES = new GameRules();
@@ -333,4 +362,18 @@ function sameProfile(left: readonly number[], right: readonly number[]): boolean
 
 function emptyToHitResolution(): ToHitResolution {
     return { profile: [], value: null, changed: false, weakened: false, modifierBreakdown: [] };
+}
+
+function isTagGuidedAmmo(ammo: AmmoEquipment): boolean {
+    return ammo.hasMunitionType('M_SEMIGUIDED') || ammo.hasMunitionType('M_HOMING');
+}
+
+function hasUsableAmmo(totalAmmo: number | undefined, consumed: number | undefined): boolean {
+    return totalAmmo === undefined || totalAmmo > (consumed ?? 0);
+}
+
+function hasCompatibleLauncher(ammo: AmmoEquipment, launchers: readonly MountedEquipment[]): boolean {
+    return launchers.some(mount => mount.equipment instanceof WeaponEquipment
+        && mount.equipment.ammoType === ammo.ammoType
+        && mount.equipment.rackSize === ammo.rackSize);
 }

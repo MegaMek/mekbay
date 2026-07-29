@@ -44,7 +44,115 @@ function physicalAttack(name: string): MountedEquipment {
     return new MountedEquipment({ owner: owner(), id: name, name, intrinsicPhysicalAttack: true });
 }
 
+function tagBvContext(options: {
+    tagCount?: number;
+    unavailableTagIndexes?: number[];
+    guidedAmmo?: boolean;
+    ammoAvailable?: boolean;
+    compatibleLauncher?: boolean;
+    homingAmmo?: boolean;
+    loaded?: boolean;
+    launcherAvailable?: boolean;
+    unitType?: 'Mek' | 'Tank';
+} = {}) {
+    const unavailable = new Set<MountedEquipment>();
+    const tagUnit = {
+        getOperationalMountedEquipmentByFlag: () => tagMounts.filter(mount => !unavailable.has(mount)),
+        force: { units: () => [ammoUnit] },
+    } as unknown as import('../cbt-force-unit.model').CBTForceUnit;
+    const tagMounts = Array.from({ length: options.tagCount ?? 1 }, (_, index) => new MountedEquipment({
+        owner: tagUnit,
+        id: `tag-${index}`,
+        name: 'TAG',
+        equipment: { flags: new Set(['F_TAG']) } as Equipment,
+        states: new Map(),
+    }));
+    for (const index of options.unavailableTagIndexes ?? []) unavailable.add(tagMounts[index]);
+
+    const launcher = new MountedEquipment({
+        owner: null!,
+        id: 'launcher',
+        name: 'LRM Launcher',
+        equipment: new WeaponEquipment({
+            id: 'LRM20', name: 'LRM 20', type: 'weapon',
+            weapon: { ammoType: 'LRM', rackSize: options.compatibleLauncher === false ? 15 : 20 },
+        }),
+        states: new Map(),
+    });
+    const ammo = new MountedEquipment({
+        owner: null!,
+        id: 'ammo',
+        name: 'Semi-Guided LRM 20 Ammo',
+        equipment: new AmmoEquipment({
+            id: 'LRM20SG', name: 'Semi-Guided LRM 20 Ammo', type: 'ammo',
+            stats: { bv: 30 },
+            ammo: {
+                type: 'LRM', rackSize: 20, shots: 6,
+                munitionType: options.guidedAmmo === false
+                    ? []
+                    : [options.homingAmmo ? 'M_HOMING' : 'M_SEMIGUIDED'],
+            },
+        }),
+        totalAmmo: 6,
+        consumed: options.ammoAvailable === false ? 6 : 0,
+        states: new Map(),
+    });
+    const ammoUnit = {
+        isLoaded: () => options.loaded !== false,
+        getUnit: () => ({ type: options.unitType ?? 'Tank' }),
+        getInventory: () => options.unitType === 'Mek' ? [launcher] : [launcher, ammo],
+        getCritSlots: () => options.unitType === 'Mek' ? [{
+            id: 'ammo-crit', eq: ammo.equipment, totalAmmo: ammo.totalAmmo, consumed: ammo.consumed,
+        }] : [],
+        isEquipmentUnavailable: (entry: MountedEquipment) => unavailable.has(entry),
+    } as unknown as import('../cbt-force-unit.model').CBTForceUnit;
+    launcher.owner = ammoUnit;
+    ammo.owner = ammoUnit;
+    if (options.ammoAvailable === false) unavailable.add(ammo);
+    if (options.launcherAvailable === false) unavailable.add(launcher);
+
+    return { tagUnit, tagMounts, unavailable };
+}
+
 describe('game rules', () => {
+    describe('C3 degradation', () => {
+        const target = {
+            id: 'A', letter: 'A', name: 'Target', color: '#000',
+            distance: 15, c3Distance: 12, useC3: true, tnModifier: 0
+        } as const;
+
+        it('preserves C3 and returns the Core ECM bracket-improvement modifier', () => {
+            const resolution = CORE_2026_GAME_RULES.resolveC3Targeting(target, 'network-member');
+
+            expect(CORE_2026_GAME_RULES.c3DegradationLabel).toBe('DEGRADED');
+            expect(resolution.target).toBe(target);
+            expect(resolution.degradationSource).toBe('network-member');
+            expect(CORE_2026_GAME_RULES.resolveC3TargetingModifier('network-member', 2)).toEqual({
+                label: 'ECM', modifier: 2, negative: true
+            });
+        });
+
+        it('does not add a Core modifier without degradation or bracket improvement', () => {
+            expect(CORE_2026_GAME_RULES.resolveC3TargetingModifier('none', 2)).toBeNull();
+            expect(CORE_2026_GAME_RULES.resolveC3TargetingModifier('unit', 0)).toBeNull();
+        });
+
+        it('removes C3 from Total Warfare calculations without mutating the target', () => {
+            const resolution = TW_GAME_RULES.resolveC3Targeting(target, 'unit');
+
+            expect(TW_GAME_RULES.c3DegradationLabel).toBe('JAMMED');
+            expect(resolution.target.c3Distance).toBeUndefined();
+            expect(resolution.target.useC3).toBeTrue();
+            expect(resolution.degradationSource).toBe('unit');
+            expect(target.c3Distance).toBe(12);
+            expect(TW_GAME_RULES.resolveC3TargetingModifier('unit', 2)).toBeNull();
+        });
+
+        it('preserves an unaffected Total Warfare target by reference', () => {
+            expect(TW_GAME_RULES.resolveC3Targeting(target, 'none').target).toBe(target);
+        });
+    });
+
     it('reduces Core 2026 MRM hit modifiers without changing TW values', () => {
         const mrm = new WeaponEquipment({
             id: 'MRM10', name: 'MRM 10', type: 'weapon',
@@ -80,6 +188,39 @@ describe('game rules', () => {
         expect(precisionAmmo.getShots(TW_GAME_RULES)).toBe(10);
         expect(precisionAmmo.getEffectiveKgPerShot(CORE_2026_GAME_RULES)).toBe(62.5);
         expect(precisionAmmo.getEffectiveKgPerShot(TW_GAME_RULES)).toBe(100);
+    });
+
+    describe('Total Warfare TAG BV', () => {
+        it('multiplies compatible guided-ammo BV by operational mounted TAG count', () => {
+            const { tagUnit } = tagBvContext({ tagCount: 2 });
+
+            expect(TW_GAME_RULES.calculateTagBVCost(tagUnit)).toBe(60);
+        });
+
+        it('excludes unavailable mounted TAG systems', () => {
+            const { tagUnit } = tagBvContext({ tagCount: 2, unavailableTagIndexes: [1] });
+
+            expect(TW_GAME_RULES.calculateTagBVCost(tagUnit)).toBe(30);
+        });
+
+        it('requires usable guided ammo and a compatible operational launcher', () => {
+            expect(TW_GAME_RULES.calculateTagBVCost(tagBvContext({ guidedAmmo: false }).tagUnit)).toBe(0);
+            expect(TW_GAME_RULES.calculateTagBVCost(tagBvContext({ ammoAvailable: false }).tagUnit)).toBe(0);
+            expect(TW_GAME_RULES.calculateTagBVCost(tagBvContext({ compatibleLauncher: false }).tagUnit)).toBe(0);
+            expect(TW_GAME_RULES.calculateTagBVCost(tagBvContext({ launcherAvailable: false }).tagUnit)).toBe(0);
+            expect(TW_GAME_RULES.calculateTagBVCost(tagBvContext({ loaded: false }).tagUnit)).toBe(0);
+        });
+
+        it('counts homing ammo and Mek critical-slot ammo', () => {
+            expect(TW_GAME_RULES.calculateTagBVCost(tagBvContext({ homingAmmo: true }).tagUnit)).toBe(30);
+            expect(TW_GAME_RULES.calculateTagBVCost(tagBvContext({ unitType: 'Mek' }).tagUnit)).toBe(30);
+        });
+
+        it('returns zero when no mounted TAG system is operational', () => {
+            const { tagUnit } = tagBvContext({ tagCount: 1, unavailableTagIndexes: [0] });
+
+            expect(TW_GAME_RULES.calculateTagBVCost(tagUnit)).toBe(0);
+        });
     });
 
     it('sets Core 2026 claw and lance hit modifiers to zero without changing TW values', () => {

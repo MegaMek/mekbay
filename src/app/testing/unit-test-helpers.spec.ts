@@ -18,6 +18,27 @@ describe('CBTForceUnitTestHarness', () => {
         expect(harness.unit.getEquipmentRegistry().findEquipment(weapon.internalName)).toBe(weapon);
     });
 
+    it('does not expose dissipation when the unit does not track heat', () => {
+        const harness = createCBTForceUnitTestHarness({ tracksHeat: false, heatDissipation: 10 });
+
+        expect(harness.unit.rules.heatDissipation()).toBeNull();
+        expect(harness.turnState.heatDissipationBalance()).toBe(0);
+        expect(harness.turnState.effectiveHeatDissipation()).toBe(0);
+    });
+
+    it('preserves switched-off heat sinks and tracks fired heat', () => {
+        const harness = createCBTForceUnitTestHarness({
+            heat: { heatsinksOff: 3 },
+            heatDissipation: 10
+        });
+
+        harness.turnState.addFiredHeat(4);
+        harness.turnState.addFiredHeat(-1);
+
+        expect(harness.unit.rules.heatDissipation()?.heatsinksOff).toBe(3);
+        expect(harness.turnState.heatSources()).toContain(jasmine.objectContaining({ id: 'weapons', value: 4 }));
+    });
+
     it('adds critical slots and exposes inventory-control runtime state', () => {
         const harness = createCBTForceUnitTestHarness();
         const mounted = harness.addComponent({ id: 'laser', name: 'Test Laser' });

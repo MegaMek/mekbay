@@ -50,7 +50,9 @@ import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { AmmoEquipment, WeaponEquipment } from './equipment.model';
 import type { AmmoEquipment as AmmoEquipmentType } from './equipment.model';
+import type { EquipmentFlag } from './equipment-flags.type';
 import { C3NetworkUtil } from '../utils/c3-network.util';
+import { C3NetworkType, C3Role } from './c3-network.model';
 import { getMotiveModesOptionsByUnit, type MotiveModeOption } from './motiveModes.model';
 import type { TurnState } from './turn-state.model';
 import { Sanitizer } from '../utils/sanitizer.util';
@@ -66,7 +68,7 @@ import { DialogsService } from '../services/dialogs.service';
 import { getBattleArmorTrooperNumber, normalizeBattleArmorTrooperLocation } from './battle-armor-location.model';
 import { parseInventoryComponentReference } from './inventory-component-reference.model';
 import { CBTGameRulesService } from '../services/cbt-game-rules.service';
-import type { CBTGameRules } from './rules/game-rules';
+import type { C3DegradationSource, C3TargetingResolution, CBTGameRules } from './rules/game-rules';
 import { OptionsService } from '../services/options.service';
 
 export class CBTForceUnit extends ForceUnit {
@@ -123,6 +125,10 @@ export class CBTForceUnit extends ForceUnit {
 
     useAutomations(): boolean {
         return this.injector.get(OptionsService, null, { optional: true })?.options().cbtAutomations ?? true;
+    }
+
+    allowsExtremeRangeAttacks(): boolean {
+        return this.injector.get(OptionsService, null, { optional: true })?.options().CBTExtremeRange ?? false;
     }
 
     private getEquipmentInteractionRegistry(): EquipmentInteractionRegistry {
@@ -283,7 +289,12 @@ export class CBTForceUnit extends ForceUnit {
 
     setHeat(heatValue: number, consolidateImmediately: boolean = false) {
         const heatData = this.state.heat();
-        if (heatValue === heatData.next) return; // No change
+        if (heatValue === heatData.next) {
+            if (consolidateImmediately && heatData.next !== undefined) {
+                this.state.consolidateHeat();
+            }
+            return;
+        }
         heatData.next = heatValue;
         this.state.heat.set({ ...heatData });
         if (consolidateImmediately) {
@@ -310,6 +321,9 @@ export class CBTForceUnit extends ForceUnit {
         super.setCondition(condition, active);
         if (wasActive !== this.getCondition(condition)) {
             this.turnState().reconcileHeatSources();
+            if (condition === 'jammed') {
+                this.force.units().forEach(unit => unit.inventoryControl.markInventoryViewChanged());
+            }
         }
     }
 
@@ -388,6 +402,15 @@ export class CBTForceUnit extends ForceUnit {
 
     get getInventory() {
         return this.state.inventory;
+    }
+
+    getMountedEquipmentByFlag(flag: EquipmentFlag): MountedEquipment[] {
+        return this.getInventory().filter(entry => entry.equipment?.hasFlag(flag));
+    }
+
+    getOperationalMountedEquipmentByFlag(flag: EquipmentFlag): MountedEquipment[] {
+        return this.getMountedEquipmentByFlag(flag)
+            .filter(entry => !this.isEquipmentUnavailable(entry));
     }
 
     setInventory(inventory: MountedEquipment[], initialization: boolean = false) {
@@ -482,8 +505,71 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     hasLinkedC3Network(): boolean {
-        return C3NetworkUtil.hasC3(this.getUnit())
-            && C3NetworkUtil.isUnitConnected(this.id, this.force.c3Networks());
+        const networkTypes = new Set(C3NetworkUtil.getC3Components(this)
+            .map(component => component.networkType));
+        return [...networkTypes].some(networkType => this.getC3NetworkRuntimeState(networkType).linked);
+    }
+
+    isC3ComponentOperational(componentIndex: number): boolean {
+        const mount = C3NetworkUtil.getC3Components(this)[componentIndex]?.mount;
+        return !this.destroyed && !!mount && !this.isEquipmentUnavailable(mount);
+    }
+
+    isC3NetworkTypeUnavailable(networkType: C3NetworkType): boolean {
+        const components = C3NetworkUtil.getC3Components(this)
+            .filter(component => component.networkType === networkType);
+        if (components.length === 0) return false;
+        if (components.every(component => !this.isC3ComponentOperational(component.index))) return true;
+
+        const configured = C3NetworkUtil.findNetworksContainingUnit(this.id, this.force.c3Networks())
+            .some(network => network.type === networkType);
+        return configured && !this.getC3NetworkRuntimeState(networkType).linked;
+    }
+
+    readonly c3DegradationSource = computed<C3DegradationSource>(() => this.getC3DegradationSource());
+
+    getC3DegradationSource(): C3DegradationSource {
+        const networkTypes = new Set(C3NetworkUtil.getC3Components(this)
+            .map(component => component.networkType));
+        const linkedStates = [...networkTypes]
+            .map(networkType => this.getC3NetworkRuntimeState(networkType))
+            .filter(state => state.linked);
+        if (linkedStates.length === 0) return 'none';
+        if (this.getCondition('jammed')) return 'unit';
+        return linkedStates.every(state => state.degraded) ? 'network-member' : 'none';
+    }
+
+    getC3NetworkRuntimeState(networkType: C3NetworkType) {
+        const units = this.force.units();
+        const unitsById = new Map(units.map(unit => [unit.id, unit]));
+        const links = C3NetworkUtil.getRuntimeLinks(
+            this.force.c3Networks(),
+            unitsById,
+            (unit, componentIndex) => unit instanceof CBTForceUnit
+                ? unit.isC3ComponentOperational(componentIndex)
+                : !unit.destroyed,
+        );
+        return C3NetworkUtil.getRuntimeUnitState(
+            this.id,
+            networkType,
+            links,
+            unitId => {
+                const unit = unitsById.get(unitId);
+                return unit instanceof CBTForceUnit && unit.getCondition('jammed');
+            },
+        );
+    }
+
+    resolveC3Targeting(target: InventoryControlRuntimeTarget): C3TargetingResolution {
+        if (!this.hasLinkedC3Network()) {
+            return { target: this.withoutC3Distance(target), degradationSource: 'none' };
+        }
+        return this.gameRules.resolveC3Targeting(target, this.c3DegradationSource());
+    }
+
+    private withoutC3Distance(target: InventoryControlRuntimeTarget): InventoryControlRuntimeTarget {
+        if (target.c3Distance === undefined) return target;
+        return { ...target, c3Distance: undefined };
     }
 
     clearInventoryControlSelection(): void {
@@ -1086,18 +1172,21 @@ export class CBTForceUnit extends ForceUnit {
 
     applyHeat() {
         const heat = this.getHeat();
+        const projection = this.turnState().heatProjection();
         if (heat.next === undefined) {
             if (!this.useAutomations()) return;
-            this.setHeat(this.turnState().heatProjection().projected);
+            this.setHeat(projection.projected);
         }
         this.state.consolidateHeat();
         if (this.useAutomations()) {
-            this.turnState().acknowledgeHeatSources();
+            this.turnState().acknowledgeHeatSources(projection.consumedDissipation);
+        } else {
+            this.turnState().settleHeatDissipationDeficit();
         }
     }
     
     public endTurn() {
-        if (this.useAutomations() && (this.getHeat().next !== undefined || this.turnState().heatProjectionVisible())) {
+        if (this.useAutomations() && (this.getHeat().next !== undefined || this.turnState().hasPendingHeatResolution())) {
             this.applyHeat();
         }
         this.clearInventoryControlSelection();
@@ -1146,7 +1235,7 @@ export class CBTForceUnit extends ForceUnit {
         const stateObj: CBTSerializedState = {
             crew: this.state.crew().map(crew => crew.serialize()),
             crits: this.state.critsForSerialization(),
-            heat: this.state.heat(),
+            heat: { ...this.state.heat() },
             locations: this.state.locationsForSerialization(),
             modified: this.state.modified(),
             destroyed: this.state.destroyed(),

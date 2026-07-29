@@ -1069,6 +1069,7 @@ export class SvgInteractionService {
             const el = entry.el;
             if (!el) return;
             const unit = this.unit();
+            if (!unit) return;
             const rules = unit?.getInventoryControlRules?.()
                 ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext());
             syncSvgMode(entry, getSelectedInventoryControlMode(entry, this.dataService.getEquipmentRegistry(), rules));
@@ -1100,6 +1101,9 @@ export class SvgInteractionService {
                 const unit = this.unit();
                 const range = this.inventoryRangeForButton(button);
                 if (!unit || !range) return;
+                if (range === 'extreme'
+                    && unit.getUnit().type !== 'Aero'
+                    && !unit.allowsExtremeRangeAttacks()) return;
 
                 const clickedMode = this.validInventoryModeForButton(entry, button);
                 const selectedMode = this.selectedInventoryControlMode(entry);
@@ -1144,7 +1148,14 @@ export class SvgInteractionService {
                     selectEntry(button);
                 }, { passive: false, signal });
             });
-            this.inventoryRangeButtons(el).forEach(button => {
+            this.inventoryRangeButtons(el)
+                .filter(button => {
+                    const range = this.inventoryRangeForButton(button);
+                    return range !== 'extreme'
+                        || unit.getUnit().type === 'Aero'
+                        || unit.allowsExtremeRangeAttacks();
+                })
+                .forEach(button => {
                 button.classList.add('interactive');
                 button.style.cursor = 'pointer';
                 button.addEventListener('click', (evt: Event) => {
@@ -1152,7 +1163,7 @@ export class SvgInteractionService {
                     evt.stopPropagation();
                     selectRange(button);
                 }, { passive: false, signal });
-            });
+                });
         });
     }
 
@@ -1272,16 +1283,25 @@ export class SvgInteractionService {
             .flatMap(group => group.rows)
             .find(candidate => candidate.entry.id === entry.id);
         if (!row) return '';
-        const effectiveTarget = this.inventoryTargetForTargetNumber(unit, target);
+        const c3Resolution = unit.resolveC3Targeting(target);
+        const effectiveTarget = c3Resolution.target;
         const category = inventoryTargetCategory(entry);
-        const rangeSelection = inventoryTargetRangeSelection({ entry, category, display: row.display, extremeRange: row.extremeRange, selectedAmmo, target: effectiveTarget });
+        const weaponRangeSelection = inventoryTargetRangeSelection({
+            entry,
+            category,
+            display: row.display,
+            extremeRange: row.extremeRange,
+            allowExtremeRange: unit.allowsExtremeRangeAttacks(),
+            selectedAmmo,
+            target: target.c3Distance === undefined ? target : { ...target, c3Distance: undefined }
+        });
         const state = unit.rules.computeEntryState(entry);
         const hitResolution = gameRules.resolveToHit({
             subject: entry,
             stateModifier: state.hitMod,
             stateModifierBreakdown: state.hitModifierBreakdown,
             stateWeakened: state.weakenedHitMod ?? false,
-            range: rangeSelection?.range ?? null,
+            range: weaponRangeSelection?.range ?? null,
             adjustments: rules.resolveToHitAdjustments?.(entry, selectedAmmo)
         });
         const { hitModifier, heatFireModifier } = separateHeatFireModifier(hitResolution);
@@ -1291,6 +1311,7 @@ export class SvgInteractionService {
             category,
             display: row.display,
             extremeRange: row.extremeRange,
+            allowExtremeRange: unit.allowsExtremeRangeAttacks(),
             selectedAmmo,
             target: effectiveTarget,
             gunnerySkill: unit.rules.getTargetNumberGunnerySkill(),
@@ -1301,13 +1322,9 @@ export class SvgInteractionService {
             attackModifierBreakdown: unit.turnState().getAttackModifierBreakdown(),
             hitModifier,
             heatFireModifier,
+            c3DegradationSource: c3Resolution.degradationSource,
             gameRules
         });
-    }
-
-    private inventoryTargetForTargetNumber(unit: CBTForceUnit, target: InventoryControlRuntimeTarget): InventoryControlRuntimeTarget {
-        if (unit.hasLinkedC3Network?.() === true || target.c3Distance === undefined) return target;
-        return { ...target, c3Distance: undefined };
     }
 
     private setupAmmoProfileInteractions(svg: SVGSVGElement, signal: AbortSignal) {

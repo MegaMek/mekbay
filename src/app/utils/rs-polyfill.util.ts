@@ -1081,28 +1081,30 @@ export class RsPolyfillUtil {
                 bbox = (nameEl.querySelector(':scope > text') as SVGGraphicsElement).getBBox();
             }
 
-            const strike = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            strike.classList.add('damaged-strike');
             let yPosition = bbox.y + bbox.height / 2;
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            line.setAttribute('x1', bbox.x.toString());
-            line.setAttribute('y1', yPosition.toString());
-            line.setAttribute('x2', (groupBBox.x + groupBBox.width).toString());
-            line.setAttribute('y2', yPosition.toString());
-            line.setAttribute('stroke', 'var(--damage-color)');
-            line.setAttribute('stroke-width', '1');
-            line.setAttribute('class', 'damaged-strike');
-            nameEl.parentElement?.insertBefore(line, nameEl.parentElement.firstChild);
+            if (!nameEl.parentElement?.querySelector(':scope > .damaged-strike')) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', bbox.x.toString());
+                line.setAttribute('y1', yPosition.toString());
+                line.setAttribute('x2', (groupBBox.x + groupBBox.width).toString());
+                line.setAttribute('y2', yPosition.toString());
+                line.setAttribute('stroke', 'var(--damage-color)');
+                line.setAttribute('stroke-width', '1');
+                line.setAttribute('class', 'damaged-strike');
+                nameEl.parentElement?.insertBefore(line, nameEl.parentElement.firstChild);
+            }
 
             // Create rect
-            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            rect.setAttribute('x', rectX.toString());
-            rect.setAttribute('y', rectY.toString());
-            rect.setAttribute('width', rowRectWidth.toString());
-            rect.setAttribute('height', rectHeight.toString());
-            rect.setAttribute('inventory-id', id);
-            rect.setAttribute('class', 'inventoryEntryButton mainButton interactive screen-only');
-            nameEl.parentElement?.insertBefore(rect, nameEl.parentElement.firstChild);
+            if (!nameEl.parentElement?.querySelector(':scope > .inventoryEntryButton.mainButton')) {
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', rectX.toString());
+                rect.setAttribute('y', rectY.toString());
+                rect.setAttribute('width', rowRectWidth.toString());
+                rect.setAttribute('height', rectHeight.toString());
+                rect.setAttribute('inventory-id', id);
+                rect.setAttribute('class', 'inventoryEntryButton mainButton interactive screen-only');
+                nameEl.parentElement?.insertBefore(rect, nameEl.parentElement.firstChild);
+            }
             this.addAimedShotWarningText(nameEl.parentElement, rectX + rectWidth, rectY, rectHeight);
             this.addRangeButtons(nameEl.parentElement, rangeButtonColumns, id, null, rectY, rectHeight);
 
@@ -1111,15 +1113,17 @@ export class RsPolyfillUtil {
                 const modeName = mode.getAttribute('mode');
                 if (!modeName) return;
                 const modeBBox = (mode as SVGGraphicsElement).getBBox();
-                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                rect.setAttribute('x', rectX.toString());
-                rect.setAttribute('y', modeBBox.y.toString());
-                rect.setAttribute('width', rowRectWidth.toString());
-                rect.setAttribute('height', rectHeight.toString());
-                rect.setAttribute('inventory-id', id);
-                rect.setAttribute('mode', modeName);
-                rect.setAttribute('class', 'inventoryEntryButton alternativeModeButton interactive screen-only');
-                mode.insertBefore(rect, mode.firstElementChild);
+                if (!mode.querySelector(':scope > .inventoryEntryButton.alternativeModeButton')) {
+                    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    rect.setAttribute('x', rectX.toString());
+                    rect.setAttribute('y', modeBBox.y.toString());
+                    rect.setAttribute('width', rowRectWidth.toString());
+                    rect.setAttribute('height', rectHeight.toString());
+                    rect.setAttribute('inventory-id', id);
+                    rect.setAttribute('mode', modeName);
+                    rect.setAttribute('class', 'inventoryEntryButton alternativeModeButton interactive screen-only');
+                    mode.insertBefore(rect, mode.firstElementChild);
+                }
                 this.addRangeButtons(mode, rangeButtonColumns, id, modeName, modeBBox.y, rectHeight);
             });
         });
@@ -1152,11 +1156,15 @@ export class RsPolyfillUtil {
     }
 
     private static findInventoryRangeButtonColumns(svg: SVGSVGElement): InventoryRangeButtonColumn[] {
-        return this.findRangeButtonColumns(svg, [
+        const groundRangeColumns: InventoryRangeButtonSpec[] = [
             { className: 'shrButton', labels: ['Shr', 'Sht'], field: 'range_short' },
             { className: 'medButton', labels: ['Med'], field: 'range_medium' },
             { className: 'lngButton', labels: ['Lng'], field: 'range_long' },
-        ]) || this.findRangeButtonColumns(svg, [
+        ];
+        return this.findRangeButtonColumns(svg, [
+            ...groundRangeColumns,
+            { className: 'extButton', labels: ['Ext', 'EXT'], field: 'range_extreme' },
+        ]) || this.findRangeButtonColumns(svg, groundRangeColumns) || this.findRangeButtonColumns(svg, [
             { className: 'shrButton', labels: ['SRV'], field: 'range_short' },
             { className: 'medButton', labels: ['MRV'], field: 'range_medium' },
             { className: 'lngButton', labels: ['LRV'], field: 'range_long' },
@@ -1221,6 +1229,7 @@ export class RsPolyfillUtil {
     ): void {
         if (!parent || rangeButtonColumns.length === 0) return;
         for (const column of rangeButtonColumns) {
+            if (parent.querySelector(`:scope > .inventoryEntryButton.${column.className}`)) continue;
             // we need this so that physical weapons have range clickable areas
             // if (!this.hasRangeButtonValue(parent, column.field)) continue;
             const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -1353,38 +1362,42 @@ export class RsPolyfillUtil {
         // We search the first <g>, we clone the content and create a button
         const firstGroup = heatDataPanel.querySelector('g');
         if (!firstGroup) return;
-        const buttonGroup = firstGroup.cloneNode(true) as SVGGElement;
-        buttonGroup.setAttribute('id', 'applyHeatButton');
-        buttonGroup.setAttribute('class', 'screen-only no-autocolor');
-        const textEl = buttonGroup.querySelector('text');
-        if (textEl) {
-            textEl.textContent = 'APPLY HEAT';
+        if (!heatDataPanel.querySelector('#applyHeatButton')) {
+            const buttonGroup = firstGroup.cloneNode(true) as SVGGElement;
+            buttonGroup.setAttribute('id', 'applyHeatButton');
+            buttonGroup.setAttribute('class', 'screen-only no-autocolor');
+            const textEl = buttonGroup.querySelector('text');
+            if (textEl) {
+                textEl.textContent = 'APPLY HEAT';
+            }
+            heatDataPanel.appendChild(buttonGroup);
         }
-        heatDataPanel.appendChild(buttonGroup);
         // We find the 2nd path and we add a class to it so we can style the border of the frame
         const paths = heatDataPanel.querySelectorAll('path');
         if (paths.length >= 2) {
             paths[1].classList.add('applyHeatButtonFrame');
             const frameBBox = (paths[1] as SVGGraphicsElement).getBBox();
-            const damagedEngineHeatText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            damagedEngineHeatText.setAttribute('id', 'damagedEngineHeatText');
-            damagedEngineHeatText.setAttribute('x', (frameBBox.x + frameBBox.width - 6).toString());
-            damagedEngineHeatText.setAttribute('y', (frameBBox.y + frameBBox.height - 4).toString());
-            damagedEngineHeatText.setAttribute('text-anchor', 'end');
-            damagedEngineHeatText.setAttribute('dominant-baseline', 'text-after-edge');
-            damagedEngineHeatText.setAttribute('font-family', 'Arial, sans-serif');
-            damagedEngineHeatText.setAttribute('font-size', '8');
-            damagedEngineHeatText.setAttribute('font-weight', 'bold');
-            damagedEngineHeatText.setAttribute('letter-spacing', '-0.05em');
-            damagedEngineHeatText.setAttribute('fill', 'red');
-            damagedEngineHeatText.setAttribute('class', 'damagedEngineHeatText');
-            damagedEngineHeatText.setAttribute('display', 'none');
-            paths[1].parentElement?.appendChild(damagedEngineHeatText);
+            if (!heatDataPanel.querySelector('#damagedEngineHeatText')) {
+                const damagedEngineHeatText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                damagedEngineHeatText.setAttribute('id', 'damagedEngineHeatText');
+                damagedEngineHeatText.setAttribute('x', (frameBBox.x + frameBBox.width - 6).toString());
+                damagedEngineHeatText.setAttribute('y', (frameBBox.y + frameBBox.height - 4).toString());
+                damagedEngineHeatText.setAttribute('text-anchor', 'end');
+                damagedEngineHeatText.setAttribute('dominant-baseline', 'text-after-edge');
+                damagedEngineHeatText.setAttribute('font-family', 'Arial, sans-serif');
+                damagedEngineHeatText.setAttribute('font-size', '8');
+                damagedEngineHeatText.setAttribute('font-weight', 'bold');
+                damagedEngineHeatText.setAttribute('letter-spacing', '-0.05em');
+                damagedEngineHeatText.setAttribute('fill', 'red');
+                damagedEngineHeatText.setAttribute('class', 'damagedEngineHeatText');
+                damagedEngineHeatText.setAttribute('display', 'none');
+                paths[1].parentElement?.appendChild(damagedEngineHeatText);
+            }
         }
 
         const pipsGroup = heatDataPanel.querySelector('g.hsPips');
         // We create a background rectangle to act as button hit area
-        if (pipsGroup) {
+        if (pipsGroup && !pipsGroup.querySelector(':scope > .changeActiveHeatsinksCountButton')) {
             const bbox = (pipsGroup as SVGGraphicsElement).getBBox();
             const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             const x = bbox.x - 6;

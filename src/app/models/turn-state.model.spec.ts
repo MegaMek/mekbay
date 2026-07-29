@@ -29,6 +29,7 @@ interface TurnStateHarnessOptions {
 interface TurnStateHarness {
     turnState: TurnState;
     critSlots: ReturnType<typeof signal<CriticalSlot[]>>;
+    heat: ReturnType<typeof signal<HeatProfile>>;
     inventory: ReturnType<typeof signal<MountedEquipment[]>>;
     rules: UnitTypeRules;
 }
@@ -91,7 +92,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         isInternalLocCommittedDestroyed: (loc: string) => committedDestroyedLegs.has(loc),
         isInternalLocDestroyed: (loc: string) => currentDestroyedLegs.has(loc) || committedDestroyedLegs.has(loc),
         isEquipmentUnavailable: (slot: CriticalSlot) => !!slot.destroyed || (slot.loc ? committedDestroyedLegs.has(slot.loc) : false),
-        getUnit: () => ({ type: 'Mek', ...options.unit } as Unit),
+        getUnit: () => ({ type: 'Mek', comp: [], ...options.unit } as Unit),
         turnState: () => turnState,
     };
 
@@ -126,9 +127,36 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
     return {
         turnState,
         critSlots,
+        heat,
         inventory,
         rules,
     };
+}
+
+function createTurnStateHarnessWithDissipation(dissipation: number): TurnStateHarness {
+    const heatSink = new Equipment({
+        id: 'test-heat-sink',
+        name: 'Test Heat Sink',
+        type: 'misc',
+        flags: ['F_HEAT_SINK'],
+    });
+    return createTurnStateHarness({
+        unit: {
+            heat: dissipation,
+            comp: [{
+                id: 'test-heat-sinks',
+                q: dissipation,
+                q2: 0,
+                n: 'Test Heat Sink',
+                t: 'E',
+                p: -1,
+                l: '',
+                c: '',
+                os: 0,
+                eq: heatSink,
+            }],
+        },
+    });
 }
 
 function getReasons(turnState: TurnState): string[] {
@@ -155,9 +183,94 @@ describe('TurnState', () => {
                 { id: 'movement', label: 'Movement', value: 2 },
                 { id: 'invalid', label: 'Invalid', value: Number.NaN },
                 { id: 'negative', label: 'Negative', value: -5 },
-            ], 5)).toEqual({ current: 10, sourceHeat: 2, dissipation: 5, projected: 7, delta: -3 });
+            ], 5)).toEqual({
+                current: 10,
+                sourceHeat: 2,
+                dissipation: 5,
+                consumedDissipation: 5,
+                projected: 7,
+                delta: -3,
+            });
 
             expect(calculateHeatProjection(2, [], 10).projected).toBe(0);
+        });
+
+        it('consumes only the dissipation needed before clipping at zero', () => {
+            expect(calculateHeatProjection(5, [
+                { id: 'movement', label: 'Movement', value: 1 },
+            ], 20)).toEqual({
+                current: 5,
+                sourceHeat: 1,
+                dissipation: 20,
+                consumedDissipation: 6,
+                projected: 0,
+                delta: -5,
+            });
+            expect(calculateHeatProjection(5, [], 5).consumedDissipation).toBe(5);
+            expect(calculateHeatProjection(5, [], 0).consumedDissipation).toBe(0);
+        });
+    });
+
+    describe('heat dissipation balance', () => {
+        it('derives remaining cooling, an exact-zero balance, and a pending deficit from current capacity', () => {
+            const { turnState, heat } = createTurnStateHarnessWithDissipation(5);
+            turnState.acknowledgeHeatSources(3);
+
+            expect(turnState.heatDissipationBalance()).toBe(2);
+            expect(turnState.effectiveHeatDissipation()).toBe(2);
+            expect(turnState.heatSources()).toEqual([]);
+
+            heat.update(current => ({ ...current, heatsinksOff: 2 }));
+            expect(turnState.heatDissipationBalance()).toBe(0);
+            expect(turnState.effectiveHeatDissipation()).toBe(0);
+            expect(turnState.hasPendingHeatResolution()).toBeFalse();
+
+            heat.update(current => ({ ...current, heatsinksOff: 4 }));
+            expect(turnState.heatDissipationBalance()).toBe(-2);
+            expect(turnState.effectiveHeatDissipation()).toBe(0);
+            expect(turnState.heatSources()).toEqual([{
+                id: 'heat-dissipation-deficit',
+                label: 'Dissipation',
+                value: 2,
+            }]);
+            expect(turnState.heatProjection()).toEqual(jasmine.objectContaining({
+                sourceHeat: 2,
+                consumedDissipation: 0,
+                projected: 2,
+                delta: 2,
+            }));
+            expect(turnState.hasPendingHeatResolution()).toBeTrue();
+        });
+
+        it('settles a capacity deficit without acknowledging the derived heat source', () => {
+            const { turnState, heat } = createTurnStateHarnessWithDissipation(5);
+            turnState.acknowledgeHeatSources(5);
+            heat.update(current => ({ ...current, heatsinksOff: 3 }));
+
+            expect(turnState.heatDissipationBalance()).toBe(-3);
+
+            turnState.acknowledgeHeatSources(0);
+
+            expect(turnState.heatDissipationBalance()).toBe(0);
+            expect(turnState.heatSources()).toEqual([]);
+            expect(turnState.serialize()?.heatDissipationConsumed).toBe(2);
+            expect(turnState.serialize()?.acknowledgedHeatSources?.['heat-dissipation-deficit']).toBeUndefined();
+        });
+
+        it('round-trips a pending deficit from consumed dissipation and current sink settings', () => {
+            const { turnState, heat } = createTurnStateHarnessWithDissipation(5);
+            turnState.acknowledgeHeatSources(5);
+            heat.update(current => ({ ...current, heatsinksOff: 3 }));
+            const serialized = turnState.serialize();
+
+            const { turnState: restored, heat: restoredHeat } = createTurnStateHarnessWithDissipation(5);
+            restoredHeat.update(current => ({ ...current, heatsinksOff: 3 }));
+            restored.update(serialized);
+
+            expect(restored.heatDissipationBalance()).toBe(-3);
+            expect(restored.heatProjection().projected).toBe(3);
+            expect(restored.serialize()?.heatDissipationConsumed).toBe(5);
+            expect(restored.serialize()?.acknowledgedHeatSources?.['heat-dissipation-deficit']).toBeUndefined();
         });
     });
 
@@ -219,7 +332,7 @@ describe('TurnState', () => {
             expect(restored.serialize()).toBeUndefined();
         });
 
-        it('omits false and empty turn state data from serialized output', () => {
+        it('persists disabled movement PSRs while omitting other false and empty state', () => {
             const { turnState } = createTurnStateHarness();
             turnState.airborne.set(false);
             turnState.applyMovePSR.set(false);
@@ -231,27 +344,45 @@ describe('TurnState', () => {
                 shutdown: false,
             });
 
-            expect(turnState.serialize()).toBeUndefined();
+            const serialized = turnState.serialize();
+
+            expect(serialized).toEqual({ applyMovePSR: false });
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(serialized);
+            expect(restored.applyMovePSR()).toBeFalse();
         });
 
         it('preserves applied heat sources without serializing derived source values', () => {
-            const { turnState } = createTurnStateHarness();
+            const { turnState } = createTurnStateHarnessWithDissipation(5);
             turnState.moveMode.set('run');
             turnState.addFiredHeat(6);
 
-            turnState.acknowledgeHeatSources();
+            turnState.acknowledgeHeatSources(3);
 
             expect(turnState.serialize()).toEqual({
                 moveMode: 'run',
                 acknowledgedHeatSources: { movement: '[2,null,null]' },
-                heatApplied: true,
+                heatDissipationConsumed: 3,
             });
 
-            const { turnState: restored } = createTurnStateHarness();
+            const { turnState: restored } = createTurnStateHarnessWithDissipation(5);
             restored.update(turnState.serialize());
 
             expect(restored.heatProjectionVisible()).toBeFalse();
             expect(restored.heatSources()).toEqual([]);
+            expect(restored.serialize()?.heatDissipationConsumed).toBe(3);
+        });
+
+        it('returns an isolated acknowledged heat-source snapshot', () => {
+            const { turnState } = createTurnStateHarness();
+            turnState.moveMode.set('run');
+            turnState.acknowledgeHeatSources();
+            const serialized = turnState.serialize()!;
+
+            serialized.acknowledgedHeatSources!['movement'] = 'changed';
+
+            expect(turnState.serialize()?.acknowledgedHeatSources?.['movement']).not.toBe('changed');
         });
     });
 

@@ -55,11 +55,16 @@ import {
     type TnTargetUnitType,
     type TnSpotterMoveMode,
 } from '../../models/target-number-calculator.model';
-import { CBTGameRulesService } from '../../services/cbt-game-rules.service';
+import { getUnitConditionDefinition } from '../../models/rules/unit-type-rules';
+import type { CBTGameRules } from '../../models/rules/game-rules';
+
+const JAMMED_CONDITION_COLOR = getUnitConditionDefinition('jammed')?.color ?? '#ff6be6';
 
 export interface TnCalculatorDialogData {
     target: InventoryControlRuntimeTarget;
+    gameRules: CBTGameRules;
     showC3Distance?: boolean;
+    c3Degraded?: boolean;
     indirectFireBaseModifier?: number;
 }
 
@@ -74,7 +79,8 @@ export interface TnCalculatorDialogResult {
     imports: [CommonModule, HexSliderComponent, MultilineDropdownComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
-        class: 'tn-calculator-host'
+        class: 'tn-calculator-host',
+        '[style.--jammed-condition-color]': 'jammedConditionColor'
     },
     template: `
     <div class="tn-dialog glass framed-borders has-shadow" [class.ready]="renderReady()">
@@ -172,10 +178,11 @@ export interface TnCalculatorDialogResult {
                                 (valueChange)="setRangeValue($event)"></hex-slider>
                         </div>
                         @if (showC3Distance()) {
-                            <div class="section-title secondary c3-distance-title">                                
+                            <div class="c3-distance-control" [class.c3-degraded]="c3Degraded()">
+                            <div class="section-title secondary c3-distance-title">
                                 <label class="use-c3-toggle" [class.disabled-field]="c3BlockedByIndirectFire()">
                                     <input type="checkbox" class="bt-checkbox" [checked]="useC3()" [disabled]="c3BlockedByIndirectFire()" (change)="setUseC3($event)">
-                                    <span>C³ Distance</span>
+                                    <span>C³ Distance@if (c3Degraded()) { <strong class="c3-status-label"> ({{ gameRules().c3DegradationLabel }})</strong> }</span>
                                 </label>
                             </div>
                             <div class="row" [class.c3-distance-disabled]="!c3Enabled()">
@@ -190,6 +197,7 @@ export interface TnCalculatorDialogResult {
                                     [ariaLabel]="'C³ Range'"
                                     [valueAssigned]="c3Enabled()"
                                     (valueChange)="setC3DistanceValue($event)"></hex-slider>
+                            </div>
                             </div>
                         }
                     </section>
@@ -433,6 +441,32 @@ export interface TnCalculatorDialogResult {
 
         .c3-distance-title {
             padding-bottom: 0;
+        }
+
+        .c3-status-label {
+            color: var(--jammed-condition-color);
+        }
+
+        .c3-distance-control {
+            position: relative;
+            overflow: visible;
+        }
+
+        .c3-distance-control.c3-degraded::after {
+            content: '';
+            position: absolute;
+            inset: -4px;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            background: color-mix(in srgb, var(--jammed-condition-color) 30%, transparent);
+            border: 1px solid var(--jammed-condition-color);
+            font-weight: 800;
+            letter-spacing: 0.1em;
+            pointer-events: none;
+            opacity: 0.5;
         }
 
         .use-c3-toggle {
@@ -737,19 +771,20 @@ export interface TnCalculatorDialogResult {
     `]
 })
 export class TnCalculatorDialogComponent {
+    readonly jammedConditionColor = JAMMED_CONDITION_COLOR;
     readonly MOVEMENT_MIN = 0;
     readonly MOVEMENT_MAX = TN_TARGET_MOVEMENT_BRACKETS.length - 1;
     readonly RANGE_MIN = 0;
     readonly RANGE_MAX = 25;
     private readonly dialogRef = inject(DialogRef<TnCalculatorDialogResult | null>);
     private readonly data = inject<TnCalculatorDialogData>(DIALOG_DATA);
-    private readonly gameRulesService = inject(CBTGameRulesService);
     private readonly initialCalculator = this.data.target.tnCalculator;
     private readonly initialUnitType = this.data.target.unitType ?? 'mek-biped';
 
     readonly target = this.data.target;
-    readonly gameRules = this.gameRulesService.gameRules;
+    readonly gameRules = signal(this.data.gameRules);
     readonly showC3Distance = signal<boolean>(this.data.showC3Distance ?? false);
+    readonly c3Degraded = signal<boolean>(this.data.c3Degraded ?? false);
     readonly indirectFireBaseModifier = this.data.indirectFireBaseModifier ?? 1;
     readonly unitTypeOptions = TN_TARGET_UNIT_TYPE_OPTIONS;
     readonly unitTypeDropdownOptions = computed<MultilineDropdownOption[]>(() => this.unitTypeOptions.map(option => ({
@@ -968,6 +1003,10 @@ export class TnCalculatorDialogComponent {
         this.useC3.set(checked && !this.c3BlockedByIndirectFire());
     }
 
+    setC3Degraded(degraded: boolean): void {
+        this.c3Degraded.set(degraded);
+    }
+
     apply(): void {
         const state: TnTargetNumberCalculatorState = {
             isAirborne: this.staticTarget() ? false : this.isAirborne(),
@@ -990,7 +1029,7 @@ export class TnCalculatorDialogComponent {
             patch: {
                 unitType: this.unitType(),
                 distance: this.range(),
-                ...(this.showC3Distance() && { c3Distance: this.c3Distance(), useC3: this.c3Enabled() }),
+                ...(this.showC3Distance() && { c3Distance: this.c3Distance(), useC3: this.useC3() && !this.c3BlockedByIndirectFire() }),
                 tnModifier: this.totalModifier(),
                 tnCalculator: state,
             }
