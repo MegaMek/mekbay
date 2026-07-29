@@ -36,7 +36,15 @@
             @case ('General') {
             <div class="settings-view-content">
             <div class="option-row">
-                <label for="gameSystem">Default Game system:</label>
+                <label for="colorScheme">Color scheme:</label>
+                <select id="colorScheme" class="bt-select" [value]="optionsService.options().colorScheme"
+                    (change)="onColorSchemeChange($event)">
+                    <option value="default">Normal (default)</option>
+                    <option value="night">Night mode</option>
+                </select>
+            </div>
+            <div class="option-row">
+                <label for="gameSystem">Default game system:</label>
                 <select id="gameSystem" class="bt-select" [value]="optionsService.options().gameSystem"
                     (change)="onGameSystemChange($event)">
                     <option value="cbt">BattleTech Classic (default)</option>
@@ -52,9 +60,38 @@
                     <option value="both">Chassis, model and pilot</option>
                 </select>
             </div>
+            <div class="option-row">
+                <label for="forceViewerBVPVDisplay">Force viewer BV/PV:</label>
+                <select id="forceViewerBVPVDisplay" class="bt-select"
+                    [value]="optionsService.options().forceViewerBVPVDisplay"
+                    (change)="onForceViewerBVPVDisplayChange($event)">
+                    <option value="adjusted">Adjusted for skill (default)</option>
+                    <option value="base">Before skill adjustment</option>
+                    <option value="both">Adjusted and before skill</option>
+                </select>
+            </div>
+            <div class="option-section-title">Printing</div>
             <div class="option-col">
                 <div class="option-row">
-                    <label for="availabilitySource">Units Availability Source:</label>
+                    <label for="printRosterSummary">Include roster summary:</label>
+                    <select id="printRosterSummary" class="bt-select"
+                        [value]="optionsService.options().printRosterSummary"
+                        (change)="onprintRosterSummaryChange($event)">
+                        <option value="false">No (default)</option>
+                        <option value="true">Yes</option>
+                    </select>
+                </div>
+                <div class="description">
+                    <p>Include a summary of the roster in the print output.</p>
+                </div>
+            </div>
+        </div>
+            }
+            @case ('Search') {
+            <div class="settings-view-content">
+            <div class="option-col">
+                <div class="option-row">
+                    <label for="availabilitySource">Units availability source:</label>
                     <select id="availabilitySource" class="bt-select"
                         [value]="optionsService.options().availabilitySource"
                         (change)="onAvailabilitySourceChange($event)">
@@ -111,21 +148,6 @@
                 </div>
                 <div class="description">
                     <p>Choose the panel arrangement in expanded unit search view on wide screens.</p>
-                </div>
-            </div>
-            <div class="option-section-title">Printing</div>
-            <div class="option-col">
-                <div class="option-row">
-                    <label for="printRosterSummary">Include roster summary:</label>
-                    <select id="printRosterSummary" class="bt-select"
-                        [value]="optionsService.options().printRosterSummary"
-                        (change)="onprintRosterSummaryChange($event)">
-                        <option value="false">No (default)</option>
-                        <option value="true">Yes</option>
-                    </select>
-                </div>
-                <div class="description">
-                    <p>Include a summary of the roster in the print output.</p>
                 </div>
             </div>
         </div>
@@ -399,14 +421,6 @@
             }
             @case ('Classic BattleTech') {
             <div class="settings-view-content">
-            <div class="option-row">
-                <label for="sheetsColor">Color schema:</label>
-                <select id="sheetsColor" class="bt-select" [value]="optionsService.options().sheetsColor"
-                    (change)="onSheetsColorChange($event)">
-                    <option value="normal">Normal (default)</option>
-                    <option value="night">Night mode</option>
-                </select>
-            </div>
             <div class="option-col">
                 <div class="option-row">
                     <label for="CBTRules">Rules:</label>
@@ -422,17 +436,16 @@
             </div>
             <div class="option-col">
                 <div class="option-row">
-                    <label for="useAutomations">Use automations:</label>
-                    <select id="useAutomations" class="bt-select" [value]="optionsService.options().useAutomations"
-                        (change)="onUseAutomationsChange($event)">
+                    <label for="trackPhaseAndTurn">Track game phase/turn:</label>
+                    <select id="trackPhaseAndTurn" class="bt-select" [value]="optionsService.options().trackPhaseAndTurn"
+                        (change)="onTrackPhaseAndTurn($event)">
                         <option value="true">Enabled (default)</option>
                         <option value="false">Disabled</option>
                     </select>
                 </div>
                 <div class="description">
-                    <p>Automations provide automatic calculations and effects for various game mechanics, such as
-                        turn/phase tracking, PSRs, critical table, and damage application.</p>
-                    <p>Disabling automations will require manual tracking of these mechanics during gameplay.</p>
+                    <p>Tracks game phases and turns, including pending damage, next-phase modifiers, and end-of-turn cleanup.</p>
+                    <p>When disabled, these mechanics must be tracked manually. <strong>Damage and to-hit modifiers take effect immediately instead of being deferred to the appropriate phase or turn.</strong></p>
                 </div>
             </div>
             <div class="option-row">
@@ -493,14 +506,6 @@
             }
             @case ('Alpha Strike') {
             <div class="settings-view-content">
-            <div class="option-row">
-                <label for="ASCardStyle">Card theme:</label>
-                <select id="ASCardStyle" class="bt-select" [value]="optionsService.options().ASCardStyle"
-                    (change)="onASCardStyleChange($event)">
-                    <option value="monochrome">Light (default)</option>
-                    <option value="colored">Dark</option>
-                </select>
-            </div>
             <div class="option-row">
                 <label for="ASUseHex">Measures:</label>
                 <select id="ASUseHex" class="bt-select" [value]="optionsService.options().ASUseHex"

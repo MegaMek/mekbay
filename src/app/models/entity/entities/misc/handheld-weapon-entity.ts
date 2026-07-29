@@ -51,6 +51,9 @@ import {
 // ============================================================================
 
 export class HandheldWeaponEntity extends BaseEntity {
+  override componentLocationLabel(location: string): string {
+    return location === 'Gun' ? 'GUN' : super.componentLocationLabel(location);
+  }
   override readonly entityType: EntityType = 'HandheldWeapon';
 
   constructor(equipmentRegistry: EquipmentRegistry) {

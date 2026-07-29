@@ -2,10 +2,8 @@ import {
   AmmoEquipment,
   ArmorEquipment,
   Equipment,
-  findIntrinsicAmmoForWeapon,
   MiscEquipment,
   StructureEquipment,
-  WeaponDamageProfile,
   WeaponEquipment,
 } from '../models/equipment.model';
 import { BaseEntity } from '../models/entity/base-entity';
@@ -13,9 +11,10 @@ import { AeroEntity } from '../models/entity/entities/aero/aero-entity';
 import { BattleArmorEntity } from '../models/entity/entities/infantry/battle-armor-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
 import { MekEntity, MekWithArmsEntity } from '../models/entity/entities/mek/mek-entity';
-import { EntityMountedEquipment } from '../models/entity/types/equipment';
+import { EntityMountedEquipment, EntityMountedWeapon } from '../models/entity/types/equipment';
 import { weaponBayEquipmentId } from '../models/entity/utils/implicit-equipment';
 import { UnitComponent } from '../models/units.model';
+import { formatWeaponDamage } from './weapon-damage.util';
 
 type ExportComponent = Omit<UnitComponent, 'l' | 'bay'> & {
   l?: string;
@@ -23,45 +22,12 @@ type ExportComponent = Omit<UnitComponent, 'l' | 'bay'> & {
 };
 type ComponentType = ExportComponent['t'];
 
-const LOCATION_DATA: Readonly<Partial<Record<BaseEntity['entityType'], readonly string[]>>> = {
-  Mek: ['HD', 'CT', 'RT', 'LT', 'RA', 'LA', 'RL', 'LL', 'CL', 'FRL', 'FLL', 'RRL', 'RLL'],
-  Tank: ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Front Turret', 'Rear Turret'],
-  SupportTank: ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Front Turret', 'Rear Turret'],
-  LargeSupportTank: ['Body', 'Front', 'Front Right', 'Front Left', 'Rear Right', 'Rear Left', 'Rear', 'Turret', 'Rear Turret', 'Front Turret'],
-  Naval: ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Front Turret', 'Rear Turret'],
-  SupportNaval: ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Front Turret', 'Rear Turret'],
-  VTOL: ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Rotor'],
-  SupportVTOL: ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Rotor'],
-  Aero: ['Nose', 'Left Wing', 'Right Wing', 'Aft', 'Wings', 'Fuselage'],
-  ConvFighter: ['Nose', 'Left Wing', 'Right Wing', 'Aft', 'Wings', 'Fuselage'],
-  FixedWingSupport: ['Nose', 'Left Wing', 'Right Wing', 'Aft', 'Wings', 'Body'],
-  SmallCraft: ['Nose', 'Left Side', 'Right Side', 'Aft', 'Hull'],
-  DropShip: ['Nose', 'Left Side', 'Right Side', 'Aft', 'Hull'],
-  JumpShip: ['Nose', 'FLS', 'FRS', 'Aft', 'ALS', 'ARS', 'Hull'],
-  WarShip: ['Nose', 'FLS', 'FRS', 'Aft', 'ALS', 'ARS', 'Hull', 'Left Broadside', 'Right Broadside'],
-  SpaceStation: ['Nose', 'FLS', 'FRS', 'Aft', 'ALS', 'ARS', 'Hull'],
-  ProtoMek: ['Body', 'Head', 'Torso', 'Right Arm', 'Left Arm', 'Legs', 'Main Gun'],
-  Infantry: ['Infantry', 'Field Guns'],
-  BattleArmor: ['Squad'],
-  HandheldWeapon: ['Gun'],
-};
-
-const LOCATION_ABBREVIATIONS: Readonly<Record<string, string>> = {
-  Body: 'BD', Front: 'FR', Right: 'RS', Left: 'LS', Rear: 'RR', Turret: 'TU',
-  'Front Turret': 'FT', 'Rear Turret': 'RT', Rotor: 'RO',
-  'Front Right': 'FRR', 'Front Left': 'FRL', 'Rear Right': 'RRR', 'Rear Left': 'RRL',
-  Nose: 'NOS', 'Left Wing': 'LW', 'Right Wing': 'RW', Aft: 'AFT', Wings: 'WNG',
-  Fuselage: 'FSLG', Hull: 'HULL', 'Left Side': 'LS', 'Right Side': 'RS',
-  FLS: 'FLS', FRS: 'FRS', ALS: 'ALS', ARS: 'ARS',
-  'Left Broadside': 'LBS', 'Right Broadside': 'RBS',
-  Head: 'HD', Torso: 'T', 'Right Arm': 'RA', 'Left Arm': 'LA', Legs: 'L',
-  'Main Gun': 'MG', Infantry: 'TPRS', 'Field Guns': 'FGUN', Gun: 'GUN', Squad: 'Squad',
-};
-
 /** Mirrors SVGMassPrinter.Components while using only canonical parser state. */
 export function buildUnitComponentMetadata(entity: BaseEntity): UnitComponent[] | undefined {
   const components = new Map<string, ExportComponent>();
   addConventionalInfantryWeapons(components, entity);
+  addSyntheticStructure(components, entity);
+  addSyntheticArmor(components, entity);
   addMekSystems(components, entity);
 
   if (usesWeaponBays(entity)) addWeaponBays(components, entity);
@@ -76,10 +42,14 @@ function addOrdinaryEquipment(components: Map<string, ExportComponent>, entity: 
     if (mount.allocation.kind === 'engine' || !mount.equipment) continue;
     const equipment = mount.equipment;
 
-    if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) {
-      addStructuralMaterialMount(components, entity, mount, equipment);
+    if (equipment instanceof StructureEquipment || equipment instanceof ArmorEquipment) {
+      continue;
     } else if (equipment instanceof AmmoEquipment) {
       addAmmo(components, entity, mount, equipment);
+    } else if (mount.isPhysicalWeapon()) {
+      if (equipment instanceof WeaponEquipment && skipWeapon(entity, mount, equipment)) continue;
+      if (equipment instanceof MiscEquipment && skipMisc(entity, mount, equipment)) continue;
+      addPhysicalEquipment(components, entity, mount, equipment);
     } else if (equipment instanceof WeaponEquipment) {
       if (skipWeapon(entity, mount, equipment)) continue;
       addWeapon(components, entity, mount, equipment);
@@ -141,21 +111,56 @@ function addSyntheticInfantryWeapon(
 function addMekSystems(components: Map<string, ExportComponent>, entity: BaseEntity): void {
   if (!(entity instanceof MekEntity)) return;
 
-  const structures = new Map([...entity.structureByLocation().values()]
-    .map(mounted => [mounted.structure.id, mounted.structure]));
-  const armors = new Map([...entity.armorByLocation().values()]
-    .map(mounted => [mounted.armor.id, mounted.armor]));
-  for (const equipment of [...structures.values(), ...armors.values()]) {
-    if (entity.equipment().some(mount => mount.equipmentId === equipment.id && mount.placements?.length)) continue;
-    const entry = baseComponent(equipment, 1, -1, undefined, 'S', criticals(equipment, entity));
-    components.set(`${equipment.id}__S`, entry);
-  }
-
   if (entity instanceof MekWithArmsEntity) {
     const hands = entity.hasHandActuator();
     if (hands.left) addHand(components, entity, 'LA');
     if (hands.right) addHand(components, entity, 'RA');
   }
+}
+
+/** Exports the entity-selected internal structure once, independently of critical-slot mounts. */
+function addSyntheticStructure(components: Map<string, ExportComponent>, entity: BaseEntity): void {
+  const structure = entity.uniformStructureMaterial()?.structure
+    ?? entity.structureByLocation().get(entity.locationOrder[0])?.structure;
+  if (!structure) return;
+
+  components.set(`${structure.id}__structure`, {
+    ...baseComponent(structure, 1, -1, undefined, 'S', criticals(structure, entity)),
+    n: withMaterialSuffix(structure.shortName, 'Structure'),
+  });
+}
+
+/** Exports effective armor once per material, retaining Patchwork as a configuration marker. */
+function addSyntheticArmor(components: Map<string, ExportComponent>, entity: BaseEntity): void {
+  const armorByLocation = entity.armorByLocation();
+  if (armorByLocation.size === 0) return;
+
+  if (entity.hasPatchworkArmor()) {
+    const patchwork = new ArmorEquipment({
+      id: 'Patchwork Armor', name: 'Patchwork', shortName: 'Patchwork', type: 'armor',
+      armor: { type: 'PATCHWORK' },
+    });
+    components.set(`${patchwork.id}__patchwork`, {
+      ...baseComponent(patchwork, 1, -1, undefined, 'S', criticals(patchwork, entity)),
+      n: withMaterialSuffix(patchwork.shortName, 'Armor'),
+    });
+  }
+
+  const materials = new Map<string, ArmorEquipment>();
+  for (const mountedArmor of armorByLocation.values()) {
+    const key = `${mountedArmor.armor.id}:${mountedArmor.techBase}`;
+    materials.set(key, mountedArmor.armor);
+  }
+  for (const [key, armor] of materials) {
+    components.set(`${armor.id}__armor_${key}`, {
+      ...baseComponent(armor, 1, -1, undefined, 'S', criticals(armor, entity)),
+      n: withMaterialSuffix(armor.shortName, 'Armor'),
+    });
+  }
+}
+
+function withMaterialSuffix(name: string, suffix: 'Armor' | 'Structure'): string {
+  return name.endsWith(suffix) ? name : `${name} ${suffix}`;
 }
 
 function addHand(components: Map<string, ExportComponent>, entity: BaseEntity, location: 'LA' | 'RA'): void {
@@ -177,7 +182,7 @@ function addWeapon(
   if (existing) { existing.q++; return; }
 
   components.set(key, weaponComponent(
-    entity, equipment, 1, location.id, location.name, mount.rearMounted,
+    entity, mount as EntityMountedWeapon, 1, location.id, location.name,
     criticals(equipment, entity, mount),
   ));
   if (entity instanceof InfantryEntity && mount.location === 'Field Guns') {
@@ -186,21 +191,24 @@ function addWeapon(
 }
 
 function weaponComponent(
-  entity: BaseEntity, equipment: WeaponEquipment, quantity: number,
-  position: number, location: string | undefined, rear: boolean, criticalSlots: string,
+  entity: BaseEntity, mount: EntityMountedWeapon, quantity: number,
+  position: number, location: string | undefined, criticalSlots: string,
 ): ExportComponent {
+  const equipment = mount.equipment;
   const aero = entity instanceof AeroEntity;
-  const intrinsicAmmo = findIntrinsicAmmoForWeapon(equipment, entity.getEquipmentRegistry().equipment);
-  const damageProfile = equipment.getDamageProfile(intrinsicAmmo);
+  const damage = entity.resolveMountedWeaponDamage(mount);
   const entry = baseComponent(
     equipment, quantity, position, location, weaponCategory(equipment), criticalSlots,
   );
-  if (rear) entry.rear = true;
+  if (mount.rearMounted) entry.rear = true;
   entry.r = aero ? aeroRange(equipment) : equipment.isInfantryWeapon()
     ? String(equipment.infantry.range) : equipment.ranges.slice(0, 3).join('/');
   entry.m = aero ? '-' : String(equipment.minimumRange);
-  entry.d = aero ? aeroDamage(equipment) : formatWeaponDamage(damageProfile);
-  entry.md = formatDecimal(aero ? maximumAeroDamage(equipment) : damageProfile.maximum);
+  entry.d = aero ? aeroDamage(equipment) : formatWeaponDamage(damage, {
+    showZero: true,
+    variableLabel: '0',
+  });
+  entry.md = formatDecimal(aero ? maximumAeroDamage(equipment) : damage?.maximum ?? 0);
   entry.os = equipment.oneShotCount ?? 0;
   return entry;
 }
@@ -229,7 +237,7 @@ function addMisc(
   mount: EntityMountedEquipment, equipment: MiscEquipment,
 ): void {
   const structural = isStructuralMisc(entity, equipment);
-  const type: ComponentType = isPhysicalEquipment(equipment) ? 'P' : structural ? 'S' : 'C';
+  const type: ComponentType = structural ? 'S' : 'C';
 
   if (equipment.isSpreadable && mount.placements?.length) {
     const countByLocation = new Map<string, number>();
@@ -246,6 +254,42 @@ function addMisc(
   addMiscAtLocation(components, entity, mount, equipment, type, location.name, 1, location.id);
 }
 
+function addPhysicalEquipment(
+  components: Map<string, ExportComponent>, entity: BaseEntity,
+  mount: EntityMountedEquipment, equipment: Equipment,
+): void {
+  if (equipment.isSpreadable && mount.placements?.length) {
+    const countByLocation = new Map<string, number>();
+    for (const placement of mount.placements) {
+      countByLocation.set(placement.location, (countByLocation.get(placement.location) ?? 0) + 1);
+    }
+    for (const [location, count] of countByLocation) {
+      addPhysicalEquipmentAtLocation(components, entity, mount, equipment, location, count);
+    }
+    return;
+  }
+
+  const location = componentLocation(entity, mount);
+  addPhysicalEquipmentAtLocation(components, entity, mount, equipment, location.name, 1, location.id);
+}
+
+function addPhysicalEquipmentAtLocation(
+  components: Map<string, ExportComponent>, entity: BaseEntity, mount: EntityMountedEquipment,
+  equipment: Equipment, location: string, quantity: number, position = locationId(entity, location),
+): void {
+  const displayLocation = locationAbbreviation(entity, location);
+  const key = `${equipment.id}_${displayLocation}_P`;
+  const existing = components.get(key);
+  if (existing) { existing.q += quantity; return; }
+
+  components.set(key, {
+    ...baseComponent(
+      equipment, quantity, position, displayLocation, 'P', criticals(equipment, entity, mount),
+    ),
+    ...physicalDamage(mount),
+  });
+}
+
 function addMiscAtLocation(
   components: Map<string, ExportComponent>, entity: BaseEntity, mount: EntityMountedEquipment,
   equipment: MiscEquipment, type: ComponentType, location: string, quantity: number,
@@ -259,7 +303,6 @@ function addMiscAtLocation(
   const entry = baseComponent(
     equipment, quantity, position, displayLocation, type, criticals(equipment, entity, mount),
   );
-  if (type === 'P') Object.assign(entry, physicalDamage(entity, equipment));
   components.set(key, entry);
 }
 
@@ -302,7 +345,7 @@ function addWeaponBays(components: Map<string, ExportComponent>, entity: BaseEnt
       const key = `${equipment.id}_${member.rearMounted}`;
       const existing = nested.get(key);
       if (existing) existing.q++;
-      else nested.set(key, weaponComponent(entity, equipment, 1, 0, undefined, member.rearMounted,
+      else nested.set(key, weaponComponent(entity, member as EntityMountedWeapon, 1, 0, undefined,
         criticals(equipment, entity, member)));
     }
     bay.bay = [...nested.values()];
@@ -324,7 +367,7 @@ function componentLocation(entity: BaseEntity, mount: EntityMountedEquipment): {
   const locations = primaryFirstLocations(mount);
   return {
     id: locationId(entity, mount.location),
-    name: locations.map(location => locationAbbreviation(entity, location)).join('/'),
+    name: locations.map(location => locationAbbreviation(entity, location)).filter(Boolean).join('/'),
   };
 }
 
@@ -336,17 +379,11 @@ function primaryFirstLocations(mount: EntityMountedEquipment): readonly string[]
 }
 
 function locationId(entity: BaseEntity, location: string): number {
-  const locations = entity instanceof MekEntity && entity.chassisConfig === 'Quad'
-    ? ['HD', 'CT', 'RT', 'LT', 'FRL', 'FLL', 'RRL', 'RLL']
-    : entity instanceof MekEntity && entity.chassisConfig === 'Tripod'
-      ? ['HD', 'CT', 'RT', 'LT', 'RA', 'LA', 'RL', 'LL', 'CL']
-      : LOCATION_DATA[entity.entityType] ?? entity.locationOrder;
-  return locations.indexOf(location);
+  return entity.componentLocationOrder().indexOf(location);
 }
 
 function locationAbbreviation(entity: BaseEntity, location: string): string {
-  if (entity.entityType === 'FixedWingSupport' && location === 'Body') return 'BOD';
-  return LOCATION_ABBREVIATIONS[location] ?? location;
+  return entity.componentLocationLabel(location);
 }
 
 function criticals(
@@ -383,33 +420,8 @@ function isStructuralMisc(entity: BaseEntity, equipment: MiscEquipment): boolean
   ]) || (equipment.hasFlag('F_AP_MOUNT') && !equipment.hasFlag('F_BA_MANIPULATOR'));
 }
 
-function isPhysicalEquipment(equipment: MiscEquipment): boolean {
-  return equipment.hasAnyFlag(['F_CLUB', 'F_HAND_WEAPON', 'F_TALON']);
-}
-
-function physicalDamage(entity: BaseEntity, equipment: MiscEquipment): Pick<ExportComponent, 'd' | 'md'> {
-  const weight = entity.tonnage();
-  let damage: number;
-  if (equipment.hasFlag('F_TALON')) damage = Math.round(Math.floor(weight / 5) * 1.5);
-  else if (equipment.hasAllFlags(['F_HAND_WEAPON', 'S_CLAW'])) damage = Math.ceil(weight / 7);
-  else if (equipment.hasFlag('S_SWORD')) damage = Math.ceil(weight / 10) + 1;
-  else if (equipment.hasFlag('S_RETRACTABLE_BLADE')) damage = Math.ceil(weight / 10);
-  else if (equipment.hasFlag('S_MACE')) damage = Math.ceil(weight / 4);
-  else if (equipment.hasFlag('S_PILE_DRIVER')) damage = 10;
-  else if (equipment.hasFlag('S_FLAIL')) damage = 9;
-  else if (equipment.hasFlag('S_DUAL_SAW')) damage = 7;
-  else if (equipment.hasFlag('S_CHAINSAW')) damage = 5;
-  else if (equipment.hasFlag('S_BACKHOE')) damage = 6;
-  else if (equipment.hasFlag('S_MINING_DRILL')) damage = 4;
-  else if (equipment.hasFlag('S_WRECKING_BALL')) damage = 8;
-  else if (equipment.hasFlag('S_VIBRO_LARGE')) damage = 14;
-  else if (equipment.hasFlag('S_VIBRO_MEDIUM')) damage = 10;
-  else if (equipment.hasFlag('S_VIBRO_SMALL')) damage = 7;
-  else if (equipment.hasFlag('S_CHAIN_WHIP')) damage = 3;
-  else if (equipment.hasFlag('S_COMBINE')) damage = 3;
-  else if (equipment.hasAnyFlag(['S_ROCK_CUTTER', 'S_SPOT_WELDER'])) damage = 5;
-  else damage = Math.floor(weight / 5);
-
+function physicalDamage(mount: EntityMountedEquipment): Pick<ExportComponent, 'd' | 'md'> {
+  const damage = mount.getPhysicalWeaponDamage()?.value ?? 0;
   return { d: String(damage), md: String(damage) };
 }
 
@@ -431,41 +443,6 @@ function activeAeroValues(equipment: WeaponEquipment): number[] {
   return equipment.weapon.av.slice(0, count).map(Math.round);
 }
 
-function formatWeaponDamage(profile: WeaponDamageProfile): string {
-  switch (profile.kind) {
-    case 'fixed': return profile.damage === 0 ? '' : `${profile.damage}${profile.perShot ? '/Shot' : ''}`;
-    case 'missile-cluster': return `${profile.damagePerMissile}/msl`;
-    case 'cluster': return String(profile.damage);
-    case 'artillery': return `${profile.damage}A`;
-    case 'range': return profile.damage.join('/');
-    case 'variable': return '0';
-    case 'special': return 'Special';
-  }
-}
-
 function formatDecimal(value: number): string {
   return Number.isInteger(value) ? value.toFixed(1) : String(value);
-}
-
-function addStructuralMaterialMount(
-  components: Map<string, ExportComponent>, entity: BaseEntity,
-  mount: EntityMountedEquipment, equipment: ArmorEquipment | StructureEquipment,
-): void {
-  const countByLocation = new Map<string, number>();
-  for (const placement of mount.placements ?? []) {
-    countByLocation.set(placement.location, (countByLocation.get(placement.location) ?? 0) + 1);
-  }
-  if (countByLocation.size === 0) {
-    countByLocation.set(mount.location, 1);
-  }
-  for (const [location, quantity] of countByLocation) {
-    const displayLocation = locationAbbreviation(entity, location);
-    const key = `${equipment.id}_${displayLocation}_S`;
-    const existing = components.get(key);
-    if (existing) existing.q += quantity;
-    else components.set(key, baseComponent(
-      equipment, quantity, locationId(entity, location), displayLocation, 'S',
-      criticals(equipment, entity, mount),
-    ));
-  }
 }

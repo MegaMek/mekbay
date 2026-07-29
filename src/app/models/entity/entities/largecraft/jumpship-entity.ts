@@ -62,6 +62,14 @@ const JUMPSHIP_EQUIP_LOCS = [
 export class JumpShipEntity extends LargeAeroEntity {
   override readonly entityType: EntityType = 'JumpShip';
 
+  override componentLocationOrder(): readonly string[] {
+    return ['Nose', 'FLS', 'FRS', 'Aft', 'ALS', 'ARS', 'Hull'];
+  }
+
+  override componentLocationLabel(location: string): string {
+    return location === 'Hull' ? 'HULL' : super.componentLocationLabel(location);
+  }
+
   override unitSubtype(): UnitSubtype {
     return this.withOmniSubtype('JumpShip');
   }

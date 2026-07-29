@@ -54,12 +54,15 @@ describe('RiscLaserPulseModuleHandler', () => {
 
         expect(handler.applyInventoryControlHeatEffects(entry, { value: 3, weakened: false }, context))
             .toEqual({ value: 5, weakened: false });
-        expect(handler.getToHitAdjustments(linked, { parent: entry })).toEqual([{ kind: 'add', value: -2 }]);
+        expect(handler.getToHitAdjustments(linked, { parent: entry })).toEqual([{
+            kind: 'add', value: -2,
+            breakdown: [{ label: 'RISC Laser Pulse Module', modifier: -2 }]
+        }]);
 
         entry.states.set(INVENTORY_CONTROL_MODE_STATE, RISC_LASER_STANDARD_MODE);
         expect(handler.applyInventoryControlHeatEffects(entry, { value: 3, weakened: false }, context))
             .toEqual({ value: 3, weakened: false });
-        expect(handler.getToHitAdjustments(linked, { parent: entry })).toEqual([{ kind: 'add', value: 0 }]);
+        expect(handler.getToHitAdjustments(linked, { parent: entry })).toEqual([{ kind: 'add', value: 0, breakdown: [] }]);
     });
 
     it('falls back to STD and allows aimed shots when the module is unavailable', () => {
@@ -69,7 +72,7 @@ describe('RiscLaserPulseModuleHandler', () => {
         expect(handler.getChoices(entry, context)).toEqual([]);
         expect(handler.applyInventoryControlHeatEffects(entry, { value: 3, weakened: false }, context))
             .toEqual({ value: 3, weakened: false });
-        expect(handler.getToHitAdjustments(linked, { parent: entry })).toEqual([{ kind: 'add', value: 0 }]);
+        expect(handler.getToHitAdjustments(linked, { parent: entry })).toEqual([{ kind: 'add', value: 0, breakdown: [] }]);
         expect(handler.canPerformAimedShot(entry, context)).toBeNull();
     });
 

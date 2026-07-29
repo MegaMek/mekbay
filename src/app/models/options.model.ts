@@ -38,6 +38,7 @@ import type { GameSystem } from "./common.model";
  */
 export type AvailabilitySource = 'mul' | 'megamek';
 export type RecordSheetDoubleTapZoomResetMode = 'disabled' | 'fit-to-screen' | 'full-width' | 'contextual';
+export type ColorScheme = 'default' | 'night';
 
 export interface SkillRangeOption {
     min: number;
@@ -51,8 +52,27 @@ export interface ForceBudgetOptimizerLastSkills {
     maxDelta: number;
 }
 
+export interface ForceGeneratorOptions {
+    lastBudget: {
+        classic: SkillRangeOption;
+        alphaStrike: SkillRangeOption;
+    };
+    lastUnitCount: SkillRangeOption;
+    lastSkills: {
+        gunnery: SkillRangeOption;
+        piloting: SkillRangeOption;
+        maxDelta: number;
+    };
+    failureSearchWindowMs: number;
+    preventDuplicateChassis: boolean;
+    useTaggedQuantities: boolean;
+    useUnitTagsAsChassisTags: boolean;
+}
+
+export type ForceViewerBVPVDisplay = 'adjusted' | 'base' | 'both';
+
 export interface Options {
-    sheetsColor: 'normal' | 'night';
+    colorScheme: ColorScheme;
     pickerStyle: 'default' | 'radial' | 'linear';
     canvasInput: 'all' | 'touch' | 'pen';
     swipeToNextSheet: 'vertical' | 'horizontal' | 'disabled';
@@ -61,6 +81,7 @@ export interface Options {
     gameSystem: GameSystem;
     availabilitySource: AvailabilitySource;
     megaMekAvailabilityFiltersUseAllScopedOptions: boolean;
+    forceViewerBVPVDisplay: ForceViewerBVPVDisplay;
     recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
     recordSheetDoubleTapZoomReset: RecordSheetDoubleTapZoomResetMode;
     lastCanvasState?: {
@@ -68,10 +89,9 @@ export interface Options {
         eraserSize: number;
     },
     sidebarLipPosition?: string;
-    useAutomations: boolean;
+    trackPhaseAndTurn: boolean;
     CBTRules: 'tw' | `core2026`;
     ASUseHex: boolean;
-    ASCardStyle: 'colored' | 'monochrome';
     ASPrintPageBreakOnGroups: boolean;
     c3NetworkConnectionsAboveNodes: boolean;
     automaticallyConvertFiltersToSemantic: boolean;
@@ -93,21 +113,7 @@ export interface Options {
     unitServers: string[];
 
     // Force Generator
-    forceGenLastBVMin: number;
-    forceGenLastBVMax: number;
-    forceGenLastPVMin: number;
-    forceGenLastPVMax: number;
-    forceGenLastMinUnitCount: number;
-    forceGenLastMaxUnitCount: number;
-    forceGenLastGunnerySkillMin: number;
-    forceGenLastGunnerySkillMax: number;
-    forceGenLastPilotingSkillMin: number;
-    forceGenLastPilotingSkillMax: number;
-    forceGenLastMaxPilotSkillDelta: number;
-    forceGenFailureSearchWindowMs: number;
-    forceGenPreventDuplicateChassis: boolean;
-    forceGenUseTaggedQuantities: boolean;
-    forceGenUseUnitTagsAsChassisTags: boolean;
+    forceGenerator: ForceGeneratorOptions;
 
     // Force Budget Optimizer
     forceBudgetOptimizerLastSkills: ForceBudgetOptimizerLastSkills;

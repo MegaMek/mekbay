@@ -2,6 +2,7 @@ import { Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { DataService } from '../../services/data.service';
+import { EquipmentRegistry } from '../../models/equipment-lookup';
 import { DialogsService } from '../../services/dialogs.service';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -64,7 +65,7 @@ describe('SvgInteractionService', () => {
     let forceBuilderService: { selectUnit: jasmine.Spy; editPilotOfUnit: jasmine.Spy };
     let pickerFactory: { createChoicePicker: jasmine.Spy; createNumericPicker: jasmine.Spy };
     let pageViewerState: PageViewerStateService;
-    let options: { pickerStyle: 'default' | 'linear' | 'radial'; sheetsColor: string; useAutomations: boolean };
+    let options: { pickerStyle: 'default' | 'linear' | 'radial'; colorScheme: 'default' | 'night'; trackPhaseAndTurn: boolean };
     let registryGetChoices: jasmine.Spy;
     let registryHandleSelection: jasmine.Spy;
 
@@ -97,14 +98,16 @@ describe('SvgInteractionService', () => {
         registryHandleSelection = jasmine.createSpy('handleSelection').and.returnValue(false);
         options = {
             pickerStyle: 'default',
-            sheetsColor: 'day',
-            useAutomations: true
+            colorScheme: 'default',
+            trackPhaseAndTurn: true
         };
 
         TestBed.configureTestingModule({
             providers: [
                 SvgInteractionService,
-                { provide: DataService, useValue: { getEquipments: () => ({}) } },
+                { provide: DataService, useValue: {
+                    getEquipmentRegistry: () => new EquipmentRegistry({}),
+                } },
                 { provide: DialogsService, useValue: dialogsService },
                 {
                     provide: EquipmentInteractionRegistryService,
@@ -813,7 +816,7 @@ describe('SvgInteractionService', () => {
                 <g class="name"><text>Punch</text></g>
             </g>
         `);
-        entry.physical = true;
+        entry.setIntrinsicPhysicalAttack(true);
         entry.name = 'punch';
         unit.createInventoryControlTarget();
         unit.createInventoryControlTarget();

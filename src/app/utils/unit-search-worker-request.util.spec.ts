@@ -1,6 +1,7 @@
 import { GameSystem } from '../models/common.model';
+import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { parseSemanticQueryAST } from './semantic-filter-ast.util';
-import { buildWorkerExecutionQuery } from './unit-search-worker-request.util';
+import { buildWorkerExecutionQuery, getWorkerCorpusSnapshot } from './unit-search-worker-request.util';
 
 describe('buildWorkerExecutionQuery', () => {
     it('serializes tri-state boolean filters by converting OR to yes and NOT to no', () => {
@@ -70,5 +71,21 @@ describe('buildWorkerExecutionQuery', () => {
                 values: ['Mek'],
             }),
         ]);
+    });
+});
+
+describe('getWorkerCorpusSnapshot', () => {
+    it('reuses a matching corpus snapshot', () => {
+        const unit = createEmptyUnit({ name: 'Cached Unit' });
+        const first = getWorkerCorpusSnapshot(
+            { version: null, snapshot: null },
+            '1:0',
+            [unit],
+            {},
+            {},
+        );
+        const second = getWorkerCorpusSnapshot(first.cache, '1:0', [unit], {}, {});
+
+        expect(second.snapshot).toBe(first.snapshot);
     });
 });

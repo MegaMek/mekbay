@@ -11,7 +11,7 @@ import {
  */
 
 export interface TestEquipmentMountOptions
-  extends Partial<Omit<EntityMountedEquipmentInput, 'equipmentId' | 'equipment' | 'allocation'>> {
+  extends Partial<Omit<EntityMountedEquipmentInput, 'equipmentId' | 'equipment'>> {
   readonly location?: string;
 }
 

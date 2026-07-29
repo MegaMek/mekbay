@@ -371,8 +371,6 @@ export class BVCalculator {
     ];
     for (const mount of this.entity.equipment()) {
       const equipment = mount.equipment;
-      // Java ArmorType extends MiscType, so EDP armor participates here even
-      // though MekBay models armor and miscellaneous equipment as siblings.
       const isOffensiveArmor = equipment instanceof ArmorEquipment
         && equipment.hasFlag('F_ELECTRIC_DISCHARGE_ARMOR');
       if (!(equipment instanceof MiscEquipment || isOffensiveArmor) || equipment.hasAnyFlag(excluded)

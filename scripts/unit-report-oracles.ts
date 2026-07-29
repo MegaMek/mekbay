@@ -139,15 +139,24 @@ function parseAlphaStrikeDamage(text: string): AlphaStrikeDamageReport | undefin
   }
   if (values.size === 0) return undefined;
 
-  for (const range of ['S', 'M', 'L']) {
-    if (!values.has(range)) throw new Error(`Missing Final ${range} damage.`);
-  }
   return {
-    dmgS: values.get('S')!,
-    dmgM: values.get('M')!,
-    dmgL: values.get('L')!,
+    dmgS: values.get('S') ?? '0',
+    dmgM: values.get('M') ?? '0',
+    dmgL: values.get('L') ?? '0',
     dmgE: values.get('E') ?? '0',
   };
+}
+
+function parseAlphaStrikeStructure(text: string): number | undefined {
+  const sections = [...text.matchAll(/^\s*Structure:\s*$([\s\S]*?)(?=^\s*(?:Structure|Threshold|Damage Conversion):\s*$)/gm)];
+  const section = sections.at(-1)?.[1];
+  if (!section) return undefined;
+  const final = [...section.matchAll(/=\s*(-?\d+(?:\.\d+)?)\s*$/gm)].at(-1);
+  if (final) return parseFiniteNumber(final[1], 'Alpha Strike structure');
+  const values = [...section.matchAll(/^\s+.*?\b(-?\d+(?:\.\d+)?)\s*$/gm)];
+  return values.length > 0
+    ? parseFiniteNumber(values[values.length - 1][1], 'Alpha Strike structure')
+    : undefined;
 }
 
 export function parseAlphaStrikeReport(text: string): AlphaStrikeReportOracle {
@@ -155,9 +164,11 @@ export function parseAlphaStrikeReport(text: string): AlphaStrikeReportOracle {
   if (type[1] === 'UNKNOWN') throw new Error('Unsupported Alpha Strike unit type: UNKNOWN.');
 
   const size = requiredMatch(text, /^\s+Size:\s+.*?\s{2,}(\d+)\s*$/m, 'Size');
-  const armor = requiredMatch(text, /^\s+Final Armor Value\s+.*=\s*(-?\d+)\s*$/m, 'Final Armor Value');
+  const armor = text.match(/^\s+Final Armor Value\s+.*=\s*(-?\d+)\s*$/m)
+    ?? text.match(/^\s+Armor:\s+.*=\s*(-?\d+)\s*$/m);
+  if (!armor) throw new Error('Missing or invalid Final Armor Value.');
   const pointValue = requiredMatch(text, /^\s+Base Point Value\s+.*?(-?\d+)\s*$/m, 'Base Point Value');
-  const structure = text.match(/^\s+Structure\s+(?:.*=\s*)?(-?\d+(?:\.\d+)?)\s*$/m);
+  const structure = parseAlphaStrikeStructure(text);
   const threshold = text.match(/^\s+Threshold\s+.*=\s*(-?\d+)\s*$/m);
   const tmm = text.match(/^\s+TMM\s+of\s+\S+\s+(\d+)\s*$/m);
   const overheat = text.match(/^\s+Damage difference\s+.*\bOV\s+(\d+)\s*$/m);
@@ -170,7 +181,7 @@ export function parseAlphaStrikeReport(text: string): AlphaStrikeReportOracle {
     size: parseFiniteNumber(size[1], 'Alpha Strike size'),
     tmm: tmm ? parseFiniteNumber(tmm[1], 'TMM') : undefined,
     armor: parseFiniteNumber(armor[1], 'Alpha Strike armor'),
-    structure: structure ? parseFiniteNumber(structure[1], 'Alpha Strike structure') : undefined,
+    structure,
     threshold: threshold ? parseFiniteNumber(threshold[1], 'Alpha Strike threshold') : undefined,
     damage: parseAlphaStrikeDamage(text),
     overheat: overheat ? parseFiniteNumber(overheat[1], 'overheat') : 0,

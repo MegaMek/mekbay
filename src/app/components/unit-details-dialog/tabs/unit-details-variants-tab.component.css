@@ -33,6 +33,11 @@
 .variants-list unit-card-expanded {
     cursor: pointer;
     transition: background-color 0.2s;
+    border-bottom: 1px solid #666;
+
+    &:last-child {
+        border-bottom: none;
+    }
 }
 
 .variants-list unit-card-expanded:hover {

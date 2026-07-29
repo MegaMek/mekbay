@@ -56,7 +56,7 @@ import { GameSystem } from '../models/common.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import { GameService } from './game.service';
 import { UrlService } from './url.service';
-import { PVCalculatorUtil } from '../utils/pv-calculator.util';
+import { adjustPointValueForSkill } from '../utils/pv-skill-adjustment.util';
 import { filterStateToSemanticText, tokensToFilterState, type WildcardPattern } from '../utils/semantic-filter.util';
 import { parseSemanticQueryAST, stripSemanticFieldsFromParseResult, type ParseResult, type ParseError, isComplexQuery } from '../utils/semantic-filter-ast.util';
 import { getSnapshotForcePackNames, type AdvOptionsContextSnapshot } from '../utils/unit-search-adv-options.util';
@@ -4014,7 +4014,7 @@ export class UnitSearchFiltersService {
             return unit.as.PV;
         }
 
-        return PVCalculatorUtil.calculateAdjustedPV(unit.as.PV, skill);
+        return adjustPointValueForSkill(unit.as.PV, skill);
     }
 
 

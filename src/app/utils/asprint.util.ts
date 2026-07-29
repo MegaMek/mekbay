@@ -38,6 +38,7 @@ import type { Force, UnitGroup } from '../models/force.model';
 import { AlphaStrikeCardComponent } from '../components/alpha-strike-card/alpha-strike-card.component';
 import { getLayoutForUnitType } from '../components/alpha-strike-card/card-layout.config';
 import type { OptionsService } from '../services/options.service';
+import type { ColorScheme } from '../models/options.model';
 import { formatMovement, formatMovementWithAlternate } from './as-common.util';
 import { isIOS } from './platform.util';
 import type { PrintAllOptions } from '../models/print-options.model';
@@ -216,7 +217,7 @@ export class ASPrintUtil {
     ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
         const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
         const useHex = optionsService.options().ASUseHex;
-        const cardStyle = optionsService.options().ASCardStyle;
+        const cardStyle = optionsService.options().colorScheme;
         
         // Create overlay container
         const overlay = document.createElement('div');
@@ -314,7 +315,7 @@ export class ASPrintUtil {
     ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
         const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
         const useHex = optionsService.options().ASUseHex;
-        const cardStyle = optionsService.options().ASCardStyle;
+        const cardStyle = optionsService.options().colorScheme;
         
         // Create overlay container
         const overlay = document.createElement('div');
@@ -448,7 +449,7 @@ export class ASPrintUtil {
         appRef: ApplicationRef,
         injector: Injector,
         useHex: boolean,
-        cardStyle: string,
+        cardStyle: ColorScheme,
         componentRefs: ComponentRef<AlphaStrikeCardComponent>[]
     ): void {
         const cellDiv = document.createElement('div');
@@ -462,7 +463,7 @@ export class ASPrintUtil {
         
         componentRef.setInput('forceUnit', item.forceUnit);
         componentRef.setInput('cardIndex', item.cardIndex);
-        componentRef.setInput('cardStyle', 'monochrome' /* cardStyle */);
+        componentRef.setInput('cardStyle', cardStyle);
         componentRef.setInput('useHex', useHex);
         componentRef.setInput('isSelected', false);
         

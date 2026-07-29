@@ -48,7 +48,14 @@ import {
   withLocationComponent,
   withUniformLocationComponent,
 } from './components';
-import { AmmoEquipment, ArmorEquipment, Equipment, MiscEquipment, WeaponEquipment } from '../equipment.model';
+import {
+  AmmoEquipment,
+  ArmorEquipment,
+  Equipment,
+  MiscEquipment,
+  resolveWeaponDamage,
+  WeaponEquipment,
+} from '../equipment.model';
 import { SourcebookReference } from '../sourcebook.model';
 import { EquipmentRelationships, type EquipmentBayInput } from './equipment-relationships';
 import {
@@ -74,7 +81,8 @@ import {
   EntityMountedEquipmentInput,
   EntityMountedWeapon,
   EntityLocationMetadata,
-  EntityWeapon,
+  IntrinsicWeapon,
+  PhysicalWeapon,
   EntityQuirk,
   EntityTechBase,
   EntityTransporter,
@@ -83,7 +91,6 @@ import {
   EntityValidationMessage,
   EntityValidationResult,
   EntityWeaponQuirk,
-  IntrinsicWeapon,
   isTechAvailableForBase,
   isEntityMountedWeapon,
   LocationArmor,
@@ -191,7 +198,7 @@ export abstract class BaseEntity implements EntityTechnology {
     let totalDamage = 0;
     let hasRangeSixPlus = false;
 
-    for (const mount of this.mountedWeapons()) {
+    for (const mount of this.rangedWeapons()) {
       const weapon = mount.equipment;
       const damage = weapon.damage;
       if (damage === 'variable' || damage === 'artillery' || damage === 'cluster') {
@@ -585,33 +592,24 @@ export abstract class BaseEntity implements EntityTechnology {
       ])
       : componentLevel;
   });
+  /** All Weapons installed on the entity. */
   readonly mountedWeapons = computed<readonly EntityMountedWeapon[]>(() =>
     this.equipment().filter(isEntityMountedWeapon)
   );
-  readonly intrinsicWeapons = computed<readonly IntrinsicWeapon[]>(() =>
-    this.computeIntrinsicWeapons()
+  readonly rangedWeapons = computed<readonly EntityMountedWeapon[]>(() =>
+    this.mountedWeapons().filter(mount => !mount.isPhysicalWeapon())
   );
-  readonly weapons = computed<readonly EntityWeapon[]>(() => [
-    ...this.mountedWeapons().map(mount => {
-      const characteristics = mount.equipment.characteristics;
-      return {
-        source: 'mounted' as const,
-        id: mount.mountId,
-        name: characteristics.name,
-        locations: mount.getOccupiedLocations(),
-        category: characteristics.category,
-        heat: characteristics.heat,
-        damage: characteristics.damage,
-        hitModifiers: characteristics.hitModifiers,
-        minimumRange: characteristics.minimumRange,
-        ranges: characteristics.ranges,
-        oneShotCount: characteristics.oneShotCount,
-        optional: false,
-        mount,
-      };
-    }),
-    ...this.intrinsicWeapons(),
-  ]);
+  /** Weapon capabilities supplied by the entity rather than installed equipment. */
+  readonly intrinsicWeapons = computed<readonly IntrinsicWeapon[]>(() => this.computeIntrinsicWeapons());
+  readonly physicalWeapons = computed<readonly PhysicalWeapon[]>(() => {
+    const mounted = this.equipment().filter(mount => mount.isPhysicalWeapon());
+    return [...mounted, ...this.intrinsicWeapons()];
+  });
+
+  /** Resolve a mounted weapon's canonical damage; selected-ammo state can extend this seam later. */
+  resolveMountedWeaponDamage(mount: EntityMountedWeapon): ReturnType<typeof resolveWeaponDamage> {
+    return resolveWeaponDamage(mount.equipment, this.equipmentRegistry);
+  }
 
   // ── Transporters / Bays ──
   transporters = signal<EntityTransporter[]>([]);
@@ -1030,6 +1028,16 @@ export abstract class BaseEntity implements EntityTechnology {
   abstract get locationOrder(): readonly string[];
   abstract get validLocations(): ReadonlySet<string>;
 
+  /** Stable component-export order, including equipment-only locations where needed. */
+  componentLocationOrder(): readonly string[] {
+    return this.locationOrder;
+  }
+
+  /** Component-export location label; an empty value suppresses the label. */
+  componentLocationLabel(location: string): string {
+    return location === 'None' ? '' : location;
+  }
+
   /** Locations that carry armor material. Override when locationOrder contains non-armor locations. */
   get armorLocations(): readonly string[] {
     return this.locationOrder;
@@ -1168,7 +1176,7 @@ export abstract class BaseEntity implements EntityTechnology {
 
   /** Create an identified mount for an atomic subclass batch update without installing it yet. */
   protected createEquipmentMount(input: EntityMountedEquipmentInput): EntityMountedEquipment {
-    return new EntityMountedEquipment({ ...input, mountId: this.allocateMountId() });
+    return new EntityMountedEquipment({ ...input, mountId: this.allocateMountId() }, this);
   }
 
   /** Replace all mounts and discard relationships to identities no longer present. */
@@ -1178,6 +1186,8 @@ export abstract class BaseEntity implements EntityTechnology {
     if (new Set(mountIds).size !== mountIds.length) {
       throw new Error('Equipment mount IDs must be unique within an entity');
     }
+    for (const mount of mounts) mount.assertCanAttachToEntity(this);
+    for (const mount of mounts) mount.attachToEntity(this);
     this.#equipmentRelationships.update(relationships => relationships.withMounts(mounts));
     this.#equipment.set(mounts);
   }

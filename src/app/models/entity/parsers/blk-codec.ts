@@ -1,9 +1,6 @@
 import type { MountedArmor } from '../components/armor';
 import type { GyroType } from '../components/gyro-data';
-import type { ArmorType } from '../types/armor';
-import type { AeroCockpitType, AeroDesignType, DriveCoreType, DropShipCollarType } from '../types/aero';
-import type { EngineType } from '../types/engine';
-import type { CockpitType } from '../types/mek';
+import type { AeroCockpitType, AeroDesignType, DriveCoreType, DropShipCollarType, CockpitType, ArmorType, EngineType } from '../types';
 import { createCompoundTechLevel, type ComponentTechLevel, type CompoundTechLevel, type EntityTechBase, type TechRating } from '../types/tech';
 import type { HeatSinkType } from '../types/heat-sink';
 

@@ -6,19 +6,25 @@
 
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import { AmmoEquipment, Equipment, WeaponEquipment, type RangeBrackets } from '../equipment.model';
-import type { InventoryControlRuntimeRangeKey } from '../inventory-control-runtime-state.model';
 import { MountedEquipment } from '../mounted-equipment.model';
 
 export type HitModifier = number | 'Vs' | '*' | null;
+export interface ToHitModifierBreakdownEntry {
+    readonly label: string;
+    readonly modifier: number;
+    readonly negative?: boolean;
+    readonly kind?: 'heat';
+}
 export type ToHitAdjustment =
-    | { readonly kind: 'replace-base'; readonly value: number | readonly number[] }
-    | { readonly kind: 'add'; readonly value: number; readonly weakened?: boolean }
+    | { readonly kind: 'replace-base'; readonly value: number | readonly number[]; readonly label?: string }
+    | { readonly kind: 'add'; readonly value: number; readonly weakened?: boolean; readonly label?: string; readonly breakdown?: readonly ToHitModifierBreakdownEntry[] }
     | { readonly kind: 'unsupported' };
 
 export interface ToHitRequest {
     subject: Equipment | MountedEquipment;
     range?: RangeBrackets | null;
     stateModifier?: number;
+    stateModifierBreakdown?: readonly ToHitModifierBreakdownEntry[];
     stateWeakened?: boolean;
     adjustments?: readonly ToHitAdjustment[];
 }
@@ -28,6 +34,13 @@ export interface ToHitResolution {
     readonly value: HitModifier;
     readonly changed: boolean;
     readonly weakened: boolean;
+    readonly modifierBreakdown: readonly ToHitModifierBreakdownEntry[];
+}
+
+export interface ToHitHeatSeparation {
+    readonly hitModifier: HitModifier;
+    readonly hitModifierBreakdown: readonly ToHitModifierBreakdownEntry[];
+    readonly heatFireModifier: number;
 }
 
 const TO_HIT_MODIFIER_RANGE_INDEX: Record<RangeBrackets, number> = {
@@ -36,6 +49,29 @@ const TO_HIT_MODIFIER_RANGE_INDEX: Record<RangeBrackets, number> = {
     long: 2,
     extreme: 2,
 };
+
+export function validatedToHitModifierBreakdown(
+    modifier: number,
+    breakdown: readonly ToHitModifierBreakdownEntry[] | undefined,
+    fallbackLabel = 'Hit Modifier'
+): ToHitModifierBreakdownEntry[] {
+    if (breakdown?.reduce((total, entry) => total + entry.modifier, 0) === modifier) return [...breakdown];
+    return modifier === 0 ? [] : [{ label: fallbackLabel, modifier }];
+}
+
+export function separateHeatFireModifier(resolution: ToHitResolution): ToHitHeatSeparation {
+    const heatFireModifier = resolution.modifierBreakdown.reduce(
+        (total, entry) => total + (entry.kind === 'heat' ? entry.modifier : 0),
+        0
+    );
+    return {
+        hitModifier: typeof resolution.value === 'number'
+            ? resolution.value - heatFireModifier
+            : resolution.value,
+        hitModifierBreakdown: resolution.modifierBreakdown.filter(entry => entry.kind !== 'heat'),
+        heatFireModifier
+    };
+}
 
 export abstract class CBTGameRules {
     abstract readonly id: 'core2026' | 'tw';
@@ -56,10 +92,10 @@ export abstract class CBTGameRules {
         const hasBaseReplacement = replacement !== undefined;
         if (unsupported || (entry && !this.supportsToHit(entry) && !hasBaseReplacement)) return emptyToHitResolution();
 
-        if (entry?.physical) {
+        if (entry?.isIntrinsicPhysicalAttack()) {
             const physicalValue = this.physicalBaseHitModifiers[entry.name.toLowerCase()] ?? null;
             if (physicalValue === null || physicalValue === 'Vs') {
-                return { profile: [], value: physicalValue, changed: false, weakened: request.stateWeakened ?? false };
+                return { profile: [], value: physicalValue, changed: false, weakened: request.stateWeakened ?? false, modifierBreakdown: [] };
             }
             return this.composeToHit([physicalValue], request, adjustments);
         }
@@ -94,7 +130,7 @@ export abstract class CBTGameRules {
 
     private supportsToHit(entry: MountedEquipment): boolean {
         const equipment = entry.equipment;
-        if (entry.physical) return true;
+        if (entry.isPhysicalWeapon()) return true;
         if (!equipment) return false;
         if (!(equipment instanceof WeaponEquipment)
             && !equipment.flags.has('F_CLUB')
@@ -123,13 +159,36 @@ export abstract class CBTGameRules {
         const totalModifier = stateModifier + adjustmentModifier;
         const profile = baseProfile.map(value => value + totalModifier);
         const baseValue = valueAtRange(baseProfile, request.range);
+        const replacement = adjustments.find(adjustment => adjustment.kind === 'replace-base');
         const value = !request.range && profile.length > 1 ? '*' : valueAtRange(profile, request.range);
         const selectedValue = valueAtRange(profile, request.range);
         const changed = !sameProfile(profile, rulesProfile);
+        const stateBreakdown = validatedToHitModifierBreakdown(stateModifier, request.stateModifierBreakdown);
         const weakened = request.stateWeakened === true
             || adjustments.some(adjustment => adjustment.kind === 'add' && adjustment.weakened === true)
+            || stateBreakdown.some(entry => entry.negative === true && entry.modifier > 0)
             || selectedValue > baseValue;
-        return { profile, value, changed, weakened };
+        const modifierBreakdown = typeof value === 'number'
+            ? this.resolveModifierBreakdown(baseValue, stateModifier, request.stateModifierBreakdown, adjustments, replacement?.label)
+            : [];
+        return { profile, value, changed, weakened, modifierBreakdown };
+    }
+
+    private resolveModifierBreakdown(
+        baseValue: number,
+        stateModifier: number,
+        stateBreakdown: readonly ToHitModifierBreakdownEntry[] | undefined,
+        adjustments: readonly ToHitAdjustment[],
+        replacementLabel?: string
+    ): ToHitModifierBreakdownEntry[] {
+        const result: ToHitModifierBreakdownEntry[] = [];
+        if (baseValue !== 0) result.push({ label: replacementLabel ?? 'Hit Modifier', modifier: baseValue });
+        result.push(...validatedToHitModifierBreakdown(stateModifier, stateBreakdown));
+        for (const adjustment of adjustments) {
+            if (adjustment.kind !== 'add') continue;
+            result.push(...validatedToHitModifierBreakdown(adjustment.value, adjustment.breakdown, adjustment.label));
+        }
+        return result;
     }
 }
 
@@ -273,5 +332,5 @@ function sameProfile(left: readonly number[], right: readonly number[]): boolean
 }
 
 function emptyToHitResolution(): ToHitResolution {
-    return { profile: [], value: null, changed: false, weakened: false };
+    return { profile: [], value: null, changed: false, weakened: false, modifierBreakdown: [] };
 }

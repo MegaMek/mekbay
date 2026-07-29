@@ -45,7 +45,7 @@ import { LoggerService } from '../../services/logger.service';
 import { GameService } from '../../services/game.service';
 import type { GameSystem } from '../../models/common.model';
 import { normalizeUnitServerUrl } from '../../models/common.model';
-import type { AvailabilitySource, RecordSheetDoubleTapZoomResetMode } from '../../models/options.model';
+import type { AvailabilitySource, ForceViewerBVPVDisplay, RecordSheetDoubleTapZoomResetMode } from '../../models/options.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { DataService } from '../../services/data.service';
 import { PublicTagsService } from '../../services/public-tags.service';
@@ -59,14 +59,13 @@ import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { naturalCompare } from '../../utils/sort.util';
 import { AppUpdateService } from '../../services/app-update.service';
 
-type OptionsSectionId = 'General' | 'Account' | 'Tags' | 'Classic BattleTech' | 'Alpha Strike' | 'Advanced' | 'Logs';
-type OptionsViewId = OptionsSectionId;
+type OptionsSectionId = 'General' | 'Search' | 'Account' | 'Tags' | 'Classic BattleTech' | 'Alpha Strike' | 'Advanced' | 'Logs';
 
 interface OptionsViewDefinition {
-    id: OptionsViewId;
+    id: OptionsSectionId;
     title: string;
     description?: string;
-    parentId?: OptionsViewId;
+    parentId?: OptionsSectionId;
 }
 
 const WIDE_LAYOUT_QUERY = '(min-width: 760px) and (min-height: 560px)';
@@ -75,12 +74,17 @@ const OPTIONS_VIEW_DEFINITIONS: readonly OptionsViewDefinition[] = [
     {
         id: 'General',
         title: 'General',
-        description: 'Game system, search defaults, user identity, and general printing preferences.'
+        description: 'Default game system, display preferences, and printing behavior.'
     },
     {
         id: 'Account',
         title: 'Account',
         description: 'OAuth providers, sign-in recovery, and account identity details.'
+    },
+    {
+        id: 'Search',
+        title: 'Search',
+        description: 'Availability data, rarity matching, filter behavior, and expanded search layout.'
     },
     {
         id: 'Tags',
@@ -109,7 +113,7 @@ const OPTIONS_VIEW_DEFINITIONS: readonly OptionsViewDefinition[] = [
     },
 ];
 
-const OPTIONS_VIEW_DEFINITIONS_BY_ID = new Map<OptionsViewId, OptionsViewDefinition>(
+const OPTIONS_VIEW_DEFINITIONS_BY_ID = new Map<OptionsSectionId, OptionsViewDefinition>(
     OPTIONS_VIEW_DEFINITIONS.map(view => [view.id, view])
 );
 
@@ -150,18 +154,18 @@ export class OptionsDialogComponent {
     modalClass = 'wide options-dialog-modal';
     topLevelViews = TOP_LEVEL_OPTIONS_VIEWS;
     activeTab = signal<OptionsSectionId>('General');
-    navigationStack = signal<OptionsViewId[]>([]);
+    navigationStack = signal<OptionsSectionId[]>([]);
     isWideLayout = signal(typeof window !== 'undefined' ? window.matchMedia(WIDE_LAYOUT_QUERY).matches : true);
     canGoBack = computed(() => this.navigationStack().length > 0);
     isAtRoot = computed(() => !this.canGoBack());
-    currentViewId = computed<OptionsViewId>(() => this.navigationStack().at(-1) ?? this.activeTab());
+    currentViewId = computed<OptionsSectionId>(() => this.navigationStack().at(-1) ?? this.activeTab());
     currentViewDefinition = computed(() => this.getViewDefinition(this.currentViewId()));
     currentViewDescription = computed(() => this.currentViewDefinition().description);
     mobileHeaderTitle = computed(() => this.canGoBack() ? this.currentViewDefinition().title : 'Options');
     forceGenFailureSearchWindowMinMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS;
     forceGenFailureSearchWindowMaxMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS;
     forceGenFailureSearchWindowStepMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS;
-    forceGenFailureSearchWindowMs = computed(() => this.normalizeForceGenFailureSearchWindowMs(this.optionsService.options().forceGenFailureSearchWindowMs));
+    forceGenFailureSearchWindowMs = computed(() => this.normalizeForceGenFailureSearchWindowMs(this.optionsService.options().forceGenerator.failureSearchWindowMs));
 
     uuidInput = viewChild<ElementRef<HTMLInputElement>>('uuidInput');
     subscriptionInput = viewChild<ElementRef<HTMLInputElement>>('subscriptionInput');
@@ -196,7 +200,7 @@ export class OptionsDialogComponent {
         return draft.some((url, i) => url !== saved[i]);
     });
     unitsCount = computed(() => this.dataService.getUnits().length);
-    equipmentCount = computed(() => Object.keys(this.dataService.getEquipments()).length);
+    equipmentCount = computed(() => this.dataService.getEquipmentRegistry().size);
 
     /** Subscriber counts for own tags: tagId (lowercase) -> count */
     tagSubscriberCounts = signal<Record<string, number>>({});
@@ -244,13 +248,13 @@ export class OptionsDialogComponent {
         this.destroyRef.onDestroy(() => mediaQuery.removeEventListener('change', onChange));
     }
 
-    private getViewDefinition(viewId: OptionsViewId): OptionsViewDefinition {
+    private getViewDefinition(viewId: OptionsSectionId): OptionsViewDefinition {
         return OPTIONS_VIEW_DEFINITIONS_BY_ID.get(viewId) ?? OPTIONS_VIEW_DEFINITIONS_BY_ID.get('General')!;
     }
 
-    private buildViewPath(viewId: OptionsViewId): OptionsViewId[] {
-        const path: OptionsViewId[] = [];
-        let currentViewId: OptionsViewId | undefined = viewId;
+    private buildViewPath(viewId: OptionsSectionId): OptionsSectionId[] {
+        const path: OptionsSectionId[] = [];
+        let currentViewId: OptionsSectionId | undefined = viewId;
 
         while (currentViewId) {
             path.unshift(currentViewId);
@@ -260,7 +264,7 @@ export class OptionsDialogComponent {
         return path;
     }
 
-    private getTopLevelSectionId(viewId: OptionsViewId): OptionsSectionId {
+    private getTopLevelSectionId(viewId: OptionsSectionId): OptionsSectionId {
         let currentView = this.getViewDefinition(viewId);
 
         while (currentView.parentId) {
@@ -283,12 +287,12 @@ export class OptionsDialogComponent {
         this.openView(sectionId);
     }
 
-    openView(viewId: OptionsViewId): void {
+    openView(viewId: OptionsSectionId): void {
         this.activeTab.set(this.getTopLevelSectionId(viewId));
         this.navigationStack.set(this.buildViewPath(viewId));
     }
 
-    pushView(viewId: OptionsViewId): void {
+    pushView(viewId: OptionsSectionId): void {
         this.openView(viewId);
     }
 
@@ -397,9 +401,9 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('megaMekAvailabilityFiltersUseAllScopedOptions', value);
     }
 
-    onSheetsColorChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value as 'normal' | 'night';
-        this.optionsService.setOption('sheetsColor', value);
+    onColorSchemeChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as 'default' | 'night';
+        this.optionsService.setOption('colorScheme', value);
     }
 
     async onCBTRulesChange(event: Event) {
@@ -447,6 +451,11 @@ export class OptionsDialogComponent {
     onUnitDisplayNameChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'chassisModel' | 'alias' | 'both';
         this.optionsService.setOption('unitDisplayName', value);
+    }
+
+    onForceViewerBVPVDisplayChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as ForceViewerBVPVDisplay;
+        this.optionsService.setOption('forceViewerBVPVDisplay', value);
     }
 
     onAutoConvertFiltersChange(event: Event) {
@@ -514,19 +523,14 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('swipeToNextSheet', value);
     }
 
-    onUseAutomationsChange(event: Event) {
+    onTrackPhaseAndTurn(event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
-        this.optionsService.setOption('useAutomations', value);
+        this.optionsService.setOption('trackPhaseAndTurn', value);
     }
 
     onASUseHexChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.optionsService.setOption('ASUseHex', value);
-    }
-
-    onASCardStyleChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value as 'colored' | 'monochrome';
-        this.optionsService.setOption('ASCardStyle', value);
     }
 
     onASPrintPageBreakOnGroupsChange(event: Event) {
@@ -556,7 +560,10 @@ export class OptionsDialogComponent {
 
     onForceGenFailureSearchWindowMsChange(value: number) {
         const nextValue = this.normalizeForceGenFailureSearchWindowMs(value);
-        this.optionsService.setOption('forceGenFailureSearchWindowMs', nextValue);
+        this.optionsService.updateForceGeneratorOptions((options) => ({
+            ...options,
+            failureSearchWindowMs: nextValue,
+        }));
     }
 
     private normalizeForceGenFailureSearchWindowMs(value: number): number {

@@ -153,11 +153,11 @@ export class CBTForceUnit extends ForceUnit {
             // ammo summary also evaluates the source's availability, which checks
             // this parent weapon's rule state and causes a reactive self-cycle.
             const selectedAmmo = intrinsicAmmo.ammo
-                ? this.getAvailableEquipment()[intrinsicAmmo.ammo]
+                ? this.dataService.findEquipment(intrinsicAmmo.ammo)
                 : intrinsicAmmo.equipment;
             return selectedAmmo instanceof AmmoEquipment ? selectedAmmo : null;
         }
-        const summary = getInventoryControlModeAmmoSummary(entry, this.getAvailableEquipment(), this.getInventoryControlRules(), mode);
+        const summary = getInventoryControlModeAmmoSummary(entry, this.getEquipmentRegistry(), this.getInventoryControlRules(), mode);
         return resolveInventoryControlSelectedAmmoOption(
             summary.options,
             this.getInventoryControlEntryAmmoOption(entry.id)
@@ -881,13 +881,12 @@ export class CBTForceUnit extends ForceUnit {
 
     public customAmmoBvVariation = computed<number>(() => {
         if (!this.isLoaded()) return 0; // Ensure unit is loaded so that inventory and crits are available
-        const equipmentList = this.getAvailableEquipment();
         let bvVariation = 0;
         if (this.getUnit().type === 'Mek') {
             const crits = this.getCritSlots();
             for (const crit of crits) {
                 if (crit.eq instanceof AmmoEquipment && crit.originalName && crit.originalName !== crit.name) {
-                    const originalAmmo = equipmentList[crit.originalName] as AmmoEquipment | undefined;
+                    const originalAmmo = this.dataService.findEquipment(crit.originalName) as AmmoEquipment | undefined;
                     if (originalAmmo) {
                         if (!originalAmmo.hasFixedBV() || !crit.eq.hasFixedBV()) {
                             continue; // Skip variable BV. TODO: need to be handle when we have BaseEntity
@@ -900,7 +899,7 @@ export class CBTForceUnit extends ForceUnit {
             const inventory = this.getInventory();
             for (const item of inventory) {
                 if (item.equipment instanceof AmmoEquipment && item.ammo && item.ammo !== item.name) {
-                    const customAmmo = equipmentList[item.ammo] as AmmoEquipment | undefined;
+                    const customAmmo = this.dataService.findEquipment(item.ammo) as AmmoEquipment | undefined;
                     if (customAmmo) {
                         if (!item.equipment.hasFixedBV() || !customAmmo.hasFixedBV()) {
                             continue; // Skip variable BV. TODO: need to be handle when we have BaseEntity
@@ -947,16 +946,18 @@ export class CBTForceUnit extends ForceUnit {
         return 0;
     });
 
+    public getPreSkillBv = computed<number>(() => {
+        return this.getBaseBv() + this.tagBV() + this.c3Tax() + this.externalStoresBv();
+    });
+
     public pilotBV = computed<number>(() => {
-        const finalBv = this.getBv();
-        return finalBv - this.getBaseBv() - this.tagBV() - this.c3Tax() - this.externalStoresBv();
+        return this.getBv() - this.getPreSkillBv();
     });
 
     getBv = computed<number>(() => {
-        const preSkillRatingBv = this.getBaseBv() + this.tagBV() + this.c3Tax() + this.externalStoresBv();
         return BVCalculatorUtil.calculateAdjustedBV(
             this.getUnit(),
-            preSkillRatingBv,
+            this.getPreSkillBv(),
             this.gunnerySkill(),
             this.pilotingSkill()
         );
@@ -1011,12 +1012,12 @@ export class CBTForceUnit extends ForceUnit {
                 item.setCommittedDestroyed(false);
             }
             if (item.consumed) {
-                item.consumed = 0;
+                item.setAmmoState({ consumed: 0 });
             }
             if (item instanceof MountedAmmo) {
-                item.ammo = undefined;
+                let totalAmmo: number | undefined;
                 if (item.intrinsicOneShotAmmo && item.parent?.equipment instanceof WeaponEquipment) {
-                    item.totalAmmo = item.parent.equipment.oneShotCount;
+                    totalAmmo = item.parent.equipment.oneShotCount;
                 } else {
                     const componentRef = parseInventoryComponentReference(item.id);
                     const component = componentRef ? this.unit.comp[componentRef.componentIndex] : undefined;
@@ -1025,14 +1026,11 @@ export class CBTForceUnit extends ForceUnit {
                     const originalTotalAmmo = component?.q2 || (item.getMaxShots() * binCount) || 0;
                     const baseBinAmmo = Math.floor(originalTotalAmmo / binCount);
                     const extraBinAmmo = originalTotalAmmo % binCount;
-                    item.totalAmmo = baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0) || undefined;
+                    totalAmmo = baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0) || undefined;
                 }
+                item.setAmmoState({ ammo: undefined, totalAmmo });
             }
-            if (item.states && item.states.size > 0) {
-                item.states.forEach((value, key) => {
-                    item.states!.set(key, ''); // Clear all states, assuming empty string will fallback to default
-                });
-            }
+            if (item.states.size > 0) item.clearStateValues();
             return item;
         });
         this.state.inventory.set([...inventory]);

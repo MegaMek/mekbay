@@ -221,7 +221,7 @@ export class UnitSvgMekService extends UnitSvgService {
                 if (!state) return;
 
                 // Physical / melee damage display (reads base values from DOM, computes via rules)
-                if (entry.physical) {
+                if (entry.isIntrinsicPhysicalAttack()) {
                     switch (entry.name) {
                         case 'charge':
                             this.renderChargeDamage(entry, physical.chargeDamage);
@@ -237,7 +237,7 @@ export class UnitSvgMekService extends UnitSvgService {
                             this.renderMeleeDamage(entry, 'kick');
                             break;
                     }
-                } else if (entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) {
+                } else if (entry.isPhysicalWeapon()) {
                     this.renderMeleeDamage(entry, 'physWeapon', undefined, !!entry.equipment?.flags.has('S_FLAIL'));
                 }
 
@@ -260,6 +260,7 @@ export class UnitSvgMekService extends UnitSvgService {
         return this.unit.gameRules.resolveToHit({
             subject: entry,
             stateModifier: state.hitMod,
+            stateModifierBreakdown: state.hitModifierBreakdown,
             stateWeakened: state.weakenedHitMod,
             range,
             adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
@@ -272,11 +273,6 @@ export class UnitSvgMekService extends UnitSvgService {
     ) {
         const state = this.currentEntryStates?.get(entry) ?? this.mekRules.computeEntryState(entry);
         super.renderHitModEntry(entry, resolution, !!state.weakenedHitMod);
-    }
-
-    override inventoryTargetHeatFireModifier(entry: MountedEquipment): number {
-        if (entry.physical || entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) return 0;
-        return MekRules.getHeatEffects(this.unit.getHeat().current).fireModifier;
     }
 
     protected override updateTurnState() {

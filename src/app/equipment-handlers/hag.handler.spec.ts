@@ -79,7 +79,10 @@ describe('HagHandler', () => {
     it('adds a -1 to-hit adjustment only in FLAK mode', () => {
         expect(handler.getToHitAdjustments(hag(HAG_STANDARD_MODE), {}, context())).toEqual([]);
         expect(handler.getToHitAdjustments(hag(HAG_FLAK_MODE), {}, context()))
-            .toEqual([{ kind: 'add', value: -1 }]);
+            .toEqual([{
+                kind: 'add', value: -1,
+                breakdown: [{ label: 'HAG/20 (FLAK)', modifier: -1 }]
+            }]);
     });
 
     it('requires both the F_HAG registry flag and weapon equipment', () => {

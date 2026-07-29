@@ -23,6 +23,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
     let dialogCloseSpy: jasmine.Spy;
     let requestClosePanelsSpy: jasmine.Spy;
     let setOptionSpy: jasmine.Spy;
+    let updateForceGeneratorOptionsSpy: jasmine.Spy;
     let setFilterSpy: jasmine.Spy;
     let getDropdownOptionsForFormationTargetSpy: jasmine.Spy;
     let setPilotSkillsSpy: jasmine.Spy;
@@ -44,24 +45,33 @@ describe('SearchForceGeneratorDialogComponent', () => {
     beforeEach(() => {
         optionsSignal = signal({
             availabilitySource: 'mul',
-            forceGenLastBVMin: 7900,
-            forceGenLastBVMax: 8000,
-            forceGenLastPVMin: 290,
-            forceGenLastPVMax: 300,
-            forceGenLastMinUnitCount: 4,
-            forceGenLastMaxUnitCount: 8,
-            forceGenLastGunnerySkillMin: 4,
-            forceGenLastGunnerySkillMax: 4,
-            forceGenLastPilotingSkillMin: 5,
-            forceGenLastPilotingSkillMax: 5,
-            forceGenLastMaxPilotSkillDelta: 1,
-            forceGenPreventDuplicateChassis: false,
-            forceGenUseTaggedQuantities: false,
-            forceGenUseUnitTagsAsChassisTags: false,
+            forceGenerator: {
+                lastBudget: {
+                    classic: { min: 7900, max: 8000 },
+                    alphaStrike: { min: 290, max: 300 },
+                },
+                lastUnitCount: { min: 4, max: 8 },
+                lastSkills: {
+                    gunnery: { min: 4, max: 4 },
+                    piloting: { min: 5, max: 5 },
+                    maxDelta: 1,
+                },
+                failureSearchWindowMs: 300,
+                preventDuplicateChassis: false,
+                useTaggedQuantities: false,
+                useUnitTagsAsChassisTags: false,
+            },
         });
 
         setOptionSpy = jasmine.createSpy('setOption').and.callFake((key: string, value: unknown) => {
             optionsSignal.update((options) => ({ ...options, [key]: value }));
+            return Promise.resolve();
+        });
+        updateForceGeneratorOptionsSpy = jasmine.createSpy('updateForceGeneratorOptions').and.callFake((updater: (options: any) => any) => {
+            optionsSignal.update((options) => ({
+                ...options,
+                forceGenerator: updater(options.forceGenerator),
+            }));
             return Promise.resolve();
         });
 
@@ -248,14 +258,14 @@ describe('SearchForceGeneratorDialogComponent', () => {
             resolveInitialUnitCountDefaults: () => ({ min: 4, max: 8 }),
             resolveInitialSkillDefaults: (options: any) => ({
                 gunnery: {
-                    min: Math.min(options.forceGenLastGunnerySkillMin, options.forceGenLastGunnerySkillMax),
-                    max: Math.max(options.forceGenLastGunnerySkillMin, options.forceGenLastGunnerySkillMax),
+                    min: Math.min(options.lastSkills.gunnery.min, options.lastSkills.gunnery.max),
+                    max: Math.max(options.lastSkills.gunnery.min, options.lastSkills.gunnery.max),
                 },
                 piloting: {
-                    min: Math.min(options.forceGenLastPilotingSkillMin, options.forceGenLastPilotingSkillMax),
-                    max: Math.max(options.forceGenLastPilotingSkillMin, options.forceGenLastPilotingSkillMax),
+                    min: Math.min(options.lastSkills.piloting.min, options.lastSkills.piloting.max),
+                    max: Math.max(options.lastSkills.piloting.min, options.lastSkills.piloting.max),
                 },
-                maxDelta: options.forceGenLastMaxPilotSkillDelta,
+                maxDelta: options.lastSkills.maxDelta,
             }),
             resolveBudgetRangeForEditedMin: (range: { min: number; max: number }, editedMin: number) => {
                 const nextMin = Math.max(0, Math.floor(editedMin));
@@ -286,21 +296,6 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 const nextMax = Math.min(100, Math.max(1, Math.floor(editedMax)));
                 return { min: Math.min(range.min, nextMax), max: nextMax };
             },
-            getStoredUnitCountOptionKeys: () => ({
-                min: 'forceGenLastMinUnitCount',
-                max: 'forceGenLastMaxUnitCount',
-            }),
-            getStoredBudgetOptionKeys: () => ({
-                min: 'forceGenLastBVMin',
-                max: 'forceGenLastBVMax',
-            }),
-            getStoredSkillOptionKeys: () => ({
-                gunneryMin: 'forceGenLastGunnerySkillMin',
-                gunneryMax: 'forceGenLastGunnerySkillMax',
-                pilotingMin: 'forceGenLastPilotingSkillMin',
-                pilotingMax: 'forceGenLastPilotingSkillMax',
-                maxDelta: 'forceGenLastMaxPilotSkillDelta',
-            }),
             resolveGenerationContext: resolveGenerationContextSpy,
             buildPreview: buildPreviewSpy,
             createForcePreviewEntry: createForcePreviewEntrySpy,
@@ -344,6 +339,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
                     useValue: {
                         options: optionsSignal,
                         setOption: setOptionSpy,
+                        updateForceGeneratorOptions: updateForceGeneratorOptionsSpy,
                     },
                 },
                 {
@@ -419,11 +415,14 @@ describe('SearchForceGeneratorDialogComponent', () => {
     it('uses the stored force generator skill defaults', async () => {
         optionsSignal.update((options) => ({
             ...options,
-            forceGenLastGunnerySkillMin: 2,
-            forceGenLastGunnerySkillMax: 4,
-            forceGenLastPilotingSkillMin: 3,
-            forceGenLastPilotingSkillMax: 6,
-            forceGenLastMaxPilotSkillDelta: 2,
+            forceGenerator: {
+                ...options.forceGenerator,
+                lastSkills: {
+                    gunnery: { min: 2, max: 4 },
+                    piloting: { min: 3, max: 6 },
+                    maxDelta: 2,
+                },
+            },
         }));
 
         const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
@@ -439,9 +438,12 @@ describe('SearchForceGeneratorDialogComponent', () => {
     it('uses the stored force generator checkbox defaults', async () => {
         optionsSignal.update((options) => ({
             ...options,
-            forceGenPreventDuplicateChassis: true,
-            forceGenUseTaggedQuantities: true,
-            forceGenUseUnitTagsAsChassisTags: true,
+            forceGenerator: {
+                ...options.forceGenerator,
+                preventDuplicateChassis: true,
+                useTaggedQuantities: true,
+                useUnitTagsAsChassisTags: true,
+            },
         }));
 
         const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
@@ -514,7 +516,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(dialog.minUnitCount()).toBe(4);
         expect(dialog.maxUnitCount()).toBe(10);
-        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenLastMaxUnitCount', 10);
+        expect(optionsSignal().forceGenerator.lastUnitCount).toEqual({ min: 4, max: 10 });
         expect(maxUnitsInput.value).toBe('10');
     });
 
@@ -526,7 +528,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         component.onMaxUnitCountBlur(event);
 
         expect(component.maxUnitCount()).toBe(100);
-        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenLastMaxUnitCount', 100);
+        expect(optionsSignal().forceGenerator.lastUnitCount).toEqual({ min: 4, max: 100 });
         expect(input.value).toBe('100');
     });
 
@@ -542,7 +544,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(component.minUnitCount()).toBe(6);
         expect(component.maxUnitCount()).toBe(6);
-        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenLastMaxUnitCount', 6);
+        expect(optionsSignal().forceGenerator.lastUnitCount).toEqual({ min: 6, max: 6 });
         expect(input.value).toBe('6');
     });
 
@@ -610,7 +612,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         fixture.detectChanges();
 
         expect(dialog.budgetRange()).toEqual({ min: 7900, max: 10000 });
-        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenLastBVMax', 10000);
+        expect(optionsSignal().forceGenerator.lastBudget.classic).toEqual({ min: 7900, max: 10000 });
         expect(maxBudgetInput.value).toBe('10,000');
     });
 
@@ -1063,7 +1065,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         } as unknown as Event);
 
         expect(buildPreviewSpy).not.toHaveBeenCalled();
-        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenPreventDuplicateChassis', true);
+        expect(optionsSignal().forceGenerator.preventDuplicateChassis).toBeTrue();
 
         component.reroll();
 
@@ -1074,7 +1076,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         component.onUseTaggedQuantitiesChange({
             target: { checked: true },
         } as unknown as Event);
-        setOptionSpy.calls.reset();
+        updateForceGeneratorOptionsSpy.calls.reset();
 
         component.onPreventDuplicateChassisChange({
             target: { checked: true },
@@ -1082,10 +1084,11 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(component.preventDuplicateChassis()).toBeTrue();
         expect(component.useTaggedQuantities()).toBeFalse();
-        expect(setOptionSpy.calls.allArgs()).toEqual([
-            ['forceGenPreventDuplicateChassis', true],
-            ['forceGenUseTaggedQuantities', false],
-        ]);
+        expect(updateForceGeneratorOptionsSpy).toHaveBeenCalledOnceWith(jasmine.any(Function));
+        expect(optionsSignal().forceGenerator).toEqual(jasmine.objectContaining({
+            preventDuplicateChassis: true,
+            useTaggedQuantities: false,
+        }));
     });
 
     it('stores and forwards the tagged-quantities checkbox state', () => {
@@ -1094,7 +1097,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         } as unknown as Event);
 
         expect(buildPreviewSpy).not.toHaveBeenCalled();
-        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenUseTaggedQuantities', true);
+        expect(optionsSignal().forceGenerator.useTaggedQuantities).toBeTrue();
 
         component.reroll();
 
@@ -1165,14 +1168,14 @@ describe('SearchForceGeneratorDialogComponent', () => {
         component.onUseTaggedQuantitiesChange({
             target: { checked: true },
         } as unknown as Event);
-        setOptionSpy.calls.reset();
+        updateForceGeneratorOptionsSpy.calls.reset();
 
         component.onUseUnitTagsAsChassisTagsChange({
             target: { checked: true },
         } as unknown as Event);
 
         expect(buildPreviewSpy).not.toHaveBeenCalled();
-        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenUseUnitTagsAsChassisTags', true);
+        expect(optionsSignal().forceGenerator.useUnitTagsAsChassisTags).toBeTrue();
 
         component.reroll();
 
@@ -1184,7 +1187,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         component.onPreventDuplicateChassisChange({
             target: { checked: true },
         } as unknown as Event);
-        setOptionSpy.calls.reset();
+        updateForceGeneratorOptionsSpy.calls.reset();
 
         component.onUseTaggedQuantitiesChange({
             target: { checked: true },
@@ -1192,10 +1195,11 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(component.useTaggedQuantities()).toBeTrue();
         expect(component.preventDuplicateChassis()).toBeFalse();
-        expect(setOptionSpy.calls.allArgs()).toEqual([
-            ['forceGenUseTaggedQuantities', true],
-            ['forceGenPreventDuplicateChassis', false],
-        ]);
+        expect(updateForceGeneratorOptionsSpy).toHaveBeenCalledOnceWith(jasmine.any(Function));
+        expect(optionsSignal().forceGenerator).toEqual(jasmine.objectContaining({
+            preventDuplicateChassis: false,
+            useTaggedQuantities: true,
+        }));
     });
 
     it('renders the Multi-Era checkbox disabled for a single positive era selection', async () => {
@@ -1694,11 +1698,11 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(fixture.componentInstance.gunnerySkillRange()).toEqual([3, 5]);
         expect(fixture.componentInstance.pilotingSkillRange()).toEqual([4, 6]);
         expect(fixture.componentInstance.maxPilotSkillDelta()).toBe(2);
-        expect(setOptionSpy).toHaveBeenCalledWith('forceGenLastGunnerySkillMin', 3);
-        expect(setOptionSpy).toHaveBeenCalledWith('forceGenLastGunnerySkillMax', 5);
-        expect(setOptionSpy).toHaveBeenCalledWith('forceGenLastPilotingSkillMin', 4);
-        expect(setOptionSpy).toHaveBeenCalledWith('forceGenLastPilotingSkillMax', 6);
-        expect(setOptionSpy).toHaveBeenCalledWith('forceGenLastMaxPilotSkillDelta', 2);
+        expect(optionsSignal().forceGenerator.lastSkills).toEqual({
+            gunnery: { min: 3, max: 5 },
+            piloting: { min: 4, max: 6 },
+            maxDelta: 2,
+        });
 
         fixture.componentInstance.reroll();
 

@@ -5,6 +5,7 @@ import { GameSystem } from '../../models/common.model';
 import type { Force } from '../../models/force.model';
 import type { Unit } from '../../models/units.model';
 import { OptionsService } from '../../services/options.service';
+import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { ForceBudgetOptimizerDialogComponent } from './force-budget-optimizer-dialog.component';
 
 interface ClassicSkillPrioritiesTestApi {
@@ -14,6 +15,7 @@ interface ClassicSkillPrioritiesTestApi {
 }
 
 interface ForceBudgetOptimizerDialogTestApi {
+    targetBudget(): number;
     getClassicSkillPriorities(unit: Unit): ClassicSkillPrioritiesTestApi;
     getClassicSmartScore(priorities: ClassicSkillPrioritiesTestApi, gunnery: number, piloting: number): number;
     getPhysicalDamagePerTurn(unit: Unit): number;
@@ -28,10 +30,10 @@ interface OptimizationStateTestApi {
 }
 
 describe('ForceBudgetOptimizerDialogComponent', () => {
-    async function createComponent(): Promise<ForceBudgetOptimizerDialogTestApi> {
+    async function createComponent(forceTotal = 0, bvPvLimit = 0): Promise<ForceBudgetOptimizerDialogTestApi> {
         const force = {
             gameSystem: GameSystem.CLASSIC,
-            totalBv: jasmine.createSpy('totalBv').and.returnValue(0),
+            totalBv: jasmine.createSpy('totalBv').and.returnValue(forceTotal),
             units: signal([]),
             readOnly: signal(false),
         } as unknown as Force;
@@ -55,12 +57,25 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
                 { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
                 { provide: DIALOG_DATA, useValue: { force } },
                 { provide: OptionsService, useValue: optionsServiceStub },
+                { provide: UnitSearchFiltersService, useValue: { bvPvLimit: signal(bvPvLimit) } },
             ],
         }).compileComponents();
 
         const fixture = TestBed.createComponent(ForceBudgetOptimizerDialogComponent);
         return fixture.componentInstance as unknown as ForceBudgetOptimizerDialogTestApi;
     }
+
+    it('uses the active BV/PV limit as the initial optimization target', async () => {
+        const component = await createComponent(5_000, 7_500);
+
+        expect(component.targetBudget()).toBe(7_500);
+    });
+
+    it('uses the current force total when no positive BV/PV limit is set', async () => {
+        const component = await createComponent(5_000, 0);
+
+        expect(component.targetBudget()).toBe(5_000);
+    });
 
     function createUnit(overrides: Partial<Unit>): Unit {
         return {

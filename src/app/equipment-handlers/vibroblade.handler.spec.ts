@@ -90,10 +90,10 @@ describe('VibrobladeHandler', () => {
 
     it('applies the -2 vibroblade target-number modifier in both modes', () => {
         const { entry } = setup();
-        expect(handler.getToHitAdjustments()).toEqual([{ kind: 'replace-base', value: -2 }]);
+        expect(handler.getToHitAdjustments(entry)).toEqual([{ kind: 'replace-base', value: -2, label: entry.equipment?.shortName ?? entry.name }]);
 
         entry.states.set(VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE);
-        expect(handler.getToHitAdjustments()).toEqual([{ kind: 'replace-base', value: -2 }]);
+        expect(handler.getToHitAdjustments(entry)).toEqual([{ kind: 'replace-base', value: -2, label: entry.equipment?.shortName ?? entry.name }]);
     });
 
     it('shows active heat and damage by blade size', () => {

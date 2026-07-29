@@ -174,7 +174,7 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                 <div class="info-area">
                     @if (isAlphaStrike()) {
                         <div class="info-slot slim centered">
-                            <span class="value">PV: {{ fu?.getBv() | formatNumber:true }}</span>
+                            <span class="value">PV: {{ displayedBvPv() }}</span>
                         </div>
                         @if (showTMM()) {
                             <div class="info-slot slim centered">
@@ -190,7 +190,7 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                         </div>
                     } @else {
                         <div class="info-slot slim numeric" [tooltip]="bvTooltip()">
-                            <span class="value">BV: {{ fu?.getBv() | formatNumber:true }}</span>
+                            <span class="value">BV: {{ displayedBvPv() }}</span>
                         </div>
                         <div class="info-slot slim numeric">
                             <span class="value">{{ unit()?.tons | formatTons }}</span>

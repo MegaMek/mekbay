@@ -210,7 +210,7 @@ function main() {
     console.log(`\nEquipment:`);
     for (const m of entity.equipment()) {
       const locs = m.placements?.map(p => `${p.location}:${p.slotIndex}`) ?? [m.location];
-      const criticalSlots = m.getCriticalSlotRequirement(entity);
+      const criticalSlots = m.getNumCriticalSlots(entity);
       console.log(`  ${m.equipmentId}`);
       console.log(`    locations: [${locs.join(', ')}]  crits: ${criticalSlots ?? '-'}`);
       if (m.rearMounted) console.log(`    rear-mounted`);

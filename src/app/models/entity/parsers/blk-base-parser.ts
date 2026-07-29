@@ -277,8 +277,8 @@ export function resolveBlkStructure(
   typeId: number,
   ctx: ParseContext,
 ): boolean {
-  const structure = getStructureByTypeId(typeId, entity.techBase(), ctx.equipmentDb);
-  const fallback = getStructureByTypeId(0, entity.techBase(), ctx.equipmentDb)
+  const structure = getStructureByTypeId(typeId, entity.techBase(), ctx.equipmentRegistry);
+  const fallback = getStructureByTypeId(0, entity.techBase(), ctx.equipmentRegistry)
     ?? STANDARD_STRUCTURE_EQUIPMENT;
   entity.setUniformStructure(new MountedStructure({
     tonnage: entity.tonnage(),

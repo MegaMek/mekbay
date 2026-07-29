@@ -42,6 +42,7 @@ export * from './tech';
 export * from './entity';
 export * from './weight';
 export * from './engine';
+export * from './cockpit';
 export * from './heat-sink';
 export * from './armor';
 export * from './aero';

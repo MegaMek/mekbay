@@ -50,18 +50,18 @@ describe('ammo weapon profiles', () => {
         expect(resolveAmmoWeaponProfile(null)).toBeNull();
     });
 
-    it('defines complete firing profiles for range, cluster, and fallback damage', () => {
+    it('defines firing profiles without duplicating ammo damage', () => {
         expect(MML_LRM_PROFILE).toEqual(jasmine.objectContaining({
             minimumRange: 6,
             ranges: [7, 14, 21, 28],
-            clusterSize: 5,
-            fallbackDamagePerShot: 1
+            clusterSize: 5
         }));
         expect(ATM_HIGH_EXPLOSIVE_PROFILE).toEqual(jasmine.objectContaining({
             minimumRange: 0,
             ranges: [3, 6, 9, 12],
-            clusterSize: 6,
-            fallbackDamagePerShot: 3
+            clusterSize: 6
         }));
+        expect('fallbackDamagePerShot' in MML_LRM_PROFILE).toBeFalse();
+        expect('fallbackDamagePerShot' in ATM_HIGH_EXPLOSIVE_PROFILE).toBeFalse();
     });
 });

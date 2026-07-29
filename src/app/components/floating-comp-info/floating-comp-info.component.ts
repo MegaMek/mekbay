@@ -39,9 +39,8 @@ import type { Unit } from '../../models/units.model';
 import { AmmoEquipment, type Equipment, WeaponEquipment } from '../../models/equipment.model';
 import { TechDate, TechAdvancementDates, techDateYear, formatTechDate } from '../../models/entity';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
-import { parseTechDate } from '../../models/entity/types/tech';
 import { CBTGameRulesService } from '../../services/cbt-game-rules.service';
-import { resolveWeaponDamageText } from '../../utils/inventory-control-damage.util';
+import { resolveDefaultWeaponDamageText } from '../../utils/inventory-control-damage.util';
 import { formatInventoryControlHeat } from '../../utils/inventory-control-heat.util';
 
 /*
@@ -71,7 +70,7 @@ export class FloatingCompInfoComponent {
         const currentComp = this.comp();
         const currentUnit = this.unit();
         if (currentUnit && currentComp?.id && currentUnit?.type) {
-            return this.dataService.getEquipmentByName(currentComp.id) || null;
+            return this.dataService.findEquipment(currentComp.id) || null;
         }
         return null;
     });
@@ -154,10 +153,9 @@ export class FloatingCompInfoComponent {
         const currentComp = this.comp();
         const eq = this.equipment();
         if (currentComp?.d && eq instanceof WeaponEquipment) {
-            const damage = resolveWeaponDamageText(eq);
             return currentComp.md && Number(currentComp.md) !== Number(currentComp.d)
-                ? `${damage} (${currentComp.md})`
-                : damage;
+                ? `${currentComp.d} (${currentComp.md})`
+                : currentComp.d;
         }
         return null;
     }

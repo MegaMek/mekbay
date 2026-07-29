@@ -1,6 +1,8 @@
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
+import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedAmmo, MountedWeapon } from '../models/mounted-equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { getInventoryControlModeAmmoSummary, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from './inventory-control.util';
 
 describe('inventory-control ammo selection', () => {
@@ -51,7 +53,7 @@ describe('inventory-control ammo selection', () => {
         } as unknown as CBTForceUnit;
         const mounted = new MountedWeapon({ owner, id: weapon.id, name: weapon.name, equipment: weapon });
 
-        const summary = getInventoryControlModeAmmoSummary(mounted, { [ammo.id]: ammo }, {}, null);
+        const summary = getInventoryControlModeAmmoSummary(mounted, new EquipmentRegistry({ [ammo.id]: ammo }), {}, null);
 
         expect(summary).toEqual({ tracksAmmo: true, remaining: 0, total: 0, options: [] });
     });
@@ -73,6 +75,7 @@ describe('inventory-control ammo selection', () => {
         const owner = {
             getInventory: () => inventory,
             getCritSlots: () => [],
+            getUnit: () => createEmptyUnit({ subtype: 'Battle Armor' }),
             isEquipmentUnavailable: () => false,
         } as unknown as CBTForceUnit;
         const mountedWeapon = new MountedWeapon({ owner, id: 'lrm-os', name: weapon.internalName, equipment: weapon });
@@ -89,10 +92,10 @@ describe('inventory-control ammo selection', () => {
         mountedWeapon.linkedWith = [intrinsicAmmo];
         inventory.push(mountedWeapon, intrinsicAmmo);
 
-        const summary = getInventoryControlModeAmmoSummary(mountedWeapon, {
+        const summary = getInventoryControlModeAmmoSummary(mountedWeapon, new EquipmentRegistry({
             [standard.internalName]: standard,
             [incendiary.internalName]: incendiary,
-        });
+        }));
 
         expect(summary).toEqual(jasmine.objectContaining({ tracksAmmo: true, remaining: 1, total: 1 }));
         expect(summary.options).toEqual([jasmine.objectContaining({

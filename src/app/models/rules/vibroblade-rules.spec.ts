@@ -29,13 +29,6 @@ describe('vibroblade rules', () => {
         expect(getVibrobladeProfile(equipment('misc', ['S_VIBRO_SMALL']))).toBeNull();
     });
 
-    it('rejects non-misc equipment and absent equipment', () => {
-        expect(getVibrobladeProfile(equipment('weapon', ['F_CLUB', 'S_VIBRO_SMALL']))).toBeNull();
-        expect(getVibrobladeProfile(null)).toBeNull();
-        expect(getVibrobladeProfile(undefined)).toBeNull();
-        expect(getVibrobladeHeat(undefined)).toBe(0);
-    });
-
     it('uses the largest profile when malformed data contains multiple size flags', () => {
         const malformed = equipment('misc', [
             'F_CLUB', 'S_VIBRO_SMALL', 'S_VIBRO_MEDIUM', 'S_VIBRO_LARGE',

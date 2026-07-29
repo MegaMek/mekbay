@@ -1,28 +1,34 @@
-import { AmmoEquipment, WEAPON_TYPES, WeaponEquipment, type WeaponType } from '../models/equipment.model';
+import {
+    AmmoEquipment,
+    resolveWeaponAmmo,
+    resolveWeaponDamage,
+    WEAPON_TYPES,
+    WeaponDamage,
+    WeaponEquipment,
+    type WeaponType,
+} from '../models/equipment.model';
+import type { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
-import type { InventoryRangeKey } from './inventory-control.util';
 import type { AmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
-
-const RANGE_DAMAGE_INDEX: Record<InventoryRangeKey, number> = {
-    short: 0,
-    medium: 1,
-    long: 2
-};
-
-export type InventoryControlDamage =
-    | { readonly kind: 'simple'; readonly value: number }
-    | { readonly kind: 'per-missile'; readonly value: number }
-    | { readonly kind: 'special'; readonly value: string }
-    | { readonly kind: 'profile'; readonly values: readonly InventoryControlDamage[] };
+import {
+    formatWeaponDamage,
+    type WeaponDamageRange,
+} from './weapon-damage.util';
 
 export interface InventoryControlDamageContext {
-    selectedRange: InventoryRangeKey | null;
-    selectedAmmo: AmmoEquipment | null;
-    fallbackAmmoProfile?: AmmoWeaponProfile | null;
+    readonly selectedRange: WeaponDamageRange | null;
+    readonly selectedAmmo: AmmoEquipment | null;
+    readonly equipmentCatalog: EquipmentRegistry;
+    readonly ammoProfile?: AmmoWeaponProfile | null;
+}
+
+export interface DefaultWeaponDamageContext {
+    readonly selectedRange?: WeaponDamageRange | null;
+    readonly ammoProfile?: AmmoWeaponProfile | null;
 }
 
 export interface InventoryControlDamageResolution {
-    readonly damage: InventoryControlDamage;
+    readonly damage: WeaponDamage;
     readonly damageTypes: readonly WeaponType[];
     readonly text: string;
 }
@@ -30,9 +36,9 @@ export interface InventoryControlDamageResolution {
 export interface InventoryControlDamageRules {
     applyDamageEffects?: (
         entry: MountedEquipment,
-        damage: InventoryControlDamage,
+        damage: WeaponDamage,
         context: InventoryControlDamageContext
-    ) => InventoryControlDamage;
+    ) => WeaponDamage;
     applyWeaponTypes?: (
         entry: MountedEquipment,
         types: ReadonlySet<WeaponType>
@@ -47,12 +53,24 @@ export function resolveInventoryControlDamageText(
     return resolveInventoryControlWeaponDamage(entry, context, rules)?.text ?? null;
 }
 
-export function resolveWeaponDamageText(
+export function resolveDefaultWeaponDamageText(
     weapon: WeaponEquipment,
-    context: InventoryControlDamageContext = { selectedRange: null, selectedAmmo: null }
-): string | null {
-    const damage = resolveWeaponDamage(weapon, context);
-    return formatInventoryControlDamage(damage, getUnmountedWeaponTypes(weapon, context.selectedAmmo), weapon, context.selectedAmmo, context.fallbackAmmoProfile);
+    equipmentCatalog: EquipmentRegistry,
+    context: DefaultWeaponDamageContext = {}
+): string {
+    const ammo = resolveWeaponAmmo(weapon, equipmentCatalog, context);
+    const damage = resolveWeaponDamage(weapon, equipmentCatalog, {
+        ammo,
+        ammoProfile: context.ammoProfile,
+        range: context.selectedRange,
+    });
+    return formatDamageWithTypes(
+        damage,
+        getUnmountedWeaponTypes(weapon, ammo),
+        weapon,
+        ammo,
+        context.ammoProfile
+    );
 }
 
 export function resolveInventoryControlWeaponDamage(
@@ -60,48 +78,30 @@ export function resolveInventoryControlWeaponDamage(
     context: InventoryControlDamageContext,
     rules: InventoryControlDamageRules = {}
 ): InventoryControlDamageResolution | null {
-    if (!(entry.equipment instanceof WeaponEquipment)) return null;
-    const damage = resolveInventoryControlDamage(entry, context, rules);
-    if (!damage) return null;
-    const damageTypes = getInventoryControlDamageTypes(entry, context.selectedAmmo, rules);
+    if (entry.isPhysicalWeapon() || !(entry.equipment instanceof WeaponEquipment)) return null;
+
+    const ammo = resolveWeaponAmmo(entry.equipment, context.equipmentCatalog, {
+        ammo: context.selectedAmmo,
+        ammoProfile: context.ammoProfile,
+    });
+    const baseDamage = resolveWeaponDamage(entry.equipment, context.equipmentCatalog, {
+        ammo,
+        ammoProfile: context.ammoProfile,
+        range: context.selectedRange,
+    });
+    const damage = rules.applyDamageEffects?.(entry, baseDamage, context) ?? baseDamage;
+    const damageTypes = getInventoryControlDamageTypes(entry, ammo, rules);
     return {
         damage,
         damageTypes,
-        text: formatInventoryControlDamage(damage, damageTypes, entry.equipment, context.selectedAmmo, context.fallbackAmmoProfile)
+        text: formatDamageWithTypes(
+            damage,
+            damageTypes,
+            entry.equipment,
+            ammo,
+            context.ammoProfile
+        ),
     };
-}
-
-export function resolveInventoryControlDamage(
-    entry: MountedEquipment,
-    context: InventoryControlDamageContext,
-    rules: InventoryControlDamageRules = {}
-): InventoryControlDamage | null {
-    if (!(entry.equipment instanceof WeaponEquipment)) return null;
-
-    const damage = resolveWeaponDamage(entry.equipment, context);
-    return rules.applyDamageEffects?.(entry, damage, context) ?? damage;
-}
-
-export function resolveWeaponDamage(
-    weapon: WeaponEquipment,
-    context: InventoryControlDamageContext
-): InventoryControlDamage {
-    return damageFromModel(weapon, context);
-}
-
-export function formatInventoryControlDamage(
-    damage: InventoryControlDamage,
-    damageTypes: Iterable<WeaponType>,
-    weapon: WeaponEquipment,
-    selectedAmmo?: AmmoEquipment | null,
-    fallbackAmmoProfile?: AmmoWeaponProfile | null
-): string {
-    const damageValue = formatDamageValue(damage);
-    const baseDamage = weapon.getRapidFireCount() > 0 ? `${damageValue}/Sht` : damageValue;
-    const typeSet = new Set(damageTypes);
-    const orderedTypes = WEAPON_TYPES.filter(type => typeSet.has(type));
-    const typeLabels = orderedTypes.map(type => formatWeaponTypeLabel(type, weapon, selectedAmmo, fallbackAmmoProfile));
-    return typeLabels.length > 0 ? `${baseDamage} [${typeLabels.join(',')}]`.trim() : baseDamage;
 }
 
 export function getInventoryControlDamageTypes(
@@ -109,7 +109,7 @@ export function getInventoryControlDamageTypes(
     selectedAmmo?: AmmoEquipment | null,
     rules: InventoryControlDamageRules = {}
 ): WeaponType[] {
-    if (!(entry.equipment instanceof WeaponEquipment)) return [];
+    if (entry.isPhysicalWeapon() || !(entry.equipment instanceof WeaponEquipment)) return [];
 
     const baseTypes = entry instanceof MountedWeapon
         ? new Set(entry.getWeaponTypes(selectedAmmo))
@@ -118,37 +118,40 @@ export function getInventoryControlDamageTypes(
     return WEAPON_TYPES.filter(type => effectiveTypes.has(type));
 }
 
-function damageFromModel(
+function formatDamageWithTypes(
+    damage: WeaponDamage,
+    damageTypes: Iterable<WeaponType>,
     weapon: WeaponEquipment,
-    context: InventoryControlDamageContext
-): InventoryControlDamage {
-    const modelDamage = weapon.damage;
-    if (Array.isArray(modelDamage)) {
-        const selectedDamage = context.selectedRange
-            ? modelDamage[RANGE_DAMAGE_INDEX[context.selectedRange]]
-            : undefined;
-        return selectedDamage === undefined
-                ? { kind: 'profile', values: modelDamage.map(value => damageAmount(value, weapon, context.selectedAmmo, context.fallbackAmmoProfile)) }
-                : damageAmount(selectedDamage, weapon, context.selectedAmmo, context.fallbackAmmoProfile);
-    }
-            return damageAmount(modelDamage, weapon, context.selectedAmmo, context.fallbackAmmoProfile);
+    ammo: AmmoEquipment | null,
+    ammoProfile?: AmmoWeaponProfile | null
+): string {
+    const damageValue = weapon.damage === '' ? '' : formatWeaponDamage(damage, {
+        shotSuffix: '/Sht',
+        specialLabel: 'special',
+        variableLabel: 'variable',
+    });
+    const typeSet = new Set(damageTypes);
+    const labels = WEAPON_TYPES
+        .filter(type => typeSet.has(type))
+        .map(type => formatWeaponTypeLabel(type, weapon, ammo, ammoProfile));
+    return [damageValue, labels.length > 0 ? `[${labels.join(',')}]` : ''].filter(Boolean).join(' ');
 }
 
-function getUnmountedWeaponTypes(weapon: WeaponEquipment, selectedAmmo?: AmmoEquipment | null): Set<WeaponType> {
+function getUnmountedWeaponTypes(weapon: WeaponEquipment, ammo?: AmmoEquipment | null): Set<WeaponType> {
     const types = new Set(weapon.getWeaponTypes());
-    selectedAmmo?.getRemovedDamageTypes().forEach(type => types.delete(type));
-    selectedAmmo?.getWeaponTypes().forEach(type => types.add(type));
+    ammo?.getRemovedDamageTypes().forEach(type => types.delete(type));
+    ammo?.getWeaponTypes().forEach(type => types.add(type));
     return types;
 }
 
 function formatWeaponTypeLabel(
     type: WeaponType,
     weapon: WeaponEquipment,
-    selectedAmmo?: AmmoEquipment | null,
-    fallbackAmmoProfile?: AmmoWeaponProfile | null
+    ammo?: AmmoEquipment | null,
+    ammoProfile?: AmmoWeaponProfile | null
 ): string {
     if (type === 'C') {
-        const clusterSize = weapon.getClusterSize(selectedAmmo, fallbackAmmoProfile);
+        const clusterSize = weapon.getClusterSize(ammo, ammoProfile);
         return clusterSize > 0 ? `C${clusterSize}` : type;
     }
     if (type === 'R') {
@@ -156,43 +159,4 @@ function formatWeaponTypeLabel(
         return rapidFireCount > 0 ? `R${rapidFireCount}` : type;
     }
     return type;
-}
-
-function damageAmount(
-    value: string | number,
-    weapon: WeaponEquipment,
-    selectedAmmo: AmmoEquipment | null,
-    fallbackAmmoProfile?: AmmoWeaponProfile | null
-): InventoryControlDamage {
-    if (typeof value === 'number') return { kind: 'simple', value };
-    if (value === 'special' && weapon.oneShotCount && selectedAmmo) {
-        const profile = weapon.getDamageProfile(selectedAmmo);
-        if (profile.kind === 'fixed') return { kind: 'simple', value: profile.damage };
-    }
-    if (value === 'artillery') return { kind: 'simple', value: weapon.rackSize };
-    if (value === 'cluster') {
-        const damagePerMissile = selectedAmmo?.damagePerShot
-            ?? fallbackAmmoProfile?.fallbackDamagePerShot
-            ?? defaultDamagePerMissile(weapon);
-        return { kind: 'per-missile', value: damagePerMissile };
-    }
-    return { kind: 'special', value };
-}
-
-function defaultDamagePerMissile(weapon: WeaponEquipment): number {
-    if (weapon.ammoType === 'SRM' || weapon.ammoType === 'SRM_STREAK' || weapon.ammoType === 'SRM_TORPEDO' || weapon.ammoType === 'SRM_ADVANCED') return 2;
-    return 1; // LRM
-}
-
-function formatDamageValue(damage: InventoryControlDamage): string {
-    switch (damage.kind) {
-        case 'simple': return damage.value === 0 ? '' : formatNumber(damage.value);
-        case 'per-missile': return `${formatNumber(damage.value)}/Msl`;
-        case 'special': return damage.value;
-        case 'profile': return damage.values.map(formatDamageValue).join('/');
-    }
-}
-
-function formatNumber(value: number): string {
-    return Number.isInteger(value) ? value.toString() : value.toFixed(1).replace(/\.0$/, '');
 }

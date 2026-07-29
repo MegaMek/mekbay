@@ -55,14 +55,12 @@ import { LayoutService } from '../../services/layout.service';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
-import { AdjustedPV } from '../../pipes/adjusted-pv.pipe';
 import { LongPressDirective } from '../../directives/long-press.directive';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { SearchFavoritesMenuComponent } from '../search-favorites-menu/search-favorites-menu.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ShareSearchDialogComponent } from './share-search.component';
 import { SemanticGuideDialogComponent } from '../semantic-guide-dialog/semantic-guide-dialog.component';
-import { SemanticGuideComponent } from '../semantic-guide/semantic-guide.component';
 import { highlightMatches } from '../../utils/search.util';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
@@ -89,6 +87,8 @@ import { UnitSearchFiltersService } from '../../services/unit-search-filters.ser
 import { getUnitVariantGroupIdentity, getUnitVariantGroupKey, type UnitVariantGroupIdentity, unitMatchesVariantGroup } from '../../utils/unit-variant.util';
 import { DropdownPointerActivationGuard, type DropdownPointerHoverEvent } from '../../utils/dropdown-interaction.utils';
 import { uuidv7 } from '../../utils/uuid.util';
+import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup extends UnitVariantGroupIdentity {
@@ -131,7 +131,7 @@ interface ActiveVariantGroupFilter extends UnitVariantGroupIdentity {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, OverlayModule, LongPressDirective, TooltipDirective, AdjustedPV, FormatNumberPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent],
+    imports: [CommonModule, ScrollingModule, OverlayModule, LongPressDirective, TooltipDirective, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.scss',
     host: {
@@ -176,13 +176,13 @@ export class UnitSearchComponent {
     private overlay = inject(Overlay);
     private cdr = inject(ChangeDetectorRef);
     private abilityLookup = inject(AsAbilityLookupService);
-    private optionsService = inject(OptionsService);
+    protected optionsService = inject(OptionsService);
     private taggingService = inject(TaggingService);
     private savedSearchesService = inject(SavedSearchesService);
     private keyboardShortcutService = inject(KeyboardShortcutService);
 
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
-    readonly cardStyle = computed(() => this.optionsService.options().ASCardStyle);
+    readonly cardStyle = computed(() => this.optionsService.options().colorScheme);
     readonly megaMekAvailabilitySourceSelected = computed(() => this.optionsService.options().availabilitySource === 'megamek');
     /** Whether the layout is filters-list-panel (filters on left) */
     readonly filtersOnLeft = computed(() => this.optionsService.options().unitSearchExpandedViewLayout === 'filters-list-panel');
@@ -445,6 +445,29 @@ export class UnitSearchComponent {
 
         return Array.from(map.values());
     });
+
+    formatChassisGroupBvPv(group: ChassisGroup): string {
+        const isAlphaStrike = this.gameService.isAlphaStrike();
+        const gunnery = this.filtersService.pilotGunnerySkill();
+        const piloting = this.filtersService.pilotPilotingSkill();
+        const mode = this.optionsService.options().forceViewerBVPVDisplay;
+        const baseValues = group.units.map(unit => isAlphaStrike ? unit.as.PV : unit.bv);
+        const adjustedValues = group.units.map(unit => isAlphaStrike
+            ? adjustPointValueForSkill(unit.as.PV, gunnery)
+            : BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting));
+        const formatRange = (values: number[]) => {
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const format = (value: number) => FormatNumberPipe.formatValue(value, true, false);
+            return min === max ? format(min) : `${format(min)}–${format(max)}`;
+        };
+        const base = formatRange(baseValues);
+        const adjusted = formatRange(adjustedValues);
+
+        if (mode === 'base') return base;
+        if (mode === 'both' && adjusted !== base) return `${adjusted} (${base})`;
+        return adjusted;
+    }
 
     /** Index of the currently selected unit in the filtered list */
     private inlinePanelIndex = computed(() => {
@@ -2287,7 +2310,19 @@ export class UnitSearchComponent {
     }
 
     formatClassicBv(unit: Unit, gunnery: number, piloting: number): string {
-        return FormatNumberPipe.formatValue(BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting), true, false);
+        return formatBvPv(
+            BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting),
+            unit.bv,
+            this.optionsService.options().forceViewerBVPVDisplay,
+        );
+    }
+
+    formatAlphaStrikePv(unit: Unit, gunnery: number): string {
+        return formatBvPv(
+            adjustPointValueForSkill(unit.as.PV, gunnery),
+            unit.as.PV,
+            this.optionsService.options().forceViewerBVPVDisplay,
+        );
     }
 
     formatTons(tons: number | undefined): string {

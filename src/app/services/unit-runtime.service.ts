@@ -34,7 +34,7 @@
 import { Injectable, inject } from '@angular/core';
 import type { Era } from '../models/eras.model';
 import type { Unit, UnitComponent, UnitTagEntry } from '../models/units.model';
-import type { EquipmentMap } from '../models/equipment.model';
+import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { TagData, UnitTagData } from './db.service';
 import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
@@ -70,13 +70,13 @@ export class UnitRuntimeService {
         void this.loadUnitTags(units);
     }
 
-    public linkEquipmentToUnits(units: Unit[], equipment: EquipmentMap): void {
+    public linkEquipmentToUnits(units: Unit[], equipmentRegistry: EquipmentRegistry): void {
         for (const unit of units) {
             if (!unit.comp) {
                 continue;
             }
 
-            this.linkEquipmentToComponents(unit.comp, equipment);
+            this.linkEquipmentToComponents(unit.comp, equipmentRegistry);
         }
     }
 
@@ -147,13 +147,13 @@ export class UnitRuntimeService {
         return undefined;
     }
 
-    private linkEquipmentToComponents(components: UnitComponent[], equipment: EquipmentMap): void {
+    private linkEquipmentToComponents(components: UnitComponent[], equipmentRegistry: EquipmentRegistry): void {
         for (const component of components) {
             if (component.id) {
-                component.eq = equipment[component.id];
+                component.eq = equipmentRegistry.findEquipment(component.id) ?? undefined;
             }
             if (component.bay) {
-                this.linkEquipmentToComponents(component.bay, equipment);
+                this.linkEquipmentToComponents(component.bay, equipmentRegistry);
             }
         }
     }

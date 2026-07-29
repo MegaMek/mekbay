@@ -5,6 +5,7 @@ import { type CriticalSlot } from '../force-serialization';
 import type { MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
 import { AmmoEquipment, Equipment, WeaponEquipment } from '../equipment.model';
+import { EquipmentRegistry } from '../equipment-lookup';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { VehicleRules } from './vehicle-rules';
 import { MascHandler, MASC_ACTIVE_STATE_KEY } from '../../equipment-handlers/masc.handler';
@@ -41,7 +42,7 @@ function entry(options: {
     id?: string;
     equipment?: Equipment;
     locations?: string[];
-    physical?: boolean;
+    intrinsicPhysicalAttack?: boolean;
     destroyed?: boolean;
     critSlots?: CriticalSlot[];
 } = {}): MountedEquipment {
@@ -52,7 +53,7 @@ function entry(options: {
         equipment: options.equipment,
         locations: new Set(options.locations ?? []),
         states: new Map<string, string>(),
-        physical: options.physical,
+        intrinsicPhysicalAttack: options.intrinsicPhysicalAttack,
         destroyed: options.destroyed,
         critSlots: options.critSlots,
     });
@@ -93,8 +94,8 @@ function createRulesHarness(options: {
         gameRules: options.rulesId === 'tw' ? TW_GAME_RULES : CORE_2026_GAME_RULES,
         getCritSlots: () => options.crits ?? [],
         getInventory: () => options.inventory ?? [],
-        getAvailableEquipment: () => Object.fromEntries((options.inventory ?? [])
-            .flatMap(entry => entry.equipment ? [[entry.equipment.internalName, entry.equipment]] : [])),
+        getEquipmentRegistry: () => new EquipmentRegistry(Object.fromEntries((options.inventory ?? [])
+            .flatMap(entry => entry.equipment ? [[entry.equipment.internalName, entry.equipment]] : []))),
         getInventoryControlSelectedAmmo: () => options.selectedAmmo ?? null,
         getInventoryControlRules: () => ({}),
         getUnit: () => baseUnit,
@@ -600,7 +601,7 @@ describe('VehicleRules', () => {
 
     it('disables non-physical weapons at sensor hit level four', () => {
         const weaponEntry = entry({ equipment: weapon('AC/5') });
-        const chargeEntry = entry({ id: 'Charge', physical: true });
+        const chargeEntry = entry({ id: 'Charge', intrinsicPhysicalAttack: true });
         const rules = createRulesHarness({
             crits: [crit('sensor_hit_4', 10)],
             inventory: [weaponEntry, chargeEntry],

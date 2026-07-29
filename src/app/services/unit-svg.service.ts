@@ -48,11 +48,12 @@ import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../utils/inventory-target-number.util';
 import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, readInventoryControlDisplayData, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
-import { resolveInventoryControlDamageText, resolveWeaponDamageText } from '../utils/inventory-control-damage.util';
+import { resolveInventoryControlDamageText } from '../utils/inventory-control-damage.util';
 import { formatInventoryControlHeat, resolveInventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
-import type { ToHitResolution } from '../models/rules/game-rules';
+import { separateHeatFireModifier, type ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import { isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, selectedRiscLaserMode } from '../equipment-handlers/risc-laser-pulse-module.handler';
+import { resolveInventoryOriginalAmmoTotal } from '../models/inventory-ammo-capacity.model';
 
 const INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY = '--inventory-control-selection-color';
 const HEAT_PROJECTION_ORIGINAL_OVERFLOW_STROKE = 'data-heat-projection-original-stroke';
@@ -921,16 +922,12 @@ export class UnitSvgService {
     }
 
     private getInventoryOriginalTotalAmmo(entry: MountedAmmo): number {
-        const componentIndexText = entry.id.split('#').pop();
-        const [componentIndexRaw, binIndexRaw] = (componentIndexText ?? '').split('.');
-        const componentIndex = Number(componentIndexRaw);
-        const binIndex = Number(binIndexRaw ?? 0);
-        const component = Number.isInteger(componentIndex) ? this.unit.getUnit().comp[componentIndex] : undefined;
-        const binCount = Math.max(1, component?.q ?? 1);
-        const originalTotalAmmo = component?.q2 || (entry.getMaxShots() * binCount) || entry.totalAmmo || 0;
-        const baseBinAmmo = Math.floor(originalTotalAmmo / binCount);
-        const extraBinAmmo = originalTotalAmmo % binCount;
-        return baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0);
+        return resolveInventoryOriginalAmmoTotal({
+            entryId: entry.id,
+            components: this.unit.getUnit().comp,
+            maximumShotsPerBin: entry.getMaxShots(),
+            storedTotalAmmo: entry.totalAmmo,
+        });
     }
 
     protected updateAmmoProfile() {
@@ -940,12 +937,13 @@ export class UnitSvgService {
         const ammoProfileEl = svg.querySelector('#ammoProfile > text');
         if (!ammoProfileEl) return;
 
-        const equipmentList = this.unit.getAvailableEquipment();
+        const equipmentCatalog = this.unit.getEquipmentRegistry();
         const ammoProfile = new Map<string, number>();
         this.unit.getInventory().forEach(entry => {
             if (!(entry instanceof MountedAmmo)) return;
-            const currentAmmo = entry.ammo && equipmentList[entry.ammo] instanceof AmmoEquipment
-                ? equipmentList[entry.ammo] as AmmoEquipment
+            const resolvedAmmo = entry.ammo ? equipmentCatalog.findEquipment(entry.ammo) : null;
+            const currentAmmo = resolvedAmmo instanceof AmmoEquipment
+                ? resolvedAmmo
                 : entry.equipment;
             const totalAmmo = entry.totalAmmo ?? this.getInventoryOriginalTotalAmmo(entry);
             const remainingAmmo = totalAmmo - (entry.consumed ?? 0);
@@ -1085,26 +1083,16 @@ export class UnitSvgService {
     }
 
     protected resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): ToHitResolution {
+        const state = this.unit.rules.computeEntryState(entry);
         const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
         return this.unit.gameRules.resolveToHit({
             subject: entry,
+            stateModifier: state.hitMod,
+            stateModifierBreakdown: state.hitModifierBreakdown,
+            stateWeakened: state.weakenedHitMod,
             range,
             adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
         });
-    }
-
-    protected resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
-        return this.resolveInventoryControlToHit(entry, range).value;
-    }
-
-    /** Override to inject entry-specific effective hit modifiers. */
-    protected getInventoryTargetHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
-        const hitModifier = this.resolveInventoryControlHitModifier(entry, range);
-        return typeof hitModifier === 'number' ? hitModifier - this.inventoryTargetHeatFireModifier(entry) : hitModifier;
-    }
-
-    inventoryTargetHeatFireModifier(entry: MountedEquipment): number {
-        return 0;
     }
 
     inventoryTargetNumberText(entry: MountedEquipment, target: InventoryControlRuntimeTarget): string | null {
@@ -1112,6 +1100,8 @@ export class UnitSvgService {
         const row = this.inventoryControlRow(entry);
         if (!row) return null;
         const hitModifierRange = this.inventoryControlRangeForTarget(entry, target, false);
+        const hitResolution = this.resolveInventoryControlToHit(entry, hitModifierRange);
+        const { hitModifier, heatFireModifier } = separateHeatFireModifier(hitResolution);
         const text = inventoryTargetNumberText({
             entry,
             category: inventoryTargetCategory(entry),
@@ -1125,8 +1115,8 @@ export class UnitSvgService {
             pilotingModifierBreakdown: this.unit.rules.getTargetNumberPilotingModifierBreakdown(),
             missingMovementModifier,
             attackModifierBreakdown: this.unit.turnState().getAttackModifierBreakdown(),
-            hitModifier: this.getInventoryTargetHitModifier(entry, hitModifierRange),
-            heatFireModifier: this.inventoryTargetHeatFireModifier(entry),
+            hitModifier,
+            heatFireModifier,
             gameRules: this.unit.gameRules
         });
         return text || null;
@@ -1148,7 +1138,7 @@ export class UnitSvgService {
     private inventoryControlRow(entry: MountedEquipment): InventoryControlRow | null {
         return getInventoryControlGroups(
             this.unit,
-            this.dataService.getEquipments(),
+            this.dataService.getEquipmentRegistry(),
             this.unit.getInventoryControlRules()
         ).flatMap(group => group.rows).find(row => row.entry.id === entry.id) ?? null;
     }
@@ -1289,11 +1279,16 @@ export class UnitSvgService {
                 const selectedAmmo = this.unit.getInventoryControlSelectedAmmo(entry, mode);
                 const fallbackAmmoProfile = getInventoryControlModes(entry)
                     .find(option => option.mode === mode)?.ammoProfile ?? null;
-                const modeDamage = resolveWeaponDamageText(weapon, {
-                    selectedRange: null,
-                    selectedAmmo,
-                    fallbackAmmoProfile: selectedAmmo ? null : fallbackAmmoProfile
-                });
+                const modeDamage = resolveInventoryControlDamageText(
+                    entry,
+                    {
+                        selectedRange: null,
+                        selectedAmmo,
+                        equipmentCatalog: this.dataService.getEquipmentRegistry(),
+                        ammoProfile: selectedAmmo ? null : fallbackAmmoProfile,
+                    },
+                    this.unit.getInventoryControlRules(),
+                );
                 if (modeDamage !== null) this.renderInventoryDamageText(modeDamageText, modeDamage);
             });
             return;
@@ -1304,7 +1299,11 @@ export class UnitSvgService {
         if (text) {
             const damage = resolveInventoryControlDamageText(
                 entry,
-                { selectedRange, selectedAmmo },
+                {
+                    selectedRange,
+                    selectedAmmo,
+                    equipmentCatalog: this.dataService.getEquipmentRegistry(),
+                },
                 this.unit.getInventoryControlRules()
             );
             if (damage !== null) this.renderInventoryDamageText(text, damage);
@@ -1448,7 +1447,7 @@ export class UnitSvgService {
         if (!svg) return;
         this.unit.getInventory().forEach(entry => {
             if (!entry.el) return;
-            if (entry.physical) {
+            if (entry.isIntrinsicPhysicalAttack()) {
                 if (entry.name === 'charge') {
                     this.renderChargeDamage(entry, this.unit.rules.chargeDamage());
                 }
@@ -1462,7 +1461,7 @@ export class UnitSvgService {
             }
             // Hit modifier badge
             if (entry.isDestroyed()) {
-                this.renderHitModEntry(entry, { profile: [], value: null, changed: false, weakened: false });
+                this.renderHitModEntry(entry, { profile: [], value: null, changed: false, weakened: false, modifierBreakdown: [] });
             } else {
                 this.renderHitModEntry(
                     entry,

@@ -64,6 +64,17 @@ import { WeaponEquipment, type Equipment } from '../../../equipment.model';
 // ============================================================================
 
 export abstract class VehicleEntity extends BaseEntity {
+  override componentLocationOrder(): readonly string[] {
+    return ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Front Turret', 'Rear Turret'];
+  }
+
+  override componentLocationLabel(location: string): string {
+    return ({
+      Body: 'BD', Front: 'FR', Right: 'RS', Left: 'LS', Rear: 'RR', Turret: 'TU',
+      'Front Turret': 'FT', 'Rear Turret': 'RT', Rotor: 'RO',
+    })[location] ?? super.componentLocationLabel(location);
+  }
+
   abstract override unitType(): UnitType;
 
   override unitSubtype(): UnitSubtype {

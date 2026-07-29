@@ -48,10 +48,15 @@ export class RiscLaserPulseModuleHandler extends EquipmentInteractionHandler {
 
     override getToHitAdjustments(equipment: MountedEquipment, context: ToHitAdjustmentContext): readonly ToHitAdjustment[] {
         const parent = context.parent;
-        if (!parent) return isRiscLaserPulseModule(equipment) ? [{ kind: 'replace-base', value: -2 }] : [];
+        const label = equipment.equipment?.shortName ?? equipment.name;
+        if (!parent) return isRiscLaserPulseModule(equipment) ? [{ kind: 'replace-base', value: -2, label }] : [];
         if (!isRiscLaserPulseModule(equipment) || !this.isLaserWithRiscModule(parent)) return [];
         const active = this.isModuleUsable(parent, equipment) && this.selectedMode(parent) === RISC_LASER_PULSE_MODE;
-        return [{ kind: 'add', value: active ? -2 : 0 }];
+        return [{
+            kind: 'add',
+            value: active ? -2 : 0,
+            breakdown: active ? [{ label, modifier: -2 }] : []
+        }];
     }
 
     override canPerformAimedShot(equipment: MountedEquipment, _context: HandlerContext): boolean | null {

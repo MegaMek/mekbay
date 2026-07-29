@@ -72,6 +72,7 @@ import {
   HeatSinkType,
   IntegralHeatSinkCapability,
   IntrinsicWeapon,
+  IntrinsicWeaponDamage,
   isMekLegLocation,
   isTechAvailableForBase,
   MEK_INTERNAL_STRUCTURE,
@@ -100,6 +101,12 @@ function jumpJetTonnage(unitTonnage: number): number {
 }
 
 export abstract class MekEntity extends BaseEntity {
+  override componentLocationOrder(): readonly string[] {
+    if (this.chassisConfig === 'Quad') return ['HD', 'CT', 'RT', 'LT', 'FRL', 'FLL', 'RRL', 'RLL'];
+    if (this.chassisConfig === 'Tripod') return ['HD', 'CT', 'RT', 'LT', 'RA', 'LA', 'RL', 'LL', 'CL'];
+    return ['HD', 'CT', 'RT', 'LT', 'RA', 'LA', 'RL', 'LL'];
+  }
+
   constructor(equipmentRegistry: EquipmentRegistry) {
     super(equipmentRegistry);
     super.setUniformStructure(new MountedStructure({
@@ -289,17 +296,22 @@ export abstract class MekEntity extends BaseEntity {
   }
 
   protected override computeHeatDissipation(includeRadical: boolean): number {
-    let capacity = this.equipment().reduce((total, mount) => {
-      if (!(mount.equipment instanceof MiscEquipment) || !mount.equipment.isHeatSink) return total;
-      const multiplier = mount.equipment.isCompactHeatSink
-        || mount.equipment.hasFlag('F_HEAT_SINK') ? 1 : 2;
-      return total + mount.equipment.heatSinkUnitsPerMount * multiplier;
-    }, 0);
+    let capacity = this.alphaStrikeBaseHeatCapacity();
     if (this.hasEquipmentFlag('F_PARTIAL_WING')) capacity += 3;
     if (includeRadical && this.hasEquipmentFlag('F_RADICAL_HEATSINK')) {
       capacity += Math.ceil(this.totalHeatSinks() * 0.4);
     }
     return capacity;
+  }
+
+  /** Heat-sink capacity before conversion-only equipment bonuses. */
+  alphaStrikeBaseHeatCapacity(): number {
+    return this.equipment().reduce((total, mount) => {
+      if (!(mount.equipment instanceof MiscEquipment) || !mount.equipment.isHeatSink) return total;
+      const multiplier = mount.equipment.isCompactHeatSink
+        || mount.equipment.hasFlag('F_HEAT_SINK') ? 1 : 2;
+      return total + mount.equipment.heatSinkUnitsPerMount * multiplier;
+    }, 0);
   }
 
   protected override computeMaximumHeatDissipation(normal: number): number {
@@ -456,7 +468,8 @@ export abstract class MekEntity extends BaseEntity {
     const attacks: IntrinsicWeapon[] = [];
     const tsm = this.equipment().some(mount =>
       mount.equipment?.hasFlag('F_TSM') && !mount.equipment.hasFlag('F_PROTOTYPE'));
-    const talons = this.equipment().some(mount => mount.equipment?.hasFlag('F_TALON'));
+    const talons = getMekLegLocations(this.chassisConfig).every(location =>
+      this.getEquipmentAtLocation(location).some(mount => mount.equipment?.hasFlag('F_TALON')));
     const isLam = this.chassisConfig === 'LAM';
 
     if (this instanceof MekWithArmsEntity) {
@@ -473,7 +486,7 @@ export abstract class MekEntity extends BaseEntity {
             - (this.hasAesAt(location) ? 1 : 0);
           attacks.push(intrinsicWeapon(
             `punch:${location}`, 'punch', 'Punch', [location],
-            fixedPhysicalDamage(damage, tsm), hitModifier, false,
+            fixedPhysicalDamage(damage, tsm), hitModifier,
           ));
         }
       }
@@ -484,7 +497,7 @@ export abstract class MekEntity extends BaseEntity {
           mount.equipment?.hasFlag('F_CLUB') && mount.equipment.hasFlag('S_CLAW')) ? 2 : 0;
         attacks.push(intrinsicWeapon(
           'club', 'club', 'Club', [], fixedPhysicalDamage(Math.ceil(this.tonnage() / 5), tsm),
-          -1 + clawModifier - (armAes ? 1 : 0), true,
+          -1 + clawModifier - (armAes ? 1 : 0),
         ));
       }
     }
@@ -496,15 +509,15 @@ export abstract class MekEntity extends BaseEntity {
     attacks.push(intrinsicWeapon(
       'kick', 'kick', talons ? 'Kick [Talons]' : 'Kick', [],
       fixedPhysicalDamage(kickDamage, tsm, alternateKickDamage),
-      this.hasLegAes() ? -3 : -2, false,
+      this.hasLegAes() ? -3 : -2,
     ));
 
-    if (this.equipment().some(mount => mount.equipment?.hasFlag('F_JUMP_JET'))) {
+    if (this.installedJumpJetMP() > 0) {
       const baseDfaDamage = Math.ceil(this.tonnage() / 10 * 3);
       const dfaDamage = talons ? Math.ceil(baseDfaDamage * 1.5) : baseDfaDamage;
       attacks.push(intrinsicWeapon(
         'death-from-above', 'death-from-above', talons ? 'DFA [Talons]' : 'Death From Above', [],
-        fixedPhysicalDamage(dfaDamage, false), 'versus', true,
+        fixedPhysicalDamage(dfaDamage, false), 'versus',
       ));
     }
 
@@ -512,24 +525,24 @@ export abstract class MekEntity extends BaseEntity {
     const spikeCount = this.equipment().filter(mount => mount.equipment?.hasFlag('F_SPIKES')).length;
     attacks.push(intrinsicWeapon(
       'charge', 'charge', 'Charge', [], {
-        kind: 'physical-per-hex',
-        damagePerHex: this.tonnage() / 10 * (ramPlate ? 1.5 : 1),
-        bonusDamage: spikeCount * 2,
-      }, 'versus', true,
+        kind: 'per-hex',
+        coefficient: this.tonnage() / 10 * (ramPlate ? 1.5 : 1),
+        bonus: spikeCount * 2,
+      }, 'versus',
     ));
 
     if (isLam) {
       attacks.push(intrinsicWeapon(
         'airmek-ram', 'airmek-ram', 'AirMek Ram', [], {
-          kind: 'physical-per-hex', damagePerHex: this.tonnage() / 5, bonusDamage: 0,
-        }, 'versus', true,
+          kind: 'per-hex', coefficient: this.tonnage() / 5, bonus: 0,
+        }, 'versus',
       ));
     }
 
     if (this instanceof MekWithArmsEntity) {
       const armAes = this.hasAesAt('LA') && this.hasAesAt('RA');
       attacks.push(intrinsicWeapon(
-        'push', 'push', 'Push', [], { kind: 'physical-none' }, armAes ? -2 : -1, true,
+        'push', 'push', 'Push', [], { kind: 'none' }, armAes ? -2 : -1,
       ));
     }
 
@@ -1051,14 +1064,18 @@ function fixedPhysicalDamage(
   damage: number,
   tsm: boolean,
   alternateDamage?: number,
-): IntrinsicWeapon['damage'] {
+): IntrinsicWeaponDamage {
   return {
-    kind: 'physical-fixed',
-    primary: { damage, ...(tsm ? { tsmDamage: damage * 2 } : {}) },
+    kind: 'fixed',
+    value: damage,
+    ...(tsm ? { boostedValue: damage * 2 } : {}),
     ...(alternateDamage === undefined ? {} : {
-      alternate: {
-        mode: 'airmek' as const,
-        value: { damage: alternateDamage, ...(tsm ? { tsmDamage: alternateDamage * 2 } : {}) },
+      alternatives: {
+        airmek: {
+          kind: 'fixed',
+          value: alternateDamage,
+          ...(tsm ? { boostedValue: alternateDamage * 2 } : {}),
+        },
       },
     }),
   };
@@ -1071,7 +1088,6 @@ function intrinsicWeapon(
   locations: readonly string[],
   damage: IntrinsicWeapon['damage'],
   hitModifier: IntrinsicWeapon['hitModifiers'][number],
-  optional: boolean,
 ): IntrinsicWeapon {
   return {
     source: 'intrinsic',
@@ -1079,12 +1095,7 @@ function intrinsicWeapon(
     kind,
     name,
     locations,
-    category: 'physical',
-    heat: 0,
     damage,
     hitModifiers: [hitModifier],
-    minimumRange: 0,
-    ranges: [],
-    optional,
   };
 }

@@ -4,6 +4,7 @@ import {
     TestBattleArmorEntity as BattleArmorEntity,
     TestAeroSpaceFighterEntity as AeroSpaceFighterEntity,
     TestBipedMekEntity as BipedMekEntity,
+    TestConvFighterEntity as ConvFighterEntity,
     TestDropShipEntity as DropShipEntity,
     TestJumpShipEntity as JumpShipEntity,
     TestProtoMekEntity as ProtoMekEntity,
@@ -76,6 +77,23 @@ describe('entity cost', () => {
 
         const step = entity.costDetails().steps.find(candidate => candidate.type === '2 Test Laser');
         expect(step).toEqual(jasmine.objectContaining({ amount: 3000 }));
+    });
+
+    it('applies conventional-fighter VSTOL mass cost before the weight multiplier', () => {
+        const entity = new ConvFighterEntity();
+        entity.setTonnage(25);
+        const withoutVstol = calculateEntityCost(entity);
+
+        entity.vstol.set(true);
+        const withVstol = calculateEntityCostDetails(entity);
+
+        expect(withVstol.steps).toContain(jasmine.objectContaining({
+            type: 'VSTOL Equipment', amount: 7_500,
+        }));
+        expect(withVstol.steps).toContain(jasmine.objectContaining({
+            type: 'Weight Multiplier', factor: 1.125,
+        }));
+        expect(withVstol.total - withoutVstol).toBe(8_438);
     });
 
     it('reports seating and bays separately', () => {

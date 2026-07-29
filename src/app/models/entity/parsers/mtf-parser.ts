@@ -247,12 +247,12 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
 
   const structureInfo = decodeMtfStructure(header.structure);
   const structureTechBase = structureInfo.techBase ?? entity.techBase();
-  const structure = getStructureByName(structureInfo.name, structureTechBase, ctx.equipmentDb);
+  const structure = getStructureByName(structureInfo.name, structureTechBase, ctx.equipmentRegistry);
   if (!structure) {
     ctx.error('Structure', `Invalid structure ${structureTechBase} ${structureInfo.name}`);
   }
   const resolvedGlobalStructure = structure
-    ?? getStructureByName('Standard', entity.techBase(), ctx.equipmentDb)
+    ?? getStructureByName('Standard', entity.techBase(), ctx.equipmentRegistry)
     ?? STANDARD_STRUCTURE_EQUIPMENT;
   const defaultStructureTonnage = header.isFrankenMek
     ? Math.max(10, Math.ceil(header.mass))
@@ -276,7 +276,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       if (parsed?.structureName) {
         const localInfo = decodeMtfStructure(parsed.structureName);
         const localTechBase = localInfo.techBase ?? entity.techBase();
-        const localStructure = getStructureByName(localInfo.name, localTechBase, ctx.equipmentDb);
+        const localStructure = getStructureByName(localInfo.name, localTechBase, ctx.equipmentRegistry);
         if (!localStructure) {
           ctx.error(`${location} Structure`, `Invalid structure ${localTechBase} ${localInfo.name}`);
         }

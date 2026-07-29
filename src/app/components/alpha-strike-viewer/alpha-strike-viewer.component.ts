@@ -118,7 +118,7 @@ export class AlphaStrikeViewerComponent {
     private readonly viewerContainer = viewChild<ElementRef<HTMLElement>>('viewerContainer');
     
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
-    readonly cardStyle = computed(() => this.optionsService.options().ASCardStyle);
+    readonly cardStyle = computed(() => this.optionsService.options().colorScheme);
     
     // Column count is the source of truth
     readonly columnCount = signal(1);
@@ -389,7 +389,7 @@ export class AlphaStrikeViewerComponent {
     }
     
     toggleCardStyle(): void {
-        this.optionsService.setOption('ASCardStyle', this.cardStyle() === 'colored' ? 'monochrome' : 'colored');
+        this.optionsService.setOption('colorScheme', this.optionsService.options().colorScheme === 'night' ? 'default' : 'night');
     }
     
     resetZoom(): void {

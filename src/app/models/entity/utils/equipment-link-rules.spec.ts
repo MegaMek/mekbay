@@ -1,7 +1,12 @@
 import { EquipmentFlag } from '../../equipment-flags.type';
 import { MiscEquipment, WeaponEquipment, type WeaponData } from '../../equipment.model';
 import { EntityMountedEquipment } from '../types';
-import { canLinkEquipment, isWeaponEnhancement } from './equipment-link-rules';
+import {
+  canLinkEquipment,
+  isArtemisCompatibleWeapon,
+  isPpcCapacitorCompatibleWeapon,
+  isWeaponEnhancement,
+} from './equipment-link-rules';
 
 describe('equipment link rules', () => {
   it('links weapon enhancements toward only their compatible weapons', () => {
@@ -40,6 +45,27 @@ describe('equipment link rules', () => {
     const launcher = weapon('lrm', { ammoType: 'LRM' }, ['F_ARTEMIS_COMPATIBLE'], 'IS', 'Right');
 
     expect(canLinkEquipment(artemis, launcher, { year: 3145 })).toBeFalse();
+  });
+
+  it('centralizes PPC capacitor compatibility and year boundaries', () => {
+    const compatible = weapon('PPC', {}, ['F_PPC', 'F_PPC_CAPACITOR_COMPATIBLE']).equipment!;
+    const missingCompatibility = weapon('PPC', {}, ['F_PPC']).equipment!;
+    const clanErPpc = weapon(
+      'CLERPPC', {}, ['F_PPC', 'F_PPC_CAPACITOR_COMPATIBLE'], 'Clan',
+    ).equipment!;
+
+    expect(isPpcCapacitorCompatibleWeapon(compatible, { year: 3145 })).toBeTrue();
+    expect(isPpcCapacitorCompatibleWeapon(missingCompatibility, { year: 3145 })).toBeFalse();
+    expect(isPpcCapacitorCompatibleWeapon(clanErPpc, { year: 3100 })).toBeFalse();
+    expect(isPpcCapacitorCompatibleWeapon(clanErPpc, { year: 3101 })).toBeTrue();
+  });
+
+  it('centralizes Artemis launcher compatibility', () => {
+    const compatible = weapon('LRM', {}, ['F_ARTEMIS_COMPATIBLE']).equipment!;
+    const incompatible = weapon('LRM', {}).equipment!;
+
+    expect(isArtemisCompatibleWeapon(compatible)).toBeTrue();
+    expect(isArtemisCompatibleWeapon(incompatible)).toBeFalse();
   });
 });
 

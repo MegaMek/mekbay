@@ -112,12 +112,11 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
 
   // ── Type-specific fields ──
 
-  if (entity instanceof ConvFighterEntity) {
-    if (bb.exists('vstol')) entity.vstol.set(bb.getFirstInt('vstol') === 1);
+  if (entity instanceof ConvFighterEntity && bb.exists('vstol')) {
+    entity.vstol.set(bb.getFirstInt('vstol') === 1);
   }
 
   if (entity instanceof FixedWingSupportEntity) {
-    if (bb.exists('vstol')) entity.vstol.set(bb.getFirstInt('vstol') === 1);
     if (bb.exists('structural_tech_rating'))   entity.structuralTechRating.set(bb.getFirstInt('structural_tech_rating'));
     if (bb.exists('engine_tech_rating'))       entity.engineTechRating.set(bb.getFirstInt('engine_tech_rating'));
     if (bb.exists('baseChassisFireConWeight')) entity.baseChassisFireConWeight.set(bb.getFirstDouble('baseChassisFireConWeight'));

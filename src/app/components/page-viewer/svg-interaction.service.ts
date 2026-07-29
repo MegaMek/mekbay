@@ -62,7 +62,7 @@ import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dial
 import { getInventoryControlGroups, getInventoryControlModeAmmoSummary, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_MODE_STATE, resolveInventoryControlSelectedAmmoOption, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
-import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
+import { CORE_2026_GAME_RULES, separateHeatFireModifier } from '../../models/rules/game-rules';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
 import { UnitStateDropdownComponent, type UnitStateDropdownChoice } from './unit-state-dropdown.component';
@@ -154,7 +154,7 @@ export class SvgInteractionService {
 
     /** When automations are off, damage/heat changes consolidate immediately (no pending state). */
     private get consolidateImmediately(): boolean {
-        return !this.optionsService.options().useAutomations;
+        return !this.optionsService.options().trackPhaseAndTurn;
     }
 
     constructor() {
@@ -909,7 +909,6 @@ export class SvgInteractionService {
     private setupCritSlotInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         const unit = this.unit();
         if (!unit) return;
-        const equipmentList = this.dataService.getEquipments();
         svg.querySelectorAll('.critSlot').forEach(el => {
             if (el.getAttribute('hittable') != '1') return; // Only add handlers to hittable crit slots
             const svgEl = el as SVGElement;
@@ -1019,7 +1018,7 @@ export class SvgInteractionService {
                             this.toastService.showToast(`Emptied ${labelText}`, 'info');
                         } else if (choice.value == 'Set Ammo') {
                             if (unit.isEquipmentUnavailable(critSlot)) return;
-                            const entry = getAmmoControlEntryForCriticalSlot(unit, critSlot, equipmentList);
+                            const entry = getAmmoControlEntryForCriticalSlot(unit, critSlot, this.dataService.getEquipmentRegistry());
                             if (!entry) return;
                             if (await setAmmoEntry(entry, {
                                 toastService: this.toastService,
@@ -1072,7 +1071,7 @@ export class SvgInteractionService {
             const unit = this.unit();
             const rules = unit?.getInventoryControlRules?.()
                 ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext());
-            syncSvgMode(entry, getSelectedInventoryControlMode(entry, this.dataService.getEquipments(), rules));
+            syncSvgMode(entry, getSelectedInventoryControlMode(entry, this.dataService.getEquipmentRegistry(), rules));
 
             const selectEntry = (button: SVGElement) => {
                 const unit = this.unit();
@@ -1193,7 +1192,7 @@ export class SvgInteractionService {
         const rules = unit?.getInventoryControlRules?.()
             ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext());
         return entry.states.get(INVENTORY_CONTROL_MODE_STATE)
-            ?? getSelectedInventoryControlMode(entry, this.dataService.getEquipments(), rules);
+            ?? getSelectedInventoryControlMode(entry, this.dataService.getEquipmentRegistry(), rules);
     }
 
     private toggleRiscLaserPulseMode(module: MountedEquipment): void {
@@ -1264,12 +1263,12 @@ export class SvgInteractionService {
         const gameRules = unit.gameRules ?? CORE_2026_GAME_RULES;
         const rules = unit.getInventoryControlRules?.()
             ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext());
-        const ammoSummary = getInventoryControlModeAmmoSummary(entry, this.dataService.getEquipments(), rules);
+        const ammoSummary = getInventoryControlModeAmmoSummary(entry, this.dataService.getEquipmentRegistry(), rules);
         const selectedAmmo = resolveInventoryControlSelectedAmmoOption(
             ammoSummary.options,
             unit.getInventoryControlEntryAmmoOption?.(entry.id)
         )?.ammo ?? null;
-        const row = getInventoryControlGroups(unit, this.dataService.getEquipments(), rules)
+        const row = getInventoryControlGroups(unit, this.dataService.getEquipmentRegistry(), rules)
             .flatMap(group => group.rows)
             .find(candidate => candidate.entry.id === entry.id);
         if (!row) return '';
@@ -1280,10 +1279,12 @@ export class SvgInteractionService {
         const hitResolution = gameRules.resolveToHit({
             subject: entry,
             stateModifier: state.hitMod,
+            stateModifierBreakdown: state.hitModifierBreakdown,
             stateWeakened: state.weakenedHitMod ?? false,
             range: rangeSelection?.range ?? null,
             adjustments: rules.resolveToHitAdjustments?.(entry, selectedAmmo)
         });
+        const { hitModifier, heatFireModifier } = separateHeatFireModifier(hitResolution);
         const missingMovementModifier = unit.turnState().missingAttackMovementModifier();
         return inventoryTargetNumberText({
             entry,
@@ -1298,7 +1299,8 @@ export class SvgInteractionService {
             pilotingModifierBreakdown: unit.rules.getTargetNumberPilotingModifierBreakdown(),
             missingMovementModifier,
             attackModifierBreakdown: unit.turnState().getAttackModifierBreakdown(),
-            hitModifier: hitResolution.value,
+            hitModifier,
+            heatFireModifier,
             gameRules
         });
     }
@@ -2028,7 +2030,7 @@ export class SvgInteractionService {
         this.state.isPickerOpen.set(true);
 
         const rect = opts.el.getBoundingClientRect();
-        const lightTheme = this.optionsService.options().sheetsColor === 'night';
+        const lightTheme = this.optionsService.options().colorScheme === 'night';
 
         // Calculate position based on target type
         let position: PickerPosition;
@@ -2102,7 +2104,7 @@ export class SvgInteractionService {
         this.state.isPickerOpen.set(true);
 
         const rect = opts.el.getBoundingClientRect();
-        const lightTheme = this.optionsService.options().sheetsColor === 'night';
+        const lightTheme = this.optionsService.options().colorScheme === 'night';
 
         const position: PickerPosition = {
             x: opts.position?.x ?? (rect.left + rect.width / 2),

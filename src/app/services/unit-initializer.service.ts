@@ -112,12 +112,10 @@ export class UnitInitializerService {
 
         // Clear element references from inventory
         for (const item of unit.getInventory()) {
-            item.el = undefined;
-            item.critSlots = [];
+            item.detachRuntimeContext();
             if (item.linkedWith) {
                 for (const linked of item.linkedWith) {
-                    linked.el = undefined;
-                    linked.critSlots = [];
+                    linked.detachRuntimeContext();
                 }
             }
         }
@@ -215,7 +213,7 @@ export class UnitInitializerService {
 
         const criticalSlots: CriticalSlot[] = unit.getCritSlots().filter(crit => !crit.loc || crit.slot === undefined);
         const critSlotMatrix = unit.getCritSlotsAsMatrix();
-        const equipmentList = this.getDataService().getEquipments();
+        const dataService = this.getDataService();
         let slotsChanged = false;
 
         critSlotsEl.forEach(critSlotEl => {
@@ -237,7 +235,7 @@ export class UnitInitializerService {
                 critSlot.id = id;
                 const equipmentName = critSlot.name || name;
                 critSlot.name = equipmentName;
-                critSlot.eq = equipmentName ? equipmentList[equipmentName] : undefined;
+                critSlot.eq = equipmentName ? dataService.findEquipment(equipmentName) : undefined;
                 if (armored) {
                     critSlot.armored = true; // in case it was added later
                 }
@@ -252,7 +250,7 @@ export class UnitInitializerService {
                 loc: loc,
                 slot: slot,
                 hits: 0,
-                eq: name ? equipmentList[name] : undefined
+                eq: name ? dataService.findEquipment(name) : undefined
             };
 
             if (critSlotEl.classList.contains('ammoSlot')) {
@@ -312,6 +310,7 @@ export class UnitInitializerService {
 
     private getInventoryElements(unit: CBTForceUnit, svg: SVGSVGElement, inventoryEntryEls: NodeListOf<SVGElement>): MountedEquipment[] {
         const inventoryEntries: MountedEquipment[] = [];
+        const dataService = this.getDataService();
         const allCritSlots = unit.getCritSlots();
         const hasAmmoCritSlots = allCritSlots.some(slot => slot.eq instanceof AmmoEquipment);
         const currentInventory = unit.getInventory();
@@ -327,7 +326,7 @@ export class UnitInitializerService {
             let locations = new Set<string>();
             if (critSlots.length > 0) {
                 name = critSlots[0].name ?? '';
-                eq = this.getDataService().getEquipments()[name];
+                eq = dataService.findEquipment(name);
                 critSlots.forEach(slot => {
                     const loc = slot.loc;
                     if (loc) {
@@ -336,7 +335,7 @@ export class UnitInitializerService {
                 });
             } else {
                 name = id.split('@')[0];
-                eq = this.getDataService().getEquipments()[name];
+                eq = dataService.findEquipment(name);
             }
             if (locations.size === 0) {
                 // If no locations found, try to get it from entry itself
@@ -357,16 +356,16 @@ export class UnitInitializerService {
             let inventoryEntry: MountedEquipment;
             const existingEntry = currentInventory.find(item => item.id === id);
             if (existingEntry) {
-                inventoryEntry = existingEntry.clone();
-                // full refresh (but is it really needed?)
-                inventoryEntry.name = iPhysAtk || name;
-                inventoryEntry.locations = locations;
-                inventoryEntry.equipment = eq;
-                inventoryEntry.physical = !!iPhysAtk;
-                inventoryEntry.linkedWith = null;
-                inventoryEntry.parent = null;
-                inventoryEntry.critSlots = critSlots;
-                inventoryEntry.el = entryEl;
+                inventoryEntry = MountedEquipment.from(existingEntry.clone({
+                    name: iPhysAtk || name,
+                    locations,
+                    equipment: eq,
+                    intrinsicPhysicalAttack: !!iPhysAtk,
+                    linkedWith: null,
+                    parent: null,
+                    critSlots,
+                    el: entryEl,
+                }));
             } else {
                 inventoryEntry = new MountedEquipment({
                     owner: unit,
@@ -374,7 +373,7 @@ export class UnitInitializerService {
                     name: iPhysAtk || name,
                     locations: locations,
                     equipment: eq,
-                    physical: !!iPhysAtk,
+                    intrinsicPhysicalAttack: !!iPhysAtk,
                     linkedWith: null,
                     parent: null,
                     destroyed: false,
@@ -386,10 +385,7 @@ export class UnitInitializerService {
             const subElements = entryEl.querySelectorAll('.inventoryEntry') as NodeListOf<SVGElement>;
             if (subElements.length > 0) {
                 const linkedWith = this.getInventoryElements(unit, svg, subElements);
-                linkedWith.forEach(linkedEntry => {
-                    linkedEntry.parent = inventoryEntry;
-                });
-                inventoryEntry.linkedWith = linkedWith;
+                inventoryEntry.setLinkedEquipment(linkedWith);
             }
 
             inventoryEntries.push(inventoryEntry);
@@ -399,9 +395,9 @@ export class UnitInitializerService {
 
     private getDirectAmmoInventoryEntries(unit: CBTForceUnit, currentInventory: MountedEquipment[]): MountedEquipment[] {
         const inventoryEntries: MountedEquipment[] = [];
-        const equipmentList = this.getDataService().getEquipments();
+        const dataService = this.getDataService();
         unit.getUnit().comp.forEach((component, index) => {
-            const equipment = component.eq ?? equipmentList[component.id];
+            const equipment = component.eq ?? dataService.findEquipment(component.id);
             if (!(equipment instanceof AmmoEquipment)) return;
 
             const binCount = Math.max(1, component.q || 1);
@@ -422,7 +418,7 @@ export class UnitInitializerService {
                     name: component.id,
                     locations,
                     equipment,
-                    physical: false,
+                    intrinsicPhysicalAttack: false,
                     linkedWith: null,
                     parent: null,
                     destroyed: existingEntry?.committedDestroyedState() ?? false,
@@ -441,10 +437,10 @@ export class UnitInitializerService {
         if (unit.getUnit().type !== 'Infantry' || unit.getUnit().subtype === 'Battle Armor') return [];
 
         const inventoryEntries: MountedEquipment[] = [];
-        const equipmentList = this.getDataService().getEquipments();
+        const dataService = this.getDataService();
         unit.getUnit().comp.forEach((component, index) => {
             if (component.l !== 'FGUN') return;
-            const equipment = component.eq ?? equipmentList[component.id];
+            const equipment = component.eq ?? dataService.findEquipment(component.id);
             if (!(equipment instanceof WeaponEquipment)) return;
 
             const gunCount = Math.max(1, component.q || 1);
@@ -459,7 +455,7 @@ export class UnitInitializerService {
                     name: component.id,
                     locations,
                     equipment,
-                    physical: false,
+                    intrinsicPhysicalAttack: false,
                     linkedWith: null,
                     parent: null,
                     destroyed: existingEntry?.committedDestroyedState() ?? false,
@@ -545,7 +541,7 @@ export class UnitInitializerService {
                 name: critSlots[0].name || id.split('@')[0],
                 locations: new Set(critSlots.map(slot => slot.loc).filter((loc): loc is string => !!loc)),
                 equipment,
-                physical: false,
+                intrinsicPhysicalAttack: false,
                 linkedWith: null,
                 parent: null,
                 destroyed: existingEntry?.committedDestroyedState() ?? false,
@@ -586,7 +582,7 @@ export class UnitInitializerService {
         const materializedInventory = this.materializeBattleArmorWeaponMounts(unit, inventoryData, unit.getInventory());
         materializedInventory.push(...materializeIntrinsicOneShotAmmoForInventory(
             materializedInventory,
-            this.getDataService().getEquipments(),
+            this.getDataService().getEquipmentRegistry(),
         ));
         unit.setInventory(materializedInventory, true);
     }

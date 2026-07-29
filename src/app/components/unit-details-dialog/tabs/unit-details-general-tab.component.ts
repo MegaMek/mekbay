@@ -428,10 +428,9 @@ export class UnitDetailsGeneralTabComponent {
     private getHydratedComponents(): UnitComponent[] {
         const u = this.unit();
         if (!u?.comp) return [];
-        const equipmentList = this.dataService.getEquipments();
         return u.comp.map(component => ({
             ...component,
-            eq: component.eq ?? equipmentList[component.id] ?? null
+            eq: component.eq ?? this.dataService.findEquipment(component.id)
         }));
     }
 

@@ -33,7 +33,7 @@ describe('UnitSearchComponent card virtualization', () => {
     let openDialogs: unknown[];
     const optionsSignal = signal({
         ASUseHex: false,
-        ASCardStyle: 'monochrome',
+        colorScheme: 'default' as const,
         availabilitySource: 'mul' as 'mul' | 'megamek',
         unitSearchExpandedViewLayout: 'panel-list-filters',
         unitSearchViewMode: 'card' as 'list' | 'card' | 'chassis' | 'table',
@@ -135,7 +135,7 @@ describe('UnitSearchComponent card virtualization', () => {
     };
 
     function createUnit(name: string, overrides: TestUnitOverrides = {}): Unit {
-        return createEmptyUnit({ name, ...overrides });
+        return createEmptyUnit({ name, ...overrides, as: { PV: 1, ...overrides.as } });
     }
 
     function dispatchWindowKey(key: string): KeyboardEvent {
@@ -153,7 +153,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filteredUnitsSignal.set([]);
         optionsSignal.set({
             ASUseHex: false,
-            ASCardStyle: 'monochrome',
+            colorScheme: 'default',
             availabilitySource: 'mul',
             unitSearchExpandedViewLayout: 'panel-list-filters',
             unitSearchViewMode: 'card',

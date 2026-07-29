@@ -29,7 +29,7 @@ export function getInfantryTonnage(entity: InfantryEntity): number {
     }
     if (specializations.has('paratroops')) multiplier += 0.05;
     if (specializations.has('paramedics')) multiplier += 0.05;
-    if (entity.hasAntiMekGear()) multiplier += 0.015;
+    if (entity.canAntiMech()) multiplier += 0.015;
 
     weight = activeTroopers * multiplier;
     for (const mounted of entity.equipment()) {

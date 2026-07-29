@@ -34,11 +34,11 @@
 import type { MountedEquipment } from "../models/mounted-equipment.model";
 import type { CriticalSlot } from "../models/force-serialization";
 import { VehicleRules } from "../models/rules/vehicle-rules";
+import type { MountedEquipmentRuleState } from "../models/rules/unit-type-rules";
 import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 import { committedCriticalHitCount, isRepeatableMotiveHitId, MOTIVE_HIT_PIP_COUNT } from "../models/rules/vehicle-motive-hit.util";
 import { UnitSvgService } from "./unit-svg.service";
 
-type VehicleEntryState = { isDamaged: boolean; isDisabled: boolean; hitMod: number; weakenedHitMod: boolean };
 const VTOL_ROTOR_CRIT_ID = 'rotor';
 
 /*
@@ -46,7 +46,7 @@ const VTOL_ROTOR_CRIT_ID = 'rotor';
  */
 export class UnitSvgVehicleService extends UnitSvgService {
     private get vehicleRules(): VehicleRules { return this.unit.rules as VehicleRules; }
-    private currentEntryStates: Map<MountedEquipment, VehicleEntryState> | null = null;
+    private currentEntryStates: Map<MountedEquipment, MountedEquipmentRuleState> | null = null;
 
     protected override updateAllDisplays() {
         if (!this.unit.svg()) return;
@@ -163,7 +163,7 @@ export class UnitSvgVehicleService extends UnitSvgService {
         try {
             this.unit.getInventory().forEach(entry => {
                 if (!entry.el) return;
-                if (entry.physical) {
+                if (entry.isIntrinsicPhysicalAttack()) {
                     if (entry.name === 'charge') {
                         this.renderChargeDamage(entry, this.vehicleRules.chargeDamage());
                     }
@@ -189,6 +189,7 @@ export class UnitSvgVehicleService extends UnitSvgService {
         return this.unit.gameRules.resolveToHit({
             subject: entry,
             stateModifier: state.hitMod,
+            stateModifierBreakdown: state.hitModifierBreakdown,
             stateWeakened: state.weakenedHitMod,
             range,
             adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)

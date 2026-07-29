@@ -58,7 +58,7 @@ import { AsLayoutBaseComponent } from './layout-base.component';
     styleUrls: ['./layout-large-vessel-1.component.scss'],
     host: {
         '[class.interactive]': 'interactive()',
-        '[class.monochrome]': 'cardStyle() === "monochrome"',
+        '[class.monochrome]': 'cardStyle() === "default"',
     }
 })
 export class AsLayoutLargeVessel1Component extends AsLayoutBaseComponent {

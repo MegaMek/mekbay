@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 
 import { WeaponEquipment } from '../../models/equipment.model';
+import { EquipmentRegistry } from '../../models/equipment-lookup';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { MountedEquipment } from '../../models/mounted-equipment.model';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
@@ -27,7 +28,7 @@ function weaponEntry(id: string): MountedEquipment {
         name: id,
         equipment,
         destroyed: false,
-        physical: false,
+        intrinsicPhysicalAttack: false,
         states: new Map<string, string>(),
         linkedWith: null,
         el,
@@ -84,7 +85,9 @@ function createContext(): EquipmentDialogContext {
     return {
         toastService: { showToast: jasmine.createSpy('showToast') },
         dialogsService: { showNoticeHtml: jasmine.createSpy('showNoticeHtml').and.resolveTo(), showError: jasmine.createSpy('showError').and.resolveTo() },
-        dataService: { getEquipments: () => ({}) },
+        dataService: {
+            getEquipmentRegistry: () => new EquipmentRegistry({}),
+        },
         registry: {
             getChoices: () => [],
             handleSelection: () => false,

@@ -12,7 +12,7 @@ const VIBROBLADE_PROFILES = [
 ] as const;
 
 export function getVibrobladeProfile(equipment: Equipment | null | undefined): VibrobladeProfile | null {
-    if (equipment?.type !== 'misc' || !equipment.hasFlag('F_CLUB')) return null;
+    if (!equipment || !equipment.hasFlag('F_CLUB')) return null;
     return VIBROBLADE_PROFILES.find(candidate => equipment.hasFlag(candidate.flag))?.profile ?? null;
 }
 

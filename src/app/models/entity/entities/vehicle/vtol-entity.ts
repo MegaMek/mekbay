@@ -43,6 +43,10 @@ import type { TechRatingSource, UnitType } from '../../types';
 export class VtolEntity extends VehicleEntity {
   override readonly entityType: EntityType = 'VTOL';
 
+  override componentLocationOrder(): readonly string[] {
+    return ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Rotor'];
+  }
+
   override unitType(): UnitType {
     return 'VTOL';
   }

@@ -38,6 +38,7 @@ import type { Unit, UnitComponent } from '../models/units.model';
 import type { DataService } from '../services/data.service';
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import type { Injector } from '@angular/core';
+import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
 import { getSelectedInventoryControlMode, INVENTORY_CONTROL_MODE_STATE, syncSvgMode } from './inventory-control.util';
 
 export interface CBTPrintServices {
@@ -186,7 +187,7 @@ export class CBTPrintUtil {
             }
             const defaultMode = getSelectedInventoryControlMode(
                 entry,
-                {},
+                EMPTY_EQUIPMENT_REGISTRY,
                 printUnit.getInventoryControlRules()
             );
             syncSvgMode(entry, defaultMode, false);

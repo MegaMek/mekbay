@@ -53,6 +53,9 @@ import { EquipmentRegistry } from '../../../equipment-lookup';
 // ============================================================================
 
 export class BattleArmorEntity extends InfantryBaseEntity {
+  override componentLocationOrder(): readonly string[] {
+    return ['Squad'];
+  }
   override readonly entityType: EntityType = 'BattleArmor';
 
   override unitSubtype(): UnitSubtype {
@@ -97,6 +100,59 @@ export class BattleArmorEntity extends InfantryBaseEntity {
 
   readonly baseJumpMP = computed(() => this.motiveType() === 'UMU' ? 0 : this.propulsionMP());
   override readonly umuMP = computed(() => this.motiveType() === 'UMU' ? this.propulsionMP() : 0);
+  
+  readonly mechanizedCapable = computed(() => {
+    if (this.chassisType() === 'Quad') return false;
+
+    const count = (flag: 'F_MAGNETIC_CLAMP' | 'F_BASIC_MANIPULATOR' | 'F_ARMORED_GLOVE' | 'F_BATTLE_CLAW') =>
+      this.equipment().filter(mount => mount.equipment?.hasFlag(flag)).length;
+    if (count('F_MAGNETIC_CLAMP') > 0) return true;
+
+    const hasBasicManipulator = count('F_BASIC_MANIPULATOR') > 0;
+    const hasBattleClaw = count('F_BATTLE_CLAW') > 0;
+    switch (this.weightClass()) {
+      case 'Ultra Light':
+      case 'Light':
+        return count('F_ARMORED_GLOVE') > 1 || hasBasicManipulator || hasBattleClaw;
+      case 'Medium':
+      case 'Heavy':
+        return hasBasicManipulator || hasBattleClaw;
+      case 'Assault':
+        return false;
+      default:
+        return false;
+    }
+  });
+
+  /** Whether the technical specs indicate that this unit can make Leg Attacks. */
+  readonly legAttackCapable = computed(() => this.hasAntiMekManipulators());
+
+  /** Whether the technical specs indicate that this unit can make Swarm Attacks. */
+  readonly swarmAttackCapable = computed(() =>
+    this.motiveType() !== 'UMU' && this.hasAntiMekManipulators());
+
+  override readonly canAntiMech = computed(() =>
+    this.legAttackCapable() || this.swarmAttackCapable(),
+  );
+
+  private hasAntiMekManipulators(): boolean {
+    if (this.chassisType().toLowerCase().includes('quad')) return false;
+
+    const count = (flag: 'F_BASIC_MANIPULATOR' | 'F_ARMORED_GLOVE' | 'F_BATTLE_CLAW') =>
+      this.equipment().filter(mount => mount.equipment?.hasFlag(flag)).length;
+    const basicManipulators = count('F_BASIC_MANIPULATOR');
+    const battleClaws = count('F_BATTLE_CLAW');
+
+    switch (this.weightClass()) {
+      case 'Ultra Light':
+      case 'Light':
+        return count('F_ARMORED_GLOVE') > 1 || basicManipulators > 1 || battleClaws > 0;
+      case 'Medium':
+        return basicManipulators > 1 || battleClaws > 0;
+      default:
+        return false;
+    }
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  OVERRIDES - BA uses canonical motive values (no compound infantry strings)

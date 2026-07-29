@@ -17,12 +17,16 @@ describe('fighter construction mass', () => {
   it('uses nearest-half controls and upward-half VSTOL mass for conventional fighters', () => {
     const entity = new TestConvFighterEntity();
     entity.setTonnage(25);
-    entity.vstol.set(true);
     entity.fuel.set(160);
+    const withoutVstol = calculateFighterWeightBreakdown(entity);
+
+    entity.vstol.set(true);
     const result = calculateFighterWeightBreakdown(entity);
+
     expect(result.controls).toBe(2.5);
     expect(result.vstol).toBe(1.5);
     expect(result.fuel).toBe(1);
+    expect(result.rounded - withoutVstol.rounded).toBe(1.5);
   });
 
   it('adds shielding mass for fusion-powered conventional fighters', () => {

@@ -20,12 +20,12 @@ export class InventoryModeHandler extends EquipmentInteractionHandler {
     }
 
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
-        const choices = getInventoryControlModeChoices(equipment, context.dataService.getEquipments());
+        const choices = getInventoryControlModeChoices(equipment);
         if (choices.length === 0) return [];
 
         const currentMode = getSelectedInventoryControlMode(
             equipment,
-            context.dataService.getEquipments(),
+            context.dataService.getEquipmentRegistry(),
             equipment.owner.getInventoryControlRules?.() ?? {}
         ) ?? choices[0].value;
         return [

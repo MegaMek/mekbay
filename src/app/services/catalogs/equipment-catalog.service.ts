@@ -35,7 +35,7 @@ import { Injectable, inject } from '@angular/core';
 
 import { REMOTE_HOST } from '../../models/common.model';
 import { EMPTY_EQUIPMENT_REGISTRY, EquipmentRegistry } from '../../models/equipment-lookup';
-import { type Equipment, type EquipmentMap, type RawEquipmentData, createEquipment } from '../../models/equipment.model';
+import { type EquipmentMap, type RawEquipmentData, createEquipment } from '../../models/equipment.model';
 import { DbService } from '../db.service';
 import { LoggerService } from '../logger.service';
 import { CatalogBaseService } from './catalog-base.service';
@@ -57,20 +57,8 @@ export class EquipmentCatalogService extends CatalogBaseService<RawEquipmentData
         return `${REMOTE_HOST}/equipment2.json`;
     }
 
-    public getEquipments(): EquipmentMap {
-        return this.equipmentRegistry.equipment;
-    }
-
     public getEquipmentRegistry(): EquipmentRegistry {
         return this.equipmentRegistry;
-    }
-
-    public getEquipmentByName(internalName: string): Equipment | undefined {
-        return this.equipmentRegistry.equipment[internalName];
-    }
-
-    public findEquipment(name: string): Equipment | undefined {
-        return this.equipmentRegistry.find(name) ?? undefined;
     }
 
     protected override hasHydratedData(): boolean {

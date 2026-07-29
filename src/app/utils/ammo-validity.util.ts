@@ -3,6 +3,7 @@ import { effectiveTechDateYear, TechAdvancementDates } from '../models/entity/ty
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { AmmoEquipment, AmmoType, WeaponEquipment } from '../models/equipment.model';
 import type { Era } from '../models/eras.model';
+import { isArtemisCompatibleWeapon } from '../models/entity/utils/equipment-link-rules';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { Unit, UnitType } from '../models/units.model';
 
@@ -96,7 +97,7 @@ export class AmmoValidityUtil {
     private static isArtemisSupportedWeaponEntry(entry: MountedEquipment, ammo: AmmoEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly EquipmentFlag[]): boolean {
         const equipment = entry.equipment;
         return this.isWeaponEquipment(equipment)
-            && equipment.hasFlag('F_ARTEMIS_COMPATIBLE')
+            && isArtemisCompatibleWeapon(equipment)
             && this.weaponUsesAmmo(equipment, ammo)
             && this.hasArtemisEnhancementForWeapon(entry, inventory, artemisFlags);
     }

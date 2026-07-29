@@ -53,8 +53,25 @@ import {
 export { LEG_LOCATIONS } from '../entity/types';
 import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
 import { WeaponEquipment } from '../equipment.model';
+import type { ToHitModifierBreakdownEntry } from './game-rules';
 
 type ArmLocation = 'LA' | 'RA';
+
+interface MekArmStatus {
+    destroyedShoulder: boolean;
+    destroyedHand: boolean;
+    destroyedUpperArms: boolean;
+    destroyedLowerArms: boolean;
+    canPunch: boolean;
+    canPhysWeapon: boolean;
+    pushMod: number;
+    punchMod: number;
+    fireMod: number;
+    physWeaponMod: number;
+    hasAES: boolean;
+    hasFunctionalAES: boolean;
+    singleArmMod: number;
+}
 
 const SIDE_TORSO_LOCATIONS = new Set(['LT', 'RT']);
 export const TORSO_LOCATIONS = new Set(['CT', 'LT', 'RT']);
@@ -796,6 +813,10 @@ export class MekRules extends UnitTypeRulesBase {
             destroyedArmActuatorsCount[loc as 'LA' | 'RA'] += destroyedUpperArmsCount + destroyedLowerArmsCount;
 
             return {
+                destroyedShoulder,
+                destroyedHand,
+                destroyedUpperArms,
+                destroyedLowerArms,
                 canPunch: !destroyedShoulder,
                 canPhysWeapon: !destroyedShoulder && !destroyedHand,
                 pushMod: destroyedShoulder ? 2 : 0,
@@ -809,7 +830,7 @@ export class MekRules extends UnitTypeRulesBase {
                 singleArmMod: hasFunctionalAES ? -1 : 0,
             };
         };
-        const locationModifiers: { [key: string]: { canPunch: boolean; canPhysWeapon: boolean; pushMod: number; punchMod: number; fireMod: number; physWeaponMod: number; hasAES: boolean; hasFunctionalAES: boolean; singleArmMod: number; } | null } = {
+        const locationModifiers: Record<string, MekArmStatus | null> = {
             'LA': getArmsModifiers('LA'),
             'RA': getArmsModifiers('RA'),
         };
@@ -1501,7 +1522,7 @@ export class MekRules extends UnitTypeRulesBase {
         let attackType: 'punch' | 'kick' | 'club' | 'physWeapon' | null = null;
         let location: string | undefined;
         let ignoreMyomer = false;
-        if (entry.physical) {
+        if (entry.isIntrinsicPhysicalAttack()) {
             switch (entry.name.toLowerCase()) {
                 case 'punch':
                     attackType = 'punch';
@@ -1515,9 +1536,9 @@ export class MekRules extends UnitTypeRulesBase {
                     attackType = 'kick';
                     break;
             }
-        } else if (entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) {
+        } else if (entry.isPhysicalWeapon()) {
             attackType = 'physWeapon';
-            ignoreMyomer = entry.equipment.flags.has('S_FLAIL');
+            ignoreMyomer = !!entry.equipment?.flags.has('S_FLAIL');
         }
         const baseDamage = Number.parseInt(display.damage, 10);
         if (!attackType || !Number.isFinite(baseDamage)) return display;
@@ -1568,27 +1589,28 @@ export class MekRules extends UnitTypeRulesBase {
             canFire = false;
         }
 
-        let globalFireMod = heatFireModifier;
+        let rangedSensorModifier = 0;
         if (systemsStatus.cockpitLoc === 'HD' && systemsStatus.destroyedSensorsCount > 0) {
-            globalFireMod += (systemsStatus.destroyedSensorsCount * 2);
+            rangedSensorModifier = systemsStatus.destroyedSensorsCount * 2;
         } else if (systemsStatus.cockpitLoc !== 'HD' && systemsStatus.destroyedSensorsCountInHD < 2 && systemsStatus.destroyedSensorsCount >= 1) {
-            globalFireMod += systemsStatus.destroyedSensorsCount * 2;
+            rangedSensorModifier = systemsStatus.destroyedSensorsCount * 2;
         }
 
-        let globalMod = 0;
+        let torsoCockpitHeadSensorModifier = 0;
         if (systemsStatus.cockpitLoc !== 'HD' && systemsStatus.destroyedSensorsCountInHD >= 2) {
-            globalMod += 4;
+            torsoCockpitHeadSensorModifier = 4;
         }
 
         const locationModifiers = systemsStatus.locationModifiers;
         return {
             canFire,
-            globalFireMod,
+            heatFireModifier,
+            rangedSensorModifier,
             fireMod: {
                 'LA': locationModifiers['LA']?.fireMod || 0,
                 'RA': locationModifiers['RA']?.fireMod || 0,
             },
-            globalMod,
+            torsoCockpitHeadSensorModifier,
             singleArmMod: {
                 'LA': locationModifiers['LA']?.singleArmMod || 0,
                 'RA': locationModifiers['RA']?.singleArmMod || 0,
@@ -1635,71 +1657,231 @@ export class MekRules extends UnitTypeRulesBase {
         const isDamaged = entry.committedDestroyed() || physicallyDestroyed || this.isEntryDestroyedByCriticalDamage(entry);
         let isDisabled = functionallyDestroyed || this.isEntryStateDisabled(entry);
         let hitMod = 0;
+        const hitModifierBreakdown: ToHitModifierBreakdownEntry[] = [];
         let weakenedHitMod = false;
 
         const physical = this.physicalCombat();
         const fire = this.fireControl();
         const systemsStatus = this.systemsStatus();
-        if (!physical || !fire) return { isDamaged, isDisabled, hitMod, weakenedHitMod };
+        if (!physical || !fire) return { isDamaged, isDisabled, hitMod, hitModifierBreakdown, weakenedHitMod };
 
-        if (fire.globalMod !== 0) hitMod += fire.globalMod;
+        if (fire.torsoCockpitHeadSensorModifier !== 0) {
+            hitMod += fire.torsoCockpitHeadSensorModifier;
+            hitModifierBreakdown.push({
+                label: 'Head Sensors Destroyed (Torso-Mounted Cockpit)',
+                modifier: fire.torsoCockpitHeadSensorModifier,
+                negative: true
+            });
+        }
 
-        if (entry.physical) {
-            switch (entry.name) {
+        if (entry.isIntrinsicPhysicalAttack()) {
+            switch (entry.name.toLowerCase()) {
                 case 'punch': {
                     const loc = Array.from(entry.locations!)[0] as ArmLocation;
                     if (loc in physical.canPunch && !physical.canPunch[loc]) isDisabled = true;
-                    if (loc in physical.punchMod) hitMod += physical.punchMod[loc];
-                    hitMod += fire.singleArmMod[loc] ?? 0;
+                    if (loc in physical.punchMod) {
+                        hitMod += physical.punchMod[loc];
+                        this.addArmActuatorBreakdown(hitModifierBreakdown, systemsStatus.locationModifiers[loc], loc, {
+                            hand: 1,
+                            upperArm: 2,
+                            lowerArm: 2
+                        });
+                    }
+                    const aesModifier = fire.singleArmMod[loc] ?? 0;
+                    hitMod += aesModifier;
+                    this.addArmAESBreakdown(hitModifierBreakdown, systemsStatus.locationModifiers[loc], loc, aesModifier);
                     if (this.hasBrokenArmAES(systemsStatus.locationModifiers, loc)) weakenedHitMod = true;
                     break;
                 }
-                case 'club':
+                case 'club': {
                     if (!physical.canClub) isDisabled = true;
                     hitMod += physical.clubMod;
+                    this.addTwoArmPhysicalBreakdown(hitModifierBreakdown, systemsStatus.locationModifiers, 'club');
                     if (this.hasLostClubAESBonus(systemsStatus.locationModifiers)) weakenedHitMod = true;
                     break;
-                case 'push':
+                }
+                case 'push': {
                     if (!physical.canPush) isDisabled = true;
                     hitMod += physical.pushMod || 0;
+                    this.addTwoArmPhysicalBreakdown(hitModifierBreakdown, systemsStatus.locationModifiers, 'push');
                     if (this.hasBrokenPairedArmAES(systemsStatus.locationModifiers)) weakenedHitMod = true;
                     break;
+                }
                 case 'kick [talons]':
-                case 'kick':
+                case 'kick': {
                     if (!physical.canKick) isDisabled = true;
                     hitMod += physical.kickMod;
+                    if (systemsStatus.destroyedLegActuatorsCount > 0) {
+                        hitModifierBreakdown.push({
+                            label: this.countedDestroyedLabel('Leg Actuator', systemsStatus.destroyedLegActuatorsCount),
+                            modifier: systemsStatus.destroyedLegActuatorsCount * 2,
+                            negative: true
+                        });
+                    }
+                    if (systemsStatus.destroyedFeetCount > 0) {
+                        hitModifierBreakdown.push({
+                            label: this.countedDestroyedLabel('Foot Actuator', systemsStatus.destroyedFeetCount),
+                            modifier: systemsStatus.destroyedFeetCount,
+                            negative: true
+                        });
+                    }
+                    if (systemsStatus.hasFunctionalLegAES) {
+                        hitModifierBreakdown.push({ label: 'Leg AES', modifier: -1 });
+                    } else if (systemsStatus.hasLegAES) {
+                        hitModifierBreakdown.push({ label: 'Leg AES Destroyed', modifier: 0, negative: true });
+                    }
                     if (systemsStatus.hasLegAES && !systemsStatus.hasFunctionalLegAES) weakenedHitMod = true;
                     break;
+                }
             }
-        } else if (entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) {
+        } else if (entry.isPhysicalWeapon()) {
             entry.locations?.forEach(loc => {
                 if ((loc in physical.canPhysWeapon) && !physical.canPhysWeapon[loc as ArmLocation]) isDisabled = true;
-                if (loc in physical.physWeaponMod) hitMod += physical.physWeaponMod[loc as ArmLocation];
+                if (loc in physical.physWeaponMod) {
+                    hitMod += physical.physWeaponMod[loc as ArmLocation];
+                    const armLoc = loc as ArmLocation;
+                    const armStatus = systemsStatus.locationModifiers[armLoc];
+                    this.addArmActuatorBreakdown(hitModifierBreakdown, armStatus, armLoc, {
+                        hand: 2,
+                        upperArm: 2,
+                        lowerArm: 2
+                    });
+                    this.addArmAESBreakdown(hitModifierBreakdown, armStatus, armLoc, armStatus?.singleArmMod ?? 0);
+                }
                 if (this.hasBrokenArmAES(systemsStatus.locationModifiers, loc)) weakenedHitMod = true;
             });
         } else {
             if (entry.locations?.size === 1) {
                 const singleLoc = Array.from(entry.locations)[0];
                 if (singleLoc in fire.singleArmMod) {
-                    hitMod += fire.singleArmMod[singleLoc as ArmLocation];
+                    const armModifier = fire.singleArmMod[singleLoc as ArmLocation];
+                    hitMod += armModifier;
+                    const armStatus = systemsStatus.locationModifiers[singleLoc];
+                    if (armStatus?.hasAES) {
+                        hitModifierBreakdown.push(armStatus.hasFunctionalAES
+                            ? { label: `Arm AES (${singleLoc})`, modifier: -1 }
+                            : { label: `Arm AES Destroyed (${singleLoc})`, modifier: 0, negative: true });
+                    }
                     if (this.hasBrokenArmAES(systemsStatus.locationModifiers, singleLoc)) weakenedHitMod = true;
                 }
             }
             if (!fire.canFire) isDisabled = true;
-            if (fire.globalFireMod) hitMod += fire.globalFireMod;
+            if (fire.heatFireModifier) {
+                hitMod += fire.heatFireModifier;
+                hitModifierBreakdown.push({
+                    label: 'Heat - Fire Modifier',
+                    modifier: fire.heatFireModifier,
+                    negative: true,
+                    kind: 'heat'
+                });
+            }
+            if (fire.rangedSensorModifier) {
+                hitMod += fire.rangedSensorModifier;
+                hitModifierBreakdown.push({
+                    label: 'Sensors Destroyed',
+                    modifier: fire.rangedSensorModifier,
+                    negative: true
+                });
+            }
             entry.locations?.forEach(loc => {
-                if (loc in fire.fireMod) hitMod += fire.fireMod[loc as ArmLocation];
+                if (!(loc in fire.fireMod)) return;
+                const armStatus = systemsStatus.locationModifiers[loc];
+                const armModifier = fire.fireMod[loc as ArmLocation];
+                hitMod += armModifier;
+                if (!armStatus || armModifier === 0) return;
+                if (armStatus.destroyedShoulder) {
+                    hitModifierBreakdown.push({ label: `Shoulder Destroyed (${loc})`, modifier: armModifier, negative: true });
+                    return;
+                }
+                if (armStatus.destroyedUpperArms) {
+                    hitModifierBreakdown.push({ label: `Upper Arm Actuator Destroyed (${loc})`, modifier: 1, negative: true });
+                }
+                if (armStatus.destroyedLowerArms && this.lowerArmFireModifier !== 0) {
+                    hitModifierBreakdown.push({ label: `Lower Arm Actuator Destroyed (${loc})`, modifier: this.lowerArmFireModifier, negative: true });
+                }
             });
             const tarcompWeapon = entry.parent ?? entry;
             if (systemsStatus.hasTargetingComputer && this.isTargetingComputerEligible(tarcompWeapon)) {
                 if (systemsStatus.destroyedTargetingComputers === 0) {
+                    hitModifierBreakdown.push({ label: 'Targeting Computer', modifier: -1 });
                     hitMod--;
                 } else {
+                    hitModifierBreakdown.push({ label: 'Targeting Computer Destroyed', modifier: 0, negative: true });
                     weakenedHitMod = true;
                 }
             }
         }
-        return { isDamaged, isDisabled, hitMod, weakenedHitMod };
+        const describedModifier = hitModifierBreakdown.reduce((total, item) => total + item.modifier, 0);
+        if (describedModifier !== hitMod) {
+            hitModifierBreakdown.push({ label: 'Hit Modifier', modifier: hitMod - describedModifier });
+        }
+        return { isDamaged, isDisabled, hitMod, hitModifierBreakdown, weakenedHitMod };
+    }
+
+    private addArmActuatorBreakdown(
+        breakdown: ToHitModifierBreakdownEntry[],
+        armStatus: ReturnType<MekRules['systemsStatus']>['locationModifiers'][string],
+        loc: ArmLocation,
+        modifiers: { hand: number; upperArm: number; lowerArm: number }
+    ): void {
+        if (!armStatus) return;
+        if (armStatus.destroyedHand) {
+            breakdown.push({ label: `Hand Actuator Destroyed (${loc})`, modifier: modifiers.hand, negative: true });
+        }
+        if (armStatus.destroyedUpperArms) {
+            breakdown.push({ label: `Upper Arm Actuator Destroyed (${loc})`, modifier: modifiers.upperArm, negative: true });
+        }
+        if (armStatus.destroyedLowerArms) {
+            breakdown.push({ label: `Lower Arm Actuator Destroyed (${loc})`, modifier: modifiers.lowerArm, negative: true });
+        }
+    }
+
+    private addArmAESBreakdown(
+        breakdown: ToHitModifierBreakdownEntry[],
+        armStatus: ReturnType<MekRules['systemsStatus']>['locationModifiers'][string],
+        loc: ArmLocation,
+        modifier: number
+    ): void {
+        if (!armStatus?.hasAES) return;
+        breakdown.push(armStatus.hasFunctionalAES
+            ? { label: `Arm AES (${loc})`, modifier }
+            : { label: `Arm AES Destroyed (${loc})`, modifier: 0, negative: true });
+    }
+
+    private addTwoArmPhysicalBreakdown(
+        breakdown: ToHitModifierBreakdownEntry[],
+        locationModifiers: ReturnType<MekRules['systemsStatus']>['locationModifiers'],
+        attack: 'club' | 'push'
+    ): void {
+        const arms = (['LA', 'RA'] as const).map(loc => ({ loc, status: locationModifiers[loc] }));
+        if (attack === 'push') {
+            for (const { loc, status } of arms) {
+                if (status?.destroyedShoulder) {
+                    breakdown.push({ label: `Shoulder Destroyed (${loc})`, modifier: 2, negative: true });
+                }
+            }
+        } else {
+            for (const { loc, status } of arms) {
+                this.addArmActuatorBreakdown(breakdown, status, loc, { hand: 2, upperArm: 2, lowerArm: 2 });
+            }
+        }
+
+        const functionalAES = arms.filter(arm => arm.status?.hasFunctionalAES);
+        if (attack === 'push' && functionalAES.length === 2) {
+            breakdown.push({ label: 'Paired Arm AES', modifier: -1 });
+        } else if (attack === 'club' && functionalAES.length > 0) {
+            breakdown.push({
+                label: functionalAES.length === 2 ? 'Paired Arm AES' : `Arm AES (${functionalAES[0].loc})`,
+                modifier: -1
+            });
+        } else if ((attack === 'push' && this.hasBrokenPairedArmAES(locationModifiers))
+            || (attack === 'club' && this.hasLostClubAESBonus(locationModifiers))) {
+            breakdown.push({ label: 'Arm AES Destroyed', modifier: 0, negative: true });
+        }
+    }
+
+    private countedDestroyedLabel(name: string, count: number): string {
+        return count === 1 ? `${name} Destroyed` : `${name}s Destroyed ×${count}`;
     }
 
     private hasBrokenArmAES(

@@ -1,4 +1,5 @@
-import { AmmoEquipment, Equipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
+import { AmmoEquipment, ArmorEquipment, type AmmoType, Equipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
+import { MountedArmor, MountedStructure } from '../models/entity/components';
 import {
   TestAeroSpaceFighterEntity as AeroSpaceFighterEntity,
   TestBipedMekEntity as BipedMekEntity,
@@ -32,6 +33,20 @@ describe('buildUnitComponentMetadata', () => {
     }));
   });
 
+  it('exports physically flagged weapon equipment as physical rather than ranged', () => {
+    const entity = new BipedMekEntity();
+    entity.setTonnage(55);
+    const hatchet = weapon('hatchet', {
+      damage: 99, ranges: [3, 6, 9, 12], flags: ['F_CLUB', 'S_HATCHET'],
+    });
+    entity.setEquipment([mount(hatchet, 'RA')]);
+
+    const component = buildUnitComponentMetadata(entity)!.find(entry => entry.id === hatchet.id)!;
+    expect(component).toEqual(jasmine.objectContaining({ t: 'P', l: 'RA', d: '11', md: '11' }));
+    expect(component.r).toBeUndefined();
+    expect(component.m).toBeUndefined();
+  });
+
   it('uses aerospace AV and bracket names', () => {
     const entity = new AeroSpaceFighterEntity();
     const laser = weapon('aero-laser', {
@@ -42,6 +57,30 @@ describe('buildUnitComponentMetadata', () => {
 
     expect(buildUnitComponentMetadata(entity)!.find(component => component.id === laser.id))
       .toEqual(jasmine.objectContaining({ l: 'NOS', p: 0, r: 'Medium', m: '-', d: '8/6', md: '8.0' }));
+  });
+
+  it('exports patchwork armor plus each distinct effective armor material without armor mounts', () => {
+    const entity = new BipedMekEntity();
+    const standard = new ArmorEquipment({
+      id: 'Standard Armor', name: 'Standard', type: 'armor', armor: { type: 'STANDARD' },
+    });
+    const reactive = new ArmorEquipment({
+      id: 'IS Reactive', name: 'Reactive', type: 'armor', armor: { type: 'REACTIVE' },
+    });
+    entity.setUniformArmor(new MountedArmor({ armor: standard, techBase: 'IS' }));
+    entity.setArmorEquipmentAt('LA', reactive);
+    entity.setEquipment([mount(reactive, 'LA', { placements: [{ location: 'LA', slotIndex: 0 }] })]);
+
+    const components = buildUnitComponentMetadata(entity)!;
+    expect(components.filter(component => component.id === 'Patchwork Armor')).toHaveSize(1);
+    expect(components.filter(component => component.id === 'Standard Armor')).toHaveSize(1);
+    expect(components.filter(component => component.id === 'IS Reactive')).toHaveSize(1);
+    expect(components.find(component => component.id === 'Patchwork Armor')?.n).toBe('Patchwork Armor');
+    expect(components.find(component => component.id === 'Standard Armor')?.n).toBe('Standard Armor');
+    expect(components.find(component => component.id === 'IS Reactive')?.n).toBe('Reactive Armor');
+    expect(components.filter(component => [
+      'Patchwork Armor', 'Standard Armor', 'IS Reactive',
+    ].includes(component.id)).every(component => component.p === -1)).toBeTrue();
   });
 
   it('exports intrinsic ammo damage for a special one-shot weapon', () => {
@@ -59,7 +98,7 @@ describe('buildUnitComponentMetadata', () => {
       .toEqual(jasmine.objectContaining({ d: '4', md: '4.0', os: 1 }));
   });
 
-  it('exports no numeric damage for a zero-damage weapon', () => {
+  it('exports numeric zero damage for a zero-damage weapon', () => {
     const entity = new TankEntity();
     const launcher = weapon('grenade-launcher', {
       damage: 0, ranges: [1, 1, 1, 1], flags: ['F_BALLISTIC', 'F_ONE_SHOT'],
@@ -67,7 +106,23 @@ describe('buildUnitComponentMetadata', () => {
     entity.setEquipment([mount(launcher, 'Front')]);
 
     expect(buildUnitComponentMetadata(entity)!.find(component => component.id === launcher.id))
-      .toEqual(jasmine.objectContaining({ d: '', md: '0.0', os: 1 }));
+      .toEqual(jasmine.objectContaining({ d: '0', md: '0.0', os: 1 }));
+  });
+
+  it('exports large-missile damage from its matching ammunition', () => {
+    const ammo = new AmmoEquipment({
+      id: 'thunderbolt-ammo', name: 'Thunderbolt 5 Ammo', type: 'ammo',
+      ammo: { type: 'TBOLT_5', rackSize: 1, damagePerShot: 5, munitionType: ['M_STANDARD'] },
+    });
+    const entity = new TankEntity(createTestEquipmentRegistry({ [ammo.id]: ammo }));
+    const thunderbolt = weapon('thunderbolt-5', {
+      damage: 'cluster', ranges: [6, 12, 18, 24], flags: ['F_MISSILE', 'F_LARGE_MISSILE'],
+      ammoType: 'TBOLT_5', rackSize: 1,
+    });
+    entity.setEquipment([mount(thunderbolt, 'Front')]);
+
+    expect(buildUnitComponentMetadata(entity)!.find(component => component.id === thunderbolt.id))
+      .toEqual(jasmine.objectContaining({ d: '5', md: '5.0' }));
   });
 
   it('exports conventional infantry synthetic weapons with the Java primary damage cap', () => {
@@ -95,7 +150,7 @@ describe('buildUnitComponentMetadata', () => {
     }));
   });
 
-  it('groups spreadable Mek equipment by placement count and keeps the primary split location first', () => {
+  it('omits structure critical slots and keeps other split equipment locations', () => {
     const entity = new BipedMekEntity();
     const endo = new StructureEquipment({
       id: 'endo', name: 'Endo Steel', type: 'structure',
@@ -115,11 +170,26 @@ describe('buildUnitComponentMetadata', () => {
     ]);
 
     const components = buildUnitComponentMetadata(entity)!;
-    expect(components.find(component => component.id === 'endo' && component.l === 'LA'))
-      .toEqual(jasmine.objectContaining({ q: 2, p: 5, c: 'V', t: 'S' }));
-    expect(components.find(component => component.id === 'endo' && component.l === 'LT'))
-      .toEqual(jasmine.objectContaining({ q: 1, p: 3, c: 'V', t: 'S' }));
+    expect(components.some(component => component.id === 'endo')).toBeFalse();
     expect(components.find(component => component.id === 'split-laser')?.l).toBe('LA/LT');
+  });
+
+  it('labels synthetic structure materials without duplicating an existing suffix', () => {
+    const entity = new BipedMekEntity();
+    const standard = new StructureEquipment({
+      id: 'Standard', name: 'Standard', type: 'structure', structure: { typeId: 0 },
+    });
+    entity.setUniformStructure(new MountedStructure({ structure: standard, tonnage: entity.tonnage() }));
+
+    expect(buildUnitComponentMetadata(entity)!.find(component => component.id === 'Standard')?.n)
+      .toBe('Standard Structure');
+
+    const labeled = new StructureEquipment({
+      id: 'Endo Steel', name: 'Endo Steel Structure', type: 'structure', structure: { typeId: 1 },
+    });
+    entity.setUniformStructure(new MountedStructure({ structure: labeled, tonnage: entity.tonnage() }));
+    expect(buildUnitComponentMetadata(entity)!.find(component => component.id === 'Endo Steel')?.n)
+      .toBe('Endo Steel Structure');
   });
 });
 
@@ -129,7 +199,7 @@ function weapon(
     damage: number | string;
     ranges: number[];
     flags: EquipmentFlag[];
-    ammoType?: 'MINE';
+    ammoType?: AmmoType;
     rackSize?: number;
     av?: number[];
     maxRangeBracket?: 'short' | 'medium' | 'long' | 'extreme';

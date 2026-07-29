@@ -31,7 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentMap, StructureEquipment } from '../../equipment.model';
+import { StructureEquipment } from '../../equipment.model';
+import { EquipmentRegistry } from '../../equipment-lookup';
 import { approx, EntityTechBase, EquipmentTechBase, type TechRatingSource } from '../types';
 import { TechAdvancement } from '../types/tech';
 
@@ -123,17 +124,17 @@ const STANDARD_STRUCTURE_TECH = {
   dates: { prototype: approx(2430), production: 2439, common: 2505 },
 } as const satisfies TechAdvancement;
 
-let structureIndexDb: EquipmentMap | null = null;
-let structureIndex: StructureIndex | null = null;
+const structureIndexes = new WeakMap<EquipmentRegistry, StructureIndex>();
 
 function getStructureIndex(
-  equipmentDb: EquipmentMap,
+  equipmentRegistry: EquipmentRegistry,
 ): StructureIndex {
-  if (structureIndex && structureIndexDb === equipmentDb) return structureIndex;
+  const cached = structureIndexes.get(equipmentRegistry);
+  if (cached) return cached;
 
   const byTypeId = new Map<number, StructureVariants>();
   const byName = new Map<string, StructureVariants>();
-  for (const equipment of Object.values(equipmentDb)) {
+  for (const equipment of Object.values(equipmentRegistry.equipment)) {
     if (!(equipment instanceof StructureEquipment) || equipment.structureTypeId < 0) continue;
 
     const typeVariants = byTypeId.get(equipment.structureTypeId) ?? {};
@@ -150,8 +151,8 @@ function getStructureIndex(
     });
   }
 
-  structureIndexDb = equipmentDb;
-  structureIndex = { byTypeId, byName };
+  const structureIndex = { byTypeId, byName };
+  structureIndexes.set(equipmentRegistry, structureIndex);
   return structureIndex;
 }
 
@@ -165,18 +166,18 @@ function selectVariant(
 export function getStructureByTypeId(
   typeId: number,
   techBase: EntityTechBase,
-  equipmentDb: EquipmentMap,
+  equipmentRegistry: EquipmentRegistry,
 ): StructureEquipment | null {
-  return selectVariant(getStructureIndex(equipmentDb).byTypeId.get(typeId), techBase);
+  return selectVariant(getStructureIndex(equipmentRegistry).byTypeId.get(typeId), techBase);
 }
 
 export function getStructureByName(
   name: string,
   techBase: EntityTechBase,
-  equipmentDb: EquipmentMap,
+  equipmentRegistry: EquipmentRegistry,
 ): StructureEquipment | null {
   const nameKey = name.trim().toLowerCase();
-  return selectVariant(getStructureIndex(equipmentDb).byName.get(nameKey), techBase);
+  return selectVariant(getStructureIndex(equipmentRegistry).byName.get(nameKey), techBase);
 }
 
 export function getStructureTechAdvancement(

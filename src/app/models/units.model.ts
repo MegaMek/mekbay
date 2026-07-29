@@ -168,6 +168,7 @@ export interface Unit {
     source: string[]; // Sourcebook abbreviations exported from units.json.
     published: string[]; // Record sheet source(s), e.g. "RS:AS".
     canon: boolean; // True if the unit is canon, false if is not (e.g. alt-universe or april fools units)
+    canAntiMech: boolean; // Whether the unit's Anti-Mech skill can be assigned below its restricted default
     role: string;
     armorType: string;
     structureType: string | null;
@@ -243,7 +244,7 @@ export interface Units {
     units: Unit[];
 }
 
-export type ASUnitTypeCode = 'BM' | 'IM' | 'CV' | 'SV' | 'PM' | 'BA' | 'CI' | 'AF' | 'CF' | 'SC' | 'WS' | 'SS' | 'JS' | 'DA' | 'DS' | 'MS' | 'BD';
+export type ASUnitTypeCode = 'BM' | 'IM' | 'CV' | 'SV' | 'PM' | 'BA' | 'CI' | 'AF' | 'CF' | 'SC' | 'WS' | 'SS' | 'JS' | 'DA' | 'DS' | 'MS' | 'BD' | 'XX';
 
 export interface AlphaStrikeUnitStats {
     TP: ASUnitTypeCode;
@@ -254,6 +255,7 @@ export interface AlphaStrikeUnitStats {
     OV: number;
     MV: string;
     MVm: { [mode: string]: number }; // e.g. { j: 6 }
+    MVp: string;
     usesTh: boolean;
     Th: number;
     Arm: number;
@@ -302,5 +304,5 @@ export interface AlphaStrikeArcStats {
         dmgE: string;
         dmgS: string;
     };
-    specials: string;
+    specials: string[];
 }

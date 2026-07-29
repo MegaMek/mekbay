@@ -76,6 +76,14 @@ interface CrewConfiguration {
  * instead of Left Wing / Right Wing / Fuselage.
  */
 export class SmallCraftEntity extends LargeAeroEntity {
+  override componentLocationOrder(): readonly string[] {
+    return ['Nose', 'Left Side', 'Right Side', 'Aft', 'Hull'];
+  }
+
+  override componentLocationLabel(location: string): string {
+    return ({ 'Left Side': 'LS', 'Right Side': 'RS', Hull: 'HULL' })[location]
+      ?? super.componentLocationLabel(location);
+  }
   override readonly entityType: EntityType = 'SmallCraft';
 
   protected unitSubtypeKind(): 'Small Craft' | 'DropShip' {

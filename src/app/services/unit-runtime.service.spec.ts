@@ -8,6 +8,8 @@ import { UnitRuntimeService } from './unit-runtime.service';
 import { UnitSearchIndexService } from './unit-search-index.service';
 import { getProperty } from '../utils/unit-search-shared.util';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
+import { EquipmentRegistry } from '../models/equipment-lookup';
+import { MiscEquipment } from '../models/equipment.model';
 
 function createUnit(name: string, chassis = name): Unit {
     return createEmptyUnit({ name, chassis, type: 'Mek' });
@@ -69,6 +71,34 @@ describe('UnitRuntimeService', () => {
         expect(unit.published).toEqual(['RSFP:Wave 2', 'RS:Gothic']);
         expect(getProperty(unit, 'source')).toEqual(['TR:3039', 'TR:SW', 'RSFP:Wave 2', 'RS:Gothic']);
         expect(unitSearchIndexServiceMock.prepareUnits).toHaveBeenCalledOnceWith([unit]);
+    });
+
+    it('links equipment recursively through canonical registry aliases', () => {
+        const equipment = new MiscEquipment({
+            id: 'Canonical Equipment',
+            name: 'Canonical Equipment',
+            type: 'misc',
+            aliases: ['Legacy Equipment'],
+        });
+        const unit = createUnit('Alias Test');
+        unit.comp = [{
+            id: ' legacy equipment ', q: 1, n: 'Legacy Equipment', t: 'C', p: 1, l: 'CT',
+            bay: [{ id: 'CANONICAL EQUIPMENT', q: 1, n: 'Canonical Equipment', t: 'C', p: 1, l: 'CT' }],
+        }];
+
+        service.linkEquipmentToUnits([unit], new EquipmentRegistry({ [equipment.internalName]: equipment }));
+
+        expect(unit.comp[0].eq).toBe(equipment);
+        expect(unit.comp[0].bay?.[0].eq).toBe(equipment);
+    });
+
+    it('leaves unknown component equipment unresolved', () => {
+        const unit = createUnit('Unknown Equipment');
+        unit.comp = [{ id: 'Missing Equipment', q: 1, n: 'Missing Equipment', t: 'C', p: 1, l: 'CT' }];
+
+        service.linkEquipmentToUnits([unit], new EquipmentRegistry({}));
+
+        expect(unit.comp[0].eq).toBeUndefined();
     });
 
     it('removes unit tags that are already covered by same-named chassis tags when applying tag data', () => {

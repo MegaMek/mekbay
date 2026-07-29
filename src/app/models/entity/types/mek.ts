@@ -54,29 +54,6 @@ export const MEK_SLOTS_PER_LOCATION = 12;
 export const MEK_REAR_ARMOR_LOCATIONS: ReadonlySet<string> = new Set(['CT', 'LT', 'RT']);
 
 // ============================================================================
-// Gyro Types (Mek)
-//
-// Canonical gyro type data now lives in components/gyro-data.ts.
-// ============================================================================
-
-// ============================================================================
-// Cockpit Types (Mek)
-// ============================================================================
-
-/**
- * Union of all known Mek cockpit type strings.
- * Matches MegaMek `Mek.COCKPIT_*` short strings (COCKPIT_SHORT_STRING[]).
- */
-export type CockpitType =
-  | 'Standard' | 'Small' | 'Command Console' | 'Torso-Mounted'
-  | 'Dual' | 'Industrial' | 'Primitive' | 'Primitive Industrial'
-  | 'Superheavy' | 'Superheavy Tripod' | 'Tripod'
-  | 'Interface' | 'Virtual Reality Piloting Pod' | 'QuadVee'
-  | 'Superheavy Industrial' | 'Superheavy Command Console'
-  | 'Small Command Console' | 'Tripod Industrial'
-  | 'Superheavy Tripod Industrial';
-
-// ============================================================================
 // Location Topology
 //
 // Defines the physical connection graph between Mek locations: which

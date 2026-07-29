@@ -37,6 +37,7 @@ import type { CBTForceUnit } from './cbt-force-unit.model';
 import { AmmoEquipment, MiscEquipment, WEAPON_TYPES, WeaponEquipment, type Equipment, type WeaponType } from './equipment.model';
 import type { CriticalSlot } from './force-serialization';
 import type { MountedEquipmentRuleState } from './rules/unit-type-rules';
+import { isPhysicalWeaponEquipment } from './entity/utils/physical-weapon';
 
 export interface MountedEquipmentInit {
     owner: CBTForceUnit;
@@ -44,8 +45,7 @@ export interface MountedEquipmentInit {
     name: string;
     locations?: Set<string>;
     equipment?: Equipment;
-    hitModVariation?: null | number;
-    physical?: boolean;
+    intrinsicPhysicalAttack?: boolean;
     linkedWith?: null | MountedEquipment[];
     parent?: null | MountedEquipment;
     destroyed?: boolean;
@@ -74,16 +74,14 @@ export interface MountedMiscInit extends MountedEquipmentInit {
 export class MountedEquipment {
     private readonly destroyedState: WritableSignal<boolean | undefined>;
     private readonly destroyingState: WritableSignal<boolean | undefined>;
-
+    private intrinsicPhysicalAttack: boolean;
+    private linkedEquipment?: null | MountedEquipment[];
+    private parentEquipment?: null | MountedEquipment;
     owner: CBTForceUnit;
     id: string;
     name: string;
     locations?: Set<string>;
     equipment?: Equipment;
-    hitModVariation?: null | number;
-    physical?: boolean;
-    linkedWith?: null | MountedEquipment[];
-    parent?: null | MountedEquipment;
     critSlots?: CriticalSlot[];
     states: Map<string, string>;
     el?: SVGElement;
@@ -92,6 +90,32 @@ export class MountedEquipment {
     consumed?: number;
     intrinsicOneShotAmmo?: boolean;
     readonly ruleState: Signal<MountedEquipmentRuleState>;
+
+    get linkedWith(): readonly MountedEquipment[] | null | undefined {
+        return this.linkedEquipment;
+    }
+
+    set linkedWith(entries: readonly MountedEquipment[] | null | undefined) {
+        if (entries == null) {
+            this.setLinkedEquipment([]);
+            this.linkedEquipment = entries;
+            return;
+        }
+        this.setLinkedEquipment(entries);
+    }
+
+    get parent(): MountedEquipment | null | undefined {
+        return this.parentEquipment;
+    }
+
+    set parent(parent: MountedEquipment | null | undefined) {
+        if (!parent) {
+            this.detachFromParent();
+            this.parentEquipment = parent;
+            return;
+        }
+        parent.setLinkedEquipment([...(parent.linkedEquipment ?? []), this]);
+    }
 
     setState(name: string, value: string): boolean {
         if (this.states.get(name) === value) return false;
@@ -107,6 +131,82 @@ export class MountedEquipment {
         return true;
     }
 
+    replaceStates(states: ReadonlyMap<string, string>): void {
+        this.states = new Map(states);
+    }
+
+    clearStateValues(): void {
+        this.states = new Map([...this.states.keys()].map(name => [name, '']));
+    }
+
+    setLinkedEquipment(entries: readonly MountedEquipment[]): void {
+        const uniqueEntries = [...new Set(entries)];
+        for (const entry of uniqueEntries) this.assertCanLink(entry);
+
+        for (const previous of this.linkedEquipment ?? []) {
+            if (!uniqueEntries.includes(previous) && previous.parentEquipment === this) {
+                previous.parentEquipment = null;
+            }
+        }
+
+        for (const entry of uniqueEntries) {
+            entry.detachFromParent();
+            entry.parentEquipment = this;
+        }
+        this.linkedEquipment = uniqueEntries;
+    }
+
+    clearEquipmentLinks(): void {
+        this.setLinkedEquipment([]);
+        this.linkedEquipment = null;
+        this.detachFromParent();
+    }
+
+    detachFromParent(): void {
+        const parent = this.parentEquipment;
+        if (!parent) {
+            this.parentEquipment = null;
+            return;
+        }
+        parent.linkedEquipment = parent.linkedEquipment?.filter(entry => entry !== this) ?? parent.linkedEquipment;
+        this.parentEquipment = null;
+    }
+
+    private assertCanLink(entry: MountedEquipment): void {
+        if (entry === this) throw new Error('Equipment cannot link to itself');
+        for (let ancestor: MountedEquipment | null | undefined = this; ancestor; ancestor = ancestor.parentEquipment) {
+            if (ancestor === entry) throw new Error('Equipment links cannot contain cycles');
+        }
+    }
+
+    attachRuntimeContext(element: SVGElement, critSlots: readonly CriticalSlot[] = []): void {
+        this.el = element;
+        this.critSlots = [...critSlots];
+    }
+
+    detachRuntimeContext(): void {
+        this.el = undefined;
+        this.critSlots = [];
+    }
+
+    setAmmoState(state: { ammo?: string; totalAmmo?: number; consumed?: number }): void {
+        if ('ammo' in state) this.ammo = state.ammo;
+        if ('totalAmmo' in state) this.totalAmmo = state.totalAmmo;
+        if ('consumed' in state) this.consumed = state.consumed;
+    }
+
+    isIntrinsicPhysicalAttack(): boolean {
+        return this.intrinsicPhysicalAttack;
+    }
+
+    setIntrinsicPhysicalAttack(physical: boolean): void {
+        this.intrinsicPhysicalAttack = physical;
+    }
+
+    isPhysicalWeapon(): boolean {
+        return this.isIntrinsicPhysicalAttack() || isPhysicalWeaponEquipment(this.equipment);
+    }
+
     constructor(data: MountedEquipmentInit) {
         // A mount may be constructed from an Angular computed context.
         // Initialize the signals with their values; calling `.set()` here would
@@ -116,14 +216,13 @@ export class MountedEquipment {
         this.owner = data.owner;
         this.id = data.id;
         this.name = data.name;
-        this.locations = data.locations;
+        this.locations = data.locations ? new Set(data.locations) : undefined;
         this.equipment = data.equipment;
-        this.hitModVariation = data.hitModVariation;
-        this.physical = data.physical;
-        this.linkedWith = data.linkedWith;
-        this.parent = data.parent;
-        this.critSlots = data.critSlots;
-        this.states = data.states ?? new Map<string, string>();
+        this.intrinsicPhysicalAttack = data.intrinsicPhysicalAttack === true;
+        this.linkedEquipment = data.linkedWith ? [...data.linkedWith] : data.linkedWith;
+        this.parentEquipment = data.parent;
+        this.critSlots = data.critSlots ? [...data.critSlots] : undefined;
+        this.states = new Map(data.states);
         this.el = data.el;
         this.ammo = data.ammo;
         this.totalAmmo = data.totalAmmo;
@@ -133,7 +232,9 @@ export class MountedEquipment {
     }
 
     static from(entry: MountedEquipment | MountedEquipmentInit): MountedEquipment {
-        if (entry instanceof MountedAmmo || entry instanceof MountedWeapon || entry instanceof MountedMisc) return entry;
+        if (entry instanceof MountedAmmo) return entry;
+        if (entry instanceof MountedWeapon && !entry.isPhysicalWeapon()) return entry;
+        if (entry instanceof MountedMisc && !entry.isPhysicalWeapon()) return entry;
         return createMountedEquipment(entry instanceof MountedEquipment ? entry.cloneData() : entry);
     }
 
@@ -142,8 +243,10 @@ export class MountedEquipment {
         const replacements = new Map(entries.map((entry, index) => [entry, mountedEntries[index]]));
 
         for (const entry of mountedEntries) {
-            entry.linkedWith = entry.linkedWith?.map(linked => replacements.get(linked) ?? linked);
-            entry.parent = entry.parent ? replacements.get(entry.parent) ?? entry.parent : entry.parent;
+            entry.linkedEquipment = entry.linkedEquipment?.map(linked => replacements.get(linked) ?? linked);
+            entry.parentEquipment = entry.parentEquipment
+                ? replacements.get(entry.parentEquipment) ?? entry.parentEquipment
+                : entry.parentEquipment;
         }
 
         return mountedEntries;
@@ -158,15 +261,14 @@ export class MountedEquipment {
             owner: this.owner,
             id: this.id,
             name: this.name,
-            locations: this.locations,
+            locations: this.locations ? new Set(this.locations) : undefined,
             equipment: this.equipment,
-            hitModVariation: this.hitModVariation,
-            physical: this.physical,
-            linkedWith: this.linkedWith,
-            parent: this.parent,
+            intrinsicPhysicalAttack: this.intrinsicPhysicalAttack,
+            linkedWith: this.linkedEquipment ? [...this.linkedEquipment] : this.linkedEquipment,
+            parent: this.parentEquipment,
             destroyed: this.committedDestroyedState(),
             destroying: this.pendingDestroyed(),
-            critSlots: this.critSlots,
+            critSlots: this.critSlots ? [...this.critSlots] : undefined,
             states: new Map(this.states),
             el: this.el,
             ammo: this.ammo,
@@ -320,6 +422,9 @@ export class MountedMisc extends MountedEquipment {
 }
 
 function createMountedEquipment(data: MountedEquipmentInit): MountedEquipment {
+    if (data.intrinsicPhysicalAttack || isPhysicalWeaponEquipment(data.equipment)) {
+        return new MountedEquipment(data);
+    }
     if (data.equipment instanceof AmmoEquipment) return new MountedAmmo({ ...data, equipment: data.equipment });
     if (data.equipment instanceof WeaponEquipment) return new MountedWeapon({ ...data, equipment: data.equipment });
     if (data.equipment instanceof MiscEquipment) return new MountedMisc({ ...data, equipment: data.equipment });
