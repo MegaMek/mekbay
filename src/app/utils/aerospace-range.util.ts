@@ -47,6 +47,13 @@ export const AEROSPACE_RANGE_BRACKETS: readonly InventoryControlRuntimeRangeKey[
 export const STANDARD_AEROSPACE_RANGE_LIMITS: AerospaceRangeLimits = [6, 12, 20, 25];
 export const CAPITAL_AEROSPACE_RANGE_LIMITS: AerospaceRangeLimits = [12, 24, 40, 50];
 
+export function aerospaceRangeCaptions(limits: AerospaceRangeLimits): readonly [string, string, string, string] {
+    return limits.map((maximum, index) => {
+        const minimum = index === 0 ? 1 : limits[index - 1] + 1;
+        return `(${minimum}–${maximum})`;
+    }) as [string, string, string, string];
+}
+
 export function aerospaceRangeLimits(weapon: Pick<WeaponEquipment, 'capital'>): AerospaceRangeLimits {
     return weapon.capital ? CAPITAL_AEROSPACE_RANGE_LIMITS : STANDARD_AEROSPACE_RANGE_LIMITS;
 }

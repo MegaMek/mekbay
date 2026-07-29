@@ -49,7 +49,12 @@
                             <span class="centered-header">Min</span>
                         }
                         @for (column of rangeColumns(); track column.key) {
-                            <span class="centered-header">{{ column.label }}</span>
+                            <span class="centered-header range-header">
+                                @if (column.caption) {
+                                    <span class="range-caption">{{ column.caption }}</span>
+                                }
+                                <span>{{ column.label }}</span>
+                            </span>
                         }
                         @if (hasActionsColumn()) {
                             <span class="actions-header">{{ groupActionsHeader(group) }}</span>

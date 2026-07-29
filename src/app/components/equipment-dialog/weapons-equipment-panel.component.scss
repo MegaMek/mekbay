@@ -54,7 +54,23 @@
     color: var(--text-color-secondary);
     font-size: 0.78rem;
     font-weight: 700;
-    height: 16px;
+    min-height: 16px;
+}
+
+.weapons-equipment-panel.aero-ranges .weapon-equipment-header {
+    min-height: 32px;
+}
+
+.range-header {
+    flex-direction: column;
+    gap: 0;
+    line-height: 1.05;
+}
+
+.range-caption {
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
 }
 
 .name-header,

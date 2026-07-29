@@ -1124,8 +1124,14 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         const headers = Array.from(
-            fixture.nativeElement.querySelectorAll('.weapon-equipment-header .centered-header') as NodeListOf<Element>
+            fixture.nativeElement.querySelectorAll('.weapon-equipment-header .centered-header:not(.range-header)') as NodeListOf<Element>
         ).map(element => element.textContent?.trim());
+        const rangeHeaders = Array.from(
+            fixture.nativeElement.querySelectorAll('.weapon-equipment-header .range-header') as NodeListOf<Element>
+        ).map(element => ({
+            caption: element.querySelector('.range-caption')?.textContent?.trim(),
+            label: element.lastElementChild?.textContent?.trim()
+        }));
         const values = Array.from(
             fixture.nativeElement.querySelectorAll('.range-cell') as NodeListOf<Element>
         ).map(element => element.textContent?.trim());
@@ -1140,11 +1146,13 @@ describe('WeaponsEquipmentPanelComponent', () => {
             showMinimum: false,
             values: { short: '8', medium: '8', long: '8', extreme: '—' }
         });
-        expect(headers).toContain('SRV');
-        expect(headers).toContain('MRV');
-        expect(headers).toContain('LRV');
-        expect(headers).toContain('ERV');
         expect(headers).not.toContain('Min');
+        expect(rangeHeaders).toEqual([
+            { caption: '(1–6)', label: 'SRV' },
+            { caption: '(7–12)', label: 'MRV' },
+            { caption: '(13–20)', label: 'LRV' },
+            { caption: '(21–25)', label: 'ERV' }
+        ]);
         expect(values).toEqual(['8', '8', '8', '—']);
         expect(row.extremeRange).toBe(20);
     });

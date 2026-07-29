@@ -36,10 +36,12 @@ import { MASC_HANDLER_ID } from '../../equipment-handlers/masc.handler';
 import { ESCALATING_FAILURE_HANDLER_ID } from '../../equipment-handlers/escalatingfailure.handler';
 import { TN_IMMOBILE } from '../../models/target-number-calculator.model';
 import { orderHitTargetTooltipLines } from '../../utils/hit-target-tooltip.util';
+import { STANDARD_AEROSPACE_RANGE_LIMITS, aerospaceRangeCaptions } from '../../utils/aerospace-range.util';
 
 interface RangeColumn {
     key: InventoryRangeDisplayKey;
     label: string;
+    caption?: string;
 }
 
 const GROUND_RANGE_COLUMNS: readonly RangeColumn[] = [
@@ -47,11 +49,12 @@ const GROUND_RANGE_COLUMNS: readonly RangeColumn[] = [
     { key: 'medium', label: 'Med' },
     { key: 'long', label: 'Lng' }
 ];
+const AERO_RANGE_CAPTIONS = aerospaceRangeCaptions(STANDARD_AEROSPACE_RANGE_LIMITS);
 const AERO_RANGE_COLUMNS: readonly RangeColumn[] = [
-    { key: 'short', label: 'SRV' },
-    { key: 'medium', label: 'MRV' },
-    { key: 'long', label: 'LRV' },
-    { key: 'extreme', label: 'ERV' }
+    { key: 'short', label: 'SRV', caption: AERO_RANGE_CAPTIONS[0] },
+    { key: 'medium', label: 'MRV', caption: AERO_RANGE_CAPTIONS[1] },
+    { key: 'long', label: 'LRV', caption: AERO_RANGE_CAPTIONS[2] },
+    { key: 'extreme', label: 'ERV', caption: AERO_RANGE_CAPTIONS[3] }
 ];
 const HEAT_BAR_SCALE = 30;
 const WEAPON_TARGET_CHOICE_OVERLAY_KEY = 'weapon-equipment-target-choice';
