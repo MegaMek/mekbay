@@ -322,6 +322,22 @@
     grid-column: 12;
 }
 
+.range-extreme {
+    grid-column: 12;
+}
+
+.weapons-equipment-panel.aero-ranges .range-short {
+    grid-column: 9;
+}
+
+.weapons-equipment-panel.aero-ranges .range-medium {
+    grid-column: 10;
+}
+
+.weapons-equipment-panel.aero-ranges .range-long {
+    grid-column: 11;
+}
+
 .actions-cell {
     grid-column: 13;
     min-width: 0;
@@ -361,6 +377,22 @@
 
 .weapons-equipment-panel.has-targets .range-long {
     grid-column: 13;
+}
+
+.weapons-equipment-panel.has-targets .range-extreme {
+    grid-column: 13;
+}
+
+.weapons-equipment-panel.has-targets.aero-ranges .range-short {
+    grid-column: 10;
+}
+
+.weapons-equipment-panel.has-targets.aero-ranges .range-medium {
+    grid-column: 11;
+}
+
+.weapons-equipment-panel.has-targets.aero-ranges .range-long {
+    grid-column: 12;
 }
 
 .weapons-equipment-panel.has-targets .actions-cell {

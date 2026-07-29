@@ -33,15 +33,18 @@
 
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { WeaponEquipment, type AmmoEquipment } from '../models/equipment.model';
+import { resolveAmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
 import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import { CORE_2026_GAME_RULES, validatedToHitModifierBreakdown, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry } from '../models/rules/game-rules';
 import { orderHitTargetTooltipLines } from './hit-target-tooltip.util';
 import type { UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
 import type { InventoryControlDisplayData, InventoryControlGroupId, InventoryRangeKey } from './inventory-control.util';
 import type { TooltipLine } from '../components/tooltip/tooltip.component';
+import { aerospaceRangeBracket, aerospaceRangeLimits, effectiveAerospaceMaximumBracket, isRangeBracketWithinMaximum } from './aerospace-range.util';
 
 export interface InventoryTargetRangeSelection {
     range: InventoryControlRuntimeRangeKey;
+    outOfRange: boolean;
     outOfLongRange: boolean;
     outOfExtremeRange: boolean;
     minimumRangeModifier: number;
@@ -93,11 +96,15 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
     if (!target) return null;
     const c3Distance = target.useC3 === true ? target.c3Distance ?? null : null;
     const rangeDistance = c3Distance === null ? target.distance : Math.min(target.distance, c3Distance);
-    if (isPhysicalInventoryTargetNumberEntry(input.entry, input.category)) return { range: 'short', outOfLongRange: false, outOfExtremeRange: false, minimumRangeModifier: 0, distance: target.distance, c3Distance };
+    if (isPhysicalInventoryTargetNumberEntry(input.entry, input.category)) return { range: 'short', outOfRange: false, outOfLongRange: false, outOfExtremeRange: false, minimumRangeModifier: 0, distance: target.distance, c3Distance };
+
+    if (isAerospaceWeaponAttack(input.entry)) {
+        return aerospaceTargetRangeSelection(input.entry, target, input.selectedAmmo ?? null, c3Distance);
+    }
 
     const artilleryMinimumDistance = input.selectedAmmo?.category === 'Artillery' ? 7 : null;
     if (artilleryMinimumDistance !== null && target.distance <= artilleryMinimumDistance) {
-        return { range: 'short', outOfLongRange: true, outOfExtremeRange: false, minimumRangeModifier: 0, distance: target.distance, c3Distance };
+        return { range: 'short', outOfRange: true, outOfLongRange: true, outOfExtremeRange: false, minimumRangeModifier: 0, distance: target.distance, c3Distance };
     }
 
     const minimumRangeModifier = inventoryTargetMinimumRangeModifier(input.display.min, target.distance);
@@ -113,12 +120,13 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
 
     for (const threshold of thresholds) {
         if (rangeDistance <= threshold.value) {
-            return { range: threshold.range, outOfLongRange, outOfExtremeRange: actualOutOfExtremeRange, minimumRangeModifier, distance: target.distance, c3Distance };
+            return { range: threshold.range, outOfRange: outOfLongRange, outOfLongRange, outOfExtremeRange: actualOutOfExtremeRange, minimumRangeModifier, distance: target.distance, c3Distance };
         }
     }
 
     return {
         range: 'extreme',
+        outOfRange: true,
         outOfLongRange: true,
         outOfExtremeRange: extremeRange !== null && rangeDistance > extremeRange,
         minimumRangeModifier,
@@ -127,12 +135,57 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
     };
 }
 
+function isAerospaceWeaponAttack(entry: MountedEquipment): boolean {
+    return entry.owner.getUnit?.().type === 'Aero' && entry.equipment instanceof WeaponEquipment;
+}
+
+function aerospaceTargetRangeSelection(
+    entry: MountedEquipment,
+    target: InventoryControlRuntimeTarget,
+    selectedAmmo: AmmoEquipment | null,
+    c3Distance: number | null
+): InventoryTargetRangeSelection {
+    const weapon = entry.equipment as WeaponEquipment;
+    // Runtime targets do not yet model altitude or map scale. An Aero target is
+    // therefore the explicit signal that the entered distance is an A2A range;
+    // all other targets use MegaMek's zero-distance A2G bracket rule.
+    const usesAerospaceDistance = target.unitType === 'aero';
+    const actualDistance = usesAerospaceDistance ? target.distance : 0;
+    const effectiveDistance = c3Distance === null || !usesAerospaceDistance
+        ? actualDistance
+        : Math.min(actualDistance, c3Distance);
+    const limits = aerospaceRangeLimits(weapon);
+    const actualRange = aerospaceRangeBracket(actualDistance, limits);
+    const effectiveRange = aerospaceRangeBracket(effectiveDistance, limits);
+    const maximumRange = aerospaceMaximumRangeBracket(weapon, selectedAmmo);
+    const outOfExtremeRange = actualRange === null;
+    const outOfRange = outOfExtremeRange
+        || !isRangeBracketWithinMaximum(actualRange, maximumRange);
+
+    return {
+        range: effectiveRange ?? 'extreme',
+        outOfRange,
+        outOfLongRange: actualRange === 'extreme' || outOfExtremeRange,
+        outOfExtremeRange,
+        minimumRangeModifier: 0,
+        distance: target.distance,
+        c3Distance
+    };
+}
+
+function aerospaceMaximumRangeBracket(
+    weapon: WeaponEquipment,
+    selectedAmmo: AmmoEquipment | null
+): InventoryControlRuntimeRangeKey {
+    return effectiveAerospaceMaximumBracket(weapon, resolveAmmoWeaponProfile(selectedAmmo));
+}
+
 export function inventoryTargetNumberState(
     input: InventoryTargetNumberInput,
     rangeSelection: InventoryTargetRangeSelection | null = inventoryTargetRangeSelection(input)
 ): InventoryTargetNumberState {
     if (!rangeSelection) return { text: '', breakdown: null, rangeSelection };
-    if (rangeSelection.outOfLongRange) return { text: 'X', breakdown: null, rangeSelection };
+    if (rangeSelection.outOfRange) return { text: 'X', breakdown: null, rangeSelection };
     if (input.hitModifier === 'Vs' || input.hitModifier === '*') {
         return { text: input.hitModifier, breakdown: null, rangeSelection };
     }

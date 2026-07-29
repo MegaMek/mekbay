@@ -1044,6 +1044,136 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(row.firingHeat).toBe(0);
     });
 
+    it('shows aerospace attack values and SRV through ERV headers for Aero units', () => {
+        const erLargeLaser = new WeaponEquipment({
+            id: 'ISERLargeLaser',
+            name: 'ER Large Laser',
+            type: 'weapon',
+            flags: ['F_AERO_WEAPON'],
+            weapon: {
+                ammoType: 'NA',
+                damage: 8,
+                heat: 12,
+                ranges: [7, 14, 19, 28],
+                av: [8, 8, 8],
+                maxRangeBracket: 'long'
+            }
+        });
+        const mountedWeapon = entry({
+            id: 'er-large-laser',
+            equipment: erLargeLaser,
+            locations: new Set(['NOS'])
+        });
+        const { component, fixture } = createComponent([mountedWeapon], {}, [], new Map(), {
+            unit: { type: 'Aero', subtype: 'Aerospace Fighter' }
+        });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        const headers = Array.from(
+            fixture.nativeElement.querySelectorAll('.weapon-equipment-header .centered-header') as NodeListOf<Element>
+        ).map(element => element.textContent?.trim());
+        const values = Array.from(
+            fixture.nativeElement.querySelectorAll('.range-cell') as NodeListOf<Element>
+        ).map(element => element.textContent?.trim());
+
+        expect(row.display).toEqual(jasmine.objectContaining({
+            min: '—',
+            short: '6',
+            medium: '12',
+            long: '20'
+        }));
+        expect(row.rangePresentation).toEqual({
+            showMinimum: false,
+            values: { short: '8', medium: '8', long: '8', extreme: '—' }
+        });
+        expect(headers).toContain('SRV');
+        expect(headers).toContain('MRV');
+        expect(headers).toContain('LRV');
+        expect(headers).toContain('ERV');
+        expect(headers).not.toContain('Min');
+        expect(values).toEqual(['8', '8', '8', '—']);
+        expect(row.extremeRange).toBe(20);
+    });
+
+    it('rounds individual Aero attack values up and gates unavailable brackets', () => {
+        const fractionalWeapon = new WeaponEquipment({
+            id: 'FractionalAeroWeapon',
+            name: 'Fractional Aero Weapon',
+            type: 'weapon',
+            weapon: {
+                ammoType: 'NA',
+                ranges: [3, 6, 9, 12],
+                av: [0.1, 1.01, 9.99, 99],
+                maxRangeBracket: 'long'
+            }
+        });
+        const mountedWeapon = entry({ id: 'fractional-aero-weapon', equipment: fractionalWeapon });
+        const { component } = createComponent([mountedWeapon], {}, [], new Map(), {
+            unit: { type: 'Aero', subtype: 'Aerospace Fighter' }
+        });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.rangePresentation.values).toEqual({
+            short: '1',
+            medium: '2',
+            long: '10',
+            extreme: '—'
+        });
+    });
+
+    it('selects the Aero AV bracket from an Aero target distance and weapon maximum bracket', () => {
+        const erLargeLaser = new WeaponEquipment({
+            id: 'ISERLargeLaser',
+            name: 'ER Large Laser',
+            type: 'weapon',
+            weapon: {
+                ammoType: 'NA',
+                ranges: [7, 14, 19, 28],
+                av: [8, 8, 8],
+                maxRangeBracket: 'long'
+            }
+        });
+        const mountedWeapon = entry({ id: 'er-large-laser', equipment: erLargeLaser });
+        const { component, unit } = createComponent([mountedWeapon], {}, [], new Map(), {
+            unit: { type: 'Aero', subtype: 'Aerospace Fighter' },
+            moveMode: 'stationary'
+        });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { unitType: 'aero', distance: 13 });
+        unit.setInventoryControlEntryTarget(mountedWeapon, 'A');
+
+        const longState = component.targetState(row);
+        expect(longState.rangeSelection).toEqual(jasmine.objectContaining({
+            range: 'long',
+            outOfRange: false
+        }));
+        expect(component.isRangeSelected(row, 'long', longState)).toBeTrue();
+        expect(longState.targetNumberText).toBe('8');
+
+        unit.updateInventoryControlTarget('A', { distance: 21 });
+        const extremeState = component.targetState(row);
+        expect(extremeState.rangeSelection).toEqual(jasmine.objectContaining({
+            range: 'extreme',
+            outOfRange: true
+        }));
+        expect(component.isRangeSelected(row, 'extreme', extremeState)).toBeFalse();
+        expect(extremeState.targetNumberText).toBe('X');
+    });
+
+    it('keeps tactical range presentation for non-Aero units', () => {
+        const mountedWeapon = entry({
+            id: 'ground-laser',
+            equipment: weapon('Ground Laser', 'NA', 0, [3, 6, 9, 12])
+        });
+        const { component } = createComponent([mountedWeapon]);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.rangePresentation).toEqual({
+            showMinimum: true,
+            values: { short: '3', medium: '6', long: '9', extreme: '—' }
+        });
+    });
+
     it('uses actual target distance for variable damage arrays when C3 range is shorter', () => {
         const variableDamageLaser = entry({
             id: 'variable-damage-laser',

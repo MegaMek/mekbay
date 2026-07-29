@@ -28,6 +28,7 @@ import {
     type InventoryControlAmmoOption,
     type InventoryControlGroup,
     type InventoryControlRow,
+    type InventoryRangeDisplayKey,
     type InventoryRangeKey
 } from '../../utils/inventory-control.util';
 import { resolveInventoryControlDamageText } from '../../utils/inventory-control-damage.util';
@@ -36,11 +37,22 @@ import { ESCALATING_FAILURE_HANDLER_ID } from '../../equipment-handlers/escalati
 import { TN_IMMOBILE } from '../../models/target-number-calculator.model';
 import { orderHitTargetTooltipLines } from '../../utils/hit-target-tooltip.util';
 
-const RANGE_LABELS: Record<InventoryRangeKey, string> = {
-    short: 'Sht',
-    medium: 'Med',
-    long: 'Lng'
-};
+interface RangeColumn {
+    key: InventoryRangeDisplayKey;
+    label: string;
+}
+
+const GROUND_RANGE_COLUMNS: readonly RangeColumn[] = [
+    { key: 'short', label: 'Sht' },
+    { key: 'medium', label: 'Med' },
+    { key: 'long', label: 'Lng' }
+];
+const AERO_RANGE_COLUMNS: readonly RangeColumn[] = [
+    { key: 'short', label: 'SRV' },
+    { key: 'medium', label: 'MRV' },
+    { key: 'long', label: 'LRV' },
+    { key: 'extreme', label: 'ERV' }
+];
 const HEAT_BAR_SCALE = 30;
 const WEAPON_TARGET_CHOICE_OVERLAY_KEY = 'weapon-equipment-target-choice';
 
@@ -133,8 +145,11 @@ export class WeaponsEquipmentPanelComponent {
     readonly readOnlyInput = input<boolean | undefined>(undefined, { alias: 'readOnly' });
     private pendingDragPreviewSizing: DragPreviewSizing | null = null;
     private readonly implicitlySelectedAmmo = new Map<string, string>();
-    readonly rangeKeys: InventoryRangeKey[] = ['short', 'medium', 'long'];
     readonly unit = computed(() => this.unitInput());
+    readonly usesAerospaceWeaponValues = computed(() => this.unit().getUnit().type === 'Aero');
+    readonly rangeColumns = computed(() => this.usesAerospaceWeaponValues()
+        ? AERO_RANGE_COLUMNS
+        : GROUND_RANGE_COLUMNS);
     readonly context = computed(() => this.contextInput());
     readonly inventoryControl = computed(() => this.unit().inventoryControl);
     readonly groups = computed(() => {
@@ -365,12 +380,13 @@ export class WeaponsEquipmentPanelComponent {
         this.unit().toggleInventoryControlEntryRange(row.entry, range);
     }
 
-    isRangeSelected(row: InventoryControlRow, range: InventoryRangeKey, state = this.targetState(row)): boolean {
+    isRangeSelected(row: InventoryControlRow, range: InventoryRangeDisplayKey, state = this.targetState(row)): boolean {
         if (row.category === 'physical' && state.target) return false;
         const targetRange = state.rangeSelection;
         if (targetRange) {
-            return !targetRange.outOfLongRange && targetRange.range === range;
+            return !targetRange.outOfRange && targetRange.range === range;
         }
+        if (range === 'extreme') return false;
         return this.unit().getInventoryControlEntryRange(row.id) === range;
     }
 
@@ -405,12 +421,8 @@ export class WeaponsEquipmentPanelComponent {
         })));
     }
 
-    rangeValue(row: InventoryControlRow, range: InventoryRangeKey): string {
-        return row.display[range];
-    }
-
-    rangeLabel(range: InventoryRangeKey): string {
-        return RANGE_LABELS[range];
+    rangeValue(row: InventoryControlRow, range: InventoryRangeDisplayKey): string {
+        return row.rangePresentation.values[range];
     }
 
     private targetChoiceTargetNumberTexts(row: InventoryControlRow): Readonly<Record<InventoryControlRuntimeTargetId, string>> {
@@ -488,8 +500,8 @@ export class WeaponsEquipmentPanelComponent {
         const targetNumber = inventoryTargetNumberState(input, rangeSelection);
         const breakdown = targetNumber.breakdown === null ? null : { total: targetNumber.breakdown.total, lines: targetNumber.breakdown.lines };
         const invalidTargetType = false; // target !== null && !this.canTarget(row, target);
-        const invalidTarget = invalidTargetType || (rangeSelection?.outOfLongRange ?? false);
-        const invalidTargetReason = invalidTargetType ? 'type' : rangeSelection?.outOfLongRange ? 'out-of-range' : undefined;
+        const invalidTarget = invalidTargetType || (rangeSelection?.outOfRange ?? false);
+        const invalidTargetReason = invalidTargetType ? 'type' : rangeSelection?.outOfRange ? 'out-of-range' : undefined;
         return {
             target,
             invalidTarget,

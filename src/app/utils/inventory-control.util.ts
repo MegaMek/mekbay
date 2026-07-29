@@ -54,6 +54,7 @@ import type { WeaponDamage } from '../models/equipment.model';
 import { formatInventoryControlHeat, resolveInventoryControlHeatEffect, type InventoryControlHeatRules } from './inventory-control-heat.util';
 import type { InventoryControlPhysicalDamageEffect } from './inventory-control-physical-damage.util';
 import { ATM_AMMO_PROFILES, MML_AMMO_PROFILES, resolveAmmoWeaponProfile, type AmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
+import { AEROSPACE_RANGE_BRACKETS, STANDARD_AEROSPACE_RANGE_LIMITS, aerospaceAttackValues, aerospaceMaximumDistance, effectiveAerospaceMaximumBracket, isRangeBracketWithinMaximum } from './aerospace-range.util';
 
 export const INVENTORY_CONTROL_MODE_STATE = 'inventory_control_mode';
 export const INVENTORY_CONTROL_SORT_STATE = 'inventory_control_sort';
@@ -65,10 +66,14 @@ export const INVENTORY_CONTROL_MODE_DISPLAY_NAMES: Readonly<Record<string, strin
     'High Explosive': 'HE'
 };
 
-const RANGE_MODIFIER_KEYS: readonly InventoryControlRuntimeRangeKey[] = ['short', 'medium', 'long', 'extreme'];
-
 export type InventoryControlGroupId = 'ranged' | 'physical' | 'equipment';
 export type InventoryRangeKey = 'short' | 'medium' | 'long';
+export type InventoryRangeDisplayKey = InventoryRangeKey | 'extreme';
+
+export interface InventoryControlRangePresentation {
+    showMinimum: boolean;
+    values: Readonly<Record<InventoryRangeDisplayKey, string>>;
+}
 
 export interface InventoryControlMode {
     mode: string;
@@ -121,6 +126,7 @@ export interface InventoryControlRow {
     originalIndex: number;
     base: InventoryControlDisplayData;
     display: InventoryControlDisplayData;
+    rangePresentation: InventoryControlRangePresentation;
     damage: WeaponDamage | null;
     damageTypes: WeaponType[];
     firingHeat: number | null;
@@ -550,6 +556,7 @@ function buildInventoryControlRow(
         originalIndex,
         base,
         display: adjustedDisplay,
+        rangePresentation: resolveInventoryControlRangePresentation(entry, adjustedDisplay, selectedAmmoProfile),
         damage: damageResolution?.damage ?? null,
         damageTypes: [...(damageResolution?.damageTypes ?? [])],
         firingHeat,
@@ -666,16 +673,70 @@ function readTypedEquipmentDisplayData(entry: MountedEquipment, hit: string): In
     const physicalDamage = physical && entry.el
         ? normalizeCell(readDamageText(entry.el))
         : '—';
+    const ranges = weapon && entry.owner.getUnit().type === 'Aero'
+        ? STANDARD_AEROSPACE_RANGE_LIMITS
+        : weapon?.ranges;
     return {
         name: equipment?.name ?? entry.name,
         location: normalizeCell(Array.from(entry.locations ?? []).join('/')),
         heat: weapon ? formatInventoryControlHeat(weapon.heat) : '—',
         damage: weapon ? '—' : physicalDamage,
         hit,
-        min: weapon ? formatInventoryRange(weapon.minRange) : '—',
-        short: weapon ? formatInventoryRange(weapon.ranges[0]) : '—',
-        medium: weapon ? formatInventoryRange(weapon.ranges[1]) : '—',
-        long: weapon ? formatInventoryRange(weapon.ranges[2]) : '—',
+        min: weapon && entry.owner.getUnit().type !== 'Aero' ? formatInventoryRange(weapon.minRange) : '—',
+        short: weapon ? formatInventoryRange(ranges?.[0]) : '—',
+        medium: weapon ? formatInventoryRange(ranges?.[1]) : '—',
+        long: weapon ? formatInventoryRange(ranges?.[2]) : '—',
+    };
+}
+
+/**
+ * Projects range cells for the inventory UI without replacing the tactical
+ * ranges used by target-number calculations. Aerospace record sheets display
+ * attack values (SRV/MRV/LRV/ERV), not tactical weapon distances.
+ */
+export function resolveInventoryControlRangePresentation(
+    entry: MountedEquipment,
+    display: InventoryControlDisplayData,
+    ammoProfile: AmmoWeaponProfile | null = null
+): InventoryControlRangePresentation {
+    if (entry.owner.getUnit().type !== 'Aero') {
+        return {
+            showMinimum: true,
+            values: {
+                short: display.short,
+                medium: display.medium,
+                long: display.long,
+                extreme: '—'
+            }
+        };
+    }
+
+    const equipment = entry.equipment;
+    if (equipment instanceof WeaponEquipment) {
+        const maximumBracket = effectiveAerospaceMaximumBracket(equipment, ammoProfile);
+        const attackValues = aerospaceAttackValues(equipment, ammoProfile);
+        const value = (index: number): string => isRangeBracketWithinMaximum(AEROSPACE_RANGE_BRACKETS[index], maximumBracket)
+            ? attackValues[index].toString()
+            : '—';
+        return {
+            showMinimum: false,
+            values: {
+                short: value(0),
+                medium: value(1),
+                long: value(2),
+                extreme: value(3)
+            }
+        };
+    }
+
+    return {
+        showMinimum: false,
+        values: {
+            short: display.short,
+            medium: display.medium,
+            long: display.long,
+            extreme: entry.el ? normalizeCell(readDirectText(entry.el, '.range_extreme')) : '—'
+        }
     };
 }
 
@@ -854,6 +915,10 @@ export function resolveInventoryControlExtremeRange(
 ): number | null {
     const weapon = entry.equipment;
     if (!(weapon instanceof WeaponEquipment)) return null;
+    if (entry.owner.getUnit().type === 'Aero') {
+        const ammoProfile = resolveAmmoWeaponProfile(selectedAmmo) ?? fallbackAmmoProfile ?? null;
+        return aerospaceMaximumDistance(weapon, effectiveAerospaceMaximumBracket(weapon, ammoProfile));
+    }
     const ammoProfile = resolveAmmoWeaponProfile(selectedAmmo) ?? fallbackAmmoProfile;
     if (ammoProfile) return ammoProfile.ranges[3];
     const extreme = weapon.ranges[3];

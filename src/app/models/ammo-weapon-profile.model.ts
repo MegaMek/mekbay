@@ -1,5 +1,6 @@
 import { AmmoMunitionFlag } from "./ammo-munition-flags.type";
 import { EquipmentFlag } from "./equipment-flags.type";
+import type { RangeBrackets } from './equipment.model';
 
 export type AmmoWeaponProfileId =
     | 'mml-lrm'
@@ -13,6 +14,7 @@ export interface AmmoWeaponProfile {
     readonly displayName: string;
     readonly minimumRange: number;
     readonly ranges: readonly [short: number, medium: number, long: number, extreme: number];
+    readonly maximumAerospaceBracket: RangeBrackets;
     readonly clusterSize: number;
 }
 
@@ -29,6 +31,7 @@ export const MML_LRM_PROFILE: AmmoWeaponProfile = {
     displayName: 'LRM',
     minimumRange: 6,
     ranges: [7, 14, 21, 28],
+    maximumAerospaceBracket: 'long',
     clusterSize: 5
 };
 
@@ -37,6 +40,7 @@ export const MML_SRM_PROFILE: AmmoWeaponProfile = {
     displayName: 'SRM',
     minimumRange: 0,
     ranges: [3, 6, 9, 12],
+    maximumAerospaceBracket: 'short',
     clusterSize: 2
 };
 
@@ -45,6 +49,7 @@ export const ATM_STANDARD_PROFILE: AmmoWeaponProfile = {
     displayName: 'Standard',
     minimumRange: 4,
     ranges: [5, 10, 15, 20],
+    maximumAerospaceBracket: 'medium',
     clusterSize: 6
 };
 
@@ -53,6 +58,7 @@ export const ATM_EXTENDED_RANGE_PROFILE: AmmoWeaponProfile = {
     displayName: 'Extended Range',
     minimumRange: 4,
     ranges: [9, 18, 27, 36],
+    maximumAerospaceBracket: 'extreme',
     clusterSize: 6
 };
 
@@ -61,6 +67,7 @@ export const ATM_HIGH_EXPLOSIVE_PROFILE: AmmoWeaponProfile = {
     displayName: 'High Explosive',
     minimumRange: 0,
     ranges: [3, 6, 9, 12],
+    maximumAerospaceBracket: 'short',
     clusterSize: 6
 };
 

@@ -1,4 +1,4 @@
-<div class="weapons-equipment-panel" [class.hide-actions-column]="!hasActionsColumn()" [class.has-targets]="hasTargets()">
+<div class="weapons-equipment-panel" [class.hide-actions-column]="!hasActionsColumn()" [class.has-targets]="hasTargets()" [class.aero-ranges]="usesAerospaceWeaponValues()">
     <div class="weapon-equipment-grid">
             @for (group of groups(); track group.id) {
                 <section class="weapon-equipment-section">
@@ -45,10 +45,12 @@
                         <span class="centered-header">Loc</span>
                         <span class="centered-header">Ht</span>
                         <span class="centered-header">Dmg</span>
-                        <span class="centered-header">Min</span>
-                        <span class="centered-header">Sht</span>
-                        <span class="centered-header">Med</span>
-                        <span class="centered-header">Lng</span>
+                        @if (!usesAerospaceWeaponValues()) {
+                            <span class="centered-header">Min</span>
+                        }
+                        @for (column of rangeColumns(); track column.key) {
+                            <span class="centered-header">{{ column.label }}</span>
+                        }
                         @if (hasActionsColumn()) {
                             <span class="actions-header">{{ groupActionsHeader(group) }}</span>
                         }
@@ -124,25 +126,28 @@
                                     <span class="centered-cell damage-cell meta-cell" data-label="Dmg">{{ rowTarget.damageText }}</span>
                                 </span>
                                 <span class="grouped-cells group-ranges">
-                                    <span class="centered-cell min-cell meta-cell" data-label="Min" [class.minimum-range-active]="!!rowTarget.targetNumberText && (rowTarget.rangeSelection?.minimumRangeModifier ?? 0) > 0">
-                                        <span class="min-value">{{ row.display.min }}</span>
-                                    </span>
+                                    @if (row.rangePresentation.showMinimum) {
+                                        <span class="centered-cell min-cell meta-cell" data-label="Min" [class.minimum-range-active]="!!rowTarget.targetNumberText && (rowTarget.rangeSelection?.minimumRangeModifier ?? 0) > 0">
+                                            <span class="min-value">{{ row.display.min }}</span>
+                                        </span>
+                                    }
                                     <span class="grouped-cells range-cells meta-cell" data-label="Range">
                                         <span class="range-cells">
-                                            @for (range of rangeKeys; track range) {
+                                            @for (column of rangeColumns(); track column.key) {
                                                 <button
                                                     class="range-cell"
                                                     type="button"
-                                                    [attr.data-label]="rangeLabel(range)"
-                                                    [class.range-short]="range === 'short'"
-                                                    [class.range-medium]="range === 'medium'"
-                                                    [class.range-long]="range === 'long'"
-                                                    [disabled]="!canSelectRange(row, range, rowTarget)"
-                                                    [class.selected-range]="isRangeSelected(row, range, rowTarget)"
+                                                    [attr.data-label]="column.label"
+                                                    [class.range-short]="column.key === 'short'"
+                                                    [class.range-medium]="column.key === 'medium'"
+                                                    [class.range-long]="column.key === 'long'"
+                                                    [class.range-extreme]="column.key === 'extreme'"
+                                                    [disabled]="column.key === 'extreme' || !canSelectRange(row, column.key, rowTarget)"
+                                                    [class.selected-range]="isRangeSelected(row, column.key, rowTarget)"
                                                     [class.out-of-range]="rowTarget.invalidTarget"
                                                     [style.--range-selection-color]="rowTarget.invalidTarget ? null : rowTarget.target?.color ?? null"
-                                                    (click)="selectRange(row, range)">
-                                                    {{ rangeValue(row, range) }}
+                                                    (click)="column.key !== 'extreme' && selectRange(row, column.key)">
+                                                    {{ rangeValue(row, column.key) }}
                                                 </button>
                                             }
                                         </span>

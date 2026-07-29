@@ -2,6 +2,7 @@ import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedAmmo, MountedWeapon } from '../models/mounted-equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { getInventoryControlModeAmmoSummary, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from './inventory-control.util';
 
 describe('inventory-control ammo selection', () => {
@@ -74,6 +75,7 @@ describe('inventory-control ammo selection', () => {
         const owner = {
             getInventory: () => inventory,
             getCritSlots: () => [],
+            getUnit: () => createEmptyUnit({ subtype: 'Battle Armor' }),
             isEquipmentUnavailable: () => false,
         } as unknown as CBTForceUnit;
         const mountedWeapon = new MountedWeapon({ owner, id: 'lrm-os', name: weapon.internalName, equipment: weapon });
