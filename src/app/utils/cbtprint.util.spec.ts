@@ -1,5 +1,6 @@
 import { CBTPrintUtil } from './cbtprint.util';
 import { WeaponEquipment } from '../models/equipment.model';
+import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { INVENTORY_CONTROL_MODE_STATE } from './inventory-control.util';
 
 describe('CBTPrintUtil', () => {
@@ -68,7 +69,7 @@ describe('CBTPrintUtil', () => {
             id: 'weapon',
             states: new Map([[INVENTORY_CONTROL_MODE_STATE, 'Pulse']]),
             el: entryEl,
-            owner: {},
+            owner: { getUnit: () => createEmptyUnit() },
             equipment: new WeaponEquipment({
                 id: 'ATM6',
                 name: 'ATM 6',

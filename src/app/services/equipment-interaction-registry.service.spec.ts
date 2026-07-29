@@ -6,6 +6,7 @@ import { type Equipment, WeaponEquipment } from '../models/equipment.model';
 import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
+import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { EquipmentInteractionHandler, EquipmentInteractionRegistryService, type HandlerContext } from './equipment-interaction-registry.service';
 
 function svgEntry(html: string): SVGElement {
@@ -17,6 +18,7 @@ function svgEntry(html: string): SVGElement {
 function owner(gameRules?: CBTGameRules): never {
     return {
         gameRules,
+        getUnit: () => createEmptyUnit(),
         rules: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) },
     } as never;
 }
@@ -112,6 +114,12 @@ describe('EquipmentInteractionRegistryService', () => {
         const modeChoices = choices.filter(choice => choice.label === 'Mode' && choice.displayType === 'dropdown');
         expect(modeChoices.length).toBe(1);
         expect(modeChoices[0]._handler?.id).toBe(INVENTORY_MODE_HANDLER_ID);
+        expect(modeChoices[0].value).toBe('Standard');
+        expect(modeChoices[0].choices).toEqual([
+            { label: 'STD', value: 'Standard', disabled: false },
+            { label: 'ER', value: 'Extended Range', disabled: false },
+            { label: 'HE', value: 'High Explosive', disabled: false },
+        ]);
         expect(choices.some(choice => choice.label === 'Extra')).toBeTrue();
     });
 
