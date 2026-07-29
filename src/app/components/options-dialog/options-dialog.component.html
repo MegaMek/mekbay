@@ -516,6 +516,16 @@
                     <option value="disabled">Disabled</option>
                 </select>
             </div>
+            <div class="option-section-title">Optional rules</div>
+            <div class="option-row">
+                <label for="CBTExtremeRange">Enable "Extreme" range:</label>
+                <select id="CBTExtremeRange" class="bt-select"
+                    [value]="optionsService.options().CBTExtremeRange"
+                    (change)="onCBTExtremeRangeChange($event)">
+                    <option value="false">No (default)</option>
+                    <option value="true">Yes</option>
+                </select>
+            </div>
         </div>
             }
             @case ('Alpha Strike') {
