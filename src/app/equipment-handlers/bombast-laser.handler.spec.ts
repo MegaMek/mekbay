@@ -138,12 +138,11 @@ describe('BombastLaserHandler', () => {
         const entry = bombastLaser(CORE_2026_GAME_RULES, new Map([
             [INVENTORY_CONTROL_MODE_STATE, BOMBAST_LASER_DAMAGE_8_MODE]
         ]));
-        const rangedDamage: WeaponDamage = { values: [12, 10, 8], maximum: 12, label: 'Variable' };
+        const rangedDamage: WeaponDamage = { values: [12, 10, 8], maximum: 12 };
 
         expect(handler.applyInventoryControlDamageEffects(entry, rangedDamage, damageContext, context())).toEqual({
             values: [8, 8, 8],
-            maximum: 8,
-            label: 'Variable'
+            maximum: 8
         });
         expect(rangedDamage.values).toEqual([12, 10, 8]);
     });

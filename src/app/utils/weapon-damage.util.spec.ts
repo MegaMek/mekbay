@@ -13,19 +13,6 @@ describe('formatWeaponDamage', () => {
         expect(formatWeaponDamage({ values: [10, 0, 5], maximum: 10 })).toBe('10//5');
     });
 
-    it('formats and overrides semantic labels', () => {
-        expect(formatWeaponDamage({ values: [], maximum: 5, label: 'Cluster' })).toBe('Cluster');
-        expect(formatWeaponDamage({ values: [], maximum: 0, label: 'Special' })).toBe('Special');
-        expect(formatWeaponDamage(
-            { values: [], maximum: 0, label: 'Special' },
-            { specialLabel: 'special' },
-        )).toBe('special');
-        expect(formatWeaponDamage(
-            { values: [], maximum: 0, label: 'Variable' },
-            { variableLabel: '0' },
-        )).toBe('0');
-    });
-
     it('formats missile, shot, and artillery units', () => {
         expect(formatWeaponDamage({ values: [2], maximum: 12, unit: 'missile' })).toBe('2/Msl');
         expect(formatWeaponDamage({ values: [5], maximum: 10, unit: 'shot' })).toBe('5/Shot');

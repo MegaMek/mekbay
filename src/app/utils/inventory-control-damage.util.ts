@@ -163,8 +163,6 @@ function formatDamageWithTypes(
 ): string {
     const damageValue = weapon.damage === '' ? '' : formatWeaponDamage(damage, {
         shotSuffix: '/Sht',
-        specialLabel: 'special',
-        variableLabel: 'variable',
     });
     const typeSet = new Set(damageTypes);
     const labels = WEAPON_TYPES

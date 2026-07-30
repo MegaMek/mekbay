@@ -134,6 +134,57 @@ describe('inventory-control damage resolution', () => {
         expect(resolveDefaultWeaponDamageText(ams, catalog())).toBe('[PB]');
     });
 
+    it('omits standalone variable damage while preserving classifications', () => {
+        const plasmaCannon = new WeaponEquipment({
+            id: 'CLPlasmaCannon',
+            name: 'Plasma Cannon',
+            type: 'weapon',
+            flags: ['F_DIRECT_FIRE', 'F_ENERGY', 'F_PLASMA'],
+            weapon: { damage: 'variable', rackSize: 2, ammoType: 'PLASMA' },
+        });
+
+        expect(resolveDefaultWeaponDamageText(plasmaCannon, catalog())).toBe('[DE,H]');
+
+        const resolution = resolveInventoryControlWeaponDamage(mount(plasmaCannon), {
+            selectedRange: null,
+            selectedAmmo: null,
+            equipmentCatalog: catalog(),
+        });
+
+        expect(resolution?.text).toBe('[DE,H]');
+        expect(resolution?.damage).toEqual({ values: [0], maximum: 0 });
+        expect(resolution?.damageTypes).toEqual(['DE', 'H']);
+    });
+
+    it('uses rack size for unresolved special damage while preserving classifications', () => {
+        const specialWeapon = new WeaponEquipment({
+            id: 'SpecialWeapon',
+            name: 'Special Weapon',
+            type: 'weapon',
+            flags: ['F_DIRECT_FIRE', 'F_ENERGY'],
+            weapon: { damage: 'special', rackSize: 4 },
+        });
+
+        expect(resolveDefaultWeaponDamageText(specialWeapon, catalog())).toBe('4 [DE]');
+        expect(resolveInventoryControlDamageText(mount(specialWeapon), {
+            selectedRange: null,
+            selectedAmmo: null,
+            equipmentCatalog: catalog(),
+        })).toBe('4 [DE]');
+    });
+
+    it('uses rack size for unresolved variable damage except the Clan Plasma Cannon', () => {
+        const microBomb = new WeaponEquipment({
+            id: 'CLBAMicroBomb',
+            name: 'Bomb Rack (Micro)',
+            type: 'weapon',
+            flags: ['F_ONE_SHOT', 'F_BA_WEAPON'],
+            weapon: { damage: 'variable', rackSize: 2, ammoType: 'BA_MICRO_BOMB' },
+        });
+
+        expect(resolveDefaultWeaponDamageText(microBomb, catalog())).toBe('2 [OS]');
+    });
+
     it('preserves fractional catalog damage precision', () => {
         const infantryWeapon = new WeaponEquipment({
             id: 'rifle',
@@ -232,8 +283,8 @@ describe('inventory-control damage resolution', () => {
 
         expect(resolveDefaultWeaponDamageText(ultra, catalog())).toBe('5/Sht [DB,R2]');
         expect(resolveDefaultWeaponDamageText(hag, catalog())).toBe('20 [C5,M]');
-        expect(resolveDefaultWeaponDamageText(mortar, catalog())).toBe('special [C,M,S]');
-        expect(resolveDefaultWeaponDamageText(tube, catalog())).toBe('Cluster [AE,C,F,M,S]');
+        expect(resolveDefaultWeaponDamageText(mortar, catalog())).toBe('2/Msl [C,M,S]');
+        expect(resolveDefaultWeaponDamageText(tube, catalog())).toBe('3 [AE,C,F,M,S]');
     });
 
     it('returns null for non-weapon entries', () => {

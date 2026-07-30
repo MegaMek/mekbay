@@ -5,8 +5,6 @@ export type WeaponDamageRange = 'short' | 'medium' | 'long' | 'extreme';
 export interface WeaponDamageFormat {
     readonly showZero?: boolean;
     readonly shotSuffix?: '/Shot' | '/Sht';
-    readonly specialLabel?: string;
-    readonly variableLabel?: string;
 }
 
 /** Formats resolved damage without adding weapon classification labels. */
@@ -14,13 +12,9 @@ export function formatWeaponDamage(
     damage: WeaponDamage,
     options: WeaponDamageFormat = {},
 ): string {
-    const value = damage.label === 'Special'
-        ? options.specialLabel ?? damage.label
-        : damage.label === 'Variable'
-            ? options.variableLabel ?? damage.label
-            : damage.label ?? damage.values
-                .map(value => value === 0 && !options.showZero ? '' : String(value))
-                .join('/');
+    const value = damage.values
+        .map(value => value === 0 && !options.showZero ? '' : String(value))
+        .join('/');
 
     if (!value) return '';
     if (damage.unit === 'missile') return `${value}/Msl`;

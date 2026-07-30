@@ -191,17 +191,36 @@ describe('equipment model', () => {
         expect(resolveWeaponDamage(mineLauncher, catalog({ standard }), { ammo: standard }))
             .toEqual({ values: [4], maximum: 4 });
         expect(resolveWeaponDamage(mineLauncher, catalog()))
-            .toEqual({ values: [], maximum: 0, label: 'Special' });
+            .toEqual({ values: [1], maximum: 1 });
 
         const repeating = weapon('repeating', 'Repeating', 'MINE', 'special', 1, []);
         expect(findIntrinsicAmmoForWeapon(repeating, catalog({ standard }))).toBeNull();
         expect(resolveWeaponDamage(repeating, catalog({ standard }), { ammo: standard }))
-            .toEqual({ values: [], maximum: 0, label: 'Special' });
+            .toEqual({ values: [1], maximum: 1 });
 
         const noAmmo = weapon('no-ammo', 'No Ammo', 'NA', 'special', 0, ['F_ONE_SHOT']);
         expect(findIntrinsicAmmoForWeapon(noAmmo, catalog({ standard }))).toBeNull();
         expect(resolveWeaponDamage(noAmmo, catalog({ standard }), { ammo: standard }))
-            .toEqual({ values: [], maximum: 0, label: 'Special' });
+            .toEqual({ values: [0], maximum: 0 });
+    });
+
+    it('uses rack size for sentinel damage except the unresolved Clan Plasma Cannon', () => {
+        const microBomb = weapon('CLBAMicroBomb', 'Bomb Rack (Micro)', 'BA_MICRO_BOMB', 'variable', 2,
+            ['F_ONE_SHOT', 'F_BA_WEAPON']);
+        const plasmaCannon = weapon('CLPlasmaCannon', 'Plasma Cannon', 'PLASMA', 'variable', 2,
+            ['F_ENERGY', 'F_PLASMA']);
+        const mortar = weapon('mortar', 'Mek Mortar', 'MEK_MORTAR', 'cluster', 4, ['F_MISSILE']);
+        const tube = weapon('ISBATubeArtillery', 'Tube Artillery (BA)', 'BA_TUBE', 'cluster', 3,
+            ['F_MISSILE', 'F_ARTILLERY', 'F_MEK_MORTAR']);
+        const special = weapon('special', 'Special', 'NA', 'special', 5, []);
+
+        expect(resolveWeaponDamage(microBomb, catalog())).toEqual({ values: [2], maximum: 2 });
+        expect(resolveWeaponDamage(plasmaCannon, catalog())).toEqual({ values: [0], maximum: 0 });
+        expect(resolveWeaponDamage(mortar, catalog())).toEqual({
+            values: [2], maximum: 8, unit: 'missile',
+        });
+        expect(resolveWeaponDamage(tube, catalog())).toEqual({ values: [3], maximum: 3 });
+        expect(resolveWeaponDamage(special, catalog())).toEqual({ values: [5], maximum: 5 });
     });
 
     it('prefers plain standard intrinsic ammo over modified standard ammunition', () => {

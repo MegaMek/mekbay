@@ -70,13 +70,11 @@ export type RangeBrackets = 'short' | 'medium' | 'long' | 'extreme';
 export type WeaponCategory = 'energy' | 'missile' | 'ballistic' | 'artillery' | 'other';
 
 export type WeaponDamageUnit = 'missile' | 'shot' | 'artillery';
-export type WeaponDamageLabel = 'Cluster' | 'Special' | 'Variable';
 
-/** Fully resolved damage. Values contains one fixed value or a short/medium/long sequence. */
+/** Resolved damage values, using zero when the source has no intrinsic numeric damage. */
 export interface WeaponDamage {
     readonly values: readonly number[];
     readonly maximum: number;
-    readonly label?: WeaponDamageLabel;
     readonly unit?: WeaponDamageUnit;
 }
 export const WEAPON_TYPES = ['A', 'AE', 'AI', 'B', 'C', 'DB', 'DE', 'E', 'F', 'H', 'M', 'N', 'OS', 'P', 'PB', 'R', 'S', 'V', 'X'] as const;
@@ -780,9 +778,9 @@ function resolveWeaponDamageWithAmmo(weapon: WeaponEquipment, ammo: AmmoEquipmen
     if (damage === 'special' && weapon.oneShotCount && ammo) return fixedDamage(ammo.damagePerShot);
     if (damage === 'cluster') return resolveClusterDamage(weapon, ammo);
     if (damage === 'artillery') return fixedDamage(weapon.rackSize, 'artillery');
-    if (damage === 'variable') return labeledDamage('Variable');
+    if (damage === 'variable') return resolveVariableDamage(weapon);
     if (Array.isArray(damage)) return { values: damage, maximum: Math.max(0, ...damage) };
-    if (typeof damage !== 'number' || damage < 0) return labeledDamage('Special');
+    if (typeof damage !== 'number' || damage < 0) return fixedDamage(weapon.rackSize);
 
     const shots = weapon.getRapidFireCount();
     return {
@@ -795,9 +793,12 @@ function resolveWeaponDamageWithAmmo(weapon: WeaponEquipment, ammo: AmmoEquipmen
 function resolveClusterDamage(weapon: WeaponEquipment, ammo: AmmoEquipment | null): WeaponDamage {
     if (weapon.hasFlag('F_LARGE_MISSILE')) return fixedDamage(ammo?.damagePerShot ?? 0);
     if (weapon.ammoType === 'HAG') return fixedDamage(weapon.rackSize);
-    if (weapon.ammoType === 'MEK_MORTAR') return labeledDamage('Special', weapon.rackSize);
+    if (weapon.ammoType === 'MEK_MORTAR') {
+        const damagePerMissile = ammo?.damagePerShot ?? 2;
+        return { values: [damagePerMissile], maximum: weapon.rackSize * damagePerMissile, unit: 'missile' };
+    }
     if (weapon.ammoType === 'BA_TUBE' || !weapon.hasFlag('F_MISSILE')) {
-        return labeledDamage('Cluster', weapon.rackSize);
+        return fixedDamage(weapon.rackSize);
     }
     return {
         values: [ammo?.damagePerShot ?? 0],
@@ -810,8 +811,10 @@ function fixedDamage(value: number, unit?: WeaponDamageUnit): WeaponDamage {
     return { values: [value], maximum: value, ...(unit && { unit }) };
 }
 
-function labeledDamage(label: WeaponDamageLabel, maximum = 0): WeaponDamage {
-    return { values: [], maximum, label };
+function resolveVariableDamage(weapon: WeaponEquipment): WeaponDamage {
+    // MegaMek's record-sheet formatter explicitly leaves the Clan Plasma Cannon
+    // numeric damage blank; other unresolved variable weapons use their rack size.
+    return fixedDamage(weapon.internalName === 'CLPlasmaCannon' ? 0 : weapon.rackSize);
 }
 
 /** Finds the canonical damage-bearing ammo definition; it does not imply carried ammo. */
