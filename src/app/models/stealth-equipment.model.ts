@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -31,21 +31,24 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentFlag } from '../models/equipment-flags.type';
-import type { MountedEquipment } from '../models/mounted-equipment.model';
-import { isStealthEquipment, STEALTH_STATE_KEY } from '../models/stealth-equipment.model';
-import { ToggleHandler } from './base/toggle.handler';
+import type { MountedEquipment } from './mounted-equipment.model';
 
-export class StealthHandler extends ToggleHandler {
-    readonly id = 'stealth-handler';
-    override readonly flags: EquipmentFlag[] = [];
-    override readonly priority = 10;
-    protected override readonly stateKey = STEALTH_STATE_KEY;
-    
-    protected override readonly enabledLabel = 'Stealth Active';
-    protected override readonly disabledLabel = 'Stealth Deactivated';
+export const STEALTH_STATE_KEY = 'state';
+export const STEALTH_ENABLED_STATE = 'enabled';
 
-    override applicableTo(equipment: MountedEquipment): boolean {
-        return isStealthEquipment(equipment);
-    }
+export function isStealthEquipment(equipment: MountedEquipment): boolean {
+    return equipment.equipment?.flags.has('F_STEALTH') === true
+        || equipment.equipment?.flags.has('F_CHAMELEON_SHIELD') === true;
+}
+
+export function isStealthEquipmentActive(equipment: MountedEquipment): boolean {
+    return isStealthEquipment(equipment)
+        && equipment.states.get(STEALTH_STATE_KEY) === STEALTH_ENABLED_STATE;
+}
+
+/** Active stealth cuts C3 links, except for Chameleon LPS. */
+export function isC3DisruptingStealthActive(equipment: MountedEquipment): boolean {
+    return equipment.equipment?.flags.has('F_STEALTH') === true
+        && equipment.equipment.flags.has('F_CHAMELEON_SHIELD') === false
+        && equipment.states.get(STEALTH_STATE_KEY) === STEALTH_ENABLED_STATE;
 }

@@ -292,6 +292,11 @@ export class MountedEquipment {
         return state.isDamaged || state.isDisabled;
     }
 
+    /** Whether this mount is structurally unavailable or temporarily unable to act. */
+    isActionUnavailable(): boolean {
+        return this.isUnavailable() || this.owner.isEquipmentActionUnavailable(this);
+    }
+
     resolvedDestroyed(ruleDamaged: boolean = this.isDestroyed()): boolean {
         if (this.isRepairing()) return false;
         return this.isDestroying() || ruleDamaged;

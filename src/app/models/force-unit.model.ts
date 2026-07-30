@@ -41,6 +41,7 @@ import type { ForceUnitState } from './force-unit-state.model';
 import type { ConditionData } from './force-unit-state.model';
 import type { CrewMember } from './crew-member.model';
 import { uuidv7 } from '../utils/uuid.util';
+import type { C3Component } from './c3-network.model';
 
 /*
  * Author: Drake
@@ -139,6 +140,16 @@ export abstract class ForceUnit {
 
     getCondition(condition: string): boolean {
         return this.state.hasCondition(condition);
+    }
+
+    /** Runtime availability hook used by the force-level C3 graph. */
+    isC3EndpointOperational(_componentIndex: number, _component?: C3Component): boolean {
+        return !this.destroyed;
+    }
+
+    /** CBT overrides this; Alpha Strike does not apply CBT C3 jamming rules. */
+    isC3Jammed(): boolean {
+        return false;
     }
 
     isComputedCondition(_condition: string): boolean {

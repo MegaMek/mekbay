@@ -16,7 +16,7 @@ import { APOLLO_MODE_STATE, APOLLO_SATURATION_MODE, ApolloHandler } from '../../
 import { LaserInsulatorHandler } from '../../equipment-handlers/laser-insulator.handler';
 import { RISC_LASER_PULSE_MODE, RiscLaserPulseModuleHandler } from '../../equipment-handlers/risc-laser-pulse-module.handler';
 import { EquipmentInteractionRegistryService, type EquipmentInteractionHandler } from '../../services/equipment-interaction-registry.service';
-import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryControlGroups, type InventoryControlDisplayData } from '../../utils/inventory-control.util';
+import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryControlGroups, selectInventoryControlEntry, type InventoryControlDisplayData } from '../../utils/inventory-control.util';
 import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.component';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import type { MotiveModes } from '../../models/motiveModes.model';
@@ -315,6 +315,33 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(row.ammo.remaining).toBe(0);
         expect(row.ammo.total).toBe(0);
         expect(row.ammo.options).toEqual([jasmine.objectContaining({ remaining: 0, total: 10, destroyed: true, disabled: true })]);
+    });
+
+    it('disables weapon actions during shutdown without destroying equipment or ammo', () => {
+        const ac2 = weapon('AC/2', 'AC', 2);
+        const ac2Ammo = ammo('AC/2 Ammo', 'AC', 2);
+        const weaponEntry = entry({ id: 'ac2', equipment: ac2, el: svgEntry('<g><g class="name"><text>AC/2</text></g></g>') });
+        const ammoBin = entry({ id: 'ac2-ammo', equipment: ac2Ammo, totalAmmo: 10, consumed: 3 });
+        const { unit } = createCBTForceUnitTestHarness({
+            components: [weaponEntry, ammoBin],
+            conditions: ['shutdown']
+        });
+
+        const row = getInventoryControlGroups(unit, new EquipmentRegistry({ [ac2Ammo.internalName]: ac2Ammo }))
+            .find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.disabled).toBeTrue();
+        expect(row.destroyed).toBeFalse();
+        expect(row.ammo.remaining).toBe(7);
+        expect(row.ammo.total).toBe(10);
+        expect(row.ammo.options[0]).toEqual(jasmine.objectContaining({
+            remaining: 7,
+            total: 10,
+            destroyed: false,
+            disabled: false
+        }));
+        expect(selectInventoryControlEntry(unit, weaponEntry)).toBeFalse();
+        expect(unit.isInventoryControlEntrySelected(weaponEntry.id)).toBeFalse();
     });
 
     it('keeps inactive direct inventory rows in original order', () => {

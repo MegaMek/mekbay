@@ -7,6 +7,7 @@ import { HAG_FLAK_MODE, HAG_STANDARD_MODE, HagHandler, selectedHagMode } from '.
 function owner() {
     return {
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
+        isEquipmentActionUnavailable: jasmine.createSpy('isEquipmentActionUnavailable').and.returnValue(false),
         rules: {
             computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 })
         }

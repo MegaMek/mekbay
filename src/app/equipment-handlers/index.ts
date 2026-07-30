@@ -50,6 +50,7 @@ import { MascHandler } from './masc.handler';
 import { DisabledEquipmentHandler } from './disabled-equipment.handler';
 import { VibrobladeHandler } from './vibroblade.handler';
 import { BombastLaserHandler } from './bombast-laser.handler';
+import { C3EmergencyMasterHandler } from './c3-emergency-master.handler';
 
 /**
  * Register all equipment handlers.
@@ -72,6 +73,7 @@ export function registerAllHandlers(registryService: EquipmentInteractionRegistr
     registry.register(new RiscLaserPulseModuleHandler());
     registry.register(new HagHandler());
     registry.register(new MascHandler());
+    registry.register(new C3EmergencyMasterHandler());
     registry.register(new DisabledEquipmentHandler());
     registry.register(new PpcCapacitorHandler());
     registry.register(new BombastLaserHandler());

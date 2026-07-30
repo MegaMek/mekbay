@@ -50,11 +50,19 @@ const NO_CONDITION_RULES = {
 };
 
 function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInventory: () => MountedEquipment[]; rules: typeof NO_CONDITION_RULES } {
-    return {
+    const unit = {
         getInventory: () => [],
+        isEquipmentUnavailable: () => false,
         rules: NO_CONDITION_RULES,
         ...overrides,
-    } as T & { getInventory: () => MountedEquipment[]; rules: typeof NO_CONDITION_RULES };
+    } as T & {
+        getInventory: () => MountedEquipment[];
+        isEquipmentUnavailable: (entry: MountedEquipment) => boolean;
+        isEquipmentActionUnavailable?: (entry: MountedEquipment) => boolean;
+        rules: typeof NO_CONDITION_RULES;
+    };
+    unit.isEquipmentActionUnavailable ??= entry => unit.isEquipmentUnavailable(entry);
+    return unit;
 }
 
 describe('SvgInteractionService', () => {

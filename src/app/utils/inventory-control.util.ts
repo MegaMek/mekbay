@@ -253,7 +253,7 @@ export function selectInventoryControlEntry(
     chooseTarget?: (selectedTargetId: InventoryControlRuntimeTargetId | null, targets: readonly InventoryControlRuntimeTarget[]) => void,
     forceSelected = false
 ): boolean {
-    if (!isInventoryControlSelectableEntry(entry)) return false;
+    if (!isInventoryControlSelectableEntry(entry) || entry.isActionUnavailable()) return false;
 
     const targets = unit.getInventoryControlTargets();
     if (targets.length === 0) {
@@ -493,7 +493,9 @@ function buildInventoryControlRow(
 
     const state = entryStates.get(entry) ?? entry.ruleState();
     const destroyed = options.destroyed ?? state.isDamaged;
-    const disabled = state.isDisabled || rules.isSelectable?.(entry) === false;
+    const disabled = entry.isActionUnavailable()
+        || state.isDisabled
+        || rules.isSelectable?.(entry) === false;
     const category = getEntryCategory(entry);
     const { modes, modifiers } = readInventoryControlModesAndModifiers(entry);
     const selectedMode = getSelectedMode(entry, modes, ammoSources, rules.matchesAmmo, options.locationLock);
@@ -1042,7 +1044,7 @@ export function formatHitModifier(hitModifier: number | 'Vs' | '*' | null): stri
 export function syncSvgMode(
     entry: MountedEquipment,
     mode: string | null,
-    disabled = entry.isDisabled()
+    disabled = entry.isActionUnavailable()
 ): void {
     const el = entry.el;
     if (!el) return;

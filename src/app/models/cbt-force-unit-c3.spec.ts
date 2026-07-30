@@ -1,5 +1,5 @@
 import { CBTForceUnit } from './cbt-force-unit.model';
-import { C3_FLAGS, C3NetworkType } from './c3-network.model';
+import { C3_FLAGS, C3Network, C3NetworkType } from './c3-network.model';
 import type { Equipment } from './equipment.model';
 import { MountedEquipment } from './mounted-equipment.model';
 import type { SerializedC3NetworkGroup } from './force-serialization';
@@ -44,7 +44,12 @@ function c3BadgeUnit(
     Object.defineProperties(unit, {
         id: { value: id, configurable: true },
         destroyed: { value: false, configurable: true },
+        shutdown: { value: false, writable: true, configurable: true },
         getUnit: { value: () => ({ comp: [] }), configurable: true },
+        rules: {
+            value: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) },
+            configurable: true,
+        },
         getInventory: { value: () => inventory, configurable: true },
         isEquipmentUnavailable: {
             value: (entry: MountedEquipment) => unavailable.has(entry.id),
@@ -56,7 +61,11 @@ function c3BadgeUnit(
 }
 
 function connectBadgeUnits(units: CBTForceUnit[], networks: SerializedC3NetworkGroup[]): void {
-    const force = { units: () => units, c3Networks: () => networks };
+    const force = {
+        units: () => units,
+        c3Networks: () => networks,
+        c3Network: () => new C3Network(networks, units),
+    };
     units.forEach(unit => Object.defineProperty(unit, 'force', { value: force, configurable: true }));
 }
 
@@ -96,7 +105,19 @@ function unitContext(options: {
         }),
         force: {
             c3Networks: () => options.networks ?? c3Network(),
-            units: () => [master]
+            units: () => [master],
+            c3Network: () => {
+                const linked = options.linked ?? (options.operationalPins?.[0] ?? true);
+                const state = {
+                    linked,
+                    degraded: options.masterJammed === true && linked,
+                };
+                return {
+                    hasLinkedNetwork: () => linked,
+                    statesFor: () => [state],
+                    stateFor: () => state,
+                };
+            },
         },
         getC3DegradationSource: CBTForceUnit.prototype.getC3DegradationSource,
         c3DegradationSource: () => CBTForceUnit.prototype.getC3DegradationSource.call(context),
@@ -110,6 +131,54 @@ function unitContext(options: {
 }
 
 describe('CBTForceUnit C3 targeting resolution', () => {
+    it('disconnects every C3 endpoint while the unit is shutdown', () => {
+        const unit = c3BadgeUnit('shutdown-unit', [
+            { id: 'master', flag: C3_FLAGS.C3M },
+            { id: 'slave', flag: C3_FLAGS.C3S },
+        ], new Set());
+
+        expect(unit.isC3ComponentOperational(0)).toBeTrue();
+        expect(unit.isC3ComponentOperational(1)).toBeTrue();
+
+        Object.defineProperty(unit, 'getCondition', {
+            value: (condition: string) => condition === 'shutdown',
+            configurable: true,
+        });
+
+        expect(CBTForceUnit.prototype.isEquipmentUnavailable.call(unit, unit.getInventory()[0])).toBeFalse();
+        expect(CBTForceUnit.prototype.isEquipmentUnavailable.call(unit, unit.getInventory()[1])).toBeFalse();
+        expect(CBTForceUnit.prototype.isEquipmentActionUnavailable.call(unit, unit.getInventory()[0])).toBeTrue();
+        expect(CBTForceUnit.prototype.isEquipmentActionUnavailable.call(unit, unit.getInventory()[1])).toBeTrue();
+        expect(unit.isC3ComponentOperational(0)).toBeFalse();
+        expect(unit.isC3ComponentOperational(1)).toBeFalse();
+    });
+
+    it('disconnects C3 for active stealth except Chameleon LPS', () => {
+        const stealthUnit = c3BadgeUnit('stealth-unit', [
+            { id: 'c3', flag: C3_FLAGS.C3M },
+            { id: 'stealth', flag: 'F_STEALTH' },
+        ], new Set());
+        const chameleonUnit = c3BadgeUnit('chameleon-unit', [
+            { id: 'c3', flag: C3_FLAGS.C3M },
+            { id: 'chameleon', flag: 'F_CHAMELEON_SHIELD' },
+        ], new Set());
+        stealthUnit.getInventory()[1].states.set('state', 'enabled');
+        chameleonUnit.getInventory()[1].states.set('state', 'enabled');
+
+        expect(stealthUnit.isC3ComponentOperational(0)).toBeFalse();
+        expect(chameleonUnit.isC3ComponentOperational(0)).toBeTrue();
+    });
+
+    it('does not disconnect C3 for an unavailable stealth system with stale active state', () => {
+        const unit = c3BadgeUnit('damaged-stealth', [
+            { id: 'c3', flag: C3_FLAGS.C3M },
+            { id: 'stealth', flag: 'F_STEALTH' },
+        ], new Set(['stealth']));
+        unit.getInventory()[1].states.set('state', 'enabled');
+
+        expect(unit.isC3ComponentOperational(0)).toBeTrue();
+    });
+
     it('queries mounted capabilities and filters unavailable mounts', () => {
         const unavailable = new Set<string>(['broken-ecm']);
         const inventory = [
@@ -226,13 +295,14 @@ describe('CBTForceUnit C3 targeting resolution', () => {
         ], new Set());
         Object.defineProperties(unit, {
             getCondition: { value: () => false, configurable: true },
-            getC3NetworkRuntimeState: {
-                value: (type: C3NetworkType) => ({
-                    linked: true,
-                    degraded: type === C3NetworkType.C3,
+            force: { value: {
+                c3Network: () => ({
+                    statesFor: () => [
+                        { linked: true, degraded: true },
+                        { linked: true, degraded: false },
+                    ],
                 }),
-                configurable: true,
-            },
+            }, configurable: true },
         });
 
         expect(unit.getC3DegradationSource()).toBe('none');
@@ -245,10 +315,14 @@ describe('CBTForceUnit C3 targeting resolution', () => {
         ], new Set());
         Object.defineProperties(unit, {
             getCondition: { value: () => false, configurable: true },
-            getC3NetworkRuntimeState: {
-                value: () => ({ linked: true, degraded: true }),
-                configurable: true,
-            },
+            force: { value: {
+                c3Network: () => ({
+                    statesFor: () => [
+                        { linked: true, degraded: true },
+                        { linked: true, degraded: true },
+                    ],
+                }),
+            }, configurable: true },
         });
 
         expect(unit.getC3DegradationSource()).toBe('network-member');
@@ -340,7 +414,11 @@ describe('CBTForceUnit C3 targeting resolution', () => {
         } as unknown as CBTForceUnit;
         Object.setPrototypeOf(context, CBTForceUnit.prototype);
         Object.defineProperty(context, 'force', {
-            value: { c3Networks: () => networks, units: () => [master, context] },
+            value: {
+                c3Networks: () => networks,
+                units: () => [master, context],
+                c3Network: () => new C3Network(networks, [master, context]),
+            },
         });
         mounts.push(
             new MountedEquipment({

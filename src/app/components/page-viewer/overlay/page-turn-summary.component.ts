@@ -57,7 +57,7 @@ import { DataService } from '../../../services/data.service';
 import type { MountedEquipment } from '../../../models/mounted-equipment.model';
 import { MascHandler } from '../../../equipment-handlers/masc.handler';
 
-interface MascControlRow {
+interface EquipmentTrackControlRow {
     entry: MountedEquipment;
     label: string;
     damaged: boolean;
@@ -221,13 +221,13 @@ export class PageTurnSummaryPanelComponent {
         return unit.PSRModifiers().modifiers.filter(modifier => modifier.pilotCheck !== undefined && modifier.pilotCheck !== 0);
     });
 
-    mascControlRows = computed<MascControlRow[]>(() => {
+    equipmentTrackControlRows = computed<EquipmentTrackControlRow[]>(() => {
         const unit = this.unit();
         if (!unit) return [];
         return unit.getInventory()
             .filter(entry => entry.equipment?.flags?.has('F_MASC'))
             .map(entry => {
-                const active = MascHandler.isActive(entry);
+                const active = entry.equipment?.flags?.has('F_MASC') ? MascHandler.isActive(entry) : true;
                 const damaged = entry.resolvedDestroyed();
                 const choices = this.equipmentRegistry.getChoices(entry, this.handlerContext());
                 return {
@@ -344,7 +344,7 @@ export class PageTurnSummaryPanelComponent {
         turnState.spotting.set(!turnState.spotting());
     }
 
-    async handleMascChoice(row: MascControlRow, choice: HandlerChoice): Promise<void> {
+    async handleEquipmentTrackChoice(row: EquipmentTrackControlRow, choice: HandlerChoice): Promise<void> {
         if (choice.disabled) return;
         await this.equipmentRegistry.handleSelection(row.entry, choice, this.handlerContext());
         this.unit()?.inventoryControl.markInventoryViewChanged();

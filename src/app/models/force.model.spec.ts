@@ -11,6 +11,7 @@ import type { UnitInitializerService } from '../services/unit-initializer.servic
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { ForceAvailabilityContext } from '../utils/force-availability.util';
 import { NO_FORMATION } from '../utils/formation-type.model';
+import { C3NetworkType } from './c3-network.model';
 
 function createUnit(id: number, name: string, year: number): Unit {
     return createEmptyUnit({
@@ -231,5 +232,45 @@ describe('Force formation deserialization', () => {
 
         expect(force.groups()[0].formation()).toBe(NO_FORMATION);
         expect(force.groups()[0].formationLock).toBeTrue();
+    });
+});
+
+describe('Force C3 cleanup', () => {
+    it('preserves serialized networks during load and update before unit equipment is hydrated', () => {
+        const network = {
+            id: 'peer-network',
+            type: C3NetworkType.C3I,
+            color: '#1',
+            peerIds: ['first', 'second'],
+        };
+        const serialized = {
+            ...createSerializedForce([{
+                id: 'group',
+                units: [createSerializedUnit('first'), createSerializedUnit('second')],
+            }]),
+            c3Networks: [network],
+        };
+        const force = new TestForce();
+
+        force.loadSerialized(serialized);
+        expect(force.c3Networks()).toEqual([network]);
+
+        force.update(serialized);
+        expect(force.c3Networks()).toEqual([network]);
+    });
+
+    it('removes every deleted group unit from the evolving network revision', () => {
+        const force = new TestForce();
+        const first = createStubDeserializedUnit(createSerializedUnit('first'));
+        const second = createStubDeserializedUnit(createSerializedUnit('second'));
+        const group = force.addGroup();
+        group.units.set([first, second]);
+        force.setNetwork([{
+            id: 'peer-network', type: C3NetworkType.C3I, color: '#1', peerIds: ['first', 'second', 'remaining'],
+        }]);
+
+        force.removeGroup(group);
+
+        expect(force.c3Networks()).toEqual([]);
     });
 });

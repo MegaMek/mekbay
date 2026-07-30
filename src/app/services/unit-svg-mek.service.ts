@@ -58,6 +58,7 @@ export class UnitSvgMekService extends UnitSvgService {
         const critSlots = this.unit.getCritSlots();
         const locations = this.unit.getLocations();
         const inventory = this.unit.getInventory();
+        this.unit.getConditions();
         this.unit.phaseTrigger(); // Ensure phase changes trigger update
         // Update all displays
         this.updateBVDisplay();
@@ -239,9 +240,10 @@ export class UnitSvgMekService extends UnitSvgService {
                     this.renderMeleeDamage(entry, 'physWeapon', undefined, !!entry.equipment?.flags.has('S_FLAIL'));
                 }
 
-                entry.el.classList.toggle('disabledInventory', state.isDisabled);
+                const actionUnavailable = entry.isActionUnavailable();
+                entry.el.classList.toggle('disabledInventory', actionUnavailable);
                 entry.el.classList.toggle('damagedInventory', state.isDamaged);
-                if (state.isDamaged || state.isDisabled) entry.el.classList.remove('selected');
+                if (state.isDamaged || actionUnavailable) entry.el.classList.remove('selected');
 
                 // Hit modifier badge
                 this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry));

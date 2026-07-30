@@ -44,8 +44,7 @@ import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import { ECMMode } from '../../models/common.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
-import { C3NetworkUtil } from '../../utils/c3-network.util';
-import type { C3Component, C3NetworkType } from '../../models/c3-network.model';
+import { C3Capabilities, C3Network, c3NetworkTypeName, type C3Component, type C3NetworkType } from '../../models/c3-network.model';
 import { GameSystem } from '../../models/common.model';
 import { formatMovement, formatMovementWithAlternate } from '../../utils/as-common.util';
 import { getUnitConditionDefinition, unitConditionSortIndex } from '../../models/rules/unit-type-rules';
@@ -201,12 +200,12 @@ export class UnitBlockComponent {
         if (forceUnit instanceof CBTForceUnit) {
             const tagMounts = forceUnit.getMountedEquipmentByFlag('F_TAG');
             if (tagMounts.length === 0) return undefined;
-            const tag = tagMounts.find(mount => !forceUnit.isEquipmentUnavailable(mount)) ?? tagMounts[0];
+            const tag = tagMounts.find(mount => !mount.isActionUnavailable()) ?? tagMounts[0];
             const names = [tag.name, tag.equipment?.name, tag.equipment?.shortName, tag.equipment?.sortingName]
                 .filter((name): name is string => !!name);
             return {
                 label: names.some(name => /\blight\b/i.test(name)) ? 'LTAG' : 'TAG',
-                unavailable: tagMounts.every(mount => forceUnit.isEquipmentUnavailable(mount)),
+                unavailable: tagMounts.every(mount => mount.isActionUnavailable()),
             };
         }
         return undefined;
@@ -222,10 +221,10 @@ export class UnitBlockComponent {
         if (forceUnit instanceof CBTForceUnit) {
             const ecms = forceUnit.getMountedEquipmentByFlag('F_ECM');
             if (ecms.length === 0) return null;
-            const mount = ecms.find(candidate => !forceUnit.isEquipmentUnavailable(candidate)) ?? ecms[0];
+            const mount = ecms.find(candidate => !candidate.isActionUnavailable()) ?? ecms[0];
             return {
                 mode: mount.states.get('ecm_mode') as ECMMode || ECMMode.ECM,
-                unavailable: ecms.every(candidate => forceUnit.isEquipmentUnavailable(candidate)),
+                unavailable: ecms.every(candidate => candidate.isActionUnavailable()),
             };
         }
         return null;
@@ -235,7 +234,7 @@ export class UnitBlockComponent {
     c3NetworkItems = computed<{ label: string; networkType: C3NetworkType; enabled: boolean; unavailable: boolean; color?: string }[]>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return [];
-        const components = C3NetworkUtil.getC3Components(forceUnit);
+        const components = new C3Capabilities(forceUnit).components;
         if (components.length === 0) return [];
 
         const networks = (forceUnit instanceof CBTForceUnit || forceUnit instanceof ASForceUnit) 
@@ -272,12 +271,12 @@ export class UnitBlockComponent {
             if (runtimeState?.color) {
                 color = runtimeState.color;
             } else if (connectedNetwork) {
-                const rootNetwork = C3NetworkUtil.getRootNetwork(connectedNetwork, networks);
+                const rootNetwork = new C3Network(networks).rootOf(connectedNetwork.id) ?? connectedNetwork;
                 color = rootNetwork.color;
             }
             
             items.push({
-                label: C3NetworkUtil.getNetworkTypeName(networkType),
+                label: c3NetworkTypeName(networkType),
                 networkType,
                 enabled,
                 unavailable: forceUnit instanceof CBTForceUnit

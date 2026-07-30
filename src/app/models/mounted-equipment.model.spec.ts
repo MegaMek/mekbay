@@ -106,6 +106,38 @@ describe('MountedEquipment physical classification', () => {
     });
 });
 
+describe('MountedEquipment action availability', () => {
+    it('delegates action availability to its owning unit', () => {
+        const owner = jasmine.createSpyObj('CBTForceUnit', ['isEquipmentActionUnavailable']);
+        owner.rules = {
+            computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 })
+        };
+        const entry = new MountedEquipment({ owner, id: 'laser', name: 'Laser' });
+        owner.isEquipmentActionUnavailable.and.returnValue(false);
+
+        expect(entry.isActionUnavailable()).toBeFalse();
+        expect(owner.isEquipmentActionUnavailable).toHaveBeenCalledOnceWith(entry);
+
+        owner.isEquipmentActionUnavailable.calls.reset();
+        owner.isEquipmentActionUnavailable.and.returnValue(true);
+
+        expect(entry.isActionUnavailable()).toBeTrue();
+        expect(owner.isEquipmentActionUnavailable).toHaveBeenCalledOnceWith(entry);
+    });
+
+    it('is action-unavailable when structurally unavailable without consulting its owner', () => {
+        const owner = jasmine.createSpyObj('CBTForceUnit', ['isEquipmentActionUnavailable']);
+        owner.rules = {
+            computeEntryState: () => ({ isDamaged: true, isDisabled: false, hitMod: 0 })
+        };
+        const entry = new MountedEquipment({ owner, id: 'laser', name: 'Laser' });
+
+        expect(entry.isUnavailable()).toBeTrue();
+        expect(entry.isActionUnavailable()).toBeTrue();
+        expect(owner.isEquipmentActionUnavailable).not.toHaveBeenCalled();
+    });
+});
+
 describe('MountedEquipment relationships', () => {
     const owner = {} as never;
     const entry = (id: string, entryOwner = owner) => new MountedEquipment({

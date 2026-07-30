@@ -243,6 +243,7 @@ export class UnitSvgService {
         const critSlots = this.unit.getCritSlots();
         const locations = this.unit.getLocations();
         const inventory = this.unit.getInventory();
+        this.unit.getConditions();
         this.unit.phaseTrigger(); // Ensure phase changes trigger update
 
         // Update all displays
@@ -1528,26 +1529,25 @@ export class UnitSvgService {
         if (!svg) return;
         this.unit.getInventory().forEach(entry => {
             if (!entry.el) return;
+            const state = this.unit.rules.computeEntryState(entry);
+            const actionUnavailable = entry.isActionUnavailable();
             if (entry.isIntrinsicPhysicalAttack()) {
                 if (entry.name === 'charge') {
                     this.renderChargeDamage(entry, this.unit.rules.chargeDamage());
                 }
             }
             // Inventory state
-            if (entry.isDestroyed()) {
-                entry.el.classList.add('damagedInventory');
-                entry.el.classList.remove('selected');
-            } else {
-                entry.el.classList.remove('damagedInventory');
-            }
+            entry.el.classList.toggle('disabledInventory', actionUnavailable);
+            entry.el.classList.toggle('damagedInventory', state.isDamaged);
+            if (state.isDamaged || actionUnavailable) entry.el.classList.remove('selected');
             // Hit modifier badge
-            if (entry.isDestroyed()) {
+            if (state.isDamaged) {
                 this.renderHitModEntry(entry, { profile: [], value: null, changed: false, weakened: false, modifierBreakdown: [] });
             } else {
                 this.renderHitModEntry(
                     entry,
                     this.resolveInventoryControlToHit(entry),
-                    this.unit.rules.computeEntryState(entry).weakenedHitMod
+                    state.weakenedHitMod
                 );
             }
             this.renderInventoryControlHeatEntry(entry, null);

@@ -50,7 +50,7 @@ import {
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { HeatDissipationState } from './heat-management';
 import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
-import { C3NetworkUtil } from '../../utils/c3-network.util';
+import { C3TaxCalculator } from '../c3-network.model';
 
 export interface PSRCheck {
     fallCheck?: number;
@@ -220,7 +220,11 @@ export interface UnitTypeRules {
     evaluateDestroyed(): void;
 
     /** BV cost allocated to this unit for its active C3 network. */
-    calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[]): number;
+    calculateC3Tax(
+        networks: SerializedC3NetworkGroup[],
+        allUnits: CBTForceUnit[],
+        calculator?: C3TaxCalculator,
+    ): number;
 
     /** Short label for required control rolls (PSR, DSR, etc.). */
     readonly controlRollShortLabel: string;
@@ -416,8 +420,12 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         this.controlRollFullLabel = controlRollFullLabel;
     }
 
-    calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[]): number {
-        return C3NetworkUtil.calculateCore2026UnitC3Tax(this.unit, networks, allUnits);
+    calculateC3Tax(
+        networks: SerializedC3NetworkGroup[],
+        allUnits: CBTForceUnit[],
+        calculator = new C3TaxCalculator(networks, allUnits),
+    ): number {
+        return calculator.core2026(this.unit);
     }
 
     isComputedCondition(condition: string): boolean {
