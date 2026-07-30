@@ -432,6 +432,7 @@ describe('intrinsic one-shot ammo mounts', () => {
         expect(isIntrinsicOneShotAmmoMount(intrinsic)).toBeTrue();
         expect(intrinsic.parent).toBe(mounted);
         expect(intrinsic.totalAmmo).toBe(1);
+        expect(intrinsic.originalTotalAmmo).toBe(1);
         expect(intrinsic.consumed).toBeUndefined();
         expect(intrinsic.equipment).toBe(standard);
         expect(mounted.linkedWith).toEqual([intrinsic]);

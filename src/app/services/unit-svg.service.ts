@@ -52,7 +52,6 @@ import { formatInventoryControlHeat, resolveInventoryControlHeatEffect } from '.
 import { separateHeatFireModifier, type ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import { isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, selectedRiscLaserMode } from '../equipment-handlers/risc-laser-pulse-module.handler';
-import { resolveInventoryOriginalAmmoTotal } from '../models/inventory-ammo-capacity.model';
 
 const INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY = '--inventory-control-selection-color';
 const HEAT_PROJECTION_ORIGINAL_OVERFLOW_STROKE = 'data-heat-projection-original-stroke';
@@ -1000,12 +999,7 @@ export class UnitSvgService {
     }
 
     private getInventoryOriginalTotalAmmo(entry: MountedAmmo): number {
-        return resolveInventoryOriginalAmmoTotal({
-            entryId: entry.id,
-            components: this.unit.getUnit().comp,
-            maximumShotsPerBin: entry.getMaxShots(),
-            storedTotalAmmo: entry.totalAmmo,
-        });
+        return entry.originalTotalAmmo ?? entry.totalAmmo ?? entry.getMaxShots();
     }
 
     protected updateAmmoProfile() {

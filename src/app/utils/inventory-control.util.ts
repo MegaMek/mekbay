@@ -36,7 +36,6 @@ import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { MountedAmmo, MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { parseInventoryComponentReference } from '../models/inventory-component-reference.model';
-import { resolveInventoryOriginalAmmoTotal } from '../models/inventory-ammo-capacity.model';
 import { type CriticalSlot } from '../models/force-serialization';
 import type { UnitComponent } from '../models/units.model';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
@@ -881,12 +880,7 @@ function createInventoryAmmoSource(entry: MountedEquipment, equipmentCatalog: Eq
 }
 
 function getInventoryOriginalTotalAmmo(entry: MountedAmmo): number {
-    return resolveInventoryOriginalAmmoTotal({
-        entryId: entry.id,
-        components: entry.owner.getUnit().comp,
-        maximumShotsPerBin: entry.getMaxShots(),
-        storedTotalAmmo: entry.totalAmmo,
-    });
+    return entry.originalTotalAmmo ?? entry.totalAmmo ?? entry.getMaxShots();
 }
 
 function readInfantryFieldGunDisplayData(entry: MountedEquipment, component: UnitComponent, hit: string): InventoryControlDisplayData {

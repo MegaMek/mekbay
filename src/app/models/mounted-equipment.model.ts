@@ -55,6 +55,7 @@ export interface MountedEquipmentInit {
     el?: SVGElement;
     ammo?: string;
     totalAmmo?: number;
+    originalTotalAmmo?: number;
     consumed?: number;
     intrinsicOneShotAmmo?: boolean;
 }
@@ -87,6 +88,7 @@ export class MountedEquipment {
     el?: SVGElement;
     ammo?: string;
     totalAmmo?: number;
+    readonly originalTotalAmmo?: number;
     consumed?: number;
     intrinsicOneShotAmmo?: boolean;
     readonly ruleState: Signal<MountedEquipmentRuleState>;
@@ -226,6 +228,7 @@ export class MountedEquipment {
         this.el = data.el;
         this.ammo = data.ammo;
         this.totalAmmo = data.totalAmmo;
+        this.originalTotalAmmo = data.originalTotalAmmo ?? data.totalAmmo;
         this.consumed = data.consumed;
         this.intrinsicOneShotAmmo = data.intrinsicOneShotAmmo;
         this.ruleState = computed(() => this.owner.rules.computeEntryState(this));
@@ -273,6 +276,7 @@ export class MountedEquipment {
             el: this.el,
             ammo: this.ammo,
             totalAmmo: this.totalAmmo,
+            originalTotalAmmo: this.originalTotalAmmo,
             consumed: this.consumed,
             intrinsicOneShotAmmo: this.intrinsicOneShotAmmo,
             ...overrides,

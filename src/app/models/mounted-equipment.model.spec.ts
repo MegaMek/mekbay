@@ -1,5 +1,44 @@
-import { MiscEquipment, WeaponEquipment } from './equipment.model';
-import { getMountedOneShotConsumed, MountedEquipment, MountedWeapon } from './mounted-equipment.model';
+import { AmmoEquipment, MiscEquipment, WeaponEquipment } from './equipment.model';
+import { getMountedOneShotConsumed, MountedAmmo, MountedEquipment, MountedWeapon } from './mounted-equipment.model';
+
+describe('MountedAmmo capacity baseline', () => {
+    const ammoEquipment = new AmmoEquipment({
+        id: 'TestAmmo', name: 'Test Ammo', type: 'ammo',
+        ammo: { type: 'AC', rackSize: 5, shots: 10 },
+    });
+
+    it('defaults the immutable baseline from initial capacity', () => {
+        const ammo = new MountedAmmo({
+            owner: null as never,
+            id: 'TestAmmo@BD#0.0',
+            name: ammoEquipment.internalName,
+            equipment: ammoEquipment,
+            totalAmmo: 10,
+        });
+
+        ammo.setAmmoState({ totalAmmo: 6 });
+
+        expect(ammo.originalTotalAmmo).toBe(10);
+        expect(ammo.totalAmmo).toBe(6);
+    });
+
+    it('preserves an explicit baseline through cloning and mutable overrides', () => {
+        const ammo = new MountedAmmo({
+            owner: null as never,
+            id: 'TestAmmo@BD#0.0',
+            name: ammoEquipment.internalName,
+            equipment: ammoEquipment,
+            originalTotalAmmo: 13,
+            totalAmmo: 4,
+        });
+
+        const clone = ammo.clone({ totalAmmo: 3 }) as MountedAmmo;
+
+        expect(clone).toBeInstanceOf(MountedAmmo);
+        expect(clone.originalTotalAmmo).toBe(13);
+        expect(clone.totalAmmo).toBe(3);
+    });
+});
 
 describe('mounted one-shot accounting', () => {
     const oneShotWeapon = new WeaponEquipment({

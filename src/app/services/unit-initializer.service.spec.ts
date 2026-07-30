@@ -211,6 +211,7 @@ describe('UnitInitializerService', () => {
         expect(intrinsicAmmo?.parent).toBe(mountedWeapon);
         expect(mountedWeapon?.linkedWith).toEqual([intrinsicAmmo!]);
         expect(intrinsicAmmo?.totalAmmo).toBe(1);
+        expect(intrinsicAmmo?.originalTotalAmmo).toBe(1);
     });
 
     it('materializes one Battle Armor weapon mount per trooper during initialization', () => {
