@@ -55,7 +55,6 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { type ChoicePickerStyle, PickerFactoryService } from '../../services/picker-factory.service';
-import { canAntiMech } from '../../utils/infantry.util';
 import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData, EquipmentDialogTab } from '../equipment-dialog/equipment-dialog.model';
 import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dialog/weapon-target-choice-menu.component';
@@ -1775,7 +1774,7 @@ export class SvgInteractionService {
     private setupSkillInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         const unit = this.unit()!;
         const baseUnit = unit.getUnit();
-        const disablePiloting = baseUnit.type === 'ProtoMek' || ((baseUnit.type === 'Infantry') && (!canAntiMech(baseUnit)));
+        const disablePiloting = baseUnit.type === 'ProtoMek' || ((baseUnit.type === 'Infantry') && (!baseUnit.canAntiMech));
         svg.querySelectorAll('.crewSkillButton').forEach(el => {
             const svgEl = el as SVGElement;
             svgEl.style.cursor = 'pointer';
