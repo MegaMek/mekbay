@@ -55,11 +55,11 @@
                     (valueCommit)="commitMoveDistance($event)"></hex-slider>
             </div>
             }
-            @for (mascRow of mascControlRows(); track mascRow.entry.id) {
-            <div class="row masc-control-row" [class.damaged]="mascRow.damaged">
-                <span class="caption">{{ mascRow.label }}</span>
+            @for (trackRow of equipmentTrackControlRows(); track trackRow.entry.id) {
+            <div class="row masc-control-row" [class.damaged]="trackRow.damaged">
+                <span class="caption">{{ trackRow.label }}</span>
                 <span class="masc-controls">
-                    @for (choice of mascRow.sequenceChoices; track choice.value) {
+                    @for (choice of trackRow.sequenceChoices; track choice.value) {
                     <button type="button" class="bt-button move-button masc-button"
                         [class.selected]="choice.active && choice.selectionTone !== 'muted'"
                         [class.muted-selected]="choice.active && choice.selectionTone === 'muted'"
@@ -72,10 +72,10 @@
                         [style.--picker-choice-disabled-color]="choice.colors?.disabled"
                         [style.--picker-choice-disabled-text-color]="choice.colors?.disabledText"
                         [disabled]="choice.disabled && !choice.active" [attr.aria-pressed]="choice.active"
-                        (click)="handleMascChoice(mascRow, choice)">{{ choice.shortLabel || choice.label }}</button>
+                        (click)="handleEquipmentTrackChoice(trackRow, choice)">{{ choice.shortLabel || choice.label }}</button>
                     }
                 </span>
-                @if (mascRow.statusChoice; as choice) {
+                @if (trackRow.statusChoice; as choice) {
                 <span class="masc-status-control" [class.failed]="choice.active">
                     <button type="button" class="bt-button move-button masc-button"
                         [class.selected]="choice.active && choice.selectionTone !== 'muted'"
@@ -89,7 +89,7 @@
                         [style.--picker-choice-disabled-color]="choice.colors?.disabled"
                         [style.--picker-choice-disabled-text-color]="choice.colors?.disabledText"
                         [disabled]="choice.disabled && !choice.active" [attr.aria-pressed]="choice.active"
-                        (click)="handleMascChoice(mascRow, choice)">{{ choice.shortLabel || choice.label }}</button>
+                        (click)="handleEquipmentTrackChoice(trackRow, choice)">{{ choice.shortLabel || choice.label }}</button>
                 </span>
                 }
             </div>

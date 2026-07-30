@@ -51,8 +51,8 @@ import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { AmmoEquipment, WeaponEquipment } from './equipment.model';
 import type { AmmoEquipment as AmmoEquipmentType } from './equipment.model';
 import type { EquipmentFlag } from './equipment-flags.type';
-import { C3NetworkUtil } from '../utils/c3-network.util';
-import { C3NetworkType, C3Role } from './c3-network.model';
+import { C3Capabilities, type C3Component, C3NetworkType, C3Role } from './c3-network.model';
+import { isC3DisruptingStealthActive } from './stealth-equipment.model';
 import { getMotiveModesOptionsByUnit, type MotiveModeOption } from './motiveModes.model';
 import type { TurnState } from './turn-state.model';
 import { Sanitizer } from '../utils/sanitizer.util';
@@ -136,10 +136,12 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     getEquipmentHeatSources(turnState: TurnState): UnitHeatSource[] {
+        if (this.getCondition('shutdown')) return [];
         return this.getEquipmentInteractionRegistry().getInventoryHeatSources(this.getInventory(), turnState);
     }
 
     getRunMovementMultiplierBonus(turnState: TurnState): number {
+        if (this.getCondition('shutdown')) return 0;
         return this.getEquipmentInteractionRegistry().getRunMovementMultiplierBonus(this.getInventory(), turnState);
     }
 
@@ -505,23 +507,35 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     hasLinkedC3Network(): boolean {
-        const networkTypes = new Set(C3NetworkUtil.getC3Components(this)
-            .map(component => component.networkType));
-        return [...networkTypes].some(networkType => this.getC3NetworkRuntimeState(networkType).linked);
+        return this.force.c3Network().hasLinkedNetwork(this.id);
     }
 
-    isC3ComponentOperational(componentIndex: number): boolean {
-        const mount = C3NetworkUtil.getC3Components(this)[componentIndex]?.mount;
-        return !this.destroyed && !!mount && !this.isEquipmentUnavailable(mount);
+    isC3ComponentOperational(componentIndex: number, component?: C3Component): boolean {
+        if (this.destroyed || this.getCondition('shutdown') || this.hasActiveC3DisruptingStealth()) return false;
+        const mount = component?.mount ?? new C3Capabilities(this).component(componentIndex)?.mount;
+        return !!mount && !this.isEquipmentUnavailable(mount);
+    }
+
+    private hasActiveC3DisruptingStealth(): boolean {
+        return this.getInventory().some(equipment => !this.isEquipmentUnavailable(equipment)
+            && isC3DisruptingStealthActive(equipment));
+    }
+
+    override isC3EndpointOperational(componentIndex: number, component?: C3Component): boolean {
+        return this.isC3ComponentOperational(componentIndex, component);
+    }
+
+    override isC3Jammed(): boolean {
+        return this.getCondition('jammed');
     }
 
     isC3NetworkTypeUnavailable(networkType: C3NetworkType): boolean {
-        const components = C3NetworkUtil.getC3Components(this)
+        const components = (this.force.c3Network().capability(this.id)?.components ?? [])
             .filter(component => component.networkType === networkType);
         if (components.length === 0) return false;
         if (components.every(component => !this.isC3ComponentOperational(component.index))) return true;
 
-        const configured = C3NetworkUtil.findNetworksContainingUnit(this.id, this.force.c3Networks())
+        const configured = this.force.c3Network().networksForUnit(this.id)
             .some(network => network.type === networkType);
         return configured && !this.getC3NetworkRuntimeState(networkType).linked;
     }
@@ -529,10 +543,7 @@ export class CBTForceUnit extends ForceUnit {
     readonly c3DegradationSource = computed<C3DegradationSource>(() => this.getC3DegradationSource());
 
     getC3DegradationSource(): C3DegradationSource {
-        const networkTypes = new Set(C3NetworkUtil.getC3Components(this)
-            .map(component => component.networkType));
-        const linkedStates = [...networkTypes]
-            .map(networkType => this.getC3NetworkRuntimeState(networkType))
+        const linkedStates = this.force.c3Network().statesFor(this.id)
             .filter(state => state.linked);
         if (linkedStates.length === 0) return 'none';
         if (this.getCondition('jammed')) return 'unit';
@@ -540,24 +551,7 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     getC3NetworkRuntimeState(networkType: C3NetworkType) {
-        const units = this.force.units();
-        const unitsById = new Map(units.map(unit => [unit.id, unit]));
-        const links = C3NetworkUtil.getRuntimeLinks(
-            this.force.c3Networks(),
-            unitsById,
-            (unit, componentIndex) => unit instanceof CBTForceUnit
-                ? unit.isC3ComponentOperational(componentIndex)
-                : !unit.destroyed,
-        );
-        return C3NetworkUtil.getRuntimeUnitState(
-            this.id,
-            networkType,
-            links,
-            unitId => {
-                const unit = unitsById.get(unitId);
-                return unit instanceof CBTForceUnit && unit.getCondition('jammed');
-            },
-        );
+        return this.force.c3Network().stateFor(this.id, networkType);
     }
 
     resolveC3Targeting(target: InventoryControlRuntimeTarget): C3TargetingResolution {
@@ -835,6 +829,31 @@ export class CBTForceUnit extends ForceUnit {
         return !!source.destroyed || this.isEquipmentLocationUnavailable(source.loc);
     }
 
+    /** Whether equipment is temporarily unusable for an action, without implying damage. */
+    isEquipmentActionUnavailable(source: MountedEquipment | CriticalSlot, loc?: string): boolean {
+        return this.destroyed
+            || this.getCondition('shutdown')
+            || (source instanceof MountedEquipment && this.isPhysicalActionUnavailable(source))
+            || this.isEquipmentUnavailable(source, loc);
+    }
+
+    private isPhysicalActionUnavailable(entry: MountedEquipment): boolean {
+        if (!entry.isPhysicalWeapon()) return false;
+        if (this.getCondition('prone')) return true;
+        const moveMode = this.turnState().moveMode();
+        if (moveMode === null) return false; // unknown!
+
+        const attack = entry.name.trim().toLocaleLowerCase();
+        if (attack === 'death from above' || attack === 'dfa [talons]') {
+            return moveMode !== 'jump';
+        }
+        if (moveMode === 'jump' && attack === 'charge') {
+            return true;
+        }
+        return moveMode === 'stationary'
+            && (attack === 'charge' || attack === 'airmek ram' || attack === 'airmech ram');
+    }
+
     private isEquipmentLocationUnavailable(loc: string | undefined): boolean {
         if (!loc) return false;
         const battleArmorLoc = this.battleArmorTrooperLocation(loc);
@@ -1029,6 +1048,7 @@ export class CBTForceUnit extends ForceUnit {
         const c3Tax = this.rules.calculateC3Tax(
             c3Networks,
             this.force.units(),
+            this.force.c3TaxCalculator(),
         );
         return c3Tax;
     });

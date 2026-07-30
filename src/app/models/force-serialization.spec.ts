@@ -1,5 +1,44 @@
-import { FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
+import { C3_NETWORK_GROUP_SCHEMA, FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
 import { Sanitizer } from '../utils/sanitizer.util';
+import { C3NetworkType } from './c3-network.model';
+
+describe('C3 network serialization compatibility', () => {
+    it('preserves peer IDs as ordered bare strings', () => {
+        const serialized = {
+            id: 'peer-network', type: C3NetworkType.C3I, color: '#1565C0',
+            peerIds: ['alpha', 'bravo'],
+        };
+
+        const sanitized = Sanitizer.sanitize(serialized, C3_NETWORK_GROUP_SCHEMA);
+
+        expect(sanitized).toEqual(serialized);
+        expect(JSON.stringify(sanitized)).toBe(JSON.stringify(serialized));
+    });
+
+    it('preserves bare slaves and exact zero-based master members', () => {
+        const serialized = {
+            id: 'hierarchy', type: C3NetworkType.C3, color: '#2E7D32',
+            masterId: 'sunder', masterCompIndex: 0,
+            members: ['atlas', 'sunder:1'],
+        };
+
+        const sanitized = Sanitizer.sanitize(serialized, C3_NETWORK_GROUP_SCHEMA);
+
+        expect(sanitized).toEqual(serialized);
+        expect(JSON.stringify(sanitized)).toBe(JSON.stringify(serialized));
+    });
+
+    it('keeps shallow sanitation separate from semantic validation', () => {
+        expect(Sanitizer.sanitize({
+            id: 'unknown', type: 'unknown' as C3NetworkType, color: '#C62828',
+            peerIds: ['alpha', 7, 'bravo'], masterCompIndex: 'invalid',
+        }, C3_NETWORK_GROUP_SCHEMA)).toEqual({
+            id: 'unknown', type: 'unknown' as C3NetworkType, color: '#C62828',
+            peerIds: ['alpha', 'bravo'],
+            masterCompIndex: 0,
+        });
+    });
+});
 
 describe('force tag sanitization', () => {
     const manyTags = [

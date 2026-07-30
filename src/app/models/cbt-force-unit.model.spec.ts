@@ -20,7 +20,7 @@ import { LaserInsulatorHandler } from '../equipment-handlers/laser-insulator.han
 import { RISC_LASER_PULSE_MODE, RiscLaserPulseModuleHandler } from '../equipment-handlers/risc-laser-pulse-module.handler';
 import { DialogsService } from '../services/dialogs.service';
 import { ToastService } from '../services/toast.service';
-import { getInventoryControlGroups, INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
+import { getInventoryControlGroups, INVENTORY_CONTROL_MODE_STATE, syncSvgMode } from '../utils/inventory-control.util';
 import { AtmHandler } from '../equipment-handlers/atm.handler';
 import { MmlHandler } from '../equipment-handlers/mml.handler';
 import { ATM_EXTENDED_RANGE_PROFILE, ATM_HIGH_EXPLOSIVE_PROFILE, ATM_STANDARD_PROFILE } from './ammo-weapon-profile.model';
@@ -850,7 +850,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(handler.calls).toBe(1);
     });
 
-    it('applies heat, clears registered sources, and starts the next turn with passive sources active', () => {
+    it('applies heat, clears registered sources, and starts the next turn without a no-op resolution', () => {
         const forceUnit = createForceUnit();
         forceUnit.turnState().moveMode.set('run');
         forceUnit.turnState().addFiredHeat(8);
@@ -866,8 +866,13 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         forceUnit.endTurn();
 
-        expect(forceUnit.turnState().heatProjectionVisible()).toBeTrue();
-        expect(forceUnit.turnState().heatSources().some(source => source.id === 'movement')).toBeTrue();
+        expect(forceUnit.turnState().heatSources()).toContain(jasmine.objectContaining({
+            id: 'movement',
+            value: 0,
+        }));
+        expect(forceUnit.turnState().heatProjection().projected).toBe(forceUnit.getHeat().current);
+        expect(forceUnit.turnState().hasPendingHeatResolution()).toBeFalse();
+        expect(forceUnit.turnState().heatProjectionVisible()).toBeFalse();
     });
 
     it('consolidates an unchanged pending heat value when requested', () => {
@@ -1428,7 +1433,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('renders a coincident calculated target arrow above the NOW arrow', () => {
-        const forceUnit = createForceUnit(createEmptyUnit({ ...createMekUnit(), heat: 20, dissipation: 0 }));
+        const forceUnit = createForceUnit(createMekUnitWithDissipation(2));
         const svg = new DOMParser().parseFromString(`
             <svg xmlns="http://www.w3.org/2000/svg"><g id="heatScale">
                 ${Array.from({ length: 11 }, (_, value) => `<rect class="heat" heat="${value}" x="0" y="${100 - value * 5}" width="5" height="5"></rect>`).join('')}
@@ -1436,7 +1441,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
         forceUnit.svg.set(svg);
         forceUnit.setHeatData({ current: 5, previous: 2 });
-        forceUnit.turnState().moveMode.set('stationary');
+        forceUnit.turnState().moveMode.set('run');
         const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
 
         svgService.refreshHeat();
@@ -1444,9 +1449,35 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const nowArrow = svg.querySelector('#now-arrow');
         const projectionArrow = svg.querySelector('#projection-arrow');
         expect(forceUnit.turnState().heatProjection().projected).toBe(5);
+        expect(forceUnit.turnState().hasPendingHeatResolution()).toBeTrue();
         expect(nowArrow).not.toBeNull();
         expect(projectionArrow).not.toBeNull();
         expect(nowArrow!.compareDocumentPosition(projectionArrow!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('hides automatic heat application for an unchanged zero-source projection', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({ ...createMekUnit(), heat: 20, dissipation: 0 }));
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <g id="heatDataPanel"><g id="applyHeatButton"></g></g>
+                <g id="heatScale">
+                    ${Array.from({ length: 11 }, (_, value) => `<rect class="heat" heat="${value}" x="0" y="${100 - value * 5}" width="5" height="5"></rect>`).join('')}
+                </g>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        forceUnit.svg.set(svg);
+        forceUnit.setHeatData({ current: 5, previous: 5 });
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshHeat();
+
+        const heatDataPanel = svg.querySelector('#heatDataPanel');
+        expect(forceUnit.turnState().hasPendingHeatResolution()).toBeFalse();
+        expect(heatDataPanel?.classList.contains('heatApplicationAvailable')).toBeFalse();
+        expect(heatDataPanel?.classList.contains('hot')).toBeFalse();
+        expect(heatDataPanel?.classList.contains('cold')).toBeFalse();
+        expect(svg.querySelector('#projection-arrow')).toBeNull();
+        expect(svg.querySelector('#heat-projection-path')).toBeNull();
     });
 
     it('hides calculated heat graphics when CBT automations are disabled', () => {
@@ -2024,6 +2055,164 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('9/7/5 [V]');
         expect(hitModText.textContent).toBe('-4');
+    });
+
+    it('reactively disables intact SVG equipment while shutdown without marking it damaged', () => {
+        const unit = createMekUnit();
+        unit.comp = [{
+            id: 'VariableDamageLaser', q: 1, q2: 0, n: 'Variable Damage Laser', t: 'E', p: 1,
+            l: 'RA', r: '2/5/9', m: '-4', d: '9/7/5', md: '9.0', c: '1', os: 0,
+            eq: equipment['VariableDamageLaser']
+        }];
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <g class="unitLocation armor" loc="RA"></g>
+                <g class="unitLocation structure" loc="RA"></g>
+                <g class="inventoryEntry selected" id="VariableDamageLaser@RA#0" hitMod="-4">
+                    <g class="name"><text>Variable Damage Laser</text></g>
+                    <g class="damage"><text>9/7/5 [V]</text></g>
+                    <text class="location">RA</text>
+                    <text class="range_short">2</text>
+                    <text class="range_medium">5</text>
+                    <text class="range_long">9</text>
+                    <rect class="hitMod-rect" display="block"></rect>
+                    <text class="hitMod-text" display="block">-4</text>
+                </g>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        const forceUnit = createForceUnit(unit);
+        initialize(forceUnit, svg);
+        const entry = forceUnit.getInventory().find(candidate => candidate.id === 'VariableDamageLaser@RA#0')!;
+        TestBed.runInInjectionContext(() => new ExposedUnitSvgMekService(forceUnit, unitInitializer));
+        TestBed.tick();
+
+        expect(entry.el!.classList.contains('disabledInventory')).toBeFalse();
+        expect(entry.el!.classList.contains('damagedInventory')).toBeFalse();
+
+        forceUnit.setCondition('shutdown', true);
+        TestBed.tick();
+
+        expect(forceUnit.isEquipmentUnavailable(entry)).toBeFalse();
+        expect(entry.isActionUnavailable()).toBeTrue();
+        expect(entry.el!.classList.contains('disabledInventory')).toBeTrue();
+        expect(entry.el!.classList.contains('damagedInventory')).toBeFalse();
+        expect(entry.el!.classList.contains('selected')).toBeFalse();
+
+        forceUnit.setCondition('shutdown', false);
+        TestBed.tick();
+
+        expect(entry.el!.classList.contains('disabledInventory')).toBeFalse();
+        expect(entry.el!.classList.contains('damagedInventory')).toBeFalse();
+    });
+
+    it('restricts movement-dependent intrinsic physical attacks by movement mode', () => {
+        const forceUnit = createForceUnit();
+        const intrinsicAttack = (name: string) => new MountedEquipment({
+            owner: forceUnit,
+            id: `physical:${name}`,
+            name,
+            intrinsicPhysicalAttack: true,
+        });
+        const charge = intrinsicAttack('Charge');
+        const airMekRam = intrinsicAttack('AirMek Ram');
+        const airMechRam = intrinsicAttack('AirMech Ram');
+        const deathFromAbove = intrinsicAttack('Death From Above');
+        const talonDfa = intrinsicAttack('DFA [Talons]');
+
+        forceUnit.turnState().moveMode.set(null); // unknown case!
+        expect(charge.isActionUnavailable()).toBeFalse();
+        expect(airMekRam.isActionUnavailable()).toBeFalse();
+        expect(airMechRam.isActionUnavailable()).toBeFalse();
+        expect(deathFromAbove.isActionUnavailable()).toBeFalse();
+        expect(talonDfa.isActionUnavailable()).toBeFalse();
+
+        forceUnit.turnState().moveMode.set('stationary');
+        expect(charge.isActionUnavailable()).toBeTrue();
+        expect(airMekRam.isActionUnavailable()).toBeTrue();
+        expect(airMechRam.isActionUnavailable()).toBeTrue();
+        expect(deathFromAbove.isActionUnavailable()).toBeTrue();
+        expect(talonDfa.isActionUnavailable()).toBeTrue();
+
+        forceUnit.turnState().moveMode.set('run');
+        expect(charge.isActionUnavailable()).toBeFalse();
+        expect(airMekRam.isActionUnavailable()).toBeFalse();
+        expect(airMechRam.isActionUnavailable()).toBeFalse();
+        expect(deathFromAbove.isActionUnavailable()).toBeTrue();
+        expect(talonDfa.isActionUnavailable()).toBeTrue();
+
+        forceUnit.turnState().moveMode.set('jump');
+        expect(charge.isActionUnavailable()).toBeTrue();
+        expect(airMekRam.isActionUnavailable()).toBeFalse();
+        expect(airMechRam.isActionUnavailable()).toBeFalse();
+        expect(deathFromAbove.isActionUnavailable()).toBeFalse();
+        expect(talonDfa.isActionUnavailable()).toBeFalse();
+    });
+
+    it('preserves action-unavailable SVG state when interactions synchronize modes', () => {
+        const forceUnit = createForceUnit();
+        const el = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <g class="inventoryEntry" id="physical:charge"></g>
+            </svg>
+        `, 'image/svg+xml').documentElement.querySelector<SVGElement>('.inventoryEntry')!;
+        const charge = new MountedEquipment({
+            owner: forceUnit,
+            id: 'physical:charge',
+            name: 'Charge',
+            intrinsicPhysicalAttack: true,
+            el,
+        });
+        forceUnit.turnState().moveMode.set('stationary');
+
+        syncSvgMode(charge, null);
+
+        expect(charge.isDisabled()).toBeFalse();
+        expect(charge.isActionUnavailable()).toBeTrue();
+        expect(el.classList.contains('disabledInventory')).toBeTrue();
+
+        forceUnit.turnState().moveMode.set(null);
+        syncSvgMode(charge, null);
+
+        expect(charge.isActionUnavailable()).toBeFalse();
+        expect(el.classList.contains('disabledInventory')).toBeFalse();
+    });
+
+    it('makes every physical attack action-unavailable while prone without damaging it', () => {
+        const forceUnit = createForceUnit();
+        const intrinsicPunch = new MountedEquipment({
+            owner: forceUnit,
+            id: 'physical:punch',
+            name: 'Punch',
+            intrinsicPhysicalAttack: true,
+        });
+        const hatchet = new MountedEquipment({
+            owner: forceUnit,
+            id: 'hatchet@RA#0',
+            name: 'Hatchet',
+            equipment: new Equipment({ id: 'hatchet', name: 'Hatchet', type: 'misc', flags: ['F_CLUB'] }),
+        });
+        const rangedWeapon = new MountedEquipment({
+            owner: forceUnit,
+            id: 'VariableDamageLaser@RA#0',
+            name: 'Variable Damage Laser',
+            equipment: equipment['VariableDamageLaser'],
+        });
+        forceUnit.turnState().moveMode.set('walk');
+
+        forceUnit.setCondition('prone', true);
+
+        expect(intrinsicPunch.isPhysicalWeapon()).toBeTrue();
+        expect(hatchet.isPhysicalWeapon()).toBeTrue();
+        expect(intrinsicPunch.isActionUnavailable()).toBeTrue();
+        expect(hatchet.isActionUnavailable()).toBeTrue();
+        expect(rangedWeapon.isActionUnavailable()).toBeFalse();
+        expect(forceUnit.isEquipmentUnavailable(intrinsicPunch)).toBeFalse();
+        expect(forceUnit.isEquipmentUnavailable(hatchet)).toBeFalse();
+
+        forceUnit.setCondition('prone', false);
+
+        expect(intrinsicPunch.isActionUnavailable()).toBeFalse();
+        expect(hatchet.isActionUnavailable()).toBeFalse();
     });
 
     it('wraps inventory damage across available SVG rows and clears stale rows', () => {

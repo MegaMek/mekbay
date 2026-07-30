@@ -47,6 +47,7 @@ import type { ToHitAdjustment } from '../models/rules/game-rules';
 import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-control-physical-damage.util';
 import { EquipmentFlag } from '../models/equipment-flags.type';
+import type { Force } from '../models/force.model';
 
 /**
  * Context passed to handlers containing additional information
@@ -121,6 +122,9 @@ export abstract class EquipmentInteractionHandler {
      * Hook called when the owning unit ends its turn.
      */
     onEndTurn?(equipment: MountedEquipment, context: HandlerContext): void;
+
+    /** Hook called when a loaded force's reactive runtime state changes. */
+    onForceRuntimeChanged?(force: Force, context: HandlerContext): void;
 
     /**
      * Hook called while building an inventory-control row display.
@@ -292,6 +296,7 @@ export class EquipmentInteractionRegistry {
     getChoices(equipment: MountedEquipment, context: HandlerContext): HandlerChoice[] {
         const handlers = this.getHandlers(equipment);
         const allChoices: HandlerChoice[] = [];
+        const actionUnavailable = equipment.isActionUnavailable();
         
         for (const handler of handlers) {
             const choices = handler.getChoices(equipment, context);
@@ -299,6 +304,7 @@ export class EquipmentInteractionRegistry {
                 // Tag each choice with the handler ID
                 const taggedChoices = choices.map(choice => ({
                     ...choice,
+                    disabled: actionUnavailable || choice.disabled,
                     _handler: handler
                 }));
                 allChoices.push(...taggedChoices);
@@ -316,7 +322,8 @@ export class EquipmentInteractionRegistry {
         choice: HandlerChoice,
         context: HandlerContext
     ): boolean | Promise<boolean> {
-        if (!choice._handler) {
+        const actionUnavailable = equipment.isActionUnavailable();
+        if (!choice._handler || choice.disabled || actionUnavailable) {
             return false;
         }
 
@@ -332,6 +339,12 @@ export class EquipmentInteractionRegistry {
     onEndTurn(equipment: MountedEquipment, context: HandlerContext): void {
         for (const handler of this.getHandlers(equipment)) {
             handler.onEndTurn?.(equipment, context);
+        }
+    }
+
+    onForceRuntimeChanged(force: Force, context: HandlerContext): void {
+        for (const handler of this.handlers.values()) {
+            handler.onForceRuntimeChanged?.(force, context);
         }
     }
 

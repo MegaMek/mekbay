@@ -320,6 +320,8 @@ export class CBTForceUnitTestHarness {
             },
             setCritSlot: () => undefined,
             isEquipmentUnavailable: options.isEquipmentUnavailable ?? defaultEquipmentUnavailable,
+            isEquipmentActionUnavailable: (source: MountedEquipment | CriticalSlot) =>
+                conditions.has('shutdown') || (options.isEquipmentUnavailable ?? defaultEquipmentUnavailable)(source),
             getInventoryControlRules: () => this.inventoryControlRules,
             rules
         } as unknown as CBTForceUnit;

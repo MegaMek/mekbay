@@ -13,19 +13,24 @@ import { VehicleRules } from './vehicle-rules';
 import type { ChargeDamage, PSRCheck } from './unit-type-rules';
 import type { SerializedC3NetworkGroup } from '../force-serialization';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
-import { C3NetworkUtil } from '../../utils/c3-network.util';
+import { C3TaxCalculator } from '../c3-network.model';
 
 function calculateTWC3Tax(
     unit: CBTForceUnit,
     networks: SerializedC3NetworkGroup[],
-    allUnits: CBTForceUnit[]
+    allUnits: CBTForceUnit[],
+    calculator = new C3TaxCalculator(networks, allUnits),
 ): number {
-    return C3NetworkUtil.calculateTWUnitC3Tax(unit, networks, allUnits);
+    return calculator.totalWar(unit);
 }
 
 export class TWMekRules extends MekRules {
-    override calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[]): number {
-        return calculateTWC3Tax(this.unit, networks, allUnits);
+    override calculateC3Tax(
+        networks: SerializedC3NetworkGroup[],
+        allUnits: CBTForceUnit[],
+        calculator?: C3TaxCalculator,
+    ): number {
+        return calculateTWC3Tax(this.unit, networks, allUnits, calculator);
     }
 
     protected override get gyroHitPSRModifier(): number { return 3; }
@@ -168,26 +173,26 @@ export class TWMekRules extends MekRules {
 }
 
 export class TWAeroRules extends AeroRules {
-    override calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[]): number {
-        return calculateTWC3Tax(this.unit, networks, allUnits);
+    override calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[], calculator?: C3TaxCalculator): number {
+        return calculateTWC3Tax(this.unit, networks, allUnits, calculator);
     }
 }
 
 export class TWInfantryRules extends InfantryRules {
-    override calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[]): number {
-        return calculateTWC3Tax(this.unit, networks, allUnits);
+    override calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[], calculator?: C3TaxCalculator): number {
+        return calculateTWC3Tax(this.unit, networks, allUnits, calculator);
     }
 }
 
 export class TWProtoMekRules extends ProtoMekRules {
-    override calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[]): number {
-        return calculateTWC3Tax(this.unit, networks, allUnits);
+    override calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[], calculator?: C3TaxCalculator): number {
+        return calculateTWC3Tax(this.unit, networks, allUnits, calculator);
     }
 }
 
 export class TWVehicleRules extends VehicleRules {
-    override calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[]): number {
-        return calculateTWC3Tax(this.unit, networks, allUnits);
+    override calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[], calculator?: C3TaxCalculator): number {
+        return calculateTWC3Tax(this.unit, networks, allUnits, calculator);
     }
 
     protected override computeChargeDamage(bonusDamage = 0, maxBonusDamage = bonusDamage): ChargeDamage {

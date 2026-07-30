@@ -173,6 +173,62 @@
     pointer-events: none;
 }
 
+.node-runtime-status-container {
+    pointer-events: none;
+}
+
+.node-runtime-status {
+    rect {
+        fill: rgba(95, 49, 0, 0.92);
+        stroke: #d78500;
+        stroke-width: 1;
+    }
+
+    text {
+        fill: #ffd45c;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        paint-order: stroke;
+        stroke: #000;
+        stroke-width: 2px;
+        stroke-linejoin: round;
+    }
+
+    &.offline {
+        rect {
+            fill: #444;
+            stroke: #a0a0a0;
+        }
+
+        text {
+            fill: #fff;
+        }
+    }
+
+    &.jammed {
+        rect {
+            fill: rgb(155, 67, 140);
+            stroke: #ff6be6;
+        }
+
+        text {
+            fill: #fff;
+        }
+    }
+
+    &.degraded {
+        rect {
+            fill: rgb(155, 67, 140);
+            stroke: #ff6be6;
+        }
+
+        text {
+            fill: #fff;
+        }
+    }
+}
+
 .node-inner-ring {
     fill: none;
     stroke: rgba(255, 255, 255, 0.08);
@@ -434,6 +490,11 @@
         animation: none;
         stroke-width: 2;
     }
+
+    &.degraded-link:not(.broken-link) {
+        stroke-dasharray: 12, 4;
+        animation: slow-dash-animation 2s linear infinite;
+    }
 }
 
 .animated-line-big {
@@ -443,6 +504,11 @@
     &.broken-link {
         animation: none;
         stroke-width: 2.5;
+    }
+
+    &.degraded-link:not(.broken-link) {
+        stroke-dasharray: 40, 8;
+        animation: slow-dash-animation-big 2s linear infinite;
     }
 }
 
@@ -458,6 +524,17 @@
     }
 }
 
+@keyframes slow-dash-animation {
+    to {
+    stroke-dashoffset: -16;
+    }
+}
+
+@keyframes slow-dash-animation-big {
+    to {
+    stroke-dashoffset: -48;
+    }
+}
 // ==================== Sidebar ====================
 
 .networks-sidebar {
@@ -519,11 +596,25 @@
 }
 
 .network-item {
-    background: var(--network-item-bg, #2a2a2a);
+    background: #2a2a2a;
     border: 1px solid var(--network-color, var(--border-color, #444));
     border-left: 4px solid var(--network-color, var(--border-color, #444));
     padding: 8px;
     margin-bottom: 8px;
+
+    &.emergency {
+        background-image: repeating-linear-gradient(
+            45deg,
+            #000,
+            #000 20px,
+            #5a3f00 20px,
+            #5a3f00 40px
+        );
+
+        .network-type {
+            color: var(--bt-yellow);
+        }
+    }
 
     &.sub-network {
         position: relative;
@@ -594,7 +685,7 @@
     .network-unit {
         font-size: 0.7rem;
         color: var(--text-secondary, #aaa);
-        background: var(--tag-bg, #333);
+        background: #333B;
         padding: 3px 8px;
         flex: 1;
         min-width: 0; // Allow flex item to shrink below content size

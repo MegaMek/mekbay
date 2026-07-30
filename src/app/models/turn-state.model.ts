@@ -217,7 +217,7 @@ export class TurnState {
     });
 
     hasPendingHeatResolution = computed<boolean>(() => {
-        return this.heatSources().length > 0
+        return this.heatSources().some(source => source.value > 0)
             || this.heatProjection().projected !== this.unitState.heat().current;
     });
 

@@ -8,6 +8,7 @@ import { MountedEquipment } from '../models/mounted-equipment.model';
 import { TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { EquipmentInteractionHandler, EquipmentInteractionRegistryService, type HandlerContext } from './equipment-interaction-registry.service';
+import type { Force } from '../models/force.model';
 
 function svgEntry(html: string): SVGElement {
     const wrapper = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -19,6 +20,7 @@ function owner(gameRules?: CBTGameRules): never {
     return {
         gameRules,
         getUnit: () => createEmptyUnit(),
+        isEquipmentActionUnavailable: () => false,
         rules: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) },
     } as never;
 }
@@ -69,6 +71,19 @@ class SelectionHandler extends EquipmentInteractionHandler {
 
     handleSelection(_equipment: MountedEquipment, _value: PickerChoice, _context: HandlerContext): boolean {
         return true;
+    }
+}
+
+class ForceRuntimeHandler extends EquipmentInteractionHandler {
+    readonly id = 'force-runtime-handler';
+    override onForceRuntimeChanged = jasmine.createSpy('onForceRuntimeChanged');
+
+    override getChoices(): PickerChoice[] {
+        return [];
+    }
+
+    override handleSelection(): boolean {
+        return false;
     }
 }
 
@@ -145,6 +160,33 @@ describe('EquipmentInteractionRegistryService', () => {
         const choice = registry.getChoices(entry, context())[0];
 
         expect(registry.handleSelection(entry, choice, context())).toBeTrue();
+    });
+
+    it('dispatches force runtime changes generically to interested handlers', () => {
+        const registry = new EquipmentInteractionRegistryService().getRegistry();
+        const handler = new ForceRuntimeHandler();
+        const force = {} as Force;
+        const handlerContext = context();
+        registry.register(handler);
+
+        registry.onForceRuntimeChanged(force, handlerContext);
+
+        expect(handler.onForceRuntimeChanged).toHaveBeenCalledOnceWith(force, handlerContext);
+    });
+
+    it('disables and rejects equipment actions when the owning unit cannot operate', () => {
+        const registry = new EquipmentInteractionRegistryService().getRegistry();
+        const handler = new SelectionHandler();
+        const selection = spyOn(handler, 'handleSelection').and.callThrough();
+        const entry = atmEntry();
+        entry.owner.isEquipmentActionUnavailable = () => true;
+        registry.register(handler);
+
+        const choice = registry.getChoices(entry, context())[0];
+
+        expect(choice.disabled).toBeTrue();
+        expect(registry.handleSelection(entry, choice, context())).toBeFalse();
+        expect(selection).not.toHaveBeenCalled();
     });
 
     it('composes structured damage by priority without mutating the input', () => {

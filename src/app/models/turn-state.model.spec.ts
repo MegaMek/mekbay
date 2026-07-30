@@ -212,6 +212,34 @@ describe('TurnState', () => {
     });
 
     describe('heat dissipation balance', () => {
+        it('does not expose a no-op heat resolution for zero-valued sources', () => {
+            const { turnState, heat } = createTurnStateHarness();
+            heat.set({ current: 5, previous: 5 });
+
+            expect(turnState.heatSources()).toContain(jasmine.objectContaining({
+                id: 'movement',
+                value: 0,
+            }));
+            expect(turnState.heatProjection().projected).toBe(5);
+            expect(turnState.hasPendingHeatResolution()).toBeFalse();
+            expect(turnState.heatProjectionVisible()).toBeFalse();
+        });
+
+        it('keeps balanced positive heat sources pending for acknowledgement', () => {
+            const { turnState, heat } = createTurnStateHarnessWithDissipation(2);
+            heat.set({ current: 5, previous: 5 });
+            turnState.moveMode.set('run');
+
+            expect(turnState.heatProjection()).toEqual(jasmine.objectContaining({
+                sourceHeat: 2,
+                consumedDissipation: 2,
+                projected: 5,
+                delta: 0,
+            }));
+            expect(turnState.hasPendingHeatResolution()).toBeTrue();
+            expect(turnState.heatProjectionVisible()).toBeTrue();
+        });
+
         it('derives remaining cooling, an exact-zero balance, and a pending deficit from current capacity', () => {
             const { turnState, heat } = createTurnStateHarnessWithDissipation(5);
             turnState.acknowledgeHeatSources(3);
@@ -739,7 +767,7 @@ describe('TurnState', () => {
             expect(turnState.heatSources()).toEqual([]);
         });
 
-        it('reactivates heat sources for movement changes, removal, and readdition', () => {
+        it('reactivates actionable heat for movement changes and readdition', () => {
             const { turnState } = createTurnStateHarness();
             turnState.moveMode.set('run');
             turnState.moveDistance.set(5);
@@ -752,7 +780,8 @@ describe('TurnState', () => {
             turnState.acknowledgeHeatSources();
             turnState.moveMode.set(null);
             turnState.moveDistance.set(null);
-            expect(turnState.heatProjectionVisible()).toBeTrue();
+            expect(getMovementHeat(turnState)).toBe(0);
+            expect(turnState.heatProjectionVisible()).toBeFalse();
 
             turnState.acknowledgeHeatSources();
             turnState.moveMode.set('run');

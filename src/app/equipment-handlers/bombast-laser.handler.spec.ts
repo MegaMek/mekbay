@@ -23,6 +23,7 @@ function owner(gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
     return {
         gameRules,
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
+        isEquipmentActionUnavailable: jasmine.createSpy('isEquipmentActionUnavailable').and.returnValue(false),
         rules: {
             computeEntryState: (entry: MountedEquipment) => ({
                 isDamaged: entry.committedDestroyed(),

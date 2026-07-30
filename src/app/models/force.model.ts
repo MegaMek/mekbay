@@ -39,7 +39,7 @@ import type { UnitInitializerService } from '../services/unit-initializer.servic
 import { type SerializedForce, type SerializedUnit, type SerializedGroup, type SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA, FORCE_NOTE_MAX_LENGTH, sanitizeForceTags } from './force-serialization';
 import type { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
-import { C3NetworkUtil } from '../utils/c3-network.util';
+import { C3NetworkEditor } from './c3-network-editor';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { LoggerService } from '../services/logger.service';
 import { type Faction } from './factions.model';
@@ -53,6 +53,7 @@ import { getUnitsAverageTechBase, TechBase } from './tech.model';
 import { MULFACTION_EXTINCT } from './mulfactions.model';
 import { createMulForceAvailabilityContext, type ForceAvailabilityContext } from '../utils/force-availability.util';
 import { uuidv7 } from '../utils/uuid.util';
+import { C3Network, C3TaxCalculator, type C3TaxUnit } from './c3-network.model';
 
 /*
  * Author: Drake
@@ -416,6 +417,15 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return this.groups().flatMap(g => g.units());
     });
 
+    /** One normalized, indexed structural/runtime snapshot per force revision. */
+    c3Network = computed(() => new C3Network(this.c3Networks(), this.units()));
+
+    /** One structural C3 tax snapshot shared by every unit in this force revision. */
+    c3TaxCalculator = computed(() => new C3TaxCalculator(
+        this.c3Networks(),
+        this.units() as unknown as readonly C3TaxUnit[],
+    ));
+
     /** Total BV (C3 tax is applied at unit level via adjustedBv, not here) */
     totalBv = computed(() => {
         return this.units().reduce((sum, unit) => sum + (unit.getBv()), 0);
@@ -618,14 +628,14 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             }
         } else {
             // Destroy all units in the group and clean up C3 networks
-            const currentNetworks = this._c3Networks();
+            let networks = this._c3Networks();
             for (const unit of removed.units()) {
-                if (currentNetworks.length > 0 && C3NetworkUtil.isUnitConnected(unit.id, currentNetworks)) {
-                    const result = C3NetworkUtil.removeUnitFromAllNetworks(currentNetworks, unit.id);
-                    this._c3Networks.set(result.networks);
+                if (networks.length > 0 && new C3Network(networks).isUnitConnected(unit.id)) {
+                    networks = C3NetworkEditor.removeUnit(networks, unit.id).networks;
                 }
                 unit.destroy();
             }
+            this._c3Networks.set(networks);
         }
         this.groups.set(groups);
         if (this.instanceId()) this.emitChanged();
@@ -643,8 +653,8 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
         // Clean up C3 networks - remove the unit from all networks it participates in
         const currentNetworks = this._c3Networks();
-        if (currentNetworks.length > 0 && C3NetworkUtil.isUnitConnected(unitToRemove.id, currentNetworks)) {
-            const result = C3NetworkUtil.removeUnitFromAllNetworks(currentNetworks, unitToRemove.id);
+        if (currentNetworks.length > 0 && new C3Network(currentNetworks).isUnitConnected(unitToRemove.id)) {
+            const result = C3NetworkEditor.removeUnit(currentNetworks, unitToRemove.id);
             this._c3Networks.set(result.networks);
         }
 
@@ -751,8 +761,8 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
         // Remove old unit from C3 networks
         const currentNetworks = this._c3Networks();
-        if (currentNetworks.length > 0 && C3NetworkUtil.isUnitConnected(originalUnit.id, currentNetworks)) {
-            const result = C3NetworkUtil.removeUnitFromAllNetworks(currentNetworks, originalUnit.id);
+        if (currentNetworks.length > 0 && new C3Network(currentNetworks).isUnitConnected(originalUnit.id)) {
+            const result = C3NetworkEditor.removeUnit(currentNetworks, originalUnit.id);
             this._c3Networks.set(result.networks);
         }
 

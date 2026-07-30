@@ -171,9 +171,10 @@ export class UnitSvgVehicleService extends UnitSvgService {
                 const state = entryStates.get(entry);
                 if (!state) return;
 
-                entry.el.classList.toggle('disabledInventory', state.isDisabled);
+                const actionUnavailable = entry.isActionUnavailable();
+                entry.el.classList.toggle('disabledInventory', actionUnavailable);
                 entry.el.classList.toggle('damagedInventory', state.isDamaged);
-                if (state.isDamaged || state.isDisabled) entry.el.classList.remove('selected');
+                if (state.isDamaged || actionUnavailable) entry.el.classList.remove('selected');
 
                 this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry));
             });
