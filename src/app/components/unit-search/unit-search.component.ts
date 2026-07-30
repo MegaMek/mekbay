@@ -1234,6 +1234,7 @@ export class UnitSearchComponent {
                 visualViewport.removeEventListener('scroll', onViewportChange);
             });
         }
+        this.setupVirtualViewportSizeTracking();
         this.setupItemHeightTracking();
         inject(DestroyRef).onDestroy(() => {
             pendingResizeObserverRef?.destroy();
@@ -1269,6 +1270,71 @@ export class UnitSearchComponent {
 
     private getDefaultCardItemHeight(): number {
         return 220;
+    }
+
+    /**
+     * Keeps the active CDK viewport's cached dimensions synchronized with its
+     * rendered dimensions. CDK can initialize the viewport while the results
+     * container is hidden, caching a height of zero until explicitly checked.
+     */
+    private setupVirtualViewportSizeTracking(): void {
+        let observedElement: HTMLElement | null = null;
+        let viewportResizeObserver: ResizeObserver | null = null;
+        let pendingVisibilityCheck: { destroy: () => void } | null = null;
+
+        const checkViewportSize = () => {
+            const viewport = this.currentViewport();
+            const viewportElement = viewport?.elementRef.nativeElement ?? null;
+            if (!viewport
+                || !viewportElement
+                || !this.resultsVisible()
+                || viewportElement !== observedElement
+                || viewportElement.clientWidth <= 0
+                || viewportElement.clientHeight <= 0) {
+                return;
+            }
+
+            viewport.checkViewportSize();
+        };
+
+        effect(() => {
+            const visible = this.resultsVisible();
+            const directViewport = this.viewport();
+            const tableViewport = this.resultsDataTable()?.getViewport();
+            const activeViewport = tableViewport ?? directViewport;
+
+            untracked(() => {
+                const nextElement = visible
+                    ? activeViewport?.elementRef.nativeElement ?? null
+                    : null;
+
+                if (nextElement !== observedElement) {
+                    viewportResizeObserver?.disconnect();
+                    viewportResizeObserver = null;
+                    observedElement = nextElement;
+
+                    if (observedElement) {
+                        viewportResizeObserver = new ResizeObserver(checkViewportSize);
+                        viewportResizeObserver.observe(observedElement);
+                    }
+                }
+
+                pendingVisibilityCheck?.destroy();
+                pendingVisibilityCheck = null;
+                if (observedElement) {
+                    pendingVisibilityCheck = afterNextRender(() => {
+                        pendingVisibilityCheck = null;
+                        checkViewportSize();
+                    }, { injector: this.injector });
+                }
+            });
+        });
+
+        this.destroyRef.onDestroy(() => {
+            pendingVisibilityCheck?.destroy();
+            viewportResizeObserver?.disconnect();
+            observedElement = null;
+        });
     }
 
     private setupItemHeightTracking() {

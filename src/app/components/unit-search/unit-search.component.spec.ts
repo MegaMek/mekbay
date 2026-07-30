@@ -202,7 +202,7 @@ describe('UnitSearchComponent card virtualization', () => {
                 set: {
                     imports: [CommonModule, ScrollingModule, LongPressDirective, UnitCardExpandedComponent],
                     template: `
-                        <div #resultsDropdown class="results-dropdown" style="width: 920px;">
+                        <div #resultsDropdown class="results-dropdown" style="width: 920px;" [hidden]="!resultsVisible()">
                             @if (viewMode() === 'card' && gameService.isAlphaStrike()) {
                             <cdk-virtual-scroll-viewport
                                 class="results-dropdown-viewport card-view-viewport"
@@ -258,6 +258,33 @@ describe('UnitSearchComponent card virtualization', () => {
             ['Unit 1', 'Unit 2', 'Unit 3'],
             ['Unit 4', 'Unit 5'],
         ]);
+    });
+
+    it('remeasures a hidden virtual viewport when results open at ultra-high resolution', async () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        filteredUnitsSignal.set(Array.from({ length: 600 }, (_, index) => createUnit(`Unit ${index + 1}`)));
+        fixture.detectChanges();
+        await fixture.whenStable();
+
+        const viewport = fixture.nativeElement.querySelector('cdk-virtual-scroll-viewport') as HTMLElement;
+        const cdkViewport = (component as any).viewport() as CdkVirtualScrollViewport;
+        expect(component.resultsVisible()).toBeFalse();
+        expect(cdkViewport.getViewportSize()).toBe(0);
+
+        viewport.style.height = '4000px';
+        filtersServiceStub.searchText.set('unit');
+        component.focused.set(true);
+        fixture.detectChanges();
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const minimumVisibleRows = Math.ceil(4000 / component.itemSize());
+        const renderedRange = cdkViewport.getRenderedRange();
+        expect(component.resultsVisible()).toBeTrue();
+        expect(cdkViewport.getViewportSize()).toBe(4000);
+        expect(renderedRange.end - renderedRange.start).toBeGreaterThanOrEqual(minimumVisibleRows);
     });
 
     it('maps card item navigation to the containing virtual row index', () => {
