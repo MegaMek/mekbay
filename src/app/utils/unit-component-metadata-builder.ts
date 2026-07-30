@@ -206,7 +206,6 @@ function weaponComponent(
   entry.m = aero ? '-' : String(equipment.minimumRange);
   entry.d = aero ? aeroDamage(equipment) : formatWeaponDamage(damage, {
     showZero: true,
-    variableLabel: '0',
   });
   entry.md = formatDecimal(aero ? maximumAeroDamage(equipment) : damage?.maximum ?? 0);
   entry.os = equipment.oneShotCount ?? 0;

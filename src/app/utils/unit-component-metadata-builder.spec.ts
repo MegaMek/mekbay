@@ -109,6 +109,41 @@ describe('buildUnitComponentMetadata', () => {
       .toEqual(jasmine.objectContaining({ d: '0', md: '0.0', os: 1 }));
   });
 
+  it('exports sentinel damage numerically without semantic labels', () => {
+    const entity = new TankEntity();
+    const plasmaCannon = weapon('CLPlasmaCannon', {
+      damage: 'variable', rackSize: 2, ammoType: 'PLASMA', ranges: [6, 12, 18, 24],
+      flags: ['F_DIRECT_FIRE', 'F_ENERGY', 'F_PLASMA'],
+    });
+    const microBomb = weapon('CLBAMicroBomb', {
+      damage: 'variable', rackSize: 2, ammoType: 'BA_MICRO_BOMB',
+      ranges: [0, 0, 0, 0], flags: ['F_ONE_SHOT', 'F_BA_WEAPON'],
+    });
+    const tubeArtillery = weapon('ISBATubeArtillery', {
+      damage: 'cluster', rackSize: 3, ammoType: 'BA_TUBE',
+      ranges: [2, 2, 2, 2], flags: ['F_MISSILE', 'F_ARTILLERY', 'F_MEK_MORTAR', 'F_BA_WEAPON'],
+    });
+    const special = weapon('special-weapon', {
+      damage: 'special', rackSize: 5, ranges: [1, 2, 3, 4], flags: ['F_ENERGY'],
+    });
+    entity.setEquipment([
+      mount(plasmaCannon, 'Front'),
+      mount(microBomb, 'Front'),
+      mount(tubeArtillery, 'Front'),
+      mount(special, 'Front'),
+    ]);
+
+    const components = buildUnitComponentMetadata(entity)!;
+    expect(components.find(component => component.id === plasmaCannon.id))
+      .toEqual(jasmine.objectContaining({ d: '0', md: '0.0' }));
+    expect(components.find(component => component.id === microBomb.id))
+      .toEqual(jasmine.objectContaining({ d: '2', md: '2.0' }));
+    expect(components.find(component => component.id === tubeArtillery.id))
+      .toEqual(jasmine.objectContaining({ d: '3', md: '3.0' }));
+    expect(components.find(component => component.id === special.id))
+      .toEqual(jasmine.objectContaining({ d: '5', md: '5.0' }));
+  });
+
   it('exports large-missile damage from its matching ammunition', () => {
     const ammo = new AmmoEquipment({
       id: 'thunderbolt-ammo', name: 'Thunderbolt 5 Ammo', type: 'ammo',
