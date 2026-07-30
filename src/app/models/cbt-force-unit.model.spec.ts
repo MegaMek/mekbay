@@ -1916,23 +1916,66 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('repairAll restores direct inventory ammo bins to original ammo and split quantities', () => {
-        const forceUnit = createForceUnit(createVehicleUnit(equipment));
+        const vehicle = createVehicleUnit(equipment);
+        vehicle.comp[1].q = 2;
+        vehicle.comp[1].q2 = 25;
+        const forceUnit = createForceUnit(vehicle);
         initialize(forceUnit);
         const ammoEntries = forceUnit.getInventory().filter(entry => entry.equipment instanceof AmmoEquipment);
         ammoEntries[0].ammo = 'Clan Ultra AC/20 Precision Ammo';
         ammoEntries[0].totalAmmo = 4;
         ammoEntries[0].consumed = 4;
         forceUnit.setInventoryEntry(ammoEntries[0]);
-        ammoEntries[5].consumed = 5;
-        forceUnit.setInventoryEntry(ammoEntries[5]);
+        ammoEntries[1].consumed = 5;
+        forceUnit.setInventoryEntry(ammoEntries[1]);
+
+        expect(ammoEntries.map(entry => entry.originalTotalAmmo)).toEqual([13, 12]);
+        forceUnit.getUnit().comp = [];
 
         forceUnit.repairAll();
 
         const repairedAmmoEntries = forceUnit.getInventory().filter(entry => entry.equipment instanceof AmmoEquipment);
-        expect(repairedAmmoEntries.length).toBe(6);
-        expect(repairedAmmoEntries.map(entry => entry.ammo)).toEqual([undefined, undefined, undefined, undefined, undefined, undefined]);
-        expect(repairedAmmoEntries.map(entry => entry.totalAmmo)).toEqual([5, 5, 5, 5, 5, 5]);
-        expect(repairedAmmoEntries.map(entry => entry.consumed)).toEqual([0, 0, 0, 0, 0, 0]);
+        expect(repairedAmmoEntries.length).toBe(2);
+        expect(repairedAmmoEntries.map(entry => entry.ammo)).toEqual([undefined, undefined]);
+        expect(repairedAmmoEntries.map(entry => entry.totalAmmo)).toEqual([13, 12]);
+        expect(repairedAmmoEntries.map(entry => entry.consumed)).toEqual([0, 0]);
+    });
+
+    it('repairAll restores intrinsic ammo from its runtime mount baseline', () => {
+        const forceUnit = createForceUnit();
+        const weapon = new WeaponEquipment({
+            id: 'RuntimeOneShot', name: 'Runtime One-Shot', type: 'weapon', flags: ['F_ONE_SHOT'],
+            weapon: { ammoType: 'AC', rackSize: 2, damage: 2 },
+        });
+        const ammo = new AmmoEquipment({
+            id: 'RuntimeOneShotAmmo', name: 'Runtime One-Shot Ammo', type: 'ammo',
+            ammo: { type: 'AC', rackSize: 2, munitionType: ['M_STANDARD'] },
+        });
+        const weaponEntry = new MountedWeapon({
+            owner: forceUnit, id: 'RuntimeOneShot@RA#0', name: weapon.internalName, equipment: weapon,
+        });
+        const ammoEntry = new MountedAmmo({
+            owner: forceUnit,
+            id: 'RuntimeOneShot@RA#0:intrinsic-one-shot-ammo',
+            name: ammo.internalName,
+            equipment: ammo,
+            parent: weaponEntry,
+            ammo: 'Alternate Runtime Ammo',
+            originalTotalAmmo: 2,
+            totalAmmo: 1,
+            consumed: 1,
+            intrinsicOneShotAmmo: true,
+        });
+        weaponEntry.setLinkedEquipment([ammoEntry]);
+        forceUnit.setInventory([weaponEntry, ammoEntry], true);
+
+        forceUnit.repairAll();
+
+        expect(ammoEntry.ammo).toBeUndefined();
+        expect(ammoEntry.totalAmmo).toBe(2);
+        expect(ammoEntry.consumed).toBe(0);
+        expect(ammoEntry.parent).toBe(weaponEntry);
+        expect(weaponEntry.linkedWith).toContain(ammoEntry);
     });
 
     it('keeps inventory control targets transient and upgrades existing selections to the first target', () => {

@@ -425,6 +425,7 @@ export class UnitInitializerService {
                     destroying: existingEntry?.isDestroying(),
                     ammo: existingEntry?.ammo,
                     totalAmmo: existingEntry?.totalAmmo ?? originalTotalAmmo,
+                    originalTotalAmmo,
                     consumed: existingEntry?.consumed ?? 0,
                     states: existingEntry?.states ?? new Map<string, string>(),
                 }));

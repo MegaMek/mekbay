@@ -66,7 +66,6 @@ import { getInventoryControlModeAmmoSummary, resolveInventoryControlSelectedAmmo
 import { ToastService } from '../services/toast.service';
 import { DialogsService } from '../services/dialogs.service';
 import { getBattleArmorTrooperNumber, normalizeBattleArmorTrooperLocation } from './battle-armor-location.model';
-import { parseInventoryComponentReference } from './inventory-component-reference.model';
 import { CBTGameRulesService } from '../services/cbt-game-rules.service';
 import type { C3DegradationSource, C3TargetingResolution, CBTGameRules } from './rules/game-rules';
 import { OptionsService } from '../services/options.service';
@@ -1133,24 +1132,10 @@ export class CBTForceUnit extends ForceUnit {
             if (item.committedDestroyed()) {
                 item.setCommittedDestroyed(false);
             }
-            if (item.consumed) {
-                item.setAmmoState({ consumed: 0 });
-            }
             if (item instanceof MountedAmmo) {
-                let totalAmmo: number | undefined;
-                if (item.intrinsicOneShotAmmo && item.parent?.equipment instanceof WeaponEquipment) {
-                    totalAmmo = item.parent.equipment.oneShotCount;
-                } else {
-                    const componentRef = parseInventoryComponentReference(item.id);
-                    const component = componentRef ? this.unit.comp[componentRef.componentIndex] : undefined;
-                    const binIndex = componentRef?.binIndex ?? 0;
-                    const binCount = Math.max(1, component?.q ?? 1);
-                    const originalTotalAmmo = component?.q2 || (item.getMaxShots() * binCount) || 0;
-                    const baseBinAmmo = Math.floor(originalTotalAmmo / binCount);
-                    const extraBinAmmo = originalTotalAmmo % binCount;
-                    totalAmmo = baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0) || undefined;
-                }
-                item.setAmmoState({ ammo: undefined, totalAmmo });
+                item.setAmmoState({ ammo: undefined, totalAmmo: item.originalTotalAmmo, consumed: 0 });
+            } else if (item.consumed) {
+                item.setAmmoState({ consumed: 0 });
             }
             if (item.states.size > 0) item.clearStateValues();
             return item;
