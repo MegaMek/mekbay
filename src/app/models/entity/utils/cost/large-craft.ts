@@ -3,7 +3,7 @@ import type { JumpShipEntity } from '../../entities/largecraft/jumpship-entity';
 import type { SpaceStationEntity } from '../../entities/largecraft/space-station-entity';
 import type { WarShipEntity } from '../../entities/largecraft/warship-entity';
 import type { EntityTransportBay } from '../../types';
-import { nextHalfTon } from './common';
+import { calculateSmallCraftFuelSystemWeight, nextHalfTon } from './common';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
 
 const SPHEROID_DROPSHIP_THRESHOLDS = [12500, 20000, 35000, 50000, 65000] as const;
@@ -21,7 +21,10 @@ export function calculateDropShipCostReport(
   entity: DropShipEntity, equipment: readonly EntityCostEntry[],
 ): EntityCostReport {
   const tonnage = entity.tonnage();
-  const collarCost = ['Unspecified', 'Standard'].includes(entity.collarType()) ? 10000
+  const primitiveBeforeCollars = entity.uniformArmor()?.type === 'PRIMITIVE_AERO'
+    && entity.effectiveOriginalBuildYear() < 2458;
+  const collarCost = primitiveBeforeCollars ? 0
+    : ['Unspecified', 'Standard'].includes(entity.collarType()) ? 10000
     : entity.collarType() === 'Prototype' ? 1010000 : 0;
   return buildCostReport([
     ...smallCraftSystemEntries(entity), ...equipment, amount('Docking Collar', collarCost),
@@ -111,7 +114,7 @@ function smallCraftSystemEntries(entity: DropShipEntity): EntityCostEntry[] {
     : dropshipEngineMultiplier(entity.effectiveOriginalBuildYear());
   const engineWeight = nextHalfTon(tonnage * entity.originalWalkMP() * engineMultiplier);
   const fuelPointsPerTon = dropshipFuelPointsPerTon(entity);
-  const fuelWeight = nextHalfTon((entity.fuel() / fuelPointsPerTon) * 1.02);
+  const fuelWeight = calculateSmallCraftFuelSystemWeight(entity.fuel(), fuelPointsPerTon);
   return [
     amount('Bridge', 200000 + 10 * tonnage), amount('Computer', 200000),
     amount('Life Support', 5000 * crewAndPassengers), amount('Sensors', 80000),

@@ -7,6 +7,13 @@ export function nextHalfTon(tonnage: number): number {
   return Math.ceil(truncated * 2) / 2;
 }
 
+/** Mirrors Aero.getFuelTonnage followed by TestSmallCraft.getWeightFuel. */
+export function calculateSmallCraftFuelSystemWeight(fuel: number, fuelPointsPerTon: number): number {
+  if (fuelPointsPerTon <= 0) return 0;
+  const fuelTonnage = Math.round(2 * fuel / fuelPointsPerTon) / 2;
+  return nextHalfTon(fuelTonnage * 1.02);
+}
+
 export function standardRound(value: number, entity: BaseEntity): number {
   return entity.weightClass() === 'Small Support'
     ? Math.ceil(value * 1000) / 1000

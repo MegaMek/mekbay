@@ -1,5 +1,5 @@
 import type { SmallCraftEntity } from '../../entities/aero/small-craft-entity';
-import { nextHalfTon } from './common';
+import { calculateSmallCraftFuelSystemWeight, nextHalfTon } from './common';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
 
 const SPHEROID_THRESHOLDS = [12500, 20000, 35000, 50000, 65000] as const;
@@ -25,8 +25,7 @@ export function calculateSmallCraftCostReport(
   const fuelPointsPerTon = primitive
     ? 80 / smallCraftPrimitiveFuelFactor(entity.effectiveOriginalBuildYear())
     : 80;
-  const fuelTonnage = Math.round(2 * entity.fuel() / fuelPointsPerTon) / 2;
-  const fuelSystemWeight = nextHalfTon(fuelTonnage * 1.02);
+  const fuelSystemWeight = calculateSmallCraftFuelSystemWeight(entity.fuel(), fuelPointsPerTon);
   return buildCostReport([
     amount('Bridge', 200000 + 10 * tonnage), amount('Computer', 200000),
     amount('Life Support', 5000 * crewAndPassengers), amount('Sensors', 80000), amount('Fire Control Computer', 100000),

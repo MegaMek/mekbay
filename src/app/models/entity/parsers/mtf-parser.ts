@@ -621,7 +621,7 @@ interface MtfHeader {
   heatSinks: string;
   baseChassisHeatSinks: number;
   walkMP: number;
-  jumpMP: number;
+  jumpMP: number; // unused, we calculate it based on equipment
   armorType: string;
   armorValues: Map<string, number>;
   patchworkTypes: Map<string, string>;

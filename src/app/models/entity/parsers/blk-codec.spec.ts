@@ -147,7 +147,8 @@ describe('BLK codec', () => {
   it('decodes compound tech codes only into domain tech bases', () => {
     for (const code of [2, 6, 8, 10, 12]) expect(decodeBlkCompoundTechBase(code, 'IS')).toBe('Clan');
     for (const code of [0, 1, 3, 5, 7, 9, 11]) expect(decodeBlkCompoundTechBase(code, 'Clan')).toBe('IS');
-    expect(decodeBlkCompoundTechBase(-1, 'Clan')).toBe('IS');
+    expect(decodeBlkCompoundTechBase(-1, 'Clan')).toBe('Clan');
+    expect(decodeBlkCompoundTechBase(-1, 'IS')).toBe('IS');
     for (const code of [4, 13]) expect(decodeBlkCompoundTechBase(code, 'Clan')).toBe('Clan');
   });
 

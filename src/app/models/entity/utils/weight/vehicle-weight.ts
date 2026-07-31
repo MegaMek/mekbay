@@ -3,6 +3,7 @@ import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definiti
 import type { VehicleEntity } from '../../entities/vehicle/vehicle-entity';
 import { calculateHeatNeutralRequirement, calculatePowerAmplifierWeight } from '../cost/common';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
+import { resolveLabArmorEquipment } from './armor-weight';
 import { ceilToHalfTon } from './weight-rounding';
 
 const SYSTEM_MISC_FLAGS = [
@@ -100,7 +101,8 @@ export function calculateVehicleStructureWeight(entity: VehicleEntity): number {
 export function calculateVehicleArmorWeight(entity: VehicleEntity): number {
   const uniform = entity.uniformArmor();
   if (uniform && !entity.hasPatchworkArmor()) {
-    return ceilToHalfTon(entity.totalArmorPoints() / (16 * uniform.armor.pptMultiplier));
+    const armor = resolveLabArmorEquipment(entity, uniform);
+    return ceilToHalfTon(entity.totalArmorPoints() / (16 * armor.pptMultiplier));
   }
   let raw = 0;
   for (const [location, points] of entity.armorValues()) {

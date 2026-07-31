@@ -170,6 +170,40 @@ describe('entity cost', () => {
             .toEqual(jasmine.objectContaining({ amount: 10000 }));
     });
 
+    it('removes docking collars from primitive DropShips built before their introduction', () => {
+        const entity = new DropShipEntity();
+        const primitiveArmor = new ArmorEquipment({
+            id: 'IS Primitive Aerospace', name: 'Primitive Aerospace', type: 'armor',
+            stats: { cost: 10000 },
+            armor: { type: 'PRIMITIVE_AERO', pptMultiplier: 1, pptDropship: [20, 17, 14, 12, 10, 7] },
+        });
+        entity.setUniformArmor(new MountedArmor({ armor: primitiveArmor, techBase: 'IS' }));
+        entity.originalBuildYear.set(2457);
+
+        expect(entity.costDetails().steps.find(step => step.type === 'Docking Collar'))
+            .toEqual(jasmine.objectContaining({ amount: 0 }));
+
+        entity.originalBuildYear.set(2458);
+        expect(entity.costDetails().steps.find(step => step.type === 'Docking Collar'))
+            .toEqual(jasmine.objectContaining({ amount: 10000 }));
+    });
+
+    it('rounds DropShip fuel tonnage before adding fuel-system pumps', () => {
+        const entity = new DropShipEntity();
+        const primitiveArmor = new ArmorEquipment({
+            id: 'IS Primitive Aerospace', name: 'Primitive Aerospace', type: 'armor',
+            stats: { cost: 10000 },
+            armor: { type: 'PRIMITIVE_AERO', pptMultiplier: 1, pptDropship: [20, 17, 14, 12, 10, 7] },
+        });
+        entity.setUniformArmor(new MountedArmor({ armor: primitiveArmor, techBase: 'IS' }));
+        entity.setTonnage(3500);
+        entity.originalBuildYear.set(2312);
+        entity.fuel.set(6923);
+
+        expect(entity.costDetails().steps.find(step => step.type === 'Fuel Tanks'))
+            .toEqual(jasmine.objectContaining({ amount: 65900 }));
+    });
+
     it('uses tonnage-dependent aerospace armor coverage for Small Craft', () => {
         const entity = new SmallCraftEntity();
         const armor = new ArmorEquipment({
@@ -259,7 +293,7 @@ describe('entity cost', () => {
     expect(calculateMountedEquipmentCost(entity)).toBe(100000);
   });
 
-    it('includes explosive capacitors and rotary ACs in implicit Clan CASE', () => {
+    it('uses pristine mounted-state explosiveness for implicit Clan CASE cost', () => {
         const entity = new TestBipedMekEntity();
         entity.techBase.set('Clan');
         entity.setEquipment([
@@ -278,6 +312,54 @@ describe('entity cost', () => {
 
         expect(entity.implicitClanCaseLocations()).toEqual(new Set(['RA']));
         expect(calculateMountedEquipmentCost(entity)).toBe(50000);
+    });
+
+    it('counts CASE II as equipment but not explicit CASE for implicit CASE cost', () => {
+        const entity = new TestBipedMekEntity();
+        entity.techBase.set('Clan');
+        entity.setEquipment([
+            mount(new MiscEquipment({
+                id: 'explosive', name: 'Explosive Equipment', type: 'misc', stats: { explosive: true },
+            })),
+            mount(new MiscEquipment({
+                id: 'CLCASEII', name: 'CASE II', type: 'misc', flags: ['F_CASE_II'], stats: { cost: 175000 },
+            })),
+        ]);
+
+        expect(calculateMountedEquipmentCost(entity)).toBe(225000);
+    });
+
+    it('treats installed B-Pods and M-Pods as loaded one-shot explosives', () => {
+        const entity = new TestBipedMekEntity();
+        entity.techBase.set('Clan');
+        const bPod = mount(new WeaponEquipment({
+            id: 'ISBPod', name: 'B-Pod', type: 'weapon', flags: ['F_B_POD', 'F_ONE_SHOT'],
+            weapon: { ammoType: 'BPOD' }, stats: { explosive: true },
+        })).clone({ allocation: { kind: 'location', location: 'LL' } });
+        const mPod = mount(new WeaponEquipment({
+            id: 'ISMPod', name: 'M-Pod', type: 'weapon', flags: ['F_M_POD', 'F_ONE_SHOT'],
+            weapon: { ammoType: 'MPOD' }, stats: { explosive: true },
+        })).clone({ allocation: { kind: 'location', location: 'RL' } });
+        entity.setEquipment([bPod, mPod]);
+
+        expect(calculateMountedEquipmentCost(entity)).toBe(100000);
+    });
+
+    it('subtracts explicit CASE globally from vehicle explosive-location count', () => {
+        const entity = new TankEntity();
+        entity.techBase.set('Clan');
+        const leftExplosive = mount(new MiscEquipment({
+            id: 'left-explosive', name: 'Explosive Equipment', type: 'misc', stats: { explosive: true },
+        })).clone({ allocation: { kind: 'location', location: 'LS' } });
+        const rightExplosive = mount(new MiscEquipment({
+            id: 'right-explosive', name: 'Explosive Equipment', type: 'misc', stats: { explosive: true },
+        })).clone({ allocation: { kind: 'location', location: 'RS' } });
+        const explicitCase = mount(new MiscEquipment({
+            id: 'CLCASE', name: 'Clan CASE', type: 'misc', flags: ['F_CASE'], stats: { cost: 50000 },
+        })).clone({ allocation: { kind: 'location', location: 'Body' } });
+        entity.setEquipment([leftExplosive, rightExplosive, explicitCase]);
+
+        expect(calculateMountedEquipmentCost(entity)).toBe(100000);
     });
 
     it('charges generated Clan CASE only for locations without explicit protection', () => {
@@ -429,6 +511,60 @@ describe('entity cost', () => {
 
         expect(entity.costDetails().steps.find(step => step.type === 'Jump Jets'))
             .toEqual(jasmine.objectContaining({ amount: 432000 }));
+    });
+
+    it('derives jump-system cost from installed jump jets', () => {
+        const entity = new BipedMekEntity();
+        entity.setTonnage(60);
+        const jumpJet = new MiscEquipment({
+            id: 'jump-jet', name: 'Jump Jet', type: 'misc',
+            flags: ['F_JUMP_JET'], stats: { cost: 0 },
+        });
+        entity.setEquipment(Array.from({ length: 3 }, (_, index) =>
+            mount(jumpJet, false, undefined, `jump-jet-${index}`)));
+
+        expect(entity.installedJumpJetMP()).toBe(3);
+        expect(entity.costDetails().steps.find(step => step.type === 'Jump Jets'))
+            .toEqual(jasmine.objectContaining({ amount: 108000 }));
+    });
+
+    it('does not price a Partial Wing bonus as additional jump jets', () => {
+        const entity = new BipedMekEntity();
+        entity.setTonnage(50);
+        const jumpJet = new MiscEquipment({
+            id: 'jump-jet', name: 'Jump Jet', type: 'misc',
+            flags: ['F_JUMP_JET'], stats: { cost: 0 },
+        });
+        const partialWing = new MiscEquipment({
+            id: 'partial-wing', name: 'Partial Wing', type: 'misc',
+            flags: ['F_PARTIAL_WING'], stats: { cost: 0 },
+        });
+        entity.setEquipment([
+            ...Array.from({ length: 5 }, (_, index) =>
+                mount(jumpJet, false, undefined, `jump-jet-${index}`)),
+            mount(partialWing),
+        ]);
+
+        expect(entity.jumpMP()).toBe(7);
+        expect(entity.installedJumpJetMP()).toBe(5);
+        expect(entity.costDetails().steps.find(step => step.type === 'Jump Jets'))
+            .toEqual(jasmine.objectContaining({ amount: 250000 }));
+    });
+
+    it('prices installed UMUs without treating them as conventional jump jets', () => {
+        const entity = new BipedMekEntity();
+        entity.setTonnage(50);
+        const umu = new MiscEquipment({
+            id: 'umu', name: 'UMU', type: 'misc',
+            flags: ['F_UMU'], stats: { cost: 0 },
+        });
+        entity.setEquipment(Array.from({ length: 4 }, (_, index) =>
+            mount(umu, false, undefined, `umu-${index}`)));
+
+        expect(entity.jumpMP()).toBe(0);
+        expect(entity.installedJumpJetMP()).toBe(0);
+        expect(entity.costDetails().steps.find(step => step.type === 'Jump Jets'))
+            .toEqual(jasmine.objectContaining({ amount: 160000 }));
     });
 
 });

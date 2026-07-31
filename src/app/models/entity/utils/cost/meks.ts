@@ -72,6 +72,9 @@ export function calculateMekCostReport(
 }
 
 function getMekStructureCostPerTon(entity: MekEntity): number {
+  // MegaMek retains the default Standard aggregate structure type when MTF
+  // declares a location-specific Hybrid structure.
+  if (entity.hasMixedStructureMaterials()) return entity.isSuperHeavy() ? 4000 : 400;
   const name = entity.structureAt('CT').structure.name.toLowerCase();
   const superHeavyMultiplier = entity.isSuperHeavy() ? 2 : 1;
   if (name.includes('industrial')) return entity.isSuperHeavy() ? 3000 : 300;

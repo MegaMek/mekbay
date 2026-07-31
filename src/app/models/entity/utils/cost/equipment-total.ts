@@ -1,5 +1,6 @@
-import { AmmoEquipment, ArmorEquipment, WeaponEquipment } from '../../../equipment.model';
+import { AmmoEquipment, ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
 import type { BaseEntity } from '../../base-entity';
+import type { EntityMountedEquipment } from '../../types';
 import { amount } from './cost-report';
 import type { EntityCostEntry } from './cost-report';
 
@@ -99,8 +100,99 @@ function calculateImplicitClanCaseCost(entity: BaseEntity): number {
     || family === 'SupportTank' || family === 'SupportNaval' || family === 'SupportVTOL'
     || family === 'LargeSupportTank';
   if (!isMek && !isVehicle) return 0;
-  if (entity.techBase() !== 'Clan') return 0;
-  return entity.automaticClanCaseLocations().size * 50000;
+  const hasClanCase = entity.equipment().some(mount =>
+    mount.equipment instanceof MiscEquipment
+    && mount.equipment.hasFlag('F_CASE')
+    && mount.equipment.techBase === 'Clan');
+  if (entity.techBase() !== 'Clan' && !(isMek && hasClanCase)) return 0;
+
+  let sourceCaseCount = 0;
+  const explosiveLocations = new Set<string>();
+  const optedOut = isMek ? entity.clanCaseOptOutLocations() : new Set<string>();
+  for (const mount of entity.equipment()) {
+    const equipment = mount.equipment;
+    if (!equipment) continue;
+    if (equipment instanceof MiscEquipment && equipment.hasFlag('F_CASE')) {
+      sourceCaseCount++;
+      continue;
+    }
+    if (!isExplosiveForConstructionCost(entity, mount)) continue;
+    for (const location of mount.getOccupiedLocations()) {
+      if ((location !== 'Unallocated' || isVehicle) && !optedOut.has(location)) {
+        explosiveLocations.add(location);
+      }
+    }
+  }
+  if (!isMek) return Math.max(0, explosiveLocations.size - sourceCaseCount) * 50000;
+
+  // MekFileParser materializes generated Clan CASE before the cost calculator
+  // runs. Reproduce that lifecycle without adding derived mounts to the entity.
+  const protectedLocations = new Set(entity.equipment()
+    .filter(mount => mount.equipment?.hasFlag('F_CASE') || mount.equipment?.hasFlag('F_CASE_II'))
+    .flatMap(mount => mount.getOccupiedLocations()));
+  const generatedLocations = new Set<string>();
+  for (const mount of entity.equipment()) {
+    if (!isExplosiveForGeneratedClanCase(entity, mount)) continue;
+    for (const location of mount.getOccupiedLocations()) {
+      if (location !== 'Unallocated' && !protectedLocations.has(location) && !optedOut.has(location)) {
+        generatedLocations.add(location);
+      }
+    }
+  }
+  const implicitCount = Math.max(
+    0,
+    explosiveLocations.size - sourceCaseCount - generatedLocations.size,
+  );
+  return (generatedLocations.size + implicitCount) * 50000;
+}
+
+/** Mirrors EquipmentType.isExplosive(mount) for pristine construction state. */
+function isExplosiveForConstructionCost(entity: BaseEntity, mount: EntityMountedEquipment): boolean {
+  const equipment = mount.equipment;
+  if (!equipment?.isExplosive()) return false;
+  if (equipment instanceof WeaponEquipment) {
+    if (['AC_ROTARY', 'AC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC', 'LAC'].includes(equipment.ammoType)) {
+      return false;
+    }
+    if (equipment.hasFlag('F_PPC')) return false;
+    if (equipment.hasAnyFlag(['F_B_POD', 'F_M_POD'])) {
+      // Entity.addEquipment creates and loads an implicit one-shot ammo mount.
+      return true;
+    }
+  }
+  if (equipment instanceof MiscEquipment) {
+    if (equipment.hasFlag('F_PPC_CAPACITOR')) return false;
+    if (equipment.hasFlag('F_RISC_LASER_PULSE_MODULE')) {
+      return entity.getLinkedMount(mount) !== undefined;
+    }
+  }
+  return true;
+}
+
+/** Mirrors EquipmentType.isExplosive(mount, true) during MekFileParser.addClanCase. */
+function isExplosiveForGeneratedClanCase(entity: BaseEntity, mount: EntityMountedEquipment): boolean {
+  const equipment = mount.equipment;
+  if (!equipment?.isExplosive()) return false;
+  if (equipment instanceof WeaponEquipment) {
+    if (['AC_ROTARY', 'AC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC', 'LAC'].includes(equipment.ammoType)) {
+      return false;
+    }
+    if (equipment.hasAnyFlag(['F_B_POD', 'F_M_POD'])) {
+      // Entity.addEquipment creates and loads an implicit one-shot ammo mount.
+      return true;
+    }
+    if (equipment.hasFlag('F_PPC')) {
+      return entity.getLinkingMount(mount)?.equipment?.hasFlag('F_PPC_CAPACITOR') === true;
+    }
+  }
+  if (equipment instanceof MiscEquipment) {
+    if (equipment.hasFlag('F_PPC_CAPACITOR')) return entity.getLinkedMount(mount) !== undefined;
+    if (equipment.hasFlag('F_RISC_LASER_PULSE_MODULE')) {
+      return entity.getLinkedMount(mount) !== undefined;
+    }
+    if (equipment.hasFlag('F_BLUE_SHIELD')) return false;
+  }
+  return true;
 }
 
 /** Prices transporter systems. Large-craft family calculators invoke this directly. */

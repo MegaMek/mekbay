@@ -1,7 +1,9 @@
-import { createEquipment } from '../../../equipment.model';
+import { ArmorEquipment, createEquipment } from '../../../equipment.model';
+import { MountedArmor } from '../../components';
 import { TestSupportNavalEntity, TestSupportTankEntity } from '../../testing/test-entities';
+import { createTestEquipmentRegistry } from '../../testing/test-equipment-registry';
 import { addTestEquipment } from '../../testing/test-mounted-equipment';
-import { calculateSupportVehicleStructureWeight } from './support-vehicle-weight';
+import { calculateSupportVehicleArmorWeight, calculateSupportVehicleStructureWeight } from './support-vehicle-weight';
 import { calculateSupportVehicleWeightBreakdown } from './support-vehicle-weight';
 
 describe('support vehicle construction mass', () => {
@@ -67,5 +69,36 @@ describe('support vehicle construction mass', () => {
     }), { location: 'Front', size: 1 });
 
     expect(calculateSupportVehicleWeightBreakdown(entity).ammo).toBe(0);
+  });
+
+  it('uses pre-normalization IS armor mass for an unknown BLK armor tech level', () => {
+    const innerSphereArmor = new ArmorEquipment({
+      id: 'IS Ferro-Fibrous', name: 'Ferro-Fibrous', type: 'armor',
+      armor: { type: 'FERRO_FIBROUS', pptMultiplier: 1.12 }, tech: { base: 'IS' },
+    });
+    const clanArmor = new ArmorEquipment({
+      id: 'Clan Ferro-Fibrous', name: 'Ferro-Fibrous', type: 'armor',
+      armor: { type: 'FERRO_FIBROUS', pptMultiplier: 1.2 }, tech: { base: 'Clan' },
+    });
+    const entity = new TestSupportTankEntity(createTestEquipmentRegistry({
+      [innerSphereArmor.id]: innerSphereArmor,
+      [clanArmor.id]: clanArmor,
+    }));
+    entity.setTonnage(50);
+    entity.armorValues.set(new Map([['Front', { front: 124, rear: 0 }]]));
+    entity.setUniformArmor(new MountedArmor({
+      armor: clanArmor,
+      techBase: 'Clan',
+      technology: { level: 'Standard', scope: 'Unknown' },
+    }));
+
+    expect(calculateSupportVehicleArmorWeight(entity)).toBe(7);
+
+    entity.setUniformArmor(new MountedArmor({
+      armor: clanArmor,
+      techBase: 'Clan',
+      technology: { level: 'Standard', scope: 'Clan' },
+    }));
+    expect(calculateSupportVehicleArmorWeight(entity)).toBe(6.5);
   });
 });

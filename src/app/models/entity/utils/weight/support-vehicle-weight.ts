@@ -6,6 +6,7 @@ import type { VehicleEntity } from '../../entities/vehicle/vehicle-entity';
 import type { TechRating } from '../../types';
 import { calculateHeatNeutralRequirement, calculatePowerAmplifierWeight } from '../cost/common';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
+import { resolveLabArmorEquipment } from './armor-weight';
 import { ceilToHalfTon } from './weight-rounding';
 
 const TECH_RATINGS: readonly TechRating[] = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -126,7 +127,13 @@ export function calculateSupportVehicleArmorWeight(entity: SupportVehicleEntity)
   let raw = 0;
   if (!entity.hasPatchworkArmor()) {
     const mounted = entity.uniformArmor();
-    if (mounted) raw = calculateRaw(mounted.armor, entity.totalArmorPoints(), mounted.techRating);
+    if (mounted) {
+      // BLK loaders cache lab armor tonnage before UnitUtil replaces an unknown
+      // armor tech level with the entity tech level. Preserve that verifier
+      // lifecycle while retaining the normalized armor for cost/components.
+      const verifierArmor = resolveLabArmorEquipment(entity, mounted);
+      raw = calculateRaw(verifierArmor, entity.totalArmorPoints(), mounted.techRating);
+    }
   } else {
     for (const [location, allocation] of entity.armorValues()) {
       const mounted = entity.armorByLocation().get(location);

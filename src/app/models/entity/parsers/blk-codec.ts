@@ -63,9 +63,8 @@ export function decodeBlkCompoundTechBase(code: number, fallback: EntityTechBase
   const scope = decodeBlkCompoundTechLevel(code).scope;
   if (scope === 'Clan' || scope === 'All Clan') return 'Clan';
   if (scope === 'IS' || scope === 'IS TW' || scope === 'All IS') return 'IS';
-  // MegaMek's TechConstants.isClan(T_TECH_UNKNOWN) is false. An explicit -1
-  // therefore resolves an ambiguous armor descriptor through the IS branch.
-  if (code === -1) return 'IS';
+  // MegaMekLab's UnitUtil.updateLoadedUnit replaces unresolved component
+  // technology with the entity's tech level before exporting the oracle.
   return fallback;
 }
 
