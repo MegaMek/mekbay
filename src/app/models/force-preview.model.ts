@@ -17,7 +17,7 @@ import type {
     RemoteLoadForceUnit,
 } from './remote-load-force-entry.model';
 import type { Unit } from './units.model';
-import { generateUUID } from '../services/ws.service';
+import { uuidv7 } from '../utils/uuid.util';
 
 export interface ForcePreviewUnit {
     unit: Unit | undefined;
@@ -71,7 +71,7 @@ function resolveSerializedUnitId(id: string | undefined): string {
         return normalizedId;
     }
 
-    return generateUUID();
+    return uuidv7();
 }
 
 function isASSerializedUnit(unit: SerializedUnit): unit is ASSerializedUnit {
@@ -154,7 +154,7 @@ export function createForcePreviewUnit(
     const previewUnit: ForcePreviewUnit = {
         unit: getUnitByName(raw.unit),
         destroyed: raw.state?.destroyed ?? false,
-        lockKey: generateUUID(),
+        lockKey: uuidv7(),
     };
 
     assignForcePreviewUnitField(previewUnit, 'alias', raw.alias);

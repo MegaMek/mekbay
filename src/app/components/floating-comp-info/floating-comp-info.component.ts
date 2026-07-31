@@ -37,8 +37,11 @@ import type { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import type { Unit } from '../../models/units.model';
 import { AmmoEquipment, type Equipment, WeaponEquipment } from '../../models/equipment.model';
+import { TechDate, TechAdvancementDates, techDateYear, formatTechDate } from '../../models/entity';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
-import { parseAdvancementYear } from '../../utils/tech-advancement-date.util';
+import { CBTGameRulesService } from '../../services/cbt-game-rules.service';
+import { resolveDefaultWeaponDamageText } from '../../utils/inventory-control-damage.util';
+import { formatInventoryControlHeat } from '../../utils/inventory-control-heat.util';
 
 /*
  * Author: Drake
@@ -57,6 +60,7 @@ import { parseAdvancementYear } from '../../utils/tech-advancement-date.util';
 })
 export class FloatingCompInfoComponent {
     private dataService = inject(DataService);
+    private rulesService = inject(CBTGameRulesService);
     unit = input.required<Unit>();
     comp = input<UnitComponent | null>(null);
 
@@ -66,7 +70,7 @@ export class FloatingCompInfoComponent {
         const currentComp = this.comp();
         const currentUnit = this.unit();
         if (currentUnit && currentComp?.id && currentUnit?.type) {
-            return this.dataService.getEquipmentByName(currentComp.id) || null;
+            return this.dataService.findEquipment(currentComp.id) || null;
         }
         return null;
     });
@@ -95,7 +99,7 @@ export class FloatingCompInfoComponent {
         if (currentComp?.t === 'X') {
             const equipment = this.equipment() ?? currentComp.eq;
             if (equipment instanceof AmmoEquipment) {
-                const labels = [equipment.category, ...(equipment.stats.explosive ? ['Explosive'] : [])];
+                const labels = [equipment.category, ...(equipment.isExplosive() ? ['Explosive'] : [])];
                 return `Ammo (${labels.join(', ')})`;
             }
 
@@ -109,7 +113,7 @@ export class FloatingCompInfoComponent {
         const equipment = this.equipment() ?? this.comp()?.eq;
         if (!equipment) return null;
 
-        const modifierValues = equipment.getToHitModifiers();
+        const modifierValues = this.rulesService.gameRules().resolveToHit({ subject: equipment }).profile;
         if (modifierValues.every(value => value === 0)) return null;
         return modifierValues.map(value => this.formatToHitModifier(value)).join('/');
     }
@@ -147,24 +151,26 @@ export class FloatingCompInfoComponent {
 
     get damage(): string | null {
         const currentComp = this.comp();
-        if (currentComp?.d && currentComp.md && Number(currentComp.md) !== Number(currentComp.d)) {
-            return currentComp.d + (currentComp.md ? ` (${currentComp.md})` : '');
-        }
-        if (currentComp?.d) {
-            const eq = this.equipment();
-            if (eq instanceof WeaponEquipment) {
-                return String(eq.damage);
-            }
+        const eq = this.equipment();
+        if (currentComp?.d && eq instanceof WeaponEquipment) {
+            return currentComp.md && Number(currentComp.md) !== Number(currentComp.d)
+                ? `${currentComp.d} (${currentComp.md})`
+                : currentComp.d;
         }
         return null;
     }
 
-    get heat(): number | null {
+    get heat(): string | null {
         const eq = this.equipment();
         if (eq instanceof WeaponEquipment) {
-            return eq.heat;
+            return formatInventoryControlHeat(eq.heat, '', eq.getRapidFireCount());
         }
         return null;
+    }
+
+    get hasHeat(): boolean {
+        const eq = this.equipment();
+        return eq instanceof WeaponEquipment && eq.heat > 0;
     }
 
     computeEquipmentDisplay(): Array<{ group: string, items: Array<{ label: string, value: any }> }> {
@@ -173,23 +179,23 @@ export class FloatingCompInfoComponent {
         const eq = this.equipment();
         if (!eq) return [];
 
-        // Helper to pick earliest date from two options
-        const earliest = (a?: string, b?: string): string | undefined => {
-            const aY = parseAdvancementYear(a), bY = parseAdvancementYear(b);
-            if (aY === null) return b;
-            if (bY === null) return a;
+        // Helper to pick earliest TechDate from two options
+        const earliest = (a: TechDate, b: TechDate): TechDate => {
+            const aY = techDateYear(a), bY = techDateYear(b);
+            if (aY == null) return b;
+            if (bY == null) return a;
             return aY <= bY ? a : b;
         };
 
-        // Helper to pick latest date from two options
-        const latest = (a?: string, b?: string): string | undefined => {
-            const aY = parseAdvancementYear(a), bY = parseAdvancementYear(b);
-            if (aY === null) return b;
-            if (bY === null) return a;
+        // Helper to pick latest TechDate from two options
+        const latest = (a: TechDate, b: TechDate): TechDate => {
+            const aY = techDateYear(a), bY = techDateYear(b);
+            if (aY == null) return b;
+            if (bY == null) return a;
             return aY >= bY ? a : b;
         };
 
-        let dates: { prototype?: string; production?: string; common?: string; extinct?: string; reintroduced?: string };
+        let dates: TechAdvancementDates;
         switch (unit.techBase) {
             case 'Clan':
                 dates = eq.tech.advancement?.clan ?? {};
@@ -198,22 +204,22 @@ export class FloatingCompInfoComponent {
                 const is = eq.tech.advancement?.is;
                 const clan = eq.tech.advancement?.clan;
                 // For mixed: earliest for most dates, latest for extinction
-                let extinct: string | undefined;
-                let reintroduced: string | undefined;
-                
+                let extinct: TechDate;
+                let reintroduced: TechDate;
+
                 // Only show extinction if BOTH have it (otherwise tech was still available)
                 const bothHaveExtinction = is?.extinct && clan?.extinct;
                 if (bothHaveExtinction) {
                     extinct = latest(is?.extinct, clan?.extinct);
                     reintroduced = earliest(is?.reintroduced, clan?.reintroduced);
                     // If extinction is at or beyond reintroduction, there's no real gap
-                    const extY = parseAdvancementYear(extinct), reintY = parseAdvancementYear(reintroduced);
-                    if (extY !== null && reintY !== null && extY >= reintY) {
+                    const extY = techDateYear(extinct), reintY = techDateYear(reintroduced);
+                    if (extY != null && reintY != null && extY >= reintY) {
                         extinct = undefined;
                         reintroduced = undefined;
                     }
                 }
-                
+
                 dates = {
                     prototype: earliest(is?.prototype, clan?.prototype),
                     production: earliest(is?.production, clan?.production),
@@ -230,18 +236,18 @@ export class FloatingCompInfoComponent {
         }
 
         const historyItems: Array<{ label: string, value: string }> = [
-            { label: 'Prototype', value: dates?.prototype },
-            { label: 'Production', value: dates?.production },
-            { label: 'Common', value: dates?.common },
-            { label: 'Extinction', value: dates?.extinct },
-            { label: 'Reintroduction', value: dates?.reintroduced },
-        ].filter((item): item is { label: string, value: string } => 
-            item.value !== undefined && item.value !== null && item.value !== '' && item.value !== '-')
+            { label: 'Prototype', value: formatTechDate(dates?.prototype) },
+            { label: 'Production', value: formatTechDate(dates?.production) },
+            { label: 'Common', value: formatTechDate(dates?.common) },
+            { label: 'Extinction', value: formatTechDate(dates?.extinct) },
+            { label: 'Reintroduction', value: formatTechDate(dates?.reintroduced) },
+        ].filter((item): item is { label: string, value: string } =>
+            item.value !== undefined && item.value !== null && item.value !== '')
         .sort((a, b) => {
-            const aYear = parseAdvancementYear(a.value);
-            const bYear = parseAdvancementYear(b.value);
-            if (aYear === null) return 1;
-            if (bYear === null) return -1;
+            const aYear = parseInt(a.value.replace(/^~/, ''), 10);
+            const bYear = parseInt(b.value.replace(/^~/, ''), 10);
+            if (isNaN(aYear)) return 1;
+            if (isNaN(bYear)) return -1;
             return aYear - bYear;
         });
 
@@ -261,7 +267,7 @@ export class FloatingCompInfoComponent {
                     { label: 'BV', value: eq.bv },
                     { label: 'Cost', value: eq.cost },
                     { label: 'Tonnage', value: eq.tonnage },
-                    { label: 'Criticals', value: slots },
+                    { label: 'Criticals', value: eq.critSlots },
                     { label: 'Reference', value: eq.rulesRefs }
                 ]
             },

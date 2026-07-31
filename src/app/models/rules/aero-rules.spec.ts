@@ -1,0 +1,61 @@
+import type { CBTForceUnit } from '../cbt-force-unit.model';
+import type { MountedEquipment } from '../mounted-equipment.model';
+import { AeroRules } from './aero-rules';
+
+function createHarness(heat: number, physical = false): { rules: AeroRules; entry: MountedEquipment } {
+    const unit = {
+        getHeat: () => ({ current: heat }),
+        getInventory: () => [],
+        getCritSlots: () => [],
+        isEquipmentUnavailable: () => false,
+    } as unknown as CBTForceUnit;
+    const entry = {
+        committedDestroyed: () => false,
+        isPhysicalWeapon: () => physical,
+        critSlots: [],
+        states: new Map<string, string>(),
+    } as unknown as MountedEquipment;
+    return { rules: new AeroRules(unit), entry };
+}
+
+describe('AeroRules', () => {
+    it('does not apply a fire modifier below the first heat threshold', () => {
+        const { rules, entry } = createHarness(7);
+
+        expect(rules.computeEntryState(entry)).toEqual(jasmine.objectContaining({
+            hitMod: 0,
+            hitModifierBreakdown: []
+        }));
+    });
+
+    it('includes heat as a named negative entry-state modifier', () => {
+        const { rules, entry } = createHarness(8);
+
+        expect(rules.computeEntryState(entry)).toEqual(jasmine.objectContaining({
+            hitMod: 1,
+            hitModifierBreakdown: [
+                { label: 'Heat - Fire Modifier', modifier: 1, negative: true, kind: 'heat' }
+            ]
+        }));
+    });
+
+    it('uses the cumulative modifier at higher heat thresholds', () => {
+        const { rules, entry } = createHarness(24);
+
+        expect(rules.computeEntryState(entry)).toEqual(jasmine.objectContaining({
+            hitMod: 4,
+            hitModifierBreakdown: [
+                { label: 'Heat - Fire Modifier', modifier: 4, negative: true, kind: 'heat' }
+            ]
+        }));
+    });
+
+    it('does not apply heat fire modifiers to physical attacks', () => {
+        const { rules, entry } = createHarness(24, true);
+
+        expect(rules.computeEntryState(entry)).toEqual(jasmine.objectContaining({
+            hitMod: 0,
+            hitModifierBreakdown: []
+        }));
+    });
+});

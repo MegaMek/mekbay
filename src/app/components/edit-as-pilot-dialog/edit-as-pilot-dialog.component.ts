@@ -46,7 +46,7 @@ import { SkillDropdownPanelComponent, type SkillPreviewEntry } from '../skill-dr
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { GameSystem, formatRulesReference, type RulesReference } from '../../models/common.model';
 import type { ASUnitTypeCode } from '../../models/units.model';
-import { PVCalculatorUtil } from '../../utils/pv-calculator.util';
+import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { DEFAULT_GUNNERY_SKILL } from '../../models/crew-member.model';
 import {
     FormationAbilityAssignmentUtil,
@@ -136,9 +136,9 @@ export class EditASPilotDialogComponent {
             return [0, 1, 2, 3, 4, 5, 6, 7, 8].map(skill => ({ skill, adjustedValue: 0, delta: 0 }));
         }
         const basePv = this.data.basePv!;
-        const baselineValue = PVCalculatorUtil.calculateAdjustedPV(basePv, DEFAULT_GUNNERY_SKILL);
+        const baselineValue = adjustPointValueForSkill(basePv, DEFAULT_GUNNERY_SKILL);
         return [0, 1, 2, 3, 4, 5, 6, 7, 8].map(skill => {
-            const adjustedValue = PVCalculatorUtil.calculateAdjustedPV(basePv, skill);
+            const adjustedValue = adjustPointValueForSkill(basePv, skill);
             return { skill, adjustedValue, delta: adjustedValue - baselineValue };
         });
     });

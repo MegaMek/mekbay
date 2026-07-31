@@ -119,7 +119,7 @@ body {
 
 :root.keyboard-navigation *:focus {
     outline: 2px solid var(--primary-focus-color-highlight) !important;
-    outline-offset: 2px !important;
+    outline-offset: -2px;
 }
 
 :root.keyboard-navigation .cdk-dialog-container:focus,
@@ -1807,6 +1807,9 @@ hr.divider {
     .critGroup.flooded,
     .critGroup.detached,
     .critGroup.disabledLocation,
+    .critGroup.flooded .locationConditionControl,
+    .critGroup.detached .locationConditionControl,
+    .critGroup.disabledLocation .locationConditionControl,
     .critGroup.flooded .locationConditionButton,
     .critGroup.detached .locationConditionButton,
     .critGroup.disabledLocation .locationConditionButton,
@@ -1925,7 +1928,7 @@ hr.divider {
         }
 
         #faded-arrow {
-            stroke: #aaa;
+            stroke: #ccc;
         }
 
         .inventoryEntry.weakenedHitMod>.hitMod-rect {
@@ -2045,14 +2048,23 @@ hr.divider {
                 fill: #fff !important;
             }
         }
+
+        &.read-only .edit-only {
+            display: none;
+        }
         
-        .locConditionButton {
+        .locConditionButton,
+        .locationConditionControl {
             cursor: pointer;
 
             text {
                 pointer-events: none;
             }
 
+        }
+
+        .locationConditionHitArea {
+            pointer-events: all;
         }
 
         .unitConditionBanner {
@@ -2202,6 +2214,10 @@ hr.divider {
     
         .locationConditionText {
             text-decoration: underline dotted;
+        }
+
+        .locationConditionControl:hover .locationConditionText {
+            text-decoration-style: solid;
         }
 
         .hot {
@@ -2377,6 +2393,10 @@ hr.divider {
             font-size: 7px;
             font-weight: 700;
             pointer-events: none;
+
+            &.noPsrCheck {
+                fill: #000;
+            }
         }
     }
 }
@@ -2390,6 +2410,10 @@ hr.divider {
         background-color: var(--svg-bg-color);
         color: var(--svg-fg-color);
         fill: var(--svg-fg-color);
+
+        .movePsrWarning.noPsrCheck {
+            fill: var(--svg-fg-color);
+        }
 
         :where(:not(mask):not(mask *):not(.no-autocolor):not(.no-autocolor *)) {
             &[fill="#000000" i],
@@ -2510,7 +2534,7 @@ hr.divider {
         }
 
         #faded-arrow {
-            stroke: #666;
+            stroke: #444;
         }
 
         .heatEffect.hot.surpassed {
@@ -2808,7 +2832,7 @@ hr.divider {
             transition: stroke 0.2s, fill 0.2s;
         }
 
-        .dirtyHeat.hot {
+        .heatApplicationAvailable.hot {
             .applyHeatButtonFrame {
                 fill: hsl(0, 100%, 95%) !important;
                 stroke: var(--hot-color) !important;
@@ -2823,7 +2847,7 @@ hr.divider {
             }
         }
 
-        .dirtyHeat.cold {
+        .heatApplicationAvailable.cold {
             .applyHeatButtonFrame {
                 fill: hsl(240, 100%, 95%) !important;
                 stroke: var(--cold-color) !important;
@@ -2842,7 +2866,7 @@ hr.divider {
             display: none;
         }
 
-        .dirtyHeat #applyHeatButton.interactive {
+        .heatApplicationAvailable #applyHeatButton.interactive {
             display: block;
 
             path {

@@ -33,15 +33,21 @@
 
 import { Injectable } from '@angular/core';
 import type { PickerChoice, PickerValue } from '../components/picker/picker.interface';
-import type { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToastService } from './toast.service';
 import type { DialogsService } from './dialogs.service';
 import type { DataService } from './data.service';
-import type { AmmoEquipment } from '../models/equipment.model';
+import type { AmmoEquipment, WeaponType } from '../models/equipment.model';
 import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions, InventoryControlRules } from '../utils/inventory-control.util';
+import type { WeaponDamage } from '../models/equipment.model';
+import type { InventoryControlDamageContext } from '../utils/inventory-control-damage.util';
 import type { TurnState } from '../models/turn-state.model';
 import type { UnitHeatSource } from '../models/rules/unit-type-rules';
-import type { InventoryControlRuntimeRangeKey } from '../models/inventory-control-runtime-state.model';
+import type { ToHitAdjustment } from '../models/rules/game-rules';
+import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
+import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-control-physical-damage.util';
+import { EquipmentFlag } from '../models/equipment-flags.type';
+import type { Force } from '../models/force.model';
 
 /**
  * Context passed to handlers containing additional information
@@ -50,6 +56,7 @@ export interface HandlerContext {
     toastService: ToastService;
     dialogsService: DialogsService;
     dataService: DataService;
+    choiceSurface?: 'critical' | 'inventory' | 'turn-summary';
 }
 
 /**
@@ -58,6 +65,11 @@ export interface HandlerContext {
 export interface HandlerChoice extends PickerChoice {
     /** Internal identifier linking this choice to its handler */
     _handler?: EquipmentInteractionHandler;
+}
+
+export interface ToHitAdjustmentContext {
+    parent?: MountedEquipment;
+    selectedAmmo?: AmmoEquipment | null;
 }
 
 /**
@@ -72,7 +84,7 @@ export abstract class EquipmentInteractionHandler {
     /**
      * The equipment flags this handler responds to ('F_ECM', 'F_MASC', etc.). If multiple flags, it has to match all.
      */
-    readonly flags: string[] = [];
+    readonly flags: EquipmentFlag[] = [];
 
     /**
      * Optional method to determine if this handler applies to the given equipment
@@ -111,6 +123,9 @@ export abstract class EquipmentInteractionHandler {
      */
     onEndTurn?(equipment: MountedEquipment, context: HandlerContext): void;
 
+    /** Hook called when a loaded force's reactive runtime state changes. */
+    onForceRuntimeChanged?(force: Force, context: HandlerContext): void;
+
     /**
      * Hook called while building an inventory-control row display.
      */
@@ -120,6 +135,26 @@ export abstract class EquipmentInteractionHandler {
         options: InventoryControlDisplayEffectOptions,
         context: HandlerContext
     ): InventoryControlDisplayData;
+
+    /**
+     * Applies equipment-state modifiers to a weapon's unformatted damage value.
+     */
+    applyInventoryControlDamageEffects?(
+        equipment: MountedEquipment,
+        damage: WeaponDamage,
+        damageContext: InventoryControlDamageContext,
+        context: HandlerContext
+    ): WeaponDamage;
+
+    /** Applies equipment mode/state to a physical weapon's base damage policy. */
+    applyInventoryControlPhysicalDamageEffects?(
+        equipment: MountedEquipment,
+        effect: InventoryControlPhysicalDamageEffect,
+        context: HandlerContext
+    ): InventoryControlPhysicalDamageEffect;
+
+    /** Applies equipment-state modifiers to typed weapon firing heat. */
+    applyInventoryControlHeatEffects?(equipment: MountedEquipment, effect: InventoryControlHeatEffect, context: HandlerContext): InventoryControlHeatEffect;
 
     /**
      * Hook called for linked equipment while building a parent entry's inventory-control row display.
@@ -132,20 +167,42 @@ export abstract class EquipmentInteractionHandler {
         context: HandlerContext
     ): InventoryControlDisplayData;
 
+    /** Applies a linked enhancement's modifiers to typed weapon firing heat. */
+    applyLinkedInventoryControlHeatEffects?(
+        equipment: MountedEquipment,
+        parent: MountedEquipment,
+        effect: InventoryControlHeatEffect,
+        context: HandlerContext
+    ): InventoryControlHeatEffect;
+
+    /** Adds or removes effective weapon types based on the weapon's own state. */
+    applyInventoryControlWeaponTypes?(
+        equipment: MountedEquipment,
+        types: ReadonlySet<WeaponType>,
+        context: HandlerContext
+    ): ReadonlySet<WeaponType>;
+
+    /**
+     * Adds or removes effective weapon types contributed by linked equipment state.
+     */
+    applyLinkedWeaponTypes?(
+        equipment: MountedEquipment,
+        parent: MountedEquipment,
+        types: ReadonlySet<WeaponType>,
+        context: HandlerContext
+    ): ReadonlySet<WeaponType>;
+
     /**
      * Hook called while filtering ammo options for a selected inventory-control mode.
      */
     matchesInventoryAmmo?(equipment: MountedEquipment, ammo: AmmoEquipment, mode: string | null, context: HandlerContext): boolean | null;
 
-    /**
-     * Hook called for linked equipment while resolving a parent weapon's to-hit modifier.
-     */
-    getLinkedEquipmentHitModifier?(equipment: MountedEquipment, parent: MountedEquipment, selectedAmmo?: AmmoEquipment | null): number | null;
-
-    /**
-     * Hook called while resolving an entry's own base to-hit modifier.
-     */
-    getInventoryControlBaseHitModifier?(equipment: MountedEquipment, context: HandlerContext, range?: InventoryControlRuntimeRangeKey | null): number | null;
+    /** Returns typed adjustments to an entry's effective to-hit profile. */
+    getToHitAdjustments?(
+        equipment: MountedEquipment,
+        adjustmentContext: ToHitAdjustmentContext,
+        context: HandlerContext
+    ): readonly ToHitAdjustment[];
 
     /**
      * Hook called while collecting turn heat sources from inventory entries.
@@ -161,12 +218,15 @@ export abstract class EquipmentInteractionHandler {
      * Hook called when equipment-specific modes can veto aimed shots.
      */
     canPerformAimedShot?(equipment: MountedEquipment, context: HandlerContext): boolean | null;
+
+    /** Equipment-specific veto for selecting an inventory entry to fire. */
+    isInventoryControlSelectable?(equipment: MountedEquipment, context: HandlerContext): boolean | null;
 }
 
 /**
  * Registry for equipment interaction handlers
  */
-class EquipmentInteractionRegistry {
+export class EquipmentInteractionRegistry {
     private handlers: Map<string, EquipmentInteractionHandler> = new Map();
     
     /**
@@ -208,6 +268,10 @@ class EquipmentInteractionRegistry {
     getHandler(handlerId: string): EquipmentInteractionHandler | undefined {
         return this.handlers.get(handlerId);
     }
+
+    getAllHandlers(): readonly EquipmentInteractionHandler[] {
+        return [...this.handlers.values()];
+    }
     
     /**
      * Get all applicable handlers for an equipment, sorted by priority
@@ -232,6 +296,7 @@ class EquipmentInteractionRegistry {
     getChoices(equipment: MountedEquipment, context: HandlerContext): HandlerChoice[] {
         const handlers = this.getHandlers(equipment);
         const allChoices: HandlerChoice[] = [];
+        const actionUnavailable = equipment.isActionUnavailable();
         
         for (const handler of handlers) {
             const choices = handler.getChoices(equipment, context);
@@ -239,6 +304,7 @@ class EquipmentInteractionRegistry {
                 // Tag each choice with the handler ID
                 const taggedChoices = choices.map(choice => ({
                     ...choice,
+                    disabled: actionUnavailable || choice.disabled,
                     _handler: handler
                 }));
                 allChoices.push(...taggedChoices);
@@ -256,7 +322,8 @@ class EquipmentInteractionRegistry {
         choice: HandlerChoice,
         context: HandlerContext
     ): boolean | Promise<boolean> {
-        if (!choice._handler) {
+        const actionUnavailable = equipment.isActionUnavailable();
+        if (!choice._handler || choice.disabled || actionUnavailable) {
             return false;
         }
 
@@ -272,6 +339,12 @@ class EquipmentInteractionRegistry {
     onEndTurn(equipment: MountedEquipment, context: HandlerContext): void {
         for (const handler of this.getHandlers(equipment)) {
             handler.onEndTurn?.(equipment, context);
+        }
+    }
+
+    onForceRuntimeChanged(force: Force, context: HandlerContext): void {
+        for (const handler of this.handlers.values()) {
+            handler.onForceRuntimeChanged?.(force, context);
         }
     }
 
@@ -293,6 +366,61 @@ class EquipmentInteractionRegistry {
         return nextDisplay;
     }
 
+    applyWeaponTypes(
+        equipment: MountedEquipment,
+        types: ReadonlySet<WeaponType>,
+        context: HandlerContext
+    ): ReadonlySet<WeaponType> {
+        let nextTypes = types;
+        for (const handler of this.getHandlers(equipment)) {
+            nextTypes = handler.applyInventoryControlWeaponTypes?.(equipment, nextTypes, context) ?? nextTypes;
+        }
+        for (const linked of equipment.linkedWith ?? []) {
+            for (const handler of this.getHandlers(linked)) {
+                nextTypes = handler.applyLinkedWeaponTypes?.(linked, equipment, nextTypes, context) ?? nextTypes;
+            }
+        }
+        return nextTypes;
+    }
+
+    applyInventoryControlDamageEffects(
+        equipment: MountedEquipment,
+        damage: WeaponDamage,
+        damageContext: InventoryControlDamageContext,
+        context: HandlerContext
+    ): WeaponDamage {
+        let nextDamage = damage;
+        for (const handler of this.getHandlers(equipment)) {
+            nextDamage = handler.applyInventoryControlDamageEffects?.(equipment, nextDamage, damageContext, context) ?? nextDamage;
+        }
+        return nextDamage;
+    }
+
+    applyInventoryControlPhysicalDamageEffects(
+        equipment: MountedEquipment,
+        effect: InventoryControlPhysicalDamageEffect,
+        context: HandlerContext
+    ): InventoryControlPhysicalDamageEffect {
+        let nextEffect = effect;
+        for (const handler of this.getHandlers(equipment)) {
+            nextEffect = handler.applyInventoryControlPhysicalDamageEffects?.(equipment, nextEffect, context) ?? nextEffect;
+        }
+        return nextEffect;
+    }
+
+    applyInventoryControlHeatEffects(equipment: MountedEquipment, effect: InventoryControlHeatEffect, context: HandlerContext): InventoryControlHeatEffect {
+        let nextEffect = effect;
+        for (const handler of this.getHandlers(equipment)) {
+            nextEffect = handler.applyInventoryControlHeatEffects?.(equipment, nextEffect, context) ?? nextEffect;
+        }
+        for (const linked of equipment.linkedWith ?? []) {
+            for (const handler of this.getHandlers(linked)) {
+                nextEffect = handler.applyLinkedInventoryControlHeatEffects?.(linked, equipment, nextEffect, context) ?? nextEffect;
+            }
+        }
+        return nextEffect;
+    }
+
     matchesInventoryAmmo(equipment: MountedEquipment, ammo: AmmoEquipment, mode: string | null, context: HandlerContext): boolean | null {
         for (const handler of this.getHandlers(equipment)) {
             const result = handler.matchesInventoryAmmo?.(equipment, ammo, mode, context);
@@ -301,20 +429,19 @@ class EquipmentInteractionRegistry {
         return null;
     }
 
-    getLinkedEquipmentHitModifier(equipment: MountedEquipment, selectedAmmo?: AmmoEquipment | null): number {
-        return equipment.linkedWith?.reduce((total, linked) => {
-            const modifier = this.getHandlers(linked)
-                .reduce((sum, handler) => sum + (handler.getLinkedEquipmentHitModifier?.(linked, equipment, selectedAmmo) ?? 0), 0);
-            return total + modifier;
-        }, 0) ?? 0;
-    }
-
-    getInventoryControlBaseHitModifier(equipment: MountedEquipment, context: HandlerContext, range?: InventoryControlRuntimeRangeKey | null): number | null {
-        for (const handler of this.getHandlers(equipment)) {
-            const result = handler.getInventoryControlBaseHitModifier?.(equipment, context, range);
-            if (result !== undefined && result !== null) return result;
+    getToHitAdjustments(
+        equipment: MountedEquipment,
+        context: HandlerContext,
+        selectedAmmo?: AmmoEquipment | null
+    ): ToHitAdjustment[] {
+        const adjustments = this.getHandlers(equipment)
+            .flatMap(handler => handler.getToHitAdjustments?.(equipment, { selectedAmmo }, context) ?? []);
+        for (const linked of equipment.linkedWith ?? []) {
+            for (const handler of this.getHandlers(linked)) {
+                adjustments.push(...(handler.getToHitAdjustments?.(linked, { parent: equipment, selectedAmmo }, context) ?? []));
+            }
         }
-        return null;
+        return adjustments;
     }
 
     canPerformAimedShot(equipment: MountedEquipment, context: HandlerContext): boolean {
@@ -322,12 +449,21 @@ class EquipmentInteractionRegistry {
             .every(handler => handler.canPerformAimedShot?.(equipment, context) !== false);
     }
 
+    isInventoryControlSelectable(equipment: MountedEquipment, context: HandlerContext): boolean {
+        return this.getHandlers(equipment)
+            .every(handler => handler.isInventoryControlSelectable?.(equipment, context) !== false);
+    }
+
     inventoryControlRules(context: HandlerContext): InventoryControlRules {
         return {
             applyDisplayEffects: (equipment, display, options) => this.applyInventoryControlDisplayEffects(equipment, display, options, context),
+            applyDamageEffects: (equipment, damage, options) => this.applyInventoryControlDamageEffects(equipment, damage, options, context),
+            applyPhysicalDamageEffects: (equipment, effect) => this.applyInventoryControlPhysicalDamageEffects(equipment, effect, context),
+            applyHeatEffects: (equipment, heat) => this.applyInventoryControlHeatEffects(equipment, heat, context),
+            applyWeaponTypes: (equipment, types) => this.applyWeaponTypes(equipment, types, context),
             matchesAmmo: (equipment, ammo, mode) => this.matchesInventoryAmmo(equipment, ammo, mode, context),
-            resolveLinkedHitModifier: (equipment, selectedAmmo) => this.getLinkedEquipmentHitModifier(equipment, selectedAmmo),
-            resolveBaseHitModifier: (equipment, range?: InventoryControlRuntimeRangeKey | null) => this.getInventoryControlBaseHitModifier(equipment, context, range)
+            resolveToHitAdjustments: (equipment, selectedAmmo) => this.getToHitAdjustments(equipment, context, selectedAmmo),
+            isSelectable: equipment => this.isInventoryControlSelectable(equipment, context)
         };
     }
 

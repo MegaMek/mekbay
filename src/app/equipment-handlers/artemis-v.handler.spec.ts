@@ -1,37 +1,85 @@
-import { MountedEquipment } from '../models/force-serialization';
-import type { AmmoEquipment, Equipment } from '../models/equipment.model';
+import { MountedEquipment } from '../models/mounted-equipment.model';
+import { Equipment, type AmmoEquipment } from '../models/equipment.model';
 import { ArtemisVHandler } from './artemis-v.handler';
+import { EquipmentFlag } from '../models/equipment-flags.type';
+import { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
 
-function owner(unavailableEntry?: MountedEquipment) {
+function owner(unavailableEntry?: MountedEquipment, jammed = false) {
     return {
-        rules: { computeEntryState: (candidate: MountedEquipment) => ({ isDamaged: candidate === unavailableEntry || candidate.committedDestroyed(), isDisabled: false, hitMod: 0 }) }
+        rules: { computeEntryState: (candidate: MountedEquipment) => ({ isDamaged: candidate === unavailableEntry || candidate.committedDestroyed(), isDisabled: false, hitMod: 0 }) },
+        getCondition: (condition: string) => condition === 'jammed' && jammed
     } as never;
 }
 
-function entry(flags: string[] = [], destroyed = false): MountedEquipment {
-    return new MountedEquipment({ owner: owner(), id: flags.join('-') || 'entry', name: 'Entry', equipment: { flags: new Set(flags) } as Equipment, destroyed });
+function entry(flags: EquipmentFlag[] = [], destroyed = false): MountedEquipment {
+    return new MountedEquipment({
+        owner: owner(),
+        id: flags.join('-') || 'entry',
+        name: 'Entry',
+        equipment: new Equipment({ id: 'entry', name: 'Entry', type: 'misc', flags }),
+        destroyed
+    });
 }
 
-function ammo(munitionTypes: string[] = []): AmmoEquipment {
-    return { hasMunitionType: (munitionType: string) => munitionTypes.includes(munitionType) } as AmmoEquipment;
+function ammo(munitionTypes: AmmoMunitionFlag[] = []): AmmoEquipment {
+    return {
+        shortName: 'Test Ammo',
+        hasMunitionType: (munitionType: AmmoMunitionFlag) => munitionTypes.includes(munitionType)
+    } as AmmoEquipment;
 }
 
 describe('ArtemisVHandler', () => {
     const handler = new ArtemisVHandler();
 
-    it('does not offset intact Artemis V when Artemis V-capable ammo is selected', () => {
-        expect(handler.getLinkedEquipmentHitModifier(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), entry(), ammo(['M_ARTEMIS_V_CAPABLE']))).toBe(0);
+    it('applies the Artemis V bonus when linked to a launcher using Artemis V-capable ammo', () => {
+        expect(handler.getToHitAdjustments(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), { parent: entry(['F_ARTEMIS_COMPATIBLE']), selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) })).toEqual([{
+            kind: 'add', value: -1, weakened: false,
+            breakdown: [{ label: 'Entry', modifier: -1 }]
+        }]);
     });
 
-    it('offsets Artemis V when selected ammo is not Artemis V-capable', () => {
-        expect(handler.getLinkedEquipmentHitModifier(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), entry(), ammo(['M_ARTEMIS_CAPABLE']))).toBe(1);
-        expect(handler.getLinkedEquipmentHitModifier(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), entry(), null)).toBe(1);
+    it('no Artemis V hit modifier bonus when selected ammo is not Artemis V-capable', () => {
+        expect(handler.getToHitAdjustments(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), { parent: entry(['F_ARTEMIS_COMPATIBLE']), selectedAmmo: ammo(['M_ARTEMIS_CAPABLE']) })).toEqual([{
+            kind: 'add', value: 0, weakened: true,
+            breakdown: [{ label: 'Incompatible Ammo (Test Ammo)', modifier: 0, negative: true }]
+        }]);
+        expect(handler.getToHitAdjustments(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), { parent: entry(['F_ARTEMIS_COMPATIBLE']), selectedAmmo: null })).toEqual([{
+            kind: 'add', value: 0, weakened: true,
+            breakdown: [{ label: 'Artemis V Ammo Not Selected', modifier: 0, negative: true }]
+        }]);
     });
 
-    it('offsets Artemis V when the linked enhancement is unavailable', () => {
+    it('no Artemis V hit modifier bonus when the linked enhancement is unavailable', () => {
         const artemis = entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']);
         artemis.owner = owner(artemis);
 
-        expect(handler.getLinkedEquipmentHitModifier(artemis, entry(), ammo(['M_ARTEMIS_V_CAPABLE']))).toBe(1);
+        expect(handler.getToHitAdjustments(artemis, { parent: entry(['F_ARTEMIS_COMPATIBLE']), selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) })).toEqual([{
+            kind: 'add', value: 0, weakened: true,
+            breakdown: [{ label: 'Entry Destroyed', modifier: 0, negative: true }]
+        }]);
+    });
+
+    it('does not apply the Artemis V bonus when the unit is jammed', () => {
+        const artemis = entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']);
+        artemis.owner = owner(undefined, true);
+
+        expect(handler.getToHitAdjustments(artemis, { parent: entry(['F_ARTEMIS_COMPATIBLE']), selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) })).toEqual([{
+            kind: 'add', value: 0, weakened: true,
+            breakdown: [{ label: 'Unit Jammed', modifier: 0, negative: true }]
+        }]);
+    });
+
+    it('does not apply a modifier to a launcher that is not Artemis-compatible', () => {
+        expect(handler.getToHitAdjustments(
+            entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']),
+            { parent: entry(), selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) }
+        )).toEqual([]);
+    });
+
+    it('does not apply a modifier when Artemis V is not linked to a launcher', () => {
+        expect(handler.getToHitAdjustments(
+            entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']),
+            { selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) }
+        )).toEqual([]);
     });
 });

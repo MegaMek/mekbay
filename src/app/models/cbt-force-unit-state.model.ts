@@ -32,7 +32,8 @@
  */
 
 import { signal, computed } from '@angular/core';
-import { MountedEquipment, type LocationData, type HeatProfile, type SerializedInventory, type CriticalSlot, type SerializedState, type CBTSerializedState, C3_POSITION_SCHEMA, type SerializedCondition, committedConditionData, conditionsForSerialization, conditionsMapFromSerialization } from './force-serialization';
+import { MountedEquipment } from './mounted-equipment.model';
+import { type LocationData, type HeatProfile, type SerializedInventory, type CriticalSlot, type SerializedState, type CBTSerializedState, C3_POSITION_SCHEMA, type SerializedCondition, committedConditionData, conditionsForSerialization, conditionsMapFromSerialization } from './force-serialization';
 import { CrewMember } from './crew-member.model';
 import { ForceUnitState } from './force-unit-state.model';
 import { TurnState } from './turn-state.model';
@@ -187,7 +188,6 @@ export class CBTForceUnitState extends ForceUnitState {
 
     endTurn() {
         this.consolidateHeat();
-        this.turnState().resetTurnHeatSources();
         this.cleanupEndTurnConditions();
         this.endPhase();
     }
@@ -197,7 +197,6 @@ export class CBTForceUnitState extends ForceUnitState {
         this.destroyed.set(data.destroyed);
         this.setConditions(data.conditions ?? []);
         this.heat.set(data.heat);
-        this.turnState().update(data.turnState);
         if (data.c3Position) {
             this.c3Position.set(Sanitizer.sanitize(data.c3Position, C3_POSITION_SCHEMA));
         }
@@ -322,20 +321,17 @@ export class CBTForceUnitState extends ForceUnitState {
                     if (item.setPendingDestroyed(incoming.destroying)) {
                         inventoryChanged = true;
                     }
-                    if (item.consumed !== incoming.consumed) {
-                        item.consumed = incoming.consumed;
-                        inventoryChanged = true;
-                    }
-                    if (item.ammo !== incoming.ammo) {
-                        item.ammo = incoming.ammo;
-                        inventoryChanged = true;
-                    }
-                    if (item.totalAmmo !== incoming.totalAmmo) {
-                        item.totalAmmo = incoming.totalAmmo;
+                    if (item.consumed !== incoming.consumed || item.ammo !== incoming.ammo
+                        || item.totalAmmo !== incoming.totalAmmo) {
+                        item.setAmmoState({
+                            consumed: incoming.consumed,
+                            ammo: incoming.ammo,
+                            totalAmmo: incoming.totalAmmo,
+                        });
                         inventoryChanged = true;
                     }
                     if (incoming.states !== undefined) {
-                        item.states = new Map(incoming.states.map(s => [s.name, s.value]));
+                        item.replaceStates(new Map(incoming.states.map(s => [s.name, s.value])));
                         inventoryChanged = true;
                     }
                 } else {
@@ -345,12 +341,8 @@ export class CBTForceUnitState extends ForceUnitState {
                         (item.states && item.states.size > 0 && Array.from(item.states.values()).some(v => v !== ''))) {
                         item.setCommittedDestroyed(undefined);
                         item.setPendingDestroyed(undefined);
-                        item.consumed = undefined;
-                        item.ammo = undefined;
-                        item.totalAmmo = undefined;
-                        if (item.states) {
-                            item.states.forEach((_v, k) => item.states!.set(k, ''));
-                        }
+                        item.setAmmoState({ consumed: undefined, ammo: undefined, totalAmmo: undefined });
+                        item.clearStateValues();
                         inventoryChanged = true;
                     }
                 }
@@ -380,6 +372,7 @@ export class CBTForceUnitState extends ForceUnitState {
             return CrewMember.deserialize(crewData, this.unit);
         });
         this.crew.set(updatedCrew);
+        this.turnState().update(data.turnState);
     }
 
     /**
@@ -500,6 +493,7 @@ export class CBTForceUnitState extends ForceUnitState {
         const inventory = this.inventory();
         const serializedData: SerializedInventory[] = [];
         for (const item of inventory) {
+            if (item.intrinsicOneShotAmmo) continue;
             const hasStates = item.states !== undefined && item.states.size > 0 
                 && Array.from(item.states.values()).some(v => v !== '');
             const hasCustomAmmo = item.ammo !== undefined && item.ammo !== item.name;
@@ -523,7 +517,6 @@ export class CBTForceUnitState extends ForceUnitState {
     }
 
     deserializeInventory(serializedInventory: SerializedInventory[]) {
-        const allEquipment = this.unit.getAvailableEquipment();
         const inventory: MountedEquipment[] = [];
         const existingInventory = this.inventory();
         serializedInventory.forEach(entry => {
@@ -543,23 +536,14 @@ export class CBTForceUnitState extends ForceUnitState {
             }
             newItem.setCommittedDestroyed(entry.destroyed);
             if (entry.states !== undefined) {
-                newItem.states = new Map(entry.states.map(s => [s.name, s.value]));
+                newItem.replaceStates(new Map(entry.states.map(s => [s.name, s.value])));
             }
-            if (entry.ammo !== undefined) {
-                newItem.ammo = entry.ammo;
-            }
-            if (entry.totalAmmo !== undefined) {
-                newItem.totalAmmo = entry.totalAmmo;
-            }
-            if (entry.consumed !== undefined) {
-                newItem.consumed = entry.consumed;
-            }
+            newItem.setAmmoState({ ammo: entry.ammo, totalAmmo: entry.totalAmmo, consumed: entry.consumed });
             newItem.setPendingDestroyed(entry.destroying);
-            if (allEquipment && newItem.name && !newItem.equipment) {
-                if (allEquipment) {
-                    const equipment = allEquipment[newItem.name];
-                    newItem.equipment = equipment;
-                }
+            if (newItem.name && !newItem.equipment) {
+                newItem = newItem.clone({
+                    equipment: this.unit.getEquipmentRegistry().findEquipment(newItem.name) ?? undefined,
+                });
             }
             inventory.push(newItem);
         });

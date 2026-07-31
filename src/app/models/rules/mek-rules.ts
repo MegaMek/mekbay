@@ -34,27 +34,52 @@
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CrewMember, SkillType } from '../crew-member.model';
-import type { CriticalSlot, MountedEquipment } from '../force-serialization';
-import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type LocationConditionControl, type PSRCheck, type MountedEquipmentRuleState, type UnitHeatSource, type UnitModifierBreakdownEntry } from './unit-type-rules';
+import type { MountedEquipment } from '../mounted-equipment.model';
+import type { CriticalSlot } from '../force-serialization';
+import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type ChargeDamage, type LocationConditionControl, type PSRCheck, type MountedEquipmentRuleState, type UnitHeatSource, type UnitModifierBreakdownEntry } from './unit-type-rules';
 import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
 import type { MotiveModes } from '../motiveModes.model';
 import { getDefaultAttackerMovementModifier, TN_PRONE, TN_PRONE_ADJACENT, TN_PRONE_ATTACKER } from '../target-number-calculator.model';
+import {
+    getMekLegLocations,
+    getMekLimbLocations,
+    inferMekConfigFromLocations,
+    isMekLegLocation,
+    LEG_LOCATIONS,
+    QUAD_LEG_LOCATIONS,
+} from '../entity/types';
+
+export { LEG_LOCATIONS } from '../entity/types';
+import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
+import { WeaponEquipment } from '../equipment.model';
+import type { ToHitModifierBreakdownEntry } from './game-rules';
 
 type ArmLocation = 'LA' | 'RA';
 
+interface MekArmStatus {
+    destroyedShoulder: boolean;
+    destroyedHand: boolean;
+    destroyedUpperArms: boolean;
+    destroyedLowerArms: boolean;
+    canPunch: boolean;
+    canPhysWeapon: boolean;
+    pushMod: number;
+    punchMod: number;
+    fireMod: number;
+    physWeaponMod: number;
+    hasAES: boolean;
+    hasFunctionalAES: boolean;
+    singleArmMod: number;
+}
+
 const SIDE_TORSO_LOCATIONS = new Set(['LT', 'RT']);
 export const TORSO_LOCATIONS = new Set(['CT', 'LT', 'RT']);
-export const BIPED_LEGS = new Set(['LL', 'RL']);
-export const TRIPOD_LEGS = new Set(['LL', 'CL', 'RL']);
-export const QUAD_LEGS = new Set(['RLL', 'FLL', 'RRL', 'FRL']);
 const LIMB_LOCATIONS = new Set(['LA', 'RA', 'LL', 'RL', 'CL', 'RLL', 'FLL', 'RRL', 'FRL']);
 export const LINKED_LOCATIONS: { [key: string]: string[] } = {
     'RT': ['RA', 'FRL'],
     'LT': ['LA', 'FLL'],
 };
-export const LEG_LOCATIONS = new Set(['LL', 'RL', 'CL', 'FRL', 'FLL', 'RRL', 'RLL']);
-export const FOUR_LEGGED_LOCATIONS = new Set(['FRL', 'FLL', 'RRL', 'RLL']);
 
 export const MEK_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['shutdown', 'prone', 'swarmed', 'tagged', 'skidding', 'jammed']);
 export const MEK_CREW_STATE_CONTROLS: readonly CrewStateControlDefinition[] = crewStateDefinitions(['unconscious', 'ejected']) as readonly CrewStateControlDefinition[];
@@ -65,11 +90,29 @@ export const MEK_LOCATION_CONDITION_CONTROLS: readonly LocationConditionControl[
     { key: 'narc', label: 'NARC', color: '#f00', counted: true },
 ];
 
+export interface MekLegDamageState {
+    destroyedHipsCount: number;
+    destroyedLegsCount: number;
+}
+
+export interface MekLegMovementResult {
+    walk: number;
+    runDisabled: boolean;
+    runCap: number | null;
+    moveImpaired: boolean;
+    applyActuatorDamage: boolean;
+}
+
 /**
  * Mek-specific game rules: destruction evaluation, systems status,
  * Piloting Skill Roll modifiers, and PSR target roll.
  */
 export class MekRules extends UnitTypeRulesBase {
+    protected get gyroHitPSRModifier(): number { return 2; }
+    protected get hipPSRModifier(): number { return 1; }
+    protected get lowerArmFireModifier(): number { return 0; }
+    protected get footHitsCausePSR(): boolean { return false; }
+
 
     protected override supportsDroneOperatingSystem(): boolean {
         return true;
@@ -120,9 +163,17 @@ export class MekRules extends UnitTypeRulesBase {
         if (!this.unit.isLoaded()) return false;
         if (this.unit.getCondition('shutdown')) return true;
         if (this.allLimbsDestroyedOrMissing()) return true;
-        if (this.hasDroneOperatingSystem()) return false;
-        if (this.hasFunctionalCrew()) return false;
-        return true;
+        if (!this.hasDroneOperatingSystem() && !this.hasFunctionalCrew()) return true;
+        const unit = this.unit.getUnit();
+        const movement = this.computeBaseMovementProfile();
+        if (!movement) return false;
+        const availableModes = [
+            unit.walk > 0 ? movement.walk : null,
+            unit.run > 0 ? this.baseRunValue(movement) : null,
+            unit.jump > 0 ? movement.jump : null,
+            unit.umu > 0 ? movement.UMU : null,
+        ].filter((value): value is number => value !== null);
+        return availableModes.length > 0 && availableModes.every(value => value <= 0);
     });
 
     protected override readonly crippled = computed<boolean>(() => {
@@ -143,22 +194,13 @@ export class MekRules extends UnitTypeRulesBase {
 
     // ── Cripple Check Utilities ──────────────────────────────────────────────
 
-    private allLimbsDestroyedOrMissing(): boolean {
+    protected allLimbsDestroyedOrMissing(): boolean {
         const internalLocations = this.unit.locations?.internal;
         if (!internalLocations) return false;
 
-        const limbLocations = this.mekLimbsLocations(internalLocations);
+        const config = inferMekConfigFromLocations(internalLocations.keys());
+        const limbLocations = getMekLimbLocations(config);
         return limbLocations.every(loc => !internalLocations.has(loc) || this.unit.isInternalLocCommittedDestroyed(loc));
-    }
-
-    private mekLimbsLocations(internalLocations: Map<string, unknown>): readonly string[] {
-        if (Array.from(FOUR_LEGGED_LOCATIONS).some(loc => internalLocations.has(loc))) {
-            return ['RLL', 'FLL', 'RRL', 'FRL'];
-        }
-        if (internalLocations.has('CL')) {
-            return ['LL', 'RL', 'CL', 'LA', 'RA'];
-        }
-        return ['LL', 'RL', 'LA', 'RA'];
     }
 
     private allSensorsDestroyedOrDestroying(): boolean {
@@ -202,7 +244,8 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     private isCritStructurallyDestroyed(slot: CriticalSlot): boolean {
-        return !!slot.destroyed || this.locationPhysicallyDestroyed(slot.loc);
+        return !!slot.destroyed || this.locationPhysicallyDestroyed(slot.loc) ||
+            (!!slot.loc && this.unit.isInternalLocCommittedPhysicallyDestroyed(slot.loc));
     }
 
     // ── Destruction ──────────────────────────────────────────────────────────
@@ -257,26 +300,30 @@ export class MekRules extends UnitTypeRulesBase {
 
     override readonly autoFall = computed<boolean>(() => {
         const psr = this.unit.turnState().getPSRCheckState();
-        return (psr.legsDestroyed?.size || 0) > 0
+        const legDestroyedAutoFall = (psr.legsDestroyed?.size || 0) > 0
+            && this.destroyedLegCausesAutoFall();
+        return legDestroyedAutoFall
             || psr.gyroDestroyed === true;
     });
+
+    protected destroyedLegCausesAutoFall(): boolean {
+        return !this.isQuadrupedMek();
+    }
 
     override getPSRChecks(turnState: TurnState): PSRCheck[] {
         const checks: PSRCheck[] = [];
         const psr = turnState.getPSRCheckState();
 
         if (psr.gyroDestroyed) {
-            checks.push({
-                fallCheck: 100,
-                pilotCheck: 6,
-                reason: 'Gyro destroyed',
-                ignorePreExistingGyro: true,
-            });
+            const destroyedGyroCheck = this.destroyedGyroPSRCheck();
+            if (destroyedGyroCheck) checks.push(destroyedGyroCheck);
         } else if ((psr.legsDestroyed?.size || 0) > 0) {
+            const isQuadruped = this.isQuadrupedMek();
+            const check = this.destroyedLegPSR(isQuadruped);
             psr.legsDestroyed?.forEach((loc => {
                 checks.push({
-                    fallCheck: 100,
-                    pilotCheck: 5,
+                    fallCheck: check.fallCheck,
+                    pilotCheck: check.pilotCheck,
                     loc: loc,
                     legFilter: loc,
                     reason: 'Leg destroyed'
@@ -309,9 +356,10 @@ export class MekRules extends UnitTypeRulesBase {
             });
             if (psr.hipsHit) {
                 psr.hipsHit.forEach((loc) => {
+                    const modifier = this.hipPSRModifier;
                     checks.push({
-                        fallCheck: 2,
-                        pilotCheck: 2,
+                        fallCheck: modifier,
+                        pilotCheck: modifier,
                         loc: loc,
                         legFilter: loc,
                         reason: 'Hip hit'
@@ -320,29 +368,11 @@ export class MekRules extends UnitTypeRulesBase {
             }
             const gyroHits = (psr.gyroHit || 0);
             if (gyroHits > 0) {
-                const critSlots = this.unit.getCritSlots();
-                const hasHeavyDutyGyro = critSlots.some(slot => this.isNamedCrit(slot, 'Heavy Duty') && this.isNamedCrit(slot, 'Gyro'));
-                const previouslyDestroyedGyroCount = critSlots.filter(slot => {
-                    if (!this.isCritUnavailable(slot)) return false;
-                    if (!this.isNamedCrit(slot, 'Gyro')) return false;
-                    return true;
-                }).length;
-                if (hasHeavyDutyGyro && (previouslyDestroyedGyroCount + gyroHits) === 1) {
-                    checks.push({
-                        pilotCheck: 1,
-                        reason: 'Gyro hit',
-                    });
-                } else {
-                    checks.push({
-                        fallCheck: 3,
-                        pilotCheck: 3,
-                        reason: 'Gyro hit',
-                        ignorePreExistingGyro: true,
-                    });
-                }
+                const gyroHitCheck = this.gyroHitPSRCheck(gyroHits);
+                if (gyroHitCheck) checks.push(gyroHitCheck);
             }
             const movementCheck = turnState.applyMovePSR()
-                ? this.getCommittedDamageMovementModePSRCheck(turnState.moveMode())
+                ? this.getCommittedDamageMovementModePSRCheck(turnState.moveMode(), turnState.moveDistance())
                 : null;
             if (movementCheck) {
                 checks.push(movementCheck);
@@ -351,8 +381,36 @@ export class MekRules extends UnitTypeRulesBase {
         return checks;
     }
 
-    override getCommittedDamageMovementModePSRCheck(moveMode: MotiveModes | null): PSRCheck | null {
+    protected gyroHitPSRCheck(_gyroHits: number): PSRCheck | null {
+        if (this.hasHeavyDutyGyro()) return null;
+        return {
+            fallCheck: this.gyroHitPSRModifier,
+            pilotCheck: this.gyroHitPSRModifier,
+            reason: 'Gyro hit',
+            ignorePreExistingGyro: true,
+        };
+    }
+
+    protected destroyedGyroPSRCheck(): PSRCheck | null {
+        if (this.hasHeavyDutyGyro()) return null;
+        return {
+            fallCheck: this.gyroHitPSRModifier,
+            pilotCheck: this.gyroHitPSRModifier,
+            reason: 'Gyro hit',
+            ignorePreExistingGyro: true,
+        };
+    }
+
+    protected destroyedLegPSR(isQuadruped: boolean): { fallCheck: number; pilotCheck: number } {
+        return isQuadruped
+            ? { fallCheck: 1, pilotCheck: 1 }
+            : { fallCheck: 100, pilotCheck: 4 };
+    }
+
+    override getCommittedDamageMovementModePSRCheck(moveMode: MotiveModes | null, moveDistance?: number | null): PSRCheck | null {
         if (moveMode !== 'run' && moveMode !== 'jump') return null;
+        if (moveDistance === null) return null;
+        if (moveMode === 'run' && moveDistance !== undefined && moveDistance < 1) return null;
 
         const critSlots = this.unit.getCritSlots();
         const hasDamagedGyro = critSlots.some(slot => {
@@ -372,18 +430,21 @@ export class MekRules extends UnitTypeRulesBase {
         const hasDamagedLegActuators = critSlots.some(slot => {
             if (!slot.name || !slot.loc || !this.isCritUnavailable(slot)) return false;
             if (!LEG_LOCATIONS.has(slot.loc)) return false;
-            return this.isNamedCrit(slot, 'Leg') || this.isNamedCrit(slot, 'Foot') || this.isNamedCrit(slot, 'Hip');
+            return this.isNamedCrit(slot, 'Leg')
+                || this.isNamedCrit(slot, 'Foot')
+                || this.isNamedCrit(slot, 'Hip');
         });
+
+        const internalLocations = this.systemsStatus().internalLocations;
+        const isQuadruped = QUAD_LEG_LOCATIONS.some(loc => internalLocations.has(loc));
+        const destroyedLegsCount = this.systemsStatus().destroyedLegsCount;
+        const damagedLegRequiresCheck = this.damagedLegRequiresMovementCheck(isQuadruped, destroyedLegsCount);
 
         if (moveMode === 'jump') {
             if (hasDamagedGyro) {
-                return {
-                    fallCheck: 0,
-                    pilotCheck: 0,
-                    reason: 'Jumping with damaged gyro'
-                };
+                return this.damagedGyroMovementPSRCheck(moveMode);
             }
-            if (hasDamagedLeg) {
+            if (hasDamagedLeg && damagedLegRequiresCheck) {
                 return {
                     fallCheck: 0,
                     pilotCheck: 0,
@@ -401,10 +462,14 @@ export class MekRules extends UnitTypeRulesBase {
         }
 
         if (hasDamagedGyro) {
+            const gyroMovementCheck = this.damagedGyroMovementPSRCheck(moveMode);
+            if (gyroMovementCheck) return gyroMovementCheck;
+        }
+        if (this.runningWithDestroyedLegRequiresCheck() && hasDamagedLeg && damagedLegRequiresCheck) {
             return {
                 fallCheck: 0,
                 pilotCheck: 0,
-                reason: 'Running with damaged gyro'
+                reason: 'Running with damaged leg'
             };
         }
         if (!hasDamagedLegActuators) return null;
@@ -423,6 +488,31 @@ export class MekRules extends UnitTypeRulesBase {
         };
     }
 
+    protected damagedGyroMovementPSRCheck(moveMode: 'run' | 'jump'): PSRCheck | null {
+        if (this.hasHeavyDutyGyro()) {
+            if (moveMode === 'run') return null;
+            return {
+                fallCheck: 2,
+                pilotCheck: 2,
+                reason: 'Jumping with damaged heavy-duty gyro',
+                ignorePreExistingGyro: true,
+            };
+        }
+        return {
+            fallCheck: 0,
+            pilotCheck: 0,
+            reason: `${moveMode === 'jump' ? 'Jumping' : 'Running'} with damaged gyro`,
+        };
+    }
+
+    protected damagedLegRequiresMovementCheck(isQuadruped: boolean, destroyedLegsCount: number): boolean {
+        return isQuadruped ? destroyedLegsCount >= 2 : destroyedLegsCount >= 1;
+    }
+
+    protected runningWithDestroyedLegRequiresCheck(): boolean {
+        return true;
+    }
+
     override evaluateLegDestroyed(location: string, hits: number): void {
         if (!LEG_LOCATIONS.has(location)) return;
         const turnState = this.unit.turnState();
@@ -434,8 +524,12 @@ export class MekRules extends UnitTypeRulesBase {
                 psr.legsDestroyed = new Set<string>();
             }
             if (hits > 0) {
-                psr.legsDestroyed.add(location);
-                isPsrRelevant = true;
+                const destroyedLegsCount = Array.from(this.unit.locations?.internal?.keys() ?? [])
+                    .filter(loc => LEG_LOCATIONS.has(loc) && this.unit.isInternalLocDestroyed(loc)).length;
+                if (this.destroyedLegRequiresImmediatePSR(destroyedLegsCount)) {
+                    psr.legsDestroyed.add(location);
+                    isPsrRelevant = true;
+                }
             }
         } else {
             if (psr.legsDestroyed && psr.legsDestroyed.has(location) && hits < 0) {
@@ -448,6 +542,10 @@ export class MekRules extends UnitTypeRulesBase {
         }
     }
 
+    protected destroyedLegRequiresImmediatePSR(destroyedLegsCount: number): boolean {
+        return !this.isQuadrupedMek() || destroyedLegsCount >= 2;
+    }
+
     override evaluateCritSlotHit(crit: CriticalSlot): void {
         if (!crit.loc) return;
         let isPsrRelevant = false;
@@ -455,7 +553,7 @@ export class MekRules extends UnitTypeRulesBase {
         const turnState = this.unit.turnState();
         const psr = turnState.getPSRCheckState();
         if (LEG_LOCATIONS.has(crit.loc)) {
-            if (crit.name?.includes('Foot') || crit.name?.includes('Leg')) {
+            if ((this.footHitsCausePSR && crit.name?.includes('Foot')) || crit.name?.includes('Leg')) {
                 if (!psr.legActuators) {
                     psr.legActuators = new Map<string, number>();
                 }
@@ -476,13 +574,12 @@ export class MekRules extends UnitTypeRulesBase {
             psr.gyroHit = Math.max(0, (psr.gyroHit || 0) + delta);
             isPsrRelevant = true;
             const critSlots = this.unit.getCritSlots();
-            const hasHeavyDutyGyro = critSlots.some(slot => this.isNamedCrit(slot, 'Heavy Duty') && this.isNamedCrit(slot, 'Gyro'));
             const gyroHits = critSlots.filter(slot => {
                 if (!this.isDestroyedOrDestroyingCrit(slot)) return false;
                 if (!this.isNamedCrit(slot, 'Gyro')) return false;
                 return true;
             }).length;
-            if (((hasHeavyDutyGyro && gyroHits > 2) || (!hasHeavyDutyGyro && gyroHits > 1))) {
+            if (gyroHits >= this.gyroDestructionHitThreshold()) {
                 psr.gyroDestroyed = true;
             } else {
                 psr.gyroDestroyed = false;
@@ -491,6 +588,10 @@ export class MekRules extends UnitTypeRulesBase {
         if (isPsrRelevant) {
             turnState.setPSRCheckState(psr);
         }
+    }
+
+    protected gyroDestructionHitThreshold(): number {
+        return this.hasHeavyDutyGyro() ? 4 : 2;
     }
 
     override heatSources(turnState: TurnState): UnitHeatSource[] {
@@ -507,6 +608,7 @@ export class MekRules extends UnitTypeRulesBase {
                 id: 'damaged-engine',
                 label: 'Damaged Engine',
                 value: damagedEngineHeat,
+                signature: this.damagedEngineSignature(),
             });
         }
         sources.push(...super.heatSources(turnState));
@@ -577,6 +679,14 @@ export class MekRules extends UnitTypeRulesBase {
         const critSlots = this.unit.getCritSlots();
         const engineHits = critSlots.filter(slot => this.isNamedCrit(slot, 'Engine') && this.isDestroyedOrDestroyingCrit(slot)).length;
         return Math.min(10, engineHits * 5);
+    }
+
+    private damagedEngineSignature(): string {
+        return this.unit.getCritSlots()
+            .filter(slot => this.isNamedCrit(slot, 'Engine') && this.isDestroyedOrDestroyingCrit(slot))
+            .map(slot => slot.id)
+            .sort()
+            .join('|');
     }
 
     override isCrewCockpitDestroyed(crewId: number): boolean {
@@ -712,11 +822,16 @@ export class MekRules extends UnitTypeRulesBase {
             destroyedArmActuatorsCount[loc as 'LA' | 'RA'] += destroyedUpperArmsCount + destroyedLowerArmsCount;
 
             return {
+                destroyedShoulder,
+                destroyedHand,
+                destroyedUpperArms,
+                destroyedLowerArms,
                 canPunch: !destroyedShoulder,
                 canPhysWeapon: !destroyedShoulder && !destroyedHand,
                 pushMod: destroyedShoulder ? 2 : 0,
                 punchMod: (destroyedHand ? 1 : 0) + (destroyedUpperArms ? 2 : 0) + (destroyedLowerArms ? 2 : 0),
-                fireMod: destroyedShoulder ? 4 : (destroyedUpperArms ? 1 : 0) + (destroyedLowerArms ? 1 : 0),
+                fireMod: destroyedShoulder ? 4 : (destroyedUpperArms ? 1 : 0)
+                    + (destroyedLowerArms ? this.lowerArmFireModifier : 0), // lowerArmFireModifier is 0 in Core2026, 1 in TW
                 physWeaponMod: (destroyedHand ? 2 : 0) + (destroyedUpperArms ? 2 : 0) + (destroyedLowerArms ? 2 : 0)
                     - (hasFunctionalAES ? 1 : 0),
                 hasAES,
@@ -724,7 +839,7 @@ export class MekRules extends UnitTypeRulesBase {
                 singleArmMod: hasFunctionalAES ? -1 : 0,
             };
         };
-        const locationModifiers: { [key: string]: { canPunch: boolean; canPhysWeapon: boolean; pushMod: number; punchMod: number; fireMod: number; physWeaponMod: number; hasAES: boolean; hasFunctionalAES: boolean; singleArmMod: number; } | null } = {
+        const locationModifiers: Record<string, MekArmStatus | null> = {
             'LA': getArmsModifiers('LA'),
             'RA': getArmsModifiers('RA'),
         };
@@ -768,25 +883,24 @@ export class MekRules extends UnitTypeRulesBase {
         let preExisting = 0;
         const modifiers: PSRCheck[] = [];
 
-        let isFourLegged = false;
+        const internalLocations = this.unit.locations?.internal;
+        const config = inferMekConfigFromLocations(internalLocations?.keys() ?? []);
         let undamagedLegs = true;
         // Calculate pre-existing leg destruction modifiers. If a leg is gone, is gone.
-        this.unit.locations?.internal?.forEach((_value, loc) => {
-            if (!LEG_LOCATIONS.has(loc)) return; // Only consider leg locations
-            if (!isFourLegged && FOUR_LEGGED_LOCATIONS.has(loc)) {
-                isFourLegged = true;
-            }
+        for (const loc of getMekLegLocations(config)) {
+            if (!internalLocations?.has(loc)) continue;
             if (this.unit.isInternalLocDestroyed(loc)) {
                 undamagedLegs = false;
                 ignoreLeg.add(loc); // Track destroyed legs, we ignore further modifiers on that leg
-                preExisting += 5;
+                const modifier = this.destroyedLegPSR(config === 'Quad').pilotCheck;
+                preExisting += modifier;
                 modifiers.push({
-                    pilotCheck: 5,
+                    pilotCheck: modifier,
                     reason: 'Leg Destroyed'
                 });
             }
-        });
-        if (isFourLegged && undamagedLegs) {
+        }
+        if (config === 'Quad' && undamagedLegs) {
             preExisting -= 2; // Four-legged unit with all legs intact gets -2 modifier
             modifiers.push({
                 pilotCheck: -2,
@@ -874,9 +988,10 @@ export class MekRules extends UnitTypeRulesBase {
         const destroyedHips = critSlots.filter(slot => slot.loc && this.isCritUnavailable(slot) && LEG_LOCATIONS.has(slot.loc) && !ignoreLeg.has(slot.loc) && this.isNamedCrit(slot, 'Hip'));
         for (const hip of destroyedHips) {
             if (!hip.loc) continue;
-            preExisting += 2;
+            const modifier = this.hipPSRModifier;
+            preExisting += modifier;
             modifiers.push({
-                pilotCheck: 2,
+                pilotCheck: modifier,
                 reason: 'Hip Destroyed'
             });
             ignoreLeg.add(hip.loc); // Track destroyed hip locations, we ignore further modifiers on that leg
@@ -885,7 +1000,8 @@ export class MekRules extends UnitTypeRulesBase {
             if (!slot.loc || !slot.name || !this.isCritUnavailable(slot)) return false;
             if (!LEG_LOCATIONS.has(slot.loc)) return false;
             if (ignoreLeg.has(slot.loc)) return false;
-            if (!this.isNamedCrit(slot, 'Foot') && !this.isNamedCrit(slot, 'Leg')) return false;
+            if (!this.isNamedCrit(slot, 'Leg')
+                && !(this.footHitsCausePSR && this.isNamedCrit(slot, 'Foot'))) return false;
             return true;
         }).length;
         preExisting += relevantDestroyedLegActuatorsCount;
@@ -896,29 +1012,39 @@ export class MekRules extends UnitTypeRulesBase {
             });
         }
         if (!ignorePreExistingGyro) {
-            const hasHeavyDutyGyro = critSlots.some(slot => this.isNamedCrit(slot, 'Heavy Duty') && this.isNamedCrit(slot, 'Gyro'));
-            const previouslyDestroyedGyroCount = critSlots.filter(slot => {
-                if (!this.isCritUnavailable(slot)) return false;
-                if (!this.isNamedCrit(slot, 'Gyro')) return false;
-                return true;
-            }).length;
-            if (hasHeavyDutyGyro && (previouslyDestroyedGyroCount === 1)) {
-                modifiers.push({
-                    pilotCheck: 1,
-                    reason: 'Heavy Duty Gyro first damage'
-                });
-                preExisting += 1;
-            } else if (previouslyDestroyedGyroCount > 0) {
-                preExisting += 3;
-                modifiers.push({
-                    pilotCheck: 3,
-                    reason: 'Gyro damaged'
-                });
+            const gyroModifier = this.preExistingGyroPSRModifier(this.gyroPSRModifierHitCount());
+            if (gyroModifier) {
+                preExisting += gyroModifier.pilotCheck ?? 0;
+                modifiers.push(gyroModifier);
             }
         }
         const finalModifier = preExisting + currentModifiers;
         return { modifier: finalModifier, modifiers: modifiers };
     });
+
+    protected gyroPSRModifierHitCount(): number {
+        const countPendingHits = this.hasHeavyDutyGyro();
+        return this.unit.getCritSlots().filter(slot => {
+            if (!this.isNamedCrit(slot, 'Gyro')) return false;
+            return countPendingHits
+                ? this.isDestroyedOrDestroyingCrit(slot)
+                : this.isCritUnavailable(slot);
+        }).length;
+    }
+
+    protected preExistingGyroPSRModifier(destroyedGyroCount: number): PSRCheck | null {
+        if (destroyedGyroCount === 0) return null;
+        if (this.hasHeavyDutyGyro()) {
+            return {
+                pilotCheck: destroyedGyroCount,
+                reason: 'Heavy-Duty Gyro damaged',
+            };
+        }
+        return {
+            pilotCheck: this.gyroHitPSRModifier,
+            reason: 'Gyro damaged',
+        };
+    }
 
     override readonly PSRTargetRoll = computed<number>(() => {
         const modifiers = this.PSRModifiers();
@@ -997,6 +1123,10 @@ export class MekRules extends UnitTypeRulesBase {
         return this.unit.getUnit().subtype.startsWith('Tripod');
     }
 
+    private isQuadrupedMek(): boolean {
+        return QUAD_LEG_LOCATIONS.some(loc => this.unit.locations?.internal?.has(loc));
+    }
+
     private canUseCommandConsole(): boolean {
         return this.hasMainCockpit()
             && this.hasCommandConsole()
@@ -1033,15 +1163,15 @@ export class MekRules extends UnitTypeRulesBase {
             const isTripod = subtype.startsWith('Tripod');
             const isQuad = subtype.startsWith('Quad');
             if (isTripod || isQuad) {
-                const legLocations = isTripod ? TRIPOD_LEGS : QUAD_LEGS;
+                const config = isTripod ? 'Tripod' : 'Quad';
                 let proneModifier = isTripod ? 1 : 0;
-                for (const loc of legLocations) {
+                for (const loc of getMekLegLocations(config)) {
                     if (!this.unit.locations?.internal?.has(loc) || this.unit.isInternalLocCommittedDestroyed(loc)) {
                         proneModifier = TN_PRONE_ATTACKER;
                     }
                 }
                 const hasCommittedHipHit = this.unit.getCritSlots().some(slot => {
-                    if (!slot.loc || !legLocations.has(slot.loc)) return false;
+                    if (!slot.loc || !isMekLegLocation(config, slot.loc)) return false;
                     if (!this.isNamedCrit(slot, 'Hip')) return false;
                     return this.isCritUnavailable(slot);
                 });
@@ -1158,47 +1288,21 @@ export class MekRules extends UnitTypeRulesBase {
 
         const systemsStatus = this.systemsStatus();
         const internalLocations = systemsStatus.internalLocations;
-        let runDisabled = false;
-
-        // Walk MP and crits computation
-        if (internalLocations.has('LL') && internalLocations.has('RL')) {
-            for (let i = 0; i < systemsStatus.destroyedHipsCount; i++) {
-                walkValue = Math.ceil(walkValue * 0.5);
-                moveImpaired = true;
-            }
-            if (systemsStatus.destroyedLegsCount == 1) {
-                walkValue = 1;
-                moveImpaired = true;
-                runDisabled = true;
-            }
-            if (systemsStatus.destroyedLegsCount >= 2) {
-                walkValue = 0;
-                moveImpaired = true;
-                runDisabled = true;
-            }
-        } else if (internalLocations.has('RLL') && internalLocations.has('FLL') && internalLocations.has('RRL') && internalLocations.has('FRL')) {
-            // Quadrupeds
-            if (systemsStatus.destroyedHipsCount != 0) {
-                moveImpaired = true;
-                walkValue -= systemsStatus.destroyedHipsCount;
-            }
-            if (systemsStatus.destroyedLegsCount === 1) {
-                walkValue = walkValue - 1;
-                moveImpaired = true;
-            }
-            if (systemsStatus.destroyedLegsCount === 2) {
-                walkValue = 1;
-                moveImpaired = true;
-                runDisabled = true;
-            }
-            if (systemsStatus.destroyedLegsCount >= 3) {
-                walkValue = 0;
-                moveImpaired = true;
-                runDisabled = true;
-            }
+        const legMovement = this.applyLegDamageToMovement(
+            walkValue,
+            unit.run,
+            systemsStatus,
+            internalLocations.has('LL') && internalLocations.has('RL'),
+            internalLocations.has('RLL') && internalLocations.has('FLL')
+                && internalLocations.has('RRL') && internalLocations.has('FRL')
+        );
+        walkValue = legMovement.walk;
+        moveImpaired = legMovement.moveImpaired;
+        if (legMovement.applyActuatorDamage) {
+            walkValue -= systemsStatus.destroyedLegActuatorsCount;
+            walkValue -= systemsStatus.destroyedFeetCount;
         }
-        walkValue -= systemsStatus.destroyedLegActuatorsCount;
-        walkValue -= systemsStatus.destroyedFeetCount;
+        walkValue = Math.max(0, Math.min(unit.walk, walkValue));
         if (systemsStatus.destroyedLegActuatorsCount != 0 || systemsStatus.destroyedFeetCount != 0) {
             moveImpaired = true;
         }
@@ -1222,13 +1326,64 @@ export class MekRules extends UnitTypeRulesBase {
 
         return {
             walk: walkValue,
-            runDisabled,
+            runDisabled: legMovement.runDisabled,
+            runCap: legMovement.runCap,
             jump: jumpValue,
             UMU: UMUValue,
             moveImpaired,
             jumpImpaired: (jumpValue < unit.jump),
             UMUImpaired: (UMUValue < unit.umu),
         };
+    }
+
+    protected applyLegDamageToMovement(
+        walk: number,
+        unitRun: number,
+        damage: MekLegDamageState,
+        isBiped: boolean,
+        isQuadruped: boolean
+    ): MekLegMovementResult {
+        let runDisabled = false;
+        let runCap: number | null = null;
+        let moveImpaired = false;
+        let applyActuatorDamage = true;
+
+        if (isBiped) {
+            if (damage.destroyedLegsCount === 1) {
+                walk = Math.min(walk, 1);
+                runCap = Math.min(unitRun, 2);
+                moveImpaired = true;
+                applyActuatorDamage = false;
+            } else if (damage.destroyedLegsCount >= 2) {
+                walk = 0;
+                runDisabled = true;
+                moveImpaired = true;
+            } else {
+                walk -= damage.destroyedHipsCount;
+            }
+        } else if (isQuadruped) {
+            if (damage.destroyedHipsCount !== 0) {
+                walk -= damage.destroyedHipsCount;
+                moveImpaired = true;
+            }
+            if (damage.destroyedLegsCount <= 2) {
+                walk -= damage.destroyedLegsCount;
+            } else if (damage.destroyedLegsCount === 3) {
+                walk = Math.min(walk, 1);
+                runCap = Math.min(unitRun, 2);
+            } else {
+                walk = 0;
+                runDisabled = true;
+            }
+        }
+
+        return { walk, runDisabled, runCap, moveImpaired, applyActuatorDamage };
+    }
+
+    private baseRunValue(movement: { walk: number; runDisabled: boolean; runCap: number | null }): number {
+        if (movement.walk <= 0 || movement.runDisabled) return 0;
+        const run = Math.round(movement.walk * 1.5);
+        return movement.runCap === null ? run : Math.min(run, movement.runCap);
     }
 
     // Returns the movement capabilities of the unit after applying heat, damage and other modifiers.
@@ -1293,6 +1448,10 @@ export class MekRules extends UnitTypeRulesBase {
             if (systemsStatus.hasTripleStrengthMyomer && !systemsStatus.tripleStrengthMyomerMoveBonusActive) {
                 maxRunValue = Math.round((walkValue + (1 - heatMoveModifier)) * runValueCoeff) + armorModifierOnRun;
             }
+            if (baseMovement.runCap !== null) {
+                runValue = Math.min(runValue, baseMovement.runCap);
+                maxRunValue = Math.min(maxRunValue, baseMovement.runCap);
+            }
         }
 
         return {
@@ -1326,13 +1485,7 @@ export class MekRules extends UnitTypeRulesBase {
         const destroyedRA = this.unit.isInternalLocCommittedDestroyed('RA');
         const locationModifiers = systemsStatus.locationModifiers;
 
-        // Spike bonus for charge attacks
-        const critSlots = this.unit.getCritSlots();
-        const totalSpikes = critSlots.filter(slot => this.isNamedCrit(slot, 'Spikes')).length;
-        const spikeBonus = totalSpikes > 0 ? {
-            total: totalSpikes,
-            working: critSlots.filter(slot => this.isNamedCrit(slot, 'Spikes') && !this.isCritUnavailable(slot)).length,
-        } : null;
+        const chargeDamage = this.chargeDamage();
 
         return {
             canKick: systemsStatus.destroyedLegsCount === 0 && systemsStatus.destroyedHipsCount === 0,
@@ -1360,9 +1513,70 @@ export class MekRules extends UnitTypeRulesBase {
             canClub: (locationModifiers['LA']?.canPhysWeapon && !destroyedLA) && (locationModifiers['RA']?.canPhysWeapon && !destroyedRA),
             clubMod: (locationModifiers['LA']?.physWeaponMod || 0) + (locationModifiers['RA']?.physWeaponMod || 0)
                 + (locationModifiers['LA']?.hasFunctionalAES && locationModifiers['RA']?.hasFunctionalAES ? 1 : 0),
-            spikeBonus,
+            chargeDamage,
         };
     });
+
+    override chargeDamage(): ChargeDamage {
+        const critSlots = this.unit.getCritSlots();
+        const totalSpikes = critSlots.filter(slot => this.isNamedCrit(slot, 'Spikes')).length;
+        const workingSpikes = critSlots.filter(slot => this.isNamedCrit(slot, 'Spikes') && !this.isCritStructurallyDestroyed(slot)).length;
+        return this.computeChargeDamage(workingSpikes * 2, totalSpikes * 2);
+    }
+
+    override applyInventoryControlDisplayEffects(entry: MountedEquipment, display: InventoryControlDisplayData): InventoryControlDisplayData {
+        const chargeDisplay = super.applyInventoryControlDisplayEffects(entry, display);
+        if (chargeDisplay !== display) return chargeDisplay;
+
+        let attackType: 'punch' | 'kick' | 'club' | 'physWeapon' | null = null;
+        let location: string | undefined;
+        let ignoreMyomer = false;
+        if (entry.isIntrinsicPhysicalAttack()) {
+            switch (entry.name.toLowerCase()) {
+                case 'punch':
+                    attackType = 'punch';
+                    location = Array.from(entry.locations ?? [])[0];
+                    break;
+                case 'club':
+                    attackType = 'club';
+                    break;
+                case 'kick':
+                case 'kick [talons]':
+                    attackType = 'kick';
+                    break;
+            }
+        } else if (entry.isPhysicalWeapon()) {
+            attackType = 'physWeapon';
+            ignoreMyomer = !!entry.equipment?.flags.has('S_FLAIL');
+        }
+        const baseDamage = Number.parseInt(display.damage, 10);
+        if (!attackType || !Number.isFinite(baseDamage)) return display;
+        return { ...display, damage: this.resolveMeleeDamageDisplay(entry, baseDamage, attackType, location, ignoreMyomer).text };
+    }
+
+    resolveMeleeDamageDisplay(
+        entry: MountedEquipment,
+        baseDamage: number,
+        attackType: 'punch' | 'kick' | 'club' | 'physWeapon',
+        location?: string,
+        ignoreMyomer = false,
+    ): { damage: number; text: string; weakened: boolean } {
+        const effect = this.unit.getInventoryControlRules().applyPhysicalDamageEffects?.(entry, {
+            baseDamage,
+            ignoreMyomer,
+        }) ?? { baseDamage, ignoreMyomer };
+        const { damage, maxDamage } = this.computeMeleeDamage(
+            effect.baseDamage,
+            attackType,
+            location,
+            effect.ignoreMyomer,
+        );
+        return {
+            damage,
+            text: damage === maxDamage ? `${damage}` : `${damage} [${maxDamage}]`,
+            weakened: damage < effect.baseDamage,
+        };
+    }
 
     // ── Fire Control State ───────────────────────────────────────────────────
 
@@ -1384,27 +1598,28 @@ export class MekRules extends UnitTypeRulesBase {
             canFire = false;
         }
 
-        let globalFireMod = heatFireModifier;
+        let rangedSensorModifier = 0;
         if (systemsStatus.cockpitLoc === 'HD' && systemsStatus.destroyedSensorsCount > 0) {
-            globalFireMod += (systemsStatus.destroyedSensorsCount * 2);
+            rangedSensorModifier = systemsStatus.destroyedSensorsCount * 2;
         } else if (systemsStatus.cockpitLoc !== 'HD' && systemsStatus.destroyedSensorsCountInHD < 2 && systemsStatus.destroyedSensorsCount >= 1) {
-            globalFireMod += systemsStatus.destroyedSensorsCount * 2;
+            rangedSensorModifier = systemsStatus.destroyedSensorsCount * 2;
         }
 
-        let globalMod = 0;
+        let torsoCockpitHeadSensorModifier = 0;
         if (systemsStatus.cockpitLoc !== 'HD' && systemsStatus.destroyedSensorsCountInHD >= 2) {
-            globalMod += 4;
+            torsoCockpitHeadSensorModifier = 4;
         }
 
         const locationModifiers = systemsStatus.locationModifiers;
         return {
             canFire,
-            globalFireMod,
+            heatFireModifier,
+            rangedSensorModifier,
             fireMod: {
                 'LA': locationModifiers['LA']?.fireMod || 0,
                 'RA': locationModifiers['RA']?.fireMod || 0,
             },
-            globalMod,
+            torsoCockpitHeadSensorModifier,
             singleArmMod: {
                 'LA': locationModifiers['LA']?.singleArmMod || 0,
                 'RA': locationModifiers['RA']?.singleArmMod || 0,
@@ -1432,9 +1647,13 @@ export class MekRules extends UnitTypeRulesBase {
 
     private isEntryDestroyedByCriticalDamage(entry: MountedEquipment): boolean {
         const destroyedCritSlots = this.entryCriticalSlots(entry).filter(slot => this.isCritStructurallyDestroyed(slot)).length;
-        // TODO: Equipment with F_SURVIVES_TWO_CRIT_HITS should use a higher destruction threshold here.
-        const destructionThreshold = 1;
-        return destroyedCritSlots >= destructionThreshold;
+        return destroyedCritSlots >= this.criticalDamageDestructionThreshold(entry);
+    }
+
+    protected criticalDamageDestructionThreshold(entry: MountedEquipment): number {
+        const equipment = entry.equipment;
+        const isAutocannon = equipment instanceof WeaponEquipment && equipment.hasFlag('F_AC');
+        return isAutocannon ? 2 : 1;
     }
 
     /**
@@ -1447,71 +1666,231 @@ export class MekRules extends UnitTypeRulesBase {
         const isDamaged = entry.committedDestroyed() || physicallyDestroyed || this.isEntryDestroyedByCriticalDamage(entry);
         let isDisabled = functionallyDestroyed || this.isEntryStateDisabled(entry);
         let hitMod = 0;
+        const hitModifierBreakdown: ToHitModifierBreakdownEntry[] = [];
         let weakenedHitMod = false;
 
         const physical = this.physicalCombat();
         const fire = this.fireControl();
         const systemsStatus = this.systemsStatus();
-        if (!physical || !fire) return { isDamaged, isDisabled, hitMod, weakenedHitMod };
+        if (!physical || !fire) return { isDamaged, isDisabled, hitMod, hitModifierBreakdown, weakenedHitMod };
 
-        if (fire.globalMod !== 0) hitMod += fire.globalMod;
+        if (fire.torsoCockpitHeadSensorModifier !== 0) {
+            hitMod += fire.torsoCockpitHeadSensorModifier;
+            hitModifierBreakdown.push({
+                label: 'Head Sensors Destroyed (Torso-Mounted Cockpit)',
+                modifier: fire.torsoCockpitHeadSensorModifier,
+                negative: true
+            });
+        }
 
-        if (entry.physical) {
-            switch (entry.name) {
+        if (entry.isIntrinsicPhysicalAttack()) {
+            switch (entry.name.toLowerCase()) {
                 case 'punch': {
                     const loc = Array.from(entry.locations!)[0] as ArmLocation;
                     if (loc in physical.canPunch && !physical.canPunch[loc]) isDisabled = true;
-                    if (loc in physical.punchMod) hitMod += physical.punchMod[loc];
-                    hitMod += fire.singleArmMod[loc] ?? 0;
+                    if (loc in physical.punchMod) {
+                        hitMod += physical.punchMod[loc];
+                        this.addArmActuatorBreakdown(hitModifierBreakdown, systemsStatus.locationModifiers[loc], loc, {
+                            hand: 1,
+                            upperArm: 2,
+                            lowerArm: 2
+                        });
+                    }
+                    const aesModifier = fire.singleArmMod[loc] ?? 0;
+                    hitMod += aesModifier;
+                    this.addArmAESBreakdown(hitModifierBreakdown, systemsStatus.locationModifiers[loc], loc, aesModifier);
                     if (this.hasBrokenArmAES(systemsStatus.locationModifiers, loc)) weakenedHitMod = true;
                     break;
                 }
-                case 'club':
+                case 'club': {
                     if (!physical.canClub) isDisabled = true;
                     hitMod += physical.clubMod;
+                    this.addTwoArmPhysicalBreakdown(hitModifierBreakdown, systemsStatus.locationModifiers, 'club');
                     if (this.hasLostClubAESBonus(systemsStatus.locationModifiers)) weakenedHitMod = true;
                     break;
-                case 'push':
+                }
+                case 'push': {
                     if (!physical.canPush) isDisabled = true;
                     hitMod += physical.pushMod || 0;
+                    this.addTwoArmPhysicalBreakdown(hitModifierBreakdown, systemsStatus.locationModifiers, 'push');
                     if (this.hasBrokenPairedArmAES(systemsStatus.locationModifiers)) weakenedHitMod = true;
                     break;
+                }
                 case 'kick [talons]':
-                case 'kick':
+                case 'kick': {
                     if (!physical.canKick) isDisabled = true;
                     hitMod += physical.kickMod;
+                    if (systemsStatus.destroyedLegActuatorsCount > 0) {
+                        hitModifierBreakdown.push({
+                            label: this.countedDestroyedLabel('Leg Actuator', systemsStatus.destroyedLegActuatorsCount),
+                            modifier: systemsStatus.destroyedLegActuatorsCount * 2,
+                            negative: true
+                        });
+                    }
+                    if (systemsStatus.destroyedFeetCount > 0) {
+                        hitModifierBreakdown.push({
+                            label: this.countedDestroyedLabel('Foot Actuator', systemsStatus.destroyedFeetCount),
+                            modifier: systemsStatus.destroyedFeetCount,
+                            negative: true
+                        });
+                    }
+                    if (systemsStatus.hasFunctionalLegAES) {
+                        hitModifierBreakdown.push({ label: 'Leg AES', modifier: -1 });
+                    } else if (systemsStatus.hasLegAES) {
+                        hitModifierBreakdown.push({ label: 'Leg AES Destroyed', modifier: 0, negative: true });
+                    }
                     if (systemsStatus.hasLegAES && !systemsStatus.hasFunctionalLegAES) weakenedHitMod = true;
                     break;
+                }
             }
-        } else if (entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) {
+        } else if (entry.isPhysicalWeapon()) {
             entry.locations?.forEach(loc => {
                 if ((loc in physical.canPhysWeapon) && !physical.canPhysWeapon[loc as ArmLocation]) isDisabled = true;
-                if (loc in physical.physWeaponMod) hitMod += physical.physWeaponMod[loc as ArmLocation];
+                if (loc in physical.physWeaponMod) {
+                    hitMod += physical.physWeaponMod[loc as ArmLocation];
+                    const armLoc = loc as ArmLocation;
+                    const armStatus = systemsStatus.locationModifiers[armLoc];
+                    this.addArmActuatorBreakdown(hitModifierBreakdown, armStatus, armLoc, {
+                        hand: 2,
+                        upperArm: 2,
+                        lowerArm: 2
+                    });
+                    this.addArmAESBreakdown(hitModifierBreakdown, armStatus, armLoc, armStatus?.singleArmMod ?? 0);
+                }
                 if (this.hasBrokenArmAES(systemsStatus.locationModifiers, loc)) weakenedHitMod = true;
             });
         } else {
             if (entry.locations?.size === 1) {
                 const singleLoc = Array.from(entry.locations)[0];
                 if (singleLoc in fire.singleArmMod) {
-                    hitMod += fire.singleArmMod[singleLoc as ArmLocation];
+                    const armModifier = fire.singleArmMod[singleLoc as ArmLocation];
+                    hitMod += armModifier;
+                    const armStatus = systemsStatus.locationModifiers[singleLoc];
+                    if (armStatus?.hasAES) {
+                        hitModifierBreakdown.push(armStatus.hasFunctionalAES
+                            ? { label: `Arm AES (${singleLoc})`, modifier: -1 }
+                            : { label: `Arm AES Destroyed (${singleLoc})`, modifier: 0, negative: true });
+                    }
                     if (this.hasBrokenArmAES(systemsStatus.locationModifiers, singleLoc)) weakenedHitMod = true;
                 }
             }
             if (!fire.canFire) isDisabled = true;
-            if (fire.globalFireMod) hitMod += fire.globalFireMod;
+            if (fire.heatFireModifier) {
+                hitMod += fire.heatFireModifier;
+                hitModifierBreakdown.push({
+                    label: 'Heat - Fire Modifier',
+                    modifier: fire.heatFireModifier,
+                    negative: true,
+                    kind: 'heat'
+                });
+            }
+            if (fire.rangedSensorModifier) {
+                hitMod += fire.rangedSensorModifier;
+                hitModifierBreakdown.push({
+                    label: 'Sensors Destroyed',
+                    modifier: fire.rangedSensorModifier,
+                    negative: true
+                });
+            }
             entry.locations?.forEach(loc => {
-                if (loc in fire.fireMod) hitMod += fire.fireMod[loc as ArmLocation];
+                if (!(loc in fire.fireMod)) return;
+                const armStatus = systemsStatus.locationModifiers[loc];
+                const armModifier = fire.fireMod[loc as ArmLocation];
+                hitMod += armModifier;
+                if (!armStatus || armModifier === 0) return;
+                if (armStatus.destroyedShoulder) {
+                    hitModifierBreakdown.push({ label: `Shoulder Destroyed (${loc})`, modifier: armModifier, negative: true });
+                    return;
+                }
+                if (armStatus.destroyedUpperArms) {
+                    hitModifierBreakdown.push({ label: `Upper Arm Actuator Destroyed (${loc})`, modifier: 1, negative: true });
+                }
+                if (armStatus.destroyedLowerArms && this.lowerArmFireModifier !== 0) {
+                    hitModifierBreakdown.push({ label: `Lower Arm Actuator Destroyed (${loc})`, modifier: this.lowerArmFireModifier, negative: true });
+                }
             });
-            const equipment = entry.parent?.equipment ?? entry.equipment;
-            if (systemsStatus.hasTargetingComputer && this.isTargetingComputerEligible(equipment)) {
+            const tarcompWeapon = entry.parent ?? entry;
+            if (systemsStatus.hasTargetingComputer && this.isTargetingComputerEligible(tarcompWeapon)) {
                 if (systemsStatus.destroyedTargetingComputers === 0) {
+                    hitModifierBreakdown.push({ label: 'Targeting Computer', modifier: -1 });
                     hitMod--;
                 } else {
+                    hitModifierBreakdown.push({ label: 'Targeting Computer Destroyed', modifier: 0, negative: true });
                     weakenedHitMod = true;
                 }
             }
         }
-        return { isDamaged, isDisabled, hitMod, weakenedHitMod };
+        const describedModifier = hitModifierBreakdown.reduce((total, item) => total + item.modifier, 0);
+        if (describedModifier !== hitMod) {
+            hitModifierBreakdown.push({ label: 'Hit Modifier', modifier: hitMod - describedModifier });
+        }
+        return { isDamaged, isDisabled, hitMod, hitModifierBreakdown, weakenedHitMod };
+    }
+
+    private addArmActuatorBreakdown(
+        breakdown: ToHitModifierBreakdownEntry[],
+        armStatus: ReturnType<MekRules['systemsStatus']>['locationModifiers'][string],
+        loc: ArmLocation,
+        modifiers: { hand: number; upperArm: number; lowerArm: number }
+    ): void {
+        if (!armStatus) return;
+        if (armStatus.destroyedHand) {
+            breakdown.push({ label: `Hand Actuator Destroyed (${loc})`, modifier: modifiers.hand, negative: true });
+        }
+        if (armStatus.destroyedUpperArms) {
+            breakdown.push({ label: `Upper Arm Actuator Destroyed (${loc})`, modifier: modifiers.upperArm, negative: true });
+        }
+        if (armStatus.destroyedLowerArms) {
+            breakdown.push({ label: `Lower Arm Actuator Destroyed (${loc})`, modifier: modifiers.lowerArm, negative: true });
+        }
+    }
+
+    private addArmAESBreakdown(
+        breakdown: ToHitModifierBreakdownEntry[],
+        armStatus: ReturnType<MekRules['systemsStatus']>['locationModifiers'][string],
+        loc: ArmLocation,
+        modifier: number
+    ): void {
+        if (!armStatus?.hasAES) return;
+        breakdown.push(armStatus.hasFunctionalAES
+            ? { label: `Arm AES (${loc})`, modifier }
+            : { label: `Arm AES Destroyed (${loc})`, modifier: 0, negative: true });
+    }
+
+    private addTwoArmPhysicalBreakdown(
+        breakdown: ToHitModifierBreakdownEntry[],
+        locationModifiers: ReturnType<MekRules['systemsStatus']>['locationModifiers'],
+        attack: 'club' | 'push'
+    ): void {
+        const arms = (['LA', 'RA'] as const).map(loc => ({ loc, status: locationModifiers[loc] }));
+        if (attack === 'push') {
+            for (const { loc, status } of arms) {
+                if (status?.destroyedShoulder) {
+                    breakdown.push({ label: `Shoulder Destroyed (${loc})`, modifier: 2, negative: true });
+                }
+            }
+        } else {
+            for (const { loc, status } of arms) {
+                this.addArmActuatorBreakdown(breakdown, status, loc, { hand: 2, upperArm: 2, lowerArm: 2 });
+            }
+        }
+
+        const functionalAES = arms.filter(arm => arm.status?.hasFunctionalAES);
+        if (attack === 'push' && functionalAES.length === 2) {
+            breakdown.push({ label: 'Paired Arm AES', modifier: -1 });
+        } else if (attack === 'club' && functionalAES.length > 0) {
+            breakdown.push({
+                label: functionalAES.length === 2 ? 'Paired Arm AES' : `Arm AES (${functionalAES[0].loc})`,
+                modifier: -1
+            });
+        } else if ((attack === 'push' && this.hasBrokenPairedArmAES(locationModifiers))
+            || (attack === 'club' && this.hasLostClubAESBonus(locationModifiers))) {
+            breakdown.push({ label: 'Arm AES Destroyed', modifier: 0, negative: true });
+        }
+    }
+
+    private countedDestroyedLabel(name: string, count: number): string {
+        return count === 1 ? `${name} Destroyed` : `${name}s Destroyed ×${count}`;
     }
 
     private hasBrokenArmAES(
@@ -1594,5 +1973,12 @@ export class MekRules extends UnitTypeRulesBase {
 
     private isNamedCrit(slot: CriticalSlot, name: string): boolean {
         return (slot.name && slot.name.includes(name)) ? true : false;
+    }
+
+    protected hasHeavyDutyGyro(): boolean {
+        return this.unit.getCritSlots().some(slot => {
+            const normalizedName = slot.name?.replace(/[\s-]/g, '').toLowerCase() ?? '';
+            return normalizedName.includes('heavydutygyro');
+        });
     }
 }

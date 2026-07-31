@@ -136,7 +136,7 @@ function computeForceUnitTotals(force: LoadForceEntry): { totalBv: number; total
         for (const ue of g.units ?? []) {
             if (ue.unit) {
                 if (isAS) {
-                    totalPv += ue.unit.pv ?? 0;
+                    totalPv += ue.unit.as.PV ?? 0;
                 } else {
                     totalBv += ue.unit.bv ?? 0;
                 }

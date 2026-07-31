@@ -34,7 +34,6 @@
 import { Injectable, inject } from '@angular/core';
 import { DbService } from '../db.service';
 import type { Quirk, Quirks } from '../../models/quirks.model';
-import { naturalCompare } from '../../utils/sort.util';
 import { REMOTE_HOST } from '../../models/common.model';
 import { CatalogBaseService } from './catalog-base.service';
 
@@ -76,11 +75,9 @@ export class QuirksCatalogService extends CatalogBaseService<Quirks, Quirks> {
     }
 
     protected override hydrate(data: Quirks): void {
-        const quirks = [...data.quirks].sort((left, right) => naturalCompare(left.name, right.name));
-
         this.quirksByKey.clear();
         this.quirksByName.clear();
-        for (const quirk of quirks) {
+        for (const quirk of data.quirks) {
             this.quirksByKey.set(quirk.key, quirk);
             this.quirksByName.set(quirk.name, quirk);
         }

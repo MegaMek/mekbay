@@ -35,12 +35,13 @@ import { signal, computed, type Injector, type Signal, type WritableSignal } fro
 import type { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
-import { generateUUID } from '../services/ws.service';
 import type { SerializedUnit } from './force-serialization';
 import type { Force, UnitGroup } from './force.model';
 import type { ForceUnitState } from './force-unit-state.model';
 import type { ConditionData } from './force-unit-state.model';
 import type { CrewMember } from './crew-member.model';
+import { uuidv7 } from '../utils/uuid.util';
+import type { C3Component } from './c3-network.model';
 
 /*
  * Author: Drake
@@ -82,7 +83,7 @@ export abstract class ForceUnit {
         unitInitializer: UnitInitializerService,
         injector: Injector
     ) {
-        this.id = generateUUID();
+        this.id = uuidv7();
         this.force = force;
         this.unit = unit;
 
@@ -98,6 +99,12 @@ export abstract class ForceUnit {
 
     getDisplayName() {
         return (this.unit.chassis + ' ' + this.unit.model).trim();
+    }
+
+    getNotificationDisplayName() {
+        const pilotName = this.alias()?.trim();
+        const unitName = this.getDisplayName();
+        return pilotName ? `${unitName} (${pilotName})` : unitName;
     }
 
     get modified(): boolean {
@@ -133,6 +140,16 @@ export abstract class ForceUnit {
 
     getCondition(condition: string): boolean {
         return this.state.hasCondition(condition);
+    }
+
+    /** Runtime availability hook used by the force-level C3 graph. */
+    isC3EndpointOperational(_componentIndex: number, _component?: C3Component): boolean {
+        return !this.destroyed;
+    }
+
+    /** CBT overrides this; Alpha Strike does not apply CBT C3 jamming rules. */
+    isC3Jammed(): boolean {
+        return false;
     }
 
     isComputedCondition(_condition: string): boolean {
@@ -180,6 +197,9 @@ export abstract class ForceUnit {
 
     abstract getBaseBv: Signal<number>;
 
+    /** BV/PV after force modifiers, but before the final skill adjustment. */
+    abstract getPreSkillBv: Signal<number>;
+
     abstract getBv: Signal<number>;
 
     abstract getPilotStats: Signal<any>;
@@ -195,17 +215,17 @@ export abstract class ForceUnit {
 
     /** Deserialize a plain object to a ForceUnit instance - must be implemented by subclasses */
     public static deserialize(
-        data: SerializedUnit,
-        force: Force,
-        dataService: DataService,
-        unitInitializer: UnitInitializerService,
-        injector: Injector
+        _data: SerializedUnit,
+        _force: Force,
+        _dataService: DataService,
+        _unitInitializer: UnitInitializerService,
+        _injector: Injector
     ): ForceUnit {
         throw new Error('ForceUnit.deserialize must be implemented by subclass');
     }
 
-    public getAvailableEquipment() {
-        return this.dataService.getEquipments();
+    public getEquipmentRegistry() {
+        return this.dataService.getEquipmentRegistry();
     }
 
 }

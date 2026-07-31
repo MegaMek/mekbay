@@ -33,8 +33,6 @@
 
 import { UnitSvgService } from "./unit-svg.service";
 import { AeroRules } from "../models/rules/aero-rules";
-import { MountedEquipment } from "../models/force-serialization";
-import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 
 /*
  * Author: Drake
@@ -118,12 +116,4 @@ export class UnitSvgAeroService extends UnitSvgService {
 
     // ── Hit Modifiers ────────────────────────────────────────────────────────
 
-    protected override resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
-        const hitModifier = super.resolveInventoryControlHitModifier(entry, range);
-        return typeof hitModifier === 'number' ? hitModifier + this.inventoryTargetHeatFireModifier(entry) : hitModifier;
-    }
- 
-    override inventoryTargetHeatFireModifier(entry: MountedEquipment): number {
-        return AeroRules.getHeatEffects(this.unit.getHeat().current).fireModifier;
-    }
 }

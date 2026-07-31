@@ -209,25 +209,25 @@ function unitToASRow(unit: Unit): Record<string, unknown> {
         'frontArc CAP': formatArcDamage(as?.frontArc, 'CAP'),
         'frontArc MSL': formatArcDamage(as?.frontArc, 'MSL'),
         'frontArc SCAP': formatArcDamage(as?.frontArc, 'SCAP'),
-        'frontArc specials': as?.frontArc?.specials ?? '',
+        'frontArc specials': as?.frontArc?.specials.join(', ') ?? '',
         // Rear Arc columns
         'rearArc STD': formatArcDamage(as?.rearArc, 'STD'),
         'rearArc CAP': formatArcDamage(as?.rearArc, 'CAP'),
         'rearArc MSL': formatArcDamage(as?.rearArc, 'MSL'),
         'rearArc SCAP': formatArcDamage(as?.rearArc, 'SCAP'),
-        'rearArc specials': as?.rearArc?.specials ?? '',
+        'rearArc specials': as?.rearArc?.specials.join(', ') ?? '',
         // Left Arc columns
         'leftArc STD': formatArcDamage(as?.leftArc, 'STD'),
         'leftArc CAP': formatArcDamage(as?.leftArc, 'CAP'),
         'leftArc MSL': formatArcDamage(as?.leftArc, 'MSL'),
         'leftArc SCAP': formatArcDamage(as?.leftArc, 'SCAP'),
-        'leftArc specials': as?.leftArc?.specials ?? '',
+        'leftArc specials': as?.leftArc?.specials.join(', ') ?? '',
         // Right Arc columns
         'rightArc STD': formatArcDamage(as?.rightArc, 'STD'),
         'rightArc CAP': formatArcDamage(as?.rightArc, 'CAP'),
         'rightArc MSL': formatArcDamage(as?.rightArc, 'MSL'),
         'rightArc SCAP': formatArcDamage(as?.rightArc, 'SCAP'),
-        'rightArc specials': as?.rightArc?.specials ?? ''
+        'rightArc specials': as?.rightArc?.specials.join(', ') ?? ''
     };
 }
 

@@ -54,14 +54,15 @@ import { EquipmentInteractionRegistryService, type HandlerChoice, type HandlerCo
 import { ToastService } from '../../../services/toast.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { DataService } from '../../../services/data.service';
-import type { MountedEquipment } from '../../../models/force-serialization';
-import { isMascActive } from '../../../equipment-handlers/masc.handler';
+import type { MountedEquipment } from '../../../models/mounted-equipment.model';
+import { MascHandler } from '../../../equipment-handlers/masc.handler';
 
-interface MascControlRow {
+interface EquipmentTrackControlRow {
     entry: MountedEquipment;
     label: string;
     damaged: boolean;
-    choices: HandlerChoice[];
+    sequenceChoices: HandlerChoice[];
+    statusChoice?: HandlerChoice;
 }
 
 /*
@@ -98,6 +99,7 @@ export class PageTurnSummaryPanelComponent {
             toastService: this.toastService,
             dialogsService: this.dialogsService,
             dataService: this.dataService,
+            choiceSurface: 'turn-summary',
         };
     }
 
@@ -219,24 +221,26 @@ export class PageTurnSummaryPanelComponent {
         return unit.PSRModifiers().modifiers.filter(modifier => modifier.pilotCheck !== undefined && modifier.pilotCheck !== 0);
     });
 
-    mascControlRows = computed<MascControlRow[]>(() => {
+    equipmentTrackControlRows = computed<EquipmentTrackControlRow[]>(() => {
         const unit = this.unit();
         if (!unit) return [];
         return unit.getInventory()
             .filter(entry => entry.equipment?.flags?.has('F_MASC'))
             .map(entry => {
-                const active = isMascActive(entry);
+                const active = entry.equipment?.flags?.has('F_MASC') ? MascHandler.isActive(entry) : true;
                 const damaged = entry.resolvedDestroyed();
+                const choices = this.equipmentRegistry.getChoices(entry, this.handlerContext());
                 return {
                     entry,
                     label: entry.equipment?.name || entry.name,
                     damaged,
                     active,
-                    choices: this.equipmentRegistry.getChoices(entry, this.handlerContext()),
+                    sequenceChoices: choices.filter(choice => typeof choice.value === 'number'),
+                    statusChoice: choices.find(choice => typeof choice.value !== 'number'),
                 };
             })
             .filter(row => !row.damaged || row.active)
-            .filter(row => row.choices.length > 0);
+            .filter(row => row.sequenceChoices.length > 0);
     });
 
     gunneryModifiers = computed(() => {
@@ -340,7 +344,7 @@ export class PageTurnSummaryPanelComponent {
         turnState.spotting.set(!turnState.spotting());
     }
 
-    async handleMascChoice(row: MascControlRow, choice: HandlerChoice): Promise<void> {
+    async handleEquipmentTrackChoice(row: EquipmentTrackControlRow, choice: HandlerChoice): Promise<void> {
         if (choice.disabled) return;
         await this.equipmentRegistry.handleSelection(row.entry, choice, this.handlerContext());
         this.unit()?.inventoryControl.markInventoryViewChanged();

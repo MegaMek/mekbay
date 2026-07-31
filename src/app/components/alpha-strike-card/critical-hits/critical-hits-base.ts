@@ -33,6 +33,7 @@
 
 import { Component, ChangeDetectionStrategy, input, output } from '@angular/core';
 import type { ASForceUnit } from '../../../models/as-force-unit.model';
+import type { ColorScheme } from '../../../models/options.model';
 
 /*
  * Author: Drake
@@ -46,7 +47,7 @@ import type { ASForceUnit } from '../../../models/as-force-unit.model';
 })
 export class AsCriticalHitsBase {
     forceUnit = input<ASForceUnit>();
-    cardStyle = input<'colored' | 'monochrome'>('colored');
+    cardStyle = input<ColorScheme>('default');
     useHex = input<boolean>(false);
     interactive = input<boolean>(false);
     

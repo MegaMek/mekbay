@@ -36,9 +36,9 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { DbService } from './db.service';
 import { LoggerService } from './logger.service';
-import { generateUUID } from './ws.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { REMOTE_HOST } from '../models/common.model';
+import { uuidv7 } from '../utils/uuid.util';
 
 const SHEET_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -162,7 +162,7 @@ export class SheetService {
                     responseType: 'text' as const,
                 })
             );
-            const etag = response.headers.get('ETag') || generateUUID(); // Fallback to random UUID if no ETag
+            const etag = response.headers.get('ETag') || uuidv7(); // Fallback to random UUID if no ETag
             const svgText = response.body;
             if (!svgText) {
                 throw new Error(`No body received for sheet ${sheetFileName}`);

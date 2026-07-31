@@ -69,9 +69,6 @@ export class RsPolyfillUtil {
     private static readonly CREW_STATE_BANNER_WIDTH = 64;
     private static readonly CREW_STATE_BANNER_HEIGHT = 10;
     private static readonly CREW_STATE_BANNER_FONT_SIZE = 8;
-    private static readonly LOC_CONDITION_BUTTON_WIDTH = 8;
-    private static readonly LOC_CONDITION_BUTTON_HEIGHT = 8;
-    private static readonly LOC_CONDITION_BUTTON_GAP = 2;
     
     
     private static readonly CRITICAL_LOCATION_IDS = [
@@ -604,7 +601,7 @@ export class RsPolyfillUtil {
         counter.setAttribute('x', centerX.toString());
         counter.setAttribute('y', (labelY + 9).toString());
         counter.setAttribute('text-anchor', 'middle');
-        counter.setAttribute('dominant-baseline', 'middle');
+        counter.setAttribute('dy', '0.35em');
         counter.setAttribute('font-family', 'Roboto, sans-serif');
         counter.setAttribute('font-size', '10');
         counter.setAttribute('font-weight', 'bold');
@@ -908,7 +905,7 @@ export class RsPolyfillUtil {
 
         inventoryEntries.forEach(group => {
             const id = group.getAttribute('id')?.replaceAll(' ', '_');
-            group.classList.add(`eq-${id}`);
+            if (id) group.classList.add(`eq-${id}`);
 
             // Avoid duplicate insertion
             const existingHitModRect = group.querySelector<SVGElement>(':scope > .hitMod-rect');
@@ -921,14 +918,15 @@ export class RsPolyfillUtil {
                 return;
             }
 
-            // Find .name elements for alignment
-            let nameEl = group.querySelector('.name');
-            if (!nameEl) return;
+            // Prefer the name wrapper for alignment. Some Aero sheets do not
+            // provide one, so fall back to the inventory row itself.
+            const nameEl = group.querySelector('.name');
+            const alignmentEl = (nameEl ?? group) as SVGGraphicsElement;
 
-            // Get bounding box from .name element
+            // Get the bounding box from the best available alignment element.
             let bbox: DOMRect | null = null;
             try {
-                bbox = (nameEl as SVGGraphicsElement).getBBox();
+                bbox = alignmentEl.getBBox();
             } catch {
                 bbox = null;
             }
@@ -936,21 +934,25 @@ export class RsPolyfillUtil {
 
             // Try to get the font size from the .name element
             let fontSize = 9; // default
-            const fs = nameEl.querySelector('text')?.getAttribute('font-size');
+            const labelText = nameEl?.querySelector('text') ?? group.querySelector('text');
+            const fs = labelText?.getAttribute('font-size');
             if (fs) {
                 const parsed = parseFloat(fs);
                 if (!isNaN(parsed)) fontSize = parsed * 1.1;
             }
 
-            if (nameEl?.querySelector('text')) {
-                const subTextEl = nameEl.querySelector('text') as SVGGraphicsElement;
-                const subTextBBox = subTextEl.getBBox();
-                bbox.height = subTextBBox.height;
+            if (labelText) {
+                try {
+                    const labelBBox = (labelText as SVGGraphicsElement).getBBox();
+                    if (labelBBox.height > 0) bbox.height = labelBBox.height;
+                } catch {
+                    // Keep the row/name bounding box when text cannot be measured.
+                }
             }
 
             const rectWidth = 10;
-            let rectHeight = bbox.height;
-            let rectX = 0 - (rectWidth / 2);
+            let rectHeight = bbox.height || fontSize;
+            const rectX = nameEl ? 0 - (rectWidth / 2) : bbox.x - rectWidth;
             let rectY = bbox.y;
 
             if (fontSize > 6) {
@@ -958,8 +960,9 @@ export class RsPolyfillUtil {
                 rectY -= 0.5;
             }
 
-            // Create rect
-            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            const parent = nameEl?.parentElement ?? group;
+            const rect = existingHitModRect
+                ?? document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             rect.setAttribute('x', rectX.toString());
             rect.setAttribute('y', rectY.toString());
             rect.setAttribute('width', rectWidth.toString());
@@ -968,8 +971,8 @@ export class RsPolyfillUtil {
             rect.setAttribute('class', 'hitMod-rect');
             rect.setAttribute('display', 'none');
 
-            // // Create text
-            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            const text = existingHitModText
+                ?? document.createElementNS('http://www.w3.org/2000/svg', 'text');
             text.setAttribute('x', (rectX + rectWidth / 2).toString());
             text.setAttribute('y', (rectY + rectHeight / 2 + fontSize / 3).toString());
             text.setAttribute('text-anchor', 'middle');
@@ -980,30 +983,31 @@ export class RsPolyfillUtil {
             text.setAttribute('class', 'hitMod-text');
             text.setAttribute('display', 'none');
 
-            nameEl.parentElement?.appendChild(rect);
-            nameEl.parentElement?.appendChild(text);
-            this.addTargetTnOverlay(nameEl.parentElement ?? group, rect, text);
+            text.textContent = '';
+            if (!existingHitModRect) parent.appendChild(rect);
+            if (!existingHitModText) parent.appendChild(text);
+            this.addTargetTnOverlay(parent, rect, text);
         });
     }
 
     private static addTargetTnOverlay(parent: Element, hitModRect: SVGElement, hitModText: SVGElement): void {
-        if (parent.querySelector(':scope > .targetTn-rect') || parent.querySelector(':scope > .targetTn-text')) return;
-
-        const targetTnRect = hitModRect.cloneNode(false) as SVGRectElement;
+        const existingRect = parent.querySelector<SVGRectElement>(':scope > .targetTn-rect');
+        const existingText = parent.querySelector<SVGTextElement>(':scope > .targetTn-text');
+        const targetTnRect = existingRect ?? hitModRect.cloneNode(false) as SVGRectElement;
         targetTnRect.setAttribute('class', 'targetTn-rect');
         targetTnRect.setAttribute('fill', '#fff');
         targetTnRect.setAttribute('stroke', '#000');
         targetTnRect.setAttribute('stroke-width', '0.8');
         targetTnRect.setAttribute('display', 'none');
 
-        const targetTnText = hitModText.cloneNode(false) as SVGTextElement;
+        const targetTnText = existingText ?? hitModText.cloneNode(false) as SVGTextElement;
         targetTnText.setAttribute('class', 'targetTn-text');
         targetTnText.setAttribute('fill', '#000');
         targetTnText.setAttribute('display', 'none');
         targetTnText.textContent = '';
 
-        parent.appendChild(targetTnRect);
-        parent.appendChild(targetTnText);
+        if (!existingRect) parent.appendChild(targetTnRect);
+        if (!existingText) parent.appendChild(targetTnText);
     }
 
 
@@ -1077,28 +1081,30 @@ export class RsPolyfillUtil {
                 bbox = (nameEl.querySelector(':scope > text') as SVGGraphicsElement).getBBox();
             }
 
-            const strike = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            strike.classList.add('damaged-strike');
             let yPosition = bbox.y + bbox.height / 2;
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            line.setAttribute('x1', bbox.x.toString());
-            line.setAttribute('y1', yPosition.toString());
-            line.setAttribute('x2', (groupBBox.x + groupBBox.width).toString());
-            line.setAttribute('y2', yPosition.toString());
-            line.setAttribute('stroke', 'var(--damage-color)');
-            line.setAttribute('stroke-width', '1');
-            line.setAttribute('class', 'damaged-strike');
-            nameEl.parentElement?.insertBefore(line, nameEl.parentElement.firstChild);
+            if (!nameEl.parentElement?.querySelector(':scope > .damaged-strike')) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', bbox.x.toString());
+                line.setAttribute('y1', yPosition.toString());
+                line.setAttribute('x2', (groupBBox.x + groupBBox.width).toString());
+                line.setAttribute('y2', yPosition.toString());
+                line.setAttribute('stroke', 'var(--damage-color)');
+                line.setAttribute('stroke-width', '1');
+                line.setAttribute('class', 'damaged-strike');
+                nameEl.parentElement?.insertBefore(line, nameEl.parentElement.firstChild);
+            }
 
             // Create rect
-            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            rect.setAttribute('x', rectX.toString());
-            rect.setAttribute('y', rectY.toString());
-            rect.setAttribute('width', rowRectWidth.toString());
-            rect.setAttribute('height', rectHeight.toString());
-            rect.setAttribute('inventory-id', id);
-            rect.setAttribute('class', 'inventoryEntryButton mainButton interactive screen-only');
-            nameEl.parentElement?.insertBefore(rect, nameEl.parentElement.firstChild);
+            if (!nameEl.parentElement?.querySelector(':scope > .inventoryEntryButton.mainButton')) {
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', rectX.toString());
+                rect.setAttribute('y', rectY.toString());
+                rect.setAttribute('width', rowRectWidth.toString());
+                rect.setAttribute('height', rectHeight.toString());
+                rect.setAttribute('inventory-id', id);
+                rect.setAttribute('class', 'inventoryEntryButton mainButton interactive screen-only');
+                nameEl.parentElement?.insertBefore(rect, nameEl.parentElement.firstChild);
+            }
             this.addAimedShotWarningText(nameEl.parentElement, rectX + rectWidth, rectY, rectHeight);
             this.addRangeButtons(nameEl.parentElement, rangeButtonColumns, id, null, rectY, rectHeight);
 
@@ -1107,15 +1113,17 @@ export class RsPolyfillUtil {
                 const modeName = mode.getAttribute('mode');
                 if (!modeName) return;
                 const modeBBox = (mode as SVGGraphicsElement).getBBox();
-                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                rect.setAttribute('x', rectX.toString());
-                rect.setAttribute('y', modeBBox.y.toString());
-                rect.setAttribute('width', rowRectWidth.toString());
-                rect.setAttribute('height', rectHeight.toString());
-                rect.setAttribute('inventory-id', id);
-                rect.setAttribute('mode', modeName);
-                rect.setAttribute('class', 'inventoryEntryButton alternativeModeButton interactive screen-only');
-                mode.insertBefore(rect, mode.firstElementChild);
+                if (!mode.querySelector(':scope > .inventoryEntryButton.alternativeModeButton')) {
+                    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    rect.setAttribute('x', rectX.toString());
+                    rect.setAttribute('y', modeBBox.y.toString());
+                    rect.setAttribute('width', rowRectWidth.toString());
+                    rect.setAttribute('height', rectHeight.toString());
+                    rect.setAttribute('inventory-id', id);
+                    rect.setAttribute('mode', modeName);
+                    rect.setAttribute('class', 'inventoryEntryButton alternativeModeButton interactive screen-only');
+                    mode.insertBefore(rect, mode.firstElementChild);
+                }
                 this.addRangeButtons(mode, rangeButtonColumns, id, modeName, modeBBox.y, rectHeight);
             });
         });
@@ -1148,11 +1156,15 @@ export class RsPolyfillUtil {
     }
 
     private static findInventoryRangeButtonColumns(svg: SVGSVGElement): InventoryRangeButtonColumn[] {
-        return this.findRangeButtonColumns(svg, [
+        const groundRangeColumns: InventoryRangeButtonSpec[] = [
             { className: 'shrButton', labels: ['Shr', 'Sht'], field: 'range_short' },
             { className: 'medButton', labels: ['Med'], field: 'range_medium' },
             { className: 'lngButton', labels: ['Lng'], field: 'range_long' },
-        ]) || this.findRangeButtonColumns(svg, [
+        ];
+        return this.findRangeButtonColumns(svg, [
+            ...groundRangeColumns,
+            { className: 'extButton', labels: ['Ext', 'EXT'], field: 'range_extreme' },
+        ]) || this.findRangeButtonColumns(svg, groundRangeColumns) || this.findRangeButtonColumns(svg, [
             { className: 'shrButton', labels: ['SRV'], field: 'range_short' },
             { className: 'medButton', labels: ['MRV'], field: 'range_medium' },
             { className: 'lngButton', labels: ['LRV'], field: 'range_long' },
@@ -1217,6 +1229,7 @@ export class RsPolyfillUtil {
     ): void {
         if (!parent || rangeButtonColumns.length === 0) return;
         for (const column of rangeButtonColumns) {
+            if (parent.querySelector(`:scope > .inventoryEntryButton.${column.className}`)) continue;
             // we need this so that physical weapons have range clickable areas
             // if (!this.hasRangeButtonValue(parent, column.field)) continue;
             const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -1349,38 +1362,42 @@ export class RsPolyfillUtil {
         // We search the first <g>, we clone the content and create a button
         const firstGroup = heatDataPanel.querySelector('g');
         if (!firstGroup) return;
-        const buttonGroup = firstGroup.cloneNode(true) as SVGGElement;
-        buttonGroup.setAttribute('id', 'applyHeatButton');
-        buttonGroup.setAttribute('class', 'screen-only no-autocolor');
-        const textEl = buttonGroup.querySelector('text');
-        if (textEl) {
-            textEl.textContent = 'APPLY HEAT';
+        if (!heatDataPanel.querySelector('#applyHeatButton')) {
+            const buttonGroup = firstGroup.cloneNode(true) as SVGGElement;
+            buttonGroup.setAttribute('id', 'applyHeatButton');
+            buttonGroup.setAttribute('class', 'screen-only no-autocolor');
+            const textEl = buttonGroup.querySelector('text');
+            if (textEl) {
+                textEl.textContent = 'APPLY HEAT';
+            }
+            heatDataPanel.appendChild(buttonGroup);
         }
-        heatDataPanel.appendChild(buttonGroup);
         // We find the 2nd path and we add a class to it so we can style the border of the frame
         const paths = heatDataPanel.querySelectorAll('path');
         if (paths.length >= 2) {
             paths[1].classList.add('applyHeatButtonFrame');
             const frameBBox = (paths[1] as SVGGraphicsElement).getBBox();
-            const damagedEngineHeatText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            damagedEngineHeatText.setAttribute('id', 'damagedEngineHeatText');
-            damagedEngineHeatText.setAttribute('x', (frameBBox.x + frameBBox.width - 6).toString());
-            damagedEngineHeatText.setAttribute('y', (frameBBox.y + frameBBox.height - 4).toString());
-            damagedEngineHeatText.setAttribute('text-anchor', 'end');
-            damagedEngineHeatText.setAttribute('dominant-baseline', 'text-after-edge');
-            damagedEngineHeatText.setAttribute('font-family', 'Arial, sans-serif');
-            damagedEngineHeatText.setAttribute('font-size', '8');
-            damagedEngineHeatText.setAttribute('font-weight', 'bold');
-            damagedEngineHeatText.setAttribute('letter-spacing', '-0.05em');
-            damagedEngineHeatText.setAttribute('fill', 'red');
-            damagedEngineHeatText.setAttribute('class', 'damagedEngineHeatText');
-            damagedEngineHeatText.setAttribute('display', 'none');
-            paths[1].parentElement?.appendChild(damagedEngineHeatText);
+            if (!heatDataPanel.querySelector('#damagedEngineHeatText')) {
+                const damagedEngineHeatText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                damagedEngineHeatText.setAttribute('id', 'damagedEngineHeatText');
+                damagedEngineHeatText.setAttribute('x', (frameBBox.x + frameBBox.width - 6).toString());
+                damagedEngineHeatText.setAttribute('y', (frameBBox.y + frameBBox.height - 4).toString());
+                damagedEngineHeatText.setAttribute('text-anchor', 'end');
+                damagedEngineHeatText.setAttribute('dominant-baseline', 'text-after-edge');
+                damagedEngineHeatText.setAttribute('font-family', 'Arial, sans-serif');
+                damagedEngineHeatText.setAttribute('font-size', '8');
+                damagedEngineHeatText.setAttribute('font-weight', 'bold');
+                damagedEngineHeatText.setAttribute('letter-spacing', '-0.05em');
+                damagedEngineHeatText.setAttribute('fill', 'red');
+                damagedEngineHeatText.setAttribute('class', 'damagedEngineHeatText');
+                damagedEngineHeatText.setAttribute('display', 'none');
+                paths[1].parentElement?.appendChild(damagedEngineHeatText);
+            }
         }
 
         const pipsGroup = heatDataPanel.querySelector('g.hsPips');
         // We create a background rectangle to act as button hit area
-        if (pipsGroup) {
+        if (pipsGroup && !pipsGroup.querySelector(':scope > .changeActiveHeatsinksCountButton')) {
             const bbox = (pipsGroup as SVGGraphicsElement).getBBox();
             const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             const x = bbox.x - 6;
@@ -1687,20 +1704,37 @@ export class RsPolyfillUtil {
         svg.querySelectorAll<SVGElement>('.critGroup').forEach(critGroup => {
             const loc = critGroup.getAttribute('loc');
             if (!loc) return;
-            if (critGroup.querySelector('.locationConditionButton')) return;
+            if (critGroup.querySelector('.locationConditionControl')) return;
             const textEl = Array.from(critGroup.children).find(child => child.tagName.toLowerCase() === 'text') as SVGGraphicsElement | undefined;
             if (!textEl) return;
             textEl.classList.add('locationConditionText');
             textEl.setAttribute('loc', loc);
-            textEl.style.pointerEvents = 'all';
             const textCoords = textEl.getBBox();
+
+            const control = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            control.setAttribute('class', 'locationConditionControl');
+            control.setAttribute('loc', loc);
+            control.setAttribute('pointer-events', 'all');
+
+            const labelBaseline = Number.parseFloat(textEl.getAttribute('y') ?? '');
+            const rectHeight = textCoords.height + 6;
+            const rectBaseline = Number.isFinite(labelBaseline) ? labelBaseline : textCoords.y + textCoords.height;
+            const hitArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            hitArea.setAttribute('class', 'locationConditionHitArea');
+            hitArea.setAttribute('x', (textCoords.x - 2).toString());
+            hitArea.setAttribute('y', (rectBaseline - rectHeight).toString());
+            hitArea.setAttribute('width', (Math.max(30, textCoords.width + 12)).toString());
+            hitArea.setAttribute('height', rectHeight.toString());
+            hitArea.setAttribute('fill', 'transparent');
+            hitArea.setAttribute('pointer-events', 'all');
+
+            critGroup.insertBefore(control, textEl);
+            control.append(hitArea, textEl);
 
             const narcBanner = document.createElementNS('http://www.w3.org/2000/svg', 'g');
             narcBanner.setAttribute('class', 'locationNarcBanner screen-only');
             narcBanner.setAttribute('loc', loc);
             narcBanner.setAttribute('display', 'none');
-            const critGroupTransform = critGroup.getAttribute('transform');
-            if (critGroupTransform) narcBanner.setAttribute('transform', critGroupTransform);
 
             const narcRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             narcRect.setAttribute('x', textCoords.x.toString());
@@ -1725,11 +1759,7 @@ export class RsPolyfillUtil {
 
             narcBanner.appendChild(narcRect);
             narcBanner.appendChild(narcText);
-            if (critGroup.parentNode) {
-                critGroup.parentNode.insertBefore(narcBanner, critGroup.nextSibling);
-            } else {
-                critGroup.insertBefore(narcBanner, textEl);
-            }
+            control.appendChild(narcBanner);
         });
 
     }

@@ -33,7 +33,8 @@
 
 import { DEFAULT_PILOTING_SKILL } from "../models/crew-member.model";
 import type { Unit } from "../models/units.model";
-import { canAntiMech, NO_ANTIMEK_SKILL } from "./infantry.util";
+
+const NO_ANTIMEK_SKILL = 8;
 
 /**
  * Author: Drake
@@ -57,7 +58,7 @@ export function getEffectivePilotingSkill(unit: Unit, pilotingSkill: number): nu
     if (unit.type === 'ProtoMek') {
         return DEFAULT_PILOTING_SKILL;
     }
-    if (unit.type === 'Infantry' && !canAntiMech(unit)) {
+    if (unit.type === 'Infantry' && !unit.canAntiMech) {
         if (unit.subtype.includes('Mechanized')) {
             return DEFAULT_PILOTING_SKILL;
         }

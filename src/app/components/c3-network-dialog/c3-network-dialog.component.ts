@@ -47,9 +47,9 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { ForceUnit } from '../../models/force-unit.model';
-import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import { C3NetworkUtil, type C3NetworkContext } from '../../utils/c3-network.util';
-import { C3NetworkType, type C3Node, C3Role, C3_NETWORK_LIMITS, type C3_MAX_NETWORK_TOTAL } from '../../models/c3-network.model';
+import { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { C3NetworkEditor, type C3NetworkContext } from '../../models/c3-network-editor';
+import { C3Capabilities, C3Network, C3TaxCalculator, c3NetworkTypeName, c3RoleName, C3NetworkType, type C3Node, C3Role, C3_NETWORK_LIMITS } from '../../models/c3-network.model';
 import type { Force, UnitGroup } from '../../models/force.model';
 import type { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import { GameSystem } from '../../models/common.model';
@@ -62,6 +62,7 @@ import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3.0;
+const BROKEN_LINK_COLOR = '#8B0000';
 
 export interface C3NetworkDialogData {
     force: Force;
@@ -83,7 +84,11 @@ interface ConnectionLine {
     hasArrow: boolean;
     arrowAngle: number;
     selfConnection: boolean;
+    unavailable: boolean;
+    degraded: boolean;
 }
+
+type C3NodeRuntimeStatus = 'OFFLINE' | 'JAMMED' | 'DEGRADED';
 
 interface HubPoint {
     id: string;
@@ -105,8 +110,11 @@ type SidebarMemberRole = 'master' | 'slave' | 'peer' | 'sub-master';
 interface SidebarNetworkVm {
     network: SerializedC3NetworkGroup;
     displayName: string;
+    displayColor: string;
     members: SidebarMemberVm[];
     subNetworks: SidebarNetworkVm[];
+    canRemoveNetwork: boolean;
+    showBv: boolean;
     /** Total C3 tax for this network tree (root networks only) */
     networkTax?: number;
 }
@@ -116,6 +124,7 @@ interface SidebarMemberVm {
     name: string;
     role: SidebarMemberRole;
     canRemove: boolean;
+    brokenLink: boolean;
     isSelfConnection?: boolean;
     memberStr?: string;
     node: C3Node | null;
@@ -125,7 +134,7 @@ interface SidebarMemberVm {
     baseBv?: number;
     /** Tag BV for this unit */
     tagBv?: number;
-    /** C3 BV for this unit */
+    /** C³ BV for this unit */
     c3Bv?: number;
     /** External Stores BV for this unit */
     externalStoresBv?: number;
@@ -166,6 +175,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected readonly PIN_RADIUS = 13;
     protected readonly PIN_GAP = 40;
     protected readonly PIN_Y_OFFSET = 18;
+    protected readonly NODE_BOTTOM_SIDE_WIDTH = this.NODE_RADIUS / 2;
+    protected readonly NODE_BOTTOM_SIDE_X = -this.NODE_BOTTOM_SIDE_WIDTH / 2;
+    protected readonly NODE_BOTTOM_Y = Math.sin(Math.PI / 3) * (this.NODE_RADIUS / 2);
+    protected readonly NODE_STATUS_HEIGHT = 18;
 
     protected readonly NODE_HEX_POINTS = C3NetworkDialogComponent.toSvgPoints(
         C3NetworkDialogComponent.getHexRelativeVertices(this.NODE_RADIUS / 2)
@@ -293,7 +306,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
      * Also syncs positions from unit.c3Position() for existing nodes.
      */
     private syncNodesWithUnits(forceUnits: ForceUnit[]): void {
-        const c3Units = forceUnits.filter(u => C3NetworkUtil.hasC3(u.getUnit()));
+        const capabilities = new Map(forceUnits.map(unit => [unit.id, new C3Capabilities(unit)]));
+        const c3Units = forceUnits.filter(unit => capabilities.get(unit.id)?.hasC3);
         const currentNodes = this.nodes();
         const currentNodeIds = new Set(currentNodes.map(n => n.unit.id));
         const newUnitIds = new Set(c3Units.map(u => u.id));
@@ -301,24 +315,22 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         // Remove nodes for units that no longer exist
         const nodesToKeep = currentNodes.filter(n => newUnitIds.has(n.unit.id));
 
-        // Update ForceUnit references and positions for existing nodes
-        let positionsChanged = false;
-        for (const node of nodesToKeep) {
+        // Replace existing nodes so signal consumers observe capability and unit-reference changes.
+        for (let index = 0; index < nodesToKeep.length; index++) {
+            const node = nodesToKeep[index];
             const updatedUnit = c3Units.find(u => u.id === node.unit.id);
             if (updatedUnit) {
-                // Update the unit reference if it changed
-                if (updatedUnit !== node.unit) {
-                    node.unit = updatedUnit;
-                }
-                // Sync position from unit's c3Position if it differs
+                const c3Components = [...capabilities.get(updatedUnit.id)!.components];
                 const pos = updatedUnit.c3Position();
-                if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
-                    if (node.x !== pos.x || node.y !== pos.y) {
-                        node.x = pos.x;
-                        node.y = pos.y;
-                        positionsChanged = true;
-                    }
-                }
+                const hasPosition = !!pos && Number.isFinite(pos.x) && Number.isFinite(pos.y);
+                nodesToKeep[index] = {
+                    ...node,
+                    unit: updatedUnit,
+                    c3Components,
+                    pinOffsetsX: this.computePinOffsetsX(c3Components.length),
+                    x: hasPosition ? pos.x : node.x,
+                    y: hasPosition ? pos.y : node.y,
+                };
             }
         }
 
@@ -335,7 +347,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const pos = unit.c3Position();
                 const x = pos?.x ?? canvasW / 2 + (i * 200);
                 const y = pos?.y ?? canvasH / 2;
-                const c3Components = C3NetworkUtil.getC3Components(unit.getUnit());
+                const c3Components = [...capabilities.get(unit.id)!.components];
                 const pinOffsetsX = this.computePinOffsetsX(c3Components.length);
 
                 nodesToKeep.push({
@@ -349,9 +361,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             }
         }
 
-        if (nodesToKeep.length !== currentNodes.length || newUnits.length > 0 || positionsChanged) {
-            this.nodes.set(nodesToKeep);
-        }
+        this.nodes.set(nodesToKeep);
     }
 
     /**
@@ -368,8 +378,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     private getNetworkContext(): C3NetworkContext {
         return {
             networks: this.networks(),
-            nodesById: this.nodesById(),
-            getNextColor: () => C3NetworkUtil.getNextColor(this.networks(), this.masterPinColors),
+            getNextColor: () => C3NetworkEditor.nextColor(this.networks(), this.masterPinColors),
             masterPinColors: this.masterPinColors
         };
     }
@@ -444,19 +453,18 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
             for (let i = 0; i < node.c3Components.length; i++) {
                 const targetComp = node.c3Components[i];
-                if (!C3NetworkUtil.areComponentsCompatible(sourceComp, targetComp)) continue;
+                if (sourceComp.networkType !== targetComp.networkType) continue;
 
-                const existingConnection = C3NetworkUtil.findConnectionBetweenPins(
-                    networks, conn.node.unit.id, conn.compIndex, sourceComp.role,
-                    node.unit.id, i, targetComp.role
-                );
+                const existingConnection = this.networkModel().connectionBetween(
+                    { unitId: conn.node.unit.id, compIndex: conn.compIndex }, sourceComp.role,
+                    { unitId: node.unit.id, compIndex: i }, targetComp.role, sourceComp.networkType);
                 if (existingConnection) {
                     connectedPins.push(i);
                     validPins.push(i);
                     continue;
                 }
 
-                const result = C3NetworkUtil.canConnectToPin(conn.node, conn.compIndex, node, i, networks);
+                const result = C3NetworkEditor.canConnect(conn.node, conn.compIndex, node, i, networks);
                 if (result.valid) validPins.push(i);
             }
 
@@ -474,17 +482,26 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     protected validTargets = computed(() => this.connectionState().validTargetIds);
 
+    private networkModel = computed(() => new C3Network(
+        this.networks(), this.nodes().map(node => node.unit),
+    ));
+
+    private taxCalculator = computed(() => new C3TaxCalculator(
+        this.networks(), this.nodes().map(node => node.unit as CBTForceUnit),
+    ));
+
     protected connectionLines = computed<ConnectionLine[]>(() => {
         const lines: ConnectionLine[] = [];
         const nodesById = this.nodesById();
+        const runtimeGraph = this.networkModel();
 
         for (const network of this.networks()) {
             if (network.peerIds && network.peerIds.length > 1) {
                 const peerNodes = network.peerIds.map(id => nodesById.get(id)).filter((n): n is C3Node => !!n);
                 if (peerNodes.length >= 2) {
                     const positions = peerNodes.map(node => {
-                        const compIdx = node.c3Components.findIndex(c => c.role === C3Role.PEER);
-                        return this.getPinWorldPosition(node, Math.max(0, compIdx));
+                        const compIdx = runtimeGraph.resolveComponentIndex(node.unit.id, network, C3Role.PEER);
+                        return this.getPinWorldPosition(node, Math.max(0, compIdx ?? -1));
                     });
                     const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
                     const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
@@ -492,56 +509,79 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     const nodeCy = peerNodes.reduce((s, n) => s + n.y, 0) / peerNodes.length;
 
                     positions.forEach((p, idx) => {
+                        const peerId = peerNodes[idx].unit.id;
+                        const unavailable = runtimeGraph.hasOnlyBrokenIncidentLinks(network.id, peerId);
                         lines.push({
                             id: `${network.id}-peer-${idx}`,
                             x1: cx, y1: cy, x2: p.x, y2: p.y,
                             nodeX1: nodeCx, nodeY1: nodeCy,
                             nodeX2: peerNodes[idx].x, nodeY2: peerNodes[idx].y,
-                            color: network.color,
+                            color: unavailable ? BROKEN_LINK_COLOR : network.color,
                             hasArrow: false,
                             arrowAngle: 0,
-                            selfConnection: false
+                            selfConnection: false,
+                            unavailable,
+                            degraded: runtimeGraph.stateForNetwork(peerId, network.id).degraded,
                         });
                     });
                 }
             } else if (network.masterId) {
-                const masterNode = nodesById.get(network.masterId);
-                if (!masterNode) continue;
-
-                const compIdx = network.masterCompIndex ?? 0;
-                const masterPos = this.getPinWorldPosition(masterNode, compIdx);
-
-                for (const member of network.members ?? []) {
-                    const parsed = C3NetworkUtil.parseMember(member);
-                    const memberNode = nodesById.get(parsed.unitId);
-                    if (!memberNode) continue;
-
-                    let memberCompIdx = parsed.compIndex !== undefined
-                        ? parsed.compIndex
-                        : memberNode.c3Components.findIndex(c => c.role === C3Role.SLAVE);
-                    if (memberCompIdx < 0) memberCompIdx = 0;
-
-                    const memberPos = this.getPinWorldPosition(memberNode, memberCompIdx);
-                    const angle = Math.atan2(memberPos.y - masterPos.y, memberPos.x - masterPos.x);
-                    const isSelfConnection = parsed.unitId === network.masterId;
+                const configuredSource = { unitId: network.masterId, compIndex: network.masterCompIndex ?? 0 };
+                const runtimeLinks = runtimeGraph.linksForNetwork(network.id);
+                const addLine = (id: string, source: typeof configuredSource, target: typeof configuredSource, unavailable: boolean, degraded: boolean) => {
+                    const sourceNode = nodesById.get(source.unitId);
+                    const targetNode = nodesById.get(target.unitId);
+                    if (!sourceNode || !targetNode) return;
+                    const sourcePos = this.getPinWorldPosition(sourceNode, source.compIndex);
+                    const targetPos = this.getPinWorldPosition(targetNode, target.compIndex);
+                    const angle = Math.atan2(targetPos.y - sourcePos.y, targetPos.x - sourcePos.x);
                     const shortenBy = this.PIN_RADIUS + 10;
-
                     lines.push({
-                        id: `${network.id}-member-${member}`,
-                        x1: masterPos.x,
-                        y1: masterPos.y,
-                        x2: memberPos.x - Math.cos(angle) * shortenBy,
-                        y2: memberPos.y - Math.sin(angle) * shortenBy,
-                        nodeX1: masterNode.x,
-                        nodeY1: masterNode.y,
-                        nodeX2: memberNode.x - Math.cos(angle) * 10,
-                        nodeY2: memberNode.y - Math.sin(angle) * 10,
-                        color: network.color,
+                        id,
+                        x1: sourcePos.x,
+                        y1: sourcePos.y,
+                        x2: targetPos.x - Math.cos(angle) * shortenBy,
+                        y2: targetPos.y - Math.sin(angle) * shortenBy,
+                        nodeX1: sourceNode.x,
+                        nodeY1: sourceNode.y,
+                        nodeX2: targetNode.x - Math.cos(angle) * 10,
+                        nodeY2: targetNode.y - Math.sin(angle) * 10,
+                        color: unavailable ? BROKEN_LINK_COLOR : network.color,
                         hasArrow: true,
                         arrowAngle: angle,
-                        selfConnection: isSelfConnection
+                        selfConnection: source.unitId === target.unitId,
+                        unavailable,
+                        degraded,
                     });
+                };
+
+                for (const member of network.members ?? []) {
+                    const parsed = C3Network.parseMember(member);
+                    const role = parsed.compIndex === undefined ? C3Role.SLAVE : C3Role.MASTER;
+                    const targetIndex = parsed.compIndex ?? runtimeGraph.resolveComponentIndex(parsed.unitId, network, role);
+                    if (targetIndex === undefined) continue;
+                    const target = { unitId: parsed.unitId, compIndex: targetIndex };
+                    const runtimeLink = runtimeGraph.findLink(network.id, configuredSource, target);
+                    addLine(
+                        `${network.id}-configured-${member}`,
+                        configuredSource,
+                        target,
+                        !runtimeLink?.operational,
+                        runtimeGraph.stateForNetwork(target.unitId, network.id).degraded,
+                    );
                 }
+
+                runtimeLinks.forEach((runtimeLink, index) => {
+                    if (runtimeLink.source.unitId === configuredSource.unitId
+                        && runtimeLink.source.compIndex === configuredSource.compIndex) return;
+                    addLine(
+                        `${network.id}-emergency-${index}-${runtimeLink.source.unitId}-${runtimeLink.target.unitId}`,
+                        runtimeLink.source,
+                        runtimeLink.target,
+                        !runtimeLink.operational,
+                        runtimeGraph.stateForNetwork(runtimeLink.target.unitId, network.id).degraded,
+                    );
+                });
             }
         }
         return lines;
@@ -556,8 +596,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const peerNodes = network.peerIds.map(id => nodesById.get(id)).filter((n): n is C3Node => !!n);
                 if (peerNodes.length >= 2) {
                     const positions = peerNodes.map(node => {
-                        const compIdx = node.c3Components.findIndex(c => c.role === C3Role.PEER);
-                        return this.getPinWorldPosition(node, Math.max(0, compIdx));
+                        const compIdx = this.networkModel().resolveComponentIndex(node.unit.id, network, C3Role.PEER);
+                        return this.getPinWorldPosition(node, Math.max(0, compIdx ?? -1));
                     });
                     hubs.push({
                         id: `hub-${network.id}`,
@@ -584,10 +624,13 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected sidebarNetworks = computed<SidebarNetworkVm[]>(() => {
         const networks = this.networks();
         const nodesById = this.nodesById();
-        const topLevel = C3NetworkUtil.getTopLevelNetworks(networks);
+        const runtimeGraph = this.networkModel();
+        const topology = runtimeGraph;
+        const topLevel = topology.topLevelNetworks;
         const visited = new Set<string>();
         const isClassic = this.isClassicGame();
         const allUnits = isClassic ? this.nodes().map(n => n.unit as CBTForceUnit) : [];
+        const taxCalculator = isClassic ? this.taxCalculator() : undefined;
 
         const getUnitBvData = (node: C3Node | null): { baseBv?: number; tagBv?: number; c3Bv?: number; externalStoresBv?: number; pilotBv?: number, adjustedBv?: number } => {
             if (!isClassic || !node) return {};
@@ -595,7 +638,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             const unit = cbtUnit.getUnit();
             const baseBv = cbtUnit.getBaseBv();
             const tagBv = cbtUnit.tagBV();
-            const c3Bv = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, networks, allUnits);
+            const c3Bv = cbtUnit.rules.calculateC3Tax(networks, allUnits, taxCalculator);
             const externalStoresBv = cbtUnit.externalStoresBv();
             const preSkillAdjustedBv = baseBv + tagBv + c3Bv + externalStoresBv;
             const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
@@ -616,6 +659,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     members.push({
                         id, name: node?.unit.getUnit().chassis || 'Unknown',
                         role: 'peer', canRemove: !this.data.readOnly, node,
+                        brokenLink: runtimeGraph.hasOnlyBrokenIncidentLinks(network.id, id),
                         ...getUnitBvData(node)
                     });
                 }
@@ -625,16 +669,17 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     id: network.masterId,
                     name: masterNode?.unit.getUnit().chassis || 'Unknown',
                     role: 'master', canRemove: false, node: masterNode, network,
+                    brokenLink: runtimeGraph.hasOnlyBrokenIncidentLinks(network.id, network.masterId),
                     ...getUnitBvData(masterNode)
                 });
 
                 for (const memberStr of network.members ?? []) {
-                    const parsed = C3NetworkUtil.parseMember(memberStr);
+                    const parsed = C3Network.parseMember(memberStr);
                     const node = nodesById.get(parsed.unitId) ?? null;
                     const isSelfConnection = parsed.unitId === network.masterId;
 
                     if (parsed.compIndex !== undefined) {
-                        const childNet = C3NetworkUtil.findMasterNetwork(parsed.unitId, parsed.compIndex, networks);
+                        const childNet = topology.masterNetwork(parsed.unitId, parsed.compIndex);
                         const hasChildren = !!(childNet?.members?.length);
 
                         if (childNet && hasChildren) {
@@ -644,6 +689,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                                 name: node?.unit.getUnit().chassis || 'Unknown',
                                 role: 'sub-master', canRemove: !this.data.readOnly, isSelfConnection,
                                 memberStr, node, network: childNet, networkVm: childVm ?? undefined,
+                                brokenLink: runtimeGraph.childLinkBroken(network.id, {
+                                    unitId: parsed.unitId,
+                                    compIndex: parsed.compIndex,
+                                }),
                                 ...getUnitBvData(node)
                             });
                             if (childVm) subNetworks.push(childVm);
@@ -655,6 +704,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         id: parsed.unitId,
                         name: node?.unit.getUnit().chassis || 'Unknown',
                         role: 'slave', canRemove: !this.data.readOnly, isSelfConnection, memberStr, node,
+                        brokenLink: runtimeGraph.childLinkBroken(network.id, {
+                            unitId: parsed.unitId,
+                            compIndex: parsed.compIndex,
+                        }),
                         ...getUnitBvData(node)
                     });
                 }
@@ -662,33 +715,17 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
             let displayName = 'Unknown Network';
             if (network.peerIds) {
-                displayName = `${C3NetworkUtil.getNetworkTypeName(network.type as C3NetworkType)} (${network.peerIds.length} peers)`;
+                displayName = `${c3NetworkTypeName(network.type as C3NetworkType)} (${network.peerIds.length} peers)`;
             } else if (network.masterId) {
-                const countNonSelf = (net: SerializedC3NetworkGroup) =>
-                    (net.members ?? []).reduce((c, m) => C3NetworkUtil.parseMember(m).unitId === net.masterId ? c : c + 1, 0);
-                const memberCount = countNonSelf(network) + 1;
-                const subNetCount = subNetworks.reduce((s, child) => s + countNonSelf(child.network), 0);
-                displayName = `${C3NetworkUtil.getNetworkTypeName(network.type as C3NetworkType)} (${memberCount + subNetCount} ${memberCount + subNetCount > 1 ? 'members' : 'member'})`;
+                const memberCount = topology.treeEndpointKeys(network.id).size;
+                displayName = `${c3NetworkTypeName(network.type as C3NetworkType)} (${memberCount} ${memberCount > 1 ? 'members' : 'member'})`;
             }
 
             // Calculate network tax for top-level networks only
             let networkTax: number | undefined;
             if (isTopLevel && isClassic) {
-                const uniqueUnitIds = new Set<string>();
-                const collectUnitIds = (vm: SidebarNetworkVm) => {
-                    for (const m of vm.members) {
-                        if (!m.isSelfConnection) uniqueUnitIds.add(m.id);
-                    }
-                    for (const sub of vm.subNetworks) collectUnitIds(sub);
-                };
-                // We need to collect from the current VM we're building
-                for (const m of members) {
-                    if (!m.isSelfConnection) uniqueUnitIds.add(m.id);
-                }
-                for (const sub of subNetworks) collectUnitIds(sub);
-                
                 // Sum the tax of all unique units in the network
-                const collectTaxes = (vm: { members: SidebarMemberVm[], subNetworks: { members: SidebarMemberVm[], subNetworks: any[] }[] }, seen: Set<string>): number => {
+                const collectTaxes = (vm: Pick<SidebarNetworkVm, 'members' | 'subNetworks'>, seen: Set<string>): number => {
                     let sum = 0;
                     for (const m of vm.members) {
                         if (!m.isSelfConnection && m.c3Bv !== undefined && !seen.has(m.id)) {
@@ -704,10 +741,48 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 networkTax = collectTaxes({ members, subNetworks }, new Set<string>());
             }
 
-            return { network, displayName, members, subNetworks, networkTax };
+            const displayColor = runtimeGraph.stateForNetwork(network.masterId ?? network.peerIds?.[0] ?? '', network.id).color
+                ?? network.color;
+            return {
+                network, displayName, displayColor, members, subNetworks, networkTax,
+                canRemoveNetwork: !this.data.readOnly,
+                showBv: true,
+            };
         };
 
         return topLevel.map(net => buildNetworkVm(net, true)).filter((vm): vm is SidebarNetworkVm => vm !== null);
+    });
+
+    protected emergencySidebarNetworks = computed<SidebarNetworkVm[]>(() => {
+        const runtime = this.networkModel();
+        const nodesById = this.nodesById();
+        return this.networks().flatMap(network => {
+            const master = runtime.effectiveEmergencyMasterForNetwork(network.id);
+            if (!master) return [];
+            const links = runtime.linksForNetwork(network.id).filter(link => link.operational
+                && link.source.unitId === master.unitId && link.source.compIndex === master.compIndex);
+            const unitIds = [master.unitId, ...links.map(link => link.target.unitId)];
+            const members: SidebarMemberVm[] = [...new Set(unitIds)].map((id, index) => {
+                const node = nodesById.get(id) ?? null;
+                return {
+                    id,
+                    name: node?.unit.getUnit().chassis || 'Unknown',
+                    role: index === 0 ? 'master' : 'slave',
+                    canRemove: false,
+                    brokenLink: false,
+                    node,
+                };
+            });
+            return [{
+                network,
+                displayName: 'EMERGENCY',
+                displayColor: runtime.stateForNetwork(master.unitId, network.id).color ?? network.color,
+                members,
+                subNetworks: [],
+                canRemoveNetwork: false,
+                showBv: false,
+            }];
+        });
     });
 
     /** Total BV summary for all C3 units */
@@ -716,6 +791,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const nodes = this.nodes();
         const networks = this.networks();
         const allUnits = nodes.map(n => n.unit as CBTForceUnit);
+        const taxCalculator = this.taxCalculator();
         
         let totalBaseBv = 0;
         let totalTagBv = 0;
@@ -729,7 +805,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             const unit = cbtUnit.getUnit();
             const baseBv = cbtUnit.getBaseBv();
             const tagBv = cbtUnit.tagBV();
-            const c3Bv = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, networks, allUnits);
+            const c3Bv = cbtUnit.rules.calculateC3Tax(networks, allUnits, taxCalculator);
             const externalStoresBv = cbtUnit.externalStoresBv();
             const preSkillAdjustedBv = baseBv + tagBv + c3Bv + externalStoresBv;
             const finalBv = BVCalculatorUtil.calculateAdjustedBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
@@ -747,6 +823,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected pinConnectionState = computed(() => {
         const state = new Map<string, { connected: boolean; disabled: boolean; color: string | null, roleLabel: string }>();
         const networks = this.networks();
+        const topology = this.networkModel();
 
         for (const node of this.nodes()) {
             const unitId = node.unit.id;
@@ -754,30 +831,34 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const comp = node.c3Components[compIndex];
                 const key = `${unitId}:${compIndex}`;
                 let connected = false, disabled = false, color: string | null = null;
-                let roleLabel =  C3NetworkUtil.getRoleName(comp.role);
+                let roleLabel = c3RoleName(comp.role);
                 if (comp.role === C3Role.MASTER) {
-                    const net = C3NetworkUtil.findMasterNetwork(unitId, compIndex, networks);
-                    connected = !!(net?.members?.length);
-                    disabled = C3NetworkUtil.isUnitSlaveConnected(unitId, networks);
-                    color = net?.color || this.masterPinColors.get(key) || null;
+                    const net = topology.masterNetwork(unitId, compIndex);
+                    const parent = topology.parentNetworkForEndpoint(unitId, compIndex);
+                    connected = !!(net?.members?.length || parent);
+                    color = net?.color || parent?.color || this.masterPinColors.get(key) || null;
                     if (net && net.members) {
-                        let parent = C3NetworkUtil.findParentNetwork(net, networks);
-                        if (!parent) {
-                            const subnetworks = C3NetworkUtil.findSubNetworks(net, networks);
+                        const owningParent = topology.parentOf(net.id);
+                        if (!owningParent) {
+                            const subnetworks = topology.childrenOf(net.id);
                             if (subnetworks.length > 0) {
                                 roleLabel = 'GM';
                             }
                         }
                     }
                 } else if (comp.role === C3Role.SLAVE) {
-                    connected = networks.some(n => n.members?.includes(unitId));
-                    disabled = C3NetworkUtil.isUnitMasterConnected(unitId, networks);
-                    for (const net of networks) {
-                        if (net.members?.includes(unitId)) { color = net.color; break; }
+                    connected = topology.networksForUnit(unitId).some(n => n.members?.includes(unitId)
+                        && topology.resolveComponentIndex(unitId, n, C3Role.SLAVE) === compIndex);
+                    for (const net of topology.networksForUnit(unitId)) {
+                        if (net.members?.includes(unitId)
+                            && topology.resolveComponentIndex(unitId, net, C3Role.SLAVE) === compIndex) {
+                            color = net.color; break;
+                        }
                     }
                 } else if (comp.role === C3Role.PEER) {
-                    const net = C3NetworkUtil.findPeerNetwork(unitId, networks);
-                    connected = !!(net?.peerIds && net.peerIds.length >= 2);
+                    const net = topology.peerNetwork(unitId, comp.networkType);
+                    connected = !!(net?.peerIds && net.peerIds.length >= 2
+                        && topology.resolveComponentIndex(unitId, net, C3Role.PEER) === compIndex);
                     color = net?.color || null;
                 }
 
@@ -789,25 +870,14 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     protected nodeBorderColors = computed(() => {
         const map = new Map<string, string[]>();
-        const networks = this.networks();
+        const topology = this.networkModel();
 
         for (const node of this.nodes()) {
-            const unitId = node.unit.id;
-            const colors: string[] = [];
-
-            for (const net of networks) {
-                if (net.members?.some(m => C3NetworkUtil.parseMember(m).unitId === unitId) && !colors.includes(net.color)) {
-                    colors.push(net.color);
-                }
-            }
-            for (const net of networks) {
-                if (net.peerIds?.includes(unitId) && !colors.includes(net.color)) colors.push(net.color);
-            }
-            for (const net of networks) {
-                if (net.masterId === unitId && net.members?.length && !colors.includes(net.color)) colors.push(net.color);
-            }
-
-            map.set(unitId, colors);
+            const runtimeColors = topology.statesFor(node.unit.id)
+                .filter(state => state.linked && !!state.color)
+                .map(state => state.color!);
+            map.set(node.unit.id, [...new Set(runtimeColors.length
+                ? runtimeColors : topology.colorsForUnit(node.unit.id))]);
         }
         return map;
     });
@@ -833,12 +903,80 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     protected unitConnectionStatus = computed(() => {
         const map = new Map<string, boolean>();
-        const networks = this.networks();
+        const topology = this.networkModel();
         for (const node of this.nodes()) {
-            map.set(node.unit.id, C3NetworkUtil.isUnitConnected(node.unit.id, networks));
+            map.set(node.unit.id, topology.isUnitConnected(node.unit.id));
         }
         return map;
     });
+
+    protected damageDisconnectedNodes = computed(() => {
+        const operationalUnitIds = new Set<string>();
+        for (const link of this.networkModel().links) {
+            if (!link.operational) continue;
+            operationalUnitIds.add(link.source.unitId);
+            operationalUnitIds.add(link.target.unitId);
+        }
+
+        const disconnected = new Set<string>();
+        for (const [unitId, structurallyConnected] of this.unitConnectionStatus()) {
+            if (structurallyConnected && !operationalUnitIds.has(unitId)) disconnected.add(unitId);
+        }
+        return disconnected;
+    });
+
+    protected nodeRuntimeStatuses = computed(() => {
+        const statuses = new Map<string, readonly C3NodeRuntimeStatus[]>();
+        const runtime = this.networkModel();
+        for (const node of this.nodes()) {
+            if (this.isNodeOffline(node, runtime)) {
+                statuses.set(node.unit.id, ['OFFLINE']);
+                continue;
+            }
+
+            const nodeStatuses: C3NodeRuntimeStatus[] = [];
+            const jammed = node.unit.isC3Jammed();
+            if (jammed) nodeStatuses.push('JAMMED');
+            const networkTypes = new Set(node.c3Components.map(component => component.networkType));
+            const linkedStates = [...networkTypes]
+                .map(networkType => runtime.stateFor(node.unit.id, networkType))
+                .filter(state => state.linked);
+            if (!jammed && linkedStates.some(state => state.degraded)) {
+                nodeStatuses.push('DEGRADED');
+            }
+            if (nodeStatuses.length) statuses.set(node.unit.id, nodeStatuses);
+        }
+        return statuses;
+    });
+
+    private isNodeOffline(node: C3Node, runtime: C3Network): boolean {
+        const componentIndexes = new Set<number>();
+        for (const network of runtime.networksForUnit(node.unit.id)) {
+            if (network.masterId === node.unit.id) {
+                const index = runtime.resolveComponentIndex(node.unit.id, network, C3Role.MASTER);
+                if (index !== undefined) componentIndexes.add(index);
+            }
+            if (network.peerIds?.includes(node.unit.id)) {
+                const index = runtime.resolveComponentIndex(node.unit.id, network, C3Role.PEER);
+                if (index !== undefined) componentIndexes.add(index);
+            }
+            for (const member of network.members ?? []) {
+                const parsed = C3Network.parseMember(member);
+                if (parsed.unitId !== node.unit.id) continue;
+                const role = parsed.compIndex === undefined ? C3Role.SLAVE : C3Role.MASTER;
+                const index = runtime.resolveComponentIndex(node.unit.id, network, role);
+                if (index !== undefined) componentIndexes.add(index);
+            }
+        }
+
+        if (componentIndexes.size === 0) return false;
+        return [...componentIndexes].every(index => {
+            const component = runtime.capability(node.unit.id)?.component(index);
+            if (!component) return false;
+            return component.mount?.isActionUnavailable()
+                ?? !node.unit.isC3EndpointOperational(index, component);
+        });
+    }
 
     ngAfterViewInit() {
         this.initializeNodes();
@@ -870,7 +1008,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     private initializeNodes() {
-        const c3Units = this.getUnits().filter(u => C3NetworkUtil.hasC3(u.getUnit()));
+        const c3Units = this.getUnits().filter(unit => new C3Capabilities(unit).hasC3);
         if (c3Units.length === 0) return;
 
         const el = this.svgCanvas()?.nativeElement;
@@ -952,7 +1090,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
         this.nodes.set(c3Units.map((unit, idx) => {
             const pos = positionsById.get(unit.id);
-            const comps = C3NetworkUtil.getC3Components(unit.getUnit());
+            const comps = [...new C3Capabilities(unit).components];
             const numPins = Math.max(1, comps.length);
             const totalWidth = (numPins - 1) * this.PIN_GAP;
             return {
@@ -1027,7 +1165,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 if (comp.role === C3Role.MASTER) {
                     const key = `${node.unit.id}:${idx}`;
                     if (!this.masterPinColors.has(key)) {
-                        this.masterPinColors.set(key, C3NetworkUtil.getNextColor(this.networks(), this.masterPinColors));
+                        this.masterPinColors.set(key, C3NetworkEditor.nextColor(this.networks(), this.masterPinColors));
                     }
                 }
             });
@@ -1177,7 +1315,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const comp = node.c3Components[compIndex];
         if (!comp) return;
 
-        const result = C3NetworkUtil.cancelConnectionForPin(this.networks(), node.unit.id, compIndex, comp.role);
+        const result = C3NetworkEditor.disconnect(
+            this.networks(), node.unit.id, compIndex, comp.role, comp.networkType);
         if (result.success) {
             this.networks.set(result.networks);
             this.hasModifications.set(true);
@@ -1357,10 +1496,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     if (targetPin >= 0) {
                         const sourceComp = conn.node.c3Components[conn.compIndex];
                         const targetComp = targetNode.c3Components[targetPin];
-                        const existingConnection = C3NetworkUtil.findConnectionBetweenPins(
-                            this.networks(), conn.node.unit.id, conn.compIndex, sourceComp.role,
-                            targetNode.unit.id, targetPin, targetComp.role
-                        );
+                        const existingConnection = this.networkModel().connectionBetween(
+                            { unitId: conn.node.unit.id, compIndex: conn.compIndex }, sourceComp.role,
+                            { unitId: targetNode.unit.id, compIndex: targetPin }, targetComp.role,
+                            sourceComp.networkType);
 
                         if (existingConnection) {
                             // For self-connections (same unit), only allow removal if:
@@ -1372,18 +1511,21 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                                 && explicitTargetPin !== conn.compIndex;
                             
                             if (!isSelfConnection || isExplicitDifferentPin) {
-                                if (existingConnection.memberStr) {
-                                    const result = C3NetworkUtil.removeMemberFromNetwork(this.networks(), existingConnection.networkId, existingConnection.memberStr);
+                                if (existingConnection.member) {
+                                    const result = C3NetworkEditor.removeConnection(
+                                        this.networks(), existingConnection.networkId, existingConnection.member);
                                     this.networks.set(result.networks);
                                 } else {
-                                    const result = C3NetworkUtil.cancelConnectionForPin(this.networks(), conn.node.unit.id, conn.compIndex, sourceComp.role);
+                                    const result = C3NetworkEditor.disconnect(
+                                        this.networks(), conn.node.unit.id, conn.compIndex,
+                                        sourceComp.role, sourceComp.networkType);
                                     this.networks.set(result.networks);
                                 }
                                 this.hasModifications.set(true);
                                 this.toastService.showToast('Connection removed', 'success');
                             }
                         } else if (!this.data.readOnly) {
-                            const result = C3NetworkUtil.createConnection(this.getNetworkContext(), conn.node, conn.compIndex, targetNode, targetPin);
+                            const result = C3NetworkEditor.connect(this.getNetworkContext(), conn.node, conn.compIndex, targetNode, targetPin);
                             if (result.success) {
                                 this.networks.set(result.networks);
                                 this.hasModifications.set(true);
@@ -1426,7 +1568,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     protected removeNetwork(network: SerializedC3NetworkGroup) {
         if (this.data.readOnly) return;
-        this.networks.update(networks => networks.filter(n => n.id !== network.id));
+        this.networks.update(networks => {
+            const removeIds = new Set(new C3Network(networks).treeNetworks(network.id).map(member => member.id));
+            return networks.filter(member => !removeIds.has(member.id));
+        });
         this.hasModifications.set(true);
     }
 
@@ -1485,7 +1630,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     protected getNetworkTypeLabel(type: C3NetworkType, boosted?: boolean): string {
-        const name = C3NetworkUtil.getNetworkTypeName(type);
+        const name = c3NetworkTypeName(type);
         return boosted && type === C3NetworkType.C3 ? name + '(B)' : name;
     }
 
@@ -1493,10 +1638,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         if (this.data.readOnly) return;
 
         if (network.peerIds) {
-            const result = C3NetworkUtil.removeUnitFromPeerNetwork(this.networks(), unitId);
+            const result = C3NetworkEditor.removeConnection(this.networks(), network.id, undefined, unitId);
             this.networks.set(result.networks);
         } else if (memberStr) {
-            const result = C3NetworkUtil.removeMemberFromNetwork(this.networks(), network.id, memberStr);
+            const result = C3NetworkEditor.removeConnection(this.networks(), network.id, memberStr);
             this.networks.set(result.networks);
         }
         this.hasModifications.set(true);
@@ -1513,6 +1658,26 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const nodes = this.nodes();
         const groups = this.getGroups();
         let networks = [...this.networks()];
+
+        // Prune only empty same-unit internal branches. An external C3M remains a valid
+        // terminal Master child even when it has no children of its own.
+        let removedEmptyMasterBranch = true;
+        while (removedEmptyMasterBranch) {
+            removedEmptyMasterBranch = false;
+            const model = new C3Network(networks);
+            networks = networks.flatMap(network => {
+                if (network.type !== C3NetworkType.C3 || !network.members) return [network];
+                const members = network.members.filter(member => {
+                    const endpoint = C3Network.parseMember(member);
+                    if (endpoint.compIndex === undefined) return true;
+                    if (endpoint.unitId !== network.masterId) return true;
+                    const branch = model.masterNetwork(endpoint.unitId, endpoint.compIndex);
+                    return !!branch?.members?.length;
+                });
+                if (members.length !== network.members.length) removedEmptyMasterBranch = true;
+                return members.length ? [{ ...network, members }] : [];
+            });
+        }
 
         // Build group membership map
         const unitGroupMap = new Map<string, string>();
@@ -1556,9 +1721,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             const limit = C3_NETWORK_LIMITS[networkType];
 
             // Skip peers that are already in a network: don't re-wire them
-            const unconnectedPeers = allPeersOfType.filter(
-                n => !C3NetworkUtil.isUnitConnected(n.unit.id, networks)
-            );
+            const peerModel = new C3Network(networks);
+            const unconnectedPeers = allPeersOfType.filter(n => !peerModel.isUnitConnected(n.unit.id));
             if (unconnectedPeers.length < 2) continue;
 
             // Sort peers by group to keep same-group units together
@@ -1603,9 +1767,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     const peerComp0 = chunk[0].c3Components.findIndex(c => c.role === C3Role.PEER);
                     const peerCompJ = chunk[j].c3Components.findIndex(c => c.role === C3Role.PEER);
                     if (peerComp0 >= 0 && peerCompJ >= 0) {
-                        const canConnect = C3NetworkUtil.canConnectToPin(chunk[0], peerComp0, chunk[j], peerCompJ, ctx.networks);
+                        const canConnect = C3NetworkEditor.canConnect(chunk[0], peerComp0, chunk[j], peerCompJ, ctx.networks);
                         if (canConnect.valid) {
-                            const result = C3NetworkUtil.createConnection(ctx, chunk[0], peerComp0, chunk[j], peerCompJ);
+                            const result = C3NetworkEditor.connect(ctx, chunk[0], peerComp0, chunk[j], peerCompJ);
                             if (result.success) {
                                 networks = result.networks;
                                 ctx.networks = networks;
@@ -1620,7 +1784,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         // The goal is to:
         // 1. Connect all slaves to master pins (prefer single-pin masters first)
         // 2. Connect master networks together using multi-pin masters as Grand Masters
-        // 3. Connect any orphan masters
+        // 3. Leave unused Master endpoints disconnected
 
         // Collect all master pins with metadata
         interface MasterPin {
@@ -1655,25 +1819,19 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
         // Helper to count how many more slaves a master pin can accept
         const getAvailableSlaveSlots = (pin: MasterPin, nets: SerializedC3NetworkGroup[]): number => {
-            const net = C3NetworkUtil.findMasterNetwork(pin.node.unit.id, pin.compIndex, nets);
+            const net = new C3Network(nets).masterNetwork(pin.node.unit.id, pin.compIndex);
             if (!net) return slaveLimit;
-            // Count only slave members (not sub-masters)
-            const slaveMembers = (net.members || []).filter(m => {
-                const parsed = C3NetworkUtil.parseMember(m);
-                return parsed.compIndex === undefined; // Slaves don't have compIndex
-            }).length;
-            return slaveLimit - slaveMembers;
+            return slaveLimit - (net.members?.length ?? 0);
         };
 
         // Helper to check if a pin is already a child of another master
         const isPinChild = (pin: MasterPin, nets: SerializedC3NetworkGroup[]): boolean => {
-            const memberStr = C3NetworkUtil.createMasterMember(pin.node.unit.id, pin.compIndex);
-            return nets.some(n => n.members?.includes(memberStr));
+            return !!new C3Network(nets).parentNetworkForEndpoint(pin.node.unit.id, pin.compIndex);
         };
 
         // Helper to check if a pin has an active network
         const pinHasNetwork = (pin: MasterPin, nets: SerializedC3NetworkGroup[]): boolean => {
-            const net = C3NetworkUtil.findMasterNetwork(pin.node.unit.id, pin.compIndex, nets);
+            const net = new C3Network(nets).masterNetwork(pin.node.unit.id, pin.compIndex);
             return !!(net && net.members && net.members.length > 0);
         };
 
@@ -1681,7 +1839,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         // Pre-populate connectedSlaves from existing networks so we don't re-wire them
         const connectedSlaves = new Set<string>();
         for (const slaveNode of slaveOnlyNodes) {
-            if (C3NetworkUtil.isUnitConnected(slaveNode.unit.id, networks)) {
+            if (new C3Network(networks).isUnitConnected(slaveNode.unit.id)) {
                 connectedSlaves.add(slaveNode.unit.id);
             }
         }
@@ -1726,14 +1884,14 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const ctx = this.getNetworkContext();
                 ctx.networks = networks;
                 
-                const canConnect = C3NetworkUtil.canConnectToPin(
+                const canConnect = C3NetworkEditor.canConnect(
                     masterPin.node, masterPin.compIndex, 
                     slaveNode, slaveCompIdx, 
                     networks
                 );
                 
                 if (canConnect.valid) {
-                    const result = C3NetworkUtil.createConnection(
+                    const result = C3NetworkEditor.connect(
                         ctx, 
                         masterPin.node, masterPin.compIndex, 
                         slaveNode, slaveCompIdx
@@ -1757,7 +1915,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         
         // Helper to get available slots under a GM pin
         const getGmAvailableSlots = (pin: MasterPin, nets: SerializedC3NetworkGroup[]): number => {
-            const net = C3NetworkUtil.findMasterNetwork(pin.node.unit.id, pin.compIndex, nets);
+            const net = new C3Network(nets).masterNetwork(pin.node.unit.id, pin.compIndex);
             return gmLimit - (net?.members?.length ?? 0);
         };
         
@@ -1806,17 +1964,17 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     const ctx = this.getNetworkContext();
                     ctx.networks = networks;
                     
-                    const canConnect = C3NetworkUtil.canConnectToPin(
-                        masterPin.node, masterPin.compIndex,
+                    const canConnect = C3NetworkEditor.canConnect(
                         gmPin.node, gmPin.compIndex,
+                        masterPin.node, masterPin.compIndex,
                         networks
                     );
                     
                     if (canConnect.valid) {
-                        const result = C3NetworkUtil.createConnection(
+                        const result = C3NetworkEditor.connect(
                             ctx,
-                            masterPin.node, masterPin.compIndex,
-                            gmPin.node, gmPin.compIndex
+                            gmPin.node, gmPin.compIndex,
+                            masterPin.node, masterPin.compIndex
                         );
                         if (result.success) {
                             networks = result.networks;
@@ -1830,7 +1988,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 if (externalConnectionMade) break; // Restart the whole loop
             }
             
-            // Pass 2: If no external connection was made, try ONE internal connection
+            // Pass 2: If no external connection was made, promote ONE internal endpoint
+            // above this useful branch. Never attach an empty internal endpoint as a child.
             // Only consider masters on nodes with multiple pins (single-pin masters can't have internal connections)
             if (!externalConnectionMade) {
                 for (const masterPin of mastersNeedingGm().filter(p => p.pinCount > 1)) {
@@ -1845,16 +2004,16 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         const ctx = this.getNetworkContext();
                         ctx.networks = networks;
                         
-                        const canConnect = C3NetworkUtil.canConnectToPin(
-                            masterPin.node, masterPin.compIndex,
+                        const canConnect = C3NetworkEditor.canConnect(
                             gmPin.node, gmPin.compIndex,
+                            masterPin.node, masterPin.compIndex,
                             networks
                         );
                         if (canConnect.valid) {
-                            const result = C3NetworkUtil.createConnection(
+                            const result = C3NetworkEditor.connect(
                                 ctx,
-                                masterPin.node, masterPin.compIndex,
-                                gmPin.node, gmPin.compIndex
+                                gmPin.node, gmPin.compIndex,
+                                masterPin.node, masterPin.compIndex
                             );
                             if (result.success) {
                                 networks = result.networks;
@@ -1865,112 +2024,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     }
                     
                     if (hierarchyChanged) break; // Only do ONE internal, then restart external
-                }
-            }
-        }
-
-        // Step 3: Connect orphan master pins (masters with no connections at all)
-        // Same logic: external first, then internal
-        hierarchyChanged = true;
-        while (hierarchyChanged) {
-            hierarchyChanged = false;
-            
-            const orphanPins = () => allMasterPins.filter(pin => {
-                const hasNet = pinHasNetwork(pin, networks);
-                const isChild = isPinChild(pin, networks);
-                return !hasNet && !isChild;
-            });
-            
-            // Pass 1: External connections
-            let externalConnectionMade = false;
-            for (const orphanPin of orphanPins()) {
-                const orphanGroup = unitGroupMap.get(orphanPin.node.unit.id) || '';
-                
-                const externalCandidates = allMasterPins.filter(candidate => {
-                    if (candidate.node.unit.id === orphanPin.node.unit.id) return false;
-                    if (orphanGroup && unitGroupMap.get(candidate.node.unit.id) !== orphanGroup) return false; // Same group only
-                    return getGmAvailableSlots(candidate, networks) > 0;
-                });
-                
-                externalCandidates.sort((a, b) => {
-                    const aHasNet = pinHasNetwork(a, networks) ? 0 : 1;
-                    const bHasNet = pinHasNetwork(b, networks) ? 0 : 1;
-                    if (aHasNet !== bHasNet) return aHasNet - bHasNet;
-                    
-                    // Prefer heavier units as GMs (higher tonnage = lower sort value)
-                    const aTonnage = a.node.unit.getUnit().tons ?? 0;
-                    const bTonnage = b.node.unit.getUnit().tons ?? 0;
-                    if (aTonnage !== bTonnage) return bTonnage - aTonnage;
-                    
-                    // Prefer slower units as GMs (lower movement = lower sort value)
-                    const aMove = a.node.unit.getUnit().walk ?? 99;
-                    const bMove = b.node.unit.getUnit().walk ?? 99;
-                    return aMove - bMove;
-                });
-                
-                for (const gmPin of externalCandidates) {
-                    const ctx = this.getNetworkContext();
-                    ctx.networks = networks;
-                    
-                    const canConnect = C3NetworkUtil.canConnectToPin(
-                        orphanPin.node, orphanPin.compIndex,
-                        gmPin.node, gmPin.compIndex,
-                        networks
-                    );
-                    
-                    if (canConnect.valid) {
-                        const result = C3NetworkUtil.createConnection(
-                            ctx,
-                            orphanPin.node, orphanPin.compIndex,
-                            gmPin.node, gmPin.compIndex
-                        );
-                        if (result.success) {
-                            networks = result.networks;
-                            externalConnectionMade = true;
-                            hierarchyChanged = true;
-                            break;
-                        }
-                    }
-                }
-                
-                if (externalConnectionMade) break;
-            }
-            
-            // Pass 2: Internal connections if no external
-            if (!externalConnectionMade) {
-                for (const orphanPin of orphanPins()) {
-                    const internalCandidates = allMasterPins.filter(candidate => {
-                        if (candidate.node.unit.id !== orphanPin.node.unit.id) return false;
-                        if (candidate.compIndex === orphanPin.compIndex) return false;
-                        if (isPinChild(candidate, networks)) return false;
-                        return getGmAvailableSlots(candidate, networks) > 0;
-                    });
-                    
-                    for (const gmPin of internalCandidates) {
-                        const ctx = this.getNetworkContext();
-                        ctx.networks = networks;
-                        
-                        const canConnect = C3NetworkUtil.canConnectToPin(
-                            orphanPin.node, orphanPin.compIndex,
-                            gmPin.node, gmPin.compIndex,
-                            networks
-                        );
-                        
-                        if (canConnect.valid) {
-                            const result = C3NetworkUtil.createConnection(
-                                ctx,
-                                orphanPin.node, orphanPin.compIndex,
-                                gmPin.node, gmPin.compIndex
-                            );
-                            if (result.success) {
-                                networks = result.networks;
-                                hierarchyChanged = true;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    if (hierarchyChanged) break;
                 }
             }
         }
@@ -2004,11 +2057,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 for (const masterPin of candidates) {
                     const ctx = this.getNetworkContext();
                     ctx.networks = networks;
-                    const canConnect = C3NetworkUtil.canConnectToPin(
+                    const canConnect = C3NetworkEditor.canConnect(
                         masterPin.node, masterPin.compIndex, slaveNode, slaveCompIdx, networks
                     );
                     if (canConnect.valid) {
-                        const result = C3NetworkUtil.createConnection(ctx, masterPin.node, masterPin.compIndex, slaveNode, slaveCompIdx);
+                        const result = C3NetworkEditor.connect(ctx, masterPin.node, masterPin.compIndex, slaveNode, slaveCompIdx);
                         if (result.success) {
                             networks = result.networks;
                             connectedSlaves.add(slaveNode.unit.id);
@@ -2048,11 +2101,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         for (const gmPin of gmCandidates) {
                             const ctx = this.getNetworkContext();
                             ctx.networks = networks;
-                            const canConnect = C3NetworkUtil.canConnectToPin(
-                                rootPin.node, rootPin.compIndex, gmPin.node, gmPin.compIndex, networks
+                            const canConnect = C3NetworkEditor.canConnect(
+                                gmPin.node, gmPin.compIndex, rootPin.node, rootPin.compIndex, networks
                             );
                             if (canConnect.valid) {
-                                const result = C3NetworkUtil.createConnection(ctx, rootPin.node, rootPin.compIndex, gmPin.node, gmPin.compIndex);
+                                const result = C3NetworkEditor.connect(ctx, gmPin.node, gmPin.compIndex, rootPin.node, rootPin.compIndex);
                                 if (result.success) {
                                     networks = result.networks;
                                     changed = true;
@@ -2066,54 +2119,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             };
             linkRootMasters();
 
-            // (c) Remaining orphan masters → attach cross-group
-            {
-                let changed = true;
-                while (changed) {
-                    changed = false;
-                    const orphans = allMasterPins.filter(pin => !pinHasNetwork(pin, networks) && !isPinChild(pin, networks));
-
-                    for (const orphanPin of orphans) {
-                        const gmCandidates = allMasterPins
-                            .filter(c => {
-                                if (c.node.unit.id === orphanPin.node.unit.id && c.compIndex === orphanPin.compIndex) return false;
-                                if (isPinChild(c, networks)) return false;
-                                return getGmAvailableSlots(c, networks) > 0;
-                            })
-                            .sort((a, b) => {
-                                const aHasNet = pinHasNetwork(a, networks) ? 0 : 1;
-                                const bHasNet = pinHasNetwork(b, networks) ? 0 : 1;
-                                if (aHasNet !== bHasNet) return aHasNet - bHasNet;
-
-                                const aTonnage = a.node.unit.getUnit().tons ?? 0;
-                                const bTonnage = b.node.unit.getUnit().tons ?? 0;
-                                if (aTonnage !== bTonnage) return bTonnage - aTonnage;
-                                const aMove = a.node.unit.getUnit().walk ?? 99;
-                                const bMove = b.node.unit.getUnit().walk ?? 99;
-                                return aMove - bMove;
-                            });
-
-                        for (const gmPin of gmCandidates) {
-                            const ctx = this.getNetworkContext();
-                            ctx.networks = networks;
-                            const canConnect = C3NetworkUtil.canConnectToPin(
-                                orphanPin.node, orphanPin.compIndex, gmPin.node, gmPin.compIndex, networks
-                            );
-                            if (canConnect.valid) {
-                                const result = C3NetworkUtil.createConnection(ctx, orphanPin.node, orphanPin.compIndex, gmPin.node, gmPin.compIndex);
-                                if (result.success) {
-                                    networks = result.networks;
-                                    changed = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (changed) break;
-                    }
-                }
-            }
-
-            // (c-2) Remaining orphan slaves → attach to any master with available slots
+            // (c) Remaining orphan slaves → attach to any master with available slots
             const stillUnconnectedSlaves = slaveOnlyNodes.filter(n => !connectedSlaves.has(n.unit.id));
             for (const slaveNode of stillUnconnectedSlaves) {
                 const slaveCompIdx = slaveNode.c3Components.findIndex(c => c.role === C3Role.SLAVE);
@@ -2133,11 +2139,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 for (const masterPin of candidates) {
                     const ctx = this.getNetworkContext();
                     ctx.networks = networks;
-                    const canConnect = C3NetworkUtil.canConnectToPin(
+                    const canConnect = C3NetworkEditor.canConnect(
                         masterPin.node, masterPin.compIndex, slaveNode, slaveCompIdx, networks
                     );
                     if (canConnect.valid) {
-                        const result = C3NetworkUtil.createConnection(ctx, masterPin.node, masterPin.compIndex, slaveNode, slaveCompIdx);
+                        const result = C3NetworkEditor.connect(ctx, masterPin.node, masterPin.compIndex, slaveNode, slaveCompIdx);
                         if (result.success) {
                             networks = result.networks;
                             connectedSlaves.add(slaveNode.unit.id);
@@ -2170,8 +2176,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         }
 
         // Validate and clean the networks
-        const unitsMap = new Map(this.getUnits().map(u => [u.id, u.getUnit()]));
-        networks = C3NetworkUtil.validateAndCleanNetworks(networks, unitsMap);
+        const unitsMap = new Map(this.getUnits().map(u => [u.id, u]));
+        networks = C3NetworkEditor.clean(networks, unitsMap);
 
         this.networks.set(networks);
 
@@ -2223,7 +2229,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         }
 
         // Process master-slave networks (only top-level ones)
-        const topLevelNetworks = C3NetworkUtil.getTopLevelNetworks(networks);
+        const layoutModel = new C3Network(networks);
+        const topLevelNetworks = layoutModel.topLevelNetworks;
         for (const net of topLevelNetworks) {
             if (net.masterId && net.members && net.members.length > 0) {
                 const nodeIds: string[] = [net.masterId];
@@ -2231,12 +2238,12 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 // Collect all member unit IDs (including sub-networks)
                 const collectMembers = (network: SerializedC3NetworkGroup) => {
                     for (const memberStr of network.members || []) {
-                        const parsed = C3NetworkUtil.parseMember(memberStr);
+                        const parsed = C3Network.parseMember(memberStr);
                         if (parsed.unitId !== network.masterId && !nodeIds.includes(parsed.unitId)) {
                             nodeIds.push(parsed.unitId);
                         }
                         if (parsed.compIndex !== undefined) {
-                            const subNet = C3NetworkUtil.findMasterNetwork(parsed.unitId, parsed.compIndex, networks);
+                            const subNet = layoutModel.masterNetwork(parsed.unitId, parsed.compIndex);
                             if (subNet) collectMembers(subNet);
                         }
                     }
@@ -2357,8 +2364,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         for (const node of this.nodes()) {
             node.unit.setC3Position({ x: node.x, y: node.y });
         }
-        const unitsMap = new Map(this.getUnits().map(u => [u.id, u.getUnit()]));
-        this.networks.set(C3NetworkUtil.validateAndCleanNetworks(this.networks(), unitsMap));
+        const unitsMap = new Map(this.getUnits().map(u => [u.id, u]));
+        this.networks.set(C3NetworkEditor.clean(this.networks(), unitsMap));
         this.dialogRef.close({ networks: this.networks(), updated: this.hasModifications() });
     }
 

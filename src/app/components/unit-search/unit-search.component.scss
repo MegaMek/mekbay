@@ -365,13 +365,17 @@
     min-width: 0;
     min-height: 75px;
     box-sizing: border-box;
-    border-bottom: 1px solid #666;
+    border-bottom: 1px solid var(--border-color);
     font-size: 1em;
     cursor: pointer;
     flex-direction: row;
     gap: 4px;
     align-items: center;
     transition: background-color 0.2s;
+
+    &.compact-list-row {
+        min-height: var(--item-size, 75px);
+    }
     
     &.active {
         background-color: var(--background-highlight);
@@ -395,6 +399,24 @@
       width: 100%;
       min-height: 80px;
     }
+}
+
+.variable-virtual-scroll-item {
+    border-bottom: 1px solid var(--border-color);
+    transition: background-color 0.2s;
+
+    &:last-child {
+        border-bottom: none;
+    }
+
+    &.active {
+        background-color: var(--background-highlight);
+    }
+
+    &:hover {
+        background-color: var(--background-highlight);
+    }
+
 }
 
 /* Limit the slider width */
@@ -936,11 +958,6 @@
 .unit-search-as-table {
     flex: 1;
     min-height: 0;
-}
-
-.unit-search-as-table .mb-data-table-row-item {
-    min-height: 48px;
-    padding: 4px 0;
 }
 
 .as-th,

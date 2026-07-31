@@ -10,6 +10,7 @@ import { TooltipDirective } from './tooltip.directive';
         <div class="parent" [tooltip]="'Parent tooltip'" [tooltipDelay]="0">
             <span class="parent-label">Parent</span>
             <button class="child" type="button" [tooltip]="'Child tooltip'" tooltipType="error" [tooltipDelay]="0">Child</button>
+            <button class="negative" type="button" [tooltip]="[{ label: 'Apollo Destroyed', value: '+0', negative: true }]" [tooltipDelay]="0">Negative</button>
         </div>
     `,
 })
@@ -79,6 +80,20 @@ describe('TooltipDirective', () => {
 
         const tooltip = overlayContainerElement.querySelector('.tooltip-content');
         expect(tooltip?.classList.contains('error')).toBeTrue();
+    });
+
+    it('marks negative breakdown lines for red styling', async () => {
+        const fixture = TestBed.createComponent(TestHostComponent);
+        fixture.detectChanges();
+
+        const negative = fixture.nativeElement.querySelector('.negative') as HTMLElement;
+        dispatchPointerOver(negative);
+        await flushTooltipTasks(fixture);
+
+        const row = overlayContainerElement.querySelector('.tooltip-row');
+        expect(row?.classList.contains('negative')).toBeTrue();
+        expect(row?.textContent).toContain('Apollo Destroyed');
+        expect(row?.textContent).toContain('+0');
     });
 
     function getTooltipTexts(): string[] {

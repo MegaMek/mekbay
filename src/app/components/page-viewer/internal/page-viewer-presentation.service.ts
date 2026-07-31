@@ -1,9 +1,12 @@
 import { Injectable } from '@angular/core';
 
 import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
+import { resolveCenterPanelTables } from '../../../utils/record-sheet-center-panel.util';
 
 @Injectable()
 export class PageViewerPresentationService {
+    private readonly centerPanelTablesBySvg = new WeakMap<SVGSVGElement, readonly SVGGraphicsElement[]>();
+
     updateSelectedPageHighlight(wrappers: readonly HTMLDivElement[], currentUnitId: string | null): void {
         wrappers.forEach((wrapper) => {
             wrapper.classList.toggle('selected', wrapper.dataset['unitId'] === currentUnitId);
@@ -31,27 +34,41 @@ export class PageViewerPresentationService {
     }
 
     applyFluffImageVisibilityToSvg(svg: SVGSVGElement, showFluff: boolean): void {
-        const injectedEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
-        if (!injectedEl) {
-            return;
-        }
-
-        const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
-        if (referenceTables.length === 0) {
+        const fluffElements = [
+            svg.getElementById('fluff-image-fo'),
+            svg.getElementById('fluff-image-injected'),
+            svg.getElementById('fluffImage'),
+            svg.getElementById('fluffSinglePilot'),
+            svg.getElementById('fluffDualPilot'),
+            svg.getElementById('fluffTriplePilot'),
+        ].filter((element): element is SVGElement => element instanceof SVGElement);
+        const referenceTables = this.resolveCenterPanelTables(svg);
+        if (fluffElements.length === 0 && referenceTables.length === 0) {
             return;
         }
 
         if (showFluff) {
-            injectedEl.style.setProperty('display', 'block');
+            fluffElements.forEach(element => element.style.setProperty('display', 'block'));
             referenceTables.forEach((referenceTable) => {
                 referenceTable.style.display = 'none';
             });
             return;
         }
 
-        injectedEl.style.setProperty('display', 'none');
+        fluffElements.forEach(element => element.style.setProperty('display', 'none'));
         referenceTables.forEach((referenceTable) => {
             referenceTable.style.display = 'block';
         });
+    }
+
+    private resolveCenterPanelTables(svg: SVGSVGElement): readonly SVGGraphicsElement[] {
+        const cachedTables = this.centerPanelTablesBySvg.get(svg);
+        if (cachedTables) {
+            return cachedTables;
+        }
+
+        const tables = resolveCenterPanelTables(svg);
+        this.centerPanelTablesBySvg.set(svg, tables);
+        return tables;
     }
 }

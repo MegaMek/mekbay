@@ -28,6 +28,8 @@ import { ForceNameWordsCatalogService } from './catalogs/force-name-words-catalo
 import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { MULFACTION_NONE } from '../models/mulfactions.model';
+import { EquipmentRegistry } from '../models/equipment-lookup';
+import { MiscEquipment } from '../models/equipment.model';
 
 function createUnit(name: string): Unit {
     return createEmptyUnit({ name });
@@ -64,8 +66,7 @@ describe('DataService', () => {
     };
     const equipmentCatalogMock = {
         initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
-        getEquipments: jasmine.createSpy('getEquipments').and.returnValue({}),
-        getEquipmentByName: jasmine.createSpy('getEquipmentByName').and.returnValue(undefined),
+        getEquipmentRegistry: jasmine.createSpy('getEquipmentRegistry').and.returnValue(new EquipmentRegistry({})),
     };
     const erasCatalogMock = {
         initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
@@ -158,10 +159,8 @@ describe('DataService', () => {
         unitsCatalogMock.getUnits.and.returnValue([]);
         equipmentCatalogMock.initialize.calls.reset();
         equipmentCatalogMock.initialize.and.resolveTo(undefined);
-        equipmentCatalogMock.getEquipments.calls.reset();
-        equipmentCatalogMock.getEquipments.and.returnValue({});
-        equipmentCatalogMock.getEquipmentByName.calls.reset();
-        equipmentCatalogMock.getEquipmentByName.and.returnValue(undefined);
+        equipmentCatalogMock.getEquipmentRegistry.calls.reset();
+        equipmentCatalogMock.getEquipmentRegistry.and.returnValue(new EquipmentRegistry({}));
         erasCatalogMock.initialize.calls.reset();
         erasCatalogMock.initialize.and.resolveTo(undefined);
         erasCatalogMock.getEras.calls.reset();
@@ -276,6 +275,21 @@ describe('DataService', () => {
         service.getUnitByName('Mad Cat Prime');
 
         expect(unitRuntimeServiceMock.getUnitByName).toHaveBeenCalledOnceWith('Mad Cat Prime');
+    });
+
+    it('resolves equipment names through the catalog registry', () => {
+        const equipment = new MiscEquipment({
+            id: 'Canonical Equipment',
+            name: 'Canonical Equipment',
+            type: 'misc',
+            aliases: ['Legacy Equipment'],
+        });
+        equipmentCatalogMock.getEquipmentRegistry.and.returnValue(new EquipmentRegistry({
+            [equipment.internalName]: equipment,
+        }));
+
+        expect(service.findEquipment('  Legacy Equipment  ')).toBe(equipment);
+        expect(service.findEquipment('Missing Equipment')).toBeUndefined();
     });
 
     it('delegates Sarna page-title lookup to the Sarna catalog', () => {
@@ -564,7 +578,45 @@ describe('DataService', () => {
         expect(service.isDataReady()).toBeTrue();
     });
 
-    it('initializes MegaMek availability on demand once without bumping the search corpus version', async () => {
+    it('waits for sourcebooks and quirks before initializing units', async () => {
+        let resolveSourcebooks!: () => void;
+        let resolveQuirks!: () => void;
+        sourcebooksCatalogMock.initialize.and.returnValue(new Promise<void>((resolve) => {
+            resolveSourcebooks = resolve;
+        }));
+        quirksCatalogMock.initialize.and.returnValue(new Promise<void>((resolve) => {
+            resolveQuirks = resolve;
+        }));
+
+        const initialization = service.initialize();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(sourcebooksCatalogMock.initialize).toHaveBeenCalledTimes(1);
+        expect(quirksCatalogMock.initialize).toHaveBeenCalledTimes(1);
+        expect(unitsCatalogMock.initialize).not.toHaveBeenCalled();
+
+        resolveSourcebooks();
+        await Promise.resolve();
+        expect(unitsCatalogMock.initialize).not.toHaveBeenCalled();
+
+        resolveQuirks();
+        await initialization;
+
+        expect(unitsCatalogMock.initialize).toHaveBeenCalledTimes(1);
+        expect(service.isDataReady()).toBeTrue();
+    });
+
+    it('does not initialize units when sourcebooks fail', async () => {
+        sourcebooksCatalogMock.initialize.and.rejectWith(new Error('sourcebooks unavailable'));
+
+        await service.initialize();
+
+        expect(unitsCatalogMock.initialize).not.toHaveBeenCalled();
+        expect(service.isDataReady()).toBeFalse();
+    });
+
+    it('does not bump versions repeatedly when ensuring MegaMek availability', async () => {
         expect(service.searchCorpusVersion()).toBe(0);
         expect(service.megaMekAvailabilityVersion()).toBe(0);
 
@@ -576,10 +628,10 @@ describe('DataService', () => {
         expect(await service.ensureMegaMekAvailabilityCatalogInitialized()).toBeTrue();
         expect(service.searchCorpusVersion()).toBe(0);
         expect(service.megaMekAvailabilityVersion()).toBe(1);
-        expect(megaMekAvailabilityCatalogMock.initialize).toHaveBeenCalledTimes(1);
+        expect(megaMekAvailabilityCatalogMock.initialize).toHaveBeenCalledTimes(2);
     });
 
-    it('logs the failing startup catalog name during initialize', async () => {
+    it('blocks unit initialization when the quirks catalog fails', async () => {
         quirksCatalogMock.initialize.and.rejectWith(
             new TypeError("Cannot read properties of undefined (reading 'length')"),
         );
@@ -590,8 +642,9 @@ describe('DataService', () => {
             'Failed to initialize catalog service "quirks": TypeError: Cannot read properties of undefined (reading \'length\')',
         ]);
         expect(loggerServiceMock.error.calls.allArgs()).toContain([
-            'Failed to initialize 1 catalog service: "quirks"',
+            'Failed to initialize data: Error: Cannot initialize units before required catalogs are ready: quirks.',
         ]);
-        expect(service.isDataReady()).toBeTrue();
+        expect(unitsCatalogMock.initialize).not.toHaveBeenCalled();
+        expect(service.isDataReady()).toBeFalse();
     });
 });

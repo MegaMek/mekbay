@@ -33,14 +33,11 @@
 
 import type { Equipment } from './equipment.model';
 import { Sanitizer } from '../utils/sanitizer.util';
-import type { ForceUnit } from './force-unit.model';
 import type { GameSystem } from './common.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import type { C3NetworkType } from './c3-network.model';
 import type { MotiveModes } from './motiveModes.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
-export { MountedEquipment } from './mounted-equipment.model';
-export type { MountedEquipmentInit } from './mounted-equipment.model';
 
 export const FORCE_NOTE_MAX_LENGTH = 2000;
 export const FORCE_TAG_MAX_LENGTH = 48;
@@ -116,6 +113,8 @@ export interface SerializedTurnState {
     moveDistance?: number;
     dmgReceived?: number;
     weaponsHeat?: number;
+    acknowledgedHeatSources?: Record<string, string>;
+    heatDissipationConsumed?: number;
     psrChecks?: SerializedPSRChecks;
     applyMovePSR?: boolean;
     spotting?: boolean;
@@ -427,8 +426,8 @@ export const C3_NETWORK_GROUP_SCHEMA = Sanitizer.schema<SerializedC3NetworkGroup
 export const HEAT_SCHEMA = Sanitizer.schema<HeatProfile>()
     .number('current', { default: 0, min: 0 })
     .number('previous', { default: 0, min: 0 })
-    .number('next')
-    .number('heatsinksOff', { min: 0 })
+    .custom('next', sanitizeOptionalNonNegativeNumber)
+    .custom('heatsinksOff', sanitizeOptionalNonNegativeNumber)
     .build();
 
 const MOTIVE_MODE_VALUES: readonly MotiveModes[] = ['stationary', 'walk', 'run', 'jump', 'UMU', 'VTOL'];
@@ -445,9 +444,11 @@ export const PSR_CHECKS_SCHEMA = Sanitizer.schema<SerializedPSRChecks>()
 export const TURN_STATE_SCHEMA = Sanitizer.schema<SerializedTurnState>()
     .custom('airborne', (value: unknown) => typeof value === 'boolean' ? value : undefined)
     .custom('moveMode', (value: unknown) => MOTIVE_MODE_VALUES.includes(value as MotiveModes) ? value as MotiveModes : undefined)
-    .number('moveDistance', { min: 0 })
-    .number('dmgReceived', { min: 0 })
-    .number('weaponsHeat', { min: 0 })
+    .custom('moveDistance', sanitizeOptionalNonNegativeNumber)
+    .custom('dmgReceived', sanitizeOptionalNonNegativeNumber)
+    .custom('weaponsHeat', sanitizeOptionalNonNegativeNumber)
+    .custom('acknowledgedHeatSources', sanitizeStringRecord)
+    .custom('heatDissipationConsumed', sanitizeOptionalNonNegativeNumber)
     .custom('psrChecks', (value: unknown) => {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
         const psrChecks = Sanitizer.sanitize(value, PSR_CHECKS_SCHEMA);
@@ -503,15 +504,36 @@ function sanitizeStringArray(value: unknown): string[] | undefined {
     return values.length > 0 ? [...new Set(values)] : undefined;
 }
 
+function sanitizeStringRecord(value: unknown): Record<string, string> | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const result: Record<string, string> = {};
+    for (const [key, rawEntry] of Object.entries(value as Record<string, unknown>)) {
+        const normalizedKey = key.trim();
+        const entry = typeof rawEntry === 'string' ? rawEntry.trim() : '';
+        if (normalizedKey.length === 0 || entry.length === 0) {
+            continue;
+        }
+        result[normalizedKey] = entry;
+    }
+    return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function sanitizeOptionalNonNegativeNumber(value: unknown): number | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const parsed = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : undefined;
+}
+
 function sanitizeNumberRecord(value: unknown): Record<string, number> | undefined {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
     const result: Record<string, number> = {};
     for (const [key, rawEntry] of Object.entries(value as Record<string, unknown>)) {
+        const normalizedKey = key.trim();
         const entry = typeof rawEntry === 'number' ? rawEntry : Number(rawEntry);
-        if (key.trim().length === 0 || !Number.isFinite(entry) || entry === 0) {
+        if (normalizedKey.length === 0 || !Number.isInteger(entry) || entry <= 0) {
             continue;
         }
-        result[key] = entry;
+        result[normalizedKey] = entry;
     }
     return Object.keys(result).length > 0 ? result : undefined;
 }

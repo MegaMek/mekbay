@@ -13,7 +13,7 @@
 </div>
 }
 
-<div class="searchbar-container" [class.expanded]="this.expandedView()">
+<div #searchbarContainer class="searchbar-container" [class.expanded]="this.expandedView()">
     @if (buttonOnly() && !this.expandedView()) {
     <button type="button" class="bt-button expand-btn square-large" (click)="toggleExpandedView()" title="Toggle Expanded View">
         <svg stroke="currentColor" width="24px" height="24px" viewBox="0 0 24 24" fill="none"
@@ -241,9 +241,7 @@
                         <span class="chassis-view-chassis-name">{{ group.chassis }}</span>
                         <span class="chassis-view-type">{{ formatVariantGroupType(group) }}@if (group.omni) {<span class="chassis-view-omni">(omni)</span>}</span>
                     </div>
-                    <div class="chassis-view-td chassis-view-td-value">{{ gameService.isAlphaStrike()
-                        ? (group.minPV === group.maxPV ? '' + group.minPV : group.minPV + '–' + group.maxPV)
-                        : (group.minBV === group.maxBV ? '' + group.minBV : group.minBV + '–' + group.maxBV) }}</div>
+                    <div class="chassis-view-td chassis-view-td-value">{{ formatChassisGroupBvPv(group) }}</div>
                     @if (chassisSortSlotHeader()) {
                     <div class="chassis-view-td chassis-view-td-sort-slot">{{ getChassisGroupSortSlot(group) }}</div>
                     }
@@ -269,6 +267,7 @@
                         (longPress)="multiSelectUnit(unit)">
                         <alpha-strike-card
                             [unit]="unit"
+                            [skillOverride]="gunnery"
                             [useHex]="useHex()"
                             [cardStyle]="cardStyle()"
                             [isSelected]="isUnitSelected(unit)" />
@@ -281,6 +280,7 @@
                 [rows]="resultUnits"
                 [columns]="unitSearchTableColumns()"
                 [itemSize]="48"
+                [rowKeys]="displayedUnitKeys()"
                 [minWidth]="unitSearchTableMinWidth()"
                 [sortDirection]="filtersService.selectedSortDirection()"
                 [rowTrackBy]="trackByUnitId"
@@ -330,7 +330,7 @@
             </ng-template>
 
             <ng-template #tablePvCell let-unit>
-                <div class="as-td as-td-pv">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</div>
+                <div class="as-td as-td-pv">{{ formatAlphaStrikePv(unit, gunnery) }}</div>
             </ng-template>
 
             <ng-template #tableMovementCell let-unit>
@@ -354,75 +354,90 @@
                     <unit-tags [unit]="unit" mode="full" size="small" (tagClick)="onAddTag($event)" />
                 </div>
             </ng-template>
-            } @else {
-            <cdk-virtual-scroll-viewport class="results-dropdown-viewport" [itemSize]="this.itemSize()"
-                [style.--item-size.px]="this.itemSize()" minBufferPx="900" maxBufferPx="1600" tabindex="0">
-                <div class="results-dropdown-item"
+            } @else if (this.expandedView()) {
+            <cdk-virtual-scroll-viewport class="results-dropdown-viewport variable-list-viewport"
+                [mbVariableSizeVirtualScroll]="displayedUnitKeys()"
+                [estimatedItemSize]="300"
+                [minBufferPx]="900"
+                [maxBufferPx]="1600"
+                tabindex="0">
+                <div class="results-dropdown-item variable-virtual-scroll-item"
                     *cdkVirtualFor="let unit of resultUnits; let i = index; trackBy: trackByUnitId"
                     [class.selected]="isUnitSelected(unit)"
                     [class.active]="activeIndex() === i"
                     [class.panel-selected]="showInlinePanel() && inlinePanelUnit()?.name === unit.name"
                     (pointerenter)="onResultPointerHover(i, $event)"
                     (pointermove)="onResultPointerHover(i, $event)">
-
-                    @if (this.expandedView()) {
-                        <!-- Expanded View Cards -->
-                        @if (gameService.isAlphaStrike()) {
-                        <!-- AS Expanded Card (hidden at >= 1200px, replaced by table row) -->
-                        <unit-card-expanded class="as-card-view"
-                            longPress
-                            (shortPress)="onUnitCardClick(unit, $event)"
-                            (longPress)="multiSelectUnit(unit, $event)"
-                            [unit]="unit"
-                            [gunnery]="gunnery"
-                            [useHex]="useHex()"
-                            [megaMekAvailability]="getSearchResultMegaMekAvailability(unit)"
-                            [sortKey]="currentSortKey()"
-                            [isSelected]="isUnitSelected(unit)"
-                            [sortSlotLabel]="currentSortSlotLabel()"
-                            [sortSlotOverride]="getCardSortSlotOverride(unit)"
-                            [searchTokens]="this.filtersService.searchTokens()"
-                            (tagClick)="onAddTag($event)">
-                        </unit-card-expanded>
-                        } @else {
-                        <!-- BT Expanded Card -->
-                        <unit-card-expanded
-                            longPress
-                            (shortPress)="onUnitCardClick(unit, $event)"
-                            (longPress)="multiSelectUnit(unit, $event)"
-                            [unit]="unit"
-                            [gunnery]="gunnery"
-                            [piloting]="piloting"
-                            [megaMekAvailability]="getSearchResultMegaMekAvailability(unit)"
-                            [isSelected]="isUnitSelected(unit)"
-                            [sortKey]="currentSortKey()"
-                            [sortSlotLabel]="currentSortSlotLabel()"
-                            [sortSlotOverride]="getCardSortSlotOverride(unit)"
-                            [searchTokens]="this.filtersService.searchTokens()"
-                            (tagClick)="onAddTag($event)">
-                        </unit-card-expanded>
-                        }
+                    @if (gameService.isAlphaStrike()) {
+                    <unit-card-expanded class="as-card-view"
+                        longPress
+                        (shortPress)="onUnitCardClick(unit, $event)"
+                        (longPress)="multiSelectUnit(unit, $event)"
+                        [unit]="unit"
+                        [gunnery]="gunnery"
+                        [useBvPvDisplayOption]="true"
+                        [useHex]="useHex()"
+                        [megaMekAvailability]="getSearchResultMegaMekAvailability(unit)"
+                        [sortKey]="currentSortKey()"
+                        [isSelected]="isUnitSelected(unit)"
+                        [sortSlotLabel]="currentSortSlotLabel()"
+                        [sortSlotOverride]="getCardSortSlotOverride(unit)"
+                        [searchTokens]="this.filtersService.searchTokens()"
+                        (tagClick)="onAddTag($event)">
+                    </unit-card-expanded>
                     } @else {
-                        <!-- Compact View Card -->
-                        <unit-card-expanded
-                            longPress
-                            (shortPress)="onUnitCardClick(unit, $event)"
-                            (longPress)="multiSelectUnit(unit, $event)"
-                            [unit]="unit"
-                            [gunnery]="gunnery"
-                            [piloting]="piloting"
-                            [expandedView]="false"
-                            [showSelectCheckbox]="true"
-                            [megaMekAvailability]="getSearchResultMegaMekAvailability(unit)"
-                            [isSelected]="isUnitSelected(unit)"
-                            [sortKey]="currentSortKey()"
-                            [sortSlotLabel]="currentSortSlotLabel()"
-                            [sortSlotOverride]="getCardSortSlotOverride(unit)"
-                            [searchTokens]="this.filtersService.searchTokens()"
-                            (tagClick)="onAddTag($event)"
-                            (selectClick)="multiSelectUnit(unit)">
-                        </unit-card-expanded>
+                    <unit-card-expanded
+                        longPress
+                        (shortPress)="onUnitCardClick(unit, $event)"
+                        (longPress)="multiSelectUnit(unit, $event)"
+                        [unit]="unit"
+                        [gunnery]="gunnery"
+                        [piloting]="piloting"
+                        [useBvPvDisplayOption]="true"
+                        [megaMekAvailability]="getSearchResultMegaMekAvailability(unit)"
+                        [isSelected]="isUnitSelected(unit)"
+                        [sortKey]="currentSortKey()"
+                        [sortSlotLabel]="currentSortSlotLabel()"
+                        [sortSlotOverride]="getCardSortSlotOverride(unit)"
+                        [searchTokens]="this.filtersService.searchTokens()"
+                        (tagClick)="onAddTag($event)">
+                    </unit-card-expanded>
                     }
+                </div>
+            </cdk-virtual-scroll-viewport>
+            } @else {
+            <cdk-virtual-scroll-viewport class="results-dropdown-viewport variable-list-viewport"
+                [mbVariableSizeVirtualScroll]="displayedUnitKeys()"
+                [estimatedItemSize]="this.itemSize()"
+                [style.--item-size.px]="this.itemSize()"
+                [minBufferPx]="900"
+                [maxBufferPx]="1600"
+                tabindex="0">
+                <div class="results-dropdown-item compact-list-row variable-virtual-scroll-item"
+                    *cdkVirtualFor="let unit of resultUnits; let i = index; trackBy: trackByUnitId"
+                    [class.selected]="isUnitSelected(unit)"
+                    [class.active]="activeIndex() === i"
+                    (pointerenter)="onResultPointerHover(i, $event)"
+                    (pointermove)="onResultPointerHover(i, $event)">
+                    <unit-card-expanded
+                        longPress
+                        (shortPress)="onUnitCardClick(unit, $event)"
+                        (longPress)="multiSelectUnit(unit, $event)"
+                        [unit]="unit"
+                        [gunnery]="gunnery"
+                        [piloting]="piloting"
+                        [useBvPvDisplayOption]="true"
+                        [expandedView]="false"
+                        [showSelectCheckbox]="true"
+                        [megaMekAvailability]="getSearchResultMegaMekAvailability(unit)"
+                        [isSelected]="isUnitSelected(unit)"
+                        [sortKey]="currentSortKey()"
+                        [sortSlotLabel]="currentSortSlotLabel()"
+                        [sortSlotOverride]="getCardSortSlotOverride(unit)"
+                        [searchTokens]="this.filtersService.searchTokens()"
+                        (tagClick)="onAddTag($event)"
+                        (selectClick)="multiSelectUnit(unit)">
+                    </unit-card-expanded>
                 </div>
             </cdk-virtual-scroll-viewport>
             }
@@ -449,14 +464,14 @@
                     <span class="spanner"></span>
                     <div class="results-sort">
                         <select class="bt-input sort-select"
-                            (change)="this.filtersService.setSortOrder($any($event.target).value)">
+                            (change)="onSortOrderChange($any($event.target).value)">
                             @for (opt of SORT_OPTIONS; let i = $index; track i) {
                             @if (!opt.gameSystem || opt.gameSystem === this.gameSystem()) {
                             <option [value]="opt.key" [selected]="opt.key === this.filtersService.selectedSort()">{{ opt.label }}</option>
                             }
                             }
                         </select><button type="button" class="bt-button square-small sort-direction-btn"
-                            (click)="this.filtersService.setSortDirection(this.filtersService.selectedSortDirection() === 'asc' ? 'desc' : 'asc')"
+                            (click)="toggleSortDirection()"
                             [title]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
                             [attr.aria-label]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
                             @if (this.filtersService.selectedSortDirection() === 'asc') {
@@ -480,7 +495,7 @@
                             }
                         </button>
                     </div>
-                    <button type="button square" class="bt-button square-small generate-force-btn" (click)="showGenerateForceDialog()" title="Generate Force from Search Results" aria-label="Generate Force from Search Results">
+                    <button type="button" class="bt-button square-small generate-force-btn" (click)="showGenerateForceDialog()" title="Generate Force from Search Results" aria-label="Generate Force from Search Results">
                         <svg fill="currentColor" width="24px" height="24px" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
                             <path d="M30.8,2.29A.49.49,0,0,0,30.35,2H16.42a.5.5,0,0,0-.42.23l-10.71,17A.49.49,0,0,0,5.7,20h7.67L6.6,33.25a.52.52,0,0,0,.46.75h3a.5.5,0,0,0,.37-.16L28,14.85a.5.5,0,0,0-.37-.85H20.89L30.72,2.82A.49.49,0,0,0,30.8,2.29Z"></path>
                         </svg>

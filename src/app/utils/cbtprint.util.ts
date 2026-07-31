@@ -38,7 +38,8 @@ import type { Unit, UnitComponent } from '../models/units.model';
 import type { DataService } from '../services/data.service';
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import type { Injector } from '@angular/core';
-import { getInventoryControlModes, INVENTORY_CONTROL_MODE_STATE, syncSvgMode } from './inventory-control.util';
+import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
+import { getSelectedInventoryControlMode, INVENTORY_CONTROL_MODE_STATE, syncSvgMode } from './inventory-control.util';
 
 export interface CBTPrintServices {
     dataService: DataService;
@@ -184,7 +185,12 @@ export class CBTPrintUtil {
             if (entry.deleteState(INVENTORY_CONTROL_MODE_STATE)) {
                 printUnit.setInventoryEntry(entry);
             }
-            syncSvgMode(entry, getInventoryControlModes(entry)[0]?.mode ?? null, false);
+            const defaultMode = getSelectedInventoryControlMode(
+                entry,
+                EMPTY_EQUIPMENT_REGISTRY,
+                printUnit.getInventoryControlRules()
+            );
+            syncSvgMode(entry, defaultMode, false);
         }
     }
 
@@ -491,7 +497,7 @@ export class CBTPrintUtil {
                 <td class="col-bv is-numeric is-bold">${this.formatNumber(forceUnit.getBv())}</td>
                 <td class="col-tons is-numeric">${this.formatNumber(unit.tons)}</td>
                 <td class="col-year">${this.createYearValue(unit)}</td>
-                <td class="col-rules">${this.escapeHtml(this.formatTechBase(unit.techBase))}<br/>${this.escapeHtml(this.formatNumber(unit.level))}</td>
+                <td class="col-rules">${this.escapeHtml(this.formatTechBase(unit.techBase))}<br/>${this.escapeHtml(unit.level)}</td>
                 <td class="col-move">${this.escapeHtml(this.formatMovement(unit))}</td>
                 <td class="col-as is-numeric">${this.escapeHtml(this.formatArmorStructure(unit))}</td>
                 <td class="col-firepower is-numeric">${this.escapeHtml(this.formatNumber(unit._mdSumNoPhysical) || '—')}<br/>(${this.escapeHtml(this.formatNumber(unit.dpt) || '—')})</td>

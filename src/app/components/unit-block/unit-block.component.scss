@@ -264,6 +264,10 @@
         }
 
         &.c3link {
+            appearance: none;
+            border: 0;
+            color: inherit;
+            font: inherit;
             background-color: rgba(128, 128, 128, 0.5);
             
             &.enabled {

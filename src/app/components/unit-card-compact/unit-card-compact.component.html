@@ -31,7 +31,7 @@
             <div class="info-area">
                 @if (isAlphaStrike()) {
                     <div class="info-slot centered slim">
-                        <span class="value">PV: {{ u.as.PV | adjustedPV:gunnery() | formatNumber:true:true }}</span>
+                        <span class="value">PV: {{ u.as.PV | adjustedPV:gunnery() | formatNumber:true:false }}</span>
                     </div>
                     <div class="info-slot centered slim">
                         <span class="value">SZ: {{ u.as.SZ }}</span>
@@ -41,7 +41,7 @@
                     </div>
                 } @else {
                     <div class="info-slot numeric">
-                        <span class="value">BV: {{ u | adjustedBV:gunnery():piloting() | formatNumber:true:true }}</span>
+                        <span class="value">BV: {{ u | adjustedBV:gunnery():piloting() | formatNumber:true:false }}</span>
                     </div>
                     <div class="info-slot numeric">
                         <span class="value">{{ u.tons | formatTons }}</span>

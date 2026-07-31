@@ -32,7 +32,7 @@
  */
 
 import { Injectable, signal } from '@angular/core';
-import { generateUUID } from './ws.service';
+import { uuidv7 } from '../utils/uuid.util';
 
 /*
  * Author: Drake
@@ -54,7 +54,7 @@ export class ToastService {
     private timeouts = new Map<string, any>();
 
     showToast(message: string, type: Toast['type'], id?: string, data?: Toast['data']): string {
-        const toastId = id || generateUUID();
+        const toastId = id || uuidv7();
         let toasts = this.toastsSignal();
         
         // If ID provided, check if toast already exists

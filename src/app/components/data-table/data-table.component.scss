@@ -81,8 +81,8 @@
 
 .mb-data-table-row {
     min-height: var(--mb-data-table-item-size, 48px);
-    padding-top: 0;
-    padding-bottom: 0;
+    padding-top: 4px;
+    padding-bottom: 4px;
 }
 
 .mb-data-table-full-row {
@@ -93,8 +93,15 @@
 
 .mb-data-table-cell {
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
+}
+
+.mb-data-table-cell-text {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
 }
 
 .mb-data-table-header-cell {

@@ -53,6 +53,7 @@ import { StatBarSpecsPipe } from '../../pipes/stat-bar-specs.pipe';
 import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 import { ExpandedComponentsPipe } from '../../pipes/expanded-components.pipe';
 import { TooltipDirective } from '../../directives/tooltip.directive';
+import type { ColorScheme } from '../../models/options.model';
 import { type SearchTokensGroup, highlightMatches } from '../../utils/search.util';
 import { formatASDamageValue, isASDamageFilterKey } from '../../utils/as-damage.util';
 import type { TooltipLine } from '../tooltip/tooltip.component';
@@ -72,6 +73,10 @@ import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew
 import { formatMovement, isAerospace } from '../../utils/as-common.util';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import type { MegaMekUnitAvailabilityDetail } from '../../services/unit-availability-source.service';
+import { OptionsService } from '../../services/options.service';
+import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
+import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 
 /**
  * Author: Drake
@@ -104,6 +109,7 @@ export class UnitCardExpandedComponent {
     gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
     private abilityLookup = inject(AsAbilityLookupService);
+    private optionsService = inject(OptionsService);
     private expandedComponentsPipe = new ExpandedComponentsPipe();
     readonly unitTypeDisplayNames = AS_TYPE_DISPLAY_NAMES;
     readonly megaMekRequisitionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
@@ -125,6 +131,9 @@ export class UnitCardExpandedComponent {
 
     /** To force view of pilot skills even when we don't have a ForceUnit (e.g., force generator) */
     forceShowPilotInfo = input(false);
+
+    /** Apply the configured adjusted/base/both display to a plain search-result Unit. */
+    useBvPvDisplayOption = input(false);
 
     /** Forcibly override game system detection */
     gameSystemOverride = input<GameSystem | null>(null);
@@ -205,13 +214,35 @@ export class UnitCardExpandedComponent {
         return null;
     });
 
-    /** Resolved BV/PV value - uses ForceUnit's getBv if available, otherwise calculates from skills */
-    readonly resolvedBv = computed<number | null>(() => {
+    /** Resolved BV/PV display for a live ForceUnit; standalone Units continue using skill pipes. */
+    readonly resolvedBv = computed<string | null>(() => {
         const u = this.unit();
         if (this.isForceUnit(u)) {
-            return u.getBv();
+            return formatBvPv(
+                u.getBv(),
+                u.getPreSkillBv(),
+                this.optionsService.options().forceViewerBVPVDisplay,
+            );
         }
         return null; // Let the pipe calculate it
+    });
+
+    /** Resolved BV/PV display for compact cards, including plain unit-search results. */
+    readonly resolvedCompactBv = computed<string | null>(() => {
+        const resolvedForceUnitValue = this.resolvedBv();
+        if (resolvedForceUnitValue !== null) {
+            return resolvedForceUnitValue;
+        }
+        if (!this.useBvPvDisplayOption()) {
+            return null;
+        }
+
+        const unit = this.resolvedUnit();
+        const base = this.isAlphaStrike() ? unit.as.PV : unit.bv;
+        const adjusted = this.isAlphaStrike()
+            ? adjustPointValueForSkill(base, this.gunnery())
+            : BVCalculatorUtil.calculateAdjustedBV(unit, base, this.gunnery(), this.piloting());
+        return formatBvPv(adjusted, base, this.optionsService.options().forceViewerBVPVDisplay);
     });
 
     readonly expandedComponents = computed<UnitComponent[]>(() => {
@@ -295,7 +326,7 @@ export class UnitCardExpandedComponent {
     showSelectCheckbox = input(false);
 
     /** Card style for alpha-strike card view */
-    cardStyle = input<'colored' | 'monochrome'>('monochrome');
+    cardStyle = input<ColorScheme>('default');
 
     /** Emitted when the info button is clicked */
     infoClick = output<void>();

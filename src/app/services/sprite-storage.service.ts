@@ -64,10 +64,17 @@ export interface SpriteTypeInfo {
     height: number;
 }
 
+/** MegaMek mekset mappings from normalized unit/chassis names to icon paths. */
+export interface SpriteAssignments {
+    exact: Record<string, string>;
+    chassis: Record<string, string>;
+}
+
 /** The full manifest structure from unit-icons.json */
 export interface SpriteManifest {
     types: { [unitType: string]: SpriteTypeInfo };
     icons: { [iconPath: string]: SpriteIconInfo };
+    assignments?: SpriteAssignments;
 }
 
 interface SpriteDownloadResult {
@@ -619,6 +626,12 @@ export class SpriteStorageService {
     public async getIconCount(): Promise<number> {
         const manifest = await this.getManifest();
         return manifest ? Object.keys(manifest.icons).length : 0;
+    }
+
+    /** Get the generated MegaMek unit/chassis-to-icon assignment index. */
+    public async getAssignments(): Promise<SpriteAssignments | null> {
+        const manifest = await this.getManifest();
+        return manifest?.assignments ?? null;
     }
 
     /**

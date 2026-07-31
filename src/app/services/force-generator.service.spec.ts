@@ -36,7 +36,12 @@ describe('ForceGeneratorService', () => {
     const megaMekFactionsByKey = new Map<string, MegaMekFactionRecord>();
     const units: Unit[] = [];
     const optionsServiceMock = {
-        options: signal<{ availabilitySource: AvailabilitySource }>({ availabilitySource: 'megamek' }),
+        options: signal({
+            availabilitySource: 'megamek' as AvailabilitySource,
+            forceGenerator: {
+                failureSearchWindowMs: 300,
+            },
+        }),
     };
 
     const filtersServiceMock = {
@@ -191,7 +196,12 @@ describe('ForceGeneratorService', () => {
         units.length = 0;
         dataServiceMock.searchCorpusVersion.set(1);
         dataServiceMock.megaMekAvailabilityVersion.set(0);
-        optionsServiceMock.options.set({ availabilitySource: 'megamek' });
+        optionsServiceMock.options.set({
+            availabilitySource: 'megamek',
+            forceGenerator: {
+                failureSearchWindowMs: 300,
+            },
+        });
 
         filtersServiceMock.filteredUnits.set([]);
         filtersServiceMock.effectiveFilterState.calls.reset();
@@ -221,10 +231,10 @@ describe('ForceGeneratorService', () => {
 
     it('uses the stored force generator defaults when no unit-search limit is active', () => {
         const defaults = service.resolveInitialBudgetDefaults({
-            forceGenLastBVMin: 7900,
-            forceGenLastBVMax: 8000,
-            forceGenLastPVMin: 290,
-            forceGenLastPVMax: 300,
+            lastBudget: {
+                classic: { min: 7900, max: 8000 },
+                alphaStrike: { min: 290, max: 300 },
+            },
         }, 0, GameSystem.CLASSIC);
 
         expect(defaults).toEqual({
@@ -235,10 +245,10 @@ describe('ForceGeneratorService', () => {
 
     it('clamps the initial range to the active unit-search limit', () => {
         const defaults = service.resolveInitialBudgetDefaults({
-            forceGenLastBVMin: 7900,
-            forceGenLastBVMax: 8000,
-            forceGenLastPVMin: 290,
-            forceGenLastPVMax: 300,
+            lastBudget: {
+                classic: { min: 7900, max: 8000 },
+                alphaStrike: { min: 290, max: 300 },
+            },
         }, 6500, GameSystem.CLASSIC);
 
         expect(defaults.classic).toEqual({ min: 6500, max: 6500 });
@@ -247,8 +257,7 @@ describe('ForceGeneratorService', () => {
 
     it('uses the stored force generator unit count defaults', () => {
         const defaults = service.resolveInitialUnitCountDefaults({
-            forceGenLastMinUnitCount: 4,
-            forceGenLastMaxUnitCount: 8,
+            lastUnitCount: { min: 4, max: 8 },
         });
 
         expect(defaults).toEqual({ min: 4, max: 8 });
@@ -256,12 +265,10 @@ describe('ForceGeneratorService', () => {
 
     it('normalizes stored unit count defaults to a valid linked range', () => {
         const invalidDefaults = service.resolveInitialUnitCountDefaults({
-            forceGenLastMinUnitCount: 6,
-            forceGenLastMaxUnitCount: 2,
+            lastUnitCount: { min: 6, max: 2 },
         });
         const emptyDefaults = service.resolveInitialUnitCountDefaults({
-            forceGenLastMinUnitCount: 0,
-            forceGenLastMaxUnitCount: 0,
+            lastUnitCount: { min: 0, max: 0 },
         });
 
         expect(invalidDefaults).toEqual({ min: 6, max: 6 });
@@ -270,8 +277,7 @@ describe('ForceGeneratorService', () => {
 
     it('caps stored unit count defaults at MAX_UNITS', () => {
         const defaults = service.resolveInitialUnitCountDefaults({
-            forceGenLastMinUnitCount: 120,
-            forceGenLastMaxUnitCount: 150,
+            lastUnitCount: { min: 120, max: 150 },
         });
 
         expect(defaults).toEqual({ min: 100, max: 100 });
@@ -279,11 +285,11 @@ describe('ForceGeneratorService', () => {
 
     it('uses the stored force generator skill defaults', () => {
         const defaults = service.resolveInitialSkillDefaults({
-            forceGenLastGunnerySkillMin: 2,
-            forceGenLastGunnerySkillMax: 4,
-            forceGenLastPilotingSkillMin: 3,
-            forceGenLastPilotingSkillMax: 6,
-            forceGenLastMaxPilotSkillDelta: 2,
+            lastSkills: {
+                gunnery: { min: 2, max: 4 },
+                piloting: { min: 3, max: 6 },
+                maxDelta: 2,
+            },
         });
 
         expect(defaults).toEqual({
@@ -295,11 +301,11 @@ describe('ForceGeneratorService', () => {
 
     it('normalizes stored force generator skill defaults', () => {
         const defaults = service.resolveInitialSkillDefaults({
-            forceGenLastGunnerySkillMin: 9,
-            forceGenLastGunnerySkillMax: 1,
-            forceGenLastPilotingSkillMin: -1,
-            forceGenLastPilotingSkillMax: 10,
-            forceGenLastMaxPilotSkillDelta: 99,
+            lastSkills: {
+                gunnery: { min: 9, max: 1 },
+                piloting: { min: -1, max: 10 },
+                maxDelta: 99,
+            },
         });
 
         expect(defaults).toEqual({
@@ -925,7 +931,7 @@ describe('ForceGeneratorService', () => {
         megaMekAvailabilityByUnitName.set(unit.name, availabilityRecord);
         megaMekAvailabilityRecords.push(availabilityRecord);
         units.push(unit);
-        optionsServiceMock.options.set({ availabilitySource: 'mul' });
+        optionsServiceMock.options.set({ availabilitySource: 'mul', forceGenerator: { failureSearchWindowMs: 300 } });
 
         filtersServiceMock.effectiveFilterState.and.returnValue({
             faction: {
@@ -2895,7 +2901,7 @@ describe('ForceGeneratorService', () => {
         factionsByName.set(faction.name, faction);
         factionsById.set(faction.id, faction);
         units.push(mulVisibleUnit);
-        optionsServiceMock.options.set({ availabilitySource: 'mul' });
+        optionsServiceMock.options.set({ availabilitySource: 'mul', forceGenerator: { failureSearchWindowMs: 300 } });
 
         megaMekAvailabilityByUnitName.set(mulVisibleUnit.name, {
             e: {
@@ -2932,7 +2938,7 @@ describe('ForceGeneratorService', () => {
         factionsByName.set(faction.name, faction);
         factionsById.set(faction.id, faction);
         units.push(mulInvisibleUnit);
-        optionsServiceMock.options.set({ availabilitySource: 'mul' });
+        optionsServiceMock.options.set({ availabilitySource: 'mul', forceGenerator: { failureSearchWindowMs: 300 } });
 
         megaMekAvailabilityByUnitName.set(mulInvisibleUnit.name, {
             e: {
@@ -2972,7 +2978,7 @@ describe('ForceGeneratorService', () => {
         factionsByName.set(faction.name, faction);
         factionsById.set(faction.id, faction);
         units.push(mulVisibleUnit);
-        optionsServiceMock.options.set({ availabilitySource: 'mul' });
+        optionsServiceMock.options.set({ availabilitySource: 'mul', forceGenerator: { failureSearchWindowMs: 300 } });
 
         spyOn(Math, 'random').and.returnValue(0);
 
@@ -3022,7 +3028,7 @@ describe('ForceGeneratorService', () => {
         factionsById.set(primaryFaction.id, primaryFaction);
         factionsById.set(secondaryFaction.id, secondaryFaction);
         units.push(mixedScopeUnit);
-        optionsServiceMock.options.set({ availabilitySource: 'mul' });
+        optionsServiceMock.options.set({ availabilitySource: 'mul', forceGenerator: { failureSearchWindowMs: 300 } });
 
         spyOn(Math, 'random').and.returnValue(0);
 
@@ -3064,7 +3070,7 @@ describe('ForceGeneratorService', () => {
         factionsByName.set(faction.name, faction);
         factionsById.set(faction.id, faction);
         units.push(mulInvisibleUnknown);
-        optionsServiceMock.options.set({ availabilitySource: 'mul' });
+        optionsServiceMock.options.set({ availabilitySource: 'mul', forceGenerator: { failureSearchWindowMs: 300 } });
 
         const preview = service.buildPreview({
             eligibleUnits: [mulInvisibleUnknown],

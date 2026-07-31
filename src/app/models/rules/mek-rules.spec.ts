@@ -3,8 +3,10 @@ import { TestBed } from '@angular/core/testing';
 import { CBTForce } from '../cbt-force.model';
 import { CBTForceUnit } from '../cbt-force-unit.model';
 import { DEAD_CREW_HIT_THRESHOLD, type CrewMemberState } from '../crew-member.model';
-import { MountedEquipment, type CriticalSlot, type LocationData } from '../force-serialization';
-import { AmmoEquipment, Equipment, WeaponEquipment } from '../equipment.model';
+import { MountedEquipment, MountedWeapon } from '../mounted-equipment.model';
+import { type CriticalSlot, type LocationData } from '../force-serialization';
+import { AmmoEquipment, Equipment, WeaponEquipment, type AmmoType } from '../equipment.model';
+import { EquipmentRegistry } from '../equipment-lookup';
 import type { Unit, UnitSubtype } from '../units.model';
 import { DataService } from '../../services/data.service';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
@@ -12,6 +14,12 @@ import { UnitInitializerService } from '../../services/unit-initializer.service'
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { MekRules } from './mek-rules';
 import { MascHandler, MASC_ACTIVE_STATE_KEY } from '../../equipment-handlers/masc.handler';
+import { HAG_FLAK_MODE, HAG_STANDARD_MODE, HagHandler } from '../../equipment-handlers/hag.handler';
+import { INVENTORY_CONTROL_MODE_STATE } from '../../utils/inventory-control.util';
+import { OptionsService } from '../../services/options.service';
+import { TWMekRules } from './tw-rules';
+import { VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../../equipment-handlers/vibroblade.handler';
+import { EquipmentFlag } from '../equipment-flags.type';
 
 class TestCBTForce extends CBTForce {
     override emitChanged(): void {
@@ -21,6 +29,7 @@ class TestCBTForce extends CBTForce {
 let dataService: jasmine.SpyObj<DataService>;
 let unitInitializer: UnitInitializerService;
 let injector: Injector;
+let optionsService: OptionsService;
 
 function createRulesHarness(options: {
     crewStates?: Exclude<CrewMemberState, 'dead'>[];
@@ -36,6 +45,7 @@ function createRulesHarness(options: {
     jump?: number;
     umu?: number;
     subtype?: UnitSubtype;
+    rulesId?: 'core2026' | 'tw';
 } = {}): MekRules {
     return createForceUnitHarness(options).rules as MekRules;
 }
@@ -61,7 +71,9 @@ function createForceUnitHarness(options: {
     jump?: number;
     umu?: number;
     subtype?: UnitSubtype;
+    rulesId?: 'core2026' | 'tw';
 } = {}): CBTForceUnit {
+    optionsService.options.update(current => ({ ...current, CBTRules: options.rulesId ?? 'core2026' }));
     const crewStates = options.crewStates ?? ['healthy'];
     const crewHits = options.crewHits ?? [];
     const baseUnit = createEmptyUnit({
@@ -106,6 +118,15 @@ function crit(name: string, destroyed = true): CriticalSlot {
     };
 }
 
+function heavyDutyGyroCrit(index: number, destroyed = true): CriticalSlot {
+    return {
+        ...crit('Heavy-Duty Gyro', destroyed),
+        id: `heavy-duty-gyro-${index}`,
+        loc: 'CT',
+        slot: index,
+    };
+}
+
 function weapon(id: string, damage: string | number | number[], ranges: number[], ammoType: 'NA' | 'AC' = 'NA', rackSize = 0): WeaponEquipment {
     return new WeaponEquipment({
         id,
@@ -144,7 +165,7 @@ function droneOperatingSystemEntry(forceUnit: CBTForceUnit, destroyed = false): 
     });
 }
 
-function miscEquipment(id: string, name: string, flags: string[]): Equipment {
+function miscEquipment(id: string, name: string, flags: EquipmentFlag[]): Equipment {
     return new Equipment({
         id,
         name,
@@ -162,25 +183,106 @@ function miscEntry(forceUnit: CBTForceUnit, equipment: Equipment): MountedEquipm
     });
 }
 
-function directFireWeaponEntry(forceUnit: CBTForceUnit, flags: string[] = []): MountedEquipment {
+function directFireWeaponEntry(forceUnit: CBTForceUnit, flags: EquipmentFlag[] = []): MountedEquipment {
     const equipment = new WeaponEquipment({
         id: 'DirectFireWeapon',
         name: 'Direct Fire Weapon',
         type: 'weapon',
-        flags: ['F_DIRECT_FIRE', ...flags],
+        flags: ['F_DIRECT_FIRE', 'F_ENERGY', ...flags],
         weapon: { damage: 10, ranges: [5, 10, 15, 20], ammoType: 'NA' },
+    });
+    const weapon = new MountedWeapon({
+        owner: forceUnit,
+        id: equipment.id,
+        name: equipment.name,
+        equipment,
+    });
+    return new MountedEquipment({
+        owner: forceUnit,
+        id: `${equipment.id}-critical`,
+        name: equipment.name,
+        equipment,
+        parent: weapon,
+    });
+}
+
+function mediumVspLaserEntry(forceUnit: CBTForceUnit): MountedEquipment {
+    const equipment = new WeaponEquipment({
+        id: 'ISMediumVSPLaser',
+        name: 'Medium VSP Laser',
+        type: 'weapon',
+        flags: ['F_DIRECT_FIRE', 'F_ENERGY', 'F_LASER', 'F_PULSE', 'F_VSP'],
+        stats: { toHitModifier: [-3, -2, -1] },
+        weapon: { damage: [9, 7, 5], ranges: [2, 5, 9, 13], ammoType: 'NA' },
+    });
+    const weapon = new MountedWeapon({
+        owner: forceUnit,
+        id: equipment.id,
+        name: equipment.name,
+        equipment,
+    });
+    return new MountedEquipment({
+        owner: forceUnit,
+        id: `${equipment.id}-critical`,
+        name: equipment.name,
+        equipment,
+        parent: weapon,
+    });
+}
+
+function hagWeaponEntry(forceUnit: CBTForceUnit, mode: string): MountedWeapon {
+    const equipment = new WeaponEquipment({
+        id: 'CLHAG20',
+        name: 'HAG/20',
+        type: 'weapon',
+        flags: ['F_HAG', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+        stats: {
+            explosive: true
+        },
+        weapon: {
+            ammoType: 'HAG',
+            damage: 'cluster',
+            rackSize: 20,
+            ranges: [8, 16, 24, 32]
+        }
+    });
+    return new MountedWeapon({
+        owner: forceUnit,
+        id: equipment.id,
+        name: equipment.name,
+        equipment,
+        states: new Map([[INVENTORY_CONTROL_MODE_STATE, mode]])
+    });
+}
+
+function criticalAutocannonEntry(
+    forceUnit: CBTForceUnit,
+    ammoType: AmmoType,
+    critSlots: CriticalSlot[],
+    flags: EquipmentFlag[] = ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+): MountedEquipment {
+    const equipment = new WeaponEquipment({
+        id: `Autocannon-${ammoType}`,
+        name: `Autocannon ${ammoType}`,
+        type: 'weapon',
+        flags,
+        weapon: { damage: 10, ranges: [5, 10, 15, 20], ammoType },
     });
     return new MountedEquipment({
         owner: forceUnit,
         id: equipment.id,
         name: equipment.name,
         equipment,
+        locations: new Set(['RA']),
+        critSlots,
     });
 }
 
 describe('MekRules', () => {
     beforeEach(() => {
-        dataService = jasmine.createSpyObj<DataService>('DataService', ['getUnitByName']);
+        dataService = jasmine.createSpyObj<DataService>('DataService', ['getEquipmentRegistry', 'findEquipment', 'getUnitByName']);
+        dataService.getEquipmentRegistry.and.returnValue(new EquipmentRegistry({}));
+        dataService.findEquipment.and.returnValue(undefined);
         TestBed.configureTestingModule({
             providers: [
                 UnitInitializerService,
@@ -190,7 +292,12 @@ describe('MekRules', () => {
 
         unitInitializer = TestBed.inject(UnitInitializerService);
         injector = TestBed.inject(Injector);
-        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new MascHandler());
+        optionsService = TestBed.inject(OptionsService);
+        optionsService.options.update(options => ({ ...options, CBTRules: 'core2026' }));
+        const registry = TestBed.inject(EquipmentInteractionRegistryService).getRegistry();
+        registry.register(new MascHandler());
+        registry.register(new HagHandler());
+        registry.register(new VibrobladeHandler());
     });
 
     it('keeps Mek immobile false by default when crew are functional', () => {
@@ -206,8 +313,75 @@ describe('MekRules', () => {
 
         expect(activeForceUnit.rules.computeEntryState(directFireWeaponEntry(activeForceUnit))).toEqual(jasmine.objectContaining({ hitMod: -1, isDamaged: false, weakenedHitMod: false }));
         expect(destroyedForceUnit.rules.computeEntryState(directFireWeaponEntry(destroyedForceUnit))).toEqual(jasmine.objectContaining({ hitMod: 0, isDamaged: false, weakenedHitMod: true }));
-        expect(destroyedForceUnit.rules.computeEntryState(directFireWeaponEntry(destroyedForceUnit, ['F_CWS']))).toEqual(jasmine.objectContaining({ hitMod: 0, isDamaged: false, weakenedHitMod: false }));
         expect(destroyedForceUnit.rules.computeEntryState(directFireWeaponEntry(destroyedForceUnit, ['F_TASER']))).toEqual(jasmine.objectContaining({ hitMod: 0, isDamaged: false, weakenedHitMod: false }));
+    });
+
+    it('stacks a targeting computer with each range-specific VSP laser modifier', () => {
+        const activeForceUnit = createForceUnitHarness({ critSlots: [crit('Targeting Computer', false)] });
+        const destroyedForceUnit = createForceUnitHarness({ critSlots: [crit('Targeting Computer')] });
+        const ranges = [
+            { range: 'short' as const, value: -4 },
+            { range: 'medium' as const, value: -3 },
+            { range: 'long' as const, value: -2 },
+        ];
+
+        const activeEntry = mediumVspLaserEntry(activeForceUnit);
+        const activeState = activeForceUnit.rules.computeEntryState(activeEntry);
+        expect(activeEntry.parent).toBeInstanceOf(MountedWeapon);
+        expect((activeEntry.parent as MountedWeapon).getWeaponTypes()).toContain('P');
+        expect(activeState).toEqual(jasmine.objectContaining({ hitMod: -1, weakenedHitMod: false }));
+        for (const expected of ranges) {
+            expect(activeForceUnit.gameRules.resolveToHit({
+                subject: activeEntry,
+                range: expected.range,
+                stateModifier: activeState.hitMod,
+                stateWeakened: activeState.weakenedHitMod,
+            }).value).withContext(`functional targeting computer at ${expected.range} range`).toBe(expected.value);
+        }
+
+        const destroyedEntry = mediumVspLaserEntry(destroyedForceUnit);
+        const destroyedState = destroyedForceUnit.rules.computeEntryState(destroyedEntry);
+        expect(destroyedState).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: true }));
+        const destroyedResolution = destroyedForceUnit.gameRules.resolveToHit({
+            subject: destroyedEntry,
+            range: 'short',
+            stateModifier: destroyedState.hitMod,
+            stateWeakened: destroyedState.weakenedHitMod,
+        });
+        expect(destroyedResolution.value).toBe(-3);
+        expect(destroyedResolution.weakened).toBeTrue();
+    });
+
+    it('applies HAG mode and targeting-computer modifiers without stacking them', () => {
+        const scenarios = [
+            { label: 'STD without targeting computer', mode: HAG_STANDARD_MODE, targetingComputer: 'none', hitMod: 0, weakened: false, types: ['C', 'DB', 'X'] },
+            { label: 'FLAK without targeting computer', mode: HAG_FLAK_MODE, targetingComputer: 'none', hitMod: -1, weakened: false, types: ['C', 'X', 'F'] },
+            { label: 'STD with targeting computer', mode: HAG_STANDARD_MODE, targetingComputer: 'functional', hitMod: -1, weakened: false, types: ['C', 'DB', 'X'] },
+            { label: 'FLAK with targeting computer', mode: HAG_FLAK_MODE, targetingComputer: 'functional', hitMod: -1, weakened: false, types: ['C', 'X', 'F'] },
+            { label: 'STD with broken targeting computer', mode: HAG_STANDARD_MODE, targetingComputer: 'broken', hitMod: 0, weakened: true, types: ['C', 'DB', 'X'] },
+            { label: 'FLAK with broken targeting computer', mode: HAG_FLAK_MODE, targetingComputer: 'broken', hitMod: -1, weakened: false, types: ['C', 'X', 'F'] },
+        ] as const;
+
+        for (const scenario of scenarios) {
+            const critSlots = scenario.targetingComputer === 'none'
+                ? []
+                : [crit('Targeting Computer', scenario.targetingComputer === 'broken')];
+            const forceUnit = createForceUnitHarness({ critSlots });
+            const entry = hagWeaponEntry(forceUnit, scenario.mode);
+            const rules = forceUnit.getInventoryControlRules();
+            const state = forceUnit.rules.computeEntryState(entry);
+            const effectiveTypes = rules.applyWeaponTypes?.(entry, new Set(entry.getWeaponTypes())) ?? new Set(entry.getWeaponTypes());
+            const resolution = forceUnit.gameRules.resolveToHit({
+                subject: entry,
+                stateModifier: state.hitMod,
+                stateWeakened: state.weakenedHitMod,
+                adjustments: rules.resolveToHitAdjustments?.(entry)
+            });
+
+            expect([...effectiveTypes]).withContext(`${scenario.label} weapon types`).toEqual(scenario.types);
+            expect(resolution.value).withContext(`${scenario.label} modifier`).toBe(scenario.hitMod);
+            expect(resolution.weakened).withContext(`${scenario.label} weakened state`).toBe(scenario.weakened);
+        }
     });
 
     it('marks intrinsic and weapon hit modifiers as weakened when their arm AES is destroyed', () => {
@@ -224,7 +398,7 @@ describe('MekRules', () => {
             id: 'punch@LA',
             name: 'punch',
             locations: new Set(['LA']),
-            physical: true,
+            intrinsicPhysicalAttack: true,
         });
         const sword = (forceUnit: CBTForceUnit) => new MountedEquipment({
             owner: forceUnit,
@@ -238,6 +412,103 @@ describe('MekRules', () => {
         expect(destroyedForceUnit.rules.computeEntryState(punch(destroyedForceUnit))).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: true }));
         expect(activeForceUnit.rules.computeEntryState(sword(activeForceUnit))).toEqual(jasmine.objectContaining({ hitMod: -1, weakenedHitMod: false }));
         expect(destroyedForceUnit.rules.computeEntryState(sword(destroyedForceUnit))).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: true }));
+    });
+
+    it('identifies every damaged actuator contributing to a punch modifier', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [
+                { ...crit('Hand'), loc: 'LA' },
+                { ...crit('Upper Arm'), loc: 'LA' },
+                { ...crit('Lower Arm'), loc: 'LA' }
+            ],
+            internalLocations: ['LA', 'RA', 'LL', 'RL']
+        });
+        const punch = new MountedEquipment({
+            owner: forceUnit,
+            id: 'punch@LA',
+            name: 'punch',
+            locations: new Set(['LA']),
+            intrinsicPhysicalAttack: true,
+        });
+
+        expect(forceUnit.rules.computeEntryState(punch)).toEqual(jasmine.objectContaining({
+            hitMod: 5,
+            hitModifierBreakdown: [
+                { label: 'Hand Actuator Destroyed (LA)', modifier: 1, negative: true },
+                { label: 'Upper Arm Actuator Destroyed (LA)', modifier: 2, negative: true },
+                { label: 'Lower Arm Actuator Destroyed (LA)', modifier: 2, negative: true }
+            ]
+        }));
+    });
+
+    it('identifies shoulder and paired AES modifiers for push attacks', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [
+                { ...crit('Shoulder'), loc: 'LA' },
+                { ...crit('AES', false), loc: 'LA' },
+                { ...crit('AES', false), loc: 'RA' }
+            ],
+            internalLocations: ['LA', 'RA', 'LL', 'RL']
+        });
+        const push = new MountedEquipment({ owner: forceUnit, id: 'push', name: 'push', intrinsicPhysicalAttack: true });
+
+        expect(forceUnit.rules.computeEntryState(push)).toEqual(jasmine.objectContaining({
+            hitMod: 1,
+            hitModifierBreakdown: [
+                { label: 'Shoulder Destroyed (LA)', modifier: 2, negative: true },
+                { label: 'Paired Arm AES', modifier: -1 }
+            ]
+        }));
+    });
+
+    it('identifies aggregate leg actuator, foot, and AES modifiers for kicks', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [
+                { ...crit('Upper Leg'), loc: 'LL' },
+                { ...crit('Lower Leg'), loc: 'RL' },
+                { ...crit('Foot'), loc: 'LL' },
+                { ...crit('AES', false), loc: 'LL' },
+                { ...crit('AES', false), loc: 'RL' }
+            ],
+            internalLocations: ['LA', 'RA', 'LL', 'RL']
+        });
+        const kick = new MountedEquipment({ owner: forceUnit, id: 'kick', name: 'kick', intrinsicPhysicalAttack: true });
+
+        expect(forceUnit.rules.computeEntryState(kick)).toEqual(jasmine.objectContaining({
+            hitMod: 4,
+            hitModifierBreakdown: [
+                { label: 'Leg Actuators Destroyed ×2', modifier: 4, negative: true },
+                { label: 'Foot Actuator Destroyed', modifier: 1, negative: true },
+                { label: 'Leg AES', modifier: -1 }
+            ]
+        }));
+    });
+
+    it('identifies mounted physical weapon actuator modifiers without a generic fallback', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [
+                { ...crit('Upper Arm'), loc: 'LA' },
+                { ...crit('Lower Arm'), loc: 'LA' },
+                { ...crit('AES', false), loc: 'LA' }
+            ],
+            internalLocations: ['LA', 'RA', 'LL', 'RL']
+        });
+        const sword = new MountedEquipment({
+            owner: forceUnit,
+            id: 'sword@LA',
+            name: 'Sword',
+            equipment: miscEquipment('Sword', 'Sword', ['F_HAND_WEAPON']),
+            locations: new Set(['LA']),
+        });
+
+        expect(forceUnit.rules.computeEntryState(sword)).toEqual(jasmine.objectContaining({
+            hitMod: 3,
+            hitModifierBreakdown: [
+                { label: 'Upper Arm Actuator Destroyed (LA)', modifier: 2, negative: true },
+                { label: 'Lower Arm Actuator Destroyed (LA)', modifier: 2, negative: true },
+                { label: 'Arm AES (LA)', modifier: -1 }
+            ]
+        }));
     });
 
     it('marks paired-arm AES modifiers as weakened when damage removes their attack bonus', () => {
@@ -258,7 +529,7 @@ describe('MekRules', () => {
                 owner: forceUnit,
                 id: name,
                 name,
-                physical: true,
+                intrinsicPhysicalAttack: true,
             });
 
             expect(forceUnit.rules.computeEntryState(physical('club')))
@@ -287,7 +558,7 @@ describe('MekRules', () => {
                 owner: forceUnit,
                 id: 'kick',
                 name: 'kick',
-                physical: true,
+                intrinsicPhysicalAttack: true,
             });
 
             expect(forceUnit.rules.computeEntryState(kick))
@@ -296,10 +567,136 @@ describe('MekRules', () => {
         }
     });
 
+    it('keeps spikes working when flooded but not when structurally destroyed or blown off', () => {
+        const createSpikeUnit = () => createForceUnitHarness({
+            internalLocations: ['LL'],
+            critSlots: [{ ...crit('Spikes', false), loc: 'LL' }],
+        });
+
+        const flooded = createSpikeUnit();
+        flooded.setLocationCondition('LL', 'flooded', true);
+        flooded.endPhase();
+        expect((flooded.rules as MekRules).physicalCombat()?.chargeDamage).toEqual(jasmine.objectContaining({ bonusDamage: 2, maxBonusDamage: 2 }));
+
+        const blownOff = createSpikeUnit();
+        blownOff.setLocationCondition('LL', 'blown-off', true);
+        blownOff.endPhase();
+        expect((blownOff.rules as MekRules).physicalCombat()?.chargeDamage).toEqual(jasmine.objectContaining({ bonusDamage: 0, maxBonusDamage: 2 }));
+
+        const structurallyDestroyed = createSpikeUnit();
+        structurallyDestroyed.addInternalHits('LL', structurallyDestroyed.getInternalPoints('LL'));
+        structurallyDestroyed.endPhase();
+        expect((structurallyDestroyed.rules as MekRules).physicalCombat()?.chargeDamage).toEqual(jasmine.objectContaining({ bonusDamage: 0, maxBonusDamage: 2 }));
+    });
+
+    it('calculates core2026 charge damage from tonnage and movement-distance TMM', () => {
+        const forceUnit = createForceUnitHarness();
+        forceUnit.getUnit().tons = 45;
+        forceUnit.turnState().moveDistance.set(5);
+        const charge = new MountedEquipment({
+            owner: forceUnit,
+            id: 'Charge',
+            name: 'charge',
+            intrinsicPhysicalAttack: true,
+        });
+
+        expect((forceUnit.rules as MekRules).physicalCombat()?.chargeDamage).toEqual({
+            damage: 27,
+            maxDamage: 36,
+            bonusDamage: 0,
+            maxBonusDamage: 0,
+        });
+        expect(forceUnit.rules.applyInventoryControlDisplayEffects(charge, {
+            name: 'Charge',
+            location: '—',
+            heat: '—',
+            damage: 'Legacy',
+            hit: '—',
+            min: '—',
+            short: '—',
+            medium: '—',
+            long: '—',
+        }).damage).toBe('27 [36]');
+
+        forceUnit.turnState().moveDistance.set(8);
+        expect(forceUnit.rules.applyInventoryControlDisplayEffects(charge, {
+            name: 'Charge',
+            location: '—',
+            heat: '—',
+            damage: 'Legacy',
+            hit: '—',
+            min: '—',
+            short: '—',
+            medium: '—',
+            long: '—',
+        }).damage).toBe('36');
+
+        const twForceUnit = createForceUnitHarness({ rulesId: 'tw' });
+        expect((twForceUnit.rules as MekRules).physicalCombat()?.chargeDamage.damage).toBeNull();
+    });
+
+    it('applies TSM to capped inactive vibroblade damage but not fixed active damage', () => {
+        const tsm = miscEquipment('TSM', 'Triple Strength Myomer', ['F_TSM']);
+        const forceUnit = createForceUnitHarness({
+            internalLocations: ['RA'],
+            critSlots: [{ ...crit('Triple Strength Myomer', false), loc: 'RA', eq: tsm }],
+        });
+        forceUnit.getUnit().tons = 100;
+        forceUnit.setHeatData({ current: 9, previous: 9 });
+        const vibroblade = new MountedEquipment({
+            owner: forceUnit,
+            id: 'ISSmallVibroblade',
+            name: 'Vibroblade (Small)',
+            equipment: miscEquipment('ISSmallVibroblade', 'Vibroblade (Small)', ['F_CLUB', 'S_VIBRO_SMALL']),
+            locations: new Set(['RA']),
+        });
+        const display = {
+            name: 'Vibroblade (Small)', location: 'RA', heat: '—', damage: '7', hit: '-2',
+            min: '—', short: '—', medium: '—', long: '—',
+        };
+
+        expect(forceUnit.rules.applyInventoryControlDisplayEffects(vibroblade, display).damage).toBe('14');
+        expect(forceUnit.applyInventoryControlDisplayEffects(vibroblade, display, {
+            selectedRange: null,
+            additionalHitModifier: 0,
+            selectedAmmo: null,
+        }).damage).toBe('14 [7]');
+
+        vibroblade.states.set(VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE);
+        expect(forceUnit.applyInventoryControlDisplayEffects(vibroblade, display, {
+            selectedRange: null,
+            additionalHitModifier: 0,
+            selectedAmmo: null,
+        }).damage).toBe('7');
+    });
+
+    it('shows active vibroblade damage beside inactive damage', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['RA'] });
+        forceUnit.getUnit().tons = 40;
+        const vibroblade = new MountedEquipment({
+            owner: forceUnit,
+            id: 'ISMediumVibroblade',
+            name: 'Vibroblade (Medium)',
+            equipment: miscEquipment('ISMediumVibroblade', 'Vibroblade (Medium)', ['F_CLUB', 'S_VIBRO_MEDIUM']),
+            locations: new Set(['RA']),
+        });
+        const display = {
+            name: 'Vibroblade (Medium)', location: 'RA', heat: '—', damage: '10', hit: '-2',
+            min: '—', short: '—', medium: '—', long: '—',
+        };
+
+        expect(forceUnit.rules.applyInventoryControlDisplayEffects(vibroblade, display).damage).toBe('5');
+        expect(forceUnit.applyInventoryControlDisplayEffects(vibroblade, display, {
+            selectedRange: null,
+            additionalHitModifier: 0,
+            selectedAmmo: null,
+        }).damage).toBe('5 [10]');
+    });
+
     it('uses active MASC state for effective Mek run MP without changing potential max run MP', () => {
         const forceUnit = createForceUnitHarness({ walk: 5, critSlots: [crit('MASC', false)] });
-        const masc = miscEntry(forceUnit, miscEquipment('MASC', 'MASC', ['F_MASC']));
-        forceUnit.setInventory([masc]);
+        forceUnit.setInventory([miscEntry(forceUnit, miscEquipment('MASC', 'MASC', ['F_MASC']))]);
+        const masc = forceUnit.getInventory()[0];
         const rules = forceUnit.rules as MekRules;
 
         expect(rules.getMaxDistanceForMoveMode('run')).toBe(10);
@@ -316,9 +713,11 @@ describe('MekRules', () => {
             walk: 6,
             critSlots: [crit('MASC', false), crit('Supercharger', false)],
         });
-        const masc = miscEntry(forceUnit, miscEquipment('MASC', 'MASC', ['F_MASC']));
-        const supercharger = miscEntry(forceUnit, miscEquipment('Supercharger', 'Supercharger', ['F_MASC', 'S_SUPERCHARGER']));
-        forceUnit.setInventory([masc, supercharger]);
+        forceUnit.setInventory([
+            miscEntry(forceUnit, miscEquipment('MASC', 'MASC', ['F_MASC'])),
+            miscEntry(forceUnit, miscEquipment('Supercharger', 'Supercharger', ['F_MASC', 'S_SUPERCHARGER']))
+        ]);
+        const [masc, supercharger] = forceUnit.getInventory();
         const rules = forceUnit.rules as MekRules;
 
         supercharger.setState(MASC_ACTIVE_STATE_KEY, 'true');
@@ -569,7 +968,7 @@ describe('MekRules', () => {
         expect(rules.hasComputedCondition('immobile')).toBeFalse();
     });
 
-    it('disconnects and immobilizes drone operating system Meks manually or when the OS is destroyed', () => {
+    it('makes disconnected drones Immobile under every rules system', () => {
         const forceUnit = createForceUnitHarness();
         forceUnit.setInventory([droneOperatingSystemEntry(forceUnit)]);
         const rules = forceUnit.rules as MekRules;
@@ -587,6 +986,10 @@ describe('MekRules', () => {
         expect(forceUnit.getCondition('disconnected')).toBeTrue();
         expect(rules.hasComputedCondition('immobile')).toBeTrue();
         expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, jump: 0, UMU: 0 }));
+
+        const twForceUnit = createForceUnitHarness({ rulesId: 'tw' });
+        twForceUnit.setInventory([droneOperatingSystemEntry(twForceUnit, true)]);
+        expect(twForceUnit.rules.hasComputedCondition('immobile')).toBeTrue();
     });
 
     it('clears drone operating system disconnect after crit-backed OS repair commit', () => {
@@ -644,6 +1047,68 @@ describe('MekRules', () => {
         expect(forceUnit.getCritSlots()[1].destroyed).toBeTruthy();
         expect(storedEntry.committedDestroyed()).toBeFalse();
         expect(rules.computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true }));
+    });
+
+    it('requires two destroyed critical slots for Core2026 autocannons', () => {
+        const ammoTypes: AmmoType[] = [
+            'AC', 'AC_LBX', 'AC_ULTRA', 'AC_ULTRA_THB', 'AC_ROTARY',
+            'AC_PRIMITIVE', 'PAC', 'NAC', 'LAC',
+        ];
+
+        for (const ammoType of ammoTypes) {
+            const forceUnit = createForceUnitHarness({ internalLocations: ['RA'] });
+            const firstCrit = { id: `Autocannon-${ammoType}`, name: `Autocannon ${ammoType}`, loc: 'RA', slot: 0 } as CriticalSlot;
+            const secondCrit = { id: `Autocannon-${ammoType}`, name: `Autocannon ${ammoType}`, loc: 'RA', slot: 1 } as CriticalSlot;
+            const entry = criticalAutocannonEntry(forceUnit, ammoType, [firstCrit, secondCrit]);
+            forceUnit.writeCrits([firstCrit, secondCrit]);
+            forceUnit.setInventory([entry]);
+            const storedEntry = forceUnit.getInventory()[0];
+
+            forceUnit.applyHitToCritSlot(firstCrit);
+            forceUnit.endPhase();
+            expect(forceUnit.rules.computeEntryState(storedEntry).isDamaged)
+                .withContext(`${ammoType} after one destroyed critical slot`).toBeFalse();
+
+            forceUnit.applyHitToCritSlot(secondCrit);
+            forceUnit.endPhase();
+            expect(forceUnit.rules.computeEntryState(storedEntry).isDamaged)
+                .withContext(`${ammoType} after two destroyed critical slots`).toBeTrue();
+        }
+    });
+
+    it('uses the one-slot critical destruction threshold for TW autocannons', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['RA'], rulesId: 'tw' });
+        const critSlot = { id: 'Autocannon-AC', name: 'Autocannon AC', loc: 'RA', slot: 0 } as CriticalSlot;
+        const entry = criticalAutocannonEntry(forceUnit, 'AC', [critSlot]);
+        forceUnit.writeCrits([critSlot]);
+        forceUnit.setInventory([entry]);
+
+        forceUnit.applyHitToCritSlot(critSlot);
+        forceUnit.endPhase();
+
+        expect(forceUnit.rules.computeEntryState(forceUnit.getInventory()[0]).isDamaged).toBeTrue();
+    });
+
+    it('uses the one-slot threshold when a Core2026 autocannon signature does not match', () => {
+        const cases: { ammoType: AmmoType; flags: EquipmentFlag[]; description: string }[] = [
+            { ammoType: 'AC', flags: ['F_BALLISTIC'], description: 'missing direct-fire flag' },
+            { ammoType: 'AC', flags: ['F_DIRECT_FIRE'], description: 'missing ballistic flag' },
+            { ammoType: 'NA', flags: ['F_BALLISTIC', 'F_DIRECT_FIRE'], description: 'non-autocannon ammo type' },
+        ];
+
+        for (const testCase of cases) {
+            const forceUnit = createForceUnitHarness({ internalLocations: ['RA'] });
+            const critSlot = { id: `Autocannon-${testCase.ammoType}`, name: 'Near-match weapon', loc: 'RA', slot: 0 } as CriticalSlot;
+            const entry = criticalAutocannonEntry(forceUnit, testCase.ammoType, [critSlot], testCase.flags);
+            forceUnit.writeCrits([critSlot]);
+            forceUnit.setInventory([entry]);
+
+            forceUnit.applyHitToCritSlot(critSlot);
+            forceUnit.endPhase();
+
+            expect(forceUnit.rules.computeEntryState(forceUnit.getInventory()[0]).isDamaged)
+                .withContext(testCase.description).toBeTrue();
+        }
     });
 
     it('sets Mek movement to zero when all crew are unconscious', () => {
@@ -716,13 +1181,7 @@ describe('MekRules', () => {
         }).hasComputedCondition('crippled')).toBeFalse();
     });
 
-    it('marks shutdown Meks immobile', () => {
-        const rules = createRulesHarness({ shutdown: true });
-
-        expect(rules.hasComputedCondition('immobile')).toBeTrue();
-    });
-
-    it('marks Meks immobile when all leg limbs are destroyed or missing', () => {
+    it('keeps core2026 Meks mobile while a damage-available movement mode remains', () => {
         const forceUnit = createForceUnitHarness({
             internalLocations: ['LL', 'RA', 'RT'],
             committedDestroyedLocations: ['LL'],
@@ -735,6 +1194,296 @@ describe('MekRules', () => {
 
         expect(forceUnit.isInternalLocCommittedDestroyed('RA')).toBeTrue();
         expect(forceUnit.rules.hasComputedCondition('immobile')).toBeTrue();
+
+        const twForceUnit = createForceUnitHarness({
+            internalLocations: ['LL', 'RA', 'RT'],
+            committedDestroyedLocations: ['LL', 'RA'],
+            rulesId: 'tw',
+        });
+        expect(twForceUnit.rules.hasComputedCondition('immobile')).toBeTrue();
+    });
+
+    it('selects rules once while constructing each Mek', () => {
+        const forceUnit = createForceUnitHarness({
+            internalLocations: ['LL', 'RL'],
+            committedDestroyedLocations: ['LL', 'RL'],
+            jump: 0,
+            umu: 0,
+        });
+
+        expect(forceUnit.gameRules.supportsLargeTarget).toBeTrue();
+        expect(forceUnit.rules.hasComputedCondition('immobile')).toBeTrue();
+
+        optionsService.options.update(options => ({ ...options, CBTRules: 'tw' }));
+        expect(forceUnit.gameRules.supportsLargeTarget).toBeTrue();
+
+        const twForceUnit = createForceUnitHarness({ rulesId: 'tw' });
+        expect(twForceUnit.rules instanceof TWMekRules).toBeTrue();
+        expect(twForceUnit.gameRules.supportsLargeTarget).toBeFalse();
+    });
+
+    it('uses the core2026 fixed 1/2 movement profile for one destroyed biped or tripod leg', () => {
+        for (const internalLocations of [['LL', 'RL'], ['LL', 'CL', 'RL']]) {
+            const rules = createRulesHarness({
+                internalLocations,
+                committedDestroyedLocations: ['LL'],
+                walk: 5,
+                run: 8,
+            });
+
+            expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 1, run: 2, maxRun: 2 }));
+            expect(rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({ pilotCheck: 4, reason: 'Leg Destroyed' }));
+        }
+    });
+
+    it('never lets destroyed-leg movement increase a slower biped', () => {
+        const rules = createRulesHarness({
+            committedDestroyedLocations: ['LL'],
+            walk: 0,
+            run: 1,
+            jump: 0,
+            umu: 0,
+        });
+
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, maxRun: 0 }));
+    });
+
+    it('applies cumulative core2026 quadruped leg movement without forced checks for the first leg', () => {
+        const locations = ['RLL', 'FLL', 'RRL', 'FRL'];
+        const expected = [
+            { destroyed: ['RLL'], walk: 4, run: 6, psr: 1 },
+            { destroyed: ['RLL', 'FLL'], walk: 3, run: 5, psr: 2 },
+            { destroyed: ['RLL', 'FLL', 'RRL'], walk: 1, run: 2, psr: 3 },
+            { destroyed: locations, walk: 0, run: 0, psr: 4 },
+        ];
+
+        for (const scenario of expected) {
+            const rules = createRulesHarness({
+                internalLocations: locations,
+                committedDestroyedLocations: scenario.destroyed,
+                walk: 5,
+                run: 8,
+                jump: 0,
+                umu: 0,
+            });
+
+            expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: scenario.walk, run: scenario.run }));
+            expect(rules.PSRModifiers().modifiers
+                .filter(modifier => modifier.reason === 'Leg Destroyed')
+                .reduce((total, modifier) => total + (modifier.pilotCheck ?? 0), 0)).toBe(scenario.psr);
+        }
+    });
+
+    it('requires one hex for running damage PSRs but checks zero-hex jumps', () => {
+        const biped = createRulesHarness({ committedDestroyedLocations: ['LL'] });
+
+        expect(biped.getCommittedDamageMovementModePSRCheck('run')?.reason).toBe('Running with damaged leg');
+        expect(biped.getCommittedDamageMovementModePSRCheck('jump')?.reason).toBe('Jumping with damaged leg');
+        expect(biped.getCommittedDamageMovementModePSRCheck('run', 0)).toBeNull();
+        expect(biped.getCommittedDamageMovementModePSRCheck('jump', 0)?.reason).toBe('Jumping with damaged leg');
+        expect(biped.getCommittedDamageMovementModePSRCheck('jump', null)).toBeNull();
+        expect(biped.getCommittedDamageMovementModePSRCheck('run', 1)?.reason).toBe('Running with damaged leg');
+        expect(biped.getCommittedDamageMovementModePSRCheck('jump', 1)?.reason).toBe('Jumping with damaged leg');
+
+        const oneLegQuad = createRulesHarness({
+            internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
+            committedDestroyedLocations: ['RLL'],
+        });
+        const twoLegQuad = createRulesHarness({
+            internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
+            committedDestroyedLocations: ['RLL', 'FLL'],
+        });
+
+        expect(oneLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)).toBeNull();
+        expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)?.reason).toBe('Running with damaged leg');
+    });
+
+    it('requires a jump PSR for foot damage without requiring a run PSR', () => {
+        const rules = createRulesHarness({
+            critSlots: [{ ...crit('Foot'), loc: 'RL' }],
+        });
+
+        expect(rules.getCommittedDamageMovementModePSRCheck('jump', 0)?.reason)
+            .toBe('Jumping with damaged leg actuator');
+        expect(rules.getCommittedDamageMovementModePSRCheck('run', 1)).toBeNull();
+    });
+
+    it('keeps the Core2026 PSR modifier unchanged when a second gyro hit causes autofall', () => {
+        for (const critSlots of [
+            [
+                { ...crit('Gyro'), id: 'gyro-1', loc: 'CT', slot: 0 },
+                { ...crit('Gyro', false), id: 'gyro-2', loc: 'CT', slot: 1, destroying: Date.now() },
+            ],
+            [
+                { ...crit('Gyro', false), id: 'gyro-1', loc: 'CT', slot: 0, destroying: Date.now() },
+                { ...crit('Gyro', false), id: 'gyro-2', loc: 'CT', slot: 1, destroying: Date.now() },
+            ],
+        ]) {
+            const forceUnit = createForceUnitHarness({ critSlots });
+            const turnState = forceUnit.turnState();
+            turnState.setPSRCheckState({ gyroHit: 2, gyroDestroyed: true });
+
+            expect(forceUnit.rules.autoFall()).toBeTrue();
+            expect(turnState.getPSRChecks()).toContain(jasmine.objectContaining({
+                fallCheck: 2,
+                pilotCheck: 2,
+                reason: 'Gyro hit',
+            }));
+            expect(forceUnit.rules.PSRModifiers().modifier).toBe(2);
+        }
+    });
+
+    it('retains the TW destroyed-gyro PSR', () => {
+        const forceUnit = createForceUnitHarness({
+            rulesId: 'tw',
+            critSlots: [
+                { ...crit('Gyro'), id: 'gyro-1', loc: 'CT', slot: 0 },
+                { ...crit('Gyro', false), id: 'gyro-2', loc: 'CT', slot: 1, destroying: Date.now() },
+            ],
+        });
+        const turnState = forceUnit.turnState();
+        turnState.setPSRCheckState({ gyroHit: 1, gyroDestroyed: true });
+
+        expect(forceUnit.rules.autoFall()).toBeTrue();
+        expect(turnState.getPSRChecks()).toContain(jasmine.objectContaining({
+            fallCheck: 100,
+            pilotCheck: 6,
+            reason: 'Gyro destroyed',
+        }));
+    });
+
+    it('applies +1 per destroyed Core2026 Heavy-Duty Gyro slot without forcing a hit PSR', () => {
+        for (const destroyedCount of [1, 2, 3]) {
+            const forceUnit = createForceUnitHarness({
+                critSlots: Array.from({ length: 4 }, (_, index) => heavyDutyGyroCrit(index, index < destroyedCount)),
+            });
+            const turnState = forceUnit.turnState();
+            turnState.setPSRCheckState({ gyroHit: 1, gyroDestroyed: false });
+
+            expect(turnState.getPSRChecks().some(check => check.reason === 'Gyro hit')).toBeFalse();
+            expect(forceUnit.rules.PSRModifiers()).toEqual(jasmine.objectContaining({ modifier: destroyedCount }));
+            expect(forceUnit.rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({
+                pilotCheck: destroyedCount,
+                reason: 'Heavy-Duty Gyro damaged',
+            }));
+        }
+    });
+
+    it('applies pending Core2026 Heavy-Duty Gyro modifiers before commit', () => {
+        for (const pendingHitCount of [1, 2, 3]) {
+            const forceUnit = createForceUnitHarness({
+                critSlots: Array.from({ length: 4 }, (_, index) => ({
+                    ...heavyDutyGyroCrit(index, false),
+                    destroying: index < pendingHitCount ? Date.now() : undefined,
+                })),
+            });
+            const turnState = forceUnit.turnState();
+            turnState.setPSRCheckState({ gyroHit: pendingHitCount, gyroDestroyed: false });
+
+            expect(turnState.getPSRChecks()).toEqual([]);
+            expect(forceUnit.rules.PSRModifiers()).toEqual(jasmine.objectContaining({ modifier: pendingHitCount }));
+            expect(forceUnit.rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({
+                pilotCheck: pendingHitCount,
+                reason: 'Heavy-Duty Gyro damaged',
+            }));
+        }
+    });
+
+    it('requires an exact +2 PSR for jumping but no PSR for running with Heavy-Duty Gyro damage', () => {
+        const rules = createRulesHarness({
+            critSlots: [heavyDutyGyroCrit(0), heavyDutyGyroCrit(1, false), heavyDutyGyroCrit(2, false), heavyDutyGyroCrit(3, false)],
+        });
+
+        expect(rules.getCommittedDamageMovementModePSRCheck('run', 1)).toBeNull();
+        expect(rules.getCommittedDamageMovementModePSRCheck('jump', 1)).toEqual(jasmine.objectContaining({
+            fallCheck: 2,
+            pilotCheck: 2,
+            reason: 'Jumping with damaged heavy-duty gyro',
+            ignorePreExistingGyro: true,
+        }));
+    });
+
+    it('destroys a Core2026 Heavy-Duty Gyro on the fourth hit, not the third', () => {
+        const thirdHitUnit = createForceUnitHarness({
+            critSlots: [
+                heavyDutyGyroCrit(0),
+                heavyDutyGyroCrit(1),
+                { ...heavyDutyGyroCrit(2, false), destroying: Date.now() },
+                heavyDutyGyroCrit(3, false),
+            ],
+        });
+        const thirdHit = thirdHitUnit.getCritSlots()[2];
+        thirdHitUnit.rules.evaluateCritSlotHit(thirdHit);
+        expect(thirdHitUnit.turnState().getPSRCheckState().gyroDestroyed).toBeFalse();
+        expect(thirdHitUnit.rules.autoFall()).toBeFalse();
+
+        const fourthHitUnit = createForceUnitHarness({
+            critSlots: [
+                heavyDutyGyroCrit(0),
+                heavyDutyGyroCrit(1),
+                heavyDutyGyroCrit(2),
+                { ...heavyDutyGyroCrit(3, false), destroying: Date.now() },
+            ],
+        });
+        const fourthHit = fourthHitUnit.getCritSlots()[3];
+        fourthHitUnit.rules.evaluateCritSlotHit(fourthHit);
+        expect(fourthHitUnit.turnState().getPSRCheckState().gyroDestroyed).toBeTrue();
+        expect(fourthHitUnit.rules.autoFall()).toBeTrue();
+        expect(fourthHitUnit.turnState().getPSRChecks()).toEqual([]);
+    });
+
+    it('retains TW Heavy-Duty Gyro run checks and third-hit destruction', () => {
+        const forceUnit = createForceUnitHarness({
+            rulesId: 'tw',
+            critSlots: [
+                heavyDutyGyroCrit(0),
+                heavyDutyGyroCrit(1),
+                { ...heavyDutyGyroCrit(2, false), destroying: Date.now() },
+            ],
+        });
+        const thirdHit = forceUnit.getCritSlots()[2];
+        forceUnit.rules.evaluateCritSlotHit(thirdHit);
+
+        expect(forceUnit.rules.getCommittedDamageMovementModePSRCheck('run', 1)?.reason).toBe('Running with damaged gyro');
+        expect(forceUnit.turnState().getPSRCheckState().gyroDestroyed).toBeTrue();
+    });
+
+    it('uses core2026 hip, foot, gyro, and lower-arm modifiers with TW overrides', () => {
+        const forceUnit = createForceUnitHarness({
+            internalLocations: ['LL', 'RL', 'LA', 'RA'],
+            critSlots: [
+                { ...crit('Hip'), loc: 'LL' },
+                { ...crit('Foot'), loc: 'RL' },
+                { ...crit('Gyro'), loc: 'CT' },
+                { ...crit('Lower Arm'), loc: 'LA' },
+            ],
+        });
+        const rules = forceUnit.rules as MekRules;
+        const armWeapon = directFireWeaponEntry(forceUnit);
+        armWeapon.locations = new Set(['LA']);
+
+        expect(rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({ pilotCheck: 1, reason: 'Hip Destroyed' }));
+        expect(rules.PSRModifiers().modifiers.some(modifier => modifier.reason === 'Leg Actuator(s) Destroyed')).toBeFalse();
+        expect(rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({ pilotCheck: 2, reason: 'Gyro damaged' }));
+        expect(rules.computeEntryState(armWeapon).hitMod).toBe(0);
+
+        const twForceUnit = createForceUnitHarness({
+            internalLocations: ['LL', 'RL', 'LA', 'RA'],
+            critSlots: [
+                { ...crit('Hip'), loc: 'LL' },
+                { ...crit('Foot'), loc: 'RL' },
+                { ...crit('Gyro'), loc: 'CT' },
+                { ...crit('Lower Arm'), loc: 'LA' },
+            ],
+            rulesId: 'tw',
+        });
+        const twRules = twForceUnit.rules as MekRules;
+        const twArmWeapon = directFireWeaponEntry(twForceUnit);
+        twArmWeapon.locations = new Set(['LA']);
+        expect(twRules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({ pilotCheck: 2, reason: 'Hip Destroyed' }));
+        expect(twRules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({ pilotCheck: 1, reason: 'Leg Actuator(s) Destroyed' }));
+        expect(twRules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({ pilotCheck: 3, reason: 'Gyro damaged' }));
+        expect(twRules.computeEntryState(twArmWeapon).hitMod).toBe(1);
     });
 
     it('treats adding flooded and blown-off Mek locations as pending until phase commit', () => {
@@ -792,7 +1541,7 @@ describe('MekRules', () => {
         expect(rules.computeEntryState(entry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: false }));
     });
 
-    it('disables blown-off location inventory without marking it damaged or destroyed', () => {
+    it('marks blown-off location inventory as damaged and disabled without destroying it', () => {
         const forceUnit = createForceUnitHarness({ internalLocations: ['LL'] });
         const rules = forceUnit.rules as MekRules;
         const critSlot = { id: 'test-weapon', name: 'Test Weapon', loc: 'LL', slot: 0 } as CriticalSlot;
@@ -808,7 +1557,7 @@ describe('MekRules', () => {
         expect(forceUnit.isInternalLocCommittedPhysicallyDestroyed('LL')).toBeTrue();
         expect(forceUnit.getCritSlots().every(slot => !slot.destroying && !slot.destroyed)).toBeTrue();
         expect(storedEntry.committedDestroyed()).toBeFalse();
-        expect(rules.computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
+        expect(rules.computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
     });
 
     it('marks inventory in structurally destroyed locations as damaged and disabled', () => {
@@ -830,7 +1579,7 @@ describe('MekRules', () => {
         expect(rules.computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
     });
 
-    it('disables linked locations blown off by parent structural destruction without marking inventory damaged', () => {
+    it('marks linked locations blown off by parent structural destruction as damaged and disabled', () => {
         const forceUnit = createForceUnitHarness({ internalLocations: ['RT', 'RA'] });
         const rules = forceUnit.rules as MekRules;
         const parentCrit = { id: 'parent-weapon', name: 'Parent Weapon', loc: 'RT', slot: 0 } as CriticalSlot;
@@ -852,9 +1601,9 @@ describe('MekRules', () => {
         expect(storedParentEntry.committedDestroyed()).toBeFalse();
         expect(storedLinkedEntry.committedDestroyed()).toBeFalse();
         expect(entryStates.get(storedParentEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
-        expect(entryStates.get(storedLinkedEntry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
+        expect(entryStates.get(storedLinkedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
         expect(rules.computeEntryState(storedParentEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
-        expect(rules.computeEntryState(storedLinkedEntry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
+        expect(rules.computeEntryState(storedLinkedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
     });
 
     it('disables linked-location inventory from flooded torsos without marking it damaged', () => {

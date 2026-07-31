@@ -46,7 +46,7 @@ import { RenameForceDialogComponent, type RenameForceDialogData, type RenameForc
 import { RenameGroupDialogComponent, type RenameGroupDialogData, type RenameGroupDialogResult } from '../components/rename-group-dialog/rename-group-dialog.component';
 import { UnitInitializerService } from './unit-initializer.service';
 import { DialogsService, type DialogRef } from './dialogs.service';
-import { generateUUID, WsService } from './ws.service';
+import { WsService } from './ws.service';
 import { ToastService } from './toast.service';
 import { LoggerService } from './logger.service';
 import { OptionsService } from './options.service';
@@ -68,7 +68,6 @@ import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { GameService } from './game.service';
 import { UrlService } from './url.service';
 import { NavigationEnd, Router } from '@angular/router';
-import { canAntiMech } from '../utils/infantry.util';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import type { ResolvedPack } from '../utils/force-pack.util';
 import { buildMultiForceQueryParams, parseForceFromUrl, type ForceQueryParams, type ForceUrlUnitLookupMode } from '../utils/force-url.util';
@@ -89,6 +88,9 @@ import type { OpPreviewForce } from '../components/op-preview/op-preview.compone
 import { ForceLoadingOverlayComponent, type ForceLoadingOverlayData, type ForceLoadingProgress } from '../components/force-loading-overlay/force-loading-overlay.component';
 import type { PrintAllOptions } from '../models/print-options.model';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
+import { C3NetworkEditor } from '../models/c3-network-editor';
+import { uuidv7 } from '../utils/uuid.util';
+import { EquipmentInteractionRegistryService } from './equipment-interaction-registry.service';
 
 /*
  * Author: Drake
@@ -108,6 +110,7 @@ export class ForceBuilderService {
     private urlService = inject(UrlService);
     private router = inject(Router);
     private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
+    private equipmentRegistryService = inject(EquipmentInteractionRegistryService);
 
     public selectedUnit = signal<ForceUnit | null>(null, { equal: () => false });
     public loadedForces = signal<ForceSlot[]>([]);
@@ -166,6 +169,7 @@ export class ForceBuilderService {
         this.loadUnitsFromUrlOnStartup();
         this.updateUrlOnForceChange();
         this.monitorWebSocketConnection();
+        this.monitorEquipmentHandlerRuntime();
 
         // Auto-reset alignment filter when mixed alignments no longer apply
         effect(() => {
@@ -1187,7 +1191,7 @@ export class ForceBuilderService {
             }
 
             // Set a new instance ID and save
-            newForce.instanceId.set(generateUUID());
+            newForce.instanceId.set(uuidv7());
         } finally {
             newForce.loading = false;
         }
@@ -1601,6 +1605,21 @@ export class ForceBuilderService {
                 // WebSocket just came online - fire and forget :D
                 untracked(() => {
                     this.checkForCloudConflict();
+                });
+            }
+        });
+    }
+
+    private monitorEquipmentHandlerRuntime(): void {
+        effect(() => {
+            for (const { force } of this.loadedForces()) {
+                force.c3Network();
+                untracked(() => {
+                    this.equipmentRegistryService.getRegistry().onForceRuntimeChanged(force, {
+                        toastService: this.toastService,
+                        dialogsService: this.dialogsService,
+                        dataService: this.dataService,
+                    });
                 });
             }
         });
@@ -2457,7 +2476,7 @@ export class ForceBuilderService {
         }));
 
         const op: SerializedOperation = {
-            operationId: generateUUID(),
+            operationId: uuidv7(),
             name: result.name,
             note: result.note,
             timestamp: Date.now(),
@@ -2941,7 +2960,7 @@ export class ForceBuilderService {
             pilot = crewMembers[0];
         }
         const group = cbtUnit.getGroup() as UnitGroup<CBTForceUnit> | null;
-        const disablePiloting = baseUnit.type === 'ProtoMek' || ((baseUnit.type === 'Infantry') && (!canAntiMech(baseUnit)));
+        const disablePiloting = baseUnit.type === 'ProtoMek' || ((baseUnit.type === 'Infantry') && (!baseUnit.canAntiMech));
         let labelPiloting;
         if (baseUnit.type === 'Infantry') {
             labelPiloting = 'Anti-Mech';
@@ -3011,7 +3030,7 @@ export class ForceBuilderService {
                     commander: unit.commander(),
                     group,
                     unitTypeCode: unit.getUnit().as?.TP,
-                    basePv: unit.getUnit().pv,
+                    basePv: unit.getUnit().as?.PV,
                 }
             }
         );
@@ -3068,6 +3087,11 @@ export class ForceBuilderService {
      * @param readOnly Whether the dialog should be read-only
      */
     public async openC3Network(force: Force, readOnly: boolean = false): Promise<void> {
+        await this.loadAllUnitsWithOverlay([force]);
+        if (force.units().some(unit => !unit.isLoaded())) {
+            this.toastService.showToast('Unable to configure C3 until every unit is loaded.', 'error');
+            return;
+        }
         const { C3NetworkDialogComponent, } = await import('../components/c3-network-dialog/c3-network-dialog.component');
         type C3NetworkDialogData = import('../components/c3-network-dialog/c3-network-dialog.component').C3NetworkDialogData;
         type C3NetworkDialogResult = import('../components/c3-network-dialog/c3-network-dialog.component').C3NetworkDialogResult;
@@ -3172,6 +3196,16 @@ export class ForceBuilderService {
             retryResolve = null;
 
             if (skipped) break;
+        }
+
+        for (const force of forces) {
+            if (force.units().some(unit => !unit.isLoaded())) continue;
+            const unitsById = new Map(force.units().map(unit => [unit.id, unit]));
+            const currentNetworks = force.c3Networks();
+            const validatedNetworks = C3NetworkEditor.clean(currentNetworks, unitsById);
+            if (JSON.stringify(validatedNetworks) !== JSON.stringify(currentNetworks)) {
+                force.setNetwork(validatedNetworks);
+            }
         }
 
         dialogRef.close();

@@ -1,14 +1,18 @@
 import { WeaponEquipment, type AmmoType } from '../models/equipment.model';
-import { MountedEquipment } from '../models/force-serialization';
+import { MountedEquipment } from '../models/mounted-equipment.model';
+import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../models/rules/unit-type-rules';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import { isEquipmentDisabledByFailure } from './disabled-equipment.handler';
 import { UACJammingHandler } from './uacjamming.handler';
 
-function owner() {
+function owner(gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
     return {
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        rules: { computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: isEquipmentDisabledByFailure(entry), hitMod: 0 }) }
+        gameRules,
+        rules: {
+            computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: isEquipmentDisabledByFailure(entry), hitMod: 0 })
+        }
     } as never;
 }
 
@@ -22,9 +26,9 @@ function weapon(ammoType: AmmoType): WeaponEquipment {
     });
 }
 
-function entry(ammoType: AmmoType, states = new Map<string, string>()): MountedEquipment {
+function entry(ammoType: AmmoType, states = new Map<string, string>(), gameRules: CBTGameRules = CORE_2026_GAME_RULES): MountedEquipment {
     return new MountedEquipment({
-        owner: owner(),
+        owner: owner(gameRules),
         id: ammoType,
         name: ammoType,
         equipment: weapon(ammoType),
@@ -42,11 +46,13 @@ describe('UACJammingHandler', () => {
         context.toastService.showToast = jasmine.createSpy('showToast');
     });
 
-    it('applies to ultra and rotary autocannons', () => {
-        expect(handler.applicableTo(entry('AC_ULTRA'))).toBeTrue();
-        expect(handler.applicableTo(entry('AC_ULTRA_THB'))).toBeTrue();
+    it('applies rotary autocannons and Tactical Warfare Ultra autocannons', () => {
         expect(handler.applicableTo(entry('AC_ROTARY'))).toBeTrue();
         expect(handler.applicableTo(entry('AC'))).toBeFalse();
+        expect(handler.applicableTo(entry('AC_ULTRA'))).toBeFalse();
+        expect(handler.applicableTo(entry('AC_ULTRA_THB'))).toBeFalse();
+        expect(handler.applicableTo(entry('AC_ULTRA', new Map(), TW_GAME_RULES))).toBeTrue();
+        expect(handler.applicableTo(entry('AC_ULTRA_THB', new Map(), TW_GAME_RULES))).toBeTrue();
     });
 
     it('toggles the shared disabled state with jam labels', () => {

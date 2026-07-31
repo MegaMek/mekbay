@@ -45,6 +45,7 @@ import { UnitSearchFiltersService } from '../../services/unit-search-filters.ser
 import type { FormationSearchTarget } from '../../utils/formation-requirement.model';
 import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
+import { normalizeUnitSearchRange, rangeFilterAllowsFloatingValues } from '../../utils/unit-search-range-dialog.util';
 import { MultiSelectDropdownComponent, type DropdownOption, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { SemanticGuideComponent } from '../semantic-guide/semantic-guide.component';
@@ -244,8 +245,7 @@ export class UnitSearchAdvancedFiltersComponent {
                     from: currentValue[0],
                     to: currentValue[1],
                 },
-                allowFloatingValues: !Number.isInteger(filterConfig?.stepSize ?? 1)
-                    || (filterConfig?.specialValues?.some(value => !Number.isInteger(value)) ?? false),
+                allowFloatingValues: rangeFilterAllowsFloatingValues(filterConfig),
             } as UnitSearchFilterRangeDialogData,
         });
         const newValues = await firstValueFrom(ref.closed);
@@ -258,25 +258,7 @@ export class UnitSearchAdvancedFiltersComponent {
             return;
         }
 
-        let newFrom = newValues.from ?? 0;
-        let newTo = newValues.to ?? Number.MAX_SAFE_INTEGER;
-        if (newFrom < availableRange[0]) {
-            newFrom = availableRange[0];
-        } else if (newTo > availableRange[1]) {
-            newTo = availableRange[1];
-        }
-
-        const currentRange = [...currentFilter.value] as [number, number];
-        if (newFrom > currentRange[1]) {
-            newFrom = currentRange[1];
-        }
-        currentRange[0] = newFrom;
-        if (newTo < currentRange[0]) {
-            newTo = currentRange[0];
-        }
-        currentRange[1] = newTo;
-
-        this.setAdvFilter(filterKey, currentRange);
+        this.setAdvFilter(filterKey, normalizeUnitSearchRange(newValues, availableRange));
     }
 
     formatRangeValue(conf: RangeFilterConfig, value: number | undefined): string {

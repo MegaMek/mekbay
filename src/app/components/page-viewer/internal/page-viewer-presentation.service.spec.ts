@@ -41,6 +41,18 @@ describe('PageViewerPresentationService', () => {
         expect(getReferenceTable(svg)?.style.display).toBe('block');
     });
 
+    it('restores cached reference tables after they have been hidden', () => {
+        const svg = createSheetSvg();
+        const displayedUnits = [{ svg: () => svg }] as never[];
+
+        service.setDisplayedFluffImageVisibility(displayedUnits, true);
+        expect(getReferenceTable(svg)?.style.display).toBe('none');
+
+        service.setDisplayedFluffImageVisibility(displayedUnits, false);
+
+        expect(getReferenceTable(svg)?.style.display).toBe('block');
+    });
+
     it('applies fluff visibility to shadow wrapper svgs', () => {
         const wrapper = document.createElement('div');
         const svg = createSheetSvg();

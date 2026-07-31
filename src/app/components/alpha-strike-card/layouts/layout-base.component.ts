@@ -33,6 +33,7 @@
 
 import { Directive, input, output, computed, inject, signal } from '@angular/core';
 import type { ASForceUnit, AbilitySelection } from '../../../models/as-force-unit.model';
+import type { ColorScheme } from '../../../models/options.model';
 import type { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
 import type { Era } from '../../../models/eras.model';
 import { DataService } from '../../../services/data.service';
@@ -40,10 +41,11 @@ import { AsAbilityLookupService } from '../../../services/as-ability-lookup.serv
 import { COMMAND_ABILITIES } from '../../../models/command-abilities.model';
 import { PILOT_ABILITIES, type PilotAbility, type ASCustomPilotAbility } from '../../../models/pilot-abilities.model';
 import { type CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
-import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
+import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.util';
 import { formatMovement, formatMovementWithAlternate } from '../../../utils/as-common.util';
 import { FormationAbilityAssignmentUtil } from '../../../utils/formation-ability-assignment.util';
 import type { SpecialAbilityState } from '../../../models/as-special-ability-state.model';
+import { DEFAULT_GUNNERY_SKILL } from '../../../models/crew-member.model';
 
 /*
  * Author: Drake
@@ -86,9 +88,10 @@ export abstract class AsLayoutBaseComponent {
     forceUnit = input<ASForceUnit>();
     unit = input.required<Unit>();
     useHex = input<boolean>(false);
-    cardStyle = input<'colored' | 'monochrome'>('colored');
+    cardStyle = input<ColorScheme>('default');
     imageUrl = input<string>('');
     interactive = input<boolean>(false);
+    skillOverride = input<number | undefined>(undefined);
 
     // Image loading state (hidden on error)
     protected imageLoadFailed = signal(false);
@@ -115,10 +118,10 @@ export abstract class AsLayoutBaseComponent {
 
     // Skill and PV
     isCommander = computed<boolean>(() => this.forceUnit()?.commander() ?? false);
-    skill = computed<number>(() => this.forceUnit()?.getPilotStats() ?? 4);
+    skill = computed<number>(() => this.forceUnit()?.getPilotStats() ?? this.skillOverride() ?? DEFAULT_GUNNERY_SKILL);
     basePV = computed<number>(() => this.asStats().PV);
     adjustedPV = computed<number>(() => {
-        return PVCalculatorUtil.calculateAdjustedPV(this.asStats().PV, this.skill());
+        return adjustPointValueForSkill(this.asStats().PV, this.skill());
     });
     pilotAbilities = computed<AbilitySelection[]>(() => {
         const forceUnit = this.forceUnit();

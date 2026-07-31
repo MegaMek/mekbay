@@ -34,7 +34,8 @@
 import { Injectable, inject } from '@angular/core';
 
 import { REMOTE_HOST } from '../../models/common.model';
-import { type Equipment, type EquipmentMap, type RawEquipmentData, createEquipment } from '../../models/equipment.model';
+import { EMPTY_EQUIPMENT_REGISTRY, EquipmentRegistry } from '../../models/equipment-lookup';
+import { type EquipmentMap, type RawEquipmentData, createEquipment } from '../../models/equipment.model';
 import { DbService } from '../db.service';
 import { LoggerService } from '../logger.service';
 import { CatalogBaseService } from './catalog-base.service';
@@ -46,7 +47,7 @@ export class EquipmentCatalogService extends CatalogBaseService<RawEquipmentData
     private readonly dbService = inject(DbService);
     private readonly catalogLogger = inject(LoggerService);
 
-    private equipment: EquipmentMap = {};
+    private equipmentRegistry = EMPTY_EQUIPMENT_REGISTRY;
 
     protected override get catalogKey(): string {
         return 'equipment';
@@ -56,16 +57,12 @@ export class EquipmentCatalogService extends CatalogBaseService<RawEquipmentData
         return `${REMOTE_HOST}/equipment2.json`;
     }
 
-    public getEquipments(): EquipmentMap {
-        return this.equipment;
-    }
-
-    public getEquipmentByName(internalName: string): Equipment | undefined {
-        return this.equipment[internalName];
+    public getEquipmentRegistry(): EquipmentRegistry {
+        return this.equipmentRegistry;
     }
 
     protected override hasHydratedData(): boolean {
-        return Object.keys(this.equipment).length > 0;
+        return this.equipmentRegistry.size > 0;
     }
 
     protected override async loadFromCache(): Promise<RawEquipmentData | undefined> {
@@ -87,7 +84,7 @@ export class EquipmentCatalogService extends CatalogBaseService<RawEquipmentData
             }
         }
 
-        this.equipment = normalizedEquipment;
+        this.equipmentRegistry = new EquipmentRegistry(normalizedEquipment);
         this.etag = data.etag || '';
     }
 

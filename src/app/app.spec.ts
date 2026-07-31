@@ -91,7 +91,7 @@ describe('App', () => {
       showToast: jasmine.createSpy('showToast'),
     };
     optionsServiceMock = {
-      options: jasmine.createSpy('options').and.returnValue({ sheetsColor: 'day', availabilitySource: 'mekbay' }),
+      options: jasmine.createSpy('options').and.returnValue({ colorScheme: 'default', availabilitySource: 'mul' }),
     };
     unitSearchFiltersServiceMock = {
       expandedView: jasmine.createSpy('expandedView').and.returnValue(false),

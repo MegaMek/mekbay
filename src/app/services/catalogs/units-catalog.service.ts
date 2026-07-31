@@ -39,8 +39,8 @@ import type { Unit, Units } from '../../models/units.model';
 import { DbService } from '../db.service';
 import { OptionsService } from '../options.service';
 import { UnitRuntimeService } from '../unit-runtime.service';
-import { generateUUID } from '../ws.service';
 import { CatalogBaseService } from './catalog-base.service';
+import { uuidv7 } from '../../utils/uuid.util';
 
 export function normalizeNullMulUnitIds(units: readonly Unit[]): Unit[] {
     let nextNullMulId = -1;
@@ -72,8 +72,7 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
      * from any user-supplied additional unit servers. The primary source always wins on
      * name collisions; additional servers may only contribute new-named units.
      */
-    public override async initialize(): Promise<void> {
-        await super.initialize();
+    protected override async afterInitialize(): Promise<void> {
         await this.loadCustomServers();
     }
 
@@ -198,7 +197,7 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
                 return cached ?? null;
             }
 
-            const etag = response.headers.get('ETag') || remoteEtag || generateUUID();
+            const etag = response.headers.get('ETag') || remoteEtag || uuidv7();
             const data: Units = { ...body, etag };
             await this.dbService.saveCustomServerUnits(server, data);
             return data;

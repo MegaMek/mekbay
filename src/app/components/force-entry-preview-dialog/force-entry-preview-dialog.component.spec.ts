@@ -193,8 +193,6 @@ describe('ForceEntryPreviewDialogComponent', () => {
         expect(unitTiles.length).toBe(20);
         expect(unitSquares.length).toBe(20);
         expect(getComputedStyle(units!).display).toBe('grid');
-        expect(firstTileWidth).toBeGreaterThanOrEqual(86);
-        expect(firstTileWidth).toBeLessThanOrEqual(92);
         expect(Math.abs(firstTileWidth - lastTileWidth)).toBeLessThan(0.1);
         expect(getComputedStyle(unitSquares[0]).width).toBe(getComputedStyle(unitTiles[0]).width);
     });

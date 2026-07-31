@@ -1,14 +1,18 @@
 import { computed, signal } from '@angular/core';
 import type { CBTForceUnitState } from './cbt-force-unit-state.model';
-import { MountedEquipment, type CriticalSlot, type HeatProfile } from './force-serialization';
+import { MountedEquipment } from './mounted-equipment.model';
+import { type CriticalSlot, type HeatProfile } from './force-serialization';
 import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';
 import { MekRules } from './rules/mek-rules';
 import type { UnitTypeRules } from './rules/unit-type-rules';
 import type { Unit } from './units.model';
-import { TurnState } from './turn-state.model';
+import { calculateHeatProjection, TurnState } from './turn-state.model';
 import { Equipment } from './equipment.model';
 import { PpcCapacitorHandler, PPC_CAPACITOR_STATE_KEY } from '../equipment-handlers/ppc-capacitor.handler';
+import { TWAeroRules, TWInfantryRules, TWMekRules } from './rules/tw-rules';
+import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
+import { EquipmentFlag } from './equipment-flags.type';
 
 interface TurnStateHarnessOptions {
     critSlots?: CriticalSlot[];
@@ -19,11 +23,13 @@ interface TurnStateHarnessOptions {
     prone?: boolean;
     skidding?: boolean;
     rulesType?: 'mek' | 'infantry' | 'aero';
+    rulesId?: 'core2026' | 'tw';
 }
 
 interface TurnStateHarness {
     turnState: TurnState;
     critSlots: ReturnType<typeof signal<CriticalSlot[]>>;
+    heat: ReturnType<typeof signal<HeatProfile>>;
     inventory: ReturnType<typeof signal<MountedEquipment[]>>;
     rules: UnitTypeRules;
 }
@@ -44,7 +50,7 @@ function createCritSlot(
     };
 }
 
-function createEquipment(name: string, flags: string[]): Equipment {
+function createEquipment(name: string, flags: EquipmentFlag[]): Equipment {
     return new Equipment({
         id: name,
         name,
@@ -53,7 +59,7 @@ function createEquipment(name: string, flags: string[]): Equipment {
     });
 }
 
-function getCritSlotEquipmentFlags(name: string): string[] {
+function getCritSlotEquipmentFlags(name: string): EquipmentFlag[] {
     if (name === 'Improved Jump Jet') return ['F_JUMP_JET', 'S_IMPROVED'];
     if (name === 'Prototype Improved Jump Jet') return ['F_JUMP_JET', 'S_IMPROVED', 'S_PROTOTYPE'];
     if (name === 'RISC Super-Cooled Myomer') return ['F_SCM'];
@@ -71,6 +77,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
     let turnState: TurnState;
 
     const unit = {
+        gameRules: options.rulesId === 'tw' ? TW_GAME_RULES : CORE_2026_GAME_RULES,
         locations: { internal: internalLocations },
         isLoaded: () => true,
         shutdown: false,
@@ -85,7 +92,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         isInternalLocCommittedDestroyed: (loc: string) => committedDestroyedLegs.has(loc),
         isInternalLocDestroyed: (loc: string) => currentDestroyedLegs.has(loc) || committedDestroyedLegs.has(loc),
         isEquipmentUnavailable: (slot: CriticalSlot) => !!slot.destroyed || (slot.loc ? committedDestroyedLegs.has(slot.loc) : false),
-        getUnit: () => ({ type: 'Mek', ...options.unit } as Unit),
+        getUnit: () => ({ type: 'Mek', comp: [], ...options.unit } as Unit),
         turnState: () => turnState,
     };
 
@@ -104,19 +111,52 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
     } as unknown as CBTForceUnitState;
 
     turnState = new TurnState(unitState);
-    const rules = options.rulesType === 'infantry'
-        ? new InfantryRules(unit as any)
-        : options.rulesType === 'aero'
-            ? new AeroRules(unit as any)
-            : new MekRules(unit as any);
+    const rules = options.rulesId === 'tw'
+        ? options.rulesType === 'infantry'
+            ? new TWInfantryRules(unit as any)
+            : options.rulesType === 'aero'
+                ? new TWAeroRules(unit as any)
+                : new TWMekRules(unit as any)
+        : options.rulesType === 'infantry'
+            ? new InfantryRules(unit as any)
+            : options.rulesType === 'aero'
+                ? new AeroRules(unit as any)
+                : new MekRules(unit as any);
     (unit as any).rules = rules;
 
     return {
         turnState,
         critSlots,
+        heat,
         inventory,
         rules,
     };
+}
+
+function createTurnStateHarnessWithDissipation(dissipation: number): TurnStateHarness {
+    const heatSink = new Equipment({
+        id: 'test-heat-sink',
+        name: 'Test Heat Sink',
+        type: 'misc',
+        flags: ['F_HEAT_SINK'],
+    });
+    return createTurnStateHarness({
+        unit: {
+            heat: dissipation,
+            comp: [{
+                id: 'test-heat-sinks',
+                q: dissipation,
+                q2: 0,
+                n: 'Test Heat Sink',
+                t: 'E',
+                p: -1,
+                l: '',
+                c: '',
+                os: 0,
+                eq: heatSink,
+            }],
+        },
+    });
 }
 
 function getReasons(turnState: TurnState): string[] {
@@ -131,7 +171,136 @@ function getFiredHeat(turnState: TurnState): number {
     return turnState.heatSources().find(source => source.id === 'weapons')?.value ?? 0;
 }
 
+function getDamagedEngineHeat(turnState: TurnState): number {
+    return turnState.heatSources().find(source => source.id === 'damaged-engine')?.value ?? 0;
+}
+
 describe('TurnState', () => {
+
+    describe('calculateHeatProjection', () => {
+        it('adds positive sources, subtracts dissipation, and clamps at zero', () => {
+            expect(calculateHeatProjection(10, [
+                { id: 'movement', label: 'Movement', value: 2 },
+                { id: 'invalid', label: 'Invalid', value: Number.NaN },
+                { id: 'negative', label: 'Negative', value: -5 },
+            ], 5)).toEqual({
+                current: 10,
+                sourceHeat: 2,
+                dissipation: 5,
+                consumedDissipation: 5,
+                projected: 7,
+                delta: -3,
+            });
+
+            expect(calculateHeatProjection(2, [], 10).projected).toBe(0);
+        });
+
+        it('consumes only the dissipation needed before clipping at zero', () => {
+            expect(calculateHeatProjection(5, [
+                { id: 'movement', label: 'Movement', value: 1 },
+            ], 20)).toEqual({
+                current: 5,
+                sourceHeat: 1,
+                dissipation: 20,
+                consumedDissipation: 6,
+                projected: 0,
+                delta: -5,
+            });
+            expect(calculateHeatProjection(5, [], 5).consumedDissipation).toBe(5);
+            expect(calculateHeatProjection(5, [], 0).consumedDissipation).toBe(0);
+        });
+    });
+
+    describe('heat dissipation balance', () => {
+        it('does not expose a no-op heat resolution for zero-valued sources', () => {
+            const { turnState, heat } = createTurnStateHarness();
+            heat.set({ current: 5, previous: 5 });
+
+            expect(turnState.heatSources()).toContain(jasmine.objectContaining({
+                id: 'movement',
+                value: 0,
+            }));
+            expect(turnState.heatProjection().projected).toBe(5);
+            expect(turnState.hasPendingHeatResolution()).toBeFalse();
+            expect(turnState.heatProjectionVisible()).toBeFalse();
+        });
+
+        it('keeps balanced positive heat sources pending for acknowledgement', () => {
+            const { turnState, heat } = createTurnStateHarnessWithDissipation(2);
+            heat.set({ current: 5, previous: 5 });
+            turnState.moveMode.set('run');
+
+            expect(turnState.heatProjection()).toEqual(jasmine.objectContaining({
+                sourceHeat: 2,
+                consumedDissipation: 2,
+                projected: 5,
+                delta: 0,
+            }));
+            expect(turnState.hasPendingHeatResolution()).toBeTrue();
+            expect(turnState.heatProjectionVisible()).toBeTrue();
+        });
+
+        it('derives remaining cooling, an exact-zero balance, and a pending deficit from current capacity', () => {
+            const { turnState, heat } = createTurnStateHarnessWithDissipation(5);
+            turnState.acknowledgeHeatSources(3);
+
+            expect(turnState.heatDissipationBalance()).toBe(2);
+            expect(turnState.effectiveHeatDissipation()).toBe(2);
+            expect(turnState.heatSources()).toEqual([]);
+
+            heat.update(current => ({ ...current, heatsinksOff: 2 }));
+            expect(turnState.heatDissipationBalance()).toBe(0);
+            expect(turnState.effectiveHeatDissipation()).toBe(0);
+            expect(turnState.hasPendingHeatResolution()).toBeFalse();
+
+            heat.update(current => ({ ...current, heatsinksOff: 4 }));
+            expect(turnState.heatDissipationBalance()).toBe(-2);
+            expect(turnState.effectiveHeatDissipation()).toBe(0);
+            expect(turnState.heatSources()).toEqual([{
+                id: 'heat-dissipation-deficit',
+                label: 'Dissipation',
+                value: 2,
+            }]);
+            expect(turnState.heatProjection()).toEqual(jasmine.objectContaining({
+                sourceHeat: 2,
+                consumedDissipation: 0,
+                projected: 2,
+                delta: 2,
+            }));
+            expect(turnState.hasPendingHeatResolution()).toBeTrue();
+        });
+
+        it('settles a capacity deficit without acknowledging the derived heat source', () => {
+            const { turnState, heat } = createTurnStateHarnessWithDissipation(5);
+            turnState.acknowledgeHeatSources(5);
+            heat.update(current => ({ ...current, heatsinksOff: 3 }));
+
+            expect(turnState.heatDissipationBalance()).toBe(-3);
+
+            turnState.acknowledgeHeatSources(0);
+
+            expect(turnState.heatDissipationBalance()).toBe(0);
+            expect(turnState.heatSources()).toEqual([]);
+            expect(turnState.serialize()?.heatDissipationConsumed).toBe(2);
+            expect(turnState.serialize()?.acknowledgedHeatSources?.['heat-dissipation-deficit']).toBeUndefined();
+        });
+
+        it('round-trips a pending deficit from consumed dissipation and current sink settings', () => {
+            const { turnState, heat } = createTurnStateHarnessWithDissipation(5);
+            turnState.acknowledgeHeatSources(5);
+            heat.update(current => ({ ...current, heatsinksOff: 3 }));
+            const serialized = turnState.serialize();
+
+            const { turnState: restored, heat: restoredHeat } = createTurnStateHarnessWithDissipation(5);
+            restoredHeat.update(current => ({ ...current, heatsinksOff: 3 }));
+            restored.update(serialized);
+
+            expect(restored.heatDissipationBalance()).toBe(-3);
+            expect(restored.heatProjection().projected).toBe(3);
+            expect(restored.serialize()?.heatDissipationConsumed).toBe(5);
+            expect(restored.serialize()?.acknowledgedHeatSources?.['heat-dissipation-deficit']).toBeUndefined();
+        });
+    });
 
     describe('serialization', () => {
         it('round-trips turn signals and PSR check state through a plain object', () => {
@@ -191,7 +360,7 @@ describe('TurnState', () => {
             expect(restored.serialize()).toBeUndefined();
         });
 
-        it('omits false and empty turn state data from serialized output', () => {
+        it('persists disabled movement PSRs while omitting other false and empty state', () => {
             const { turnState } = createTurnStateHarness();
             turnState.airborne.set(false);
             turnState.applyMovePSR.set(false);
@@ -203,7 +372,47 @@ describe('TurnState', () => {
                 shutdown: false,
             });
 
-            expect(turnState.serialize()).toBeUndefined();
+            const serialized = turnState.serialize();
+
+            expect(serialized).toEqual({ applyMovePSR: false });
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(serialized);
+            expect(restored.applyMovePSR()).toBeFalse();
+            expect(restored.dirty()).toBeFalse();
+            expect(restored.dirtyPhase()).toBeFalse();
+        });
+
+        it('preserves applied heat sources without serializing derived source values', () => {
+            const { turnState } = createTurnStateHarnessWithDissipation(5);
+            turnState.moveMode.set('run');
+            turnState.addFiredHeat(6);
+
+            turnState.acknowledgeHeatSources(3);
+
+            expect(turnState.serialize()).toEqual({
+                moveMode: 'run',
+                acknowledgedHeatSources: { movement: '[2,null,null]' },
+                heatDissipationConsumed: 3,
+            });
+
+            const { turnState: restored } = createTurnStateHarnessWithDissipation(5);
+            restored.update(turnState.serialize());
+
+            expect(restored.heatProjectionVisible()).toBeFalse();
+            expect(restored.heatSources()).toEqual([]);
+            expect(restored.serialize()?.heatDissipationConsumed).toBe(3);
+        });
+
+        it('returns an isolated acknowledged heat-source snapshot', () => {
+            const { turnState } = createTurnStateHarness();
+            turnState.moveMode.set('run');
+            turnState.acknowledgeHeatSources();
+            const serialized = turnState.serialize()!;
+
+            serialized.acknowledgedHeatSources!['movement'] = 'changed';
+
+            expect(turnState.serialize()?.acknowledgedHeatSources?.['movement']).not.toBe('changed');
         });
     });
 
@@ -225,6 +434,7 @@ describe('TurnState', () => {
                 critSlots: [createCritSlot('Gyro', 'CT', { destroyed: 1 })],
             });
             turnState.moveMode.set('run');
+            turnState.moveDistance.set(1);
             turnState.applyMovePSR.set(true);
 
             expect(getReasons(turnState)).toContain('Running with damaged gyro');
@@ -294,6 +504,7 @@ describe('TurnState', () => {
             const { turnState } = createTurnStateHarness({
                 skidding: true,
                 rulesType: 'infantry',
+                rulesId: 'tw',
                 unit: { type: 'Infantry', subtype: 'Battle Armor', moveType: 'VTOL' },
             });
             turnState.moveMode.set('jump');
@@ -323,6 +534,7 @@ describe('TurnState', () => {
             const { turnState } = createTurnStateHarness({
                 prone: true,
                 skidding: true,
+                rulesId: 'tw',
             });
             turnState.moveMode.set('walk');
             turnState.moveDistance.set(3);
@@ -523,9 +735,123 @@ describe('TurnState', () => {
 
             expect(getFiredHeat(turnState)).toBe(10);
 
-            turnState.resetTurnHeatSources();
+            turnState.acknowledgeHeatSources();
 
             expect(getFiredHeat(turnState)).toBe(0);
+        });
+
+        it('clears all current heat sources and reactivates when a weapon fires again', () => {
+            const { turnState } = createTurnStateHarness();
+            turnState.moveMode.set('run');
+            turnState.addFiredHeat(6);
+
+            turnState.acknowledgeHeatSources();
+
+            expect(turnState.weaponsHeat()).toBe(0);
+            expect(turnState.heatSources()).toEqual([]);
+            expect(turnState.heatProjectionVisible()).toBeFalse();
+
+            turnState.addFiredHeat(6);
+
+            expect(getFiredHeat(turnState)).toBe(6);
+            expect(getMovementHeat(turnState)).toBe(0);
+            expect(turnState.heatSources().map(source => source.id)).toEqual(['weapons']);
+            expect(turnState.heatProjectionVisible()).toBeTrue();
+        });
+
+        it('does not reactivate applied sources for invalid fired heat', () => {
+            const { turnState } = createTurnStateHarness();
+            turnState.acknowledgeHeatSources();
+
+            [0, -1, Number.NaN, Number.POSITIVE_INFINITY].forEach(value => turnState.addFiredHeat(value));
+
+            expect(turnState.heatProjectionVisible()).toBeFalse();
+            expect(turnState.heatSources()).toEqual([]);
+        });
+
+        it('reactivates actionable heat for movement changes and readdition', () => {
+            const { turnState } = createTurnStateHarness();
+            turnState.moveMode.set('run');
+            turnState.moveDistance.set(5);
+            turnState.acknowledgeHeatSources();
+
+            turnState.moveMode.set('walk');
+            expect(turnState.heatProjectionVisible()).toBeTrue();
+            expect(getMovementHeat(turnState)).toBe(1);
+
+            turnState.acknowledgeHeatSources();
+            turnState.moveMode.set(null);
+            turnState.moveDistance.set(null);
+            expect(getMovementHeat(turnState)).toBe(0);
+            expect(turnState.heatProjectionVisible()).toBeFalse();
+
+            turnState.acknowledgeHeatSources();
+            turnState.moveMode.set('run');
+            turnState.moveDistance.set(5);
+            expect(turnState.heatProjectionVisible()).toBeTrue();
+            expect(getMovementHeat(turnState)).toBe(2);
+        });
+
+        it('reactivates only when changed criticals alter passive heat sources', () => {
+            const engineCrit = createCritSlot('Engine', 'CT');
+            const unrelatedCrit = createCritSlot('Sensors', 'HD');
+            const { turnState, critSlots } = createTurnStateHarness({ critSlots: [engineCrit, unrelatedCrit] });
+            turnState.acknowledgeHeatSources();
+
+            unrelatedCrit.destroying = 1;
+            critSlots.set([...critSlots()]);
+            turnState.reconcileHeatSources();
+            expect(turnState.heatProjectionVisible()).toBeFalse();
+
+            engineCrit.destroying = 1;
+            critSlots.set([...critSlots()]);
+            turnState.reconcileHeatSources();
+            expect(turnState.heatProjectionVisible()).toBeTrue();
+            expect(getDamagedEngineHeat(turnState)).toBe(5);
+
+            turnState.acknowledgeHeatSources();
+            engineCrit.destroying = undefined;
+            critSlots.set([...critSlots()]);
+            turnState.reconcileHeatSources();
+            expect(turnState.heatProjectionVisible()).toBeFalse();
+            expect(getDamagedEngineHeat(turnState)).toBe(0);
+
+            engineCrit.destroying = 2;
+            critSlots.set([...critSlots()]);
+            turnState.reconcileHeatSources();
+            expect(turnState.heatProjectionVisible()).toBeTrue();
+            expect(getDamagedEngineHeat(turnState)).toBe(5);
+        });
+
+        it('reactivates capped engine heat when another engine critical appears', () => {
+            const engineCrits = [
+                createCritSlot('Engine', 'CT', { id: 'engine@CT#0', destroying: 1 }),
+                createCritSlot('Engine', 'CT', { id: 'engine@CT#1', destroying: 2 }),
+                createCritSlot('Engine', 'CT', { id: 'engine@CT#2' }),
+            ];
+            const { turnState, critSlots } = createTurnStateHarness({ critSlots: engineCrits });
+            turnState.acknowledgeHeatSources();
+            expect(turnState.heatProjectionVisible()).toBeFalse();
+
+            engineCrits[2].destroying = 3;
+            critSlots.set([...engineCrits]);
+            turnState.reconcileHeatSources();
+
+            expect(turnState.heatProjectionVisible()).toBeTrue();
+            expect(getDamagedEngineHeat(turnState)).toBe(10);
+        });
+
+        it('keeps acknowledged engine heat suppressed when movement changes', () => {
+            const engineCrit = createCritSlot('Engine', 'CT', { destroying: 1 });
+            const { turnState } = createTurnStateHarness({ critSlots: [engineCrit] });
+            turnState.moveMode.set('run');
+            turnState.acknowledgeHeatSources();
+
+            turnState.moveMode.set('walk');
+
+            expect(turnState.heatSources().map(source => source.id)).toEqual(['movement']);
+            expect(getMovementHeat(turnState)).toBe(1);
+            expect(getDamagedEngineHeat(turnState)).toBe(0);
         });
 
         it('includes fired heat for aero rules that do not add movement heat sources', () => {
@@ -544,7 +870,7 @@ describe('TurnState', () => {
         it('adds charged PPC capacitor heat while the linked PPC and capacitor are usable', () => {
             const { turnState, inventory } = createTurnStateHarness({ rulesType: 'aero' });
             const owner = turnState.unitState.unit;
-            const ppcEquipment = createEquipment('Light PPC', ['F_PPC']);
+            const ppcEquipment = createEquipment('Light PPC', ['F_PPC', 'F_PPC_CAPACITOR_COMPATIBLE']);
             const capacitorEquipment = createEquipment('PPC Capacitor', ['F_WEAPON_ENHANCEMENT', 'F_PPC_CAPACITOR']);
             const ppc = new MountedEquipment({ owner, id: 'Light PPC@RA#3', name: 'Light PPC', equipment: ppcEquipment });
             const capacitor = new MountedEquipment({

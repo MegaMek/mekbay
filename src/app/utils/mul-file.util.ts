@@ -39,9 +39,9 @@ import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import type { DataService } from '../services/data.service';
 import type { UnitInitializerService } from '../services/unit-initializer.service';
-import { generateUUID } from '../services/ws.service';
 import type { CriticalSlot, LocationData } from '../models/force-serialization';
 import type { Unit } from '../models/units.model';
+import { uuidv7 } from './uuid.util';
 
 const DEFAULT_ENTITY_ATTRIBUTES: Record<string, string> = {
     offboard: 'false',
@@ -328,7 +328,7 @@ function createCrewElement(doc: XMLDocument, unit: CBTForceUnit): Element {
                 clanperson: clanPerson,
                 gunnery: crewMember.getSkill('gunnery'),
                 piloting: crewMember.getSkill('piloting'),
-                externalId: generateUUID(),
+                externalId: uuidv7(),
             });
             appendIndented(crewElement, doc, crewMemberElement, '\t\t\t');
         }
@@ -346,7 +346,7 @@ function createCrewElement(doc: XMLDocument, unit: CBTForceUnit): Element {
         clanperson: clanPerson,
         gunnery: pilot?.getSkill('gunnery') ?? DEFAULT_GUNNERY_SKILL,
         piloting: pilot?.getSkill('piloting') ?? DEFAULT_PILOTING_SKILL,
-        externalId: generateUUID(),
+        externalId: uuidv7(),
         ejected: false,
         edge: '',
         autoeject: true,

@@ -32,14 +32,14 @@
  */
 
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
-import type { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { PickerChoice } from '../components/picker/picker.interface';
-import type { ALL_C3_FLAGS } from '../models/c3-network.model';
 import { firstValueFrom } from 'rxjs';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 
 export class C3Handler extends EquipmentInteractionHandler {
     readonly id = 'c3-handler';
-    override readonly flags: string[] = ['ANY_C3'];
+    override readonly flags: EquipmentFlag[] = ['ANY_C3'];
     override readonly priority = 10;
 
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {

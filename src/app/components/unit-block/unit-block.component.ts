@@ -35,7 +35,6 @@ import { Component, ChangeDetectionStrategy, computed, input, output, inject } f
 import { UpperCasePipe } from '@angular/common';
 import type { ForceUnit } from '../../models/force-unit.model';
 import type { Unit } from '../../models/units.model';
-import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { OptionsService } from '../../services/options.service';
 import { CdkMenuModule } from '@angular/cdk/menu';
@@ -45,17 +44,22 @@ import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import { ECMMode } from '../../models/common.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
-import { C3NetworkUtil } from '../../utils/c3-network.util';
-import type { C3Component, C3NetworkType } from '../../models/c3-network.model';
+import { C3Capabilities, C3Network, c3NetworkTypeName, type C3Component, type C3NetworkType } from '../../models/c3-network.model';
 import { GameSystem } from '../../models/common.model';
 import { formatMovement, formatMovementWithAlternate } from '../../utils/as-common.util';
 import { getUnitConditionDefinition, unitConditionSortIndex } from '../../models/rules/unit-type-rules';
 import type { CrewMember } from '../../models/crew-member.model';
+import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 
 interface UnitConditionDisplay {
     key: string;
     label: string;
     color: string;
+}
+
+interface ECMDisplay {
+    mode: ECMMode | string;
+    unavailable: boolean;
 }
 
 export interface UnitBlockPilotEditEvent {
@@ -69,7 +73,7 @@ export interface UnitBlockPilotEditEvent {
 @Component({
     selector: 'unit-block',
     standalone: true,
-    imports: [CdkMenuModule, FormatNumberPipe, FormatTonsPipe, UnitIconComponent, TooltipDirective, UpperCasePipe],
+    imports: [CdkMenuModule, FormatTonsPipe, UnitIconComponent, TooltipDirective, UpperCasePipe],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './unit-block.component.html',
     styleUrls: ['./unit-block.component.scss'],
@@ -97,6 +101,16 @@ export class UnitBlockComponent {
         return forceUnit instanceof ASForceUnit ? forceUnit.getPilotSkill() : undefined;
     });
 
+    displayedBvPv = computed(() => {
+        const unit = this.forceUnit();
+        if (!unit) return '';
+        return formatBvPv(
+            unit.getBv(),
+            unit.getPreSkillBv(),
+            this.optionsService.options().forceViewerBVPVDisplay,
+        );
+    });
+
     /** Derives Alpha Strike status from the unit's own force, not the global game system. */
     isAlphaStrike = computed<boolean>(() => this.forceUnit()?.force?.gameSystem === GameSystem.ALPHA_STRIKE);
 
@@ -110,7 +124,7 @@ export class UnitBlockComponent {
     });
 
     dirty = computed<boolean>(() => {
-        if (!this.optionsService.options().useAutomations) {
+        if (!this.optionsService.options().trackPhaseAndTurn) {
             return false;
         }
         const unit = this.forceUnit();
@@ -138,7 +152,7 @@ export class UnitBlockComponent {
     });
 
     hasPendingEffects = computed<boolean>(() => {
-        if (!this.optionsService.options().useAutomations) {
+        if (!this.optionsService.options().trackPhaseAndTurn) {
             return false;
         }
         const unit = this.forceUnit();
@@ -170,94 +184,59 @@ export class UnitBlockComponent {
             .sort((left, right) => unitConditionSortIndex(left.key) - unitConditionSortIndex(right.key) || left.label.localeCompare(right.label));
     });
 
-    hasECM = computed(() => {
-        const forceUnit = this.forceUnit();
-        if (!forceUnit) return false;
-        if (forceUnit instanceof ASForceUnit) {
-            const hasECM = forceUnit.getUnit().as.specials.some(spec => spec === 'ECM' || spec === 'AECM' || spec === 'LECM');
-            return hasECM;
-        } else 
-        if (forceUnit instanceof CBTForceUnit) {
-            const hasECM = forceUnit.getUnit().comp.some(eq => eq.eq?.flags.has('F_ECM'));
-            return hasECM;
-        }
-        return false;
-    });
-
-    getTAGLabel = computed<'TAG' | 'LTAG' | undefined>(() => {
+    tagDisplay = computed<{ label: 'TAG' | 'LTAG'; unavailable: boolean } | undefined>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return undefined;
         if (forceUnit instanceof ASForceUnit) {
-            if (forceUnit.getUnit().as.specials.includes('LTAG')) {
-                return 'LTAG';
+            const specials = forceUnit.getUnit().as.specials;
+            if (specials.includes('TAG')) {
+                return { label: 'TAG', unavailable: false };
             }
-            if (forceUnit.getUnit().as.specials.includes('TAG')) {
-                return 'TAG';
+            if (specials.includes('LTAG')) {
+                return { label: 'LTAG', unavailable: false };
             }
             return undefined;
         } else
         if (forceUnit instanceof CBTForceUnit) {
-            const tagComponents = forceUnit.getUnit().comp.filter(component => component.eq?.flags.has('F_TAG'));
-            if (tagComponents.length === 0) {
-                return undefined;
-            }
-
-            const hasLightTag = tagComponents.some(component => {
-                const names = [component.n, component.eq?.name, component.eq?.shortName, component.eq?.sortingName]
-                    .filter((name): name is string => !!name);
-                return names.some(name => /\blight\b/i.test(name));
-            });
-
-            return hasLightTag ? 'LTAG' : 'TAG';
+            const tagMounts = forceUnit.getMountedEquipmentByFlag('F_TAG');
+            if (tagMounts.length === 0) return undefined;
+            const tag = tagMounts.find(mount => !mount.isActionUnavailable()) ?? tagMounts[0];
+            const names = [tag.name, tag.equipment?.name, tag.equipment?.shortName, tag.equipment?.sortingName]
+                .filter((name): name is string => !!name);
+            return {
+                label: names.some(name => /\blight\b/i.test(name)) ? 'LTAG' : 'TAG',
+                unavailable: tagMounts.every(mount => mount.isActionUnavailable()),
+            };
         }
         return undefined;
     });
 
-    getECMStatus = computed<boolean | undefined>(() => {
+    ecmDisplay = computed<ECMDisplay | null>(() => {
         const forceUnit = this.forceUnit();
-        if (!forceUnit) return undefined;
+        if (!forceUnit) return null;
         if (forceUnit instanceof ASForceUnit) {
-            return true;
-        } else 
-        if (forceUnit instanceof CBTForceUnit) {
-            forceUnit.getCritSlots();
-            const mountedECM = forceUnit.getInventory().find(eq => eq.equipment?.flags.has('F_ECM'));
-            if (!mountedECM) return undefined;
-            if (forceUnit.isEquipmentUnavailable(mountedECM)) {
-                return false;
-            }
-            return true;
+            const mode = forceUnit.getUnit().as.specials.find(spec => spec === 'ECM' || spec === 'AECM' || spec === 'LECM');
+            return mode ? { mode, unavailable: false } : null;
         }
-        return undefined;
-    });
-
-    getECMMode = computed<ECMMode | string | undefined>(() => {
-        const forceUnit = this.forceUnit();
-        if (!forceUnit) return undefined;
-        if (forceUnit instanceof ASForceUnit) {
-            // we return ECM, AECM or LECM as mode for AS units
-            const ecmSpec = forceUnit.getUnit().as.specials.find(spec => spec === 'ECM' || spec === 'AECM' || spec === 'LECM');
-            return ecmSpec || undefined;
-        } else 
         if (forceUnit instanceof CBTForceUnit) {
-            forceUnit.getCritSlots();
-            const mountedECM = forceUnit.getInventory().find(eq => eq.equipment?.flags.has('F_ECM'));
-            if (!mountedECM) return ECMMode.ECM;
-            return mountedECM ? mountedECM.states?.get('ecm_mode') as ECMMode || ECMMode.ECM : ECMMode.ECM;
+            const ecms = forceUnit.getMountedEquipmentByFlag('F_ECM');
+            if (ecms.length === 0) return null;
+            const mount = ecms.find(candidate => !candidate.isActionUnavailable()) ?? ecms[0];
+            return {
+                mode: mount.states.get('ecm_mode') as ECMMode || ECMMode.ECM,
+                unavailable: ecms.every(candidate => candidate.isActionUnavailable()),
+            };
         }
-        return undefined;
+        return null;
     });
 
     /** Get individual C3 network items for display */
-    c3NetworkItems = computed<{ label: string; networkType: C3NetworkType; enabled: boolean; color?: string }[]>(() => {
-        const unit = this.unit();
-        if (!unit) return [];
-        
-        // getC3Components now handles both CBT (component flags) and AS (specials)
-        const components = C3NetworkUtil.getC3Components(unit);
-        if (components.length === 0) return [];
-        
+    c3NetworkItems = computed<{ label: string; networkType: C3NetworkType; enabled: boolean; unavailable: boolean; color?: string }[]>(() => {
         const forceUnit = this.forceUnit();
+        if (!forceUnit) return [];
+        const components = new C3Capabilities(forceUnit).components;
+        if (components.length === 0) return [];
+
         const networks = (forceUnit instanceof CBTForceUnit || forceUnit instanceof ASForceUnit) 
             ? forceUnit.force.c3Networks() 
             : [];
@@ -271,7 +250,7 @@ export class UnitBlockComponent {
             typeMap.set(comp.networkType, existing);
         }
         
-        const items: { label: string; networkType: C3NetworkType; enabled: boolean; color?: string }[] = [];
+        const items: { label: string; networkType: C3NetworkType; enabled: boolean; unavailable: boolean; color?: string }[] = [];
         for (const [networkType] of typeMap) {
             // Find the network this unit is connected to for this type
             const connectedNetwork = unitId ? networks.find(n => 
@@ -282,19 +261,26 @@ export class UnitBlockComponent {
                 )
             ) : undefined;
             
-            const enabled = !!connectedNetwork;
+            const runtimeState = forceUnit instanceof CBTForceUnit
+                ? forceUnit.getC3NetworkRuntimeState(networkType)
+                : null;
+            const enabled = runtimeState?.linked ?? !!connectedNetwork;
             
             // Get color from root network
             let color: string | undefined;
-            if (connectedNetwork) {
-                const rootNetwork = C3NetworkUtil.getRootNetwork(connectedNetwork, networks);
+            if (runtimeState?.color) {
+                color = runtimeState.color;
+            } else if (connectedNetwork) {
+                const rootNetwork = new C3Network(networks).rootOf(connectedNetwork.id) ?? connectedNetwork;
                 color = rootNetwork.color;
             }
             
             items.push({
-                label: C3NetworkUtil.getNetworkTypeName(networkType),
+                label: c3NetworkTypeName(networkType),
                 networkType,
                 enabled,
+                unavailable: forceUnit instanceof CBTForceUnit
+                    && forceUnit.isC3NetworkTypeUnavailable(networkType),
                 color
             });
         }

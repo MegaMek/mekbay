@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment } from '../../models/equipment.model';
+import { EquipmentRegistry } from '../../models/equipment-lookup';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import type { CriticalSlot } from '../../models/force-serialization';
 import type { HandlerContext } from '../../services/equipment-interaction-registry.service';
@@ -248,7 +249,9 @@ describe('AmmoLoadoutPanelComponent', () => {
         const data: AmmoLoadoutPanelData = {
             entries: [activeEntry, destroyedEntry],
             context: {
-                dataService: { getEquipments: () => ({ [standardAmmo.internalName]: standardAmmo }) },
+                dataService: {
+                    getEquipmentRegistry: () => new EquipmentRegistry({ [standardAmmo.internalName]: standardAmmo }),
+                },
                 toastService: createToastServiceMock(),
             } as unknown as HandlerContext,
         };

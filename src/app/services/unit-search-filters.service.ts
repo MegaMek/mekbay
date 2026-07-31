@@ -56,7 +56,7 @@ import { GameSystem } from '../models/common.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import { GameService } from './game.service';
 import { UrlService } from './url.service';
-import { PVCalculatorUtil } from '../utils/pv-calculator.util';
+import { adjustPointValueForSkill } from '../utils/pv-skill-adjustment.util';
 import { filterStateToSemanticText, tokensToFilterState, type WildcardPattern } from '../utils/semantic-filter.util';
 import { parseSemanticQueryAST, stripSemanticFieldsFromParseResult, type ParseResult, type ParseError, isComplexQuery } from '../utils/semantic-filter-ast.util';
 import { getSnapshotForcePackNames, type AdvOptionsContextSnapshot } from '../utils/unit-search-adv-options.util';
@@ -64,7 +64,8 @@ import { buildUnitSearchAdvOptions } from '../utils/unit-search-adv-options-buil
 import type { UnitSearchDropdownValuesDependencies } from '../utils/unit-search-dropdown-values.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from '../utils/unit-filter-kernel.util';
 import { getAdvancedFilterConfigByKey, isFilterAvailableForAvailabilitySource } from '../utils/unit-search-filter-config.util';
-import { buildUnitSearchQueryParameters, parseAndValidateCompactFiltersFromUrl, parseUnitSearchScalarUrlState } from '../utils/unit-search-url-filters.util';
+import { buildUnitSearchQueryParameters, parseAndValidateCompactFiltersFromUrl, parseUnitSearchScalarUrlState, parseUnitSearchViewMode, resolveInitialUnitSearchViewMode } from '../utils/unit-search-url-filters.util';
+import type { UnitSearchViewMode } from '../models/options.model';
 import { generatePublicTagsParam, mergePublicTagReferences, parsePublicTagsParam } from '../utils/unit-search-public-tags-url.util';
 import {
     buildPromotedSearchText,
@@ -174,6 +175,7 @@ export class UnitSearchFiltersService {
     logger = inject(LoggerService);
     private readonly searchWorkerFactory = inject(SEARCH_WORKER_FACTORY);
     private urlService = inject(UrlService);
+    private readonly initialUrlViewMode = parseUnitSearchViewMode(this.urlService.getInitialParam('view'));
     private userStateService = inject(UserStateService);
     private publicTagsService = inject(PublicTagsService);
     private tagsService = inject(TagsService);
@@ -253,7 +255,8 @@ export class UnitSearchFiltersService {
     filterState = signal<FilterState>({});
     selectedSort = signal<string>('');
     selectedSortDirection = signal<'asc' | 'desc'>('asc');
-    expandedView = signal(false);
+    expandedView = signal(this.initialUrlViewMode === 'table');
+    readonly viewMode = signal<UnitSearchViewMode>(this.initialUrlViewMode ?? 'list');
     advOpen = signal(false);
     private readonly closePanelsRequestState = signal<UnitSearchClosePanelsRequest>({
         requestId: 0,
@@ -3584,8 +3587,13 @@ export class UnitSearchFiltersService {
     private loadFiltersFromUrlOnStartup() {
         effect(() => {
             const isDataReady = this.dataService.isDataReady();
-            if (isDataReady && !this.urlStateInitialized()) {
-                this.applyParamsCore(this.urlService.initialParams);
+            const optionsInitialized = this.optionsService.initialized();
+            if (isDataReady && optionsInitialized && !this.urlStateInitialized()) {
+                const viewMode = resolveInitialUnitSearchViewMode(
+                    this.urlService.initialParams,
+                    this.optionsService.options().unitSearchViewMode,
+                );
+                this.applyParamsCore(this.urlService.initialParams, { viewMode });
                 this.urlStateInitialized.set(true);
             }
         });
@@ -3609,8 +3617,12 @@ export class UnitSearchFiltersService {
      * Core logic for applying search/filter params from a URLSearchParams.
      * Shared between startup initialization and in-app URL handling.
      */
-    private applyParamsCore(params: URLSearchParams, opts: { expandView?: boolean } = {}): void {
+    private applyParamsCore(
+        params: URLSearchParams,
+        opts: { expandView?: boolean; viewMode?: UnitSearchViewMode } = {},
+    ): void {
         const scalarState = parseUnitSearchScalarUrlState(params, opts);
+        const viewMode = opts.viewMode ?? scalarState.viewMode ?? 'list';
         const searchParam = scalarState.searchText;
 
         if (scalarState.searchText) {
@@ -3651,9 +3663,8 @@ export class UnitSearchFiltersService {
             this.pendingForeignTags.set(mergePublicTagReferences(this.pendingForeignTags(), foreignTags));
         }
 
-        if (scalarState.expanded) {
-            this.expandedView.set(true);
-        }
+        this.expandedView.set(scalarState.expanded || viewMode === 'table');
+        this.setViewMode(viewMode);
 
         if (scalarState.gunnery !== null) {
             this.pilotGunnerySkill.set(scalarState.gunnery);
@@ -3680,8 +3691,13 @@ export class UnitSearchFiltersService {
             piloting: this.pilotPilotingSkill(),
             bvLimit: this.bvPvLimit(),
             publicTagsParam: this.publicTagsParam(),
+            viewMode: this.viewMode(),
         });
     });
+
+    setViewMode(viewMode: UnitSearchViewMode): void {
+        this.viewMode.set(viewMode);
+    }
 
 
     private updateUrlOnFiltersChange() {
@@ -4014,7 +4030,7 @@ export class UnitSearchFiltersService {
             return unit.as.PV;
         }
 
-        return PVCalculatorUtil.calculateAdjustedPV(unit.as.PV, skill);
+        return adjustPointValueForSkill(unit.as.PV, skill);
     }
 
 

@@ -32,14 +32,15 @@
  */
 
 import { uidTranslations } from "../models/common.model";
-import type { CriticalSlot, MountedEquipment } from "../models/force-serialization";
+import { MountedEquipment  } from '../models/mounted-equipment.model';
+import type { CriticalSlot } from "../models/force-serialization";
 import { UnitSvgService } from "./unit-svg.service";
 import { AmmoEquipment } from "../models/equipment.model";
 import { MekRules } from "../models/rules/mek-rules";
-import { resolveHitModifier } from "../models/rules/hit-modifier.util";
 import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 import { getCriticalSlotAmmoProfileKey } from "../utils/ammo-interaction.util";
 import type { MountedEquipmentRuleState } from "../models/rules/unit-type-rules";
+import { INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, readInventoryControlDisplayData } from "../utils/inventory-control.util";
 
 /*
  * Author: Drake
@@ -57,6 +58,7 @@ export class UnitSvgMekService extends UnitSvgService {
         const critSlots = this.unit.getCritSlots();
         const locations = this.unit.getLocations();
         const inventory = this.unit.getInventory();
+        this.unit.getConditions();
         this.unit.phaseTrigger(); // Ensure phase changes trigger update
         // Update all displays
         this.updateBVDisplay();
@@ -166,14 +168,7 @@ export class UnitSvgMekService extends UnitSvgService {
                 }
             }
         });
-        // Update ammo profile
-        const ammoProfileEl = svg.querySelector('#ammoProfile > text');
-        if (ammoProfileEl) {
-            const ammoList = Array.from(ammoProfile.entries())
-                .map(([key, value]) => `${key} ${value}`)
-                .join(', ');
-            ammoProfileEl.textContent = ammoList ? `Ammo: ${ammoList}` : 'Ammo:';
-        }
+        this.renderAmmoProfile(ammoProfile);
     }
 
     protected override updateInventory() {
@@ -189,9 +184,7 @@ export class UnitSvgMekService extends UnitSvgService {
             const el = svg.getElementById('partialWingBonus');
             if (el) {
                 el.textContent = `(Partial Wing +${systemsStatus.partialWingsHeatBonus})`;
-                if (systemsStatus.destroyedPartialWingsCount > 0) {
-                    el.classList.add('damaged');
-                }
+                el.classList.toggle('damaged',  (systemsStatus.destroyedPartialWingsCount > 0));
             }
         }
 
@@ -227,10 +220,10 @@ export class UnitSvgMekService extends UnitSvgService {
                 if (!state) return;
 
                 // Physical / melee damage display (reads base values from DOM, computes via rules)
-                if (entry.physical) {
+                if (entry.isIntrinsicPhysicalAttack()) {
                     switch (entry.name) {
                         case 'charge':
-                            this.renderChargeSpikeBonus(entry, physical.spikeBonus);
+                            this.renderChargeDamage(entry, physical.chargeDamage);
                             break;
                         case 'punch':
                             this.renderMeleeDamage(entry, 'punch', Array.from(entry.locations)[0]);
@@ -243,16 +236,17 @@ export class UnitSvgMekService extends UnitSvgService {
                             this.renderMeleeDamage(entry, 'kick');
                             break;
                     }
-                } else if (entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) {
+                } else if (entry.isPhysicalWeapon()) {
                     this.renderMeleeDamage(entry, 'physWeapon', undefined, !!entry.equipment?.flags.has('S_FLAIL'));
                 }
 
-                entry.el.classList.toggle('disabledInventory', state.isDisabled);
+                const actionUnavailable = entry.isActionUnavailable();
+                entry.el.classList.toggle('disabledInventory', actionUnavailable);
                 entry.el.classList.toggle('damagedInventory', state.isDamaged);
-                if (state.isDamaged || state.isDisabled) entry.el.classList.remove('selected');
+                if (state.isDamaged || actionUnavailable) entry.el.classList.remove('selected');
 
                 // Hit modifier badge
-                this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry));
+                this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry));
             });
             this.renderInventoryControlSelection();
         } finally {
@@ -260,30 +254,25 @@ export class UnitSvgMekService extends UnitSvgService {
         }
     }
 
-    protected override resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
+    protected override resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null) {
         const state = this.currentEntryStates?.get(entry) ?? this.mekRules.computeEntryState(entry);
-        return resolveHitModifier(
-            entry,
-            state.hitMod,
+        const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
+        return this.unit.gameRules.resolveToHit({
+            subject: entry,
+            stateModifier: state.hitMod,
+            stateModifierBreakdown: state.hitModifierBreakdown,
+            stateWeakened: state.weakenedHitMod,
             range,
-            this.inventoryTargetSelectedAmmo(entry),
-            (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
-            (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange)
-        );
+            adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
+        });
     }
 
     protected override renderHitModEntry(
         entry: MountedEquipment,
-        hitModifier: number | 'Vs' | '*' | null,
-        range?: InventoryControlRuntimeRangeKey | null
+        resolution: ReturnType<UnitSvgMekService['resolveInventoryControlToHit']>
     ) {
         const state = this.currentEntryStates?.get(entry) ?? this.mekRules.computeEntryState(entry);
-        super.renderHitModEntry(entry, hitModifier, range, !!state.weakenedHitMod);
-    }
-
-    override inventoryTargetHeatFireModifier(entry: MountedEquipment): number {
-        if (entry.physical || entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) return 0;
-        return MekRules.getHeatEffects(this.unit.getHeat().current).fireModifier;
+        super.renderHitModEntry(entry, resolution, !!state.weakenedHitMod);
     }
 
     protected override updateTurnState() {
@@ -322,19 +311,24 @@ export class UnitSvgMekService extends UnitSvgService {
         if (!reason) {
             warningEl.setAttribute('display', 'none');
             warningEl.style.display = 'none';
-            warningEl.classList.remove('currentMoveMode', 'unusedMoveMode');
+            warningEl.classList.remove('currentMoveMode', 'unusedMoveMode', 'noPsrCheck');
             return;
         }
 
         warningEl.removeAttribute('display');
         warningEl.style.display = 'block';
+        const warningMoveMode = moveElementId === 'mpRun' ? 'run' : 'jump';
+        const isCurrentMoveMode = currentMoveMode === warningMoveMode;
+        const moveDistance = this.unit.turnState().moveDistance();
+        const triggersPsr = moveDistance !== null && (warningMoveMode === 'jump' || moveDistance > 0);
+        warningEl.classList.toggle('noPsrCheck', !isCurrentMoveMode || !triggersPsr);
 
         if (!selectedMoveElementId) {
             warningEl.classList.remove('currentMoveMode', 'unusedMoveMode');
             return;
         }
 
-        const isUnused = selectedMoveElementId !== moveElementId || currentMoveMode === 'stationary';
+        const isUnused = !isCurrentMoveMode;
         warningEl.classList.toggle('unusedMoveMode', isUnused);
         warningEl.classList.toggle('currentMoveMode', !isUnused);
     }
@@ -343,28 +337,21 @@ export class UnitSvgMekService extends UnitSvgService {
     private renderMeleeDamage(entry: MountedEquipment, attackType: 'punch' | 'kick' | 'club' | 'physWeapon', loc?: string, ignoreMyomer?: boolean) {
         const damageEl = entry.el!.querySelector(`:scope > .damage > text`);
         if (!damageEl) return;
-        let originalText = damageEl.getAttribute('originalText');
+        let originalText = damageEl.getAttribute(INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE);
         if (originalText === undefined || originalText === null) {
             originalText = damageEl.textContent || '';
-            damageEl.setAttribute('originalText', originalText);
+            damageEl.setAttribute(INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, originalText);
         }
         if (!originalText) return;
         const baseDamage = parseInt(originalText);
-        const { damage, maxDamage } = this.mekRules.computeMeleeDamage(baseDamage, attackType, loc, ignoreMyomer);
-        damageEl.textContent = (damage !== maxDamage) ? `${damage} [${maxDamage}]` : `${damage}`;
-        damageEl.classList.toggle('damaged', damage < baseDamage);
-    }
-
-    /** Render spike bonus on charge damage text. */
-    private renderChargeSpikeBonus(entry: MountedEquipment, spikeBonus: { total: number; working: number } | null) {
-        if (!spikeBonus) return;
-        const damageEl = entry.el!.querySelector(`:scope > .damage > text`);
-        if (!damageEl) return;
-        let originalText = damageEl.textContent || '';
-        originalText = originalText.replace(/\+\d+$/, ''); // Remove any previous spike bonus
-        if (!originalText) return;
-        damageEl.textContent = `${originalText}+${spikeBonus.working * 2}`;
-        damageEl.classList.toggle('damaged', spikeBonus.total > spikeBonus.working);
+        const { weakened } = this.mekRules.resolveMeleeDamageDisplay(entry, baseDamage, attackType, loc, ignoreMyomer);
+        const display = this.unit.applyInventoryControlDisplayEffects(entry, readInventoryControlDisplayData(entry), {
+            selectedRange: null,
+            additionalHitModifier: 0,
+            selectedAmmo: null,
+        });
+        this.renderInventoryDamageText(damageEl, display.damage);
+        damageEl.classList.toggle('damaged', weakened);
     }
 
     protected override updateHeatSinkPips() {

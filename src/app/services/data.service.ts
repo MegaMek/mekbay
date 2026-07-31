@@ -39,9 +39,9 @@ import { DbService, type TagData } from './db.service';
 import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
 
-import { type Equipment, type EquipmentMap } from '../models/equipment.model';
+import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { Quirk } from '../models/quirks.model';
-import { generateUUID, WsService } from './ws.service';
+import { WsService } from './ws.service';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { Force }    from '../models/force.model';
 import { sanitizeForceTags, type ASSerializedForce, type CBTSerializedForce, type SerializedForce } from '../models/force-serialization';
@@ -86,6 +86,7 @@ import { CatalogDownloadTrackerService } from './catalogs/catalog-base.service';
 import { MULFACTION_EXTINCT, MULFACTION_NONE } from '../models/mulfactions.model';
 import { naturalCompare } from '../utils/sort.util';
 import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
+import { uuidv7 } from '../utils/uuid.util';
 
 /*
  * Author: Drake
@@ -140,18 +141,6 @@ export type BroadcastPayload = {
     meta?: any;         // optional misc info
 };
 
-interface CatalogInitializationState {
-    ready: boolean;
-    promise: Promise<boolean> | null;
-}
-
-function createCatalogInitializationState(): CatalogInitializationState {
-    return {
-        ready: false,
-        promise: null,
-    };
-}
-
 @Injectable({
     providedIn: 'root'
 })
@@ -182,13 +171,6 @@ export class DataService {
     private sourcebooksCatalog = inject(SourcebooksCatalogService);
     private forceNameWordsCatalog = inject(ForceNameWordsCatalogService);
     private catalogDownloadTracker = inject(CatalogDownloadTrackerService);
-    private readonly megaMekAvailabilityCatalogState = createCatalogInitializationState();
-    private readonly megaMekFactionsCatalogState = createCatalogInitializationState();
-    private readonly megaMekRulesetsCatalogState = createCatalogInitializationState();
-    private readonly quirksCatalogState = createCatalogInitializationState();
-    private readonly sarnaPageTitlesCatalogState = createCatalogInitializationState();
-    private readonly sourcebooksCatalogState = createCatalogInitializationState();
-    private readonly forceNameWordsCatalogState = createCatalogInitializationState();
 
     isDataReady = signal(false);
     public readonly isDownloading = this.catalogDownloadTracker.isDownloading;
@@ -354,12 +336,13 @@ export class DataService {
         return this.unitsFluffCatalog.getUnitFluff(unit);
     }
 
-    public getEquipments(): EquipmentMap {
-        return this.equipmentCatalog.getEquipments();
+    public getEquipmentRegistry(): EquipmentRegistry {
+        return this.equipmentCatalog.getEquipmentRegistry();
     }
 
-    public getEquipmentByName(internalName: string): Equipment | undefined {
-        return this.equipmentCatalog.getEquipmentByName(internalName);
+    /** Resolves an equipment internal name or alias using the canonical registry. */
+    public findEquipment(name: string) {
+        return this.getEquipmentRegistry().findEquipment(name) ?? undefined;
     }
 
     public getFactions(): Faction[] {
@@ -511,7 +494,7 @@ export class DataService {
     private postprocessData(): void {
         this.applyNoneFactionMemberships(this.getUnits(), this.getEras(), this.getFactions());
         this.unitRuntimeService.postprocessUnits(this.getUnits(), this.getEras());
-        this.unitRuntimeService.linkEquipmentToUnits(this.getUnits(), this.getEquipments());
+        this.unitRuntimeService.linkEquipmentToUnits(this.getUnits(), this.getEquipmentRegistry());
         const extinctFaction = this.getFactionById(MULFACTION_EXTINCT);
         this.unitSearchIndexService.rebuildIndexes(this.getUnits(), this.getEras(), this.getFactions(), extinctFaction);
     }
@@ -562,12 +545,22 @@ export class DataService {
     }
 
     private async checkForUpdate(): Promise<void> {
-        await Promise.all([
-            this.unitsCatalog.initialize(),
+        const [, , , sourcebooksReady, quirksReady] = await Promise.all([
             this.equipmentCatalog.initialize(),
             this.erasCatalog.initialize(),
             this.factionsCatalog.initialize(),
+            this.initializeCatalog('sourcebooks', () => this.sourcebooksCatalog.initialize()),
+            this.initializeCatalog('quirks', () => this.quirksCatalog.initialize()),
         ]);
+        const missingUnitDependencies = [
+            sourcebooksReady ? null : 'sourcebooks',
+            quirksReady ? null : 'quirks',
+        ].filter((name): name is string => name !== null);
+        if (missingUnitDependencies.length > 0) {
+            throw new Error(`Cannot initialize units before required catalogs are ready: ${missingUnitDependencies.join(', ')}.`);
+        }
+
+        await this.unitsCatalog.initialize();
         this.postprocessData();
         this.bumpSearchCorpusVersion();
     }
@@ -580,35 +573,20 @@ export class DataService {
         return String(error);
     }
 
-    private ensureCatalogInitialized(
-        state: CatalogInitializationState,
+    private initializeCatalog(
         name: string,
         initialize: () => Promise<void>,
         onInitialized?: () => void,
     ): Promise<boolean> {
-        if (state.ready) {
-            return Promise.resolve(true);
-        }
-
-        if (state.promise) {
-            return state.promise;
-        }
-
-        state.promise = initialize()
+        return initialize()
             .then(() => {
-                state.ready = true;
                 onInitialized?.();
                 return true;
             })
             .catch((error) => {
                 this.logger.error(`Failed to initialize catalog service "${name}": ${this.describeError(error)}`);
                 return false;
-            })
-            .finally(() => {
-                state.promise = null;
             });
-
-        return state.promise;
     }
 
     private async ensureCatalogGroupInitialized(
@@ -627,79 +605,51 @@ export class DataService {
         return false;
     }
 
-    private ensureQuirksCatalogInitialized(): Promise<boolean> {
-        return this.ensureCatalogInitialized(
-            this.quirksCatalogState,
-            'quirks',
-            () => this.quirksCatalog.initialize(),
-        );
-    }
-
-    private ensureSourcebooksCatalogInitialized(): Promise<boolean> {
-        return this.ensureCatalogInitialized(
-            this.sourcebooksCatalogState,
-            'sourcebooks',
-            () => this.sourcebooksCatalog.initialize(),
-        );
-    }
-
-    private ensureSarnaPageTitlesCatalogInitialized(): Promise<boolean> {
-        return this.ensureCatalogInitialized(
-            this.sarnaPageTitlesCatalogState,
-            'sarna_page_titles',
-            () => this.sarnaPageTitlesCatalog.initialize(),
-            () => this.bumpSarnaPageTitlesVersion(),
-        );
-    }
-
-    private ensureForceNameWordsCatalogInitialized(): Promise<boolean> {
-        return this.ensureCatalogInitialized(
-            this.forceNameWordsCatalogState,
-            'force_name_words',
-            () => this.forceNameWordsCatalog.initialize(),
-        );
-    }
-
     private initializeStartupCatalogs(): Promise<boolean> {
         return this.ensureCatalogGroupInitialized([
-            { name: 'force_name_words', ensure: () => this.ensureForceNameWordsCatalogInitialized() },
+            {
+                name: 'force_name_words',
+                ensure: () => this.initializeCatalog('force_name_words', () => this.forceNameWordsCatalog.initialize()),
+            },
             { name: 'megamek_availability', ensure: () => this.ensureMegaMekAvailabilityCatalogInitialized() },
-            { name: 'quirks', ensure: () => this.ensureQuirksCatalogInitialized() },
-            { name: 'sarna_page_titles', ensure: () => this.ensureSarnaPageTitlesCatalogInitialized() },
-            { name: 'sourcebooks', ensure: () => this.ensureSourcebooksCatalogInitialized() },
+            {
+                name: 'sarna_page_titles',
+                ensure: () => this.initializeCatalog(
+                    'sarna_page_titles',
+                    () => this.sarnaPageTitlesCatalog.initialize(),
+                    () => {
+                        if (this.sarnaPageTitlesVersion() === 0) {
+                            this.bumpSarnaPageTitlesVersion();
+                        }
+                    },
+                ),
+            },
         ]);
     }
 
     public ensureMegaMekAvailabilityCatalogInitialized(): Promise<boolean> {
-        return this.ensureCatalogInitialized(
-            this.megaMekAvailabilityCatalogState,
+        return this.initializeCatalog(
             'megamek_availability',
             () => this.megaMekAvailabilityCatalog.initialize(),
-            () => this.bumpMegaMekAvailabilityVersion(),
-        );
-    }
-
-    private ensureMegaMekFactionsCatalogInitialized(): Promise<boolean> {
-        return this.ensureCatalogInitialized(
-            this.megaMekFactionsCatalogState,
-            'megamek_factions',
-            () => this.megaMekFactionsCatalog.initialize(),
-        );
-    }
-
-    private ensureMegaMekRulesetsCatalogInitialized(): Promise<boolean> {
-        return this.ensureCatalogInitialized(
-            this.megaMekRulesetsCatalogState,
-            'megamek_rulesets',
-            () => this.megaMekRulesetsCatalog.initialize(),
+            () => {
+                if (this.megaMekAvailabilityVersion() === 0) {
+                    this.bumpMegaMekAvailabilityVersion();
+                }
+            },
         );
     }
 
     public ensureMegaMekCatalogsInitialized(): Promise<boolean> {
         return this.ensureCatalogGroupInitialized([
             { name: 'megamek_availability', ensure: () => this.ensureMegaMekAvailabilityCatalogInitialized() },
-            { name: 'megamek_factions', ensure: () => this.ensureMegaMekFactionsCatalogInitialized() },
-            { name: 'megamek_rulesets', ensure: () => this.ensureMegaMekRulesetsCatalogInitialized() },
+            {
+                name: 'megamek_factions',
+                ensure: () => this.initializeCatalog('megamek_factions', () => this.megaMekFactionsCatalog.initialize()),
+            },
+            {
+                name: 'megamek_rulesets',
+                ensure: () => this.initializeCatalog('megamek_rulesets', () => this.megaMekRulesetsCatalog.initialize()),
+            },
         ]);
     }
 
@@ -719,7 +669,7 @@ export class DataService {
         } catch (error) {
             this.logger.error(`Failed to initialize data: ${this.describeError(error)}`);
             // Check if we have any data loaded despite the error
-            const hasData = this.getUnits().length > 0 && Object.keys(this.getEquipments()).length > 0;
+            const hasData = this.getUnits().length > 0 && this.getEquipmentRegistry().size > 0;
             if (hasData) {
                 // Apply public tags even on partial load
                 this.applyPublicTagsToUnits();
@@ -818,7 +768,7 @@ export class DataService {
             return;
         }
         if (!force.instanceId()) {
-            force.instanceId.set(generateUUID());
+            force.instanceId.set(uuidv7());
         }
         await this.dbService.saveForce(force.serialize());
         if (!localOnly) {
@@ -1288,7 +1238,7 @@ export class DataService {
                 const conflictOp = localOnlyOps.find(op => op.operationId === operationId);
                 if (!conflictOp) continue;
 
-                const newOperationId = generateUUID();
+                const newOperationId = uuidv7();
                 this.logger.warn(
                     `Operation "${conflictOp.name}" (${operationId}) is owned by another account. ` +
                     `Re-assigning to new ID: ${newOperationId}`

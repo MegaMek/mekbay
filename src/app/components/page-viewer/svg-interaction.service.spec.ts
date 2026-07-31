@@ -2,6 +2,7 @@ import { Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { DataService } from '../../services/data.service';
+import { EquipmentRegistry } from '../../models/equipment-lookup';
 import { DialogsService } from '../../services/dialogs.service';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -11,26 +12,30 @@ import { PickerFactoryService } from '../../services/picker-factory.service';
 import { ToastService } from '../../services/toast.service';
 import { MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
 import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
-import { MountedEquipment } from '../../models/force-serialization';
+import { MountedEquipment } from '../../models/mounted-equipment.model';
 import { InventoryControlRuntimeState, type InventoryControlRuntimeRangeKey } from '../../models/inventory-control-runtime-state.model';
 import { INVENTORY_CONTROL_MODE_STATE } from '../../utils/inventory-control.util';
 import { RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE } from '../../equipment-handlers/risc-laser-pulse-module.handler';
 import { SvgInteractionService } from './svg-interaction.service';
 import type { ZoomPanServiceInterface } from './zoom-pan.interface';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
+import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
 
 type SvgInteractionServicePrivate = {
     addSvgTapHandler(
         el: SVGElement,
         handler: (evt: PointerEvent, primaryAction: boolean) => void,
-        signal: AbortSignal
+        signal: AbortSignal,
+        capture?: boolean
     ): void;
     updateUnit(unit: any): void;
     setupInteractions(svg: SVGSVGElement): void;
     setupReadOnlyInteractions(svg: SVGSVGElement): void;
+    cleanup(): void;
     getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; baselineHeat: number; containerRect: DOMRect } | null;
     updateHeatHighlight(heatValue: number): void;
     locationConditionDropdownChoices(unit: any, loc: string): Array<{ key: string }>;
+    setupLocationConditionInteractions(svg: SVGSVGElement, signal: AbortSignal): void;
 };
 
 const NO_CONDITION_RULES = {
@@ -47,11 +52,19 @@ const NO_CONDITION_RULES = {
 };
 
 function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInventory: () => MountedEquipment[]; rules: typeof NO_CONDITION_RULES } {
-    return {
+    const unit = {
         getInventory: () => [],
+        isEquipmentUnavailable: () => false,
         rules: NO_CONDITION_RULES,
         ...overrides,
-    } as T & { getInventory: () => MountedEquipment[]; rules: typeof NO_CONDITION_RULES };
+    } as T & {
+        getInventory: () => MountedEquipment[];
+        isEquipmentUnavailable: (entry: MountedEquipment) => boolean;
+        isEquipmentActionUnavailable?: (entry: MountedEquipment) => boolean;
+        rules: typeof NO_CONDITION_RULES;
+    };
+    unit.isEquipmentActionUnavailable ??= entry => unit.isEquipmentUnavailable(entry);
+    return unit;
 }
 
 describe('SvgInteractionService', () => {
@@ -59,10 +72,11 @@ describe('SvgInteractionService', () => {
     let zoomPanService: ZoomPanServiceInterface;
     let dialogsService: { createDialog: jasmine.Spy };
     let dialogClosedCallbacks: Array<() => void>;
+    let closeDialog: jasmine.Spy;
     let forceBuilderService: { selectUnit: jasmine.Spy; editPilotOfUnit: jasmine.Spy };
     let pickerFactory: { createChoicePicker: jasmine.Spy; createNumericPicker: jasmine.Spy };
     let pageViewerState: PageViewerStateService;
-    let options: { pickerStyle: 'default' | 'linear' | 'radial'; quickActions: string; sheetsColor: string; useAutomations: boolean };
+    let options: { pickerStyle: 'default' | 'linear' | 'radial'; colorScheme: 'default' | 'night'; trackPhaseAndTurn: boolean };
     let registryGetChoices: jasmine.Spy;
     let registryHandleSelection: jasmine.Spy;
 
@@ -73,8 +87,10 @@ describe('SvgInteractionService', () => {
             cancelGesture: jasmine.createSpy('cancelGesture')
         };
         dialogClosedCallbacks = [];
+        closeDialog = jasmine.createSpy('closeDialog');
         dialogsService = {
             createDialog: jasmine.createSpy('createDialog').and.callFake(() => ({
+            close: closeDialog,
                 closed: {
                     subscribe: (callback: () => void) => {
                         dialogClosedCallbacks.push(callback);
@@ -95,15 +111,16 @@ describe('SvgInteractionService', () => {
         registryHandleSelection = jasmine.createSpy('handleSelection').and.returnValue(false);
         options = {
             pickerStyle: 'default',
-            quickActions: 'disabled',
-            sheetsColor: 'day',
-            useAutomations: true
+            colorScheme: 'default',
+            trackPhaseAndTurn: true
         };
 
         TestBed.configureTestingModule({
             providers: [
                 SvgInteractionService,
-                { provide: DataService, useValue: { getEquipments: () => ({}) } },
+                { provide: DataService, useValue: {
+                    getEquipmentRegistry: () => new EquipmentRegistry({}),
+                } },
                 { provide: DialogsService, useValue: dialogsService },
                 {
                     provide: EquipmentInteractionRegistryService,
@@ -158,6 +175,42 @@ describe('SvgInteractionService', () => {
         expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
     });
 
+    it('gates ground EXT sheet controls behind the Extreme Range option', () => {
+        const disabled = createInventoryInteractionUnit();
+        pageViewerState.setForceUnits([disabled.unit]);
+        service.updateUnit(disabled.unit);
+        service.setupInteractions(disabled.svg);
+        const disabledButton = disabled.entry.el!.querySelector('.extButton') as SVGElement;
+
+        expect(disabledButton.classList).not.toContain('interactive');
+        disabledButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(disabled.unit.getInventoryControlEntryRange(disabled.entry.id)).toBeUndefined();
+
+        const enabled = createInventoryInteractionUnit();
+        enabled.unit.allowsExtremeRangeAttacks = () => true;
+        pageViewerState.setForceUnits([enabled.unit]);
+        service.updateUnit(enabled.unit);
+        service.setupInteractions(enabled.svg);
+        const enabledButton = enabled.entry.el!.querySelector('.extButton') as SVGElement;
+
+        expect(enabledButton.classList).toContain('interactive');
+        enabledButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(enabled.unit.getInventoryControlEntryRange(enabled.entry.id)).toBe('extreme');
+    });
+
+    it('keeps Aero ERV sheet controls available when the ground option is disabled', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit();
+        unit.getUnit = () => ({ type: 'Aero', comp: [] });
+        pageViewerState.setForceUnits([unit]);
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+        const extremeButton = entry.el!.querySelector('.extButton') as SVGElement;
+
+        expect(extremeButton.classList).toContain('interactive');
+        extremeButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(unit.getInventoryControlEntryRange(entry.id)).toBe('extreme');
+    });
+
     it('hides blown-off from torso location condition choices', () => {
         const unit = createSvgInteractionUnit({
             rules: {
@@ -175,6 +228,50 @@ describe('SvgInteractionService', () => {
         expect(service.locationConditionDropdownChoices(unit, 'LA').map(choice => choice.key)).toEqual(['flooded', 'blown-off']);
     });
 
+    it('binds location condition interactions to enlarged controls rather than label text', () => {
+        const unit = createSvgInteractionUnit({
+            rules: {
+                ...NO_CONDITION_RULES,
+                locationConditionControls: [{ key: 'flooded', label: 'Flooded', color: '#66f' }],
+            },
+        });
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const control = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        control.setAttribute('class', 'locationConditionControl');
+        control.setAttribute('loc', 'LA');
+        label.setAttribute('class', 'locationConditionText');
+        control.appendChild(label);
+        svg.appendChild(control);
+        service.updateUnit(unit);
+        const addTapHandler = spyOn(service, 'addSvgTapHandler');
+
+        service.setupLocationConditionInteractions(svg, new AbortController().signal);
+
+        expect(addTapHandler).toHaveBeenCalledTimes(1);
+        expect(addTapHandler).toHaveBeenCalledWith(control, jasmine.any(Function), jasmine.any(AbortSignal));
+        expect(addTapHandler).not.toHaveBeenCalledWith(label, jasmine.any(Function), jasmine.any(AbortSignal));
+    });
+
+    it('skips location condition controls without a location identifier', () => {
+        const unit = createSvgInteractionUnit({
+            rules: {
+                ...NO_CONDITION_RULES,
+                locationConditionControls: [{ key: 'flooded', label: 'Flooded', color: '#66f' }],
+            },
+        });
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const control = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        control.setAttribute('class', 'locationConditionControl');
+        svg.appendChild(control);
+        service.updateUnit(unit);
+        const addTapHandler = spyOn(service, 'addSvgTapHandler');
+
+        service.setupLocationConditionInteractions(svg, new AbortController().signal);
+
+        expect(addTapHandler).not.toHaveBeenCalled();
+    });
+
     it('selects inventory entries from alternative mode buttons', () => {
         const { svg, entry, unit } = createInventoryInteractionUnit(`
             <g class="inventoryEntry">
@@ -186,7 +283,7 @@ describe('SvgInteractionService', () => {
                     <rect class="alternativeModeButton inventoryEntryButton"></rect>
                 </g>
             </g>
-        `);
+        `, 'MML');
         pageViewerState.setForceUnits([unit]);
         service.updateUnit(unit);
         service.setupInteractions(svg);
@@ -213,7 +310,7 @@ describe('SvgInteractionService', () => {
                     <rect class="alternativeModeButton inventoryEntryButton"></rect>
                 </g>
             </g>
-        `);
+        `, 'ATM');
         pageViewerState.setForceUnits([unit]);
         service.updateUnit(unit);
         service.setupInteractions(svg);
@@ -241,7 +338,7 @@ describe('SvgInteractionService', () => {
                     <rect class="alternativeModeButton inventoryEntryButton"></rect>
                 </g>
             </g>
-        `);
+        `, 'ATM');
         pageViewerState.setForceUnits([unit]);
         service.updateUnit(unit);
         service.setupInteractions(svg);
@@ -332,6 +429,23 @@ describe('SvgInteractionService', () => {
 
         dialogClosedCallbacks[0]();
         expect(pageViewerState.inventoryDialogOpen()).toBeFalse();
+    });
+
+    it('marks read-only sheets to hide condition buttons and restores editable sheets', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = '<g class="unitConditionButton"></g>';
+        const unit = createSvgInteractionUnit({
+            id: 'unit-a',
+            getUnit: () => ({ type: 'Mek' }),
+        });
+
+        service.setupReadOnlyInteractions(svg);
+        expect(svg.classList.contains('read-only')).toBeTrue();
+        expect(svg.querySelector('.unitConditionButton')?.classList.contains('edit-only')).toBeTrue();
+
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+        expect(svg.classList.contains('read-only')).toBeFalse();
     });
 
     it('shows equipment handler choices for mounted equipment crit slots', async () => {
@@ -595,6 +709,8 @@ describe('SvgInteractionService', () => {
             addArmorHits: jasmine.createSpy('addArmorHits').and.callFake((_loc: string, hits: number) => {
                 armorHits += hits;
             }),
+            getInternalPoints: () => 0,
+            getInternalHits: () => 0,
             getCritSlotsAsMatrix: () => ({}),
             getCritLoc: (id: string) => id === 'rotor' ? rotorCrit : null,
             setCritLoc: jasmine.createSpy('setCritLoc').and.callFake((crit) => {
@@ -622,6 +738,162 @@ describe('SvgInteractionService', () => {
         pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: 1 });
 
         expect(unit.setCritLoc).toHaveBeenCalledWith(jasmine.objectContaining({ id: 'rotor', hits: 20, pendingHits: undefined }));
+    });
+
+    it('extends armor damage through remaining structure and marks the rotating picker threshold', () => {
+        const { svg, location, unit } = createArmorInteractionUnit({
+            armorPoints: 20,
+            armorHits: 5,
+            internalPoints: 12,
+            internalHits: 0,
+        });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(location, 71);
+
+        const pickerConfig = pickerFactory.createNumericPicker.calls.mostRecent().args[0];
+        expect(pickerConfig).toEqual(jasmine.objectContaining({
+            min: -5,
+            max: 27,
+            threshold: 15,
+            title: 'LT',
+        }));
+
+        pickerConfig.onPick({ value: 27 });
+
+        expect(unit.addArmorHits).toHaveBeenCalledWith('LT', 15, false, false);
+        expect(unit.addInternalHits).toHaveBeenCalledWith('LT', 12, false);
+    });
+
+    it('does not pass armor repairs backward into structure', () => {
+        const { svg, location, unit } = createArmorInteractionUnit({
+            armorPoints: 20,
+            armorHits: 5,
+            internalPoints: 12,
+            internalHits: 4,
+        });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(location, 72);
+        pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: -5 });
+
+        expect(unit.addArmorHits).toHaveBeenCalledWith('LT', -5, false, false);
+        expect(unit.addInternalHits).not.toHaveBeenCalled();
+    });
+
+    it('passes rear armor damage into the shared front-named structure location', () => {
+        const { svg, location, unit } = createArmorInteractionUnit({
+            armorPoints: 10,
+            armorHits: 8,
+            internalPoints: 10,
+            internalHits: 7,
+            rear: true,
+        });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(location, 73);
+        const pickerConfig = pickerFactory.createNumericPicker.calls.mostRecent().args[0];
+        expect(pickerConfig).toEqual(jasmine.objectContaining({ max: 5, threshold: 2, title: 'LT (Rear)' }));
+        pickerConfig.onPick({ value: 4 });
+
+        expect(unit.addArmorHits).toHaveBeenCalledWith('LT', 2, true, false);
+        expect(unit.addInternalHits).toHaveBeenCalledWith('LT', 2, false);
+    });
+
+    it('keeps direct structure damage and repair within structure', () => {
+        const { svg, location, unit } = createArmorInteractionUnit({
+            armorPoints: 20,
+            armorHits: 20,
+            internalPoints: 20,
+            internalHits: 8,
+            structure: true,
+        });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(location, 74);
+        let pickerConfig = pickerFactory.createNumericPicker.calls.mostRecent().args[0];
+        expect(pickerConfig).toEqual(jasmine.objectContaining({ min: -8, max: 12 }));
+        expect(pickerConfig.threshold).toBeUndefined();
+        pickerConfig.onPick({ value: 12 });
+
+        expect(unit.addInternalHits).toHaveBeenCalledWith('LT', 12, false);
+        expect(unit.addArmorHits).not.toHaveBeenCalled();
+
+        tap(location, 75);
+        pickerConfig = pickerFactory.createNumericPicker.calls.mostRecent().args[0];
+        pickerConfig.onPick({ value: -20 });
+
+        expect(unit.addInternalHits).toHaveBeenCalledWith('LT', -20, false);
+        expect(unit.addArmorHits).not.toHaveBeenCalled();
+    });
+
+    it('stops armor overflow when structure is fully damaged', () => {
+        const { svg, location, unit } = createArmorInteractionUnit({
+            armorPoints: 20,
+            armorHits: 5,
+            internalPoints: 12,
+            internalHits: 12,
+        });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(location, 76);
+
+        expect(pickerFactory.createNumericPicker.calls.mostRecent().args[0]).toEqual(jasmine.objectContaining({
+            max: 15,
+            threshold: 15,
+        }));
+    });
+
+    it('offers armor-to-structure overflow with the vertical linear picker', () => {
+        options.pickerStyle = 'linear';
+        const { svg, location, unit } = createArmorInteractionUnit({
+            armorPoints: 20,
+            armorHits: 5,
+            internalPoints: 12,
+            internalHits: 0,
+        });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(location, 77);
+
+        const pickerConfig = pickerFactory.createChoicePicker.calls.mostRecent().args[0];
+        expect(pickerConfig.values.find((choice: { value: number }) => choice.value === -5)?.colors).toBeUndefined();
+        expect(pickerConfig.values.find((choice: { value: number }) => choice.value === 15)?.colors).toBeUndefined();
+        expect(pickerConfig.values).toContain(jasmine.objectContaining({
+            value: 20,
+            colors: { normal: '#8B0000', normalText: '#fff' },
+        }));
+        expect(pickerConfig.values).toContain(jasmine.objectContaining({
+            value: 27,
+            colors: { normal: '#8B0000', normalText: '#fff' },
+        }));
+        pickerConfig.onPick({ label: '16', value: 16 });
+        expect(unit.addArmorHits).toHaveBeenCalledWith('LT', 15, false, false);
+        expect(unit.addInternalHits).toHaveBeenCalledWith('LT', 1, false);
+    });
+
+    it('does not color direct structure choices as armor overflow', () => {
+        options.pickerStyle = 'linear';
+        const { svg, location, unit } = createArmorInteractionUnit({
+            armorPoints: 20,
+            armorHits: 20,
+            internalPoints: 20,
+            internalHits: 8,
+            structure: true,
+        });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(location, 78);
+
+        const choices = pickerFactory.createChoicePicker.calls.mostRecent().args[0].values;
+        expect(choices.every((choice: { colors?: unknown }) => choice.colors === undefined)).toBeTrue();
     });
 
     it('assigns the single target when a sheet range button is clicked with one target', () => {
@@ -661,6 +933,32 @@ describe('SvgInteractionService', () => {
         expect(unit.getInventoryControlEntryTargetId(entry.id)).toBe('B');
     });
 
+    it('uses typed hit modifiers instead of rendered SVG hit text in the target picker fallback', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit(`
+            <g class="inventoryEntry">
+                <rect class="mainButton inventoryEntryButton"></rect>
+                <rect class="shrButton inventoryEntryButton"></rect>
+                <g class="name"><text>Laser</text></g>
+                <text class="hit">99</text>
+                <text class="range_short">3</text>
+                <text class="range_medium">6</text>
+                <text class="range_long">9</text>
+            </g>
+        `);
+        spyOnProperty(entry.equipment!, 'toHitModifier', 'get').and.returnValue(2);
+        unit.createInventoryControlTarget();
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 2 });
+        unit.updateInventoryControlTarget('B', { distance: 5 });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (entry.el!.querySelector('.shrButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice:not(.empty-choice)')) as HTMLButtonElement[];
+        expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim())).toEqual(['6', '8']);
+    });
+
     it('uses C3 distance for sheet target picker target numbers', () => {
         const { svg, entry, unit } = createInventoryInteractionUnit(`
             <g class="inventoryEntry">
@@ -673,6 +971,8 @@ describe('SvgInteractionService', () => {
                 <text class="range_long">27</text>
             </g>
         `);
+        (entry.equipment as WeaponEquipment).weapon.minRange = 6;
+        (entry.equipment as WeaponEquipment).weapon.ranges = [7, 14, 27, 36];
         unit.hasLinkedC3Network = () => true;
         unit.createInventoryControlTarget();
         unit.createInventoryControlTarget();
@@ -699,6 +999,7 @@ describe('SvgInteractionService', () => {
                 <text class="range_long">6</text>
             </g>
         `);
+        (entry.equipment as WeaponEquipment).weapon.ranges = [2, 4, 6, 8];
         unit.hasLinkedC3Network = () => true;
         unit.createInventoryControlTarget();
         unit.createInventoryControlTarget();
@@ -722,7 +1023,8 @@ describe('SvgInteractionService', () => {
                 <g class="name"><text>Punch</text></g>
             </g>
         `);
-        entry.physical = true;
+        entry.setIntrinsicPhysicalAttack(true);
+        entry.name = 'punch';
         unit.createInventoryControlTarget();
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 4 });
@@ -733,7 +1035,7 @@ describe('SvgInteractionService', () => {
         (entry.el!.querySelector('.shrButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
         const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice:not(.empty-choice)')) as HTMLButtonElement[];
-        expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim())).toEqual(['5', '6']);
+        expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim())).toEqual(['4', '5']);
     });
 
     it('switches to a valid alternative mode before selecting its sheet range button', () => {
@@ -754,7 +1056,8 @@ describe('SvgInteractionService', () => {
                     <rect class="medButton inventoryEntryButton"></rect>
                 </g>
             </g>
-        `);
+        `, 'MML');
+        entry.states.set(INVENTORY_CONTROL_MODE_STATE, 'LRM');
         service.updateUnit(unit);
         service.setupInteractions(svg);
         const invalidModeRange = entry.el!.querySelector('.alternativeMode[mode="w/Artemis IV"] .medButton') as SVGElement;
@@ -837,6 +1140,142 @@ describe('SvgInteractionService', () => {
         expect(event.clientX).toBe(25);
         expect(event.clientY).toBe(30);
         expect(handler.calls.mostRecent().args[1]).toBeTrue();
+    });
+
+    it('handles taps on nested SVG content during capture when the child stops propagation', () => {
+        const target = document.createElementNS('http://www.w3.org/2000/svg', 'g') as SVGElement;
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        target.appendChild(text);
+        const abortController = new AbortController();
+        const handler = jasmine.createSpy('handler');
+        spyOn(target, 'setPointerCapture').and.stub();
+        spyOn(target, 'hasPointerCapture').and.returnValue(true);
+        spyOn(target, 'releasePointerCapture').and.stub();
+        text.addEventListener('pointerdown', event => event.stopPropagation());
+
+        service.addSvgTapHandler(target, handler, abortController.signal, true);
+
+        text.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 29, pointerType: 'touch' }));
+        text.dispatchEvent(createPointerEvent('pointerup', { pointerId: 29, pointerType: 'touch' }));
+
+        expect(handler).toHaveBeenCalledOnceWith(jasmine.any(PointerEvent), true);
+    });
+
+    it('opens the reference table from completed clicks on nested SVG content', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const table = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        table.classList.add('referenceTable');
+        table.append(text, path, rect);
+        svg.appendChild(table);
+
+        const unit = createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+        });
+        service.updateUnit(unit);
+        service.setupReadOnlyInteractions(svg);
+
+        [text, path, rect].forEach((target, index) => {
+            target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+            expect(dialogsService.createDialog).toHaveBeenCalledTimes(index + 1);
+            dialogClosedCallbacks.shift()?.();
+        });
+
+        expect(dialogsService.createDialog).toHaveBeenCalledTimes(3);
+    });
+
+    it('adds and restores only the center-panel pointer cursor', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const table = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        table.classList.add('referenceTable');
+        table.style.cursor = 'crosshair';
+        svg.appendChild(table);
+
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+        }));
+        service.setupReadOnlyInteractions(svg);
+        expect(table.style.cursor).toBe('pointer');
+        expect(table.classList).not.toContain('interactive');
+
+        service.cleanup();
+        expect(table.style.cursor).toBe('crosshair');
+    });
+
+    it('never opens the reference table during pointerup', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const table = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        table.classList.add('referenceTable');
+        table.appendChild(text);
+        svg.appendChild(table);
+
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+        }));
+        service.setupReadOnlyInteractions(svg);
+
+        text.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 61, pointerType: 'touch' }));
+        text.dispatchEvent(createPointerEvent('pointerup', { pointerId: 61, pointerType: 'touch' }));
+
+        expect(dialogsService.createDialog).not.toHaveBeenCalled();
+    });
+
+    it('keeps only one reference table dialog open across repeated clicks', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const table = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        table.classList.add('referenceTable');
+        svg.appendChild(table);
+
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+        }));
+        service.setupReadOnlyInteractions(svg);
+
+        table.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+        table.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+        expect(dialogsService.createDialog).toHaveBeenCalledTimes(1);
+
+        dialogClosedCallbacks.shift()?.();
+        table.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+        expect(dialogsService.createDialog).toHaveBeenCalledTimes(2);
+    });
+
+    it('closes the owned reference table dialog during service cleanup', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const table = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        table.classList.add('referenceTable');
+        svg.appendChild(table);
+
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+        }));
+        service.setupReadOnlyInteractions(svg);
+        table.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+        service.cleanup();
+
+        expect(closeDialog).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores clicks outside the reference table and non-primary clicks', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const table = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const outside = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        table.classList.add('referenceTable');
+        svg.append(table, outside);
+
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+        }));
+        service.setupReadOnlyInteractions(svg);
+
+        outside.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+        table.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 2 }));
+
+        expect(dialogsService.createDialog).not.toHaveBeenCalled();
     });
 
     it('still cancels a mouse tap when the pointer leaves without capture', () => {
@@ -975,6 +1414,42 @@ function tap(el: SVGElement, pointerId: number): void {
     el.dispatchEvent(createPointerEvent('pointerup', { pointerId, pointerType: 'mouse', button: 0 }));
 }
 
+function createArmorInteractionUnit(config: {
+    armorPoints: number;
+    armorHits: number;
+    internalPoints: number;
+    internalHits: number;
+    rear?: boolean;
+    structure?: boolean;
+}): { svg: SVGSVGElement; location: SVGElement; unit: any } {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const location = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    location.classList.add('unitLocation');
+    if (config.structure) location.classList.add('structure');
+    if (config.rear) location.setAttribute('rear', '1');
+    location.setAttribute('loc', 'LT');
+    svg.appendChild(location);
+
+    let armorHits = config.armorHits;
+    let internalHits = config.internalHits;
+    const unit = createSvgInteractionUnit({
+        id: 'unit-mek',
+        getUnit: () => ({ type: 'Mek' }),
+        getArmorPoints: () => config.armorPoints,
+        getArmorHits: () => armorHits,
+        addArmorHits: jasmine.createSpy('addArmorHits').and.callFake((_loc: string, hits: number) => {
+            armorHits += hits;
+        }),
+        getInternalPoints: () => config.internalPoints,
+        getInternalHits: () => internalHits,
+        addInternalHits: jasmine.createSpy('addInternalHits').and.callFake((_loc: string, hits: number) => {
+            internalHits += hits;
+        }),
+        getCritSlotsAsMatrix: () => ({}),
+    });
+    return { svg, location, unit };
+}
+
 function createSensorHitInteractionUnit(): { svg: SVGSVGElement; unit: any; sensorHit1: SVGElement; sensorHit3: SVGElement; sensorHit4: SVGElement } {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const crits = [1, 2, 3, 4].map(level => ({ id: `sensor_hit_${level}` }));
@@ -1024,15 +1499,16 @@ function createInventoryInteractionUnit(html = `
         <text class="range_medium">6</text>
         <text class="range_long">9</text>
     </g>
-`): { svg: SVGSVGElement; entry: MountedEquipment; unit: any } {
+`, weaponType: 'Laser' | 'ATM' | 'MML' = 'Laser'): { svg: SVGSVGElement; entry: MountedEquipment; unit: any } {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.innerHTML = html;
     const entryEl = svg.querySelector('.inventoryEntry') as SVGElement;
     const equipment = new WeaponEquipment({
-        id: 'Laser',
-        name: 'Laser',
+        id: weaponType,
+        name: weaponType,
         type: 'weapon',
-        weapon: { ammoType: 'NA', ranges: [3, 6, 9, 12] }
+        flags: weaponType === 'ATM' ? ['F_MISSILE', 'F_ATM'] : weaponType === 'MML' ? ['F_MISSILE', 'F_MML'] : [],
+        weapon: { ammoType: weaponType === 'Laser' ? 'NA' : weaponType, rackSize: 6, ranges: [3, 6, 9, 12] }
     });
     const entry = new MountedEquipment({
         owner: undefined as any,
@@ -1071,6 +1547,16 @@ function createInventoryInteractionUnit(html = `
         getInventoryControlEntryTargetId: (entryId: string) => runtime.getEntryTargetId(entryId),
         isInventoryControlEntrySelected: (entryId: string) => runtime.isEntrySelected(entryId),
         getInventoryControlEntryRange: (entryId: string) => runtime.getEntryRange(entryId),
+        getInventoryControlEntryAmmoOption: () => undefined,
+        getInventoryControlRules: () => ({}),
+        gameRules: CORE_2026_GAME_RULES,
+        allowsExtremeRangeAttacks: () => false,
+        resolveC3Targeting: (target: any) => ({
+            target: (unit as any).hasLinkedC3Network?.() === true || target.c3Distance === undefined
+                ? target
+                : { ...target, c3Distance: undefined },
+            degradationSource: 'none'
+        }),
         setInventoryControlEntrySelected: (selectedEntry: MountedEquipment, selected: boolean) => runtime.setEntrySelected(selectedEntry, selected),
         setInventoryControlEntryRange: (selectedEntry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null) => runtime.setEntryRange(selectedEntry, range),
         toggleInventoryControlEntryRange: (selectedEntry: MountedEquipment, range: InventoryControlRuntimeRangeKey, forceSelected = false) => runtime.toggleEntryRange(selectedEntry, range, forceSelected),

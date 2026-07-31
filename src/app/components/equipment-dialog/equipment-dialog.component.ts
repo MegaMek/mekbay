@@ -30,7 +30,7 @@ const WEAPON_TARGET_CHOICE_OVERLAY_KEY = 'weapon-equipment-target-choice';
 })
 export class EquipmentDialogComponent {
     readonly data: EquipmentDialogData = inject(DIALOG_DATA);
-    private readonly dialogRef: DialogRef<void, EquipmentDialogComponent> = inject(DialogRef);
+    private readonly dialogRef = inject<DialogRef<void, EquipmentDialogComponent>>(DialogRef);
     private readonly keyboardShortcutService = inject(KeyboardShortcutService);
     private readonly overlay = inject(Overlay);
     private readonly overlayManager = inject(OverlayManagerService);
@@ -374,7 +374,7 @@ export class EquipmentDialogComponent {
     }
 
     private ammoEntries(unit: CBTForceUnit) {
-        return getAmmoControlEntriesForUnitWeapons(unit, this.data.context.dataService.getEquipments());
+        return getAmmoControlEntriesForUnitWeapons(unit, this.data.context.dataService.getEquipmentRegistry());
     }
 
     private closeUnitOverlays(unitId: string): void {

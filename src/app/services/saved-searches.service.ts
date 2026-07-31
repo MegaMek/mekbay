@@ -34,7 +34,7 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { DbService, type StoredSavedSearches, type SavedSearchOp } from './db.service';
 import type { SerializedSearchFilter } from './unit-search-filters.model';
-import { WsService, type generateUUID } from './ws.service';
+import { WsService } from './ws.service';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import { DialogsService } from './dialogs.service';

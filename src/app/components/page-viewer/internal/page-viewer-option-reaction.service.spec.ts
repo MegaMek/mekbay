@@ -53,12 +53,18 @@ describe('PageViewerOptionReactionService', () => {
         })).toBeFalse();
     });
 
-    it('requests redisplay only when transitioning from read-only to editable', () => {
+    it('requests redisplay for either read-only ownership transition', () => {
+        expect(service.shouldRedisplayForReadOnlyChange({
+            isReadOnly: false,
+            viewInitialized: true,
+            isSwiping: false
+        })).toBeFalse();
+
         expect(service.shouldRedisplayForReadOnlyChange({
             isReadOnly: true,
             viewInitialized: true,
             isSwiping: false
-        })).toBeFalse();
+        })).toBeTrue();
 
         expect(service.shouldRedisplayForReadOnlyChange({
             isReadOnly: false,

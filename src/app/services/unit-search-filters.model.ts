@@ -392,7 +392,7 @@ export interface RangeFilterConfig {
     stepSize?: number;
     specialValues?: readonly number[];
     formatValue?: (value: number) => string;
-    ignoreValues?: any[];
+    ignoreValues?: unknown[];
 }
 
 /** Boolean tri-state filter configuration */

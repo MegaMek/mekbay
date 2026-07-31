@@ -67,6 +67,7 @@ import { DataTableComponent, type DataTableCellContext, type DataTableColumn, ty
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { FORCE_NOTE_MAX_LENGTH } from '../../models/force-serialization';
 import { naturalCompare } from '../../utils/sort.util';
+import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 
 export interface ForceOverviewDialogData {
     force: Force;
@@ -299,8 +300,16 @@ export class ForceOverviewDialogComponent {
         'as.damage': ['as.dmg.dmgS', 'as.dmg.dmgM', 'as.dmg.dmgL', 'as.dmg.dmgE']
     };
 
-    /** Total BV/PV of the force */
-    totalBv = computed(() => this.data.force.totalBv());
+    /** Total BV/PV of the force using the selected display mode. */
+    totalBv = computed(() => this.displayedBvPv(this.data.force.units()));
+
+    displayedBvPv(units: readonly ForceUnit[]): string {
+        return formatBvPv(
+            units.reduce((total, unit) => total + unit.getBv(), 0),
+            units.reduce((total, unit) => total + unit.getPreSkillBv(), 0),
+            this.optionsService.options().forceViewerBVPVDisplay,
+        );
+    }
 
     /** Whether the force is read-only */
     isReadOnly = computed(() => this.data.force.readOnly());
@@ -406,7 +415,13 @@ export class ForceOverviewDialogComponent {
                 id: 'pv',
                 header: 'PV',
                 track: '45px',
-                value: row => row.kind === 'unit' ? row.vm.unit.as.PV : '',
+                value: row => row.kind === 'unit'
+                    ? formatBvPv(
+                        row.vm.forceUnit.getBv(),
+                        row.vm.forceUnit.getPreSkillBv(),
+                        this.optionsService.options().forceViewerBVPVDisplay,
+                    )
+                    : '',
                 sortKey: 'as.PV',
                 sortActive: this.isSortActive('as.PV'),
                 cellClass: this.tableCellClass('as-td-pv is-bold', this.isSortActive('as.PV')),

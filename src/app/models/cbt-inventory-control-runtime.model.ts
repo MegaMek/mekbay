@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import type { MountedEquipment } from './force-serialization';
+import type { MountedEquipment } from './mounted-equipment.model';
 import type { CBTForceUnit } from './cbt-force-unit.model';
 import { InventoryControlRuntimeState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
 

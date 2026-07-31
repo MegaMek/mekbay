@@ -23,6 +23,10 @@ const TEST_MANIFEST: SpriteManifest = {
             h: 72,
         },
     },
+    assignments: {
+        exact: { 'ATLAS AS7-D': 'units/mek.png' },
+        chassis: { 'ATLAS': 'units/mek.png' },
+    },
 };
 
 const CASED_MANIFEST: SpriteManifest = {
@@ -217,6 +221,7 @@ describe('SpriteStorageService', () => {
             url: 'blob:mapped-sprite',
             info: TEST_MANIFEST.icons['units/mek.png'],
         });
+        expect(await service.getAssignments()).toEqual(TEST_MANIFEST.assignments!);
     });
 
     it('treats icon and sprite type keys case-insensitively after download', async () => {

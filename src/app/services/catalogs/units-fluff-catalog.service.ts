@@ -45,8 +45,8 @@ import type {
 } from '../../models/units.model';
 import { DbService } from '../db.service';
 import { LoggerService } from '../logger.service';
-import { generateUUID } from '../ws.service';
 import { CatalogDownloadTrackerService } from './catalog-base.service';
+import { uuidv7 } from '../../utils/uuid.util';
 
 const MINIMUM_FLUFF_ENTRY_COUNT = 100;
 const MINIMUM_RELATIVE_FLUFF_SIZE = 0.75;
@@ -240,7 +240,7 @@ export class UnitsFluffCatalogService {
 
             return {
                 ...body,
-                etag: response.headers.get('ETag') || remoteEtag || generateUUID(),
+                etag: response.headers.get('ETag') || remoteEtag || uuidv7(),
                 fluff: body.fluff ?? {},
             };
         });

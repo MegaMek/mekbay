@@ -32,15 +32,28 @@
  */
 
 import { inject, Injectable, Injector } from '@angular/core';
-import { MountedEquipment, type CriticalSlot } from '../models/force-serialization';
+import { MountedAmmo, MountedEquipment } from '../models/mounted-equipment.model';
+import { type CriticalSlot } from '../models/force-serialization';
 import { DataService } from './data.service';
-import { AmmoEquipment, WeaponEquipment, type Equipment } from '../models/equipment.model';
+import { AmmoEquipment, ArmorEquipment, StructureEquipment, WeaponEquipment, type Equipment } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { getBattleArmorTrooperNumber, normalizeBattleArmorTrooperLocation } from '../models/battle-armor-location.model';
+import { materializeIntrinsicOneShotAmmoForInventory } from '../utils/ammo-interaction.util';
 
 /*
  * Author: Drake
  */
 export const CRITICAL_ONLY_INVENTORY_EXCLUDED_EQUIPMENT = new Set<string>();
+
+const CRITICAL_ONLY_INVENTORY_EXCLUDED_FLAGS = new Set([
+    // These are tracked through their critical slots, movement, and heat rules.
+    'F_HEAT_SINK',
+    'F_DOUBLE_HEAT_SINK',
+    'F_LASER_HEAT_SINK',
+    'F_JUMP_JET',
+    'F_CASE',
+    'F_CASE_II'
+]);
 
 @Injectable({
     providedIn: 'root'
@@ -99,12 +112,10 @@ export class UnitInitializerService {
 
         // Clear element references from inventory
         for (const item of unit.getInventory()) {
-            item.el = undefined;
-            item.critSlots = [];
+            item.detachRuntimeContext();
             if (item.linkedWith) {
                 for (const linked of item.linkedWith) {
-                    linked.el = undefined;
-                    linked.critSlots = [];
+                    linked.detachRuntimeContext();
                 }
             }
         }
@@ -202,7 +213,7 @@ export class UnitInitializerService {
 
         const criticalSlots: CriticalSlot[] = unit.getCritSlots().filter(crit => !crit.loc || crit.slot === undefined);
         const critSlotMatrix = unit.getCritSlotsAsMatrix();
-        const equipmentList = this.getDataService().getEquipments();
+        const dataService = this.getDataService();
         let slotsChanged = false;
 
         critSlotsEl.forEach(critSlotEl => {
@@ -224,7 +235,7 @@ export class UnitInitializerService {
                 critSlot.id = id;
                 const equipmentName = critSlot.name || name;
                 critSlot.name = equipmentName;
-                critSlot.eq = equipmentName ? equipmentList[equipmentName] : undefined;
+                critSlot.eq = equipmentName ? dataService.findEquipment(equipmentName) : undefined;
                 if (armored) {
                     critSlot.armored = true; // in case it was added later
                 }
@@ -239,7 +250,7 @@ export class UnitInitializerService {
                 loc: loc,
                 slot: slot,
                 hits: 0,
-                eq: name ? equipmentList[name] : undefined
+                eq: name ? dataService.findEquipment(name) : undefined
             };
 
             if (critSlotEl.classList.contains('ammoSlot')) {
@@ -299,6 +310,7 @@ export class UnitInitializerService {
 
     private getInventoryElements(unit: CBTForceUnit, svg: SVGSVGElement, inventoryEntryEls: NodeListOf<SVGElement>): MountedEquipment[] {
         const inventoryEntries: MountedEquipment[] = [];
+        const dataService = this.getDataService();
         const allCritSlots = unit.getCritSlots();
         const hasAmmoCritSlots = allCritSlots.some(slot => slot.eq instanceof AmmoEquipment);
         const currentInventory = unit.getInventory();
@@ -314,7 +326,7 @@ export class UnitInitializerService {
             let locations = new Set<string>();
             if (critSlots.length > 0) {
                 name = critSlots[0].name ?? '';
-                eq = this.getDataService().getEquipments()[name];
+                eq = dataService.findEquipment(name);
                 critSlots.forEach(slot => {
                     const loc = slot.loc;
                     if (loc) {
@@ -323,7 +335,7 @@ export class UnitInitializerService {
                 });
             } else {
                 name = id.split('@')[0];
-                eq = this.getDataService().getEquipments()[name];
+                eq = dataService.findEquipment(name);
             }
             if (locations.size === 0) {
                 // If no locations found, try to get it from entry itself
@@ -344,16 +356,16 @@ export class UnitInitializerService {
             let inventoryEntry: MountedEquipment;
             const existingEntry = currentInventory.find(item => item.id === id);
             if (existingEntry) {
-                inventoryEntry = existingEntry.clone();
-                // full refresh (but is it really needed?)
-                inventoryEntry.name = iPhysAtk || name;
-                inventoryEntry.locations = locations;
-                inventoryEntry.equipment = eq;
-                inventoryEntry.physical = !!iPhysAtk;
-                inventoryEntry.linkedWith = null;
-                inventoryEntry.parent = null;
-                inventoryEntry.critSlots = critSlots;
-                inventoryEntry.el = entryEl;
+                inventoryEntry = MountedEquipment.from(existingEntry.clone({
+                    name: iPhysAtk || name,
+                    locations,
+                    equipment: eq,
+                    intrinsicPhysicalAttack: !!iPhysAtk,
+                    linkedWith: null,
+                    parent: null,
+                    critSlots,
+                    el: entryEl,
+                }));
             } else {
                 inventoryEntry = new MountedEquipment({
                     owner: unit,
@@ -361,7 +373,7 @@ export class UnitInitializerService {
                     name: iPhysAtk || name,
                     locations: locations,
                     equipment: eq,
-                    physical: !!iPhysAtk,
+                    intrinsicPhysicalAttack: !!iPhysAtk,
                     linkedWith: null,
                     parent: null,
                     destroyed: false,
@@ -373,10 +385,7 @@ export class UnitInitializerService {
             const subElements = entryEl.querySelectorAll('.inventoryEntry') as NodeListOf<SVGElement>;
             if (subElements.length > 0) {
                 const linkedWith = this.getInventoryElements(unit, svg, subElements);
-                linkedWith.forEach(linkedEntry => {
-                    linkedEntry.parent = inventoryEntry;
-                });
-                inventoryEntry.linkedWith = linkedWith;
+                inventoryEntry.setLinkedEquipment(linkedWith);
             }
 
             inventoryEntries.push(inventoryEntry);
@@ -386,13 +395,13 @@ export class UnitInitializerService {
 
     private getDirectAmmoInventoryEntries(unit: CBTForceUnit, currentInventory: MountedEquipment[]): MountedEquipment[] {
         const inventoryEntries: MountedEquipment[] = [];
-        const equipmentList = this.getDataService().getEquipments();
+        const dataService = this.getDataService();
         unit.getUnit().comp.forEach((component, index) => {
-            const equipment = component.eq ?? equipmentList[component.id];
+            const equipment = component.eq ?? dataService.findEquipment(component.id);
             if (!(equipment instanceof AmmoEquipment)) return;
 
             const binCount = Math.max(1, component.q || 1);
-            const totalAmmo = component.q2 || (equipment.shots * binCount) || 0;
+            const totalAmmo = component.q2 || (equipment.getShots(unit.gameRules) * binCount) || 0;
             const baseBinAmmo = Math.floor(totalAmmo / binCount);
             const extraBinAmmo = totalAmmo % binCount;
             const locations = component.l && component.l !== '—'
@@ -403,19 +412,20 @@ export class UnitInitializerService {
                 const originalTotalAmmo = baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0);
                 const existingEntry = currentInventory.find(item => item.id === id);
 
-                inventoryEntries.push(new MountedEquipment({
+                inventoryEntries.push(new MountedAmmo({
                     owner: unit,
                     id,
                     name: component.id,
                     locations,
                     equipment,
-                    physical: false,
+                    intrinsicPhysicalAttack: false,
                     linkedWith: null,
                     parent: null,
                     destroyed: existingEntry?.committedDestroyedState() ?? false,
-                    destroying: existingEntry?.isDestroying(),
+                    destroying: existingEntry?.pendingDestroyed(),
                     ammo: existingEntry?.ammo,
                     totalAmmo: existingEntry?.totalAmmo ?? originalTotalAmmo,
+                    originalTotalAmmo,
                     consumed: existingEntry?.consumed ?? 0,
                     states: existingEntry?.states ?? new Map<string, string>(),
                 }));
@@ -428,10 +438,10 @@ export class UnitInitializerService {
         if (unit.getUnit().type !== 'Infantry' || unit.getUnit().subtype === 'Battle Armor') return [];
 
         const inventoryEntries: MountedEquipment[] = [];
-        const equipmentList = this.getDataService().getEquipments();
+        const dataService = this.getDataService();
         unit.getUnit().comp.forEach((component, index) => {
             if (component.l !== 'FGUN') return;
-            const equipment = component.eq ?? equipmentList[component.id];
+            const equipment = component.eq ?? dataService.findEquipment(component.id);
             if (!(equipment instanceof WeaponEquipment)) return;
 
             const gunCount = Math.max(1, component.q || 1);
@@ -446,16 +456,72 @@ export class UnitInitializerService {
                     name: component.id,
                     locations,
                     equipment,
-                    physical: false,
+                    intrinsicPhysicalAttack: false,
                     linkedWith: null,
                     parent: null,
                     destroyed: existingEntry?.committedDestroyedState() ?? false,
-                    destroying: existingEntry?.isDestroying(),
+                    destroying: existingEntry?.pendingDestroyed(),
                     states: existingEntry?.states ?? new Map<string, string>(),
                 }));
             }
         });
         return inventoryEntries;
+    }
+
+    /**
+     * Expands an aggregate Battle Armor weapon entry into one mounted weapon per
+     * trooper. SVG inventory entries represent the whole squad, while gameplay
+     * and inventory controls need independently addressable trooper equipment.
+     */
+    private materializeBattleArmorWeaponMounts(
+        unit: CBTForceUnit,
+        inventory: readonly MountedEquipment[],
+        currentInventory: readonly MountedEquipment[],
+    ): MountedEquipment[] {
+        if (unit.getUnit().subtype !== 'Battle Armor') return [...inventory];
+
+        return inventory.flatMap(entry => {
+            const trooperLocations = this.getBattleArmorWeaponTrooperLocations(unit, entry);
+            if (trooperLocations.length === 0) return [entry];
+
+            return trooperLocations.map(location => {
+                const canonicalLocation = normalizeBattleArmorTrooperLocation(location);
+                const id = `${entry.id}:${canonicalLocation}`;
+                const persistedEntry = currentInventory.find(candidate => candidate.id === id);
+                const states = new Map(persistedEntry?.states ?? entry.states);
+                // Compatibility cleanup for rows created by the previous UI-only model.
+                states.delete('inventory_control_virtual_trooper_row');
+                return MountedEquipment.from(entry).clone({
+                    id,
+                    locations: new Set([canonicalLocation]),
+                    linkedWith: null,
+                    parent: null,
+                    el: undefined,
+                    destroyed: persistedEntry?.committedDestroyedState() ?? entry.committedDestroyedState(),
+                    destroying: persistedEntry?.pendingDestroyed() ?? entry.pendingDestroyed(),
+                    ammo: persistedEntry?.ammo ?? entry.ammo,
+                    totalAmmo: persistedEntry?.totalAmmo ?? entry.totalAmmo,
+                    consumed: persistedEntry?.consumed ?? entry.consumed,
+                    states,
+                });
+            });
+        });
+    }
+
+    private getBattleArmorWeaponTrooperLocations(unit: CBTForceUnit, entry: MountedEquipment): string[] {
+        if (!(entry.equipment instanceof WeaponEquipment)
+            || !entry.equipment.hasFlag('F_BA_WEAPON')) return [];
+
+        const componentLocations = unit.getUnit().comp
+            .filter(component => component.id === entry.equipment?.internalName || component.id === entry.name || component.eq === entry.equipment)
+            .flatMap(component => Array.from({ length: Math.max(1, component.q ?? 1) }, () => component.l ?? ''))
+            .filter(location => getBattleArmorTrooperNumber(location) !== null);
+        const locations = componentLocations.length > 0
+            ? componentLocations
+            : Array.from(entry.locations ?? []).filter(location => getBattleArmorTrooperNumber(location) !== null);
+
+        return Array.from(new Set(locations.map(normalizeBattleArmorTrooperLocation))).sort((left, right) =>
+            (getBattleArmorTrooperNumber(left) ?? 0) - (getBattleArmorTrooperNumber(right) ?? 0));
     }
 
     private getCriticalOnlyInventoryEntries(unit: CBTForceUnit, existingIds: Set<string>, currentInventory: MountedEquipment[]): MountedEquipment[] {
@@ -476,7 +542,7 @@ export class UnitInitializerService {
                 name: critSlots[0].name || id.split('@')[0],
                 locations: new Set(critSlots.map(slot => slot.loc).filter((loc): loc is string => !!loc)),
                 equipment,
-                physical: false,
+                intrinsicPhysicalAttack: false,
                 linkedWith: null,
                 parent: null,
                 destroyed: existingEntry?.committedDestroyedState() ?? false,
@@ -489,6 +555,8 @@ export class UnitInitializerService {
 
     private isCriticalOnlyInventoryExcluded(critSlot: CriticalSlot): boolean {
         const equipment = critSlot.eq;
+        if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) return true;
+        if (equipment && Array.from(equipment.flags).some(flag => CRITICAL_ONLY_INVENTORY_EXCLUDED_FLAGS.has(flag))) return true;
         return [critSlot.id, critSlot.name, equipment?.internalName, equipment?.name]
             .some(value => !!value && CRITICAL_ONLY_INVENTORY_EXCLUDED_EQUIPMENT.has(value));
     }
@@ -512,7 +580,12 @@ export class UnitInitializerService {
             inventoryData.push(...this.getInfantryFieldGunInventoryEntries(unit, unit.getInventory()));
             inventoryData.push(...this.getDirectAmmoInventoryEntries(unit, unit.getInventory()));
         }
-        unit.setInventory(inventoryData, true);
+        const materializedInventory = this.materializeBattleArmorWeaponMounts(unit, inventoryData, unit.getInventory());
+        materializedInventory.push(...materializeIntrinsicOneShotAmmoForInventory(
+            materializedInventory,
+            this.getDataService().getEquipmentRegistry(),
+        ));
+        unit.setInventory(materializedInventory, true);
     }
 
 }

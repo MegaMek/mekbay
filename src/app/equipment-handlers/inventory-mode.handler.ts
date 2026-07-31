@@ -1,6 +1,6 @@
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
 import type { PickerChoice } from '../components/picker/picker.interface';
-import type { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import {
     getInventoryControlModeChoices,
     getInventoryControlModes,
@@ -20,10 +20,14 @@ export class InventoryModeHandler extends EquipmentInteractionHandler {
     }
 
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
-        const choices = getInventoryControlModeChoices(equipment, context.dataService.getEquipments());
+        const choices = getInventoryControlModeChoices(equipment);
         if (choices.length === 0) return [];
 
-        const currentMode = getSelectedInventoryControlMode(equipment) ?? choices[0].value;
+        const currentMode = getSelectedInventoryControlMode(
+            equipment,
+            context.dataService.getEquipmentRegistry(),
+            equipment.owner.getInventoryControlRules?.() ?? {}
+        ) ?? choices[0].value;
         return [
             {
                 label: INVENTORY_MODE_CHOICE_LABEL,

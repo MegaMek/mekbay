@@ -32,7 +32,7 @@
  */
 
 import { computed, signal } from '@angular/core';
-import type { MountedEquipment } from './force-serialization';
+import type { MountedEquipment } from './mounted-equipment.model';
 import type { TnTargetNumberCalculatorState, TnTargetUnitType } from './target-number-calculator.model';
 
 export type InventoryControlRuntimeRangeKey = 'short' | 'medium' | 'long' | 'extreme';

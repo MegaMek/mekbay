@@ -10,7 +10,7 @@ import { DataService } from '../../services/data.service';
 import type { ForceAlignment } from '../../models/force-slot.model';
 import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
 import { CompactModeService } from '../../services/compact-mode.service';
-import { C3NetworkUtil } from '../../utils/c3-network.util';
+import { C3Capabilities } from '../../models/c3-network.model';
 import { CommonModule } from '@angular/common';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import type { ForceSlot } from '../../models/force-slot.model';
@@ -72,8 +72,7 @@ export class SidebarFooterComponent {
      */
     hasC3Units = computed(() => {
         return this.forceBuilderService.currentForce()?.units()?.some(forceUnit => {
-            const unit = forceUnit.getUnit();
-            return C3NetworkUtil.getC3Components(unit).length > 0;
+            return new C3Capabilities(forceUnit).hasC3;
         });
     });
 

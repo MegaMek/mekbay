@@ -1,5 +1,5 @@
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
-import type { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { PickerChoice } from '../components/picker/picker.interface';
 import { WeaponEquipment } from '../models/equipment.model';
 import { EquipmentDialogComponent } from '../components/equipment-dialog/equipment-dialog.component';
@@ -53,7 +53,6 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
                             getChoices: () => [],
                             handleSelection: () => false,
                             afterInventoryControlFire: () => undefined,
-                            getLinkedEquipmentHitModifier: () => 0,
                             canPerformAimedShot: () => true,
                             inventoryControlRules: () => ({})
                         }

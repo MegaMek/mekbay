@@ -43,7 +43,9 @@
             <div class="expanded-basic-info">
                 <div class="info-item">
                     <span class="info-label muted">PV:</span>
-                    <span class="info-value" [class.sort-slot]="isSortActive('as.PV')">{{ resolvedBv() ?? (u.as.PV | adjustedPV:gunnery()) | formatNumber:true:false }}</span>
+                    <span class="info-value" [class.sort-slot]="isSortActive('as.PV')">
+                        @if (resolvedBv(); as forcePv) { {{ forcePv }} } @else { {{ u.as.PV | adjustedPV:gunnery() | formatNumber:true:false }} }
+                    </span>
                 </div>
                 @if (pilotStats(); as stats) {
                 <div class="info-item interactive" (click)="onPilotClick($event)" title="Edit Pilot">
@@ -182,7 +184,9 @@
             <div class="expanded-basic-info">
                 <div class="info-item">
                     <span class="info-label muted">BV:</span>
-                    <span class="info-value" [class.sort-slot]="isSortActive('bv')">{{ resolvedBv() ?? (u | adjustedBV:gunnery():piloting()) | formatNumber:true:false }}</span>
+                    <span class="info-value" [class.sort-slot]="isSortActive('bv')">
+                        @if (resolvedBv(); as forceBv) { {{ forceBv }} } @else { {{ u | adjustedBV:gunnery():piloting() | formatNumber:true:false }} }
+                    </span>
                 </div>
                 @if (pilotStats(); as stats) {
                 <div class="info-item interactive" (click)="onPilotClick($event)" title="Edit Pilot">
@@ -348,7 +352,7 @@
             <div class="info-area">
                 @if (isAlphaStrike()) {
                 <div class="info-slot centered slim" [class.sort-slot]="isSortActive('as.PV')">
-                    <span class="value">PV: {{ u.as.PV | adjustedPV:gunnery() | formatNumber:true:true }}</span>
+                    <span class="value">PV: {{ resolvedCompactBv() ?? (u.as.PV | adjustedPV:gunnery() | formatNumber:true:false) }}</span>
                 </div>
                 <div class="info-slot centered slim" [class.sort-slot]="isSortActive('as.SZ')">
                     <span class="value">SZ: {{ u.as.SZ }}</span>
@@ -360,7 +364,7 @@
                 }
                 } @else {
                 <div class="info-slot numeric" [class.sort-slot]="isSortActive('bv')">
-                    <span class="value">BV: {{ u | adjustedBV:gunnery():piloting() | formatNumber:true:true }}</span>
+                    <span class="value">BV: {{ resolvedCompactBv() ?? (u | adjustedBV:gunnery():piloting() | formatNumber:true:false) }}</span>
                 </div>
                 <div class="info-slot numeric" [class.sort-slot]="isSortActive('tons')">
                     <span class="value">{{ u.tons | formatTons }}</span>

@@ -143,7 +143,7 @@
                 @if (!line.selfConnection) {
                 <line [attr.x1]="line.nodeX1" [attr.y1]="line.nodeY1" [attr.x2]="line.nodeX2" [attr.y2]="line.nodeY2"
                     [attr.stroke]="line.color" stroke-width="5"
-                    class="animated-line-big"
+                    class="animated-line-big" [class.broken-link]="line.unavailable" [class.degraded-link]="line.degraded"
                     [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
                 }
                 }
@@ -189,6 +189,10 @@
                     } @else {
                     <polygon class="node-bg" [attr.points]="NODE_HEX_POINTS" [attr.stroke]="getNodeBorderColor(node)"
                         [attr.stroke-dasharray]="isNodeLinked(node) ? 'none' : '6,3'" />
+                    }
+
+                    @if (damageDisconnectedNodes().has(node.unit.id)) {
+                    <polygon class="node-damage-disconnected-overlay" [attr.points]="NODE_HEX_POINTS" />
                     }
                     }
 
@@ -258,6 +262,23 @@
                         </g>
                         }
                     </g>
+
+                    @if (nodeRuntimeStatuses().get(node.unit.id); as statuses) {
+                    <g class="node-runtime-status-container"
+                        [attr.transform]="'translate(' + NODE_BOTTOM_SIDE_X + ',' + (NODE_BOTTOM_Y -6) + ')'">
+                        @for (status of statuses; track status; let i = $index) {
+                        <g class="node-runtime-status" [class.offline]="status === 'OFFLINE'"
+                            [class.jammed]="status === 'JAMMED'"
+                            [class.degraded]="status === 'DEGRADED'"
+                            [attr.transform]="'translate(0,' + (i * (NODE_STATUS_HEIGHT + 2)) + ')'">
+                            <rect x="0" y="0" [attr.width]="NODE_BOTTOM_SIDE_WIDTH"
+                                [attr.height]="NODE_STATUS_HEIGHT" />
+                            <text [attr.x]="NODE_BOTTOM_SIDE_WIDTH / 2" [attr.y]="NODE_STATUS_HEIGHT / 2"
+                                text-anchor="middle" dominant-baseline="central">{{ status }}</text>
+                        </g>
+                        }
+                    </g>
+                    }
                 </g>
                 }
             </g>
@@ -269,7 +290,7 @@
                 @for (line of connectionLines(); track line.id) {
                 <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
                     [attr.stroke]="line.color" stroke-width="3"
-                    class="animated-line"
+                    class="animated-line" [class.broken-link]="line.unavailable" [class.degraded-link]="line.degraded"
                     [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
                 }
 
@@ -284,6 +305,7 @@
                 @if (line.selfConnection) {
                 <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2"
                     [attr.stroke]="line.color" stroke-width="3"
+                    class="animated-line" [class.broken-link]="line.unavailable" [class.degraded-link]="line.degraded"
                     [attr.marker-end]="line.hasArrow ? 'url(#arrow-' + line.id + ')' : null" />
                 }
                 }
@@ -317,6 +339,9 @@
             @for (vm of sidebarNetworks(); track vm.network.id) {
             <ng-container *ngTemplateOutlet="networkTemplate; context: { vm: vm, depth: 0 }"></ng-container>
             }
+            @for (vm of emergencySidebarNetworks(); track 'emergency-' + vm.network.id) {
+            <ng-container *ngTemplateOutlet="networkTemplate; context: { vm: vm, depth: 0 }"></ng-container>
+            }
 
             @if (networks().length === 0) {
             <div class="no-networks">
@@ -338,7 +363,7 @@
                 </div>
                 }
                 <div class="bv-totals-row">
-                    <span>Total C3 BV:</span>
+                    <span>Total C³ BV:</span>
                     <span class="bv-value tax">+{{ totals.totalC3Bv }}</span>
                 </div>
                 @if (totals.totalExternalStoresBv > 0) {
@@ -371,7 +396,8 @@
 
 <!-- Template for recursive network display -->
 <ng-template #networkTemplate let-vm="vm" let-depth="depth">
-    <div class="network-item" [class.sub-network]="depth > 0" [style.--network-color]="vm.network.color">
+    <div class="network-item" [class.sub-network]="depth > 0" [class.emergency]="vm.displayName === 'EMERGENCY'"
+        [style.--network-color]="vm.displayColor">
         @if (depth > 0) {
         <div class="subnetwork-arrow" aria-hidden="true">
             <svg width="14" height="8" viewBox="0 0 24 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -382,13 +408,14 @@
         <div class="network-header">
             <span class="network-type">
                 {{ vm.displayName }}
-                @if (showBvDetails() && depth === 0 && vm.networkTax !== undefined) {
+                @if (vm.showBv && showBvDetails() && depth === 0 && vm.networkTax !== undefined) {
                     <span class="network-tax">Tax: +{{ vm.networkTax }}</span>
                 }
             </span>
-            @if (!data.readOnly) {
-                <button class="remove-btn" (click)="removeNetwork(vm.network)" title="Delete entire network">
-                <svg _ngcontent-ng-c917707860="" width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c917707860="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+            @if (vm.canRemoveNetwork) {
+                <button class="remove-btn" (click)="removeNetwork(vm.network)" title="Delete entire network"
+                    [attr.aria-label]="'Delete ' + vm.displayName">
+                <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
                             L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg>
                 </button>
             }
@@ -398,7 +425,7 @@
             @for (member of vm.members; track member.memberStr ?? member.id) {
             @if (member.role !== 'sub-master'
             && (depth == 0 || member.role !== 'master')) {
-            <div class="network-unit-item">
+            <div class="network-unit-item" [class.broken-link]="member.brokenLink">
                 <div class="row network-unit" [class.master]="member.role === 'master'">
                     <span class="member-label">
                         @if (member.isSelfConnection) {
@@ -417,11 +444,11 @@
                     @if (member.canRemove) {
                     <button class="remove-btn"
                         (click)="removeUnitFromNetwork(vm.network, member.id, member.memberStr)"
-                        title="Remove from network"><svg _ngcontent-ng-c917707860="" width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c917707860="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                        title="Remove from network" [attr.aria-label]="'Remove ' + member.name + ' from network'"><svg width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
                         L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg></button>
                     }
                 </div>
-                @if (showBvDetails() && !member.isSelfConnection && member.baseBv !== undefined) {
+                @if (vm.showBv && showBvDetails() && !member.isSelfConnection && member.baseBv !== undefined) {
                 <div class="member-bv-details">
                     <span title="Base BV">BV: {{ member.baseBv }}</span>
                     @if (member.tagBv > 0) { <span title="Tag BV">+ {{ member.tagBv }}</span> }
@@ -436,7 +463,7 @@
             }
             @for (member of vm.members; track member.memberStr ?? member.id) {
             @if (member.role == 'sub-master') {
-            <div class="network-unit-item">
+            <div class="network-unit-item" [class.broken-link]="member.brokenLink">
                 <div class="row network-unit">
                     <span class="member-label">
                         @if (member.isSelfConnection) {
@@ -455,11 +482,11 @@
                     @if (member.canRemove) {
                     <button class="remove-btn"
                         (click)="removeUnitFromNetwork(vm.network, member.id, member.memberStr)"
-                        title="Remove from network"><svg _ngcontent-ng-c917707860="" width="14px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c917707860="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
+                        title="Remove from network" [attr.aria-label]="'Remove ' + member.name + ' from network'"><svg width="14px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
                         L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg></button>
                     }
                 </div>
-                @if (showBvDetails() && !member.isSelfConnection && member.baseBv !== undefined) {
+                @if (vm.showBv && showBvDetails() && !member.isSelfConnection && member.baseBv !== undefined) {
                 <div class="member-bv-details">
                     <span title="Base BV">BV: {{ member.baseBv }}</span>
                     @if (member.tagBv > 0) { <span title="Tag BV">+ {{ member.tagBv }}</span> }

@@ -1,7 +1,7 @@
 import { RsPolyfillUtil } from './rs-polyfill.util';
 
 describe('RsPolyfillUtil', () => {
-    it('adds location NARC banners outside critical location groups', () => {
+    it('adds location NARC banners inside location condition controls', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const parent = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         const critGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -17,10 +17,10 @@ describe('RsPolyfillUtil', () => {
         (RsPolyfillUtil as unknown as { addCriticalSectionsButtons: (unit: { type: string }, svg: SVGSVGElement) => void }).addCriticalSectionsButtons({ type: 'Mek' }, svg);
 
         const narcBanner = svg.querySelector('.locationNarcBanner') as SVGGElement;
+        const control = critGroup.querySelector('.locationConditionControl') as SVGGElement;
         expect(narcBanner).not.toBeNull();
-        expect(critGroup.querySelector('.locationNarcBanner')).toBeNull();
-        expect(narcBanner.parentNode).toBe(parent);
-        expect(narcBanner.getAttribute('transform')).toBe('translate(4 6)');
+        expect(narcBanner.parentNode).toBe(control);
+        expect(narcBanner.getAttribute('transform')).toBeNull();
     });
 
     it('adds unit condition banners when the sheet has no unit data panel', () => {
@@ -172,5 +172,116 @@ describe('RsPolyfillUtil', () => {
         expect(entry.querySelector('.targetAimedShotWarning-text')).toBeNull();
         expect(entry.querySelectorAll('.hitMod-rect').length).toBe(1);
         expect(entry.querySelectorAll('.hitMod-text').length).toBe(1);
+    });
+
+    it('adds hit modifier and target TN elements to inventory rows without a name wrapper', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = `
+            <g class="inventoryEntry" id="AeroLaser">
+                <text x="20" y="10" font-size="8">Medium Laser</text>
+            </g>
+        `;
+        const entry = svg.querySelector('.inventoryEntry') as unknown as SVGGraphicsElement;
+        entry.getBBox = () => ({ x: 20, y: 2, width: 60, height: 10 } as DOMRect);
+
+        RsPolyfillUtil.addHitMod(svg);
+
+        expect(entry.querySelector(':scope > .hitMod-rect')).not.toBeNull();
+        expect(entry.querySelector(':scope > .hitMod-text')).not.toBeNull();
+        expect(entry.querySelector(':scope > .targetTn-rect')).not.toBeNull();
+        expect(entry.querySelector(':scope > .targetTn-text')).not.toBeNull();
+        expect(entry.querySelector('.hitMod-rect')?.getAttribute('display')).toBe('none');
+        expect(entry.querySelector('.targetTn-rect')?.getAttribute('display')).toBe('none');
+    });
+
+    it('repairs incomplete hit and target TN element pairs idempotently', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = `
+            <g class="inventoryEntry">
+                <g class="name"><text>Laser</text></g>
+                <rect class="hitMod-rect"></rect>
+                <text class="targetTn-text"></text>
+            </g>
+        `;
+        const name = svg.querySelector('.name') as unknown as SVGGraphicsElement;
+        name.getBBox = () => ({ x: 0, y: 2, width: 50, height: 10 } as DOMRect);
+
+        RsPolyfillUtil.addHitMod(svg);
+        RsPolyfillUtil.addHitMod(svg);
+
+        const entry = svg.querySelector('.inventoryEntry')!;
+        expect(entry.classList.contains('eq-undefined')).toBeFalse();
+        expect(entry.querySelectorAll(':scope > .hitMod-rect').length).toBe(1);
+        expect(entry.querySelectorAll(':scope > .hitMod-text').length).toBe(1);
+        expect(entry.querySelectorAll(':scope > .targetTn-rect').length).toBe(1);
+        expect(entry.querySelectorAll(':scope > .targetTn-text').length).toBe(1);
+    });
+
+    it('discovers a ground Extreme inventory column when its header is present', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const inventoryBox = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        inventoryBox.setAttribute('id', 'gInventoryBox');
+        ['Sht', 'Med', 'Lng', 'Ext'].forEach((label, index) => {
+            const header = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            header.textContent = label;
+            (header as unknown as { getBBox: () => DOMRect }).getBBox = () => ({
+                x: 100 + index * 20,
+                y: 0,
+                width: 12,
+                height: 8
+            } as DOMRect);
+            inventoryBox.appendChild(header);
+        });
+        svg.appendChild(inventoryBox);
+
+        const columns = (RsPolyfillUtil as unknown as {
+            findInventoryRangeButtonColumns: (svg: SVGSVGElement) => Array<{ className: string }>;
+        }).findInventoryRangeButtonColumns(svg);
+
+        expect(columns.map(column => column.className))
+            .toEqual(['shrButton', 'medButton', 'lngButton', 'extButton']);
+    });
+
+    it('adds inventory hit areas and strike lines idempotently', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const entry = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const name = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        entry.setAttribute('id', 'Laser');
+        entry.setAttribute('class', 'inventoryEntry');
+        name.setAttribute('class', 'name');
+        (entry as unknown as { getBBox: () => DOMRect }).getBBox = () => ({ x: 2, y: 10, width: 100, height: 10 } as DOMRect);
+        (name as unknown as { getBBox: () => DOMRect }).getBBox = () => ({ x: 4, y: 10, width: 40, height: 10 } as DOMRect);
+        entry.appendChild(name);
+        svg.appendChild(entry);
+
+        RsPolyfillUtil.addInventoryLines(svg);
+        RsPolyfillUtil.addInventoryLines(svg);
+
+        expect(entry.querySelectorAll(':scope > .inventoryEntryButton.mainButton').length).toBe(1);
+        expect(entry.querySelectorAll(':scope > .damaged-strike').length).toBe(1);
+    });
+
+    it('adds heat controls idempotently', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = `
+            <g id="heatDataPanel">
+                <g><path></path><text>HEAT</text></g>
+                <path></path>
+                <g class="hsPips"></g>
+            </g>
+        `;
+        svg.querySelectorAll<SVGGraphicsElement>('path, .hsPips').forEach(element => {
+            element.getBBox = () => ({ x: 0, y: 0, width: 20, height: 10 } as DOMRect);
+        });
+        const addApplyHeatButton = (RsPolyfillUtil as unknown as {
+            addApplyHeatButton: (svg: SVGSVGElement) => void;
+        }).addApplyHeatButton.bind(RsPolyfillUtil);
+
+        addApplyHeatButton(svg);
+        addApplyHeatButton(svg);
+
+        expect(svg.querySelectorAll('#applyHeatButton').length).toBe(1);
+        expect(svg.querySelectorAll('#damagedEngineHeatText').length).toBe(1);
+        expect(svg.querySelectorAll('.changeActiveHeatsinksCountButton').length).toBe(1);
     });
 });

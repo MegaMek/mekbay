@@ -35,7 +35,8 @@ import { computed, createEnvironmentInjector, EnvironmentInjector, type Injector
 import { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
-import { MountedEquipment, type CriticalSlot, type HeatProfile, type LocationData, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type SerializedCrewMember, committedConditionData, conditionsForSerialization, conditionsHasActive, conditionsHasCommittedActive, conditionsMapFromSerialization, normalizeConditionData, normalizeConditionKey } from './force-serialization';
+import { MountedAmmo, MountedEquipment } from './mounted-equipment.model';
+import { type CriticalSlot, type HeatProfile, type LocationData, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, TURN_STATE_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type SerializedCrewMember, committedConditionData, conditionsForSerialization, conditionsHasActive, conditionsHasCommittedActive, conditionsMapFromSerialization, normalizeConditionData, normalizeConditionKey } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
 import type { ConditionData } from './force-unit-state.model';
 import type { CBTForce } from './cbt-force.model';
@@ -49,24 +50,25 @@ import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { AmmoEquipment, WeaponEquipment } from './equipment.model';
 import type { AmmoEquipment as AmmoEquipmentType } from './equipment.model';
-import { C3NetworkUtil } from '../utils/c3-network.util';
+import type { EquipmentFlag } from './equipment-flags.type';
+import { C3Capabilities, type C3Component, C3NetworkType, C3Role } from './c3-network.model';
+import { isC3DisruptingStealthActive } from './stealth-equipment.model';
 import { getMotiveModesOptionsByUnit, type MotiveModeOption } from './motiveModes.model';
 import type { TurnState } from './turn-state.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import type { UnitTypeRules } from './rules/unit-type-rules';
-import { MekRules } from './rules/mek-rules';
-import { AeroRules } from './rules/aero-rules';
-import { InfantryRules } from './rules/infantry-rules';
-import { ProtoMekRules } from './rules/protomek-rules';
-import { VehicleRules } from './rules/vehicle-rules';
 import { type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
 import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
 import { LINKED_LOCATIONS } from '../models/rules/mek-rules';
-import { EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionRegistry, EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
 import type { UnitHeatSource } from './rules/unit-type-rules';
-import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions, InventoryControlRules } from '../utils/inventory-control.util';
+import { getInventoryControlModeAmmoSummary, resolveInventoryControlSelectedAmmoOption, type InventoryControlDisplayData, type InventoryControlDisplayEffectOptions, type InventoryControlRules } from '../utils/inventory-control.util';
 import { ToastService } from '../services/toast.service';
 import { DialogsService } from '../services/dialogs.service';
+import { getBattleArmorTrooperNumber, normalizeBattleArmorTrooperLocation } from './battle-armor-location.model';
+import { CBTGameRulesService } from '../services/cbt-game-rules.service';
+import type { C3DegradationSource, C3TargetingResolution, CBTGameRules } from './rules/game-rules';
+import { OptionsService } from '../services/options.service';
 
 export class CBTForceUnit extends ForceUnit {
     override get force(): CBTForce { return super.force as CBTForce; }
@@ -76,6 +78,7 @@ export class CBTForceUnit extends ForceUnit {
     private _svgService: UnitSvgService | null = null;
     private svgServiceInjector: EnvironmentInjector | null = null;
     private _rules!: UnitTypeRules;
+    readonly gameRules: CBTGameRules;
     viewState: ViewportTransform;
     locations?: {
         armor: Map<string, { loc: string; rear: boolean; points?: number }>;
@@ -111,38 +114,66 @@ export class CBTForceUnit extends ForceUnit {
             crew[i] = new CrewMember(i, this);
         }
         this.state.crew.set(crew);
-        this._rules = this.createRules();
+        const gameRulesService = this.injector.get(CBTGameRulesService);
+        this.gameRules = gameRulesService.gameRules();
+        this._rules = gameRulesService.createUnitRules(this);
     }
 
     /** Unit-type-specific game rules (destruction, PSR, systems status for Meks). */
     get rules(): UnitTypeRules { return this._rules; }
 
+    useAutomations(): boolean {
+        return this.injector.get(OptionsService, null, { optional: true })?.options().cbtAutomations ?? true;
+    }
+
+    allowsExtremeRangeAttacks(): boolean {
+        return this.injector.get(OptionsService, null, { optional: true })?.options().CBTExtremeRange ?? false;
+    }
+
+    private getEquipmentInteractionRegistry(): EquipmentInteractionRegistry {
+        return this.injector.get(EquipmentInteractionRegistryService).getRegistry();
+    }
+
     getEquipmentHeatSources(turnState: TurnState): UnitHeatSource[] {
-        return this.injector.get(EquipmentInteractionRegistryService)
-            .getRegistry()
-            .getInventoryHeatSources(this.getInventory(), turnState);
+        if (this.getCondition('shutdown')) return [];
+        return this.getEquipmentInteractionRegistry().getInventoryHeatSources(this.getInventory(), turnState);
     }
 
     getRunMovementMultiplierBonus(turnState: TurnState): number {
-        return this.injector.get(EquipmentInteractionRegistryService)
-            .getRegistry()
-            .getRunMovementMultiplierBonus(this.getInventory(), turnState);
-    }
-
-    getLinkedEquipmentHitModifier(entry: MountedEquipment, selectedAmmo?: AmmoEquipmentType | null): number {
-        return this.injector.get(EquipmentInteractionRegistryService)
-            .getRegistry()
-            .getLinkedEquipmentHitModifier(entry, selectedAmmo);
-    }
-
-    getInventoryControlBaseHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | null {
-        return this.getInventoryControlRules().resolveBaseHitModifier?.(entry, range) ?? null;
+        if (this.getCondition('shutdown')) return 0;
+        return this.getEquipmentInteractionRegistry().getRunMovementMultiplierBonus(this.getInventory(), turnState);
     }
 
     getInventoryControlRules(): InventoryControlRules {
-        return this.injector.get(EquipmentInteractionRegistryService)
+        const equipmentRules = this.injector.get(EquipmentInteractionRegistryService)
             .getRegistry()
             .inventoryControlRules(this.getHandlerContext());
+        return {
+            ...equipmentRules,
+            applyDisplayEffects: (entry, display, options) => {
+                const unitDisplay = this.rules.applyInventoryControlDisplayEffects(entry, display);
+                return equipmentRules.applyDisplayEffects?.(entry, unitDisplay, options) ?? unitDisplay;
+            },
+        };
+    }
+
+    getInventoryControlSelectedAmmo(entry: MountedEquipment, mode?: string | null): AmmoEquipmentType | null {
+        if (!(entry.equipment instanceof WeaponEquipment) || entry.equipment.ammoType === 'NA') return null;
+        const intrinsicAmmo = entry.linkedWith?.find(linked => linked instanceof MountedAmmo && linked.intrinsicOneShotAmmo);
+        if (intrinsicAmmo) {
+            // Rule evaluation needs only the selected profile. Going through the
+            // ammo summary also evaluates the source's availability, which checks
+            // this parent weapon's rule state and causes a reactive self-cycle.
+            const selectedAmmo = intrinsicAmmo.ammo
+                ? this.dataService.findEquipment(intrinsicAmmo.ammo)
+                : intrinsicAmmo.equipment;
+            return selectedAmmo instanceof AmmoEquipment ? selectedAmmo : null;
+        }
+        const summary = getInventoryControlModeAmmoSummary(entry, this.getEquipmentRegistry(), this.getInventoryControlRules(), mode);
+        return resolveInventoryControlSelectedAmmoOption(
+            summary.options,
+            this.getInventoryControlEntryAmmoOption(entry.id)
+        )?.ammo ?? null;
     }
 
     private getHandlerContext() {
@@ -183,17 +214,8 @@ export class CBTForceUnit extends ForceUnit {
      */
     writeCrits(crits: CriticalSlot[]): void {
         this.state.crits.set(crits);
+        this.turnState().reconcileHeatSources();
         this.inventoryControl.markInventoryViewChanged();
-    }
-
-    private createRules(): UnitTypeRules {
-        switch (this.unit.type) {
-            case 'Mek': return new MekRules(this);
-            case 'Aero': return new AeroRules(this);
-            case 'Infantry': return new InfantryRules(this);
-            case 'ProtoMek': return new ProtoMekRules(this);
-            default: return new VehicleRules(this);
-        }
     }
 
     override destroy() {
@@ -268,7 +290,12 @@ export class CBTForceUnit extends ForceUnit {
 
     setHeat(heatValue: number, consolidateImmediately: boolean = false) {
         const heatData = this.state.heat();
-        if (heatValue === heatData.next) return; // No change
+        if (heatValue === heatData.next) {
+            if (consolidateImmediately && heatData.next !== undefined) {
+                this.state.consolidateHeat();
+            }
+            return;
+        }
         heatData.next = heatValue;
         this.state.heat.set({ ...heatData });
         if (consolidateImmediately) {
@@ -290,12 +317,24 @@ export class CBTForceUnit extends ForceUnit {
         this.setModified();
     }
 
+    override setCondition(condition: string, active: boolean): void {
+        const wasActive = this.getCondition(condition);
+        super.setCondition(condition, active);
+        if (wasActive !== this.getCondition(condition)) {
+            this.turnState().reconcileHeatSources();
+            if (condition === 'jammed') {
+                this.force.units().forEach(unit => unit.inventoryControl.markInventoryViewChanged());
+            }
+        }
+    }
+
     get getCritSlots() {
         return this.state.crits;
     }
 
     setCritSlots(critSlots: CriticalSlot[], initialization: boolean = false) {
         this.state.crits.set(critSlots);
+        this.turnState().reconcileHeatSources();
         this.inventoryControl.markInventoryViewChanged();
         if (!initialization) {
             this.evaluateDestroyed();
@@ -366,8 +405,18 @@ export class CBTForceUnit extends ForceUnit {
         return this.state.inventory;
     }
 
+    getMountedEquipmentByFlag(flag: EquipmentFlag): MountedEquipment[] {
+        return this.getInventory().filter(entry => entry.equipment?.hasFlag(flag));
+    }
+
+    getOperationalMountedEquipmentByFlag(flag: EquipmentFlag): MountedEquipment[] {
+        return this.getMountedEquipmentByFlag(flag)
+            .filter(entry => !this.isEquipmentUnavailable(entry));
+    }
+
     setInventory(inventory: MountedEquipment[], initialization: boolean = false) {
-        this.state.inventory.set(inventory.map(entry => MountedEquipment.from(entry)));
+        this.state.inventory.set(MountedEquipment.fromAll(inventory));
+        this.turnState().reconcileHeatSources();
         if (!initialization) {
             this.turnState().clampMoveDistanceToCurrentModeRange();
         }
@@ -457,8 +506,63 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     hasLinkedC3Network(): boolean {
-        return C3NetworkUtil.hasC3(this.getUnit())
-            && C3NetworkUtil.isUnitConnected(this.id, this.force.c3Networks());
+        return this.force.c3Network().hasLinkedNetwork(this.id);
+    }
+
+    isC3ComponentOperational(componentIndex: number, component?: C3Component): boolean {
+        if (this.destroyed || this.getCondition('shutdown') || this.hasActiveC3DisruptingStealth()) return false;
+        const mount = component?.mount ?? new C3Capabilities(this).component(componentIndex)?.mount;
+        return !!mount && !this.isEquipmentUnavailable(mount);
+    }
+
+    private hasActiveC3DisruptingStealth(): boolean {
+        return this.getInventory().some(equipment => !this.isEquipmentUnavailable(equipment)
+            && isC3DisruptingStealthActive(equipment));
+    }
+
+    override isC3EndpointOperational(componentIndex: number, component?: C3Component): boolean {
+        return this.isC3ComponentOperational(componentIndex, component);
+    }
+
+    override isC3Jammed(): boolean {
+        return this.getCondition('jammed');
+    }
+
+    isC3NetworkTypeUnavailable(networkType: C3NetworkType): boolean {
+        const components = (this.force.c3Network().capability(this.id)?.components ?? [])
+            .filter(component => component.networkType === networkType);
+        if (components.length === 0) return false;
+        if (components.every(component => !this.isC3ComponentOperational(component.index))) return true;
+
+        const configured = this.force.c3Network().networksForUnit(this.id)
+            .some(network => network.type === networkType);
+        return configured && !this.getC3NetworkRuntimeState(networkType).linked;
+    }
+
+    readonly c3DegradationSource = computed<C3DegradationSource>(() => this.getC3DegradationSource());
+
+    getC3DegradationSource(): C3DegradationSource {
+        const linkedStates = this.force.c3Network().statesFor(this.id)
+            .filter(state => state.linked);
+        if (linkedStates.length === 0) return 'none';
+        if (this.getCondition('jammed')) return 'unit';
+        return linkedStates.every(state => state.degraded) ? 'network-member' : 'none';
+    }
+
+    getC3NetworkRuntimeState(networkType: C3NetworkType) {
+        return this.force.c3Network().stateFor(this.id, networkType);
+    }
+
+    resolveC3Targeting(target: InventoryControlRuntimeTarget): C3TargetingResolution {
+        if (!this.hasLinkedC3Network()) {
+            return { target: this.withoutC3Distance(target), degradationSource: 'none' };
+        }
+        return this.gameRules.resolveC3Targeting(target, this.c3DegradationSource());
+    }
+
+    private withoutC3Distance(target: InventoryControlRuntimeTarget): InventoryControlRuntimeTarget {
+        if (target.c3Distance === undefined) return target;
+        return { ...target, c3Distance: undefined };
     }
 
     clearInventoryControlSelection(): void {
@@ -724,6 +828,31 @@ export class CBTForceUnit extends ForceUnit {
         return !!source.destroyed || this.isEquipmentLocationUnavailable(source.loc);
     }
 
+    /** Whether equipment is temporarily unusable for an action, without implying damage. */
+    isEquipmentActionUnavailable(source: MountedEquipment | CriticalSlot, loc?: string): boolean {
+        return this.destroyed
+            || this.getCondition('shutdown')
+            || (source instanceof MountedEquipment && this.isPhysicalActionUnavailable(source))
+            || this.isEquipmentUnavailable(source, loc);
+    }
+
+    private isPhysicalActionUnavailable(entry: MountedEquipment): boolean {
+        if (!entry.isPhysicalWeapon()) return false;
+        if (this.getCondition('prone')) return true;
+        const moveMode = this.turnState().moveMode();
+        if (moveMode === null) return false; // unknown!
+
+        const attack = entry.name.trim().toLocaleLowerCase();
+        if (attack === 'death from above' || attack === 'dfa [talons]') {
+            return moveMode !== 'jump';
+        }
+        if (moveMode === 'jump' && attack === 'charge') {
+            return true;
+        }
+        return moveMode === 'stationary'
+            && (attack === 'charge' || attack === 'airmek ram' || attack === 'airmech ram');
+    }
+
     private isEquipmentLocationUnavailable(loc: string | undefined): boolean {
         if (!loc) return false;
         const battleArmorLoc = this.battleArmorTrooperLocation(loc);
@@ -733,10 +862,9 @@ export class CBTForceUnit extends ForceUnit {
 
     private battleArmorTrooperLocation(loc: string): string | null {
         if (this.getUnit().subtype !== 'Battle Armor') return null;
-        const match = loc.trim().match(/^(?:Trooper\s+|T)(\d+)$/i);
-        if (!match) return null;
-        const trooperNumber = Number(match[1]);
-        return Number.isInteger(trooperNumber) && trooperNumber > 0 ? `T${trooperNumber}` : null;
+        return getBattleArmorTrooperNumber(loc) === null
+            ? null
+            : normalizeBattleArmorTrooperLocation(loc);
     }
 
     private isLocationDestroyedByCondition(loc: string): boolean {
@@ -873,17 +1001,17 @@ export class CBTForceUnit extends ForceUnit {
 
     public customAmmoBvVariation = computed<number>(() => {
         if (!this.isLoaded()) return 0; // Ensure unit is loaded so that inventory and crits are available
-        const equipmentList = this.getAvailableEquipment();
         let bvVariation = 0;
         if (this.getUnit().type === 'Mek') {
             const crits = this.getCritSlots();
             for (const crit of crits) {
                 if (crit.eq instanceof AmmoEquipment && crit.originalName && crit.originalName !== crit.name) {
-                    const originalAmmo = equipmentList[crit.originalName] as AmmoEquipment | undefined;
+                    const originalAmmo = this.dataService.findEquipment(crit.originalName) as AmmoEquipment | undefined;
                     if (originalAmmo) {
-                        const originalBv = originalAmmo.bv;
-                        const currentBv = crit.eq.bv;
-                        bvVariation += currentBv - originalBv;
+                        if (!originalAmmo.hasFixedBV() || !crit.eq.hasFixedBV()) {
+                            continue; // Skip variable BV. TODO: need to be handle when we have BaseEntity
+                        }
+                        bvVariation += crit.eq.bv - originalAmmo.bv;
                     }
                 }
             }
@@ -891,11 +1019,12 @@ export class CBTForceUnit extends ForceUnit {
             const inventory = this.getInventory();
             for (const item of inventory) {
                 if (item.equipment instanceof AmmoEquipment && item.ammo && item.ammo !== item.name) {
-                    const customAmmo = equipmentList[item.ammo] as AmmoEquipment | undefined;
+                    const customAmmo = this.dataService.findEquipment(item.ammo) as AmmoEquipment | undefined;
                     if (customAmmo) {
-                        const originalBv = item.equipment.bv;
-                        const currentBv = customAmmo.bv;
-                        bvVariation += currentBv - originalBv;
+                        if (!item.equipment.hasFixedBV() || !customAmmo.hasFixedBV()) {
+                            continue; // Skip variable BV. TODO: need to be handle when we have BaseEntity
+                        }
+                        bvVariation += customAmmo.bv - item.equipment.bv;
                     }
                 }
             }
@@ -909,69 +1038,16 @@ export class CBTForceUnit extends ForceUnit {
         return Math.round(baseBv + this.customAmmoBvVariation());
     });
 
-    /* TARGET ACQUISITION GEAR (TAG)
-    Any unit in the battle force equipped with TAG, Light TAG or a
-    C3 Master Computer (flag F_TAG)
-    adds BV equal to the BV of each ton of semi-
-    guided (flag M_SEMIGUIDED) LRM ammunition carried in the force (use the ammo BV
-    for the appropriate-size LRM launcher). Units whose only such
-    piece of equipment is rear-mounted add half the BV instead. */
     public tagBV = computed<number>(() => {
-        const components = this.getUnit().comp;
-        const hasTag = components.some(c => c.eq?.hasFlag('F_TAG'));
-        if (!hasTag) return 0; // No TAG, no BV
-        // Calculate total BV of semi-guided LRM ammo across all units in the force.
-        // We must scan inventory/crits (not unit blueprints) because custom ammo may be loaded.
-        const allUnits = this.force.units();
-        let totalSemiGuidedBV = 0;
-        for (const forceUnit of allUnits) {
-            if (!forceUnit.isLoaded()) continue; // Ensure unit is loaded so that inventory and crits are available
-            if (forceUnit.getUnit().type === 'Mek') {
-                // Check crit slots (Mek-type units where ammo swapping happens on crits)
-                const crits = forceUnit.getCritSlots();
-                for (const crit of crits) {
-                    if (crit.eq instanceof AmmoEquipment 
-                        && (crit.eq.hasMunitionType('M_SEMIGUIDED') || crit.eq.hasMunitionType('M_HOMING'))) {
-                        const ammo = crit.eq;
-                        const forceUnitComps = forceUnit.getUnit().comp;
-                        // Check if the unit carrying this ammo has any weapon that can use it (matching ammoType and rackSize)
-                        const hasMatchingWeapon = forceUnitComps.some(c =>
-                            c.eq instanceof WeaponEquipment &&
-                            c.eq.ammoType === ammo.ammoType &&
-                            c.eq.rackSize === ammo.rackSize
-                        );
-                        if (!hasMatchingWeapon) continue; // No weapon can use this ammo, skip
-                        // Determine if at least one matching weapon is front-mounted
-                        const hasNonRearWeapon = forceUnitComps.some(c =>
-                            c.eq instanceof WeaponEquipment &&
-                            c.eq.ammoType === ammo.ammoType &&
-                            c.eq.rackSize === ammo.rackSize &&
-                            !c.rear
-                        );
-                        const multiplier = hasNonRearWeapon ? 1 : 0.5;
-                        totalSemiGuidedBV += Math.round(multiplier * crit.eq.bv);
-                    }
-                }
-            } else {
-                // Check direct inventory entries (vehicles, ProtoMeks, etc.)
-                const inventory = forceUnit.getInventory();
-                for (const item of inventory) {
-                    if (item.equipment instanceof AmmoEquipment 
-                    && (item.equipment.hasMunitionType('M_SEMIGUIDED') || item.equipment.hasMunitionType('M_HOMING'))) {
-                        totalSemiGuidedBV += item.equipment.bv;
-                    }
-                }
-            }
-        }
-        return Math.round(totalSemiGuidedBV);
+        return this.gameRules.calculateTagBVCost(this);
     });
 
     public c3Tax = computed<number>(() => {
         const c3Networks = this.force.c3Networks();
-        const c3Tax = C3NetworkUtil.calculateUnitC3Tax(
-            this,
+        const c3Tax = this.rules.calculateC3Tax(
             c3Networks,
-            this.force.units()
+            this.force.units(),
+            this.force.c3TaxCalculator(),
         );
         return c3Tax;
     });
@@ -991,16 +1067,18 @@ export class CBTForceUnit extends ForceUnit {
         return 0;
     });
 
+    public getPreSkillBv = computed<number>(() => {
+        return this.getBaseBv() + this.tagBV() + this.c3Tax() + this.externalStoresBv();
+    });
+
     public pilotBV = computed<number>(() => {
-        const finalBv = this.getBv();
-        return finalBv - this.getBaseBv() - this.tagBV() - this.c3Tax() - this.externalStoresBv();
+        return this.getBv() - this.getPreSkillBv();
     });
 
     getBv = computed<number>(() => {
-        const preSkillRatingBv = this.getBaseBv() + this.tagBV() + this.c3Tax() + this.externalStoresBv();
         return BVCalculatorUtil.calculateAdjustedBV(
             this.getUnit(),
-            preSkillRatingBv,
+            this.getPreSkillBv(),
             this.gunnerySkill(),
             this.pilotingSkill()
         );
@@ -1054,27 +1132,12 @@ export class CBTForceUnit extends ForceUnit {
             if (item.committedDestroyed()) {
                 item.setCommittedDestroyed(false);
             }
-            if (item.consumed) {
-                item.consumed = 0;
+            if (item instanceof MountedAmmo) {
+                item.setAmmoState({ ammo: undefined, totalAmmo: item.originalTotalAmmo, consumed: 0 });
+            } else if (item.consumed) {
+                item.setAmmoState({ consumed: 0 });
             }
-            if (item.equipment instanceof AmmoEquipment) {
-                item.ammo = undefined;
-                const componentIndexText = item.id.split('#').pop();
-                const [componentIndexRaw, binIndexRaw] = (componentIndexText ?? '').split('.');
-                const componentIndex = Number(componentIndexRaw);
-                const binIndex = Number(binIndexRaw ?? 0);
-                const component = Number.isInteger(componentIndex) ? this.unit.comp[componentIndex] : undefined;
-                const binCount = Math.max(1, component?.q ?? 1);
-                const originalTotalAmmo = component?.q2 || (item.equipment.shots * binCount) || 0;
-                const baseBinAmmo = Math.floor(originalTotalAmmo / binCount);
-                const extraBinAmmo = originalTotalAmmo % binCount;
-                item.totalAmmo = baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0) || undefined;
-            }
-            if (item.states && item.states.size > 0) {
-                item.states.forEach((value, key) => {
-                    item.states!.set(key, ''); // Clear all states, assuming empty string will fallback to default
-                });
-            }
+            if (item.states.size > 0) item.clearStateValues();
             return item;
         });
         this.state.inventory.set([...inventory]);
@@ -1089,6 +1152,7 @@ export class CBTForceUnit extends ForceUnit {
     public evaluateDestroyed(): void {
         if (!this.isLoaded()) return;
         this._rules.evaluateDestroyed();
+        this.turnState().reconcileHeatSources();
     }
 
     public getAvailableMotiveModes(airborne: boolean): MotiveModeOption[] {
@@ -1112,10 +1176,24 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     applyHeat() {
+        const heat = this.getHeat();
+        const projection = this.turnState().heatProjection();
+        if (heat.next === undefined) {
+            if (!this.useAutomations()) return;
+            this.setHeat(projection.projected);
+        }
         this.state.consolidateHeat();
+        if (this.useAutomations()) {
+            this.turnState().acknowledgeHeatSources(projection.consumedDissipation);
+        } else {
+            this.turnState().settleHeatDissipationDeficit();
+        }
     }
     
     public endTurn() {
+        if (this.useAutomations() && (this.getHeat().next !== undefined || this.turnState().hasPendingHeatResolution())) {
+            this.applyHeat();
+        }
         this.clearInventoryControlSelection();
         // deselect all inventory items
         this.getInventory().forEach(entry => {
@@ -1162,7 +1240,7 @@ export class CBTForceUnit extends ForceUnit {
         const stateObj: CBTSerializedState = {
             crew: this.state.crew().map(crew => crew.serialize()),
             crits: this.state.critsForSerialization(),
-            heat: this.state.heat(),
+            heat: { ...this.state.heat() },
             locations: this.state.locationsForSerialization(),
             modified: this.state.modified(),
             destroyed: this.state.destroyed(),
@@ -1190,7 +1268,6 @@ export class CBTForceUnit extends ForceUnit {
         this.state.destroyed.set(typeof state.destroyed === 'boolean' ? state.destroyed : false);
         this.state.setConditions(state.conditions ?? []);
         this.state.inventory.update(inventory => inventory.map(item => item.clone({ destroying: undefined })));
-        this.state.turnState().update(state.turnState);
         
         if (state.inventory) {
             const inventoryData = Sanitizer.sanitizeArray(state.inventory, INVENTORY_SCHEMA);
@@ -1201,6 +1278,10 @@ export class CBTForceUnit extends ForceUnit {
         if (state.c3Position) {
             this.state.c3Position.set(Sanitizer.sanitize(state.c3Position, C3_POSITION_SCHEMA));
         }
+        const turnState = state.turnState
+            ? Sanitizer.sanitize(state.turnState, TURN_STATE_SCHEMA)
+            : undefined;
+        this.state.turnState().update(turnState);
     }
 
     /** Deserialize a plain object to a CBTForceUnit instance */

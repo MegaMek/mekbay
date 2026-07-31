@@ -31,14 +31,14 @@
  * affiliated with Microsoft.
  */
 
-import type { CriticalSlot, MountedEquipment } from "../models/force-serialization";
+import type { MountedEquipment } from "../models/mounted-equipment.model";
+import type { CriticalSlot } from "../models/force-serialization";
 import { VehicleRules } from "../models/rules/vehicle-rules";
-import { resolveHitModifier } from "../models/rules/hit-modifier.util";
+import type { MountedEquipmentRuleState } from "../models/rules/unit-type-rules";
 import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 import { committedCriticalHitCount, isRepeatableMotiveHitId, MOTIVE_HIT_PIP_COUNT } from "../models/rules/vehicle-motive-hit.util";
 import { UnitSvgService } from "./unit-svg.service";
 
-type VehicleEntryState = { isDamaged: boolean; isDisabled: boolean; hitMod: number; weakenedHitMod: boolean };
 const VTOL_ROTOR_CRIT_ID = 'rotor';
 
 /*
@@ -46,7 +46,7 @@ const VTOL_ROTOR_CRIT_ID = 'rotor';
  */
 export class UnitSvgVehicleService extends UnitSvgService {
     private get vehicleRules(): VehicleRules { return this.unit.rules as VehicleRules; }
-    private currentEntryStates: Map<MountedEquipment, VehicleEntryState> | null = null;
+    private currentEntryStates: Map<MountedEquipment, MountedEquipmentRuleState> | null = null;
 
     protected override updateAllDisplays() {
         if (!this.unit.svg()) return;
@@ -163,15 +163,20 @@ export class UnitSvgVehicleService extends UnitSvgService {
         try {
             this.unit.getInventory().forEach(entry => {
                 if (!entry.el) return;
-
+                if (entry.isIntrinsicPhysicalAttack()) {
+                    if (entry.name === 'charge') {
+                        this.renderChargeDamage(entry, this.vehicleRules.chargeDamage());
+                    }
+                }
                 const state = entryStates.get(entry);
                 if (!state) return;
 
-                entry.el.classList.toggle('disabledInventory', state.isDisabled);
+                const actionUnavailable = entry.isActionUnavailable();
+                entry.el.classList.toggle('disabledInventory', actionUnavailable);
                 entry.el.classList.toggle('damagedInventory', state.isDamaged);
-                if (state.isDamaged || state.isDisabled) entry.el.classList.remove('selected');
+                if (state.isDamaged || actionUnavailable) entry.el.classList.remove('selected');
 
-                this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry));
+                this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry));
             });
             this.renderInventoryControlSelection();
         } finally {
@@ -179,26 +184,26 @@ export class UnitSvgVehicleService extends UnitSvgService {
         }
     }
 
-    protected override resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
+    protected override resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null) {
         const state = this.currentEntryStates?.get(entry) ?? this.vehicleRules.computeEntryState(entry);
-        return resolveHitModifier(
-            entry,
-            state.hitMod,
+        const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
+        return this.unit.gameRules.resolveToHit({
+            subject: entry,
+            stateModifier: state.hitMod,
+            stateModifierBreakdown: state.hitModifierBreakdown,
+            stateWeakened: state.weakenedHitMod,
             range,
-            this.inventoryTargetSelectedAmmo(entry),
-            (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
-            (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange)
-        );
+            adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
+        });
     }
 
     protected override renderHitModEntry(
         entry: MountedEquipment,
-        hitModifier: number | 'Vs' | '*' | null,
-        range?: InventoryControlRuntimeRangeKey | null
+        resolution: ReturnType<UnitSvgVehicleService['resolveInventoryControlToHit']>
     ) {
         const state = this.currentEntryStates?.get(entry) ?? this.vehicleRules.computeEntryState(entry);
-        super.renderHitModEntry(entry, hitModifier, range, !!state.weakenedHitMod);
-        if (hitModifier === '*' && this.vehicleRules.hasDamagedStabilizerAffectingEntry(entry)) {
+        super.renderHitModEntry(entry, resolution, !!state.weakenedHitMod);
+        if (resolution.value === '*' && this.vehicleRules.hasDamagedStabilizerAffectingEntry(entry)) {
             entry.el?.classList.add('weakenedHitMod');
         }
     }

@@ -33,25 +33,30 @@
 
 import { Injectable, effect, signal, inject, DestroyRef } from '@angular/core';
 import { type CrewMember, type CrewMemberState, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type SkillType } from '../models/crew-member.model';
-import type { CriticalSlot, HeatProfile, MountedEquipment } from '../models/force-serialization';
+import { MountedAmmo, type MountedEquipment  } from '../models/mounted-equipment.model';
+import { type CriticalSlot, type HeatProfile } from '../models/force-serialization';
 import { SheetService } from './sheet.service';
+import { DataService } from './data.service';
 import { UnitInitializerService } from './unit-initializer.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { LINKED_LOCATIONS } from "../models/rules/mek-rules";
 import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { getEntryBaseHitModifier, resolveHitModifier } from '../models/rules/hit-modifier.util';
-import { formatGunneryDisplay, formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS, unitConditionSortIndex, type UnitHeatSource } from '../models/rules/unit-type-rules';
-import type { HeatDissipationState } from '../models/rules/heat-management';
-import { AmmoEquipment } from '../models/equipment.model';
+import { formatGunneryDisplay, formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS, unitConditionSortIndex, type ChargeDamage, type UnitHeatSource } from '../models/rules/unit-type-rules';
+import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
-import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection, readInventoryTargetDisplay } from '../utils/inventory-target-number.util';
-import { getInventoryControlModeAmmoSummary, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE, resolveInventoryControlRangeDamageText, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from '../utils/inventory-control.util';
+import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../utils/inventory-target-number.util';
+import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, readInventoryControlDisplayData, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
+import { inventoryControlDamageRange, resolveInventoryControlDamageText } from '../utils/inventory-control-damage.util';
+import { formatInventoryControlHeat, resolveInventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
+import { separateHeatFireModifier, type ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import { isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, selectedRiscLaserMode } from '../equipment-handlers/risc-laser-pulse-module.handler';
 
 const INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY = '--inventory-control-selection-color';
 const HEAT_PROJECTION_ORIGINAL_OVERFLOW_STROKE = 'data-heat-projection-original-stroke';
+const AMMO_PROFILE_MIN_TEXT_SCALE = 0.82;
+const AMMO_PROFILE_COMPRESSED_ATTRIBUTE = 'data-ammo-profile-compressed';
 
 const INVENTORY_CONTROL_RANGE_CLASS_NAMES: Record<InventoryControlRuntimeRangeKey, string> = {
     short: 'selected-range-short',
@@ -59,8 +64,6 @@ const INVENTORY_CONTROL_RANGE_CLASS_NAMES: Record<InventoryControlRuntimeRangeKe
     long: 'selected-range-long',
     extreme: 'selected-range-extreme'
 };
-
-type HeatDissipationWithWings = HeatDissipationState & { totalDissipationWithWings?: number };
 
 /*
  * Author: Drake
@@ -73,7 +76,9 @@ type HeatDissipationWithWings = HeatDissipationState & { totalDissipationWithWin
 export class UnitSvgService {
     protected logger = inject(LoggerService);
     private sheetService = inject(SheetService);
+    private dataService = inject(DataService);
     private svgDimensions = { width: 0, height: 0 };
+    private latestAmmoProfile: ReadonlyMap<string, number> | null = null;
     public version = signal(0);
 
     constructor(
@@ -111,6 +116,13 @@ export class UnitSvgService {
 
     public forceRepaint() {
         this.version.update(v => v + 1); // Increment version to trigger repaint
+    }
+
+    /** Re-renders displays whose measurements depend on the SVG's visible layout. */
+    public refreshLayoutDependentDisplays(): void {
+        if (this.latestAmmoProfile) {
+            this.renderAmmoProfile(this.latestAmmoProfile);
+        }
     }
 
     public async loadAndInitialize(): Promise<void> {
@@ -230,6 +242,7 @@ export class UnitSvgService {
         const critSlots = this.unit.getCritSlots();
         const locations = this.unit.getLocations();
         const inventory = this.unit.getInventory();
+        this.unit.getConditions();
         this.unit.phaseTrigger(); // Ensure phase changes trigger update
 
         // Update all displays
@@ -578,11 +591,18 @@ export class UnitSvgService {
 
         if (!svg.getElementById('heatScale')) return;
 
+        const projection = this.unit.turnState().heatProjection();
+        const hasUserTarget = heat.next !== undefined;
+        const automationsEnabled = this.unit.useAutomations();
+        const heatApplicationAvailable = hasUserTarget
+            || (automationsEnabled && this.unit.turnState().hasPendingHeatResolution());
+        const applicationTarget = heat.next ?? projection.projected;
         const heatDataPanel = svg.querySelector('#heatDataPanel');
         if (heatDataPanel && !this.unit.readOnly()) {
-            heatDataPanel.classList.toggle('dirtyHeat', heat.next !== undefined);
-            heatDataPanel.classList.toggle('hot', heat.next !== undefined && heat.current <= heat.next);
-            heatDataPanel.classList.toggle('cold', heat.next !== undefined && heat.current > heat.next);
+            heatDataPanel.classList.toggle('dirtyHeat', hasUserTarget);
+            heatDataPanel.classList.toggle('heatApplicationAvailable', heatApplicationAvailable);
+            heatDataPanel.classList.toggle('hot', heatApplicationAvailable && heat.current <= applicationTarget);
+            heatDataPanel.classList.toggle('cold', heatApplicationAvailable && heat.current > applicationTarget);
         }
 
         const heatValue = heat.next ?? heat.current;
@@ -681,11 +701,12 @@ export class UnitSvgService {
             }
         }
 
-        const updateArrow = (id: string, value: undefined | number, state: 'current' | 'nextHot' | 'nextCold' | 'previous') => {
+        const updateArrow = (id: string, value: undefined | number, state: 'current' | 'nextHot' | 'nextCold' | 'previous' | 'projectionHot' | 'projectionCold') => {
             let arrow = svg.querySelector(`#${id}`) as SVGPolygonElement | null;
 
             if (value === undefined) {
                 arrow?.remove();
+                if (id === 'now-arrow') svg.querySelector('#now-arrow-label')?.remove();
                 return;
             }
             const heatEl = this.getHeatElementFromValue(value);
@@ -717,37 +738,109 @@ export class UnitSvgService {
                     arrow.setAttribute('fill', 'var(--cold-color)');
                     arrow.setAttribute('stroke', 'var(--cold-color)');
                     arrow.setAttribute('stroke-width', '1');
+                } else if (state === 'projectionHot' || state === 'projectionCold') {
+                    arrow.setAttribute('fill', 'none');
+                    arrow.setAttribute('stroke', state === 'projectionHot' ? 'var(--hot-color)' : 'var(--cold-color)');
+                    arrow.setAttribute('stroke-width', '1');
                 } else {
                     arrow.setAttribute('fill', 'none');
                     arrow.setAttribute('stroke', '#aaa');
                     arrow.setAttribute('stroke-width', '1');
                 }
                 arrow.style.display = 'block';
+                heatEl.parentElement?.appendChild(arrow);
+                if (id === 'now-arrow') {
+                    this.updateNowArrowLabel(heatEl.parentElement, x + 11, y);
+                }
             } else if (arrow) {
                 arrow.style.display = 'none';
+                if (id === 'now-arrow') svg.querySelector('#now-arrow-label')?.remove();
             }
         };
 
-        if (heat.next === heat.current) {
-            updateArrow('now-arrow', heat.current, 'current');
-            svg.querySelector('#next-arrow')?.remove();
+        updateArrow('now-arrow', heat.current, 'current');
+        if (heat.next !== undefined) {
+            updateArrow('next-arrow', heat.next, heat.next >= heat.current ? 'nextHot' : 'nextCold');
         } else {
-            if (heat.next !== undefined) {
-                updateArrow('next-arrow', heat.next, heat.next > heat.current ? 'nextHot' : 'nextCold');
-            } else {
-                svg.querySelector('#next-arrow')?.remove();
-            }
-            updateArrow('now-arrow', heat.current, 'current');
+            svg.querySelector('#next-arrow')?.remove();
         }
 
-        if (heat.previous !== heat.current && heat.previous !== heat.next) {
+        const showProjectionArrow = automationsEnabled
+            && !hasUserTarget
+            && this.unit.turnState().hasPendingHeatResolution();
+        const targetHeat = hasUserTarget ? heat.next : showProjectionArrow ? projection.projected : undefined;
+        if (heat.previous !== heat.current && heat.previous !== targetHeat) {
             updateArrow('faded-arrow', heat.previous, 'previous');
         } else {
             svg.querySelector('#faded-arrow')?.remove();
         }
-        if (!this.unit.readOnly()) {
-            this.updateHeatProjectionPreview(heat);
+        if (showProjectionArrow) {
+            updateArrow('projection-arrow', projection.projected, projection.delta > 0 ? 'projectionHot' : 'projectionCold');
+        } else {
+            svg.querySelector('#projection-arrow')?.remove();
         }
+        if (!this.unit.readOnly()) {
+            if (automationsEnabled) {
+                svg.querySelector('#heat-projection-target-marker')?.remove();
+                this.updateHeatProjectionPreview(heat);
+            } else {
+                const heatScale = svg.getElementById('heatScale') as SVGGElement;
+                this.clearHeatProjectionPreview(heatScale);
+                this.updateHeatProjectionTargetMarker(heatScale, heat);
+            }
+        }
+    }
+
+    private updateHeatProjectionTargetMarker(heatScale: SVGGElement, heat: HeatProfile): void {
+        const projection = this.unit.turnState().heatProjection();
+        if (!this.unit.turnState().hasPendingHeatResolution() || projection.projected === heat.current) {
+            heatScale.querySelector('#heat-projection-target-marker')?.remove();
+            return;
+        }
+
+        const targetValue = Math.max(0, Math.min(30, projection.projected));
+        const targetElement = this.getHeatElementFromValue(projection.projected > 30 ? projection.projected : targetValue);
+        const targetCenter = targetElement ? this.heatMarkerCenter(targetElement) : null;
+        const heatZeroElement = heatScale.querySelector('.heat[heat="0"]') as SVGElement | null;
+        if (!targetCenter || !heatZeroElement) {
+            heatScale.querySelector('#heat-projection-target-marker')?.remove();
+            return;
+        }
+
+        let marker = heatScale.querySelector('#heat-projection-target-marker') as SVGPolygonElement | null;
+        if (!marker) {
+            marker = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            marker.setAttribute('id', 'heat-projection-target-marker');
+            marker.setAttribute('class', 'screen-only heatProjectionTargetMarker');
+            marker.setAttribute('pointer-events', 'none');
+            heatScale.appendChild(marker);
+        }
+
+        const tipX = Number(heatZeroElement.getAttribute('x') ?? 0) + 4;
+        const baseX = tipX - 7;
+        marker.setAttribute('fill', projection.delta > 0 ? '#d12020' : '#2070d1');
+        marker.setAttribute('points', `${tipX},${targetCenter.y} ${baseX},${targetCenter.y - 2} ${baseX},${targetCenter.y + 2}`);
+    }
+
+    private updateNowArrowLabel(parent: Element | null, x: number, y: number): void {
+        if (!parent) return;
+        let label = parent.querySelector('#now-arrow-label') as SVGTextElement | null;
+        if (!label) {
+            label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            label.setAttribute('id', 'now-arrow-label');
+            label.setAttribute('class', 'screen-only');
+            label.setAttribute('text-anchor', 'middle');
+            label.setAttribute('dominant-baseline', 'middle');
+            label.setAttribute('font-size', '5');
+            label.setAttribute('font-weight', 'bold');
+            label.setAttribute('fill', '#000');
+            label.setAttribute('pointer-events', 'none');
+            label.textContent = 'NOW';
+            parent.appendChild(label);
+        }
+        label.setAttribute('x', x.toString());
+        label.setAttribute('y', y.toString());
+        label.setAttribute('transform', `rotate(90 ${x} ${y})`);
     }
 
     protected getHeatElementFromValue(value: number): SVGElement | null {
@@ -905,18 +998,8 @@ export class UnitSvgService {
         // No-op for non-heat units (vehicles, etc.)
     }
 
-    private getInventoryOriginalTotalAmmo(entry: MountedEquipment): number {
-        const componentIndexText = entry.id.split('#').pop();
-        const [componentIndexRaw, binIndexRaw] = (componentIndexText ?? '').split('.');
-        const componentIndex = Number(componentIndexRaw);
-        const binIndex = Number(binIndexRaw ?? 0);
-        const component = Number.isInteger(componentIndex) ? this.unit.getUnit().comp[componentIndex] : undefined;
-        const ammo = entry.equipment instanceof AmmoEquipment ? entry.equipment : undefined;
-        const binCount = Math.max(1, component?.q ?? 1);
-        const originalTotalAmmo = component?.q2 || (ammo ? ammo.shots * binCount : 0) || entry.totalAmmo || 0;
-        const baseBinAmmo = Math.floor(originalTotalAmmo / binCount);
-        const extraBinAmmo = originalTotalAmmo % binCount;
-        return baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0);
+    private getInventoryOriginalTotalAmmo(entry: MountedAmmo): number {
+        return entry.originalTotalAmmo ?? entry.totalAmmo ?? entry.getMaxShots();
     }
 
     protected updateAmmoProfile() {
@@ -926,12 +1009,13 @@ export class UnitSvgService {
         const ammoProfileEl = svg.querySelector('#ammoProfile > text');
         if (!ammoProfileEl) return;
 
-        const equipmentList = this.unit.getAvailableEquipment();
+        const equipmentCatalog = this.unit.getEquipmentRegistry();
         const ammoProfile = new Map<string, number>();
         this.unit.getInventory().forEach(entry => {
-            if (!(entry.equipment instanceof AmmoEquipment)) return;
-            const currentAmmo = entry.ammo && equipmentList[entry.ammo] instanceof AmmoEquipment
-                ? equipmentList[entry.ammo] as AmmoEquipment
+            if (!(entry instanceof MountedAmmo)) return;
+            const resolvedAmmo = entry.ammo ? equipmentCatalog.findEquipment(entry.ammo) : null;
+            const currentAmmo = resolvedAmmo instanceof AmmoEquipment
+                ? resolvedAmmo
                 : entry.equipment;
             const totalAmmo = entry.totalAmmo ?? this.getInventoryOriginalTotalAmmo(entry);
             const remainingAmmo = totalAmmo - (entry.consumed ?? 0);
@@ -939,59 +1023,204 @@ export class UnitSvgService {
             ammoProfile.set(key, (ammoProfile.get(key) ?? 0) + (this.unit.isEquipmentUnavailable(entry) ? 0 : remainingAmmo));
         });
 
-        const ammoList = Array.from(ammoProfile.entries())
-            .map(([key, value]) => `${key} ${value}`)
-            .join(', ');
-        ammoProfileEl.textContent = ammoList ? `Ammo: ${ammoList}` : 'Ammo:';
+        this.renderAmmoProfile(ammoProfile);
     }
 
-    protected resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
-        return resolveHitModifier(
-            entry,
-            0,
+    protected renderAmmoProfile(ammoProfile: ReadonlyMap<string, number>): void {
+        const svg = this.unit.svg();
+        const profile = svg?.getElementById('ammoProfile') as SVGElement | null;
+        if (!profile) return;
+
+        this.latestAmmoProfile = new Map(ammoProfile);
+
+        const lines = Array.from(profile.querySelectorAll<SVGTextElement>(':scope > text'));
+        if (lines.length === 0) return;
+
+        const entries = Array.from(ammoProfile.entries()).map(([key, value]) => `${key} ${value}`);
+        const widths = lines.map(line => this.ammoProfileLineWidth(profile, line));
+        lines.forEach(line => this.resetAmmoProfileLine(line));
+        let entryIndex = 0;
+
+        for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+            const line = lines[lineIndex];
+            const width = widths[lineIndex];
+            let text = lineIndex === 0 ? 'Ammo:' : '';
+
+            while (entryIndex < entries.length) {
+                const candidate = this.appendAmmoProfileEntry(text, entries[entryIndex], entryIndex < entries.length - 1);
+                if (!this.ammoProfileTextFits(line, width, candidate)) break;
+                text = candidate;
+                entryIndex++;
+            }
+
+            const isLastLine = lineIndex === lines.length - 1;
+            if (entryIndex < entries.length && (isLastLine || text.length === 0)) {
+                while (entryIndex < entries.length) {
+                    const candidate = this.appendAmmoProfileEntry(text, entries[entryIndex], entryIndex < entries.length - 1);
+                    if (!this.ammoProfileTextFits(line, width, candidate, AMMO_PROFILE_MIN_TEXT_SCALE)) break;
+                    text = candidate;
+                    entryIndex++;
+                }
+            }
+
+            if (entryIndex < entries.length && isLastLine) {
+                const preferredText = text.length === 0 ? '...' : text === 'Ammo:' ? 'Ammo: ...' : `${text}${text.endsWith(',') ? '' : ','} ...`;
+                text = this.truncateAmmoProfileLine(line, width, text, preferredText);
+            }
+
+            line.textContent = text;
+            this.compressAmmoProfileLine(line, width);
+            if (entryIndex >= entries.length) break;
+        }
+    }
+
+    private appendAmmoProfileEntry(text: string, entry: string, hasFollowingEntry: boolean): string {
+        const separator = text.length === 0 ? '' : text === 'Ammo:' || text.endsWith(',') ? ' ' : ', ';
+        return `${text}${separator}${entry}${hasFollowingEntry ? ',' : ''}`;
+    }
+
+    private resetAmmoProfileLine(line: SVGTextElement): void {
+        line.textContent = '';
+        line.removeAttribute('textLength');
+        line.removeAttribute('lengthAdjust');
+        line.removeAttribute(AMMO_PROFILE_COMPRESSED_ATTRIBUTE);
+    }
+
+    private ammoProfileTextFits(line: SVGTextElement, width: number | null, text: string, minScale = 1): boolean {
+        return width === null || this.svgTextWidth(line, text) * minScale <= width;
+    }
+
+    private compressAmmoProfileLine(line: SVGTextElement, width: number | null): void {
+        if (width === null || !line.textContent) return;
+        const naturalWidth = this.svgTextWidth(line);
+        if (naturalWidth <= width || naturalWidth * AMMO_PROFILE_MIN_TEXT_SCALE > width) return;
+        line.setAttribute('textLength', this.formatSvgLength(width));
+        line.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+        line.setAttribute(AMMO_PROFILE_COMPRESSED_ATTRIBUTE, 'true');
+    }
+
+    private formatSvgLength(value: number): string {
+        return Number.isInteger(value) ? value.toString() : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+    }
+
+    private ammoProfileLineWidth(profile: SVGElement, line: SVGTextElement): number | null {
+        const textLength = Number(line.getAttribute('textLength'));
+        const rendererCompressed = line.hasAttribute(AMMO_PROFILE_COMPRESSED_ATTRIBUTE);
+        if (!rendererCompressed && Number.isFinite(textLength) && textLength > 0) return textLength;
+
+        const profileButton = profile.querySelector<SVGRectElement>(':scope > .ammoProfileButton');
+        const buttonX = Number.parseFloat(profileButton?.getAttribute('x') ?? '');
+        const buttonWidth = Number.parseFloat(profileButton?.getAttribute('width') ?? '');
+        const textX = Number.parseFloat(line.getAttribute('x') ?? '');
+        if (Number.isFinite(buttonX) && Number.isFinite(buttonWidth) && buttonWidth > 0 && Number.isFinite(textX)) {
+            const availableWidth = buttonX + buttonWidth - textX - 1;
+            return availableWidth > 0 ? availableWidth : null;
+        }
+
+        return null;
+    }
+
+    private truncateAmmoProfileLine(line: SVGTextElement, width: number | null, text: string, preferredText: string): string {
+        if (width === null || this.ammoProfileTextFits(line, width, preferredText, AMMO_PROFILE_MIN_TEXT_SCALE)) {
+            return preferredText;
+        }
+
+        let low = 0;
+        let high = text.length;
+        while (low < high) {
+            const midpoint = Math.ceil((low + high) / 2);
+            const candidate = `${text.slice(0, midpoint).trimEnd()}...`;
+            if (this.ammoProfileTextFits(line, width, candidate, AMMO_PROFILE_MIN_TEXT_SCALE)) {
+                low = midpoint;
+            } else {
+                high = midpoint - 1;
+            }
+        }
+        const truncated = text.slice(0, low).trimEnd();
+        return truncated.length > 0 ? `${truncated}...` : '...';
+    }
+
+    private svgTextWidth(line: SVGTextElement, text?: string): number {
+        if (text !== undefined) line.textContent = text;
+        try {
+            const computedWidth = line.getComputedTextLength();
+            if (computedWidth > 0) return computedWidth;
+            const boundingBoxWidth = line.getBBox().width;
+            if (boundingBoxWidth > 0) return boundingBoxWidth;
+        } catch {
+            // Fall through to a conservative estimate for SVGs without a layout box.
+        }
+        const fontSize = Number.parseFloat(line.getAttribute('font-size') ?? '') || 8;
+        return (line.textContent?.length ?? 0) * fontSize * 0.7;
+    }
+
+    protected resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): ToHitResolution {
+        const state = this.unit.rules.computeEntryState(entry);
+        const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
+        return this.unit.gameRules.resolveToHit({
+            subject: entry,
+            stateModifier: state.hitMod,
+            stateModifierBreakdown: state.hitModifierBreakdown,
+            stateWeakened: state.weakenedHitMod,
             range,
-            this.inventoryTargetSelectedAmmo(entry),
-            (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
-            (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange)
-        );
-    }
-
-    /** Override to inject entry-specific effective hit modifiers. */
-    protected getInventoryTargetHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number {
-        const hitModifier = this.resolveInventoryControlHitModifier(entry, range);
-        return typeof hitModifier === 'number' ? hitModifier - this.inventoryTargetHeatFireModifier(entry) : 0;
-    }
-
-    inventoryTargetHeatFireModifier(entry: MountedEquipment): number {
-        return 0;
+            adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
+        });
     }
 
     inventoryTargetNumberText(entry: MountedEquipment, target: InventoryControlRuntimeTarget): string | null {
         const missingMovementModifier = this.unit.turnState().missingAttackMovementModifier();
-        const display = readInventoryTargetDisplay(entry);
+        const row = this.inventoryControlRow(entry);
+        if (!row) return null;
         const hitModifierRange = this.inventoryControlRangeForTarget(entry, target, false);
+        const hitResolution = this.resolveInventoryControlToHit(entry, hitModifierRange);
+        const { hitModifier, heatFireModifier } = separateHeatFireModifier(hitResolution);
+        const c3Resolution = this.unit.resolveC3Targeting(target);
         const text = inventoryTargetNumberText({
             entry,
             category: inventoryTargetCategory(entry),
-            display,
+            display: row.display,
+            extremeRange: row.extremeRange,
+            allowExtremeRange: this.unit.allowsExtremeRangeAttacks(),
             selectedAmmo: this.inventoryTargetSelectedAmmo(entry),
-            target: this.inventoryControlTargetForRangeSelection(target, true),
+            target: c3Resolution.target,
             gunnerySkill: this.unit.rules.getTargetNumberGunnerySkill(),
             pilotingSkill: this.unit.rules.getTargetNumberPilotingSkill(),
             gunneryModifierBreakdown: this.unit.rules.getTargetNumberGunneryModifierBreakdown(),
             pilotingModifierBreakdown: this.unit.rules.getTargetNumberPilotingModifierBreakdown(),
             missingMovementModifier,
             attackModifierBreakdown: this.unit.turnState().getAttackModifierBreakdown(),
-            hitModifier: this.getInventoryTargetHitModifier(entry, hitModifierRange),
-            heatFireModifier: this.inventoryTargetHeatFireModifier(entry)
+            hitModifier,
+            heatFireModifier,
+            c3DegradationSource: c3Resolution.degradationSource,
+            gameRules: this.unit.gameRules
         });
         return text || null;
     }
 
+    private inventoryControlRangeForTarget(entry: MountedEquipment, target: InventoryControlRuntimeTarget, useC3Distance: boolean): InventoryControlRuntimeRangeKey | null {
+        const row = this.inventoryControlRow(entry);
+        if (!row) return null;
+        return inventoryTargetRangeSelection({
+            entry,
+            category: inventoryTargetCategory(entry),
+            display: row.display,
+            extremeRange: row.extremeRange,
+            allowExtremeRange: this.unit.allowsExtremeRangeAttacks(),
+            target: this.inventoryControlTargetForRangeSelection(target, useC3Distance),
+            selectedAmmo: this.inventoryTargetSelectedAmmo(entry),
+        })?.range ?? null;
+    }
+
+    private inventoryControlRow(entry: MountedEquipment): InventoryControlRow | null {
+        return getInventoryControlGroups(
+            this.unit,
+            this.dataService.getEquipmentRegistry(),
+            this.unit.getInventoryControlRules()
+        ).flatMap(group => group.rows).find(row => row.entry.id === entry.id) ?? null;
+    }
+
     protected inventoryTargetSelectedAmmo(entry: MountedEquipment): AmmoEquipment | null {
-        const summary = getInventoryControlModeAmmoSummary(entry, this.unit.getAvailableEquipment(), this.unit.getInventoryControlRules());
-        const resolvedOption = resolveInventoryControlSelectedAmmoOption(summary.options, this.unit.getInventoryControlEntryAmmoOption(entry.id));
-        return resolvedOption?.ammo ?? null;
+        return this.unit.getInventoryControlSelectedAmmo(entry);
     }
 
     protected renderInventoryControlSelection(): void {
@@ -1014,7 +1243,7 @@ export class UnitSvgService {
             this.renderInventoryControlHeatEntry(entry, weaponRuleRange);
             this.renderInventoryControlRangeDamageEntry(entry, weaponRuleRange);
             if (!entry.isDestroyed()) {
-                this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry, weaponRuleRange), weaponRuleRange);
+                this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry, weaponRuleRange));
             }
             entry.el.classList.toggle('selected', selected);
             entry.el.classList.toggle('selected-alternative-mode', selected && hasSelectedMode);
@@ -1072,35 +1301,21 @@ export class UnitSvgService {
         const text = inventoryControlDirectText(entry.el, '.heat');
         if (!text) return;
 
-        const originalHeat = text.getAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE) ?? text.textContent ?? '';
-        const display = this.unit.applyInventoryControlDisplayEffects(entry, {
-            name: '',
-            location: '',
-            heat: originalHeat,
-            damage: '',
-            hit: '',
-            min: '',
-            short: '',
-            medium: '',
-            long: ''
-        }, {
-            selectedRange,
-            additionalHitModifier: 0,
-            selectedAmmo: this.inventoryTargetSelectedAmmo(entry)
-        });
-
-        if (display.heat === originalHeat) {
-            text.textContent = originalHeat;
-            text.removeAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE);
-            text.classList.remove('damaged');
-            return;
+        const heatResolution = resolveInventoryControlHeatEffect(entry, this.unit.getInventoryControlRules());
+        if (heatResolution !== null) {
+            const rapidFireCount = entry.equipment instanceof WeaponEquipment
+                ? entry.equipment.getRapidFireCount()
+                : 0;
+            text.textContent = formatInventoryControlHeat(heatResolution.value, heatResolution.suffix, rapidFireCount);
+        } else {
+            const display = this.unit.applyInventoryControlDisplayEffects(entry, readInventoryControlDisplayData(entry), {
+                selectedRange,
+                additionalHitModifier: 0,
+                selectedAmmo: null,
+            });
+            text.textContent = display.heat;
         }
-
-        if (!text.hasAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE)) {
-            text.setAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE, originalHeat);
-        }
-        text.textContent = display.heat;
-        text.classList.add('damaged');
+        text.classList.toggle('damaged', heatResolution?.weakened ?? false);
     }
 
     // TODO: need to implement the aimed shot
@@ -1127,22 +1342,117 @@ export class UnitSvgService {
 
     private renderInventoryControlRangeDamageEntry(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null): void {
         const text = entry.el?.querySelector<SVGElement>(':scope > .damage > text');
-        if (!text) return;
-
-        const originalDamage = text.getAttribute(INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
-        const damage = resolveInventoryControlRangeDamageText(entry, range, originalDamage ?? text.textContent);
-        if (damage === null) {
-            if (originalDamage !== null) {
-                text.textContent = originalDamage;
+        const weapon = entry.equipment;
+        if (weapon instanceof WeaponEquipment && ['MML', 'ATM', 'IATM'].includes(weapon.ammoType)) {
+            if (text) {
+                this.renderInventoryDamageText(text, '');
                 text.removeAttribute(INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
             }
+            entry.el?.querySelectorAll<SVGElement>(':scope > .alternativeMode').forEach(modeElement => {
+                const mode = modeElement.getAttribute('mode');
+                const modeDamageText = modeElement.querySelector<SVGElement>(':scope > .damage > text');
+                if (!mode || !modeDamageText) return;
+                const selectedAmmo = this.unit.getInventoryControlSelectedAmmo(entry, mode);
+                const fallbackAmmoProfile = getInventoryControlModes(entry)
+                    .find(option => option.mode === mode)?.ammoProfile ?? null;
+                const modeDamage = resolveInventoryControlDamageText(
+                    entry,
+                    {
+                        selectedRange: null,
+                        selectedAmmo,
+                        equipmentCatalog: this.dataService.getEquipmentRegistry(),
+                        ammoProfile: selectedAmmo ? null : fallbackAmmoProfile,
+                    },
+                    this.unit.getInventoryControlRules(),
+                );
+                if (modeDamage !== null) this.renderInventoryDamageText(modeDamageText, modeDamage);
+            });
             return;
         }
 
-        if (originalDamage === null) {
-            text.setAttribute(INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, text.textContent ?? '');
+        const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
+        const selectedRange = inventoryControlDamageRange(range);
+        if (text) {
+            const damage = resolveInventoryControlDamageText(
+                entry,
+                {
+                    selectedRange,
+                    selectedAmmo,
+                    equipmentCatalog: this.dataService.getEquipmentRegistry(),
+                },
+                this.unit.getInventoryControlRules()
+            );
+            if (damage !== null) this.renderInventoryDamageText(text, damage);
+            text.removeAttribute(INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
         }
-        text.textContent = damage;
+    }
+
+    /** Writes damage across the template's available rows without leaving stale text. */
+    protected renderInventoryDamageText(damageText: Element, damage: string): void {
+        const damageContainer = damageText.parentElement;
+        const lines = damageContainer
+            ? Array.from(damageContainer.querySelectorAll<SVGTextElement>(':scope > text'))
+            : damageText instanceof SVGTextElement ? [damageText] : [];
+        if (lines.length === 0) return;
+
+        const lineWidth = this.inventoryDamageLineWidth(damageContainer, lines[0]);
+        const wrappedLines = this.wrapInventoryDamageText(lines[0], damage, lineWidth, lines.length);
+        lines.forEach((line, index) => {
+            line.textContent = wrappedLines[index] ?? '';
+        });
+    }
+
+    private inventoryDamageLineWidth(damageContainer: Element | null, damageText: SVGTextElement): number | null {
+        const row = damageContainer?.parentElement;
+        const rangeMinText = row?.querySelector<SVGTextElement>(':scope > .range_min');
+        const damageX = Number.parseFloat(damageText.getAttribute('x') ?? '');
+        const rangeMinX = Number.parseFloat(rangeMinText?.getAttribute('x') ?? '');
+        if (!Number.isFinite(damageX) || !Number.isFinite(rangeMinX)) return null;
+
+        const width = rangeMinX - damageX - 1;
+        return width > 0 ? width : null;
+    }
+
+    private wrapInventoryDamageText(
+        line: SVGTextElement,
+        damage: string,
+        width: number | null,
+        lineCount: number
+    ): string[] {
+        if (!damage || width === null || lineCount === 1) return [damage];
+
+        const lines: string[] = [];
+        let remaining = damage.trim();
+        while (remaining && lines.length < lineCount) {
+            if (this.ammoProfileTextFits(line, width, remaining)) {
+                lines.push(remaining);
+                remaining = '';
+                break;
+            }
+
+            const lineText = this.inventoryDamageLineBreak(line, width, remaining);
+            lines.push(lineText);
+            remaining = remaining.slice(lineText.length).trimStart();
+        }
+
+        if (remaining) {
+            lines[lines.length - 1] += remaining;
+        }
+        return lines;
+    }
+
+    private inventoryDamageLineBreak(line: SVGTextElement, width: number, text: string): string {
+        let end = 0;
+        for (let index = 1; index <= text.length; index++) {
+            if (!this.ammoProfileTextFits(line, width, text.slice(0, index))) break;
+            end = index;
+        }
+        if (end === 0) return text[0];
+
+        // Damage-type tags (for example, "[C5,H,M,OS,S]") are one semantic value.
+        // Do not split them at commas when an inventory interaction re-renders the row.
+        const breakIndex = text.lastIndexOf(' ', end - 1);
+        return text.slice(0, breakIndex > 0 ? breakIndex : end).trimEnd();
     }
 
     private inventoryControlSelectedRange(
@@ -1163,17 +1473,8 @@ export class UnitSvgService {
         return entryState?.range ?? null;
     }
 
-    private inventoryControlRangeForTarget(entry: MountedEquipment, target: InventoryControlRuntimeTarget, useC3Distance: boolean): InventoryControlRuntimeRangeKey | null {
-        return inventoryTargetRangeSelection({
-            entry,
-            category: inventoryTargetCategory(entry),
-            display: readInventoryTargetDisplay(entry),
-            target: this.inventoryControlTargetForRangeSelection(target, useC3Distance)
-        })?.range ?? null;
-    }
-
     private inventoryControlTargetForRangeSelection(target: InventoryControlRuntimeTarget, useC3Distance: boolean): InventoryControlRuntimeTarget {
-        if (useC3Distance && this.unit.hasLinkedC3Network?.() === true) return target;
+        if (useC3Distance) return this.unit.resolveC3Targeting(target).target;
         if (target.c3Distance === undefined) return target;
         return { ...target, c3Distance: undefined };
     }
@@ -1181,10 +1482,10 @@ export class UnitSvgService {
     /** Render hit modifier badge for a single inventory entry. Pure presentation. */
     protected renderHitModEntry(
         entry: MountedEquipment,
-        hitModifier: number | 'Vs' | '*' | null,
-        range?: InventoryControlRuntimeRangeKey | null,
+        resolution: ToHitResolution,
         forceWeakened = false
     ) {
+        const hitModifier = resolution.value;
         if (!entry.el) return;
         const hitModRect = entry.el.querySelector(`:scope > .hitMod-rect`);
         const hitModText = entry.el.querySelector(`:scope > .hitMod-text`);
@@ -1196,6 +1497,7 @@ export class UnitSvgService {
             entry.el.classList.remove('weakenedHitMod');
             return;
         }
+        forceWeakened ||= resolution.weakened;
         if (hitModifier === 'Vs' || hitModifier === '*') {
             hitModRect.setAttribute('display', 'block');
             hitModText.setAttribute('display', 'block');
@@ -1204,10 +1506,8 @@ export class UnitSvgService {
             return;
         }
 
-        const resolvedBaseHitModifier = getEntryBaseHitModifier(entry, range);
-        const baseHitModifier = typeof resolvedBaseHitModifier === 'number' ? resolvedBaseHitModifier : 0;
-        const weakenedHitMod = forceWeakened || hitModifier > baseHitModifier;
-        if (hitModifier !== 0 || baseHitModifier !== 0 || forceWeakened) {
+        const weakenedHitMod = forceWeakened;
+        if (hitModifier !== 0 || resolution.changed || forceWeakened) {
             hitModRect.setAttribute('display', 'block');
             hitModText.setAttribute('display', 'block');
             hitModText.textContent = (hitModifier >= 0 ? '+' : '') + hitModifier.toString();
@@ -1223,22 +1523,51 @@ export class UnitSvgService {
         if (!svg) return;
         this.unit.getInventory().forEach(entry => {
             if (!entry.el) return;
-            // Inventory state
-            if (entry.isDestroyed()) {
-                entry.el.classList.add('damagedInventory');
-                entry.el.classList.remove('selected');
-            } else {
-                entry.el.classList.remove('damagedInventory');
+            const state = this.unit.rules.computeEntryState(entry);
+            const actionUnavailable = entry.isActionUnavailable();
+            if (entry.isIntrinsicPhysicalAttack()) {
+                if (entry.name === 'charge') {
+                    this.renderChargeDamage(entry, this.unit.rules.chargeDamage());
+                }
             }
+            // Inventory state
+            entry.el.classList.toggle('disabledInventory', actionUnavailable);
+            entry.el.classList.toggle('damagedInventory', state.isDamaged);
+            if (state.isDamaged || actionUnavailable) entry.el.classList.remove('selected');
             // Hit modifier badge
-            if (entry.isDestroyed()) {
-                this.renderHitModEntry(entry, null);
+            if (state.isDamaged) {
+                this.renderHitModEntry(entry, { profile: [], value: null, changed: false, weakened: false, modifierBreakdown: [] });
             } else {
-                this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry));
+                this.renderHitModEntry(
+                    entry,
+                    this.resolveInventoryControlToHit(entry),
+                    state.weakenedHitMod
+                );
             }
             this.renderInventoryControlHeatEntry(entry, null);
         });
         this.renderInventoryControlSelection();
+    }
+
+    protected renderChargeDamage(entry: MountedEquipment, chargeDamage: ChargeDamage): void {
+        const damageEl = entry.el?.querySelector(':scope > .damage > text');
+        if (!damageEl) return;
+        let originalText = damageEl.getAttribute(INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE);
+        if (originalText === null) {
+            originalText = damageEl.textContent || '';
+            damageEl.setAttribute(INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, originalText);
+        }
+        if (!originalText) return;
+        if (chargeDamage.damage === null || chargeDamage.maxDamage === null) {
+            this.renderInventoryDamageText(damageEl, chargeDamage.bonusDamage > 0
+                ? `${originalText}+${chargeDamage.bonusDamage}`
+                : originalText);
+        } else {
+            this.renderInventoryDamageText(damageEl, chargeDamage.damage !== chargeDamage.maxDamage
+                ? `${chargeDamage.damage} [${chargeDamage.maxDamage}]`
+                : `${chargeDamage.damage}`);
+        }
+        damageEl.classList.toggle('damaged', chargeDamage.bonusDamage < chargeDamage.maxBonusDamage);
     }
 
     protected updateTurnState() {
@@ -1246,7 +1575,14 @@ export class UnitSvgService {
         if (!svg) return;
         const unit = this.unit;
         const turnState = unit.turnState();
-        this.renderHeatSourcesSummary(svg, turnState.heatSources());
+        const heatProjection = turnState.heatProjection();
+        this.renderHeatSourcesSummary(
+            svg,
+            turnState.heatSources(),
+            turnState.heatDissipationBalance(),
+            heatProjection.consumedDissipation,
+            heatProjection.projected
+        );
         // Update move mode display
         const moveMode = turnState.moveMode();
         const moveModifier = turnState.getAttackMovementModifier();
@@ -1315,12 +1651,37 @@ export class UnitSvgService {
         return modifier >= 0 ? `+${modifier}` : modifier.toString();
     }
 
-    private renderHeatSourcesSummary(svg: SVGSVGElement, sources: UnitHeatSource[]): void {
+    private renderHeatSourcesSummary(
+        svg: SVGSVGElement,
+        sources: UnitHeatSource[],
+        dissipationBalance: number,
+        consumedDissipation: number,
+        projectedHeat: number
+    ): void {
         const heatSourcesText = svg.getElementById('damagedEngineHeatText') as SVGTextElement | null;
         if (!heatSourcesText) return;
 
-        const positiveSources = sources.filter(source => source.value > 0);
-        if (positiveSources.length === 0) {
+        const positiveSources = sources.filter(source => source.value > 0 && source.id !== 'heat-dissipation-deficit');
+        const normalizedBalance = Number.isFinite(dissipationBalance) ? dissipationBalance : 0;
+        const normalizedConsumption = Number.isFinite(consumedDissipation) ? Math.max(0, consumedDissipation) : 0;
+        const hasResidualAfterClipping = normalizedBalance > 0
+            && normalizedConsumption > 0
+            && normalizedConsumption < normalizedBalance
+            && projectedHeat === 0;
+        const dissipationLabelSuffix = hasResidualAfterClipping ? ` (-${normalizedBalance})` : '';
+        const dissipationText = hasResidualAfterClipping
+            ? `-${normalizedConsumption}`
+            : `${normalizedBalance > 0 ? '-' : '+'}${Math.abs(normalizedBalance)}`;
+        const lines: Array<{ text: string; fill?: string }> = [
+            ...positiveSources.map(source => ({
+                text: `${this.heatSourceSummaryLabel(source)}: ${this.formatSignedModifier(source.value)}`,
+            })),
+            ...(normalizedBalance !== 0 ? [{
+                text: `Sink${dissipationLabelSuffix}: ${dissipationText}`,
+                fill: normalizedBalance > 0 ? '#2070d1' : '#f00',
+            }] : []),
+        ];
+        if (lines.length === 0) {
             heatSourcesText.textContent = '';
             heatSourcesText.setAttribute('display', 'none');
             heatSourcesText.style.display = 'none';
@@ -1334,11 +1695,12 @@ export class UnitSvgService {
         heatSourcesText.removeAttribute('display');
         heatSourcesText.style.display = 'block';
 
-        positiveSources.forEach((source, index) => {
+        lines.forEach((summaryLine, index) => {
             const line = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
             line.setAttribute('x', x);
-            line.setAttribute('y', (y - ((positiveSources.length - 1 - index) * lineHeight)).toString());
-            line.textContent = `${this.heatSourceSummaryLabel(source)}: ${this.formatSignedModifier(source.value)}`;
+            line.setAttribute('y', (y - ((lines.length - 1 - index) * lineHeight)).toString());
+            if (summaryLine.fill) line.setAttribute('fill', summaryLine.fill);
+            line.textContent = summaryLine.text;
             heatSourcesText.appendChild(line);
         });
     }
@@ -1353,17 +1715,14 @@ export class UnitSvgService {
         const heatScale = svg?.getElementById('heatScale') as SVGGElement | null;
         if (!svg || !heatScale) return;
 
-        const dissipation = this.heatDissipationState();
-        if (!dissipation) {
+        if (!this.unit.turnState().hasPendingHeatResolution()) {
             this.clearHeatProjectionPreview(heatScale);
             return;
         }
 
-        const heatGain = this.unit.turnState().heatSources()
-            .reduce((total, source) => total + Math.max(0, source.value), 0);
-        const heatDissipation = Math.max(0, dissipation.totalDissipationWithWings ?? dissipation.totalDissipation);
-        const netHeat = heatGain - heatDissipation;
-        const projectedHeat = Math.max(0, heat.current + netHeat);
+        const projection = this.unit.turnState().heatProjection();
+        const netHeat = projection.delta;
+        const projectedHeat = projection.projected;
 
         this.updateHeatProjectionOverflow(heatScale, projectedHeat, heat.current);
 
@@ -1392,57 +1751,33 @@ export class UnitSvgService {
             return;
         }
 
-        let bar = heatScale.querySelector('#heat-projection-bar') as SVGRectElement | null;
-        if (!bar) {
-            bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            bar.setAttribute('id', 'heat-projection-bar');
-            bar.setAttribute('class', 'screen-only heatProjectionBar');
-            bar.setAttribute('pointer-events', 'none');
-            heatScale.appendChild(bar);
+        let path = heatScale.querySelector('#heat-projection-path') as SVGPathElement | null;
+        if (!path) {
+            path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('id', 'heat-projection-path');
+            path.setAttribute('class', 'screen-only heatProjectionPath');
+            path.setAttribute('pointer-events', 'none');
+            heatScale.appendChild(path);
         }
         const x = Number(heatZeroEl.getAttribute('x') ?? 0) - 3.8;
         const projectionColor = netHeat > 0 ? '#d12020' : '#2070d1';
         const barTop = Math.min(startCenter.y, targetCenter.y) - 2;
-        bar.setAttribute('x', x.toString());
-        bar.setAttribute('y', barTop.toString());
-        bar.setAttribute('width', '3');
-        bar.setAttribute('height', (height + 4).toString());
-        bar.setAttribute('fill', projectionColor);
         const arrowTipX = Number(heatZeroEl.getAttribute('x') ?? 0) + 4;
         const arrowBaseX = arrowTipX - 5;
-
-        let originArrow = heatScale.querySelector('#heat-projection-origin-arrow') as SVGRectElement | null;
-        if (!originArrow) {
-            originArrow = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            originArrow.setAttribute('id', 'heat-projection-origin-arrow');
-            originArrow.setAttribute('class', 'screen-only heatProjectionOriginArrow');
-            originArrow.setAttribute('pointer-events', 'none');
-            heatScale.appendChild(originArrow);
-        }
-        originArrow.setAttribute('x', (arrowBaseX - 1.5).toString());
-        originArrow.setAttribute('y', (startCenter.y - 2).toString());
-        originArrow.setAttribute('width', '4');
-        originArrow.setAttribute('height', '4');
-        originArrow.setAttribute('fill', projectionColor);
-
-        let targetArrow = heatScale.querySelector('#heat-projection-target-arrow') as SVGPolygonElement | null;
-        if (!targetArrow) {
-            targetArrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-            targetArrow.setAttribute('id', 'heat-projection-target-arrow');
-            targetArrow.setAttribute('class', 'screen-only heatProjectionTargetArrow');
-            targetArrow.setAttribute('pointer-events', 'none');
-            heatScale.appendChild(targetArrow);
-        }
-        targetArrow.setAttribute('fill', projectionColor);
-        if (projectedHeat <= 30) {
-            targetArrow.setAttribute('points', `${arrowTipX},${targetCenter.y} ${arrowBaseX},${targetCenter.y - 2} ${arrowBaseX},${targetCenter.y + 2}`);
-        } else {
-            targetArrow.setAttribute('points', `${arrowTipX},${barTop} ${arrowTipX - 2},${barTop + 5} ${arrowTipX + 2},${barTop + 5}`);
-        }
-    }
-
-    private heatDissipationState(): HeatDissipationWithWings | null {
-        return this.unit.rules.heatDissipation() as HeatDissipationWithWings | null;
+        const originRightX = arrowBaseX + 2.5;
+        const targetTop = targetCenter.y - 2;
+        const targetBottom = targetCenter.y + 2;
+        const originTop = startCenter.y - 2;
+        const originBottom = startCenter.y + 2;
+        const overflowArrowCenterX = (x + arrowBaseX) / 2;
+        const overflowArrowBaseY = barTop + 5;
+        const pathData = projectedHeat > 30
+            ? `M ${x} ${overflowArrowBaseY} L ${overflowArrowCenterX} ${barTop} L ${arrowBaseX} ${overflowArrowBaseY} L ${arrowBaseX} ${originTop} L ${originRightX} ${originTop} L ${originRightX} ${originBottom} L ${x} ${originBottom} Z`
+            : targetCenter.y < startCenter.y
+                ? `M ${x} ${targetTop} L ${arrowBaseX} ${targetTop} L ${arrowTipX} ${targetCenter.y} L ${arrowBaseX} ${targetBottom} L ${arrowBaseX} ${originTop} L ${originRightX} ${originTop} L ${originRightX} ${originBottom} L ${x} ${originBottom} Z`
+                : `M ${x} ${originTop} L ${originRightX} ${originTop} L ${originRightX} ${originBottom} L ${arrowBaseX} ${originBottom} L ${arrowBaseX} ${targetTop} L ${arrowTipX} ${targetCenter.y} L ${arrowBaseX} ${targetBottom} L ${x} ${targetBottom} Z`;
+        path.setAttribute('d', pathData);
+        path.setAttribute('fill', projectionColor);
     }
 
     private updateHeatProjectionOverflow(heatScale: SVGGElement, projectedHeat: number, currentHeat: number): void {
@@ -1491,9 +1826,7 @@ export class UnitSvgService {
     }
 
     private clearHeatProjectionBar(heatScale: SVGGElement): void {
-        heatScale.querySelector('#heat-projection-bar')?.remove();
-        heatScale.querySelector('#heat-projection-origin-arrow')?.remove();
-        heatScale.querySelector('#heat-projection-target-arrow')?.remove();
+        heatScale.querySelector('#heat-projection-path')?.remove();
     }
 
     private restoreHeatProjectionOverflowStroke(overflowFrame: SVGElement): void {

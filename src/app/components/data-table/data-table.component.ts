@@ -33,8 +33,10 @@
 
 import { CommonModule, NgTemplateOutlet } from '@angular/common';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
-import { Component, computed, input, output, signal, TemplateRef, viewChild } from '@angular/core';
+import { afterNextRender, Component, computed, DestroyRef, ElementRef, inject, input, output, signal, TemplateRef, viewChild } from '@angular/core';
+import { AutoFitTextDirective } from '../../directives/auto-fit-text.directive';
 import { LongPressDirective } from '../../directives/long-press.directive';
+import { VariableSizeVirtualScrollDirective } from '../../directives/variable-size-virtual-scroll.directive';
 
 export type DataTableClassValue = string | string[] | Set<string> | Record<string, boolean> | null | undefined;
 
@@ -98,11 +100,14 @@ export interface DataTableRowPointerMoveEvent<T> {
 
 @Component({
     selector: 'mb-data-table',
-    imports: [CommonModule, NgTemplateOutlet, ScrollingModule, LongPressDirective],
+    imports: [AutoFitTextDirective, CommonModule, NgTemplateOutlet, ScrollingModule, LongPressDirective, VariableSizeVirtualScrollDirective],
     templateUrl: './data-table.component.html',
     styleUrl: './data-table.component.scss'
 })
 export class DataTableComponent<T> {
+    private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+    private readonly destroyRef = inject(DestroyRef);
+
     readonly rows = input.required<readonly T[]>();
     readonly columns = input.required<readonly DataTableColumn<T>[]>();
     readonly itemSize = input(48);
@@ -111,6 +116,7 @@ export class DataTableComponent<T> {
     readonly minBufferPx = input(600);
     readonly maxBufferPx = input(1200);
     readonly rowTrackBy = input<(index: number, row: T) => unknown>((index) => index);
+    readonly rowKeys = input<readonly unknown[] | null>(null);
     readonly rowClass = input<((row: T, index: number) => DataTableClassValue) | null>(null);
     readonly fullRowTemplate = input<TemplateRef<DataTableRowContext<T>> | null>(null);
     readonly isFullRow = input<((row: T, index: number) => boolean) | null>(null);
@@ -123,9 +129,40 @@ export class DataTableComponent<T> {
 
     private readonly viewport = viewChild(CdkVirtualScrollViewport);
     readonly scrollLeft = signal(0);
+    readonly textFitRevision = signal(0);
 
     readonly gridTemplate = computed(() => this.columns().map(column => column.track).join(' '));
     readonly tableWidth = computed(() => `max(${this.minWidth()}, 100%)`);
+    readonly textFitKey = computed(() => `${this.gridTemplate()}|${this.tableWidth()}|${this.textFitRevision()}`);
+    readonly virtualRowKeys = computed<readonly unknown[]>(() => {
+        const rows = this.rows();
+        const explicitKeys = this.rowKeys();
+        if (explicitKeys?.length === rows.length) {
+            return explicitKeys;
+        }
+
+        return rows.map((row, index) => this.rowTrackBy()(index, row));
+    });
+
+    constructor() {
+        let resizeObserver: ResizeObserver | null = null;
+        let observedWidth = 0;
+        const afterRenderRef = afterNextRender(() => {
+            if (typeof ResizeObserver === 'undefined') return;
+            resizeObserver = new ResizeObserver(entries => {
+                const width = entries[0]?.contentRect.width ?? this.host.nativeElement.clientWidth;
+                if (width <= 0 || Math.abs(width - observedWidth) < 0.5) return;
+                observedWidth = width;
+                this.textFitRevision.update(revision => revision + 1);
+            });
+            resizeObserver.observe(this.host.nativeElement);
+        });
+
+        this.destroyRef.onDestroy(() => {
+            afterRenderRef.destroy();
+            resizeObserver?.disconnect();
+        });
+    }
 
     onViewportScroll() {
         const viewport = this.viewport();

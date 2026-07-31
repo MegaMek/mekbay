@@ -54,6 +54,15 @@ describe('ASForceUnit ability effects', () => {
         });
     }
 
+    it('keeps pre-skill PV separate from the final skill adjustment', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.setPilotSkill(3);
+
+        expect(forceUnit.getBaseBv()).toBe(30);
+        expect(forceUnit.getPreSkillBv()).toBe(30);
+        expect(forceUnit.getBv()).toBeGreaterThan(30);
+    });
+
     it('keeps default heat behavior without Hot Dog', () => {
         const forceUnit = createForceUnit();
         forceUnit.getState().heat.set(4);
@@ -209,6 +218,23 @@ describe('ASForceUnit ability effects', () => {
 
         forceUnit.getState().crits.set([{ key: 'mp', timestamp: 1 }, { key: 'mp', timestamp: 2 }]);
         expect(forceUnit.effectiveMovement()).toEqual({ '': 4 });
+        expect(forceUnit.effectiveTmm()).toEqual({ '': 0 });
+    });
+
+    it('halves non-vehicle TMM for each MP critical hit', () => {
+        const forceUnit = createForceUnit(createTestUnit({ as: { MVm: { '': 35 } } }));
+
+        forceUnit.getState().crits.set([{ key: 'mp', timestamp: 1 }]);
+        expect(forceUnit.effectiveTmm()).toEqual({ '': 2 });
+
+        forceUnit.getState().crits.set([{ key: 'mp', timestamp: 1 }, { key: 'mp', timestamp: 2 }]);
+        expect(forceUnit.effectiveTmm()).toEqual({ '': 1 });
+
+        forceUnit.getState().crits.set([
+            { key: 'mp', timestamp: 1 },
+            { key: 'mp', timestamp: 2 },
+            { key: 'mp', timestamp: 3 },
+        ]);
         expect(forceUnit.effectiveTmm()).toEqual({ '': 0 });
     });
 

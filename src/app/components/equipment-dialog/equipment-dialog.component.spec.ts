@@ -3,40 +3,14 @@ import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 
 import { WeaponEquipment } from '../../models/equipment.model';
+import { EquipmentRegistry } from '../../models/equipment-lookup';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import { MountedEquipment } from '../../models/force-serialization';
-import { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
+import { MountedEquipment } from '../../models/mounted-equipment.model';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
+import { createCBTForceUnitTestHarness } from '../../testing/unit-test-helpers';
 import { EquipmentDialogComponent } from './equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData } from './equipment-dialog.model';
-
-function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
-    const runtime = new CBTInventoryControlRuntime(unit);
-
-    Object.assign(unit, {
-        inventoryControl: runtime,
-        getInventoryControlSnapshot: () => runtime.getSnapshot(),
-        getInventoryControlTargets: () => runtime.getTargets(),
-        getInventoryControlTarget: (targetId: string) => runtime.getTarget(targetId),
-        getInventoryControlEntryTargetId: (entryId: string) => runtime.getEntryTargetId(entryId),
-        isInventoryControlEntrySelected: (entryId: string) => runtime.isEntrySelected(entryId),
-        getInventoryControlEntryRange: (entryId: string) => runtime.getEntryRange(entryId),
-        getInventoryControlEntryAmmoOption: (entryId: string) => runtime.getEntryAmmoOption(entryId),
-        setInventoryControlEntrySelected: (entry: MountedEquipment, selected: boolean) => runtime.setEntrySelected(entry, selected),
-        setInventoryControlEntryRange: (entry: MountedEquipment, range: 'short' | 'medium' | 'long' | null) => runtime.setEntryRange(entry, range),
-        toggleInventoryControlEntryRange: (entry: MountedEquipment, range: 'short' | 'medium' | 'long', forceSelected = false) => runtime.toggleEntryRange(entry, range, forceSelected),
-        setInventoryControlEntryAmmoOption: (entryId: string, optionId: string) => runtime.setEntryAmmoOption(entryId, optionId),
-        setInventoryControlEntryTarget: (entry: MountedEquipment, targetId: string | null) => runtime.setEntryTarget(entry, targetId),
-        createInventoryControlTarget: () => runtime.createTarget(),
-        updateInventoryControlTarget: (targetId: string, patch: any) => runtime.updateTarget(targetId, patch),
-        deleteInventoryControlTarget: (targetId: string) => runtime.deleteTarget(targetId),
-        resetInventoryControlTargets: () => runtime.resetTargets(),
-        clearInventoryControlSelection: () => runtime.clearSelection(),
-        syncInventoryControlSelectionSvg: () => runtime.syncSelectionSvg()
-    });
-    return unit;
-}
 
 function weaponEntry(id: string): MountedEquipment {
     const wrapper = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -54,7 +28,7 @@ function weaponEntry(id: string): MountedEquipment {
         name: id,
         equipment,
         destroyed: false,
-        physical: false,
+        intrinsicPhysicalAttack: false,
         states: new Map<string, string>(),
         linkedWith: null,
         el,
@@ -63,51 +37,22 @@ function weaponEntry(id: string): MountedEquipment {
 }
 
 function createUnit(id: string, entries: MountedEquipment[] = []): CBTForceUnit {
-    const heat = { current: 2, previous: 1, next: undefined as number | undefined };
-    const unit = addRuntimeSelection({
+    const harness = createCBTForceUnitTestHarness({
         id,
-        getInventory: () => entries,
-        getCritSlots: () => [],
-        getUnit: () => ({ chassis: id, model: 'Model', comp: [] }),
-        getHeat: () => heat,
-        setHeat: jasmine.createSpy('setHeat').and.callFake((value: number) => heat.next = value),
-        gunnerySkill: () => 4,
-        pilotingSkill: () => 5,
-        turnState: () => ({
-            moveMode: () => null,
-            airborne: () => false,
-            getAttackMovementModifier: () => 0,
-            getAttackModifierBreakdown: () => [],
-            missingAttackMovementModifier: () => false,
-            getSpottingModifier: () => 0,
-            heatSources: () => [],
-            dirty: () => false,
-            autoFall: () => false,
-            PSRRollsCount: () => 0,
-            currentPhase: () => ''
-        }),
-        readOnly: () => false,
-        hasDirectInventory: () => true,
-        setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        setCritSlot: jasmine.createSpy('setCritSlot'),
-        rules: {
-            computeAllEntryStates: () => new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>(),
-            computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }),
-            heatDissipation: () => ({
-                totalPips: 10,
-                healthyPips: 10,
-                damagedCount: 0,
-                heatsinksOff: 0,
-                totalDissipation: 0
-            }),
-            getTargetNumberGunnerySkill: () => 4,
-            getTargetNumberPilotingSkill: () => 5,
-            getTargetNumberGunneryModifierBreakdown: () => [],
-            getTargetNumberPilotingModifierBreakdown: () => []
-        }
-    } as unknown as CBTForceUnit);
-    entries.forEach(entry => entry.owner = unit);
-    return unit;
+        unit: { chassis: id, model: 'Model' },
+        components: entries,
+        attackMovementCanAffectTargetNumbers: false
+    });
+    Object.assign(harness.turnState, {
+        dirty: () => false,
+        autoFall: () => false,
+        PSRRollsCount: () => 0,
+        currentPhase: () => ''
+    });
+    spyOn(harness.unit, 'setHeat').and.callThrough();
+    spyOn(harness.unit, 'setInventoryEntry').and.callThrough();
+    spyOn(harness.unit, 'setCritSlot').and.callThrough();
+    return harness.unit;
 }
 
 function createDialog(data: EquipmentDialogData) {
@@ -140,12 +85,13 @@ function createContext(): EquipmentDialogContext {
     return {
         toastService: { showToast: jasmine.createSpy('showToast') },
         dialogsService: { showNoticeHtml: jasmine.createSpy('showNoticeHtml').and.resolveTo(), showError: jasmine.createSpy('showError').and.resolveTo() },
-        dataService: { getEquipments: () => ({}) },
+        dataService: {
+            getEquipmentRegistry: () => new EquipmentRegistry({}),
+        },
         registry: {
             getChoices: () => [],
             handleSelection: () => false,
             afterInventoryControlFire: () => undefined,
-            getLinkedEquipmentHitModifier: () => 0,
             inventoryControlRules: () => ({})
         }
     } as unknown as EquipmentDialogContext;
