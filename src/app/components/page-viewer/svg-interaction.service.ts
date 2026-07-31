@@ -600,8 +600,6 @@ export class SvgInteractionService {
                 const allowedValues = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, -1, -2, -3, -4, -5, -10, -20];
                 const calculateValues = () => {
                     let values: PickerChoice[] = [];
-                    const startValue = - getHits() - consumedModularArmorPoints;
-                    const endValue = pipsCount - getHits() + availableModularArmorPoints;
                     for (const value of allowedValues) {
                         if (value >= startValue && value <= endValue) {
                             values.push({ label: value.toString(), value: value });
@@ -634,7 +632,10 @@ export class SvgInteractionService {
                 const title = `${loc}${rear ? ' (Rear)' : ''}`;
                 const position = { x, y };
                 const startValue = - getHits() - consumedModularArmorPoints;
-                const endValue = pipsCount - getHits() + availableModularArmorPoints;
+                const remainingArmorPoints = Math.max(0, pipsCount - getHits() + availableModularArmorPoints);
+                const internalPoints = !isStructure && !isShield ? (this.unit()?.getInternalPoints(loc) ?? 0) : 0;
+                const remainingInternalPoints = Math.max(0, internalPoints - (this.unit()?.getInternalHits(loc) ?? 0));
+                const endValue = remainingArmorPoints + remainingInternalPoints;
 
                 const applyArmorChange = (value: number) => {
                     this.removePicker();
@@ -674,7 +675,19 @@ export class SvgInteractionService {
                                     });
                                 }
                         if (valueToApply != 0) {
-                            this.unit()?.addArmorHits(loc, valueToApply, rear, this.consolidateImmediately);
+                            if (valueToApply > 0 && !isShield && internalPoints > 0) {
+                                const ordinaryArmorRemaining = Math.max(0, pipsCount - unit.getArmorHits(loc, rear));
+                                const armorDamage = Math.min(valueToApply, ordinaryArmorRemaining);
+                                const internalDamage = Math.min(valueToApply - armorDamage, Math.max(0, internalPoints - unit.getInternalHits(loc)));
+                                if (armorDamage > 0) {
+                                    unit.addArmorHits(loc, armorDamage, rear, this.consolidateImmediately);
+                                }
+                                if (internalDamage > 0) {
+                                    unit.addInternalHits(loc, internalDamage, this.consolidateImmediately);
+                                }
+                            } else {
+                                unit.addArmorHits(loc, valueToApply, rear, this.consolidateImmediately);
+                            }
                         }
                     }
                     if (loc === 'RO' && value !== 0) {
@@ -693,6 +706,7 @@ export class SvgInteractionService {
                         title,
                         min: startValue,
                         max: endValue,
+                        threshold: !isStructure && !isShield && internalPoints > 0 ? remainingArmorPoints : undefined,
                         selected: 0,
                         onPick: (result) => applyArmorChange(result.value),
                         onCancel: () => this.removePicker()
@@ -2155,6 +2169,7 @@ export class SvgInteractionService {
         title: string | null;
         min: number;
         max: number;
+        threshold?: number;
         selected?: number;
         step?: number;
         onPick: (result: NumericPickerResult) => void;
@@ -2179,6 +2194,7 @@ export class SvgInteractionService {
         this.pickerRef = this.pickerFactory.createNumericPicker({
             min: opts.min,
             max: opts.max,
+            threshold: opts.threshold,
             selected: opts.selected ?? 0,
             step: opts.step ?? 1,
             position,

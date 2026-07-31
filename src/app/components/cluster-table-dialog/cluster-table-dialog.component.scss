@@ -157,6 +157,11 @@ td.rolled-highlight {
     justify-content: center;
     padding: 8px;
     border-top: 1px solid var(--border-color);
+
+    button {
+        padding: 8px;
+        min-width: 100px;
+    }
 }
 
 @media (max-width: 600px) {
