@@ -119,7 +119,7 @@ body {
 
 :root.keyboard-navigation *:focus {
     outline: 2px solid var(--primary-focus-color-highlight) !important;
-    outline-offset: 2px !important;
+    outline-offset: -2px;
 }
 
 :root.keyboard-navigation .cdk-dialog-container:focus,
