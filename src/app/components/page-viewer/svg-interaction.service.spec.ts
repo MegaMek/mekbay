@@ -709,6 +709,8 @@ describe('SvgInteractionService', () => {
             addArmorHits: jasmine.createSpy('addArmorHits').and.callFake((_loc: string, hits: number) => {
                 armorHits += hits;
             }),
+            getInternalPoints: () => 0,
+            getInternalHits: () => 0,
             getCritSlotsAsMatrix: () => ({}),
             getCritLoc: (id: string) => id === 'rotor' ? rotorCrit : null,
             setCritLoc: jasmine.createSpy('setCritLoc').and.callFake((crit) => {
@@ -736,6 +738,135 @@ describe('SvgInteractionService', () => {
         pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: 1 });
 
         expect(unit.setCritLoc).toHaveBeenCalledWith(jasmine.objectContaining({ id: 'rotor', hits: 20, pendingHits: undefined }));
+    });
+
+    it('extends armor damage through remaining structure and marks the rotating picker threshold', () => {
+        const { svg, location, unit } = createArmorInteractionUnit({
+            armorPoints: 20,
+            armorHits: 5,
+            internalPoints: 12,
+            internalHits: 0,
+        });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(location, 71);
+
+        const pickerConfig = pickerFactory.createNumericPicker.calls.mostRecent().args[0];
+        expect(pickerConfig).toEqual(jasmine.objectContaining({
+            min: -5,
+            max: 27,
+            threshold: 15,
+            title: 'LT',
+        }));
+
+        pickerConfig.onPick({ value: 27 });
+
+        expect(unit.addArmorHits).toHaveBeenCalledWith('LT', 15, false, false);
+        expect(unit.addInternalHits).toHaveBeenCalledWith('LT', 12, false);
+    });
+
+    it('does not pass armor repairs backward into structure', () => {
+        const { svg, location, unit } = createArmorInteractionUnit({
+            armorPoints: 20,
+            armorHits: 5,
+            internalPoints: 12,
+            internalHits: 4,
+        });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(location, 72);
+        pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: -5 });
+
+        expect(unit.addArmorHits).toHaveBeenCalledWith('LT', -5, false, false);
+        expect(unit.addInternalHits).not.toHaveBeenCalled();
+    });
+
+    it('passes rear armor damage into the shared front-named structure location', () => {
+        const { svg, location, unit } = createArmorInteractionUnit({
+            armorPoints: 10,
+            armorHits: 8,
+            internalPoints: 10,
+            internalHits: 7,
+            rear: true,
+        });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(location, 73);
+        const pickerConfig = pickerFactory.createNumericPicker.calls.mostRecent().args[0];
+        expect(pickerConfig).toEqual(jasmine.objectContaining({ max: 5, threshold: 2, title: 'LT (Rear)' }));
+        pickerConfig.onPick({ value: 4 });
+
+        expect(unit.addArmorHits).toHaveBeenCalledWith('LT', 2, true, false);
+        expect(unit.addInternalHits).toHaveBeenCalledWith('LT', 2, false);
+    });
+
+    it('keeps direct structure damage and repair within structure', () => {
+        const { svg, location, unit } = createArmorInteractionUnit({
+            armorPoints: 20,
+            armorHits: 20,
+            internalPoints: 20,
+            internalHits: 8,
+            structure: true,
+        });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(location, 74);
+        let pickerConfig = pickerFactory.createNumericPicker.calls.mostRecent().args[0];
+        expect(pickerConfig).toEqual(jasmine.objectContaining({ min: -8, max: 12 }));
+        expect(pickerConfig.threshold).toBeUndefined();
+        pickerConfig.onPick({ value: 12 });
+
+        expect(unit.addInternalHits).toHaveBeenCalledWith('LT', 12, false);
+        expect(unit.addArmorHits).not.toHaveBeenCalled();
+
+        tap(location, 75);
+        pickerConfig = pickerFactory.createNumericPicker.calls.mostRecent().args[0];
+        pickerConfig.onPick({ value: -20 });
+
+        expect(unit.addInternalHits).toHaveBeenCalledWith('LT', -20, false);
+        expect(unit.addArmorHits).not.toHaveBeenCalled();
+    });
+
+    it('stops armor overflow when structure is fully damaged', () => {
+        const { svg, location, unit } = createArmorInteractionUnit({
+            armorPoints: 20,
+            armorHits: 5,
+            internalPoints: 12,
+            internalHits: 12,
+        });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(location, 76);
+
+        expect(pickerFactory.createNumericPicker.calls.mostRecent().args[0]).toEqual(jasmine.objectContaining({
+            max: 15,
+            threshold: 15,
+        }));
+    });
+
+    it('offers armor-to-structure overflow with the vertical linear picker', () => {
+        options.pickerStyle = 'linear';
+        const { svg, location, unit } = createArmorInteractionUnit({
+            armorPoints: 20,
+            armorHits: 5,
+            internalPoints: 12,
+            internalHits: 0,
+        });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(location, 77);
+
+        const pickerConfig = pickerFactory.createChoicePicker.calls.mostRecent().args[0];
+        expect(pickerConfig.values).toContain(jasmine.objectContaining({ value: 27 }));
+        pickerConfig.onPick({ label: '16', value: 16 });
+        expect(unit.addArmorHits).toHaveBeenCalledWith('LT', 15, false, false);
+        expect(unit.addInternalHits).toHaveBeenCalledWith('LT', 1, false);
     });
 
     it('assigns the single target when a sheet range button is clicked with one target', () => {
@@ -1254,6 +1385,42 @@ function createHeatElement(heat: number, centerY: number): SVGElement {
 function tap(el: SVGElement, pointerId: number): void {
     el.dispatchEvent(createPointerEvent('pointerdown', { pointerId, pointerType: 'mouse', button: 0, buttons: 1 }));
     el.dispatchEvent(createPointerEvent('pointerup', { pointerId, pointerType: 'mouse', button: 0 }));
+}
+
+function createArmorInteractionUnit(config: {
+    armorPoints: number;
+    armorHits: number;
+    internalPoints: number;
+    internalHits: number;
+    rear?: boolean;
+    structure?: boolean;
+}): { svg: SVGSVGElement; location: SVGElement; unit: any } {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const location = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    location.classList.add('unitLocation');
+    if (config.structure) location.classList.add('structure');
+    if (config.rear) location.setAttribute('rear', '1');
+    location.setAttribute('loc', 'LT');
+    svg.appendChild(location);
+
+    let armorHits = config.armorHits;
+    let internalHits = config.internalHits;
+    const unit = createSvgInteractionUnit({
+        id: 'unit-mek',
+        getUnit: () => ({ type: 'Mek' }),
+        getArmorPoints: () => config.armorPoints,
+        getArmorHits: () => armorHits,
+        addArmorHits: jasmine.createSpy('addArmorHits').and.callFake((_loc: string, hits: number) => {
+            armorHits += hits;
+        }),
+        getInternalPoints: () => config.internalPoints,
+        getInternalHits: () => internalHits,
+        addInternalHits: jasmine.createSpy('addInternalHits').and.callFake((_loc: string, hits: number) => {
+            internalHits += hits;
+        }),
+        getCritSlotsAsMatrix: () => ({}),
+    });
+    return { svg, location, unit };
 }
 
 function createSensorHitInteractionUnit(): { svg: SVGSVGElement; unit: any; sensorHit1: SVGElement; sensorHit3: SVGElement; sensorHit4: SVGElement } {
