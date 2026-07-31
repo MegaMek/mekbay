@@ -1,4 +1,5 @@
 import { EquipmentFlag } from '../equipment-flags.type';
+import { EquipmentRegistry } from '../equipment-lookup';
 import { AmmoEquipment, MiscEquipment, WeaponEquipment, type Equipment } from '../equipment.model';
 import { MountedEquipment } from '../mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, separateHeatFireModifier } from './game-rules';
@@ -114,6 +115,89 @@ function tagBvContext(options: {
     return { tagUnit, tagMounts, unavailable };
 }
 
+function vehicleTagBvContext(options: {
+    tagCount?: number;
+    baseGuided?: boolean;
+    selectedAmmo?: 'resolved' | 'missing';
+    selectedGuided?: boolean;
+    selectedAmmoBV?: number | 'variable';
+} = {}) {
+    const unavailable = new Set<MountedEquipment>();
+    const baseAmmo = new AmmoEquipment({
+        id: 'LRM20BaseAmmo',
+        name: 'LRM 20 Ammo',
+        type: 'ammo',
+        stats: { bv: 23 },
+        ammo: {
+            type: 'LRM',
+            rackSize: 20,
+            shots: 6,
+            munitionType: options.baseGuided ? ['M_SEMIGUIDED'] : [],
+        },
+    });
+    const selectedAmmo = new AmmoEquipment({
+        id: 'LRM20SelectedAmmo',
+        name: 'LRM 20 Semi-Guided Ammo',
+        type: 'ammo',
+        stats: { bv: options.selectedAmmoBV ?? 37 },
+        ammo: {
+            type: 'LRM',
+            rackSize: 20,
+            shots: 6,
+            munitionType: options.selectedGuided === false ? [] : ['M_SEMIGUIDED'],
+        },
+    });
+    const registry = new EquipmentRegistry({
+        [baseAmmo.id]: baseAmmo,
+        [selectedAmmo.id]: selectedAmmo,
+    });
+    const launcher = new MountedEquipment({
+        owner: null!,
+        id: 'launcher',
+        name: 'LRM 20',
+        equipment: new WeaponEquipment({
+            id: 'LRM20',
+            name: 'LRM 20',
+            type: 'weapon',
+            weapon: { ammoType: 'LRM', rackSize: 20 },
+        }),
+        states: new Map(),
+    });
+    const ammo = new MountedEquipment({
+        owner: null!,
+        id: 'ammo',
+        name: baseAmmo.id,
+        equipment: baseAmmo,
+        ammo: options.selectedAmmo === 'missing' ? 'MissingAmmo' : selectedAmmo.id,
+        totalAmmo: 6,
+        states: new Map(),
+    });
+    const ammoUnit = {
+        isLoaded: () => true,
+        getUnit: () => ({ type: 'Tank' }),
+        getInventory: () => [launcher, ammo],
+        getCritSlots: () => [],
+        getEquipmentRegistry: () => registry,
+        isEquipmentUnavailable: (entry: MountedEquipment) => unavailable.has(entry),
+    } as unknown as import('../cbt-force-unit.model').CBTForceUnit;
+    launcher.owner = ammoUnit;
+    ammo.owner = ammoUnit;
+
+    const tagUnit = {
+        getOperationalMountedEquipmentByFlag: () => tagMounts.filter(mount => !unavailable.has(mount)),
+        force: { units: () => [ammoUnit] },
+    } as unknown as import('../cbt-force-unit.model').CBTForceUnit;
+    const tagMounts = Array.from({ length: options.tagCount ?? 1 }, (_, index) => new MountedEquipment({
+        owner: tagUnit,
+        id: `tag-${index}`,
+        name: 'TAG',
+        equipment: { flags: new Set(['F_TAG']) } as Equipment,
+        states: new Map(),
+    }));
+
+    return { tagUnit, tagMounts, unavailable };
+}
+
 describe('game rules', () => {
     describe('C3 degradation', () => {
         const target = {
@@ -214,6 +298,41 @@ describe('game rules', () => {
         it('counts homing ammo and Mek critical-slot ammo', () => {
             expect(TW_GAME_RULES.calculateTagBVCost(tagBvContext({ homingAmmo: true }).tagUnit)).toBe(30);
             expect(TW_GAME_RULES.calculateTagBVCost(tagBvContext({ unitType: 'Mek' }).tagUnit)).toBe(30);
+        });
+
+        it('uses selected guided ammo and its BV for non-Mek inventory mounts', () => {
+            const { tagUnit } = vehicleTagBvContext({
+                tagCount: 2,
+                baseGuided: false,
+                selectedGuided: true,
+                selectedAmmoBV: 37,
+            });
+
+            expect(TW_GAME_RULES.calculateTagBVCost(tagUnit)).toBe(74);
+        });
+
+        it('does not treat a selected non-guided ammo override as guided', () => {
+            const { tagUnit } = vehicleTagBvContext({
+                baseGuided: true,
+                selectedGuided: false,
+            });
+
+            expect(TW_GAME_RULES.calculateTagBVCost(tagUnit)).toBe(0);
+        });
+
+        it('falls back to the mounted base ammo when the selected ammo cannot be resolved', () => {
+            const { tagUnit } = vehicleTagBvContext({
+                baseGuided: true,
+                selectedAmmo: 'missing',
+            });
+
+            expect(TW_GAME_RULES.calculateTagBVCost(tagUnit)).toBe(23);
+        });
+
+        it('excludes selected guided ammo with variable BV', () => {
+            const { tagUnit } = vehicleTagBvContext({ selectedAmmoBV: 'variable' });
+
+            expect(TW_GAME_RULES.calculateTagBVCost(tagUnit)).toBe(0);
         });
 
         it('returns zero when no mounted TAG system is operational', () => {

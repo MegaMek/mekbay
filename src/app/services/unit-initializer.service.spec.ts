@@ -172,6 +172,83 @@ describe('UnitInitializerService', () => {
         expect(forceUnit.getInventory().some(entry => entry.id === 'CLUltraAC20Ammo@LT#7')).toBeFalse();
     });
 
+    it('preserves pending-destruction state when rebuilding direct ammo bins', () => {
+        const testCases: Array<{
+            description: string;
+            destroyed: boolean;
+            destroying: boolean | undefined;
+        }> = [
+            { description: 'clean', destroyed: false, destroying: undefined },
+            { description: 'committed destroyed', destroyed: true, destroying: undefined },
+            { description: 'pending destruction', destroyed: false, destroying: true },
+            { description: 'pending repair', destroyed: true, destroying: false },
+        ];
+
+        for (const testCase of testCases) {
+            const forceUnit = createForceUnit(createEmptyUnit({
+                name: `DirectAmmo-${testCase.description}`,
+                type: 'Tank',
+                subtype: 'Combat Vehicle',
+                comp: [{ id: 'CLUltraAC20Ammo', n: 'Ultra AC/20 Ammo', t: 'A', q: 1, q2: 5, p: 0, l: 'BD' }],
+            }));
+            forceUnit.setInventory([new MountedEquipment({
+                owner: forceUnit,
+                id: 'CLUltraAC20Ammo@BD#0.0',
+                name: 'CLUltraAC20Ammo',
+                destroyed: testCase.destroyed,
+                destroying: testCase.destroying,
+                totalAmmo: 4,
+                states: new Map(),
+            })], true);
+
+            service.initializeUnitIfNeeded(forceUnit, createSvg(''));
+
+            const rebuiltEntry = forceUnit.getInventory()[0];
+            expect(rebuiltEntry.committedDestroyed()).withContext(testCase.description).toBe(testCase.destroyed);
+            expect(rebuiltEntry.pendingDestroyed()).withContext(testCase.description).toBe(testCase.destroying);
+            expect(rebuiltEntry.hasPendingDestroyedChange()).withContext(testCase.description)
+                .toBe(testCase.destroying !== undefined);
+        }
+    });
+
+    it('preserves pending-destruction state when rebuilding infantry field guns', () => {
+        const testCases: Array<{
+            description: string;
+            destroyed: boolean;
+            destroying: boolean | undefined;
+        }> = [
+            { description: 'clean', destroyed: false, destroying: undefined },
+            { description: 'committed destroyed', destroyed: true, destroying: undefined },
+            { description: 'pending destruction', destroyed: false, destroying: true },
+            { description: 'pending repair', destroyed: true, destroying: false },
+        ];
+
+        for (const testCase of testCases) {
+            const forceUnit = createForceUnit(createEmptyUnit({
+                name: `FieldGun-${testCase.description}`,
+                type: 'Infantry',
+                subtype: 'Mechanized Conventional Infantry',
+                comp: [{ id: 'CLMediumLaser', n: 'Medium Laser', t: 'E', q: 1, p: 0, l: 'FGUN' }],
+            }));
+            forceUnit.setInventory([new MountedEquipment({
+                owner: forceUnit,
+                id: 'CLMediumLaser@FGUN#0.0',
+                name: 'CLMediumLaser',
+                destroyed: testCase.destroyed,
+                destroying: testCase.destroying,
+                states: new Map(),
+            })], true);
+
+            service.initializeUnitIfNeeded(forceUnit, createSvg(''));
+
+            const rebuiltEntry = forceUnit.getInventory()[0];
+            expect(rebuiltEntry.committedDestroyed()).withContext(testCase.description).toBe(testCase.destroyed);
+            expect(rebuiltEntry.pendingDestroyed()).withContext(testCase.description).toBe(testCase.destroying);
+            expect(rebuiltEntry.hasPendingDestroyedChange()).withContext(testCase.description)
+                .toBe(testCase.destroying !== undefined);
+        }
+    });
+
     it('materializes compatible intrinsic one-shot ammo while initializing weapon mounts', () => {
         const equipment = createEquipment();
         const weapon = new WeaponEquipment({

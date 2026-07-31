@@ -331,14 +331,14 @@ export class TWGameRules extends CBTGameRules {
         }
 
         return unit.getInventory().reduce((total, mount) => {
-            const ammo = mount.equipment;
+            const ammo = resolveMountedAmmo(unit, mount);
             if (!(ammo instanceof AmmoEquipment)
                 || !isTagGuidedAmmo(ammo)
                 || unit.isEquipmentUnavailable(mount)
                 || !hasUsableAmmo(mount.totalAmmo, mount.consumed)
-                || !hasCompatibleLauncher(ammo, launchers)) return total;
-            const bv = mount.getBV();
-            return total + (bv > 0 ? bv : 0);
+                || !hasCompatibleLauncher(ammo, launchers)
+                || !ammo.hasFixedBV()) return total;
+            return total + ammo.bv;
         }, 0);
     }
 }
@@ -376,4 +376,13 @@ function hasCompatibleLauncher(ammo: AmmoEquipment, launchers: readonly MountedE
     return launchers.some(mount => mount.equipment instanceof WeaponEquipment
         && mount.equipment.ammoType === ammo.ammoType
         && mount.equipment.rackSize === ammo.rackSize);
+}
+
+function resolveMountedAmmo(unit: CBTForceUnit, mount: MountedEquipment): AmmoEquipment | null {
+    if (!(mount.equipment instanceof AmmoEquipment)) return null;
+
+    const selectedAmmo = mount.ammo
+        ? unit.getEquipmentRegistry().findEquipment(mount.ammo)
+        : null;
+    return selectedAmmo instanceof AmmoEquipment ? selectedAmmo : mount.equipment;
 }

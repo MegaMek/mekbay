@@ -379,6 +379,8 @@ describe('TurnState', () => {
             const { turnState: restored } = createTurnStateHarness();
             restored.update(serialized);
             expect(restored.applyMovePSR()).toBeFalse();
+            expect(restored.dirty()).toBeFalse();
+            expect(restored.dirtyPhase()).toBeFalse();
         });
 
         it('preserves applied heat sources without serializing derived source values', () => {

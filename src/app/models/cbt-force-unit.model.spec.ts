@@ -1913,6 +1913,9 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(reloadedAmmoEntries[5].ammo).toBeUndefined();
         expect(reloadedAmmoEntries[5].totalAmmo).toBe(5);
         expect(reloadedAmmoEntries[5].consumed).toBe(5);
+        expect(reloadedAmmoEntries.every(entry => entry.pendingDestroyed() === undefined)).toBeTrue();
+        expect(reloadedUnit.turnState().dirty()).toBeFalse();
+        expect(reloadedUnit.turnState().dirtyPhase()).toBeFalse();
     });
 
     it('repairAll restores direct inventory ammo bins to original ammo and split quantities', () => {
