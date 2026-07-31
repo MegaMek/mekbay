@@ -11,9 +11,9 @@
         <table #combinedTable class="combined-table measurement-table" aria-hidden="true">
             <thead><tr>
                 <th class="roll-column">2d6 roll</th>
-                <th><span class="table-roll-button">Left</span></th>
+                <th><span class="table-roll-button">LS</span></th>
                 <th><span class="table-roll-button">F/R</span></th>
-                <th><span class="table-roll-button">Right</span></th>
+                <th><span class="table-roll-button">RS</span></th>
                 @for (size of clusterSizes; track size) {<th><span class="table-roll-button">{{ size }}</span></th>}
             </tr></thead>
             <tbody>
@@ -39,22 +39,22 @@
                 <table class="combined-table">
                     <thead><tr>
                         <th class="roll-column" scope="col">2d6 roll</th>
-                        <th scope="col" (pointerenter)="setHoveredColumn($event, locationColumnKey('leftSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('leftSide'))"><button type="button" class="table-roll-button" (click)="rollLocationColumn('leftSide')">Left</button></th>
-                        <th scope="col" (pointerenter)="setHoveredColumn($event, locationColumnKey('frontRear'))" (pointerleave)="clearHoveredColumn(locationColumnKey('frontRear'))"><button type="button" class="table-roll-button" (click)="rollLocationColumn('frontRear')">F/R</button></th>
-                        <th scope="col" (pointerenter)="setHoveredColumn($event, locationColumnKey('rightSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('rightSide'))"><button type="button" class="table-roll-button" (click)="rollLocationColumn('rightSide')">Right</button></th>
+                        <th scope="col" (click)="rollLocationColumn('leftSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('leftSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('leftSide'))"><button type="button" class="table-roll-button">LS</button></th>
+                        <th scope="col" (click)="rollLocationColumn('frontRear')" (pointerenter)="setHoveredColumn($event, locationColumnKey('frontRear'))" (pointerleave)="clearHoveredColumn(locationColumnKey('frontRear'))"><button type="button" class="table-roll-button">F/R</button></th>
+                        <th scope="col" (click)="rollLocationColumn('rightSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('rightSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('rightSide'))"><button type="button" class="table-roll-button">RS</button></th>
                         @for (size of clusterSizes; track size) {
-                        <th scope="col" (pointerenter)="setHoveredColumn($event, clusterColumnKey(size))" (pointerleave)="clearHoveredColumn(clusterColumnKey(size))"><button type="button" class="table-roll-button" (click)="rollClusterColumn(size)">{{ size }}</button></th>
+                        <th scope="col" (click)="rollClusterColumn(size)" (pointerenter)="setHoveredColumn($event, clusterColumnKey(size))" (pointerleave)="clearHoveredColumn(clusterColumnKey(size))"><button type="button" class="table-roll-button">{{ size }}</button></th>
                         }
                     </tr></thead>
                     <tbody>
                         @for (row of locationRows; track row.roll; let rowIndex = $index) {
                         <tr [class.rolled-row-highlight]="isLocationRollHighlighted(rowIndex + 2) || isClusterRollHighlighted(rowIndex + 2)">
                             <td>{{ row.roll }}</td>
-                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('leftSide')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'leftSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('leftSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('leftSide'))"><button type="button" class="table-roll-button" tabindex="-1" (click)="rollLocationColumn('leftSide')">{{ row.leftSide }}</button></td>
-                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('frontRear')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'frontRear')" (pointerenter)="setHoveredColumn($event, locationColumnKey('frontRear'))" (pointerleave)="clearHoveredColumn(locationColumnKey('frontRear'))"><button type="button" class="table-roll-button" tabindex="-1" (click)="rollLocationColumn('frontRear')">{{ row.frontRear }}</button></td>
-                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('rightSide')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'rightSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('rightSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('rightSide'))"><button type="button" class="table-roll-button" tabindex="-1" (click)="rollLocationColumn('rightSide')">{{ row.rightSide }}</button></td>
+                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('leftSide')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'leftSide')" (click)="rollLocationColumn('leftSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('leftSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('leftSide'))"><button type="button" class="table-roll-button" tabindex="-1">{{ row.leftSide }}</button></td>
+                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('frontRear')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'frontRear')" (click)="rollLocationColumn('frontRear')" (pointerenter)="setHoveredColumn($event, locationColumnKey('frontRear'))" (pointerleave)="clearHoveredColumn(locationColumnKey('frontRear'))"><button type="button" class="table-roll-button" tabindex="-1">{{ row.frontRear }}</button></td>
+                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('rightSide')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'rightSide')" (click)="rollLocationColumn('rightSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('rightSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('rightSide'))"><button type="button" class="table-roll-button" tabindex="-1">{{ row.rightSide }}</button></td>
                             @for (size of clusterSizes; track size; let clusterIndex = $index) {
-                            <td [class.column-hovered]="hoveredColumnKey() === clusterColumnKey(size)" [class.rolled-highlight]="isClusterCellHighlighted(rowIndex + 2, size)" (pointerenter)="setHoveredColumn($event, clusterColumnKey(size))" (pointerleave)="clearHoveredColumn(clusterColumnKey(size))"><button type="button" class="table-roll-button" tabindex="-1" (click)="rollClusterColumn(size)">{{ clusterRows[rowIndex][clusterIndex + 1] }}</button></td>
+                            <td [class.column-hovered]="hoveredColumnKey() === clusterColumnKey(size)" [class.rolled-highlight]="isClusterCellHighlighted(rowIndex + 2, size)" (click)="rollClusterColumn(size)" (pointerenter)="setHoveredColumn($event, clusterColumnKey(size))" (pointerleave)="clearHoveredColumn(clusterColumnKey(size))"><button type="button" class="table-roll-button" tabindex="-1">{{ clusterRows[rowIndex][clusterIndex + 1] }}</button></td>
                             }
                         </tr>
                         }
@@ -74,18 +74,18 @@
                     <thead>
                         <tr>
                             <th class="roll-column">2d6 roll</th>
-                            <th (pointerenter)="setHoveredColumn($event, locationColumnKey('leftSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('leftSide'))"><button type="button" class="table-roll-button" (click)="rollLocationColumn('leftSide')">Left</button></th>
-                            <th (pointerenter)="setHoveredColumn($event, locationColumnKey('frontRear'))" (pointerleave)="clearHoveredColumn(locationColumnKey('frontRear'))"><button type="button" class="table-roll-button" (click)="rollLocationColumn('frontRear')">F/R</button></th>
-                            <th (pointerenter)="setHoveredColumn($event, locationColumnKey('rightSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('rightSide'))"><button type="button" class="table-roll-button" (click)="rollLocationColumn('rightSide')">Right</button></th>
+                            <th (click)="rollLocationColumn('leftSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('leftSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('leftSide'))"><button type="button" class="table-roll-button">LS</button></th>
+                            <th (click)="rollLocationColumn('frontRear')" (pointerenter)="setHoveredColumn($event, locationColumnKey('frontRear'))" (pointerleave)="clearHoveredColumn(locationColumnKey('frontRear'))"><button type="button" class="table-roll-button">F/R</button></th>
+                            <th (click)="rollLocationColumn('rightSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('rightSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('rightSide'))"><button type="button" class="table-roll-button">RS</button></th>
                         </tr>
                     </thead>
                     <tbody>
                         @for (row of locationRows; track row.roll; let rowIndex = $index) {
                         <tr [class.rolled-row-highlight]="isLocationRollHighlighted(rowIndex + 2)">
                             <td>{{ row.roll }}</td>
-                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('leftSide')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'leftSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('leftSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('leftSide'))"><button type="button" class="table-roll-button" tabindex="-1" (click)="rollLocationColumn('leftSide')">{{ row.leftSide }}</button></td>
-                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('frontRear')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'frontRear')" (pointerenter)="setHoveredColumn($event, locationColumnKey('frontRear'))" (pointerleave)="clearHoveredColumn(locationColumnKey('frontRear'))"><button type="button" class="table-roll-button" tabindex="-1" (click)="rollLocationColumn('frontRear')">{{ row.frontRear }}</button></td>
-                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('rightSide')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'rightSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('rightSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('rightSide'))"><button type="button" class="table-roll-button" tabindex="-1" (click)="rollLocationColumn('rightSide')">{{ row.rightSide }}</button></td>
+                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('leftSide')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'leftSide')" (click)="rollLocationColumn('leftSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('leftSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('leftSide'))"><button type="button" class="table-roll-button" tabindex="-1">{{ row.leftSide }}</button></td>
+                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('frontRear')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'frontRear')" (click)="rollLocationColumn('frontRear')" (pointerenter)="setHoveredColumn($event, locationColumnKey('frontRear'))" (pointerleave)="clearHoveredColumn(locationColumnKey('frontRear'))"><button type="button" class="table-roll-button" tabindex="-1">{{ row.frontRear }}</button></td>
+                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('rightSide')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'rightSide')" (click)="rollLocationColumn('rightSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('rightSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('rightSide'))"><button type="button" class="table-roll-button" tabindex="-1">{{ row.rightSide }}</button></td>
                         </tr>
                         }
                     </tbody>
@@ -105,7 +105,7 @@
                 <table class="cluster-hit-table">
                     <thead>
                         <tr>
-                            <th class="roll-column">2d6 roll</th>@for (size of clusterSizes; track size) {<th (pointerenter)="setHoveredColumn($event, clusterColumnKey(size))" (pointerleave)="clearHoveredColumn(clusterColumnKey(size))"><button type="button" class="table-roll-button" (click)="rollClusterColumn(size)">{{ size }}</button></th>}
+                            <th class="roll-column">2d6 roll</th>@for (size of clusterSizes; track size) {<th (click)="rollClusterColumn(size)" (pointerenter)="setHoveredColumn($event, clusterColumnKey(size))" (pointerleave)="clearHoveredColumn(clusterColumnKey(size))"><button type="button" class="table-roll-button">{{ size }}</button></th>}
                         </tr>
                     </thead>
                     <tbody>
@@ -114,7 +114,7 @@
                             @if (columnIndex === 0) {
                             <td>{{ value }}</td>
                             } @else {
-                            <td [class.column-hovered]="hoveredColumnKey() === clusterColumnKey(clusterSizes[columnIndex - 1])" [class.rolled-highlight]="isClusterCellHighlighted(rowIndex + 2, clusterSizes[columnIndex - 1])" (pointerenter)="setHoveredColumn($event, clusterColumnKey(clusterSizes[columnIndex - 1]))" (pointerleave)="clearHoveredColumn(clusterColumnKey(clusterSizes[columnIndex - 1]))"><button type="button" class="table-roll-button" tabindex="-1" (click)="rollClusterColumn(clusterSizes[columnIndex - 1])">{{ value }}</button></td>
+                            <td [class.column-hovered]="hoveredColumnKey() === clusterColumnKey(clusterSizes[columnIndex - 1])" [class.rolled-highlight]="isClusterCellHighlighted(rowIndex + 2, clusterSizes[columnIndex - 1])" (click)="rollClusterColumn(clusterSizes[columnIndex - 1])" (pointerenter)="setHoveredColumn($event, clusterColumnKey(clusterSizes[columnIndex - 1]))" (pointerleave)="clearHoveredColumn(clusterColumnKey(clusterSizes[columnIndex - 1]))"><button type="button" class="table-roll-button" tabindex="-1">{{ value }}</button></td>
                             }
                         }</tr>
                         }
@@ -128,6 +128,38 @@
         }
         }
 
+        @if (physicalRows.length) {
+        <section class="table-section physical-table-section">
+            <h3>PUNCH &amp; KICK LOCATION TABLE</h3>
+            <div class="table-scroll">
+                <table class="physical-location-table">
+                    <thead>
+                        <tr>
+                            <th class="roll-column" scope="col" rowspan="2">1d6 roll</th>
+                            <th scope="colgroup" colspan="3">PUNCH</th>
+                            <th scope="colgroup" colspan="3">KICK</th>
+                        </tr>
+                        <tr>
+                            @for (column of physicalColumns; track column.key) {
+                            <th scope="col" (click)="rollPhysicalColumn(column.key)" (pointerenter)="setHoveredColumn($event, physicalColumnKey(column.key))" (pointerleave)="clearHoveredColumn(physicalColumnKey(column.key))"><button type="button" class="table-roll-button">{{ column.label }}</button></th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (row of physicalRows; track row.roll) {
+                        <tr [class.rolled-row-highlight]="isPhysicalRollHighlighted(row.roll)">
+                            <td>{{ row.roll }}</td>
+                            @for (column of physicalColumns; track column.key) {
+                            <td [class.column-hovered]="hoveredColumnKey() === physicalColumnKey(column.key)" [class.rolled-highlight]="isPhysicalCellHighlighted(row.roll, column.key)" (click)="rollPhysicalColumn(column.key)" (pointerenter)="setHoveredColumn($event, physicalColumnKey(column.key))" (pointerleave)="clearHoveredColumn(physicalColumnKey(column.key))"><button type="button" class="table-roll-button" tabindex="-1">{{ row[column.key] }}</button></td>
+                            }
+                        </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        }
+
     </div>
 
     <dice-roller
@@ -137,7 +169,18 @@
         [showInline]="false"
         [showOverlay]="true"
         [reserveOverlayResultSpace]="true"
-        [overlayResult]="rolledResult()?.value ?? null"
+        [overlayResult]="rolledResult()?.column?.table !== 'physical' ? rolledResult()?.value ?? null : null"
+        (finished)="onRollFinished($event)"
+    />
+
+    <dice-roller
+        #physicalRoller
+        [diceCount]="1"
+        [diceSides]="6"
+        [showInline]="false"
+        [showOverlay]="true"
+        [reserveOverlayResultSpace]="true"
+        [overlayResult]="rolledResult()?.column?.table === 'physical' ? rolledResult()?.value ?? null : null"
         (finished)="onRollFinished($event)"
     />
 

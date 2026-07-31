@@ -24,6 +24,24 @@ export interface HitLocationRow {
     readonly rightSide: string;
 }
 
+export type PhysicalLocationColumn =
+    | 'punchLeftSide'
+    | 'punchFrontRear'
+    | 'punchRightSide'
+    | 'kickLeftSide'
+    | 'kickFrontRear'
+    | 'kickRightSide';
+
+export interface PhysicalLocationRow {
+    readonly roll: number;
+    readonly punchLeftSide: string;
+    readonly punchFrontRear: string;
+    readonly punchRightSide: string;
+    readonly kickLeftSide: string;
+    readonly kickFrontRear: string;
+    readonly kickRightSide: string;
+}
+
 export interface ReferenceTableNote {
     readonly id: string;
     readonly text: string;
@@ -87,6 +105,15 @@ const LOCATION_ROWS: Readonly<Record<MekHitLocationTable, readonly HitLocationRo
     quad: QUAD_ROWS,
     tripod: TRIPOD_ROWS,
 };
+
+export const PHYSICAL_LOCATION_ROWS: readonly PhysicalLocationRow[] = [
+    { roll: 1, punchLeftSide: 'LT', punchFrontRear: 'LA', punchRightSide: 'RT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
+    { roll: 2, punchLeftSide: 'LT', punchFrontRear: 'LT', punchRightSide: 'RT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
+    { roll: 3, punchLeftSide: 'CT', punchFrontRear: 'CT', punchRightSide: 'CT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
+    { roll: 4, punchLeftSide: 'LA', punchFrontRear: 'RT', punchRightSide: 'RA', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
+    { roll: 5, punchLeftSide: 'LA', punchFrontRear: 'RA', punchRightSide: 'RA', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
+    { roll: 6, punchLeftSide: 'HD', punchFrontRear: 'HD', punchRightSide: 'HD', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
+];
 
 const NOTE_TEXT: Readonly<Record<string, string>> = {
     tripodLeg: '† For a tripod, apply the indicated modifier when determining the leg hit.',

@@ -77,6 +77,16 @@ table {
     min-width: 100%;
 }
 
+.physical-location-table {
+    width: 100%;
+    min-width: 430px;
+}
+
+.physical-location-table th:nth-child(5),
+.physical-location-table td:nth-child(5) {
+    border-left-width: 2px;
+}
+
 .measurement-table {
     position: fixed;
     top: 0;

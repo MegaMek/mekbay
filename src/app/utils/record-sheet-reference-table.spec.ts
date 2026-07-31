@@ -1,7 +1,18 @@
 import { createEquipment, WeaponEquipment } from '../models/equipment.model';
-import { clusterTableForUnit, clusterTableRows, hitLocationRows, referenceTableNotes } from './record-sheet-reference-table';
+import { clusterTableForUnit, clusterTableRows, hitLocationRows, PHYSICAL_LOCATION_ROWS, referenceTableNotes } from './record-sheet-reference-table';
 
 describe('record-sheet-reference-table', () => {
+  it('contains the exact punch and kick 1d6 locations', () => {
+    expect(PHYSICAL_LOCATION_ROWS).toEqual([
+      { roll: 1, punchLeftSide: 'LT', punchFrontRear: 'LA', punchRightSide: 'RT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
+      { roll: 2, punchLeftSide: 'LT', punchFrontRear: 'LT', punchRightSide: 'RT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
+      { roll: 3, punchLeftSide: 'CT', punchFrontRear: 'CT', punchRightSide: 'CT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
+      { roll: 4, punchLeftSide: 'LA', punchFrontRear: 'RT', punchRightSide: 'RA', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
+      { roll: 5, punchLeftSide: 'LA', punchFrontRear: 'RA', punchRightSide: 'RA', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
+      { roll: 6, punchLeftSide: 'HD', punchFrontRear: 'HD', punchRightSide: 'HD', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
+    ]);
+  });
+
   it('contains the exact biped, quad, and tripod boundary rows', () => {
     expect(hitLocationRows('biped')[0]).toEqual({ roll: '2*', leftSide: 'LT(C)', frontRear: 'CT(C)', rightSide: 'RT(C)' });
     expect(hitLocationRows('quad')[10]).toEqual({ roll: '12', leftSide: 'HD', frontRear: 'HD', rightSide: 'HD' });
@@ -25,7 +36,6 @@ describe('record-sheet-reference-table', () => {
     ];
 
     expect(referenceTableNotes('tripod', equipment)).toEqual([
-      { id: 'tactical', text: jasmine.any(String) },
       { id: 'artemisIV', text: jasmine.any(String) },
       { id: 'apollo', text: jasmine.any(String) },
       { id: 'hag', text: jasmine.any(String) },
@@ -35,7 +45,7 @@ describe('record-sheet-reference-table', () => {
 
   it('does not require a Mek location table for equipment notes', () => {
     const hag = createEquipment({ id: 'hag', name: 'HAG', type: 'weapon', flags: ['F_HAG'] });
-    expect(referenceTableNotes(undefined, [hag]).map(note => note.id)).toEqual(['tactical', 'hag']);
+    expect(referenceTableNotes(undefined, [hag]).map(note => note.id)).toEqual(['hag']);
   });
 
   it('derives rapid-fire columns from the native weapon records', () => {

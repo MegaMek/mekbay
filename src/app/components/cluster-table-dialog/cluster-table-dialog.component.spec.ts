@@ -54,8 +54,8 @@ describe('ClusterTableDialogComponent', () => {
         const roller = fixture.debugElement.query(node => node.componentInstance instanceof DiceRollerComponent).componentInstance as DiceRollerComponent;
         spyOn(roller, 'roll');
 
-        const leftButtons = fixture.nativeElement.querySelectorAll('.hit-location-table tr > :nth-child(2) button');
-        (leftButtons[1] as HTMLButtonElement).click();
+        const leftCells = fixture.nativeElement.querySelectorAll('.hit-location-table tr > :nth-child(2)');
+        (leftCells[1] as HTMLTableCellElement).click();
         component.onRollFinished({ results: [1, 1], sum: 2 });
 
         expect(roller.roll).toHaveBeenCalledTimes(1);
@@ -153,10 +153,71 @@ describe('ClusterTableDialogComponent', () => {
 
         const table = fixture.nativeElement.querySelector('.combined-table:not(.measurement-table)') as HTMLTableElement;
         const headers = [...table.querySelectorAll('thead th')].map(cell => cell.textContent?.trim());
-        expect(headers).toEqual(['2d6 roll', 'Left', 'F/R', 'Right', '5']);
+        expect(headers).toEqual(['2d6 roll', 'LS', 'F/R', 'RS', '5']);
         expect(fixture.nativeElement.querySelector('.hit-location-table')).toBeNull();
         expect(fixture.nativeElement.querySelector('.cluster-hit-table')).toBeNull();
         expect(table.querySelectorAll('tbody tr')).toHaveSize(11);
+        expect(fixture.nativeElement.querySelector('.physical-location-table')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('.combined-table:not(.measurement-table) .physical-location-table')).toBeNull();
+    });
+
+    it('renders the grouped punch and kick table as a separate section after hit locations', () => {
+        const fixture = createFixture(mekUnit());
+        const sections = [...fixture.nativeElement.querySelectorAll('.table-section')] as HTMLElement[];
+        const physicalSection = sections.at(-1)!;
+        const table = physicalSection.querySelector('.physical-location-table') as HTMLTableElement;
+
+        expect(physicalSection.querySelector('h3')?.textContent).toBe('PUNCH & KICK LOCATION TABLE');
+        expect([...table.querySelectorAll('thead tr:first-child th')].map(cell => ({
+            text: cell.textContent?.replace(/\s+/g, ' ').trim(),
+            colspan: cell.getAttribute('colspan'),
+        }))).toEqual([
+            { text: '1d6 roll', colspan: null },
+            { text: 'PUNCH', colspan: '3' },
+            { text: 'KICK', colspan: '3' },
+        ]);
+        expect([...table.querySelectorAll('thead tr:nth-child(2) th')].map(cell => cell.textContent?.trim()))
+            .toEqual(['LS', 'F/R', 'RS', 'LS', 'F/R', 'RS']);
+        expect(table.querySelectorAll('tbody tr')).toHaveSize(6);
+        expect([...table.querySelectorAll('tbody tr:first-child td')].map(cell => cell.textContent?.trim()))
+            .toEqual(['1', 'LT', 'LA', 'RT', 'LL', 'RL', 'RL']);
+    });
+
+    it('rolls one die and highlights the selected physical location', () => {
+        const fixture = createFixture(mekUnit());
+        const component = fixture.componentInstance;
+        const rollers = fixture.debugElement.queryAll(node => node.componentInstance instanceof DiceRollerComponent);
+        const physicalRoller = rollers
+            .map(node => node.componentInstance as DiceRollerComponent)
+            .find(roller => roller.diceCount() === 1)!;
+        spyOn(physicalRoller, 'roll');
+
+        component.rollPhysicalColumn('kickFrontRear');
+        component.onRollFinished({ results: [4], sum: 4 });
+        fixture.detectChanges();
+
+        expect(physicalRoller.roll).toHaveBeenCalledTimes(1);
+        expect(component.rolledResult()).toEqual({
+            roll: 4,
+            value: 'LL',
+            column: { table: 'physical', column: 'kickFrontRear' },
+        });
+        expect(fixture.nativeElement.querySelectorAll('.physical-location-table tr.rolled-row-highlight')).toHaveSize(1);
+        expect(fixture.nativeElement.querySelector('.physical-location-table td.rolled-highlight')?.textContent.trim()).toBe('LL');
+
+        physicalRoller.isRolling.set(false);
+        component.rollPhysicalColumn('punchLeftSide');
+        component.onRollFinished({ results: [0], sum: 0 });
+        expect(component.rolledResult()).toBeNull();
+        component.onRollFinished({ results: [7], sum: 7 });
+        expect(component.rolledResult()).toBeNull();
+    });
+
+    it('omits physical locations for units without a Mek hit-location table', () => {
+        const fixture = createFixture(clusterUnit());
+
+        expect(fixture.componentInstance.physicalRows).toEqual([]);
+        expect(fixture.nativeElement.querySelector('.physical-location-table')).toBeNull();
     });
 
     it('highlights only the resolved cell as soon as the roll finishes', () => {

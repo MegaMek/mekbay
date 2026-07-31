@@ -11,8 +11,11 @@ import {
     clusterTableForUnit,
     clusterTableRows,
     hitLocationRows,
+    PHYSICAL_LOCATION_ROWS,
     referenceTableNotes,
     type HitLocationRow,
+    type PhysicalLocationColumn,
+    type PhysicalLocationRow,
     type ReferenceTableNote,
 } from '../../utils/record-sheet-reference-table';
 import { clusterHits } from '../../utils/cluster-hit-table';
@@ -20,9 +23,15 @@ import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 
 export type HitLocationColumn = 'leftSide' | 'frontRear' | 'rightSide';
 
+interface PhysicalColumnDefinition {
+    readonly key: PhysicalLocationColumn;
+    readonly label: 'LS' | 'F/R' | 'RS';
+}
+
 type ReferenceTableColumn =
     | { readonly table: 'location'; readonly column: HitLocationColumn }
-    | { readonly table: 'cluster'; readonly rackSize: number };
+    | { readonly table: 'cluster'; readonly rackSize: number }
+    | { readonly table: 'physical'; readonly column: PhysicalLocationColumn };
 
 interface ReferenceRollResult {
     readonly roll: number;
@@ -50,6 +59,7 @@ export class ClusterTableDialogComponent {
     private readonly dialogRef = inject(DialogRef);
     private readonly destroyRef = inject(DestroyRef);
     private readonly roller = viewChild<DiceRollerComponent>('roller');
+    private readonly physicalRoller = viewChild<DiceRollerComponent>('physicalRoller');
     private readonly dialogContent = viewChild<ElementRef<HTMLElement>>('dialogContent');
     private readonly combinedTable = viewChild<ElementRef<HTMLTableElement>>('combinedTable');
     private selectedColumn: ReferenceTableColumn | null = null;
@@ -60,6 +70,17 @@ export class ClusterTableDialogComponent {
         : [];
     readonly clusterSizes = [...this.table.clusterSizes];
     readonly clusterRows = clusterTableRows(this.clusterSizes);
+    readonly physicalColumns: readonly PhysicalColumnDefinition[] = [
+        { key: 'punchLeftSide', label: 'LS' },
+        { key: 'punchFrontRear', label: 'F/R' },
+        { key: 'punchRightSide', label: 'RS' },
+        { key: 'kickLeftSide', label: 'LS' },
+        { key: 'kickFrontRear', label: 'F/R' },
+        { key: 'kickRightSide', label: 'RS' },
+    ];
+    readonly physicalRows: readonly PhysicalLocationRow[] = this.locationRows.length
+        ? PHYSICAL_LOCATION_ROWS
+        : [];
     private readonly allNotes: readonly ReferenceTableNote[] = referenceTableNotes(
         this.table.hitLocationTable,
         this.table.equipment,
@@ -90,9 +111,26 @@ export class ClusterTableDialogComponent {
         this.rollColumn({ table: 'cluster', rackSize });
     }
 
+    rollPhysicalColumn(column: PhysicalLocationColumn): void {
+        this.rollColumn({ table: 'physical', column });
+    }
+
     onRollFinished(event: { readonly results: number[]; readonly sum: number }): void {
         const selectedColumn = this.selectedColumn;
-        if (!selectedColumn || !Number.isInteger(event.sum) || event.sum < 2 || event.sum > 12) return;
+        if (!selectedColumn || !Number.isInteger(event.sum)) return;
+
+        if (selectedColumn.table === 'physical') {
+            const row = this.physicalRows[event.sum - 1];
+            if (!row) return;
+            this.rolledResult.set({
+                roll: event.sum,
+                value: row[selectedColumn.column],
+                column: selectedColumn,
+            });
+            return;
+        }
+
+        if (event.sum < 2 || event.sum > 12) return;
 
         if (selectedColumn.table === 'location') {
             const row = this.locationRows[event.sum - 2];
@@ -138,6 +176,18 @@ export class ClusterTableDialogComponent {
             && result.column.rackSize === rackSize;
     }
 
+    isPhysicalRollHighlighted(roll: number): boolean {
+        const result = this.rolledResult();
+        return result?.column.table === 'physical' && result.roll === roll;
+    }
+
+    isPhysicalCellHighlighted(roll: number, column: PhysicalLocationColumn): boolean {
+        const result = this.rolledResult();
+        return result?.column.table === 'physical'
+            && result.roll === roll
+            && result.column.column === column;
+    }
+
     locationColumnKey(column: HitLocationColumn): string {
         return `location:${column}`;
     }
@@ -146,9 +196,13 @@ export class ClusterTableDialogComponent {
         return `cluster:${rackSize}`;
     }
 
+    physicalColumnKey(column: PhysicalLocationColumn): string {
+        return `physical:${column}`;
+    }
+
     private rollColumn(column: ReferenceTableColumn): void {
-        const roller = this.roller();
-        if (!roller || roller.isRolling()) return;
+        const roller = column.table === 'physical' ? this.physicalRoller() : this.roller();
+        if (!roller || this.roller()?.isRolling() || this.physicalRoller()?.isRolling()) return;
         this.selectedColumn = column;
         this.rolledResult.set(null);
         roller.roll();
