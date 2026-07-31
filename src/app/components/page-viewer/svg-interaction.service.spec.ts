@@ -25,11 +25,13 @@ type SvgInteractionServicePrivate = {
     addSvgTapHandler(
         el: SVGElement,
         handler: (evt: PointerEvent, primaryAction: boolean) => void,
-        signal: AbortSignal
+        signal: AbortSignal,
+        capture?: boolean
     ): void;
     updateUnit(unit: any): void;
     setupInteractions(svg: SVGSVGElement): void;
     setupReadOnlyInteractions(svg: SVGSVGElement): void;
+    cleanup(): void;
     getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; baselineHeat: number; containerRect: DOMRect } | null;
     updateHeatHighlight(heatValue: number): void;
     locationConditionDropdownChoices(unit: any, loc: string): Array<{ key: string }>;
@@ -70,6 +72,7 @@ describe('SvgInteractionService', () => {
     let zoomPanService: ZoomPanServiceInterface;
     let dialogsService: { createDialog: jasmine.Spy };
     let dialogClosedCallbacks: Array<() => void>;
+    let closeDialog: jasmine.Spy;
     let forceBuilderService: { selectUnit: jasmine.Spy; editPilotOfUnit: jasmine.Spy };
     let pickerFactory: { createChoicePicker: jasmine.Spy; createNumericPicker: jasmine.Spy };
     let pageViewerState: PageViewerStateService;
@@ -84,8 +87,10 @@ describe('SvgInteractionService', () => {
             cancelGesture: jasmine.createSpy('cancelGesture')
         };
         dialogClosedCallbacks = [];
+        closeDialog = jasmine.createSpy('closeDialog');
         dialogsService = {
             createDialog: jasmine.createSpy('createDialog').and.callFake(() => ({
+            close: closeDialog,
                 closed: {
                     subscribe: (callback: () => void) => {
                         dialogClosedCallbacks.push(callback);
@@ -977,6 +982,142 @@ describe('SvgInteractionService', () => {
         expect(event.clientX).toBe(25);
         expect(event.clientY).toBe(30);
         expect(handler.calls.mostRecent().args[1]).toBeTrue();
+    });
+
+    it('handles taps on nested SVG content during capture when the child stops propagation', () => {
+        const target = document.createElementNS('http://www.w3.org/2000/svg', 'g') as SVGElement;
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        target.appendChild(text);
+        const abortController = new AbortController();
+        const handler = jasmine.createSpy('handler');
+        spyOn(target, 'setPointerCapture').and.stub();
+        spyOn(target, 'hasPointerCapture').and.returnValue(true);
+        spyOn(target, 'releasePointerCapture').and.stub();
+        text.addEventListener('pointerdown', event => event.stopPropagation());
+
+        service.addSvgTapHandler(target, handler, abortController.signal, true);
+
+        text.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 29, pointerType: 'touch' }));
+        text.dispatchEvent(createPointerEvent('pointerup', { pointerId: 29, pointerType: 'touch' }));
+
+        expect(handler).toHaveBeenCalledOnceWith(jasmine.any(PointerEvent), true);
+    });
+
+    it('opens the reference table from completed clicks on nested SVG content', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const table = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        table.classList.add('referenceTable');
+        table.append(text, path, rect);
+        svg.appendChild(table);
+
+        const unit = createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+        });
+        service.updateUnit(unit);
+        service.setupReadOnlyInteractions(svg);
+
+        [text, path, rect].forEach((target, index) => {
+            target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+            expect(dialogsService.createDialog).toHaveBeenCalledTimes(index + 1);
+            dialogClosedCallbacks.shift()?.();
+        });
+
+        expect(dialogsService.createDialog).toHaveBeenCalledTimes(3);
+    });
+
+    it('adds and restores only the center-panel pointer cursor', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const table = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        table.classList.add('referenceTable');
+        table.style.cursor = 'crosshair';
+        svg.appendChild(table);
+
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+        }));
+        service.setupReadOnlyInteractions(svg);
+        expect(table.style.cursor).toBe('pointer');
+        expect(table.classList).not.toContain('interactive');
+
+        service.cleanup();
+        expect(table.style.cursor).toBe('crosshair');
+    });
+
+    it('never opens the reference table during pointerup', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const table = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        table.classList.add('referenceTable');
+        table.appendChild(text);
+        svg.appendChild(table);
+
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+        }));
+        service.setupReadOnlyInteractions(svg);
+
+        text.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 61, pointerType: 'touch' }));
+        text.dispatchEvent(createPointerEvent('pointerup', { pointerId: 61, pointerType: 'touch' }));
+
+        expect(dialogsService.createDialog).not.toHaveBeenCalled();
+    });
+
+    it('keeps only one reference table dialog open across repeated clicks', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const table = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        table.classList.add('referenceTable');
+        svg.appendChild(table);
+
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+        }));
+        service.setupReadOnlyInteractions(svg);
+
+        table.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+        table.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+        expect(dialogsService.createDialog).toHaveBeenCalledTimes(1);
+
+        dialogClosedCallbacks.shift()?.();
+        table.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+        expect(dialogsService.createDialog).toHaveBeenCalledTimes(2);
+    });
+
+    it('closes the owned reference table dialog during service cleanup', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const table = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        table.classList.add('referenceTable');
+        svg.appendChild(table);
+
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+        }));
+        service.setupReadOnlyInteractions(svg);
+        table.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+        service.cleanup();
+
+        expect(closeDialog).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores clicks outside the reference table and non-primary clicks', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const table = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const outside = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        table.classList.add('referenceTable');
+        svg.append(table, outside);
+
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+        }));
+        service.setupReadOnlyInteractions(svg);
+
+        outside.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+        table.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 2 }));
+
+        expect(dialogsService.createDialog).not.toHaveBeenCalled();
     });
 
     it('still cancels a mouse tap when the pointer leaves without capture', () => {

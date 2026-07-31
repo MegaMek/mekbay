@@ -2516,11 +2516,10 @@ export class PageViewerComponent implements AfterViewInit {
      * Using capture phase ensures we see the click before any stopPropagation.
      */
     private setupPageClickCapture(): void {
-        if (this.readOnly()) return;
-        
         const container = this.containerRef().nativeElement;
-        
+
         const handlePageSelection = (event: Event) => {
+            if (this.readOnly()) return;
             const clickedUnit = this.pageViewerUiGlue.resolvePageSelectionUnit({
                 eventTarget: event.target,
                 pointerMoved: this.zoomPanService.pointerMoved,

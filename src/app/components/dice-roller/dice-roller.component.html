@@ -1,4 +1,5 @@
 <div class="dice-roller-root" [class.small]="small()">
+    @if (showInline()) {
     <div class="row dice-row">
         @for (value of diceResults(); let i = $index; let last = $last; track i) {
         <div class="die" [class.large]="!small()" tabindex="0" (click)="onDieClick()" [class.interactive]="rollOnDieClick()" [class.rolling]="isRolling()">
@@ -13,11 +14,17 @@
         <div class="sum" [class.large]="!small()"> = {{ diceSum() }}</div>
         }
     </div>
+    }
 
     <!-- overlay -->
     @if (overlayVisible()) {
-    <div class="dice-overlay" (click)="onOverlayBackgroundClick()">
-        <div class="dice-overlay-inner" (click)="$event.stopPropagation()">
+    <div class="dice-overlay" [class.can-close]="canCloseOverlay()" (click)="onOverlayBackgroundClick()">
+        <div class="dice-overlay-inner">
+            @if (reserveOverlayResultSpace() || overlayResult()) {
+            <div class="overlay-result" [class.pending]="!rollFinished() || !overlayResult()">
+                {{ rollFinished() ? overlayResult() : '' }}
+            </div>
+            }
             <div class="overlay-dice-row">
                 @for (value of diceResults(); let i = $index; track i) {
                 <div class="die large">
@@ -29,8 +36,11 @@
                 <span class="modifier-value large">{{ modifier() > 0 ? modifier() : -modifier() }}</span>
                 }
             </div>
-            @if (rollFinished()) {
+            @if (rollFinished() && !overlayResult()) {
             <div class="overlay-sum">{{ diceSum() }}</div>
+            }
+            @if (reserveOverlayResultSpace() || rollFinished()) {
+            <div class="overlay-hint" [class.pending]="!rollFinished()">Click to return to the table</div>
             }
         </div>
     </div>

@@ -36,7 +36,7 @@ import { Injectable, type ElementRef, DestroyRef, signal, type WritableSignal, t
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { DialogsService } from '../../services/dialogs.service';
+import { DialogsService, type DialogRef } from '../../services/dialogs.service';
 import { firstValueFrom } from 'rxjs';
 import type { SkillType } from '../../models/crew-member.model';
 import type { MountedEquipment } from '../../models/mounted-equipment.model';
@@ -68,6 +68,9 @@ import { UnitStateDropdownComponent, type UnitStateDropdownChoice } from './unit
 import { getAmmoControlEntryForCriticalSlot, setAmmoEntry } from '../../utils/ammo-interaction.util';
 import { TORSO_LOCATIONS } from '../../models/rules/mek-rules';
 import { isLaserWithRiscModule, isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE, selectedRiscLaserMode } from '../../equipment-handlers/risc-laser-pulse-module.handler';
+import { ClusterTableDialogComponent } from '../cluster-table-dialog/cluster-table-dialog.component';
+import { clusterTableForUnit } from '../../utils/record-sheet-reference-table';
+import { isCenterPanelTarget, resolveCenterPanelInteractiveElements } from '../../utils/record-sheet-center-panel.util';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 type HeatMarkerData = { el: SVGElement | null, heat: number; baselineHeat: number };
@@ -148,6 +151,7 @@ export class SvgInteractionService {
     private heatMarkerEffectRef: EffectRef | null = null;
     private interactionAbortController: AbortController | null = null;
     private activeHeatDrag: ActiveHeatDrag | null = null;
+    private centerPanelDialogRef: DialogRef | null = null;
 
     private currentHighlightedElement: SVGElement | null = null;
 
@@ -256,6 +260,7 @@ export class SvgInteractionService {
         this.setupLocationConditionInteractions(svg, signal);
         this.setupInventoryInteractions(svg, signal);
         this.setupAmmoProfileInteractions(svg, signal);
+        this.setupCenterPanelInteraction(svg, signal);
     }
 
     setupReadOnlyInteractions(svg: SVGSVGElement) {
@@ -267,6 +272,49 @@ export class SvgInteractionService {
         this.interactionAbortController = new AbortController();
         const signal = this.interactionAbortController.signal;
         this.setupAmmoProfileInteractions(svg, signal);
+        this.setupCenterPanelInteraction(svg, signal);
+    }
+
+    /** Opens the native reference table when the generated center panel is tapped. */
+    private setupCenterPanelInteraction(svg: SVGSVGElement, signal: AbortSignal): void {
+        const unit = this.unit();
+        if (!unit) return;
+        const unitData = typeof unit.getUnit === 'function' ? unit.getUnit() : null;
+        if (!unitData || !Array.isArray(unitData.comp)) return;
+        const table = clusterTableForUnit(unitData);
+        if (table.clusterSizes.length === 0 && !table.hitLocationTable) return;
+        const interactiveElements = resolveCenterPanelInteractiveElements(svg);
+        const previousCursors = interactiveElements.map(element => element.style.cursor);
+        interactiveElements.forEach(element => element.style.cursor = 'pointer');
+        signal.addEventListener('abort', () => {
+            interactiveElements.forEach((element, index) => element.style.cursor = previousCursors[index]);
+        }, { once: true });
+
+        const onClick = (event: MouseEvent) => {
+            if (event.button !== 0) return;
+            if (!isCenterPanelTarget(svg, event.target)) return;
+            if (this.centerPanelDialogRef) return;
+
+            const currentUnit = this.unit();
+            if (!currentUnit) return;
+            const unitData = currentUnit.getUnit();
+
+            event.preventDefault();
+            event.stopPropagation();
+            const dialogRef = this.dialogsService.createDialog(ClusterTableDialogComponent, {
+                data: {
+                    unit: unitData,
+                },
+                width: 'min(920px, 96vw)',
+                maxHeight: '92vh',
+            });
+            this.centerPanelDialogRef = dialogRef;
+            dialogRef.closed.subscribe(() => {
+                if (this.centerPanelDialogRef === dialogRef) this.centerPanelDialogRef = null;
+            });
+        };
+
+        svg.addEventListener('click', onClick, { passive: false, capture: true, signal });
     }
 
     private markEditOnlyControls(svg: SVGSVGElement): void {
@@ -276,11 +324,12 @@ export class SvgInteractionService {
     private addSvgTapHandler(
         el: SVGElement,
         handler: (evt: PointerEvent, primaryAction: boolean) => void,
-        signal: AbortSignal
+        signal: AbortSignal,
+        capture = false
     ) {
         let longTouchTimer: any = null;
         el.classList.add('interactive');
-        const eventOptions = { passive: false, signal };
+        const eventOptions = { passive: false, signal, capture };
         const globalEventOptions = { passive: false, signal, capture: true };
 
         let pointerId: number | null = null;
@@ -2173,6 +2222,8 @@ export class SvgInteractionService {
 
     cleanup() {
         this.endHeatDrag();
+        this.centerPanelDialogRef?.close();
+        this.centerPanelDialogRef = null;
         if (this.heatMarkerEffectRef) {
             this.heatMarkerEffectRef.destroy();
             this.heatMarkerEffectRef = null;
