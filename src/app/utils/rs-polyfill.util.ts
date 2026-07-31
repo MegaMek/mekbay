@@ -601,7 +601,7 @@ export class RsPolyfillUtil {
         counter.setAttribute('x', centerX.toString());
         counter.setAttribute('y', (labelY + 9).toString());
         counter.setAttribute('text-anchor', 'middle');
-        counter.setAttribute('dominant-baseline', 'middle');
+        counter.setAttribute('dy', '0.35em');
         counter.setAttribute('font-family', 'Roboto, sans-serif');
         counter.setAttribute('font-size', '10');
         counter.setAttribute('font-weight', 'bold');
