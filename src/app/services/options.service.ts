@@ -183,6 +183,7 @@ function resolveForceGeneratorOptions(saved: Options | null | undefined): ForceG
 @Injectable({ providedIn: 'root' })
 export class OptionsService {
     private dbService = inject(DbService);
+    readonly initialized = signal(false);
 
     public options = signal<Options>({
         colorScheme: DEFAULT_OPTIONS.colorScheme,
@@ -265,6 +266,7 @@ export class OptionsService {
             forceGenerator: resolveForceGeneratorOptions(saved),
             forceBudgetOptimizerLastSkills: resolveForceBudgetOptimizerLastSkills(saved),
         });
+        this.initialized.set(true);
     }
 
     async setOption<K extends keyof Options>(key: K, value: Options[K]) {

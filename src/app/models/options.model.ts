@@ -39,6 +39,7 @@ import type { GameSystem } from "./common.model";
 export type AvailabilitySource = 'mul' | 'megamek';
 export type RecordSheetDoubleTapZoomResetMode = 'disabled' | 'fit-to-screen' | 'full-width' | 'contextual';
 export type ColorScheme = 'default' | 'night';
+export type UnitSearchViewMode = 'list' | 'card' | 'chassis' | 'table';
 
 export interface SkillRangeOption {
     min: number;
@@ -100,7 +101,7 @@ export interface Options {
     allowMultipleActiveSheets: boolean;
     unitSearchExpandedViewLayout: 'panel-list-filters' | 'filters-list-panel';
     showFilteredComponents: boolean;
-    unitSearchViewMode: 'list' | 'card' | 'chassis' | 'table';
+    unitSearchViewMode: UnitSearchViewMode;
     forceOverviewViewMode: 'expanded' | 'compact' | 'table';
     ASUseAutomations: boolean;
     ASVehiclesCriticalHitTable: 'default' | 'scouringSands';

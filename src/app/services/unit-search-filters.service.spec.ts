@@ -6,7 +6,7 @@ import type { Faction } from '../models/factions.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { MULFactions } from '../models/mulfactions.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
-import type { AvailabilitySource } from '../models/options.model';
+import type { AvailabilitySource, UnitSearchViewMode } from '../models/options.model';
 import type { Unit, Units } from '../models/units.model';
 import { GameSystem } from '../models/common.model';
 import { DataService } from './data.service';
@@ -640,7 +640,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 automaticallyConvertFiltersToSemantic: options?.automaticallyConvertFiltersToSemantic ?? false,
                 availabilitySource: 'mul' as AvailabilitySource,
                 megaMekAvailabilityFiltersUseAllScopedOptions: true,
+                unitSearchViewMode: 'list' as UnitSearchViewMode,
             }),
+            initialized: signal(true),
         };
 
         const gameServiceStub = {
@@ -664,6 +666,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const urlServiceStub = {
             initialParams: new URLSearchParams(),
             initialPathname: '/',
+            getInitialParam: (key: string) => urlServiceStub.initialParams.get(key),
             getGameSystemOverride: () => null,
             setQueryParams: jasmine.createSpy('setQueryParams'),
         };
@@ -4691,6 +4694,38 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 count: 1,
             },
         });
+    });
+
+    it('applies an explicit URL view without changing the persisted preference', () => {
+        if (!benchmarkBundle) {
+            pending('Real unit data could not be loaded for the URL view test.');
+            return;
+        }
+
+        const { service, optionsServiceStub } = createService(buildSmallBundle(benchmarkBundle));
+        optionsServiceStub.options.update(options => ({ ...options, unitSearchViewMode: 'chassis' }));
+
+        service.applySearchParamsFromUrl(new URLSearchParams('view=table'), { expandView: false });
+
+        expect(service.viewMode()).toBe('table');
+        expect(service.expandedView()).toBeTrue();
+        expect(optionsServiceStub.options().unitSearchViewMode).toBe('chassis');
+    });
+
+    it('replaces stale expanded and view state when applying a compact URL', () => {
+        if (!benchmarkBundle) {
+            pending('Real unit data could not be loaded for the URL view test.');
+            return;
+        }
+
+        const { service } = createService(buildSmallBundle(benchmarkBundle));
+        service.expandedView.set(true);
+        service.setViewMode('table');
+
+        service.applySearchParamsFromUrl(new URLSearchParams(), { expandView: false });
+
+        expect(service.expandedView()).toBeFalse();
+        expect(service.viewMode()).toBe('list');
     });
 
     it('loads legacy comma-containing Alpha Strike specials from URL params end to end', () => {

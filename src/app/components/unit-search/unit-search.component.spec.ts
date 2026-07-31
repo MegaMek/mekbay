@@ -4,7 +4,7 @@ import { Overlay } from '@angular/cdk/overlay';
 import { Dialog } from '@angular/cdk/dialog';
 import { computed, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { NEVER, Subject } from 'rxjs';
+import { NEVER, Subject, of } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
 import { MEGAMEK_AVAILABILITY_UNKNOWN_SCORE } from '../../models/megamek/availability.model';
 import type { Unit } from '../../models/units.model';
@@ -30,13 +30,14 @@ describe('UnitSearchComponent card virtualization', () => {
     const currentGameSystemSignal = signal(GameSystem.ALPHA_STRIKE);
     const closePanelsRequestSignal = signal({ requestId: 0, exitExpandedView: false });
     const isSearchSettledSignal = signal(true);
+    const advOptionsSignal = signal<Record<string, any>>({});
     let openDialogs: unknown[];
     const optionsSignal = signal({
         ASUseHex: false,
         colorScheme: 'default' as const,
         availabilitySource: 'mul' as 'mul' | 'megamek',
         unitSearchExpandedViewLayout: 'panel-list-filters',
-        unitSearchViewMode: 'card' as 'list' | 'card' | 'chassis' | 'table',
+        unitSearchViewMode: 'list' as const,
     });
 
     const filtersServiceStub = {
@@ -51,6 +52,7 @@ describe('UnitSearchComponent card virtualization', () => {
         forceTotalBvPv: signal(0),
         selectedSort: signal('name'),
         selectedSortDirection: signal<'asc' | 'desc'>('asc'),
+        viewMode: signal<'list' | 'card' | 'chassis' | 'table'>('list'),
         closePanelsRequest: closePanelsRequestSignal,
         filteredUnits: () => filteredUnitsSignal(),
         isSearchSettled: () => isSearchSettledSignal(),
@@ -58,11 +60,14 @@ describe('UnitSearchComponent card virtualization', () => {
         searchTokens: () => [],
         isComplexQuery: () => false,
         filterState: () => ({}),
-        advOptions: () => ({}),
+        advOptions: () => advOptionsSignal(),
         resetFilters: jasmine.createSpy('resetFilters'),
         setSearchText: jasmine.createSpy('setSearchText'),
         setSortDirection: jasmine.createSpy('setSortDirection'),
         setSortOrder: jasmine.createSpy('setSortOrder'),
+        setViewMode: jasmine.createSpy('setViewMode').and.callFake((viewMode: 'list' | 'card' | 'chassis' | 'table') => {
+            filtersServiceStub.viewMode.set(viewMode);
+        }),
         setFilter: jasmine.createSpy('setFilter'),
         unsetFilter: jasmine.createSpy('unsetFilter'),
         setPilotSkills: jasmine.createSpy('setPilotSkills'),
@@ -87,6 +92,7 @@ describe('UnitSearchComponent card virtualization', () => {
     const forceBuilderServiceStub = {
         smartCurrentForce: () => null,
         hasForces: () => false,
+        addUnit: jasmine.createSpy('addUnit').and.resolveTo(true),
     };
 
     const gameServiceStub = {
@@ -156,18 +162,29 @@ describe('UnitSearchComponent card virtualization', () => {
             colorScheme: 'default',
             availabilitySource: 'mul',
             unitSearchExpandedViewLayout: 'panel-list-filters',
-            unitSearchViewMode: 'card',
+            unitSearchViewMode: 'list',
         });
         filtersServiceStub.expandedView.set(false);
         filtersServiceStub.advOpen.set(false);
         filtersServiceStub.searchText.set('');
+        advOptionsSignal.set({});
         isSearchSettledSignal.set(true);
         filtersServiceStub.bvPvLimit.set(0);
         filtersServiceStub.selectedSort.set('name');
         filtersServiceStub.selectedSortDirection.set('asc');
+        filtersServiceStub.viewMode.set('list');
         closePanelsRequestSignal.set({ requestId: 0, exitExpandedView: false });
         filtersServiceStub.requestClosePanels.calls.reset();
         filtersServiceStub.setSearchText.calls.reset();
+        filtersServiceStub.setSortDirection.calls.reset();
+        filtersServiceStub.setSortOrder.calls.reset();
+        filtersServiceStub.setViewMode.calls.reset();
+        filtersServiceStub.setFilter.calls.reset();
+        filtersServiceStub.unsetFilter.calls.reset();
+        forceBuilderServiceStub.addUnit.calls.reset();
+        forceBuilderServiceStub.addUnit.and.resolveTo(true);
+        dataServiceStub.getUnitByName.calls.reset();
+        dataServiceStub.getUnitByName.and.returnValue(undefined);
         filtersServiceStub.setSearchText.and.callFake((text: string) => {
             filtersServiceStub.searchText.set(text);
             return text;
@@ -176,6 +193,10 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(0);
         dialogsServiceStub.createDialog.calls.reset();
         dialogsServiceStub.createDialog.and.returnValue(undefined);
+        overlayManagerServiceStub.closeAllManagedOverlays.calls.reset();
+        overlayManagerServiceStub.closeManagedOverlay.calls.reset();
+        layoutServiceStub.windowWidth.set(1280);
+        layoutServiceStub.windowHeight.set(900);
         savedSearchesServiceStub.version.set(0);
         currentGameSystemSignal.set(GameSystem.ALPHA_STRIKE);
 
@@ -260,7 +281,115 @@ describe('UnitSearchComponent card virtualization', () => {
         ]);
     });
 
+    it('keeps the compact list estimate independent of expanded natural row heights', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        fixture.detectChanges();
+
+        expect(component.itemSize()).toBe(75);
+
+        filtersServiceStub.expandedView.set(true);
+        fixture.detectChanges();
+
+        expect(component.itemSize()).toBe(75);
+        expect(component.displayedUnitKeys()).toEqual([]);
+    });
+
+    it('provides stable unit keys for variable-height measurements across result objects', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        filteredUnitsSignal.set([createUnit('Short'), createUnit('Tall')]);
+        fixture.detectChanges();
+
+        expect(component.displayedUnitKeys()).toEqual(['Short', 'Tall']);
+
+        filteredUnitsSignal.set([createUnit('Tall'), createUnit('Short')]);
+        fixture.detectChanges();
+
+        expect(component.displayedUnitKeys()).toEqual(['Tall', 'Short']);
+    });
+
+    it('removes selected units that are no longer displayed', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        filteredUnitsSignal.set([createUnit('Visible'), createUnit('Removed')]);
+        fixture.detectChanges();
+        component.selectedUnits.set(new Set(['Visible', 'Removed']));
+
+        filteredUnitsSignal.set([createUnit('Visible')]);
+        fixture.detectChanges();
+
+        expect([...component.selectedUnits()]).toEqual(['Visible']);
+    });
+
+    it('clears selection when no selected units remain displayed', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        filteredUnitsSignal.set([createUnit('Removed')]);
+        fixture.detectChanges();
+        component.selectedUnits.set(new Set(['Removed']));
+
+        filteredUnitsSignal.set([]);
+        fixture.detectChanges();
+
+        expect(component.selectedUnits().size).toBe(0);
+    });
+
+    it('adds every selected displayed unit with the active pilot skills', async () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const first = createUnit('First');
+        const second = createUnit('Second');
+        filteredUnitsSignal.set([first, second]);
+        dataServiceStub.getUnitByName.and.callFake((name: string) => name === first.name ? first : second);
+        fixture.detectChanges();
+        component.selectedUnits.set(new Set([first.name, second.name]));
+
+        await component.addSelectedUnits();
+
+        expect(forceBuilderServiceStub.addUnit.calls.allArgs()).toEqual([
+            [first, 4, 5],
+            [second, 4, 5],
+        ]);
+        expect(component.selectedUnits().size).toBe(0);
+        expect(component.focused()).toBeFalse();
+    });
+
+    it('stops bulk adding after the force rejects a unit', async () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const first = createUnit('First');
+        const second = createUnit('Second');
+        filteredUnitsSignal.set([first, second]);
+        dataServiceStub.getUnitByName.and.callFake((name: string) => name === first.name ? first : second);
+        forceBuilderServiceStub.addUnit.and.resolveTo(false);
+        fixture.detectChanges();
+        component.selectedUnits.set(new Set([first.name, second.name]));
+
+        await component.addSelectedUnits();
+
+        expect(forceBuilderServiceStub.addUnit).toHaveBeenCalledOnceWith(first, 4, 5);
+        expect(dataServiceStub.getUnitByName).toHaveBeenCalledOnceWith(first.name);
+        expect(component.selectedUnits().size).toBe(0);
+    });
+
+    it('skips a selected name when its unit data is unavailable', async () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const missing = createUnit('Missing');
+        filteredUnitsSignal.set([missing]);
+        fixture.detectChanges();
+        component.selectedUnits.set(new Set([missing.name]));
+
+        await component.addSelectedUnits();
+
+        expect(dataServiceStub.getUnitByName).toHaveBeenCalledOnceWith(missing.name);
+        expect(forceBuilderServiceStub.addUnit).not.toHaveBeenCalled();
+        expect(component.selectedUnits().size).toBe(0);
+    });
+
     it('remeasures a hidden virtual viewport when results open at ultra-high resolution', async () => {
+        filtersServiceStub.viewMode.set('card');
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
 
@@ -287,24 +416,6 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(renderedRange.end - renderedRange.start).toBeGreaterThanOrEqual(minimumVisibleRows);
     });
 
-    it('maps card item navigation to the containing virtual row index', () => {
-        const fixture = TestBed.createComponent(UnitSearchComponent);
-        const component = fixture.componentInstance;
-        const scrollToIndex = jasmine.createSpy('scrollToIndex');
-
-        filteredUnitsSignal.set(Array.from({ length: 9 }, (_, index) => createUnit(`Unit ${index + 1}`)));
-        (component as any).resultsDropdownWidth.set(920);
-        fixture.detectChanges();
-
-        spyOn<any>(component, 'currentViewport').and.returnValue({
-            scrollToIndex,
-        } as Partial<CdkVirtualScrollViewport>);
-
-        (component as any).scrollToIndex(4);
-
-        expect(scrollToIndex).toHaveBeenCalledOnceWith(1, 'smooth');
-    });
-
     it('expands the search view when selecting table view from compact mode', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
@@ -317,18 +428,16 @@ describe('UnitSearchComponent card virtualization', () => {
 
         expect(filtersServiceStub.expandedView()).toBeTrue();
         expect(component.viewMode()).toBe('table');
+        expect(filtersServiceStub.setViewMode).toHaveBeenCalledOnceWith('table');
         expect(optionsServiceStub.setOption).toHaveBeenCalledOnceWith('unitSearchViewMode', 'table');
     });
 
     it('selects a result into the inline panel when the view starts expanded', async () => {
+        filtersServiceStub.viewMode.set('list');
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
         const unit = createUnit('Unit 1');
 
-        optionsSignal.set({
-            ...optionsSignal(),
-            unitSearchViewMode: 'list',
-        });
         filteredUnitsSignal.set([unit]);
         filtersServiceStub.expandedView.set(true);
         layoutServiceStub.windowWidth.set(2200);
@@ -363,10 +472,7 @@ describe('UnitSearchComponent card virtualization', () => {
 
     it('disables Alpha Strike card view while in Classic mode', () => {
         currentGameSystemSignal.set(GameSystem.CLASSIC);
-        optionsSignal.set({
-            ...optionsSignal(),
-            unitSearchViewMode: 'list',
-        });
+        filtersServiceStub.viewMode.set('list');
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
 
@@ -382,10 +488,7 @@ describe('UnitSearchComponent card virtualization', () => {
     });
 
     it('groups chassis view results by chassis, Alpha Strike type, and omni status', () => {
-        optionsSignal.set({
-            ...optionsSignal(),
-            unitSearchViewMode: 'chassis',
-        });
+        filtersServiceStub.viewMode.set('chassis');
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
 
@@ -413,10 +516,7 @@ describe('UnitSearchComponent card virtualization', () => {
     });
 
     it('drills into a chassis group without changing the search text', () => {
-        optionsSignal.set({
-            ...optionsSignal(),
-            unitSearchViewMode: 'chassis',
-        });
+        filtersServiceStub.viewMode.set('chassis');
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
 
@@ -442,10 +542,7 @@ describe('UnitSearchComponent card virtualization', () => {
     });
 
     it('keeps variant group results filtered when toggling expanded view', () => {
-        optionsSignal.set({
-            ...optionsSignal(),
-            unitSearchViewMode: 'chassis',
-        });
+        filtersServiceStub.viewMode.set('chassis');
         filtersServiceStub.expandedView.set(false);
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
@@ -485,10 +582,7 @@ describe('UnitSearchComponent card virtualization', () => {
     });
 
     it('clears the variant group filter back to chassis view and targets the old group row', () => {
-        optionsSignal.set({
-            ...optionsSignal(),
-            unitSearchViewMode: 'chassis',
-        });
+        filtersServiceStub.viewMode.set('chassis');
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
         const scrollToVariantsGroup = spyOn<any>(component, 'scrollToVariantsGroup');
@@ -701,6 +795,96 @@ describe('UnitSearchComponent card virtualization', () => {
         const dialogConfig = dialogsServiceStub.createDialog.calls.mostRecent().args[1] as any;
         expect(dialogConfig.data.unitList).toEqual([nextUnit]);
         expect(dialogConfig.data.unitIndex).toBe(0);
+    });
+
+    it('does not let a pending local debounce overwrite an external search update', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        fixture.detectChanges();
+        component.setSearch('stale local query');
+        filtersServiceStub.setSearchText.calls.reset();
+
+        filtersServiceStub.searchText.set('favorite query');
+        fixture.detectChanges();
+        (component as any).flushPendingSearch();
+
+        expect(component.immediateSearchText()).toBe('favorite query');
+        expect(filtersServiceStub.setSearchText).not.toHaveBeenCalled();
+    });
+
+    it('does not navigate or open results from descendant interactive controls', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        filteredUnitsSignal.set([createUnit('Unit 1'), createUnit('Unit 2')]);
+        filtersServiceStub.expandedView.set(true);
+        fixture.detectChanges();
+
+        const select = document.createElement('select');
+        const button = document.createElement('button');
+        fixture.nativeElement.append(select, button);
+
+        const arrowEvent = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true });
+        select.dispatchEvent(arrowEvent);
+        const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+        button.dispatchEvent(enterEvent);
+
+        expect(arrowEvent.defaultPrevented).toBeFalse();
+        expect(enterEvent.defaultPrevented).toBeFalse();
+        expect(component.activeIndex()).toBeNull();
+        expect(dialogsServiceStub.createDialog).not.toHaveBeenCalled();
+    });
+
+    it('normalizes keyboard-opened range dialog values against both boundaries', async () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        advOptionsSignal.set({
+            testRange: {
+                type: 'range',
+                label: 'Test Range',
+                value: [20, 80],
+                totalRange: [0, 100],
+            },
+        });
+        dialogsServiceStub.createDialog.and.returnValue({ closed: of({ from: -5, to: 200 }) });
+        fixture.detectChanges();
+
+        await component.openRangeValueDialog('testRange', [20, 80], [0, 100]);
+
+        expect(filtersServiceStub.setFilter).toHaveBeenCalledOnceWith('testRange', [0, 100]);
+    });
+
+    it('clears active result state before changing sort order or direction', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const unit = createUnit('Unit 1');
+        component.activeIndex.set(0);
+        component.inlinePanelUnit.set(unit);
+
+        component.onSortOrderChange('year');
+
+        expect(component.activeIndex()).toBeNull();
+        expect(component.inlinePanelUnit()).toBeNull();
+        expect(filtersServiceStub.setSortOrder).toHaveBeenCalledOnceWith('year');
+
+        component.activeIndex.set(0);
+        component.inlinePanelUnit.set(unit);
+        component.toggleSortDirection();
+
+        expect(component.activeIndex()).toBeNull();
+        expect(component.inlinePanelUnit()).toBeNull();
+        expect(filtersServiceStub.setSortDirection).toHaveBeenCalledOnceWith('desc');
+    });
+
+    it('closes only its owned favorites overlay when destroyed', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        fixture.detectChanges();
+        overlayManagerServiceStub.closeManagedOverlay.calls.reset();
+
+        fixture.destroy();
+
+        expect(overlayManagerServiceStub.closeManagedOverlay).toHaveBeenCalledOnceWith('favorites');
+        expect(overlayManagerServiceStub.closeAllManagedOverlays).not.toHaveBeenCalled();
     });
 
     it('does not navigate search results while a dialog is on top', () => {

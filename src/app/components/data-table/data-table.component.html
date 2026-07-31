@@ -21,13 +21,14 @@
 
     <cdk-virtual-scroll-viewport
         class="mb-data-table-viewport"
-        [itemSize]="itemSize()"
+        [mbVariableSizeVirtualScroll]="virtualRowKeys()"
+        [estimatedItemSize]="itemSize()"
         [style.--mb-data-table-item-size.px]="itemSize()"
         [minBufferPx]="minBufferPx()"
         [maxBufferPx]="maxBufferPx()"
         (scroll)="onViewportScroll()"
         tabindex="0">
-        <div class="mb-data-table-row-item"
+        <div class="mb-data-table-row-item variable-virtual-scroll-item"
             *cdkVirtualFor="let row of rows(); let i = index; trackBy: trackRow"
             [ngClass]="resolveRowClass(row, i)"
             longPress
@@ -54,7 +55,12 @@
                     @if (column.cellTemplate; as cellTemplate) {
                     <ng-container [ngTemplateOutlet]="cellTemplate" [ngTemplateOutletContext]="cellContext(row, column, i)"></ng-container>
                     } @else {
-                    {{ cellValue(column, row, i) }}
+                    @let value = cellValue(column, row, i);
+                    <span class="mb-data-table-cell-text"
+                        [mbAutoFitText]="value"
+                        [mbAutoFitTextMinScale]="0.8"
+                        [mbAutoFitTextObserveWidth]="false"
+                        [mbAutoFitTextRevision]="textFitKey()">{{ value }}</span>
                     }
                 </div>
                 }

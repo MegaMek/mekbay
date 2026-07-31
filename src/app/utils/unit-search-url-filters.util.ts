@@ -39,6 +39,7 @@ import { AdvFilterType, normalizeTriStateBooleanFilterValue, type FilterState, S
 import { getAdvancedFilterConfigByKey } from './unit-search-filter-config.util';
 import { parseValues } from './semantic-filter.util';
 import { normalizeMultiStateSelection } from './unit-search-shared.util';
+import type { UnitSearchViewMode } from '../models/options.model';
 
 interface ParsedUnitSearchScalarUrlState {
     searchText: string | null;
@@ -49,6 +50,7 @@ interface ParsedUnitSearchScalarUrlState {
     piloting: number | null;
     bvLimit: number | null;
     hasFilters: boolean;
+    viewMode: UnitSearchViewMode | null;
 }
 
 interface UnitSearchQueryParametersArgs {
@@ -62,6 +64,7 @@ interface UnitSearchQueryParametersArgs {
     piloting: number;
     bvLimit: number;
     publicTagsParam: string | null;
+    viewMode?: UnitSearchViewMode;
 }
 
 interface UnitSearchQueryParameters {
@@ -75,7 +78,14 @@ interface UnitSearchQueryParameters {
     piloting: number | null;
     bvLimit: number | null;
     expanded: 'true' | null;
+    view: Exclude<UnitSearchViewMode, 'list'> | null;
     gs?: GameSystem | null;
+}
+
+export function parseUnitSearchViewMode(value: string | null | undefined): UnitSearchViewMode | null {
+    return value === 'list' || value === 'card' || value === 'chassis' || value === 'table'
+        ? value
+        : null;
 }
 
 function quoteCompactFilterValue(value: string): string {
@@ -128,6 +138,7 @@ export function parseUnitSearchScalarUrlState(
     const sortParam = params.get('sort');
     const sortDirectionParam = params.get('sortDir');
     const filtersParam = params.get('filters');
+    const viewMode = parseUnitSearchViewMode(params.get('view'));
 
     const hasFilters = Boolean(searchText || filtersParam);
     const shouldExpand = opts.expandView ?? (!params.has('instance') && !params.has('units') && hasFilters);
@@ -136,11 +147,12 @@ export function parseUnitSearchScalarUrlState(
         searchText,
         sortKey: sortParam && SORT_OPTIONS.some(opt => opt.key === sortParam) ? sortParam : null,
         sortDirection: sortDirectionParam === 'asc' || sortDirectionParam === 'desc' ? sortDirectionParam : null,
-        expanded: params.get('expanded') === 'true' || shouldExpand,
+        expanded: params.get('expanded') === 'true' || viewMode === 'table' || shouldExpand,
         gunnery: parseBoundedInteger(params.get('gunnery'), 0, 8),
         piloting: parseBoundedInteger(params.get('piloting'), 0, 8),
         bvLimit: parsePositiveInteger(params.get('bvLimit')),
         hasFilters,
+        viewMode,
     };
 }
 
@@ -202,6 +214,7 @@ export function buildUnitSearchQueryParameters({
     piloting,
     bvLimit,
     publicTagsParam,
+    viewMode = 'list',
 }: UnitSearchQueryParametersArgs): UnitSearchQueryParameters {
     const uiOnlyFilters: FilterState = {};
     for (const [key, state] of Object.entries(filterState)) {
@@ -221,7 +234,8 @@ export function buildUnitSearchQueryParameters({
         gunnery: gunnery !== DEFAULT_GUNNERY_SKILL ? gunnery : null,
         piloting: piloting !== DEFAULT_PILOTING_SKILL ? piloting : null,
         bvLimit: bvLimit > 0 ? bvLimit : null,
-        expanded: expanded ? 'true' : null,
+        expanded: expanded && viewMode !== 'table' ? 'true' : null,
+        view: viewMode === 'list' ? null : viewMode,
     };
 }
 
@@ -384,4 +398,15 @@ export function parseAndValidateCompactFiltersFromUrl(
         parseCompactFiltersFromUrl(filtersParam, dropdownValuesDependencies),
         dropdownValuesDependencies,
     );
+}
+
+/** Resolve startup view state without allowing local preferences to alter shared search URLs. */
+export function resolveInitialUnitSearchViewMode(
+    params: URLSearchParams,
+    persistedViewMode: UnitSearchViewMode,
+): UnitSearchViewMode {
+    const explicitViewMode = parseUnitSearchViewMode(params.get('view'));
+    if (explicitViewMode) return explicitViewMode;
+
+    return params.has('q') || params.has('filters') ? 'list' : persistedViewMode;
 }

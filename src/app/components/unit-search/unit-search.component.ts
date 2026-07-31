@@ -32,7 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, signal, type ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, type input, viewChild, ChangeDetectorRef, DestroyRef, untracked, type ComponentRef, type TemplateRef } from '@angular/core';
+import { Component, signal, type ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, viewChild, ChangeDetectorRef, DestroyRef, untracked, type ComponentRef, type TemplateRef } from '@angular/core';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
@@ -89,6 +89,9 @@ import { DropdownPointerActivationGuard, type DropdownPointerHoverEvent } from '
 import { uuidv7 } from '../../utils/uuid.util';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
+import { normalizeUnitSearchRange, rangeFilterAllowsFloatingValues } from '../../utils/unit-search-range-dialog.util';
+import { VariableSizeVirtualScrollDirective } from '../../directives/variable-size-virtual-scroll.directive';
+import type { UnitSearchViewMode } from '../../models/options.model';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup extends UnitVariantGroupIdentity {
@@ -106,8 +109,6 @@ export interface ChassisGroup extends UnitVariantGroupIdentity {
     maxPV: number;
     units: Unit[];
 }
-
-type UnitSearchViewMode = 'list' | 'card' | 'chassis' | 'table';
 
 interface ViewModeOptionConfig {
     mode: UnitSearchViewMode;
@@ -131,7 +132,7 @@ interface ActiveVariantGroupFilter extends UnitVariantGroupIdentity {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, OverlayModule, LongPressDirective, TooltipDirective, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent],
+    imports: [CommonModule, ScrollingModule, OverlayModule, LongPressDirective, TooltipDirective, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent, VariableSizeVirtualScrollDirective],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.scss',
     host: {
@@ -218,8 +219,8 @@ export class UnitSearchComponent {
         ));
     });
 
-    private searchDebounceTimer: any;
-    private heightTrackingDebounceTimer: any;
+    private searchDebounceTimer?: ReturnType<typeof setTimeout>;
+    private heightTrackingDebounceTimer?: ReturnType<typeof setTimeout>;
     private readonly resultPointerActivationGuard = new DropdownPointerActivationGuard();
     private readonly SEARCH_DEBOUNCE_MS = 300;
     private pendingSearchText: string | null = null;
@@ -266,7 +267,7 @@ export class UnitSearchComponent {
     }
 
     readonly filterChordActive = signal(false);
-    private filterChordTimer: any;
+    private filterChordTimer?: ReturnType<typeof setTimeout>;
     /** Reference to the favorites overlay component for in-place updates. */
     private favoritesCompRef: ComponentRef<SearchFavoritesMenuComponent> | null = null;
     /** Flag to track when a favorites dialog (rename/delete) is in progress. */
@@ -277,6 +278,7 @@ export class UnitSearchComponent {
     private readonly pendingResultOpenRequest = signal(false);
 
     syntaxInput = viewChild<SyntaxInputComponent>('syntaxInput');
+    private readonly searchbarContainer = viewChild<ElementRef<HTMLElement>>('searchbarContainer');
     advBtn = viewChild.required<ElementRef<HTMLButtonElement>>('advBtn');
     favBtn = viewChild.required<ElementRef<HTMLButtonElement>>('favBtn');
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
@@ -296,7 +298,7 @@ export class UnitSearchComponent {
 
     /** Query the active dropdown element directly from DOM to avoid viewChild retention */
     private getActiveDropdownElement(): HTMLElement | null {
-        return document.querySelector('.results-dropdown') as HTMLElement | null;
+        return this.resultsDropdown()?.nativeElement ?? null;
     }
 
     /** viewChild for CdkVirtualScrollViewport - only used for scrolling operations!!! */
@@ -322,7 +324,7 @@ export class UnitSearchComponent {
       * - 'chassis' : compact chassis-grouped view
       * - 'table'   : expanded table view
       */
-    viewMode = signal<UnitSearchViewMode>(this.optionsService.options().unitSearchViewMode);
+    readonly viewMode = this.filtersService.viewMode;
 
 
 
@@ -349,6 +351,7 @@ export class UnitSearchComponent {
 
         return units.filter(unit => unitMatchesVariantGroup(unit, variantGroupFilter));
     });
+    readonly displayedUnitKeys = computed(() => this.displayedUnits().map(unit => unit.name));
     readonly activeVariantGroupRepresentativeUnit = computed(() => {
         return this.displayedUnits()[0] ?? this.activeVariantGroupFilter()?.representativeUnit ?? null;
     });
@@ -1052,14 +1055,14 @@ export class UnitSearchComponent {
      */
     readonly isComplexQuery = computed(() => this.filtersService.isComplexQuery());
 
-    private readonly listItemSize = signal(75);
+    private readonly compactListItemSize = 75;
     readonly cardItemHeight = signal(220);
     readonly itemSize = computed(() => {
         if (this.viewMode() === 'card' && this.gameService.isAlphaStrike()) {
             return this.cardItemHeight();
         }
 
-        return this.listItemSize();
+        return this.compactListItemSize;
     });
 
     private resizeObserver?: ResizeObserver;
@@ -1088,9 +1091,22 @@ export class UnitSearchComponent {
         effect(() => {
             const text = this.filtersService.searchText();
             untracked(() => {
+                if (this.pendingSearchText !== null) {
+                    this.cancelPendingSearchCommit();
+                    this.pendingResultOpenRequest.set(false);
+                }
                 if (this.immediateSearchText() !== text) {
                     this.immediateSearchText.set(text);
                 }
+            });
+        });
+        effect(() => {
+            const displayedNames = new Set(this.displayedUnits().map(unit => unit.name));
+            untracked(() => {
+                const selected = this.selectedUnits();
+                if ([...selected].every(name => displayedNames.has(name))) return;
+
+                this.selectedUnits.set(new Set([...selected].filter(name => displayedNames.has(name))));
             });
         });
         effect(() => {
@@ -1127,36 +1143,13 @@ export class UnitSearchComponent {
             this.savedSearchesService.version(); // Subscribe to changes
             untracked(() => this.refreshFavoritesOverlay());
         });
-        // Card view is AS-only, so drop it when the game system changes away from AS.
+        // Keep externally applied and restored modes compatible with the current UI state.
         effect(() => {
-            const isAS = this.gameService.isAlphaStrike();
-            untracked(() => {
-                if (!isAS && this.viewMode() === 'card') {
-                    this.setViewMode('list');
-                }
-            });
-        });
-        effect(() => {
-            const isExpanded = this.expandedView();
-            untracked(() => {
-                if (!isExpanded && this.viewMode() === 'table') {
-                    this.setViewMode('list');
-                }
-            });
-        });
-        effect(() => {
-            const savedViewMode = this.optionsService.options().unitSearchViewMode;
-            const normalizedViewMode = this.normalizeViewMode(savedViewMode);
-            const shouldPersistNormalizedViewMode = savedViewMode !== normalizedViewMode
-                && !(savedViewMode === 'chassis' && normalizedViewMode === 'list' && this.activeVariantGroupFilter());
-            untracked(() => {
-                if (this.viewMode() !== normalizedViewMode) {
-                    this.viewMode.set(normalizedViewMode);
-                }
-                if (shouldPersistNormalizedViewMode) {
-                    void this.optionsService.setOption('unitSearchViewMode', normalizedViewMode);
-                }
-            });
+            const viewMode = this.viewMode();
+            const normalizedViewMode = this.normalizeViewMode(viewMode);
+            if (normalizedViewMode !== viewMode) {
+                untracked(() => this.filtersService.setViewMode(normalizedViewMode));
+            }
         });
         effect(() => {
             if (this.advOpen()) {
@@ -1203,7 +1196,7 @@ export class UnitSearchComponent {
             pendingResizeObserverRef = null;
             // We use a ResizeObserver to track changes to the search bar container size,
             // so we can update the dropdown/panel positions accordingly.
-            const container = document.querySelector('.searchbar-container') as HTMLElement;
+            const container = this.searchbarContainer()?.nativeElement;
             if (container) {
                 this.resizeObserver = new ResizeObserver(() => {
                     if (this.advOpen()) {
@@ -1236,18 +1229,17 @@ export class UnitSearchComponent {
         }
         this.setupVirtualViewportSizeTracking();
         this.setupItemHeightTracking();
-        inject(DestroyRef).onDestroy(() => {
+        this.destroyRef.onDestroy(() => {
             pendingResizeObserverRef?.destroy();
-            if (this.searchDebounceTimer) {
-                clearTimeout(this.searchDebounceTimer);
-            }
+            this.cancelPendingSearchCommit();
             if (this.heightTrackingDebounceTimer) {
                 clearTimeout(this.heightTrackingDebounceTimer);
             }
             clearTimeout(this.filterChordTimer);
+            this.removeAdvPanelDragListeners();
             this.resizeObserver?.disconnect();
             this.resultsResizeObserver?.disconnect();
-            this.overlayManager.closeAllManagedOverlays();
+            this.closeFavorites();
         });
     }
 
@@ -1262,10 +1254,6 @@ export class UnitSearchComponent {
             return Math.floor(index / this.cardViewColumnCount());
         }
         return index;
-    }
-
-    private getDefaultListItemSize(): number {
-        return 75;
     }
 
     private getDefaultCardItemHeight(): number {
@@ -1337,227 +1325,50 @@ export class UnitSearchComponent {
         });
     }
 
-    private setupItemHeightTracking() {
+    private setupItemHeightTracking(): void {
         const DEBOUNCE_MS = 100;
-        /** Max consecutive gap-correction attempts to prevent infinite loops */
-        const MAX_GAP_CORRECTIONS = 3;
-        let prevLayoutKey: string | undefined;
-        let gapCorrectionPending: { destroy: () => void } | null = null;
-        let gapCorrectionCount = 0;
+        const measureCardRowHeight = () => {
+            if (this.viewMode() !== 'card' || !this.gameService.isAlphaStrike()) return;
 
-        /**
-         * Detect and fix blank-space gaps in the virtual scroll viewport.
-         *
-         * The CDK FixedSizeVirtualScrollStrategy calculates total content height as
-         * `dataLength * itemSize`. When items have variable heights and the average
-         * doesn't match, two gap scenarios occur:
-         *
-         * 1. Mid-scroll gap: Average overestimates = fewer items rendered than
-         *    needed to fill the viewport. Fix: nudge scroll offset backward.
-         *
-         * 2. End-of-list gap: Average overestimates = total spacer height exceeds
-         *    the real sum of item heights. At the bottom, rendered items end but spacer
-         *    continues. Fix: set the correct total content size directly on the viewport.
-         */
-        const detectAndFixGap = () => {
-            const vp = this.viewport();
-            if (!vp || !this.resultsVisible()) {
-                return;
-            }
-
-            const vpEl = vp.elementRef.nativeElement;
-            const contentWrapper = vpEl.querySelector('.cdk-virtual-scroll-content-wrapper') as HTMLElement;
-            if (!contentWrapper) {
-                return;
-            }
-
-            const vpRect = vpEl.getBoundingClientRect();
-            const contentRect = contentWrapper.getBoundingClientRect();
-            const gap = vpRect.bottom - contentRect.bottom;
-            const renderedRange = vp.getRenderedRange();
-            const dataLength = vp.getDataLength();
-            const isAtDataEnd = renderedRange.end >= dataLength;
-
-            if (gap <= 1) {
-                // No gap, reset and exit
-                gapCorrectionCount = 0;
-                return;
-            }
-
-            if (isAtDataEnd) {
-                // End-of-list gap: all items are rendered but the spacer is too tall.
-                // Read the actual CSS transform offset applied by the CDK, add the
-                // real content height, that's the true total content size.
-                // Use setTotalContentSize() directly instead of changing itemSize,
-                // which avoids the cascading offset-shift problem.
-                const renderedContentHeight = contentWrapper.offsetHeight;
-
-                // Parse the actual translateY from the CDK's inline transform
-                const transform = contentWrapper.style.transform || '';
-                const match = transform.match(/translateY\((\d+(?:\.\d+)?)px\)/);
-                const actualOffset = match ? parseFloat(match[1]) : renderedRange.start * this.itemSize();
-
-                const realTotalHeight = actualOffset + renderedContentHeight;
-                const currentTotalHeight = dataLength * this.itemSize();
-
-                if (realTotalHeight < currentTotalHeight) {
-                    vp.setTotalContentSize(realTotalHeight);
-                }
-            } else {
-                // Mid-scroll gap: not all items rendered but content doesn't fill viewport.
-                // Nudge scroll offset backward to force CDK to expand the rendered range.
-                const currentOffset = vp.measureScrollOffset();
-                const correctedOffset = Math.max(0, currentOffset - gap - 1);
-                vp.scrollToOffset(correctedOffset);
-            }
-
-            // Schedule a follow-up check in case one correction isn't enough
-            if (gapCorrectionCount < MAX_GAP_CORRECTIONS) {
-                gapCorrectionCount++;
-                gapCorrectionPending?.destroy();
-                gapCorrectionPending = afterNextRender(() => {
-                    gapCorrectionPending = null;
-                    detectAndFixGap();
-                }, { injector: this.injector });
-            }
-        };
-
-        const measureHeights = () => {
-            // Query DOM directly
             const dropdown = this.getActiveDropdownElement();
             if (!dropdown) return;
 
-            if (this.viewMode() === 'card' && this.gameService.isAlphaStrike()) {
-                const cardRow = dropdown.querySelector('.card-view-row') as HTMLElement | null;
-                if (!cardRow) return;
+            const cardRow = dropdown.querySelector('.card-view-row') as HTMLElement | null;
+            if (!cardRow) return;
 
-                const measuredHeight = Math.round(cardRow.offsetHeight);
-                if (measuredHeight > 0 && this.cardItemHeight() !== measuredHeight) {
-                    this.cardItemHeight.set(measuredHeight);
-                }
-
-                return;
+            const measuredHeight = Math.round(cardRow.offsetHeight);
+            if (measuredHeight > 0 && this.cardItemHeight() !== measuredHeight) {
+                this.cardItemHeight.set(measuredHeight);
             }
-
-            const items = dropdown.querySelectorAll('.results-dropdown-item:not(.no-results)');
-            if (items.length === 0) return;
-
-            const heights = Array.from(items).slice(0, 100).map(el => (el as HTMLElement).offsetHeight);
-            const avg = Math.round(heights.reduce((a, b) => a + b, 0) / heights.length);
-            const currentAvg = this.listItemSize();
-            if (currentAvg !== avg) {
-                this.listItemSize.set(avg);
-            }
-
-            // Always schedule a gap check after measurement, regardless of whether
-            // itemSize changed: the gap can exist even with a stable average.
-            gapCorrectionCount = 0;
-            gapCorrectionPending?.destroy();
-            gapCorrectionPending = afterNextRender(() => {
-                gapCorrectionPending = null;
-                detectAndFixGap();
-            }, { injector: this.injector });
         };
 
-        const debouncedUpdateHeights = (debounceMs = DEBOUNCE_MS) => {
+        const debouncedMeasureCardRow = (debounceMs = DEBOUNCE_MS) => {
             if (this.heightTrackingDebounceTimer) {
                 clearTimeout(this.heightTrackingDebounceTimer);
             }
             this.heightTrackingDebounceTimer = setTimeout(() => {
-                // Early exit if results are no longer visible
                 if (!this.resultsVisible()) return;
-                measureHeights();
+                measureCardRowHeight();
             }, debounceMs);
         };
 
         effect(() => {
-            const currentExpandedView = this.expandedView();
             const currentViewMode = this.viewMode();
-            const currentLayoutKey = `${currentExpandedView}:${currentViewMode}`;
 
-            // Cancel any pending timer and reset itemSize when view mode changes
             untracked(() => {
                 if (this.heightTrackingDebounceTimer) {
                     clearTimeout(this.heightTrackingDebounceTimer);
                     this.heightTrackingDebounceTimer = undefined;
                 }
-                gapCorrectionPending?.destroy();
-                gapCorrectionPending = null;
-                gapCorrectionCount = 0;
-                // Reset to defaults on view mode change (will be refined by height tracking)
-                if (prevLayoutKey !== undefined && prevLayoutKey !== currentLayoutKey) {
-                    this.listItemSize.set(this.getDefaultListItemSize());
+                if (currentViewMode !== 'card') {
                     this.cardItemHeight.set(this.getDefaultCardItemHeight());
                 }
-                prevLayoutKey = currentLayoutKey;
             });
 
-            if (!this.resultsVisible()) return;
-            this.layoutService.isMobile();
-            this.gameService.currentGameSystem();
+            if (!this.resultsVisible() || currentViewMode !== 'card' || !this.gameService.isAlphaStrike()) return;
             this.resultsDropdownWidth();
-            if (currentExpandedView) {
-                this.layoutService.windowWidth();
-                this.filtersService.advOpen();
-                this.advPanelUserColumns();
-            }
             this.displayedUnits();
-            debouncedUpdateHeights();
-        });
-
-        // Subscribe to viewport scroll events to detect end-of-list gaps on scroll.
-        // The measurement-based gap detection only runs on data/layout changes,
-        // but the user can scroll to the bottom at any time after that.
-        let scrollGapTimer: any;
-        const SCROLL_GAP_DEBOUNCE = 150;
-        const onViewportScroll = () => {
-            const vp = this.viewport();
-            if (!vp || !this.resultsVisible()) return;
-
-            // Only check when near the bottom of the scroll (within 2 viewports)
-            const scrollOffset = vp.measureScrollOffset();
-            const viewportSize = vp.getViewportSize();
-            const totalContentSize = vp.getDataLength() * this.itemSize();
-            const distanceFromEnd = totalContentSize - scrollOffset - viewportSize;
-
-            if (distanceFromEnd < viewportSize * 2) {
-                // Near the bottom: debounce a gap check
-                if (scrollGapTimer) clearTimeout(scrollGapTimer);
-                scrollGapTimer = setTimeout(() => {
-                    gapCorrectionCount = 0;
-                    detectAndFixGap();
-                }, SCROLL_GAP_DEBOUNCE);
-            }
-        };
-
-        // Attach/detach the scroll listener reactively based on viewport availability
-        let currentVpEl: HTMLElement | null = null;
-        effect(() => {
-            const vp = this.viewport();
-            const visible = this.resultsVisible();
-            untracked(() => {
-                const newVpEl = (vp && visible) ? vp.elementRef.nativeElement : null;
-                if (newVpEl === currentVpEl) return;
-
-                // Detach from old
-                if (currentVpEl) {
-                    currentVpEl.removeEventListener('scroll', onViewportScroll);
-                }
-                currentVpEl = newVpEl;
-                // Attach to new
-                if (currentVpEl) {
-                    currentVpEl.addEventListener('scroll', onViewportScroll, { passive: true });
-                }
-            });
-        });
-
-        this.destroyRef.onDestroy(() => {
-            if (scrollGapTimer) clearTimeout(scrollGapTimer);
-            if (currentVpEl) {
-                currentVpEl.removeEventListener('scroll', onViewportScroll);
-                currentVpEl = null;
-            }
-            gapCorrectionPending?.destroy();
+            debouncedMeasureCardRow();
         });
     }
 
@@ -1611,6 +1422,15 @@ export class UnitSearchComponent {
         this.searchDebounceTimer = setTimeout(() => this.flushPendingSearch(), this.SEARCH_DEBOUNCE_MS);
     }
 
+    private cancelPendingSearchCommit(): void {
+        if (this.searchDebounceTimer) {
+            clearTimeout(this.searchDebounceTimer);
+            this.searchDebounceTimer = undefined;
+        }
+        this.pendingSearchText = null;
+        this.searchCommitPending.set(false);
+    }
+
     private flushPendingSearch() {
         if (this.searchDebounceTimer) {
             clearTimeout(this.searchDebounceTimer);
@@ -1654,7 +1474,6 @@ export class UnitSearchComponent {
         let dropdownWidth: number;
         let top: number;
         let baseTop: number;
-        let right: string | undefined;
 
         if (this.expandedView()) {
             // When expanded, container is fixed at top with 4px margins
@@ -1662,13 +1481,9 @@ export class UnitSearchComponent {
             dropdownWidth = window.innerWidth - 8; // 4px left + 4px right margin
             baseTop = safeTop + 4 + 40 + gap; // top margin + searchbar height + gap
             top = baseTop + viewportOffsetTop;
-            if (this.advPanelDocked()) {
-                const advPanelWidth = this.advPanelStyle().width;
-                right = advPanelWidth ? `${parseInt(advPanelWidth, 10) + 8}px` : `308px`;
-            }
         } else {
             // Normal mode: use actual container position
-            const container = document.querySelector('.searchbar-container') as HTMLElement;
+            const container = this.searchbarContainer()?.nativeElement;
             if (!container) return;
 
             const containerRect = container.getBoundingClientRect();
@@ -1696,7 +1511,7 @@ export class UnitSearchComponent {
         const advBtn = this.advBtn();
         if (!advBtn) return;
 
-        const { top: safeTop, bottom: safeBottom, left: safeLeft, right: safeRight } = this.layoutService.getSafeAreaInsets();
+        const { bottom: safeBottom } = this.layoutService.getSafeAreaInsets();
         const buttonRect = advBtn.nativeElement.getBoundingClientRect();
         const singlePanelWidth = 300;
         const doublePanelWidth = 600;
@@ -1759,7 +1574,7 @@ export class UnitSearchComponent {
         this.advPanelAnchoredBelow.set(opensBelow);
     }
 
-    setAdvFilter(key: string, value: any) {
+    setAdvFilter(key: string, value: unknown) {
         this.filtersService.setFilter(key, value);
         this.activeIndex.set(null);
     }
@@ -1857,12 +1672,14 @@ export class UnitSearchComponent {
             return;
         }
         if (event.key === 'Enter') {
+            if (this.isResultNavigationBlockedForTarget(event.target)) return;
             if (this.requestOpenCurrentSearchResult()) {
                 event.preventDefault();
             }
             return;
         }
         if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
+            if (this.isResultNavigationBlockedForTarget(event.target)) return;
             const items = this.displayedUnits();
             if (items.length === 0) return;
             switch (event.key) {
@@ -1876,6 +1693,15 @@ export class UnitSearchComponent {
                     break;
             }
         }
+    }
+
+    private isResultNavigationBlockedForTarget(target: EventTarget | null): boolean {
+        if (!(target instanceof HTMLElement)) return false;
+
+        const interactiveElement = target.closest('input, textarea, select, button, [contenteditable]');
+        if (!interactiveElement) return false;
+
+        return !(interactiveElement.matches('input.syntax-input') && interactiveElement.closest('syntax-input'));
     }
 
     private isResultOpenBlockedByPendingSearch(): boolean {
@@ -1906,6 +1732,7 @@ export class UnitSearchComponent {
 
     private handleSearchResultsShortcutKeyDown(event: KeyboardEvent): boolean {
         if (event.ctrlKey || event.altKey || event.metaKey) return false;
+        if (this.isResultNavigationBlockedForTarget(event.target)) return false;
 
         if (event.key === 'ArrowDown') {
             return this.navigateSearchResults('next');
@@ -1962,10 +1789,6 @@ export class UnitSearchComponent {
                 this.inlinePanelUnit.set(unit);
             }
         }
-    }
-
-    private scrollToIndex(index: number, behavior: ScrollBehavior = 'smooth') {
-        this.currentViewport()?.scrollToIndex(this.getViewportItemIndex(index), behavior);
     }
 
     /**
@@ -2033,7 +1856,8 @@ export class UnitSearchComponent {
         if (!currentFilter || currentFilter.type !== 'range') {
             return;
         }
-        const filterName = currentFilter?.label || filterKey;
+        const filterConfig = RANGE_FILTERS.find(filter => filter.key === filterKey);
+        const filterName = currentFilter.label || filterKey;
         const message = `Enter the ${filterName} range values:`;
 
         const ref = this.dialogsService.createDialog<RangeModel | null>(UnitSearchFilterRangeDialogComponent, {
@@ -2043,7 +1867,8 @@ export class UnitSearchComponent {
                 range: {
                     from: currentValue[0],
                     to: currentValue[1]
-                }
+                },
+                allowFloatingValues: rangeFilterAllowsFloatingValues(filterConfig),
             } as UnitSearchFilterRangeDialogData
         });
         let newValues = await firstValueFrom(ref.closed);
@@ -2055,25 +1880,7 @@ export class UnitSearchComponent {
             return;
         }
 
-        let newFrom = newValues.from ?? 0;
-        let newTo = newValues.to ?? Number.MAX_SAFE_INTEGER;
-        if (newFrom < totalRange[0]) {
-            newFrom = totalRange[0];
-        } else if (newTo > totalRange[1]) {
-            newTo = totalRange[1];
-        }
-
-        const currentRange = [...currentFilter.value] as [number, number];
-        if (newFrom > currentRange[1]) {
-            newFrom = currentRange[1];
-        }
-        currentRange[0] = newFrom;
-        if (newTo < currentRange[0]) {
-            newTo = currentRange[0];
-        }
-        currentRange[1] = newTo;
-
-        this.setAdvFilter(filterKey, currentRange);
+        this.setAdvFilter(filterKey, normalizeUnitSearchRange(newValues, totalRange));
     }
 
     showUnitDetails(unit: Unit) {
@@ -2095,7 +1902,7 @@ export class UnitSearchComponent {
         });
 
         const addSub = ref.componentInstance?.add.subscribe(() => {
-            if (this.forceBuilderService.smartCurrentForce()?.units().length == 1) {
+            if (this.forceBuilderService.smartCurrentForce()?.units().length === 1) {
                 this.expandedView.set(false);
                 queueMicrotask(() => {
                     this.closeAllPanels();
@@ -2137,6 +1944,7 @@ export class UnitSearchComponent {
      * Use in templates: [class.sort-slot]="isSortActive('as.PV')" or isSortActive('as.damage')
      */
     onHeaderSort(sortKey: string, groupKey?: string): void {
+        this.resetActiveResult();
         const isActive = groupKey ? this.isSortActive(groupKey) : this.isSortActive(sortKey);
         if (isActive) {
             const current = this.filtersService.selectedSortDirection();
@@ -2149,6 +1957,22 @@ export class UnitSearchComponent {
 
     onUnitTableSort(event: DataTableSortEvent): void {
         this.onHeaderSort(event.sortKey, event.groupKey);
+    }
+
+    onSortOrderChange(sortKey: string): void {
+        this.resetActiveResult();
+        this.filtersService.setSortOrder(sortKey);
+    }
+
+    toggleSortDirection(): void {
+        this.resetActiveResult();
+        const current = this.filtersService.selectedSortDirection();
+        this.filtersService.setSortDirection(current === 'asc' ? 'desc' : 'asc');
+    }
+
+    private resetActiveResult(): void {
+        this.activeIndex.set(null);
+        this.inlinePanelUnit.set(null);
     }
 
     onUnitTableRowClick(event: DataTableRowClickEvent<Unit>): void {
@@ -2267,14 +2091,13 @@ export class UnitSearchComponent {
     }
 
     /** Get a nested property value using dot notation (e.g., 'as.PV') */
-    private getNestedProperty(obj: any, key: string): any {
-        if (!obj || !key) return undefined;
-        if (!key.includes('.')) return obj[key];
+    private getNestedProperty(obj: unknown, key: string): unknown {
+        if (obj == null || typeof obj !== 'object' || !key) return undefined;
         const parts = key.split('.');
-        let cur: any = obj;
+        let cur: unknown = obj;
         for (const p of parts) {
-            if (cur == null) return undefined;
-            cur = cur[p];
+            if (cur == null || typeof cur !== 'object') return undefined;
+            cur = (cur as Record<string, unknown>)[p];
         }
         return cur;
     }
@@ -2485,10 +2308,14 @@ export class UnitSearchComponent {
         try {
             (event.target as HTMLElement).releasePointerCapture(event.pointerId);
         } catch (e) { /* ignore */ }
+        this.removeAdvPanelDragListeners();
+    };
+
+    private removeAdvPanelDragListeners(): void {
         window.removeEventListener('pointermove', this.onAdvPanelDragMove);
         window.removeEventListener('pointerup', this.onAdvPanelDragEnd);
         window.removeEventListener('pointercancel', this.onAdvPanelDragEnd);
-    };
+    }
 
     multiSelectUnit(unit: Unit, event?: Event) {
         event?.stopPropagation();
@@ -2529,7 +2356,7 @@ export class UnitSearchComponent {
 
     /** Handle unit added from inline panel */
     onInlinePanelAdd(): void {
-        if (this.forceBuilderService.smartCurrentForce()?.units().length == 1) {
+        if (this.forceBuilderService.smartCurrentForce()?.units().length === 1) {
             // If this is the first unit being added, close the search panel
             this.closeAllPanels();
             this.expandedView.set(false);
@@ -2648,8 +2475,7 @@ export class UnitSearchComponent {
 
     private setViewMode(viewMode: UnitSearchViewMode) {
         const normalizedViewMode = this.normalizeViewMode(viewMode);
-        this.viewMode.set(normalizedViewMode);
-        void this.optionsService.setOption('unitSearchViewMode', normalizedViewMode);
+        this.filtersService.setViewMode(normalizedViewMode);
     }
 
     toggleViewModeMenu(event: MouseEvent) {
@@ -2677,6 +2503,7 @@ export class UnitSearchComponent {
         }
 
         this.setViewMode(viewMode);
+        void this.optionsService.setOption('unitSearchViewMode', this.viewMode());
         this.closeViewModeMenu();
     }
 
@@ -2693,12 +2520,7 @@ export class UnitSearchComponent {
     }
 
     clearSearch() {
-        if (this.searchDebounceTimer) {
-            clearTimeout(this.searchDebounceTimer);
-            this.searchDebounceTimer = undefined;
-        }
-        this.pendingSearchText = null;
-        this.searchCommitPending.set(false);
+        this.cancelPendingSearchCommit();
         this.pendingResultOpenRequest.set(false);
         this.immediateSearchText.set('');
         this.filtersService.setSearchText('');

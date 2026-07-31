@@ -40,6 +40,15 @@ describe('OptionsService theme migration', () => {
         expect(service.options().cbtAutomations).toBeFalse();
     });
 
+    it('restores the last Unit Search view mode', async () => {
+        savedOptions = { unitSearchViewMode: 'chassis' };
+
+        const service = await createService();
+
+        expect(service.initialized()).toBeTrue();
+        expect(service.options().unitSearchViewMode).toBe('chassis');
+    });
+
     it('restores the canonical theme color', async () => {
         savedOptions = { colorScheme: 'night' };
 
