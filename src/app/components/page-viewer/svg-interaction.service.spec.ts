@@ -863,10 +863,37 @@ describe('SvgInteractionService', () => {
         tap(location, 77);
 
         const pickerConfig = pickerFactory.createChoicePicker.calls.mostRecent().args[0];
-        expect(pickerConfig.values).toContain(jasmine.objectContaining({ value: 27 }));
+        expect(pickerConfig.values.find((choice: { value: number }) => choice.value === -5)?.colors).toBeUndefined();
+        expect(pickerConfig.values.find((choice: { value: number }) => choice.value === 15)?.colors).toBeUndefined();
+        expect(pickerConfig.values).toContain(jasmine.objectContaining({
+            value: 20,
+            colors: { normal: '#8B0000', normalText: '#fff' },
+        }));
+        expect(pickerConfig.values).toContain(jasmine.objectContaining({
+            value: 27,
+            colors: { normal: '#8B0000', normalText: '#fff' },
+        }));
         pickerConfig.onPick({ label: '16', value: 16 });
         expect(unit.addArmorHits).toHaveBeenCalledWith('LT', 15, false, false);
         expect(unit.addInternalHits).toHaveBeenCalledWith('LT', 1, false);
+    });
+
+    it('does not color direct structure choices as armor overflow', () => {
+        options.pickerStyle = 'linear';
+        const { svg, location, unit } = createArmorInteractionUnit({
+            armorPoints: 20,
+            armorHits: 20,
+            internalPoints: 20,
+            internalHits: 8,
+            structure: true,
+        });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(location, 78);
+
+        const choices = pickerFactory.createChoicePicker.calls.mostRecent().args[0].values;
+        expect(choices.every((choice: { colors?: unknown }) => choice.colors === undefined)).toBeTrue();
     });
 
     it('assigns the single target when a sheet range button is clicked with one target', () => {

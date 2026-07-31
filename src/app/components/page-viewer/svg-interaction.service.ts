@@ -101,6 +101,10 @@ const SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY = 'svg-inventory-target-choice';
 const SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-conditions-dropdown';
 const SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY = 'svg-crew-state-dropdown';
 const SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-location-conditions-dropdown';
+const ARMOR_OVERFLOW_CHOICE_COLORS = {
+    normal: '#8B0000',
+    normalText: '#fff',
+} as const;
 const REPEATABLE_MOTIVE_HIT_LABELS = new Map<number, string>([
     [2, 'Medium'],
     [3, 'Heavy']
@@ -626,6 +630,14 @@ export class SvgInteractionService {
                         values.push({ label: endValue.toString(), value: endValue });
                     }
                     values.sort((a, b) => (a.value as number) - (b.value as number));
+
+                    if (!isStructure && !isShield && internalPoints > 0) {
+                        values.forEach(choice => {
+                            if ((choice.value as number) > remainingArmorPoints) {
+                                choice.colors = ARMOR_OVERFLOW_CHOICE_COLORS;
+                            }
+                        });
+                    }
 
                     return values;
                 };
