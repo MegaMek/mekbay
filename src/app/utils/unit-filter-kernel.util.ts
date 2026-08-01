@@ -48,10 +48,11 @@ import { wildcardToRegex } from './string.util';
 import {
     checkQuantityConstraint,
     getSelectedPositiveDropdownNames,
-    getUnitComponentData,
+    getUnitCountableFilterData,
     normalizeMultiStateSelection,
 } from './unit-search-shared.util';
 import { getUnitVariantGroupKey } from './unit-variant.util';
+import { isCountableBackedDropdown } from './unit-search-filter-config.util';
 
 export interface UnitFilterKernelDependencies {
     getProperty: (unit: Unit, key?: string) => unknown;
@@ -107,7 +108,7 @@ function filterUnitsByMultiState(
         item.countIncludeRanges || item.countExcludeRanges;
     const needsQuantityCounting = orList.some(hasQuantityConstraint) ||
         andList.some(hasQuantityConstraint) || notList.some(hasQuantityConstraint);
-    const isComponentFilter = key === 'componentName';
+    const isCountableFilter = isCountableBackedDropdown(ADVANCED_FILTER_CONFIG_BY_KEY.get(key));
     const compiledOrPatterns = wildcardPatterns?.filter(p => p.state === 'or').map(pattern => ({ pattern, regex: wildcardToRegex(pattern.pattern) })) ?? [];
     const compiledAndPatterns = wildcardPatterns?.filter(p => p.state === 'and').map(pattern => ({ pattern, regex: wildcardToRegex(pattern.pattern) })) ?? [];
     const compiledNotPatterns = wildcardPatterns?.filter(p => p.state === 'not').map(pattern => ({ pattern, regex: wildcardToRegex(pattern.pattern) })) ?? [];
@@ -115,11 +116,11 @@ function filterUnitsByMultiState(
     return units.filter(unit => {
         let unitData: { names: Set<string>; counts?: Map<string, number> };
 
-        if (isComponentFilter) {
-            const cached = getUnitComponentData(unit);
+        if (isCountableFilter) {
+            const cached = getUnitCountableFilterData(unit, key);
             unitData = {
-                names: cached.names,
-                counts: needsQuantityCounting ? cached.counts : undefined,
+                names: cached?.names ?? new Set<string>(),
+                counts: needsQuantityCounting ? cached?.counts : undefined,
             };
         } else {
             const propValue = getProperty(unit, key);

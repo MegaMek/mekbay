@@ -55,6 +55,7 @@ import { resolveAmmoWeaponProfile, type AmmoWeaponProfile } from './ammo-weapon-
 import type { EquipmentFlag } from './equipment-flags.type';
 import { AmmoMunitionFlag } from './ammo-munition-flags.type';
 import type { EquipmentRegistry } from './equipment-lookup';
+import { WEAPON_TYPES, type WeaponType } from './weapon-types.model';
 
 /*
  * Author: Drake
@@ -77,9 +78,6 @@ export interface WeaponDamage {
     readonly maximum: number;
     readonly unit?: WeaponDamageUnit;
 }
-export const WEAPON_TYPES = ['A', 'AE', 'AI', 'B', 'C', 'DB', 'DE', 'E', 'F', 'H', 'M', 'N', 'OS', 'P', 'PB', 'R', 'S', 'V', 'X'] as const;
-export type WeaponType = typeof WEAPON_TYPES[number];
-
 // ============================================================================
 // Ammo Types
 // ============================================================================

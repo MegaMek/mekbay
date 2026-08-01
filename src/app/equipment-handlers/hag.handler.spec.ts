@@ -1,4 +1,5 @@
-import { MiscEquipment, WeaponEquipment, type WeaponType } from '../models/equipment.model';
+import { MiscEquipment, WeaponEquipment } from '../models/equipment.model';
+import type { WeaponType } from '../models/weapon-types.model';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';

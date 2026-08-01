@@ -34,7 +34,8 @@
 import { computed, signal, type Signal, type WritableSignal } from '@angular/core';
 
 import type { CBTForceUnit } from './cbt-force-unit.model';
-import { AmmoEquipment, MiscEquipment, WEAPON_TYPES, WeaponEquipment, type Equipment, type WeaponType } from './equipment.model';
+import { AmmoEquipment, MiscEquipment, WeaponEquipment, type Equipment } from './equipment.model';
+import { WEAPON_TYPES, type WeaponType } from './weapon-types.model';
 import type { CriticalSlot } from './force-serialization';
 import type { MountedEquipmentRuleState } from './rules/unit-type-rules';
 import { isPhysicalWeaponEquipment } from './entity/utils/physical-weapon';

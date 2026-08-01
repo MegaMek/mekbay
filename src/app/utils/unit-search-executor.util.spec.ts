@@ -28,6 +28,26 @@ function executeSortedUnits(units: Unit[], sortKey: string): Unit[] {
     }).results;
 }
 
+function executeQuery(units: Unit[], query: string): Unit[] {
+    return executeUnitSearch({
+        units,
+        parsedQuery: parseSemanticQueryAST(query, GameSystem.CLASSIC),
+        searchTokens: [],
+        gameSystem: GameSystem.CLASSIC,
+        sortKey: 'name',
+        sortDirection: 'asc',
+        bvPvLimit: 0,
+        forceTotalBvPv: 0,
+        getAdjustedBV: unit => unit.bv,
+        getAdjustedPV: unit => unit.as.PV,
+        unitBelongsToEra: () => false,
+        unitBelongsToFaction: () => false,
+        unitBelongsToForcePack: () => false,
+        getAllEraNames: () => [],
+        getAllFactionNames: () => [],
+    }).results;
+}
+
 describe('unit-search-executor', () => {
     it('uses unit name order as the tie-breaker for equal sort option values', () => {
         const locust10 = createUnit({ name: 'Locust IIC 10', chassis: 'Locust IIC', model: '10', tons: 25 });
@@ -37,5 +57,34 @@ describe('unit-search-executor', () => {
         const sortedNames = executeSortedUnits([locust10, atlas, locust2], 'tons').map(unit => unit.name);
 
         expect(sortedNames).toEqual(['Locust IIC 2', 'Locust IIC 10', 'Atlas AS7-D']);
+    });
+
+    it('filters plain worker-safe weapon-type counts by minimum quantity', () => {
+        const oneAI = createEmptyUnit({ name: 'One AI', _weaponTypes: ['AI'], _weaponTypeCounts: { AI: 1 } });
+        const twoAI = createEmptyUnit({ name: 'Two AI', _weaponTypes: ['AI'], _weaponTypeCounts: { AI: 2 } });
+        const noAI = createEmptyUnit({ name: 'No AI' });
+
+        expect(executeQuery([oneAI, twoAI, noAI], 'weaponType="AI:>=2"').map(unit => unit.name))
+            .toEqual(['Two AI']);
+        expect(executeQuery([oneAI, twoAI, noAI], 'WEAPONTYPE=AP').map(unit => unit.name))
+            .toEqual(['One AI', 'Two AI']);
+    });
+
+    it('evaluates selected weapon types independently for OR and AND queries', () => {
+        const dualTyped = createEmptyUnit({
+            name: 'Dual Typed',
+            _weaponTypes: ['AE', 'AI'],
+            _weaponTypeCounts: { AE: 2, AI: 2 },
+        });
+        const areaEffectOnly = createEmptyUnit({
+            name: 'Area Effect Only',
+            _weaponTypes: ['AE'],
+            _weaponTypeCounts: { AE: 2 },
+        });
+
+        expect(executeQuery([dualTyped, areaEffectOnly], 'weaponType="AI:>=2","AE:>=2"').map(unit => unit.name))
+            .toEqual(['Dual Typed', 'Area Effect Only']);
+        expect(executeQuery([dualTyped, areaEffectOnly], 'weaponType&="AI:>=2" weaponType&="AE:>=2"').map(unit => unit.name))
+            .toEqual(['Dual Typed']);
     });
 });

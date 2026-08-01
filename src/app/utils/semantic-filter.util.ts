@@ -163,7 +163,7 @@ export function buildSemanticKeyMap(gameSystem: GameSystem): Map<string, AdvFilt
     // First pass: add all filters without a game restriction
     for (const conf of ADVANCED_FILTERS) {
         if (conf.game) continue; // Skip game-specific filters in first pass
-        const key = conf.semanticKey || conf.key;
+        const key = (conf.semanticKey || conf.key).toLowerCase();
         if (!map.has(key)) {
             map.set(key, conf);
         }
@@ -173,7 +173,7 @@ export function buildSemanticKeyMap(gameSystem: GameSystem): Map<string, AdvFilt
     // These will fill in any gaps but won't override existing entries
     for (const conf of ADVANCED_FILTERS) {
         if (!conf.game || conf.game === gameSystem) continue;
-        const key = conf.semanticKey || conf.key;
+        const key = (conf.semanticKey || conf.key).toLowerCase();
         if (!map.has(key)) {
             map.set(key, conf);
         }
@@ -182,7 +182,7 @@ export function buildSemanticKeyMap(gameSystem: GameSystem): Map<string, AdvFilt
     // Third pass: add/override with current game mode filters (highest priority)
     for (const conf of ADVANCED_FILTERS) {
         if (conf.game !== gameSystem) continue;
-        const key = conf.semanticKey || conf.key;
+        const key = (conf.semanticKey || conf.key).toLowerCase();
         map.set(key, conf); // Always set, overriding any previous
     }
     
@@ -758,7 +758,8 @@ export function tokensToFilterState(
                             semanticOnly = true;
                         } else if (conf.countable) {
                             // For countable filters, parse quantity constraint (e.g., "AC/2:>1")
-                            const { name, constraint } = parseValueWithQuantity(val);
+                            const { name: rawName, constraint } = parseValueWithQuantity(val);
+                            const name = normalizeValue(rawName);
                             
                             // Get or create constraint entry for this name
                             let entry = countableConstraints.get(name);

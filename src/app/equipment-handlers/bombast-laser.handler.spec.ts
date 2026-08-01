@@ -1,5 +1,6 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
-import { MiscEquipment, WeaponEquipment, type WeaponDamage, type WeaponType } from '../models/equipment.model';
+import { MiscEquipment, WeaponEquipment, type WeaponDamage } from '../models/equipment.model';
+import type { WeaponType } from '../models/weapon-types.model';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
 import { EquipmentInteractionRegistry, type HandlerContext } from '../services/equipment-interaction-registry.service';

@@ -2,11 +2,10 @@ import {
     AmmoEquipment,
     resolveWeaponAmmo,
     resolveWeaponDamage,
-    WEAPON_TYPES,
     WeaponDamage,
     WeaponEquipment,
-    type WeaponType,
 } from '../models/equipment.model';
+import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import type { AmmoWeaponProfile } from '../models/ammo-weapon-profile.model';

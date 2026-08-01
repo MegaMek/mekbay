@@ -40,6 +40,7 @@ import {
     MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS,
     MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS,
 } from '../models/megamek/availability.model';
+import { normalizeWeaponType, WEAPON_TYPES, WEAPON_TYPE_DISPLAY_NAMES } from '../models/weapon-types.model';
 import { CBT_WEIGHT_CLASSES } from '../models/units.model';
 import type { SemanticFilterState } from '../utils/semantic-filter.util';
 
@@ -65,7 +66,7 @@ export type MegaMekRaritySortKey =
 
 export type DropdownOptionSource = 'indexed' | 'external' | 'context';
 export type DropdownAvailabilitySource = 'indexed' | 'context';
-export type DropdownPropertyShape = 'scalar' | 'array' | 'component';
+export type DropdownPropertyShape = 'scalar' | 'array' | 'component' | 'countable';
 export type BooleanFilterSource = 'boolean' | 'nonEmptyArray' | 'truthy';
 export type TriStateBooleanFilterValue = null | 'or' | 'not';
 
@@ -452,6 +453,7 @@ export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
     { key: 'as._motive', semanticKey: 'motive', label: 'Motive', game: GameSystem.ALPHA_STRIKE, sortOptions: Object.values(AS_MOVEMENT_MODE_DISPLAY_NAMES), optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array', valueNormalizer: normalizeMotiveValue },
     { key: 'as.specials', semanticKey: 'specials', label: 'Specials', multistate: true, game: GameSystem.ALPHA_STRIKE, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
     { key: 'componentName', semanticKey: 'equipment', label: 'Equipment', multistate: true, countable: true, game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'context', propertyShape: 'component' },
+    { key: 'weaponType', semanticKey: 'weaponType', label: 'Weapon Type', multistate: true, countable: true, game: GameSystem.CLASSIC, sortOptions: [...WEAPON_TYPES], optionSource: 'indexed', availabilitySource: 'context', propertyShape: 'countable', valueNormalizer: normalizeWeaponType, displayNameFn: value => WEAPON_TYPE_DISPLAY_NAMES[value as keyof typeof WEAPON_TYPE_DISPLAY_NAMES] ?? value },
     { key: 'features', semanticKey: 'features', label: 'Features', multistate: true, game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
     { key: 'quirks', semanticKey: 'quirks', label: 'Quirks', multistate: true, game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
     { key: 'source', semanticKey: 'source', label: 'Source', multistate: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
@@ -553,7 +555,7 @@ export const SORT_OPTIONS: SortOption[] = [
     { key: 'name', label: 'Name' },
     ...ADVANCED_FILTERS
         .filter(f => f.type !== AdvFilterType.BOOLEAN)
-        .filter(f => !['era', 'faction', 'availabilityRarity', 'availabilityFrom', 'forcePack', 'componentName', 'source', '_tags', 'as.specials', 'name', 'chassis', 'model', 'as._motive', 'quirks', 'features'].includes(f.key))
+        .filter(f => !['era', 'faction', 'availabilityRarity', 'availabilityFrom', 'forcePack', 'componentName', 'weaponType', 'source', '_tags', 'as.specials', 'name', 'chassis', 'model', 'as._motive', 'quirks', 'features'].includes(f.key))
         .map(f => ({
             key: f.key,
             label: f.label,

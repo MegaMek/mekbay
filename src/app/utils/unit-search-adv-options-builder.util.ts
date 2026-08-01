@@ -35,11 +35,11 @@ import type { MultiStateSelection } from '../components/multi-select-dropdown/mu
 import type { GameSystem } from '../models/common.model';
 import type { Unit } from '../models/units.model';
 import type { WildcardPattern } from './semantic-filter.util';
-import { getAdvOptionsContextSnapshot, getSnapshotAvailabilityNames, getSnapshotAvailableNames, getSnapshotComponentCounts, getSnapshotUnitIds, type AdvOptionsContextSnapshot } from './unit-search-adv-options.util';
+import { getAdvOptionsContextSnapshot, getSnapshotAvailabilityNames, getSnapshotAvailableNames, getSnapshotCountableValues, getSnapshotUnitIds, type AdvOptionsContextSnapshot } from './unit-search-adv-options.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from './unit-filter-kernel.util';
 import { matchesSearch, parseSearchQuery } from './search.util';
 import { getNowMs, getProperty, normalizeMultiStateSelection } from './unit-search-shared.util';
-import { isComponentBackedDropdown, usesIndexedDropdownAvailability, usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
+import { isComponentBackedDropdown, isCountableBackedDropdown, usesIndexedDropdownAvailability, usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
 import { sortAvailableDropdownOptions, sortDropdownOptionObjects } from './unit-search-dropdown-sort.util';
 import { AdvFilterType, normalizeTriStateBooleanFilterValue, type AdvFilterConfig, type AdvFilterOptions, type AdvOptionsTelemetryFilterStage, type AdvOptionsTelemetrySnapshot, type FilterState, type SemanticDisplayItem } from '../services/unit-search-filters.model';
 
@@ -363,12 +363,19 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                 availableOptions = request.buildIndexedDropdownOptions(conf, contextUnits, displayNameFn, contextUnitIds);
             } else if (conf.multistate) {
                 const isComponentFilter = isComponentBackedDropdown(conf);
+                const isCountableFilter = isCountableBackedDropdown(conf);
                 const currentFilter = request.state[conf.key];
                 const normalizedCurrentSelection = currentFilter?.interactedWith
                     ? normalizeMultiStateSelection(currentFilter.value)
                     : {};
-                const hasQuantityFilters = conf.countable && isComponentFilter
-                    && Object.values(normalizedCurrentSelection).some(selection => selection.count > 1);
+                const hasQuantityFilters = conf.countable && isCountableFilter
+                    && Object.values(normalizedCurrentSelection).some(selection =>
+                        selection.count > 1
+                        || selection.countOperator !== undefined
+                        || selection.countMax !== undefined
+                        || selection.countIncludeRanges !== undefined
+                        || selection.countExcludeRanges !== undefined
+                    );
                 const indexedUniverse = usesIndexedDropdownUniverse(conf);
                 const availableNames = indexedUniverse
                     ? request.getIndexedUniverseNames(conf.key)
@@ -378,7 +385,7 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                         conf.key,
                         contextUnits,
                         normalizedCurrentSelection,
-                        isComponentFilter,
+                        isCountableFilter,
                     )
                     : null;
 
@@ -388,7 +395,7 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                 const availableNameSet = constrainedAvailableNameSet
                     ?? (indexedUniverse
                         ? (usesIndexedDropdownAvailability(conf)
-                            ? request.collectIndexedAvailabilityNames(conf.key, sortedNames, contextUnitIds, isComponentFilter)
+                            ? request.collectIndexedAvailabilityNames(conf.key, sortedNames, contextUnitIds, isCountableFilter)
                             : getSnapshotAvailabilityNames(contextSnapshot, conf.key, contextUnits, isComponentFilter))
                         : getSnapshotAvailabilityNames(contextSnapshot, conf.key, contextUnits, isComponentFilter));
                 const indexedOptionMetadata = indexedUniverse
@@ -400,17 +407,17 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
 
                 let totalCountsMap: Map<string, number> | null = null;
                 if (hasQuantityFilters) {
-                    totalCountsMap = getSnapshotComponentCounts(contextSnapshot, contextUnits);
+                    totalCountsMap = getSnapshotCountableValues(contextSnapshot, conf.key, contextUnits);
                 }
 
                 const optionsWithAvailability = sortedNames.map(name => {
-                    const normalizedName = isComponentFilter ? name.toLowerCase() : name;
+                    const normalizedName = isCountableFilter ? name.toLowerCase() : name;
                     const metadata = indexedOptionMetadata?.get(name);
                     const option: { name: string; img?: string; displayName?: string; available: boolean; count?: number } = {
                         name,
                         ...(metadata?.img ? { img: metadata.img } : {}),
                         ...(metadata?.displayName ? { displayName: metadata.displayName } : {}),
-                        available: availableNameSet.has(normalizedName),
+                        available: availableNameSet.has(normalizedName) || availableNameSet.has(name),
                     };
 
                     if (totalCountsMap) {

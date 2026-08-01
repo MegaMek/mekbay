@@ -77,7 +77,7 @@ import {
 import {
     getProperty,
     getSelectedPositiveDropdownNames,
-    getUnitComponentData,
+    getUnitCountableFilterData,
     measureStage,
     normalizeMultiStateSelection,
 } from '../utils/unit-search-shared.util';
@@ -2678,14 +2678,14 @@ export class UnitSearchFiltersService {
         filterKey: string,
         optionNames: readonly string[],
         contextUnitIds: ReadonlySet<string>,
-        isComponentFilter: boolean,
+        isCountableFilter: boolean,
     ): Set<string> {
         const availableNames = new Set<string>();
 
         for (const optionName of optionNames) {
             const indexedIds = this.dataService.getIndexedUnitIds(filterKey, optionName);
             if (indexedIds && setHasAny(indexedIds, contextUnitIds)) {
-                availableNames.add(isComponentFilter ? optionName.toLowerCase() : optionName);
+                availableNames.add(isCountableFilter ? optionName.toLowerCase() : optionName);
             }
         }
 
@@ -2696,7 +2696,7 @@ export class UnitSearchFiltersService {
         filterKey: string,
         units: Unit[],
         selection: MultiStateSelection,
-        isComponentFilter: boolean,
+        isCountableFilter: boolean,
     ): Set<string> | null {
         const andEntries = Object.entries(selection).filter(([, sel]) => sel.state === 'and');
         if (andEntries.length === 0) {
@@ -2714,7 +2714,7 @@ export class UnitSearchFiltersService {
         );
         const availableNames = new Set<string>();
 
-        if (!isComponentFilter) {
+        if (!isCountableFilter) {
             const universeNames = this.getIndexedUniverseNames(filterKey);
             if (universeNames.length > 0) {
                 const contextUnitIds = new Set(units.map(unit => unit.name));
@@ -2779,8 +2779,11 @@ export class UnitSearchFiltersService {
         }
 
         for (const unit of units) {
-            if (isComponentFilter) {
-                const cached = getUnitComponentData(unit);
+            if (isCountableFilter) {
+                const cached = getUnitCountableFilterData(unit, filterKey);
+                if (!cached) {
+                    continue;
+                }
 
                 let excluded = false;
                 for (const notName of notSet) {

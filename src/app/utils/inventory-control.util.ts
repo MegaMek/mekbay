@@ -31,7 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { AmmoEquipment, WeaponEquipment, type WeaponType } from '../models/equipment.model';
+import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
+import type { WeaponType } from '../models/weapon-types.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { MountedAmmo, MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';

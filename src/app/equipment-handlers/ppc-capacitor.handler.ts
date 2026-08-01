@@ -7,7 +7,7 @@ import type { WeaponDamage } from '../models/equipment.model';
 import { isPpcCapacitorCompatibleWeapon } from '../models/entity/utils/equipment-link-rules';
 import type { InventoryControlDamageContext } from '../utils/inventory-control-damage.util';
 import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
-import type { WeaponType } from '../models/equipment.model';
+import type { WeaponType } from '../models/weapon-types.model';
 import { EquipmentFlag } from '../models/equipment-flags.type';
 
 export const PPC_CAPACITOR_STATE_KEY = 'ppc_capacitor_state';

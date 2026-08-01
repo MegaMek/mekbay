@@ -33,7 +33,8 @@
 
 import type { PickerChoice } from '../components/picker/picker.interface';
 import { EquipmentFlag } from '../models/equipment-flags.type';
-import { WeaponEquipment, type WeaponType } from '../models/equipment.model';
+import { WeaponEquipment } from '../models/equipment.model';
+import type { WeaponType } from '../models/weapon-types.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
 import { EquipmentInteractionHandler, type HandlerContext, type ToHitAdjustmentContext } from '../services/equipment-interaction-registry.service';
