@@ -34,7 +34,7 @@
 import { computed, signal, type Signal } from '@angular/core';
 import { MountedWeapon, type MountedEquipment } from '../mounted-equipment.model';
 import type { ToHitModifierBreakdownEntry } from './game-rules';
-import type { WeaponType } from '../equipment.model';
+import type { WeaponType } from '../weapon-types.model';
 import type { CriticalSlot, SerializedC3NetworkGroup } from '../force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';

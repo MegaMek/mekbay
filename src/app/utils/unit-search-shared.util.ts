@@ -103,6 +103,9 @@ export function getProperty(obj: any, key?: string) {
     if (key === 'source') {
         return getUnitSourceFilterValues(obj as Unit);
     }
+    if (key === 'weaponType') {
+        return (obj as Unit)._weaponTypes ?? [];
+    }
     if (key === 'as._motive') {
         const mvm = (obj as Unit).as?.MVm;
         if (!mvm) return [];
@@ -281,6 +284,31 @@ export function getUnitComponentData(unit: Unit): UnitComponentData {
     }
 
     return cached;
+}
+
+export function getUnitCountableFilterData(unit: Unit, filterKey: string): UnitComponentData | null {
+    if (filterKey === 'componentName') {
+        return getUnitComponentData(unit);
+    }
+
+    if (filterKey !== 'weaponType') {
+        return null;
+    }
+
+    const names = new Set<string>();
+    const counts = new Map<string, number>();
+
+    for (const [weaponType, count] of Object.entries(unit._weaponTypeCounts ?? {})) {
+        if (typeof count !== 'number' || count <= 0) {
+            continue;
+        }
+
+        const normalizedWeaponType = weaponType.toLowerCase();
+        names.add(normalizedWeaponType);
+        counts.set(normalizedWeaponType, count);
+    }
+
+    return { names, counts };
 }
 
 export function checkQuantityConstraint(

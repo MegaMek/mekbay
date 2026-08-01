@@ -315,6 +315,8 @@ function parseCompactFiltersFromUrl(
                         name = name.slice(0, -1);
                     }
 
+                    name = conf.valueNormalizer?.(name) ?? name;
+
                     selection[name] = { name, state, count };
                 }
 
@@ -364,7 +366,8 @@ function validateParsedFiltersFromUrl(
                 const selection = normalizeMultiStateSelection(state.value);
                 const validSelection: MultiStateSelection = {};
                 for (const [name, selectionValue] of Object.entries(selection)) {
-                    const properCase = availableValuesMap.get(name.toLowerCase());
+                    const normalizedName = conf.valueNormalizer?.(name) ?? name;
+                    const properCase = availableValuesMap.get(normalizedName.toLowerCase());
                     if (properCase) {
                         validSelection[properCase] = { ...selectionValue, name: properCase };
                     }

@@ -88,9 +88,44 @@
             <div class="example"><code class="allow-select" (click)="appendToSearch('equipment=PPC:2-4')">equipment=PPC:2-4</code><span class="desc">→ Between 2 and 4 PPCs</span></div>
             <div class="example"><code class="allow-select" (click)="appendToSearch('equipment=PPC:!3')">equipment=PPC:!3</code><span class="desc">→ Not exactly 3 PPCs</span></div>
             <div class="example"><code class="allow-select" (click)="appendToSearch('equipment&=AC5:>2,CASE')">equipment&=AC5:>2,CASE</code><span class="desc">→ More than 2 AC5s and has CASE (must have both)</span></div>
+            <div class="example"><code class="allow-select" (click)="appendToSearch('weaponType=AI:>=2')">weaponType=AI:&gt;=2</code><span class="desc">→ At least 2 anti-infantry weapons</span></div>
+            <div class="example"><code class="allow-select" (click)="appendToSearch('weaponType&=M:>=2,F')">weaponType&amp;=M:&gt;=2,F</code><span class="desc">→ At least 2 missile weapons and at least 1 flak weapon</span></div>
         </div>
     </section>
     }
+
+    <!-- Classic BattleTech Weapon Types -->
+    <section class="guide-section">
+        <h3>Classic BattleTech Weapon Types</h3>
+        <p><code>weaponType</code> matches intrinsic weapon properties and supports OR, AND, NOT, and quantity constraints.</p>
+        <div class="examples">
+            <div class="example"><code class="allow-select" (click)="appendToSearch('weaponType=AI')">weaponType=AI</code><span class="desc">→ Has an anti-infantry weapon</span></div>
+            <div class="example"><code class="allow-select" (click)="appendToSearch('weaponType=DB,DE')">weaponType=DB,DE</code><span class="desc">→ Has a direct-fire ballistic OR energy weapon</span></div>
+            <div class="example"><code class="allow-select" (click)="appendToSearch('weaponType&=M,F')">weaponType&amp;=M,F</code><span class="desc">→ Has both missile and flak weapons</span></div>
+            <div class="example"><code class="allow-select" (click)="appendToSearch('weaponType!=OS')">weaponType!=OS</code><span class="desc">→ Excludes units with one-shot weapons</span></div>
+        </div>
+        <p class="note"><strong>Codes:</strong>
+            <code>A</code> Artillery,
+            <code>AE</code> Area-Effect,
+            <code>AI</code> Anti-Infantry,
+            <code>B</code> Ballistic,
+            <code>C</code> Cluster,
+            <code>DB</code> Direct-Fire Ballistic,
+            <code>DE</code> Direct-Fire Energy,
+            <code>E</code> Energy,
+            <code>F</code> Flak,
+            <code>H</code> Heat-Causing,
+            <code>M</code> Missile,
+            <code>N</code> Nuclear,
+            <code>OS</code> One-Shot,
+            <code>P</code> Pulse,
+            <code>PB</code> Point-Blank,
+            <code>R</code> Rapid-Fire,
+            <code>S</code> Switchable Ammo,
+            <code>V</code> Variable Damage,
+            <code>X</code> Explosive.
+        </p>
+    </section>
 
     <!-- Alpha Strike Specials -->
     <section class="guide-section">

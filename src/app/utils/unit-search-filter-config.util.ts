@@ -47,7 +47,7 @@ const advancedFilterConfigBySemanticField = new Map<string, AdvFilterConfig>();
 for (const config of ADVANCED_FILTERS) {
     advancedFilterConfigByKey.set(config.key, config);
 
-    const semanticField = config.semanticKey || config.key;
+    const semanticField = (config.semanticKey || config.key).toLowerCase();
     if (!advancedFilterConfigBySemanticField.has(semanticField)) {
         advancedFilterConfigBySemanticField.set(semanticField, config);
     }
@@ -58,7 +58,7 @@ export function getAdvancedFilterConfigByKey(key: string): AdvFilterConfig | und
 }
 
 export function getAdvancedFilterConfigBySemanticField(field: string): AdvFilterConfig | undefined {
-    return advancedFilterConfigBySemanticField.get(field);
+    return advancedFilterConfigBySemanticField.get(field.toLowerCase());
 }
 
 export function isFilterAvailableForAvailabilitySource(
@@ -114,11 +114,16 @@ export function usesIndexedDropdownAvailability(config: AdvFilterConfig | undefi
 
 export function isArrayBackedDropdown(config: AdvFilterConfig | undefined): boolean {
     const shape = getDropdownPropertyShape(config);
-    return shape === 'array' || shape === 'component';
+    return shape === 'array' || shape === 'component' || shape === 'countable';
 }
 
 export function isComponentBackedDropdown(config: AdvFilterConfig | undefined): boolean {
     return getDropdownPropertyShape(config) === 'component';
+}
+
+export function isCountableBackedDropdown(config: AdvFilterConfig | undefined): boolean {
+    const shape = getDropdownPropertyShape(config);
+    return shape === 'component' || shape === 'countable';
 }
 
 export function getDropdownCapabilityMetadataErrors(configs: readonly AdvFilterConfig[] = ADVANCED_FILTERS): string[] {

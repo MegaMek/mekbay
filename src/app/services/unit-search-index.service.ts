@@ -44,6 +44,8 @@ import { parseASDamageValue } from '../utils/as-damage.util';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, BOOLEAN_FILTERS, getBooleanFilterUnitValue } from './unit-search-filters.model';
 import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
+import { WeaponEquipment } from '../models/equipment.model';
+import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
 
 interface ASUnitTypeMaxStats {
     [asUnitType: string]: MinMaxStatsRange;
@@ -327,6 +329,8 @@ export class UnitSearchIndexService {
             this.addSearchIndexValues('source', getUnitSourceFilterValues(unit), unit.name);
             this.addSearchIndexValues('componentName', unit.comp.map(component => component.n), unit.name);
             this.addComponentCountValues(unit);
+            this.prepareUnitWeaponTypes(unit);
+            this.addSearchIndexValues('weaponType', unit._weaponTypes ?? [], unit.name);
             this.addSearchIndexValues('features', unit.features ?? [], unit.name);
             this.addSearchIndexValues('quirks', unit.quirks ?? [], unit.name);
             this.addSearchIndexValues('_tags', getMergedTags(unit), unit.name);
@@ -455,6 +459,7 @@ export class UnitSearchIndexService {
             'as._motive',
             'source',
             'componentName',
+            'weaponType',
             'features',
             'quirks',
             '_tags',
@@ -547,6 +552,31 @@ export class UnitSearchIndexService {
 
             unitCounts.set(unit.name, (unitCounts.get(unit.name) || 0) + component.q);
         }
+    }
+
+    private prepareUnitWeaponTypes(unit: Unit): void {
+        const counts: Partial<Record<WeaponType, number>> = {};
+
+        const addComponents = (components: readonly UnitComponent[]): void => {
+            for (const component of components) {
+                if (component.bay?.length) {
+                    addComponents(component.bay);
+                    continue;
+                }
+
+                if (!(component.eq instanceof WeaponEquipment) || !Number.isFinite(component.q) || component.q <= 0) {
+                    continue;
+                }
+
+                for (const weaponType of component.eq.getWeaponTypes()) {
+                    counts[weaponType] = (counts[weaponType] ?? 0) + component.q;
+                }
+            }
+        };
+
+        addComponents(unit.comp);
+        unit._weaponTypeCounts = counts;
+        unit._weaponTypes = WEAPON_TYPES.filter(weaponType => (counts[weaponType] ?? 0) > 0);
     }
 
     private getASMotiveDisplayNames(unit: Unit): string[] {

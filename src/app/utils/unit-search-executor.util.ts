@@ -45,7 +45,7 @@ import {
 import { matchesSearch, parseSearchQuery, type SearchTokensGroup } from './search.util';
 import { compareUnitsByName, computeRelevanceScore, naturalCompare } from './sort.util';
 import { wildcardToRegex } from './string.util';
-import { getNowMs, getProperty, getUnitComponentData, isCommittedSemanticToken, measureStage } from './unit-search-shared.util';
+import { getNowMs, getProperty, getUnitCountableFilterData, isCommittedSemanticToken, measureStage } from './unit-search-shared.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from './unit-filter-kernel.util';
 import type { AvailabilityFilterScope } from '../services/unit-search-filters.model';
 
@@ -166,7 +166,8 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         getCountableValues: (unit: Unit, filterKey: string) => {
             switch (filterKey) {
                 case 'componentName':
-                    return getUnitComponentData(unit).counts;
+                case 'weaponType':
+                    return getUnitCountableFilterData(unit, filterKey)?.counts ?? null;
                 default:
                     return null;
             }

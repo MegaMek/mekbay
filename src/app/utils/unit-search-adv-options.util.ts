@@ -32,14 +32,14 @@
  */
 
 import type { Unit } from '../models/units.model';
-import { getProperty, getUnitComponentData } from './unit-search-shared.util';
+import { getProperty, getUnitComponentData, getUnitCountableFilterData } from './unit-search-shared.util';
 
 export interface AdvOptionsContextSnapshot {
     unitIds?: Set<string>;
     forcePackNames?: Set<string>;
     namesByFilterKey: Map<string, string[]>;
     availabilityNamesByFilterKey: Map<string, Set<string>>;
-    componentCounts?: Map<string, number>;
+    countsByFilterKey?: Map<string, Map<string, number>>;
 }
 
 export function getAdvOptionsContextSnapshot(
@@ -51,6 +51,7 @@ export function getAdvOptionsContextSnapshot(
         snapshot = {
             namesByFilterKey: new Map<string, string[]>(),
             availabilityNamesByFilterKey: new Map<string, Set<string>>(),
+            countsByFilterKey: new Map<string, Map<string, number>>(),
         };
         cache.set(units, snapshot);
     }
@@ -150,19 +151,25 @@ export function getSnapshotAvailabilityNames(
     return snapshot.availabilityNamesByFilterKey.get(filterKey) ?? new Set<string>();
 }
 
-export function getSnapshotComponentCounts(snapshot: AdvOptionsContextSnapshot, units: Unit[]): Map<string, number> {
-    if (!snapshot.componentCounts) {
-        const counts = new Map<string, number>();
+export function getSnapshotCountableValues(
+    snapshot: AdvOptionsContextSnapshot,
+    filterKey: string,
+    units: Unit[],
+): Map<string, number> {
+    snapshot.countsByFilterKey ??= new Map<string, Map<string, number>>();
+    let counts = snapshot.countsByFilterKey.get(filterKey);
+    if (!counts) {
+        counts = new Map<string, number>();
 
         for (const unit of units) {
-            const cached = getUnitComponentData(unit);
-            for (const [name, count] of cached.counts) {
+            const data = getUnitCountableFilterData(unit, filterKey);
+            for (const [name, count] of data?.counts ?? []) {
                 counts.set(name, (counts.get(name) || 0) + count);
             }
         }
 
-        snapshot.componentCounts = counts;
+        snapshot.countsByFilterKey.set(filterKey, counts);
     }
 
-    return snapshot.componentCounts;
+    return counts;
 }

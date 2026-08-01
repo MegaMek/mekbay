@@ -72,6 +72,27 @@ describe('buildWorkerExecutionQuery', () => {
             }),
         ]);
     });
+
+    it('serializes weapon-type minimum quantities for worker execution', () => {
+        const executionQuery = buildWorkerExecutionQuery({
+            effectiveFilterState: {
+                weaponType: {
+                    value: {
+                        AI: { name: 'AI', state: 'or', count: 2 },
+                        AE: { name: 'AE', state: 'and', count: 1 },
+                    },
+                    interactedWith: true,
+                },
+            },
+            effectiveTextSearch: '',
+            gameSystem: GameSystem.CLASSIC,
+            totalRangesCache: {},
+        });
+
+        expect(executionQuery).toContain('weaponType="AI:>=2"');
+        expect(executionQuery).toContain('weaponType&=AE');
+        expect(parseSemanticQueryAST(executionQuery, GameSystem.CLASSIC).errors).toEqual([]);
+    });
 });
 
 describe('getWorkerCorpusSnapshot', () => {

@@ -1,5 +1,5 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
-import type { WeaponType } from '../models/equipment.model';
+import type { WeaponType } from '../models/weapon-types.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
 import { EquipmentInteractionHandler, type HandlerContext, type ToHitAdjustmentContext } from '../services/equipment-interaction-registry.service';

@@ -1198,7 +1198,7 @@ const parsedRangeValuesCache = new WeakMap<SemanticToken, ParsedRangeValue[]>();
 const parsedSpecialQueryCache = new Map<string, ParsedSpecialQuery | null>();
 
 for (const filterConfig of ADVANCED_FILTERS) {
-    const semanticKey = filterConfig.semanticKey || filterConfig.key;
+    const semanticKey = (filterConfig.semanticKey || filterConfig.key).toLowerCase();
     const matchingConfigs = FILTER_CONFIGS_BY_SEMANTIC_KEY.get(semanticKey);
     if (matchingConfigs) {
         matchingConfigs.push(filterConfig);
@@ -1208,6 +1208,7 @@ for (const filterConfig of ADVANCED_FILTERS) {
 }
 
 function getSortedFilterConfigs(context: EvaluatorContext, semanticKey: string): readonly AdvFilterConfig[] {
+    semanticKey = semanticKey.toLowerCase();
     let contextCache = sortedFilterConfigsCache.get(context);
     if (!contextCache) {
         contextCache = new Map<string, readonly AdvFilterConfig[]>();
@@ -1971,7 +1972,7 @@ function getIndexedCandidateIdsForFilter(
     activeScope?: AvailabilityFilterScope,
 ): Set<string | number> | null {
     const matchingFilters = ADVANCED_FILTERS.filter(f =>
-        (f.semanticKey || f.key) === filter.field
+        (f.semanticKey || f.key).toLowerCase() === filter.field.toLowerCase()
     );
     if (matchingFilters.length === 0) {
         return null;

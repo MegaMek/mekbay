@@ -35,6 +35,7 @@
  * Author: Drake
  */
 import type { Equipment } from "./equipment.model";
+import type { WeaponType } from './weapon-types.model';
 import type { Era } from "./eras.model";
 import type { ComponentTechLevel, MoveType, UnitSubtype, UnitType } from "./entity/types";
 import { TechBase } from "./tech.model";
@@ -222,6 +223,8 @@ export interface Unit {
     _dissipationEfficiency: number; // Dissipation - Heat
     _mdSumNoPhysical: number; // Max damage sum for all weapons except physical
     _mdSumNoPhysicalNoOneshots: number; // Max damage sum for all weapons except physical, ignoring oneshots
+    _weaponTypes?: WeaponType[]; // Intrinsic types present on mounted weapons
+    _weaponTypeCounts?: Partial<Record<WeaponType, number>>; // Mounted quantity by intrinsic weapon type
     _era?: Era; // Cached era for this unit
     _nameTags: UnitTagEntry[]; // Quantity-aware tags assigned to this specific unit name
     _chassisTags: UnitTagEntry[]; // Quantity-aware tags assigned to the chassis (applies to all variants)

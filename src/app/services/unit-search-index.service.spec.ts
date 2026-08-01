@@ -1,4 +1,5 @@
 import type { Unit } from '../models/units.model';
+import { Equipment, WeaponEquipment } from '../models/equipment.model';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
 import { UnitSearchIndexService } from './unit-search-index.service';
 
@@ -240,5 +241,73 @@ describe('UnitSearchIndexService', () => {
         expect(service.getIndexedFilterValues('published')).toEqual(['no', 'yes']);
         expect(service.getIndexedUnitIds('published', 'yes')).toEqual(new Set(['Canon Published']));
         expect(service.getIndexedUnitIds('published', 'no')).toEqual(new Set(['Non-Canon Unpublished']));
+    });
+
+    it('indexes mounted quantities for every intrinsic weapon type', () => {
+        const service = new UnitSearchIndexService();
+        const areaEffectAntiInfantryWeapon = new WeaponEquipment({
+            id: 'test-vgl',
+            name: 'Test VGL',
+            type: 'weapon',
+            flags: ['F_VGL', 'F_MG'],
+        });
+        const unit = createUnit({
+            name: 'Typed Unit',
+            comp: [
+                { id: 'test-vgl', q: 2, n: 'Test VGL', t: 'B', p: 1, l: 'RA', eq: areaEffectAntiInfantryWeapon },
+                { id: 'test-vgl', q: 1, n: 'Test VGL', t: 'B', p: 2, l: 'LA', eq: areaEffectAntiInfantryWeapon },
+            ],
+        });
+
+        service.rebuildIndexes([unit], [], []);
+
+        expect(unit._weaponTypes).toEqual(['AE', 'AI', 'DB']);
+        expect(unit._weaponTypeCounts).toEqual({ AE: 3, AI: 3, DB: 3 });
+        expect(service.getIndexedFilterValues('weaponType')).toEqual(['AE', 'AI', 'DB']);
+        expect(service.getIndexedUnitIds('weaponType', 'AI')).toEqual(new Set(['Typed Unit']));
+        expect(service.getDropdownOptionUniverse('weaponType')).toEqual([{ name: 'AE' }, { name: 'AI' }, { name: 'DB' }]);
+    });
+
+    it('counts bay weapons without counting wrappers and ignores non-weapons', () => {
+        const service = new UnitSearchIndexService();
+        const antiInfantryWeapon = new WeaponEquipment({
+            id: 'test-mg',
+            name: 'Test MG',
+            type: 'weapon',
+            flags: ['F_MG'],
+        });
+        const nonWeapon = new Equipment({ id: 'test-case', name: 'Test CASE', type: 'misc' });
+        const unit = createUnit({
+            name: 'Bay Unit',
+            comp: [
+                {
+                    id: 'weapon-bay', q: 10, n: 'Weapon Bay', t: 'B', p: 1, l: 'N', eq: antiInfantryWeapon,
+                    bay: [{ id: 'test-mg', q: 2, n: 'Test MG', t: 'B', p: 1, l: 'N', eq: antiInfantryWeapon }],
+                },
+                { id: 'test-case', q: 5, n: 'Test CASE', t: 'C', p: 2, l: 'CT', eq: nonWeapon },
+                { id: 'unknown', q: 4, n: 'Unknown Weapon', t: 'B', p: 3, l: 'LT' },
+            ],
+        });
+
+        service.rebuildIndexes([unit], [], []);
+
+        expect(unit._weaponTypeCounts?.AI).toBe(2);
+        expect(unit._weaponTypeCounts?.DB).toBe(2);
+    });
+
+    it('replaces stale weapon-type data when indexes are rebuilt', () => {
+        const service = new UnitSearchIndexService();
+        const unit = createUnit({
+            name: 'Relinked Unit',
+            _weaponTypes: ['AI'],
+            _weaponTypeCounts: { AI: 4 },
+            comp: [{ id: 'unknown', q: 4, n: 'Unknown Weapon', t: 'B', p: 1, l: 'RA' }],
+        });
+
+        service.rebuildIndexes([unit], [], []);
+
+        expect(unit._weaponTypes).toEqual([]);
+        expect(unit._weaponTypeCounts).toEqual({});
+        expect(service.getIndexedFilterValues('weaponType')).toEqual([]);
     });
 });
