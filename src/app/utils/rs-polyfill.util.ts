@@ -118,6 +118,7 @@ export class RsPolyfillUtil {
      */
     public static addMissingClasses(forceUnit: CBTForceUnit, svg: SVGSVGElement): void {
         const unit = forceUnit.getUnit();
+        this.addNightModeImageFilter(svg);
         if (unit.type !== 'Mek') {
             this.addCriticalLocs(svg);
         }
@@ -137,6 +138,33 @@ export class RsPolyfillUtil {
         this.addTurnStateClasses(unit, svg);
         this.addCritSlotClasses(svg);
         this.addCriticalSectionsButtons(unit, svg)
+    }
+
+    /** Adds a native SVG inversion filter for iOS WebKit, which ignores CSS invert() on SVG images. */
+    private static addNightModeImageFilter(svg: SVGSVGElement): void {
+        const filterId = 'mekbay-night-image-invert';
+        if (svg.getElementById(filterId)) return;
+
+        let defs = Array.from(svg.children)
+            .find(element => element.localName === 'defs') as SVGDefsElement | undefined;
+        if (!defs) {
+            defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            svg.insertBefore(defs, svg.firstChild);
+        }
+
+        const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+        filter.setAttribute('id', filterId);
+        filter.setAttribute('color-interpolation-filters', 'sRGB');
+
+        const componentTransfer = document.createElementNS('http://www.w3.org/2000/svg', 'feComponentTransfer');
+        for (const channel of ['R', 'G', 'B']) {
+            const fn = document.createElementNS('http://www.w3.org/2000/svg', `feFunc${channel}`);
+            fn.setAttribute('type', 'table');
+            fn.setAttribute('tableValues', '1 0');
+            componentTransfer.appendChild(fn);
+        }
+        filter.appendChild(componentTransfer);
+        defs.appendChild(filter);
     }
 
     public static syncConditionButtons(forceUnit: CBTForceUnit, svg: SVGSVGElement): void {

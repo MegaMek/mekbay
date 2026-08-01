@@ -2520,7 +2520,7 @@ hr.divider {
 
         image {
             transform: none;
-            filter: invert(1);
+            filter: url("#mekbay-night-image-invert");
         }
 
         #fluff-image-fo {

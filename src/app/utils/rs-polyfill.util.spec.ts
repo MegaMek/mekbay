@@ -1,6 +1,24 @@
 import { RsPolyfillUtil } from './rs-polyfill.util';
 
 describe('RsPolyfillUtil', () => {
+    it('adds an idempotent native SVG inversion filter for iOS night mode', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const addFilter = (RsPolyfillUtil as unknown as {
+            addNightModeImageFilter: (svg: SVGSVGElement) => void;
+        }).addNightModeImageFilter.bind(RsPolyfillUtil);
+
+        addFilter(svg);
+        addFilter(svg);
+
+        const filters = svg.querySelectorAll('#mekbay-night-image-invert');
+        expect(filters.length).toBe(1);
+        expect(filters[0].parentElement?.localName).toBe('defs');
+        expect(filters[0].getAttribute('color-interpolation-filters')).toBe('sRGB');
+        expect(filters[0].querySelector('feFuncR')?.getAttribute('tableValues')).toBe('1 0');
+        expect(filters[0].querySelector('feFuncG')?.getAttribute('tableValues')).toBe('1 0');
+        expect(filters[0].querySelector('feFuncB')?.getAttribute('tableValues')).toBe('1 0');
+    });
+
     it('injects fluff at outer root coordinates across a nested SVG viewport', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const parent = document.createElementNS('http://www.w3.org/2000/svg', 'g');
