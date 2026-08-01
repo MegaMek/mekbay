@@ -1,6 +1,7 @@
 import {
   isCenterPanelTarget,
   isPointInCenterPanel,
+  resolveCenterPanelCursorElements,
   resolveCenterPanelInteractiveElements,
   resolveCenterPanelTables,
 } from './record-sheet-center-panel.util';
@@ -30,6 +31,21 @@ describe('record-sheet-center-panel', () => {
 
     expect(resolveCenterPanelTables(svg)).toEqual([table]);
     expect(resolveCenterPanelInteractiveElements(svg)).toEqual([table]);
+  });
+
+  it('recognizes foreignObject clicks without decorating its compositing layer', () => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+    const image = document.createElementNS('http://www.w3.org/1999/xhtml', 'img');
+    foreignObject.id = 'fluff-image-fo';
+    image.id = 'fluff-image-injected';
+    foreignObject.appendChild(image);
+    svg.appendChild(foreignObject);
+
+    expect(resolveCenterPanelInteractiveElements(svg)).toEqual([foreignObject]);
+    expect(resolveCenterPanelCursorElements(svg)).toEqual([]);
+    expect(isCenterPanelTarget(svg, foreignObject)).toBeTrue();
+    expect(isCenterPanelTarget(svg, image)).toBeTrue();
   });
 
   it('recognizes nested descendants but rejects unrelated SVG content', () => {

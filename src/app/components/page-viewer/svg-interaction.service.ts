@@ -70,7 +70,7 @@ import { TORSO_LOCATIONS } from '../../models/rules/mek-rules';
 import { isLaserWithRiscModule, isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE, selectedRiscLaserMode } from '../../equipment-handlers/risc-laser-pulse-module.handler';
 import { ClusterTableDialogComponent } from '../cluster-table-dialog/cluster-table-dialog.component';
 import { clusterTableForUnit } from '../../utils/record-sheet-reference-table';
-import { isCenterPanelTarget, resolveCenterPanelInteractiveElements } from '../../utils/record-sheet-center-panel.util';
+import { isCenterPanelTarget, isPointInCenterPanel, resolveCenterPanelCursorElements } from '../../utils/record-sheet-center-panel.util';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 type HeatMarkerData = { el: SVGElement | null, heat: number; baselineHeat: number };
@@ -287,16 +287,18 @@ export class SvgInteractionService {
         if (!unitData || !Array.isArray(unitData.comp)) return;
         const table = clusterTableForUnit(unitData);
         if (table.clusterSizes.length === 0 && !table.hitLocationTable) return;
-        const interactiveElements = resolveCenterPanelInteractiveElements(svg);
-        const previousCursors = interactiveElements.map(element => element.style.cursor);
-        interactiveElements.forEach(element => element.style.cursor = 'pointer');
+        const cursorElements = resolveCenterPanelCursorElements(svg);
+        const previousCursors = cursorElements.map(element => element.style.cursor);
+        cursorElements.forEach(element => element.style.cursor = 'pointer');
         signal.addEventListener('abort', () => {
-            interactiveElements.forEach((element, index) => element.style.cursor = previousCursors[index]);
+            cursorElements.forEach((element, index) => element.style.cursor = previousCursors[index]);
         }, { once: true });
 
         const onClick = (event: MouseEvent) => {
             if (event.button !== 0) return;
-            if (!isCenterPanelTarget(svg, event.target)) return;
+            const isCenterTarget = isCenterPanelTarget(svg, event.target)
+                || isPointInCenterPanel(svg, event.clientX, event.clientY);
+            if (!isCenterTarget) return;
             if (this.centerPanelDialogRef) return;
 
             const currentUnit = this.unit();

@@ -1204,6 +1204,65 @@ describe('SvgInteractionService', () => {
         expect(table.style.cursor).toBe('crosshair');
     });
 
+    it('does not mutate positioned fluff foreignObject styles on interaction setup', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const table = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+        const image = document.createElementNS('http://www.w3.org/1999/xhtml', 'img');
+        table.classList.add('referenceTable');
+        foreignObject.id = 'fluff-image-fo';
+        foreignObject.setAttribute('x', '24');
+        foreignObject.setAttribute('y', '91');
+        foreignObject.setAttribute('style', 'display: block;');
+        image.id = 'fluff-image-injected';
+        foreignObject.appendChild(image);
+        svg.append(table, foreignObject);
+
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+        }));
+        service.setupReadOnlyInteractions(svg);
+
+        expect(table.style.cursor).toBe('pointer');
+        expect(foreignObject.getAttribute('style')).toBe('display: block;');
+        expect(foreignObject.style.cursor).toBe('');
+        expect(foreignObject.getAttribute('x')).toBe('24');
+        expect(foreignObject.getAttribute('y')).toBe('91');
+
+        image.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+        expect(dialogsService.createDialog).toHaveBeenCalledTimes(1);
+
+        service.cleanup();
+        expect(foreignObject.getAttribute('style')).toBe('display: block;');
+        expect(foreignObject.style.cursor).toBe('');
+    });
+
+    it('opens the reference table when pointer-events-none artwork targets the SVG background', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+        foreignObject.id = 'fluff-image-fo';
+        foreignObject.style.pointerEvents = 'none';
+        foreignObject.getBoundingClientRect = () => ({
+            left: 100, top: 150, right: 300, bottom: 350, width: 200, height: 200,
+        } as DOMRect);
+        svg.appendChild(foreignObject);
+
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+        }));
+        service.setupReadOnlyInteractions(svg);
+
+        svg.dispatchEvent(new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+            clientX: 200,
+            clientY: 250,
+        }));
+
+        expect(dialogsService.createDialog).toHaveBeenCalledTimes(1);
+    });
+
     it('never opens the reference table during pointerup', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const table = document.createElementNS('http://www.w3.org/2000/svg', 'g');
