@@ -118,6 +118,35 @@ function crit(name: string, destroyed = true): CriticalSlot {
     };
 }
 
+type ArmActuatorState = 'functional' | 'destroyed' | 'missing';
+
+function armCritSlots(
+    loc: 'LA' | 'RA',
+    options: { hand?: ArmActuatorState; lowerArm?: ArmActuatorState } = {}
+): CriticalSlot[] {
+    const slots: CriticalSlot[] = [
+        { ...crit('Shoulder', false), id: `${loc}-shoulder`, loc, slot: 0 },
+        { ...crit('Upper Arm Actuator', false), id: `${loc}-upper-arm`, loc, slot: 1 },
+    ];
+    const addOptionalActuator = (name: string, slot: number, state: ArmActuatorState) => {
+        if (state === 'missing') return;
+        slots.push({ ...crit(name, state === 'destroyed'), id: `${loc}-${name.toLowerCase().replace(/\s+/g, '-')}`, loc, slot });
+    };
+    addOptionalActuator('Lower Arm Actuator', 2, options.lowerArm ?? 'functional');
+    addOptionalActuator('Hand Actuator', 3, options.hand ?? 'functional');
+    return slots;
+}
+
+function punchEntry(forceUnit: CBTForceUnit, loc: 'LA' | 'RA' = 'LA'): MountedEquipment {
+    return new MountedEquipment({
+        owner: forceUnit,
+        id: `punch@${loc}`,
+        name: 'punch',
+        locations: new Set([loc]),
+        intrinsicPhysicalAttack: true,
+    });
+}
+
 function heavyDutyGyroCrit(index: number, destroyed = true): CriticalSlot {
     return {
         ...crit('Heavy-Duty Gyro', destroyed),
@@ -433,12 +462,80 @@ describe('MekRules', () => {
 
         expect(forceUnit.rules.computeEntryState(punch)).toEqual(jasmine.objectContaining({
             hitMod: 5,
+            weakenedHitMod: true,
             hitModifierBreakdown: [
                 { label: 'Hand Actuator Destroyed (LA)', modifier: 1, negative: true },
                 { label: 'Upper Arm Actuator Destroyed (LA)', modifier: 2, negative: true },
                 { label: 'Lower Arm Actuator Destroyed (LA)', modifier: 2, negative: true }
             ]
         }));
+    });
+
+    it('applies missing punch actuator modifiers as design penalties without weakening', () => {
+        const scenarios = [
+            { label: 'fully actuated', options: {}, hitMod: 0, breakdown: [] },
+            {
+                label: 'missing hand', options: { hand: 'missing' as const }, hitMod: 1,
+                breakdown: [{ label: 'Hand Actuator Missing (LA)', modifier: 1, designBaseline: true }]
+            },
+            {
+                label: 'missing lower arm', options: { lowerArm: 'missing' as const }, hitMod: 2,
+                breakdown: [{ label: 'Lower Arm Actuator Missing (LA)', modifier: 2, designBaseline: true }]
+            },
+            {
+                label: 'missing hand and lower arm',
+                options: { hand: 'missing' as const, lowerArm: 'missing' as const },
+                hitMod: 3,
+                breakdown: [
+                    { label: 'Hand Actuator Missing (LA)', modifier: 1, designBaseline: true },
+                    { label: 'Lower Arm Actuator Missing (LA)', modifier: 2, designBaseline: true }
+                ]
+            },
+        ];
+
+        for (const rulesId of ['core2026', 'tw'] as const) {
+            for (const scenario of scenarios) {
+                const forceUnit = createForceUnitHarness({
+                    rulesId,
+                    critSlots: armCritSlots('LA', scenario.options),
+                    internalLocations: ['LA', 'RA', 'LL', 'RL'],
+                });
+                const punch = punchEntry(forceUnit);
+                const state = forceUnit.rules.computeEntryState(punch);
+                const resolution = forceUnit.gameRules.resolveToHit({
+                    subject: punch,
+                    stateModifier: state.hitMod,
+                    stateModifierBreakdown: state.hitModifierBreakdown,
+                    stateWeakened: state.weakenedHitMod,
+                });
+                const rulesBase = rulesId === 'core2026' ? -1 : 0;
+
+                expect(state).withContext(`${rulesId}: ${scenario.label}`).toEqual(jasmine.objectContaining({
+                    hitMod: scenario.hitMod,
+                    hitModifierBreakdown: scenario.breakdown,
+                    weakenedHitMod: false,
+                }));
+                expect(resolution.value).withContext(`${rulesId}: ${scenario.label} resolved modifier`)
+                    .toBe(rulesBase + scenario.hitMod);
+                expect(resolution.weakened).withContext(`${rulesId}: ${scenario.label} resolved weakening`).toBeFalse();
+            }
+        }
+    });
+
+    it('distinguishes destroyed lower-arm punch damage from design-reduced base damage', () => {
+        const missingLowerArmUnit = createForceUnitHarness({
+            critSlots: armCritSlots('LA', { lowerArm: 'missing' }),
+            internalLocations: ['LA', 'RA', 'LL', 'RL'],
+        });
+        const destroyedLowerArmUnit = createForceUnitHarness({
+            critSlots: armCritSlots('LA', { lowerArm: 'destroyed' }),
+            internalLocations: ['LA', 'RA', 'LL', 'RL'],
+        });
+
+        expect((missingLowerArmUnit.rules as MekRules).computeMeleeDamage(3, 'punch', 'LA')).toEqual({ damage: 3, maxDamage: 3 });
+        expect((destroyedLowerArmUnit.rules as MekRules).computeMeleeDamage(6, 'punch', 'LA')).toEqual({ damage: 3, maxDamage: 3 });
+        expect(destroyedLowerArmUnit.rules.computeEntryState(punchEntry(destroyedLowerArmUnit)))
+            .toEqual(jasmine.objectContaining({ hitMod: 2, weakenedHitMod: true }));
     });
 
     it('identifies shoulder and paired AES modifiers for push attacks', () => {

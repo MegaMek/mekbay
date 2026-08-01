@@ -62,6 +62,8 @@ interface MekArmStatus {
     destroyedHand: boolean;
     destroyedUpperArms: boolean;
     destroyedLowerArms: boolean;
+    missingHand: boolean;
+    missingLowerArm: boolean;
     canPunch: boolean;
     canPhysWeapon: boolean;
     pushMod: number;
@@ -813,10 +815,21 @@ export class MekRules extends UnitTypeRulesBase {
                 return null;
             }
 
-            const destroyedShoulder = critSlots.some(slot => slot.loc == loc && this.isNamedCrit(slot, 'Shoulder') && this.isCritUnavailable(slot));
-            const destroyedHand = critSlots.some(slot => slot.loc == loc && this.isNamedCrit(slot, 'Hand') && this.isCritUnavailable(slot));
-            const destroyedUpperArmsCount = critSlots.filter(slot => slot.loc == loc && this.isNamedCrit(slot, 'Upper Arm') && this.isCritUnavailable(slot)).length;
-            const destroyedLowerArmsCount = critSlots.filter(slot => slot.loc == loc && this.isNamedCrit(slot, 'Lower Arm') && this.isCritUnavailable(slot)).length;
+            const armSlots = critSlots.filter(slot => slot.loc === loc);
+            const shoulderSlots = armSlots.filter(slot => this.isNamedCrit(slot, 'Shoulder'));
+            const handSlots = armSlots.filter(slot => this.isNamedCrit(slot, 'Hand'));
+            const upperArmSlots = armSlots.filter(slot => this.isNamedCrit(slot, 'Upper Arm'));
+            const lowerArmSlots = armSlots.filter(slot => this.isNamedCrit(slot, 'Lower Arm'));
+            // Shoulder and upper-arm actuators are mandatory on an arm. Their presence
+            // confirms that the runtime critical-slot layout is complete enough for an
+            // absent optional hand/lower-arm actuator to mean "missing by design".
+            const hasCompleteArmLayout = shoulderSlots.length > 0 && upperArmSlots.length > 0;
+            const missingHand = hasCompleteArmLayout && handSlots.length === 0;
+            const missingLowerArm = hasCompleteArmLayout && lowerArmSlots.length === 0;
+            const destroyedShoulder = shoulderSlots.some(slot => this.isCritUnavailable(slot));
+            const destroyedHand = handSlots.some(slot => this.isCritUnavailable(slot));
+            const destroyedUpperArmsCount = upperArmSlots.filter(slot => this.isCritUnavailable(slot)).length;
+            const destroyedLowerArmsCount = lowerArmSlots.filter(slot => this.isCritUnavailable(slot)).length;
             const destroyedUpperArms = destroyedUpperArmsCount > 0;
             const destroyedLowerArms = destroyedLowerArmsCount > 0;
             destroyedArmActuatorsCount[loc as 'LA' | 'RA'] += destroyedUpperArmsCount + destroyedLowerArmsCount;
@@ -826,10 +839,14 @@ export class MekRules extends UnitTypeRulesBase {
                 destroyedHand,
                 destroyedUpperArms,
                 destroyedLowerArms,
+                missingHand,
+                missingLowerArm,
                 canPunch: !destroyedShoulder,
                 canPhysWeapon: !destroyedShoulder && !destroyedHand,
                 pushMod: destroyedShoulder ? 2 : 0,
-                punchMod: (destroyedHand ? 1 : 0) + (destroyedUpperArms ? 2 : 0) + (destroyedLowerArms ? 2 : 0),
+                punchMod: ((destroyedHand || missingHand) ? 1 : 0)
+                    + (destroyedUpperArms ? 2 : 0)
+                    + ((destroyedLowerArms || missingLowerArm) ? 2 : 0),
                 fireMod: destroyedShoulder ? 4 : (destroyedUpperArms ? 1 : 0)
                     + (destroyedLowerArms ? this.lowerArmFireModifier : 0), // lowerArmFireModifier is 0 in Core2026, 1 in TW
                 physWeaponMod: (destroyedHand ? 2 : 0) + (destroyedUpperArms ? 2 : 0) + (destroyedLowerArms ? 2 : 0)
@@ -1694,12 +1711,14 @@ export class MekRules extends UnitTypeRulesBase {
                             hand: 1,
                             upperArm: 2,
                             lowerArm: 2
-                        });
+                        }, true);
                     }
                     const aesModifier = fire.singleArmMod[loc] ?? 0;
                     hitMod += aesModifier;
                     this.addArmAESBreakdown(hitModifierBreakdown, systemsStatus.locationModifiers[loc], loc, aesModifier);
-                    if (this.hasBrokenArmAES(systemsStatus.locationModifiers, loc)) weakenedHitMod = true;
+                    const armStatus = systemsStatus.locationModifiers[loc];
+                    if (armStatus?.destroyedHand || armStatus?.destroyedUpperArms || armStatus?.destroyedLowerArms
+                        || this.hasBrokenArmAES(systemsStatus.locationModifiers, loc)) weakenedHitMod = true;
                     break;
                 }
                 case 'club': {
@@ -1831,17 +1850,22 @@ export class MekRules extends UnitTypeRulesBase {
         breakdown: ToHitModifierBreakdownEntry[],
         armStatus: ReturnType<MekRules['systemsStatus']>['locationModifiers'][string],
         loc: ArmLocation,
-        modifiers: { hand: number; upperArm: number; lowerArm: number }
+        modifiers: { hand: number; upperArm: number; lowerArm: number },
+        includeMissing = false
     ): void {
         if (!armStatus) return;
         if (armStatus.destroyedHand) {
             breakdown.push({ label: `Hand Actuator Destroyed (${loc})`, modifier: modifiers.hand, negative: true });
+        } else if (includeMissing && armStatus.missingHand) {
+            breakdown.push({ label: `Hand Actuator Missing (${loc})`, modifier: modifiers.hand, designBaseline: true });
         }
         if (armStatus.destroyedUpperArms) {
             breakdown.push({ label: `Upper Arm Actuator Destroyed (${loc})`, modifier: modifiers.upperArm, negative: true });
         }
         if (armStatus.destroyedLowerArms) {
             breakdown.push({ label: `Lower Arm Actuator Destroyed (${loc})`, modifier: modifiers.lowerArm, negative: true });
+        } else if (includeMissing && armStatus.missingLowerArm) {
+            breakdown.push({ label: `Lower Arm Actuator Missing (${loc})`, modifier: modifiers.lowerArm, designBaseline: true });
         }
     }
 
