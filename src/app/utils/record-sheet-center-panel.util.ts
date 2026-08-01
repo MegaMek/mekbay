@@ -58,6 +58,18 @@ export function resolveCenterPanelInteractiveElements(svg: SVGSVGElement): reado
     return targets;
 }
 
+/**
+ * Returns center-panel elements that are safe to decorate with a pointer cursor.
+ *
+ * Keep foreignObject nodes as delegated click targets, but do not mutate their
+ * inline styles. iOS WebKit can lose positioned foreignObject compositing when
+ * a cursor style changes while night-mode filters and blending are active.
+ */
+export function resolveCenterPanelCursorElements(svg: SVGSVGElement): readonly SVGGraphicsElement[] {
+    return resolveCenterPanelInteractiveElements(svg)
+        .filter(element => element.localName !== 'foreignObject');
+}
+
 /** Tests whether an event target belongs to a center-panel presentation element. */
 export function isCenterPanelTarget(svg: SVGSVGElement, target: EventTarget | null): boolean {
     if (!(target instanceof Node)) return false;

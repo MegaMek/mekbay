@@ -1428,10 +1428,15 @@ export class RsPolyfillUtil {
         let minY = Number.POSITIVE_INFINITY;
         let maxX = Number.NEGATIVE_INFINITY;
         let maxY = Number.NEGATIVE_INFINITY;
-        let topLeftElement: SVGGraphicsElement = referenceTables[0]; // We guess the first one is the top left most
+        const rootScreenCtm = svg.getScreenCTM();
+        const screenToRoot = rootScreenCtm?.inverse() ?? null;
         referenceTables.forEach((rt: SVGGraphicsElement) => {
             const bbox = rt.getBBox();
-            const ctm = rt.getCTM() ?? svg.getCTM() ?? new DOMMatrix();
+            // getCTM() stops at the nearest SVG viewport. Record sheets can contain
+            // nested SVGs (notably vehicle sheets), so convert through screen space
+            // to preserve every ancestor transform before appending to the root SVG.
+            const tableScreenCtm = rt.getScreenCTM();
+            const ctm = rt.getCTM() ?? svg.getCTM();
             const corners = [
                 { x: bbox.x, y: bbox.y },
                 { x: bbox.x + bbox.width, y: bbox.y },
@@ -1444,7 +1449,12 @@ export class RsPolyfillUtil {
             let rtMaxY = Number.NEGATIVE_INFINITY;
             for (const c of corners) {
                 pt.x = c.x; pt.y = c.y;
-                const p = pt.matrixTransform(ctm);
+                let p = pt;
+                if (tableScreenCtm && screenToRoot) {
+                    p = pt.matrixTransform(tableScreenCtm).matrixTransform(screenToRoot);
+                } else if (ctm) {
+                    p = pt.matrixTransform(ctm);
+                }
                 rtMinX = Math.min(rtMinX, p.x);
                 rtMinY = Math.min(rtMinY, p.y);
                 rtMaxX = Math.max(rtMaxX, p.x);
@@ -1455,33 +1465,19 @@ export class RsPolyfillUtil {
             minY = Math.min(minY, rtMinY);
             maxX = Math.max(maxX, rtMaxX);
             maxY = Math.max(maxY, rtMaxY);
-            // Check if this rt is more top-left than the current topLeftElement
-            if (rtMinY < minY || (rtMinY === minY && rtMinX < minX)) {
-                topLeftElement = rt;
-            }
         });
         if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) return;
-        // Determine parent to inject into (parent of top/left most referenceTable if available)
-        let injectParent: ParentNode = svg;
-        if (topLeftElement?.parentElement) {
-            injectParent = topLeftElement.parentElement;
-        }
-        const parentCTM = (injectParent as any).getCTM ? (injectParent as SVGGraphicsElement).getCTM() : null;
-        const invParent = parentCTM ? parentCTM.inverse() : new DOMMatrix();
-        pt.x = minX; pt.y = minY;
-        const localTL = pt.matrixTransform(invParent);
-        pt.x = maxX; pt.y = maxY;
-        const localBR = pt.matrixTransform(invParent);
 
-        const localWidth = localBR.x - localTL.x;
-        const localHeight = localBR.y - localTL.y;
-        const rootW = Math.max(0, localWidth);
-        const rootH = Math.max(0, localHeight);
+        // Keep the foreignObject in root SVG coordinates. iOS WebKit can drop
+        // transformed-ancestor positioning when foreignObject content uses the
+        // filters and blend modes applied by night mode.
+        const rootW = Math.max(0, maxX - minX);
+        const rootH = Math.max(0, maxY - minY);
 
         const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
         fo.setAttribute('id', 'fluff-image-fo');
-        fo.setAttribute('x', localTL.x.toString());
-        fo.setAttribute('y', localTL.y.toString());
+        fo.setAttribute('x', minX.toString());
+        fo.setAttribute('y', minY.toString());
         fo.setAttribute('width', rootW.toString());
         fo.setAttribute('height', rootH.toString());
         fo.setAttribute('style', 'display: none;');
@@ -1495,7 +1491,7 @@ export class RsPolyfillUtil {
         htmlImg.style.objectFit = 'contain';
 
         fo.appendChild(htmlImg);
-        topLeftElement.after(fo);
+        svg.appendChild(fo);
     }
 
     private static addTurnStateClasses(unit: Unit, svg: SVGSVGElement): void {

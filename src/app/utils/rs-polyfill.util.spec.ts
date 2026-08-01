@@ -1,6 +1,43 @@
 import { RsPolyfillUtil } from './rs-polyfill.util';
 
 describe('RsPolyfillUtil', () => {
+    it('injects fluff at outer root coordinates across a nested SVG viewport', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const parent = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const nestedSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const firstTable = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const secondTable = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        parent.setAttribute('transform', 'translate(18 18)');
+        firstTable.setAttribute('transform', 'translate(230 70)');
+        secondTable.setAttribute('transform', 'translate(230 70)');
+        firstTable.classList.add('referenceTable');
+        secondTable.classList.add('referenceTable');
+        firstTable.getBBox = () => ({ x: 0, y: 91, width: 149, height: 128 } as DOMRect);
+        secondTable.getBBox = () => ({ x: 0, y: 224, width: 149, height: 81 } as DOMRect);
+        const rootMatrix = svg.createSVGMatrix();
+        const nestedTableMatrix = svg.createSVGMatrix();
+        nestedTableMatrix.e = 248;
+        nestedTableMatrix.f = 88;
+        svg.getScreenCTM = () => rootMatrix;
+        firstTable.getScreenCTM = () => nestedTableMatrix;
+        secondTable.getScreenCTM = () => nestedTableMatrix;
+        nestedSvg.append(firstTable, secondTable);
+        parent.appendChild(nestedSvg);
+        svg.appendChild(parent);
+
+        (RsPolyfillUtil as unknown as {
+            injectFluffImage: (unit: { fluff: { img: string } }, svg: SVGSVGElement) => void;
+        }).injectFluffImage({ fluff: { img: 'Mek/Avatar.png' } }, svg);
+
+        const foreignObject = svg.getElementById('fluff-image-fo') as SVGForeignObjectElement;
+        expect(foreignObject).not.toBeNull();
+        expect(foreignObject.parentNode).toBe(svg);
+        expect(Number(foreignObject.getAttribute('x'))).toBeCloseTo(248);
+        expect(Number(foreignObject.getAttribute('y'))).toBeCloseTo(179);
+        expect(Number(foreignObject.getAttribute('width'))).toBeCloseTo(149);
+        expect(Number(foreignObject.getAttribute('height'))).toBeCloseTo(214);
+    });
+
     it('adds location NARC banners inside location condition controls', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const parent = document.createElementNS('http://www.w3.org/2000/svg', 'g');
