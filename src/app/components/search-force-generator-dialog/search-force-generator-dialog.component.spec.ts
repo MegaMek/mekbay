@@ -520,6 +520,46 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(maxUnitsInput.value).toBe('10');
     });
 
+    it('does not raise the max units while typing a larger min until blur', async () => {
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const dialog = fixture.componentInstance;
+        const minUnitsInput = fixture.nativeElement.querySelector(
+            'input.bt-input.field-input[type="number"]',
+        ) as HTMLInputElement;
+
+        minUnitsInput.value = '10';
+        minUnitsInput.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+
+        expect(minUnitsInput.value).toBe('10');
+        expect(dialog.minUnitCount()).toBe(4);
+        expect(dialog.maxUnitCount()).toBe(8);
+        expect(setOptionSpy).not.toHaveBeenCalled();
+
+        minUnitsInput.dispatchEvent(new Event('blur'));
+        fixture.detectChanges();
+
+        expect(dialog.minUnitCount()).toBe(10);
+        expect(dialog.maxUnitCount()).toBe(10);
+        expect(optionsSignal().forceGenerator.lastUnitCount).toEqual({ min: 10, max: 10 });
+        expect(minUnitsInput.value).toBe('10');
+    });
+
+    it('clamps and bonds an out-of-range minimum unit count on blur', () => {
+        const input = document.createElement('input');
+        input.value = '1003';
+
+        component.onMinUnitCountBlur({ target: input } as unknown as Event);
+
+        expect(component.minUnitCount()).toBe(100);
+        expect(component.maxUnitCount()).toBe(100);
+        expect(optionsSignal().forceGenerator.lastUnitCount).toEqual({ min: 100, max: 100 });
+        expect(input.value).toBe('100');
+    });
+
     it('snaps the max units input back to the clamped maximum on blur', () => {
         const input = document.createElement('input');
         input.value = '1003';
@@ -614,6 +654,31 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(dialog.budgetRange()).toEqual({ min: 7900, max: 10000 });
         expect(optionsSignal().forceGenerator.lastBudget.classic).toEqual({ min: 7900, max: 10000 });
         expect(maxBudgetInput.value).toBe('10,000');
+    });
+
+    it('does not raise the maximum budget while typing a larger minimum until blur', async () => {
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const dialog = fixture.componentInstance;
+        const minBudgetInput = fixture.nativeElement.querySelector('thousands-integer-input input') as HTMLInputElement;
+
+        minBudgetInput.dispatchEvent(new Event('focus'));
+        minBudgetInput.value = '9000';
+        minBudgetInput.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+
+        expect(minBudgetInput.value).toBe('9,000');
+        expect(dialog.budgetRange()).toEqual({ min: 7900, max: 8000 });
+        expect(setOptionSpy).not.toHaveBeenCalled();
+
+        minBudgetInput.dispatchEvent(new Event('blur'));
+        fixture.detectChanges();
+
+        expect(dialog.budgetRange()).toEqual({ min: 9000, max: 9000 });
+        expect(optionsSignal().forceGenerator.lastBudget.classic).toEqual({ min: 9000, max: 9000 });
+        expect(minBudgetInput.value).toBe('9,000');
     });
 
     it('does not replace the displayed preview when max budget is committed on blur', () => {
@@ -1514,9 +1579,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         buildPreviewSpy.calls.reset();
 
-        dialog.onBudgetMinChange({
-            target: { value: '9000' },
-        } as unknown as Event);
+        dialog.onBudgetMinCommit(9000);
         fixture.detectChanges();
 
         maxBudgetInput.value = '9100';

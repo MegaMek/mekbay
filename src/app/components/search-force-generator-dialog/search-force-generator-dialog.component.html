@@ -89,7 +89,7 @@
                     <div class="field-pair mobile-two-column span-all">
                         <div class="form-fields">
                             <label class="field-label">Min Units</label>
-                            <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="minUnitCount()" (input)="onMinUnitCountChange($event)" (blur)="onMinUnitCountBlur($event)" />
+                            <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="minUnitCount()" (blur)="onMinUnitCountBlur($event)" />
                         </div>
 
                         <div class="form-fields">
@@ -106,7 +106,7 @@
                                 [min]="0"
                                 [emptyWhenZero]="true"
                                 placeholder="0"
-                                (valueChange)="onBudgetMinChange($event)" />
+                                (valueCommit)="onBudgetMinCommit($event)" />
                         </div>
 
                         <div class="form-fields">

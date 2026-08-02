@@ -4,6 +4,22 @@ export interface BoundedIntegerOptions {
     readonly fallback?: number;
 }
 
+export interface BondedNumberRange {
+    min: number | null;
+    max: number | null;
+}
+
+/** Moves the opposite bound when a committed bound would invert the range. */
+export function bondNumberRange<T extends BondedNumberRange>(range: T, editedBound: 'min' | 'max'): T {
+    if (range.min === null || range.max === null || range.min <= range.max) {
+        return range;
+    }
+
+    return editedBound === 'min'
+        ? { ...range, max: range.min }
+        : { ...range, min: range.max };
+}
+
 /** Converts a number-like value to an integer and clamps it to inclusive bounds. */
 export function normalizeBoundedInteger(
     value: number | string | null | undefined,

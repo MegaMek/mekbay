@@ -790,11 +790,7 @@ export class SearchForceGeneratorDialogComponent {
         this.targetFormationSelection.set(nextSelection);
     }
 
-    onBudgetMinChange(valueOrEvent: number | Event): void {
-        const value = typeof valueOrEvent === 'number'
-            ? valueOrEvent
-            : this.parseNumericValue(valueOrEvent, 0);
-
+    onBudgetMinCommit(value: number): void {
         this.setBudgetRangeForSystem(
             this.gameSystem(),
             this.forceGeneratorService.resolveBudgetRangeForEditedMin(
@@ -827,7 +823,7 @@ export class SearchForceGeneratorDialogComponent {
         );
     }
 
-    onMinUnitCountChange(event: Event): void {
+    onMinUnitCountBlur(event: Event): void {
         this.setUnitCountRange(this.forceGeneratorService.resolveUnitCountRangeForEditedMin(
             {
                 min: this.minUnitCount(),
@@ -835,9 +831,6 @@ export class SearchForceGeneratorDialogComponent {
             },
             this.parseNumericValue(event, this.minUnitCount()),
         ));
-    }
-
-    onMinUnitCountBlur(event: Event): void {
         normalizeBoundedIntegerInput(event, {
             min: 1,
             max: this.MAX_UNITS,

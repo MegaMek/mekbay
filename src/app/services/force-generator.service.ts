@@ -73,6 +73,7 @@ import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { getPositiveDropdownNamesFromFilter, resolveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { adjustPointValueForSkill } from '../utils/pv-skill-adjustment.util';
+import { bondNumberRange } from '../utils/bounded-integer-input.util';
 import { normalizeMultiStateSelection } from '../utils/unit-search-shared.util';
 import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 import { DataService } from './data.service';
@@ -1442,11 +1443,12 @@ function resolveBudgetRangeWithEditedMin(
 ): ForceGenerationBudgetRange {
     const nextMin = normalizeBudgetBound(editedMin);
     const currentMax = normalizeBudgetBound(range.max);
-
-    return {
+    const bondedRange = bondNumberRange({
         min: nextMin,
-        max: currentMax > 0 ? Math.max(nextMin, currentMax) : 0,
-    };
+        max: currentMax > 0 ? currentMax : null,
+    }, 'min');
+
+    return { min: bondedRange.min, max: bondedRange.max ?? 0 };
 }
 
 function resolveBudgetRangeWithEditedMax(
@@ -1456,10 +1458,12 @@ function resolveBudgetRangeWithEditedMax(
     const currentMin = normalizeBudgetBound(range.min);
     const nextMax = normalizeBudgetBound(editedMax);
 
-    return {
-        min: nextMax > 0 ? Math.min(currentMin, nextMax) : currentMin,
-        max: nextMax,
-    };
+    const bondedRange = bondNumberRange({
+        min: currentMin,
+        max: nextMax > 0 ? nextMax : null,
+    }, 'max');
+
+    return { min: bondedRange.min, max: bondedRange.max ?? 0 };
 }
 
 function resolveUnitCountRangeWithEditedMin(
@@ -1469,10 +1473,10 @@ function resolveUnitCountRangeWithEditedMin(
     const nextMin = normalizeUnitCountBound(editedMin);
     const currentMax = normalizeUnitCountBound(range.max);
 
-    return {
+    return bondNumberRange({
         min: nextMin,
-        max: Math.max(nextMin, currentMax),
-    };
+        max: currentMax,
+    }, 'min');
 }
 
 function resolveUnitCountRangeWithEditedMax(
@@ -1482,10 +1486,10 @@ function resolveUnitCountRangeWithEditedMax(
     const currentMin = normalizeUnitCountBound(range.min);
     const nextMax = normalizeUnitCountBound(editedMax);
 
-    return {
-        min: Math.min(currentMin, nextMax),
+    return bondNumberRange({
+        min: currentMin,
         max: nextMax,
-    };
+    }, 'max');
 }
 
 function getBudgetMetric(unit: Unit, gameSystem: GameSystem, gunnery: number, piloting: number): number {

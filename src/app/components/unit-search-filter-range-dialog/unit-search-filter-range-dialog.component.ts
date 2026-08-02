@@ -34,6 +34,7 @@
 import { ChangeDetectionStrategy, Component, Directive, ElementRef, inject, input, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { form, FormField } from '@angular/forms/signals';
+import { bondNumberRange } from '../../utils/bounded-integer-input.util';
 
 /*
  * Author: Drake
@@ -237,8 +238,9 @@ export class UnitSearchFilterRangeDialogComponent {
         const { from, to } = this.rangeFormState();
         const fromNum = this.parseToNumber(from, false);
         const toNum = this.parseToNumber(to, true);
+        const bondedRange = bondNumberRange({ min: fromNum, max: toNum }, 'min');
 
-        if (fromNum !== null && toNum !== null && fromNum > toNum) {
+        if (bondedRange.max !== toNum) {
             this.rangeFormState.update(state => ({ ...state, to: from }));
         }
     }
@@ -247,8 +249,9 @@ export class UnitSearchFilterRangeDialogComponent {
         const { from, to } = this.rangeFormState();
         const fromNum = this.parseToNumber(from, false);
         const toNum = this.parseToNumber(to, true);
+        const bondedRange = bondNumberRange({ min: fromNum, max: toNum }, 'max');
 
-        if (fromNum !== null && toNum !== null && toNum < fromNum) {
+        if (bondedRange.min !== fromNum) {
             this.rangeFormState.update(state => ({ ...state, from: to }));
         }
     }

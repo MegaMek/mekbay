@@ -1,4 +1,8 @@
-import { normalizeBoundedInteger, normalizeBoundedIntegerInput } from './bounded-integer-input.util';
+import {
+    bondNumberRange,
+    normalizeBoundedInteger,
+    normalizeBoundedIntegerInput,
+} from './bounded-integer-input.util';
 
 describe('bounded integer input utilities', () => {
     it('floors and clamps values to inclusive boundaries', () => {
@@ -47,5 +51,22 @@ describe('bounded integer input utilities', () => {
 
         expect(value).toBe(0);
         expect(input.value).toBe('');
+    });
+
+    describe('bonded ranges', () => {
+        it('raises a lower maximum to the edited minimum', () => {
+            expect(bondNumberRange({ min: 10, max: 8 }, 'min')).toEqual({ min: 10, max: 10 });
+        });
+
+        it('lowers a higher minimum to the edited maximum', () => {
+            expect(bondNumberRange({ min: 10, max: 8 }, 'max')).toEqual({ min: 8, max: 8 });
+        });
+
+        it('preserves ordered, equal, and open ranges', () => {
+            expect(bondNumberRange({ min: 4, max: 8 }, 'min')).toEqual({ min: 4, max: 8 });
+            expect(bondNumberRange({ min: 8, max: 8 }, 'max')).toEqual({ min: 8, max: 8 });
+            expect(bondNumberRange({ min: 10, max: null }, 'min')).toEqual({ min: 10, max: null });
+            expect(bondNumberRange({ min: null, max: 8 }, 'max')).toEqual({ min: null, max: 8 });
+        });
     });
 });
