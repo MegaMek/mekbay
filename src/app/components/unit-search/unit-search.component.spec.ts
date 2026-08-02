@@ -23,6 +23,7 @@ import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from '../../services/unit-search-f
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { createEmptyUnit, type TestUnitOverrides } from '../../testing/unit-test-helpers';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
+import { calculateDataTableMinWidth } from '../data-table/data-table.component';
 import { UnitSearchComponent } from './unit-search.component';
 
 describe('UnitSearchComponent card virtualization', () => {
@@ -344,13 +345,16 @@ describe('UnitSearchComponent card virtualization', () => {
 
         const columns = component.unitSearchTableColumns();
         const bvIndex = columns.findIndex(column => column.id === 'bv');
+        const bvColumn = columns[bvIndex];
         const skillsColumn = columns[bvIndex + 1];
 
+        expect(bvColumn.cellTemplate).toBeDefined();
+        expect(bvColumn.track).toBe(128);
         expect(skillsColumn.id).toBe('normalized-skills');
         expect(skillsColumn.header).toBe('G/P');
         expect(skillsColumn.value?.(unit, 0)).toBe('3/6');
         expect(skillsColumn.cellTone).toBe('focus');
-        expect(component.unitSearchTableMinWidth()).toBe('1838px');
+        expect(calculateDataTableMinWidth(columns)).toBe(2294);
     });
 
     it('omits the Gunnery/Piloting column when BV normalization is inactive', () => {
@@ -360,8 +364,10 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.budgetMode.set(null);
         fixture.detectChanges();
 
-        expect(component.unitSearchTableColumns().some(column => column.id === 'normalized-skills')).toBeFalse();
-        expect(component.unitSearchTableMinWidth()).toBe('1782px');
+        const columns = component.unitSearchTableColumns();
+        expect(columns.find(column => column.id === 'bv')?.track).toBe(78);
+        expect(columns.some(column => column.id === 'normalized-skills')).toBeFalse();
+        expect(calculateDataTableMinWidth(columns)).toBe(2180);
     });
 
     it('provides stable unit keys for variable-height measurements across result objects', () => {

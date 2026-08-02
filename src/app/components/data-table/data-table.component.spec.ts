@@ -1,6 +1,11 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { DataTableComponent, type DataTableColumn } from './data-table.component';
+import {
+    calculateDataTableMinWidth,
+    DataTableComponent,
+    serializeDataTableTrack,
+    type DataTableColumn,
+} from './data-table.component';
 
 interface TestRow {
     id: string;
@@ -10,7 +15,7 @@ interface TestRow {
 const textColumn: DataTableColumn<TestRow> = {
     id: 'text',
     header: 'Text',
-    track: '90px',
+    track: 90,
     value: row => row.text,
 };
 
@@ -54,6 +59,29 @@ describe('DataTableComponent', () => {
         expect(component.virtualRowKeys()).toEqual(['unit-a', 'unit-b']);
     });
 
+    it('serializes fixed and flexible tracks', () => {
+        expect(serializeDataTableTrack(90)).toBe('90px');
+        expect(serializeDataTableTrack({ minPx: 320, flex: 1.35 })).toBe('minmax(320px, 1.35fr)');
+    });
+
+    it('derives minimum width from tracks, gaps, and padding', () => {
+        const columns: DataTableColumn<TestRow>[] = [
+            textColumn,
+            { id: 'details', header: 'Details', track: { minPx: 220, flex: 1 }, value: row => row.text },
+        ];
+
+        expect(calculateDataTableMinWidth(columns)).toBe(350);
+
+        fixture.componentRef.setInput('columns', columns);
+        fixture.detectChanges();
+        expect(component.gridTemplate()).toBe('90px minmax(220px, 1fr)');
+        expect(component.tableWidth()).toBe('max(350px, 100%)');
+    });
+
+    it('uses only table padding when there are no columns', () => {
+        expect(calculateDataTableMinWidth([])).toBe(32);
+    });
+
     it('derives measurement keys from rowTrackBy when explicit keys are absent or invalid', () => {
         const rows = [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }];
         fixture.componentRef.setInput('rows', rows);
@@ -66,7 +94,6 @@ describe('DataTableComponent', () => {
 
     it('grows wrapped rows beyond the estimate without clipping their content', async () => {
         fixture.componentRef.setInput('itemSize', 48);
-        fixture.componentRef.setInput('minWidth', '120px');
         fixture.componentRef.setInput('rows', [
             { id: 'short', text: 'Short' },
             { id: 'long', text: 'Motorized Conventional Infantry with additional wrapped details' },

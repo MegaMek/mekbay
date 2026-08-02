@@ -585,15 +585,6 @@ export class UnitSearchComponent {
         return opt?.slotLabel || opt?.label || key;
     });
 
-    readonly unitSearchTableMinWidth = computed(() => {
-        if (this.gameService.isAlphaStrike()) {
-            return this.asTableSortSlotHeader() ? '1534px' : '1446px';
-        }
-
-        const normalizationWidth = this.filtersService.activeBvNormalization() ? 56 : 0;
-        return `${(this.cbtTableSortSlotHeader() ? 1878 : 1782) + normalizationWidth}px`;
-    });
-
     readonly unitSearchTableColumns = computed<readonly DataTableColumn<Unit>[]>(() => {
         const iconCell = this.tableIconCell();
         const nameCell = this.tableNameCell();
@@ -620,14 +611,14 @@ export class UnitSearchComponent {
                 {
                     id: 'icon',
                     header: '',
-                    track: '40px',
+                    track: 40,
                     cellTemplate: iconCell,
                     align: 'center',
                 },
                 {
                     id: 'name',
                     header: 'Name',
-                    track: 'minmax(320px, 1.35fr)',
+                    track: { minPx: 320, flex: 1.35 },
                     cellTemplate: nameCell,
                     sortKey: 'name',
                     sortActive: this.isSortActive('name'),
@@ -635,7 +626,7 @@ export class UnitSearchComponent {
                 {
                     id: 'type',
                     header: 'Type',
-                    track: '100px',
+                    track: 100,
                     value: unit => unit.type,
                     sortKey: 'type',
                     sortActive: this.isSortActive('type'),
@@ -644,7 +635,7 @@ export class UnitSearchComponent {
                 {
                     id: 'subtype',
                     header: 'Subtype',
-                    track: '130px',
+                    track: 130,
                     value: unit => this.formatClassicSubtype(unit),
                     sortKey: 'subtype',
                     sortActive: this.isSortActive('subtype'),
@@ -653,7 +644,7 @@ export class UnitSearchComponent {
                 {
                     id: 'role',
                     header: 'Role',
-                    track: '130px',
+                    track: 130,
                     value: unit => unit.role !== 'None' ? unit.role : '',
                     sortKey: 'role',
                     sortActive: this.isSortActive('role'),
@@ -662,7 +653,7 @@ export class UnitSearchComponent {
                 {
                     id: 'bv',
                     header: 'BV',
-                    track: '78px',
+                    track: this.filtersService.activeBvNormalization() ? 128 : 78,
                     cellTemplate: bvCell,
                     sortKey: 'bv',
                     sortActive: this.isSortActive('bv'),
@@ -675,7 +666,7 @@ export class UnitSearchComponent {
                 columns.push({
                     id: 'normalized-skills',
                     header: 'G/P',
-                    track: '56px',
+                    track: 56,
                     value: unit => this.formatNormalizedSkills(unit),
                     cellTone: 'focus',
                     align: 'center',
@@ -686,7 +677,7 @@ export class UnitSearchComponent {
                 {
                     id: 'tons',
                     header: 'Tons',
-                    track: '64px',
+                    track: 64,
                     cellTemplate: tonsCell,
                     sortKey: 'tons',
                     sortActive: this.isSortActive('tons'),
@@ -696,7 +687,7 @@ export class UnitSearchComponent {
                 {
                     id: 'year',
                     header: 'Year',
-                    track: '72px',
+                    track: 72,
                     cellTemplate: yearCell,
                     sortKey: 'year',
                     sortActive: this.isSortActive('year'),
@@ -706,7 +697,7 @@ export class UnitSearchComponent {
                 {
                     id: 'rules',
                     header: 'Rules',
-                    track: '108px',
+                    track: 108,
                     value: unit => unit.level,
                     sortKey: 'level',
                     sortActive: this.isSortActive('level'),
@@ -715,7 +706,7 @@ export class UnitSearchComponent {
                 {
                     id: 'tech',
                     header: 'Tech',
-                    track: '100px',
+                    track: 100,
                     value: unit => unit._techBaseDisplay,
                     sortKey: '_techBaseDisplay',
                     sortActive: this.isSortActive('_techBaseDisplay'),
@@ -724,7 +715,7 @@ export class UnitSearchComponent {
                 {
                     id: 'movement',
                     header: 'Move',
-                    track: '96px',
+                    track: 96,
                     cellTemplate: classicMovementCell,
                     sortKey: 'walk',
                     sortGroupKey: 'movement',
@@ -734,7 +725,7 @@ export class UnitSearchComponent {
                 {
                     id: 'armor',
                     header: 'Armor',
-                    track: '72px',
+                    track: 72,
                     value: unit => unit.armor,
                     sortKey: 'armor',
                     sortActive: this.isSortActive('armor'),
@@ -744,7 +735,7 @@ export class UnitSearchComponent {
                 {
                     id: 'structure',
                     header: 'Structure',
-                    track: '86px',
+                    track: 86,
                     value: unit => unit.internal,
                     sortKey: 'internal',
                     sortActive: this.isSortActive('internal'),
@@ -754,7 +745,7 @@ export class UnitSearchComponent {
                 {
                     id: 'firepower',
                     header: 'Firepower',
-                    track: '88px',
+                    track: 88,
                     value: unit => this.formatClassicStat(unit._mdSumNoPhysical),
                     sortKey: '_mdSumNoPhysical',
                     sortActive: this.isSortActive('_mdSumNoPhysical'),
@@ -764,7 +755,7 @@ export class UnitSearchComponent {
                 {
                     id: 'damage-per-turn',
                     header: 'Dmg/Turn',
-                    track: '92px',
+                    track: 92,
                     value: unit => this.formatClassicStat(unit.dpt),
                     sortKey: 'dpt',
                     sortActive: this.isSortActive('dpt'),
@@ -774,7 +765,7 @@ export class UnitSearchComponent {
                 {
                     id: 'network',
                     header: 'Network',
-                    track: '96px',
+                    track: 96,
                     value: unit => unit.c3 ?? '',
                     sortKey: 'c3',
                     sortActive: this.isSortActive('c3'),
@@ -783,7 +774,7 @@ export class UnitSearchComponent {
                 {
                     id: 'cost',
                     header: 'Cost',
-                    track: '110px',
+                    track: 110,
                     value: unit => unit.cost ? FormatNumberPipe.formatValue(unit.cost, true, false) : '',
                     sortKey: 'cost',
                     sortActive: this.isSortActive('cost'),
@@ -796,7 +787,7 @@ export class UnitSearchComponent {
                 columns.push({
                     id: 'sort-slot',
                     header: this.cbtTableSortSlotHeader() ?? '',
-                    track: '100px',
+                    track: 100,
                     value: unit => this.getClassicTableSortSlot(unit) ?? '',
                     headerClass: 'as-th-sort-slot',
                     cellClass: 'as-td-sort-slot sort-slot',
@@ -807,7 +798,7 @@ export class UnitSearchComponent {
             columns.push({
                 id: 'tags',
                 header: 'Tags',
-                track: '230px',
+                track: 230,
                 cellTemplate: tagsCell,
                 headerClass: 'as-th-tags',
                 cellClass: 'as-td-tags',
@@ -825,14 +816,14 @@ export class UnitSearchComponent {
             {
                 id: 'icon',
                 header: '',
-                track: '40px',
+                track: 40,
                 cellTemplate: iconCell,
                 align: 'center',
             },
             {
                 id: 'name',
                 header: 'Name',
-                track: 'minmax(320px, 1.35fr)',
+                track: { minPx: 320, flex: 1.35 },
                 cellTemplate: nameCell,
                 sortKey: 'name',
                 sortActive: this.isSortActive('name'),
@@ -840,7 +831,7 @@ export class UnitSearchComponent {
             {
                 id: 'year',
                 header: 'Year',
-                track: '72px',
+                track: 72,
                 cellTemplate: yearCell,
                 sortKey: 'year',
                 sortActive: this.isSortActive('year'),
@@ -850,7 +841,7 @@ export class UnitSearchComponent {
             {
                 id: 'type',
                 header: 'Type',
-                track: '50px',
+                track: 50,
                 cellTemplate: typeCell,
                 sortKey: 'as.TP',
                 sortActive: this.isSortActive('as.TP'),
@@ -860,7 +851,7 @@ export class UnitSearchComponent {
             {
                 id: 'role',
                 header: 'Role',
-                track: '130px',
+                track: 130,
                 value: unit => unit.role !== 'None' ? unit.role : '',
                 sortKey: 'role',
                 sortActive: this.isSortActive('role'),
@@ -869,7 +860,7 @@ export class UnitSearchComponent {
             {
                 id: 'pv',
                 header: 'PV',
-                track: '45px',
+                track: 45,
                 cellTemplate: pvCell,
                 sortKey: 'as.PV',
                 sortActive: this.isSortActive('as.PV'),
@@ -879,7 +870,7 @@ export class UnitSearchComponent {
             {
                 id: 'sz',
                 header: 'SZ',
-                track: '30px',
+                track: 30,
                 value: unit => unit.as.SZ,
                 sortKey: 'as.SZ',
                 sortActive: this.isSortActive('as.SZ'),
@@ -889,7 +880,7 @@ export class UnitSearchComponent {
             {
                 id: 'mv',
                 header: 'MV',
-                track: '65px',
+                track: 65,
                 cellTemplate: movementCell,
                 sortKey: 'as._mv',
                 sortActive: this.isSortActive('as._mv'),
@@ -899,7 +890,7 @@ export class UnitSearchComponent {
             {
                 id: 'tmm',
                 header: 'TMM',
-                track: '40px',
+                track: 40,
                 value: unit => unit.as.TMM ?? '—',
                 sortKey: 'as.TMM',
                 sortActive: this.isSortActive('as.TMM'),
@@ -909,7 +900,7 @@ export class UnitSearchComponent {
             {
                 id: 'damage',
                 header: 'S/M/L',
-                track: '60px',
+                track: 60,
                 value: unit => !unit.as.usesArcs ? `${unit.as.dmg.dmgS}/${unit.as.dmg.dmgM}/${unit.as.dmg.dmgL}` : '',
                 sortKey: 'as.dmg._dmgS',
                 sortGroupKey: 'as.damage',
@@ -920,7 +911,7 @@ export class UnitSearchComponent {
             {
                 id: 'arm',
                 header: 'A',
-                track: '40px',
+                track: 40,
                 value: unit => unit.as.Arm,
                 sortKey: 'as.Arm',
                 sortActive: this.isSortActive('as.Arm'),
@@ -930,7 +921,7 @@ export class UnitSearchComponent {
             {
                 id: 'str',
                 header: 'S',
-                track: '40px',
+                track: 40,
                 value: unit => unit.as.Str,
                 sortKey: 'as.Str',
                 sortActive: this.isSortActive('as.Str'),
@@ -940,7 +931,7 @@ export class UnitSearchComponent {
             {
                 id: 'ov',
                 header: 'OV',
-                track: '30px',
+                track: 30,
                 value: unit => unit.as.usesOV ? unit.as.OV : '',
                 sortKey: 'as.OV',
                 sortActive: this.isSortActive('as.OV'),
@@ -953,7 +944,7 @@ export class UnitSearchComponent {
             columns.push({
                 id: 'sort-slot',
                 header: this.asTableSortSlotHeader() ?? '',
-                track: '80px',
+                track: 80,
                 value: unit => this.getAsTableSortSlot(unit) ?? '',
                 headerClass: 'as-th-sort-slot',
                 cellClass: 'as-td-sort-slot sort-slot',
@@ -965,13 +956,13 @@ export class UnitSearchComponent {
             {
                 id: 'specials',
                 header: 'Special',
-                track: 'minmax(220px, 1fr)',
+                track: { minPx: 220, flex: 1 },
                 cellTemplate: specialsCell,
             },
             {
                 id: 'tags',
                 header: 'Tags',
-                track: '230px',
+                track: 230,
                 cellTemplate: tagsCell,
                 headerClass: 'as-th-tags',
                 cellClass: 'as-td-tags',

@@ -38,10 +38,10 @@
 .mb-data-table-row {
     display: grid;
     align-items: center;
-    gap: 8px;
+    gap: var(--mb-data-table-column-gap);
     box-sizing: border-box;
-    padding-left: 12px;
-    padding-right: 20px;
+    padding-left: var(--mb-data-table-padding-start);
+    padding-right: var(--mb-data-table-padding-end);
 }
 
 .mb-data-table-header {

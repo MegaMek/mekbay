@@ -1,4 +1,7 @@
 <div class="mb-data-table"
+    [style.--mb-data-table-column-gap.px]="columnGapPx"
+    [style.--mb-data-table-padding-start.px]="paddingStartPx"
+    [style.--mb-data-table-padding-end.px]="paddingEndPx"
     [class.sort-asc]="sortDirection() === 'asc'"
     [class.sort-desc]="sortDirection() === 'desc'">
     <div class="mb-data-table-header-viewport">

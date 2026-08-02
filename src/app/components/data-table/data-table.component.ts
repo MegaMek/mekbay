@@ -40,6 +40,29 @@ import { VariableSizeVirtualScrollDirective } from '../../directives/variable-si
 
 export type DataTableClassValue = string | string[] | Set<string> | Record<string, boolean> | null | undefined;
 export type DataTableCellTone = 'focus';
+export type DataTableColumnTrack = number | {
+    readonly minPx: number;
+    readonly flex: number;
+};
+
+export const DATA_TABLE_COLUMN_GAP_PX = 8;
+export const DATA_TABLE_PADDING_START_PX = 12;
+export const DATA_TABLE_PADDING_END_PX = 20;
+
+export function serializeDataTableTrack(track: DataTableColumnTrack): string {
+    return typeof track === 'number'
+        ? `${track}px`
+        : `minmax(${track.minPx}px, ${track.flex}fr)`;
+}
+
+export function calculateDataTableMinWidth<T>(columns: readonly DataTableColumn<T>[]): number {
+    const trackWidth = columns.reduce(
+        (total, column) => total + (typeof column.track === 'number' ? column.track : column.track.minPx),
+        0,
+    );
+    const gapWidth = Math.max(0, columns.length - 1) * DATA_TABLE_COLUMN_GAP_PX;
+    return trackWidth + gapWidth + DATA_TABLE_PADDING_START_PX + DATA_TABLE_PADDING_END_PX;
+}
 
 export interface DataTableCellContext<T> {
     $implicit: T;
@@ -58,7 +81,7 @@ export interface DataTableRowContext<T> {
 export interface DataTableColumn<T> {
     id: string;
     header: string;
-    track: string;
+    track: DataTableColumnTrack;
     headerClass?: DataTableClassValue;
     cellClass?: DataTableClassValue | ((row: T, index: number) => DataTableClassValue);
     cellTone?: DataTableCellTone;
@@ -113,7 +136,6 @@ export class DataTableComponent<T> {
     readonly rows = input.required<readonly T[]>();
     readonly columns = input.required<readonly DataTableColumn<T>[]>();
     readonly itemSize = input(48);
-    readonly minWidth = input('0px');
     readonly sortDirection = input<'asc' | 'desc' | null>(null);
     readonly minBufferPx = input(600);
     readonly maxBufferPx = input(1200);
@@ -122,6 +144,9 @@ export class DataTableComponent<T> {
     readonly rowClass = input<((row: T, index: number) => DataTableClassValue) | null>(null);
     readonly fullRowTemplate = input<TemplateRef<DataTableRowContext<T>> | null>(null);
     readonly isFullRow = input<((row: T, index: number) => boolean) | null>(null);
+    readonly columnGapPx = DATA_TABLE_COLUMN_GAP_PX;
+    readonly paddingStartPx = DATA_TABLE_PADDING_START_PX;
+    readonly paddingEndPx = DATA_TABLE_PADDING_END_PX;
 
     readonly sort = output<DataTableSortEvent>();
     readonly rowClick = output<DataTableRowClickEvent<T>>();
@@ -133,8 +158,9 @@ export class DataTableComponent<T> {
     readonly scrollLeft = signal(0);
     readonly textFitRevision = signal(0);
 
-    readonly gridTemplate = computed(() => this.columns().map(column => column.track).join(' '));
-    readonly tableWidth = computed(() => `max(${this.minWidth()}, 100%)`);
+    readonly gridTemplate = computed(() => this.columns().map(column => serializeDataTableTrack(column.track)).join(' '));
+    readonly minimumWidthPx = computed(() => calculateDataTableMinWidth(this.columns()));
+    readonly tableWidth = computed(() => `max(${this.minimumWidthPx()}px, 100%)`);
     readonly textFitKey = computed(() => `${this.gridTemplate()}|${this.tableWidth()}|${this.textFitRevision()}`);
     readonly virtualRowKeys = computed<readonly unknown[]>(() => {
         const rows = this.rows();

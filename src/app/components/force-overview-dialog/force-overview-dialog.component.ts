@@ -341,8 +341,6 @@ export class ForceOverviewDialogComponent {
         return opt?.slotLabel ?? opt?.label ?? null;
     });
 
-    readonly forceTableMinWidth = computed(() => this.asTableSortSlotHeader() ? '1454px' : '1366px');
-
     readonly forceTableRows = computed<readonly ForceTableRow[]>(() => {
         const rows: ForceTableRow[] = [];
         for (const group of this.groups()) {
@@ -370,14 +368,14 @@ export class ForceOverviewDialogComponent {
             {
                 id: 'icon',
                 header: '',
-                track: '40px',
+                track: 40,
                 cellTemplate: iconCell,
                 align: 'center',
             },
             {
                 id: 'name',
                 header: 'Name',
-                track: 'minmax(320px, 1.35fr)',
+                track: { minPx: 320, flex: 1.35 },
                 cellTemplate: nameCell,
                 sortKey: 'name',
                 sortActive: this.isSortActive('name'),
@@ -385,7 +383,7 @@ export class ForceOverviewDialogComponent {
             {
                 id: 'year',
                 header: 'Year',
-                track: '72px',
+                track: 72,
                 cellTemplate: yearCell,
                 sortKey: 'year',
                 sortActive: this.isSortActive('year'),
@@ -395,7 +393,7 @@ export class ForceOverviewDialogComponent {
             {
                 id: 'type',
                 header: 'Type',
-                track: '50px',
+                track: 50,
                 value: row => row.kind === 'unit' ? row.vm.unit.as.TP : '',
                 sortKey: 'as.TP',
                 sortActive: this.isSortActive('as.TP'),
@@ -405,7 +403,7 @@ export class ForceOverviewDialogComponent {
             {
                 id: 'role',
                 header: 'Role',
-                track: '130px',
+                track: 130,
                 value: row => row.kind === 'unit' && row.vm.unit.role !== 'None' ? row.vm.unit.role : '',
                 sortKey: 'role',
                 sortActive: this.isSortActive('role'),
@@ -414,7 +412,7 @@ export class ForceOverviewDialogComponent {
             {
                 id: 'pv',
                 header: 'PV',
-                track: '45px',
+                track: 45,
                 value: row => row.kind === 'unit'
                     ? formatBvPv(
                         row.vm.forceUnit.getBv(),
@@ -430,14 +428,14 @@ export class ForceOverviewDialogComponent {
             {
                 id: 'skill',
                 header: 'Skill',
-                track: '40px',
+                track: 40,
                 cellTemplate: skillCell,
                 align: 'center',
             },
             {
                 id: 'sz',
                 header: 'SZ',
-                track: '30px',
+                track: 30,
                 value: row => row.kind === 'unit' ? row.vm.unit.as.SZ : '',
                 sortKey: 'as.SZ',
                 sortActive: this.isSortActive('as.SZ'),
@@ -447,7 +445,7 @@ export class ForceOverviewDialogComponent {
             {
                 id: 'mv',
                 header: 'MV',
-                track: '65px',
+                track: 65,
                 cellTemplate: movementCell,
                 sortKey: 'as._mv',
                 sortActive: this.isSortActive('as._mv'),
@@ -457,7 +455,7 @@ export class ForceOverviewDialogComponent {
             {
                 id: 'tmm',
                 header: 'TMM',
-                track: '40px',
+                track: 40,
                 value: row => row.kind === 'unit' ? row.vm.unit.as.TMM : '',
                 sortKey: 'as.TMM',
                 sortActive: this.isSortActive('as.TMM'),
@@ -467,7 +465,7 @@ export class ForceOverviewDialogComponent {
             {
                 id: 'damage',
                 header: 'S/M/L',
-                track: '60px',
+                track: 60,
                 value: row => row.kind === 'unit' && !row.vm.unit.as.usesArcs ? `${row.vm.unit.as.dmg.dmgS}/${row.vm.unit.as.dmg.dmgM}/${row.vm.unit.as.dmg.dmgL}` : '',
                 sortKey: 'as.dmg._dmgS',
                 sortGroupKey: 'as.damage',
@@ -478,7 +476,7 @@ export class ForceOverviewDialogComponent {
             {
                 id: 'arm',
                 header: 'A',
-                track: '40px',
+                track: 40,
                 value: row => row.kind === 'unit' ? row.vm.unit.as.Arm : '',
                 sortKey: 'as.Arm',
                 sortActive: this.isSortActive('as.Arm'),
@@ -488,7 +486,7 @@ export class ForceOverviewDialogComponent {
             {
                 id: 'str',
                 header: 'S',
-                track: '40px',
+                track: 40,
                 value: row => row.kind === 'unit' ? row.vm.unit.as.Str : '',
                 sortKey: 'as.Str',
                 sortActive: this.isSortActive('as.Str'),
@@ -498,7 +496,7 @@ export class ForceOverviewDialogComponent {
             {
                 id: 'ov',
                 header: 'OV',
-                track: '30px',
+                track: 30,
                 value: row => row.kind === 'unit' && row.vm.unit.as.usesOV ? row.vm.unit.as.OV : '',
                 sortKey: 'as.OV',
                 sortActive: this.isSortActive('as.OV'),
@@ -511,7 +509,7 @@ export class ForceOverviewDialogComponent {
             columns.push({
                 id: 'sort-slot',
                 header: this.asTableSortSlotHeader() ?? '',
-                track: '80px',
+                track: 80,
                 value: row => row.kind === 'unit' ? this.getAsTableSortSlot(row.vm) ?? '' : '',
                 cellClass: 'as-td-sort-slot sort-slot',
                 align: 'center',
@@ -521,7 +519,7 @@ export class ForceOverviewDialogComponent {
         columns.push({
             id: 'specials',
             header: 'Special',
-            track: 'minmax(220px, 1fr)',
+            track: { minPx: 220, flex: 1 },
             cellTemplate: specialsCell,
         });
 
