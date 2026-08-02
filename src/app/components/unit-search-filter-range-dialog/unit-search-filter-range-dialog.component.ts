@@ -213,7 +213,7 @@ export class NumericInputDirective {
     styleUrls: ['./unit-search-filter-range-dialog.component.scss']
 })
 export class UnitSearchFilterRangeDialogComponent {
-    public dialogRef: DialogRef<RangeModel | null, UnitSearchFilterRangeDialogComponent> = inject(DialogRef);
+    public dialogRef = inject<DialogRef<RangeModel | null, UnitSearchFilterRangeDialogComponent>>(DialogRef);
     readonly data: UnitSearchFilterRangeDialogData = inject(DIALOG_DATA);
 
     // Form State is Strings to handle the Visual formatting
