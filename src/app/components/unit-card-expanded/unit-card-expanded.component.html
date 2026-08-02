@@ -97,7 +97,7 @@
                 </div>
                 <div class="info-item">
                     <span class="info-label muted">Tech:</span>
-                    <span class="info-value" [class.sort-slot]="isSortActive('techBase')">{{ u.techBase }}</span>
+                    <span class="info-value" [class.sort-slot]="isSortActive('techBase')">{{ getUnitTechBaseDisplay(u) }}</span>
                 </div>
                 <div class="info-item">
                     <span class="info-label muted">Tons:</span>
@@ -208,7 +208,7 @@
                 </div>
                 <div class="info-item">
                     <span class="info-label muted">Tech:</span>
-                    <span class="info-value" [class.sort-slot]="isSortActive('techBase')">{{ u.techBase }}</span>
+                    <span class="info-value" [class.sort-slot]="isSortActive('techBase')">{{ getUnitTechBaseDisplay(u) }}</span>
                 </div>
                 @if (u.cost) {
                 <div class="info-item">

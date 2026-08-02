@@ -196,43 +196,43 @@ export class FloatingCompInfoComponent {
         };
 
         let dates: TechAdvancementDates;
-        switch (unit.techBase) {
-            case 'Clan':
-                dates = eq.tech.advancement?.clan ?? {};
-                break;
-            case 'Mixed': {
-                const is = eq.tech.advancement?.is;
-                const clan = eq.tech.advancement?.clan;
-                // For mixed: earliest for most dates, latest for extinction
-                let extinct: TechDate;
-                let reintroduced: TechDate;
+        if (unit.mixed) {
+            const is = eq.tech.advancement?.is;
+            const clan = eq.tech.advancement?.clan;
+            // For mixed: earliest for most dates, latest for extinction
+            let extinct: TechDate;
+            let reintroduced: TechDate;
 
-                // Only show extinction if BOTH have it (otherwise tech was still available)
-                const bothHaveExtinction = is?.extinct && clan?.extinct;
-                if (bothHaveExtinction) {
-                    extinct = latest(is?.extinct, clan?.extinct);
-                    reintroduced = earliest(is?.reintroduced, clan?.reintroduced);
-                    // If extinction is at or beyond reintroduction, there's no real gap
-                    const extY = techDateYear(extinct), reintY = techDateYear(reintroduced);
-                    if (extY != null && reintY != null && extY >= reintY) {
-                        extinct = undefined;
-                        reintroduced = undefined;
-                    }
+            // Only show extinction if BOTH have it (otherwise tech was still available)
+            const bothHaveExtinction = is?.extinct && clan?.extinct;
+            if (bothHaveExtinction) {
+                extinct = latest(is?.extinct, clan?.extinct);
+                reintroduced = earliest(is?.reintroduced, clan?.reintroduced);
+                // If extinction is at or beyond reintroduction, there's no real gap
+                const extY = techDateYear(extinct), reintY = techDateYear(reintroduced);
+                if (extY != null && reintY != null && extY >= reintY) {
+                    extinct = undefined;
+                    reintroduced = undefined;
                 }
-
-                dates = {
-                    prototype: earliest(is?.prototype, clan?.prototype),
-                    production: earliest(is?.production, clan?.production),
-                    common: earliest(is?.common, clan?.common),
-                    extinct,
-                    reintroduced
-                };
-                break;
             }
-            case 'Inner Sphere':
-            default:
-                dates = eq.tech.advancement?.is ?? {};
-                break;
+
+            dates = {
+                prototype: earliest(is?.prototype, clan?.prototype),
+                production: earliest(is?.production, clan?.production),
+                common: earliest(is?.common, clan?.common),
+                extinct,
+                reintroduced
+            };
+        } else {
+            switch (unit.techBase) {
+                case 'Clan':
+                    dates = eq.tech.advancement?.clan ?? {};
+                    break;
+                case 'Inner Sphere':
+                default:
+                    dates = eq.tech.advancement?.is ?? {};
+                    break;
+            }
         }
 
         const historyItems: Array<{ label: string, value: string }> = [

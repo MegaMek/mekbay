@@ -33,19 +33,24 @@
 
 import type { Unit } from "./units.model";
 
-export type TechBase = 'Inner Sphere' | 'Clan' | 'Mixed';
+export type TechBase = 'Inner Sphere' | 'Clan';
 export type TechBaseAvailability = 'IS' | 'Clan' | 'All';
+
+export type UnitTechBaseDisplay = TechBase | `Mixed (${TechBase})`;
+
+export function getUnitTechBaseDisplay(unit: Pick<Unit, 'techBase' | 'mixed'>): UnitTechBaseDisplay {
+    return unit.mixed ? `Mixed (${unit.techBase})` : unit.techBase;
+}
 
 
 export function getUnitsAverageTechBase(units: Unit[]): TechBase {
     const counts: Partial<Record<TechBase, number>> = {};
     for (const unit of units) {
-        const tb = unit.techBase;
-        if (tb === 'Mixed') {
+        if (unit.mixed) {
             counts['Clan'] = (counts['Clan'] || 0) + 1;
             counts['Inner Sphere'] = (counts['Inner Sphere'] || 0) + 1;
         } else {
-            counts[tb] = (counts[tb] || 0) + 1;
+            counts[unit.techBase] = (counts[unit.techBase] || 0) + 1;
         }
     }
     let majority: TechBase = 'Inner Sphere';

@@ -136,6 +136,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'structureType', compare: 'exact', parity: 'verified' },
   { field: 'armor',         compare: 'exact', parity: 'verified' },
   { field: 'techBase',      compare: 'exact', parity: 'verified' },
+  { field: 'mixed',      compare: 'exact', parity: 'verified' },
 
   // ── Phase 1: Movement ──────────────────────────────────────────────
   { field: 'walk',          compare: 'exact', parity: 'verified' },
@@ -325,7 +326,7 @@ interface OracleDocument {
 type PlainObject = Record<string, unknown>;
 
 const OPTIONAL_FIELDS = new Set(['capital', 'cargo', 'diss', 'fluff']);
-const BOOLEAN_FIELDS = new Set(['canAntiMech', 'canon']);
+const BOOLEAN_FIELDS = new Set(['canAntiMech', 'canon', 'mixed']);
 const STRING_FIELDS = new Set([
   'armorType', 'c3', 'chassis', 'icon', 'level', 'model', 'moveType', 'name',
   'role', 'subtype', 'techBase', 'techRating', 'type', 'unitFile', 'weightClass',

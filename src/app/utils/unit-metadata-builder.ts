@@ -92,7 +92,8 @@ export class UnitMetadataBuilder {
       unitFile: unitFile,
 
       // ── Phase 0: Direct signals ────────────────────────────────────
-      techBase: this.buildTechBase(entity),
+      techBase: entity.techBase() === 'IS' ? 'Inner Sphere' : 'Clan',
+      mixed: entity.mixedTech(),
       engine: this.buildEngineName(entity),
       engineRating: this.exportsEngine(entity) ? me.rating : 0,
       armorType: this.buildArmorType(entity),
@@ -186,7 +187,7 @@ export class UnitMetadataBuilder {
 
   /** Mirrors SVGMassPrinter.UnitData.getFeatures(). */
   private buildFeatures(entity: BaseEntity): string[] {
-    const features: string[] = [];
+    const features: string[] = [...entity.entityFeatures()];
 
     if (entity instanceof AeroEntity) {
       if (entity.cockpitType() === 'Small') features.push('Small Cockpit');
@@ -276,12 +277,6 @@ export class UnitMetadataBuilder {
       default:
         return entity.motiveType() as MoveType;
     }
-  }
-
-  /** Unit metadata tech-base description. */
-  private buildTechBase(entity: BaseEntity): any {
-    if (entity.mixedTech()) return 'Mixed';
-    return entity.techBase() === 'IS' ? 'Inner Sphere' : 'Clan';
   }
 
   private buildEngineName(entity: BaseEntity): any {

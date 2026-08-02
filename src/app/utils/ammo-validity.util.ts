@@ -70,7 +70,7 @@ export class AmmoValidityUtil {
     private static hasCompatibleTechBase(originalAmmo: AmmoEquipment, candidateAmmo: AmmoEquipment, unit?: Unit): boolean {
         if (originalAmmo.techBase === candidateAmmo.techBase) return true;
         if (!unit) return originalAmmo.techBase === 'All' || candidateAmmo.techBase === 'All';
-        if (unit.techBase === 'Mixed') return true;
+        if (unit.mixed) return true;
         if (unit.techBase === 'Clan' && originalAmmo.techBase === 'IS') return false;
         if (unit.techBase === 'Inner Sphere' && originalAmmo.techBase === 'Clan') return false;
         return true;

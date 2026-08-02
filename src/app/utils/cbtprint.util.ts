@@ -497,7 +497,7 @@ export class CBTPrintUtil {
                 <td class="col-bv is-numeric is-bold">${this.formatNumber(forceUnit.getBv())}</td>
                 <td class="col-tons is-numeric">${this.formatNumber(unit.tons)}</td>
                 <td class="col-year">${this.createYearValue(unit)}</td>
-                <td class="col-rules">${this.escapeHtml(this.formatTechBase(unit.techBase))}<br/>${this.escapeHtml(unit.level)}</td>
+                <td class="col-rules">${this.escapeHtml(this.formatTechBase(unit.techBase, unit.mixed))}<br/>${this.escapeHtml(unit.level)}</td>
                 <td class="col-move">${this.escapeHtml(this.formatMovement(unit))}</td>
                 <td class="col-as is-numeric">${this.escapeHtml(this.formatArmorStructure(unit))}</td>
                 <td class="col-firepower is-numeric">${this.escapeHtml(this.formatNumber(unit._mdSumNoPhysical) || '—')}<br/>(${this.escapeHtml(this.formatNumber(unit.dpt) || '—')})</td>
@@ -542,14 +542,13 @@ export class CBTPrintUtil {
         return parts.join('/');
     }
 
-    private static formatTechBase(techBase: Unit['techBase']): string {
-        switch (techBase) {
-            case 'Inner Sphere':
-                return 'IS';
-            case 'Mixed':
-                return 'Mix';
-            default:
-                return techBase || '';
+    private static formatTechBase(techBase: Unit['techBase'], mixed: boolean): string {
+        if (!techBase) return '';
+        const tech = techBase === 'Inner Sphere' ? 'IS' : 'Clan';
+        if (mixed) {
+            return `Mixed (${tech})`;
+        } else {
+            return tech;
         }
     }
 

@@ -31,6 +31,28 @@ function createUnit(overrides: TestUnitOverrides): Unit {
 }
 
 describe('UnitSearchIndexService', () => {
+    it('indexes mixed and nonmixed units as distinct tech-base filter values', () => {
+        const service = new UnitSearchIndexService();
+
+        service.rebuildIndexes([
+            createUnit({ name: 'Inner Sphere Unit', techBase: 'Inner Sphere', mixed: false }),
+            createUnit({ name: 'Clan Unit', techBase: 'Clan', mixed: false }),
+            createUnit({ name: 'Mixed Inner Sphere Unit', techBase: 'Inner Sphere', mixed: true }),
+            createUnit({ name: 'Mixed Clan Unit', techBase: 'Clan', mixed: true }),
+        ], [], []);
+
+        expect(service.getIndexedFilterValues('techBase')).toEqual([
+            'Clan',
+            'Inner Sphere',
+            'Mixed (Clan)',
+            'Mixed (Inner Sphere)',
+        ]);
+        expect(service.getIndexedUnitIds('techBase', 'Inner Sphere')).toEqual(new Set(['Inner Sphere Unit']));
+        expect(service.getIndexedUnitIds('techBase', 'Clan')).toEqual(new Set(['Clan Unit']));
+        expect(service.getIndexedUnitIds('techBase', 'Mixed (Inner Sphere)')).toEqual(new Set(['Mixed Inner Sphere Unit']));
+        expect(service.getIndexedUnitIds('techBase', 'Mixed (Clan)')).toEqual(new Set(['Mixed Clan Unit']));
+    });
+
     it('indexes Alpha Strike zero-star damage between zero and one', () => {
         const service = new UnitSearchIndexService();
         const unit = createUnit({

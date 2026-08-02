@@ -75,6 +75,7 @@ import {
   resolveWeightClass,
   WeightClass,
   EntityFluff,
+  EntityFeature,
   EquipmentBay,
   EquipmentBayKind,
   EntityMountedEquipment,
@@ -605,6 +606,8 @@ export abstract class BaseEntity implements EntityTechnology {
     const mounted = this.equipment().filter(mount => mount.isPhysicalWeapon());
     return [...mounted, ...this.intrinsicWeapons()];
   });
+  /** Canonical export features supplied by this entity's construction. */
+  readonly entityFeatures = computed<readonly EntityFeature[]>(() => this.computeEntityFeatures());
 
   /** Resolve a mounted weapon's canonical damage; selected-ammo state can extend this seam later. */
   resolveMountedWeaponDamage(mount: EntityMountedWeapon): ReturnType<typeof resolveWeaponDamage> {
@@ -1090,6 +1093,11 @@ export abstract class BaseEntity implements EntityTechnology {
   protected abstract computeExpectedEngineRating(): number | null;
 
   protected computeIntrinsicWeapons(): readonly IntrinsicWeapon[] {
+    return [];
+  }
+
+  /** Override in entity families that derive named features from construction state. */
+  protected computeEntityFeatures(): readonly EntityFeature[] {
     return [];
   }
 

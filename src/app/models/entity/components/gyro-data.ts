@@ -238,7 +238,7 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
   'Superheavy': {
     fullName: 'Superheavy Gyro',
     shortName: 'Superheavy',
-    criticalSlots: 4,
+    criticalSlots: 2,
     weightMultiplier: 2,
     baseCost: 500_000,
     costMultiplier: 2.0,

@@ -16,7 +16,7 @@
             }
         </div>
         <div><span class="muted">Rules: </span><strong>{{ unit().level }}</strong></div>
-        <div><span class="muted">Tech: </span><strong>{{ unit().techBase }} | {{ unit().techRating }}</strong></div>
+        <div><span class="muted">Tech: </span><strong>{{ getUnitTechBaseDisplay(unit()) }} | {{ unit().techRating }}</strong></div>
         @if (unit().year) {
             <div><span class="muted">Intro Year: </span><strong>{{ unit().year }}</strong>
             @if (unit()._era?.img) {

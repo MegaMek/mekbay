@@ -19,7 +19,7 @@
                 @if (compEntry?.q2) {<span class="ammo-count"> ({{ compEntry?.q2 }})</span>}</span>
             
             @if (displayStyle() === 'normal') {
-                @if (unit().techBase == 'Mixed' && componentTechBase != 'All') {
+                @if (unit().mixed && componentTechBase != 'All') {
                     <div class="tech-base tech-{{ componentTechBase | lowercase }}">
                         {{ componentTechBase == 'Clan' ? 'C' : 'IS' }}
                     </div>
