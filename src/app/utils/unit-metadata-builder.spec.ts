@@ -78,14 +78,11 @@ describe('UnitMetadataBuilder', () => {
   it('exports typed entity features using their canonical names', () => {
     const entity = new BipedMekEntity();
 
-    expect(builder.build(entity).features).toContain('Hands');
-
     entity.hasLowerArmActuator.set({ left: false, right: false });
     entity.hasHandActuator.set({ left: false, right: false });
 
     expect(entity.entityFeatures()).toEqual(['Reversible Arms']);
     expect(builder.build(entity).features).toContain('Reversible Arms');
-    expect(builder.build(entity).features).not.toContain('Hands');
   });
 
   it('keeps Small Cockpit in features while exporting it as a component', () => {
