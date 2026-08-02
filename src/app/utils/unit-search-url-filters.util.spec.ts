@@ -17,6 +17,10 @@ function createDropdownDependencies(): UnitSearchDropdownValuesDependencies {
                 return ['Succession Wars', 'Jihad'];
             }
 
+            if (filterKey === '_techBaseDisplay') {
+                return ['Inner Sphere', 'Clan', 'Mixed (Inner Sphere)', 'Mixed (Clan)'];
+            }
+
             return [];
         },
         getExternalDropdownValues: (filterKey: string) => {
@@ -42,6 +46,54 @@ describe('unit search URL filters', () => {
 
         expect(parsed.viewMode).toBe('table');
         expect(parsed.expanded).toBeTrue();
+    });
+
+    it('normalizes legacy tech-base sort keys from URLs', () => {
+        expect(parseUnitSearchScalarUrlState(new URLSearchParams('sort=tech')).sortKey)
+            .toBe('_techBaseDisplay');
+        expect(parseUnitSearchScalarUrlState(new URLSearchParams('sort=techBase')).sortKey)
+            .toBe('_techBaseDisplay');
+        expect(parseUnitSearchScalarUrlState(new URLSearchParams('sort=_techBaseDisplay')).sortKey)
+            .toBe('_techBaseDisplay');
+    });
+
+    it('reads public, legacy, and internal tech filter keys but emits only the public alias', () => {
+        for (const key of ['tech', 'techBase', '_techBaseDisplay']) {
+            const parsed = parseAndValidateCompactFiltersFromUrl(
+                `${key}:"Mixed (Clan)"`,
+                createDropdownDependencies(),
+            );
+
+            expect(parsed['_techBaseDisplay']).toEqual({
+                value: ['Mixed (Clan)'],
+                interactedWith: true,
+            });
+            expect(parsed['techBase']).toBeUndefined();
+            expect(parsed['tech']).toBeUndefined();
+        }
+
+        const filterState: FilterState = {
+            _techBaseDisplay: {
+                value: ['Mixed (Clan)'],
+                interactedWith: true,
+            },
+        };
+
+        const queryParameters = buildUnitSearchQueryParameters({
+            searchText: '',
+            filterState,
+            semanticKeys: new Set<string>(),
+            selectedSort: '_techBaseDisplay',
+            selectedSortDirection: 'asc',
+            expanded: false,
+            gunnery: DEFAULT_GUNNERY_SKILL,
+            piloting: DEFAULT_PILOTING_SKILL,
+            bvLimit: 0,
+            publicTagsParam: null,
+        });
+
+        expect(queryParameters.filters).toBe('tech:Mixed (Clan)');
+        expect(queryParameters.sort).toBe('tech');
     });
 
     it('prefers an explicit valid URL view over the persisted preference', () => {

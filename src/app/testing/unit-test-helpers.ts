@@ -1,4 +1,5 @@
 import type { Unit } from '../models/units.model';
+import { getUnitTechBaseDisplay } from '../models/tech.model';
 import { CBTInventoryControlRuntime } from '../models/cbt-inventory-control-runtime.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { AmmoEquipment, Equipment, EquipmentMap } from '../models/equipment.model';
@@ -114,6 +115,7 @@ export function createEmptyUnit(overrides: TestUnitOverrides = {}): Unit {
         as: createEmptyAlphaStrikeStats(asOverrides),
         _searchKey: '',
         _displayType: '',
+        _techBaseDisplay: 'Inner Sphere',
         _maxRange: 0,
         _weightedMaxRange: 0,
         _dissipationEfficiency: 0,
@@ -123,6 +125,8 @@ export function createEmptyUnit(overrides: TestUnitOverrides = {}): Unit {
         _chassisTags: [],
         ...unitOverrides,
     };
+
+    unit._techBaseDisplay = getUnitTechBaseDisplay(unit);
 
     unit.source = unitOverrides.source ? [...unitOverrides.source] : [];
     unit.published = unitOverrides.published ? [...unitOverrides.published] : [];

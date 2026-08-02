@@ -63,7 +63,7 @@ import { getSnapshotForcePackNames, type AdvOptionsContextSnapshot } from '../ut
 import { buildUnitSearchAdvOptions } from '../utils/unit-search-adv-options-builder.util';
 import type { UnitSearchDropdownValuesDependencies } from '../utils/unit-search-dropdown-values.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from '../utils/unit-filter-kernel.util';
-import { getAdvancedFilterConfigByKey, isFilterAvailableForAvailabilitySource } from '../utils/unit-search-filter-config.util';
+import { getAdvancedFilterConfigByKey, isFilterAvailableForAvailabilitySource, normalizeUnitSearchPropertyKey } from '../utils/unit-search-filter-config.util';
 import { buildUnitSearchQueryParameters, parseAndValidateCompactFiltersFromUrl, parseUnitSearchScalarUrlState, parseUnitSearchViewMode, resolveInitialUnitSearchViewMode } from '../utils/unit-search-url-filters.util';
 import type { UnitSearchViewMode } from '../models/options.model';
 import { generatePublicTagsParam, mergePublicTagReferences, parsePublicTagsParam } from '../utils/unit-search-public-tags-url.util';
@@ -2624,7 +2624,7 @@ export class UnitSearchFiltersService {
     get units() { return this.isDataReady() ? this.dataService.getUnits() : []; }
 
     public setSortOrder(key: string) {
-        this.selectedSort.set(key);
+        this.selectedSort.set(normalizeUnitSearchPropertyKey(key));
         this.refreshWorkerSearchIfNeeded();
     }
 
@@ -3714,6 +3714,7 @@ export class UnitSearchFiltersService {
     }
 
     setFilter(key: string, value: any) {
+        key = normalizeUnitSearchPropertyKey(key);
         const conf = getAdvancedFilterConfigByKey(key);
         if (!conf) return;
 
@@ -3779,6 +3780,7 @@ export class UnitSearchFiltersService {
      * of boundary matching. Used when the user explicitly clears a range filter.
      */
     unsetFilter(key: string) {
+        key = normalizeUnitSearchPropertyKey(key);
         const conf = getAdvancedFilterConfigByKey(key);
         if (!conf) return;
 

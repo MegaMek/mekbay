@@ -39,6 +39,7 @@ import type { TagData, UnitTagData } from './db.service';
 import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
 import { UnitSearchIndexService } from './unit-search-index.service';
+import { getUnitTechBaseDisplay } from '../models/tech.model';
 
 @Injectable({
     providedIn: 'root'
@@ -57,6 +58,7 @@ export class UnitRuntimeService {
     public preprocessUnits(units: Unit[]): void {
         this.unitNameMap.clear();
         for (const unit of units) {
+            unit._techBaseDisplay = getUnitTechBaseDisplay(unit);
             this.unitNameMap.set(UnitRuntimeService.getUnitNameKey(unit.name), unit);
         }
         this.unitSearchIndexService.prepareUnits(units);

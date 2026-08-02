@@ -38,7 +38,7 @@ import type { Equipment } from "./equipment.model";
 import type { WeaponType } from './weapon-types.model';
 import type { Era } from "./eras.model";
 import type { ComponentTechLevel, MoveType, UnitSubtype, UnitType } from "./entity/types";
-import { TechBase } from "./tech.model";
+import type { TechBase, UnitTechBaseDisplay } from "./tech.model";
 
 export type { MoveType, UnitSubtype, UnitType } from "./entity/types";
 
@@ -219,6 +219,7 @@ export interface Unit {
     serverHost?: string; // Base URL of the additional unit server this unit was loaded from; undefined means the primary db.mekbay.com host.
     _searchKey: string; // Pre-compiled lowercase search key: "chassis model"
     _displayType: string;
+    _techBaseDisplay: UnitTechBaseDisplay; // Mixed-aware tech base used by display, search, and sorting.
     _maxRange: number; // Max range of any weapon on this unit
     _weightedMaxRange: number; // Damage-weighted average of weapon max ranges
     _dissipationEfficiency: number; // Dissipation - Heat

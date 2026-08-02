@@ -32,6 +32,4 @@
  */
 
 /** Canonical, export-ready features derived from entity construction state. */
-export type EntityFeature =
-  | 'Hands'
-  | 'Reversible Arms';
+export type EntityFeature = 'Reversible Arms';
