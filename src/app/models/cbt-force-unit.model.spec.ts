@@ -910,6 +910,45 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.getHeat().next).toBeUndefined();
     });
 
+    it('cleans a destroyed turn and a subsequent repair turn with recurring engine heat', () => {
+        const forceUnit = createForceUnit(createMekUnitWithDissipation(0));
+        initialize(forceUnit);
+        const engineCrits: CriticalSlot[] = [0, 1, 2].map(index => ({
+            id: `engine@CT#${index}`,
+            name: 'Engine',
+            loc: 'CT',
+            slot: index,
+            hits: 1,
+            destroyed: 1,
+            destroying: 1,
+        }));
+        forceUnit.writeCrits(engineCrits);
+        forceUnit.evaluateDestroyed();
+
+        expect(forceUnit.destroyed).toBeTrue();
+        expect(forceUnit.turnState().dirty()).toBeFalse();
+
+        forceUnit.endTurn();
+
+        expect(forceUnit.turnState().dirty()).toBeFalse();
+        expect(forceUnit.getHeat().current).toBe(0);
+
+        forceUnit.applyHitToCritSlot(engineCrits[2], -1);
+
+        expect(forceUnit.destroyed).toBeFalse();
+        expect(forceUnit.turnState().heatSources()).toContain(jasmine.objectContaining({
+            id: 'damaged-engine',
+            value: 10,
+        }));
+        expect(forceUnit.turnState().dirty()).toBeTrue();
+
+        forceUnit.endTurn();
+
+        expect(forceUnit.getHeat().current).toBe(10);
+        expect(forceUnit.turnState().hasPendingHeatResolution()).toBeTrue();
+        expect(forceUnit.turnState().dirty()).toBeFalse();
+    });
+
     it('applies Aero cooling automatically without requiring a heat source', () => {
         const forceUnit = createForceUnit(createEmptyUnit({
             name: 'Cooling Test Aero',
@@ -2016,6 +2055,170 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         }
         expect(forceUnit.createInventoryControlTarget()).toBeNull();
         expect(forceUnit.getInventoryControlTargets().length).toBe(INVENTORY_CONTROL_TARGET_MAX_COUNT);
+    });
+
+    it('shares target identity and target conditions while preserving observer-specific values', () => {
+        const force = new TestCBTForce('Test Force', dataService, unitInitializer, injector);
+        const firstUnit = force.addUnit(createVehicleUnit(equipment));
+        const secondUnit = force.addUnit(createVehicleUnit(equipment));
+
+        const target = firstUnit.createSharedInventoryControlTarget();
+        expect(target?.id).not.toBe(target?.letter);
+        expect(target?.letter).toBe('A');
+        firstUnit.updateInventoryControlTarget(target!.id, {
+            name: 'Shared Locust',
+            unitType: 'mek-biped',
+            distance: 3,
+            c3Distance: 2,
+            useC3: true,
+            tnModifier: 8,
+            tnCalculator: {
+                targetMovementBracket: '7-9',
+                skidding: true,
+                isAirborne: true,
+                stance: 'normal',
+                targetHexCover: 'heavy',
+                largeTarget: true,
+                interveningWoods: 'light2',
+                indirectFire: true,
+                secondaryTarget: true
+            }
+        });
+
+        const firstTarget = firstUnit.getInventoryControlTarget(target!.id)!;
+        const secondTarget = secondUnit.getInventoryControlTarget(target!.id)!;
+        expect(secondTarget.shared).toBeTrue();
+        expect(secondTarget.letter).toBe(firstTarget.letter);
+        expect(secondTarget.name).toBe('Shared Locust');
+        expect(secondTarget.unitType).toBe('mek-biped');
+        expect(secondTarget.tnCalculator).toEqual(jasmine.objectContaining({
+            targetMovementBracket: '7-9',
+            skidding: true,
+            isAirborne: true,
+            stance: 'normal',
+            targetHexCover: 'heavy',
+            largeTarget: true
+        }));
+        expect(secondTarget.distance).toBe(1);
+        expect(secondTarget.c3Distance).toBeUndefined();
+        expect(secondTarget.useC3).toBeUndefined();
+        expect(secondTarget.tnCalculator?.interveningWoods).toBeUndefined();
+        expect(secondTarget.tnCalculator?.indirectFire).toBeUndefined();
+        expect(secondTarget.tnCalculator?.secondaryTarget).toBeUndefined();
+
+        secondUnit.updateInventoryControlTarget(target!.id, {
+            distance: 12,
+            tnModifier: 2,
+            tnCalculator: {
+                ...secondTarget.tnCalculator,
+                interveningWoods: 'light1',
+                partialCover: true
+            }
+        });
+
+        expect(firstUnit.getInventoryControlTarget(target!.id)?.distance).toBe(3);
+        expect(firstUnit.getInventoryControlTarget(target!.id)?.tnModifier).toBe(8);
+        expect(firstUnit.getInventoryControlTarget(target!.id)?.tnCalculator?.interveningWoods).toBe('light2');
+        expect(secondUnit.getInventoryControlTarget(target!.id)?.distance).toBe(12);
+        expect(secondUnit.getInventoryControlTarget(target!.id)?.tnModifier).toBe(2);
+        expect(secondUnit.getInventoryControlTarget(target!.id)?.tnCalculator?.partialCover).toBeTrue();
+
+        firstUnit.updateInventoryControlTarget(target!.id, {
+            tnCalculator: { ...firstTarget.tnCalculator, stance: 'prone' },
+            tnModifier: -1
+        });
+
+        expect(firstUnit.getInventoryControlTarget(target!.id)?.tnModifier).toBe(-1);
+        expect(secondUnit.getInventoryControlTarget(target!.id)?.tnModifier).toBe(2);
+        expect(secondUnit.getInventoryControlTarget(target!.id)?.tnCalculator?.stance).toBe('prone');
+    });
+
+    it('allocates local and shared display letters without identity collisions', () => {
+        const force = new TestCBTForce('Test Force', dataService, unitInitializer, injector);
+        const firstUnit = force.addUnit(createVehicleUnit(equipment));
+        const secondUnit = force.addUnit(createVehicleUnit(equipment));
+
+        expect(firstUnit.createInventoryControlTarget()?.letter).toBe('A');
+        const sharedTarget = firstUnit.createSharedInventoryControlTarget()!;
+        expect(sharedTarget.letter).toBe('B');
+        expect(secondUnit.getInventoryControlTarget(sharedTarget.id)?.letter).toBe('B');
+        expect(secondUnit.createInventoryControlTarget()?.letter).toBe('A');
+        expect(firstUnit.createInventoryControlTarget()?.letter).toBe('C');
+    });
+
+    it('returns calculator state copies that cannot mutate runtime targets', () => {
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
+        const target = forceUnit.createInventoryControlTarget()!;
+        forceUnit.updateInventoryControlTarget(target.id, { tnCalculator: { stance: 'prone' } });
+
+        const readTarget = forceUnit.getInventoryControlTarget(target.id)!;
+        readTarget.tnCalculator!.stance = 'immobile';
+
+        expect(forceUnit.getInventoryControlTarget(target.id)?.tnCalculator?.stance).toBe('prone');
+    });
+
+    it('deletes a shared target and its weapon assignments from every unit', () => {
+        const force = new TestCBTForce('Test Force', dataService, unitInitializer, injector);
+        const firstUnit = force.addUnit(createVehicleUnit(equipment));
+        const secondUnit = force.addUnit(createVehicleUnit(equipment));
+        initialize(firstUnit);
+        initialize(secondUnit);
+        const firstWeapon = firstUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        const secondWeapon = secondUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        const target = firstUnit.createSharedInventoryControlTarget()!;
+        firstUnit.setInventoryControlEntryTarget(firstWeapon, target.id);
+        secondUnit.setInventoryControlEntryTarget(secondWeapon, target.id);
+
+        secondUnit.deleteInventoryControlTarget(target.id);
+
+        expect(firstUnit.getInventoryControlTarget(target.id)).toBeUndefined();
+        expect(secondUnit.getInventoryControlTarget(target.id)).toBeUndefined();
+        expect(firstUnit.isInventoryControlEntrySelected(firstWeapon.id)).toBeFalse();
+        expect(secondUnit.isInventoryControlEntrySelected(secondWeapon.id)).toBeFalse();
+    });
+
+    it('adds existing shared targets to units created later with independent defaults', () => {
+        const force = new TestCBTForce('Test Force', dataService, unitInitializer, injector);
+        const firstUnit = force.addUnit(createVehicleUnit(equipment));
+        const target = firstUnit.createSharedInventoryControlTarget()!;
+        firstUnit.updateInventoryControlTarget(target.id, { name: 'Shared Atlas', distance: 18, tnModifier: 4 });
+
+        const laterUnit = force.addUnit(createVehicleUnit(equipment));
+        const laterTarget = laterUnit.getInventoryControlTarget(target.id);
+
+        expect(laterTarget).toEqual(jasmine.objectContaining({
+            id: target.id,
+            name: 'Shared Atlas',
+            shared: true,
+            distance: 1,
+            tnModifier: 0
+        }));
+    });
+
+    it('clears only the current unit local targets and assignments', () => {
+        const force = new TestCBTForce('Test Force', dataService, unitInitializer, injector);
+        const firstUnit = force.addUnit(createVehicleUnit(equipment));
+        const secondUnit = force.addUnit(createVehicleUnit(equipment));
+        const sharedTarget = firstUnit.createSharedInventoryControlTarget()!;
+        const localTarget = firstUnit.createInventoryControlTarget()!;
+
+        firstUnit.resetInventoryControlTargets();
+
+        expect(firstUnit.getInventoryControlTarget(localTarget.id)).toBeUndefined();
+        expect(firstUnit.getInventoryControlTarget(sharedTarget.id)).toBeDefined();
+        expect(secondUnit.getInventoryControlTarget(sharedTarget.id)).toBeDefined();
+    });
+
+    it('does not create a shared target when any unit has reached the target limit', () => {
+        const force = new TestCBTForce('Test Force', dataService, unitInitializer, injector);
+        const firstUnit = force.addUnit(createVehicleUnit(equipment));
+        const secondUnit = force.addUnit(createVehicleUnit(equipment));
+        while (secondUnit.getInventoryControlTargets().length < INVENTORY_CONTROL_TARGET_MAX_COUNT) {
+            expect(secondUnit.createInventoryControlTarget()).not.toBeNull();
+        }
+
+        expect(firstUnit.createSharedInventoryControlTarget()).toBeNull();
+        expect(firstUnit.getInventoryControlTargets()).toEqual([]);
     });
 
     it('deselects entries assigned to deleted targets and clears all target selections on reset', () => {

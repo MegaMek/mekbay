@@ -4814,7 +4814,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         });
     });
 
-    it('applies an explicit URL view without changing the persisted preference', () => {
+    it('uses compact list for an unexpanded table URL without changing the persisted preference', () => {
         if (!benchmarkBundle) {
             pending('Real unit data could not be loaded for the URL view test.');
             return;
@@ -4824,6 +4824,25 @@ describe('UnitSearchFiltersService search telemetry', () => {
         optionsServiceStub.options.update(options => ({ ...options, unitSearchViewMode: 'chassis' }));
 
         service.applySearchParamsFromUrl(new URLSearchParams('view=table'), { expandView: false });
+
+        expect(service.viewMode()).toBe('list');
+        expect(service.expandedView()).toBeFalse();
+        expect(optionsServiceStub.options().unitSearchViewMode).toBe('chassis');
+    });
+
+    it('expands an explicit table URL only when requested', () => {
+        if (!benchmarkBundle) {
+            pending('Real unit data could not be loaded for the URL view test.');
+            return;
+        }
+
+        const { service, optionsServiceStub } = createService(buildSmallBundle(benchmarkBundle));
+        optionsServiceStub.options.update(options => ({ ...options, unitSearchViewMode: 'chassis' }));
+
+        service.applySearchParamsFromUrl(
+            new URLSearchParams('view=table&expanded=true'),
+            { expandView: false },
+        );
 
         expect(service.viewMode()).toBe('table');
         expect(service.expandedView()).toBeTrue();

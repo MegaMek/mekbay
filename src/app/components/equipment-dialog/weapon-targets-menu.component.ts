@@ -37,7 +37,8 @@ export interface WeaponTargetCalculatorRequest {
                     @if (targets().length > 0) {
                         <button class="bt-button targets-delete" type="button" aria-label="Reset targets" title="Reset targets" [disabled]="readOnly() || targets().length === 0" (click)="resetTargets()">CLEAR</button>
                     }
-                    <button class="bt-button" type="button" aria-label="Add target" title="Add target" [disabled]="readOnly() || targets().length >= maxTargets()" (click)="addTarget()">ADD TARGET</button>
+                    <button class="bt-button" type="button" aria-label="Add target" title="Add target" [disabled]="readOnly() || targets().length >= maxTargets()" (click)="addTarget()">ADD</button>
+                    <button class="bt-button" type="button" aria-label="Add shared target" title="Add a target shared by all units" [disabled]="readOnly() || targets().length >= maxTargets()" (click)="addSharedTarget()">ADD SHARED</button>
                 </div>
             </div>
             <div class="weapon-targets-list">
@@ -64,6 +65,15 @@ export interface WeaponTargetCalculatorRequest {
                                             {{ target.letter }}
                                         </color-picker-button>
                                         <input class="bt-input target-name" type="text" [readOnly]="readOnly()" [value]="target.name" (input)="updateName(target.id, $any($event.target).value)">
+                                        @if (target.shared) {
+                                            <span class="shared-target-badge" aria-label="Shared target" [tooltip]="sharedTargetTooltip">
+                                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                                    <path d="M10.57,5.8l2.71-2.72a5.4,5.4,0,0,1,7.64,7.64L18.2,13.43"/>
+                                                    <path d="M5.8,10.57,3.08,13.28a5.4,5.4,0,0,0,7.64,7.64l2.71-2.72"/>
+                                                    <line x1="16.77" y1="7.23" x2="7.23" y2="16.77"/>
+                                                </svg>
+                                            </span>
+                                        }
                                     </div>
                                     <div class="target-controls-row">
                                         <div class="target-number-field">
@@ -115,7 +125,7 @@ export interface WeaponTargetCalculatorRequest {
                                 }
                             </div>
                             <div class="target-delete-row">
-                                <button class="target-delete" type="button" [disabled]="readOnly()" aria-label="Delete target" title="Delete target" (click)="deleteTarget(target.id)">
+                                <button class="target-delete" type="button" [disabled]="readOnly()" [attr.aria-label]="target.shared ? 'Delete shared target from all units' : 'Delete target'" [attr.title]="target.shared ? 'Delete shared target from all units' : 'Delete target'" (click)="deleteTarget(target.id)">
                                     <svg _ngcontent-ng-c1165242001="" width="18px" height="18px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c1165242001="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
                                         L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg>
                                 </button>
@@ -291,9 +301,31 @@ export interface WeaponTargetCalculatorRequest {
 
         .target-name {
             min-width: 0;
-            width: 100%;
+            width: auto;
             height: var(--target-control-height);
             box-sizing: border-box;
+            flex: 1 1 auto;
+        }
+
+        .shared-target-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 1.25em;
+            inline-size: 1.25em;
+            block-size: var(--target-control-height);
+            color: var(--text-color-secondary);
+            cursor: help;
+        }
+
+        .shared-target-badge svg {
+            inline-size: 0.95em;
+            block-size: 0.95em;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.91;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
 
         .target-number-field {
@@ -464,6 +496,7 @@ export interface WeaponTargetCalculatorRequest {
 })
 export class WeaponTargetsMenuComponent {
     readonly jammedConditionColor = JAMMED_CONDITION_COLOR;
+    readonly sharedTargetTooltip = 'Shared target';
     readonly tnModifierTooltip = 'Target-side TN modifier for this target. Use it for target movement, indirect fire, spotter movement, terrain, cover, stance, and similar target conditions. It is added separately from your unit skill, your movement, range, heat, and weapon modifiers. The calculator can fill it, and you can still override it manually.';
     readonly targets = input<InventoryControlRuntimeTarget[]>([]);
     readonly colors = input<readonly string[]>(INVENTORY_CONTROL_TARGET_COLORS);
@@ -475,6 +508,7 @@ export class WeaponTargetsMenuComponent {
     readonly readOnly = input(false);
 
     readonly addRequest = output<void>();
+    readonly addSharedRequest = output<void>();
     readonly resetRequest = output<void>();
     readonly updateRequest = output<WeaponTargetUpdateRequest>();
     readonly deleteRequest = output<InventoryControlRuntimeTargetId>();
@@ -482,6 +516,10 @@ export class WeaponTargetsMenuComponent {
 
     addTarget(): void {
         if (!this.readOnly()) this.addRequest.emit();
+    }
+
+    addSharedTarget(): void {
+        if (!this.readOnly()) this.addSharedRequest.emit();
     }
 
     resetTargets(): void {

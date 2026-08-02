@@ -20,7 +20,9 @@ interface TurnStateHarnessOptions {
     currentDestroyedLegs?: string[];
     internalLocations?: string[];
     unit?: Partial<Unit>;
+    destroyed?: boolean;
     prone?: boolean;
+    shutdown?: boolean;
     skidding?: boolean;
     rulesType?: 'mek' | 'infantry' | 'aero';
     rulesId?: 'core2026' | 'tw';
@@ -80,7 +82,8 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         gameRules: options.rulesId === 'tw' ? TW_GAME_RULES : CORE_2026_GAME_RULES,
         locations: { internal: internalLocations },
         isLoaded: () => true,
-        shutdown: false,
+        destroyed: options.destroyed ?? false,
+        shutdown: options.shutdown ?? false,
         getCondition: () => false,
         getCrewMembers: () => [{ getState: () => 'healthy' }],
         getCritSlots: () => critSlots(),
@@ -123,6 +126,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
                 ? new AeroRules(unit as any)
                 : new MekRules(unit as any);
     (unit as any).rules = rules;
+    turnState.capturePassiveHeatSourceBaseline();
 
     return {
         turnState,
@@ -839,6 +843,24 @@ describe('TurnState', () => {
 
             expect(turnState.heatProjectionVisible()).toBeTrue();
             expect(getDamagedEngineHeat(turnState)).toBe(10);
+        });
+
+        it('does not generate damaged-engine heat for destroyed or shutdown Meks', () => {
+            const engineCrits = [
+                createCritSlot('Engine', 'CT', { id: 'engine@CT#0', destroyed: 1 }),
+                createCritSlot('Engine', 'CT', { id: 'engine@CT#1', destroyed: 1 }),
+            ];
+            const operational = createTurnStateHarness({ critSlots: engineCrits });
+            const destroyed = createTurnStateHarness({ critSlots: engineCrits, destroyed: true });
+            const shutdown = createTurnStateHarness({ critSlots: engineCrits, shutdown: true });
+
+            expect(getDamagedEngineHeat(operational.turnState)).toBe(10);
+            expect(operational.turnState.hasPendingHeatResolution()).toBeTrue();
+            expect(operational.turnState.dirty()).toBeFalse();
+            expect(getDamagedEngineHeat(destroyed.turnState)).toBe(0);
+            expect(destroyed.turnState.dirty()).toBeFalse();
+            expect(getDamagedEngineHeat(shutdown.turnState)).toBe(0);
+            expect(shutdown.turnState.dirty()).toBeFalse();
         });
 
         it('keeps acknowledged engine heat suppressed when movement changes', () => {

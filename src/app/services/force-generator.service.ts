@@ -393,6 +393,31 @@ interface ForceGenerationSkillBudgetPlanningCosts {
     maxCostByCandidate: ReadonlyMap<ForceGenerationCandidateUnit, number>;
 }
 
+interface ForceGenerationBudgetFeasibilityOptions {
+    unitCount: number;
+    budgetRange?: ForceGenerationBudgetRange;
+    lockedCandidates: readonly ForceGenerationCandidateUnit[];
+    preventDuplicateChassis: boolean;
+    skillBudgetPlanningCosts?: ForceGenerationSkillBudgetPlanningCosts;
+}
+
+interface ForceGenerationUnitTypeGroup {
+    summary: ForceGenerationCandidateUnitTypeSummary;
+    candidates: readonly ForceGenerationCandidateUnit[];
+}
+
+interface ForceGenerationTopLevelChoiceContext {
+    unitTypeGroups: readonly ForceGenerationUnitTypeGroup[];
+    baseMatchContext: RulesetMatchContext;
+    minUnitCount: number;
+    maxUnitCount: number;
+    orgDefinition: OrgDefinition | null;
+    budgetRange?: ForceGenerationBudgetRange;
+    lockedCandidates: readonly ForceGenerationCandidateUnit[];
+    preventDuplicateChassis: boolean;
+    skillBudgetPlanningCosts?: ForceGenerationSkillBudgetPlanningCosts;
+}
+
 interface ForceGenerationTargetFormationBudgetReachabilityContext {
     lowestCostCandidatePool: readonly ForceGenerationCandidateUnit[];
 }
@@ -2266,6 +2291,7 @@ export class ForceGeneratorService implements OnDestroy {
                     options.context,
                     minUnitCount,
                     maxUnitCount,
+                    budgetRange,
                 )
                 : this.prepareSelectionPreparation(
                     candidates,
@@ -2273,6 +2299,8 @@ export class ForceGeneratorService implements OnDestroy {
                     options.context,
                     minUnitCount,
                     maxUnitCount,
+                    budgetRange,
+                    { preventDuplicateChassis: options.preventDuplicateChassis === true },
                 ));
 
         if (targetFormationContext) {
@@ -2571,9 +2599,11 @@ export class ForceGeneratorService implements OnDestroy {
         let bestValidStructureScore = Number.NEGATIVE_INFINITY;
         const successfulAttempts: ForceGenerationSuccessfulAttemptLog[] = [];
         const failureSearchWindowMs = this.resolveFailureSearchWindowMs();
-        const searchDeadline = interruptSignal
-            ? this.createSearchDeadline(0, Number.POSITIVE_INFINITY, interruptSignal)
-            : undefined;
+        const searchDeadline = this.createSearchDeadline(
+            searchStartedAt,
+            failureSearchWindowMs,
+            interruptSignal,
+        );
         let attemptDurationEstimateMs = 0;
         let attemptLimit = attemptBudget.minAttempts;
         let attemptsTried = 0;
@@ -2605,6 +2635,11 @@ export class ForceGeneratorService implements OnDestroy {
                     options.context,
                     minUnitCount,
                     maxUnitCount,
+                    budgetRange,
+                    {
+                        preventDuplicateChassis: options.preventDuplicateChassis === true,
+                        skillBudgetPlanningCosts: attemptSkillBudgetPlanningCosts,
+                    },
                 )
                 : selectionPreparation;
             const rawSelectionAttempt = this.buildCandidateSelection(
@@ -4630,6 +4665,7 @@ export class ForceGeneratorService implements OnDestroy {
         const resolvedScopeState = scopeState ?? this.buildAvailabilityScopeState(context);
         return [
             `corpus:${this.dataService.searchCorpusVersion()}`,
+            `availability:${this.dataService.megaMekAvailabilityVersion()}`,
             `source:${useMegaMekAvailability ? 'megamek' : 'mul'}`,
             `weightEras:${serializeForceGenerationCacheIds(resolvedScopeState.eraIds)}`,
             `weightFactions:${serializeForceGenerationCacheIds(resolvedScopeState.factionIds)}`,
@@ -4750,6 +4786,7 @@ export class ForceGeneratorService implements OnDestroy {
         options: ForceGenerationRequest,
     ): string {
         return [
+            `corpus:${this.dataService.searchCorpusVersion()}`,
             `eligible:${buildForceGenerationUnitListSignature(eligibleUnits)}`,
             `game:${options.gameSystem}`,
             `skills:${buildForceGenerationSkillSettingsSignature(options)}`,
@@ -4775,14 +4812,25 @@ export class ForceGeneratorService implements OnDestroy {
         context: ForceGenerationContext,
         minUnitCount: number,
         maxUnitCount: number,
-        options: { enforceRulesetRequiredUnitTypes?: boolean } = {},
+        budgetRange?: ForceGenerationBudgetRange,
+        options: {
+            enforceRulesetRequiredUnitTypes?: boolean;
+            preventDuplicateChassis?: boolean;
+            skillBudgetPlanningCosts?: ForceGenerationSkillBudgetPlanningCosts;
+        } = {},
     ): ForceGenerationSelectionPreparation {
         const enforceRulesetRequiredUnitTypes = options.enforceRulesetRequiredUnitTypes !== false;
         const rulesetProfile = this.buildRulesetProfile(
-            [...preselectedCandidates, ...candidates],
+            candidates,
             context,
             minUnitCount,
             maxUnitCount,
+            budgetRange,
+            {
+                lockedCandidates: preselectedCandidates,
+                preventDuplicateChassis: options.preventDuplicateChassis === true,
+                skillBudgetPlanningCosts: options.skillBudgetPlanningCosts,
+            },
         );
         const selectableCandidates = enforceRulesetRequiredUnitTypes
             ? this.filterCandidatesForRulesetProfile(candidates, rulesetProfile)
@@ -4814,12 +4862,14 @@ export class ForceGeneratorService implements OnDestroy {
         context: ForceGenerationContext,
         minUnitCount: number,
         maxUnitCount: number,
+        budgetRange: ForceGenerationBudgetRange,
     ): ForceGenerationSelectionPreparation {
         const signature = this.buildSelectionPreparationCacheSignature(
             preparedCandidateCache,
             context,
             minUnitCount,
             maxUnitCount,
+            budgetRange,
         );
         if (this.selectionPreparationCache?.signature === signature) {
             return this.selectionPreparationCache.preparation;
@@ -4831,6 +4881,7 @@ export class ForceGeneratorService implements OnDestroy {
             context,
             minUnitCount,
             maxUnitCount,
+            budgetRange,
         );
         this.selectionPreparationCache = {
             signature,
@@ -4844,6 +4895,7 @@ export class ForceGeneratorService implements OnDestroy {
         context: ForceGenerationContext,
         minUnitCount: number,
         maxUnitCount: number,
+        budgetRange: ForceGenerationBudgetRange,
     ): string {
         return [
             preparedCandidateCache.signature,
@@ -4852,6 +4904,7 @@ export class ForceGeneratorService implements OnDestroy {
             `ruleset:${context.ruleset?.factionKey ?? 'none'}`,
             `min:${minUnitCount}`,
             `max:${maxUnitCount}`,
+            `budget:${budgetRange.min}-${budgetRange.max}`,
         ].join('|');
     }
 
@@ -5655,7 +5708,7 @@ export class ForceGeneratorService implements OnDestroy {
                 break;
             }
             yield;
-            if (options.interruptSignal && this.hasSearchDeadlineExpired(searchDeadline)) {
+            if (this.hasSearchDeadlineExpired(searchDeadline)) {
                 break;
             }
 
@@ -6323,6 +6376,7 @@ export class ForceGeneratorService implements OnDestroy {
             options.context,
             minUnitCount,
             maxUnitCount,
+            undefined,
             { enforceRulesetRequiredUnitTypes: false },
         );
         const rulesetProfile = preparedSelection.rulesetProfile;
@@ -7513,6 +7567,7 @@ export class ForceGeneratorService implements OnDestroy {
             context,
             minUnitCount,
             maxUnitCount,
+            budgetRange,
         );
         const rulesetProfile = preparedSelection.rulesetProfile;
         const remainingCandidates = [...preparedSelection.selectableCandidates];
@@ -7750,6 +7805,12 @@ export class ForceGeneratorService implements OnDestroy {
         context: ForceGenerationContext,
         minUnitCount: number,
         maxUnitCount: number,
+        budgetRange?: ForceGenerationBudgetRange,
+        feasibilityContext: {
+            lockedCandidates?: readonly ForceGenerationCandidateUnit[];
+            preventDuplicateChassis?: boolean;
+            skillBudgetPlanningCosts?: ForceGenerationSkillBudgetPlanningCosts;
+        } = {},
     ): ForceGenerationRulesetProfile | null {
         const rulesetContext = this.resolveRulesetContext(context.forceFaction, context.forceEra);
         if (rulesetContext.chain.length === 0) {
@@ -7762,17 +7823,27 @@ export class ForceGeneratorService implements OnDestroy {
             topLevel: true,
         };
         const orgDefinition = context.forceFaction ? resolveOrgDefinition(context.forceFaction, context.forceEra) : null;
-        const topLevelMatchContext = this.resolveAttemptTopLevelMatchContext(
-            rulesetContext.chain,
-            candidates,
+        const topLevelChoiceContext: ForceGenerationTopLevelChoiceContext = {
+            unitTypeGroups: this.getCandidateUnitTypeGroups(candidates),
             baseMatchContext,
             minUnitCount,
             maxUnitCount,
             orgDefinition,
+            budgetRange,
+            lockedCandidates: feasibilityContext.lockedCandidates ?? [],
+            preventDuplicateChassis: feasibilityContext.preventDuplicateChassis === true,
+            skillBudgetPlanningCosts: feasibilityContext.skillBudgetPlanningCosts,
+        };
+        const topLevelMatchContext = this.resolveAttemptTopLevelMatchContext(
+            rulesetContext.chain,
+            topLevelChoiceContext,
         );
-        const forceNodeSelection = this.findPreferredForceNode(rulesetContext.chain, {
-            ...topLevelMatchContext,
-        });
+        const hasFeasibleTopLevelSelection = !!topLevelMatchContext.unitType || !!topLevelMatchContext.echelon;
+        const forceNodeSelection: ForceGenerationForceNodeSelection = budgetRange && !hasFeasibleTopLevelSelection
+            ? { matchContext: topLevelMatchContext }
+            : this.findPreferredForceNode(rulesetContext.chain, {
+                ...topLevelMatchContext,
+            });
         const forceNode = forceNodeSelection.forceNode;
         const resolvedSelectedEchelon = topLevelMatchContext.echelon
             ?? forceNodeSelection.matchContext.echelon
@@ -7821,28 +7892,13 @@ export class ForceGeneratorService implements OnDestroy {
 
     private resolveAttemptTopLevelMatchContext(
         rulesetChain: readonly MegaMekRulesetRecord[],
-        candidates: readonly ForceGenerationCandidateUnit[],
-        baseMatchContext: RulesetMatchContext,
-        minUnitCount: number,
-        maxUnitCount: number,
-        orgDefinition: OrgDefinition | null,
+        context: ForceGenerationTopLevelChoiceContext,
     ): RulesetMatchContext {
-        const unitTypeChoices = this.getTopLevelUnitTypeChoices(
-            rulesetChain,
-            candidates,
-            baseMatchContext,
-            minUnitCount,
-            maxUnitCount,
-            orgDefinition,
-        );
+        const unitTypeChoices = this.getTopLevelUnitTypeChoices(rulesetChain, context);
         if (unitTypeChoices.length === 0) {
-            const forceNodeChoices = this.getForceNodeBackedTopLevelUnitTypeChoices(
-                rulesetChain,
-                candidates,
-                baseMatchContext,
-            );
+            const forceNodeChoices = this.getForceNodeBackedTopLevelUnitTypeChoices(rulesetChain, context);
             if (forceNodeChoices.length === 0) {
-                return baseMatchContext;
+                return context.baseMatchContext;
             }
 
             return pickWeightedRandomEntry(forceNodeChoices, (choice) => {
@@ -7857,7 +7913,7 @@ export class ForceGeneratorService implements OnDestroy {
             return Math.max(0.05, choice.weight);
         });
         const nextMatchContext: RulesetMatchContext = {
-            ...baseMatchContext,
+            ...context.baseMatchContext,
             unitType: selectedUnitTypeChoice.summary.unitType,
             echelon: selectedEchelonChoice.echelon,
         };
@@ -7875,32 +7931,123 @@ export class ForceGeneratorService implements OnDestroy {
 
     private getTopLevelUnitTypeChoices(
         rulesetChain: readonly MegaMekRulesetRecord[],
-        candidates: readonly ForceGenerationCandidateUnit[],
-        baseMatchContext: RulesetMatchContext,
-        minUnitCount: number,
-        maxUnitCount: number,
-        orgDefinition: OrgDefinition | null,
+        context: ForceGenerationTopLevelChoiceContext,
     ): ForceGenerationTopLevelUnitTypeChoice[] {
-        return this.getCandidateUnitTypeSummaries(candidates)
-            .map((summary) => {
+        return context.unitTypeGroups
+            .map((group) => {
                 const echelons = this.getValidTopLevelEchelonOptions(
                     rulesetChain,
                     {
-                        ...baseMatchContext,
-                        unitType: summary.unitType,
+                        ...context.baseMatchContext,
+                        unitType: group.summary.unitType,
                     },
-                    minUnitCount,
-                    maxUnitCount,
-                    summary.candidateCount,
-                    orgDefinition,
+                    context.minUnitCount,
+                    context.maxUnitCount,
+                    context.orgDefinition,
                 );
 
                 return {
-                    summary,
-                    echelons,
+                    summary: group.summary,
+                    echelons: context.budgetRange
+                        ? echelons.filter((echelon) => this.canCandidatePoolPotentiallyReachBudget(
+                            group.candidates,
+                            {
+                                unitCount: echelon.preferredUnitCount,
+                                budgetRange: context.budgetRange,
+                                lockedCandidates: context.lockedCandidates,
+                                preventDuplicateChassis: context.preventDuplicateChassis,
+                                skillBudgetPlanningCosts: context.skillBudgetPlanningCosts,
+                            },
+                        ))
+                        : echelons,
                 };
             })
             .filter((choice) => choice.echelons.length > 0);
+    }
+
+    private canCandidatePoolPotentiallyReachBudget(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        options: ForceGenerationBudgetFeasibilityOptions,
+    ): boolean {
+        const remainingCount = options.unitCount - options.lockedCandidates.length;
+        if (remainingCount < 0) {
+            return false;
+        }
+
+        const lockedTotal = options.lockedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
+        if (remainingCount === 0) {
+            return !options.budgetRange || this.isBudgetWithinRange(lockedTotal, options.budgetRange);
+        }
+
+        const lockedChassisKeys = new Set(options.lockedCandidates
+            .map((candidate) => buildDuplicateChassisKey(candidate.unit))
+            .filter((key) => key.length > 0));
+        const availableCandidates = options.preventDuplicateChassis
+            ? candidates.filter((candidate) => {
+                const chassisKey = buildDuplicateChassisKey(candidate.unit);
+                return chassisKey.length === 0 || !lockedChassisKeys.has(chassisKey);
+            })
+            : candidates;
+        if (availableCandidates.length === 0) {
+            return false;
+        }
+
+        const getMinimumCost = (candidate: ForceGenerationCandidateUnit): number => (
+            this.getSkillPlanningCost(candidate, options.skillBudgetPlanningCosts, 'min')
+        );
+        const getMaximumCost = (candidate: ForceGenerationCandidateUnit): number => (
+            this.getSkillPlanningCost(candidate, options.skillBudgetPlanningCosts, 'max')
+        );
+        let minimumCosts: number[];
+        let maximumCosts: number[];
+
+        if (options.preventDuplicateChassis) {
+            const candidatesByChassis = new Map<string, ForceGenerationCandidateUnit[]>();
+            for (const [candidateIndex, candidate] of availableCandidates.entries()) {
+                const chassisKey = buildDuplicateChassisKey(candidate.unit) || `unconstrained:${candidateIndex}`;
+                const chassisCandidates = candidatesByChassis.get(chassisKey) ?? [];
+                chassisCandidates.push(candidate);
+                candidatesByChassis.set(chassisKey, chassisCandidates);
+            }
+            minimumCosts = [...candidatesByChassis.values()].map((group) => Math.min(...group.map(getMinimumCost)));
+            maximumCosts = [...candidatesByChassis.values()].map((group) => Math.max(...group.map(getMaximumCost)));
+        } else if (this.canReuseCandidateCopies(false, availableCandidates)) {
+            minimumCosts = Array(remainingCount).fill(Math.min(...availableCandidates.map(getMinimumCost)));
+            maximumCosts = Array(remainingCount).fill(Math.max(...availableCandidates.map(getMaximumCost)));
+        } else {
+            const uncappedCandidates = availableCandidates.filter((candidate) => !candidate.taggedQuantityCapKey);
+            minimumCosts = uncappedCandidates.map(getMinimumCost);
+            maximumCosts = uncappedCandidates.map(getMaximumCost);
+
+            const candidatesByCapKey = new Map<string, ForceGenerationCandidateUnit[]>();
+            for (const candidate of availableCandidates) {
+                if (!candidate.taggedQuantityCapKey) {
+                    continue;
+                }
+                const cappedCandidates = candidatesByCapKey.get(candidate.taggedQuantityCapKey) ?? [];
+                cappedCandidates.push(candidate);
+                candidatesByCapKey.set(candidate.taggedQuantityCapKey, cappedCandidates);
+            }
+            for (const cappedCandidates of candidatesByCapKey.values()) {
+                const capacity = Math.min(
+                    cappedCandidates.length,
+                    Math.max(...cappedCandidates.map((candidate) => candidate.taggedQuantityCap ?? 1)),
+                );
+                minimumCosts.push(...cappedCandidates.map(getMinimumCost).sort((left, right) => left - right).slice(0, capacity));
+                maximumCosts.push(...cappedCandidates.map(getMaximumCost).sort((left, right) => right - left).slice(0, capacity));
+            }
+        }
+
+        if (minimumCosts.length < remainingCount || maximumCosts.length < remainingCount) {
+            return false;
+        }
+
+        minimumCosts.sort((left, right) => left - right);
+        maximumCosts.sort((left, right) => right - left);
+        const minimumTotal = lockedTotal + minimumCosts.slice(0, remainingCount).reduce((sum, cost) => sum + cost, 0);
+        const maximumTotal = lockedTotal + maximumCosts.slice(0, remainingCount).reduce((sum, cost) => sum + cost, 0);
+        return !options.budgetRange
+            || (minimumTotal <= options.budgetRange.max && maximumTotal >= options.budgetRange.min);
     }
 
     private getValidTopLevelEchelonOptions(
@@ -7908,7 +8055,6 @@ export class ForceGeneratorService implements OnDestroy {
         matchContext: RulesetMatchContext,
         minUnitCount: number,
         maxUnitCount: number,
-        candidateCount: number,
         orgDefinition: OrgDefinition | null,
     ): ForceGenerationTopLevelEchelonOption[] {
         for (const ruleset of rulesetChain) {
@@ -7928,7 +8074,6 @@ export class ForceGeneratorService implements OnDestroy {
                             preferredUnitCount === undefined
                             || preferredUnitCount < minUnitCount
                             || preferredUnitCount > maxUnitCount
-                            || preferredUnitCount > candidateCount
                         ) {
                             return null;
                         }
@@ -7952,25 +8097,50 @@ export class ForceGeneratorService implements OnDestroy {
 
     private getForceNodeBackedTopLevelUnitTypeChoices(
         rulesetChain: readonly MegaMekRulesetRecord[],
-        candidates: readonly ForceGenerationCandidateUnit[],
-        baseMatchContext: RulesetMatchContext,
+        context: ForceGenerationTopLevelChoiceContext,
     ): ForceGenerationTopLevelForceNodeChoice[] {
         const choices: ForceGenerationTopLevelForceNodeChoice[] = [];
 
-        for (const summary of this.getCandidateUnitTypeSummaries(candidates)) {
+        for (const group of context.unitTypeGroups) {
             const previewSelection = this.peekPreferredForceNode(rulesetChain, {
-                ...baseMatchContext,
-                unitType: summary.unitType,
+                ...context.baseMatchContext,
+                unitType: group.summary.unitType,
             });
             if (!previewSelection.forceNode) {
                 continue;
             }
 
+            const echelon = previewSelection.matchContext.echelon
+                ?? getRulesetEchelonCode(previewSelection.forceNode.echelon);
+            const preferredUnitCount = getPreferredUnitCountForEchelon(echelon, context.orgDefinition);
+            if (previewSelection.forceNode.when?.topLevel === true) {
+                const feasibleUnitCounts = preferredUnitCount === undefined
+                    ? Array.from(
+                        { length: context.maxUnitCount - context.minUnitCount + 1 },
+                        (_, index) => context.minUnitCount + index,
+                    )
+                    : preferredUnitCount >= context.minUnitCount && preferredUnitCount <= context.maxUnitCount
+                        ? [preferredUnitCount]
+                        : [];
+                if (!feasibleUnitCounts.some((unitCount) => this.canCandidatePoolPotentiallyReachBudget(
+                    group.candidates,
+                    {
+                        unitCount,
+                        budgetRange: context.budgetRange,
+                        lockedCandidates: context.lockedCandidates,
+                        preventDuplicateChassis: context.preventDuplicateChassis,
+                        skillBudgetPlanningCosts: context.skillBudgetPlanningCosts,
+                    },
+                ))) {
+                    continue;
+                }
+            }
+
             choices.push({
-                summary,
+                summary: group.summary,
                 matchContext: {
                     ...previewSelection.matchContext,
-                    unitType: summary.unitType,
+                    unitType: group.summary.unitType,
                 },
             });
         }
@@ -7978,31 +8148,35 @@ export class ForceGeneratorService implements OnDestroy {
         return choices;
     }
 
-    private getCandidateUnitTypeSummaries(
+    private getCandidateUnitTypeGroups(
         candidates: readonly ForceGenerationCandidateUnit[],
-    ): ForceGenerationCandidateUnitTypeSummary[] {
-        const summaries = new Map<string, ForceGenerationCandidateUnitTypeSummary>();
+    ): ForceGenerationUnitTypeGroup[] {
+        const groups = new Map<string, { summary: ForceGenerationCandidateUnitTypeSummary; candidates: ForceGenerationCandidateUnit[] }>();
 
         for (const candidate of candidates) {
-            const currentSummary = summaries.get(candidate.megaMekUnitType) ?? {
-                unitType: candidate.megaMekUnitType,
-                candidateCount: 0,
-                totalAvailabilityWeight: 0,
+            const group = groups.get(candidate.megaMekUnitType) ?? {
+                summary: {
+                    unitType: candidate.megaMekUnitType,
+                    candidateCount: 0,
+                    totalAvailabilityWeight: 0,
+                },
+                candidates: [],
             };
-            currentSummary.candidateCount += 1;
-            currentSummary.totalAvailabilityWeight += Math.max(0, candidate.requisitionWeight) + Math.max(0, candidate.salvageWeight);
-            summaries.set(candidate.megaMekUnitType, currentSummary);
+            group.summary.candidateCount += 1;
+            group.summary.totalAvailabilityWeight += Math.max(0, candidate.requisitionWeight) + Math.max(0, candidate.salvageWeight);
+            group.candidates.push(candidate);
+            groups.set(candidate.megaMekUnitType, group);
         }
 
-        return [...summaries.values()].sort((left, right) => {
-            if (left.totalAvailabilityWeight !== right.totalAvailabilityWeight) {
-                return right.totalAvailabilityWeight - left.totalAvailabilityWeight;
+        return [...groups.values()].sort((left, right) => {
+            if (left.summary.totalAvailabilityWeight !== right.summary.totalAvailabilityWeight) {
+                return right.summary.totalAvailabilityWeight - left.summary.totalAvailabilityWeight;
             }
-            if (left.candidateCount !== right.candidateCount) {
-                return right.candidateCount - left.candidateCount;
+            if (left.summary.candidateCount !== right.summary.candidateCount) {
+                return right.summary.candidateCount - left.summary.candidateCount;
             }
 
-            return left.unitType.localeCompare(right.unitType);
+            return left.summary.unitType.localeCompare(right.summary.unitType);
         });
     }
 
@@ -8018,10 +8192,9 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         const orgDefinition = context.forceFaction ? resolveOrgDefinition(context.forceFaction, context.forceEra) : null;
-        const unitTypeChoices = this.getTopLevelUnitTypeChoices(
-            rulesetContext.chain,
-            candidates,
-            {
+        const topLevelChoiceContext: ForceGenerationTopLevelChoiceContext = {
+            unitTypeGroups: this.getCandidateUnitTypeGroups(candidates),
+            baseMatchContext: {
                 year: getEraReferenceYear(context.forceEra),
                 factionKey: rulesetContext.primary?.factionKey,
                 topLevel: true,
@@ -8029,18 +8202,16 @@ export class ForceGeneratorService implements OnDestroy {
             minUnitCount,
             maxUnitCount,
             orgDefinition,
-        );
+            lockedCandidates: [],
+            preventDuplicateChassis: false,
+        };
+        const unitTypeChoices = this.getTopLevelUnitTypeChoices(rulesetContext.chain, topLevelChoiceContext);
         const allowedUnitTypes = new Set(
             (unitTypeChoices.length > 0
                 ? unitTypeChoices.map((choice) => choice.summary.unitType)
                 : this.getForceNodeBackedTopLevelUnitTypeChoices(
                     rulesetContext.chain,
-                    candidates,
-                    {
-                        year: getEraReferenceYear(context.forceEra),
-                        factionKey: rulesetContext.primary?.factionKey,
-                        topLevel: true,
-                    },
+                    topLevelChoiceContext,
                 ).map((choice) => choice.summary.unitType))
                 .map((unitType) => normalizeRulesetToken(unitType)),
         );

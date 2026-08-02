@@ -63,7 +63,9 @@ export class CBTForceUnitState extends ForceUnitState {
     }
 
     resetTurnState() {
-        this.turnState.set(new TurnState(this));
+        const turnState = new TurnState(this);
+        this.turnState.set(turnState);
+        turnState.capturePassiveHeatSourceBaseline();
     }
 
     hasUnconsolidatedCrits = computed(() => {
@@ -372,6 +374,7 @@ export class CBTForceUnitState extends ForceUnitState {
             return CrewMember.deserialize(crewData, this.unit);
         });
         this.crew.set(updatedCrew);
+        this.turnState().capturePassiveHeatSourceBaseline();
         this.turnState().update(data.turnState);
     }
 

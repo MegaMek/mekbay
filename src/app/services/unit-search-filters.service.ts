@@ -71,7 +71,7 @@ import { buildUnitSearchAdvOptions } from '../utils/unit-search-adv-options-buil
 import type { UnitSearchDropdownValuesDependencies } from '../utils/unit-search-dropdown-values.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from '../utils/unit-filter-kernel.util';
 import { getAdvancedFilterConfigByKey, isFilterAvailableForAvailabilitySource, normalizeUnitSearchPropertyKey } from '../utils/unit-search-filter-config.util';
-import { buildUnitSearchQueryParameters, parseAndValidateCompactFiltersFromUrl, parseUnitSearchScalarUrlState, parseUnitSearchViewMode, resolveInitialUnitSearchViewMode } from '../utils/unit-search-url-filters.util';
+import { buildUnitSearchQueryParameters, parseAndValidateCompactFiltersFromUrl, parseUnitSearchScalarUrlState, resolveInitialUnitSearchViewMode } from '../utils/unit-search-url-filters.util';
 import type { UnitSearchViewMode } from '../models/options.model';
 import { generatePublicTagsParam, mergePublicTagReferences, parsePublicTagsParam } from '../utils/unit-search-public-tags-url.util';
 import {
@@ -183,7 +183,10 @@ export class UnitSearchFiltersService {
     logger = inject(LoggerService);
     private readonly searchWorkerFactory = inject(SEARCH_WORKER_FACTORY);
     private urlService = inject(UrlService);
-    private readonly initialUrlViewMode = parseUnitSearchViewMode(this.urlService.getInitialParam('view'));
+    private readonly initialUrlViewMode = resolveInitialUnitSearchViewMode(
+        this.urlService.initialParams,
+        'list',
+    );
     private userStateService = inject(UserStateService);
     private publicTagsService = inject(PublicTagsService);
     private tagsService = inject(TagsService);
@@ -276,7 +279,7 @@ export class UnitSearchFiltersService {
     filterState = signal<FilterState>({});
     selectedSort = signal<string>('');
     selectedSortDirection = signal<'asc' | 'desc'>('asc');
-    expandedView = signal(this.initialUrlViewMode === 'table');
+    expandedView = signal(this.urlService.getInitialParam('expanded') === 'true');
     readonly viewMode = signal<UnitSearchViewMode>(this.initialUrlViewMode ?? 'list');
     advOpen = signal(false);
     private readonly closePanelsRequestState = signal<UnitSearchClosePanelsRequest>({
@@ -3663,7 +3666,10 @@ export class UnitSearchFiltersService {
         opts: { expandView?: boolean; viewMode?: UnitSearchViewMode } = {},
     ): void {
         const scalarState = parseUnitSearchScalarUrlState(params, opts);
-        const viewMode = opts.viewMode ?? scalarState.viewMode ?? 'list';
+        const requestedViewMode = opts.viewMode ?? scalarState.viewMode ?? 'list';
+        const viewMode = requestedViewMode === 'table' && !scalarState.expanded
+            ? 'list'
+            : requestedViewMode;
         const searchParam = scalarState.searchText;
 
         if (scalarState.searchText) {
@@ -3704,7 +3710,7 @@ export class UnitSearchFiltersService {
             this.pendingForeignTags.set(mergePublicTagReferences(this.pendingForeignTags(), foreignTags));
         }
 
-        this.expandedView.set(scalarState.expanded || viewMode === 'table');
+        this.expandedView.set(scalarState.expanded);
         this.setViewMode(viewMode);
 
         if (scalarState.gunnery !== null) {

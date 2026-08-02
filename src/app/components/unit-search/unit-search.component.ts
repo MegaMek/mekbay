@@ -2611,9 +2611,6 @@ export class UnitSearchComponent {
         if (!this.gameService.isAlphaStrike() && viewMode === 'card') {
             return 'list';
         }
-        if (!this.expandedView() && viewMode === 'table') {
-            return 'list';
-        }
         return viewMode;
     }
 
@@ -2659,6 +2656,11 @@ export class UnitSearchComponent {
                 this.closeAllPanels();
                 this.blurInput();
             }
+            if (this.viewMode() === 'table') {
+                this.setViewMode('list');
+            }
+        } else if (this.optionsService.options().unitSearchViewMode === 'table') {
+            this.setViewMode('table');
         }
         this.expandedView.set(!isExpanded);
     }

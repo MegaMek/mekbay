@@ -1010,6 +1010,26 @@ describe('MekRules', () => {
         expect(forceUnit.destroyed).toBeTrue();
     });
 
+    it('destroys a Mek on exactly three committed engine hits', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [
+                { id: 'engine-0', name: 'Engine', loc: 'CT', slot: 0, destroyed: 1 },
+                { id: 'engine-1', name: 'Engine', loc: 'CT', slot: 1, destroyed: 1 },
+                { id: 'engine-2', name: 'Engine', loc: 'CT', slot: 2 },
+            ],
+        });
+        const rules = forceUnit.rules as MekRules;
+
+        rules.evaluateDestroyed();
+        expect(forceUnit.destroyed).toBeFalse();
+
+        forceUnit.getCritSlots()[2].destroyed = 1;
+        rules.evaluateDestroyed();
+
+        expect(MekRules.ENGINE_DESTRUCTION_HITS).toBe(3);
+        expect(forceUnit.destroyed).toBeTrue();
+    });
+
     it('swaps dual-cockpit crew member data while preserving crew slots', () => {
         const forceUnit = createForceUnitHarness({
             crewStates: ['healthy', 'healthy'],

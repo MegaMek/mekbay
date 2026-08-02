@@ -39,7 +39,7 @@ describe('UnitSearchComponent card virtualization', () => {
         colorScheme: 'default' as const,
         availabilitySource: 'mul' as 'mul' | 'megamek',
         unitSearchExpandedViewLayout: 'panel-list-filters',
-        unitSearchViewMode: 'list' as const,
+        unitSearchViewMode: 'list' as 'list' | 'card' | 'chassis' | 'table',
     });
 
     const filtersServiceStub = {
@@ -644,6 +644,31 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.viewMode()).toBe('table');
         expect(filtersServiceStub.setViewMode).toHaveBeenCalledOnceWith('table');
         expect(optionsServiceStub.setOption).toHaveBeenCalledOnceWith('unitSearchViewMode', 'table');
+    });
+
+    it('uses list when collapsed and restores saved table mode on expansion', () => {
+        optionsSignal.update(options => ({ ...options, unitSearchViewMode: 'table' }));
+        filtersServiceStub.viewMode.set('table');
+        filtersServiceStub.expandedView.set(true);
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        fixture.detectChanges();
+        component.toggleExpandedView();
+        fixture.detectChanges();
+
+        expect(component.viewMode()).toBe('list');
+        expect(component.isTableMode()).toBeFalse();
+        expect(filtersServiceStub.expandedView()).toBeFalse();
+        expect(filtersServiceStub.setViewMode).toHaveBeenCalledWith('list');
+
+        component.toggleExpandedView();
+        fixture.detectChanges();
+
+        expect(component.viewMode()).toBe('table');
+        expect(component.isTableMode()).toBeTrue();
+        expect(filtersServiceStub.expandedView()).toBeTrue();
+        expect(filtersServiceStub.setViewMode).toHaveBeenCalledWith('table');
     });
 
     it('selects a result into the inline panel when the view starts expanded', async () => {

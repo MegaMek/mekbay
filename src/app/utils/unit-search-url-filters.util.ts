@@ -202,7 +202,7 @@ export function parseUnitSearchScalarUrlState(
         searchText,
         sortKey: sortParam && SORT_OPTIONS.some(opt => opt.key === sortParam) ? sortParam : null,
         sortDirection: sortDirectionParam === 'asc' || sortDirectionParam === 'desc' ? sortDirectionParam : null,
-        expanded: params.get('expanded') === 'true' || viewMode === 'table' || shouldExpand,
+        expanded: params.get('expanded') === 'true' || (viewMode !== 'table' && shouldExpand),
         gunnery: parseBoundedInteger(params.get('gunnery'), 0, 8),
         piloting: parseBoundedInteger(params.get('piloting'), 0, 8),
         bvLimit: budgetMode === 'force-limit' ? parsePositiveInteger(params.get('bvLimit')) : null,
@@ -304,7 +304,7 @@ export function buildUnitSearchQueryParameters({
         pMin: normalizationActive ? bvNormalization.piloting.min : null,
         pMax: normalizationActive ? bvNormalization.piloting.max : null,
         maxDelta: normalizationActive ? bvNormalization.maxDelta : null,
-        expanded: expanded && viewMode !== 'table' ? 'true' : null,
+        expanded: expanded ? 'true' : null,
         view: viewMode === 'list' ? null : viewMode,
     };
 }
@@ -479,11 +479,12 @@ export function resolveInitialUnitSearchViewMode(
     persistedViewMode: UnitSearchViewMode,
 ): UnitSearchViewMode {
     const explicitViewMode = parseUnitSearchViewMode(params.get('view'));
-    if (explicitViewMode) return explicitViewMode;
+    if (explicitViewMode) {
+        return explicitViewMode === 'table' && params.get('expanded') !== 'true'
+            ? 'list'
+            : explicitViewMode;
+    }
 
     const hasSearchState = params.has('q') || params.has('filters');
-    const hasForceState = ['instance', 'units', 'mul_ids', 'operation']
-        .some(param => params.has(param));
-
-    return hasSearchState || hasForceState ? 'list' : persistedViewMode;
+    return hasSearchState || persistedViewMode === 'table' ? 'list' : persistedViewMode;
 }

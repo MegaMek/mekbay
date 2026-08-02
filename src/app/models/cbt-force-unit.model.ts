@@ -117,6 +117,7 @@ export class CBTForceUnit extends ForceUnit {
         const gameRulesService = this.injector.get(CBTGameRulesService);
         this.gameRules = gameRulesService.gameRules();
         this._rules = gameRulesService.createUnitRules(this);
+        this.turnState().capturePassiveHeatSourceBaseline();
     }
 
     /** Unit-type-specific game rules (destruction, PSR, systems status for Meks). */
@@ -335,6 +336,9 @@ export class CBTForceUnit extends ForceUnit {
     setCritSlots(critSlots: CriticalSlot[], initialization: boolean = false) {
         this.state.crits.set(critSlots);
         this.turnState().reconcileHeatSources();
+        if (initialization) {
+            this.turnState().capturePassiveHeatSourceBaseline();
+        }
         this.inventoryControl.markInventoryViewChanged();
         if (!initialization) {
             this.evaluateDestroyed();
@@ -493,16 +497,30 @@ export class CBTForceUnit extends ForceUnit {
         return this.inventoryControlRuntime.createTarget();
     }
 
+    createSharedInventoryControlTarget(): InventoryControlRuntimeTarget | null {
+        return this.force.createSharedInventoryControlTarget(this);
+    }
+
     updateInventoryControlTarget(targetId: InventoryControlRuntimeTargetId, patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>): InventoryControlRuntimeTarget | null {
+        if (this.getInventoryControlTarget(targetId)?.shared && this.force.isSharedInventoryControlTarget(targetId)) {
+            return this.force.updateSharedInventoryControlTarget(this, targetId, patch);
+        }
         return this.inventoryControlRuntime.updateTarget(targetId, patch);
     }
 
     deleteInventoryControlTarget(targetId: InventoryControlRuntimeTargetId): void {
+        if (this.getInventoryControlTarget(targetId)?.shared && this.force.isSharedInventoryControlTarget(targetId)) {
+            this.force.deleteSharedInventoryControlTarget(this, targetId);
+            return;
+        }
         this.inventoryControlRuntime.deleteTarget(targetId);
     }
 
     resetInventoryControlTargets(): void {
-        this.inventoryControlRuntime.resetTargets();
+        this.getInventoryControlTargets()
+            .filter(target => !this.force.isSharedInventoryControlTarget(target.id))
+            .forEach(target => this.inventoryControlRuntime.deleteTarget(target.id));
+        this.inventoryControlRuntime.clearSelection();
     }
 
     hasLinkedC3Network(): boolean {

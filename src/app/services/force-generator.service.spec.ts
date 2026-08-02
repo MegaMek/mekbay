@@ -2563,6 +2563,64 @@ describe('ForceGeneratorService', () => {
         expect(buildAvailabilityWeightCacheSpy).toHaveBeenCalledTimes(2);
     });
 
+    it('rebuilds cached availability weights when MegaMek availability data changes', () => {
+        const era = createEra(3150, 'Jihad');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const unit = createUnit({ id: 1, name: 'Availability Version Unit', as: { PV: 5 } as Unit['as'] });
+
+        registerEraAndFaction(era, faction);
+        addMegaMekAvailability(unit, faction, era, 2);
+        const buildAvailabilityWeightCacheSpy = spyOn(service as any, 'buildAvailabilityWeightCache').and.callThrough();
+        const request = {
+            eligibleUnits: [unit],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 5, max: 5 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        };
+
+        service.buildPreview(request);
+        service.buildPreview(request);
+        expect(buildAvailabilityWeightCacheSpy).toHaveBeenCalledTimes(1);
+
+        dataServiceMock.megaMekAvailabilityVersion.set(1);
+        service.buildPreview(request);
+
+        expect(buildAvailabilityWeightCacheSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('rebuilds base candidates when the search corpus changes with the same unit names', () => {
+        const era = createEra(3150, 'Jihad');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const firstUnit = createUnit({ id: 1, name: 'Corpus Version Unit', as: { PV: 5 } as Unit['as'] });
+        const replacementUnit = createUnit({ id: 1, name: 'Corpus Version Unit', as: { PV: 9 } as Unit['as'] });
+
+        registerEraAndFaction(era, faction);
+        addMegaMekAvailability(firstUnit, faction, era, 2);
+        const buildBaseCandidateCacheSpy = spyOn(service as any, 'buildBaseCandidateCache').and.callThrough();
+        const request = {
+            eligibleUnits: [firstUnit] as Unit[],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        };
+
+        expect(service.buildPreview(request).totalCost).toBe(5);
+        expect(buildBaseCandidateCacheSpy).toHaveBeenCalledTimes(1);
+
+        dataServiceMock.searchCorpusVersion.set(2);
+        request.eligibleUnits = [replacementUnit];
+        expect(service.buildPreview(request).totalCost).toBe(9);
+        expect(buildBaseCandidateCacheSpy).toHaveBeenCalledTimes(2);
+    });
+
     it('reuses cached availability weights when the rolled faction changes inside the same multi-faction scope', () => {
         const era = createEra(3150, 'Jihad');
         const capellanConfederation = createFaction(10, 'Capellan Confederation');
@@ -4601,7 +4659,7 @@ describe('ForceGeneratorService', () => {
 
         let nowValue = 0;
         spyOn(performance, 'now').and.callFake(() => {
-            nowValue += 100;
+            nowValue += 10;
             return nowValue;
         });
 
@@ -4828,6 +4886,248 @@ describe('ForceGeneratorService', () => {
         expect(preview.explanationLines.some((line) => line.includes('echelon WING'))).toBeFalse();
         expect(preview.explanationLines.some((line) => line.includes('Ruleset guidance: Capellan Confederation, echelon LANCE.'))).toBeTrue();
         expect(preview.units.every((unit) => unit.unit.type === 'Mek')).toBeTrue();
+    });
+
+    it('ignores a highly weighted top-level unit type that cannot reach the requested budget', () => {
+        const era = createEra(3052, 'Clan Invasion');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const mekUnits = Array.from({ length: 4 }, (_, index) => createUnit({
+            id: index + 1,
+            name: `Budget Mek ${index + 1}`,
+            as: { PV: 5 } as Unit['as'],
+        }));
+        const aeroUnits = Array.from({ length: 6 }, (_, index) => createUnit({
+            id: index + 5,
+            name: `Over Budget Fighter ${index + 1}`,
+            type: 'Aero',
+            subtype: 'Aerospace Fighter',
+            moveType: 'Aerodyne',
+            as: { PV: 20, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+        }));
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'CC',
+            indexes: { forceIndexesByEchelon: { LANCE: [0], SQUADRON: [1] } },
+            forceCount: 2,
+            toc: {
+                echelon: {
+                    options: [
+                        { echelons: [{ code: 'LANCE' }], when: { unitTypes: ['Mek'] } },
+                        { echelons: [{ code: 'SQUADRON' }], when: { unitTypes: ['AeroSpaceFighter'] } },
+                    ],
+                },
+            },
+            forces: [
+                { when: { unitTypes: ['Mek'], topLevel: true }, echelon: { code: 'LANCE' } },
+                { when: { unitTypes: ['AeroSpaceFighter'], topLevel: true }, echelon: { code: 'SQUADRON' } },
+            ],
+        };
+
+        registerEraAndFaction(era, faction);
+        registerMegaMekRuleset(faction, ruleset);
+        for (const unit of mekUnits) {
+            addMegaMekAvailability(unit, faction, era, 1);
+        }
+        for (const unit of aeroUnits) {
+            addMegaMekAvailability(unit, faction, era, 100);
+        }
+        spyOn(Math, 'random').and.returnValue(0.99);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [...mekUnits, ...aeroUnits],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 20, max: 20 },
+            minUnitCount: 4,
+            maxUnitCount: 8,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.totalCost).toBe(20);
+        expect(preview.units.length).toBe(4);
+        expect(preview.units.every((unit) => unit.unit.type === 'Mek')).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('echelon LANCE'))).toBeTrue();
+    });
+
+    it('applies budget reachability to force-node fallback choices without a TOC', () => {
+        const era = createEra(3052, 'Clan Invasion');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const mek = createUnit({ id: 1, name: 'Fallback Budget Mek', as: { PV: 5 } as Unit['as'] });
+        const fighter = createUnit({
+            id: 2,
+            name: 'Fallback Over Budget Fighter',
+            type: 'Aero',
+            subtype: 'Aerospace Fighter',
+            moveType: 'Aerodyne',
+            as: { PV: 20, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+        });
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'CC',
+            indexes: { forceIndexesByEchelon: { LANCE: [0], SQUADRON: [1] } },
+            forceCount: 2,
+            forces: [
+                { when: { unitTypes: ['Mek'], topLevel: true }, echelon: { code: 'LANCE' } },
+                { when: { unitTypes: ['AeroSpaceFighter'], topLevel: true }, echelon: { code: 'SQUADRON' } },
+            ],
+        };
+
+        registerEraAndFaction(era, faction);
+        registerMegaMekRuleset(faction, ruleset);
+        addMegaMekAvailability(mek, faction, era, 1);
+        addMegaMekAvailability(fighter, faction, era, 100);
+        spyOn(Math, 'random').and.returnValue(0.99);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [mek, fighter],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 20, max: 20 },
+            minUnitCount: 4,
+            maxUnitCount: 6,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.totalCost).toBe(20);
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual([
+            'Fallback Budget Mek',
+            'Fallback Budget Mek',
+            'Fallback Budget Mek',
+            'Fallback Budget Mek',
+        ]);
+        expect(preview.explanationLines.some((line) => line.includes('echelon LANCE'))).toBeTrue();
+    });
+
+    it('uses reusable candidate capacity for top-level echelon feasibility', () => {
+        const era = createEra(3052, 'Clan Invasion');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const mek = createUnit({ id: 1, name: 'Reusable Lance Mek', as: { PV: 5 } as Unit['as'] });
+
+        registerEraAndFaction(era, faction);
+        registerMegaMekRuleset(faction, createMekOnlyStarRuleset('CC'));
+        addMegaMekAvailability(mek, faction, era, 1);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [mek],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 25, max: 25 },
+            minUnitCount: 5,
+            maxUnitCount: 5,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.length).toBe(5);
+        expect(preview.explanationLines.some((line) => line.includes('echelon STAR'))).toBeTrue();
+    });
+
+    it('does not claim duplicate-chassis capacity can satisfy a top-level echelon', () => {
+        const era = createEra(3052, 'Clan Invasion');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const variants = Array.from({ length: 5 }, (_, index) => createUnit({
+            id: index + 1,
+            name: `Shared Chassis Variant ${index + 1}`,
+            chassis: 'Shared Chassis',
+            model: `SC-${index + 1}`,
+            as: { PV: 5 } as Unit['as'],
+        }));
+
+        registerEraAndFaction(era, faction);
+        registerMegaMekRuleset(faction, createMekOnlyStarRuleset('CC'));
+        for (const unit of variants) {
+            addMegaMekAvailability(unit, faction, era, 1);
+        }
+
+        const preview = service.buildPreview({
+            eligibleUnits: variants,
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 25, max: 25 },
+            minUnitCount: 5,
+            maxUnitCount: 5,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: true,
+        });
+
+        expect(preview.units.length).toBe(1);
+        expect(preview.explanationLines.some((line) => line.includes('echelon STAR'))).toBeFalse();
+    });
+
+    it('does not start an ordinary generation attempt after its deadline expires', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const unit = createUnit({ id: 1, name: 'Deadline Unit', as: { PV: 5 } as Unit['as'] });
+        const createSearchDeadlineSpy = spyOn<any>(service, 'createSearchDeadline').and.callThrough();
+        const deadlineExpiredSpy = spyOn<any>(service, 'hasSearchDeadlineExpired').and.returnValues(false, true);
+        const buildSelectionSpy = spyOn<any>(service, 'buildCandidateSelection').and.callThrough();
+
+        registerEraAndFaction(era, faction);
+        addMegaMekAvailability(unit, faction, era, 1);
+
+        service.buildPreview({
+            eligibleUnits: [unit],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 7, max: 7 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(createSearchDeadlineSpy).toHaveBeenCalled();
+        const [startedAt, durationMs, interruptSignal] = createSearchDeadlineSpy.calls.mostRecent().args;
+        expect(startedAt).toBeGreaterThanOrEqual(0);
+        expect(durationMs).toBe(300);
+        expect(interruptSignal).toBeUndefined();
+        expect(deadlineExpiredSpy).toHaveBeenCalledTimes(2);
+        expect(buildSelectionSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not claim shared tagged quantities can satisfy a larger top-level echelon', () => {
+        const era = createEra(3052, 'Clan Invasion');
+        const faction = createFaction(10, 'Capellan Confederation');
+        const variants = [1, 2].map((index) => createUnit({
+            id: index,
+            name: `Tagged Variant ${index}`,
+            chassis: 'Tagged Chassis',
+            model: `TC-${index}`,
+            as: { PV: 5 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 2 }],
+        }));
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            _tags: {
+                interactedWith: true,
+                value: { owned: { name: 'owned', state: 'or', count: 1 } },
+            },
+        });
+        registerEraAndFaction(era, faction);
+        registerMegaMekRuleset(faction, createMekOnlyStarRuleset('CC'));
+        for (const unit of variants) {
+            addMegaMekAvailability(unit, faction, era, 1);
+        }
+
+        const preview = service.buildPreview({
+            eligibleUnits: variants,
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 25, max: 25 },
+            minUnitCount: 5,
+            maxUnitCount: 5,
+            gunnery: 4,
+            piloting: 5,
+            useTaggedQuantities: true,
+            useUnitTagsAsChassisTags: true,
+        });
+
+        expect(preview.units.length).toBe(2);
+        expect(preview.explanationLines.some((line) => line.includes('echelon STAR'))).toBeFalse();
     });
 
     it('samples different valid top-level echelons from the weighted unit-type pool instead of fixing the midpoint choice', () => {

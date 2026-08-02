@@ -85,6 +85,10 @@ export class WeaponTargetsOverlayController {
             options.unit.createInventoryControlTarget();
             this.syncAfterTargetUpdate(options);
         });
+        outputToObservable(componentRef.instance.addSharedRequest).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(() => {
+            options.unit.createSharedInventoryControlTarget();
+            this.syncAfterTargetUpdate(options);
+        });
         outputToObservable(componentRef.instance.resetRequest).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(() => {
             options.unit.resetInventoryControlTargets();
             this.syncAfterTargetUpdate(options);

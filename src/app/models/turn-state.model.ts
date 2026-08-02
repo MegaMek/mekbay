@@ -48,6 +48,7 @@ export class TurnState {
     private static readonly HEAT_DISSIPATION_DEFICIT_SOURCE_ID = 'heat-dissipation-deficit';
     unitState: CBTForceUnitState;
     private suppressModified = false;
+    private readonly passiveHeatSourceBaseline = signal('');
     private readonly acknowledgedHeatSources = this.modifiedSignal<Record<string, string>>({});
     private readonly heatDissipationConsumed = this.modifiedSignal<number>(0);
     airborne = this.modifiedSignal<boolean | null>(null, 'movement');
@@ -65,6 +66,7 @@ export class TurnState {
         const moveMode = this.moveMode();
         const moveDistance = this.moveDistance();
         const dmgReceived = this.dmgReceived();
+        const weaponsHeat = this.weaponsHeat();
         const unconsolidatedCrits = this.unitState.hasUnconsolidatedCrits();
         const unconsolidatedLocations = this.unitState.hasUnconsolidatedLocations();
         const unconsolidatedInventory = this.unitState.hasUnconsolidatedInventory();
@@ -72,12 +74,13 @@ export class TurnState {
             || moveMode !== null
             || moveDistance !== null
             || dmgReceived != 0
+            || weaponsHeat > 0
             || this.spotting()
             || this.hasPendingPSRChecks()
             || unconsolidatedCrits
             || unconsolidatedLocations
             || unconsolidatedInventory
-            || this.heatSources().some(source => source.value > 0)
+            || this.passiveHeatSourceSignature() !== this.passiveHeatSourceBaseline()
             || Object.keys(this.acknowledgedHeatSources()).length > 0
             || this.heatDissipationConsumed() > 0
             || heat.next !== undefined;
@@ -225,6 +228,17 @@ export class TurnState {
 
     constructor(unitState: CBTForceUnitState) {
         this.unitState = unitState;
+    }
+
+    capturePassiveHeatSourceBaseline(): void {
+        this.passiveHeatSourceBaseline.set(this.passiveHeatSourceSignature());
+    }
+
+    private passiveHeatSourceSignature(): string {
+        return JSON.stringify(this.allHeatSources()
+            .filter(source => source.value > 0 && source.id !== 'movement' && source.id !== 'weapons')
+            .map(source => [source.id, this.heatSourceSignature(source)])
+            .sort(([left], [right]) => left.localeCompare(right)));
     }
 
     private modifiedSignal<T>(initialValue: T, affectedHeatSourceId?: string): WritableSignal<T> {

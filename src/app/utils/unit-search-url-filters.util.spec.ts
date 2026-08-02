@@ -41,11 +41,25 @@ describe('unit search URL filters', () => {
         expect(parseUnitSearchViewMode(null)).toBeNull();
     });
 
-    it('treats table view as expanded without requiring a redundant expanded parameter', () => {
-        const parsed = parseUnitSearchScalarUrlState(new URLSearchParams('view=table'));
+    it('keeps table view dormant unless expansion is explicit', () => {
+        const dormant = parseUnitSearchScalarUrlState(new URLSearchParams('view=table'));
+        const expanded = parseUnitSearchScalarUrlState(
+            new URLSearchParams('view=table&expanded=true'),
+        );
+
+        expect(dormant.viewMode).toBe('table');
+        expect(dormant.expanded).toBeFalse();
+        expect(expanded.viewMode).toBe('table');
+        expect(expanded.expanded).toBeTrue();
+    });
+
+    it('does not let search state implicitly activate dormant table view', () => {
+        const parsed = parseUnitSearchScalarUrlState(
+            new URLSearchParams('q=atlas&view=table'),
+        );
 
         expect(parsed.viewMode).toBe('table');
-        expect(parsed.expanded).toBeTrue();
+        expect(parsed.expanded).toBeFalse();
     });
 
     it('normalizes legacy tech-base sort keys from URLs', () => {
@@ -96,8 +110,15 @@ describe('unit search URL filters', () => {
         expect(queryParameters.sort).toBe('tech');
     });
 
-    it('prefers an explicit valid URL view over the persisted preference', () => {
-        expect(resolveInitialUnitSearchViewMode(new URLSearchParams('view=table'), 'card')).toBe('table');
+    it('requires explicit expansion to activate table view from a URL', () => {
+        expect(resolveInitialUnitSearchViewMode(
+            new URLSearchParams('view=table'),
+            'card',
+        )).toBe('list');
+        expect(resolveInitialUnitSearchViewMode(
+            new URLSearchParams('view=table&expanded=true'),
+            'card',
+        )).toBe('table');
     });
 
     it('restores the persisted view for clean startup URLs', () => {
@@ -111,13 +132,14 @@ describe('unit search URL filters', () => {
         expect(resolveInitialUnitSearchViewMode(new URLSearchParams('q='), 'table')).toBe('list');
     });
 
-    it('does not restore a persisted expanded view for saved force URLs', () => {
+    it('uses compact list as the active mode for saved force URLs', () => {
         const params = new URLSearchParams('instance=force-1&sel=unit-2');
 
         expect(resolveInitialUnitSearchViewMode(params, 'table')).toBe('list');
+        expect(parseUnitSearchScalarUrlState(params).expanded).toBeFalse();
     });
 
-    it('does not restore a persisted expanded view for inline force URLs', () => {
+    it('uses compact list as the active mode for inline force URLs', () => {
         expect(resolveInitialUnitSearchViewMode(
             new URLSearchParams('units=Atlas AS7-D'),
             'table',
@@ -128,15 +150,15 @@ describe('unit search URL filters', () => {
         )).toBe('list');
     });
 
-    it('does not restore a persisted expanded view for operation URLs', () => {
+    it('uses compact list as the active mode for operation URLs', () => {
         expect(resolveInitialUnitSearchViewMode(
             new URLSearchParams('operation=operation-1'),
             'table',
         )).toBe('list');
     });
 
-    it('honors an explicit view on a force URL', () => {
-        const params = new URLSearchParams('instance=force-1&view=table');
+    it('honors an explicitly expanded table view on a force URL', () => {
+        const params = new URLSearchParams('instance=force-1&view=table&expanded=true');
 
         expect(resolveInitialUnitSearchViewMode(params, 'list')).toBe('table');
     });
@@ -165,9 +187,13 @@ describe('unit search URL filters', () => {
         expect(buildUnitSearchQueryParameters({ ...baseArgs, viewMode: 'list' }).view).toBeNull();
         expect(buildUnitSearchQueryParameters({ ...baseArgs, viewMode: 'card' }).view).toBe('card');
         expect(buildUnitSearchQueryParameters({ ...baseArgs, viewMode: 'chassis' }).view).toBe('chassis');
+        expect(buildUnitSearchQueryParameters({ ...baseArgs, viewMode: 'list' })).toEqual(jasmine.objectContaining({
+            view: null,
+            expanded: null,
+        }));
         expect(buildUnitSearchQueryParameters({ ...baseArgs, viewMode: 'table', expanded: true })).toEqual(jasmine.objectContaining({
             view: 'table',
-            expanded: null,
+            expanded: 'true',
         }));
     });
 

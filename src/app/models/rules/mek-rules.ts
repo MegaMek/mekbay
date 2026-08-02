@@ -110,6 +110,7 @@ export interface MekLegMovementResult {
  * Piloting Skill Roll modifiers, and PSR target roll.
  */
 export class MekRules extends UnitTypeRulesBase {
+    static readonly ENGINE_DESTRUCTION_HITS = 3;
     protected get gyroHitPSRModifier(): number { return 2; }
     protected get hipPSRModifier(): number { return 1; }
     protected get lowerArmFireModifier(): number { return 0; }
@@ -286,10 +287,8 @@ export class MekRules extends UnitTypeRulesBase {
         }
 
         // Check engine and cockpit destruction (committed state only)
-        const svg = this.unit.svg();
-        const engineHitThreshold = svg?.querySelectorAll('[id^="engine_hit_"]').length ?? 3;
         const destroyedEngineSlots = crits.filter(slot => this.isNamedCrit(slot, "Engine") && this.isCritUnavailable(slot)).length;
-        const engineBlown = destroyedEngineSlots >= engineHitThreshold;
+        const engineBlown = destroyedEngineSlots >= MekRules.ENGINE_DESTRUCTION_HITS;
         const cockpitDestroyed = this.allCrewCockpitsUnavailable(crits);
 
         const destroyed = engineBlown || cockpitDestroyed;
@@ -677,7 +676,7 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     private computeDamagedEngineHeat(): number {
-        if (this.unit.shutdown) return 0;
+        if (this.unit.destroyed || this.unit.shutdown) return 0;
         const critSlots = this.unit.getCritSlots();
         const engineHits = critSlots.filter(slot => this.isNamedCrit(slot, 'Engine') && this.isDestroyedOrDestroyingCrit(slot)).length;
         return Math.min(10, engineHits * 5);
@@ -1675,7 +1674,6 @@ export class MekRules extends UnitTypeRulesBase {
 
     /**
      * Compute per-entry game state (damaged/disabled/hitMod) for an inventory entry.
-     * Pure rules logic — no SVG/DOM access.
      */
     override computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
         const physicallyDestroyed = this.entryInPhysicallyDestroyedLocation(entry);

@@ -33,7 +33,7 @@
 
 import type { MountedEquipment } from './mounted-equipment.model';
 import type { CBTForceUnit } from './cbt-force-unit.model';
-import { InventoryControlRuntimeState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
+import { InventoryControlRuntimeState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId, type InventoryControlTargetCreateOptions } from './inventory-control-runtime-state.model';
 
 export class CBTInventoryControlRuntime extends InventoryControlRuntimeState {
     constructor(unit: CBTForceUnit) {
@@ -60,8 +60,8 @@ export class CBTInventoryControlRuntime extends InventoryControlRuntimeState {
         this.markInventoryViewChanged();
     }
 
-    override createTarget(): InventoryControlRuntimeTarget | null {
-        const target = super.createTarget();
+    override createTarget(options: InventoryControlTargetCreateOptions = {}): InventoryControlRuntimeTarget | null {
+        const target = super.createTarget(options);
         this.markInventoryViewChanged();
         return target;
     }
