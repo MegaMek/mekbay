@@ -901,6 +901,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 targetBv: { min: 1000, max: 2000 },
                 gunnery: { min: 3, max: 4 },
                 piloting: { min: 4, max: 5 },
+                maxDelta: 1,
             },
         });
 
@@ -914,16 +915,25 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 targetBv: { min: 2000, max: 1000 },
                 gunnery: { min: 3, max: 4 },
                 piloting: { min: 4, max: 5 },
+                maxDelta: 1,
             },
             {
                 targetBv: { min: 1000, max: 2000 },
                 gunnery: { min: 0, max: 1_000_000 },
                 piloting: { min: 4, max: 5 },
+                maxDelta: 1,
             },
             {
                 targetBv: { min: 1000.5, max: 2000 },
                 gunnery: { min: 3, max: 4 },
                 piloting: { min: 4, max: 5 },
+                maxDelta: 1,
+            },
+            {
+                targetBv: { min: 1000, max: 2000 },
+                gunnery: { min: 3, max: 4 },
+                piloting: { min: 4, max: 5 },
+                maxDelta: 9,
             },
         ];
 
@@ -947,6 +957,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             targetBv: { min: 1000, max: 2000 },
             gunnery: { min: 3, max: 4 },
             piloting: { min: 4, max: 5 },
+            maxDelta: 1,
         };
 
         service.applySerializedSearchFilter({
@@ -958,6 +969,24 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(service.budgetMode()).toBe('bv-normalization');
         expect(service.classicBvNormalizationSettings()).toEqual(bvNormalization);
+    });
+
+    it('defaults missing saved normalization max delta to eight', () => {
+        const { service } = createService(createStandaloneBundle());
+
+        service.applySerializedSearchFilter({
+            id: 'missing-normalization-delta',
+            name: 'Missing normalization delta',
+            budgetMode: 'bv-normalization',
+            bvNormalization: {
+                targetBv: { min: 1000, max: 2000 },
+                gunnery: { min: 2, max: 4 },
+                piloting: { min: 2, max: 5 },
+            } as any,
+        });
+
+        expect(service.budgetMode()).toBe('bv-normalization');
+        expect(service.activeBvNormalization()?.maxDelta).toBe(8);
     });
 
     it('filters normal search results by an active formation target while generator eligibility ignores it', () => {
@@ -992,6 +1021,25 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(service.formationTarget()).toBeNull();
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
+    it('resets BV normalization skill controls to unrestricted defaults', () => {
+        const { service } = createService(createStandaloneBundle());
+        service.setBvNormalizationSettings({
+            targetBv: { min: 1000, max: 2000 },
+            gunnery: { min: 2, max: 4 },
+            piloting: { min: 3, max: 5 },
+            maxDelta: 1,
+        });
+
+        service.resetFilters();
+
+        expect(service.classicBvNormalizationSettings()).toEqual({
+            targetBv: { min: 0, max: 999_999 },
+            gunnery: { min: 0, max: 8 },
+            piloting: { min: 0, max: 8 },
+            maxDelta: 8,
+        });
     });
 
     it('replaces a manual formation target when formation is entered as semantic search text', () => {

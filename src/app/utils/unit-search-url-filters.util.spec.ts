@@ -184,6 +184,71 @@ describe('unit search URL filters', () => {
         expect(query.bvLimit).toBeNull();
     });
 
+    it('round-trips BV normalization with required max delta', () => {
+        const query = buildUnitSearchQueryParameters({
+            searchText: '',
+            filterState: {},
+            semanticKeys: new Set<string>(),
+            selectedSort: '',
+            selectedSortDirection: 'asc',
+            expanded: false,
+            gunnery: DEFAULT_GUNNERY_SKILL,
+            piloting: DEFAULT_PILOTING_SKILL,
+            bvLimit: 0,
+            budgetMode: 'bv-normalization',
+            bvNormalization: {
+                targetBv: { min: 1000, max: 2000 },
+                gunnery: { min: 2, max: 4 },
+                piloting: { min: 2, max: 5 },
+                maxDelta: 1,
+            },
+            publicTagsParam: null,
+        });
+
+        expect(query).toEqual(jasmine.objectContaining({
+            bvMode: 'normalize',
+            bvMin: 1000,
+            bvMax: 2000,
+            gMin: 2,
+            gMax: 4,
+            pMin: 2,
+            pMax: 5,
+            maxDelta: 1,
+        }));
+
+        const parsed = parseUnitSearchScalarUrlState(new URLSearchParams(
+            'bvMode=normalize&bvMin=1000&bvMax=2000&gMin=2&gMax=4&pMin=2&pMax=5&maxDelta=1',
+        ));
+        expect(parsed.budgetMode).toBe('bv-normalization');
+        expect(parsed.bvNormalization).toEqual({
+            targetBv: { min: 1000, max: 2000 },
+            gunnery: { min: 2, max: 4 },
+            piloting: { min: 2, max: 5 },
+            maxDelta: 1,
+        });
+    });
+
+    it('defaults missing normalization max delta to eight and rejects invalid values', () => {
+        const baseQuery = 'bvMode=normalize&bvMin=1000&bvMax=2000&gMin=2&gMax=4&pMin=2&pMax=5';
+
+        const parsedWithoutDelta = parseUnitSearchScalarUrlState(new URLSearchParams(baseQuery));
+        expect(parsedWithoutDelta.budgetMode).toBe('bv-normalization');
+        expect(parsedWithoutDelta.bvNormalization?.maxDelta).toBe(8);
+        for (const maxDelta of ['-1', '9', '1.5', 'invalid']) {
+            expect(parseUnitSearchScalarUrlState(new URLSearchParams(`${baseQuery}&maxDelta=${maxDelta}`)).budgetMode)
+                .withContext(maxDelta)
+                .toBeNull();
+        }
+    });
+
+    it('preserves zero max delta in normalization URLs', () => {
+        const parsed = parseUnitSearchScalarUrlState(new URLSearchParams(
+            'bvMode=normalize&bvMin=1000&bvMax=2000&gMin=2&gMax=4&pMin=2&pMax=5&maxDelta=0',
+        ));
+
+        expect(parsed.bvNormalization?.maxDelta).toBe(0);
+    });
+
     it('omits retained budget values when no mode is selected', () => {
         const query = buildUnitSearchQueryParameters({
             searchText: '',

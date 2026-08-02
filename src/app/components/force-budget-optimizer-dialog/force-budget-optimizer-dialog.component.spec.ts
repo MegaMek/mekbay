@@ -16,8 +16,8 @@ interface ClassicSkillPrioritiesTestApi {
 
 interface ForceBudgetOptimizerDialogTestApi {
     targetBudget(): number;
-    getClassicSkillPriorities(unit: Unit): ClassicSkillPrioritiesTestApi;
-    getClassicSmartScore(priorities: ClassicSkillPrioritiesTestApi, gunnery: number, piloting: number): number;
+    getCBTSkillPriorities(unit: Unit): ClassicSkillPrioritiesTestApi;
+    getCBTSmartScore(priorities: ClassicSkillPrioritiesTestApi, gunnery: number, piloting: number): number;
     getPhysicalDamagePerTurn(unit: Unit): number;
     selectBestAffordableState(states: readonly OptimizationStateTestApi[], targetBudget: number): OptimizationStateTestApi | null;
 }
@@ -97,7 +97,7 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
             ],
         });
 
-        const priorities = component.getClassicSkillPriorities(assassin);
+        const priorities = component.getCBTSkillPriorities(assassin);
 
         expect(component.getPhysicalDamagePerTurn(assassin)).toBe(13);
         expect(priorities.gunnery).toBeCloseTo(12.3, 5);
@@ -114,10 +114,10 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
                 { id: 'Sword', q: 1, n: 'Sword', t: 'P', p: 5, l: 'LA', md: '5' },
             ],
         });
-        const priorities = component.getClassicSkillPriorities(assassin);
+        const priorities = component.getCBTSkillPriorities(assassin);
 
-        const balancedScore = component.getClassicSmartScore(priorities, 4, 4);
-        const pilotingSkewedScore = component.getClassicSmartScore(priorities, 6, 2);
+        const balancedScore = component.getCBTSmartScore(priorities, 4, 4);
+        const pilotingSkewedScore = component.getCBTSmartScore(priorities, 6, 2);
 
         expect(balancedScore).toBeGreaterThan(pilotingSkewedScore);
     });
@@ -130,10 +130,10 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
             dpt: 30,
             comp: [],
         });
-        const priorities = component.getClassicSkillPriorities(rangedVehicle);
+        const priorities = component.getCBTSkillPriorities(rangedVehicle);
 
-        const gunneryFocusedScore = component.getClassicSmartScore(priorities, 2, 6);
-        const pilotingFocusedScore = component.getClassicSmartScore(priorities, 6, 2);
+        const gunneryFocusedScore = component.getCBTSmartScore(priorities, 2, 6);
+        const pilotingFocusedScore = component.getCBTSmartScore(priorities, 6, 2);
 
         expect(priorities.gunnery).toBe(31);
         expect(priorities.piloting).toBe(1);

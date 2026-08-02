@@ -31,6 +31,7 @@ describe('UnitSearchComponent card virtualization', () => {
     const closePanelsRequestSignal = signal({ requestId: 0, exitExpandedView: false });
     const isSearchSettledSignal = signal(true);
     const advOptionsSignal = signal<Record<string, any>>({});
+    const budgetModeSignal = signal<'force-limit' | 'bv-normalization' | null>(null);
     let openDialogs: unknown[];
     const optionsSignal = signal({
         ASUseHex: false,
@@ -48,7 +49,14 @@ describe('UnitSearchComponent card virtualization', () => {
         searchText: signal(''),
         pilotGunnerySkill: signal(4),
         pilotPilotingSkill: signal(5),
-        budgetMode: signal<'force-limit' | 'bv-normalization' | null>(null),
+        budgetMode: budgetModeSignal,
+        activeBvNormalization: computed(() => budgetModeSignal() === 'bv-normalization'),
+        classicBvNormalizationSettings: signal({
+            targetBv: { min: 0, max: 999_999 },
+            gunnery: { min: 0, max: 8 },
+            piloting: { min: 0, max: 8 },
+            maxDelta: 8,
+        }),
         bvPvLimit: signal(0),
         forceTotalBvPv: signal(0),
         selectedSort: signal('name'),
@@ -72,6 +80,12 @@ describe('UnitSearchComponent card virtualization', () => {
         setFilter: jasmine.createSpy('setFilter'),
         unsetFilter: jasmine.createSpy('unsetFilter'),
         setPilotSkills: jasmine.createSpy('setPilotSkills'),
+        setBudgetMode: jasmine.createSpy('setBudgetMode').and.callFake((mode: 'force-limit' | 'bv-normalization' | null) => {
+            filtersServiceStub.budgetMode.set(mode);
+        }),
+        setBvNormalizationSettings: jasmine.createSpy('setBvNormalizationSettings').and.callFake((settings: any) => {
+            filtersServiceStub.classicBvNormalizationSettings.set(settings);
+        }),
         requestClosePanels: jasmine.createSpy('requestClosePanels').and.callFake((options?: { exitExpandedView?: boolean }) => {
             const currentRequest = closePanelsRequestSignal();
             closePanelsRequestSignal.set({
@@ -81,6 +95,7 @@ describe('UnitSearchComponent card virtualization', () => {
         }),
         getMegaMekAvailabilityBadges: jasmine.createSpy('getMegaMekAvailabilityBadges').and.returnValue([]),
         getMegaMekRaritySortScore: jasmine.createSpy('getMegaMekRaritySortScore').and.returnValue(0),
+        getSearchResultPilotContext: jasmine.createSpy('getSearchResultPilotContext'),
     };
 
     const layoutServiceStub = {
@@ -171,6 +186,12 @@ describe('UnitSearchComponent card virtualization', () => {
         advOptionsSignal.set({});
         isSearchSettledSignal.set(true);
         filtersServiceStub.budgetMode.set(null);
+        filtersServiceStub.classicBvNormalizationSettings.set({
+            targetBv: { min: 0, max: 999_999 },
+            gunnery: { min: 0, max: 8 },
+            piloting: { min: 0, max: 8 },
+            maxDelta: 8,
+        });
         filtersServiceStub.bvPvLimit.set(0);
         filtersServiceStub.selectedSort.set('name');
         filtersServiceStub.selectedSortDirection.set('asc');
@@ -183,6 +204,8 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.setViewMode.calls.reset();
         filtersServiceStub.setFilter.calls.reset();
         filtersServiceStub.unsetFilter.calls.reset();
+        filtersServiceStub.setBudgetMode.calls.reset();
+        filtersServiceStub.setBvNormalizationSettings.calls.reset();
         forceBuilderServiceStub.addUnit.calls.reset();
         forceBuilderServiceStub.addUnit.and.resolveTo(true);
         dataServiceStub.getUnitByName.calls.reset();
@@ -193,6 +216,12 @@ describe('UnitSearchComponent card virtualization', () => {
         });
         filtersServiceStub.getMegaMekAvailabilityBadges.and.returnValue([]);
         filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(0);
+        filtersServiceStub.getSearchResultPilotContext.calls.reset();
+        filtersServiceStub.getSearchResultPilotContext.and.callFake((unit: Unit) => ({
+            adjustedBv: unit.bv,
+            gunnery: filtersServiceStub.pilotGunnerySkill(),
+            piloting: filtersServiceStub.pilotPilotingSkill(),
+        }));
         dialogsServiceStub.createDialog.calls.reset();
         dialogsServiceStub.createDialog.and.returnValue(undefined);
         overlayManagerServiceStub.closeAllManagedOverlays.calls.reset();
@@ -255,6 +284,13 @@ describe('UnitSearchComponent card virtualization', () => {
                             </unit-card-expanded>
                             }
                             }
+                            <ng-template #tableIconCell let-unit>{{ unit.name }}</ng-template>
+                            <ng-template #tableNameCell let-unit>{{ unit.name }}</ng-template>
+                            <ng-template #tableYearCell let-unit>{{ unit.year }}</ng-template>
+                            <ng-template #tableBvCell let-unit>{{ unit.bv }}</ng-template>
+                            <ng-template #tableTonsCell let-unit>{{ unit.tons }}</ng-template>
+                            <ng-template #tableClassicMovementCell let-unit>{{ unit.walk }}</ng-template>
+                            <ng-template #tableTagsCell let-unit>{{ unit.name }}</ng-template>
                         </div>
                     `,
                 },
@@ -295,6 +331,37 @@ describe('UnitSearchComponent card virtualization', () => {
 
         expect(component.itemSize()).toBe(75);
         expect(component.displayedUnitKeys()).toEqual([]);
+    });
+
+    it('shows normalized Gunnery/Piloting immediately after BV in the Classic table', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const unit = createUnit('Normalized Unit');
+        currentGameSystemSignal.set(GameSystem.CLASSIC);
+        filtersServiceStub.budgetMode.set('bv-normalization');
+        filtersServiceStub.getSearchResultPilotContext.and.returnValue({ adjustedBv: 1234, gunnery: 3, piloting: 6 });
+        fixture.detectChanges();
+
+        const columns = component.unitSearchTableColumns();
+        const bvIndex = columns.findIndex(column => column.id === 'bv');
+        const skillsColumn = columns[bvIndex + 1];
+
+        expect(skillsColumn.id).toBe('normalized-skills');
+        expect(skillsColumn.header).toBe('G/P');
+        expect(skillsColumn.value?.(unit, 0)).toBe('3/6');
+        expect(skillsColumn.cellTone).toBe('focus');
+        expect(component.unitSearchTableMinWidth()).toBe('1838px');
+    });
+
+    it('omits the Gunnery/Piloting column when BV normalization is inactive', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        currentGameSystemSignal.set(GameSystem.CLASSIC);
+        filtersServiceStub.budgetMode.set(null);
+        fixture.detectChanges();
+
+        expect(component.unitSearchTableColumns().some(column => column.id === 'normalized-skills')).toBeFalse();
+        expect(component.unitSearchTableMinWidth()).toBe('1782px');
     });
 
     it('provides stable unit keys for variable-height measurements across result objects', () => {
@@ -429,12 +496,132 @@ describe('UnitSearchComponent card virtualization', () => {
         });
     }
 
+    it('preserves unrestricted skill ranges when enabling BV normalization', () => {
+        const component = TestBed.createComponent(UnitSearchComponent).componentInstance;
+
+        component.setSearchBudgetMode('bv-normalization');
+
+        expect(filtersServiceStub.classicBvNormalizationSettings().gunnery).toEqual({ min: 0, max: 8 });
+        expect(filtersServiceStub.classicBvNormalizationSettings().piloting).toEqual({ min: 0, max: 8 });
+        expect(filtersServiceStub.classicBvNormalizationSettings().maxDelta).toBe(8);
+        expect(filtersServiceStub.setBvNormalizationSettings).not.toHaveBeenCalled();
+    });
+
     it('keeps compact results hidden without search input, filters, or a BV mode', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
         component.focused.set(true);
 
         expect(component.resultsVisible()).toBeFalse();
+    });
+
+    it('normalizes negative Force BV/PV Limit input to the empty zero state', () => {
+        const component = TestBed.createComponent(UnitSearchComponent).componentInstance;
+        const input = document.createElement('input');
+        input.value = '-1000';
+
+        component.onBvPvLimitInput({ target: input } as unknown as Event);
+
+        expect(input.value).toBe('');
+        expect(filtersServiceStub.bvPvLimit()).toBe(0);
+    });
+
+    it('normalizes positive Force BV/PV Limit input to a nonnegative integer', () => {
+        const component = TestBed.createComponent(UnitSearchComponent).componentInstance;
+        const input = document.createElement('input');
+        input.value = '1000.9';
+
+        component.onBvPvLimitInput({ target: input } as unknown as Event);
+
+        expect(input.value).toBe('1000');
+        expect(filtersServiceStub.bvPvLimit()).toBe(1000);
+    });
+
+    it('updates BV normalization max delta at inclusive boundaries', () => {
+        const component = TestBed.createComponent(UnitSearchComponent).componentInstance;
+
+        component.setNormalizationMaxDelta(0);
+        expect(filtersServiceStub.classicBvNormalizationSettings().maxDelta).toBe(0);
+        component.setNormalizationMaxDelta(8);
+        expect(filtersServiceStub.classicBvNormalizationSettings().maxDelta).toBe(8);
+    });
+
+    it('rejects invalid BV normalization max delta values', () => {
+        const component = TestBed.createComponent(UnitSearchComponent).componentInstance;
+
+        for (const value of [-1, 9, 1.5, Number.NaN]) {
+            component.setNormalizationMaxDelta(value);
+        }
+
+        expect(filtersServiceStub.setBvNormalizationSettings).not.toHaveBeenCalled();
+        expect(filtersServiceStub.classicBvNormalizationSettings().maxDelta).toBe(8);
+    });
+
+    it('normalizes Target BV input bounds', () => {
+        const component = TestBed.createComponent(UnitSearchComponent).componentInstance;
+
+        component.setNormalizationTargetBvBound('min', 1200.8);
+        expect(filtersServiceStub.classicBvNormalizationSettings().targetBv.min).toBe(1200);
+        component.setNormalizationTargetBvBound('max', 1000);
+        expect(filtersServiceStub.classicBvNormalizationSettings().targetBv).toEqual({ min: 1000, max: 1000 });
+    });
+
+    it('clamps Target BV values to 0–999999', () => {
+        const component = TestBed.createComponent(UnitSearchComponent).componentInstance;
+
+        component.setNormalizationTargetBvBound('min', -1);
+        expect(filtersServiceStub.classicBvNormalizationSettings().targetBv.min).toBe(0);
+
+        component.setNormalizationTargetBvBound('max', 1_000_000);
+        expect(filtersServiceStub.classicBvNormalizationSettings().targetBv.max).toBe(999_999);
+    });
+
+    it('rewrites Target BV inputs to clamped values when focus leaves', () => {
+        const component = TestBed.createComponent(UnitSearchComponent).componentInstance;
+        const minimumInput = document.createElement('input');
+        const maximumInput = document.createElement('input');
+        minimumInput.value = '-1000';
+        maximumInput.value = '1000000';
+
+        component.onNormalizationTargetBvBoundChange('min', { target: minimumInput } as unknown as Event);
+        component.onNormalizationTargetBvBoundChange('max', { target: maximumInput } as unknown as Event);
+
+        expect(minimumInput.value).toBe('0');
+        expect(maximumInput.value).toBe('999999');
+        expect(filtersServiceStub.classicBvNormalizationSettings().targetBv).toEqual({ min: 0, max: 999_999 });
+    });
+
+    it('treats an empty Target BV input as zero when focus leaves', () => {
+        const component = TestBed.createComponent(UnitSearchComponent).componentInstance;
+        const input = document.createElement('input');
+        input.value = '';
+
+        component.onNormalizationTargetBvBoundChange('min', { target: input } as unknown as Event);
+
+        expect(input.value).toBe('0');
+        expect(filtersServiceStub.classicBvNormalizationSettings().targetBv.min).toBe(0);
+    });
+
+    it('updates Gunnery and Piloting from normalization range sliders', () => {
+        const component = TestBed.createComponent(UnitSearchComponent).componentInstance;
+
+        component.setNormalizationSkillRange('gunnery', [2, 4]);
+        component.setNormalizationSkillRange('piloting', [3, 5]);
+
+        expect(filtersServiceStub.classicBvNormalizationSettings().gunnery).toEqual({ min: 2, max: 4 });
+        expect(filtersServiceStub.classicBvNormalizationSettings().piloting).toEqual({ min: 3, max: 5 });
+    });
+
+    it('rejects invalid normalization range slider values', () => {
+        const component = TestBed.createComponent(UnitSearchComponent).componentInstance;
+        filtersServiceStub.setBvNormalizationSettings.calls.reset();
+
+        for (const value of [[-1, 4], [2, 9], [5, 4], [1.5, 4]] as [number, number][]) {
+            component.setNormalizationSkillRange('gunnery', value);
+        }
+
+        expect(filtersServiceStub.setBvNormalizationSettings).not.toHaveBeenCalled();
+        expect(filtersServiceStub.classicBvNormalizationSettings().gunnery).toEqual({ min: 0, max: 8 });
     });
 
     it('expands the search view when selecting table view from compact mode', () => {

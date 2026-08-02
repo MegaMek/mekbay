@@ -51,6 +51,7 @@
                 <div class="mb-data-table-cell mb-data-table-body-cell"
                     [class.align-center]="column.align === 'center'"
                     [class.align-right]="column.align === 'right'"
+                    [class.tone-focus]="column.cellTone === 'focus'"
                     [ngClass]="resolveCellClass(column, row, i)">
                     @if (column.cellTemplate; as cellTemplate) {
                     <ng-container [ngTemplateOutlet]="cellTemplate" [ngTemplateOutletContext]="cellContext(row, column, i)"></ng-container>

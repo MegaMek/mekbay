@@ -21,15 +21,6 @@ describe('SimpleSliderComponent', () => {
         return fixture;
     }
 
-    it('positions the styled thumb and fill from the current value', () => {
-        const fixture = createComponent(25);
-        const container = fixture.nativeElement.querySelector('.simple-slider-container') as HTMLElement;
-        const fill = fixture.nativeElement.querySelector('.simple-slider-fill') as HTMLElement;
-
-        expect(container.style.getPropertyValue('--simple-slider-thumb-left')).toBe('25%');
-        expect(fill.style.width).toBe('25%');
-    });
-
     it('keeps the visual track on the same min/max bounds as the thumb', () => {
         const fixture = createComponent();
         const track = fixture.nativeElement.querySelector('.simple-slider-track') as HTMLElement;
@@ -37,6 +28,21 @@ describe('SimpleSliderComponent', () => {
 
         expect(style.marginLeft).toBe('0px');
         expect(style.width).not.toContain('calc');
+    });
+
+    it('uses a neutral thumb until the slider receives focus', () => {
+        const fixture = createComponent();
+        const container = fixture.nativeElement.querySelector('.simple-slider-container') as HTMLElement;
+        const input = fixture.nativeElement.querySelector('.simple-slider-input') as HTMLInputElement;
+        container.style.setProperty('--text-color-secondary', 'rgb(128, 128, 128)');
+        container.style.setProperty('--bt-yellow', 'rgb(255, 255, 0)');
+
+        expect(getComputedStyle(container).getPropertyValue('--simple-slider-thumb-color').trim())
+            .toBe('rgb(128, 128, 128)');
+
+        input.focus();
+
+        expect(getComputedStyle(container).getPropertyValue('--simple-slider-thumb-color').trim()).toBe('rgb(255, 255, 0)');
     });
 
     it('emits value changes from the native range input', () => {

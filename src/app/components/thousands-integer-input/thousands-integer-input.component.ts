@@ -31,6 +31,7 @@
  * affiliated with Microsoft.
  */
 import { Component, ElementRef, ViewChild, effect, input, output, signal } from '@angular/core';
+import { normalizeBoundedInteger } from '../../utils/bounded-integer-input.util';
 
 @Component({
     selector: 'thousands-integer-input',
@@ -97,7 +98,7 @@ export class ThousandsIntegerInputComponent {
 
     onBlur(): void {
         const input = this.inputElement?.nativeElement;
-        const value = this.parseFormattedValue(input?.value ?? this.displayValue());
+        const value = this.clampValue(this.parseFormattedValue(input?.value ?? this.displayValue()));
         this.focused.set(false);
         this.valueCommit.emit(value);
         this.displayValue.set(this.formatNumberValue(value, this.emptyWhenZero()));
@@ -146,17 +147,10 @@ export class ThousandsIntegerInputComponent {
     }
 
     private clampValue(value: number): number {
-        const min = this.min();
-        const max = this.max();
-        let clampedValue = Math.max(0, Math.floor(value));
-        if (min !== null) {
-            clampedValue = Math.max(min, clampedValue);
-        }
-        if (max !== null) {
-            clampedValue = Math.min(max, clampedValue);
-        }
-
-        return clampedValue;
+        return normalizeBoundedInteger(value, {
+            min: this.min() ?? 0,
+            max: this.max() ?? Number.MAX_SAFE_INTEGER,
+        });
     }
 
     private deleteDigitAt(input: HTMLInputElement, digitIndex: number): void {
@@ -187,7 +181,7 @@ export class ThousandsIntegerInputComponent {
             return '';
         }
 
-        const integerValue = Math.max(0, Math.floor(value));
+        const integerValue = this.clampValue(value);
         return integerValue === 0 && emptyWhenZero ? '' : this.formatDigits(`${integerValue}`);
     }
 

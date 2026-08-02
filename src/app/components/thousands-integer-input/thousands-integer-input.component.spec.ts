@@ -171,6 +171,26 @@ describe('ThousandsIntegerInputComponent', () => {
 
         expect(input.value).toBe('15');
     });
+
+    it('commits the bounded value when focus leaves', () => {
+        const fixture = TestBed.createComponent(ThousandsIntegerInputComponent);
+        const commits: number[] = [];
+        fixture.componentInstance.valueCommit.subscribe(value => commits.push(value));
+        fixture.componentRef.setInput('value', 10);
+        fixture.componentRef.setInput('min', 10);
+        fixture.componentRef.setInput('max', 15);
+        fixture.detectChanges();
+
+        const input = getInput(fixture.nativeElement);
+        input.dispatchEvent(new Event('focus'));
+        input.value = '100';
+        input.dispatchEvent(new Event('blur'));
+        fixture.componentRef.setInput('value', commits[commits.length - 1]);
+        fixture.detectChanges();
+
+        expect(commits).toEqual([15]);
+        expect(input.value).toBe('15');
+    });
 });
 
 function getInput(element: HTMLElement): HTMLInputElement {

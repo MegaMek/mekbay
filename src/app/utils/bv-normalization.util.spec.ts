@@ -27,11 +27,13 @@ function settings(
     gunneryMax = 8,
     pilotingMin = 0,
     pilotingMax = 8,
+    maxDelta = 8,
 ): BvNormalizationSettings {
     return {
         targetBv: { min: targetMin, max: targetMax },
         gunnery: { min: gunneryMin, max: gunneryMax },
         piloting: { min: pilotingMin, max: pilotingMax },
+        maxDelta,
     };
 }
 
@@ -61,6 +63,7 @@ describe('classic BV normalization', () => {
         it('accepts inclusive skill boundaries and an ordered nonnegative target', () => {
             expect(isValidClassicSkillRange({ min: 0, max: 8 })).toBeTrue();
             expect(isValidTargetBvRange({ min: 0, max: 0 })).toBeTrue();
+            expect(isValidTargetBvRange({ min: 0, max: 999_999 })).toBeTrue();
             expect(isValidBvNormalizationSettings(settings(0, 100, 0, 8, 0, 8))).toBeTrue();
         });
 
@@ -84,12 +87,24 @@ describe('classic BV normalization', () => {
                 { min: 1001, max: 1000 },
                 { min: -1, max: 1000 },
                 { min: 999.5, max: 1000 },
+                { min: 0, max: 1_000_000 },
                 { min: Number.NaN, max: 1000 },
                 { min: 0, max: Number.POSITIVE_INFINITY },
             ];
 
             for (const range of invalidRanges) {
                 expect(isValidTargetBvRange(range)).withContext(JSON.stringify(range)).toBeFalse();
+            }
+        });
+
+        it('accepts max delta boundaries and rejects invalid values', () => {
+            expect(isValidBvNormalizationSettings(settings(0, 100, 0, 8, 0, 8, 0))).toBeTrue();
+            expect(isValidBvNormalizationSettings(settings(0, 100, 0, 8, 0, 8, 8))).toBeTrue();
+
+            for (const maxDelta of [-1, 9, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+                expect(isValidBvNormalizationSettings(settings(0, 100, 0, 8, 0, 8, maxDelta)))
+                    .withContext(`${maxDelta}`)
+                    .toBeFalse();
             }
         });
     });
@@ -117,6 +132,40 @@ describe('classic BV normalization', () => {
             .toEqual({ adjustedBv: 1100, gunnery: 4, piloting: 4 });
     });
 
+    it('allows only skill pairs within max delta, including the boundary', () => {
+        const unit = createUnit();
+        const allowedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 2, 3);
+        const disallowedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 2, 4);
+
+        expect(findBvNormalizationMatch(unit, settings(allowedBv, allowedBv, 2, 2, 3, 3, 1)))
+            .toEqual({ adjustedBv: allowedBv, gunnery: 2, piloting: 3 });
+        expect(findBvNormalizationMatch(unit, settings(disallowedBv, disallowedBv, 2, 2, 4, 4, 1)))
+            .toBeNull();
+    });
+
+    it('allows only equal effective skills when max delta is zero', () => {
+        const unit = createUnit();
+        const equalBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 3, 3);
+
+        expect(findBvNormalizationMatch(unit, settings(equalBv, equalBv, 3, 3, 2, 3, 0)))
+            .toEqual({ adjustedBv: equalBv, gunnery: 3, piloting: 3 });
+    });
+
+    it('ignores the Piloting range and max delta for fixed-Piloting units', () => {
+        const unit = createUnit({ type: 'ProtoMek' as UnitType });
+        const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 3, 5);
+
+        expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 3, 3, 0, 0, 0)))
+            .toEqual({ adjustedBv, gunnery: 3, piloting: 5 });
+    });
+
+    it('still limits fixed-Piloting units to the selected Gunnery range', () => {
+        const unit = createUnit({ type: 'ProtoMek' as UnitType });
+        const defaultBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 5);
+
+        expect(findBvNormalizationMatch(unit, settings(defaultBv, defaultBv, 3, 3, 0, 0, 0))).toBeNull();
+    });
+
     it('returns null when no pair reaches the target or the base BV is invalid', () => {
         expect(findBvNormalizationMatch(createUnit(), settings(3000, 4000, 4, 5, 4, 5))).toBeNull();
         expect(findBvNormalizationMatch(createUnit({ bv: 0 }), settings(0, 0))).toBeNull();
@@ -124,10 +173,24 @@ describe('classic BV normalization', () => {
         expect(findBvNormalizationMatch(createUnit({ bv: Number.NaN }), settings(0, 100))).toBeNull();
     });
 
-    it('prefers the adjusted BV closest to the target midpoint', () => {
+    it('keeps the effective default crew when it fits instead of moving closer to the midpoint', () => {
         const match = findBvNormalizationMatch(createUnit(), settings(850, 1100, 4, 5, 4, 5));
 
-        expect(match).toEqual({ adjustedBv: 990, gunnery: 5, piloting: 4 });
+        expect(match).toEqual({ adjustedBv: 1000, gunnery: 4, piloting: 5 });
+    });
+
+    it('prefers the adjusted BV closest to the target midpoint when the default does not fit', () => {
+        const match = findBvNormalizationMatch(createUnit(), settings(850, 999, 4, 5, 4, 5));
+
+        expect(match).toEqual({ adjustedBv: 900, gunnery: 5, piloting: 5 });
+    });
+
+    it('does not use the default crew when a variable Piloting range excludes it', () => {
+        const unit = createUnit();
+        const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 4);
+
+        expect(findBvNormalizationMatch(unit, settings(1000, 1100, 4, 4, 4, 4)))
+            .toEqual({ adjustedBv, gunnery: 4, piloting: 4 });
     });
 
     it('prefers the pair closest to default 4/5 when adjusted BV distances tie', () => {
@@ -172,7 +235,7 @@ describe('classic BV normalization', () => {
         });
         const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 8);
 
-        expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 4, 4, 0, 8)))
+        expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 4, 4, 0, 0, 0)))
             .toEqual({ adjustedBv, gunnery: 4, piloting: 8 });
     });
 

@@ -154,6 +154,7 @@ describe('unit-search worker', () => {
                 targetBv: { min: 1000, max: 1000 },
                 gunnery: { min: 4, max: 4 },
                 piloting: { min: 5, max: 5 },
+                maxDelta: 1,
             },
         });
 

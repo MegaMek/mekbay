@@ -94,6 +94,9 @@ import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { normalizeUnitSearchRange, rangeFilterAllowsFloatingValues } from '../../utils/unit-search-range-dialog.util';
 import { VariableSizeVirtualScrollDirective } from '../../directives/variable-size-virtual-scroll.directive';
 import type { UnitSearchViewMode } from '../../models/options.model';
+import { RangeSliderComponent } from '../range-slider/range-slider.component';
+import { SimpleSliderComponent } from '../simple-slider/simple-slider.component';
+import { normalizeBoundedInteger, normalizeBoundedIntegerInput } from '../../utils/bounded-integer-input.util';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup extends UnitVariantGroupIdentity {
@@ -134,7 +137,7 @@ interface ActiveVariantGroupFilter extends UnitVariantGroupIdentity {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, OverlayModule, LongPressDirective, TooltipDirective, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent, VariableSizeVirtualScrollDirective],
+    imports: [CommonModule, ScrollingModule, OverlayModule, LongPressDirective, TooltipDirective, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent, VariableSizeVirtualScrollDirective, RangeSliderComponent, SimpleSliderComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.scss',
     host: {
@@ -149,7 +152,15 @@ export class UnitSearchComponent {
     ];
     readonly bvNormalizationTooltip = [
         { value: 'Finds a Gunnery/Piloting combination within the selected ranges that places each unit inside the Target BV range.' },
+        { value: 'A unit that fits with its default crew keeps those skills.' },
+        { value: 'Max Delta limits the absolute difference between the effective Gunnery and Piloting values.' },
+        { value: 'Units with fixed Piloting ignore the Piloting range and Max Delta; only Gunnery is adjusted.' },
         { value: 'Matching results keep their selected skills and adjusted BV when viewed or added to a force.' },
+    ];
+    readonly normalizationMaxDeltaTooltip = [
+        { value: 'Limits the absolute difference between effective Gunnery and Piloting for eligible skill combinations.' },
+        { value: 'A value of 0 requires equal skills. A value of 8 allows every combination.' },
+        { value: 'This limit does not apply to units with fixed Piloting.' },
     ];
     private static supportsCssAnchorPositioning(): boolean {
         const css = globalThis.CSS;
@@ -579,7 +590,8 @@ export class UnitSearchComponent {
             return this.asTableSortSlotHeader() ? '1534px' : '1446px';
         }
 
-        return this.cbtTableSortSlotHeader() ? '1878px' : '1782px';
+        const normalizationWidth = this.filtersService.activeBvNormalization() ? 56 : 0;
+        return `${(this.cbtTableSortSlotHeader() ? 1878 : 1782) + normalizationWidth}px`;
     });
 
     readonly unitSearchTableColumns = computed<readonly DataTableColumn<Unit>[]>(() => {
@@ -657,6 +669,20 @@ export class UnitSearchComponent {
                     cellClass: this.tableCellClass('cbt-td-bv is-bold', this.isSortActive('bv')),
                     align: 'right',
                 },
+            ];
+
+            if (this.filtersService.activeBvNormalization()) {
+                columns.push({
+                    id: 'normalized-skills',
+                    header: 'G/P',
+                    track: '56px',
+                    value: unit => this.formatNormalizedSkills(unit),
+                    cellTone: 'focus',
+                    align: 'center',
+                });
+            }
+
+            columns.push(
                 {
                     id: 'tons',
                     header: 'Tons',
@@ -764,7 +790,7 @@ export class UnitSearchComponent {
                     cellClass: this.tableCellClass('cbt-td-cost', this.isSortActive('cost')),
                     align: 'right',
                 },
-            ];
+            );
 
             if (this.cbtTableSortSlotHeader()) {
                 columns.push({
@@ -2231,6 +2257,11 @@ export class UnitSearchComponent {
         );
     }
 
+    formatNormalizedSkills(unit: Unit): string {
+        const context = this.getSearchResultContext(unit);
+        return `${context.gunnery}/${context.piloting}`;
+    }
+
     formatAlphaStrikePv(unit: Unit, gunnery: number): string {
         return formatBvPv(
             adjustPointValueForSkill(unit.as.PV, gunnery),
@@ -2293,45 +2324,76 @@ export class UnitSearchComponent {
         this.activeIndex.set(null);
     }
 
+    onBvPvLimitInput(event: Event): void {
+        const normalizedValue = normalizeBoundedIntegerInput(event, {
+            min: 0,
+            max: Number.MAX_SAFE_INTEGER,
+            emptyWhenZero: true,
+        });
+        this.setBvPvLimit(normalizedValue);
+    }
+
     togglePilotBvSection(): void {
         this.pilotBvSectionExpanded.update(expanded => !expanded);
     }
 
     setSearchBudgetMode(mode: 'force-limit' | 'bv-normalization'): void {
         const nextMode = this.filtersService.budgetMode() === mode ? null : mode;
-        if (nextMode === 'bv-normalization') {
-            const current = this.filtersService.classicBvNormalizationSettings();
-            this.filtersService.setBvNormalizationSettings({
-                targetBv: current.targetBv,
-                gunnery: current.targetBv.max === DEFAULT_CLASSIC_BV_NORMALIZATION_MAX
-                    ? { min: this.filtersService.pilotGunnerySkill(), max: this.filtersService.pilotGunnerySkill() }
-                    : current.gunnery,
-                piloting: current.targetBv.max === DEFAULT_CLASSIC_BV_NORMALIZATION_MAX
-                    ? { min: this.filtersService.pilotPilotingSkill(), max: this.filtersService.pilotPilotingSkill() }
-                    : current.piloting,
-            });
-        }
         this.filtersService.setBudgetMode(nextMode);
         this.activeIndex.set(null);
     }
 
-    setNormalizationRangeValue(
-        range: 'targetBv' | 'gunnery' | 'piloting',
-        bound: 'min' | 'max',
-        value: number,
-    ): void {
+    setNormalizationTargetBvBound(bound: 'min' | 'max', value: number): void {
         const current = this.filtersService.classicBvNormalizationSettings();
-        const isSkillRange = range !== 'targetBv';
-        if (!Number.isInteger(value)
-            || value < 0
-            || (isSkillRange && value > 8)) {
+        if (!Number.isFinite(value)) return;
+
+        const normalizedValue = normalizeBoundedInteger(value, {
+            min: 0,
+            max: DEFAULT_CLASSIC_BV_NORMALIZATION_MAX,
+        });
+
+        this.filtersService.setBvNormalizationSettings({
+            ...current,
+            targetBv: updateNumericRangeBound(current.targetBv, bound, normalizedValue),
+        });
+        this.activeIndex.set(null);
+    }
+
+    onNormalizationTargetBvBoundChange(bound: 'min' | 'max', event: Event): void {
+        const value = normalizeBoundedIntegerInput(event, {
+            min: 0,
+            max: DEFAULT_CLASSIC_BV_NORMALIZATION_MAX,
+        });
+        this.setNormalizationTargetBvBound(bound, value);
+        const input = event.target as HTMLInputElement | null;
+        if (input) {
+            input.value = `${this.filtersService.classicBvNormalizationSettings().targetBv[bound]}`;
+        }
+    }
+
+    setNormalizationMaxDelta(value: number): void {
+        if (!Number.isInteger(value) || value < 0 || value > 8) {
             return;
         }
-        const next = {
-            ...current,
-            [range]: updateNumericRangeBound(current[range], bound, value),
-        };
-        this.filtersService.setBvNormalizationSettings(next);
+
+        this.filtersService.setBvNormalizationSettings({
+            ...this.filtersService.classicBvNormalizationSettings(),
+            maxDelta: value,
+        });
+        this.activeIndex.set(null);
+    }
+
+    setNormalizationSkillRange(range: 'gunnery' | 'piloting', value: [number, number]): void {
+        const [min, max] = value;
+        if (!Number.isInteger(min) || !Number.isInteger(max)
+            || min < 0 || max > 8 || min > max) {
+            return;
+        }
+
+        this.filtersService.setBvNormalizationSettings({
+            ...this.filtersService.classicBvNormalizationSettings(),
+            [range]: { min, max },
+        });
         this.activeIndex.set(null);
     }
 

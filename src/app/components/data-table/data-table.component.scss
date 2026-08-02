@@ -104,6 +104,10 @@
     overflow-wrap: anywhere;
 }
 
+.mb-data-table-body-cell.tone-focus {
+    color: var(--primary-focus-color);
+}
+
 .mb-data-table-header-cell {
     background-color: inherit;
 }

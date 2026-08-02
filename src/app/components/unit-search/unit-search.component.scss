@@ -957,6 +957,11 @@
     white-space: nowrap;
 }
 
+.tooltip-label {
+    text-decoration: underline dotted var(--text-color-tertiary);
+    text-underline-offset: 2px;
+}
+
 .normalization-grid {
     display: grid;
     grid-template-columns: minmax(68px, auto) minmax(0, 1fr) auto minmax(0, 1fr);
@@ -976,6 +981,12 @@
 .bvfilter-input-label {
     color: var(--text-color-secondary);
     font-weight: 600;
+}
+
+.normalization-slider {
+    display: block;
+    grid-column: 2 / 5;
+    min-width: 0;
 }
 
 .normalization-input {

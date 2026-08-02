@@ -4,6 +4,8 @@
 }
 
 .simple-slider-container {
+    --simple-slider-thumb-color: var(--text-color-secondary);
+
     position: relative;
     width: calc(100% - 18px);
     height: 18px;
@@ -14,8 +16,7 @@
     touch-action: none;
 }
 
-.simple-slider-track,
-.simple-slider-fill {
+.simple-slider-track {
     position: absolute;
     top: 50%;
     left: 0;
@@ -29,15 +30,6 @@
     width: 100%;
     background-color: #666;
     z-index: 1;
-}
-
-.simple-slider-fill {
-    background-color: var(--bt-yellow-background-bright);
-}
-
-.simple-slider-fill {
-    width: 0;
-    z-index: 2;
 }
 
 .simple-slider-input {
@@ -75,17 +67,22 @@
     background-repeat: no-repeat;
     background-origin: border-box;
     background-image:
-        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
-        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
-        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
-        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
-        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
-        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
-        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
-        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
-        linear-gradient(var(--bt-yellow), var(--bt-yellow));
+        linear-gradient(var(--simple-slider-thumb-color), var(--simple-slider-thumb-color)),
+        linear-gradient(var(--simple-slider-thumb-color), var(--simple-slider-thumb-color)),
+        linear-gradient(var(--simple-slider-thumb-color), var(--simple-slider-thumb-color)),
+        linear-gradient(var(--simple-slider-thumb-color), var(--simple-slider-thumb-color)),
+        linear-gradient(var(--simple-slider-thumb-color), var(--simple-slider-thumb-color)),
+        linear-gradient(var(--simple-slider-thumb-color), var(--simple-slider-thumb-color)),
+        linear-gradient(var(--simple-slider-thumb-color), var(--simple-slider-thumb-color)),
+        linear-gradient(var(--simple-slider-thumb-color), var(--simple-slider-thumb-color)),
+        linear-gradient(var(--simple-slider-thumb-color), var(--simple-slider-thumb-color));
     background-size: 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 4px 4px;
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right, center center;
+}
+
+.simple-slider-container:active,
+.simple-slider-container:focus-within {
+    --simple-slider-thumb-color: var(--bt-yellow);
 }
 
 .simple-slider-container.disabled {

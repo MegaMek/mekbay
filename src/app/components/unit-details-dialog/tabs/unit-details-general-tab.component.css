@@ -75,6 +75,10 @@
     word-break: break-word;
 }
 
+.basic-info-block .pilot-skill-value {
+    color: var(--primary-focus-color);
+}
+
 /* Quirks */
 .quirks {
     display: flex;

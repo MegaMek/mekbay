@@ -36,6 +36,7 @@ import type { Era } from '../models/eras.model';
 import type { Unit } from '../models/units.model';
 import {
     DEFAULT_CLASSIC_BV_NORMALIZATION_MAX,
+    DEFAULT_CLASSIC_BV_NORMALIZATION_MAX_DELTA,
     type BvNormalizationMatch,
     type BvNormalizationSettings,
     type UnitSearchBudgetMode,
@@ -257,8 +258,9 @@ export class UnitSearchFiltersService {
     readonly budgetMode = signal<UnitSearchBudgetMode>(null);
     readonly classicBvNormalizationSettings = signal<BvNormalizationSettings>({
         targetBv: { min: 0, max: DEFAULT_CLASSIC_BV_NORMALIZATION_MAX },
-        gunnery: { min: DEFAULT_GUNNERY_SKILL, max: DEFAULT_GUNNERY_SKILL },
-        piloting: { min: DEFAULT_PILOTING_SKILL, max: DEFAULT_PILOTING_SKILL },
+        gunnery: { min: 0, max: 8 },
+        piloting: { min: 0, max: 8 },
+        maxDelta: DEFAULT_CLASSIC_BV_NORMALIZATION_MAX_DELTA,
     });
     readonly activeBvNormalization = computed<BvNormalizationSettings | null>(() => {
         return this.gameService.currentGameSystem() === GameSystem.CLASSIC
@@ -3919,8 +3921,9 @@ export class UnitSearchFiltersService {
         this.budgetMode.set(null);
         this.classicBvNormalizationSettings.set({
             targetBv: { min: 0, max: DEFAULT_CLASSIC_BV_NORMALIZATION_MAX },
-            gunnery: { min: DEFAULT_GUNNERY_SKILL, max: DEFAULT_GUNNERY_SKILL },
-            piloting: { min: DEFAULT_PILOTING_SKILL, max: DEFAULT_PILOTING_SKILL },
+            gunnery: { min: 0, max: 8 },
+            piloting: { min: 0, max: 8 },
+            maxDelta: DEFAULT_CLASSIC_BV_NORMALIZATION_MAX_DELTA,
         });
         this.workerNormalizationMatchesState.set(new Map());
         this.refreshWorkerSearchIfNeeded();
@@ -4219,10 +4222,15 @@ export class UnitSearchFiltersService {
             }
             this.setBudgetMode('force-limit');
         } else if (filter.budgetMode === 'bv-normalization'
-            && filter.bvNormalization
-            && isValidBvNormalizationSettings(filter.bvNormalization)) {
-            this.setBvNormalizationSettings(filter.bvNormalization);
-            this.setBudgetMode('bv-normalization');
+            && filter.bvNormalization) {
+            const bvNormalization = {
+                ...filter.bvNormalization,
+                maxDelta: filter.bvNormalization.maxDelta ?? DEFAULT_CLASSIC_BV_NORMALIZATION_MAX_DELTA,
+            };
+            if (isValidBvNormalizationSettings(bvNormalization)) {
+                this.setBvNormalizationSettings(bvNormalization);
+                this.setBudgetMode('bv-normalization');
+            }
         }
     }
 }

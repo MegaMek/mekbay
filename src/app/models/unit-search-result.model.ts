@@ -38,12 +38,16 @@ export interface UnitSearchNumericRange {
 }
 
 export const DEFAULT_CLASSIC_BV_NORMALIZATION_MAX = 999_999;
+export const DEFAULT_CLASSIC_BV_NORMALIZATION_MAX_DELTA = 8;
 
 /** User-selected settings for matching a unit to a target adjusted BV. */
 export interface BvNormalizationSettings {
     readonly targetBv: UnitSearchNumericRange;
     readonly gunnery: UnitSearchNumericRange;
+    /** Ignored for units whose Piloting value is mandatory. */
     readonly piloting: UnitSearchNumericRange;
+    /** Ignored for units whose Piloting value is mandatory. */
+    readonly maxDelta: number;
 }
 
 /** The deterministic skill pair selected for a normalized search result. */

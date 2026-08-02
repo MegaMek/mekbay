@@ -39,6 +39,7 @@ import { LongPressDirective } from '../../directives/long-press.directive';
 import { VariableSizeVirtualScrollDirective } from '../../directives/variable-size-virtual-scroll.directive';
 
 export type DataTableClassValue = string | string[] | Set<string> | Record<string, boolean> | null | undefined;
+export type DataTableCellTone = 'focus';
 
 export interface DataTableCellContext<T> {
     $implicit: T;
@@ -60,6 +61,7 @@ export interface DataTableColumn<T> {
     track: string;
     headerClass?: DataTableClassValue;
     cellClass?: DataTableClassValue | ((row: T, index: number) => DataTableClassValue);
+    cellTone?: DataTableCellTone;
     align?: 'left' | 'center' | 'right';
     value?: (row: T, index: number) => unknown;
     cellTemplate?: TemplateRef<DataTableCellContext<T>>;

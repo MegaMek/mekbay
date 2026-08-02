@@ -101,4 +101,5 @@ describe('DataTableComponent', () => {
         const row = hostElement().querySelector<HTMLElement>('.mb-data-table-row-item')!;
         expect(row.getBoundingClientRect().height).toBeGreaterThanOrEqual(64);
     });
+
 });

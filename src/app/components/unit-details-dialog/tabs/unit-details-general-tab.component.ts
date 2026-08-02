@@ -80,6 +80,19 @@ const ADDITIONAL_COMPONENT_FLAGS: EquipmentFlag[] = ['F_HEAT_SINK', 'F_DOUBLE_HE
 const CASE_COMPONENT_FLAGS: EquipmentFlag[] = ['F_CASE', 'F_CASE_II'];
 const WEAPON_MODE_MISC_COMPONENT_FLAGS: EquipmentFlag[] = ['F_CLUB', 'F_HAND_WEAPON'];
 
+export function shouldShowAdjustedPilotSkills(
+    adjustedBv: number | null,
+    baseBv: number,
+    gunnery: number | undefined,
+    piloting: number | undefined,
+): boolean {
+    return adjustedBv !== null
+        && Number.isFinite(adjustedBv)
+        && adjustedBv !== baseBv
+        && Number.isFinite(gunnery)
+        && Number.isFinite(piloting);
+}
+
 @Component({
     selector: 'unit-details-general-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -238,6 +251,15 @@ export class UnitDetailsGeneralTabComponent {
     displayedBv = computed(() => {
         const unit = this.unit();
         return formatBvPv(this.adjustedBV() ?? unit.bv, unit.bv, 'both');
+    });
+
+    showAdjustedPilotSkills = computed(() => {
+        return shouldShowAdjustedPilotSkills(
+            this.adjustedBV(),
+            this.unit().bv,
+            this.gunnerySkill(),
+            this.pilotingSkill(),
+        );
     });
 
     formatThousands(value: number): string {

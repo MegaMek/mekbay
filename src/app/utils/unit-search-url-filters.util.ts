@@ -40,7 +40,7 @@ import { getAdvancedFilterConfigByKey, getPublicUnitSearchPropertyKey, normalize
 import { parseValues } from './semantic-filter.util';
 import { normalizeMultiStateSelection } from './unit-search-shared.util';
 import type { UnitSearchViewMode } from '../models/options.model';
-import type { BvNormalizationSettings, UnitSearchBudgetMode } from '../models/unit-search-result.model';
+import { DEFAULT_CLASSIC_BV_NORMALIZATION_MAX_DELTA, type BvNormalizationSettings, type UnitSearchBudgetMode } from '../models/unit-search-result.model';
 import { isValidBvNormalizationSettings } from './bv-normalization.util';
 
 export interface ParsedUnitSearchScalarUrlState {
@@ -90,6 +90,7 @@ interface UnitSearchQueryParameters {
     gMax: number | null;
     pMin: number | null;
     pMax: number | null;
+    maxDelta: number | null;
     expanded: 'true' | null;
     view: Exclude<UnitSearchViewMode, 'list'> | null;
     gs?: GameSystem | null;
@@ -118,12 +119,12 @@ function splitCompactFilterValues(valueStr: string): string[] {
 }
 
 function parseBoundedInteger(value: string | null | undefined, min: number, max: number): number | null {
-    if (!value) {
+    if (value === null || value === undefined || value === '') {
         return null;
     }
 
-    const parsed = parseInt(value, 10);
-    if (isNaN(parsed) || parsed < min || parsed > max) {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
         return null;
     }
 
@@ -182,6 +183,9 @@ export function parseUnitSearchScalarUrlState(
             min: parseBoundedInteger(params.get('pMin'), 0, 8) ?? -1,
             max: parseBoundedInteger(params.get('pMax'), 0, 8) ?? -1,
         },
+        maxDelta: params.has('maxDelta')
+            ? parseBoundedInteger(params.get('maxDelta'), 0, 8) ?? -1
+            : DEFAULT_CLASSIC_BV_NORMALIZATION_MAX_DELTA,
     };
     const rawBudgetMode = params.get('bvMode');
     const bvNormalization = rawBudgetMode === 'normalize'
@@ -299,6 +303,7 @@ export function buildUnitSearchQueryParameters({
         gMax: normalizationActive ? bvNormalization.gunnery.max : null,
         pMin: normalizationActive ? bvNormalization.piloting.min : null,
         pMax: normalizationActive ? bvNormalization.piloting.max : null,
+        maxDelta: normalizationActive ? bvNormalization.maxDelta : null,
         expanded: expanded && viewMode !== 'table' ? 'true' : null,
         view: viewMode === 'list' ? null : viewMode,
     };

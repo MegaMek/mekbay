@@ -90,6 +90,7 @@ import { EditASPilotDialogComponent, type EditASPilotDialogData, type EditASPilo
 import { getUnitVariantGroupKey } from '../../utils/unit-variant.util';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { uuidv7 } from '../../utils/uuid.util';
+import { normalizeBoundedInteger, normalizeBoundedIntegerInput } from '../../utils/bounded-integer-input.util';
 
 export interface SearchForceGeneratorDialogConfig {
     gameSystem: GameSystem;
@@ -629,7 +630,11 @@ export class SearchForceGeneratorDialogComponent {
 
     onMaxPilotSkillDeltaBlur(event: Event): void {
         this.onMaxPilotSkillDeltaChange(event);
-        this.syncInputValue(event, this.maxPilotSkillDelta());
+        normalizeBoundedIntegerInput(event, {
+            min: 0,
+            max: this.maxPilotSkill,
+            fallback: this.maxPilotSkillDelta(),
+        });
     }
 
     formatSkillRange(range: readonly [number, number]): string {
@@ -805,7 +810,11 @@ export class SearchForceGeneratorDialogComponent {
 
     onBudgetMaxBlur(event: Event): void {
         this.setBudgetMax(this.parseNumericValue(event, 0));
-        this.syncInputValue(event, this.budgetRange().max || '');
+        normalizeBoundedIntegerInput(event, {
+            min: 0,
+            max: Number.MAX_SAFE_INTEGER,
+            emptyWhenZero: true,
+        });
     }
 
     private setBudgetMax(value: number): void {
@@ -829,7 +838,11 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     onMinUnitCountBlur(event: Event): void {
-        this.syncInputValue(event, this.minUnitCount());
+        normalizeBoundedIntegerInput(event, {
+            min: 1,
+            max: this.MAX_UNITS,
+            fallback: this.minUnitCount(),
+        });
     }
 
     onMaxUnitCountBlur(event: Event): void {
@@ -840,7 +853,11 @@ export class SearchForceGeneratorDialogComponent {
             },
             this.parseNumericValue(event, this.minUnitCount()),
         ));
-        this.syncInputValue(event, this.maxUnitCount());
+        normalizeBoundedIntegerInput(event, {
+            min: this.minUnitCount(),
+            max: this.MAX_UNITS,
+            fallback: this.maxUnitCount(),
+        });
     }
 
     readonly shouldBlockMobileSwipe = (): boolean => typeof window === 'undefined' || window.innerWidth > 960;
@@ -1603,8 +1620,11 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private normalizeSkillValue(value: number, fallback: number): number {
-        const resolvedValue = Number.isFinite(value) ? value : fallback;
-        return Math.min(this.maxPilotSkill, Math.max(this.minPilotSkill, Math.floor(resolvedValue)));
+        return normalizeBoundedInteger(value, {
+            min: this.minPilotSkill,
+            max: this.maxPilotSkill,
+            fallback,
+        });
     }
 
     private normalizeSkillRange(
@@ -1617,7 +1637,11 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private normalizeMaxPilotSkillDelta(value: number): number {
-        return Math.min(this.maxPilotSkill, Math.max(0, Math.floor(Number.isFinite(value) ? value : this.maxPilotSkillDelta())));
+        return normalizeBoundedInteger(value, {
+            min: 0,
+            max: this.maxPilotSkill,
+            fallback: this.maxPilotSkillDelta(),
+        });
     }
 
     private normalizeMobileSwipeRatio(ratio: number): number {
@@ -1634,17 +1658,12 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private parseNumericValue(event: Event, fallback: number): number {
-        const value = Number.parseInt((event.target as HTMLInputElement).value, 10);
-        return Number.isFinite(value) ? value : fallback;
-    }
-
-    private syncInputValue(event: Event, value: string | number): void {
         const input = event.target as HTMLInputElement | null;
-        if (!input) {
-            return;
-        }
-
-        input.value = `${value}`;
+        return normalizeBoundedInteger(input?.value, {
+            min: 0,
+            max: Number.MAX_SAFE_INTEGER,
+            fallback,
+        });
     }
 
     private togglePreviewUnitLock(unitEntry: ForcePreviewUnit): void {

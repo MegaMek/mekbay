@@ -47,6 +47,7 @@ import { OptionsService } from '../../services/options.service';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { ThousandsIntegerInputComponent } from '../thousands-integer-input/thousands-integer-input.component';
+import { normalizeBoundedInteger, normalizeBoundedIntegerInput } from '../../utils/bounded-integer-input.util';
 
 interface ForceBudgetOptimizerDialogData {
     force: Force;
@@ -79,7 +80,7 @@ interface RemainingCostBounds {
     max: number;
 }
 
-interface ClassicSkillPriorities {
+interface CBTSkillPriorities {
     gunnery: number;
     piloting: number;
     balance: number;
@@ -136,7 +137,10 @@ export class ForceBudgetOptimizerDialogComponent {
     readonly maxPilotSkillDeltaActive = computed(() => this.maxPilotSkillDelta() !== DEFAULT_MAX_SKILL_DELTA);
 
     onTargetBudgetChange(value: number): void {
-        this.targetBudget.set(Math.max(0, Math.round(value || 0)));
+        this.targetBudget.set(normalizeBoundedInteger(value, {
+            min: 0,
+            max: Number.MAX_SAFE_INTEGER,
+        }));
         this.resultMessage.set(null);
     }
 
@@ -154,18 +158,22 @@ export class ForceBudgetOptimizerDialogComponent {
 
     onMaxPilotSkillDeltaChange(event: Event): void {
         const input = event.target as HTMLInputElement | null;
-        this.maxPilotSkillDelta.set(this.normalizeSkillValue(Number(input?.value ?? DEFAULT_MAX_SKILL_DELTA)));
+        this.maxPilotSkillDelta.set(normalizeBoundedInteger(input?.value, {
+            min: this.minPilotSkill,
+            max: this.maxPilotSkill,
+            fallback: DEFAULT_MAX_SKILL_DELTA,
+        }));
         this.resultMessage.set(null);
         void this.saveSkillSettings();
     }
 
     onMaxPilotSkillDeltaBlur(event: Event): void {
-        const input = event.target as HTMLInputElement | null;
-        const value = this.normalizeSkillValue(Number(input?.value ?? DEFAULT_MAX_SKILL_DELTA));
+        const value = normalizeBoundedIntegerInput(event, {
+            min: this.minPilotSkill,
+            max: this.maxPilotSkill,
+            fallback: DEFAULT_MAX_SKILL_DELTA,
+        });
         this.maxPilotSkillDelta.set(value);
-        if (input) {
-            input.value = String(value);
-        }
         void this.saveSkillSettings();
     }
 
@@ -264,7 +272,7 @@ export class ForceBudgetOptimizerDialogComponent {
             return this.createAlphaStrikeOptions(forceUnit);
         }
         if (!this.isAlphaStrike() && forceUnit instanceof CBTForceUnit) {
-            return this.createClassicOptions(forceUnit);
+            return this.createCBTOptions(forceUnit);
         }
         return [this.createCurrentChoice(forceUnit)];
     }
@@ -289,10 +297,10 @@ export class ForceBudgetOptimizerDialogComponent {
         return [...optionsByCost.values()];
     }
 
-    private createClassicOptions(forceUnit: CBTForceUnit): OptimizationChoice[] {
+    private createCBTOptions(forceUnit: CBTForceUnit): OptimizationChoice[] {
         const unit = forceUnit.getUnit();
         const preSkillBv = forceUnit.getBaseBv() + forceUnit.tagBV() + forceUnit.c3Tax() + forceUnit.externalStoresBv();
-        const priorities = this.getClassicSkillPriorities(unit);
+        const priorities = this.getCBTSkillPriorities(unit);
         const optionsByCost = new Map<number, OptimizationChoice>();
         const [minGunnery, maxGunnery] = this.gunnerySkillRange();
         const [minPiloting, maxPiloting] = this.pilotingSkillRange();
@@ -310,7 +318,7 @@ export class ForceBudgetOptimizerDialogComponent {
                     cost,
                     gunnery,
                     piloting,
-                    smartScore: this.getClassicSmartScore(priorities, gunnery, piloting),
+                    smartScore: this.getCBTSmartScore(priorities, gunnery, piloting),
                 };
                 this.keepBestOptionForCost(optionsByCost, option);
             }
@@ -340,13 +348,13 @@ export class ForceBudgetOptimizerDialogComponent {
         if (forceUnit instanceof CBTForceUnit) {
             const gunnery = forceUnit.gunnerySkill();
             const piloting = forceUnit.pilotingSkill();
-            const priorities = this.getClassicSkillPriorities(forceUnit.getUnit());
+            const priorities = this.getCBTSkillPriorities(forceUnit.getUnit());
             return {
                 forceUnit,
                 cost: forceUnit.getBv(),
                 gunnery,
                 piloting,
-                smartScore: this.getClassicSmartScore(priorities, gunnery, piloting),
+                smartScore: this.getCBTSmartScore(priorities, gunnery, piloting),
             };
         }
 
@@ -395,7 +403,7 @@ export class ForceBudgetOptimizerDialogComponent {
         return null;
     }
 
-    private getClassicSkillPriorities(unit: Unit): ClassicSkillPriorities {
+    private getCBTSkillPriorities(unit: Unit): CBTSkillPriorities {
         const rangedDamage = Math.max(0, unit.dpt || 0);
         const physicalDamage = this.getPhysicalDamagePerTurn(unit);
         const strongerDamage = Math.max(rangedDamage, physicalDamage);
@@ -412,11 +420,11 @@ export class ForceBudgetOptimizerDialogComponent {
     }
 
     private getAlphaStrikeSkillPriority(unit: Unit): number {
-        const priorities = this.getClassicSkillPriorities(unit);
+        const priorities = this.getCBTSkillPriorities(unit);
         return priorities.gunnery + priorities.piloting;
     }
 
-    private getClassicSmartScore(priorities: ClassicSkillPriorities, gunnery: number, piloting: number): number {
+    private getCBTSmartScore(priorities: CBTSkillPriorities, gunnery: number, piloting: number): number {
         const gunneryScore = priorities.gunnery * (MAX_PILOT_SKILL - gunnery);
         const pilotingScore = priorities.piloting * (MAX_PILOT_SKILL - piloting);
         const balanceScore = priorities.balance * (MAX_PILOT_SKILL - Math.abs(gunnery - piloting));
