@@ -49,6 +49,24 @@ function executeQuery(units: Unit[], query: string): Unit[] {
 }
 
 describe('unit-search-executor', () => {
+    it('filters mixed and nonmixed tech bases as distinct values', () => {
+        const units = [
+            createEmptyUnit({ name: 'Inner Sphere Unit', techBase: 'Inner Sphere', mixed: false }),
+            createEmptyUnit({ name: 'Clan Unit', techBase: 'Clan', mixed: false }),
+            createEmptyUnit({ name: 'Mixed Inner Sphere Unit', techBase: 'Inner Sphere', mixed: true }),
+            createEmptyUnit({ name: 'Mixed Clan Unit', techBase: 'Clan', mixed: true }),
+        ];
+
+        expect(executeQuery(units, 'tech="Inner Sphere"').map(unit => unit.name))
+            .toEqual(['Inner Sphere Unit']);
+        expect(executeQuery(units, 'tech=Clan').map(unit => unit.name))
+            .toEqual(['Clan Unit']);
+        expect(executeQuery(units, 'tech="Mixed (Inner Sphere)"').map(unit => unit.name))
+            .toEqual(['Mixed Inner Sphere Unit']);
+        expect(executeQuery(units, 'tech="Mixed (Clan)"').map(unit => unit.name))
+            .toEqual(['Mixed Clan Unit']);
+    });
+
     it('uses unit name order as the tie-breaker for equal sort option values', () => {
         const locust10 = createUnit({ name: 'Locust IIC 10', chassis: 'Locust IIC', model: '10', tons: 25 });
         const locust2 = createUnit({ name: 'Locust IIC 2', chassis: 'Locust IIC', model: '2', tons: 25 });
