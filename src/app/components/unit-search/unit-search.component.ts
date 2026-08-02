@@ -92,7 +92,6 @@ import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { normalizeUnitSearchRange, rangeFilterAllowsFloatingValues } from '../../utils/unit-search-range-dialog.util';
 import { VariableSizeVirtualScrollDirective } from '../../directives/variable-size-virtual-scroll.directive';
 import type { UnitSearchViewMode } from '../../models/options.model';
-import { getUnitTechBaseDisplay } from '../../models/tech.model';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup extends UnitVariantGroupIdentity {
@@ -679,10 +678,10 @@ export class UnitSearchComponent {
                     id: 'tech',
                     header: 'Tech',
                     track: '100px',
-                    value: unit => getUnitTechBaseDisplay(unit),
-                    sortKey: 'techBase',
-                    sortActive: this.isSortActive('techBase'),
-                    cellClass: this.tableCellClass('cbt-td-tech', this.isSortActive('techBase')),
+                    value: unit => unit._techBaseDisplay,
+                    sortKey: '_techBaseDisplay',
+                    sortActive: this.isSortActive('_techBaseDisplay'),
+                    cellClass: this.tableCellClass('cbt-td-tech', this.isSortActive('_techBaseDisplay')),
                 },
                 {
                     id: 'movement',
@@ -2014,7 +2013,7 @@ export class UnitSearchComponent {
      */
     private static readonly AS_TABLE_VISIBLE_KEYS = ['name', 'year', 'as.TP', 'role', 'as.PV', 'as.SZ', 'as._mv', 'as.TMM', 'as.Arm', 'as.Str', 'as.OV'];
     private static readonly AS_TABLE_VISIBLE_GROUPS = ['as.damage'];
-    private static readonly CBT_TABLE_VISIBLE_KEYS = ['name', 'type', 'subtype', 'role', 'bv', 'tons', 'year', 'level', 'techBase', 'moveType', 'armor', 'internal', '_mdSumNoPhysical', 'dpt', 'c3', 'cost'];
+    private static readonly CBT_TABLE_VISIBLE_KEYS = ['name', 'type', 'subtype', 'role', 'bv', 'tons', 'year', 'level', '_techBaseDisplay', 'moveType', 'armor', 'internal', '_mdSumNoPhysical', 'dpt', 'c3', 'cost'];
     private static readonly CBT_TABLE_VISIBLE_GROUPS = ['movement'];
 
     /**

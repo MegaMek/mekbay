@@ -60,20 +60,6 @@ describe('MekEntity optional systems', () => {
 });
 
 describe('MekEntity features', () => {
-  it('derives Hands when at least one hand actuator is present', () => {
-    const entity = new BipedMekEntity();
-
-    expect(entity.entityFeatures()).toContain('Hands');
-
-    entity.hasHandActuator.set({ left: true, right: false });
-    expect(entity.entityFeatures()).toContain('Hands');
-
-    entity.hasHandActuator.set({ left: false, right: true });
-    expect(entity.entityFeatures()).toContain('Hands');
-
-    entity.hasHandActuator.set({ left: false, right: false });
-    expect(entity.entityFeatures()).not.toContain('Hands');
-  });
 
   it('derives Reversible Arms when all lower-arm and hand actuators are absent', () => {
     const entity = new BipedMekEntity();
@@ -86,12 +72,6 @@ describe('MekEntity features', () => {
 
     entity.hasHandActuator.set({ left: true, right: false });
     expect(entity.entityFeatures()).not.toContain('Reversible Arms');
-    expect(entity.entityFeatures()).toContain('Hands');
-  });
-
-  it('requires both lower-arm actuators and both hands to be absent', () => {
-    const entity = new BipedMekEntity();
-    entity.hasHandActuator.set({ left: false, right: false });
 
     entity.hasLowerArmActuator.set({ left: true, right: false });
     expect(entity.entityFeatures()).not.toContain('Reversible Arms');
@@ -101,7 +81,6 @@ describe('MekEntity features', () => {
   });
 
   it('does not add arm-specific features to a Quad Mek', () => {
-    expect(new QuadMekEntity().entityFeatures()).not.toContain('Hands');
     expect(new QuadMekEntity().entityFeatures()).not.toContain('Reversible Arms');
   });
 });

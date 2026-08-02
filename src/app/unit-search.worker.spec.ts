@@ -103,13 +103,14 @@ describe('unit-search worker', () => {
     it('retains mixed-tech units during final semantic evaluation', () => {
         const mixedClan = createUnit('Mixed Clan Unit');
         mixedClan.mixed = true;
+        mixedClan._techBaseDisplay = 'Mixed (Clan)';
         const nonmixedClan = createUnit('Clan Unit');
 
         const runtime = __test__.hydrateCorpus({
             corpusVersion: '1:0',
             units: [mixedClan, nonmixedClan],
             indexes: {
-                techBase: {
+                _techBaseDisplay: {
                     'Mixed (Clan)': ['Mixed Clan Unit'],
                     Clan: ['Clan Unit'],
                 },

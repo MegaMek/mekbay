@@ -41,16 +41,18 @@ describe('UnitSearchIndexService', () => {
             createUnit({ name: 'Mixed Clan Unit', techBase: 'Clan', mixed: true }),
         ], [], []);
 
-        expect(service.getIndexedFilterValues('techBase')).toEqual([
+        expect(service.getIndexedFilterValues('_techBaseDisplay')).toEqual([
             'Clan',
             'Inner Sphere',
             'Mixed (Clan)',
             'Mixed (Inner Sphere)',
         ]);
-        expect(service.getIndexedUnitIds('techBase', 'Inner Sphere')).toEqual(new Set(['Inner Sphere Unit']));
-        expect(service.getIndexedUnitIds('techBase', 'Clan')).toEqual(new Set(['Clan Unit']));
-        expect(service.getIndexedUnitIds('techBase', 'Mixed (Inner Sphere)')).toEqual(new Set(['Mixed Inner Sphere Unit']));
-        expect(service.getIndexedUnitIds('techBase', 'Mixed (Clan)')).toEqual(new Set(['Mixed Clan Unit']));
+        expect(service.getIndexedUnitIds('_techBaseDisplay', 'Inner Sphere')).toEqual(new Set(['Inner Sphere Unit']));
+        expect(service.getIndexedUnitIds('_techBaseDisplay', 'Clan')).toEqual(new Set(['Clan Unit']));
+        expect(service.getIndexedUnitIds('_techBaseDisplay', 'Mixed (Inner Sphere)')).toEqual(new Set(['Mixed Inner Sphere Unit']));
+        expect(service.getIndexedUnitIds('_techBaseDisplay', 'Mixed (Clan)')).toEqual(new Set(['Mixed Clan Unit']));
+        expect(service.getIndexedFilterValues('techBase')).toEqual([]);
+        expect(service.getIndexedUnitIds('techBase', 'Clan')).toBeUndefined();
     });
 
     it('indexes Alpha Strike zero-star damage between zero and one', () => {

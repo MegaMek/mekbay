@@ -60,6 +60,26 @@ describe('UnitRuntimeService', () => {
         expect(service.getUnitByName('MAD CAT PRIME')).toBe(unit);
     });
 
+    it('precomputes mixed-aware tech-base display values before indexing', () => {
+        const units = [
+            createEmptyUnit({ name: 'Inner Sphere', techBase: 'Inner Sphere', mixed: false }),
+            createEmptyUnit({ name: 'Clan', techBase: 'Clan', mixed: false }),
+            createEmptyUnit({ name: 'Mixed Inner Sphere', techBase: 'Inner Sphere', mixed: true }),
+            createEmptyUnit({ name: 'Mixed Clan', techBase: 'Clan', mixed: true }),
+        ];
+        units[0]._techBaseDisplay = 'Mixed (Clan)';
+
+        service.preprocessUnits(units);
+
+        expect(units.map(unit => unit._techBaseDisplay)).toEqual([
+            'Inner Sphere',
+            'Clan',
+            'Mixed (Inner Sphere)',
+            'Mixed (Clan)',
+        ]);
+        expect(unitSearchIndexServiceMock.prepareUnits).toHaveBeenCalledOnceWith(units);
+    });
+
     it('keeps exported source and published arrays available to search helpers', () => {
         const unit = createUnit('Atlas');
         unit.source = ['TR:3039', 'TR:SW'];

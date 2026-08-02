@@ -53,6 +53,19 @@ for (const config of ADVANCED_FILTERS) {
     }
 }
 
+const TECH_BASE_INTERNAL_KEY = '_techBaseDisplay';
+const TECH_BASE_PUBLIC_KEY = 'tech';
+
+export function normalizeUnitSearchPropertyKey(key: string): string {
+    return key === TECH_BASE_PUBLIC_KEY || key === 'techBase' || key === TECH_BASE_INTERNAL_KEY
+        ? TECH_BASE_INTERNAL_KEY
+        : key;
+}
+
+export function getPublicUnitSearchPropertyKey(key: string): string {
+    return key === TECH_BASE_INTERNAL_KEY ? TECH_BASE_PUBLIC_KEY : key;
+}
+
 export function getAdvancedFilterConfigByKey(key: string): AdvFilterConfig | undefined {
     return advancedFilterConfigByKey.get(key);
 }

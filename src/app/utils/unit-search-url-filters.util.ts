@@ -36,7 +36,7 @@ import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-me
 import type { GameSystem } from '../models/common.model';
 import { getAvailableDropdownValuesMap, type UnitSearchDropdownValuesDependencies } from './unit-search-dropdown-values.util';
 import { AdvFilterType, normalizeTriStateBooleanFilterValue, type FilterState, SORT_OPTIONS } from '../services/unit-search-filters.model';
-import { getAdvancedFilterConfigByKey } from './unit-search-filter-config.util';
+import { getAdvancedFilterConfigByKey, getPublicUnitSearchPropertyKey, normalizeUnitSearchPropertyKey } from './unit-search-filter-config.util';
 import { parseValues } from './semantic-filter.util';
 import { normalizeMultiStateSelection } from './unit-search-shared.util';
 import type { UnitSearchViewMode } from '../models/options.model';
@@ -135,7 +135,8 @@ export function parseUnitSearchScalarUrlState(
     opts: { expandView?: boolean } = {},
 ): ParsedUnitSearchScalarUrlState {
     const searchText = params.get('q');
-    const sortParam = params.get('sort');
+    const rawSortParam = params.get('sort');
+    const sortParam = rawSortParam ? normalizeUnitSearchPropertyKey(rawSortParam) : null;
     const sortDirectionParam = params.get('sortDir');
     const filtersParam = params.get('filters');
     const viewMode = parseUnitSearchViewMode(params.get('view'));
@@ -164,14 +165,15 @@ function generateCompactFiltersParam(state: FilterState): string | null {
 
         const conf = getAdvancedFilterConfigByKey(key);
         if (!conf) continue;
+        const publicKey = getPublicUnitSearchPropertyKey(key);
 
         if (conf.type === AdvFilterType.RANGE) {
             const [min, max] = filterState.value;
-            parts.push(`${key}:${min}-${max}`);
+            parts.push(`${publicKey}:${min}-${max}`);
         } else if (conf.type === AdvFilterType.BOOLEAN) {
             const value = normalizeTriStateBooleanFilterValue(filterState.value);
             if (value !== null) {
-                parts.push(`${key}:${value === 'or' ? 'yes' : 'no'}`);
+                parts.push(`${publicKey}:${value === 'or' ? 'yes' : 'no'}`);
             }
         } else if (conf.type === AdvFilterType.DROPDOWN) {
             if (conf.multistate) {
@@ -189,12 +191,12 @@ function generateCompactFiltersParam(state: FilterState): string | null {
                 }
 
                 if (subParts.length > 0) {
-                    parts.push(`${key}:${subParts.join(',')}`);
+                    parts.push(`${publicKey}:${subParts.join(',')}`);
                 }
             } else {
                 const values = filterState.value as string[];
                 if (values.length > 0) {
-                    parts.push(`${key}:${values.map(serializeCompactFilterValue).join(',')}`);
+                    parts.push(`${publicKey}:${values.map(serializeCompactFilterValue).join(',')}`);
                 }
             }
         }
@@ -229,7 +231,7 @@ export function buildUnitSearchQueryParameters({
         q: searchText.trim() || null,
         filters: filtersParam || null,
         pt: publicTagsParam,
-        sort: selectedSort || null,
+        sort: selectedSort ? getPublicUnitSearchPropertyKey(selectedSort) : null,
         sortDir: selectedSortDirection !== 'asc' ? selectedSortDirection : null,
         gunnery: gunnery !== DEFAULT_GUNNERY_SKILL ? gunnery : null,
         piloting: piloting !== DEFAULT_PILOTING_SKILL ? piloting : null,
@@ -250,7 +252,7 @@ function parseCompactFiltersFromUrl(
         const colonIndex = part.indexOf(':');
         if (colonIndex === -1) continue;
 
-        const key = part.substring(0, colonIndex);
+        const key = normalizeUnitSearchPropertyKey(part.substring(0, colonIndex));
         const valueStr = part.substring(colonIndex + 1);
 
         const conf = getAdvancedFilterConfigByKey(key);
