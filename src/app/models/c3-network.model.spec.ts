@@ -175,22 +175,38 @@ describe('C3Network runtime', () => {
         [C3NetworkType.NAVAL, C3_FLAGS.NAVAL_C3],
         [C3NetworkType.NOVA, C3_FLAGS.NOVA],
     ].forEach(([type, flag]) => {
-        it(`matches every legal ${type} damage/jamming state`, () => {
+        it(`matches every legal ${type} damage state and representative jamming boundaries`, () => {
             for (let size = 2; size <= C3_NETWORK_LIMITS[type as C3NetworkType]; size++) {
                 const states = Array.from({ length: size }, (_, index) => c3Unit(`peer-${index}`, flag));
+                const units = states.map(({ unit }) => unit);
+                const network = peerNetwork(states, type as C3NetworkType);
                 const stateCount = 1 << size;
+                const allUnitsMask = stateCount - 1;
                 for (let operationalMask = 0; operationalMask < stateCount; operationalMask++) {
                     states.forEach((state, index) => state.operational.set((operationalMask & (1 << index)) !== 0));
-                    const operationalIds = states.filter(({ operational }) => operational()).map(({ unit }) => unit.id);
-                    for (let jammedMask = 0; jammedMask < stateCount; jammedMask++) {
+                    const operationalCount = states.filter((_, index) => (operationalMask & (1 << index)) !== 0).length;
+                    const jammedMasks = new Set([
+                        0,
+                        operationalMask,
+                        allUnitsMask ^ operationalMask,
+                        allUnitsMask,
+                    ]);
+                    for (let index = 0; index < size; index++) {
+                        const unitMask = 1 << index;
+                        if ((operationalMask & unitMask) === 0) continue;
+                        jammedMasks.add(unitMask);
+                        jammedMasks.add(operationalMask & ~unitMask);
+                    }
+                    for (const jammedMask of jammedMasks) {
                         states.forEach((state, index) => state.jammed.set((jammedMask & (1 << index)) !== 0));
-                        const model = new C3Network(peerNetwork(states, type as C3NetworkType), states.map(({ unit }) => unit));
-                        states.forEach((state, index) => {
-                            const linked = state.operational() && operationalIds.length >= 2;
-                            const counterparts = operationalIds.filter(id => id !== state.unit.id);
-                            const degraded = linked && (state.jammed() || counterparts.every(id =>
-                                states.find(candidate => candidate.unit.id === id)!.jammed()));
-                            expect(model.stateFor(state.unit.id, type as C3NetworkType)).withContext(
+                        const model = new C3Network(network, units);
+                        states.forEach(({ unit }, index) => {
+                            const unitMask = 1 << index;
+                            const linked = (operationalMask & unitMask) !== 0 && operationalCount >= 2;
+                            const operationalCounterpartsMask = operationalMask & ~unitMask;
+                            const degraded = linked && ((jammedMask & unitMask) !== 0
+                                || (jammedMask & operationalCounterpartsMask) === operationalCounterpartsMask);
+                            expect(model.stateFor(unit.id, type as C3NetworkType)).withContext(
                                 `${type} size=${size} operational=${operationalMask} jammed=${jammedMask} unit=${index}`
                             ).toEqual({ linked, degraded, color: '#1565C0' });
                         });
