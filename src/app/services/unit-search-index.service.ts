@@ -46,6 +46,7 @@ import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot 
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import { WeaponEquipment } from '../models/equipment.model';
 import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
+import { getUnitTechBaseDisplay } from '../models/tech.model';
 
 interface ASUnitTypeMaxStats {
     [asUnitType: string]: MinMaxStatsRange;
@@ -317,7 +318,7 @@ export class UnitSearchIndexService {
         for (const unit of units) {
             this.addSearchIndexValue('type', unit.type, unit.name);
             this.addSearchIndexValue('subtype', unit.subtype, unit.name);
-            this.addSearchIndexValue('techBase', unit.techBase, unit.name);
+            this.addSearchIndexValue('techBase', getUnitTechBaseDisplay(unit), unit.name);
             this.addSearchIndexValue('role', unit.role, unit.name);
             this.addSearchIndexValue('weightClass', unit.weightClass, unit.name);
             this.addSearchIndexValue('level', String(unit.level), unit.name);

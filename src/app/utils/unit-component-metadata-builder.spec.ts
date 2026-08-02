@@ -47,6 +47,84 @@ describe('buildUnitComponentMetadata', () => {
     expect(component.m).toBeUndefined();
   });
 
+  it('exports installed Mek lower-arm and hand actuators as synthetic system components', () => {
+    const entity = new BipedMekEntity();
+    entity.hasLowerArmActuator.set({ left: true, right: false });
+    entity.hasHandActuator.set({ left: false, right: true });
+
+    const actuators = buildUnitComponentMetadata(entity)!
+      .filter(component => component.id === 'lower-arm' || component.id === 'hand');
+
+    expect(actuators).toEqual([
+      jasmine.objectContaining({
+        id: 'lower-arm', n: 'Lower Arm Actuator', t: 'S', p: 5, l: 'LA', c: '1', q: 1,
+      }),
+      jasmine.objectContaining({
+        id: 'hand', n: 'Hand Actuator', t: 'S', p: 4, l: 'RA', c: '1', q: 1,
+      }),
+    ]);
+  });
+
+  it('omits absent Mek arm actuators from synthetic components', () => {
+    const entity = new BipedMekEntity();
+    entity.hasLowerArmActuator.set({ left: false, right: false });
+    entity.hasHandActuator.set({ left: false, right: false });
+
+    expect(buildUnitComponentMetadata(entity)!.some(
+      component => component.id === 'lower-arm' || component.id === 'hand',
+    )).toBeFalse();
+  });
+
+  it('exports standard Mek cockpit and gyro systems', () => {
+    const entity = new BipedMekEntity();
+
+    const systems = buildUnitComponentMetadata(entity)!
+      .filter(component => component.id === 'cockpit' || component.id === 'gyro');
+
+    expect(systems).toEqual([
+      jasmine.objectContaining({
+        id: 'cockpit', n: 'Standard Cockpit', t: 'S', p: 0, l: 'HD', c: '1', q: 1, q2: 0, os: 0,
+      }),
+      jasmine.objectContaining({
+        id: 'gyro', n: 'Standard Gyro', t: 'S', p: 1, l: 'CT', c: '4', q: 1, q2: 0, os: 0,
+      }),
+    ]);
+  });
+
+  it('normalizes alternate cockpit and gyro names and exports their critical slots', () => {
+    const entity = new BipedMekEntity();
+    entity.cockpitType.set('Command Console');
+    entity.gyroType.set('XL');
+
+    const systems = buildUnitComponentMetadata(entity)!;
+    expect(systems.find(component => component.id === 'cockpit')).toEqual(jasmine.objectContaining({
+      n: 'Command Console Cockpit', p: 0, l: 'HD', c: '2',
+    }));
+    expect(systems.find(component => component.id === 'gyro')).toEqual(jasmine.objectContaining({
+      n: 'XL Gyro', p: 1, l: 'CT', c: '6',
+    }));
+  });
+
+  it('exports torso cockpits and omits a nonexistent gyro', () => {
+    const entity = new BipedMekEntity();
+    entity.cockpitType.set('Virtual Reality Piloting Pod');
+    entity.gyroType.set('None');
+
+    const systems = buildUnitComponentMetadata(entity)!;
+    expect(systems.find(component => component.id === 'cockpit')).toEqual(jasmine.objectContaining({
+      n: 'Virtual Reality Piloting Pod Cockpit', p: 1, l: 'CT', c: '1',
+    }));
+    expect(systems.some(component => component.id === 'gyro')).toBeFalse();
+  });
+
+  it('exports the two critical slots occupied by a superheavy gyro', () => {
+    const entity = new BipedMekEntity();
+    entity.gyroType.set('Superheavy');
+
+    expect(buildUnitComponentMetadata(entity)!.find(component => component.id === 'gyro'))
+      .toEqual(jasmine.objectContaining({ n: 'Superheavy Gyro', c: '2' }));
+  });
+
   it('uses aerospace AV and bracket names', () => {
     const entity = new AeroSpaceFighterEntity();
     const laser = weapon('aero-laser', {

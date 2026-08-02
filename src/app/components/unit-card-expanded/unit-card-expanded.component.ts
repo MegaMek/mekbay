@@ -77,6 +77,7 @@ import { OptionsService } from '../../services/options.service';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
+import { getUnitTechBaseDisplay } from '../../models/tech.model';
 
 /**
  * Author: Drake
@@ -104,6 +105,7 @@ import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
     styleUrl: './unit-card-expanded.component.scss'
 })
 export class UnitCardExpandedComponent {
+    readonly getUnitTechBaseDisplay = getUnitTechBaseDisplay;
     readonly megaMekAvailabilityUnknown = MEGAMEK_AVAILABILITY_UNKNOWN;
 
     gameService = inject(GameService);

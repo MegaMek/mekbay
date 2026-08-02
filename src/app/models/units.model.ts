@@ -158,6 +158,7 @@ export interface Unit {
     cost: number;
     level: ComponentTechLevel;
     techBase: TechBase;
+    mixed: boolean;
     techRating: string;
     type: UnitType;
     subtype: UnitSubtype;

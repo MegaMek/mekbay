@@ -75,6 +75,28 @@ describe('UnitMetadataBuilder', () => {
     expect(builder.build(new BipedMekEntity()).canAntiMech).toBeFalse();
   });
 
+  it('exports typed entity features using their canonical names', () => {
+    const entity = new BipedMekEntity();
+
+    expect(builder.build(entity).features).toContain('Hands');
+
+    entity.hasLowerArmActuator.set({ left: false, right: false });
+    entity.hasHandActuator.set({ left: false, right: false });
+
+    expect(entity.entityFeatures()).toEqual(['Reversible Arms']);
+    expect(builder.build(entity).features).toContain('Reversible Arms');
+    expect(builder.build(entity).features).not.toContain('Hands');
+  });
+
+  it('keeps Small Cockpit in features while exporting it as a component', () => {
+    const entity = new BipedMekEntity();
+    entity.cockpitType.set('Small');
+
+    const metadata = builder.build(entity);
+    expect(metadata.features).toContain('Small Cockpit');
+    expect(metadata.comp?.find(component => component.id === 'cockpit')?.n).toBe('Small Cockpit');
+  });
+
   it('exports the Java offensive speed factor from BV movement', () => {
     const entity = new BipedMekEntity();
     entity.originalWalkMP.set(4);

@@ -63,6 +63,7 @@ import {
   CockpitType,
   CriticalSlotView,
   EngineFlag,
+  EntityFeature,
   EntityTechBase,
   EntityMountedEquipment,
   EntityType,
@@ -1034,6 +1035,18 @@ export abstract class MekEntity extends BaseEntity {
 export abstract class MekWithArmsEntity extends MekEntity {
   hasLowerArmActuator = signal<{ left: boolean; right: boolean }>({ left: true, right: true });
   hasHandActuator = signal<{ left: boolean; right: boolean }>({ left: true, right: true });
+
+  protected override computeEntityFeatures(): readonly EntityFeature[] {
+    const features = [...super.computeEntityFeatures()];
+    const lowerArms = this.hasLowerArmActuator();
+    const hands = this.hasHandActuator();
+    if (hands.left || hands.right) {
+      features.push('Hands');
+    } else if (!lowerArms.left && !lowerArms.right) {
+      features.push('Reversible Arms');
+    }
+    return features;
+  }
 }
 
 // ============================================================================

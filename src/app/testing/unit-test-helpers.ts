@@ -73,6 +73,7 @@ export function createEmptyUnit(overrides: TestUnitOverrides = {}): Unit {
         cost: 0,
         level: 'Introductory',
         techBase: 'Inner Sphere',
+        mixed: false,
         techRating: 'D',
         type: 'Mek',
         subtype: 'BattleMek',

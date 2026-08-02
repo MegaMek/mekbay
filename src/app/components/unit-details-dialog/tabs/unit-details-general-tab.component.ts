@@ -62,6 +62,7 @@ import {
 } from './unit-details-component-matrix.util';
 import { naturalCompare } from '../../../utils/sort.util';
 import { EquipmentFlag } from '../../../models/equipment-flags.type';
+import { getUnitTechBaseDisplay } from '../../../models/tech.model';
 
 type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
 type ComponentDetailsDisplayStyle = 'normal' | 'additional';
@@ -87,6 +88,7 @@ const WEAPON_MODE_MISC_COMPONENT_FLAGS: EquipmentFlag[] = ['F_CLUB', 'F_HAND_WEA
     styleUrls: ['./unit-details-general-tab.component.css']
 })
 export class UnitDetailsGeneralTabComponent {
+    readonly getUnitTechBaseDisplay = getUnitTechBaseDisplay;
     private dataService = inject(DataService);
     private dialogsService = inject(DialogsService);
     private layoutService = inject(LayoutService);

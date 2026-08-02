@@ -92,6 +92,7 @@ import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { normalizeUnitSearchRange, rangeFilterAllowsFloatingValues } from '../../utils/unit-search-range-dialog.util';
 import { VariableSizeVirtualScrollDirective } from '../../directives/variable-size-virtual-scroll.directive';
 import type { UnitSearchViewMode } from '../../models/options.model';
+import { getUnitTechBaseDisplay } from '../../models/tech.model';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup extends UnitVariantGroupIdentity {
@@ -678,7 +679,7 @@ export class UnitSearchComponent {
                     id: 'tech',
                     header: 'Tech',
                     track: '100px',
-                    value: unit => unit.techBase,
+                    value: unit => getUnitTechBaseDisplay(unit),
                     sortKey: 'techBase',
                     sortActive: this.isSortActive('techBase'),
                     cellClass: this.tableCellClass('cbt-td-tech', this.isSortActive('techBase')),

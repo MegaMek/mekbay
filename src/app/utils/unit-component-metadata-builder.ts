@@ -111,11 +111,50 @@ function addSyntheticInfantryWeapon(
 function addMekSystems(components: Map<string, ExportComponent>, entity: BaseEntity): void {
   if (!(entity instanceof MekEntity)) return;
 
-  if (entity instanceof MekWithArmsEntity) {
-    const hands = entity.hasHandActuator();
-    if (hands.left) addHand(components, entity, 'LA');
-    if (hands.right) addHand(components, entity, 'RA');
+  const cockpit = entity.mountedCockpit();
+  const cockpitLocation = cockpit.hasTorsoSlots ? 'CT' : 'HD';
+  const cockpitCriticals = cockpit.hasTorsoSlots
+    ? 1
+    : cockpit.headLayout.filter(system => system === 'Cockpit').length;
+  addMekSystem(
+    components, entity, 'cockpit', withSystemSuffix(cockpit.fullName, 'Cockpit'),
+    cockpitLocation, cockpitCriticals,
+  );
+
+  if (entity.gyroType() !== 'None') {
+    const gyro = entity.mountedGyro();
+    addMekSystem(
+      components, entity, 'gyro', withSystemSuffix(gyro.fullName, 'Gyro'),
+      'CT', gyro.criticalSlots,
+    );
   }
+
+  if (entity instanceof MekWithArmsEntity) {
+    const lowerArms = entity.hasLowerArmActuator();
+    const hands = entity.hasHandActuator();
+    if (lowerArms.left) addActuator(components, entity, 'LA', 'lower-arm', 'Lower Arm Actuator');
+    if (hands.left) addActuator(components, entity, 'LA', 'hand', 'Hand Actuator');
+    if (lowerArms.right) addActuator(components, entity, 'RA', 'lower-arm', 'Lower Arm Actuator');
+    if (hands.right) addActuator(components, entity, 'RA', 'hand', 'Hand Actuator');
+  }
+}
+
+function withSystemSuffix(name: string, suffix: 'Cockpit' | 'Gyro'): string {
+  return name.endsWith(suffix) ? name : `${name} ${suffix}`;
+}
+
+function addMekSystem(
+  components: Map<string, ExportComponent>,
+  entity: MekEntity,
+  id: 'cockpit' | 'gyro',
+  name: string,
+  location: 'HD' | 'CT',
+  criticalSlots: number,
+): void {
+  components.set(id, {
+    id, n: name, t: 'S', q: 1, q2: 0,
+    p: locationId(entity, location), l: location, c: String(criticalSlots), os: 0,
+  });
 }
 
 /** Exports the entity-selected internal structure once, independently of critical-slot mounts. */
@@ -163,9 +202,15 @@ function withMaterialSuffix(name: string, suffix: 'Armor' | 'Structure'): string
   return name.endsWith(suffix) ? name : `${name} ${suffix}`;
 }
 
-function addHand(components: Map<string, ExportComponent>, entity: BaseEntity, location: 'LA' | 'RA'): void {
-  components.set(`${location}:hand`, {
-    id: 'hand', n: 'Hand', t: 'S', q: 1, q2: 0,
+function addActuator(
+  components: Map<string, ExportComponent>,
+  entity: BaseEntity,
+  location: 'LA' | 'RA',
+  id: 'lower-arm' | 'hand',
+  name: 'Lower Arm Actuator' | 'Hand Actuator',
+): void {
+  components.set(`${location}:${id}`, {
+    id, n: name, t: 'S', q: 1, q2: 0,
     p: locationId(entity, location), l: location, c: '1', os: 0,
   });
 }
