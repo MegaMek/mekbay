@@ -133,7 +133,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 value: ['BM'],
                 interacted: true,
             },
-            techBase: {
+            _techBaseDisplay: {
                 type: 'dropdown' as const,
                 label: 'Tech',
                 options: [],
