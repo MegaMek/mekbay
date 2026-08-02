@@ -98,6 +98,7 @@ export class UnitDetailsPanelComponent {
     readonly nextUnit = input<Unit | null>(null);
     readonly gunnerySkill = input<number | undefined>(undefined);
     readonly pilotingSkill = input<number | undefined>(undefined);
+    readonly adjustedBvOverride = input<number | undefined>(undefined);
     readonly hasPrev = input<boolean>(false);
     readonly hasNext = input<boolean>(false);
     readonly add = output<Unit>();

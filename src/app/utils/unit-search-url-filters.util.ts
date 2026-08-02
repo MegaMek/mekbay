@@ -40,8 +40,10 @@ import { getAdvancedFilterConfigByKey, getPublicUnitSearchPropertyKey, normalize
 import { parseValues } from './semantic-filter.util';
 import { normalizeMultiStateSelection } from './unit-search-shared.util';
 import type { UnitSearchViewMode } from '../models/options.model';
+import type { BvNormalizationSettings, UnitSearchBudgetMode } from '../models/unit-search-result.model';
+import { isValidBvNormalizationSettings } from './bv-normalization.util';
 
-interface ParsedUnitSearchScalarUrlState {
+export interface ParsedUnitSearchScalarUrlState {
     searchText: string | null;
     sortKey: string | null;
     sortDirection: 'asc' | 'desc' | null;
@@ -49,6 +51,8 @@ interface ParsedUnitSearchScalarUrlState {
     gunnery: number | null;
     piloting: number | null;
     bvLimit: number | null;
+    budgetMode: UnitSearchBudgetMode;
+    bvNormalization: BvNormalizationSettings | null;
     hasFilters: boolean;
     viewMode: UnitSearchViewMode | null;
 }
@@ -63,6 +67,8 @@ interface UnitSearchQueryParametersArgs {
     gunnery: number;
     piloting: number;
     bvLimit: number;
+    budgetMode?: UnitSearchBudgetMode;
+    bvNormalization?: BvNormalizationSettings;
     publicTagsParam: string | null;
     viewMode?: UnitSearchViewMode;
 }
@@ -77,6 +83,13 @@ interface UnitSearchQueryParameters {
     gunnery: number | null;
     piloting: number | null;
     bvLimit: number | null;
+    bvMode: 'limit' | 'normalize' | null;
+    bvMin: number | null;
+    bvMax: number | null;
+    gMin: number | null;
+    gMax: number | null;
+    pMin: number | null;
+    pMax: number | null;
     expanded: 'true' | null;
     view: Exclude<UnitSearchViewMode, 'list'> | null;
     gs?: GameSystem | null;
@@ -130,6 +143,19 @@ function parsePositiveInteger(value: string | null | undefined): number | null {
     return parsed;
 }
 
+function parseNonnegativeInteger(value: string | null | undefined): number | null {
+    if (value === null || value === undefined || value === '') {
+        return null;
+    }
+
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+        return null;
+    }
+
+    return parsed;
+}
+
 export function parseUnitSearchScalarUrlState(
     params: URLSearchParams,
     opts: { expandView?: boolean } = {},
@@ -143,6 +169,30 @@ export function parseUnitSearchScalarUrlState(
 
     const hasFilters = Boolean(searchText || filtersParam);
     const shouldExpand = opts.expandView ?? (!params.has('instance') && !params.has('units') && hasFilters);
+    const normalization: BvNormalizationSettings = {
+        targetBv: {
+            min: parseNonnegativeInteger(params.get('bvMin')) ?? -1,
+            max: parseNonnegativeInteger(params.get('bvMax')) ?? -1,
+        },
+        gunnery: {
+            min: parseBoundedInteger(params.get('gMin'), 0, 8) ?? -1,
+            max: parseBoundedInteger(params.get('gMax'), 0, 8) ?? -1,
+        },
+        piloting: {
+            min: parseBoundedInteger(params.get('pMin'), 0, 8) ?? -1,
+            max: parseBoundedInteger(params.get('pMax'), 0, 8) ?? -1,
+        },
+    };
+    const rawBudgetMode = params.get('bvMode');
+    const bvNormalization = rawBudgetMode === 'normalize'
+        && isValidBvNormalizationSettings(normalization)
+        ? normalization
+        : null;
+    const budgetMode: UnitSearchBudgetMode = bvNormalization
+        ? 'bv-normalization'
+        : rawBudgetMode === 'limit'
+            ? 'force-limit'
+            : null;
 
     return {
         searchText,
@@ -151,7 +201,9 @@ export function parseUnitSearchScalarUrlState(
         expanded: params.get('expanded') === 'true' || viewMode === 'table' || shouldExpand,
         gunnery: parseBoundedInteger(params.get('gunnery'), 0, 8),
         piloting: parseBoundedInteger(params.get('piloting'), 0, 8),
-        bvLimit: parsePositiveInteger(params.get('bvLimit')),
+        bvLimit: budgetMode === 'force-limit' ? parsePositiveInteger(params.get('bvLimit')) : null,
+        budgetMode,
+        bvNormalization,
         hasFilters,
         viewMode,
     };
@@ -215,6 +267,8 @@ export function buildUnitSearchQueryParameters({
     gunnery,
     piloting,
     bvLimit,
+    budgetMode = null,
+    bvNormalization,
     publicTagsParam,
     viewMode = 'list',
 }: UnitSearchQueryParametersArgs): UnitSearchQueryParameters {
@@ -226,6 +280,8 @@ export function buildUnitSearchQueryParameters({
     }
 
     const filtersParam = generateCompactFiltersParam(uiOnlyFilters);
+    const forceLimitActive = budgetMode === 'force-limit';
+    const normalizationActive = budgetMode === 'bv-normalization' && bvNormalization != null;
 
     return {
         q: searchText.trim() || null,
@@ -235,7 +291,14 @@ export function buildUnitSearchQueryParameters({
         sortDir: selectedSortDirection !== 'asc' ? selectedSortDirection : null,
         gunnery: gunnery !== DEFAULT_GUNNERY_SKILL ? gunnery : null,
         piloting: piloting !== DEFAULT_PILOTING_SKILL ? piloting : null,
-        bvLimit: bvLimit > 0 ? bvLimit : null,
+        bvLimit: forceLimitActive && bvLimit > 0 ? bvLimit : null,
+        bvMode: normalizationActive ? 'normalize' : forceLimitActive ? 'limit' : null,
+        bvMin: normalizationActive ? bvNormalization.targetBv.min : null,
+        bvMax: normalizationActive ? bvNormalization.targetBv.max : null,
+        gMin: normalizationActive ? bvNormalization.gunnery.min : null,
+        gMax: normalizationActive ? bvNormalization.gunnery.max : null,
+        pMin: normalizationActive ? bvNormalization.piloting.min : null,
+        pMax: normalizationActive ? bvNormalization.piloting.max : null,
         expanded: expanded && viewMode !== 'table' ? 'true' : null,
         view: viewMode === 'list' ? null : viewMode,
     };

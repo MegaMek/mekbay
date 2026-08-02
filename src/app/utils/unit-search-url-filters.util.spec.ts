@@ -134,6 +134,82 @@ describe('unit search URL filters', () => {
         }));
     });
 
+    it('defaults to no budget mode and ignores a bare legacy BV limit', () => {
+        const parsed = parseUnitSearchScalarUrlState(new URLSearchParams('bvLimit=5000'));
+
+        expect(parsed.budgetMode).toBeNull();
+        expect(parsed.bvLimit).toBeNull();
+    });
+
+    it('round-trips explicit Force BV Limit mode', () => {
+        const args = {
+            searchText: '',
+            filterState: {},
+            semanticKeys: new Set<string>(),
+            selectedSort: '',
+            selectedSortDirection: 'asc' as const,
+            expanded: false,
+            gunnery: DEFAULT_GUNNERY_SKILL,
+            piloting: DEFAULT_PILOTING_SKILL,
+            bvLimit: 5000,
+            budgetMode: 'force-limit' as const,
+            publicTagsParam: null,
+        };
+
+        const query = buildUnitSearchQueryParameters(args);
+        expect(query.bvMode).toBe('limit');
+        expect(query.bvLimit).toBe(5000);
+
+        const parsed = parseUnitSearchScalarUrlState(new URLSearchParams('bvMode=limit&bvLimit=5000'));
+        expect(parsed.budgetMode).toBe('force-limit');
+        expect(parsed.bvLimit).toBe(5000);
+    });
+
+    it('serializes a selected Force BV Limit mode even without a positive limit', () => {
+        const query = buildUnitSearchQueryParameters({
+            searchText: '',
+            filterState: {},
+            semanticKeys: new Set<string>(),
+            selectedSort: '',
+            selectedSortDirection: 'asc',
+            expanded: false,
+            gunnery: DEFAULT_GUNNERY_SKILL,
+            piloting: DEFAULT_PILOTING_SKILL,
+            bvLimit: 0,
+            budgetMode: 'force-limit',
+            publicTagsParam: null,
+        });
+
+        expect(query.bvMode).toBe('limit');
+        expect(query.bvLimit).toBeNull();
+    });
+
+    it('omits retained budget values when no mode is selected', () => {
+        const query = buildUnitSearchQueryParameters({
+            searchText: '',
+            filterState: {},
+            semanticKeys: new Set<string>(),
+            selectedSort: '',
+            selectedSortDirection: 'asc',
+            expanded: false,
+            gunnery: DEFAULT_GUNNERY_SKILL,
+            piloting: DEFAULT_PILOTING_SKILL,
+            bvLimit: 5000,
+            budgetMode: null,
+            publicTagsParam: null,
+        });
+
+        expect(query.bvMode).toBeNull();
+        expect(query.bvLimit).toBeNull();
+    });
+
+    it('falls back to no mode for unknown or malformed normalization modes', () => {
+        expect(parseUnitSearchScalarUrlState(new URLSearchParams('bvMode=unknown')).budgetMode).toBeNull();
+        expect(parseUnitSearchScalarUrlState(new URLSearchParams(
+            'bvMode=normalize&bvMin=1000&bvMax=2000&gMin=4&gMax=3&pMin=5&pMax=5',
+        )).budgetMode).toBeNull();
+    });
+
     it('round-trips boolean filters in compact filters', () => {
         const filterState: FilterState = {
             canon: {

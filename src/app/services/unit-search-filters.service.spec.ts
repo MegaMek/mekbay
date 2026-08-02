@@ -877,6 +877,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         const { service, gameServiceStub } = createService(bundle);
 
+        service.setBudgetMode('force-limit');
         service.bvPvLimit.set(1500);
         service.forceTotalBvPv.set(0);
 
@@ -888,6 +889,75 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
         expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
+    it('does not infer normalization mode from saved settings without an explicit budget mode', () => {
+        const { service } = createService(createStandaloneBundle());
+
+        service.applySerializedSearchFilter({
+            id: 'normalization-without-mode',
+            name: 'Normalization without mode',
+            bvNormalization: {
+                targetBv: { min: 1000, max: 2000 },
+                gunnery: { min: 3, max: 4 },
+                piloting: { min: 4, max: 5 },
+            },
+        });
+
+        expect(service.budgetMode()).toBeNull();
+        expect(service.activeBvNormalization()).toBeNull();
+    });
+
+    it('rejects malformed normalization settings from saved searches', () => {
+        const invalidSettings = [
+            {
+                targetBv: { min: 2000, max: 1000 },
+                gunnery: { min: 3, max: 4 },
+                piloting: { min: 4, max: 5 },
+            },
+            {
+                targetBv: { min: 1000, max: 2000 },
+                gunnery: { min: 0, max: 1_000_000 },
+                piloting: { min: 4, max: 5 },
+            },
+            {
+                targetBv: { min: 1000.5, max: 2000 },
+                gunnery: { min: 3, max: 4 },
+                piloting: { min: 4, max: 5 },
+            },
+        ];
+
+        for (const [index, bvNormalization] of invalidSettings.entries()) {
+            const { service } = createService(createStandaloneBundle());
+            service.applySerializedSearchFilter({
+                id: `invalid-normalization-${index}`,
+                name: 'Invalid normalization',
+                budgetMode: 'bv-normalization',
+                bvNormalization,
+            });
+
+            expect(service.budgetMode()).withContext(`settings ${index}`).toBeNull();
+            expect(service.activeBvNormalization()).withContext(`settings ${index}`).toBeNull();
+        }
+    });
+
+    it('restores valid normalization settings from a saved search', () => {
+        const { service } = createService(createStandaloneBundle());
+        const bvNormalization = {
+            targetBv: { min: 1000, max: 2000 },
+            gunnery: { min: 3, max: 4 },
+            piloting: { min: 4, max: 5 },
+        };
+
+        service.applySerializedSearchFilter({
+            id: 'valid-normalization',
+            name: 'Valid normalization',
+            budgetMode: 'bv-normalization',
+            bvNormalization,
+        });
+
+        expect(service.budgetMode()).toBe('bv-normalization');
+        expect(service.classicBvNormalizationSettings()).toEqual(bvNormalization);
     });
 
     it('filters normal search results by an active formation target while generator eligibility ignores it', () => {
@@ -1267,7 +1337,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            unitNames: bundle.units.units.map((unit) => unit.name),
+            entries: bundle.units.units.map((unit) => ({ unitName: unit.name })),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -2852,7 +2922,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            unitNames: ['Very Common Crab', 'Unknown Crab'],
+            entries: ['Very Common Crab', 'Unknown Crab'].map(unitName => ({ unitName })),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -2917,7 +2987,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            unitNames: ['Known Crab', 'Unknown Crab'],
+            entries: ['Known Crab', 'Unknown Crab'].map(unitName => ({ unitName })),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -3526,7 +3596,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            unitNames: bundle.units.units.map((unit) => unit.name),
+            entries: bundle.units.units.map((unit) => ({ unitName: unit.name })),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -3681,7 +3751,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: firstExecuteMessage.request.revision,
             corpusVersion: firstExecuteMessage.request.corpusVersion,
             telemetryQuery: firstExecuteMessage.request.telemetryQuery,
-            unitNames: ['BattleMaster C3', 'Common Dominion Mek'],
+            entries: ['BattleMaster C3', 'Common Dominion Mek'].map(unitName => ({ unitName })),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -3792,7 +3862,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: firstExecuteMessage.request.revision,
             corpusVersion: firstExecuteMessage.request.corpusVersion,
             telemetryQuery: firstExecuteMessage.request.telemetryQuery,
-            unitNames: ['BattleMaster C3'],
+            entries: [{ unitName: 'BattleMaster C3' }],
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -3879,7 +3949,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            unitNames: ['Rare Salvage Crab', 'Common Requisition Crab'],
+            entries: ['Rare Salvage Crab', 'Common Requisition Crab'].map(unitName => ({ unitName })),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4003,7 +4073,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            unitNames: ['BattleMaster C3', 'Common Dominion Mek'],
+            entries: ['BattleMaster C3', 'Common Dominion Mek'].map(unitName => ({ unitName })),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4112,7 +4182,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            unitNames: ['BattleMaster C3'],
+            entries: [{ unitName: 'BattleMaster C3' }],
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4179,7 +4249,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            unitNames: ['Very Common Crab', 'Unknown Crab'],
+            entries: ['Very Common Crab', 'Unknown Crab'].map(unitName => ({ unitName })),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4308,7 +4378,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            unitNames: ['Known Unit', 'Unknown Unit'],
+            entries: ['Known Unit', 'Unknown Unit'].map(unitName => ({ unitName })),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4448,7 +4518,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            unitNames: ['Low Unit', 'Unknown Unit', 'High Unit'],
+            entries: ['Low Unit', 'Unknown Unit', 'High Unit'].map(unitName => ({ unitName })),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -6054,7 +6124,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            unitNames: [bundle.units.units[0].name],
+            entries: [{ unitName: bundle.units.units[0].name }],
             stages: [],
             totalMs: 1,
             unitCount: 2,
@@ -6103,7 +6173,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: firstExecute.request.revision,
             corpusVersion: firstExecute.request.corpusVersion,
             telemetryQuery: firstExecute.request.telemetryQuery,
-            unitNames: [bundle.units.units[0].name],
+            entries: [{ unitName: bundle.units.units[0].name }],
             stages: [],
             totalMs: 1,
             unitCount: 2,
@@ -6118,7 +6188,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: secondExecute.request.revision,
             corpusVersion: secondExecute.request.corpusVersion,
             telemetryQuery: secondExecute.request.telemetryQuery,
-            unitNames: [bundle.units.units[1].name],
+            entries: [{ unitName: bundle.units.units[1].name }],
             stages: [],
             totalMs: 1,
             unitCount: 2,
@@ -6166,7 +6236,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: initialExecute.request.revision,
             corpusVersion: initialExecute.request.corpusVersion,
             telemetryQuery: initialExecute.request.telemetryQuery,
-            unitNames: bundle.units.units.map((unit) => unit.name),
+            entries: bundle.units.units.map((unit) => ({ unitName: unit.name })),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -6189,7 +6259,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: updatedExecute.request.revision,
             corpusVersion: updatedExecute.request.corpusVersion,
             telemetryQuery: updatedExecute.request.telemetryQuery,
-            unitNames: ['BattleMaster C3'],
+            entries: [{ unitName: 'BattleMaster C3' }],
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,

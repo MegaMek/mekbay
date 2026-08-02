@@ -1,0 +1,190 @@
+import type { BvNormalizationSettings } from '../models/unit-search-result.model';
+import type { Unit, UnitSubtype, UnitType } from '../models/units.model';
+import { BVCalculatorUtil } from './bv-calculator.util';
+import {
+    findBvNormalizationMatch,
+    isValidBvNormalizationSettings,
+    isValidClassicSkillRange,
+    isValidTargetBvRange,
+    updateNumericRangeBound,
+} from './bv-normalization.util';
+
+function createUnit(overrides: Partial<Unit> = {}): Unit {
+    return {
+        name: 'Test Unit',
+        bv: 1000,
+        type: 'Mek' as UnitType,
+        subtype: '' as UnitSubtype,
+        canAntiMech: true,
+        ...overrides,
+    } as Unit;
+}
+
+function settings(
+    targetMin: number,
+    targetMax: number,
+    gunneryMin = 0,
+    gunneryMax = 8,
+    pilotingMin = 0,
+    pilotingMax = 8,
+): BvNormalizationSettings {
+    return {
+        targetBv: { min: targetMin, max: targetMax },
+        gunnery: { min: gunneryMin, max: gunneryMax },
+        piloting: { min: pilotingMin, max: pilotingMax },
+    };
+}
+
+describe('classic BV normalization', () => {
+    describe('range bound updates', () => {
+        it('raises max when min crosses it', () => {
+            expect(updateNumericRangeBound({ min: 1000, max: 1500 }, 'min', 2000))
+                .toEqual({ min: 2000, max: 2000 });
+        });
+
+        it('lowers min when max crosses it', () => {
+            expect(updateNumericRangeBound({ min: 1000, max: 1500 }, 'max', 500))
+                .toEqual({ min: 500, max: 500 });
+        });
+
+        it('preserves the opposite bound for ordered and equal values', () => {
+            expect(updateNumericRangeBound({ min: 1000, max: 1500 }, 'min', 1250))
+                .toEqual({ min: 1250, max: 1500 });
+            expect(updateNumericRangeBound({ min: 1000, max: 1500 }, 'max', 1250))
+                .toEqual({ min: 1000, max: 1250 });
+            expect(updateNumericRangeBound({ min: 1000, max: 1500 }, 'min', 1500))
+                .toEqual({ min: 1500, max: 1500 });
+        });
+    });
+
+    describe('validation', () => {
+        it('accepts inclusive skill boundaries and an ordered nonnegative target', () => {
+            expect(isValidClassicSkillRange({ min: 0, max: 8 })).toBeTrue();
+            expect(isValidTargetBvRange({ min: 0, max: 0 })).toBeTrue();
+            expect(isValidBvNormalizationSettings(settings(0, 100, 0, 8, 0, 8))).toBeTrue();
+        });
+
+        it('rejects inverted, fractional, non-finite, and out-of-bounds skill ranges', () => {
+            const invalidRanges = [
+                { min: 5, max: 4 },
+                { min: -1, max: 4 },
+                { min: 4, max: 9 },
+                { min: 1.5, max: 4 },
+                { min: Number.NaN, max: 4 },
+                { min: 0, max: Number.POSITIVE_INFINITY },
+            ];
+
+            for (const range of invalidRanges) {
+                expect(isValidClassicSkillRange(range)).withContext(JSON.stringify(range)).toBeFalse();
+            }
+        });
+
+        it('rejects inverted, negative, fractional, and non-finite target ranges', () => {
+            const invalidRanges = [
+                { min: 1001, max: 1000 },
+                { min: -1, max: 1000 },
+                { min: 999.5, max: 1000 },
+                { min: Number.NaN, max: 1000 },
+                { min: 0, max: Number.POSITIVE_INFINITY },
+            ];
+
+            for (const range of invalidRanges) {
+                expect(isValidTargetBvRange(range)).withContext(JSON.stringify(range)).toBeFalse();
+            }
+        });
+    });
+
+    it('matches every exact skill pair across the complete 0-8 matrix', () => {
+        const unit = createUnit({ bv: 10_000 });
+
+        for (let gunnery = 0; gunnery <= 8; gunnery++) {
+            for (let piloting = 0; piloting <= 8; piloting++) {
+                const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
+                expect(findBvNormalizationMatch(
+                    unit,
+                    settings(adjustedBv, adjustedBv, gunnery, gunnery, piloting, piloting),
+                )).withContext(`G${gunnery}/P${piloting}`).toEqual({ adjustedBv, gunnery, piloting });
+            }
+        }
+    });
+
+    it('includes both target BV boundaries', () => {
+        const unit = createUnit();
+
+        expect(findBvNormalizationMatch(unit, settings(1000, 1100, 4, 4, 4, 5)))
+            .toEqual({ adjustedBv: 1000, gunnery: 4, piloting: 5 });
+        expect(findBvNormalizationMatch(unit, settings(1000, 1100, 4, 4, 4, 4)))
+            .toEqual({ adjustedBv: 1100, gunnery: 4, piloting: 4 });
+    });
+
+    it('returns null when no pair reaches the target or the base BV is invalid', () => {
+        expect(findBvNormalizationMatch(createUnit(), settings(3000, 4000, 4, 5, 4, 5))).toBeNull();
+        expect(findBvNormalizationMatch(createUnit({ bv: 0 }), settings(0, 0))).toBeNull();
+        expect(findBvNormalizationMatch(createUnit({ bv: -1 }), settings(0, 100))).toBeNull();
+        expect(findBvNormalizationMatch(createUnit({ bv: Number.NaN }), settings(0, 100))).toBeNull();
+    });
+
+    it('prefers the adjusted BV closest to the target midpoint', () => {
+        const match = findBvNormalizationMatch(createUnit(), settings(850, 1100, 4, 5, 4, 5));
+
+        expect(match).toEqual({ adjustedBv: 990, gunnery: 5, piloting: 4 });
+    });
+
+    it('prefers the pair closest to default 4/5 when adjusted BV distances tie', () => {
+        const unit = createUnit({ bv: 100 });
+        const match = findBvNormalizationMatch(unit, settings(99, 100, 4, 5, 4, 5));
+
+        expect(match).toEqual({ adjustedBv: 100, gunnery: 4, piloting: 5 });
+    });
+
+    it('uses stable skill tie-breaks when pairs have the same rounded BV', () => {
+        const unit = createUnit({ bv: 1 });
+        const match = findBvNormalizationMatch(unit, settings(1, 1, 3, 5, 4, 6));
+
+        expect(match).toEqual({ adjustedBv: 1, gunnery: 4, piloting: 5 });
+    });
+
+    it('reports effective Piloting and deduplicates fixed ProtoMek pairs', () => {
+        const unit = createUnit({ type: 'ProtoMek' as UnitType });
+        const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 5);
+
+        expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 4, 4, 0, 8)))
+            .toEqual({ adjustedBv, gunnery: 4, piloting: 5 });
+    });
+
+    it('uses Piloting 5 for mechanized infantry without anti-Mech capability', () => {
+        const unit = createUnit({
+            type: 'Infantry' as UnitType,
+            subtype: 'Mechanized Conventional Infantry' as UnitSubtype,
+            canAntiMech: false,
+        });
+        const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 5);
+
+        expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 4, 4, 0, 8)))
+            .toEqual({ adjustedBv, gunnery: 4, piloting: 5 });
+    });
+
+    it('uses Piloting 8 for conventional infantry without anti-Mech capability', () => {
+        const unit = createUnit({
+            type: 'Infantry' as UnitType,
+            subtype: 'Conventional Infantry' as UnitSubtype,
+            canAntiMech: false,
+        });
+        const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 8);
+
+        expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 4, 4, 0, 8)))
+            .toEqual({ adjustedBv, gunnery: 4, piloting: 8 });
+    });
+
+    it('honors the requested Piloting range for infantry with anti-Mech capability', () => {
+        const unit = createUnit({
+            type: 'Infantry' as UnitType,
+            subtype: 'Conventional Infantry' as UnitSubtype,
+            canAntiMech: true,
+        });
+        const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 2);
+
+        expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 4, 4, 2, 2)))
+            .toEqual({ adjustedBv, gunnery: 4, piloting: 2 });
+    });
+});

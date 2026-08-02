@@ -33,6 +33,7 @@
 
 import type { Unit } from '../models/units.model';
 import { GameSystem } from '../models/common.model';
+import type { BvNormalizationMatch, BvNormalizationSettings } from '../models/unit-search-result.model';
 import { getForcePacks } from '../models/forcepacks.model';
 import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, AdvFilterType, isMegaMekRaritySortKey, normalizeMotiveValue, type FilterState, type SearchTelemetryStage } from '../services/unit-search-filters.model';
 import {
@@ -48,8 +49,9 @@ import { wildcardToRegex } from './string.util';
 import { getNowMs, getProperty, getUnitCountableFilterData, isCommittedSemanticToken, measureStage } from './unit-search-shared.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from './unit-filter-kernel.util';
 import type { AvailabilityFilterScope } from '../services/unit-search-filters.model';
+import { findBvNormalizationMatch } from './bv-normalization.util';
 
-interface UnitSearchExecutionRequest {
+export interface UnitSearchExecutionRequest {
     units: Unit[];
     parsedQuery: ParseResult;
     searchTokens: SearchTokensGroup[];
@@ -62,6 +64,7 @@ interface UnitSearchExecutionRequest {
     forceTotalBvPv: number;
     getAdjustedBV: (unit: Unit) => number;
     getAdjustedPV: (unit: Unit) => number;
+    bvNormalization?: BvNormalizationSettings | null;
     unitBelongsToEra: (unit: Unit, eraName: string, scope?: AvailabilityFilterScope) => boolean;
     unitBelongsToFaction: (unit: Unit, factionName: string, eraNames?: readonly string[]) => boolean;
     unitMatchesAvailabilityFrom?: (unit: Unit, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
@@ -80,8 +83,9 @@ interface UnitSearchExecutionRequest {
     getMegaMekRaritySortScore?: (unit: Unit, scope?: AvailabilityFilterScope) => number;
 }
 
-interface UnitSearchExecutionResult {
+export interface UnitSearchExecutionResult {
     results: Unit[];
+    normalizationMatchesByUnitName: ReadonlyMap<string, BvNormalizationMatch>;
     telemetryStages: SearchTelemetryStage[];
     totalMs: number;
     unitCount: number;
@@ -151,11 +155,28 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
     const hasTextSearch = parsedQuery.textSearch.trim().length > 0;
     const uiOnlyFilterState = request.uiOnlyFilterState ?? {};
     const selectedMotiveCodes = getSelectedASMotiveCodes(parsedQuery, uiOnlyFilterState);
+    const normalizationEnabled = request.gameSystem === GameSystem.CLASSIC && request.bvNormalization != null;
+    const normalizationMatchCache = new Map<string, BvNormalizationMatch | null>();
+    const resolveNormalizationMatch = (unit: Unit): BvNormalizationMatch | null => {
+        if (!normalizationEnabled) {
+            return null;
+        }
+        if (!normalizationMatchCache.has(unit.name)) {
+            normalizationMatchCache.set(
+                unit.name,
+                findBvNormalizationMatch(unit, request.bvNormalization!),
+            );
+        }
+        return normalizationMatchCache.get(unit.name) ?? null;
+    };
+    const getContextualAdjustedBV = (unit: Unit): number => {
+        return resolveNormalizationMatch(unit)?.adjustedBv ?? request.getAdjustedBV(unit);
+    };
 
     const context: EvaluatorContext = {
         getProperty,
         getUnitId: (unit: Unit) => unit.name,
-        getAdjustedBV: request.getAdjustedBV,
+        getAdjustedBV: getContextualAdjustedBV,
         getAdjustedPV: request.getAdjustedPV,
         gameSystem: request.gameSystem,
         matchesText: (unit: Unit, text: string) => {
@@ -204,11 +225,22 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         getIndexedFilterValues: request.getIndexedFilterValues,
     };
 
+    let candidateUnits = allUnits;
+    if (normalizationEnabled) {
+        candidateUnits = measureStage(
+            telemetryStages,
+            'bv-normalization',
+            unitCount,
+            () => allUnits.filter(unit => resolveNormalizationMatch(unit) !== null),
+            value => value.length,
+        );
+    }
+
     let results = measureStage(
         telemetryStages,
         'ast-filter',
-        unitCount,
-        () => filterUnitsWithAST(allUnits, parsedQuery.ast, context),
+        candidateUnits.length,
+        () => filterUnitsWithAST(candidateUnits, parsedQuery.ast, context),
         value => value.length,
     );
 
@@ -221,7 +253,10 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                 ? applyFilterStateToUnits({
                     units: results,
                     state: uiOnlyFilterState,
-                    dependencies: request.uiOnlyFilterDependencies,
+                    dependencies: {
+                        ...request.uiOnlyFilterDependencies,
+                        getAdjustedBV: getContextualAdjustedBV,
+                    },
                 })
                 : results,
             value => value.length,
@@ -236,7 +271,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
             'budget-filter',
             results.length,
             () => results.filter(unit => {
-                const unitValue = isAS ? request.getAdjustedPV(unit) : request.getAdjustedBV(unit);
+                const unitValue = isAS ? request.getAdjustedPV(unit) : getContextualAdjustedBV(unit);
                 return unitValue <= remaining;
             }),
             value => value.length,
@@ -310,7 +345,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                 } else if (request.sortKey === 'name') {
                     comparison = compareUnitsByName(a, b);
                 } else if (request.sortKey === 'bv') {
-                    comparison = request.getAdjustedBV(a) - request.getAdjustedBV(b);
+                    comparison = getContextualAdjustedBV(a) - getContextualAdjustedBV(b);
                 } else if (request.sortKey === 'as.PV') {
                     comparison = request.getAdjustedPV(a) - request.getAdjustedPV(b);
                 } else if (isMegaMekRaritySortKey(request.sortKey)) {
@@ -343,8 +378,19 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         value => value.length,
     );
 
+    const normalizationMatchesByUnitName = new Map<string, BvNormalizationMatch>();
+    if (normalizationEnabled) {
+        for (const unit of sorted) {
+            const match = resolveNormalizationMatch(unit);
+            if (match) {
+                normalizationMatchesByUnitName.set(unit.name, match);
+            }
+        }
+    }
+
     return {
         results: sorted,
+        normalizationMatchesByUnitName,
         telemetryStages,
         totalMs: getNowMs() - searchStartedAt,
         unitCount,

@@ -190,8 +190,9 @@
     <unit-details-panel class="inline-details-panel framed-borders" [unit]="inlinePanelUnit()"
         [prevUnit]="inlinePanelPrevUnit()"
         [nextUnit]="inlinePanelNextUnit()"
-        [gunnerySkill]="this.filtersService.pilotGunnerySkill()"
-        [pilotingSkill]="this.filtersService.pilotPilotingSkill()"
+        [gunnerySkill]="inlinePanelUnit() ? getSearchResultContext(inlinePanelUnit()!).gunnery : undefined"
+        [pilotingSkill]="inlinePanelUnit() ? getSearchResultContext(inlinePanelUnit()!).piloting : undefined"
+        [adjustedBvOverride]="filtersService.activeBvNormalization() && inlinePanelUnit() ? getSearchResultContext(inlinePanelUnit()!).adjustedBv : undefined"
         [hasPrev]="inlinePanelHasPrev()"
         [hasNext]="inlinePanelHasNext()"
         (add)="onInlinePanelAdd()"
@@ -393,6 +394,7 @@
                         [unit]="unit"
                         [gunnery]="gunnery"
                         [piloting]="piloting"
+                        [searchResultContext]="filtersService.activeBvNormalization() ? getSearchResultContext(unit) : null"
                         [useBvPvDisplayOption]="true"
                         [megaMekAvailability]="getSearchResultMegaMekAvailability(unit)"
                         [isSelected]="isUnitSelected(unit)"
@@ -426,6 +428,7 @@
                         [unit]="unit"
                         [gunnery]="gunnery"
                         [piloting]="piloting"
+                        [searchResultContext]="filtersService.activeBvNormalization() ? getSearchResultContext(unit) : null"
                         [useBvPvDisplayOption]="true"
                         [expandedView]="false"
                         [showSelectCheckbox]="true"
@@ -563,7 +566,8 @@
             </button>
             }
         </div>
-        <div class="pilot-skills-section framed-borders">
+        <div class="pilot-skills-section framed-borders" [class.expanded]="pilotBvSectionExpanded()">
+            <div class="pilot-skills-summary">
             <div class="pilot-skills-controls">
                 @if (gameService.isAlphaStrike()) {
                 <div class="skill-control">
@@ -578,6 +582,15 @@
                     </select>
                 </div>
                 } @else {
+                @if (filtersService.budgetMode() === 'bv-normalization') {
+                @let normalization = filtersService.classicBvNormalizationSettings();
+                    <div class="normalization-summary">
+                    <span>Gunnery: {{ normalization.gunnery.min }}–{{ normalization.gunnery.max }}</span>
+                    <span>Piloting: {{ normalization.piloting.min }}–{{ normalization.piloting.max }}</span>
+                    <span>Target BV: {{ normalization.targetBv.min | number }}–{{ normalization.targetBv.max | number }}</span>
+                    </div>
+                } @else {
+                <div class="pilot-skill-inputs">
                 <div class="skill-control">
                     <label for="gunnery-skill" (click)="openSelect($event, gunnerySelect)">Gunnery:</label>
                     <select #gunnerySelect id="gunnery-skill" class="bt-input skill-select"
@@ -599,14 +612,53 @@
                         }
                     </select>
                 </div>
+                </div>
+                }
+                }
+                @let summaryLimit = filtersService.bvPvLimit();
+                @let summaryForceTotal = filtersService.forceTotalBvPv();
+                @if (summaryLimit > 0 && (gameService.isAlphaStrike() || filtersService.budgetMode() === 'force-limit')) {
+                <div class="limit-summary" [class.over-limit]="summaryForceTotal > summaryLimit">
+                    Remaining {{ gameService.isAlphaStrike() ? 'PV' : 'BV' }}: {{ (summaryLimit - summaryForceTotal) | number }}
+                </div>
                 }
             </div>
-            <div class="bv-limit-controls">
+            <button type="button" class="pilot-bv-toggle"
+                [attr.aria-expanded]="pilotBvSectionExpanded()"
+                aria-controls="pilot-bv-expanded-controls"
+                [attr.aria-label]="pilotBvSectionExpanded() ? 'Collapse pilot and BV settings' : 'Expand pilot and BV settings'"
+                (click)="togglePilotBvSection()">
+                <svg class="chevron" [class.collapsed]="!pilotBvSectionExpanded()" width="10" height="10"
+                    fill="currentColor" viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+                    <path d="M0 2l5 6 5-6z" />
+                </svg>
+            </button>
+            </div>
+            @if (pilotBvSectionExpanded()) {
+            <div id="pilot-bv-expanded-controls" class="pilot-bv-expanded-controls">
+                @if (!gameService.isAlphaStrike()) {
+                <fieldset class="budget-mode-controls">
+                    <legend>Battle Value mode</legend>
+                    <label>
+                        <input type="radio" class="bt-checkbox" name="search-budget-mode" value="force-limit"
+                            [checked]="filtersService.budgetMode() === 'force-limit'"
+                            (click)="$event.preventDefault(); setSearchBudgetMode('force-limit')">
+                        <span [tooltip]="forceBvLimitTooltip">Force BV Limit</span>
+                    </label>
+                    <label>
+                        <input type="radio" class="bt-checkbox" name="search-budget-mode" value="bv-normalization"
+                            [checked]="filtersService.budgetMode() === 'bv-normalization'"
+                            (click)="$event.preventDefault(); setSearchBudgetMode('bv-normalization')">
+                        <span [tooltip]="bvNormalizationTooltip">BV Normalization</span>
+                    </label>
+                </fieldset>
+                }
+                @if (gameService.isAlphaStrike() || filtersService.budgetMode() === 'force-limit') {
+                <div class="bv-limit-controls">
                 @let bvPvLimit = this.filtersService.bvPvLimit();
-                @let forceTotal = this.filtersService.forceTotalBvPv();
                 @let limitLabel = gameService.isAlphaStrike() ? 'PV' : 'BV';
                 <div class="limit-control">
-                    <label for="bv-pv-limit">Force<br/>{{ limitLabel }} Limit:</label>
+                    <label for="bv-pv-limit" class="bvfilter-input-label">Force {{ limitLabel }} Limit:</label>
                     <input id="bv-pv-limit" type="number" class="bt-input limit-input"
                         [class.active]="bvPvLimit > 0"
                         [value]="bvPvLimit || ''"
@@ -614,13 +666,38 @@
                         placeholder="None"
                         (input)="setBvPvLimit(+$any($event.target).value || 0)">
                 </div>
-                @if (bvPvLimit > 0) {
-                <div class="limit-info" [class.over-limit]="forceTotal > bvPvLimit">
-                    <span class="limit-remaining-label">Remaining</span>
-                    <span class="limit-remaining-value">{{ (bvPvLimit - forceTotal) | number }}</span>
+                </div>
+                } @else if (filtersService.budgetMode() === 'bv-normalization') {
+                @let normalization = filtersService.classicBvNormalizationSettings();
+                <div class="normalization-grid">
+                    <span class="bvfilter-input-label">Target BV</span>
+                    <input type="number" class="bt-input normalization-input" min="0" step="1" aria-label="Minimum target BV"
+                        [value]="normalization.targetBv.min"
+                        (change)="setNormalizationRangeValue('targetBv', 'min', +$any($event.target).value)">
+                    <span class="range-separator">~</span>
+                    <input type="number" class="bt-input normalization-input" min="0" step="1" aria-label="Maximum target BV"
+                        [value]="normalization.targetBv.max"
+                        (change)="setNormalizationRangeValue('targetBv', 'max', +$any($event.target).value)">
+                    <span class="bvfilter-input-label">Gunnery</span>
+                    <input type="number" class="bt-input normalization-input" min="0" max="8" step="1" aria-label="Minimum Gunnery"
+                        [value]="normalization.gunnery.min"
+                        (change)="setNormalizationRangeValue('gunnery', 'min', +$any($event.target).value)">
+                    <span class="range-separator">~</span>
+                    <input type="number" class="bt-input normalization-input" min="0" max="8" step="1" aria-label="Maximum Gunnery"
+                        [value]="normalization.gunnery.max"
+                        (change)="setNormalizationRangeValue('gunnery', 'max', +$any($event.target).value)">
+                    <span class="bvfilter-input-label">Piloting</span>
+                    <input type="number" class="bt-input normalization-input" min="0" max="8" step="1" aria-label="Minimum Piloting"
+                        [value]="normalization.piloting.min"
+                        (change)="setNormalizationRangeValue('piloting', 'min', +$any($event.target).value)">
+                    <span class="range-separator">~</span>
+                    <input type="number" class="bt-input normalization-input" min="0" max="8" step="1" aria-label="Maximum Piloting"
+                        [value]="normalization.piloting.max"
+                        (change)="setNormalizationRangeValue('piloting', 'max', +$any($event.target).value)">
                 </div>
                 }
             </div>
+            }
         </div>
         @if (advPanelStyle().columnsCount === 2) {
         <button type="button" class="bt-button adv-filter-system-toggle"

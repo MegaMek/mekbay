@@ -35,6 +35,12 @@ import { Injectable, signal, computed, effect, inject, untracked, DestroyRef } f
 import type { Era } from '../models/eras.model';
 import type { Unit } from '../models/units.model';
 import {
+    DEFAULT_CLASSIC_BV_NORMALIZATION_MAX,
+    type BvNormalizationMatch,
+    type BvNormalizationSettings,
+    type UnitSearchBudgetMode,
+} from '../models/unit-search-result.model';
+import {
     MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS,
     MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS,
     MEGAMEK_AVAILABILITY_FROM_OPTIONS,
@@ -90,9 +96,10 @@ import {
     getWorkerCorpusSnapshot as getCachedWorkerCorpusSnapshot,
     getWorkerCorpusVersion as getUnitSearchWorkerCorpusVersion,
 } from '../utils/unit-search-worker-request.util';
-import { buildWorkerSearchTelemetrySnapshot, hydrateWorkerResultUnits } from '../utils/unit-search-worker-result.util';
+import { buildWorkerSearchTelemetrySnapshot, hydrateWorkerSearchResult } from '../utils/unit-search-worker-result.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
+import { isValidBvNormalizationSettings } from '../utils/bv-normalization.util';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationRequirementEngine } from '../utils/formation-requirement-engine.util';
 import type { FormationSearchTarget } from '../utils/formation-requirement.model';
@@ -247,6 +254,18 @@ export class UnitSearchFiltersService {
 
     pilotGunnerySkill = signal(4);
     pilotPilotingSkill = signal(5);
+    readonly budgetMode = signal<UnitSearchBudgetMode>(null);
+    readonly classicBvNormalizationSettings = signal<BvNormalizationSettings>({
+        targetBv: { min: 0, max: DEFAULT_CLASSIC_BV_NORMALIZATION_MAX },
+        gunnery: { min: DEFAULT_GUNNERY_SKILL, max: DEFAULT_GUNNERY_SKILL },
+        piloting: { min: DEFAULT_PILOTING_SKILL, max: DEFAULT_PILOTING_SKILL },
+    });
+    readonly activeBvNormalization = computed<BvNormalizationSettings | null>(() => {
+        return this.gameService.currentGameSystem() === GameSystem.CLASSIC
+            && this.budgetMode() === 'bv-normalization'
+            ? this.classicBvNormalizationSettings()
+            : null;
+    });
     /** BV/PV budget limit. 0 means no limit. */
     bvPvLimit = signal(0);
     /** Current force total BV/PV, fed from the component layer. */
@@ -272,6 +291,7 @@ export class UnitSearchFiltersService {
     readonly advOptionsTelemetry = this.advOptionsTelemetryState.asReadonly();
     private readonly workerSearchEnabled = signal(this.canUseSearchWorker());
     private readonly rawWorkerResultUnitsState = signal<Unit[]>([]);
+    private readonly workerNormalizationMatchesState = signal<ReadonlyMap<string, BvNormalizationMatch>>(new Map());
     private readonly formationTargetExistingUnitsState = signal<readonly FormationUnitLike[]>([]);
     readonly formationTarget = computed<FormationSearchTarget | null>(() => {
         if (this.hasSemanticFormationTarget()) {
@@ -1975,10 +1995,15 @@ export class UnitSearchFiltersService {
             forceTotalBvPv: 0,
             pilotGunnerySkill: this.pilotGunnerySkill(),
             pilotPilotingSkill: this.pilotPilotingSkill(),
+            bvNormalization: this.activeBvNormalization(),
         });
     }
 
     private applyRemainingBudgetLimit(units: readonly Unit[], telemetryStages?: SearchTelemetryStage[]): Unit[] {
+        const isClassic = this.gameService.currentGameSystem() === GameSystem.CLASSIC;
+        if (isClassic && this.budgetMode() !== 'force-limit') {
+            return units as Unit[];
+        }
         const budgetLimit = this.bvPvLimit();
         if (budgetLimit <= 0) {
             return units as Unit[];
@@ -2015,7 +2040,8 @@ export class UnitSearchFiltersService {
             return;
         }
 
-        const hydratedResults = hydrateWorkerResultUnits(result, unitName => this.dataService.getUnitByName(unitName));
+        const hydrated = hydrateWorkerSearchResult(result, unitName => this.dataService.getUnitByName(unitName));
+        const hydratedResults = hydrated.units;
         const telemetryStages = [...result.stages];
         const stageCountBeforePostProcessing = telemetryStages.length;
         const postFilteredResults = this.applyWorkerPostFilters(hydratedResults, telemetryStages);
@@ -2027,6 +2053,7 @@ export class UnitSearchFiltersService {
             .reduce((totalMs, stage) => totalMs + stage.durationMs, 0);
 
         this.rawWorkerResultUnitsState.set(hydratedResults);
+        this.workerNormalizationMatchesState.set(hydrated.normalizationMatchesByUnitName);
         this.workerResultRevision.set(result.revision);
         this.updateSearchTelemetry(buildWorkerSearchTelemetrySnapshot(result, {
             timestamp: Date.now(),
@@ -2302,6 +2329,7 @@ export class UnitSearchFiltersService {
             sortDirection: this.selectedSortDirection(),
             pilotGunnerySkill: this.pilotGunnerySkill(),
             pilotPilotingSkill: this.pilotPilotingSkill(),
+            bvNormalization: this.activeBvNormalization(),
             megaMekAvailabilityVersion: availabilitySource === 'megamek' || isMegaMekRaritySortKey(selectedSort)
                 ? this.dataService.megaMekAvailabilityVersion()
                 : 0,
@@ -3381,7 +3409,7 @@ export class UnitSearchFiltersService {
         };
     }
 
-    private executeSyncSearch(options: { ignoreFormationTarget?: boolean } = {}): {
+    private executeSyncSearch(options: { ignoreFormationTarget?: boolean; ignoreBvNormalization?: boolean } = {}): {
         execution: ReturnType<typeof executeUnitSearch>;
         parseTelemetry: SearchTelemetryStage[];
     } {
@@ -3424,6 +3452,7 @@ export class UnitSearchFiltersService {
             sortDirection: this.selectedSortDirection(),
             bvPvLimit: 0,
             forceTotalBvPv: 0,
+            bvNormalization: options.ignoreBvNormalization ? null : this.activeBvNormalization(),
             getAdjustedBV: (unit: Unit) => this.getAdjustedBV(unit),
             getAdjustedPV: (unit: Unit) => this.getAdjustedPV(unit),
             unitBelongsToEra: (unit: Unit, eraName: string, scope?: AvailabilityFilterScope) => this.unitBelongsToEra(unit, eraName, scope),
@@ -3458,6 +3487,10 @@ export class UnitSearchFiltersService {
 
     private readonly uncappedSyncSearch = computed(() => this.executeSyncSearch());
     private readonly uncappedSyncSearchIgnoringFormationTarget = computed(() => this.executeSyncSearch({ ignoreFormationTarget: true }));
+    private readonly uncappedSyncSearchIgnoringDirectSearchConstraints = computed(() => this.executeSyncSearch({
+        ignoreFormationTarget: true,
+        ignoreBvNormalization: true,
+    }));
 
     syncFilteredUnits = computed(() => {
         const { execution, parseTelemetry } = this.uncappedSyncSearch();
@@ -3484,6 +3517,9 @@ export class UnitSearchFiltersService {
 
     /** Force generator eligibility uses the active search criteria but ignores the remaining BV/PV cap from unit search. */
     readonly forceGeneratorEligibleUnits = computed(() => {
+        if (this.activeBvNormalization()) {
+            return this.uncappedSyncSearchIgnoringDirectSearchConstraints().execution.results;
+        }
         if (this.workerSearchActive()) {
             const pendingFallback = this.getPendingWorkerFallbackUnits();
             if (pendingFallback) {
@@ -3680,6 +3716,11 @@ export class UnitSearchFiltersService {
         if (scalarState.bvLimit !== null) {
             this.bvPvLimit.set(scalarState.bvLimit);
         }
+
+        this.budgetMode.set(scalarState.budgetMode);
+        if (scalarState.bvNormalization) {
+            this.classicBvNormalizationSettings.set(scalarState.bvNormalization);
+        }
     }
 
     queryParameters = computed(() => {
@@ -3693,6 +3734,8 @@ export class UnitSearchFiltersService {
             gunnery: this.pilotGunnerySkill(),
             piloting: this.pilotPilotingSkill(),
             bvLimit: this.bvPvLimit(),
+            budgetMode: this.budgetMode(),
+            bvNormalization: this.classicBvNormalizationSettings(),
             publicTagsParam: this.publicTagsParam(),
             viewMode: this.viewMode(),
         });
@@ -3873,6 +3916,13 @@ export class UnitSearchFiltersService {
         this.pilotGunnerySkill.set(4);
         this.pilotPilotingSkill.set(5);
         this.bvPvLimit.set(0);
+        this.budgetMode.set(null);
+        this.classicBvNormalizationSettings.set({
+            targetBv: { min: 0, max: DEFAULT_CLASSIC_BV_NORMALIZATION_MAX },
+            gunnery: { min: DEFAULT_GUNNERY_SKILL, max: DEFAULT_GUNNERY_SKILL },
+            piloting: { min: DEFAULT_PILOTING_SKILL, max: DEFAULT_PILOTING_SKILL },
+        });
+        this.workerNormalizationMatchesState.set(new Map());
         this.refreshWorkerSearchIfNeeded();
     }
 
@@ -4017,6 +4067,31 @@ export class UnitSearchFiltersService {
         this.refreshWorkerSearchIfNeeded();
     }
 
+    setBudgetMode(mode: UnitSearchBudgetMode): void {
+        this.budgetMode.set(mode);
+        this.refreshWorkerSearchIfNeeded();
+    }
+
+    setBvNormalizationSettings(settings: BvNormalizationSettings): void {
+        this.classicBvNormalizationSettings.set(settings);
+        this.refreshWorkerSearchIfNeeded();
+    }
+
+    getSearchResultPilotContext(unit: Unit): BvNormalizationMatch {
+        const normalizedMatch = this.activeBvNormalization()
+            ? this.workerSearchActive()
+                ? this.workerNormalizationMatchesState().get(unit.name)
+                : this.uncappedSyncSearch().execution.normalizationMatchesByUnitName.get(unit.name)
+            : null;
+        if (normalizedMatch) {
+            return normalizedMatch;
+        }
+
+        const gunnery = this.pilotGunnerySkill();
+        const piloting = getEffectivePilotingSkill(unit, this.pilotPilotingSkill());
+        return { adjustedBv: this.getAdjustedBV(unit), gunnery, piloting };
+    }
+
     getAdjustedBV(unit: Unit): number {
         const gunnery = this.pilotGunnerySkill();
         const piloting = getEffectivePilotingSkill(unit, this.pilotPilotingSkill());
@@ -4060,6 +4135,16 @@ export class UnitSearchFiltersService {
 
         const p = this.pilotPilotingSkill();
         if (typeof p === 'number' && p !== 5) filter.piloting = p;
+
+        if (this.budgetMode() === 'force-limit') {
+            filter.budgetMode = 'force-limit';
+            if (this.bvPvLimit() > 0) filter.bvLimit = this.bvPvLimit();
+            filter.gameSystem = 'cbt';
+        } else if (this.activeBvNormalization()) {
+            filter.budgetMode = 'bv-normalization';
+            filter.bvNormalization = this.classicBvNormalizationSettings();
+            filter.gameSystem = 'cbt';
+        }
 
         // Save only interacted filters (UI filters, not from semantic text)
         const state = this.getApplicableFilterState(this.filterState());
@@ -4126,6 +4211,18 @@ export class UnitSearchFiltersService {
             const g = typeof filter.gunnery === 'number' ? filter.gunnery : this.pilotGunnerySkill();
             const p = typeof filter.piloting === 'number' ? filter.piloting : this.pilotPilotingSkill();
             this.setPilotSkills(g, p);
+        }
+
+        if (filter.budgetMode === 'force-limit') {
+            if (typeof filter.bvLimit === 'number' && Number.isInteger(filter.bvLimit) && filter.bvLimit >= 0) {
+                this.bvPvLimit.set(filter.bvLimit);
+            }
+            this.setBudgetMode('force-limit');
+        } else if (filter.budgetMode === 'bv-normalization'
+            && filter.bvNormalization
+            && isValidBvNormalizationSettings(filter.bvNormalization)) {
+            this.setBvNormalizationSettings(filter.bvNormalization);
+            this.setBudgetMode('bv-normalization');
         }
     }
 }

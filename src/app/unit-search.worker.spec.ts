@@ -123,19 +123,44 @@ describe('unit-search worker', () => {
             ...baseRequest,
             executionQuery: 'tech="Mixed (Clan)"',
             telemetryQuery: 'tech="Mixed (Clan)"',
-        }).unitNames).toEqual(['Mixed Clan Unit']);
+        }).entries).toEqual([{ unitName: 'Mixed Clan Unit' }]);
         expect(__test__.buildResultMessage(runtime, {
             ...baseRequest,
             executionQuery: 'tech=Clan',
             telemetryQuery: 'tech=Clan',
-        }).unitNames).toEqual(['Clan Unit']);
+        }).entries).toEqual([{ unitName: 'Clan Unit' }]);
     });
 
     it('requires faction membership in every selected multistate era', () => {
         const runtime = __test__.hydrateCorpus(createSnapshot());
         const result = __test__.buildResultMessage(runtime, createRequest());
 
-        expect(result.unitNames).toEqual([]);
+        expect(result.entries).toEqual([]);
+    });
+
+    it('emits normalization metadata only in canonical result entries', () => {
+        const unit = createUnit('Normalized Unit');
+        const runtime = __test__.hydrateCorpus({
+            corpusVersion: '1:0',
+            units: [unit],
+            indexes: {},
+            factionEraIndex: {},
+        });
+        const result = __test__.buildResultMessage(runtime, {
+            ...createRequest(),
+            executionQuery: '',
+            telemetryQuery: '',
+            bvNormalization: {
+                targetBv: { min: 1000, max: 1000 },
+                gunnery: { min: 4, max: 4 },
+                piloting: { min: 5, max: 5 },
+            },
+        });
+
+        expect(result.entries).toEqual([{
+            unitName: 'Normalized Unit',
+            match: { adjustedBv: 1000, gunnery: 4, piloting: 5 },
+        }]);
     });
 
     it('filters canon and published record sheet status from worker execution queries', () => {
@@ -168,16 +193,16 @@ describe('unit-search worker', () => {
             ...baseRequest,
             executionQuery: 'published:yes',
             telemetryQuery: 'published:yes',
-        }).unitNames).toEqual(['Published Canon']);
+        }).entries).toEqual([{ unitName: 'Published Canon' }]);
         expect(__test__.buildResultMessage(runtime, {
             ...baseRequest,
             executionQuery: 'published:no',
             telemetryQuery: 'published:no',
-        }).unitNames).toEqual(['Unpublished Non-Canon']);
+        }).entries).toEqual([{ unitName: 'Unpublished Non-Canon' }]);
         expect(__test__.buildResultMessage(runtime, {
             ...baseRequest,
             executionQuery: 'canon:no',
             telemetryQuery: 'canon:no',
-        }).unitNames).toEqual(['Unpublished Non-Canon']);
+        }).entries).toEqual([{ unitName: 'Unpublished Non-Canon' }]);
     });
 });

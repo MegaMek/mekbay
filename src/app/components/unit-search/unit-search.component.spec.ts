@@ -48,6 +48,7 @@ describe('UnitSearchComponent card virtualization', () => {
         searchText: signal(''),
         pilotGunnerySkill: signal(4),
         pilotPilotingSkill: signal(5),
+        budgetMode: signal<'force-limit' | 'bv-normalization' | null>(null),
         bvPvLimit: signal(0),
         forceTotalBvPv: signal(0),
         selectedSort: signal('name'),
@@ -169,6 +170,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.searchText.set('');
         advOptionsSignal.set({});
         isSearchSettledSignal.set(true);
+        filtersServiceStub.budgetMode.set(null);
         filtersServiceStub.bvPvLimit.set(0);
         filtersServiceStub.selectedSort.set('name');
         filtersServiceStub.selectedSortDirection.set('asc');
@@ -414,6 +416,25 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.resultsVisible()).toBeTrue();
         expect(cdkViewport.getViewportSize()).toBe(4000);
         expect(renderedRange.end - renderedRange.start).toBeGreaterThanOrEqual(minimumVisibleRows);
+    });
+
+    for (const budgetMode of ['force-limit', 'bv-normalization'] as const) {
+        it(`shows compact results when ${budgetMode} is the only active search control`, () => {
+            const fixture = TestBed.createComponent(UnitSearchComponent);
+            const component = fixture.componentInstance;
+            component.focused.set(true);
+            filtersServiceStub.budgetMode.set(budgetMode);
+
+            expect(component.resultsVisible()).toBeTrue();
+        });
+    }
+
+    it('keeps compact results hidden without search input, filters, or a BV mode', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        component.focused.set(true);
+
+        expect(component.resultsVisible()).toBeFalse();
     });
 
     it('expands the search view when selecting table view from compact mode', () => {

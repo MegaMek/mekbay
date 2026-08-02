@@ -12,6 +12,10 @@ import { TooltipDirective } from './tooltip.directive';
             <button class="child" type="button" [tooltip]="'Child tooltip'" tooltipType="error" [tooltipDelay]="0">Child</button>
             <button class="negative" type="button" [tooltip]="[{ label: 'Apollo Destroyed', value: '+0', negative: true }]" [tooltipDelay]="0">Negative</button>
         </div>
+        <label class="mode-label">
+            <input class="mode-radio" type="radio">
+            <span class="mode-text" [tooltip]="'Mode explanation'" [tooltipDelay]="0">Mode</span>
+        </label>
     `,
 })
 class TestHostComponent {}
@@ -94,6 +98,23 @@ describe('TooltipDirective', () => {
         expect(row?.classList.contains('negative')).toBeTrue();
         expect(row?.textContent).toContain('Apollo Destroyed');
         expect(row?.textContent).toContain('+0');
+    });
+
+    it('triggers from tooltip label text but not its adjacent radio input', async () => {
+        const fixture = TestBed.createComponent(TestHostComponent);
+        fixture.detectChanges();
+
+        const element = fixture.nativeElement as HTMLElement;
+        const radio = element.querySelector('.mode-radio') as HTMLElement;
+        const text = element.querySelector('.mode-text') as HTMLElement;
+
+        dispatchPointerOver(radio);
+        await flushTooltipTasks(fixture);
+        expect(getTooltipTexts()).toEqual([]);
+
+        dispatchPointerOver(text);
+        await flushTooltipTasks(fixture);
+        expect(getTooltipTexts()).toEqual(['Mode explanation']);
     });
 
     function getTooltipTexts(): string[] {

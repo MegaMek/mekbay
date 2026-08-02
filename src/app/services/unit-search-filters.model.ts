@@ -212,6 +212,12 @@ export interface SerializedSearchFilter {
     gunnery?: number;
     /** Pilot piloting skill for BV calculations */
     piloting?: number;
+    /** Explicit Classic budget mode. Omitted when neither mode is selected. */
+    budgetMode?: Exclude<import('../models/unit-search-result.model').UnitSearchBudgetMode, null>;
+    /** Classic force BV limit. Only active with the force-limit budget mode. */
+    bvLimit?: number;
+    /** Classic-only adjusted-BV matching settings. */
+    bvNormalization?: import('../models/unit-search-result.model').BvNormalizationSettings;
     /** Timestamp when saved (for sync ordering) */
     timestamp?: number;
 }

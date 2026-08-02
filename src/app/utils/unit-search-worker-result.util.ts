@@ -32,9 +32,10 @@
  */
 
 import type { GameSystem } from '../models/common.model';
+import type { BvNormalizationMatch } from '../models/unit-search-result.model';
 import type { Unit } from '../models/units.model';
 import type { SearchTelemetrySnapshot } from '../services/unit-search-filters.model';
-import type { UnitSearchWorkerResultMessage } from './unit-search-worker-protocol.util';
+import type { UnitSearchWorkerResultEntry, UnitSearchWorkerResultMessage } from './unit-search-worker-protocol.util';
 
 interface WorkerResultTelemetryContext {
     timestamp: number;
@@ -46,13 +47,43 @@ interface WorkerResultTelemetryContext {
     totalMs?: number;
 }
 
+export interface HydratedWorkerSearchResult {
+    units: Unit[];
+    normalizationMatchesByUnitName: ReadonlyMap<string, BvNormalizationMatch>;
+}
+
+export function hydrateWorkerSearchResult(
+    result: UnitSearchWorkerResultMessage,
+    getUnitByName: (unitName: string) => Unit | undefined,
+): HydratedWorkerSearchResult {
+    const units: Unit[] = [];
+    const normalizationMatchesByUnitName = new Map<string, BvNormalizationMatch>();
+    const seenUnitNames = new Set<string>();
+
+    for (const entry of result.entries) {
+        if (seenUnitNames.has(entry.unitName)) {
+            continue;
+        }
+        const unit = getUnitByName(entry.unitName);
+        if (!unit) {
+            continue;
+        }
+
+        seenUnitNames.add(entry.unitName);
+        units.push(unit);
+        if (entry.match) {
+            normalizationMatchesByUnitName.set(entry.unitName, entry.match);
+        }
+    }
+
+    return { units, normalizationMatchesByUnitName };
+}
+
 export function hydrateWorkerResultUnits(
     result: UnitSearchWorkerResultMessage,
     getUnitByName: (unitName: string) => Unit | undefined,
 ): Unit[] {
-    return result.unitNames
-        .map(unitName => getUnitByName(unitName))
-        .filter((unit): unit is Unit => unit !== undefined);
+    return hydrateWorkerSearchResult(result, getUnitByName).units;
 }
 
 export function buildWorkerSearchTelemetrySnapshot(

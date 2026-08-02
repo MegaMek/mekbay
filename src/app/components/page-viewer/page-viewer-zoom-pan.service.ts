@@ -298,14 +298,7 @@ export class PageViewerZoomPanService {
             return positions;
         }
     }
-
-    /**
-     * @deprecated Use getPagePositions instead
-     */
-    getSpaceEvenlyPositions(pageCount: number): number[] {
-        return this.getPagePositions(pageCount);
-    }
-
+    
     /**
      * Calculate the minimum scale to fit content and how many pages are visible
      */

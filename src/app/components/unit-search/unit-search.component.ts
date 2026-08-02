@@ -46,6 +46,7 @@ import { getMegaMekAvailabilityRarityForScore, MEGAMEK_AVAILABILITY_UNKNOWN_SCOR
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import type { Unit } from '../../models/units.model';
+import { DEFAULT_CLASSIC_BV_NORMALIZATION_MAX, type BvNormalizationMatch } from '../../models/unit-search-result.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Overlay, OverlayModule, type ConnectedPosition, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
@@ -82,6 +83,7 @@ import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card
 import { formatMovement } from '../../utils/as-common.util';
 import type { UnitType } from '../../models/units.model';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
+import { updateNumericRangeBound } from '../../utils/bv-normalization.util';
 import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableRowLongPressEvent, type DataTableRowPointerEnterEvent, type DataTableRowPointerMoveEvent, type DataTableSortEvent } from '../data-table/data-table.component';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { getUnitVariantGroupIdentity, getUnitVariantGroupKey, type UnitVariantGroupIdentity, unitMatchesVariantGroup } from '../../utils/unit-variant.util';
@@ -141,6 +143,14 @@ interface ActiveVariantGroupFilter extends UnitVariantGroupIdentity {
     }
 })
 export class UnitSearchComponent {
+    readonly forceBvLimitTooltip = [
+        { value: 'Filters search results to units whose adjusted BV or PV fits within the remaining force budget.' },
+        { value: 'The remaining budget is the Force BV/PV Limit minus the BV/PV already in the current force. Pilot skill adjustments are included.' },
+    ];
+    readonly bvNormalizationTooltip = [
+        { value: 'Finds a Gunnery/Piloting combination within the selected ranges that places each unit inside the Target BV range.' },
+        { value: 'Matching results keep their selected skills and adjusted BV when viewed or added to a force.' },
+    ];
     private static supportsCssAnchorPositioning(): boolean {
         const css = globalThis.CSS;
         return !!css?.supports
@@ -310,10 +320,12 @@ export class UnitSearchComponent {
     advOpen = this.filtersService.advOpen;
     advPanelDocked = computed(() => this.expandedView() && this.advOpen() && this.layoutService.windowWidth() >= 900);
     advPanelUserColumns = signal<1 | 2 | null>(null);
+    readonly pilotBvSectionExpanded = signal(false);
     focused = signal(false);
     viewModeMenuOpen = signal(false);
     activeIndex = signal<number | null>(null);
     selectedUnits = signal<Set<string>>(new Set());
+    private readonly selectedUnitContexts = new Map<string, BvNormalizationMatch>();
     readonly activeVariantGroupFilter = signal<ActiveVariantGroupFilter | null>(null);
     private unitDetailsDialogOpen = signal(false);
 
@@ -453,11 +465,12 @@ export class UnitSearchComponent {
         const isAlphaStrike = this.gameService.isAlphaStrike();
         const gunnery = this.filtersService.pilotGunnerySkill();
         const piloting = this.filtersService.pilotPilotingSkill();
-        const mode = this.optionsService.options().forceViewerBVPVDisplay;
         const baseValues = group.units.map(unit => isAlphaStrike ? unit.as.PV : unit.bv);
         const adjustedValues = group.units.map(unit => isAlphaStrike
             ? adjustPointValueForSkill(unit.as.PV, gunnery)
-            : BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting));
+            : this.filtersService.activeBvNormalization()
+                ? this.getSearchResultContext(unit).adjustedBv
+                : BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting));
         const formatRange = (values: number[]) => {
             const min = Math.min(...values);
             const max = Math.max(...values);
@@ -467,8 +480,7 @@ export class UnitSearchComponent {
         const base = formatRange(baseValues);
         const adjusted = formatRange(adjustedValues);
 
-        if (mode === 'base') return base;
-        if (mode === 'both' && adjusted !== base) return `${adjusted} (${base})`;
+        if (adjusted !== base) return `${adjusted} (${base})`;
         return adjusted;
     }
 
@@ -1601,7 +1613,9 @@ export class UnitSearchComponent {
 
     isAdvActive() {
         const state = this.filtersService.filterState();
-        return Object.values(state).some(s => s.interactedWith) || this.filtersService.bvPvLimit() > 0;
+        return Object.values(state).some(s => s.interactedWith)
+            || this.filtersService.budgetMode() !== null
+            || this.filtersService.bvPvLimit() > 0;
     }
 
     private getOtherGameSystem(gameSystem: GameSystem): GameSystem {
@@ -1886,12 +1900,16 @@ export class UnitSearchComponent {
     showUnitDetails(unit: Unit) {
         const filteredUnits = this.displayedUnits();
         const filteredUnitIndex = filteredUnits.findIndex(u => u.name === unit.name);
+        const searchResultContexts = new Map(
+            filteredUnits.map(resultUnit => [resultUnit.name, this.getSearchResultContext(resultUnit)]),
+        );
         const ref = this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: filteredUnits,
                 unitIndex: filteredUnitIndex,
                 gunnerySkill: this.filtersService.pilotGunnerySkill(),
-                pilotingSkill: this.filtersService.pilotPilotingSkill()
+                pilotingSkill: this.filtersService.pilotPilotingSkill(),
+                searchResultContexts,
             }
         });
         this.unitDetailsDialogOpen.set(true);
@@ -2199,10 +2217,17 @@ export class UnitSearchComponent {
     }
 
     formatClassicBv(unit: Unit, gunnery: number, piloting: number): string {
+        if (this.filtersService.activeBvNormalization()) {
+            return formatBvPv(
+                this.getSearchResultContext(unit).adjustedBv,
+                unit.bv,
+                'both',
+            );
+        }
         return formatBvPv(
             BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting),
             unit.bv,
-            this.optionsService.options().forceViewerBVPVDisplay,
+            'both',
         );
     }
 
@@ -2210,7 +2235,7 @@ export class UnitSearchComponent {
         return formatBvPv(
             adjustPointValueForSkill(unit.as.PV, gunnery),
             unit.as.PV,
-            this.optionsService.options().forceViewerBVPVDisplay,
+            'both',
         );
     }
 
@@ -2268,6 +2293,48 @@ export class UnitSearchComponent {
         this.activeIndex.set(null);
     }
 
+    togglePilotBvSection(): void {
+        this.pilotBvSectionExpanded.update(expanded => !expanded);
+    }
+
+    setSearchBudgetMode(mode: 'force-limit' | 'bv-normalization'): void {
+        const nextMode = this.filtersService.budgetMode() === mode ? null : mode;
+        if (nextMode === 'bv-normalization') {
+            const current = this.filtersService.classicBvNormalizationSettings();
+            this.filtersService.setBvNormalizationSettings({
+                targetBv: current.targetBv,
+                gunnery: current.targetBv.max === DEFAULT_CLASSIC_BV_NORMALIZATION_MAX
+                    ? { min: this.filtersService.pilotGunnerySkill(), max: this.filtersService.pilotGunnerySkill() }
+                    : current.gunnery,
+                piloting: current.targetBv.max === DEFAULT_CLASSIC_BV_NORMALIZATION_MAX
+                    ? { min: this.filtersService.pilotPilotingSkill(), max: this.filtersService.pilotPilotingSkill() }
+                    : current.piloting,
+            });
+        }
+        this.filtersService.setBudgetMode(nextMode);
+        this.activeIndex.set(null);
+    }
+
+    setNormalizationRangeValue(
+        range: 'targetBv' | 'gunnery' | 'piloting',
+        bound: 'min' | 'max',
+        value: number,
+    ): void {
+        const current = this.filtersService.classicBvNormalizationSettings();
+        const isSkillRange = range !== 'targetBv';
+        if (!Number.isInteger(value)
+            || value < 0
+            || (isSkillRange && value > 8)) {
+            return;
+        }
+        const next = {
+            ...current,
+            [range]: updateNumericRangeBound(current[range], bound, value),
+        };
+        this.filtersService.setBvNormalizationSettings(next);
+        this.activeIndex.set(null);
+    }
+
     openSelect(event: Event, select: HTMLSelectElement) {
         event.preventDefault();
         event.stopPropagation();
@@ -2322,8 +2389,10 @@ export class UnitSearchComponent {
         const selected = new Set(this.selectedUnits());
         if (selected.has(unit.name)) {
             selected.delete(unit.name);
+            this.selectedUnitContexts.delete(unit.name);
         } else {
             selected.add(unit.name);
+            this.selectedUnitContexts.set(unit.name, this.getSearchResultContext(unit));
         }
         this.selectedUnits.set(selected);
     }
@@ -2388,6 +2457,7 @@ export class UnitSearchComponent {
     clearSelection() {
         if (this.selectedUnits().size > 0) {
             this.selectedUnits.set(new Set());
+            this.selectedUnitContexts.clear();
         }
     }
 
@@ -2395,22 +2465,43 @@ export class UnitSearchComponent {
         const allUnits = this.displayedUnits();
         const allNames = new Set(allUnits.map(u => u.name));
         this.selectedUnits.set(allNames);
+        this.selectedUnitContexts.clear();
+        for (const unit of allUnits) {
+            this.selectedUnitContexts.set(unit.name, this.getSearchResultContext(unit));
+        }
     }
 
     async addSelectedUnits() {
-        const gunnery = this.filtersService.pilotGunnerySkill();
-        const piloting = this.filtersService.pilotPilotingSkill();
         const selectedUnits = this.selectedUnits();
         for (let selectedUnit of selectedUnits) {
             const unit = this.dataService.getUnitByName(selectedUnit);
             if (unit) {
-                if (!await this.forceBuilderService.addUnit(unit, gunnery, piloting)) {
+                const context = this.selectedUnitContexts.get(selectedUnit)
+                    ?? this.getSearchResultContext(unit);
+                if (!await this.forceBuilderService.addUnit(unit, context.gunnery, context.piloting)) {
                     break;
                 }
             }
         };
         this.clearSelection();
         this.closeAllPanels();
+    }
+
+    getSearchResultContext(unit: Unit): BvNormalizationMatch {
+        const resolver = (this.filtersService as UnitSearchFiltersService & {
+            getSearchResultPilotContext?: (resultUnit: Unit) => BvNormalizationMatch;
+        }).getSearchResultPilotContext;
+        if (resolver) {
+            return resolver.call(this.filtersService, unit);
+        }
+
+        const gunnery = this.filtersService.pilotGunnerySkill();
+        const piloting = this.filtersService.pilotPilotingSkill();
+        return {
+            adjustedBv: BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting),
+            gunnery,
+            piloting,
+        };
     }
 
     showGenerateForceDialog(): void {

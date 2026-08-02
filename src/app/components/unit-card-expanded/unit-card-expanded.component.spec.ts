@@ -44,6 +44,7 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
 
     beforeEach(async () => {
         currentGameSystemSignal.set(GameSystem.CLASSIC);
+        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'both' });
 
         await TestBed.configureTestingModule({
             imports: [UnitCardExpandedComponent],
@@ -144,7 +145,8 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
         });
     });
 
-    it('uses the configured BV display for compact search results only', () => {
+    it('always displays adjusted and base BV for Classic search results', () => {
+        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'base' });
         const fixture = TestBed.createComponent(UnitCardExpandedComponent);
         const unit = createEmptyUnit({ bv: 12_600 });
 
@@ -155,7 +157,40 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
         fixture.detectChanges();
 
         expect(fixture.componentInstance.resolvedCompactBv()).toBe('16,632 (12,600)');
-        expect(fixture.componentInstance.resolvedBv()).toBeNull();
+        expect(fixture.componentInstance.resolvedBv()).toBe('16,632 (12,600)');
+    });
+
+    it('always displays adjusted and base PV for Alpha Strike search results', () => {
+        currentGameSystemSignal.set(GameSystem.ALPHA_STRIKE);
+        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'adjusted' });
+        const fixture = TestBed.createComponent(UnitCardExpandedComponent);
+        const unit = createUnit();
+        unit.as.PV = 40;
+
+        fixture.componentRef.setInput('unit', unit);
+        fixture.componentRef.setInput('gunnery', 3);
+        fixture.componentRef.setInput('useBvPvDisplayOption', true);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.resolvedCompactBv()).toMatch(/^\d+ \(40\)$/);
+        expect(fixture.componentInstance.resolvedBv()).toBe(fixture.componentInstance.resolvedCompactBv());
+    });
+
+    it('always displays adjusted and base BV for normalized search results', () => {
+        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'base' });
+        const fixture = TestBed.createComponent(UnitCardExpandedComponent);
+
+        fixture.componentRef.setInput('unit', createEmptyUnit({ bv: 12_600 }));
+        fixture.componentRef.setInput('searchResultContext', {
+            adjustedBv: 15_000,
+            gunnery: 3,
+            piloting: 4,
+        });
+        fixture.componentRef.setInput('useBvPvDisplayOption', true);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.resolvedBv()).toBe('15,000 (12,600)');
+        expect(fixture.componentInstance.resolvedCompactBv()).toBe('15,000 (12,600)');
     });
 
     it('leaves compact standalone units to the skill pipes outside search results', () => {

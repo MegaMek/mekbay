@@ -70,6 +70,7 @@ import {
     isMegaMekRaritySortKey,
 } from '../../services/unit-search-filters.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
+import type { BvNormalizationMatch } from '../../models/unit-search-result.model';
 import { formatMovement, isAerospace } from '../../utils/as-common.util';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import type { MegaMekUnitAvailabilityDetail } from '../../services/unit-availability-source.service';
@@ -129,10 +130,13 @@ export class UnitCardExpandedComponent {
     /** Piloting skill for BV adjustment. Ignored when unit is a ForceUnit. */
     pilotingInput = input(DEFAULT_PILOTING_SKILL, { alias: 'piloting' });
 
+    /** Immutable adjusted-BV and skill context selected by BV normalization search. */
+    searchResultContext = input<BvNormalizationMatch | null>(null);
+
     /** To force view of pilot skills even when we don't have a ForceUnit (e.g., force generator) */
     forceShowPilotInfo = input(false);
 
-    /** Apply the configured adjusted/base/both display to a plain search-result Unit. */
+    /** Show adjusted and base BV/PV for a plain search-result Unit. */
     useBvPvDisplayOption = input(false);
 
     /** Forcibly override game system detection */
@@ -174,7 +178,7 @@ export class UnitCardExpandedComponent {
             }
             return DEFAULT_GUNNERY_SKILL;
         }
-        return this.gunneryInput();
+        return this.searchResultContext()?.gunnery ?? this.gunneryInput();
     });
 
     /** Resolved piloting skill - from ForceUnit crew or input */
@@ -191,7 +195,7 @@ export class UnitCardExpandedComponent {
             }
             return DEFAULT_PILOTING_SKILL;
         }
-        return this.pilotingInput();
+        return this.searchResultContext()?.piloting ?? this.pilotingInput();
     });
 
     /** Whether the input is a ForceUnit (has pilot stats) */
@@ -205,7 +209,7 @@ export class UnitCardExpandedComponent {
         if (this.isForceUnit(u)) {
             return u.getPilotStats?.() ?? null;
         }
-        if (this.forceShowPilotInfo()) {
+        if (this.forceShowPilotInfo() || this.searchResultContext()) {
             if (this.isAlphaStrike()) {
                 return `${this.gunnery()}`;
             }
@@ -214,35 +218,36 @@ export class UnitCardExpandedComponent {
         return null;
     });
 
-    /** Resolved BV/PV display for a live ForceUnit; standalone Units continue using skill pipes. */
-    readonly resolvedBv = computed<string | null>(() => {
-        const u = this.unit();
-        if (this.isForceUnit(u)) {
-            return formatBvPv(
-                u.getBv(),
-                u.getPreSkillBv(),
-                this.optionsService.options().forceViewerBVPVDisplay,
-            );
-        }
-        return null; // Let the pipe calculate it
-    });
-
-    /** Resolved BV/PV display for compact cards, including plain unit-search results. */
-    readonly resolvedCompactBv = computed<string | null>(() => {
-        const resolvedForceUnitValue = this.resolvedBv();
-        if (resolvedForceUnitValue !== null) {
-            return resolvedForceUnitValue;
-        }
+    private readonly standaloneSearchBvPv = computed<string | null>(() => {
         if (!this.useBvPvDisplayOption()) {
             return null;
         }
 
         const unit = this.resolvedUnit();
         const base = this.isAlphaStrike() ? unit.as.PV : unit.bv;
-        const adjusted = this.isAlphaStrike()
+        const adjusted = this.searchResultContext()?.adjustedBv ?? (this.isAlphaStrike()
             ? adjustPointValueForSkill(base, this.gunnery())
-            : BVCalculatorUtil.calculateAdjustedBV(unit, base, this.gunnery(), this.piloting());
-        return formatBvPv(adjusted, base, this.optionsService.options().forceViewerBVPVDisplay);
+            : BVCalculatorUtil.calculateAdjustedBV(unit, base, this.gunnery(), this.piloting()));
+        return formatBvPv(adjusted, base, 'both');
+    });
+
+    /** Resolved BV/PV display for a live ForceUnit or standalone search result. */
+    readonly resolvedBv = computed<string | null>(() => {
+        const unit = this.unit();
+        if (this.isForceUnit(unit)) {
+            return formatBvPv(
+                unit.getBv(),
+                unit.getPreSkillBv(),
+                this.optionsService.options().forceViewerBVPVDisplay,
+            );
+        }
+
+        return this.standaloneSearchBvPv();
+    });
+
+    /** Resolved BV/PV display for compact cards, including plain unit-search results. */
+    readonly resolvedCompactBv = computed<string | null>(() => {
+        return this.resolvedBv();
     });
 
     readonly expandedComponents = computed<UnitComponent[]>(() => {

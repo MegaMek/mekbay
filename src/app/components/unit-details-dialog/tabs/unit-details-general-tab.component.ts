@@ -62,6 +62,7 @@ import {
 } from './unit-details-component-matrix.util';
 import { naturalCompare } from '../../../utils/sort.util';
 import { EquipmentFlag } from '../../../models/equipment-flags.type';
+import { formatBvPv } from '../../../utils/force-viewer-bv-pv-display.util';
 
 type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
 type ComponentDetailsDisplayStyle = 'normal' | 'additional';
@@ -96,6 +97,7 @@ export class UnitDetailsGeneralTabComponent {
     unit = input.required<Unit>();
     gunnerySkill = input<number | undefined>(undefined);
     pilotingSkill = input<number | undefined>(undefined);
+    adjustedBvOverride = input<number | undefined>(undefined);
 
     // Computed state - derived from unit
     groupedBays = computed(() => this.getGroupedBaysByLocation());
@@ -220,6 +222,10 @@ export class UnitDetailsGeneralTabComponent {
     });
 
     adjustedBV = computed(() => {
+        const override = this.adjustedBvOverride();
+        if (override !== undefined) {
+            return override;
+        }
         const gunnery = this.gunnerySkill();
         const piloting = this.pilotingSkill();
         const unit = this.unit();
@@ -227,6 +233,11 @@ export class UnitDetailsGeneralTabComponent {
             return null;
         }
         return BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
+    });
+
+    displayedBv = computed(() => {
+        const unit = this.unit();
+        return formatBvPv(this.adjustedBV() ?? unit.bv, unit.bv, 'both');
     });
 
     formatThousands(value: number): string {

@@ -9,7 +9,6 @@ import {
     type SearchTelemetryStage,
 } from './services/unit-search-filters.model';
 import { BVCalculatorUtil } from './utils/bv-calculator.util';
-import { getEffectivePilotingSkill } from './utils/cbt-common.util';
 import { parseSemanticQueryAST } from './utils/semantic-filter-ast.util';
 import { adjustPointValueForSkill } from './utils/pv-skill-adjustment.util';
 import { parseSearchQuery } from './utils/search.util';
@@ -256,13 +255,11 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         sortDirection: request.sortDirection,
         bvPvLimit: request.bvPvLimit,
         forceTotalBvPv: request.forceTotalBvPv,
+        bvNormalization: request.bvNormalization,
         getAdjustedBV: (unit: Unit) => {
             const gunnery = request.pilotGunnerySkill;
-            const piloting = getEffectivePilotingSkill(unit, request.pilotPilotingSkill);
-            if (gunnery === DEFAULT_GUNNERY_SKILL && piloting === DEFAULT_PILOTING_SKILL) {
-                return unit.bv;
-            }
-            return Math.round(unit.bv * BVCalculatorUtil.getSkillMultiplier(gunnery, piloting));
+            const piloting = request.pilotPilotingSkill;
+            return BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
         },
         getAdjustedPV: (unit: Unit) => {
             if (request.pilotGunnerySkill === DEFAULT_GUNNERY_SKILL) {
@@ -291,7 +288,10 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         revision: request.revision,
         corpusVersion: runtime.corpusVersion,
         telemetryQuery: request.telemetryQuery,
-        unitNames: execution.results.map(unit => unit.name),
+        entries: execution.results.map(unit => {
+            const match = execution.normalizationMatchesByUnitName.get(unit.name);
+            return match ? { unitName: unit.name, match } : { unitName: unit.name };
+        }),
         stages: [parseStage, ...execution.telemetryStages],
         totalMs: parseDurationMs + execution.totalMs,
         unitCount: execution.unitCount,

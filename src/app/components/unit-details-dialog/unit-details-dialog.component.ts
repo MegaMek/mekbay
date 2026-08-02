@@ -64,6 +64,7 @@ import { buildUnitShareLinks } from '../../utils/force-url.util';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { UnitDetailsFooterComponent } from '../unit-details-footer/unit-details-footer.component';
+import type { BvNormalizationMatch } from '../../models/unit-search-result.model';
 
 /*
  * Author: Drake
@@ -73,6 +74,7 @@ export interface UnitDetailsDialogData {
     unitIndex: number;
     gunnerySkill?: number;
     pilotingSkill?: number;
+    searchResultContexts?: ReadonlyMap<string, BvNormalizationMatch>;
     hideAddButton?: boolean;
     /** When true, ADD only emits the unit without adding to force */
     selectMode?: boolean;
@@ -164,6 +166,11 @@ export class UnitDetailsDialogComponent {
     isAlphaStrike = computed<boolean>(() => {
         return this.currentGameSystem() === GameSystem.ALPHA_STRIKE;
     });
+    readonly searchResultContext = computed<BvNormalizationMatch | null>(() => {
+        const currentUnit = this.unitList()[this.unitIndex()];
+        const unitName = currentUnit instanceof ForceUnit ? currentUnit.getUnit().name : currentUnit?.name;
+        return unitName ? this.data.searchResultContexts?.get(unitName) ?? null : null;
+    });
     gunnerySkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
         if (currentUnit instanceof CBTForceUnit) {
@@ -172,7 +179,7 @@ export class UnitDetailsDialogComponent {
             if (currentUnit instanceof ASForceUnit) {
                 return currentUnit.getPilotSkill();
             }
-        return this.data.gunnerySkill;
+        return this.searchResultContext()?.gunnery ?? this.data.gunnerySkill;
     });
     pilotingSkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
@@ -182,12 +189,16 @@ export class UnitDetailsDialogComponent {
             if (currentUnit instanceof ASForceUnit) {
                 return currentUnit.getPilotSkill();
             }
-        return this.data.pilotingSkill;
+        return this.searchResultContext()?.piloting ?? this.data.pilotingSkill;
     });
 
     // Swipe animation state
     isSwipeAnimating = signal(false);
     incomingUnit = signal<Unit | null>(null);
+    readonly incomingSearchResultContext = computed<BvNormalizationMatch | null>(() => {
+        const unitName = this.incomingUnit()?.name;
+        return unitName ? this.data.searchResultContexts?.get(unitName) ?? null : null;
+    });
 
     // Real-time swipe following state
     isSwiping = signal(false);

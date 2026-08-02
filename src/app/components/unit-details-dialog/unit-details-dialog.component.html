@@ -61,7 +61,7 @@
             <div #currentPanel class="swipe-panel current-panel" [style.--current-offset]="currentPanelOffset()">
                 @if (activeTab() === 'General') {
                 <unit-details-general-tab [unit]="unit" [gunnerySkill]="gunnerySkill()"
-                    [pilotingSkill]="pilotingSkill()">
+                    [pilotingSkill]="pilotingSkill()" [adjustedBvOverride]="searchResultContext()?.adjustedBv">
                 </unit-details-general-tab>
                 }
 
@@ -97,8 +97,10 @@
             <div #incomingPanel class="swipe-panel incoming-panel" [style.--incoming-offset]="incomingPanelOffset()"
                 [scrollTop]="incomingPanelScrollTop()">
                 @if (activeTab() === 'General') {
-                <unit-details-general-tab [unit]="incomingUnit()!" [gunnerySkill]="gunnerySkill()"
-                    [pilotingSkill]="pilotingSkill()">
+                <unit-details-general-tab [unit]="incomingUnit()!"
+                    [gunnerySkill]="incomingSearchResultContext()?.gunnery ?? data.gunnerySkill"
+                    [pilotingSkill]="incomingSearchResultContext()?.piloting ?? data.pilotingSkill"
+                    [adjustedBvOverride]="incomingSearchResultContext()?.adjustedBv">
                 </unit-details-general-tab>
                 }
 

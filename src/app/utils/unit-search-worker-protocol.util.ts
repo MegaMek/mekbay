@@ -32,6 +32,7 @@
  */
 
 import type { GameSystem } from '../models/common.model';
+import type { BvNormalizationMatch, BvNormalizationSettings } from '../models/unit-search-result.model';
 import type { SearchTelemetryStage } from '../services/unit-search-filters.model';
 
 export type UnitSearchWorkerCorpusVersion = string;
@@ -67,6 +68,12 @@ export interface UnitSearchWorkerQueryRequest {
     forceTotalBvPv: number;
     pilotGunnerySkill: number;
     pilotPilotingSkill: number;
+    bvNormalization?: BvNormalizationSettings | null;
+}
+
+export interface UnitSearchWorkerResultEntry {
+    unitName: string;
+    match?: BvNormalizationMatch;
 }
 
 export interface UnitSearchWorkerInitMessage {
@@ -89,7 +96,7 @@ export interface UnitSearchWorkerResultMessage {
     revision: number;
     corpusVersion: UnitSearchWorkerCorpusVersion;
     telemetryQuery: string;
-    unitNames: string[];
+    entries: UnitSearchWorkerResultEntry[];
     stages: SearchTelemetryStage[];
     totalMs: number;
     unitCount: number;

@@ -714,22 +714,15 @@
         }
 
         .pilot-skills-section {
-            flex: 1 1 auto;
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-            gap: 8px;
+            flex: 1 1 0;
+            min-width: 0;
             padding: 4px 6px 4px 6px;
-            justify-content: center;
         }
 
         .pilot-skills-controls {
             flex-wrap: nowrap;
         }
 
-        .bv-limit-controls {
-            margin-top: 0;
-        }
     }
 }
 
@@ -846,6 +839,153 @@
     margin-bottom: 0;
     padding: 12px;
     background-color: var(--background-color-menu);
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.pilot-skills-summary {
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+    gap: 8px;
+}
+
+.pilot-skills-summary .pilot-skills-controls {
+    flex: 1 1 auto;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    min-width: 0;
+}
+
+.pilot-skill-inputs {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    flex-wrap: nowrap;
+}
+
+.limit-summary {
+    width: 100%;
+    color: var(--text-color-secondary);
+    font-size: 0.8em;
+    text-align: center;
+
+    &.over-limit {
+        color: var(--color-error, #f44);
+    }
+}
+
+.normalization-summary {
+    display: flex;
+    flex-flow: row wrap;
+    column-gap: 12px;
+    row-gap: 2px;
+    min-width: 0;
+    max-width: 100%;
+    color: var(--text-color-secondary);
+    font-size: 0.85em;
+}
+
+.normalization-summary > span {
+    white-space: nowrap;
+}
+
+.pilot-bv-toggle {
+    width: 30px;
+    height: 30px;
+    border: 0;
+    background: transparent;
+    color: var(--text-color-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.pilot-bv-toggle:hover,
+.pilot-bv-toggle:focus-visible {
+    color: var(--bt-yellow);
+}
+
+.chevron {
+    transition: transform 0.15s ease;
+}
+
+.chevron.collapsed {
+    transform: rotate(-90deg);
+}
+
+.pilot-bv-expanded-controls {
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    margin-top: 8px;
+    padding-top: 8px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.budget-mode-controls {
+    display: flex;
+    gap: 12px;
+    border: 0;
+    padding: 0;
+    margin: 0 0 8px;
+    color: var(--text-color-secondary);
+    font-size: 0.82em;
+    justify-content: center;
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.budget-mode-controls legend {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+}
+
+.budget-mode-controls label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.normalization-grid {
+    display: grid;
+    grid-template-columns: minmax(68px, auto) minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 6px 8px;
+    align-items: center;
+    font-size: 0.8em;
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.range-separator {
+    color: var(--text-color-secondary);
+    text-align: center;
+}
+
+.bvfilter-input-label {
+    color: var(--text-color-secondary);
+    font-weight: 600;
+}
+
+.normalization-input {
+    width: 100%;
+    min-width: 0;
+    height: 30px;
+    padding: 0 4px;
+    text-align: center;
+    background-color: #222;
+    box-sizing: border-box;
 }
 
 .pilot-skills-controls {
@@ -860,7 +1000,7 @@
     max-width: 160px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     flex: 1;
 }
 
@@ -886,7 +1026,8 @@
     gap: 8px;
     align-items: center;
     justify-content: center;
-    margin-top: 8px;
+    margin-top: 0;
+    font-size: 0.8em;
 }
 
 
@@ -898,9 +1039,8 @@
 }
 
 .limit-control label {
-    color: var(--text-color-secondary);
-    width: 60px;
-    font-size: 0.9em;
+    min-width: 68px;
+    white-space: nowrap;
 }
 
 .limit-input {
@@ -917,19 +1057,6 @@
     &::-webkit-inner-spin-button {
         -webkit-appearance: none;
         margin: 0;
-    }
-}
-
-.limit-info {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    font-size: 0.75em;
-    line-height: 1.2;
-    color: var(--text-color-secondary);
-
-    &.over-limit {
-        color: var(--color-error, #f44);
     }
 }
 
