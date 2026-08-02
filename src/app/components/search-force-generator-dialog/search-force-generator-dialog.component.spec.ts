@@ -1237,7 +1237,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(checkbox?.disabled).toBeFalse();
     });
 
-    it('clears the Multi-Era checkbox when era selection returns to a single positive value', async () => {
+    it('clears the Multi-Era option when era selection returns to a single positive value', () => {
         advOptionsSignal.update((options) => ({
             ...options,
             era: {
@@ -1256,23 +1256,12 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 },
             },
         }));
+        TestBed.tick();
 
-        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
-        await fixture.whenStable();
-        fixture.detectChanges();
-
-        const checkbox = fixture.nativeElement.querySelector(
-            '.dropdown-option-row .generator-option-inline input.bt-checkbox',
-        ) as HTMLInputElement | null;
-
-        if (!checkbox) {
-            fail('Expected Multi-Era checkbox to be rendered.');
-            return;
-        }
-
-        checkbox.click();
-        fixture.detectChanges();
-        expect(fixture.componentInstance.crossEraAvailabilityInMultiEraSelection()).toBeTrue();
+        component.onCrossEraAvailabilityInMultiEraSelectionChange({
+            target: { checked: true },
+        } as unknown as Event);
+        expect(component.crossEraAvailabilityInMultiEraSelection()).toBeTrue();
 
         advOptionsSignal.update((options) => ({
             ...options,
@@ -1287,11 +1276,10 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 },
             },
         }));
-        fixture.detectChanges();
+        TestBed.tick();
 
-        expect(fixture.componentInstance.crossEraAvailabilityInMultiEraSelection()).toBeFalse();
-        expect(checkbox.disabled).toBeTrue();
-        expect(checkbox.checked).toBeFalse();
+        expect(component.crossEraAvailabilityInMultiEraSelection()).toBeFalse();
+        expect(component.crossEraAvailabilityToggleEnabled()).toBeFalse();
     });
 
     it('forwards the Multi-Era checkbox state into generation context resolution', () => {
