@@ -13,10 +13,14 @@ export class SimpleSliderComponent {
     max = input(100);
     step = input(1);
     value = input(0);
+    defaultValue = input<number | null>(null);
     disabled = input(false);
     ariaLabel = input('Slider');
 
     valueChange = output<number>();
+
+    hasDefaultValue = computed(() => this.defaultValue() !== null);
+    isDefaultValue = computed(() => this.hasDefaultValue() && this.value() === this.defaultValue());
 
     percent = computed(() => {
         const min = this.min();

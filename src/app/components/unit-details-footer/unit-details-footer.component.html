@@ -3,7 +3,7 @@
     <div class="stable-tab-footer sheet-controls">
         <label class="zoom-control">
             <simple-slider [min]="minZoomPercent()" [max]="maxZoomPercent()" [step]="5"
-                [value]="zoomPercent()" ariaLabel="Zoom"
+                [value]="zoomPercent()" [defaultValue]="minZoomPercent()" ariaLabel="Zoom"
                 (valueChange)="setSheetZoomPercent($event)"></simple-slider>
             <output>{{ zoomPercent() }}%</output>
         </label>

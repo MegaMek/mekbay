@@ -1,6 +1,7 @@
 @let gunnery = this.filtersService.pilotGunnerySkill();
 @let piloting = this.filtersService.pilotPilotingSkill();
 @let resultUnits = displayedUnits();
+@let budgetMode = this.filtersService.budgetMode();
 
 <div class="search-overlay overlay-backdrop" [class.expanded]="this.expandedView()"
     [hidden]="!this.filtersService.isDataReady() || !overlayVisible()" (click)="onOverlayClick()">
@@ -565,7 +566,7 @@
             </button>
             }
         </div>
-        <div class="pilot-skills-section framed-borders" [class.expanded]="pilotBvSectionExpanded()">
+        <div class="pilot-skills-section framed-borders" [class.two-columns]="advPanelStyle().columnsCount === 2">
             <div class="pilot-skills-summary">
             <div class="pilot-skills-controls">
                 @if (gameService.isAlphaStrike()) {
@@ -581,7 +582,7 @@
                     </select>
                 </div>
                 } @else {
-                @if (filtersService.budgetMode() === 'bv-normalization') {
+                @if (budgetMode === 'bv-normalization') {
                 @let normalization = filtersService.classicBvNormalizationSettings();
                     <div class="normalization-summary">
                     <span>Gunnery: {{ normalization.gunnery.min }}~{{ normalization.gunnery.max }}</span>
@@ -615,45 +616,51 @@
                 </div>
                 }
                 }
+            </div>
+                @if (!gameService.isAlphaStrike()) {
+                <fieldset class="budget-mode-controls">
+                    <legend>Battle Value mode</legend>
+                    <button type="button" class="budget-mode-label force-limit"
+                        [class.active]="budgetMode === 'force-limit'"
+                        [attr.aria-pressed]="budgetMode === 'force-limit'"
+                        [tooltip]="forceBvLimitTooltip"
+                        (click)="toggleSearchBudgetMode('force-limit')">
+                        Force BV Limit
+                    </button>
+                    <div class="budget-mode-switch-control"
+                        [class.neutral]="budgetMode === null"
+                        [class.bv-normalization]="budgetMode === 'bv-normalization'"
+                        role="group"
+                        [attr.aria-label]="'Battle Value mode: ' + (budgetMode === 'force-limit' ? 'Force BV Limit' : budgetMode === 'bv-normalization' ? 'BV Normalization' : 'Off')">
+                        <button type="button" class="budget-mode-switch-hit force-limit"
+                            [attr.aria-pressed]="budgetMode === 'force-limit'"
+                            aria-label="Toggle Force BV Limit"
+                            (click)="toggleSearchBudgetMode('force-limit')"></button>
+                        <button type="button" class="budget-mode-switch-hit bv-normalization"
+                            [attr.aria-pressed]="budgetMode === 'bv-normalization'"
+                            aria-label="Toggle BV Normalization"
+                            (click)="toggleSearchBudgetMode('bv-normalization')"></button>
+                        <span class="budget-mode-switch-thumb" aria-hidden="true"></span>
+                    </div>
+                    <button type="button" class="budget-mode-label bv-normalization"
+                        [class.active]="budgetMode === 'bv-normalization'"
+                        [attr.aria-pressed]="budgetMode === 'bv-normalization'"
+                        [tooltip]="bvNormalizationTooltip"
+                        (click)="toggleSearchBudgetMode('bv-normalization')">
+                        BV Normalization
+                    </button>
+                </fieldset>
+                }
                 @let summaryLimit = filtersService.bvPvLimit();
                 @let summaryForceTotal = filtersService.forceTotalBvPv();
-                @if (summaryLimit > 0 && (gameService.isAlphaStrike() || filtersService.budgetMode() === 'force-limit')) {
+                @if (summaryLimit > 0 && (gameService.isAlphaStrike() || budgetMode === 'force-limit')) {
                 <div class="limit-summary" [class.over-limit]="summaryForceTotal > summaryLimit">
                     Remaining {{ gameService.isAlphaStrike() ? 'PV' : 'BV' }}: {{ (summaryLimit - summaryForceTotal) | number }}
                 </div>
                 }
             </div>
-            <button type="button" class="pilot-bv-toggle"
-                [attr.aria-expanded]="pilotBvSectionExpanded()"
-                aria-controls="pilot-bv-expanded-controls"
-                [attr.aria-label]="pilotBvSectionExpanded() ? 'Collapse pilot and BV settings' : 'Expand pilot and BV settings'"
-                (click)="togglePilotBvSection()">
-                <svg class="chevron" [class.collapsed]="!pilotBvSectionExpanded()" width="10" height="10"
-                    fill="currentColor" viewBox="0 0 10 10" aria-hidden="true" focusable="false">
-                    <path d="M0 2l5 6 5-6z" />
-                </svg>
-            </button>
-            </div>
-            @if (pilotBvSectionExpanded()) {
-            <div id="pilot-bv-expanded-controls" class="pilot-bv-expanded-controls">
-                @if (!gameService.isAlphaStrike()) {
-                <fieldset class="budget-mode-controls">
-                    <legend>Battle Value mode</legend>
-                    <label>
-                        <input type="radio" class="bt-checkbox" name="search-budget-mode" value="force-limit"
-                            [checked]="filtersService.budgetMode() === 'force-limit'"
-                            (click)="$event.preventDefault(); setSearchBudgetMode('force-limit')">
-                        <span class="tooltip-label" [tooltip]="forceBvLimitTooltip">Force BV Limit</span>
-                    </label>
-                    <label>
-                        <input type="radio" class="bt-checkbox" name="search-budget-mode" value="bv-normalization"
-                            [checked]="filtersService.budgetMode() === 'bv-normalization'"
-                            (click)="$event.preventDefault(); setSearchBudgetMode('bv-normalization')">
-                        <span class="tooltip-label" [tooltip]="bvNormalizationTooltip">BV Normalization</span>
-                    </label>
-                </fieldset>
-                }
-                @if (gameService.isAlphaStrike() || filtersService.budgetMode() === 'force-limit') {
+            <div class="pilot-bv-mode-settings">
+                @if (gameService.isAlphaStrike() || budgetMode === 'force-limit') {
                 <div class="bv-limit-controls">
                 @let bvPvLimit = this.filtersService.bvPvLimit();
                 @let limitLabel = gameService.isAlphaStrike() ? 'PV' : 'BV';
@@ -667,7 +674,7 @@
                         (input)="onBvPvLimitInput($event)">
                 </div>
                 </div>
-                } @else if (filtersService.budgetMode() === 'bv-normalization') {
+                } @else if (budgetMode === 'bv-normalization') {
                 @let normalization = filtersService.classicBvNormalizationSettings();
                 <div class="normalization-grid">
                     <span class="bvfilter-input-label">Target BV</span>
@@ -702,12 +709,12 @@
                         [max]="8"
                         [step]="1"
                         [value]="normalization.maxDelta"
+                        [defaultValue]="8"
                         ariaLabel="Maximum Gunnery and Piloting difference"
                         (valueChange)="setNormalizationMaxDelta($event)" />
                 </div>
                 }
             </div>
-            }
         </div>
         @if (advPanelStyle().columnsCount === 2) {
         <button type="button" class="bt-button adv-filter-system-toggle"

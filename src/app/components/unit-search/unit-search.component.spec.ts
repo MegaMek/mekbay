@@ -513,6 +513,44 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(filtersServiceStub.setBvNormalizationSettings).not.toHaveBeenCalled();
     });
 
+    it('sets force-limit, neutral, and normalization BV modes explicitly', () => {
+        const component = TestBed.createComponent(UnitSearchComponent).componentInstance;
+
+        component.setSearchBudgetMode('force-limit');
+        expect(filtersServiceStub.setBudgetMode).toHaveBeenCalledWith('force-limit');
+        expect(filtersServiceStub.budgetMode()).toBe('force-limit');
+
+        component.setSearchBudgetMode(null);
+        expect(filtersServiceStub.setBudgetMode).toHaveBeenCalledWith(null);
+        expect(filtersServiceStub.budgetMode()).toBeNull();
+
+        component.setSearchBudgetMode('bv-normalization');
+        expect(filtersServiceStub.setBudgetMode).toHaveBeenCalledWith('bv-normalization');
+        expect(filtersServiceStub.budgetMode()).toBe('bv-normalization');
+        expect(filtersServiceStub.setBudgetMode).toHaveBeenCalledTimes(3);
+    });
+
+    for (const mode of ['force-limit', 'bv-normalization'] as const) {
+        const oppositeMode = mode === 'force-limit' ? 'bv-normalization' : 'force-limit';
+
+        it(`toggles the ${mode} endpoint between that mode and neutral`, () => {
+            const component = TestBed.createComponent(UnitSearchComponent).componentInstance;
+            component.activeIndex.set(4);
+
+            component.toggleSearchBudgetMode(mode);
+            expect(filtersServiceStub.budgetMode()).toBe(mode);
+            expect(component.activeIndex()).toBeNull();
+
+            component.toggleSearchBudgetMode(mode);
+            expect(filtersServiceStub.budgetMode()).toBeNull();
+
+            filtersServiceStub.budgetMode.set(oppositeMode);
+            component.toggleSearchBudgetMode(mode);
+            expect(filtersServiceStub.budgetMode()).toBe(mode);
+            expect(filtersServiceStub.setBudgetMode).toHaveBeenCalledTimes(3);
+        });
+    }
+
     it('keeps compact results hidden without search input, filters, or a BV mode', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;

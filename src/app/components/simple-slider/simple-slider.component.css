@@ -85,6 +85,14 @@
     --simple-slider-thumb-color: var(--bt-yellow);
 }
 
+.simple-slider-container.has-default-value {
+    --simple-slider-thumb-color: var(--bt-yellow);
+}
+
+.simple-slider-container.has-default-value.is-default-value {
+    --simple-slider-thumb-color: var(--text-color-secondary);
+}
+
 .simple-slider-container.disabled {
     opacity: 0.6;
     pointer-events: none;

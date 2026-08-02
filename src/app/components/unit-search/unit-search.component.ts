@@ -46,7 +46,7 @@ import { getMegaMekAvailabilityRarityForScore, MEGAMEK_AVAILABILITY_UNKNOWN_SCOR
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import type { Unit } from '../../models/units.model';
-import { DEFAULT_CLASSIC_BV_NORMALIZATION_MAX, type BvNormalizationMatch } from '../../models/unit-search-result.model';
+import { DEFAULT_CLASSIC_BV_NORMALIZATION_MAX, type BvNormalizationMatch, type UnitSearchBudgetMode } from '../../models/unit-search-result.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Overlay, OverlayModule, type ConnectedPosition, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
@@ -331,7 +331,6 @@ export class UnitSearchComponent {
     advOpen = this.filtersService.advOpen;
     advPanelDocked = computed(() => this.expandedView() && this.advOpen() && this.layoutService.windowWidth() >= 900);
     advPanelUserColumns = signal<1 | 2 | null>(null);
-    readonly pilotBvSectionExpanded = signal(false);
     focused = signal(false);
     viewModeMenuOpen = signal(false);
     activeIndex = signal<number | null>(null);
@@ -2324,14 +2323,13 @@ export class UnitSearchComponent {
         this.setBvPvLimit(normalizedValue);
     }
 
-    togglePilotBvSection(): void {
-        this.pilotBvSectionExpanded.update(expanded => !expanded);
+    setSearchBudgetMode(mode: UnitSearchBudgetMode): void {
+        this.filtersService.setBudgetMode(mode);
+        this.activeIndex.set(null);
     }
 
-    setSearchBudgetMode(mode: 'force-limit' | 'bv-normalization'): void {
-        const nextMode = this.filtersService.budgetMode() === mode ? null : mode;
-        this.filtersService.setBudgetMode(nextMode);
-        this.activeIndex.set(null);
+    toggleSearchBudgetMode(mode: Exclude<UnitSearchBudgetMode, null>): void {
+        this.setSearchBudgetMode(this.filtersService.budgetMode() === mode ? null : mode);
     }
 
     setNormalizationTargetBvBound(bound: 'min' | 'max', value: number): void {
