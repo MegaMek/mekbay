@@ -111,6 +111,43 @@ describe('unit search URL filters', () => {
         expect(resolveInitialUnitSearchViewMode(new URLSearchParams('q='), 'table')).toBe('list');
     });
 
+    it('does not restore a persisted expanded view for saved force URLs', () => {
+        const params = new URLSearchParams('instance=force-1&sel=unit-2');
+
+        expect(resolveInitialUnitSearchViewMode(params, 'table')).toBe('list');
+    });
+
+    it('does not restore a persisted expanded view for inline force URLs', () => {
+        expect(resolveInitialUnitSearchViewMode(
+            new URLSearchParams('units=Atlas AS7-D'),
+            'table',
+        )).toBe('list');
+        expect(resolveInitialUnitSearchViewMode(
+            new URLSearchParams('mul_ids=16'),
+            'table',
+        )).toBe('list');
+    });
+
+    it('does not restore a persisted expanded view for operation URLs', () => {
+        expect(resolveInitialUnitSearchViewMode(
+            new URLSearchParams('operation=operation-1'),
+            'table',
+        )).toBe('list');
+    });
+
+    it('honors an explicit view on a force URL', () => {
+        const params = new URLSearchParams('instance=force-1&view=table');
+
+        expect(resolveInitialUnitSearchViewMode(params, 'list')).toBe('table');
+    });
+
+    it('does not treat a selection without a force as force state', () => {
+        expect(resolveInitialUnitSearchViewMode(
+            new URLSearchParams('sel=unit-2'),
+            'chassis',
+        )).toBe('chassis');
+    });
+
     it('serializes non-default views and omits list view', () => {
         const baseArgs = {
             searchText: '',

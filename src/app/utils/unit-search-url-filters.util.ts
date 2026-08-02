@@ -481,5 +481,9 @@ export function resolveInitialUnitSearchViewMode(
     const explicitViewMode = parseUnitSearchViewMode(params.get('view'));
     if (explicitViewMode) return explicitViewMode;
 
-    return params.has('q') || params.has('filters') ? 'list' : persistedViewMode;
+    const hasSearchState = params.has('q') || params.has('filters');
+    const hasForceState = ['instance', 'units', 'mul_ids', 'operation']
+        .some(param => params.has(param));
+
+    return hasSearchState || hasForceState ? 'list' : persistedViewMode;
 }
