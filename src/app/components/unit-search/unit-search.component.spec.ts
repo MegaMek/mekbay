@@ -671,7 +671,7 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(filtersServiceStub.setViewMode).toHaveBeenCalledWith('table');
     });
 
-    it('selects a result into the inline panel when the view starts expanded', async () => {
+    it('selects a result into the inline panel when the view starts expanded', () => {
         filtersServiceStub.viewMode.set('list');
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
@@ -681,28 +681,12 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.expandedView.set(true);
         layoutServiceStub.windowWidth.set(2200);
         fixture.detectChanges();
-        await fixture.whenStable();
-        fixture.detectChanges();
 
         const result = fixture.nativeElement.querySelector('.click-result') as HTMLElement | null;
         expect(result).not.toBeNull();
         expect(component.showInlinePanel()).toBeTrue();
 
-        result!.dispatchEvent(new PointerEvent('pointerdown', {
-            bubbles: true,
-            button: 0,
-            pointerId: 1,
-            clientX: 10,
-            clientY: 10,
-        }));
-        result!.dispatchEvent(new PointerEvent('pointerup', {
-            bubbles: true,
-            button: 0,
-            pointerId: 1,
-            clientX: 10,
-            clientY: 10,
-        }));
-        result!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        result!.click();
         fixture.detectChanges();
 
         expect(component.inlinePanelUnit()).toBe(unit);
