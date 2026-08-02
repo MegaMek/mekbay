@@ -24,6 +24,8 @@ describe('ForceGeneratorService', () => {
     let service: ForceGeneratorService;
     let unitAvailabilitySourceService: UnitAvailabilitySourceService;
     let consoleLogSpy: jasmine.Spy;
+    let forceGeneratorNowMs: number;
+    let forceGeneratorNowStepMs: number;
 
     const erasByName = new Map<string, Era>();
     const erasById = new Map<number, Era>();
@@ -184,6 +186,13 @@ describe('ForceGeneratorService', () => {
     }
 
     beforeEach(() => {
+        forceGeneratorNowMs = 0;
+        forceGeneratorNowStepMs = 0.1;
+        spyOn(performance, 'now').and.callFake(() => {
+            forceGeneratorNowMs += forceGeneratorNowStepMs;
+            return forceGeneratorNowMs;
+        });
+
         erasByName.clear();
         erasById.clear();
         factionsByName.clear();
@@ -4529,11 +4538,7 @@ describe('ForceGeneratorService', () => {
         spyOn(Math, 'random').and.returnValue(0);
         const buildSelectionSpy = spyOn<any>(service, 'buildCandidateSelection').and.callThrough();
 
-        let nowValue = 0;
-        spyOn(performance, 'now').and.callFake(() => {
-            nowValue += 0.1;
-            return nowValue;
-        });
+        forceGeneratorNowStepMs = 0.1;
 
         const preview = service.buildPreview({
             eligibleUnits: [lightUnit, mediumUnit],
@@ -4593,11 +4598,7 @@ describe('ForceGeneratorService', () => {
             return callCount === 1 ? countCloserAttempt as any : budgetCloserAttempt as any;
         });
 
-        let nowValue = 0;
-        spyOn(performance, 'now').and.callFake(() => {
-            nowValue += 100;
-            return nowValue;
-        });
+        forceGeneratorNowStepMs = 100;
 
         const preview = service.buildPreview({
             eligibleUnits: [nearBudgetA, nearBudgetB, countMatchA, countMatchB, countMatchC, countMatchD],
@@ -4657,11 +4658,7 @@ describe('ForceGeneratorService', () => {
             return callCount === 1 ? overTargetAttempt as any : underTargetAttempt as any;
         });
 
-        let nowValue = 0;
-        spyOn(performance, 'now').and.callFake(() => {
-            nowValue += 10;
-            return nowValue;
-        });
+        forceGeneratorNowStepMs = 10;
 
         const preview = service.buildPreview({
             eligibleUnits: [underTargetUnit, overTargetUnit],
