@@ -100,6 +100,36 @@ function createRequest(): UnitSearchWorkerQueryRequest {
 }
 
 describe('unit-search worker', () => {
+    it('retains mixed-tech units during final semantic evaluation', () => {
+        const mixedClan = createUnit('Mixed Clan Unit');
+        mixedClan.mixed = true;
+        const nonmixedClan = createUnit('Clan Unit');
+
+        const runtime = __test__.hydrateCorpus({
+            corpusVersion: '1:0',
+            units: [mixedClan, nonmixedClan],
+            indexes: {
+                techBase: {
+                    'Mixed (Clan)': ['Mixed Clan Unit'],
+                    Clan: ['Clan Unit'],
+                },
+            },
+            factionEraIndex: {},
+        });
+        const baseRequest = createRequest();
+
+        expect(__test__.buildResultMessage(runtime, {
+            ...baseRequest,
+            executionQuery: 'tech="Mixed (Clan)"',
+            telemetryQuery: 'tech="Mixed (Clan)"',
+        }).unitNames).toEqual(['Mixed Clan Unit']);
+        expect(__test__.buildResultMessage(runtime, {
+            ...baseRequest,
+            executionQuery: 'tech=Clan',
+            telemetryQuery: 'tech=Clan',
+        }).unitNames).toEqual(['Clan Unit']);
+    });
+
     it('requires faction membership in every selected multistate era', () => {
         const runtime = __test__.hydrateCorpus(createSnapshot());
         const result = __test__.buildResultMessage(runtime, createRequest());

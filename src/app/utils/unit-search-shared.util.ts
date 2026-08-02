@@ -33,6 +33,7 @@
 
 import type { MultiStateOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import type { Unit } from '../models/units.model';
+import { getUnitTechBaseDisplay } from '../models/tech.model';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, type SearchTelemetryStage } from '../services/unit-search-filters.model';
 
 export interface UnitComponentData {
@@ -97,6 +98,9 @@ export function getUnitSourceFilterValues(unit: Pick<Unit, 'source' | 'published
 
 export function getProperty(obj: any, key?: string) {
     if (!obj || !key) return undefined;
+    if (key === 'techBase') {
+        return getUnitTechBaseDisplay(obj as Unit);
+    }
     if (key === '_tags') {
         return getMergedTags(obj as Unit);
     }
