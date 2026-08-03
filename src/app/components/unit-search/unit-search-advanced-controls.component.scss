@@ -160,6 +160,7 @@
 
 .budget-mode-controls {
     display: grid;
+    grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr);
     grid-template-rows: 16px;
     column-gap: 5px;
     box-sizing: border-box;
