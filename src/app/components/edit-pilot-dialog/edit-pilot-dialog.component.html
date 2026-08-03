@@ -25,9 +25,15 @@
                 <div class="form-fields name-field">
                     <label class="field-label" for="classic-pilot-name">Name</label>
                     <div class="input-wrapper">
-                        <input #nameInput id="classic-pilot-name" type="text" class="field-input" autocomplete="off"
-                            [value]="data.name || ''" maxlength="80" [attr.aria-busy]="generatingName()"
-                            (keydown.enter)="submit()" />
+                        <div class="name-input-wrapper">
+                            <input #nameInput id="classic-pilot-name" type="text" class="field-input" autocomplete="off"
+                                [value]="data.name || ''" maxlength="80" [attr.aria-busy]="generatingName()"
+                                (input)="onNameInput($event)" (keydown.enter)="submit()" />
+                            @if (nameHasText()) {
+                            <button type="button" class="clear-btn" (click)="clearName()" title="Clear"
+                                aria-label="Clear" tabindex="-1">&#10005;</button>
+                            }
+                        </div>
                         <button type="button" class="random-button" (click)="fillRandomName()"
                             [disabled]="generatingName()" aria-label="Generate random pilot name"
                             title="Generate random pilot name"></button>

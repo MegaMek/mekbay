@@ -108,6 +108,7 @@ export class EditPilotDialogComponent {
     currentGunnery = signal<number>(this.data.gunnery);
     currentPiloting = signal<number>(this.data.piloting);
     selectedGroupCommander = signal<boolean>(this.data.commander ?? false);
+    readonly nameHasText = signal(!!this.data.name.trim());
     readonly generatingName = signal(false);
 
     readonly hasBvPreview = !!(this.data.preSkillBv != null && this.data.unit);
@@ -309,6 +310,7 @@ export class EditPilotDialogComponent {
             }
             const input = this.nameInput().nativeElement;
             input.value = name.slice(0, input.maxLength);
+            this.nameHasText.set(!!input.value.trim());
             input.focus();
             input.select();
         } catch (error) {
@@ -316,6 +318,17 @@ export class EditPilotDialogComponent {
         } finally {
             this.generatingName.set(false);
         }
+    }
+
+    clearName(): void {
+        const input = this.nameInput().nativeElement;
+        input.value = '';
+        this.nameHasText.set(false);
+        input.focus();
+    }
+
+    onNameInput(event: Event): void {
+        this.nameHasText.set(!!(event.target as HTMLInputElement).value.trim());
     }
 
     submit() {

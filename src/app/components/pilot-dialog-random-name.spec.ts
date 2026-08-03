@@ -20,6 +20,7 @@ interface RandomNameDialogHarness {
         group?: null;
     };
     generatingName: ReturnType<typeof signal<boolean>>;
+    nameHasText: ReturnType<typeof signal<boolean>>;
     pilotNameGenerator: { generate: jasmine.Spy };
     logger: { warn: jasmine.Spy };
     nameInput: () => { nativeElement: HTMLInputElement };
@@ -41,6 +42,7 @@ function createHarness(generatedName: string | null, error?: Error): RandomNameD
             unitType: 'Aero', unitSubtype: 'WarShip',
         },
         generatingName: signal(false),
+        nameHasText: signal(false),
         pilotNameGenerator: { generate },
         logger: { warn: jasmine.createSpy('warn') },
         nameInput: () => ({ nativeElement: input }),
@@ -75,6 +77,7 @@ describe('pilot dialog random name behavior', () => {
                 era: { from: 3050, to: 3061 },
             });
             expect(harness.nameInput().nativeElement.value).toBe('Jane "Specter" Smith');
+            expect(harness.nameHasText()).toBeTrue();
             expect(harness.generatingName()).toBeFalse();
             expect(harness.logger.warn).not.toHaveBeenCalled();
         });

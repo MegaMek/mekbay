@@ -142,6 +142,7 @@ export class EditASPilotDialogComponent {
     openDropdown = signal<number | null>(null);
     openFormationDropdownKey = signal<string | null>(null);
     currentSkill = signal<number>(4);
+    readonly nameHasText = signal(!!this.data.name.trim());
     readonly generatingName = signal(false);
 
     private readonly hasPvPreview = this.data.basePv != null;
@@ -1117,6 +1118,7 @@ export class EditASPilotDialogComponent {
             }
             const input = this.nameInput().nativeElement;
             input.value = name.slice(0, input.maxLength);
+            this.nameHasText.set(!!input.value.trim());
             input.focus();
             input.select();
         } catch (error) {
@@ -1124,6 +1126,17 @@ export class EditASPilotDialogComponent {
         } finally {
             this.generatingName.set(false);
         }
+    }
+
+    clearName(): void {
+        const input = this.nameInput().nativeElement;
+        input.value = '';
+        this.nameHasText.set(false);
+        input.focus();
+    }
+
+    onNameInput(event: Event): void {
+        this.nameHasText.set(!!(event.target as HTMLInputElement).value.trim());
     }
 
     submit() {
