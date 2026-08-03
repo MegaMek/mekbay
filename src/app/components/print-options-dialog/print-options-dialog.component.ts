@@ -86,6 +86,18 @@ export interface PrintOptionsDialogData {
                 @if (isClassic()) {
                 <div class="option-col">
                     <div class="option-row">
+                        <label for="printPilotData">Pilot data:</label>
+                        <select id="printPilotData" class="bt-select option-select"
+                            [value]="printOptions().printPilotData"
+                            (change)="onBooleanChange('printPilotData', $event)">
+                            <option value="true">Enabled</option>
+                            <option value="false">Disabled</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="option-col">
+                    <div class="option-row">
                         <label for="recordSheetCenterPanelContent">Center panel:</label>
                         <select id="recordSheetCenterPanelContent" class="bt-select option-select"
                             [value]="printOptions().recordSheetCenterPanelContent"
@@ -208,6 +220,7 @@ export class PrintOptionsDialogComponent {
 
     protected readonly printOptions = signal<PrintAllOptions>({
         clean: false,
+        printPilotData: true,
         printRosterSummary: this.optionsService.options().printRosterSummary,
         recordSheetCenterPanelContent: this.optionsService.options().recordSheetCenterPanelContent,
         ASPrintPageBreakOnGroups: this.optionsService.options().ASPrintPageBreakOnGroups,
@@ -217,7 +230,7 @@ export class PrintOptionsDialogComponent {
     protected readonly isClassic = computed(() => this.data.gameSystem === GameSystem.CLASSIC);
     protected readonly isAlphaStrike = computed(() => this.data.gameSystem === GameSystem.ALPHA_STRIKE);
 
-    protected onBooleanChange(key: 'clean' | 'printRosterSummary' | 'ASPrintPageBreakOnGroups' | 'debugPreview', event: Event): void {
+    protected onBooleanChange(key: 'clean' | 'printPilotData' | 'printRosterSummary' | 'ASPrintPageBreakOnGroups', event: Event): void {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.printOptions.update(current => ({ ...current, [key]: value }));
     }

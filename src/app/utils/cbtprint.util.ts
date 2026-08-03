@@ -73,6 +73,8 @@ export class CBTPrintUtil {
 
             await this.nextAnimationFrames(2);
 
+            this.applyPilotDataPrintOption(svg, printOptions.printPilotData, printUnit.getBaseBv());
+
             // Turn on/off fluff image
             const injectedEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
             if (injectedEl) {
@@ -240,6 +242,52 @@ export class CBTPrintUtil {
         img.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', value);
     }
 
+    private static applyPilotDataPrintOption(
+        svg: SVGSVGElement,
+        printPilotData: boolean,
+        baseBv?: number
+    ): void {
+        svg.querySelectorAll('.skillValue').forEach((skillValue) => {
+            skillValue.classList.toggle('screen-only', !printPilotData);
+        });
+
+        const skillBlanks = [
+            'blankPilotingSkill0',
+            'blankGunnerySkill0',
+            'blankAsfGunnerySkill0',
+            'blankAsfPilotingSkill0',
+            'blankPilotingSkill1',
+            'blankGunnerySkill1',
+            'blankPilotingSkill2',
+            'blankGunnerySkill2',
+            'blankPilotingSkill3',
+            'blankGunnerySkill3'
+        ];
+        skillBlanks.forEach((id) => {
+            svg.getElementById(id)?.classList.toggle('print-show', !printPilotData);
+        });
+
+        if (printPilotData) return;
+
+        const bvElement = svg.getElementById('bv');
+        if (bvElement && baseBv !== undefined) {
+            bvElement.textContent = baseBv.toString();
+        }
+
+        svg.querySelectorAll<SVGElement>('[id^="crewNameButton"]').forEach((crewNameButton) => {
+            const nameId = crewNameButton.getAttribute('textElement');
+            const blankId = crewNameButton.getAttribute('blankElement');
+            if (nameId) {
+                const nameElement = svg.getElementById(nameId) as SVGElement | null;
+                nameElement?.style.setProperty('visibility', 'hidden');
+            }
+            if (blankId) {
+                const blankElement = svg.getElementById(blankId) as SVGElement | null;
+                blankElement?.style.setProperty('visibility', 'visible');
+            }
+        });
+    }
+
     /**
      * Generates a multipage print container and waits for images to load before printing.
      */
@@ -249,7 +297,7 @@ export class CBTPrintUtil {
         triggerPrint: boolean = true): Promise<void> {
         const pages = svgStrings.map(svg => `<div class="svg-container">${svg}</div>`);
         if (printOptions.printRosterSummary) {
-            pages.push(this.createRosterSummaryPage(forceUnits));
+            pages.push(this.createRosterSummaryPage(forceUnits, printOptions.printPilotData));
         }
         if (pages.length > 0) {
             pages[pages.length - 1] = pages[pages.length - 1].replace('svg-container', 'svg-container last-svg');
@@ -363,7 +411,7 @@ export class CBTPrintUtil {
         }
     }
 
-    private static createRosterSummaryPage(forceUnits: CBTForceUnit[]): string {
+    private static createRosterSummaryPage(forceUnits: CBTForceUnit[], printPilotData: boolean): string {
         const force = forceUnits[0]?.force;
         if (!force) {
             return `
@@ -414,19 +462,21 @@ export class CBTPrintUtil {
             for (const forceUnit of groupUnits) {
                 const unit = forceUnit.getUnit();
                 const baseBv = unit.bv ?? 0;
-                const finalBv = forceUnit.getBv();
+                const finalBv = this.getPrintableBv(forceUnit, printPilotData);
 
                 totalBaseBv += baseBv;
                 totalFinalBv += finalBv;
 
-                bodyRows.push(this.createRosterTableRow(forceUnit));
+                bodyRows.push(this.createRosterTableRow(forceUnit, printPilotData));
             }
 
             groupSections.push(`
                 <section class="cbt-roster-group-section">
                     <div class="cbt-roster-group-header">
                         <span class="cbt-roster-group-name">${this.escapeHtml(group.groupDisplayName())}</span>
-                        <span class="cbt-roster-group-bv">BV: ${group.totalBV().toLocaleString()}</span>
+                        <span class="cbt-roster-group-bv">BV: ${groupUnits
+                            .reduce((total, forceUnit) => total + this.getPrintableBv(forceUnit, printPilotData), 0)
+                            .toLocaleString()}</span>
                     </div>
                     <table class="cbt-roster-table">
                         <thead>
@@ -472,9 +522,9 @@ export class CBTPrintUtil {
         `;
     }
 
-    private static createRosterTableRow(forceUnit: CBTForceUnit): string {
+    private static createRosterTableRow(forceUnit: CBTForceUnit, printPilotData: boolean): string {
         const unit = forceUnit.getUnit();
-        const alias = forceUnit.alias();
+        const alias = printPilotData ? forceUnit.alias() : undefined;
         const model = unit.model || '';
         const chassisLine = alias ? `${unit.chassis} (${alias})` : unit.chassis;
 
@@ -492,8 +542,8 @@ export class CBTPrintUtil {
                 <td class="col-type">${this.escapeHtml(typeSubtype)}</td>
                 <td class="col-role">${this.escapeHtml(unit.role && unit.role !== 'None' ? unit.role : '')}</td>
                 <td class="col-base-bv is-numeric">${this.formatNumber(unit.bv)}</td>
-                <td class="col-gp is-numeric">${forceUnit.gunnerySkill()}/${forceUnit.pilotingSkill()}</td>
-                <td class="col-bv is-numeric is-bold">${this.formatNumber(forceUnit.getBv())}</td>
+                <td class="col-gp is-numeric">${printPilotData ? `${forceUnit.gunnerySkill()}/${forceUnit.pilotingSkill()}` : ''}</td>
+                <td class="col-bv is-numeric is-bold">${this.formatNumber(this.getPrintableBv(forceUnit, printPilotData))}</td>
                 <td class="col-tons is-numeric">${this.formatNumber(unit.tons)}</td>
                 <td class="col-year">${this.createYearValue(unit)}</td>
                 <td class="col-rules">${this.escapeHtml(this.formatTechBase(unit.techBase, unit.mixed))}<br/>${this.escapeHtml(unit.level)}</td>
@@ -521,6 +571,10 @@ export class CBTPrintUtil {
             return '';
         }
         return value.toLocaleString();
+    }
+
+    private static getPrintableBv(forceUnit: CBTForceUnit, printPilotData: boolean): number {
+        return printPilotData ? forceUnit.getBv() : forceUnit.getBaseBv();
     }
 
     private static formatMovement(unit: Unit): string {

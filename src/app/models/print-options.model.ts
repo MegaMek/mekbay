@@ -36,6 +36,7 @@
  */
 export interface PrintAllOptions {
     clean: boolean;
+    printPilotData: boolean;
     printRosterSummary: boolean;
     recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
     ASPrintPageBreakOnGroups: boolean;

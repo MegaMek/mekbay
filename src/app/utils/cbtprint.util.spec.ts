@@ -96,6 +96,88 @@ describe('CBTPrintUtil', () => {
         expect(printUnit.setInventoryEntry).toHaveBeenCalledWith(entry);
         expect(entryEl.querySelector(':scope > .alternativeMode.selected')?.getAttribute('mode')).toBe('Standard');
     });
+
+    it('prints default skills and a pilot name when pilot data is enabled', () => {
+        const svg = createPilotDataSvg();
+        const skillValue = svg.getElementById('gunnerySkill0')!;
+        const skillBlank = svg.getElementById('blankGunnerySkill0')!;
+        const pilotName = svg.getElementById('pilotName0') as SVGElement;
+        const nameBlank = svg.getElementById('blankCrewName0') as SVGElement;
+
+        skillValue.classList.add('screen-only');
+        skillBlank.classList.add('print-show');
+        pilotName.style.visibility = 'visible';
+        nameBlank.style.visibility = 'hidden';
+
+        applyPilotDataPrintOption(svg, true);
+
+        expect(skillValue.classList).not.toContain('screen-only');
+        expect(skillBlank.classList).not.toContain('print-show');
+        expect(pilotName.style.visibility).toBe('visible');
+        expect(nameBlank.style.visibility).toBe('hidden');
+    });
+
+    it('hides skills and pilot names but shows writing lines when pilot data is disabled', () => {
+        const svg = createPilotDataSvg();
+        const skillValue = svg.getElementById('gunnerySkill0')!;
+        const skillBlank = svg.getElementById('blankGunnerySkill0')!;
+        const pilotName = svg.getElementById('pilotName0') as SVGElement;
+        const nameBlank = svg.getElementById('blankCrewName0') as SVGElement;
+
+        pilotName.style.visibility = 'visible';
+        nameBlank.style.visibility = 'hidden';
+
+        applyPilotDataPrintOption(svg, false, 1000);
+
+        expect(skillValue.classList).toContain('screen-only');
+        expect(skillBlank.classList).toContain('print-show');
+        expect(pilotName.style.visibility).toBe('hidden');
+        expect(nameBlank.style.visibility).toBe('visible');
+        expect(svg.getElementById('bv')?.textContent).toBe('1000');
+    });
+
+    it('keeps the skill-adjusted sheet BV when pilot data is enabled', () => {
+        const svg = createPilotDataSvg();
+
+        applyPilotDataPrintOption(svg, true, 1000);
+
+        expect(svg.getElementById('bv')?.textContent).toBe('1500 (1000)');
+    });
+
+    it('omits both the pilot name and skills from a roster row when pilot data is disabled', () => {
+        const forceUnit = {
+            alias: () => 'Morgan & Co.',
+            gunnerySkill: () => 3,
+            pilotingSkill: () => 4,
+            getBv: () => 1234,
+            getBaseBv: () => 1000,
+            getPreSkillBv: () => 1150,
+            getUnit: () => ({
+                chassis: 'Atlas',
+                model: 'AS7-D',
+                type: 'Mek',
+                subtype: 'Mek',
+                role: 'Juggernaut',
+                bv: 1000,
+                tons: 100,
+                level: 'Standard',
+                comp: []
+            })
+        };
+
+        const withoutPilotData = createRosterTableRow(forceUnit, false);
+        const withPilotData = createRosterTableRow(forceUnit, true);
+
+        expect(withoutPilotData).toContain('<div class="cbt-roster-unit-chassis">Atlas</div>');
+        expect(withoutPilotData).toContain('<td class="col-gp is-numeric"></td>');
+        expect(withoutPilotData).not.toContain('Morgan');
+        expect(withoutPilotData).not.toContain('3/4');
+        expect(withoutPilotData).toContain('<td class="col-bv is-numeric is-bold">1,000</td>');
+        expect(withoutPilotData).not.toContain('<td class="col-bv is-numeric is-bold">1,234</td>');
+        expect(withPilotData).toContain('Atlas (Morgan &amp; Co.)');
+        expect(withPilotData).toContain('<td class="col-gp is-numeric">3/4</td>');
+        expect(withPilotData).toContain('<td class="col-bv is-numeric is-bold">1,234</td>');
+    });
 });
 
 function createSheetSvg(): SVGSVGElement {
@@ -109,6 +191,19 @@ function createSheetSvg(): SVGSVGElement {
 
 function getReferenceTable(svg: SVGSVGElement): SVGGraphicsElement {
     return svg.querySelector('.referenceTable') as SVGGraphicsElement;
+}
+
+function createPilotDataSvg(): SVGSVGElement {
+    return new DOMParser().parseFromString(`
+        <svg xmlns="http://www.w3.org/2000/svg">
+            <text id="gunnerySkill0" class="skillValue">4</text>
+            <path id="blankGunnerySkill0" />
+            <g id="crewNameButton0" textElement="pilotName0" blankElement="blankCrewName0" />
+            <text id="pilotName0">Morgan</text>
+            <path id="blankCrewName0" />
+            <text id="bv">1500 (1000)</text>
+        </svg>
+    `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
 }
 
 function waitForSvgImagesToLoad(root: ParentNode): Promise<void> {
@@ -133,4 +228,16 @@ function resetInventoryControlModes(printUnit: unknown): void {
     return (CBTPrintUtil as unknown as {
         resetInventoryControlModes(printUnit: unknown): void;
     }).resetInventoryControlModes(printUnit);
+}
+
+function applyPilotDataPrintOption(svg: SVGSVGElement, printPilotData: boolean, baseBv?: number): void {
+    (CBTPrintUtil as unknown as {
+        applyPilotDataPrintOption(svg: SVGSVGElement, printPilotData: boolean, baseBv?: number): void;
+    }).applyPilotDataPrintOption(svg, printPilotData, baseBv);
+}
+
+function createRosterTableRow(forceUnit: unknown, printPilotData: boolean): string {
+    return (CBTPrintUtil as unknown as {
+        createRosterTableRow(forceUnit: unknown, printPilotData: boolean): string;
+    }).createRosterTableRow(forceUnit, printPilotData);
 }
