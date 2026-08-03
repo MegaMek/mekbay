@@ -91,6 +91,7 @@ import { getUnitVariantGroupKey } from '../../utils/unit-variant.util';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { uuidv7 } from '../../utils/uuid.util';
 import { normalizeBoundedInteger, normalizeBoundedIntegerInput } from '../../utils/bounded-integer-input.util';
+import { isAerospace } from '../../utils/as-common.util';
 
 export interface SearchForceGeneratorDialogConfig {
     gameSystem: GameSystem;
@@ -1672,7 +1673,7 @@ export class SearchForceGeneratorDialogComponent {
             }
 
             const previewUnit = this.preview().units.find((unit) => unit.lockKey === lockKey);
-            return previewUnit ? [...lockedUnits, { ...previewUnit }] : lockedUnits;
+            return previewUnit ? [...lockedUnits, { ...previewUnit, commander: unitEntry.commander }] : lockedUnits;
         });
     }
 
@@ -2021,6 +2022,9 @@ export class SearchForceGeneratorDialogComponent {
                     labelPiloting: 'Piloting Skill',
                     commander: unitEntry.commander ?? false,
                     group: null,
+                    factionId: this.preview().faction?.id ?? null,
+                    isAerospace: unit.type === 'Aero',
+                    era: this.preview().era,
                     preSkillBv: unit.bv,
                     unit,
                 },
@@ -2058,8 +2062,14 @@ export class SearchForceGeneratorDialogComponent {
                     skill: unitEntry.skill ?? unitEntry.gunnery ?? this.gunnerySkillRange()[0],
                     abilities: [],
                     formationAbilities: [],
+                    disableAbilityEditing: true,
                     commander: unitEntry.commander ?? false,
                     group: null,
+                    factionId: this.preview().faction?.id ?? null,
+                    isAerospace: isAerospace(unit.as.TP, unit.as.MVm),
+                    era: this.preview().era,
+                    unitType: unit.type,
+                    unitSubtype: unit.subtype,
                     unitTypeCode: unit.as.TP,
                     basePv: unit.as.PV,
                 },

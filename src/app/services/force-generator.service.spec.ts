@@ -3531,10 +3531,13 @@ describe('ForceGeneratorService', () => {
 
         expect(preview.error).toBeNull();
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['First Unit']);
+        expect(preview.units[0].commander).toBeUndefined();
         expect(preview.totalCost).toBe(6);
         expect(preview.explanationLines.some((line) => line.includes('Budget 0/0 requested'))).toBeTrue();
         expect(buildSelectionSpy.calls.count()).toBe(1);
-        expect(service.createForceEntry(preview)).not.toBeNull();
+        const entry = service.createForceEntry(preview);
+        expect(entry).not.toBeNull();
+        expect(entry!.groups[0].units[0].commander).toBeUndefined();
     });
 
     it('preserves locked units and their preview metadata while filling the remaining slots', () => {
@@ -3568,6 +3571,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Atlas AS7-D', 'Locust LCT-1V']);
         expect(preview.units[0].alias).toBe('Ace Atlas');
         expect(preview.units[0].commander).toBeTrue();
+        expect(preview.units.filter((unit) => unit.commander)).toHaveSize(1);
         expect(preview.units[0].lockKey).toBe('locked-atlas');
         expect(preview.explanationLines.some((line) => line.includes('locked'))).toBeTrue();
 
@@ -3575,7 +3579,40 @@ describe('ForceGeneratorService', () => {
         expect(entry).not.toBeNull();
         expect(entry!.groups[0].units[0].alias).toBe('Ace Atlas');
         expect(entry!.groups[0].units[0].commander).toBeTrue();
+        expect(entry!.groups[0].units.filter((unit) => unit.commander)).toHaveSize(1);
         expect(entry!.groups[0].units[0].lockKey).toBe('locked-atlas');
+    });
+
+    it('assigns Classic group command to the best crew', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const units = [
+            createUnit({ id: 1, name: 'Regular', bv: 1000 }),
+            createUnit({ id: 2, name: 'Pilot Specialist', bv: 1000 }),
+            createUnit({ id: 3, name: 'Gunnery Specialist', bv: 1000 }),
+            createUnit({ id: 4, name: 'Veteran', bv: 1000 }),
+        ];
+        const skills = [[4, 5], [4, 3], [3, 4], [3, 3]] as const;
+
+        const entry = service.createForceEntry({
+            gameSystem: GameSystem.CLASSIC,
+            units: units.map((unit, index) => ({
+                unit,
+                cost: unit.bv,
+                gunnery: skills[index][0],
+                piloting: skills[index][1],
+            })),
+            totalCost: 4000,
+            error: null,
+            faction,
+            era,
+            explanationLines: [],
+        });
+
+        expect(entry).not.toBeNull();
+        expect(entry!.groups).toHaveSize(1);
+        expect(entry!.groups[0].units.filter((unit) => unit.commander)).toHaveSize(1);
+        expect(entry!.groups[0].units.find((unit) => unit.commander)?.unit?.name).toBe('Veteran');
     });
 
     it('prevents duplicate chassis when requested', () => {
@@ -4426,7 +4463,7 @@ describe('ForceGeneratorService', () => {
             units: previewUnits.map((unit, index) => ({
                 unit,
                 cost: 25 + index,
-                skill: 4,
+                skill: [4, 4, 4, 3, 3, 3, 2, 2, 2, 5, 5, 5][index],
             })),
             totalCost: 400,
             error: null,
@@ -4447,6 +4484,10 @@ describe('ForceGeneratorService', () => {
             'recon-lance',
             'battle-lance',
         ]);
+        for (const group of entry!.groups) {
+            expect(group.units.filter((unit) => unit.commander)).toHaveSize(1);
+            expect(group.units[2].commander).toBeTrue();
+        }
     });
 
     it('splits a generated binary into star groups before assigning formations', () => {
@@ -4619,7 +4660,12 @@ describe('ForceGeneratorService', () => {
             'Count Match D',
         ]);
         expect(preview.totalCost).toBe(16);
-        expect(service.createForceEntry(preview)).not.toBeNull();
+        const entry = service.createForceEntry(preview);
+        expect(entry).not.toBeNull();
+        for (const group of entry!.groups) {
+            expect(group.units.filter((unit) => unit.commander)).toHaveSize(1);
+            expect(group.units[0].commander).toBeTrue();
+        }
     });
 
     it('prefers the highest total below the target over a closer total that exceeds it', () => {

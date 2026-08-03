@@ -43,6 +43,7 @@ import type { MegaMekAvailabilityData } from '../models/megamek/availability.mod
 import type { MegaMekRulesetsData } from '../models/megamek/rulesets.model';
 import type { SarnaPageTitlesData } from '../models/sarna-page-titles.model';
 import type { ForceNameWordsData } from '../models/force-name-words.model';
+import type { PilotNameCatalogData } from '../models/pilot-name-catalog.model';
 import type { RawEquipmentData } from '../models/equipment.model';
 import type { SerializedForce } from '../models/force-serialization';
 import { DialogsService } from './dialogs.service';
@@ -89,6 +90,7 @@ const USER_KEY = 'user';
 const QUIRKS_KEY = 'quirks';
 const SARNA_PAGE_TITLES_KEY = 'sarnaPageTitles';
 const FORCE_NAME_WORDS_KEY = 'forceNameWords';
+const PILOT_NAMES_KEY = 'pilotNames';
 
 const CATALOG_GENERAL_STORE_KEYS = [
     UNITS_KEY,
@@ -103,6 +105,7 @@ const CATALOG_GENERAL_STORE_KEYS = [
     QUIRKS_KEY,
     SARNA_PAGE_TITLES_KEY,
     FORCE_NAME_WORDS_KEY,
+    PILOT_NAMES_KEY,
 ] as const;
 
 const MAX_SHEET_CACHE_COUNT = 5000; // Max number of sheets to cache
@@ -430,14 +433,12 @@ export class DbService {
             const store = transaction.objectStore(DB_STORE);
             const request = store.put(data, key);
 
-            request.onsuccess = () => {
-                resolve();
-            };
-
             request.onerror = () => {
                 this.logger.error(`Error saving ${key} to IndexedDB: ${request.error}`);
-                reject(request.error);
             };
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error ?? request.error);
+            transaction.onabort = () => reject(transaction.error ?? request.error ?? new Error(`Saving ${key} was aborted.`));
         });
     }
 
@@ -666,6 +667,14 @@ export class DbService {
 
     public async saveForceNameWords(data: ForceNameWordsData): Promise<void> {
         return await this.saveDataFromGeneralStore(data, FORCE_NAME_WORDS_KEY);
+    }
+
+    public async getPilotNames(): Promise<PilotNameCatalogData | null> {
+        return await this.getDataFromGeneralStore<PilotNameCatalogData>(PILOT_NAMES_KEY);
+    }
+
+    public async savePilotNames(data: PilotNameCatalogData): Promise<void> {
+        return await this.saveDataFromGeneralStore(data, PILOT_NAMES_KEY);
     }
 
     /**

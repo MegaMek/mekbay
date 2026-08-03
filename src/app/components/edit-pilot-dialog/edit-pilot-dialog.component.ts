@@ -44,7 +44,10 @@ import { SkillDropdownPanelComponent, type SkillPreviewEntry } from '../skill-dr
 import { SkillMatrixPanelComponent, type SkillMatrixCell } from '../skill-dropdown-panel/skill-matrix-panel.component';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import type { Unit } from '../../models/units.model';
+import type { Era } from '../../models/eras.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
+import { PilotNameGeneratorService } from '../../services/pilot-name-generator.service';
+import { LoggerService } from '../../services/logger.service';
 
 /*
  * Author: Drake
@@ -60,6 +63,9 @@ export interface EditPilotDialogData {
     disablePiloting?: boolean;
     commander?: boolean;
     group?: UnitGroup<CBTForceUnit> | null;
+    factionId?: number | null;
+    isAerospace?: boolean;
+    era?: Era | null;
     /** Pre-skill BV (base + TAG + C3) for BV preview calculation. */
     preSkillBv?: number;
     /** Unit reference for effective piloting skill calculation. */
@@ -85,6 +91,7 @@ export interface EditPilotResult {
     styleUrls: ['./edit-pilot-dialog.component.scss']
 })
 export class EditPilotDialogComponent {
+    private commanderSelectionRequestId = 0;
     nameInput = viewChild.required<ElementRef<HTMLInputElement>>('nameInput');
     gunneryTrigger = viewChild.required<ElementRef<HTMLDivElement>>('gunneryTrigger');
     pilotingTrigger = viewChild.required<ElementRef<HTMLDivElement>>('pilotingTrigger');
@@ -95,10 +102,13 @@ export class EditPilotDialogComponent {
     private dialogsService = inject(DialogsService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
+    private pilotNameGenerator = inject(PilotNameGeneratorService);
+    private logger = inject(LoggerService);
 
     currentGunnery = signal<number>(this.data.gunnery);
     currentPiloting = signal<number>(this.data.piloting);
     selectedGroupCommander = signal<boolean>(this.data.commander ?? false);
+    readonly generatingName = signal(false);
 
     readonly hasBvPreview = !!(this.data.preSkillBv != null && this.data.unit);
     readonly persistedOtherCommander = computed<CBTForceUnit | null>(() => {
@@ -203,6 +213,7 @@ export class EditPilotDialogComponent {
     }
 
     async setGroupCommanderSelected(value: boolean): Promise<void> {
+        const requestId = ++this.commanderSelectionRequestId;
         if (value && !this.selectedGroupCommander()) {
             const otherCommander = this.persistedOtherCommander();
             if (otherCommander) {
@@ -212,6 +223,7 @@ export class EditPilotDialogComponent {
                     'Replace Group Commander',
                     'warning',
                 );
+                if (requestId !== this.commanderSelectionRequestId) return;
                 if (!confirmed) {
                     this.selectedGroupCommander.set(false);
                     return;
@@ -279,13 +291,40 @@ export class EditPilotDialogComponent {
         });
     }
 
+    async fillRandomName(): Promise<void> {
+        if (this.generatingName()) return;
+        this.generatingName.set(true);
+        try {
+            const name = await this.pilotNameGenerator.generate({
+                factionId: this.data.factionId ?? this.data.group?.force.faction()?.id,
+                isAerospace: !!this.data.isAerospace,
+                isCommander: this.selectedGroupCommander(),
+                unitType: this.data.unit?.type,
+                unitSubtype: this.data.unit?.subtype,
+                era: this.data.era?.years ?? this.data.group?.force.era()?.years,
+            });
+            if (!name) {
+                this.logger.warn('Pilot name generation returned no name.');
+                return;
+            }
+            const input = this.nameInput().nativeElement;
+            input.value = name.slice(0, input.maxLength);
+            input.focus();
+            input.select();
+        } catch (error) {
+            this.logger.warn(`Pilot name generation failed: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            this.generatingName.set(false);
+        }
+    }
+
     submit() {
         const name = this.nameInput().nativeElement.value.trim();
         this.dialogRef.close({
             name,
             gunnery: this.currentGunnery(),
             piloting: this.data.disablePiloting ? this.data.piloting : this.currentPiloting(),
-            commander: this.data.group ? this.selectedGroupCommander() : false,
+            commander: this.selectedGroupCommander(),
         });
     }
 

@@ -55,6 +55,10 @@ import {
     type UnsupportedFormationEffectDescriptor,
 } from '../../utils/formation-ability-assignment.util';
 import { OptionsService } from '../../services/options.service';
+import { PilotNameGeneratorService } from '../../services/pilot-name-generator.service';
+import { LoggerService } from '../../services/logger.service';
+import type { Era } from '../../models/eras.model';
+import type { UnitSubtype, UnitType } from '../../models/entity/types/classification';
 
 /*
  * Author: Drake
@@ -71,6 +75,13 @@ export interface EditASPilotDialogData {
     formationAbilities?: string[];
     commander?: boolean;
     group?: UnitGroup<ASForceUnit> | null;
+    factionId?: number | null;
+    isAerospace?: boolean;
+    era?: Era | null;
+    unitType?: UnitType;
+    unitSubtype?: UnitSubtype;
+    /** Hide ability controls when the caller cannot persist ability changes. */
+    disableAbilityEditing?: boolean;
     /** The unit's AS type code (e.g. 'BM', 'CV') for filtering abilities by unitTypeFilter. */
     unitTypeCode?: ASUnitTypeCode;
     /** Base PV at skill 4 for PV preview calculation. */
@@ -104,6 +115,7 @@ interface FormationEffectCardView {
     styleUrl: './edit-as-pilot-dialog.component.scss'
 })
 export class EditASPilotDialogComponent {
+    private commanderSelectionRequestId = 0;
     nameInput = viewChild.required<ElementRef<HTMLInputElement>>('nameInput');
     skillTrigger = viewChild.required<ElementRef<HTMLDivElement>>('skillTrigger');
 
@@ -118,6 +130,8 @@ export class EditASPilotDialogComponent {
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
     private readonly optionsService = inject(OptionsService);
+    private readonly pilotNameGenerator = inject(PilotNameGeneratorService);
+    private readonly logger = inject(LoggerService);
     readonly formatRuleReference = formatRulesReference;
 
     availableAbilities = signal<PilotAbility[]>(PILOT_ABILITIES);
@@ -128,6 +142,7 @@ export class EditASPilotDialogComponent {
     openDropdown = signal<number | null>(null);
     openFormationDropdownKey = signal<string | null>(null);
     currentSkill = signal<number>(4);
+    readonly generatingName = signal(false);
 
     private readonly hasPvPreview = this.data.basePv != null;
 
@@ -1006,6 +1021,7 @@ export class EditASPilotDialogComponent {
     }
 
     async setFormationCommanderSelected(value: boolean): Promise<void> {
+        const requestId = ++this.commanderSelectionRequestId;
         if (value && !this.selectedFormationCommander()) {
             const otherCommanderName = this.persistedOtherCommanderName();
             if (otherCommanderName) {
@@ -1014,6 +1030,7 @@ export class EditASPilotDialogComponent {
                     'Replace Group Commander',
                     'warning',
                 );
+                if (requestId !== this.commanderSelectionRequestId) return;
                 if (!confirmed) {
                     this.selectedFormationCommander.set(false);
                     return;
@@ -1079,6 +1096,33 @@ export class EditASPilotDialogComponent {
         const isCommander = preview.commanderUnitId === this.data.unitId;
         if (this.selectedFormationCommander() !== isCommander) {
             this.selectedFormationCommander.set(isCommander);
+        }
+    }
+
+    async fillRandomName(): Promise<void> {
+        if (this.generatingName()) return;
+        this.generatingName.set(true);
+        try {
+            const name = await this.pilotNameGenerator.generate({
+                factionId: this.data.factionId ?? this.data.group?.force.faction()?.id,
+                isAerospace: !!this.data.isAerospace,
+                isCommander: this.selectedFormationCommander(),
+                unitType: this.data.unitType,
+                unitSubtype: this.data.unitSubtype,
+                era: this.data.era?.years ?? this.data.group?.force.era()?.years,
+            });
+            if (!name) {
+                this.logger.warn('Pilot name generation returned no name.');
+                return;
+            }
+            const input = this.nameInput().nativeElement;
+            input.value = name.slice(0, input.maxLength);
+            input.focus();
+            input.select();
+        } catch (error) {
+            this.logger.warn(`Pilot name generation failed: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            this.generatingName.set(false);
         }
     }
 

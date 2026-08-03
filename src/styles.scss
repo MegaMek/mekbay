@@ -970,6 +970,22 @@ hr {
         width: 100%;
     }
 
+    .random-button {
+        flex: 0 0 32px;
+        width: 32px;
+        height: 32px;
+        border: none;
+        background: transparent url('/images/random.svg') center / 24px 24px no-repeat;
+        cursor: pointer;
+        opacity: 0.8;
+        transition: opacity 0.2s ease-in-out;
+
+        &:hover,
+        &:focus-visible {
+            opacity: 1;
+        }
+    }
+
     .field-input {
         width: 100%;
         flex: 1 1 auto;

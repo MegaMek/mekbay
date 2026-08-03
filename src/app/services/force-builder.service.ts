@@ -3112,6 +3112,9 @@ export class ForceBuilderService {
                     disablePiloting: disablePiloting,
                     commander: cbtUnit.commander(),
                     group,
+                    factionId: cbtUnit.force.faction()?.id,
+                    isAerospace: baseUnit.type === 'Aero',
+                    era: cbtUnit.force.era(),
                     preSkillBv: cbtUnit.getBaseBv() + cbtUnit.tagBV() + cbtUnit.c3Tax(),
                     unit: baseUnit,
                 }
@@ -3159,6 +3162,11 @@ export class ForceBuilderService {
                     formationAbilities: unit.formationAbilities(),
                     commander: unit.commander(),
                     group,
+                    factionId: unit.force.faction()?.id,
+                    isAerospace: unit.isAerospace(),
+                    era: unit.force.era(),
+                    unitType: unit.getUnit().type,
+                    unitSubtype: unit.getUnit().subtype,
                     unitTypeCode: unit.getUnit().as?.TP,
                     basePv: unit.getUnit().as?.PV,
                 }

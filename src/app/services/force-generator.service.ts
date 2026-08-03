@@ -816,16 +816,38 @@ function createGeneratedPreviewGroup(
     gameSystem: GameSystem,
     formationId?: string,
 ): ForcePreviewGroup {
+    const requiresCommander = generatedUnits.length >= 4;
+    let commanderIndex = generatedUnits.findIndex((unit) => unit.commander);
+    if (requiresCommander && commanderIndex < 0) {
+        commanderIndex = generatedUnits.reduce((bestIndex, unit, index) => {
+            const best = generatedUnits[bestIndex];
+            if (!best) return index;
+            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+                return (unit.skill ?? Number.POSITIVE_INFINITY) < (best.skill ?? Number.POSITIVE_INFINITY)
+                    ? index
+                    : bestIndex;
+            }
+            const unitTotal = (unit.gunnery ?? Number.POSITIVE_INFINITY) + (unit.piloting ?? Number.POSITIVE_INFINITY);
+            const bestTotal = (best.gunnery ?? Number.POSITIVE_INFINITY) + (best.piloting ?? Number.POSITIVE_INFINITY);
+            if (unitTotal !== bestTotal) return unitTotal < bestTotal ? index : bestIndex;
+            if (unit.gunnery !== best.gunnery) {
+                return (unit.gunnery ?? Number.POSITIVE_INFINITY) < (best.gunnery ?? Number.POSITIVE_INFINITY)
+                    ? index
+                    : bestIndex;
+            }
+            return bestIndex;
+        }, 0);
+    }
     return {
         formationId,
-        units: generatedUnits.map((generatedUnit) => ({
+        units: generatedUnits.map((generatedUnit, index) => ({
             unit: generatedUnit.unit,
             destroyed: false,
             gunnery: gameSystem === GameSystem.CLASSIC ? generatedUnit.gunnery : undefined,
             piloting: gameSystem === GameSystem.CLASSIC ? generatedUnit.piloting : undefined,
             skill: gameSystem === GameSystem.ALPHA_STRIKE ? generatedUnit.skill : undefined,
             alias: generatedUnit.alias,
-            commander: generatedUnit.commander,
+            commander: requiresCommander ? index === commanderIndex : generatedUnit.commander,
             lockKey: generatedUnit.lockKey,
         })),
     };
