@@ -127,7 +127,7 @@ export interface InputDialogData {
 
 export class InputDialogComponent {
     inputRef = viewChild.required<ElementRef<HTMLInputElement>>('inputRef');
-    public dialogRef: DialogRef<string | number | null, InputDialogComponent> = inject(DialogRef);
+    public dialogRef = inject(DialogRef) as DialogRef<string | number | null, InputDialogComponent>;
     readonly data: InputDialogData = inject(DIALOG_DATA);
     buttons: { label: string; value: 'ok' | 'cancel'; class?: string }[];
     

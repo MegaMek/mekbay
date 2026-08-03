@@ -347,7 +347,7 @@ export class RenameGroupDialogComponent implements OnDestroy {
   inputRef = viewChild.required<ElementRef<HTMLDivElement>>('inputRef');
   formationTriggerWrapper = viewChild.required<ElementRef<HTMLDivElement>>('formationTriggerWrapper');
 
-  public dialogRef: DialogRef<RenameGroupDialogResult | null, RenameGroupDialogComponent> = inject(DialogRef);
+  public dialogRef: DialogRef<RenameGroupDialogResult | null, RenameGroupDialogComponent> = inject<DialogRef<RenameGroupDialogResult | null, RenameGroupDialogComponent>>(DialogRef);
   readonly data: RenameGroupDialogData = inject(DIALOG_DATA);
   private optionsService = inject(OptionsService);
   private overlayManager = inject(OverlayManagerService);

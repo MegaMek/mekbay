@@ -118,7 +118,7 @@ export interface ConfirmDialogData<T = any> {
     `]
 })
 export class ConfirmDialogComponent<T = any> {
-    public dialogRef: DialogRef<T, ConfirmDialogComponent<T>> = inject(DialogRef);
+    public dialogRef = inject<DialogRef<T, ConfirmDialogComponent<T>>>(DialogRef);
     readonly data: ConfirmDialogData<T> = inject(DIALOG_DATA);
     private sanitizer = inject(DomSanitizer);
     safeMessageHtml: SafeHtml | null = null;

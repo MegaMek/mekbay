@@ -207,7 +207,7 @@ export interface ShareForceDialogData {
 })
 
 export class ShareForceDialogComponent {
-    public dialogRef: DialogRef<string | number | null, ShareForceDialogComponent> = inject(DialogRef);
+    public dialogRef = inject<DialogRef<string | number | null, ShareForceDialogComponent>>(DialogRef);
     private data: ShareForceDialogData = inject(DIALOG_DATA);
     forceBuilderService = inject(ForceBuilderService);
     toastService = inject(ToastService);

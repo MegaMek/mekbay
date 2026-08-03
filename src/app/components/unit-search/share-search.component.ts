@@ -166,7 +166,7 @@ import { DialogsService } from '../../services/dialogs.service';
 })
 
 export class ShareSearchDialogComponent {
-    public dialogRef: DialogRef<string | number | null, ShareSearchDialogComponent> = inject(DialogRef);
+    public dialogRef = inject<DialogRef<string | number | null, ShareSearchDialogComponent>>(DialogRef);
     unitSearchFilters = inject(UnitSearchFiltersService);
     toastService = inject(ToastService);
     private dialogsService = inject(DialogsService);
