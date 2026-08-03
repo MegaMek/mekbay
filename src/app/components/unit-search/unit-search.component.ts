@@ -46,7 +46,7 @@ import { getMegaMekAvailabilityRarityForScore, MEGAMEK_AVAILABILITY_UNKNOWN_SCOR
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import type { Unit } from '../../models/units.model';
-import { DEFAULT_CLASSIC_BV_NORMALIZATION_MAX, type BvNormalizationMatch, type UnitSearchBudgetMode } from '../../models/unit-search-result.model';
+import { DEFAULT_CLASSIC_BV_NORMALIZATION_MAX, DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX, getNormalizationGunnery, getNormalizationPiloting, type UnitSearchNormalizationMatch, type UnitSearchBudgetMode } from '../../models/unit-search-result.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { Overlay, OverlayModule, type ConnectedPosition, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
@@ -83,7 +83,7 @@ import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card
 import { formatMovement } from '../../utils/as-common.util';
 import type { UnitType } from '../../models/units.model';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
-import { updateNumericRangeBound } from '../../utils/bv-normalization.util';
+import { updateNumericRangeBound } from '../../utils/unit-search-normalization-range.util';
 import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableRowLongPressEvent, type DataTableRowPointerEnterEvent, type DataTableRowPointerMoveEvent, type DataTableSortEvent } from '../data-table/data-table.component';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { getUnitVariantGroupIdentity, getUnitVariantGroupKey, type UnitVariantGroupIdentity, unitMatchesVariantGroup } from '../../utils/unit-variant.util';
@@ -150,6 +150,7 @@ interface ActiveVariantGroupFilter extends UnitVariantGroupIdentity {
     }
 })
 export class UnitSearchComponent {
+    readonly maximumNormalizedPv = DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX;
     readonly forceBvLimitTooltip = [
         { value: 'Filters search results to units whose adjusted BV or PV fits within the remaining force budget.' },
         { value: 'The remaining budget is the Force BV/PV Limit minus the BV/PV already in the current force. Pilot skill adjustments are included.' },
@@ -160,6 +161,11 @@ export class UnitSearchComponent {
         { value: 'Max Delta limits the absolute difference between the effective Gunnery and Piloting values.' },
         { value: 'Units with fixed Piloting ignore the Piloting range and Max Delta; only Gunnery is adjusted.' },
         { value: 'Matching results keep their selected skills and adjusted BV when viewed or added to a force.' },
+    ];
+    readonly pvNormalizationTooltip = [
+        { value: 'Finds a Skill value within the selected range that places each unit inside the Target PV range.' },
+        { value: 'A unit that fits with Skill 4 keeps that skill.' },
+        { value: 'Matching results keep their selected Skill and adjusted PV when viewed or added to a force.' },
     ];
     readonly normalizationMaxDeltaTooltip = [
         { value: 'Limits the absolute difference between effective Gunnery and Piloting for eligible skill combinations.' },
@@ -339,7 +345,7 @@ export class UnitSearchComponent {
     viewModeMenuOpen = signal(false);
     activeIndex = signal<number | null>(null);
     selectedUnits = signal<Set<string>>(new Set());
-    private readonly selectedUnitContexts = new Map<string, BvNormalizationMatch>();
+    private readonly selectedUnitContexts = new Map<string, UnitSearchNormalizationMatch>();
     readonly activeVariantGroupFilter = signal<ActiveVariantGroupFilter | null>(null);
     private unitDetailsDialogOpen = signal(false);
 
@@ -481,9 +487,11 @@ export class UnitSearchComponent {
         const piloting = this.filtersService.pilotPilotingSkill();
         const baseValues = group.units.map(unit => isAlphaStrike ? unit.as.PV : unit.bv);
         const adjustedValues = group.units.map(unit => isAlphaStrike
-            ? adjustPointValueForSkill(unit.as.PV, gunnery)
+            ? this.filtersService.activePvNormalization()
+                ? this.getSearchResultContext(unit).adjustedValue
+                : adjustPointValueForSkill(unit.as.PV, gunnery)
             : this.filtersService.activeBvNormalization()
-                ? this.getSearchResultContext(unit).adjustedBv
+                ? this.getSearchResultContext(unit).adjustedValue
                 : BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting));
         const formatRange = (values: number[]) => {
             const min = Math.min(...values);
@@ -863,13 +871,21 @@ export class UnitSearchComponent {
             {
                 id: 'pv',
                 header: 'PV',
-                track: 45,
+                track: this.filtersService.activePvNormalization() ? 82 : 45,
                 cellTemplate: pvCell,
                 sortKey: 'as.PV',
                 sortActive: this.isSortActive('as.PV'),
                 cellClass: this.tableCellClass('as-td-pv is-bold', this.isSortActive('as.PV')),
                 align: 'right',
             },
+            ...(this.filtersService.activePvNormalization() ? [{
+                id: 'normalized-skill',
+                header: 'Skill',
+                track: 45,
+                value: (unit: Unit) => getNormalizationGunnery(this.getSearchResultContext(unit)),
+                cellTone: 'focus' as const,
+                align: 'center' as const,
+            }] : []),
             {
                 id: 'sz',
                 header: 'SZ',
@@ -1136,10 +1152,18 @@ export class UnitSearchComponent {
             const displayedNames = new Set(this.displayedUnits().map(unit => unit.name));
             untracked(() => {
                 const selected = this.selectedUnits();
-                if ([...selected].every(name => displayedNames.has(name))) return;
-
-                this.selectedUnits.set(new Set([...selected].filter(name => displayedNames.has(name))));
+                if (![...selected].every(name => displayedNames.has(name))) {
+                    this.selectedUnits.set(new Set([...selected].filter(name => displayedNames.has(name))));
+                }
+                const inlineUnit = this.inlinePanelUnit();
+                if (inlineUnit && !displayedNames.has(inlineUnit.name)) {
+                    this.inlinePanelUnit.set(null);
+                }
             });
+        });
+        effect(() => {
+            this.filtersService.activeNormalization();
+            untracked(() => this.clearSelection());
         });
         effect(() => {
             const closeRequest = this.filtersService.closePanelsRequest();
@@ -2239,7 +2263,7 @@ export class UnitSearchComponent {
     formatClassicBv(unit: Unit, gunnery: number, piloting: number): string {
         if (this.filtersService.activeBvNormalization()) {
             return formatBvPv(
-                this.getSearchResultContext(unit).adjustedBv,
+                this.getSearchResultContext(unit).adjustedValue,
                 unit.bv,
                 'both',
             );
@@ -2253,12 +2277,14 @@ export class UnitSearchComponent {
 
     formatNormalizedSkills(unit: Unit): string {
         const context = this.getSearchResultContext(unit);
-        return `${context.gunnery}/${context.piloting}`;
+        return context.kind === 'pv' ? `${context.skill}` : `${context.gunnery}/${context.piloting}`;
     }
 
     formatAlphaStrikePv(unit: Unit, gunnery: number): string {
         return formatBvPv(
-            adjustPointValueForSkill(unit.as.PV, gunnery),
+            this.filtersService.activePvNormalization()
+                ? this.getSearchResultContext(unit).adjustedValue
+                : adjustPointValueForSkill(unit.as.PV, gunnery),
             unit.as.PV,
             'both',
         );
@@ -2386,6 +2412,40 @@ export class UnitSearchComponent {
         this.filtersService.setBvNormalizationSettings({
             ...this.filtersService.classicBvNormalizationSettings(),
             [range]: { min, max },
+        });
+        this.activeIndex.set(null);
+    }
+
+    setPvNormalizationTargetBound(bound: 'min' | 'max', value: number): void {
+        if (!Number.isFinite(value)) return;
+        const current = this.filtersService.alphaStrikePvNormalizationSettings();
+        const normalizedValue = normalizeBoundedInteger(value, {
+            min: 0,
+            max: DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX,
+        });
+        this.filtersService.setPvNormalizationSettings({
+            ...current,
+            targetPv: updateNumericRangeBound(current.targetPv, bound, normalizedValue),
+        });
+        this.activeIndex.set(null);
+    }
+
+    onPvNormalizationTargetBoundChange(bound: 'min' | 'max', event: Event): void {
+        const value = normalizeBoundedIntegerInput(event, {
+            min: 0,
+            max: DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX,
+        });
+        this.setPvNormalizationTargetBound(bound, value);
+        const input = event.target as HTMLInputElement | null;
+        if (input) input.value = `${this.filtersService.alphaStrikePvNormalizationSettings().targetPv[bound]}`;
+    }
+
+    setPvNormalizationSkillRange(value: [number, number]): void {
+        const [min, max] = value;
+        if (!Number.isInteger(min) || !Number.isInteger(max) || min < 0 || max > 8 || min > max) return;
+        this.filtersService.setPvNormalizationSettings({
+            ...this.filtersService.alphaStrikePvNormalizationSettings(),
+            skill: { min, max },
         });
         this.activeIndex.set(null);
     }
@@ -2533,7 +2593,11 @@ export class UnitSearchComponent {
             if (unit) {
                 const context = this.selectedUnitContexts.get(selectedUnit)
                     ?? this.getSearchResultContext(unit);
-                if (!await this.forceBuilderService.addUnit(unit, context.gunnery, context.piloting)) {
+                if (!await this.forceBuilderService.addUnit(
+                    unit,
+                    getNormalizationGunnery(context),
+                    getNormalizationPiloting(context),
+                )) {
                     break;
                 }
             }
@@ -2542,21 +2606,16 @@ export class UnitSearchComponent {
         this.closeAllPanels();
     }
 
-    getSearchResultContext(unit: Unit): BvNormalizationMatch {
-        const resolver = (this.filtersService as UnitSearchFiltersService & {
-            getSearchResultPilotContext?: (resultUnit: Unit) => BvNormalizationMatch;
-        }).getSearchResultPilotContext;
-        if (resolver) {
-            return resolver.call(this.filtersService, unit);
-        }
+    getSearchResultContext(unit: Unit): UnitSearchNormalizationMatch {
+        return this.filtersService.getSearchResultPilotContext(unit);
+    }
 
-        const gunnery = this.filtersService.pilotGunnerySkill();
-        const piloting = this.filtersService.pilotPilotingSkill();
-        return {
-            adjustedBv: BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting),
-            gunnery,
-            piloting,
-        };
+    getSearchResultGunnery(unit: Unit): number {
+        return getNormalizationGunnery(this.getSearchResultContext(unit));
+    }
+
+    getSearchResultPiloting(unit: Unit): number {
+        return getNormalizationPiloting(this.getSearchResultContext(unit));
     }
 
     showGenerateForceDialog(): void {
@@ -2768,11 +2827,7 @@ export class UnitSearchComponent {
             : this.savedSearchesService.getAllSearches();
         componentRef.setInput('favorites', favorites);
 
-        // Determine if saving is allowed (has search text or filters)
-        const hasSearchText = (this.filtersService.searchText() ?? '').trim().length > 0;
-        const filterState = this.filtersService.filterState();
-        const hasActiveFilters = Object.values(filterState).some(s => s.interactedWith);
-        componentRef.setInput('canSave', hasSearchText || hasActiveFilters);
+        componentRef.setInput('canSave', this.filtersService.hasBookmarkableSearchState());
 
         outputToObservable(componentRef.instance.select).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((favorite: SerializedSearchFilter) => {
             if (favorite) this.applyFavorite(favorite);
@@ -2812,12 +2867,7 @@ export class UnitSearchComponent {
         this.favoritesDialogActive = true;
         this.overlayManager.blockCloseUntil('favorites');
         try {
-            // Check if there's anything to save (text or filters)
-            const hasSearchText = (this.filtersService.searchText() ?? '').trim().length > 0;
-            const filterState = this.filtersService.filterState();
-            const hasActiveFilters = Object.values(filterState).some(s => s.interactedWith);
-
-            if (!hasSearchText && !hasActiveFilters) {
+            if (!this.filtersService.hasBookmarkableSearchState()) {
                 await this.dialogsService.showNotice(
                     'Please enter a search query or set some filters before saving a bookmark.',
                     'Nothing to Save'
@@ -2905,11 +2955,7 @@ export class UnitSearchComponent {
                 : this.savedSearchesService.getAllSearches();
             this.favoritesCompRef.setInput('favorites', favorites);
 
-            // Also update canSave state
-            const hasSearchText = (this.filtersService.searchText() ?? '').trim().length > 0;
-            const filterState = this.filtersService.filterState();
-            const hasActiveFilters = Object.values(filterState).some(s => s.interactedWith);
-            this.favoritesCompRef.setInput('canSave', hasSearchText || hasActiveFilters);
+            this.favoritesCompRef.setInput('canSave', this.filtersService.hasBookmarkableSearchState());
         }
     }
 

@@ -255,7 +255,7 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         sortDirection: request.sortDirection,
         bvPvLimit: request.bvPvLimit,
         forceTotalBvPv: request.forceTotalBvPv,
-        bvNormalization: request.bvNormalization,
+        normalization: request.normalization,
         getAdjustedBV: (unit: Unit) => {
             const gunnery = request.pilotGunnerySkill;
             const piloting = request.pilotPilotingSkill;

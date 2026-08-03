@@ -96,6 +96,7 @@ function createRequest(): UnitSearchWorkerQueryRequest {
         forceTotalBvPv: 0,
         pilotGunnerySkill: 4,
         pilotPilotingSkill: 5,
+        normalization: null,
     };
 }
 
@@ -150,17 +151,20 @@ describe('unit-search worker', () => {
             ...createRequest(),
             executionQuery: '',
             telemetryQuery: '',
-            bvNormalization: {
-                targetBv: { min: 1000, max: 1000 },
-                gunnery: { min: 4, max: 4 },
-                piloting: { min: 5, max: 5 },
-                maxDelta: 1,
+            normalization: {
+                kind: 'bv',
+                settings: {
+                    targetBv: { min: 1000, max: 1000 },
+                    gunnery: { min: 4, max: 4 },
+                    piloting: { min: 5, max: 5 },
+                    maxDelta: 1,
+                },
             },
         });
 
         expect(result.entries).toEqual([{
             unitName: 'Normalized Unit',
-            match: { adjustedBv: 1000, gunnery: 4, piloting: 5 },
+            match: { kind: 'bv', adjustedValue: 1000, gunnery: 4, piloting: 5 },
         }]);
     });
 

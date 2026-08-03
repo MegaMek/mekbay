@@ -43,6 +43,11 @@ import {
 import { normalizeWeaponType, WEAPON_TYPES, WEAPON_TYPE_DISPLAY_NAMES } from '../models/weapon-types.model';
 import { CBT_WEIGHT_CLASSES } from '../models/units.model';
 import type { SemanticFilterState } from '../utils/semantic-filter.util';
+import type {
+    BvNormalizationSettings,
+    PvNormalizationSettings,
+    UnitSearchBudgetMode,
+} from '../models/unit-search-result.model';
 
 /*
  * Author: Drake
@@ -212,12 +217,14 @@ export interface SerializedSearchFilter {
     gunnery?: number;
     /** Pilot piloting skill for BV calculations */
     piloting?: number;
-    /** Explicit Classic budget mode. Omitted when neither mode is selected. */
-    budgetMode?: Exclude<import('../models/unit-search-result.model').UnitSearchBudgetMode, null>;
-    /** Classic force BV limit. Only active with the force-limit budget mode. */
+    /** Explicit BV/PV budget mode. Omitted when no budget mode is selected. */
+    budgetMode?: Exclude<UnitSearchBudgetMode, null>;
+    /** Force BV/PV limit. Only active with `budgetMode: 'force-limit'`. */
     bvLimit?: number;
-    /** Classic-only adjusted-BV matching settings. */
-    bvNormalization?: import('../models/unit-search-result.model').BvNormalizationSettings;
+    /** Classic adjusted-BV normalization settings. */
+    bvNormalization?: BvNormalizationSettings;
+    /** Alpha Strike adjusted-PV normalization settings. */
+    pvNormalization?: PvNormalizationSettings;
     /** Timestamp when saved (for sync ordering) */
     timestamp?: number;
 }

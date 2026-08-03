@@ -49,6 +49,107 @@ function executeQuery(units: Unit[], query: string): Unit[] {
 }
 
 describe('unit-search-executor', () => {
+    it('ignores a normalization contract for the wrong game system', () => {
+        const unit = createEmptyUnit({ name: 'AS Unit', as: { ...createEmptyUnit().as, PV: 20 } });
+        const execution = executeUnitSearch({
+            units: [unit],
+            parsedQuery: parseSemanticQueryAST('', GameSystem.ALPHA_STRIKE),
+            searchTokens: [],
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            sortKey: 'name',
+            sortDirection: 'asc',
+            bvPvLimit: 0,
+            forceTotalBvPv: 0,
+            getAdjustedBV: result => result.bv,
+            getAdjustedPV: result => result.as.PV,
+            normalization: {
+                kind: 'bv',
+                settings: {
+                    targetBv: { min: 1, max: 1 },
+                    gunnery: { min: 8, max: 8 },
+                    piloting: { min: 8, max: 8 },
+                    maxDelta: 0,
+                },
+            },
+            unitBelongsToEra: () => false,
+            unitBelongsToFaction: () => false,
+            unitBelongsToForcePack: () => false,
+            getAllEraNames: () => [],
+            getAllFactionNames: () => [],
+        });
+
+        expect(execution.results).toEqual([unit]);
+        expect(execution.normalizationMatchesByUnitName.size).toBe(0);
+    });
+
+    it('normalizes Alpha Strike results and excludes units outside the target PV range', () => {
+        const matching = createEmptyUnit({
+            name: 'Matching',
+            as: { ...createEmptyUnit().as, PV: 20 },
+        });
+        const excluded = createEmptyUnit({
+            name: 'Excluded',
+            as: { ...createEmptyUnit().as, PV: 100 },
+        });
+
+        const execution = executeUnitSearch({
+            units: [excluded, matching],
+            parsedQuery: parseSemanticQueryAST('', GameSystem.ALPHA_STRIKE),
+            searchTokens: [],
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            sortKey: 'as.PV',
+            sortDirection: 'asc',
+            bvPvLimit: 0,
+            forceTotalBvPv: 0,
+            getAdjustedBV: unit => unit.bv,
+            getAdjustedPV: unit => unit.as.PV,
+            normalization: {
+                kind: 'pv',
+                settings: { targetPv: { min: 18, max: 18 }, skill: { min: 5, max: 5 } },
+            },
+            unitBelongsToEra: () => false,
+            unitBelongsToFaction: () => false,
+            unitBelongsToForcePack: () => false,
+            getAllEraNames: () => [],
+            getAllFactionNames: () => [],
+        });
+
+        expect(execution.results.map(unit => unit.name)).toEqual(['Matching']);
+        expect(execution.normalizationMatchesByUnitName.get('Matching')).toEqual({
+            kind: 'pv',
+            adjustedValue: 18,
+            skill: 5,
+        });
+    });
+
+    it('sorts Alpha Strike normalization results by adjusted PV', () => {
+        const lowerBase = createEmptyUnit({ name: 'Zulu', as: { ...createEmptyUnit().as, PV: 20 } });
+        const higherBase = createEmptyUnit({ name: 'Alpha', as: { ...createEmptyUnit().as, PV: 25 } });
+        const execution = executeUnitSearch({
+            units: [higherBase, lowerBase],
+            parsedQuery: parseSemanticQueryAST('', GameSystem.ALPHA_STRIKE),
+            searchTokens: [],
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            sortKey: 'as.PV',
+            sortDirection: 'asc',
+            bvPvLimit: 0,
+            forceTotalBvPv: 0,
+            getAdjustedBV: unit => unit.bv,
+            getAdjustedPV: unit => unit.as.PV,
+            normalization: {
+                kind: 'pv',
+                settings: { targetPv: { min: 1, max: 100 }, skill: { min: 5, max: 5 } },
+            },
+            unitBelongsToEra: () => false,
+            unitBelongsToFaction: () => false,
+            unitBelongsToForcePack: () => false,
+            getAllEraNames: () => [],
+            getAllFactionNames: () => [],
+        });
+
+        expect(execution.results.map(unit => unit.name)).toEqual(['Zulu', 'Alpha']);
+    });
+
     it('filters mixed and nonmixed tech bases as distinct values', () => {
         const units = [
             createEmptyUnit({ name: 'Inner Sphere Unit', techBase: 'Inner Sphere', mixed: false }),

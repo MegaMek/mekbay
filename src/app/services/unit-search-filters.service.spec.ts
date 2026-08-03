@@ -909,6 +909,22 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.activeBvNormalization()).toBeNull();
     });
 
+    it('maps the active normalizer mode when the game system changes', () => {
+        const { service, gameServiceStub } = createService(createStandaloneBundle());
+        TestBed.tick();
+
+        service.setBudgetMode('bv-normalization');
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        TestBed.tick();
+
+        expect(service.budgetMode()).toBe('pv-normalization');
+
+        gameServiceStub.currentGameSystem.set(GameSystem.CLASSIC);
+        TestBed.tick();
+
+        expect(service.budgetMode()).toBe('bv-normalization');
+    });
+
     it('rejects malformed normalization settings from saved searches', () => {
         const invalidSettings = [
             {
@@ -969,6 +985,56 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(service.budgetMode()).toBe('bv-normalization');
         expect(service.classicBvNormalizationSettings()).toEqual(bvNormalization);
+    });
+
+    it('round-trips PV normalization through saved-search state', () => {
+        const { service, gameServiceStub } = createService(createStandaloneBundle());
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        TestBed.tick();
+        const pvNormalization = {
+            targetPv: { min: 20, max: 40 },
+            skill: { min: 3, max: 6 },
+        };
+
+        service.setPvNormalizationSettings(pvNormalization);
+        service.setBudgetMode('pv-normalization');
+        const serialized = service.serializeCurrentSearchFilter('pv', 'PV Normalizer', 'as');
+
+        expect(serialized.pvNormalization).toEqual(pvNormalization);
+        expect(serialized.bvNormalization).toBeUndefined();
+
+        service.resetFilters();
+        service.applySerializedSearchFilter(serialized);
+
+        expect(service.budgetMode()).toBe('pv-normalization');
+        expect(service.activePvNormalization()).toEqual(pvNormalization);
+    });
+
+    it('rejects malformed PV normalization from a saved search', () => {
+        const { service } = createService(createStandaloneBundle());
+
+        service.applySerializedSearchFilter({
+            id: 'invalid-pv-normalization',
+            name: 'Invalid PV normalization',
+            budgetMode: 'pv-normalization',
+            pvNormalization: {
+                targetPv: { min: 40, max: 20 },
+                skill: { min: 3, max: 6 },
+            },
+        });
+
+        expect(service.budgetMode()).toBeNull();
+        expect(service.activePvNormalization()).toBeNull();
+    });
+
+    it('treats budget modes as bookmarkable search state', () => {
+        const { service } = createService(createStandaloneBundle());
+
+        expect(service.hasBookmarkableSearchState()).toBeFalse();
+        for (const mode of ['force-limit', 'bv-normalization', 'pv-normalization'] as const) {
+            service.setBudgetMode(mode);
+            expect(service.hasBookmarkableSearchState()).withContext(mode).toBeTrue();
+        }
     });
 
     it('defaults missing saved normalization max delta to eight', () => {
@@ -6200,6 +6266,43 @@ describe('UnitSearchFiltersService search telemetry', () => {
         await flushAsyncWork();
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+    });
+
+    it('recomputes worker normalization metadata with the wrong match kind', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        const unit = bundle.units.units[0];
+        const { service } = createService(bundle, { workerFactory: () => worker });
+        service.setBudgetMode('bv-normalization');
+        service.filteredUnits();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+        (service as any).searchWorkerClient.submit(snapshot, request);
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            entries: [{
+                unitName: unit.name,
+                match: { kind: 'pv', adjustedValue: unit.as.PV, skill: 8 },
+            }],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map(result => result.name)).toContain(unit.name);
+        expect(service.getSearchResultPilotContext(unit).kind).toBe('bv');
     });
 
     it('ignores stale worker results and applies only the latest response', async () => {

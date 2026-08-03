@@ -64,7 +64,7 @@ import { buildUnitShareLinks } from '../../utils/force-url.util';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { UnitDetailsFooterComponent } from '../unit-details-footer/unit-details-footer.component';
-import type { BvNormalizationMatch } from '../../models/unit-search-result.model';
+import { getNormalizationGunnery, getNormalizationPiloting, type UnitSearchNormalizationMatch } from '../../models/unit-search-result.model';
 
 /*
  * Author: Drake
@@ -74,7 +74,7 @@ export interface UnitDetailsDialogData {
     unitIndex: number;
     gunnerySkill?: number;
     pilotingSkill?: number;
-    searchResultContexts?: ReadonlyMap<string, BvNormalizationMatch>;
+    searchResultContexts?: ReadonlyMap<string, UnitSearchNormalizationMatch>;
     hideAddButton?: boolean;
     /** When true, ADD only emits the unit without adding to force */
     selectMode?: boolean;
@@ -166,7 +166,7 @@ export class UnitDetailsDialogComponent {
     isAlphaStrike = computed<boolean>(() => {
         return this.currentGameSystem() === GameSystem.ALPHA_STRIKE;
     });
-    readonly searchResultContext = computed<BvNormalizationMatch | null>(() => {
+    readonly searchResultContext = computed<UnitSearchNormalizationMatch | null>(() => {
         const currentUnit = this.unitList()[this.unitIndex()];
         const unitName = currentUnit instanceof ForceUnit ? currentUnit.getUnit().name : currentUnit?.name;
         return unitName ? this.data.searchResultContexts?.get(unitName) ?? null : null;
@@ -179,7 +179,8 @@ export class UnitDetailsDialogComponent {
             if (currentUnit instanceof ASForceUnit) {
                 return currentUnit.getPilotSkill();
             }
-        return this.searchResultContext()?.gunnery ?? this.data.gunnerySkill;
+        const context = this.searchResultContext();
+        return context ? getNormalizationGunnery(context) : this.data.gunnerySkill;
     });
     pilotingSkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
@@ -189,15 +190,24 @@ export class UnitDetailsDialogComponent {
             if (currentUnit instanceof ASForceUnit) {
                 return currentUnit.getPilotSkill();
             }
-        return this.searchResultContext()?.piloting ?? this.data.pilotingSkill;
+        const context = this.searchResultContext();
+        return context ? getNormalizationPiloting(context) : this.data.pilotingSkill;
     });
 
     // Swipe animation state
     isSwipeAnimating = signal(false);
     incomingUnit = signal<Unit | null>(null);
-    readonly incomingSearchResultContext = computed<BvNormalizationMatch | null>(() => {
+    readonly incomingSearchResultContext = computed<UnitSearchNormalizationMatch | null>(() => {
         const unitName = this.incomingUnit()?.name;
         return unitName ? this.data.searchResultContexts?.get(unitName) ?? null : null;
+    });
+    readonly incomingGunnerySkill = computed<number | undefined>(() => {
+        const context = this.incomingSearchResultContext();
+        return context ? getNormalizationGunnery(context) : this.data.gunnerySkill;
+    });
+    readonly incomingPilotingSkill = computed<number | undefined>(() => {
+        const context = this.incomingSearchResultContext();
+        return context ? getNormalizationPiloting(context) : this.data.pilotingSkill;
     });
 
     // Real-time swipe following state

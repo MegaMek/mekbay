@@ -22,7 +22,7 @@ describe('hydrateWorkerSearchResult', () => {
     const units = new Map([[alpha.name, alpha], [beta.name, beta]]);
 
     it('hydrates known units and their matching normalization metadata atomically', () => {
-        const match = { adjustedBv: 1995, gunnery: 3, piloting: 4 };
+        const match = { kind: 'bv' as const, adjustedValue: 1995, gunnery: 3, piloting: 4 };
         const hydrated = hydrateWorkerSearchResult(
             createResult([{ unitName: 'Alpha', match }, { unitName: 'Beta' }]),
             name => units.get(name),
@@ -36,7 +36,7 @@ describe('hydrateWorkerSearchResult', () => {
     it('drops unknown units together with their metadata and preserves known ordering', () => {
         const hydrated = hydrateWorkerSearchResult(
             createResult([
-                { unitName: 'Missing', match: { adjustedBv: 1, gunnery: 4, piloting: 5 } },
+                { unitName: 'Missing', match: { kind: 'bv', adjustedValue: 1, gunnery: 4, piloting: 5 } },
                 { unitName: 'Beta' },
                 { unitName: 'Alpha' },
             ]),
@@ -48,11 +48,11 @@ describe('hydrateWorkerSearchResult', () => {
     });
 
     it('keeps only the first duplicate entry to avoid metadata drift', () => {
-        const firstMatch = { adjustedBv: 1900, gunnery: 4, piloting: 4 };
+        const firstMatch = { kind: 'bv' as const, adjustedValue: 1900, gunnery: 4, piloting: 4 };
         const hydrated = hydrateWorkerSearchResult(
             createResult([
                 { unitName: 'Alpha', match: firstMatch },
-                { unitName: 'Alpha', match: { adjustedBv: 2000, gunnery: 3, piloting: 4 } },
+                { unitName: 'Alpha', match: { kind: 'bv', adjustedValue: 2000, gunnery: 3, piloting: 4 } },
             ]),
             name => units.get(name),
         );

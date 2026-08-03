@@ -32,10 +32,10 @@
  */
 
 import type { GameSystem } from '../models/common.model';
-import type { BvNormalizationMatch } from '../models/unit-search-result.model';
+import type { UnitSearchNormalizationMatch } from '../models/unit-search-result.model';
 import type { Unit } from '../models/units.model';
 import type { SearchTelemetrySnapshot } from '../services/unit-search-filters.model';
-import type { UnitSearchWorkerResultEntry, UnitSearchWorkerResultMessage } from './unit-search-worker-protocol.util';
+import type { UnitSearchWorkerResultMessage } from './unit-search-worker-protocol.util';
 
 interface WorkerResultTelemetryContext {
     timestamp: number;
@@ -49,7 +49,7 @@ interface WorkerResultTelemetryContext {
 
 export interface HydratedWorkerSearchResult {
     units: Unit[];
-    normalizationMatchesByUnitName: ReadonlyMap<string, BvNormalizationMatch>;
+    normalizationMatchesByUnitName: ReadonlyMap<string, UnitSearchNormalizationMatch>;
 }
 
 export function hydrateWorkerSearchResult(
@@ -57,7 +57,7 @@ export function hydrateWorkerSearchResult(
     getUnitByName: (unitName: string) => Unit | undefined,
 ): HydratedWorkerSearchResult {
     const units: Unit[] = [];
-    const normalizationMatchesByUnitName = new Map<string, BvNormalizationMatch>();
+    const normalizationMatchesByUnitName = new Map<string, UnitSearchNormalizationMatch>();
     const seenUnitNames = new Set<string>();
 
     for (const entry of result.entries) {

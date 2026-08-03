@@ -70,7 +70,7 @@ import {
     isMegaMekRaritySortKey,
 } from '../../services/unit-search-filters.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
-import type { BvNormalizationMatch } from '../../models/unit-search-result.model';
+import { getNormalizationGunnery, getNormalizationPiloting, type UnitSearchNormalizationMatch } from '../../models/unit-search-result.model';
 import { formatMovement, isAerospace } from '../../utils/as-common.util';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import type { MegaMekUnitAvailabilityDetail } from '../../services/unit-availability-source.service';
@@ -131,7 +131,7 @@ export class UnitCardExpandedComponent {
     pilotingInput = input(DEFAULT_PILOTING_SKILL, { alias: 'piloting' });
 
     /** Immutable adjusted-BV and skill context selected by BV normalization search. */
-    searchResultContext = input<BvNormalizationMatch | null>(null);
+    searchResultContext = input<UnitSearchNormalizationMatch | null>(null);
 
     /** To force view of pilot skills even when we don't have a ForceUnit (e.g., force generator) */
     forceShowPilotInfo = input(false);
@@ -178,7 +178,8 @@ export class UnitCardExpandedComponent {
             }
             return DEFAULT_GUNNERY_SKILL;
         }
-        return this.searchResultContext()?.gunnery ?? this.gunneryInput();
+        const context = this.searchResultContext();
+        return context ? getNormalizationGunnery(context) : this.gunneryInput();
     });
 
     /** Resolved piloting skill - from ForceUnit crew or input */
@@ -195,7 +196,8 @@ export class UnitCardExpandedComponent {
             }
             return DEFAULT_PILOTING_SKILL;
         }
-        return this.searchResultContext()?.piloting ?? this.pilotingInput();
+        const context = this.searchResultContext();
+        return context ? getNormalizationPiloting(context) : this.pilotingInput();
     });
 
     /** Whether the input is a ForceUnit (has pilot stats) */
@@ -225,7 +227,7 @@ export class UnitCardExpandedComponent {
 
         const unit = this.resolvedUnit();
         const base = this.isAlphaStrike() ? unit.as.PV : unit.bv;
-        const adjusted = this.searchResultContext()?.adjustedBv ?? (this.isAlphaStrike()
+        const adjusted = this.searchResultContext()?.adjustedValue ?? (this.isAlphaStrike()
             ? adjustPointValueForSkill(base, this.gunnery())
             : BVCalculatorUtil.calculateAdjustedBV(unit, base, this.gunnery(), this.piloting()));
         return formatBvPv(adjusted, base, 'both');

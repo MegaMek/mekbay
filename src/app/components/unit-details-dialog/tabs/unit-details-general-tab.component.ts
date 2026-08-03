@@ -63,6 +63,8 @@ import {
 import { naturalCompare } from '../../../utils/sort.util';
 import { EquipmentFlag } from '../../../models/equipment-flags.type';
 import { formatBvPv } from '../../../utils/force-viewer-bv-pv-display.util';
+import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.util';
+import { GameService } from '../../../services/game.service';
 
 type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
 type ComponentDetailsDisplayStyle = 'normal' | 'additional';
@@ -105,12 +107,13 @@ export class UnitDetailsGeneralTabComponent {
     private dialogsService = inject(DialogsService);
     private layoutService = inject(LayoutService);
     private optionsService = inject(OptionsService);
+    private gameService = inject(GameService);
 
     // Inputs
     unit = input.required<Unit>();
     gunnerySkill = input<number | undefined>(undefined);
     pilotingSkill = input<number | undefined>(undefined);
-    adjustedBvOverride = input<number | undefined>(undefined);
+    adjustedValueOverride = input<number | undefined>(undefined);
 
     // Computed state - derived from unit
     groupedBays = computed(() => this.getGroupedBaysByLocation());
@@ -234,8 +237,8 @@ export class UnitDetailsGeneralTabComponent {
         return weaponTypes.map(wt => ({ ...wt, count: counts[wt.code] ?? 0 }));
     });
 
-    adjustedBV = computed(() => {
-        const override = this.adjustedBvOverride();
+    adjustedValue = computed(() => {
+        const override = this.adjustedValueOverride();
         if (override !== undefined) {
             return override;
         }
@@ -245,18 +248,23 @@ export class UnitDetailsGeneralTabComponent {
         if (gunnery === undefined || piloting === undefined) {
             return null;
         }
-        return BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
+        return this.gameService.isAlphaStrike()
+            ? adjustPointValueForSkill(unit.as.PV, gunnery)
+            : BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
     });
 
-    displayedBv = computed(() => {
+    readonly valueLabel = computed(() => this.gameService.isAlphaStrike() ? 'PV' : 'BV');
+
+    displayedValue = computed(() => {
         const unit = this.unit();
-        return formatBvPv(this.adjustedBV() ?? unit.bv, unit.bv, 'both');
+        const baseValue = this.gameService.isAlphaStrike() ? unit.as.PV : unit.bv;
+        return formatBvPv(this.adjustedValue() ?? baseValue, baseValue, 'both');
     });
 
     showAdjustedPilotSkills = computed(() => {
         return shouldShowAdjustedPilotSkills(
-            this.adjustedBV(),
-            this.unit().bv,
+            this.adjustedValue(),
+            this.gameService.isAlphaStrike() ? this.unit().as.PV : this.unit().bv,
             this.gunnerySkill(),
             this.pilotingSkill(),
         );

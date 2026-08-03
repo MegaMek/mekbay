@@ -4,10 +4,9 @@ import { BVCalculatorUtil } from './bv-calculator.util';
 import {
     findBvNormalizationMatch,
     isValidBvNormalizationSettings,
-    isValidClassicSkillRange,
     isValidTargetBvRange,
-    updateNumericRangeBound,
 } from './bv-normalization.util';
+import { isValidNormalizationSkillRange, updateNumericRangeBound } from './unit-search-normalization-range.util';
 
 function createUnit(overrides: Partial<Unit> = {}): Unit {
     return {
@@ -61,7 +60,7 @@ describe('classic BV normalization', () => {
 
     describe('validation', () => {
         it('accepts inclusive skill boundaries and an ordered nonnegative target', () => {
-            expect(isValidClassicSkillRange({ min: 0, max: 8 })).toBeTrue();
+            expect(isValidNormalizationSkillRange({ min: 0, max: 8 })).toBeTrue();
             expect(isValidTargetBvRange({ min: 0, max: 0 })).toBeTrue();
             expect(isValidTargetBvRange({ min: 0, max: 999_999 })).toBeTrue();
             expect(isValidBvNormalizationSettings(settings(0, 100, 0, 8, 0, 8))).toBeTrue();
@@ -78,7 +77,7 @@ describe('classic BV normalization', () => {
             ];
 
             for (const range of invalidRanges) {
-                expect(isValidClassicSkillRange(range)).withContext(JSON.stringify(range)).toBeFalse();
+                expect(isValidNormalizationSkillRange(range)).withContext(JSON.stringify(range)).toBeFalse();
             }
         });
 
@@ -118,7 +117,7 @@ describe('classic BV normalization', () => {
                 expect(findBvNormalizationMatch(
                     unit,
                     settings(adjustedBv, adjustedBv, gunnery, gunnery, piloting, piloting),
-                )).withContext(`G${gunnery}/P${piloting}`).toEqual({ adjustedBv, gunnery, piloting });
+                )).withContext(`G${gunnery}/P${piloting}`).toEqual({ kind: 'bv', adjustedValue: adjustedBv, gunnery, piloting });
             }
         }
     });
@@ -127,9 +126,9 @@ describe('classic BV normalization', () => {
         const unit = createUnit();
 
         expect(findBvNormalizationMatch(unit, settings(1000, 1100, 4, 4, 4, 5)))
-            .toEqual({ adjustedBv: 1000, gunnery: 4, piloting: 5 });
+            .toEqual({ kind: 'bv', adjustedValue: 1000, gunnery: 4, piloting: 5 });
         expect(findBvNormalizationMatch(unit, settings(1000, 1100, 4, 4, 4, 4)))
-            .toEqual({ adjustedBv: 1100, gunnery: 4, piloting: 4 });
+            .toEqual({ kind: 'bv', adjustedValue: 1100, gunnery: 4, piloting: 4 });
     });
 
     it('allows only skill pairs within max delta, including the boundary', () => {
@@ -138,7 +137,7 @@ describe('classic BV normalization', () => {
         const disallowedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 2, 4);
 
         expect(findBvNormalizationMatch(unit, settings(allowedBv, allowedBv, 2, 2, 3, 3, 1)))
-            .toEqual({ adjustedBv: allowedBv, gunnery: 2, piloting: 3 });
+            .toEqual({ kind: 'bv', adjustedValue: allowedBv, gunnery: 2, piloting: 3 });
         expect(findBvNormalizationMatch(unit, settings(disallowedBv, disallowedBv, 2, 2, 4, 4, 1)))
             .toBeNull();
     });
@@ -148,7 +147,7 @@ describe('classic BV normalization', () => {
         const equalBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 3, 3);
 
         expect(findBvNormalizationMatch(unit, settings(equalBv, equalBv, 3, 3, 2, 3, 0)))
-            .toEqual({ adjustedBv: equalBv, gunnery: 3, piloting: 3 });
+            .toEqual({ kind: 'bv', adjustedValue: equalBv, gunnery: 3, piloting: 3 });
     });
 
     it('ignores the Piloting range and max delta for fixed-Piloting units', () => {
@@ -156,7 +155,7 @@ describe('classic BV normalization', () => {
         const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 3, 5);
 
         expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 3, 3, 0, 0, 0)))
-            .toEqual({ adjustedBv, gunnery: 3, piloting: 5 });
+            .toEqual({ kind: 'bv', adjustedValue: adjustedBv, gunnery: 3, piloting: 5 });
     });
 
     it('still limits fixed-Piloting units to the selected Gunnery range', () => {
@@ -176,13 +175,13 @@ describe('classic BV normalization', () => {
     it('keeps the effective default crew when it fits instead of moving closer to the midpoint', () => {
         const match = findBvNormalizationMatch(createUnit(), settings(850, 1100, 4, 5, 4, 5));
 
-        expect(match).toEqual({ adjustedBv: 1000, gunnery: 4, piloting: 5 });
+        expect(match).toEqual({ kind: 'bv', adjustedValue: 1000, gunnery: 4, piloting: 5 });
     });
 
     it('prefers the adjusted BV closest to the target midpoint when the default does not fit', () => {
         const match = findBvNormalizationMatch(createUnit(), settings(850, 999, 4, 5, 4, 5));
 
-        expect(match).toEqual({ adjustedBv: 900, gunnery: 5, piloting: 5 });
+        expect(match).toEqual({ kind: 'bv', adjustedValue: 900, gunnery: 5, piloting: 5 });
     });
 
     it('does not use the default crew when a variable Piloting range excludes it', () => {
@@ -190,21 +189,21 @@ describe('classic BV normalization', () => {
         const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 4);
 
         expect(findBvNormalizationMatch(unit, settings(1000, 1100, 4, 4, 4, 4)))
-            .toEqual({ adjustedBv, gunnery: 4, piloting: 4 });
+            .toEqual({ kind: 'bv', adjustedValue: adjustedBv, gunnery: 4, piloting: 4 });
     });
 
     it('prefers the pair closest to default 4/5 when adjusted BV distances tie', () => {
         const unit = createUnit({ bv: 100 });
         const match = findBvNormalizationMatch(unit, settings(99, 100, 4, 5, 4, 5));
 
-        expect(match).toEqual({ adjustedBv: 100, gunnery: 4, piloting: 5 });
+        expect(match).toEqual({ kind: 'bv', adjustedValue: 100, gunnery: 4, piloting: 5 });
     });
 
     it('uses stable skill tie-breaks when pairs have the same rounded BV', () => {
         const unit = createUnit({ bv: 1 });
         const match = findBvNormalizationMatch(unit, settings(1, 1, 3, 5, 4, 6));
 
-        expect(match).toEqual({ adjustedBv: 1, gunnery: 4, piloting: 5 });
+        expect(match).toEqual({ kind: 'bv', adjustedValue: 1, gunnery: 4, piloting: 5 });
     });
 
     it('reports effective Piloting and deduplicates fixed ProtoMek pairs', () => {
@@ -212,7 +211,7 @@ describe('classic BV normalization', () => {
         const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 5);
 
         expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 4, 4, 0, 8)))
-            .toEqual({ adjustedBv, gunnery: 4, piloting: 5 });
+            .toEqual({ kind: 'bv', adjustedValue: adjustedBv, gunnery: 4, piloting: 5 });
     });
 
     it('uses Piloting 5 for mechanized infantry without anti-Mech capability', () => {
@@ -224,7 +223,7 @@ describe('classic BV normalization', () => {
         const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 5);
 
         expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 4, 4, 0, 8)))
-            .toEqual({ adjustedBv, gunnery: 4, piloting: 5 });
+            .toEqual({ kind: 'bv', adjustedValue: adjustedBv, gunnery: 4, piloting: 5 });
     });
 
     it('uses Piloting 8 for conventional infantry without anti-Mech capability', () => {
@@ -236,7 +235,7 @@ describe('classic BV normalization', () => {
         const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 8);
 
         expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 4, 4, 0, 0, 0)))
-            .toEqual({ adjustedBv, gunnery: 4, piloting: 8 });
+            .toEqual({ kind: 'bv', adjustedValue: adjustedBv, gunnery: 4, piloting: 8 });
     });
 
     it('honors the requested Piloting range for infantry with anti-Mech capability', () => {
@@ -248,6 +247,6 @@ describe('classic BV normalization', () => {
         const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 4, 2);
 
         expect(findBvNormalizationMatch(unit, settings(adjustedBv, adjustedBv, 4, 4, 2, 2)))
-            .toEqual({ adjustedBv, gunnery: 4, piloting: 2 });
+            .toEqual({ kind: 'bv', adjustedValue: adjustedBv, gunnery: 4, piloting: 2 });
     });
 });

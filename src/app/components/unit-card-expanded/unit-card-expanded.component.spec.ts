@@ -182,7 +182,8 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
 
         fixture.componentRef.setInput('unit', createEmptyUnit({ bv: 12_600 }));
         fixture.componentRef.setInput('searchResultContext', {
-            adjustedBv: 15_000,
+            kind: 'bv',
+            adjustedValue: 15_000,
             gunnery: 3,
             piloting: 4,
         });

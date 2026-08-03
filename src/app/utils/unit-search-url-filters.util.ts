@@ -40,8 +40,9 @@ import { getAdvancedFilterConfigByKey, getPublicUnitSearchPropertyKey, normalize
 import { parseValues } from './semantic-filter.util';
 import { normalizeMultiStateSelection } from './unit-search-shared.util';
 import type { UnitSearchViewMode } from '../models/options.model';
-import { DEFAULT_CLASSIC_BV_NORMALIZATION_MAX_DELTA, type BvNormalizationSettings, type UnitSearchBudgetMode } from '../models/unit-search-result.model';
+import { DEFAULT_CLASSIC_BV_NORMALIZATION_MAX_DELTA, type BvNormalizationSettings, type PvNormalizationSettings, type UnitSearchBudgetMode } from '../models/unit-search-result.model';
 import { isValidBvNormalizationSettings } from './bv-normalization.util';
+import { isValidPvNormalizationSettings } from './pv-normalization.util';
 
 export interface ParsedUnitSearchScalarUrlState {
     searchText: string | null;
@@ -53,6 +54,7 @@ export interface ParsedUnitSearchScalarUrlState {
     bvLimit: number | null;
     budgetMode: UnitSearchBudgetMode;
     bvNormalization: BvNormalizationSettings | null;
+    pvNormalization: PvNormalizationSettings | null;
     hasFilters: boolean;
     viewMode: UnitSearchViewMode | null;
 }
@@ -69,6 +71,7 @@ interface UnitSearchQueryParametersArgs {
     bvLimit: number;
     budgetMode?: UnitSearchBudgetMode;
     bvNormalization?: BvNormalizationSettings;
+    pvNormalization?: PvNormalizationSettings;
     publicTagsParam: string | null;
     viewMode?: UnitSearchViewMode;
 }
@@ -91,6 +94,11 @@ interface UnitSearchQueryParameters {
     pMin: number | null;
     pMax: number | null;
     maxDelta: number | null;
+    pvMode: 'normalize' | null;
+    pvMin: number | null;
+    pvMax: number | null;
+    skillMin: number | null;
+    skillMax: number | null;
     expanded: 'true' | null;
     view: Exclude<UnitSearchViewMode, 'list'> | null;
     gs?: GameSystem | null;
@@ -192,7 +200,28 @@ export function parseUnitSearchScalarUrlState(
         && isValidBvNormalizationSettings(normalization)
         ? normalization
         : null;
-    const budgetMode: UnitSearchBudgetMode = bvNormalization
+    const pvSettings: PvNormalizationSettings = {
+        targetPv: {
+            min: parseNonnegativeInteger(params.get('pvMin')) ?? -1,
+            max: parseNonnegativeInteger(params.get('pvMax')) ?? -1,
+        },
+        skill: {
+            min: parseBoundedInteger(params.get('skillMin'), 0, 8) ?? -1,
+            max: parseBoundedInteger(params.get('skillMax'), 0, 8) ?? -1,
+        },
+    };
+    const pvNormalization = params.get('pvMode') === 'normalize'
+        && isValidPvNormalizationSettings(pvSettings)
+        ? pvSettings
+        : null;
+    const hasConflictingBudgetModes = rawBudgetMode !== null && params.get('pvMode') === 'normalize';
+    const resolvedBvNormalization = hasConflictingBudgetModes ? null : bvNormalization;
+    const resolvedPvNormalization = hasConflictingBudgetModes ? null : pvNormalization;
+    const budgetMode: UnitSearchBudgetMode = hasConflictingBudgetModes
+        ? null
+        : resolvedPvNormalization
+        ? 'pv-normalization'
+        : resolvedBvNormalization
         ? 'bv-normalization'
         : rawBudgetMode === 'limit'
             ? 'force-limit'
@@ -207,7 +236,8 @@ export function parseUnitSearchScalarUrlState(
         piloting: parseBoundedInteger(params.get('piloting'), 0, 8),
         bvLimit: budgetMode === 'force-limit' ? parsePositiveInteger(params.get('bvLimit')) : null,
         budgetMode,
-        bvNormalization,
+        bvNormalization: resolvedBvNormalization,
+        pvNormalization: resolvedPvNormalization,
         hasFilters,
         viewMode,
     };
@@ -273,6 +303,7 @@ export function buildUnitSearchQueryParameters({
     bvLimit,
     budgetMode = null,
     bvNormalization,
+    pvNormalization,
     publicTagsParam,
     viewMode = 'list',
 }: UnitSearchQueryParametersArgs): UnitSearchQueryParameters {
@@ -286,6 +317,7 @@ export function buildUnitSearchQueryParameters({
     const filtersParam = generateCompactFiltersParam(uiOnlyFilters);
     const forceLimitActive = budgetMode === 'force-limit';
     const normalizationActive = budgetMode === 'bv-normalization' && bvNormalization != null;
+    const pvNormalizationActive = budgetMode === 'pv-normalization' && pvNormalization != null;
 
     return {
         q: searchText.trim() || null,
@@ -304,6 +336,11 @@ export function buildUnitSearchQueryParameters({
         pMin: normalizationActive ? bvNormalization.piloting.min : null,
         pMax: normalizationActive ? bvNormalization.piloting.max : null,
         maxDelta: normalizationActive ? bvNormalization.maxDelta : null,
+        pvMode: pvNormalizationActive ? 'normalize' : null,
+        pvMin: pvNormalizationActive ? pvNormalization.targetPv.min : null,
+        pvMax: pvNormalizationActive ? pvNormalization.targetPv.max : null,
+        skillMin: pvNormalizationActive ? pvNormalization.skill.min : null,
+        skillMax: pvNormalizationActive ? pvNormalization.skill.max : null,
         expanded: expanded ? 'true' : null,
         view: viewMode === 'list' ? null : viewMode,
     };

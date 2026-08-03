@@ -50,6 +50,7 @@ function createRequest(revision: number, version: string): UnitSearchWorkerQuery
         forceTotalBvPv: 0,
         pilotGunnerySkill: 4,
         pilotPilotingSkill: 5,
+        normalization: null,
     };
 }
 

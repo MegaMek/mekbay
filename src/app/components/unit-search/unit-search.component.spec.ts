@@ -33,6 +33,12 @@ describe('UnitSearchComponent card virtualization', () => {
     const isSearchSettledSignal = signal(true);
     const advOptionsSignal = signal<Record<string, any>>({});
     const budgetModeSignal = signal<'force-limit' | 'bv-normalization' | null>(null);
+    const classicBvNormalizationSettingsSignal = signal({
+        targetBv: { min: 0, max: 999_999 },
+        gunnery: { min: 0, max: 8 },
+        piloting: { min: 0, max: 8 },
+        maxDelta: 8,
+    });
     let openDialogs: unknown[];
     const optionsSignal = signal({
         ASUseHex: false,
@@ -52,12 +58,10 @@ describe('UnitSearchComponent card virtualization', () => {
         pilotPilotingSkill: signal(5),
         budgetMode: budgetModeSignal,
         activeBvNormalization: computed(() => budgetModeSignal() === 'bv-normalization'),
-        classicBvNormalizationSettings: signal({
-            targetBv: { min: 0, max: 999_999 },
-            gunnery: { min: 0, max: 8 },
-            piloting: { min: 0, max: 8 },
-            maxDelta: 8,
-        }),
+        activeNormalization: computed(() => budgetModeSignal() === 'bv-normalization'
+            ? { kind: 'bv' as const, settings: classicBvNormalizationSettingsSignal() }
+            : null),
+        classicBvNormalizationSettings: classicBvNormalizationSettingsSignal,
         bvPvLimit: signal(0),
         forceTotalBvPv: signal(0),
         selectedSort: signal('name'),
@@ -97,6 +101,7 @@ describe('UnitSearchComponent card virtualization', () => {
         getMegaMekAvailabilityBadges: jasmine.createSpy('getMegaMekAvailabilityBadges').and.returnValue([]),
         getMegaMekRaritySortScore: jasmine.createSpy('getMegaMekRaritySortScore').and.returnValue(0),
         getSearchResultPilotContext: jasmine.createSpy('getSearchResultPilotContext'),
+        hasBookmarkableSearchState: jasmine.createSpy('hasBookmarkableSearchState').and.returnValue(false),
     };
 
     const layoutServiceStub = {
@@ -219,7 +224,8 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(0);
         filtersServiceStub.getSearchResultPilotContext.calls.reset();
         filtersServiceStub.getSearchResultPilotContext.and.callFake((unit: Unit) => ({
-            adjustedBv: unit.bv,
+            kind: 'bv',
+            adjustedValue: unit.bv,
             gunnery: filtersServiceStub.pilotGunnerySkill(),
             piloting: filtersServiceStub.pilotPilotingSkill(),
         }));
@@ -340,7 +346,7 @@ describe('UnitSearchComponent card virtualization', () => {
         const unit = createUnit('Normalized Unit');
         currentGameSystemSignal.set(GameSystem.CLASSIC);
         filtersServiceStub.budgetMode.set('bv-normalization');
-        filtersServiceStub.getSearchResultPilotContext.and.returnValue({ adjustedBv: 1234, gunnery: 3, piloting: 6 });
+        filtersServiceStub.getSearchResultPilotContext.and.returnValue({ kind: 'bv', adjustedValue: 1234, gunnery: 3, piloting: 6 });
         fixture.detectChanges();
 
         const columns = component.unitSearchTableColumns();
@@ -405,6 +411,26 @@ describe('UnitSearchComponent card virtualization', () => {
         component.selectedUnits.set(new Set(['Removed']));
 
         filteredUnitsSignal.set([]);
+        fixture.detectChanges();
+
+        expect(component.selectedUnits().size).toBe(0);
+    });
+
+    it('clears cached selection whenever normalization settings change', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const unit = createUnit('Selected');
+        filteredUnitsSignal.set([unit]);
+        filtersServiceStub.budgetMode.set('bv-normalization');
+        fixture.detectChanges();
+
+        component.multiSelectUnit(unit);
+        expect(component.selectedUnits().has(unit.name)).toBeTrue();
+
+        filtersServiceStub.classicBvNormalizationSettings.update(settings => ({
+            ...settings,
+            targetBv: { min: 1000, max: 2000 },
+        }));
         fixture.detectChanges();
 
         expect(component.selectedUnits().size).toBe(0);
@@ -729,6 +755,20 @@ describe('UnitSearchComponent card virtualization', () => {
 
         expect(component.inlinePanelUnit()).toBe(unit);
         expect(fixture.nativeElement.querySelector('.inline-panel-unit').textContent).toContain(unit.name);
+    });
+
+    it('closes inline details when its unit leaves the displayed results', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const unit = createUnit('Removed');
+        filteredUnitsSignal.set([unit]);
+        fixture.detectChanges();
+        component.inlinePanelUnit.set(unit);
+
+        filteredUnitsSignal.set([]);
+        fixture.detectChanges();
+
+        expect(component.inlinePanelUnit()).toBeNull();
     });
 
     it('disables Alpha Strike card view while in Classic mode', () => {

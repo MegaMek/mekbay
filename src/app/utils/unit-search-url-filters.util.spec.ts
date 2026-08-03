@@ -312,6 +312,79 @@ describe('unit search URL filters', () => {
         expect(parsed.bvNormalization?.maxDelta).toBe(0);
     });
 
+    it('round-trips PV normalization including boundary values', () => {
+        const query = buildUnitSearchQueryParameters({
+            searchText: '',
+            filterState: {},
+            semanticKeys: new Set<string>(),
+            selectedSort: '',
+            selectedSortDirection: 'asc',
+            expanded: false,
+            gunnery: DEFAULT_GUNNERY_SKILL,
+            piloting: DEFAULT_PILOTING_SKILL,
+            bvLimit: 0,
+            budgetMode: 'pv-normalization',
+            pvNormalization: {
+                targetPv: { min: 0, max: 9999 },
+                skill: { min: 0, max: 8 },
+            },
+            publicTagsParam: null,
+        });
+
+        expect(query).toEqual(jasmine.objectContaining({
+            bvMode: null,
+            pvMode: 'normalize',
+            pvMin: 0,
+            pvMax: 9999,
+            skillMin: 0,
+            skillMax: 8,
+        }));
+
+        const parsed = parseUnitSearchScalarUrlState(new URLSearchParams(
+            'pvMode=normalize&pvMin=0&pvMax=9999&skillMin=0&skillMax=8',
+        ));
+        expect(parsed.budgetMode).toBe('pv-normalization');
+        expect(parsed.pvNormalization).toEqual({
+            targetPv: { min: 0, max: 9999 },
+            skill: { min: 0, max: 8 },
+        });
+        expect(parsed.bvNormalization).toBeNull();
+    });
+
+    it('rejects malformed PV normalization URL ranges', () => {
+        const invalidQueries = [
+            'pvMode=normalize&pvMin=2&pvMax=1&skillMin=0&skillMax=8',
+            'pvMode=normalize&pvMin=-1&pvMax=1&skillMin=0&skillMax=8',
+            'pvMode=normalize&pvMin=0&pvMax=10000&skillMin=0&skillMax=8',
+            'pvMode=normalize&pvMin=0&pvMax=1&skillMin=5&skillMax=4',
+            'pvMode=normalize&pvMin=0&pvMax=1&skillMin=0&skillMax=9',
+            'pvMode=normalize&pvMin=0.5&pvMax=1&skillMin=0&skillMax=8',
+        ];
+
+        for (const query of invalidQueries) {
+            const parsed = parseUnitSearchScalarUrlState(new URLSearchParams(query));
+            expect(parsed.budgetMode).withContext(query).toBeNull();
+            expect(parsed.pvNormalization).withContext(query).toBeNull();
+        }
+    });
+
+    it('rejects conflicting explicit budget modes', () => {
+        const bvNormalization = 'bvMode=normalize&bvMin=1000&bvMax=2000&gMin=2&gMax=4&pMin=2&pMax=5';
+        const pvNormalization = 'pvMode=normalize&pvMin=20&pvMax=30&skillMin=3&skillMax=5';
+
+        for (const query of [
+            `${bvNormalization}&${pvNormalization}`,
+            `${pvNormalization}&${bvNormalization}`,
+            `bvMode=limit&bvLimit=5000&${pvNormalization}`,
+        ]) {
+            const parsed = parseUnitSearchScalarUrlState(new URLSearchParams(query));
+            expect(parsed.budgetMode).withContext(query).toBeNull();
+            expect(parsed.bvNormalization).withContext(query).toBeNull();
+            expect(parsed.pvNormalization).withContext(query).toBeNull();
+            expect(parsed.bvLimit).withContext(query).toBeNull();
+        }
+    });
+
     it('omits retained budget values when no mode is selected', () => {
         const query = buildUnitSearchQueryParameters({
             searchText: '',

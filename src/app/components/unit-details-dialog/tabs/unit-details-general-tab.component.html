@@ -7,8 +7,8 @@
             } - {{
         unit().weightClass }}</strong></div>
         <div>
-            <span class="muted">BV: </span>
-            <strong>{{ displayedBv() }}</strong>
+            <span class="muted">{{ valueLabel() }}: </span>
+            <strong>{{ displayedValue() }}</strong>
         </div>
         @if (showAdjustedPilotSkills()) {
             <div><span class="muted">Gunnery / Piloting: </span><strong class="pilot-skill-value">{{ gunnerySkill() }} / {{ pilotingSkill() }}</strong></div>

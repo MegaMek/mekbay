@@ -37,8 +37,11 @@ import type { Unit } from '../models/units.model';
 import {
     DEFAULT_CLASSIC_BV_NORMALIZATION_MAX,
     DEFAULT_CLASSIC_BV_NORMALIZATION_MAX_DELTA,
-    type BvNormalizationMatch,
+    DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX,
+    type UnitSearchNormalizationMatch,
     type BvNormalizationSettings,
+    type PvNormalizationSettings,
+    type UnitSearchNormalization,
     type UnitSearchBudgetMode,
 } from '../models/unit-search-result.model';
 import {
@@ -100,7 +103,8 @@ import {
 import { buildWorkerSearchTelemetrySnapshot, hydrateWorkerSearchResult } from '../utils/unit-search-worker-result.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
-import { isValidBvNormalizationSettings } from '../utils/bv-normalization.util';
+import { findBvNormalizationMatch, isValidBvNormalizationSettings } from '../utils/bv-normalization.util';
+import { findPvNormalizationMatch, isValidPvNormalizationSettings } from '../utils/pv-normalization.util';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationRequirementEngine } from '../utils/formation-requirement-engine.util';
 import type { FormationSearchTarget } from '../utils/formation-requirement.model';
@@ -265,11 +269,36 @@ export class UnitSearchFiltersService {
         piloting: { min: 0, max: 8 },
         maxDelta: DEFAULT_CLASSIC_BV_NORMALIZATION_MAX_DELTA,
     });
+    readonly alphaStrikePvNormalizationSettings = signal<PvNormalizationSettings>({
+        targetPv: { min: 0, max: DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX },
+        skill: { min: 0, max: 8 },
+    });
+    readonly activeNormalization = computed<UnitSearchNormalization | null>(() => {
+        const gameSystem = this.gameService.currentGameSystem();
+        const mode = this.budgetMode();
+        if (gameSystem === GameSystem.CLASSIC && mode === 'bv-normalization') {
+            return { kind: 'bv', settings: this.classicBvNormalizationSettings() };
+        }
+        if (gameSystem === GameSystem.ALPHA_STRIKE && mode === 'pv-normalization') {
+            return { kind: 'pv', settings: this.alphaStrikePvNormalizationSettings() };
+        }
+        return null;
+    });
     readonly activeBvNormalization = computed<BvNormalizationSettings | null>(() => {
-        return this.gameService.currentGameSystem() === GameSystem.CLASSIC
-            && this.budgetMode() === 'bv-normalization'
-            ? this.classicBvNormalizationSettings()
-            : null;
+        const normalization = this.activeNormalization();
+        return normalization?.kind === 'bv' ? normalization.settings : null;
+    });
+    readonly activePvNormalization = computed<PvNormalizationSettings | null>(() => {
+        const normalization = this.activeNormalization();
+        return normalization?.kind === 'pv' ? normalization.settings : null;
+    });
+    readonly hasBookmarkableSearchState = computed(() => {
+        return this.searchText().trim().length > 0
+            || Object.values(this.filterState()).some(state => state.interactedWith)
+            || this.budgetMode() !== null
+            || this.selectedSort() !== ''
+            || this.pilotGunnerySkill() !== DEFAULT_GUNNERY_SKILL
+            || this.pilotPilotingSkill() !== DEFAULT_PILOTING_SKILL;
     });
     /** BV/PV budget limit. 0 means no limit. */
     bvPvLimit = signal(0);
@@ -296,7 +325,7 @@ export class UnitSearchFiltersService {
     readonly advOptionsTelemetry = this.advOptionsTelemetryState.asReadonly();
     private readonly workerSearchEnabled = signal(this.canUseSearchWorker());
     private readonly rawWorkerResultUnitsState = signal<Unit[]>([]);
-    private readonly workerNormalizationMatchesState = signal<ReadonlyMap<string, BvNormalizationMatch>>(new Map());
+    private readonly workerNormalizationMatchesState = signal<ReadonlyMap<string, UnitSearchNormalizationMatch>>(new Map());
     private readonly formationTargetExistingUnitsState = signal<readonly FormationUnitLike[]>([]);
     readonly formationTarget = computed<FormationSearchTarget | null>(() => {
         if (this.hasSemanticFormationTarget()) {
@@ -2000,13 +2029,12 @@ export class UnitSearchFiltersService {
             forceTotalBvPv: 0,
             pilotGunnerySkill: this.pilotGunnerySkill(),
             pilotPilotingSkill: this.pilotPilotingSkill(),
-            bvNormalization: this.activeBvNormalization(),
+            normalization: this.activeNormalization(),
         });
     }
 
     private applyRemainingBudgetLimit(units: readonly Unit[], telemetryStages?: SearchTelemetryStage[]): Unit[] {
-        const isClassic = this.gameService.currentGameSystem() === GameSystem.CLASSIC;
-        if (isClassic && this.budgetMode() !== 'force-limit') {
+        if (this.budgetMode() !== 'force-limit') {
             return units as Unit[];
         }
         const budgetLimit = this.bvPvLimit();
@@ -2046,7 +2074,22 @@ export class UnitSearchFiltersService {
         }
 
         const hydrated = hydrateWorkerSearchResult(result, unitName => this.dataService.getUnitByName(unitName));
-        const hydratedResults = hydrated.units;
+        const normalization = this.activeNormalization();
+        const normalizationMatches = new Map(hydrated.normalizationMatchesByUnitName);
+        const hydratedResults = normalization
+            ? hydrated.units.filter(unit => {
+                const workerMatch = normalizationMatches.get(unit.name);
+                const match = workerMatch?.kind === normalization.kind
+                    ? workerMatch
+                    : this.findNormalizationMatch(unit, normalization);
+                if (!match) {
+                    normalizationMatches.delete(unit.name);
+                    return false;
+                }
+                normalizationMatches.set(unit.name, match);
+                return true;
+            })
+            : hydrated.units;
         const telemetryStages = [...result.stages];
         const stageCountBeforePostProcessing = telemetryStages.length;
         const postFilteredResults = this.applyWorkerPostFilters(hydratedResults, telemetryStages);
@@ -2058,7 +2101,7 @@ export class UnitSearchFiltersService {
             .reduce((totalMs, stage) => totalMs + stage.durationMs, 0);
 
         this.rawWorkerResultUnitsState.set(hydratedResults);
-        this.workerNormalizationMatchesState.set(hydrated.normalizationMatchesByUnitName);
+        this.workerNormalizationMatchesState.set(normalizationMatches);
         this.workerResultRevision.set(result.revision);
         this.updateSearchTelemetry(buildWorkerSearchTelemetrySnapshot(result, {
             timestamp: Date.now(),
@@ -2259,14 +2302,12 @@ export class UnitSearchFiltersService {
         if (this.isSearchSettled()) {
             return null;
         }
-
         const postFilterState = this.getWorkerPostFilterState(
             this.getApplicableFilterState(this.effectiveFilterState()),
         );
-        if (Object.keys(postFilterState).length === 0) {
+        if (!this.activeNormalization() && Object.keys(postFilterState).length === 0) {
             return null;
         }
-
         return this.uncappedSyncSearch().execution.results;
     }
 
@@ -2334,7 +2375,7 @@ export class UnitSearchFiltersService {
             sortDirection: this.selectedSortDirection(),
             pilotGunnerySkill: this.pilotGunnerySkill(),
             pilotPilotingSkill: this.pilotPilotingSkill(),
-            bvNormalization: this.activeBvNormalization(),
+            normalization: this.activeNormalization(),
             megaMekAvailabilityVersion: availabilitySource === 'megamek' || isMegaMekRaritySortKey(selectedSort)
                 ? this.dataService.megaMekAvailabilityVersion()
                 : 0,
@@ -2443,6 +2484,12 @@ export class UnitSearchFiltersService {
                 // Game system changed, reset sort to relevance
                 untracked(() => {
                     this.selectedSort.set('');
+                    const mode = this.budgetMode();
+                    if (currentGameSystem === GameSystem.ALPHA_STRIKE && mode === 'bv-normalization') {
+                        this.budgetMode.set('pv-normalization');
+                    } else if (currentGameSystem === GameSystem.CLASSIC && mode === 'pv-normalization') {
+                        this.budgetMode.set('bv-normalization');
+                    }
                 });
             }
             previousGameSystem = currentGameSystem;
@@ -3414,7 +3461,7 @@ export class UnitSearchFiltersService {
         };
     }
 
-    private executeSyncSearch(options: { ignoreFormationTarget?: boolean; ignoreBvNormalization?: boolean } = {}): {
+    private executeSyncSearch(options: { ignoreFormationTarget?: boolean; ignoreNormalization?: boolean } = {}): {
         execution: ReturnType<typeof executeUnitSearch>;
         parseTelemetry: SearchTelemetryStage[];
     } {
@@ -3457,7 +3504,7 @@ export class UnitSearchFiltersService {
             sortDirection: this.selectedSortDirection(),
             bvPvLimit: 0,
             forceTotalBvPv: 0,
-            bvNormalization: options.ignoreBvNormalization ? null : this.activeBvNormalization(),
+            normalization: options.ignoreNormalization ? null : this.activeNormalization(),
             getAdjustedBV: (unit: Unit) => this.getAdjustedBV(unit),
             getAdjustedPV: (unit: Unit) => this.getAdjustedPV(unit),
             unitBelongsToEra: (unit: Unit, eraName: string, scope?: AvailabilityFilterScope) => this.unitBelongsToEra(unit, eraName, scope),
@@ -3494,7 +3541,7 @@ export class UnitSearchFiltersService {
     private readonly uncappedSyncSearchIgnoringFormationTarget = computed(() => this.executeSyncSearch({ ignoreFormationTarget: true }));
     private readonly uncappedSyncSearchIgnoringDirectSearchConstraints = computed(() => this.executeSyncSearch({
         ignoreFormationTarget: true,
-        ignoreBvNormalization: true,
+        ignoreNormalization: true,
     }));
 
     syncFilteredUnits = computed(() => {
@@ -3522,7 +3569,7 @@ export class UnitSearchFiltersService {
 
     /** Force generator eligibility uses the active search criteria but ignores the remaining BV/PV cap from unit search. */
     readonly forceGeneratorEligibleUnits = computed(() => {
-        if (this.activeBvNormalization()) {
+        if (this.activeNormalization()) {
             return this.uncappedSyncSearchIgnoringDirectSearchConstraints().execution.results;
         }
         if (this.workerSearchActive()) {
@@ -3729,6 +3776,9 @@ export class UnitSearchFiltersService {
         if (scalarState.bvNormalization) {
             this.classicBvNormalizationSettings.set(scalarState.bvNormalization);
         }
+        if (scalarState.pvNormalization) {
+            this.alphaStrikePvNormalizationSettings.set(scalarState.pvNormalization);
+        }
     }
 
     queryParameters = computed(() => {
@@ -3744,6 +3794,7 @@ export class UnitSearchFiltersService {
             bvLimit: this.bvPvLimit(),
             budgetMode: this.budgetMode(),
             bvNormalization: this.classicBvNormalizationSettings(),
+            pvNormalization: this.alphaStrikePvNormalizationSettings(),
             publicTagsParam: this.publicTagsParam(),
             viewMode: this.viewMode(),
         });
@@ -3931,6 +3982,10 @@ export class UnitSearchFiltersService {
             piloting: { min: 0, max: 8 },
             maxDelta: DEFAULT_CLASSIC_BV_NORMALIZATION_MAX_DELTA,
         });
+        this.alphaStrikePvNormalizationSettings.set({
+            targetPv: { min: 0, max: DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX },
+            skill: { min: 0, max: 8 },
+        });
         this.workerNormalizationMatchesState.set(new Map());
         this.refreshWorkerSearchIfNeeded();
     }
@@ -4086,19 +4141,40 @@ export class UnitSearchFiltersService {
         this.refreshWorkerSearchIfNeeded();
     }
 
-    getSearchResultPilotContext(unit: Unit): BvNormalizationMatch {
-        const normalizedMatch = this.activeBvNormalization()
-            ? this.workerSearchActive()
-                ? this.workerNormalizationMatchesState().get(unit.name)
-                : this.uncappedSyncSearch().execution.normalizationMatchesByUnitName.get(unit.name)
+    setPvNormalizationSettings(settings: PvNormalizationSettings): void {
+        this.alphaStrikePvNormalizationSettings.set(settings);
+        this.refreshWorkerSearchIfNeeded();
+    }
+
+    getSearchResultPilotContext(unit: Unit): UnitSearchNormalizationMatch {
+        const normalization = this.activeNormalization();
+        const normalizedMatch = normalization
+            ? !this.workerSearchActive() || !this.isSearchSettled()
+                ? this.uncappedSyncSearch().execution.normalizationMatchesByUnitName.get(unit.name)
+                : this.workerNormalizationMatchesState().get(unit.name)
+                    ?? this.findNormalizationMatch(unit, normalization)
             : null;
         if (normalizedMatch) {
             return normalizedMatch;
         }
+        if (normalization) {
+            throw new Error(`Missing ${normalization.kind.toUpperCase()} normalization match for ${unit.name}.`);
+        }
 
         const gunnery = this.pilotGunnerySkill();
         const piloting = getEffectivePilotingSkill(unit, this.pilotPilotingSkill());
-        return { adjustedBv: this.getAdjustedBV(unit), gunnery, piloting };
+        return this.gameService.isAlphaStrike()
+            ? { kind: 'pv', adjustedValue: this.getAdjustedPV(unit), skill: gunnery }
+            : { kind: 'bv', adjustedValue: this.getAdjustedBV(unit), gunnery, piloting };
+    }
+
+    private findNormalizationMatch(
+        unit: Unit,
+        normalization: UnitSearchNormalization,
+    ): UnitSearchNormalizationMatch | null {
+        return normalization.kind === 'bv'
+            ? findBvNormalizationMatch(unit, normalization.settings)
+            : findPvNormalizationMatch(unit, normalization.settings);
     }
 
     getAdjustedBV(unit: Unit): number {
@@ -4148,11 +4224,15 @@ export class UnitSearchFiltersService {
         if (this.budgetMode() === 'force-limit') {
             filter.budgetMode = 'force-limit';
             if (this.bvPvLimit() > 0) filter.bvLimit = this.bvPvLimit();
-            filter.gameSystem = 'cbt';
+            filter.gameSystem = gameSystem;
         } else if (this.activeBvNormalization()) {
             filter.budgetMode = 'bv-normalization';
             filter.bvNormalization = this.classicBvNormalizationSettings();
             filter.gameSystem = 'cbt';
+        } else if (this.activePvNormalization()) {
+            filter.budgetMode = 'pv-normalization';
+            filter.pvNormalization = this.alphaStrikePvNormalizationSettings();
+            filter.gameSystem = 'as';
         }
 
         // Save only interacted filters (UI filters, not from semantic text)
@@ -4236,6 +4316,11 @@ export class UnitSearchFiltersService {
             if (isValidBvNormalizationSettings(bvNormalization)) {
                 this.setBvNormalizationSettings(bvNormalization);
                 this.setBudgetMode('bv-normalization');
+            }
+        } else if (filter.budgetMode === 'pv-normalization' && filter.pvNormalization) {
+            if (isValidPvNormalizationSettings(filter.pvNormalization)) {
+                this.setPvNormalizationSettings(filter.pvNormalization);
+                this.setBudgetMode('pv-normalization');
             }
         }
     }

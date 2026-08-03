@@ -32,7 +32,7 @@
  */
 
 import type { GameSystem } from '../models/common.model';
-import type { BvNormalizationSettings } from '../models/unit-search-result.model';
+import type { UnitSearchNormalization } from '../models/unit-search-result.model';
 import type { Unit } from '../models/units.model';
 import { filterStateToSemanticText } from './semantic-filter.util';
 import type {
@@ -67,7 +67,7 @@ interface BuildWorkerSearchRequestArgs {
     forceTotalBvPv: number;
     pilotGunnerySkill: number;
     pilotPilotingSkill: number;
-    bvNormalization: BvNormalizationSettings | null;
+    normalization: UnitSearchNormalization | null;
 }
 
 const SEMANTIC_TEXT_ESCAPE_PATTERN = /([()=><!"'&\\])/g;
@@ -134,6 +134,6 @@ export function buildWorkerSearchRequest(args: BuildWorkerSearchRequestArgs): Un
         forceTotalBvPv: args.forceTotalBvPv,
         pilotGunnerySkill: args.pilotGunnerySkill,
         pilotPilotingSkill: args.pilotPilotingSkill,
-        bvNormalization: args.bvNormalization,
+        normalization: args.normalization,
     };
 }

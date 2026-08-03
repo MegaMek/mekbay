@@ -33,7 +33,7 @@
 
 import type { Unit } from '../models/units.model';
 import { GameSystem } from '../models/common.model';
-import type { BvNormalizationMatch, BvNormalizationSettings } from '../models/unit-search-result.model';
+import type { UnitSearchNormalization, UnitSearchNormalizationMatch } from '../models/unit-search-result.model';
 import { getForcePacks } from '../models/forcepacks.model';
 import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, AdvFilterType, isMegaMekRaritySortKey, normalizeMotiveValue, type FilterState, type SearchTelemetryStage } from '../services/unit-search-filters.model';
 import {
@@ -50,6 +50,7 @@ import { getNowMs, getProperty, getUnitCountableFilterData, isCommittedSemanticT
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from './unit-filter-kernel.util';
 import type { AvailabilityFilterScope } from '../services/unit-search-filters.model';
 import { findBvNormalizationMatch } from './bv-normalization.util';
+import { findPvNormalizationMatch } from './pv-normalization.util';
 
 export interface UnitSearchExecutionRequest {
     units: Unit[];
@@ -64,7 +65,7 @@ export interface UnitSearchExecutionRequest {
     forceTotalBvPv: number;
     getAdjustedBV: (unit: Unit) => number;
     getAdjustedPV: (unit: Unit) => number;
-    bvNormalization?: BvNormalizationSettings | null;
+    normalization?: UnitSearchNormalization | null;
     unitBelongsToEra: (unit: Unit, eraName: string, scope?: AvailabilityFilterScope) => boolean;
     unitBelongsToFaction: (unit: Unit, factionName: string, eraNames?: readonly string[]) => boolean;
     unitMatchesAvailabilityFrom?: (unit: Unit, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
@@ -85,7 +86,7 @@ export interface UnitSearchExecutionRequest {
 
 export interface UnitSearchExecutionResult {
     results: Unit[];
-    normalizationMatchesByUnitName: ReadonlyMap<string, BvNormalizationMatch>;
+    normalizationMatchesByUnitName: ReadonlyMap<string, UnitSearchNormalizationMatch>;
     telemetryStages: SearchTelemetryStage[];
     totalMs: number;
     unitCount: number;
@@ -155,29 +156,36 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
     const hasTextSearch = parsedQuery.textSearch.trim().length > 0;
     const uiOnlyFilterState = request.uiOnlyFilterState ?? {};
     const selectedMotiveCodes = getSelectedASMotiveCodes(parsedQuery, uiOnlyFilterState);
-    const normalizationEnabled = request.gameSystem === GameSystem.CLASSIC && request.bvNormalization != null;
-    const normalizationMatchCache = new Map<string, BvNormalizationMatch | null>();
-    const resolveNormalizationMatch = (unit: Unit): BvNormalizationMatch | null => {
+    const normalization = request.normalization ?? null;
+    const normalizationEnabled = normalization !== null
+        && ((normalization.kind === 'bv' && request.gameSystem === GameSystem.CLASSIC)
+            || (normalization.kind === 'pv' && request.gameSystem === GameSystem.ALPHA_STRIKE));
+    const normalizationMatchCache = new Map<string, UnitSearchNormalizationMatch | null>();
+    const resolveNormalizationMatch = (unit: Unit): UnitSearchNormalizationMatch | null => {
         if (!normalizationEnabled) {
             return null;
         }
         if (!normalizationMatchCache.has(unit.name)) {
-            normalizationMatchCache.set(
-                unit.name,
-                findBvNormalizationMatch(unit, request.bvNormalization!),
-            );
+            normalizationMatchCache.set(unit.name, normalization?.kind === 'bv'
+                ? findBvNormalizationMatch(unit, normalization.settings)
+                : normalization?.kind === 'pv'
+                    ? findPvNormalizationMatch(unit, normalization.settings)
+                    : null);
         }
         return normalizationMatchCache.get(unit.name) ?? null;
     };
     const getContextualAdjustedBV = (unit: Unit): number => {
-        return resolveNormalizationMatch(unit)?.adjustedBv ?? request.getAdjustedBV(unit);
+        return resolveNormalizationMatch(unit)?.adjustedValue ?? request.getAdjustedBV(unit);
+    };
+    const getContextualAdjustedPV = (unit: Unit): number => {
+        return resolveNormalizationMatch(unit)?.adjustedValue ?? request.getAdjustedPV(unit);
     };
 
     const context: EvaluatorContext = {
         getProperty,
         getUnitId: (unit: Unit) => unit.name,
         getAdjustedBV: getContextualAdjustedBV,
-        getAdjustedPV: request.getAdjustedPV,
+        getAdjustedPV: getContextualAdjustedPV,
         gameSystem: request.gameSystem,
         matchesText: (unit: Unit, text: string) => {
             const searchableText = unit._searchKey || `${unit.chassis ?? ''} ${unit.model ?? ''}`.toLowerCase();
@@ -229,7 +237,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
     if (normalizationEnabled) {
         candidateUnits = measureStage(
             telemetryStages,
-            'bv-normalization',
+            request.gameSystem === GameSystem.CLASSIC ? 'bv-normalization' : 'pv-normalization',
             unitCount,
             () => allUnits.filter(unit => resolveNormalizationMatch(unit) !== null),
             value => value.length,
@@ -256,6 +264,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                     dependencies: {
                         ...request.uiOnlyFilterDependencies,
                         getAdjustedBV: getContextualAdjustedBV,
+                        getAdjustedPV: getContextualAdjustedPV,
                     },
                 })
                 : results,
@@ -271,7 +280,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
             'budget-filter',
             results.length,
             () => results.filter(unit => {
-                const unitValue = isAS ? request.getAdjustedPV(unit) : getContextualAdjustedBV(unit);
+                const unitValue = isAS ? getContextualAdjustedPV(unit) : getContextualAdjustedBV(unit);
                 return unitValue <= remaining;
             }),
             value => value.length,
@@ -347,7 +356,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                 } else if (request.sortKey === 'bv') {
                     comparison = getContextualAdjustedBV(a) - getContextualAdjustedBV(b);
                 } else if (request.sortKey === 'as.PV') {
-                    comparison = request.getAdjustedPV(a) - request.getAdjustedPV(b);
+                    comparison = getContextualAdjustedPV(a) - getContextualAdjustedPV(b);
                 } else if (isMegaMekRaritySortKey(request.sortKey)) {
                     comparison = (megaMekRarityScores?.get(a) ?? 0) - (megaMekRarityScores?.get(b) ?? 0);
                     if (comparison === 0) {
@@ -378,7 +387,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         value => value.length,
     );
 
-    const normalizationMatchesByUnitName = new Map<string, BvNormalizationMatch>();
+    const normalizationMatchesByUnitName = new Map<string, UnitSearchNormalizationMatch>();
     if (normalizationEnabled) {
         for (const unit of sorted) {
             const match = resolveNormalizationMatch(unit);
