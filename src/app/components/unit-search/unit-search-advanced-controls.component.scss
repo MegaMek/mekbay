@@ -139,7 +139,7 @@
     gap: 2px 12px;
     max-width: 100%;
     color: var(--text-color-secondary);
-    font-size: .85em;
+    font-size: .8em;
 }
 
 .normalization-summary>span {
@@ -279,7 +279,7 @@
     grid-area: 1 / 2;
     grid-template: 1fr 1fr / 16px auto;
     width: auto;
-    justify-self: end;
+    justify-self: center;
 }
 
 .pilot-skills-section.two-columns .budget-mode-label {
