@@ -38,12 +38,34 @@ describe('DataTableComponent', () => {
 
     afterEach(() => fixture.destroy());
 
-    async function renderFrames(count = 3): Promise<void> {
+    async function render(): Promise<void> {
+        const frameCallbacks = new Map<number, FrameRequestCallback>();
+        let nextFrameId = 1;
+        spyOn(window, 'requestAnimationFrame').and.callFake(callback => {
+            const frameId = nextFrameId;
+            nextFrameId += 1;
+            frameCallbacks.set(frameId, callback);
+            return frameId;
+        });
+        spyOn(window, 'cancelAnimationFrame').and.callFake(frameId => {
+            frameCallbacks.delete(frameId);
+        });
+
         fixture.detectChanges();
-        for (let index = 0; index < count; index += 1) {
-            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        TestBed.tick();
+        await Promise.resolve();
+        for (let frame = 0; frame < 10 && frameCallbacks.size > 0; frame += 1) {
+            const callbacks = Array.from(frameCallbacks.entries());
+            for (const [frameId, callback] of callbacks) {
+                if (frameCallbacks.delete(frameId)) callback(performance.now());
+            }
+            TestBed.tick();
+            fixture.detectChanges();
+            await Promise.resolve();
         }
-        fixture.detectChanges();
+        if (frameCallbacks.size > 0) {
+            throw new Error('Data table rendering did not settle within 10 animation frames.');
+        }
     }
 
     function hostElement(): HTMLElement {
@@ -100,7 +122,7 @@ describe('DataTableComponent', () => {
         ]);
         fixture.componentRef.setInput('rowKeys', ['short', 'long']);
 
-        await renderFrames();
+        await render();
 
         const rowElements = Array.from(
             hostElement().querySelectorAll<HTMLElement>('.mb-data-table-row-item'),
@@ -123,7 +145,7 @@ describe('DataTableComponent', () => {
         fixture.componentRef.setInput('rows', [{ id: 'short', text: 'Short' }]);
         fixture.componentRef.setInput('rowKeys', ['short']);
 
-        await renderFrames();
+        await render();
 
         const row = hostElement().querySelector<HTMLElement>('.mb-data-table-row-item')!;
         expect(row.getBoundingClientRect().height).toBeGreaterThanOrEqual(64);
