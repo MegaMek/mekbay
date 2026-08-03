@@ -416,6 +416,7 @@ function installInventoryControlRuntime(unit: CBTForceUnit): CBTInventoryControl
         inventoryControl: runtime,
         getInventoryControlSnapshot: () => runtime.getSnapshot(),
         getInventoryControlTargets: () => runtime.getTargets(),
+        getInventoryControlTargetsMap: () => runtime.targetsMap(),
         getInventoryControlTarget: (targetId: InventoryControlRuntimeTargetId) => runtime.getTarget(targetId),
         getInventoryControlEntryTargetId: (entryId: string) => runtime.getEntryTargetId(entryId),
         isInventoryControlEntrySelected: (entryId: string) => runtime.isEntrySelected(entryId),

@@ -169,7 +169,7 @@ export class WeaponsEquipmentPanelComponent {
         );
     });
     readonly targets = computed(() => {
-        this.inventoryControl().targetsMap();
+        this.unit().getInventoryControlTargetsMap();
         return this.unit().getInventoryControlTargets();
     });
     readonly hasTargets = computed(() => this.targets().length > 0);

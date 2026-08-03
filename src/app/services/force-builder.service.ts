@@ -91,6 +91,41 @@ import { UnitAvailabilitySourceService } from './unit-availability-source.servic
 import { C3NetworkEditor } from '../models/c3-network-editor';
 import { uuidv7 } from '../utils/uuid.util';
 import { EquipmentInteractionRegistryService } from './equipment-interaction-registry.service';
+import { INVENTORY_CONTROL_TARGET_COLORS, getInventoryControlTargetLetter, type InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
+import { deriveOpforTargetCalculatorState, getOpforInventoryTargetId, resolveInventoryTargetUnitType } from '../utils/inventory-control-opfor-target.util';
+
+function inventoryControlTargetsEqual(
+    currentTargets: readonly InventoryControlRuntimeTarget[],
+    nextTargets: readonly InventoryControlRuntimeTarget[]
+): boolean {
+    if (currentTargets.length !== nextTargets.length) return false;
+    const nextById = new Map(nextTargets.map(target => [target.id, target]));
+    return currentTargets.every(current => {
+        const next = nextById.get(current.id);
+        return !!next
+            && current.letter === next.letter
+            && current.name === next.name
+            && current.color === next.color
+            && current.source === next.source
+            && current.readOnly === next.readOnly
+            && current.unitType === next.unitType
+            && current.distance === next.distance
+            && current.tnModifier === next.tnModifier
+            && shallowRecordsEqual(current.tnCalculator, next.tnCalculator);
+    });
+}
+
+function shallowRecordsEqual(
+    current: object | undefined,
+    next: object | undefined
+): boolean {
+    if (current === next) return true;
+    if (!current || !next) return false;
+    const currentEntries = Object.entries(current);
+    const nextRecord = next as Record<string, unknown>;
+    return currentEntries.length === Object.keys(next).length
+        && currentEntries.every(([key, value]) => value === nextRecord[key]);
+}
 
 /*
  * Author: Drake
@@ -170,6 +205,7 @@ export class ForceBuilderService {
         this.updateUrlOnForceChange();
         this.monitorWebSocketConnection();
         this.monitorEquipmentHandlerRuntime();
+        this.monitorOpforInventoryTargets();
 
         // Auto-reset alignment filter when mixed alignments no longer apply
         effect(() => {
@@ -205,6 +241,100 @@ export class ForceBuilderService {
     allLoadedUnits = computed<ForceUnit[]>(() => {
         return this.loadedForces().flatMap(s => s.force.units());
     });
+
+    isInventoryControlOpforAvailable(force: CBTForce): boolean {
+        return this.opposingCBTForces(force).length > 0;
+    }
+
+    setInventoryControlOpforEnabled(force: CBTForce, enabled: boolean): void {
+        force.inventoryControlOpforEnabled.set(enabled && this.isInventoryControlOpforAvailable(force));
+        this.syncOpforInventoryTargets(force, this.opposingCBTUnits(force));
+    }
+
+    private monitorOpforInventoryTargets(): void {
+        effect(() => {
+            const cbtForces = this.loadedForces()
+                .filter(slot => slot.force instanceof CBTForce)
+                .map(slot => slot.force as CBTForce);
+            const cbtUnits = cbtForces.flatMap(force => force.units());
+
+            for (const unit of cbtUnits) {
+                unit.getCondition('immobile');
+                unit.getCondition('prone');
+                unit.getCondition('skidding');
+                unit.turnState().moveMode();
+                unit.turnState().moveDistance();
+                unit.turnState().airborne();
+            }
+
+            for (const force of cbtForces) {
+                force.inventoryControlOpforEnabled();
+                untracked(() => this.syncOpforInventoryTargets(force, this.opposingCBTUnits(force)));
+            }
+        });
+    }
+
+    private opposingCBTForces(force: CBTForce): CBTForce[] {
+        const sourceSlot = this.loadedForces().find(slot => slot.force === force);
+        if (!sourceSlot) return [];
+        return this.loadedForces()
+            .filter(slot => slot.force instanceof CBTForce && (
+                sourceSlot.alignment === 'enemy'
+                    ? slot.alignment !== 'enemy'
+                    : slot.alignment === 'enemy'
+            ))
+            .map(slot => slot.force as CBTForce);
+    }
+
+    private opposingCBTUnits(force: CBTForce): CBTForceUnit[] {
+        return this.opposingCBTForces(force).flatMap(opposingForce => opposingForce.units());
+    }
+
+    private syncOpforInventoryTargets(force: CBTForce, enemyUnits: readonly CBTForceUnit[]): void {
+        const currentTargets = force.getInventoryControlTargets();
+        const manualTargets = currentTargets.filter(target => target.source !== 'opfor');
+        if (!force.inventoryControlOpforEnabled() || !this.isInventoryControlOpforAvailable(force)) {
+            if (!this.isInventoryControlOpforAvailable(force)) force.inventoryControlOpforEnabled.set(false);
+            if (currentTargets.length !== manualTargets.length) force.replaceInventoryControlTargets(manualTargets);
+            return;
+        }
+
+        const existingById = new Map(currentTargets.map(target => [target.id, target]));
+        const usedLetters = new Set(manualTargets.map(target => target.letter));
+        const opforTargets = enemyUnits.map((enemyUnit, enemyIndex): InventoryControlRuntimeTarget => {
+            const id = getOpforInventoryTargetId(enemyUnit.id);
+            const existing = existingById.get(id);
+            const letter = existing && !usedLetters.has(existing.letter)
+                ? existing.letter
+                : this.getFirstUnusedInventoryTargetLetter(usedLetters);
+            usedLetters.add(letter);
+            const tnCalculator = deriveOpforTargetCalculatorState(enemyUnit, existing?.tnCalculator);
+            const unitType = resolveInventoryTargetUnitType(enemyUnit.getUnit());
+            return {
+                id,
+                letter,
+                name: enemyUnit.getDisplayName(),
+                color: existing?.color ?? INVENTORY_CONTROL_TARGET_COLORS[enemyIndex % INVENTORY_CONTROL_TARGET_COLORS.length],
+                source: 'opfor',
+                readOnly: true,
+                unitType,
+                distance: 1,
+                tnCalculator,
+                tnModifier: 0
+            };
+        });
+        const nextTargets = [...manualTargets, ...opforTargets];
+        if (!inventoryControlTargetsEqual(currentTargets, nextTargets)) {
+            force.replaceInventoryControlTargets(nextTargets);
+        }
+    }
+
+    private getFirstUnusedInventoryTargetLetter(usedLetters: ReadonlySet<string>): string {
+        for (let index = 0; ; index++) {
+            const letter = getInventoryControlTargetLetter(index);
+            if (!usedLetters.has(letter)) return letter;
+        }
+    }
     /** True when a force is loaded (non-null). */
     hasForces = computed<boolean>(() => this.loadedForces().length > 0);
     /** Current force's game system, or null. */

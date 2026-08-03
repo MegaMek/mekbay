@@ -170,7 +170,6 @@ export class CBTPrintUtil {
         }
 
         this.resetInventoryControlModes(printUnit);
-        printUnit.clearInventoryControlTargets();
         printUnit.clearInventoryControlSelection();
         printUnit.turnState().update(undefined);
         printUnit.syncInventoryControlSelectionSvg();

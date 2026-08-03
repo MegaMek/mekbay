@@ -323,7 +323,7 @@ export class CBTForceUnit extends ForceUnit {
         super.setCondition(condition, active);
         if (wasActive !== this.getCondition(condition)) {
             this.turnState().reconcileHeatSources();
-            if (condition === 'jammed') {
+            if (condition === 'jammed' || condition === 'immobile' || condition === 'prone' || condition === 'skidding') {
                 this.force.units().forEach(unit => unit.inventoryControl.markInventoryViewChanged());
             }
         }
@@ -442,7 +442,10 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     getInventoryControlSnapshot(): InventoryControlRuntimeSnapshot {
-        return this.inventoryControlRuntime.getSnapshot();
+        return {
+            entryStates: this.inventoryControlRuntime.getSnapshot().entryStates,
+            targets: this.getInventoryControlTargets()
+        };
     }
 
     getInventoryControlEntryState(entryId: string): InventoryControlRuntimeEntryState | undefined {
@@ -450,11 +453,16 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     getInventoryControlTargets(): InventoryControlRuntimeTarget[] {
-        return this.inventoryControlRuntime.getTargets();
+        return this.force.getInventoryControlTargets().map(target => this.inventoryControlRuntime.resolveTarget(target));
+    }
+
+    getInventoryControlTargetsMap(): ReadonlyMap<InventoryControlRuntimeTargetId, InventoryControlRuntimeTarget> {
+        return new Map(this.getInventoryControlTargets().map(target => [target.id, target]));
     }
 
     getInventoryControlTarget(targetId: InventoryControlRuntimeTargetId): InventoryControlRuntimeTarget | undefined {
-        return this.inventoryControlRuntime.getTarget(targetId);
+        const target = this.force.getInventoryControlTarget(targetId);
+        return target ? this.inventoryControlRuntime.resolveTarget(target) : undefined;
     }
 
     getInventoryControlEntryTargetId(entryId: string): InventoryControlRuntimeTargetId | undefined {
@@ -494,33 +502,25 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     createInventoryControlTarget(): InventoryControlRuntimeTarget | null {
-        return this.inventoryControlRuntime.createTarget();
-    }
-
-    createSharedInventoryControlTarget(): InventoryControlRuntimeTarget | null {
-        return this.force.createSharedInventoryControlTarget(this);
+        return this.force.createInventoryControlTarget(this);
     }
 
     updateInventoryControlTarget(targetId: InventoryControlRuntimeTargetId, patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>): InventoryControlRuntimeTarget | null {
-        if (this.getInventoryControlTarget(targetId)?.shared && this.force.isSharedInventoryControlTarget(targetId)) {
-            return this.force.updateSharedInventoryControlTarget(this, targetId, patch);
-        }
-        return this.inventoryControlRuntime.updateTarget(targetId, patch);
+        const sharedTarget = this.force.updateInventoryControlTarget(targetId, patch, this);
+        return sharedTarget ? this.inventoryControlRuntime.updateUnitTargetState(sharedTarget, patch) : null;
+    }
+
+    overrideInventoryControlTargetModifier(targetId: InventoryControlRuntimeTargetId, modifier: number): InventoryControlRuntimeTarget | null {
+        const sharedTarget = this.force.getInventoryControlTarget(targetId);
+        return sharedTarget ? this.inventoryControlRuntime.overrideTargetModifier(sharedTarget, modifier) : null;
     }
 
     deleteInventoryControlTarget(targetId: InventoryControlRuntimeTargetId): void {
-        if (this.getInventoryControlTarget(targetId)?.shared && this.force.isSharedInventoryControlTarget(targetId)) {
-            this.force.deleteSharedInventoryControlTarget(this, targetId);
-            return;
-        }
-        this.inventoryControlRuntime.deleteTarget(targetId);
+        this.force.deleteInventoryControlTarget(targetId, this);
     }
 
     resetInventoryControlTargets(): void {
-        this.getInventoryControlTargets()
-            .filter(target => !this.force.isSharedInventoryControlTarget(target.id))
-            .forEach(target => this.inventoryControlRuntime.deleteTarget(target.id));
-        this.inventoryControlRuntime.clearSelection();
+        this.force.resetInventoryControlTargets(this);
     }
 
     hasLinkedC3Network(): boolean {
@@ -587,12 +587,8 @@ export class CBTForceUnit extends ForceUnit {
         this.inventoryControlRuntime.clearSelection();
     }
 
-    clearInventoryControlTargets(): void {
-        this.inventoryControlRuntime.resetTargets();
-    }
-
     private reconcileInventoryControlSelection(): void {
-        this.inventoryControlRuntime.reconcile();
+        this.inventoryControlRuntime.reconcile(new Set(this.getInventoryControlTargetsMap().keys()));
     }
 
     syncInventoryControlSelectionSvg(): void {

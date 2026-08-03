@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import type { Injector } from '@angular/core';
+import { signal, type Injector } from '@angular/core';
 import type { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
@@ -41,16 +41,11 @@ import { Force } from './force.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import {
-    INVENTORY_CONTROL_TARGET_COLORS,
-    INVENTORY_CONTROL_TARGET_MAX_COUNT,
-    getInventoryControlTargetLetter,
+    InventoryControlRuntimeState,
+    splitInventoryControlCalculatorState,
     type InventoryControlRuntimeTarget,
-    type InventoryControlRuntimeTargetId,
-    type InventoryControlSharedTarget
+    type InventoryControlRuntimeTargetId
 } from './inventory-control-runtime-state.model';
-import type { TnTargetNumberCalculatorState } from './target-number-calculator.model';
-
-let nextSharedInventoryControlTargetId = 1;
 
 /*
  * Author: Drake
@@ -58,7 +53,8 @@ let nextSharedInventoryControlTargetId = 1;
 
 export class CBTForce extends Force<CBTForceUnit> {
     override gameSystem: GameSystem = GameSystem.CLASSIC;
-    private readonly sharedInventoryControlTargets = new Map<InventoryControlRuntimeTargetId, InventoryControlSharedTarget>();
+    readonly inventoryControlTargets = new InventoryControlRuntimeState(() => []);
+    readonly inventoryControlOpforEnabled = signal(false);
 
     constructor(name: string,
         dataService: DataService,
@@ -68,139 +64,108 @@ export class CBTForce extends Force<CBTForceUnit> {
     }
 
     protected override createForceUnit(unit: Unit): CBTForceUnit {
-        return this.attachSharedInventoryControlTargets(
-            new CBTForceUnit(unit, this, this.dataService, this.unitInitializer, this.injector)
-        );
+        return new CBTForceUnit(unit, this, this.dataService, this.unitInitializer, this.injector);
     }
 
-    createSharedInventoryControlTarget(sourceUnit: CBTForceUnit): InventoryControlRuntimeTarget | null {
-        const units = this.inventoryControlUnits(sourceUnit);
-        if (units.some(unit => unit.getInventoryControlTargets().length >= INVENTORY_CONTROL_TARGET_MAX_COUNT)) return null;
-        const letter = this.nextSharedTargetLetter(units);
-        if (!letter) return null;
-        const targetIndex = letter.charCodeAt(0) - 'A'.charCodeAt(0);
-        const targetId = `shared-target-${nextSharedInventoryControlTargetId++}`;
-        const sharedTarget: InventoryControlSharedTarget = {
-            id: targetId,
-            letter,
-            name: `Target ${letter}`,
-            color: INVENTORY_CONTROL_TARGET_COLORS[targetIndex % INVENTORY_CONTROL_TARGET_COLORS.length],
-            shared: true,
-            unitType: 'mek-biped'
-        };
-        this.sharedInventoryControlTargets.set(targetId, sharedTarget);
-        for (const unit of units) {
-            unit.inventoryControl.createTarget({
-                sharedTarget: this.cloneSharedTarget(sharedTarget),
-                upgradeExistingSelections: unit === sourceUnit
-            });
-        }
-        return sourceUnit.getInventoryControlTarget(targetId) ?? null;
+    getInventoryControlTargets(): InventoryControlRuntimeTarget[] {
+        return this.inventoryControlTargets.getTargets();
     }
 
-    updateSharedInventoryControlTarget(
-        sourceUnit: CBTForceUnit,
+    getInventoryControlTarget(targetId: InventoryControlRuntimeTargetId): InventoryControlRuntimeTarget | undefined {
+        return this.inventoryControlTargets.getTarget(targetId);
+    }
+
+    hasInventoryControlTarget(targetId: InventoryControlRuntimeTargetId): boolean {
+        return this.inventoryControlTargets.targetsMap().has(targetId);
+    }
+
+    createInventoryControlTarget(sourceUnit?: CBTForceUnit): InventoryControlRuntimeTarget | null {
+        const existingTargets = this.getInventoryControlTargets();
+        const target = this.inventoryControlTargets.createTarget();
+        if (target && existingTargets.length === 0) this.assignFirstTargetToExistingSelections(target.id, sourceUnit);
+        this.markInventoryControlChanged(false, sourceUnit);
+        return target;
+    }
+
+    updateInventoryControlTarget(
         targetId: InventoryControlRuntimeTargetId,
-        patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>
+        patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>,
+        sourceUnit?: CBTForceUnit
     ): InventoryControlRuntimeTarget | null {
-        const sharedTarget = this.sharedInventoryControlTargets.get(targetId);
-        if (!sharedTarget) return null;
-        const sharedCalculatorPatch = this.sharedCalculatorPatch(patch.tnCalculator);
-        const updatedSharedTarget: InventoryControlSharedTarget = {
-            ...sharedTarget,
+        const sharedCalculator = splitInventoryControlCalculatorState(patch.tnCalculator).shared;
+        const existingTarget = this.inventoryControlTargets.getTarget(targetId);
+        const sharedPatch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>> = {
             ...(patch.name !== undefined && { name: patch.name }),
             ...(patch.color !== undefined && { color: patch.color }),
             ...(patch.unitType !== undefined && { unitType: patch.unitType }),
-            ...(sharedCalculatorPatch && {
-                tnCalculator: { ...sharedTarget.tnCalculator, ...sharedCalculatorPatch }
-            })
+            ...(sharedCalculator && { tnCalculator: { ...existingTarget?.tnCalculator, ...sharedCalculator } })
         };
-        this.sharedInventoryControlTargets.set(targetId, updatedSharedTarget);
-
-        const observerCalculatorPatch = this.observerCalculatorPatch(patch.tnCalculator);
-        const units = this.inventoryControlUnits(sourceUnit);
-        for (const unit of units) {
-            const current = unit.getInventoryControlTarget(targetId);
-            if (!current) continue;
-            const calculator = {
-                ...current.tnCalculator,
-                ...updatedSharedTarget.tnCalculator,
-                ...(unit === sourceUnit ? observerCalculatorPatch : {})
-            };
-            const unitPatch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>> = {
-                name: updatedSharedTarget.name,
-                color: updatedSharedTarget.color,
-                unitType: updatedSharedTarget.unitType,
-                tnCalculator: calculator
-            };
-            if (unit === sourceUnit) {
-                Object.assign(unitPatch, this.observerTargetPatch(patch));
-            }
-            unit.inventoryControl.updateTarget(targetId, unitPatch);
+        const hasSharedPatch = Object.keys(sharedPatch).length > 0;
+        const target = hasSharedPatch
+            ? this.inventoryControlTargets.updateTarget(targetId, sharedPatch)
+            : this.inventoryControlTargets.getTarget(targetId) ?? null;
+        if (hasSharedPatch) {
+            this.markInventoryControlChanged(false, sourceUnit, patch.unitType !== undefined || sharedCalculator !== undefined);
         }
-        return sourceUnit.getInventoryControlTarget(targetId) ?? null;
+        return target;
     }
 
-    deleteSharedInventoryControlTarget(sourceUnit: CBTForceUnit, targetId: InventoryControlRuntimeTargetId): void {
-        if (!this.sharedInventoryControlTargets.delete(targetId)) return;
-        const units = this.inventoryControlUnits(sourceUnit);
-        units.forEach(unit => unit.inventoryControl.deleteTarget(targetId));
+    deleteInventoryControlTarget(targetId: InventoryControlRuntimeTargetId, sourceUnit?: CBTForceUnit): void {
+        this.inventoryControlTargets.deleteTarget(targetId);
+        this.markInventoryControlChanged(true, sourceUnit);
     }
 
-    isSharedInventoryControlTarget(targetId: InventoryControlRuntimeTargetId): boolean {
-        return this.sharedInventoryControlTargets.has(targetId);
+    resetInventoryControlTargets(sourceUnit?: CBTForceUnit): void {
+        this.inventoryControlOpforEnabled.set(false);
+        this.inventoryControlTargets.resetTargets();
+        this.markInventoryControlChanged(true, sourceUnit);
     }
 
-    private inventoryControlUnits(sourceUnit: CBTForceUnit): CBTForceUnit[] {
-        return Array.from(new Set([...this.units(), sourceUnit]));
+    replaceInventoryControlTargets(targets: readonly InventoryControlRuntimeTarget[]): void {
+        this.inventoryControlTargets.replaceTargets(targets.map(target => this.toSharedInventoryControlTarget(target)));
+        this.markInventoryControlChanged(true, undefined, true);
     }
 
-    private nextSharedTargetLetter(units: readonly CBTForceUnit[]): string | null {
-        const usedLetters = new Set(units.flatMap(unit => unit.getInventoryControlTargets().map(target => target.letter)));
-        for (let index = 0; index < INVENTORY_CONTROL_TARGET_MAX_COUNT; index++) {
-            const letter = getInventoryControlTargetLetter(index);
-            if (!usedLetters.has(letter)) return letter;
-        }
-        return null;
-    }
-
-    private sharedCalculatorPatch(calculator: TnTargetNumberCalculatorState | undefined): Partial<TnTargetNumberCalculatorState> | null {
-        if (!calculator) return null;
-        const patch: Partial<TnTargetNumberCalculatorState> = {
-            ...(calculator.isAirborne !== undefined && { isAirborne: calculator.isAirborne }),
-            ...(calculator.targetMovementBracket !== undefined && { targetMovementBracket: calculator.targetMovementBracket }),
-            ...(calculator.skidding !== undefined && { skidding: calculator.skidding }),
-            ...(calculator.stance !== undefined && { stance: calculator.stance }),
-            ...(calculator.targetHexCover !== undefined && { targetHexCover: calculator.targetHexCover }),
-            ...(calculator.largeTarget !== undefined && { largeTarget: calculator.largeTarget })
-        };
-        return Object.keys(patch).length > 0 ? patch : null;
-    }
-
-    private observerCalculatorPatch(calculator: TnTargetNumberCalculatorState | undefined): Partial<TnTargetNumberCalculatorState> {
-        if (!calculator) return {};
-        const { isAirborne, targetMovementBracket, skidding, stance, targetHexCover, largeTarget, ...observerPatch } = calculator;
-        return observerPatch;
-    }
-
-    private observerTargetPatch(patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>): Partial<InventoryControlRuntimeTarget> {
+    private toSharedInventoryControlTarget(target: InventoryControlRuntimeTarget): InventoryControlRuntimeTarget {
+        const sharedCalculator = splitInventoryControlCalculatorState(target.tnCalculator).shared;
         return {
-            ...(patch.distance !== undefined && { distance: patch.distance }),
-            ...(patch.c3Distance !== undefined && { c3Distance: patch.c3Distance }),
-            ...(patch.useC3 !== undefined && { useC3: patch.useC3 }),
-            ...(patch.tnModifier !== undefined && { tnModifier: patch.tnModifier })
+            id: target.id,
+            letter: target.letter,
+            name: target.name,
+            color: target.color,
+            ...(target.source !== undefined && { source: target.source }),
+            ...(target.readOnly !== undefined && { readOnly: target.readOnly }),
+            ...(target.unitType !== undefined && { unitType: target.unitType }),
+            distance: 1,
+            tnModifier: 0,
+            ...(sharedCalculator && { tnCalculator: sharedCalculator })
         };
     }
 
-    private cloneSharedTarget(target: InventoryControlSharedTarget): InventoryControlSharedTarget {
-        return { ...target, ...(target.tnCalculator && { tnCalculator: { ...target.tnCalculator } }) };
+    private markInventoryControlChanged(reconcile = false, sourceUnit?: CBTForceUnit, recalculate = false): void {
+        const validTargetIds = new Set(this.inventoryControlTargets.targetsMap().keys());
+        for (const unit of this.inventoryControlUnits(sourceUnit)) {
+            if (reconcile) {
+                unit.inventoryControl.reconcile(validTargetIds);
+                unit.inventoryControl.reconcileUnitTargetStates(validTargetIds);
+            }
+            if (recalculate) unit.inventoryControl.recalculateTargetModifiers(this.getInventoryControlTargets());
+            unit.inventoryControl.markInventoryViewChanged();
+        }
     }
 
-    private attachSharedInventoryControlTargets(unit: CBTForceUnit): CBTForceUnit {
-        for (const target of this.sharedInventoryControlTargets.values()) {
-            unit.inventoryControl.createTarget({ sharedTarget: this.cloneSharedTarget(target), upgradeExistingSelections: false });
+    private assignFirstTargetToExistingSelections(targetId: InventoryControlRuntimeTargetId, sourceUnit?: CBTForceUnit): void {
+        for (const unit of this.inventoryControlUnits(sourceUnit)) {
+            const entryStates = unit.inventoryControl.entryStates();
+            for (const entry of unit.getInventory()) {
+                const state = entryStates.get(entry.id);
+                if (state?.selected && !state.targetId) unit.inventoryControl.setEntryTarget(entry, targetId);
+            }
         }
-        return unit;
+    }
+
+    private inventoryControlUnits(sourceUnit?: CBTForceUnit): CBTForceUnit[] {
+        return Array.from(new Set([...this.units(), ...(sourceUnit ? [sourceUnit] : [])]));
     }
 
     /**
@@ -229,9 +194,7 @@ export class CBTForce extends Force<CBTForceUnit> {
     }
 
     protected override deserializeForceUnit(data: CBTSerializedUnit): CBTForceUnit {
-        return this.attachSharedInventoryControlTargets(
-            CBTForceUnit.deserialize(data, this, this.dataService, this.unitInitializer, this.injector)
-        );
+        return CBTForceUnit.deserialize(data, this, this.dataService, this.unitInitializer, this.injector);
     }
 
     protected override sanitizeForceData(data: SerializedForce): SerializedForce {

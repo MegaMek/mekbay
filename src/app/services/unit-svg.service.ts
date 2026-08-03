@@ -1226,7 +1226,7 @@ export class UnitSvgService {
     protected renderInventoryControlSelection(): void {
         this.unit.inventoryControl.inventoryViewVersion();
         const entryStates = this.unit.inventoryControl.entryStates();
-        const targets = this.unit.inventoryControl.targetsMap();
+        const targets = this.unit.getInventoryControlTargetsMap();
         const highlightedLinkedElements = new Set<SVGElement>();
         for (const entry of this.unit.getInventory()) {
             if (!entry.el) continue;

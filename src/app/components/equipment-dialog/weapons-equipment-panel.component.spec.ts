@@ -1508,6 +1508,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice')) as HTMLButtonElement[];
         expect(choices.map(choice => choice.querySelector('.target-choice-token')?.textContent?.trim())).toEqual(['—', 'A', 'B']);
         expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim() ?? '')).toEqual(['', 'M?', 'M?']);
+        expect(choices.map(choice => choice.querySelector('.target-choice-name')?.textContent?.trim())).toEqual(['No target', 'Target A', 'Target B']);
 
         choices[2].click();
         fixture.detectChanges();

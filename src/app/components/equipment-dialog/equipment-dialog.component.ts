@@ -55,7 +55,7 @@ export class EquipmentDialogComponent {
     readonly unitList = computed(() => this.resolveUnitList());
     readonly unit = computed(() => this.unitList()[this.unitIndex()] ?? this.requiredUnit());
     readonly targets = computed(() => {
-        this.unit().inventoryControl.targetsMap();
+        this.unit().getInventoryControlTargetsMap();
         return this.unit().getInventoryControlTargets();
     });
     readonly hasPrev = computed(() => this.unitIndex() > 0);

@@ -76,3 +76,83 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         expect(fixture.nativeElement.querySelector('.c3-distance-control').classList).not.toContain('c3-degraded');
     });
 });
+
+describe('TnCalculatorDialogComponent read-only target identity', () => {
+    let fixture: ComponentFixture<TnCalculatorDialogComponent>;
+    let component: TnCalculatorDialogComponent;
+
+    beforeEach(async () => {
+        const data: TnCalculatorDialogData = {
+            target: {
+                id: 'opfor:enemy-1',
+                letter: 'A',
+                name: 'Achileus Light Battle Armor',
+                color: '#1565C0',
+                unitType: 'battle-armor',
+                distance: 1,
+                tnModifier: 1
+            },
+            gameRules: CORE_2026_GAME_RULES,
+            targetStateReadOnly: true
+        };
+        await TestBed.configureTestingModule({
+            imports: [TnCalculatorDialogComponent],
+            providers: [
+                { provide: DIALOG_DATA, useValue: data },
+                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } }
+            ]
+        }).compileComponents();
+        fixture = TestBed.createComponent(TnCalculatorDialogComponent);
+        component = fixture.componentInstance;
+        fixture.detectChanges();
+    });
+
+    it('uses the styled disabled dropdown and retains the unit modifier', () => {
+        const targetType = fixture.nativeElement.querySelector('multiline-dropdown.identity-choice');
+        const trigger = targetType.querySelector('.multiline-dropdown-trigger') as HTMLButtonElement;
+
+        expect(targetType).not.toBeNull();
+        expect(targetType.classList).toContain('selected');
+        expect(targetType.classList).toContain('derived-target-control');
+        expect(getComputedStyle(targetType).opacity).toBe('0.7');
+        expect(trigger.disabled).toBeTrue();
+        expect(trigger.querySelector('.multiline-dropdown-label')?.textContent?.trim()).toBe('Battle Armor');
+        expect(trigger.querySelector('.modifier-badge')?.textContent?.trim()).toBe('+1');
+        expect(fixture.nativeElement.querySelector('.derived-target-value')).toBeNull();
+    });
+
+    it('marks synchronized movement controls as disabled while preserving their state', () => {
+        component.isAirborne.set(true);
+        fixture.detectChanges();
+        const movementSection = fixture.nativeElement.querySelector('.target-movement-section');
+        const movementButtons = [...movementSection.querySelectorAll('.move-button')] as HTMLButtonElement[];
+
+        expect(movementSection.classList).toContain('derived-target-state');
+        expect(movementButtons.every(button => button.disabled)).toBeTrue();
+        expect(movementButtons[0].classList).toContain('selected');
+        expect(movementButtons[0].getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('allows shared defender cover and local woods to be edited for linked targets', () => {
+        const coverGroup = fixture.nativeElement.querySelector('[aria-label="Target hex cover"]');
+        const coverRow = coverGroup.closest('.choice-line');
+        const coverButtons = [...coverGroup.querySelectorAll('button')] as HTMLButtonElement[];
+        const woodsButtons = [...fixture.nativeElement.querySelectorAll('[aria-label="Intervening woods"] button')] as HTMLButtonElement[];
+
+        expect(coverRow.classList).not.toContain('derived-target-state');
+        expect(coverButtons.every(button => !button.disabled)).toBeTrue();
+        expect(woodsButtons.every(button => !button.disabled)).toBeTrue();
+
+        coverButtons[1].click();
+        fixture.detectChanges();
+
+        expect(component.targetHexCover()).toBe('light');
+        expect(coverButtons[1].getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('rejects programmatic target-type changes while read-only', () => {
+        component.selectUnitType('mek-biped');
+
+        expect(component.unitType()).toBe('battle-armor');
+    });
+});

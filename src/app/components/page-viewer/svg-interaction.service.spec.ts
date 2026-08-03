@@ -928,6 +928,7 @@ describe('SvgInteractionService', () => {
         const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice:not(.empty-choice)')) as HTMLButtonElement[];
         expect(choices.map(choice => choice.querySelector('.target-choice-token')?.textContent?.trim())).toEqual(['A', 'B']);
         expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim())).toEqual(['6', '9']);
+        expect(choices.map(choice => choice.querySelector('.target-choice-name')?.textContent?.trim())).toEqual(['Target A', 'Target B']);
 
         choices[1].click();
         expect(unit.getInventoryControlEntryTargetId(entry.id)).toBe('B');
@@ -1603,6 +1604,7 @@ function createInventoryInteractionUnit(html = `
     const runtime = new InventoryControlRuntimeState(() => unit.getInventory());
     Object.assign(unit, {
         getInventoryControlTargets: () => runtime.getTargets(),
+        getInventoryControlTargetsMap: () => runtime.targetsMap(),
         getInventoryControlEntryTargetId: (entryId: string) => runtime.getEntryTargetId(entryId),
         isInventoryControlEntrySelected: (entryId: string) => runtime.isEntrySelected(entryId),
         getInventoryControlEntryRange: (entryId: string) => runtime.getEntryRange(entryId),

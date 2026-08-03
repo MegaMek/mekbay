@@ -12,10 +12,10 @@ import type { C3DegradationLabel } from '../../models/rules/game-rules';
 import { inventoryTargetAllowsC3, inventoryTargetUsesC3 } from '../../utils/inventory-target-number.util';
 
 const JAMMED_CONDITION_COLOR = getUnitConditionDefinition('jammed')?.color ?? '#ff6be6';
-
 export interface WeaponTargetUpdateRequest {
     targetId: InventoryControlRuntimeTargetId;
     patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>;
+    manualTnOverride?: boolean;
 }
 
 export interface WeaponTargetCalculatorRequest {
@@ -37,8 +37,17 @@ export interface WeaponTargetCalculatorRequest {
                     @if (targets().length > 0) {
                         <button class="bt-button targets-delete" type="button" aria-label="Reset targets" title="Reset targets" [disabled]="readOnly() || targets().length === 0" (click)="resetTargets()">CLEAR</button>
                     }
-                    <button class="bt-button" type="button" aria-label="Add target" title="Add target" [disabled]="readOnly() || targets().length >= maxTargets()" (click)="addTarget()">ADD</button>
-                    <button class="bt-button" type="button" aria-label="Add shared target" title="Add a target shared by all units" [disabled]="readOnly() || targets().length >= maxTargets()" (click)="addSharedTarget()">ADD SHARED</button>
+                    <button class="bt-button" type="button" aria-label="Add target" title="Add force target" [disabled]="readOnly() || manualTargetCount() >= maxTargets()" (click)="addTarget()">ADD</button>
+                    @if (opforAvailable()) {
+                        <button class="bt-button opfor-toggle" type="button" aria-label="Toggle opposing units as targets" title="Add or remove all opposing units as targets" [class.selected]="opforEnabled()" [attr.aria-pressed]="opforEnabled()" [disabled]="readOnly()" (click)="toggleOpfor()">
+                            <svg class="opfor-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.91" aria-hidden="true" focusable="false">
+                                <path d="M10.57 5.8l2.71-2.72a5.4 5.4 0 0 1 7.64 7.64l-2.72 2.71" />
+                                <path d="m5.8 10.57-2.72 2.71a5.4 5.4 0 0 0 7.64 7.64l2.71-2.72" />
+                                <path d="m16.77 7.23-9.54 9.54" />
+                            </svg>
+                            <span>OPFOR</span>
+                        </button>
+                    }
                 </div>
             </div>
             <div class="weapon-targets-list">
@@ -64,16 +73,7 @@ export interface WeaponTargetCalculatorRequest {
                                             (valueChange)="updateColor(target.id, $event)">
                                             {{ target.letter }}
                                         </color-picker-button>
-                                        <input class="bt-input target-name" type="text" [readOnly]="readOnly()" [value]="target.name" (input)="updateName(target.id, $any($event.target).value)">
-                                        @if (target.shared) {
-                                            <span class="shared-target-badge" aria-label="Shared target" [tooltip]="sharedTargetTooltip">
-                                                <svg viewBox="0 0 24 24" aria-hidden="true">
-                                                    <path d="M10.57,5.8l2.71-2.72a5.4,5.4,0,0,1,7.64,7.64L18.2,13.43"/>
-                                                    <path d="M5.8,10.57,3.08,13.28a5.4,5.4,0,0,0,7.64,7.64l2.71-2.72"/>
-                                                    <line x1="16.77" y1="7.23" x2="7.23" y2="16.77"/>
-                                                </svg>
-                                            </span>
-                                        }
+                                        <input class="bt-input target-name" [class.linked-target-name]="target.readOnly === true" type="text" [readOnly]="readOnly() || target.readOnly === true" [value]="target.name" (input)="updateName(target.id, $any($event.target).value)">
                                     </div>
                                     <div class="target-controls-row">
                                         <div class="target-number-field">
@@ -124,12 +124,15 @@ export interface WeaponTargetCalculatorRequest {
                                     </div>
                                 }
                             </div>
-                            <div class="target-delete-row">
-                                <button class="target-delete" type="button" [disabled]="readOnly()" [attr.aria-label]="target.shared ? 'Delete shared target from all units' : 'Delete target'" [attr.title]="target.shared ? 'Delete shared target from all units' : 'Delete target'" (click)="deleteTarget(target.id)">
-                                    <svg _ngcontent-ng-c1165242001="" width="18px" height="18px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c1165242001="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
-                                        L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg>
-                                </button>
-                            </div>
+                            @if (manualTargetCount() > 0) {
+                                <div class="target-delete-row">
+                                    @if (!target.readOnly) {
+                                    <button class="target-delete" type="button" [disabled]="readOnly()" aria-label="Delete target" title="Delete target" (click)="deleteTarget(target.id)">
+                                        <svg width="18px" height="18px" fill="currentColor" viewBox="0 0 1200 1200" aria-hidden="true"><path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg>
+                                    </button>
+                                    }
+                                </div>
+                            }
                         </div>
                     }
                 }
@@ -171,6 +174,18 @@ export interface WeaponTargetCalculatorRequest {
             display: flex;
             gap: 8px;
             align-items: center;
+        }
+
+        .opfor-toggle {
+            gap: 5px;
+        }
+
+        .opfor-link-icon {
+            inline-size: 16px;
+            block-size: 16px;
+            flex: 0 0 16px;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
 
         .weapon-targets-list {
@@ -290,7 +305,9 @@ export interface WeaponTargetCalculatorRequest {
             flex-direction: column;
             align-items: end;
             justify-content: start;
-            flex: 0 0 auto;
+            flex: 0 0 29px;
+            inline-size: 29px;
+            box-sizing: border-box;
         }
 
         .target-square {
@@ -307,25 +324,16 @@ export interface WeaponTargetCalculatorRequest {
             flex: 1 1 auto;
         }
 
-        .shared-target-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            flex: 0 0 1.25em;
-            inline-size: 1.25em;
-            block-size: var(--target-control-height);
-            color: var(--text-color-secondary);
-            cursor: help;
-        }
-
-        .shared-target-badge svg {
-            inline-size: 0.95em;
-            block-size: 0.95em;
-            fill: none;
-            stroke: currentColor;
-            stroke-width: 1.91;
-            stroke-linecap: round;
-            stroke-linejoin: round;
+        .target-name.linked-target-name,
+        .target-name.linked-target-name:hover,
+        .target-name.linked-target-name:focus,
+        .target-name.linked-target-name:focus-visible {
+            border-color: transparent;
+            background-color: transparent;
+            background-image: none;
+            transition: none;
+            outline: none;
+            cursor: default;
         }
 
         .target-number-field {
@@ -496,7 +504,6 @@ export interface WeaponTargetCalculatorRequest {
 })
 export class WeaponTargetsMenuComponent {
     readonly jammedConditionColor = JAMMED_CONDITION_COLOR;
-    readonly sharedTargetTooltip = 'Shared target';
     readonly tnModifierTooltip = 'Target-side TN modifier for this target. Use it for target movement, indirect fire, spotter movement, terrain, cover, stance, and similar target conditions. It is added separately from your unit skill, your movement, range, heat, and weapon modifiers. The calculator can fill it, and you can still override it manually.';
     readonly targets = input<InventoryControlRuntimeTarget[]>([]);
     readonly colors = input<readonly string[]>(INVENTORY_CONTROL_TARGET_COLORS);
@@ -505,10 +512,12 @@ export class WeaponTargetsMenuComponent {
     readonly showC3Distance = input(false);
     readonly c3Degraded = input(false);
     readonly c3DegradationLabel = input<C3DegradationLabel>('DEGRADED');
+    readonly opforAvailable = input(false);
+    readonly opforEnabled = input(false);
     readonly readOnly = input(false);
 
     readonly addRequest = output<void>();
-    readonly addSharedRequest = output<void>();
+    readonly opforToggleRequest = output<boolean>();
     readonly resetRequest = output<void>();
     readonly updateRequest = output<WeaponTargetUpdateRequest>();
     readonly deleteRequest = output<InventoryControlRuntimeTargetId>();
@@ -518,8 +527,12 @@ export class WeaponTargetsMenuComponent {
         if (!this.readOnly()) this.addRequest.emit();
     }
 
-    addSharedTarget(): void {
-        if (!this.readOnly()) this.addSharedRequest.emit();
+    toggleOpfor(): void {
+        if (!this.readOnly() && this.opforAvailable()) this.opforToggleRequest.emit(!this.opforEnabled());
+    }
+
+    manualTargetCount(): number {
+        return this.targets().filter(target => target.source !== 'opfor').length;
     }
 
     resetTargets(): void {
@@ -531,7 +544,7 @@ export class WeaponTargetsMenuComponent {
     }
 
     updateName(targetId: InventoryControlRuntimeTargetId, name: string): void {
-        if (this.readOnly()) return;
+        if (this.readOnly() || this.targetReadOnly(targetId)) return;
         this.updateRequest.emit({ targetId, patch: { name } });
     }
 
@@ -564,7 +577,7 @@ export class WeaponTargetsMenuComponent {
 
     updateTnModifier(targetId: InventoryControlRuntimeTargetId, value: string): void {
         if (this.readOnly()) return;
-        this.updateRequest.emit({ targetId, patch: { tnModifier: this.parseNumber(value, 0, false) } });
+        this.updateRequest.emit({ targetId, patch: { tnModifier: this.parseNumber(value, 0, false) }, manualTnOverride: true });
     }
 
     stepDistance(target: InventoryControlRuntimeTarget, delta: number): void {
@@ -599,7 +612,7 @@ export class WeaponTargetsMenuComponent {
 
     stepTnModifier(target: InventoryControlRuntimeTarget, delta: number): void {
         if (this.readOnly()) return;
-        this.updateRequest.emit({ targetId: target.id, patch: { tnModifier: target.tnModifier + delta } });
+        this.updateRequest.emit({ targetId: target.id, patch: { tnModifier: target.tnModifier + delta }, manualTnOverride: true });
     }
 
     openTnCalculator(targetId: InventoryControlRuntimeTargetId, event: MouseEvent): void {
@@ -611,5 +624,9 @@ export class WeaponTargetsMenuComponent {
         const parsed = Number(value);
         if (!Number.isFinite(parsed)) return fallback;
         return clampMinZero ? Math.max(0, parsed) : parsed;
+    }
+
+    private targetReadOnly(targetId: InventoryControlRuntimeTargetId): boolean {
+        return this.targets().find(target => target.id === targetId)?.readOnly === true;
     }
 }

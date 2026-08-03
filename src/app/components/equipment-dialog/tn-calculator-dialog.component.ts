@@ -63,6 +63,7 @@ const JAMMED_CONDITION_COLOR = getUnitConditionDefinition('jammed')?.color ?? '#
 export interface TnCalculatorDialogData {
     target: InventoryControlRuntimeTarget;
     gameRules: CBTGameRules;
+    targetStateReadOnly?: boolean;
     showC3Distance?: boolean;
     c3Degraded?: boolean;
     indirectFireBaseModifier?: number;
@@ -100,7 +101,7 @@ export interface TnCalculatorDialogResult {
                                     <span>Secondary (Side/Back)</span><span class="modifier-badge">+2</span>
                                 </button>
                             } @else if (gameRules().supportsLargeTarget) {
-                                <button type="button" class="bt-button move-button" [class.selected]="largeTarget()" [attr.aria-pressed]="largeTarget()" (click)="toggleLargeTarget()">
+                                <button type="button" class="bt-button move-button" [class.selected]="largeTarget()" [attr.aria-pressed]="largeTarget()" [disabled]="targetStateReadOnly" (click)="toggleLargeTarget()">
                                     <span>Large Target</span><span class="modifier-badge">-1</span>
                                 </button>
                             }
@@ -132,7 +133,7 @@ export interface TnCalculatorDialogResult {
                         }
                     </section>
 
-                    <section class="tn-section target-movement-section">
+                    <section class="tn-section target-movement-section" [class.derived-target-state]="targetStateReadOnly">
                         <div class="section-title">Target Movement</div>
                         <div class="row" [class.static-target-disabled]="staticTarget()">
                             <hex-slider
@@ -151,14 +152,14 @@ export interface TnCalculatorDialogResult {
                                 (valueChange)="setTargetMovementBracketIndex($event)"></hex-slider>
                         </div>
                         <div class="button-row">
-                            <button type="button" class="bt-button move-button" [class.selected]="isAirborne()" [attr.aria-pressed]="isAirborne()" [disabled]="staticTarget()" (click)="toggleAirborne()"><span>Jumped / Airborne</span><span class="modifier-badge">+1</span></button>
+                            <button type="button" class="bt-button move-button" [class.selected]="isAirborne()" [attr.aria-pressed]="isAirborne()" [disabled]="staticTarget() || targetStateReadOnly" (click)="toggleAirborne()"><span>Jumped / Airborne</span><span class="modifier-badge">+1</span></button>
                             @if (gameRules().supportsSkidding) {
-                                <button type="button" class="bt-button move-button" [class.selected]="skidding()" [attr.aria-pressed]="skidding()" [disabled]="staticTarget()" (click)="toggleSkidding()"><span>Skidding</span><span class="modifier-badge">+2</span></button>
+                                <button type="button" class="bt-button move-button" [class.selected]="skidding()" [attr.aria-pressed]="skidding()" [disabled]="staticTarget() || targetStateReadOnly" (click)="toggleSkidding()"><span>Skidding</span><span class="modifier-badge">+2</span></button>
                             }
                         </div>
                         <div class="button-row" role="group" aria-label="Target stance">
-                            <button type="button" class="bt-button move-button" [class.selected]="stance() === 'prone'" [attr.aria-pressed]="stance() === 'prone'" [disabled]="staticTarget()" (click)="selectStance('prone')"><span>{{ proneLabel() }}</span><span class="modifier-badge">{{ proneModifierLabel() }}</span></button>
-                            <button type="button" class="bt-button move-button" [class.selected]="stance() === 'immobile'" [attr.aria-pressed]="stance() === 'immobile'" [disabled]="staticTarget()" (click)="selectStance('immobile')"><span>Immobile</span><span class="modifier-badge">-4</span></button>
+                            <button type="button" class="bt-button move-button" [class.selected]="stance() === 'prone'" [attr.aria-pressed]="stance() === 'prone'" [disabled]="staticTarget() || targetStateReadOnly" (click)="selectStance('prone')"><span>{{ proneLabel() }}</span><span class="modifier-badge">{{ proneModifierLabel() }}</span></button>
+                            <button type="button" class="bt-button move-button" [class.selected]="stance() === 'immobile'" [attr.aria-pressed]="stance() === 'immobile'" [disabled]="staticTarget() || targetStateReadOnly" (click)="selectStance('immobile')"><span>Immobile</span><span class="modifier-badge">-4</span></button>
                         </div>
                     </section>
 
@@ -211,10 +212,12 @@ export interface TnCalculatorDialogResult {
                             <multiline-dropdown
                                 class="bt-button identity-choice"
                                 [class.selected]="unitTypeSelectedHasModifier()"
+                                [class.derived-target-control]="targetStateReadOnly"
                                 controlId="tnTargetUnitType"
                                 [label]="'Target Type'"
                                 [options]="unitTypeDropdownOptions()"
                                 [value]="unitType()"
+                                [disabled]="targetStateReadOnly"
                                 (valueChange)="selectUnitType($event)" />
                         </div>
                     </section>
@@ -486,6 +489,15 @@ export interface TnCalculatorDialogResult {
             pointer-events: none;
         }
 
+        .derived-target-state {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        .identity-choice.derived-target-control {
+            opacity: 0.7;
+        }
+
         .c3-distance-disabled hex-slider {
             pointer-events: none;
         }
@@ -548,7 +560,41 @@ export interface TnCalculatorDialogResult {
 
         .bt-button.move-button:disabled {
             cursor: not-allowed;
-            opacity: 0.45;
+            opacity: 0.7;
+        }
+
+        .derived-target-state .bt-button,
+        .derived-target-state .bt-button:hover,
+        .derived-target-state .bt-button:active,
+        .identity-choice.derived-target-control,
+        .identity-choice.derived-target-control:hover,
+        .identity-choice.derived-target-control:active {
+            pointer-events: none;
+            cursor: default;
+            transition: none;
+            border-color: transparent;
+            background-image: none;
+        }
+
+        .derived-target-state .bt-button:not(.selected),
+        .derived-target-state .bt-button:not(.selected):hover,
+        .derived-target-state .bt-button:not(.selected):active,
+        .identity-choice.derived-target-control:not(.selected),
+        .identity-choice.derived-target-control:not(.selected):hover,
+        .identity-choice.derived-target-control:not(.selected):active {
+            background-color: transparent;
+            color: inherit;
+        }
+
+        .derived-target-state .bt-button.selected,
+        .derived-target-state .bt-button.selected:hover,
+        .derived-target-state .bt-button.selected:active,
+        .identity-choice.derived-target-control.selected,
+        .identity-choice.derived-target-control.selected:hover,
+        .identity-choice.derived-target-control.selected:active {
+            border-color: transparent;
+            background-color: var(--bt-yellow);
+            color: #000;
         }
 
         .spotter-section {
@@ -782,6 +828,7 @@ export class TnCalculatorDialogComponent {
     private readonly initialUnitType = this.data.target.unitType ?? 'mek-biped';
 
     readonly target = this.data.target;
+    readonly targetStateReadOnly = this.data.targetStateReadOnly ?? false;
     readonly gameRules = signal(this.data.gameRules);
     readonly showC3Distance = signal<boolean>(this.data.showC3Distance ?? false);
     readonly c3Degraded = signal<boolean>(this.data.c3Degraded ?? false);
@@ -893,6 +940,7 @@ export class TnCalculatorDialogComponent {
     }
 
     selectUnitType(value: string): void {
+        if (this.targetStateReadOnly) return;
         this.unitType.set(value as TnTargetUnitType);
         this.clearStaticTargetModifiers();
     }
@@ -902,25 +950,25 @@ export class TnCalculatorDialogComponent {
     }
 
     setTargetMovementBracketIndex(value: number): void {
-        if (this.staticTarget()) return;
+        if (this.staticTarget() || this.targetStateReadOnly) return;
         this.targetMovementBracketIndex.set(this.alignToStep(value, this.MOVEMENT_MIN, this.MOVEMENT_MAX));
         this.clearStanceForMovement();
     }
 
     toggleAirborne(): void {
-        if (this.staticTarget()) return;
+        if (this.staticTarget() || this.targetStateReadOnly) return;
         this.isAirborne.set(!this.isAirborne());
         this.clearStanceForMovement();
     }
 
     toggleSkidding(): void {
-        if (this.staticTarget()) return;
+        if (this.staticTarget() || this.targetStateReadOnly) return;
         this.skidding.set(!this.skidding());
         this.clearStanceForMovement();
     }
 
     selectStance(stance: TnTargetStance): void {
-        if (this.staticTarget()) return;
+        if (this.staticTarget() || this.targetStateReadOnly) return;
         const next = this.stance() === stance ? 'normal' : stance;
         this.stance.set(next);
         if (next !== 'normal') {
@@ -982,6 +1030,7 @@ export class TnCalculatorDialogComponent {
     }
 
     toggleLargeTarget(): void {
+        if (this.targetStateReadOnly) return;
         this.largeTarget.set(!this.largeTarget());
     }
 

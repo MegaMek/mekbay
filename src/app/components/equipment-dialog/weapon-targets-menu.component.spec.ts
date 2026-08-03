@@ -85,24 +85,37 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         expect(emitted).not.toHaveBeenCalled();
     });
 
+    it('marks direct TN edits as manual overrides', () => {
+        const emitted = jasmine.createSpy('updateRequest');
+        component.updateRequest.subscribe(emitted);
+
+        component.updateTnModifier(TARGET.id, '3');
+        component.stepTnModifier(TARGET, 1);
+
+        expect(emitted.calls.allArgs()).toEqual([
+            [{ targetId: 'A', patch: { tnModifier: 3 }, manualTnOverride: true }],
+            [{ targetId: 'A', patch: { tnModifier: 1 }, manualTnOverride: true }]
+        ]);
+    });
+
     it('does not emit mutations while read-only', () => {
         fixture.componentRef.setInput('readOnly', true);
         fixture.detectChanges();
         const updates = jasmine.createSpy('updateRequest');
         const additions = jasmine.createSpy('addRequest');
-        const sharedAdditions = jasmine.createSpy('addSharedRequest');
+        const opforToggles = jasmine.createSpy('opforToggleRequest');
         const resets = jasmine.createSpy('resetRequest');
         const deletions = jasmine.createSpy('deleteRequest');
         const calculators = jasmine.createSpy('calculatorRequest');
         component.updateRequest.subscribe(updates);
         component.addRequest.subscribe(additions);
-        component.addSharedRequest.subscribe(sharedAdditions);
+        component.opforToggleRequest.subscribe(opforToggles);
         component.resetRequest.subscribe(resets);
         component.deleteRequest.subscribe(deletions);
         component.calculatorRequest.subscribe(calculators);
 
         component.addTarget();
-        component.addSharedTarget();
+        component.toggleOpfor();
         component.resetTargets();
         component.deleteTarget(TARGET.id);
         component.updateName(TARGET.id, 'Changed');
@@ -117,7 +130,7 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
 
         expect(updates).not.toHaveBeenCalled();
         expect(additions).not.toHaveBeenCalled();
-        expect(sharedAdditions).not.toHaveBeenCalled();
+        expect(opforToggles).not.toHaveBeenCalled();
         expect(resets).not.toHaveBeenCalled();
         expect(deletions).not.toHaveBeenCalled();
         expect(calculators).not.toHaveBeenCalled();
@@ -125,43 +138,75 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         expect(Array.from(buttons).every(button => button.disabled)).toBeTrue();
     });
 
-    it('renders separate ADD and ADD SHARED actions and emits the matching requests', () => {
+    it('renders one ADD action and an available OPFOR toggle', () => {
         const additions = jasmine.createSpy('addRequest');
-        const sharedAdditions = jasmine.createSpy('addSharedRequest');
+        const opforToggles = jasmine.createSpy('opforToggleRequest');
         component.addRequest.subscribe(additions);
-        component.addSharedRequest.subscribe(sharedAdditions);
+        component.opforToggleRequest.subscribe(opforToggles);
+        fixture.componentRef.setInput('opforAvailable', true);
         fixture.detectChanges();
 
         const buttons = Array.from(fixture.nativeElement.querySelectorAll('.weapon-targets-header-group button')) as HTMLButtonElement[];
         const addButton = buttons.find(button => button.textContent?.trim() === 'ADD')!;
-        const addSharedButton = buttons.find(button => button.textContent?.trim() === 'ADD SHARED')!;
+        const opforButton = buttons.find(button => button.textContent?.trim() === 'OPFOR')!;
+        const opforIcon = opforButton.querySelector('.opfor-link-icon') as SVGElement;
 
         addButton.click();
-        addSharedButton.click();
+        opforButton.click();
 
+        expect(opforIcon).not.toBeNull();
+        expect(opforIcon.getAttribute('viewBox')).toBe('0 0 24 24');
+        expect(opforIcon.getAttribute('stroke')).toBe('currentColor');
+        expect(opforIcon.getAttribute('aria-hidden')).toBe('true');
+        expect(opforIcon.querySelectorAll('path').length).toBe(3);
+        expect(opforIcon.querySelector('style')).toBeNull();
+        expect(opforButton.getAttribute('aria-label')).toBe('Toggle opposing units as targets');
+        expect(opforButton.title).toBe('Add or remove all opposing units as targets');
         expect(additions).toHaveBeenCalledTimes(1);
-        expect(sharedAdditions).toHaveBeenCalledTimes(1);
+        expect(opforToggles).toHaveBeenCalledOnceWith(true);
     });
 
-    it('marks shared targets with a compact accessible indicator', () => {
-        fixture.componentRef.setInput('targets', [{ ...TARGET, shared: true }]);
+    it('hides the OPFOR toggle when no enemy force is available', () => {
         fixture.detectChanges();
 
-        const badge = fixture.nativeElement.querySelector('.shared-target-badge') as HTMLElement;
-        const deleteButton = fixture.nativeElement.querySelector('.target-delete') as HTMLButtonElement;
-
-        expect(badge).not.toBeNull();
-        expect(badge.getAttribute('aria-label')).toBe('Shared target');
-        expect(badge.querySelector('svg')).not.toBeNull();
-        expect(deleteButton.title).toBe('Delete shared target from all units');
-        expect(deleteButton.getAttribute('aria-label')).toBe('Delete shared target from all units');
+        expect(fixture.nativeElement.querySelector('.opfor-toggle')).toBeNull();
     });
 
-    it('does not mark local targets as shared', () => {
+    it('keeps derived OPFOR identity immutable while allowing presentation color changes', () => {
+        fixture.componentRef.setInput('targets', [{ ...TARGET, id: 'opfor:enemy', source: 'opfor', readOnly: true }]);
+        const updates = jasmine.createSpy('updateRequest');
+        component.updateRequest.subscribe(updates);
         fixture.detectChanges();
 
-        expect(fixture.nativeElement.querySelector('.shared-target-badge')).toBeNull();
-        expect((fixture.nativeElement.querySelector('.target-delete') as HTMLButtonElement).title).toBe('Delete target');
+        expect((fixture.nativeElement.querySelector('.target-name') as HTMLInputElement).readOnly).toBeTrue();
+        expect(fixture.nativeElement.querySelector('color-picker-button button').disabled).toBeFalse();
+        expect(fixture.nativeElement.querySelector('.target-delete')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.target-delete-row')).toBeNull();
+        const linkedNameStyle = getComputedStyle(fixture.nativeElement.querySelector('.linked-target-name'));
+        expect(linkedNameStyle.backgroundImage).toBe('none');
+        expect(linkedNameStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+        expect(linkedNameStyle.borderColor).toBe('rgba(0, 0, 0, 0)');
+        component.updateName('opfor:enemy', 'Changed');
+        component.updateColor('opfor:enemy', '#fff');
+        expect(updates).toHaveBeenCalledOnceWith({ targetId: 'opfor:enemy', patch: { color: '#fff' } });
+    });
+
+    it('keeps equal delete-column widths for manual and linked targets in mixed lists', () => {
+        fixture.componentRef.setInput('targets', [
+            TARGET,
+            { ...TARGET, id: 'opfor:enemy', letter: 'B', source: 'opfor', readOnly: true }
+        ]);
+        fixture.detectChanges();
+
+        const rows = [...fixture.nativeElement.querySelectorAll('.weapon-target-row')] as HTMLElement[];
+        const manualDeleteColumn = rows[0].querySelector('.target-delete-row') as HTMLElement;
+        const linkedDeleteColumn = rows[1].querySelector('.target-delete-row') as HTMLElement;
+
+        expect(manualDeleteColumn).not.toBeNull();
+        expect(linkedDeleteColumn).not.toBeNull();
+        expect(manualDeleteColumn.querySelector('.target-delete')).not.toBeNull();
+        expect(linkedDeleteColumn.querySelector('.target-delete')).toBeNull();
+        expect(getComputedStyle(manualDeleteColumn).width).toBe(getComputedStyle(linkedDeleteColumn).width);
     });
 
     it('removes the overlay when degradation clears', () => {

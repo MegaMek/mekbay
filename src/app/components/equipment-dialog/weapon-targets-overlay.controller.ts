@@ -7,6 +7,7 @@ import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import type { OverlayManagerService } from '../../services/overlay-manager.service';
 import { WeaponTargetsMenuComponent, type WeaponTargetCalculatorRequest, type WeaponTargetUpdateRequest } from './weapon-targets-menu.component';
 import { TnCalculatorDialogComponent, type TnCalculatorDialogData, type TnCalculatorDialogResult } from './tn-calculator-dialog.component';
+import { ForceBuilderService } from '../../services/force-builder.service';
 
 const WEAPON_TARGET_OVERLAY_POSITIONS = [
     { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
@@ -85,8 +86,8 @@ export class WeaponTargetsOverlayController {
             options.unit.createInventoryControlTarget();
             this.syncAfterTargetUpdate(options);
         });
-        outputToObservable(componentRef.instance.addSharedRequest).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(() => {
-            options.unit.createSharedInventoryControlTarget();
+        outputToObservable(componentRef.instance.opforToggleRequest).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(enabled => {
+            this.forceBuilderService().setInventoryControlOpforEnabled(options.unit.force, enabled);
             this.syncAfterTargetUpdate(options);
         });
         outputToObservable(componentRef.instance.resetRequest).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(() => {
@@ -94,7 +95,11 @@ export class WeaponTargetsOverlayController {
             this.syncAfterTargetUpdate(options);
         });
         outputToObservable(componentRef.instance.updateRequest).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe((request: WeaponTargetUpdateRequest) => {
-            options.unit.updateInventoryControlTarget(request.targetId, request.patch);
+            if (request.manualTnOverride && request.patch.tnModifier !== undefined) {
+                options.unit.overrideInventoryControlTargetModifier(request.targetId, request.patch.tnModifier);
+            } else {
+                options.unit.updateInventoryControlTarget(request.targetId, request.patch);
+            }
             this.syncAfterTargetUpdate(options);
         });
         outputToObservable(componentRef.instance.calculatorRequest).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(request => {
@@ -124,6 +129,8 @@ export class WeaponTargetsOverlayController {
         this.targetsCompRef.setInput('readOnly', options.readOnly ? options.readOnly() : options.unit.readOnly());
         this.targetsCompRef.setInput('unassignedMovement', options.unit.turnState().missingAttackMovementModifier());
         this.targetsCompRef.setInput('showC3Distance', this.showC3Distance(options.unit));
+        this.targetsCompRef.setInput('opforAvailable', this.forceBuilderService().isInventoryControlOpforAvailable(options.unit.force));
+        this.targetsCompRef.setInput('opforEnabled', options.unit.force.inventoryControlOpforEnabled());
         const c3Degraded = options.unit.c3DegradationSource() !== 'none';
         this.targetsCompRef.setInput('c3Degraded', c3Degraded);
         this.targetsCompRef.setInput('c3DegradationLabel', options.unit.gameRules.c3DegradationLabel);
@@ -155,7 +162,7 @@ export class WeaponTargetsOverlayController {
         };
         const portal = new ComponentPortal(TnCalculatorDialogComponent, null, Injector.create({
             providers: [
-                { provide: DIALOG_DATA, useValue: { target, gameRules: options.unit.gameRules, showC3Distance: this.showC3Distance(options.unit), c3Degraded: options.unit.c3DegradationSource() !== 'none', indirectFireBaseModifier: options.unit.rules.getSpottingModifier() } satisfies TnCalculatorDialogData },
+                { provide: DIALOG_DATA, useValue: { target, gameRules: options.unit.gameRules, targetStateReadOnly: target.readOnly === true, showC3Distance: this.showC3Distance(options.unit), c3Degraded: options.unit.c3DegradationSource() !== 'none', indirectFireBaseModifier: options.unit.rules.getSpottingModifier() } satisfies TnCalculatorDialogData },
                 { provide: DialogRef, useValue: { close: closeWithResult } },
             ],
             parent: this.deps.injector,
@@ -203,5 +210,9 @@ export class WeaponTargetsOverlayController {
     private destroyTargetsSyncEffect(): void {
         this.targetsSyncEffect?.destroy();
         this.targetsSyncEffect = null;
+    }
+
+    private forceBuilderService(): ForceBuilderService {
+        return this.deps.injector.get(ForceBuilderService);
     }
 }
