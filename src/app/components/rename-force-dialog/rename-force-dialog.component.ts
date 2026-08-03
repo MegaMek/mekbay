@@ -460,7 +460,7 @@ export class RenameForceDialogComponent implements OnDestroy {
     factionTriggerWrapper = viewChild.required<ElementRef<HTMLDivElement>>('factionTriggerWrapper');
     eraTriggerWrapper = viewChild.required<ElementRef<HTMLDivElement>>('eraTriggerWrapper');
 
-    public dialogRef: DialogRef<RenameForceDialogResult | null, RenameForceDialogComponent> = inject(DialogRef);
+    public dialogRef = inject<DialogRef<RenameForceDialogResult | null, RenameForceDialogComponent>>(DialogRef);
     readonly data: RenameForceDialogData = inject(DIALOG_DATA);
     private dataService = inject(DataService);
     private overlayManager = inject(OverlayManagerService);
