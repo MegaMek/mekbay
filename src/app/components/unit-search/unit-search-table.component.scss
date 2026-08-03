@@ -1,0 +1,155 @@
+:host ::ng-deep .matchHighlight {
+    color: var(--bt-yellow);
+    font-weight: 700;
+}
+
+.special-pill {
+    display: inline-block;
+    padding: 2px 6px;
+    border: 1px solid #fff3;
+    color: inherit;
+    background: #fff1;
+    font-size: .85em;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.special-pill:hover {
+    border-color: var(--bt-yellow);
+    color: var(--bt-yellow);
+    background: var(--bt-yellow-background-bright);
+}
+
+.as-card-view {
+    display: flex;
+}
+
+.unit-search-as-table {
+    flex: 1;
+    min-height: 0;
+}
+
+.as-td {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.as-td-icon {
+    display: grid;
+    place-items: center;
+}
+
+.as-td-name {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.as-td-year {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.as-era-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+}
+
+.as-td-chassis {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.as-td-chassis-name,
+.as-td-model,
+.as-td-type {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.as-td-chassis-name {
+    min-width: 0;
+}
+
+.as-td-model {
+    color: var(--text-color-secondary);
+    font-size: .85em;
+}
+
+.cbt-td-bv,
+.cbt-td-tons,
+.cbt-td-mv {
+    white-space: nowrap;
+}
+
+.as-td-specials,
+.as-td-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+    width: 100%;
+    min-width: 0;
+}
+
+.as-td-tags {
+    justify-content: flex-end;
+}
+
+.as-td-specials .special-pill {
+    padding: 1px 4px;
+    font-size: .8em;
+}
+
+.chord-indicator {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    color: var(--text-color);
+    background: var(--background-color-light);
+    box-shadow: 0 4px 12px #0005;
+    font-size: .9em;
+    white-space: nowrap;
+    pointer-events: none;
+    animation: chord-fade-in .15s ease-out;
+    transform: translateX(-50%);
+}
+
+.chord-indicator-key {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #fff2;
+    font: 600 .85em monospace;
+}
+
+.chord-indicator-text {
+    opacity: .85;
+}
+
+@keyframes chord-fade-in {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+}

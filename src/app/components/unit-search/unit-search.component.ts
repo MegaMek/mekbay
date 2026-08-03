@@ -139,7 +139,11 @@ interface ActiveVariantGroupFilter extends UnitVariantGroupIdentity {
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule, ScrollingModule, OverlayModule, LongPressDirective, TooltipDirective, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent, VariableSizeVirtualScrollDirective, RangeSliderComponent, SimpleSliderComponent],
     templateUrl: './unit-search.component.html',
-    styleUrl: './unit-search.component.scss',
+    styleUrls: [
+        './unit-search.component.scss',
+        './unit-search-advanced-controls.component.scss',
+        './unit-search-table.component.scss',
+    ],
     host: {
         '(keydown)': 'onKeydown($event)',
         '(document:keydown)': 'onDocumentKeydown($event)'
