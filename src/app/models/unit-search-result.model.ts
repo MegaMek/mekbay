@@ -37,8 +37,10 @@ export interface UnitSearchNumericRange {
     readonly max: number;
 }
 
+/** Default maximum and sentinel for preserving unbounded Classic BV selection behavior. */
 export const DEFAULT_CLASSIC_BV_NORMALIZATION_MAX = 999_999;
 export const DEFAULT_CLASSIC_BV_NORMALIZATION_MAX_DELTA = 8;
+/** Default maximum and sentinel for preserving unbounded Alpha Strike PV selection behavior. */
 export const DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX = 9_999;
 
 /** User-selected settings for matching a unit to a target adjusted BV. */

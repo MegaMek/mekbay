@@ -157,14 +157,14 @@ export class UnitSearchComponent {
     ];
     readonly bvNormalizationTooltip = [
         { value: 'Finds a Gunnery/Piloting combination within the selected ranges that places each unit inside the Target BV range.' },
-        { value: 'A unit that fits with its default crew keeps those skills.' },
+        { value: 'With a constrained Target BV maximum, selects the highest adjusted BV that does not exceed it.' },
         { value: 'Max Delta limits the absolute difference between the effective Gunnery and Piloting values.' },
         { value: 'Units with fixed Piloting ignore the Piloting range and Max Delta; only Gunnery is adjusted.' },
         { value: 'Matching results keep their selected skills and adjusted BV when viewed or added to a force.' },
     ];
     readonly pvNormalizationTooltip = [
         { value: 'Finds a Skill value within the selected range that places each unit inside the Target PV range.' },
-        { value: 'A unit that fits with Skill 4 keeps that skill.' },
+        { value: 'With a constrained Target PV maximum, selects the highest adjusted PV that does not exceed it.' },
         { value: 'Matching results keep their selected Skill and adjusted PV when viewed or added to a force.' },
     ];
     readonly normalizationMaxDeltaTooltip = [

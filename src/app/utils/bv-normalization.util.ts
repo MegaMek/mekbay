@@ -69,10 +69,12 @@ export function isValidBvNormalizationSettings(settings: BvNormalizationSettings
 /**
  * Finds one deterministic skill pair whose adjusted BV lies within the inclusive target range.
  *
- * A fitting effective default crew is returned without adjustment. Otherwise, matching pairs are
- * ordered by adjusted BV distance from the target midpoint, distance from the default crew,
- * Gunnery/Piloting difference, Gunnery, and finally Piloting. Units with mandatory Piloting ignore
- * the selected Piloting range and maximum skill delta, so only their Gunnery is normalized.
+ * With an explicit target maximum, matching pairs are ordered by highest adjusted BV without
+ * exceeding that maximum. When the maximum remains at its default sentinel, a fitting effective
+ * default crew is returned without adjustment and other matches retain midpoint-based ordering.
+ * Ties prefer distance from the default crew, Gunnery/Piloting difference, Gunnery, and finally
+ * Piloting. Units with mandatory Piloting ignore the selected Piloting range and maximum skill
+ * delta, so only their Gunnery is normalized.
  */
 export function findBvNormalizationMatch(
     unit: Unit,
@@ -85,6 +87,7 @@ export function findBvNormalizationMatch(
     }
 
     const targetMidpoint = (settings.targetBv.min + settings.targetBv.max) / 2;
+    const maximizeAdjustedBv = settings.targetBv.max !== DEFAULT_CLASSIC_BV_NORMALIZATION_MAX;
     const fixedPiloting = getFixedPilotingSkill(unit);
     const defaultPiloting = fixedPiloting ?? DEFAULT_PILOTING_SKILL;
     const defaultIsEligible = isWithinNumericRange(DEFAULT_GUNNERY_SKILL, settings.gunnery)
@@ -92,7 +95,7 @@ export function findBvNormalizationMatch(
             || (isWithinNumericRange(DEFAULT_PILOTING_SKILL, settings.piloting)
                 && Math.abs(DEFAULT_GUNNERY_SKILL - defaultPiloting) <= settings.maxDelta));
 
-    if (defaultIsEligible) {
+    if (!maximizeAdjustedBv && defaultIsEligible) {
         const defaultMatch = createMatch(unit, DEFAULT_GUNNERY_SKILL, defaultPiloting);
         if (isWithinNumericRange(defaultMatch.adjustedValue, settings.targetBv)) {
             return defaultMatch;
@@ -115,7 +118,7 @@ export function findBvNormalizationMatch(
                 continue;
             }
 
-            if (!bestMatch || compareMatches(candidate, bestMatch, targetMidpoint) < 0) {
+            if (!bestMatch || compareMatches(candidate, bestMatch, targetMidpoint, maximizeAdjustedBv) < 0) {
                 bestMatch = candidate;
             }
         }
@@ -137,8 +140,13 @@ function compareMatches(
     left: BvNormalizationMatch,
     right: BvNormalizationMatch,
     targetMidpoint: number,
+    maximizeAdjustedBv: boolean,
 ): number {
-    return compareNumber(Math.abs(left.adjustedValue - targetMidpoint), Math.abs(right.adjustedValue - targetMidpoint))
+    const adjustedValueOrder = maximizeAdjustedBv
+        ? compareNumber(right.adjustedValue, left.adjustedValue)
+        : compareNumber(Math.abs(left.adjustedValue - targetMidpoint), Math.abs(right.adjustedValue - targetMidpoint));
+
+    return adjustedValueOrder
         || compareNumber(distanceFromDefault(left), distanceFromDefault(right))
         || compareNumber(Math.abs(left.gunnery - left.piloting), Math.abs(right.gunnery - right.piloting))
         || compareNumber(left.gunnery, right.gunnery)

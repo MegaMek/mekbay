@@ -1,4 +1,7 @@
-import type { BvNormalizationSettings } from '../models/unit-search-result.model';
+import {
+    DEFAULT_CLASSIC_BV_NORMALIZATION_MAX,
+    type BvNormalizationSettings,
+} from '../models/unit-search-result.model';
 import type { Unit, UnitSubtype, UnitType } from '../models/units.model';
 import { BVCalculatorUtil } from './bv-calculator.util';
 import {
@@ -126,7 +129,7 @@ describe('classic BV normalization', () => {
         const unit = createUnit();
 
         expect(findBvNormalizationMatch(unit, settings(1000, 1100, 4, 4, 4, 5)))
-            .toEqual({ kind: 'bv', adjustedValue: 1000, gunnery: 4, piloting: 5 });
+            .toEqual({ kind: 'bv', adjustedValue: 1100, gunnery: 4, piloting: 4 });
         expect(findBvNormalizationMatch(unit, settings(1000, 1100, 4, 4, 4, 4)))
             .toEqual({ kind: 'bv', adjustedValue: 1100, gunnery: 4, piloting: 4 });
     });
@@ -172,16 +175,33 @@ describe('classic BV normalization', () => {
         expect(findBvNormalizationMatch(createUnit({ bv: Number.NaN }), settings(0, 100))).toBeNull();
     });
 
-    it('keeps the effective default crew when it fits instead of moving closer to the midpoint', () => {
+    it('bypasses a fitting default crew to maximize BV under a constrained maximum', () => {
         const match = findBvNormalizationMatch(createUnit(), settings(850, 1100, 4, 5, 4, 5));
+
+        expect(match).toEqual({ kind: 'bv', adjustedValue: 1100, gunnery: 4, piloting: 4 });
+    });
+
+    it('chooses the highest reachable BV without surpassing a constrained maximum', () => {
+        const match = findBvNormalizationMatch(createUnit(), settings(850, 999, 4, 5, 4, 5));
+
+        expect(match).toEqual({ kind: 'bv', adjustedValue: 990, gunnery: 5, piloting: 4 });
+    });
+
+    it('preserves a fitting default crew when the maximum remains at its sentinel', () => {
+        const match = findBvNormalizationMatch(
+            createUnit(),
+            settings(900, DEFAULT_CLASSIC_BV_NORMALIZATION_MAX, 3, 5, 4, 5),
+        );
 
         expect(match).toEqual({ kind: 'bv', adjustedValue: 1000, gunnery: 4, piloting: 5 });
     });
 
-    it('prefers the adjusted BV closest to the target midpoint when the default does not fit', () => {
-        const match = findBvNormalizationMatch(createUnit(), settings(850, 999, 4, 5, 4, 5));
+    it('maximizes Gunnery-adjusted BV while retaining mandatory Piloting', () => {
+        const unit = createUnit({ type: 'ProtoMek' as UnitType });
+        const maximumBv = BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, 3, 5);
 
-        expect(match).toEqual({ kind: 'bv', adjustedValue: 900, gunnery: 5, piloting: 5 });
+        expect(findBvNormalizationMatch(unit, settings(0, maximumBv, 3, 5, 0, 0, 0)))
+            .toEqual({ kind: 'bv', adjustedValue: maximumBv, gunnery: 3, piloting: 5 });
     });
 
     it('does not use the default crew when a variable Piloting range excludes it', () => {

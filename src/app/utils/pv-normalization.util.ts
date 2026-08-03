@@ -23,7 +23,12 @@ export function isValidPvNormalizationSettings(settings: PvNormalizationSettings
     return isValidTargetPvRange(settings.targetPv) && isValidNormalizationSkillRange(settings.skill);
 }
 
-/** Finds the deterministic Alpha Strike Skill whose adjusted PV best fits the target range. */
+/**
+ * Finds the deterministic Alpha Strike Skill whose adjusted PV best fits the target range.
+ * An explicit target maximum selects the highest adjusted PV that does not exceed it. When the
+ * maximum remains at its default sentinel, a fitting Skill 4 and midpoint-based ordering are
+ * preserved.
+ */
 export function findPvNormalizationMatch(
     unit: Unit,
     settings: PvNormalizationSettings,
@@ -35,7 +40,8 @@ export function findPvNormalizationMatch(
         return null;
     }
 
-    if (isWithinNumericRange(DEFAULT_GUNNERY_SKILL, settings.skill)) {
+    const maximizeAdjustedPv = settings.targetPv.max !== DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX;
+    if (!maximizeAdjustedPv && isWithinNumericRange(DEFAULT_GUNNERY_SKILL, settings.skill)) {
         const defaultMatch = createMatch(basePv, DEFAULT_GUNNERY_SKILL);
         if (isWithinNumericRange(defaultMatch.adjustedValue, settings.targetPv)) {
             return defaultMatch;
@@ -49,7 +55,7 @@ export function findPvNormalizationMatch(
         if (!isWithinNumericRange(candidate.adjustedValue, settings.targetPv)) {
             continue;
         }
-        if (!bestMatch || compareMatches(candidate, bestMatch, targetMidpoint) < 0) {
+        if (!bestMatch || compareMatches(candidate, bestMatch, targetMidpoint, maximizeAdjustedPv) < 0) {
             bestMatch = candidate;
         }
     }
@@ -64,8 +70,17 @@ function createMatch(basePv: number, skill: number): PvNormalizationMatch {
     };
 }
 
-function compareMatches(left: PvNormalizationMatch, right: PvNormalizationMatch, midpoint: number): number {
-    return Math.abs(left.adjustedValue - midpoint) - Math.abs(right.adjustedValue - midpoint)
+function compareMatches(
+    left: PvNormalizationMatch,
+    right: PvNormalizationMatch,
+    midpoint: number,
+    maximizeAdjustedPv: boolean,
+): number {
+    const adjustedValueOrder = maximizeAdjustedPv
+        ? right.adjustedValue - left.adjustedValue
+        : Math.abs(left.adjustedValue - midpoint) - Math.abs(right.adjustedValue - midpoint);
+
+    return adjustedValueOrder
         || Math.abs(left.skill - DEFAULT_GUNNERY_SKILL) - Math.abs(right.skill - DEFAULT_GUNNERY_SKILL)
         || left.skill - right.skill;
 }

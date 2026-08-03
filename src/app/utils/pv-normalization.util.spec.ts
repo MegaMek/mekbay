@@ -42,8 +42,19 @@ describe('PV normalization', () => {
         }
     });
 
-    it('keeps default Skill 4 when it is eligible and fits', () => {
+    it('bypasses a fitting Skill 4 to maximize PV under a constrained maximum', () => {
         expect(findPvNormalizationMatch(unit(20), settings(19, 25, 3, 5))).toEqual({
+            kind: 'pv',
+            adjustedValue: 24,
+            skill: 3,
+        });
+    });
+
+    it('preserves a fitting Skill 4 when the maximum remains at its sentinel', () => {
+        expect(findPvNormalizationMatch(
+            unit(20),
+            settings(19, DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX, 3, 5),
+        )).toEqual({
             kind: 'pv',
             adjustedValue: 20,
             skill: 4,
@@ -60,10 +71,10 @@ describe('PV normalization', () => {
         }
     });
 
-    it('chooses the adjusted PV closest to the target midpoint', () => {
+    it('chooses the highest reachable PV without surpassing a constrained maximum', () => {
         const match = findPvNormalizationMatch(unit(20), settings(11, 18, 5, 8));
-        expect(match?.skill).toBe(7);
-        expect(match?.adjustedValue).toBe(14);
+        expect(match?.skill).toBe(5);
+        expect(match?.adjustedValue).toBe(18);
     });
 
     it('returns null when no skill fits or the unit PV is invalid', () => {
@@ -80,6 +91,14 @@ describe('PV normalization', () => {
             kind: 'pv',
             adjustedValue: 1,
             skill: 8,
+        });
+    });
+
+    it('prefers the Skill closest to 4 when multiple Skills have the same adjusted PV', () => {
+        expect(findPvNormalizationMatch(unit(1), settings(1, 1, 5, 8))).toEqual({
+            kind: 'pv',
+            adjustedValue: 1,
+            skill: 5,
         });
     });
 });
