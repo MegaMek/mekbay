@@ -48,7 +48,8 @@ import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../utils/inventory-target-number.util';
 import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, readInventoryControlDisplayData, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
 import { inventoryControlDamageRange, resolveInventoryControlDamageText } from '../utils/inventory-control-damage.util';
-import { formatInventoryControlHeat, resolveInventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
+import { formatInventoryControlHeat, resolveHeatSummarySources, resolveInventoryControlHeatEffect, resolveSelectedWeaponPreviewHeatSources } from '../utils/inventory-control-heat.util';
+import { calculateHeatProjection, type HeatProjection } from '../models/turn-state.model';
 import { separateHeatFireModifier, type ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import { isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, selectedRiscLaserMode } from '../equipment-handlers/risc-laser-pulse-module.handler';
@@ -782,43 +783,80 @@ export class UnitSvgService {
         if (!this.unit.readOnly()) {
             if (automationsEnabled) {
                 svg.querySelector('#heat-projection-target-marker')?.remove();
+                svg.querySelector('#heat-selected-weapons-target-marker')?.remove();
                 this.updateHeatProjectionPreview(heat);
             } else {
                 const heatScale = svg.getElementById('heatScale') as SVGGElement;
                 this.clearHeatProjectionPreview(heatScale);
-                this.updateHeatProjectionTargetMarker(heatScale, heat);
+                this.updateManualHeatProjectionMarkers(heatScale, heat);
             }
         }
     }
 
-    private updateHeatProjectionTargetMarker(heatScale: SVGGElement, heat: HeatProfile): void {
-        const projection = this.unit.turnState().heatProjection();
-        if (!this.unit.turnState().hasPendingHeatResolution() || projection.projected === heat.current) {
+    private updateManualHeatProjectionMarkers(heatScale: SVGGElement, heat: HeatProfile): void {
+        const turnState = this.unit.turnState();
+        const committedProjection = turnState.heatProjection();
+        const hasCommittedHeat = turnState.heatSources().some(source => source.value > 0);
+        if (hasCommittedHeat || committedProjection.projected !== heat.current) {
+            this.updateHeatProjectionTargetMarker(
+                heatScale,
+                committedProjection,
+                'heat-projection-target-marker',
+                'screen-only heatProjectionTargetMarker',
+                committedProjection.delta > 0 ? '#d12020' : '#2070d1'
+            );
+        } else {
             heatScale.querySelector('#heat-projection-target-marker')?.remove();
-            return;
         }
 
+        const selection = this.unit.selectedInventoryWeaponHeat();
+        if (!selection.hasSelection || selection.value <= 0) {
+            heatScale.querySelector('#heat-selected-weapons-target-marker')?.remove();
+            return;
+        }
+        const previewSources = resolveSelectedWeaponPreviewHeatSources(turnState.heatSources(), selection);
+        const previewProjection = calculateHeatProjection(
+            heat.current,
+            previewSources,
+            turnState.effectiveHeatDissipation()
+        );
+        this.updateHeatProjectionTargetMarker(
+            heatScale,
+            previewProjection,
+            'heat-selected-weapons-target-marker',
+            'screen-only heatSelectedWeaponsTargetMarker',
+            'orange'
+        );
+    }
+
+    private updateHeatProjectionTargetMarker(
+        heatScale: SVGGElement,
+        projection: HeatProjection,
+        markerId: string,
+        markerClass: string,
+        fill: string
+    ): void {
         const targetValue = Math.max(0, Math.min(30, projection.projected));
         const targetElement = this.getHeatElementFromValue(projection.projected > 30 ? projection.projected : targetValue);
         const targetCenter = targetElement ? this.heatMarkerCenter(targetElement) : null;
         const heatZeroElement = heatScale.querySelector('.heat[heat="0"]') as SVGElement | null;
         if (!targetCenter || !heatZeroElement) {
-            heatScale.querySelector('#heat-projection-target-marker')?.remove();
+            heatScale.querySelector(`#${markerId}`)?.remove();
             return;
         }
 
-        let marker = heatScale.querySelector('#heat-projection-target-marker') as SVGPolygonElement | null;
+        let marker = heatScale.querySelector(`#${markerId}`) as SVGPolygonElement | null;
         if (!marker) {
             marker = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-            marker.setAttribute('id', 'heat-projection-target-marker');
-            marker.setAttribute('class', 'screen-only heatProjectionTargetMarker');
+            marker.setAttribute('id', markerId);
+            marker.setAttribute('class', markerClass);
             marker.setAttribute('pointer-events', 'none');
             heatScale.appendChild(marker);
         }
 
         const tipX = Number(heatZeroElement.getAttribute('x') ?? 0) + 4;
         const baseX = tipX - 7;
-        marker.setAttribute('fill', projection.delta > 0 ? '#d12020' : '#2070d1');
+        marker.setAttribute('fill', fill);
         marker.setAttribute('points', `${tipX},${targetCenter.y} ${baseX},${targetCenter.y - 2} ${baseX},${targetCenter.y + 2}`);
     }
 
@@ -1575,13 +1613,25 @@ export class UnitSvgService {
         if (!svg) return;
         const unit = this.unit;
         const turnState = unit.turnState();
+        const selectedWeaponHeat = unit.selectedInventoryWeaponHeat();
+        const heatSources = resolveHeatSummarySources(
+            turnState.heatSources(),
+            selectedWeaponHeat
+        );
         const heatProjection = turnState.heatProjection();
+        const summaryProjection = selectedWeaponHeat.value > 0
+            ? calculateHeatProjection(
+                unit.getHeat().current,
+                resolveSelectedWeaponPreviewHeatSources(turnState.heatSources(), selectedWeaponHeat),
+                turnState.effectiveHeatDissipation()
+            )
+            : heatProjection;
         this.renderHeatSourcesSummary(
             svg,
-            turnState.heatSources(),
+            heatSources,
             turnState.heatDissipationBalance(),
-            heatProjection.consumedDissipation,
-            heatProjection.projected
+            summaryProjection.consumedDissipation,
+            summaryProjection.projected
         );
         // Update move mode display
         const moveMode = turnState.moveMode();
@@ -1665,18 +1715,20 @@ export class UnitSvgService {
         const normalizedBalance = Number.isFinite(dissipationBalance) ? dissipationBalance : 0;
         const normalizedConsumption = Number.isFinite(consumedDissipation) ? Math.max(0, consumedDissipation) : 0;
         const hasResidualAfterClipping = normalizedBalance > 0
-            && normalizedConsumption > 0
             && normalizedConsumption < normalizedBalance
             && projectedHeat === 0;
         const dissipationLabelSuffix = hasResidualAfterClipping ? ` (-${normalizedBalance})` : '';
         const dissipationText = hasResidualAfterClipping
             ? `-${normalizedConsumption}`
             : `${normalizedBalance > 0 ? '-' : '+'}${Math.abs(normalizedBalance)}`;
+        const showDissipation = normalizedBalance < 0
+            || (normalizedBalance > 0 && normalizedConsumption > 0);
         const lines: Array<{ text: string; fill?: string }> = [
             ...positiveSources.map(source => ({
                 text: `${this.heatSourceSummaryLabel(source)}: ${this.formatSignedModifier(source.value)}`,
+                fill: source.inventorySelection ? 'orange' : undefined,
             })),
-            ...(normalizedBalance !== 0 ? [{
+            ...(showDissipation ? [{
                 text: `Sink${dissipationLabelSuffix}: ${dissipationText}`,
                 fill: normalizedBalance > 0 ? '#2070d1' : '#f00',
             }] : []),
@@ -1690,7 +1742,7 @@ export class UnitSvgService {
 
         const x = heatSourcesText.getAttribute('x') ?? '0';
         const y = Number(heatSourcesText.getAttribute('y') ?? '0');
-        const lineHeight = 9;
+        const lineHeight = 8;
         heatSourcesText.textContent = '';
         heatSourcesText.removeAttribute('display');
         heatSourcesText.style.display = 'block';

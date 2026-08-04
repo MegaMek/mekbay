@@ -70,6 +70,8 @@ export interface UnitHeatSource {
     id: string;
     label: string;
     value: number;
+    /** Source is transient firing heat derived from selected inventory weapons. */
+    inventorySelection?: boolean;
     /** Source state that must reactivate heat even when its aggregate value is unchanged. */
     signature?: string;
     /** 

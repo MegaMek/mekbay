@@ -69,6 +69,7 @@ import { getBattleArmorTrooperNumber, normalizeBattleArmorTrooperLocation } from
 import { CBTGameRulesService } from '../services/cbt-game-rules.service';
 import type { C3DegradationSource, C3TargetingResolution, CBTGameRules } from './rules/game-rules';
 import { OptionsService } from '../services/options.service';
+import { resolveSelectedInventoryWeaponHeat } from '../utils/inventory-control-heat.util';
 
 export class CBTForceUnit extends ForceUnit {
     override get force(): CBTForce { return super.force as CBTForce; }
@@ -87,6 +88,18 @@ export class CBTForceUnit extends ForceUnit {
     protected override state: CBTForceUnitState;
     readonly inventoryControl = new CBTInventoryControlRuntime(this);
     private readonly inventoryControlRuntime = this.inventoryControl;
+
+    readonly selectedInventoryWeaponHeat = computed(() => {
+        this.inventoryControl.inventoryViewVersion();
+        const inventory = this.getInventory();
+        const entryStates = this.inventoryControl.entryStates();
+        const hasSelectedWeapon = inventory.some(entry => entryStates.get(entry.id)?.selected);
+        return resolveSelectedInventoryWeaponHeat(
+            inventory,
+            entryStates,
+            hasSelectedWeapon ? this.getInventoryControlRules() : {}
+        );
+    });
 
     readonly alias = computed<string | undefined>(() => {
         const pilot = this.getCrewMember(0);

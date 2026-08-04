@@ -122,8 +122,15 @@
     <div class="group">
         <div class="sectionTitle">Heat</div>
         <div class="summary-entry heat-modifiers">
-            @for (source of heatSources(); track source.id) {
-                <div class="row"><span>{{ source.label }}:</span><span class="modifier heat">{{ (source.value > 0 ? '+' : '') + source.value }}</span></div>
+            @for (row of heatRows(); track row.id) {
+                <div class="row">
+                    <span [class.selected-weapon-heat]="row.selectedOnly">
+                        {{ row.label }}@if (row.selectedValue !== undefined) { <span class="selected-weapon-heat"> (Selected)</span> }:
+                    </span>
+                    <span class="modifier heat" [class.selected-weapon-heat]="row.selectedOnly">
+                        {{ (row.value > 0 ? '+' : '') + row.value }}@if (row.selectedValue !== undefined) { <span class="selected-weapon-heat"> ({{ (row.selectedValue > 0 ? '+' : '') + row.selectedValue }})</span> }
+                    </span>
+                </div>
             }
         </div>
     </div>

@@ -7,6 +7,7 @@
     "gen-assets": "node scripts/generate-assets.js",
     "gen-force-name-words": "tsx scripts/generate-force-name-words.ts",
     "gen-ratgenerator": "tsx scripts/ratgenerator_build_table.ts",
+    "gen-bfs": "tsx scripts/generate-bfs-files.ts",
     "gen-sprites": "node scripts/generate-sprite-map.js",
     "prerun": "npm run gen-meta && npm run gen-assets && npm run gen-sprites",
     "prestart": "npm run gen-force-name-words",
@@ -17,8 +18,11 @@
     "test:force-name-words": "tsx scripts/generate-force-name-words.test.ts",
     "test:unit-report-oracles": "tsx scripts/unit-report-oracles.test.ts",
     "test:unit-diagnostics": "tsx scripts/unit-diagnostics.test.ts",
+    "test:bfs-generator": "tsx scripts/bfs-generator.test.ts",
+    "typecheck:bfs-generator": "tsc -p scripts/tsconfig.bfs.json",
+    "typecheck:scripts": "tsc -p scripts/tsconfig.json",
     "watch": "ng build --watch --configuration=development",
-    "test": "npm run test:force-name-words && ng test"
+    "test": "ng test"
   },
   "private": true,
   "dependencies": {

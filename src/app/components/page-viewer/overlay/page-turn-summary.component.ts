@@ -49,13 +49,14 @@ import { canChangeAirborneGround, type MotiveModeOption, type MotiveModes } from
 import { HexSliderComponent } from '../../hex-slider/hex-slider.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import type { TooltipLine } from '../../tooltip/tooltip.component';
-import { calculateModifierTotal, type UnitModifierBreakdownEntry, type UnitModifierTotal } from '../../../models/rules/unit-type-rules';
+import { calculateModifierTotal, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitModifierTotal } from '../../../models/rules/unit-type-rules';
 import { EquipmentInteractionRegistryService, type HandlerChoice, type HandlerContext } from '../../../services/equipment-interaction-registry.service';
 import { ToastService } from '../../../services/toast.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { DataService } from '../../../services/data.service';
 import type { MountedEquipment } from '../../../models/mounted-equipment.model';
 import { MascHandler } from '../../../equipment-handlers/masc.handler';
+import type { SelectedInventoryWeaponHeat } from '../../../utils/inventory-control-heat.util';
 
 interface EquipmentTrackControlRow {
     entry: MountedEquipment;
@@ -63,6 +64,33 @@ interface EquipmentTrackControlRow {
     damaged: boolean;
     sequenceChoices: HandlerChoice[];
     statusChoice?: HandlerChoice;
+}
+
+export interface TurnSummaryHeatRow {
+    readonly id: string;
+    readonly label: string;
+    readonly value: number;
+    readonly selectedValue?: number;
+    readonly selectedOnly?: boolean;
+}
+
+export function composeTurnSummaryHeatRows(
+    sources: readonly UnitHeatSource[],
+    selection: SelectedInventoryWeaponHeat
+): TurnSummaryHeatRow[] {
+    const rows = sources.map(source => ({ id: source.id, label: source.label, value: source.value }));
+    if (!selection.hasSelection) return rows;
+
+    const weaponsRow = rows.find(row => row.id === 'weapons');
+    if (weaponsRow) {
+        return rows.map(row => row === weaponsRow ? { ...row, selectedValue: selection.value } : row);
+    }
+    return [{
+        id: 'selected-weapons',
+        label: 'Selected Weapons',
+        value: selection.value,
+        selectedOnly: true,
+    }, ...rows];
 }
 
 /*
@@ -209,10 +237,10 @@ export class PageTurnSummaryPanelComponent {
         return u.getUnit().heat >= 0;
     });
 
-    heatSources = computed(() => {
+    heatRows = computed(() => {
         const u = this.unit();
         if (!u) return [];
-        return u.turnState().heatSources();
+        return composeTurnSummaryHeatRows(u.turnState().heatSources(), u.selectedInventoryWeaponHeat());
     });
 
     psrModifiers = computed(() => {

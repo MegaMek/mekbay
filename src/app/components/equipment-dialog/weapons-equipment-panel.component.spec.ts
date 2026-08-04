@@ -248,7 +248,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(damageCell().textContent?.trim()).toBe('8 [12]');
     });
 
-    it('shows vibroblade OFF and ON heat and damage', () => {
+    it('shows vibroblade OFF and ON heat and damage', async () => {
         const vibroblade = misc('Vibroblade (Medium)', ['F_CLUB', 'S_VIBRO_MEDIUM']);
         const vibrobladeEntry = entry({
             id: 'vibroblade',
@@ -256,7 +256,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             locations: new Set(['RA']),
             el: svgEntry('<g><g class="name"><text>Vibroblade (Medium)</text></g><g class="damage"><text>10</text></g><text class="location">RA</text></g>')
         });
-        const { fixture, unitHarness } = createComponent(
+        const { component, fixture, turnState } = createComponent(
             [vibrobladeEntry],
             { [vibroblade.internalName]: vibroblade },
             [],
@@ -282,6 +282,18 @@ describe('WeaponsEquipmentPanelComponent', () => {
         fixture.detectChanges();
         expect(heatCell().textContent?.trim()).toBe('5');
         expect(damageCell().textContent?.trim()).toBe('10');
+        expect(turnState.heatSources()).toEqual([]);
+        expect(turnState.addFiredHeat).not.toHaveBeenCalled();
+
+        const row = component.groups().find(group => group.id === 'physical')!.rows[0];
+        component.toggleSelected(row);
+        fixture.detectChanges();
+
+        expect(component.selectedHeatTotal()).toBe(5);
+
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(turnState.addFiredHeat).toHaveBeenCalledOnceWith(5);
     });
 
     it('groups ranged, physical, equipment, and destroyed entries', () => {
@@ -2072,6 +2084,34 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(unit.setHeat).not.toHaveBeenCalled();
         expect(turnState.addFiredHeat).toHaveBeenCalledWith(7);
         expect(heat.next).toBeUndefined();
+    });
+
+    it('projects a selected firing batch in addition to weapons already fired this turn', async () => {
+        const laser = entry({
+            id: 'laser',
+            equipment: weapon('Large Laser', 'NA', 8, [1, 2, 3, 4], 0, 4),
+            el: svgEntry('<g><g class="name"><text>Large Laser</text></g><text class="heat">4</text></g>')
+        });
+        const { component, turnState } = createComponent([laser], {}, [], new Map(), { heatDissipation: 3 });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        turnState.addFiredHeat(6);
+        (turnState.addFiredHeat as jasmine.Spy).calls.reset();
+
+        component.toggleSelected(row);
+
+        expect(component.selectedHeatProjection()).toEqual(jasmine.objectContaining({
+            current: 2,
+            sources: 6,
+            selection: 4,
+            pending: 12,
+            dissipation: 3,
+            final: 9,
+        }));
+
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(turnState.addFiredHeat).toHaveBeenCalledOnceWith(4);
+        expect(turnState.heatSources()).toContain(jasmine.objectContaining({ id: 'weapons', value: 10 }));
     });
 
     it('uses only the remaining dissipation after heat was applied this turn', () => {

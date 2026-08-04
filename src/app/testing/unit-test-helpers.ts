@@ -10,6 +10,7 @@ import { type CriticalSlot, type HeatProfile } from '../models/force-serializati
 import { getMotiveModeLabel, type MotiveModes } from '../models/motiveModes.model';
 import { CORE_2026_GAME_RULES, type CBTGameRules, type C3DegradationSource, type ToHitAdjustment, type ToHitModifierBreakdownEntry } from '../models/rules/game-rules';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE, type UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
+import { resolveSelectedInventoryWeaponHeat } from '../utils/inventory-control-heat.util';
 import type { InventoryControlDisplayData, InventoryControlRules } from '../utils/inventory-control.util';
 
 type TestAlphaStrikeOverrides = Partial<Omit<Unit['as'], 'dmg'>> & {
@@ -332,6 +333,13 @@ export class CBTForceUnitTestHarness {
         } as unknown as CBTForceUnit;
 
         this.runtime = installInventoryControlRuntime(this.unit);
+        Object.assign(this.unit, {
+            selectedInventoryWeaponHeat: () => resolveSelectedInventoryWeaponHeat(
+                this.components,
+                this.runtime.entryStates(),
+                this.inventoryControlRules
+            )
+        });
         options.components?.forEach(component => this.addComponent(component));
         options.criticalSlots?.forEach(slot => this.addCriticalSlot(slot));
     }

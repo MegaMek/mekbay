@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "./bfs-generator.test.ts",
+    "./generate-bfs-files.ts",
+    "./lib/bfs-converter.ts",
+    "./lib/bfs-generation.ts",
+    "./lib/bfs-yaml.ts",
+    "./lib/csv.ts",
+    "./lib/megamek-unit-file-metadata.ts",
+    "./lib/unit-file-discovery.ts"
+  ]
+}

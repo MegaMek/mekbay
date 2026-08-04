@@ -38,6 +38,7 @@ import { TN_IMMOBILE } from '../../models/target-number-calculator.model';
 import { orderHitTargetTooltipLines } from '../../utils/hit-target-tooltip.util';
 import { STANDARD_AEROSPACE_RANGE_LIMITS, aerospaceRangeCaptions } from '../../utils/aerospace-range.util';
 import { calculateHeatProjection } from '../../models/turn-state.model';
+import { resolveSelectedWeaponFiringHeatSources, SELECTED_WEAPONS_HEAT_SOURCE_ID } from '../../utils/inventory-control-heat.util';
 
 interface RangeColumn {
     key: InventoryRangeDisplayKey;
@@ -190,16 +191,17 @@ export class WeaponsEquipmentPanelComponent {
         if (!dissipationState) return null;
         const heat = this.unit().getHeat();
         const base = heat.next ?? heat.current;
-        const selectedEntryIds = new Set(this.selectedRows().map(row => row.entry.id));
-        const activeSources = this.unit().turnState().heatSources()
-            .filter(source => !source.replacedByFiringEntryId || !selectedEntryIds.has(source.replacedByFiringEntryId));
-        const selection = this.selectedHeatTotal();
+        const selectedWeaponHeat = this.unit().selectedInventoryWeaponHeat();
+        const selection = selectedWeaponHeat.value;
         const dissipation = this.unit().turnState().effectiveHeatDissipation();
-        const projection = calculateHeatProjection(base, [
-            ...activeSources,
-            { id: 'selected-weapons', label: 'Selected Weapons', value: selection },
-        ], dissipation);
-        const sources = projection.sourceHeat - Math.max(0, selection);
+        const previewSources = resolveSelectedWeaponFiringHeatSources(
+            this.unit().turnState().heatSources(),
+            selectedWeaponHeat
+        );
+        const projection = calculateHeatProjection(base, previewSources, dissipation);
+        const sources = previewSources
+            .filter(source => source.id !== SELECTED_WEAPONS_HEAT_SOURCE_ID)
+            .reduce((total, source) => total + Math.max(0, source.value), 0);
         const pending = base + projection.sourceHeat;
         const final = projection.projected;
         return {

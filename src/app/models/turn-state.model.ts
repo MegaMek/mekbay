@@ -175,14 +175,14 @@ export class TurnState {
         }
     });
 
-    private allHeatSources = computed<UnitHeatSource[]>(() => {
+    private committedHeatSources = computed<UnitHeatSource[]>(() => {
         return this.unitState.unit.rules.heatSources(this);
     });
 
     private unresolvedHeatSources = computed<UnitHeatSource[]>(() => {
-        if (!(this.unitState.unit.useAutomations?.() ?? true)) return this.allHeatSources();
+        if (!(this.unitState.unit.useAutomations?.() ?? true)) return this.committedHeatSources();
         const acknowledged = this.acknowledgedHeatSources();
-        return this.allHeatSources().filter(source => acknowledged[source.id] !== this.heatSourceSignature(source));
+        return this.committedHeatSources().filter(source => acknowledged[source.id] !== this.heatSourceSignature(source));
     });
 
     private heatDissipationCapacity = computed<number>(() => {
@@ -235,7 +235,7 @@ export class TurnState {
     }
 
     private passiveHeatSourceSignature(): string {
-        return JSON.stringify(this.allHeatSources()
+        return JSON.stringify(this.committedHeatSources()
             .filter(source => source.value > 0 && source.id !== 'movement' && source.id !== 'weapons')
             .map(source => [source.id, this.heatSourceSignature(source)])
             .sort(([left], [right]) => left.localeCompare(right)));
@@ -422,7 +422,7 @@ export class TurnState {
 
     reconcileHeatSources(): void {
         if (this.suppressModified) return;
-        const currentSources = new Map(this.allHeatSources().map(source => [source.id, source]));
+        const currentSources = new Map(this.committedHeatSources().map(source => [source.id, source]));
         const acknowledged = this.acknowledgedHeatSources();
         const next = Object.fromEntries(Object.entries(acknowledged).filter(([id, signature]) => {
             const source = currentSources.get(id);

@@ -183,6 +183,43 @@ function createMekUnitWithDissipation(dissipation: number): Unit {
     });
 }
 
+function createSelectedHeatUnit(equipment: EquipmentMap, dissipation: number): Unit {
+    const unit = createMekUnitWithDissipation(dissipation);
+    return createEmptyUnit({
+        ...unit,
+        name: 'Selected Heat Test Unit',
+        chassis: 'Selected Heat Test',
+        model: 'T1',
+        comp: [
+            ...unit.comp,
+            { id: 'VariableDamageLaser', q: 1, q2: 0, n: 'Variable Damage Laser', t: 'E', p: 1, l: 'RA', r: '2/5/9', m: '-4', d: '9/7/5', md: '9.0', c: '1', os: 0, eq: equipment['VariableDamageLaser'] },
+            { id: 'ISMediumLaser', q: 1, q2: 0, n: 'Medium Laser', t: 'E', p: 1, l: 'LA', r: '3/6/9', m: '0', d: '5', md: '5.0', c: '1', os: 0, eq: equipment['ISMediumLaser'] },
+        ],
+    });
+}
+
+function createSelectedHeatSvg(): SVGSVGElement {
+    return new DOMParser().parseFromString(`
+        <svg xmlns="http://www.w3.org/2000/svg">
+            <g class="inventoryEntry" id="VariableDamageLaser@RA#0" hitMod="-4"></g>
+            <g class="inventoryEntry" id="ISMediumLaser@LA#0" hitMod="0"></g>
+            <text id="damagedEngineHeatText" x="10" y="100"></text>
+        </svg>
+    `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+}
+
+function createSelectedHeatScaleSvg(): SVGSVGElement {
+    return new DOMParser().parseFromString(`
+        <svg xmlns="http://www.w3.org/2000/svg">
+            <g class="inventoryEntry" id="VariableDamageLaser@RA#0" hitMod="-4"></g>
+            <g class="inventoryEntry" id="ISMediumLaser@LA#0" hitMod="0"></g>
+            <g id="heatScale">
+                ${Array.from({ length: 11 }, (_, value) => `<rect class="heat" heat="${value}" x="0" y="${100 - value * 5}" width="5" height="5"></rect>`).join('')}
+            </g>
+        </svg>
+    `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+}
+
 function createProtoMekUnit(): Unit {
     return createEmptyUnit({
         name: 'PMTest_PROTO-1',
@@ -337,6 +374,7 @@ function createLaserInsulatorSvg(): SVGSVGElement {
                     <g class="name"><text>Laser Insulator</text></g>
                 </g>
             </g>
+            <text id="damagedEngineHeatText" x="10" y="100"></text>
         </svg>
     `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
 }
@@ -1117,6 +1155,121 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(lines[1].getAttribute('y')).toBe('100');
     });
 
+    it('renders committed and selected inventory heat separately with committed sink usage', () => {
+        const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 5));
+        const svg = createSelectedHeatSvg();
+        initialize(forceUnit, svg);
+        const [variableLaser, mediumLaser] = forceUnit.getInventory()
+            .filter(entry => entry.equipment instanceof WeaponEquipment);
+        forceUnit.setInventoryControlEntrySelected(variableLaser, true);
+        forceUnit.setInventoryControlEntrySelected(mediumLaser, true);
+        forceUnit.setHeatData({ current: 10, previous: 10 });
+        forceUnit.turnState().addFiredHeat(2);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshTurnState();
+
+        const lines = Array.from(svg.querySelectorAll<SVGTSpanElement>('#damagedEngineHeatText > tspan'));
+        expect(lines.map(line => line.textContent)).toEqual([
+            'Selected: +10',
+            'Weapons: +2',
+            'Sink: -5',
+        ]);
+        expect(forceUnit.turnState().weaponsHeat()).toBe(2);
+        expect(forceUnit.turnState().heatSources().filter(source => source.id === 'weapons'))
+            .toEqual([jasmine.objectContaining({ label: 'Weapons', value: 2 })]);
+        expect(lines[0].getAttribute('fill')).toBe('orange');
+        expect(lines.map(line => line.getAttribute('y'))).toEqual(['84', '92', '100']);
+    });
+
+    it('previews sink capacity consumed by selected inventory heat', () => {
+        const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 20));
+        const svg = createSelectedHeatSvg();
+        initialize(forceUnit, svg);
+        forceUnit.setHeatData({ current: 0, previous: 0 });
+        const [variableLaser, mediumLaser] = forceUnit.getInventory()
+            .filter(entry => entry.equipment instanceof WeaponEquipment);
+        forceUnit.setInventoryControlEntrySelected(variableLaser, true);
+        forceUnit.setInventoryControlEntrySelected(mediumLaser, true);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshTurnState();
+
+        const lines = Array.from(svg.querySelectorAll<SVGTSpanElement>('#damagedEngineHeatText > tspan'));
+        expect(lines.map(line => line.textContent)).toEqual([
+            'Selected: +10',
+            'Sink (-20): -10',
+        ]);
+        expect(lines[0].getAttribute('fill')).toBe('orange');
+        expect(lines[1].getAttribute('fill')).toBe('#2070d1');
+    });
+
+    it('keeps committed weapons heat authoritative when a weapon is selected', () => {
+        const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 20));
+        const svg = createSelectedHeatSvg();
+        initialize(forceUnit, svg);
+        forceUnit.setHeatData({ current: 0, previous: 0 });
+        const variableLaser = forceUnit.getInventory()
+            .find(entry => entry.equipment?.id === 'VariableDamageLaser')!;
+        forceUnit.setInventoryControlEntrySelected(variableLaser, true);
+        forceUnit.turnState().addFiredHeat(2);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshTurnState();
+
+        const lines = Array.from(svg.querySelectorAll<SVGTSpanElement>('#damagedEngineHeatText > tspan'));
+        expect(lines.map(line => line.textContent)).toEqual([
+            'Selected: +7',
+            'Weapons: +2',
+            'Sink (-20): -7',
+        ]);
+        expect(forceUnit.turnState().weaponsHeat()).toBe(2);
+
+        forceUnit.setInventoryControlEntrySelected(variableLaser, false);
+        svgService.refreshTurnState();
+        expect(Array.from(svg.querySelectorAll<SVGTSpanElement>('#damagedEngineHeatText > tspan'))
+            .map(line => line.textContent)).toEqual(['Weapons: +2', 'Sink (-20): -2']);
+    });
+
+    it('removes selected inventory heat and hides an otherwise empty summary after deselection', () => {
+        const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 0));
+        const svg = createSelectedHeatSvg();
+        initialize(forceUnit, svg);
+        const variableLaser = forceUnit.getInventory()
+            .find(entry => entry.equipment?.id === 'VariableDamageLaser')!;
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        forceUnit.setInventoryControlEntrySelected(variableLaser, true);
+        svgService.refreshTurnState();
+        expect(svg.querySelector('#damagedEngineHeatText > tspan')?.textContent).toBe('Selected: +7');
+
+        forceUnit.setInventoryControlEntrySelected(variableLaser, false);
+        svgService.refreshTurnState();
+
+        const summary = svg.querySelector<SVGTextElement>('#damagedEngineHeatText');
+        expect(summary?.querySelector('tspan')).toBeNull();
+        expect(summary?.getAttribute('display')).toBe('none');
+        expect(summary?.style.display).toBe('none');
+    });
+
+    it('uses equipment effects when totaling selected inventory heat', () => {
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new LaserInsulatorHandler());
+        const forceUnit = createForceUnit(createLaserInsulatorUnit(equipment));
+        const svg = createLaserInsulatorSvg();
+        initialize(forceUnit, svg);
+        const laser = forceUnit.getInventory().find(entry => entry.id === 'ISMediumLaser@FR#0')!;
+        const insulator = laser.linkedWith![0];
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+        forceUnit.setInventoryControlEntrySelected(laser, true);
+
+        svgService.refreshTurnState();
+        expect(svg.querySelector('#damagedEngineHeatText > tspan')?.textContent).toBe('Selected: +2');
+
+        insulator.setCommittedDestroyed(true);
+        svgService.refreshTurnState();
+        expect(svg.querySelector('#damagedEngineHeatText > tspan')?.textContent).toBe('Selected: +3');
+    });
+
     it('shows used and available dissipation when cooling clips heat to zero', () => {
         const forceUnit = createForceUnit(createMekUnitWithDissipation(28));
         const svg = new DOMParser().parseFromString(`
@@ -1135,6 +1288,88 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.turnState().heatProjection().projected).toBe(0);
         expect(line?.textContent).toBe('Sink (-28): -3');
         expect(line?.getAttribute('fill')).toBe('#2070d1');
+    });
+
+    it('includes generated heat in effective dissipation while automations are disabled', () => {
+        cbtAutomations.set(false);
+        const forceUnit = createForceUnit(createMekUnitWithDissipation(28));
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <text id="damagedEngineHeatText" x="10" y="100"></text>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        forceUnit.svg.set(svg);
+        forceUnit.setHeatData({ current: 5, previous: 5 });
+        forceUnit.turnState().addFiredHeat(30);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshTurnState();
+
+        const lines = Array.from(svg.querySelectorAll<SVGTSpanElement>('#damagedEngineHeatText > tspan'));
+        expect(forceUnit.turnState().heatProjection().consumedDissipation).toBe(28);
+        expect(lines.map(line => line.textContent)).toEqual([
+            'Weapons: +30',
+            'Sink: -28',
+        ]);
+        expect(lines[1].getAttribute('fill')).toBe('#2070d1');
+    });
+
+    it('shows full dissipation capacity when current heat exceeds it with automations disabled', () => {
+        cbtAutomations.set(false);
+        const forceUnit = createForceUnit(createMekUnitWithDissipation(28));
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <text id="damagedEngineHeatText" x="10" y="100"></text>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        forceUnit.svg.set(svg);
+        forceUnit.setHeatData({ current: 30, previous: 30 });
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshTurnState();
+
+        expect(svg.querySelector('#damagedEngineHeatText > tspan')?.textContent).toBe('Sink: -28');
+    });
+
+    it('shows dissipation for generated heat when current heat is zero with automations disabled', () => {
+        cbtAutomations.set(false);
+        const forceUnit = createForceUnit(createMekUnitWithDissipation(28));
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <text id="damagedEngineHeatText" x="10" y="100"></text>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        forceUnit.svg.set(svg);
+        forceUnit.setHeatData({ current: 0, previous: 0 });
+        forceUnit.turnState().addFiredHeat(30);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshTurnState();
+
+        const lines = Array.from(svg.querySelectorAll<SVGTSpanElement>('#damagedEngineHeatText > tspan'));
+        expect(lines.map(line => line.textContent)).toEqual([
+            'Weapons: +30',
+            'Sink: -28',
+        ]);
+    });
+
+    it('omits dissipation when current and generated heat are both zero with automations disabled', () => {
+        cbtAutomations.set(false);
+        const forceUnit = createForceUnit(createMekUnitWithDissipation(28));
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <text id="damagedEngineHeatText" x="10" y="100"></text>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        forceUnit.svg.set(svg);
+        forceUnit.setHeatData({ current: 0, previous: 0 });
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshTurnState();
+
+        const summary = svg.querySelector<SVGTextElement>('#damagedEngineHeatText');
+        expect(summary?.querySelector('tspan')).toBeNull();
+        expect(summary?.getAttribute('display')).toBe('none');
     });
 
     it('shows a single dissipation value when all remaining cooling is used', () => {
@@ -1160,7 +1395,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(lines[1].getAttribute('fill')).toBe('#2070d1');
     });
 
-    it('renders remaining cooling blue and a heatsink capacity deficit red', () => {
+    it('hides unused remaining cooling and renders a heatsink capacity deficit red', () => {
         const forceUnit = createForceUnit(createMekUnitWithDissipation(20));
         const svg = new DOMParser().parseFromString(`
             <svg xmlns="http://www.w3.org/2000/svg">
@@ -1181,8 +1416,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         let line = svg.querySelector<SVGTSpanElement>('#damagedEngineHeatText > tspan');
         expect(forceUnit.turnState().heatDissipationBalance()).toBe(1);
-        expect(line?.textContent).toBe('Sink: -1');
-        expect(line?.getAttribute('fill')).toBe('#2070d1');
+        expect(line).toBeNull();
+        expect(svg.querySelector('#damagedEngineHeatText')?.getAttribute('display')).toBe('none');
 
         forceUnit.setHeatsinksOff(7);
         svgService.refreshTurnState();
@@ -1547,6 +1782,122 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(svg.querySelector('#heat-projection-target-marker')?.tagName.toLowerCase()).toBe('polygon');
         expect(svg.querySelector('#heatDataPanel')?.classList.contains('heatApplicationAvailable')).toBeFalse();
         expect(svg.querySelector('#now-arrow-label')).not.toBeNull();
+    });
+
+    it('shows an orange manual marker for selected weapons when committed heat is zero', () => {
+        cbtAutomations.set(false);
+        const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 0));
+        const svg = createSelectedHeatScaleSvg();
+        initialize(forceUnit, svg);
+        forceUnit.setHeatData({ current: 0, previous: 0 });
+        const variableLaser = forceUnit.getInventory()
+            .find(entry => entry.equipment?.id === 'VariableDamageLaser')!;
+        forceUnit.setInventoryControlEntrySelected(variableLaser, true);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshHeat();
+
+        expect(svg.querySelector('#heat-projection-target-marker')).toBeNull();
+        const marker = svg.querySelector<SVGPolygonElement>('#heat-selected-weapons-target-marker');
+        expect(marker?.getAttribute('points')).toBe('4,67.5 -3,65.5 -3,69.5');
+        expect(marker?.getAttribute('fill')).toBe('orange');
+
+        forceUnit.setInventoryControlEntrySelected(variableLaser, false);
+        svgService.refreshHeat();
+        expect(svg.querySelector('#heat-selected-weapons-target-marker')).toBeNull();
+    });
+
+    it('shows the orange manual marker at zero when sinks fully dissipate selected heat', () => {
+        cbtAutomations.set(false);
+        const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 20));
+        const svg = createSelectedHeatScaleSvg();
+        initialize(forceUnit, svg);
+        forceUnit.setHeatData({ current: 0, previous: 0 });
+        const variableLaser = forceUnit.getInventory()
+            .find(entry => entry.equipment?.id === 'VariableDamageLaser')!;
+        forceUnit.setInventoryControlEntrySelected(variableLaser, true);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshHeat();
+
+        expect(svg.querySelector('#heat-projection-target-marker')).toBeNull();
+        const marker = svg.querySelector<SVGPolygonElement>('#heat-selected-weapons-target-marker');
+        expect(marker?.getAttribute('points')).toBe('4,102.5 -3,100.5 -3,104.5');
+        expect(marker?.getAttribute('fill')).toBe('orange');
+    });
+
+    it('shows the committed manual marker at zero when sinks fully dissipate committed heat', () => {
+        cbtAutomations.set(false);
+        const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 20));
+        const svg = createSelectedHeatScaleSvg();
+        initialize(forceUnit, svg);
+        forceUnit.setHeatData({ current: 0, previous: 0 });
+        forceUnit.turnState().addFiredHeat(5);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshHeat();
+
+        const marker = svg.querySelector<SVGPolygonElement>('#heat-projection-target-marker');
+        expect(marker?.getAttribute('points')).toBe('4,102.5 -3,100.5 -3,104.5');
+        expect(marker?.getAttribute('fill')).toBe('#2070d1');
+    });
+
+    it('shows the committed manual marker for pure cooling without a committed heat source', () => {
+        cbtAutomations.set(false);
+        const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 20));
+        const svg = createSelectedHeatScaleSvg();
+        initialize(forceUnit, svg);
+        forceUnit.setHeatData({ current: 5, previous: 5 });
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshHeat();
+
+        const marker = svg.querySelector<SVGPolygonElement>('#heat-projection-target-marker');
+        expect(marker?.getAttribute('points')).toBe('4,102.5 -3,100.5 -3,104.5');
+        expect(marker?.getAttribute('fill')).toBe('#2070d1');
+    });
+
+    it('paints an orange selected marker over a committed marker when both target zero', () => {
+        cbtAutomations.set(false);
+        const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 20));
+        const svg = createSelectedHeatScaleSvg();
+        initialize(forceUnit, svg);
+        forceUnit.setHeatData({ current: 5, previous: 5 });
+        const variableLaser = forceUnit.getInventory()
+            .find(entry => entry.equipment?.id === 'VariableDamageLaser')!;
+        forceUnit.setInventoryControlEntrySelected(variableLaser, true);
+        forceUnit.turnState().addFiredHeat(2);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshHeat();
+
+        const committedMarker = svg.querySelector<SVGPolygonElement>('#heat-projection-target-marker')!;
+        const selectedMarker = svg.querySelector<SVGPolygonElement>('#heat-selected-weapons-target-marker')!;
+        expect(committedMarker.getAttribute('points')).toBe('4,102.5 -3,100.5 -3,104.5');
+        expect(selectedMarker.getAttribute('points')).toBe(committedMarker.getAttribute('points'));
+        expect(selectedMarker.getAttribute('fill')).toBe('orange');
+        expect(committedMarker.compareDocumentPosition(selectedMarker) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('shows committed and selected manual heat markers independently', () => {
+        cbtAutomations.set(false);
+        const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 0));
+        const svg = createSelectedHeatScaleSvg();
+        initialize(forceUnit, svg);
+        forceUnit.setHeatData({ current: 0, previous: 0 });
+        const variableLaser = forceUnit.getInventory()
+            .find(entry => entry.equipment?.id === 'VariableDamageLaser')!;
+        forceUnit.setInventoryControlEntrySelected(variableLaser, true);
+        forceUnit.turnState().addFiredHeat(2);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshHeat();
+
+        expect(svg.querySelector('#heat-projection-target-marker')?.getAttribute('points'))
+            .toBe('4,92.5 -3,90.5 -3,94.5');
+        expect(svg.querySelector('#heat-selected-weapons-target-marker')?.getAttribute('points'))
+            .toBe('4,67.5 -3,65.5 -3,69.5');
+        expect(svg.querySelector('#heat-selected-weapons-target-marker')?.getAttribute('fill')).toBe('orange');
     });
 
     it('clamps turn movement when committed inventory state reduces active run movement bonus', () => {
@@ -2606,6 +2957,14 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(heatText.textContent).toBe('5');
         expect(damageText.textContent).toBe('10');
         expect(damageText.classList.contains('damaged')).toBeFalse();
+
+        forceUnit.setInventoryControlEntrySelected(entry, true);
+        expect(forceUnit.selectedInventoryWeaponHeat()).toEqual(jasmine.objectContaining({
+            hasSelection: true,
+            value: 5,
+        }));
+        expect(forceUnit.selectedInventoryWeaponHeat().entryIds).toContain(entry.id);
+        expect(forceUnit.turnState().heatSources().some(source => source.id === `vibroblade:${entry.id}`)).toBeFalse();
 
         entry.deleteState(VIBROBLADE_MODE_STATE);
         svgService.refreshInventory();

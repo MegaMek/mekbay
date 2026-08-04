@@ -11,6 +11,7 @@ export interface MegaMekUnitNameOptions {
 }
 
 export interface MegaMekUnitFileMetadata {
+    uuid?: string;
     unitType: string;
     chassis: string;
     model: string;
@@ -22,6 +23,17 @@ export interface MegaMekUnitFileMetadata {
     weightClass?: number;
     isClanTech: boolean;
     isStarLeague: boolean;
+    source: string;
+    role?: string;
+    techBase: 'IS' | 'Clan' | 'Mixed (IS Chassis)' | 'Mixed (Clan Chassis)';
+    movementMode?: string;
+    bfsAssetType?: 'Vehicle' | 'Conventional Infantry' | 'Battle Armor';
+}
+
+export const UUID_V7_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+export function isUuidV7(value: string | undefined): value is string {
+    return value !== undefined && UUID_V7_PATTERN.test(value);
 }
 
 function parseYear(value: unknown): number | undefined {
@@ -380,19 +392,26 @@ function parseBlkUnitFileMetadata(raw: string, filePath: string): MegaMekUnitFil
         ? parsedWeightClass
         : deriveWeightClass(unitType, tonnage);
     const techFlags = parseBlkTechFlags(getTaggedText(raw, 'type') ?? '');
+    const source = getTaggedText(raw, 'source') ?? '';
 
     return {
+        uuid: getTaggedText(raw, 'UUID'),
         unitType,
         chassis,
         model,
         unitName: buildMegaMekUnitName(nameUnitType, chassis, model, { motionType }),
         mulId: parseMulId(getTaggedText(raw, 'mul id:')),
-        sources: splitMegaMekSourceList(getTaggedText(raw, 'source')),
+        sources: splitMegaMekSourceList(source),
         publishedRSSources: splitMegaMekSourceList(getTaggedText(raw, 'published')),
         introYear: parseYear(getTaggedText(raw, 'year')),
         weightClass,
         isClanTech: techFlags.isClanTech,
         isStarLeague: techFlags.isStarLeague,
+        source,
+        role: parseRole(getTaggedText(raw, 'role')),
+        techBase: parseTechBase(getTaggedText(raw, 'type') ?? ''),
+        movementMode: parseMovementMode(motionType),
+        bfsAssetType: toBfsAssetType(unitType),
     };
 }
 
@@ -425,19 +444,26 @@ function parseMtfUnitFileMetadata(raw: string, filePath: string, rootPath: strin
     const rulesLevel = Number.parseInt(fields.get('rules level') ?? '', 10);
     const tonnage = Number.parseFloat(fields.get('mass') ?? '');
     const techFlags = parseMtfTechFlags(fields.get('techbase') ?? '', Number.isFinite(rulesLevel) ? rulesLevel : undefined);
+    const source = fields.get('source') ?? '';
 
     return {
+        uuid: fields.get('uuid'),
         unitType,
         chassis,
         model,
         unitName: buildMegaMekUnitName(unitType, unitNameChassis, model, { isIndustrialMek }),
         mulId: parseMulId(fields.get('mul id')),
-        sources: splitMegaMekSourceList(fields.get('source')),
+        sources: splitMegaMekSourceList(source),
         publishedRSSources: splitMegaMekSourceList(fields.get('published')),
         introYear: parseYear(fields.get('era')),
         weightClass: deriveWeightClass(unitType, tonnage),
         isClanTech: techFlags.isClanTech,
         isStarLeague: techFlags.isStarLeague,
+        source,
+        role: parseRole(fields.get('role')),
+        techBase: parseTechBase(fields.get('techbase') ?? ''),
+        movementMode: parseMovementMode(fields.get('motion type') ?? fields.get('movement mode')),
+        bfsAssetType: toBfsAssetType(unitType),
     };
 }
 
@@ -455,4 +481,47 @@ export function parseMegaMekUnitFileMetadata(raw: string, filePath: string, unit
 export function readMegaMekUnitFileMetadata(filePath: string, unitFilesRoot: string): MegaMekUnitFileMetadata | undefined {
     const raw = fs.readFileSync(filePath, 'utf8');
     return parseMegaMekUnitFileMetadata(raw, filePath, unitFilesRoot);
+}
+
+function parseTechBase(value: string): MegaMekUnitFileMetadata['techBase'] {
+    const normalized = value.trim().toLowerCase();
+    if (normalized.includes('mixed')) {
+        return normalized.includes('clan') ? 'Mixed (Clan Chassis)' : 'Mixed (IS Chassis)';
+    }
+    return normalized.includes('clan') ? 'Clan' : 'IS';
+}
+
+function parseRole(value: string | undefined): string | undefined {
+    const normalized = value?.trim();
+    return normalized ? normalized.toUpperCase().replace(/[\s-]+/gu, '_') : undefined;
+}
+
+function parseMovementMode(value: string | undefined): string | undefined {
+    switch (value?.trim().toLowerCase().replace(/[\s_-]+/gu, '')) {
+        case 'tracked': return 'TRACKED';
+        case 'wheeled': return 'WHEELED';
+        case 'hover': return 'HOVER';
+        case 'vtol': return 'VTOL';
+        case 'wige': return 'WIGE';
+        case 'leg': return 'INF_LEG';
+        case 'jump': return 'INF_JUMP';
+        case 'motorized': return 'INF_MOTORIZED';
+        case 'umu': return 'INF_UMU';
+        default: return undefined;
+    }
+}
+
+function toBfsAssetType(unitType: string): MegaMekUnitFileMetadata['bfsAssetType'] {
+    switch (unitType) {
+        case 'Tank':
+        case 'VTOL':
+        case 'Naval':
+            return 'Vehicle';
+        case 'Infantry':
+            return 'Conventional Infantry';
+        case 'BattleArmor':
+            return 'Battle Armor';
+        default:
+            return undefined;
+    }
 }
