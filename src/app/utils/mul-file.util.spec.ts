@@ -7,7 +7,6 @@ import type { CriticalSlot } from '../models/force-serialization';
 import type { Unit } from '../models/units.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { parseMulForce, sanitizeMulFilename, serializeForceToMul } from './mul-file.util';
-import { OptionsService } from '../services/options.service';
 import { CBTGameRulesService } from '../services/cbt-game-rules.service';
 import { CORE_2026_GAME_RULES } from '../models/rules/game-rules';
 import { MekRules } from '../models/rules/mek-rules';
@@ -17,9 +16,6 @@ const equipmentInteractionRegistryService = new EquipmentInteractionRegistryServ
 
 const fakeInjector = {
     get<T>(token: ProviderToken<T>, notFoundValue?: T): T {
-        if (token === OptionsService) {
-            return { options: () => ({ CBTRules: 'core2026' }) } as T;
-        }
         if (token === CBTGameRulesService) {
             return {
                 gameRules: () => CORE_2026_GAME_RULES,
