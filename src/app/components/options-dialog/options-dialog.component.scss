@@ -345,6 +345,18 @@
   width: 100%;
 }
 
+.options-mobile-detail .option-row:has(> label + select) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.options-mobile-detail .option-row > label + select {
+  width: max-content;
+  min-width: 140px;
+  max-width: min(360px, 55vw);
+}
+
 .options-desktop-shell .option-row select {
   width: min(360px, 48%);
 }
@@ -775,6 +787,20 @@ input {
 @media (max-width: 520px) {
   .provider-actions {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 380px) {
+  .options-mobile-detail .option-row:has(> label + select) {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .options-mobile-detail .option-row > label + select {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
   }
 }
 

@@ -72,6 +72,11 @@ export interface ForceGeneratorOptions {
 
 export type ForceViewerBVPVDisplay = 'adjusted' | 'base' | 'both';
 
+export interface CBTOptionalRules {
+    torsoCripplePSRCheck: boolean;
+    extremeRange: boolean;
+}
+
 export interface Options {
     colorScheme: ColorScheme;
     pickerStyle: 'default' | 'radial' | 'linear';
@@ -92,7 +97,7 @@ export interface Options {
     sidebarLipPosition?: string;
     trackPhaseAndTurn: boolean;
     cbtAutomations: boolean;
-    CBTExtremeRange: boolean;
+    CBTOptionalRules: CBTOptionalRules;
     CBTRules: 'tw' | `core2026`;
     ASUseHex: boolean;
     ASPrintPageBreakOnGroups: boolean;

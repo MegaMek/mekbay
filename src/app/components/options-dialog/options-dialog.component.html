@@ -47,7 +47,7 @@
                 <label for="gameSystem">Default game system:</label>
                 <select id="gameSystem" class="bt-select" [value]="optionsService.options().gameSystem"
                     (change)="onGameSystemChange($event)">
-                    <option value="cbt">BattleTech Classic (default)</option>
+                    <option value="cbt">BattleTech (default)</option>
                     <option value="as">Alpha Strike</option>
                 </select>
             </div>
@@ -518,12 +518,21 @@
             </div>
             <div class="option-section-title">Optional rules</div>
             <div class="option-row">
-                <label for="CBTExtremeRange">Enable "Extreme" range:</label>
-                <select id="CBTExtremeRange" class="bt-select"
-                    [value]="optionsService.options().CBTExtremeRange"
-                    (change)="onCBTExtremeRangeChange($event)">
-                    <option value="false">No (default)</option>
-                    <option value="true">Yes</option>
+                <label for="CBTTorsoCripplePSRCheck">Torso crippling PSR check:</label>
+                <select id="CBTTorsoCripplePSRCheck" class="bt-select"
+                    [value]="optionsService.options().CBTOptionalRules.torsoCripplePSRCheck"
+                    (change)="onCBTOptionalRuleChange('torsoCripplePSRCheck', $event)">
+                    <option value="true">Enabled (default)</option>
+                    <option value="false">Disabled</option>
+                </select>
+            </div>
+            <div class="option-row">
+                <label for="CBTOptionalExtremeRange">Enable "Extreme" range:</label>
+                <select id="CBTOptionalExtremeRange" class="bt-select"
+                    [value]="optionsService.options().CBTOptionalRules.extremeRange"
+                    (change)="onCBTOptionalRuleChange('extremeRange', $event)">
+                    <option value="true">Enabled</option>
+                    <option value="false">Disabled (default)</option>
                 </select>
             </div>
         </div>
@@ -596,8 +605,8 @@
                     <label for="performanceMode">Performance mode:</label>
                     <select id="performanceMode" class="bt-select" [value]="optionsService.options().performanceMode"
                         (change)="onPerformanceModeChange($event)">
-                        <option value="false">Disabled (default)</option>
                         <option value="true">Enabled</option>
+                        <option value="false">Disabled (default)</option>
                     </select>
                 </div>
                 <div class="description">

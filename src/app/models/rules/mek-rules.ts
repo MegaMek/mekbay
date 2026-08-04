@@ -246,7 +246,7 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     private requiresTorsoCripplingCheck(): boolean {
-        if (!this.usesTorsoCripplingRules()) return false;
+        if (!this.usesTorsoCripplingRules() || !this.unit.usesTorsoCripplePSRCheck()) return false;
         const engine = (this.unit.getUnit().engine ?? '').trim().toLowerCase();
         return engine === 'fusion' || engine === 'compact';
     }

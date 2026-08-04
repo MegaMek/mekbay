@@ -47,6 +47,7 @@ function createRulesHarness(options: {
     engine?: string;
     subtype?: UnitSubtype;
     rulesId?: 'core2026' | 'tw';
+    torsoCripplePSRCheck?: boolean;
 } = {}): MekRules {
     return createForceUnitHarness(options).rules as MekRules;
 }
@@ -74,8 +75,16 @@ function createForceUnitHarness(options: {
     engine?: string;
     subtype?: UnitSubtype;
     rulesId?: 'core2026' | 'tw';
+    torsoCripplePSRCheck?: boolean;
 } = {}): CBTForceUnit {
-    optionsService.options.update(current => ({ ...current, CBTRules: options.rulesId ?? 'core2026' }));
+    optionsService.options.update(current => ({
+        ...current,
+        CBTRules: options.rulesId ?? 'core2026',
+        CBTOptionalRules: {
+            ...current.CBTOptionalRules,
+            torsoCripplePSRCheck: options.torsoCripplePSRCheck ?? true,
+        },
+    }));
     const crewStates = options.crewStates ?? ['healthy'];
     const crewHits = options.crewHits ?? [];
     const baseUnit = createEmptyUnit({
@@ -1360,6 +1369,41 @@ describe('MekRules', () => {
         expect(failedUnit.rules.hasComputedCondition('crippled')).toBeTrue();
     });
 
+    it('reconciles a Core 2026 fusion Mek when the torso check option changes', () => {
+        const forceUnit = createForceUnitHarness({
+            torsoCripplePSRCheck: false,
+            internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
+            committedDestroyedLocations: ['LT'],
+        });
+
+        expect(forceUnit.rules.hasComputedCondition('crippled')).toBeTrue();
+        expect(forceUnit.turnState().getPSRChecks().some(check =>
+            check.reason === 'Torso destroyed'
+        )).toBeFalse();
+
+        optionsService.options.update(current => ({
+            ...current,
+            CBTOptionalRules: { ...current.CBTOptionalRules, torsoCripplePSRCheck: true },
+        }));
+        TestBed.tick();
+
+        expect(forceUnit.rules.hasComputedCondition('crippled')).toBeFalse();
+        expect(forceUnit.turnState().getPSRChecks().some(check =>
+            check.reason === 'Torso destroyed'
+        )).toBeTrue();
+
+        optionsService.options.update(current => ({
+            ...current,
+            CBTOptionalRules: { ...current.CBTOptionalRules, torsoCripplePSRCheck: false },
+        }));
+        TestBed.tick();
+
+        expect(forceUnit.rules.hasComputedCondition('crippled')).toBeTrue();
+        expect(forceUnit.turnState().getPSRChecks().some(check =>
+            check.reason === 'Torso destroyed'
+        )).toBeFalse();
+    });
+
     it('requests a new torso crippling check after repair and rejects the stale result', () => {
         const forceUnit = createForceUnitHarness({
             internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
@@ -1499,6 +1543,7 @@ describe('MekRules', () => {
     it('does not apply the Core 2026 torso crippling check to Total Warfare rules', () => {
         const forceUnit = createForceUnitHarness({
             rulesId: 'tw',
+            torsoCripplePSRCheck: false,
             internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
             committedDestroyedLocations: ['LT'],
         });

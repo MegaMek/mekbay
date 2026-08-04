@@ -33,7 +33,7 @@
 
 import { inject, Injectable, signal } from '@angular/core';
 import { DbService } from './db.service';
-import type { ColorScheme, ForceBudgetOptimizerLastSkills, ForceGeneratorOptions, Options } from '../models/options.model';
+import type { CBTOptionalRules, ColorScheme, ForceBudgetOptimizerLastSkills, ForceGeneratorOptions, Options } from '../models/options.model';
 import { GameSystem } from '../models/common.model';
 
 /*
@@ -67,7 +67,10 @@ const DEFAULT_OPTIONS: Options = {
     syncZoomBetweenSheets: true,
     trackPhaseAndTurn: true,
     cbtAutomations: false,
-    CBTExtremeRange: false,
+    CBTOptionalRules: {
+        torsoCripplePSRCheck: true,
+        extremeRange: false,
+    },
     allowMultipleActiveSheets: false,
     CBTRules: 'tw',
     
@@ -180,6 +183,14 @@ function resolveForceGeneratorOptions(saved: Options | null | undefined): ForceG
     };
 }
 
+function resolveCBTOptionalRules(saved: Options | null | undefined): CBTOptionalRules {
+    const defaults = DEFAULT_OPTIONS.CBTOptionalRules;
+    return {
+        torsoCripplePSRCheck: saved?.CBTOptionalRules?.torsoCripplePSRCheck ?? defaults.torsoCripplePSRCheck,
+        extremeRange: saved?.CBTOptionalRules?.extremeRange ?? defaults.extremeRange,
+    };
+}
+
 @Injectable({ providedIn: 'root' })
 export class OptionsService {
     private dbService = inject(DbService);
@@ -200,7 +211,7 @@ export class OptionsService {
         recordSheetDoubleTapZoomReset: DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
         trackPhaseAndTurn: DEFAULT_OPTIONS.trackPhaseAndTurn,
         cbtAutomations: DEFAULT_OPTIONS.cbtAutomations,
-        CBTExtremeRange: DEFAULT_OPTIONS.CBTExtremeRange,
+        CBTOptionalRules: { ...DEFAULT_OPTIONS.CBTOptionalRules },
         CBTRules: DEFAULT_OPTIONS.CBTRules,
         ASUseHex: DEFAULT_OPTIONS.ASUseHex,
         ASPrintPageBreakOnGroups: DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
@@ -245,7 +256,7 @@ export class OptionsService {
             sidebarLipPosition: saved?.sidebarLipPosition,
             trackPhaseAndTurn: saved?.trackPhaseAndTurn ?? DEFAULT_OPTIONS.trackPhaseAndTurn,
             cbtAutomations: saved?.cbtAutomations ?? DEFAULT_OPTIONS.cbtAutomations,
-            CBTExtremeRange: saved?.CBTExtremeRange ?? DEFAULT_OPTIONS.CBTExtremeRange,
+            CBTOptionalRules: resolveCBTOptionalRules(saved),
             CBTRules: saved?.CBTRules ?? DEFAULT_OPTIONS.CBTRules,
             ASUseHex: saved?.ASUseHex ?? DEFAULT_OPTIONS.ASUseHex,
             ASPrintPageBreakOnGroups: saved?.ASPrintPageBreakOnGroups ?? DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,

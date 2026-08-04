@@ -721,7 +721,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     let unitInitializer: UnitInitializerService;
     let injector: Injector;
     let cbtAutomations: ReturnType<typeof signal<boolean>>;
-    let cbtExtremeRange: ReturnType<typeof signal<boolean>>;
+    let extremeRange: ReturnType<typeof signal<boolean>>;
 
     beforeEach(() => {
         equipment = createEquipment();
@@ -729,7 +729,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         dataService.getEquipmentRegistry.and.callFake(() => new EquipmentRegistry(equipment));
         dataService.findEquipment.and.callFake((name: string) => dataService.getEquipmentRegistry().findEquipment(name) ?? undefined);
         cbtAutomations = signal(true);
-        cbtExtremeRange = signal(false);
+        extremeRange = signal(false);
 
         TestBed.configureTestingModule({
             providers: [
@@ -739,7 +739,10 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
                 { provide: ToastService, useValue: jasmine.createSpyObj<ToastService>('ToastService', ['showToast']) },
                 { provide: OptionsService, useValue: { options: () => ({
                     cbtAutomations: cbtAutomations(),
-                    CBTExtremeRange: cbtExtremeRange()
+                    CBTOptionalRules: {
+                        torsoCripplePSRCheck: true,
+                        extremeRange: extremeRange(),
+                    },
                 }) } },
             ],
         });
@@ -765,7 +768,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         expect(forceUnit.allowsExtremeRangeAttacks()).toBeFalse();
 
-        cbtExtremeRange.set(true);
+        extremeRange.set(true);
 
         expect(forceUnit.allowsExtremeRangeAttacks()).toBeTrue();
     });

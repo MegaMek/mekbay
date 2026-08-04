@@ -533,9 +533,12 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('cbtAutomations', value);
     }
 
-    onCBTExtremeRangeChange(event: Event) {
+    onCBTOptionalRuleChange(key: 'torsoCripplePSRCheck' | 'extremeRange', event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
-        this.optionsService.setOption('CBTExtremeRange', value);
+        this.optionsService.setOption('CBTOptionalRules', {
+            ...this.optionsService.options().CBTOptionalRules,
+            [key]: value,
+        });
     }
 
     onASUseHexChange(event: Event) {

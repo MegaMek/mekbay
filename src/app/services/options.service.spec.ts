@@ -40,6 +40,33 @@ describe('OptionsService theme migration', () => {
         expect(service.options().cbtAutomations).toBeFalse();
     });
 
+    it('uses CBT optional-rule defaults', async () => {
+        savedOptions = null;
+
+        const service = await createService();
+
+        expect(service.options().CBTOptionalRules).toEqual({
+            torsoCripplePSRCheck: true,
+            extremeRange: false,
+        });
+    });
+
+    it('restores structured CBT optional rules', async () => {
+        savedOptions = {
+            CBTOptionalRules: {
+                torsoCripplePSRCheck: false,
+                extremeRange: true,
+            },
+        };
+
+        const service = await createService();
+
+        expect(service.options().CBTOptionalRules).toEqual({
+            torsoCripplePSRCheck: false,
+            extremeRange: true,
+        });
+    });
+
     it('restores the last Unit Search view mode', async () => {
         savedOptions = { unitSearchViewMode: 'chassis' };
 

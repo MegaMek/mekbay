@@ -75,6 +75,27 @@ describe('OptionsDialogComponent', () => {
         expect(setOption).toHaveBeenCalledOnceWith('cbtAutomations', false);
     });
 
+    it('updates one CBT optional rule without changing the other', () => {
+        const setOption = jasmine.createSpy('setOption');
+        const component = configureComponent({
+            options: () => ({
+                unitServers: [],
+                CBTOptionalRules: { torsoCripplePSRCheck: true, extremeRange: false },
+            }),
+            setOption,
+        });
+        const select = document.createElement('select');
+        select.innerHTML = '<option value="true">Enabled</option><option value="false">Disabled</option>';
+        select.value = 'false';
+
+        component.onCBTOptionalRuleChange('torsoCripplePSRCheck', { target: select } as unknown as Event);
+
+        expect(setOption).toHaveBeenCalledOnceWith('CBTOptionalRules', {
+            torsoCripplePSRCheck: false,
+            extremeRange: false,
+        });
+    });
+
     it('counts canonical equipment registry entries rather than lookup aliases', () => {
         const registry = new EquipmentRegistry({
             CanonicalOne: createEquipment({

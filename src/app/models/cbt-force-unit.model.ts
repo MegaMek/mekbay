@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { computed, createEnvironmentInjector, EnvironmentInjector, type Injector, runInInjectionContext, signal, type Signal, untracked, type WritableSignal } from '@angular/core';
+import { computed, createEnvironmentInjector, effect, type EffectRef, EnvironmentInjector, type Injector, runInInjectionContext, signal, type Signal, untracked, type WritableSignal } from '@angular/core';
 import { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
@@ -78,6 +78,7 @@ export class CBTForceUnit extends ForceUnit {
     svg: WritableSignal<SVGSVGElement | null> = signal(null); // SVG representation of the unit
     private _svgService: UnitSvgService | null = null;
     private svgServiceInjector: EnvironmentInjector | null = null;
+    private optionalRulesEffect: EffectRef | null = null;
     private _rules!: UnitTypeRules;
     readonly gameRules: CBTGameRules;
     viewState: ViewportTransform;
@@ -130,6 +131,13 @@ export class CBTForceUnit extends ForceUnit {
         const gameRulesService = this.injector.get(CBTGameRulesService);
         this.gameRules = gameRulesService.gameRules();
         this._rules = gameRulesService.createUnitRules(this);
+        const optionsService = this.injector.get(OptionsService, null, { optional: true });
+        if (optionsService) {
+            this.optionalRulesEffect = effect(() => {
+                optionsService.options().CBTOptionalRules?.torsoCripplePSRCheck;
+                if (this.isLoaded()) untracked(() => this.reconcileRuleChecks());
+            }, { injector: this.injector, manualCleanup: true });
+        }
         this.turnState().capturePassiveHeatSourceBaseline();
     }
 
@@ -141,7 +149,11 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     allowsExtremeRangeAttacks(): boolean {
-        return this.injector.get(OptionsService, null, { optional: true })?.options().CBTExtremeRange ?? false;
+        return this.injector.get(OptionsService, null, { optional: true })?.options().CBTOptionalRules?.extremeRange ?? false;
+    }
+
+    usesTorsoCripplePSRCheck(): boolean {
+        return this.injector.get(OptionsService, null, { optional: true })?.options().CBTOptionalRules?.torsoCripplePSRCheck ?? true;
     }
 
     private getEquipmentInteractionRegistry(): EquipmentInteractionRegistry {
@@ -233,6 +245,8 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     override destroy() {
+        this.optionalRulesEffect?.destroy();
+        this.optionalRulesEffect = null;
         if (this.svgServiceInjector) {
             this.svgServiceInjector.destroy();
             this.svgServiceInjector = null;
