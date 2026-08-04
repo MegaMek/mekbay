@@ -2669,7 +2669,7 @@ hr.divider {
 
         .inventoryEntry {
             &.selected:not(.selected-alternative-mode)>text:not(.hitMod-text):not(.targetTn-text):not(.targetAimedShotWarning-text),
-            &.selected:not(.selected-alternative-mode)>g:not(.alternativeMode) text,
+            &.selected:not(.selected-alternative-mode)>g:not(.alternativeMode):not(.inventoryEntry) text,
             &.selected.selected-alternative-mode>.alternativeMode.selected text {
                 fill: #000;
             }
