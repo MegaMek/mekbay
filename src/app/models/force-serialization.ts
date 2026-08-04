@@ -115,6 +115,7 @@ export interface SerializedTurnState {
     weaponsHeat?: number;
     acknowledgedHeatSources?: Record<string, string>;
     heatDissipationConsumed?: number;
+    psrOutcomes?: Record<string, RuleCheckOutcome>;
     psrChecks?: SerializedPSRChecks;
     applyMovePSR?: boolean;
     spotting?: boolean;
@@ -359,8 +360,21 @@ export interface CBTSerializedState extends SerializedState {
     locations: Record<string, LocationData>;
     heat: HeatProfile;
     inventory?: SerializedInventory[];
+    ruleChecks?: SerializedRuleChecks;
     turnState?: SerializedTurnState;
 }
+
+export type RuleCheckOutcome = 'success' | 'failed';
+export type RuleCheckStatus = 'pending' | RuleCheckOutcome;
+
+export interface SerializedRuleCheck {
+    token: string;
+    trigger: string;
+    status: RuleCheckStatus;
+}
+
+export type SerializedRuleChecks = Record<string, SerializedRuleCheck>;
+
 export interface SerializedInventory {
     id: string;
     destroyed?: boolean;
@@ -441,6 +455,12 @@ export const PSR_CHECKS_SCHEMA = Sanitizer.schema<SerializedPSRChecks>()
     .boolean('shutdown')
     .build();
 
+function sanitizePSRChecks(value: unknown): SerializedPSRChecks | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const checks = Sanitizer.sanitize(value, PSR_CHECKS_SCHEMA);
+    return Object.keys(checks).length > 0 ? checks : undefined;
+}
+
 export const TURN_STATE_SCHEMA = Sanitizer.schema<SerializedTurnState>()
     .custom('airborne', (value: unknown) => typeof value === 'boolean' ? value : undefined)
     .custom('moveMode', (value: unknown) => MOTIVE_MODE_VALUES.includes(value as MotiveModes) ? value as MotiveModes : undefined)
@@ -449,11 +469,14 @@ export const TURN_STATE_SCHEMA = Sanitizer.schema<SerializedTurnState>()
     .custom('weaponsHeat', sanitizeOptionalNonNegativeNumber)
     .custom('acknowledgedHeatSources', sanitizeStringRecord)
     .custom('heatDissipationConsumed', sanitizeOptionalNonNegativeNumber)
-    .custom('psrChecks', (value: unknown) => {
+    .custom('psrOutcomes', (value: unknown) => {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-        const psrChecks = Sanitizer.sanitize(value, PSR_CHECKS_SCHEMA);
-        return Object.keys(psrChecks).length > 0 ? psrChecks : undefined;
+        const outcomes = Object.fromEntries(Object.entries(value)
+            .filter(([key, outcome]) => key.length > 0 && key.length <= 256
+                && (outcome === 'success' || outcome === 'failed')));
+        return Object.keys(outcomes).length > 0 ? outcomes : undefined;
     })
+    .custom('psrChecks', sanitizePSRChecks)
     .custom('applyMovePSR', (value: unknown) => typeof value === 'boolean' ? value : undefined)
     .custom('spotting', (value: unknown) => typeof value === 'boolean' ? value : undefined)
     .build();
@@ -643,6 +666,23 @@ export const CBT_SERIALIZED_STATE_SCHEMA = Sanitizer.schema<CBTSerializedState>(
     .custom('inventory', (value: unknown) => {
         if (!Array.isArray(value)) return undefined;
         return Sanitizer.sanitizeArray(value, INVENTORY_SCHEMA);
+    })
+    .custom('ruleChecks', (value: unknown) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+        const result: SerializedRuleChecks = {};
+        for (const [key, entry] of Object.entries(value)) {
+            if (!key || key.length > 64 || !entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+            const candidate = entry as Record<string, unknown>;
+            if (typeof candidate['token'] !== 'string' || !candidate['token']) continue;
+            if (typeof candidate['trigger'] !== 'string' || !candidate['trigger']) continue;
+            if (candidate['status'] !== 'pending' && candidate['status'] !== 'success' && candidate['status'] !== 'failed') continue;
+            result[key] = {
+                token: candidate['token'],
+                trigger: candidate['trigger'],
+                status: candidate['status'],
+            };
+        }
+        return Object.keys(result).length > 0 ? result : undefined;
     })
     .custom('turnState', (value: unknown) => {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;

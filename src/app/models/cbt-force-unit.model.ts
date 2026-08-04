@@ -36,7 +36,7 @@ import { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { MountedAmmo, MountedEquipment } from './mounted-equipment.model';
-import { type CriticalSlot, type HeatProfile, type LocationData, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, TURN_STATE_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type SerializedCrewMember, committedConditionData, conditionsForSerialization, conditionsHasActive, conditionsHasCommittedActive, conditionsMapFromSerialization, normalizeConditionData, normalizeConditionKey } from './force-serialization';
+import { type CriticalSlot, type HeatProfile, type LocationData, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, TURN_STATE_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type RuleCheckOutcome, type SerializedCrewMember, type SerializedRuleCheck, committedConditionData, conditionsForSerialization, conditionsHasActive, conditionsHasCommittedActive, conditionsMapFromSerialization, normalizeConditionData, normalizeConditionKey } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
 import type { ConditionData } from './force-unit-state.model';
 import type { CBTForce } from './cbt-force.model';
@@ -259,6 +259,7 @@ export class CBTForceUnit extends ForceUnit {
                 throw new Error(`Unit "${this.unit.name}" loaded but SVG is missing`);
             }
             this.isLoaded.set(true);
+            this.reconcileRuleChecks();
         } finally {
             // Clear the loading promise when done (success or failure)
             this.loadingPromise = null;
@@ -340,6 +341,37 @@ export class CBTForceUnit extends ForceUnit {
                 this.force.units().forEach(unit => unit.inventoryControl.markInventoryViewChanged());
             }
         }
+    }
+
+    getRuleCheck(key: string): SerializedRuleCheck | undefined {
+        return this.state.ruleChecks()[key];
+    }
+
+    setRuleCheck(key: string, check: SerializedRuleCheck | undefined, markModified = true): boolean {
+        const current = this.state.ruleChecks();
+        const existing = current[key];
+        if (check && existing?.token === check.token && existing.trigger === check.trigger && existing.status === check.status) {
+            return false;
+        }
+        if (!check && !existing) return false;
+
+        const next = { ...current };
+        if (check) {
+            next[key] = { ...check };
+        } else {
+            delete next[key];
+        }
+        this.state.ruleChecks.set(next);
+        if (markModified) this.setModified();
+        return true;
+    }
+
+    reconcileRuleChecks(): void {
+        this._rules.reconcileRuleChecks();
+    }
+
+    resolveRuleCheck(key: string, token: string, outcome: RuleCheckOutcome): boolean {
+        return this._rules.resolveRuleCheck(key, token, outcome);
     }
 
     get getCritSlots() {
@@ -1179,6 +1211,7 @@ export class CBTForceUnit extends ForceUnit {
     public evaluateDestroyed(): void {
         if (!this.isLoaded()) return;
         this._rules.evaluateDestroyed();
+        this.reconcileRuleChecks();
         this.turnState().reconcileHeatSources();
     }
 
@@ -1258,6 +1291,7 @@ export class CBTForceUnit extends ForceUnit {
         this._formationCommander.set(data.commander ?? false);
         if (data.state) {
             this.state.update(data.state);
+            if (this.isLoaded()) this.reconcileRuleChecks();
             this.reconcileInventoryControlSelection();
             this.syncInventoryControlSelectionSvg();
         }
@@ -1274,6 +1308,9 @@ export class CBTForceUnit extends ForceUnit {
             conditions: this.state.conditionsForSerialization(),
             c3Position: this.state.c3Position() ?? undefined,
             inventory: this.state.inventoryForSerialization(),
+            ruleChecks: Object.keys(this.state.ruleChecks()).length > 0
+                ? structuredClone(this.state.ruleChecks())
+                : undefined,
             turnState: this.state.turnState().serialize()
         };
         const data: CBTSerializedUnit = {
@@ -1294,6 +1331,7 @@ export class CBTForceUnit extends ForceUnit {
         this.state.modified.set(typeof state.modified === 'boolean' ? state.modified : false);
         this.state.destroyed.set(typeof state.destroyed === 'boolean' ? state.destroyed : false);
         this.state.setConditions(state.conditions ?? []);
+        this.state.ruleChecks.set(structuredClone(state.ruleChecks ?? {}));
         this.state.inventory.update(inventory => inventory.map(item => item.clone({ destroying: undefined })));
         
         if (state.inventory) {

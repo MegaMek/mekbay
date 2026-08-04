@@ -35,7 +35,7 @@ import { computed, signal, type Signal } from '@angular/core';
 import { MountedWeapon, type MountedEquipment } from '../mounted-equipment.model';
 import type { ToHitModifierBreakdownEntry } from './game-rules';
 import type { WeaponType } from '../weapon-types.model';
-import type { CriticalSlot, SerializedC3NetworkGroup } from '../force-serialization';
+import type { CriticalSlot, RuleCheckOutcome, SerializedC3NetworkGroup } from '../force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
 import type { CrewMemberState } from '../crew-member.model';
@@ -53,12 +53,18 @@ import type { InventoryControlDisplayData } from '../../utils/inventory-control.
 import { C3TaxCalculator } from '../c3-network.model';
 
 export interface PSRCheck {
+    id?: string;
     fallCheck?: number;
     pilotCheck?: number;
     reason: string;
+    failureOutcome?: string;
     loc?: string;
     legFilter?: string;
     ignorePreExistingGyro?: boolean;
+    resolution?: {
+        key: string;
+        token: string;
+    };
 }
 
 export interface UnitSkillModifier {
@@ -302,6 +308,12 @@ export interface UnitTypeRules {
 
     /** Required control-roll checks for the current phase. */
     getPSRChecks(turnState: TurnState): PSRCheck[];
+
+    /** Reconcile persistent outcome checks with the unit's current rule state. */
+    reconcileRuleChecks(): void;
+
+    /** Resolve a pending outcome check if its token still identifies the current instance. */
+    resolveRuleCheck(key: string, token: string, outcome: RuleCheckOutcome): boolean;
 
     /** Movement-mode warning roll caused by committed damage. */
     getCommittedDamageMovementModePSRCheck(moveMode: MotiveModes | null, moveDistance?: number | null): PSRCheck | null;
@@ -572,6 +584,13 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     getPSRChecks(_turnState: TurnState): PSRCheck[] {
         return [];
+    }
+
+    reconcileRuleChecks(): void {
+    }
+
+    resolveRuleCheck(_key: string, _token: string, _outcome: RuleCheckOutcome): boolean {
+        return false;
     }
 
     getCommittedDamageMovementModePSRCheck(_moveMode: MotiveModes | null, _moveDistance?: number | null): PSRCheck | null {

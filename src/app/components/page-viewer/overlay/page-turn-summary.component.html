@@ -157,13 +157,14 @@
     </div>
     }
     <div class="summary-entry">
-        @if (falling()) {
-            <button role="button" class="summary-entry bt-button danger full-danger" tabindex="0">
+        @if (falling() || hasPSRChecks()) {
+            <button role="button" class="summary-entry bt-button" [class.full-danger]="falling()"
+                [class.warning]="!falling()" (click)="openPsrWarning($event)" tabindex="0">
+                @if (falling()) {
                 ⚠ FALLING! ⚠
-            </button>
-        } @else if (hasPSRChecks()) {
-            <button role="button" class="summary-entry bt-button warning" (click)="openPsrWarning($event)" tabindex="0">
+                } @else {
                 ⚠ {{ controlRollShortLabel() }} Checks! ({{ PSRChecksCount() }})
+                }
             </button>
         }
         @if (dirty()) {

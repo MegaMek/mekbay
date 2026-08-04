@@ -35,7 +35,7 @@ import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CrewMember, SkillType } from '../crew-member.model';
 import type { MountedEquipment } from '../mounted-equipment.model';
-import type { CriticalSlot } from '../force-serialization';
+import type { CriticalSlot, RuleCheckOutcome } from '../force-serialization';
 import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type ChargeDamage, type LocationConditionControl, type PSRCheck, type MountedEquipmentRuleState, type UnitHeatSource, type UnitModifierBreakdownEntry } from './unit-type-rules';
 import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
@@ -54,6 +54,7 @@ export { LEG_LOCATIONS } from '../entity/types';
 import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
 import { WeaponEquipment } from '../equipment.model';
 import type { ToHitModifierBreakdownEntry } from './game-rules';
+import { uuidv7 } from '../../utils/uuid.util';
 
 type ArmLocation = 'LA' | 'RA';
 
@@ -76,6 +77,7 @@ interface MekArmStatus {
 }
 
 export const TORSO_LOCATIONS = new Set(['CT', 'LT', 'RT']);
+const TORSO_CRIPPLE_CHECK_KEY = 'core.torso-crippling';
 export const LINKED_LOCATIONS: { [key: string]: string[] } = {
     'RT': ['RA', 'FRL'],
     'LT': ['LA', 'FLL'],
@@ -196,9 +198,13 @@ export class MekRules extends UnitTypeRulesBase {
             return true;
         }
 
-        return Array.from(TORSO_LOCATIONS).some(loc =>
-            internalLocations.has(loc) && this.unit.isInternalLocDestroyed(loc)
-        );
+        const destroyedTorsoCount = this.destroyedTorsoCount();
+        if (destroyedTorsoCount >= 2) return true;
+        if (destroyedTorsoCount === 0) return false;
+        if (!this.requiresTorsoCripplingCheck()) return true;
+        const trigger = this.destroyedTorsoLocations()[0];
+        const check = this.unit.getRuleCheck(TORSO_CRIPPLE_CHECK_KEY);
+        return check?.trigger === trigger && check.status === 'failed';
     });
 
     private readonly heatMgmt: HeatManagement;
@@ -221,6 +227,70 @@ export class MekRules extends UnitTypeRulesBase {
 
     protected isDestroyedOrDestroyingCrit(slot: CriticalSlot): boolean {
         return !!slot.destroying || this.isCritUnavailable(slot);
+    }
+
+    protected usesTorsoCripplingRules(): boolean {
+        return true;
+    }
+
+    private destroyedTorsoCount(): number {
+        return this.destroyedTorsoLocations().length;
+    }
+
+    private destroyedTorsoLocations(): string[] {
+        const internalLocations = this.unit.locations?.internal;
+        if (!internalLocations) return [];
+        return Array.from(TORSO_LOCATIONS).filter(loc =>
+            internalLocations.has(loc) && this.unit.isInternalLocDestroyed(loc)
+        );
+    }
+
+    private requiresTorsoCripplingCheck(): boolean {
+        if (!this.usesTorsoCripplingRules()) return false;
+        const engine = (this.unit.getUnit().engine ?? '').trim().toLowerCase();
+        return engine === 'fusion' || engine === 'compact';
+    }
+
+    override reconcileRuleChecks(): void {
+        const check = this.unit.getRuleCheck(TORSO_CRIPPLE_CHECK_KEY);
+        if (!this.requiresTorsoCripplingCheck()) {
+            this.unit.setRuleCheck(TORSO_CRIPPLE_CHECK_KEY, undefined, false);
+            return;
+        }
+
+        const destroyedTorsos = this.destroyedTorsoLocations();
+        if (destroyedTorsos.length === 0) {
+            this.unit.setRuleCheck(TORSO_CRIPPLE_CHECK_KEY, undefined, false);
+            return;
+        }
+        if (destroyedTorsos.length >= 2) {
+            if (check && !destroyedTorsos.includes(check.trigger)) {
+                this.unit.setRuleCheck(TORSO_CRIPPLE_CHECK_KEY, undefined, false);
+            }
+            return;
+        }
+
+        const trigger = destroyedTorsos[0];
+        if (check?.trigger === trigger) return;
+        this.unit.setRuleCheck(TORSO_CRIPPLE_CHECK_KEY, {
+            token: uuidv7(),
+            trigger,
+            status: 'pending',
+        }, false);
+    }
+
+    override resolveRuleCheck(key: string, token: string, outcome: RuleCheckOutcome): boolean {
+        if (key !== TORSO_CRIPPLE_CHECK_KEY) return super.resolveRuleCheck(key, token, outcome);
+        const destroyedTorsos = this.destroyedTorsoLocations();
+        const check = this.unit.getRuleCheck(key);
+        if (destroyedTorsos.length !== 1
+            || !check
+            || check.status !== 'pending'
+            || check.token !== token
+            || check.trigger !== destroyedTorsos[0]) {
+            return false;
+        }
+        return this.unit.setRuleCheck(key, { ...check, status: outcome });
     }
 
     private isCritUnavailable(slot: CriticalSlot): boolean {
@@ -295,6 +365,24 @@ export class MekRules extends UnitTypeRulesBase {
     override getPSRChecks(turnState: TurnState): PSRCheck[] {
         const checks: PSRCheck[] = [];
         const psr = turnState.getPSRCheckState();
+
+        const torsoCheck = this.unit.getRuleCheck(TORSO_CRIPPLE_CHECK_KEY);
+        const destroyedTorsos = this.destroyedTorsoLocations();
+        if (this.requiresTorsoCripplingCheck()
+            && destroyedTorsos.length === 1
+            && torsoCheck?.trigger === destroyedTorsos[0]
+            && torsoCheck.status === 'pending') {
+            checks.push({
+                fallCheck: 0,
+                pilotCheck: 0,
+                reason: 'Torso destroyed',
+                failureOutcome: 'Crippled',
+                resolution: {
+                    key: TORSO_CRIPPLE_CHECK_KEY,
+                    token: torsoCheck.token,
+                },
+            });
+        }
 
         if (psr.gyroDestroyed) {
             const destroyedGyroCheck = this.destroyedGyroPSRCheck();

@@ -33,7 +33,7 @@
 
 import { signal, computed } from '@angular/core';
 import { MountedEquipment } from './mounted-equipment.model';
-import { type LocationData, type HeatProfile, type SerializedInventory, type CriticalSlot, type SerializedState, type CBTSerializedState, C3_POSITION_SCHEMA, type SerializedCondition, committedConditionData, conditionsForSerialization, conditionsMapFromSerialization } from './force-serialization';
+import { type LocationData, type HeatProfile, type SerializedInventory, type CriticalSlot, type SerializedState, type CBTSerializedState, C3_POSITION_SCHEMA, type SerializedCondition, type SerializedRuleChecks, committedConditionData, conditionsForSerialization, conditionsMapFromSerialization } from './force-serialization';
 import { CrewMember } from './crew-member.model';
 import { ForceUnitState } from './force-unit-state.model';
 import { TurnState } from './turn-state.model';
@@ -55,6 +55,8 @@ export class CBTForceUnitState extends ForceUnitState {
     public heat = signal<HeatProfile>({ current: 0, previous: 0 });
     /** Inventory of the unit */
     public inventory = signal<MountedEquipment[]>([]);
+    /** Persistent user-resolved rule checks keyed by stable rule identifier. */
+    public ruleChecks = signal<SerializedRuleChecks>({});
     public readonly turnState = signal<TurnState>(null!);
 
     constructor(unit: CBTForceUnit) {
@@ -114,6 +116,8 @@ export class CBTForceUnitState extends ForceUnitState {
             };
         }
         this.locations.set(updated);
+        this.unit.evaluateDestroyed();
+        this.unit.setModified();
     }
 
     consolidateCrits() {
@@ -198,6 +202,7 @@ export class CBTForceUnitState extends ForceUnitState {
         this.modified.set(data.modified);
         this.destroyed.set(data.destroyed);
         this.setConditions(data.conditions ?? []);
+        this.ruleChecks.set({ ...(data.ruleChecks ?? {}) });
         this.heat.set(data.heat);
         if (data.c3Position) {
             this.c3Position.set(Sanitizer.sanitize(data.c3Position, C3_POSITION_SCHEMA));

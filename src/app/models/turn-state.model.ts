@@ -2,7 +2,7 @@ import { computed, signal, type WritableSignal } from "@angular/core";
 import { canChangeAirborneGround, getMotiveModeMaxDistance, type MotiveModes } from "./motiveModes.model";
 import { getMekLegLocations, inferMekConfigFromLocations } from "./entity/types";
 import type { CBTForceUnitState } from "./cbt-force-unit-state.model";
-import type { SerializedPSRChecks, SerializedTurnState } from "./force-serialization";
+import type { RuleCheckOutcome, SerializedPSRChecks, SerializedTurnState } from "./force-serialization";
 import { calculateModifierTotal, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitModifierTotal } from "./rules/unit-type-rules";
 
 export type { PSRCheck } from "./rules/unit-type-rules";
@@ -51,6 +51,7 @@ export class TurnState {
     private readonly passiveHeatSourceBaseline = signal('');
     private readonly acknowledgedHeatSources = this.modifiedSignal<Record<string, string>>({});
     private readonly heatDissipationConsumed = this.modifiedSignal<number>(0);
+    private readonly psrOutcomes = this.modifiedSignal<Record<string, RuleCheckOutcome>>({});
     airborne = this.modifiedSignal<boolean | null>(null, 'movement');
     moveMode = this.modifiedSignal<MotiveModes | null>(null, 'movement');
     moveDistance = this.modifiedSignal<number | null>(null, 'movement');
@@ -103,7 +104,17 @@ export class TurnState {
     });
 
     getPSRChecks = computed<PSRCheck[]>(() => {
-        return this.unitState.unit.rules.getPSRChecks(this);
+        const occurrences = new Map<string, number>();
+        return this.unitState.unit.rules.getPSRChecks(this).map(check => {
+            const baseId = check.id ?? this.psrCheckBaseId(check);
+            const occurrence = occurrences.get(baseId) ?? 0;
+            occurrences.set(baseId, occurrence + 1);
+            return {
+                ...check,
+                id: occurrence === 0 ? baseId : `${baseId}#${occurrence + 1}`,
+                failureOutcome: check.failureOutcome ?? 'Fall',
+            };
+        });
     });
 
     canRun = computed<boolean>(() => {
@@ -164,8 +175,34 @@ export class TurnState {
     });
 
     PSRRollsCount = computed<number>(() => {
-        return this.unitState.unit.rules.getPSRChecks(this).filter((entry) => entry.fallCheck !== undefined).length;
+        const outcomes = this.psrOutcomes();
+        return this.getPSRChecks().filter(entry =>
+            entry.fallCheck !== undefined && entry.id !== undefined && outcomes[entry.id] === undefined
+        ).length;
     });
+
+    getPSROutcome(checkId: string): RuleCheckOutcome | undefined {
+        return this.psrOutcomes()[checkId];
+    }
+
+    resolvePSRCheck(checkId: string, outcome: RuleCheckOutcome): boolean {
+        const check = this.getPSRChecks().find(entry => entry.id === checkId);
+        if (!check || check.resolution || this.getPSROutcome(checkId)) return false;
+        this.psrOutcomes.update(current => ({ ...current, [checkId]: outcome }));
+        if (outcome === 'failed') this.unitState.unit.setCondition('prone', true);
+        return true;
+    }
+
+    private psrCheckBaseId(check: PSRCheck): string {
+        return [
+            check.reason.replace(/\d+(?:\.\d+)?/g, '#'),
+            check.loc ?? '',
+            check.legFilter ?? '',
+            check.fallCheck ?? '',
+            check.pilotCheck ?? '',
+            check.ignorePreExistingGyro ? 'ignore-gyro' : '',
+        ].join('|');
+    }
 
     currentPhase = computed<'I' | 'M' | 'W' | 'P' | 'H'>(() => {
         if (this.moveMode() === null || (this.moveMode() !== 'stationary' && this.moveDistance() === null)) {
@@ -320,6 +357,9 @@ export class TurnState {
         if (this.heatDissipationConsumed() > 0) {
             turnState.heatDissipationConsumed = this.heatDissipationConsumed();
         }
+        if (Object.keys(this.psrOutcomes()).length > 0) {
+            turnState.psrOutcomes = { ...this.psrOutcomes() };
+        }
         if (psrChecks) turnState.psrChecks = psrChecks;
         if (!this.applyMovePSR()) turnState.applyMovePSR = false;
         if (this.spotting()) turnState.spotting = true;
@@ -336,6 +376,7 @@ export class TurnState {
             this.weaponsHeat.set(data?.weaponsHeat ?? 0);
             this.acknowledgedHeatSources.set({ ...(data?.acknowledgedHeatSources ?? {}) });
             this.heatDissipationConsumed.set(data?.heatDissipationConsumed ?? 0);
+            this.psrOutcomes.set({ ...(data?.psrOutcomes ?? {}) });
             this.psrChecks.set(this.deserializePSRChecks(data?.psrChecks));
             this.applyMovePSR.set(data?.applyMovePSR ?? true);
             this.spotting.set(data?.spotting ?? false);
@@ -391,6 +432,7 @@ export class TurnState {
 
     clearPSRCheckState() {
         this.psrChecks.set({});
+        this.psrOutcomes.set({});
         this.dmgReceived.set(0);
     }
 

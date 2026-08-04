@@ -56,7 +56,7 @@ import { ForceBuilderService } from '../../../services/force-builder.service';
 import { ToastService } from '../../../services/toast.service';
 import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import type { CBTForce } from '../../../models/cbt-force.model';
-import { PageTurnSummaryPanelComponent } from './page-turn-summary.component';
+import { countActionablePsrChecks, PageTurnSummaryPanelComponent, togglePsrWarningOverlay } from './page-turn-summary.component';
 import { PageViewerStateService } from '../internal/page-viewer-state.service';
 import { EquipmentDialogComponent } from '../../equipment-dialog/equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData } from '../../equipment-dialog/equipment-dialog.model';
@@ -136,17 +136,22 @@ export class PageInteractionOverlayComponent {
         return unit.turnState().autoFall();
     });
 
-    hasPSRChecks = computed(() => {
+    private pendingPSRChecks = computed(() => {
         const unit = this.unit();
-        if (!unit) return false;
-        return unit.turnState().PSRRollsCount() > 0;
+        if (!unit) return [];
+        const turnState = unit.turnState();
+        return turnState.getPSRChecks().filter(check =>
+            check.fallCheck !== undefined
+            && check.id !== undefined
+            && turnState.getPSROutcome(check.id) === undefined
+        );
     });
 
-    psrCount = computed<number>(() => {
-        const unit = this.unit();
-        if (!unit) return 0;
-        return unit.turnState().PSRRollsCount();
+    actionablePSRCount = computed<number>(() => {
+        return countActionablePsrChecks(this.pendingPSRChecks(), this.falling());
     });
+
+    hasActionablePSRChecks = computed(() => this.actionablePSRCount() > 0);
 
     currentPhase = computed(() => {
         const unit = this.unit();
@@ -213,6 +218,12 @@ export class PageInteractionOverlayComponent {
                 this.endTurnForAll();
             });
         }
+    }
+
+    openPsrWarning(event: MouseEvent): void {
+        event.stopPropagation();
+        if (!this.turnTrackerVisible()) return;
+        togglePsrWarningOverlay(this, this.overlayManager, this.injector, this.overlay, () => this.closeAllOverlays());
     }
 
     openTargets(event: MouseEvent): void {

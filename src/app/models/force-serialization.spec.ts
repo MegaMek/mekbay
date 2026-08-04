@@ -1,4 +1,4 @@
-import { C3_NETWORK_GROUP_SCHEMA, FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
+import { CBT_SERIALIZED_STATE_SCHEMA, C3_NETWORK_GROUP_SCHEMA, FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { C3NetworkType } from './c3-network.model';
 
@@ -105,6 +105,42 @@ describe('heat state sanitization', () => {
             }
         }, TURN_STATE_SCHEMA)).toEqual({
             psrChecks: { legActuators: { LL: 2 } }
+        });
+    });
+
+    it('keeps valid PSR outcomes and rejects malformed outcomes', () => {
+        expect(Sanitizer.sanitize({
+            psrOutcomes: {
+                first: 'success',
+                second: 'failed',
+                invalid: 'pending',
+                numeric: 1,
+            },
+        }, TURN_STATE_SCHEMA)).toEqual({
+            psrOutcomes: { first: 'success', second: 'failed' },
+        });
+    });
+});
+
+describe('rule check sanitization', () => {
+    it('preserves valid records and rejects malformed records', () => {
+        const sanitized = Sanitizer.sanitize({
+            modified: false,
+            destroyed: false,
+            crew: [],
+            crits: [],
+            locations: {},
+            heat: { current: 0, previous: 0 },
+            ruleChecks: {
+                valid: { token: 'token-1', trigger: 'LT', status: 'success' },
+                invalidStatus: { token: 'token-2', trigger: 'RT', status: 'ignored' },
+                missingToken: { trigger: 'CT', status: 'failed' },
+                missingTrigger: { token: 'token-3', status: 'pending' },
+            },
+        }, CBT_SERIALIZED_STATE_SCHEMA);
+
+        expect(sanitized.ruleChecks).toEqual({
+            valid: { token: 'token-1', trigger: 'LT', status: 'success' },
         });
     });
 });

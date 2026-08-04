@@ -44,6 +44,7 @@ function createRulesHarness(options: {
     run?: number;
     jump?: number;
     umu?: number;
+    engine?: string;
     subtype?: UnitSubtype;
     rulesId?: 'core2026' | 'tw';
 } = {}): MekRules {
@@ -70,6 +71,7 @@ function createForceUnitHarness(options: {
     run?: number;
     jump?: number;
     umu?: number;
+    engine?: string;
     subtype?: UnitSubtype;
     rulesId?: 'core2026' | 'tw';
 } = {}): CBTForceUnit {
@@ -84,6 +86,7 @@ function createForceUnitHarness(options: {
         run: options.run ?? 8,
         jump: options.jump ?? 4,
         umu: options.umu ?? 2,
+        engine: options.engine ?? 'Fusion',
     });
 
     dataService.getUnitByName.and.callFake((name: string): Unit | undefined => name === baseUnit.name ? baseUnit : undefined);
@@ -106,6 +109,7 @@ function createForceUnitHarness(options: {
         forceUnit.setCondition('shutdown', true);
     }
     forceUnit.isLoaded.set(true);
+    forceUnit.reconcileRuleChecks();
 
     return forceUnit;
 }
@@ -1307,20 +1311,202 @@ describe('MekRules', () => {
         }).hasComputedCondition('crippled')).toBeTrue();
     });
 
-    it('marks Core 2026 Meks crippled from one destroyed torso location', () => {
+    it('requires and resolves a Core 2026 crippling check for the first destroyed torso on fusion Meks', () => {
         const internalLocations = ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'];
-
-        for (const torso of ['LT', 'RT', 'CT']) {
-            expect(createRulesHarness({
-                internalLocations,
-                committedDestroyedLocations: [torso],
-            }).hasComputedCondition('crippled')).withContext(torso).toBeTrue();
-        }
-        expect(createRulesHarness({
+        const successfulUnit = createForceUnitHarness({
             internalLocations,
-            locationPoints: 10,
-            locationState: { CT: { internal: 9 } },
-        }).hasComputedCondition('crippled')).toBeFalse();
+            committedDestroyedLocations: ['LT'],
+        });
+        const successfulCheck = successfulUnit.turnState().getPSRChecks()
+            .find(check => check.reason === 'Torso destroyed');
+
+        expect(successfulUnit.rules.hasComputedCondition('crippled')).toBeFalse();
+        expect(successfulCheck).toBeDefined();
+        expect(successfulCheck?.pilotCheck).toBe(0);
+        expect(successfulCheck?.failureOutcome).toBe('Crippled');
+        expect(successfulCheck?.resolution).toBeDefined();
+        expect(successfulUnit.resolveRuleCheck(
+            successfulCheck!.resolution!.key,
+            successfulCheck!.resolution!.token,
+            'success'
+        )).toBeTrue();
+        expect(successfulUnit.rules.hasComputedCondition('crippled')).toBeFalse();
+        expect(successfulUnit.turnState().getPSRChecks().some(check =>
+            check.reason === 'Torso destroyed'
+        )).toBeFalse();
+        successfulUnit.endTurn();
+        expect(successfulUnit.rules.hasComputedCondition('crippled')).toBeFalse();
+        expect(successfulUnit.turnState().getPSRChecks().some(check =>
+            check.reason === 'Torso destroyed'
+        )).toBeFalse();
+
+        const failedUnit = createForceUnitHarness({
+            internalLocations,
+            committedDestroyedLocations: ['RT'],
+        });
+        const failedCheck = failedUnit.turnState().getPSRChecks()
+            .find(check => check.reason === 'Torso destroyed');
+
+        expect(failedUnit.resolveRuleCheck(
+            failedCheck!.resolution!.key,
+            failedCheck!.resolution!.token,
+            'failed'
+        )).toBeTrue();
+        expect(failedUnit.rules.hasComputedCondition('crippled')).toBeTrue();
+        expect(failedUnit.turnState().getPSRChecks().some(check =>
+            check.reason === 'Torso destroyed'
+        )).toBeFalse();
+        failedUnit.endTurn();
+        expect(failedUnit.rules.hasComputedCondition('crippled')).toBeTrue();
+    });
+
+    it('requests a new torso crippling check after repair and rejects the stale result', () => {
+        const forceUnit = createForceUnitHarness({
+            internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
+            committedDestroyedLocations: ['LT'],
+        });
+        const firstCheck = forceUnit.turnState().getPSRChecks()
+            .find(check => check.reason === 'Torso destroyed')!;
+
+        forceUnit.setInternalHits('LT', 0);
+        expect(forceUnit.getRuleCheck(firstCheck.resolution!.key)).toBeUndefined();
+
+        forceUnit.setInternalHits('LT', 1);
+        const secondCheck = forceUnit.turnState().getPSRChecks()
+            .find(check => check.reason === 'Torso destroyed')!;
+
+        expect(secondCheck.resolution!.token).not.toBe(firstCheck.resolution!.token);
+        expect(forceUnit.resolveRuleCheck(
+            firstCheck.resolution!.key,
+            firstCheck.resolution!.token,
+            'failed'
+        )).toBeFalse();
+        expect(forceUnit.rules.hasComputedCondition('crippled')).toBeFalse();
+        expect(forceUnit.resolveRuleCheck(
+            secondCheck.resolution!.key,
+            secondCheck.resolution!.token,
+            'failed'
+        )).toBeTrue();
+        expect(forceUnit.rules.hasComputedCondition('crippled')).toBeTrue();
+    });
+
+    it('preserves the first torso result while a second torso is destroyed', () => {
+        const forceUnit = createForceUnitHarness({
+            internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
+            committedDestroyedLocations: ['LT'],
+        });
+        const check = forceUnit.turnState().getPSRChecks()
+            .find(entry => entry.reason === 'Torso destroyed')!;
+        forceUnit.resolveRuleCheck(check.resolution!.key, check.resolution!.token, 'success');
+
+        forceUnit.setInternalHits('RT', 1);
+        expect(forceUnit.rules.hasComputedCondition('crippled')).toBeTrue();
+        expect(forceUnit.turnState().getPSRChecks().some(entry =>
+            entry.reason === 'Torso destroyed'
+        )).toBeFalse();
+
+        forceUnit.setInternalHits('RT', 0);
+        expect(forceUnit.rules.hasComputedCondition('crippled')).toBeFalse();
+        expect(forceUnit.getRuleCheck(check.resolution!.key)?.token).toBe(check.resolution!.token);
+        expect(forceUnit.turnState().getPSRChecks().some(entry =>
+            entry.reason === 'Torso destroyed'
+        )).toBeFalse();
+    });
+
+    it('requests a new check when a different torso remains destroyed after repair', () => {
+        const forceUnit = createForceUnitHarness({
+            internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
+            committedDestroyedLocations: ['LT'],
+        });
+        const firstCheck = forceUnit.turnState().getPSRChecks()
+            .find(entry => entry.reason === 'Torso destroyed')!;
+        forceUnit.resolveRuleCheck(firstCheck.resolution!.key, firstCheck.resolution!.token, 'success');
+
+        forceUnit.setInternalHits('RT', 1);
+        forceUnit.setInternalHits('LT', 0);
+        const nextCheck = forceUnit.turnState().getPSRChecks()
+            .find(entry => entry.reason === 'Torso destroyed')!;
+
+        expect(nextCheck.resolution!.token).not.toBe(firstCheck.resolution!.token);
+        expect(forceUnit.getRuleCheck(nextCheck.resolution!.key)?.trigger).toBe('RT');
+        expect(forceUnit.rules.hasComputedCondition('crippled')).toBeFalse();
+    });
+
+    it('serializes and restores the torso crippling outcome record', () => {
+        const source = createForceUnitHarness({
+            internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
+            committedDestroyedLocations: ['LT'],
+        });
+        const check = source.turnState().getPSRChecks()
+            .find(entry => entry.reason === 'Torso destroyed')!;
+        source.resolveRuleCheck(check.resolution!.key, check.resolution!.token, 'failed');
+        const serialized = source.serialize();
+
+        expect(serialized.state.ruleChecks).toEqual({
+            [check.resolution!.key]: {
+                token: check.resolution!.token,
+                trigger: 'LT',
+                status: 'failed',
+            },
+        });
+
+        const restored = createForceUnitHarness({
+            internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
+        });
+        restored.update(serialized);
+
+        expect(restored.rules.hasComputedCondition('crippled')).toBeTrue();
+        expect(restored.turnState().getPSRChecks().some(entry =>
+            entry.reason === 'Torso destroyed'
+        )).toBeFalse();
+    });
+
+    it('uses the Core 2026 torso check for compact engines and immediate crippling for other engines', () => {
+        const internalLocations = ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'];
+        const compactUnit = createForceUnitHarness({
+            engine: 'Compact',
+            internalLocations,
+            committedDestroyedLocations: ['CT'],
+        });
+        const xlUnit = createForceUnitHarness({
+            engine: 'XL (IS)',
+            internalLocations,
+            committedDestroyedLocations: ['CT'],
+        });
+
+        expect(compactUnit.rules.hasComputedCondition('crippled')).toBeFalse();
+        expect(compactUnit.turnState().getPSRChecks().some(check =>
+            check.reason === 'Torso destroyed'
+        )).toBeTrue();
+        expect(xlUnit.rules.hasComputedCondition('crippled')).toBeTrue();
+        expect(xlUnit.turnState().getPSRChecks().some(check =>
+            check.reason === 'Torso destroyed'
+        )).toBeFalse();
+    });
+
+    it('automatically cripples Core 2026 fusion Meks with two destroyed torsos without a check', () => {
+        const forceUnit = createForceUnitHarness({
+            internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
+            committedDestroyedLocations: ['LT', 'RT'],
+        });
+
+        expect(forceUnit.rules.hasComputedCondition('crippled')).toBeTrue();
+        expect(forceUnit.turnState().getPSRChecks().some(check =>
+            check.reason === 'Torso destroyed'
+        )).toBeFalse();
+    });
+
+    it('does not apply the Core 2026 torso crippling check to Total Warfare rules', () => {
+        const forceUnit = createForceUnitHarness({
+            rulesId: 'tw',
+            internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
+            committedDestroyedLocations: ['LT'],
+        });
+
+        expect(forceUnit.rules.hasComputedCondition('crippled')).toBeTrue();
+        expect(forceUnit.turnState().getPSRChecks().some(check =>
+            check.reason === 'Torso destroyed'
+        )).toBeFalse();
     });
 
     it('includes pending fatal internal damage in Core 2026 limb criteria', () => {

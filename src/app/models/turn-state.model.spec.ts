@@ -76,6 +76,8 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
     const currentDestroyedLegs = new Set(options.currentDestroyedLegs ?? []);
     const internalLocations = new Map((options.internalLocations ?? ['LL', 'RL']).map(loc => [loc, 1]));
     const heatSourceHandlers = [new PpcCapacitorHandler()];
+    const ruleChecks = new Map<string, { token: string; trigger: string; status: 'pending' | 'success' | 'failed' }>();
+    const setCondition = jasmine.createSpy('setCondition');
     let turnState: TurnState;
 
     const unit = {
@@ -95,6 +97,13 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         isInternalLocCommittedDestroyed: (loc: string) => committedDestroyedLegs.has(loc),
         isInternalLocDestroyed: (loc: string) => currentDestroyedLegs.has(loc) || committedDestroyedLegs.has(loc),
         isEquipmentUnavailable: (slot: CriticalSlot) => !!slot.destroyed || (slot.loc ? committedDestroyedLegs.has(slot.loc) : false),
+        getRuleCheck: (key: string) => ruleChecks.get(key),
+        setRuleCheck: (key: string, check: { token: string; trigger: string; status: 'pending' | 'success' | 'failed' } | undefined) => {
+            if (check) ruleChecks.set(key, check);
+            else ruleChecks.delete(key);
+            return true;
+        },
+        setCondition,
         getUnit: () => ({ type: 'Mek', comp: [], ...options.unit } as Unit),
         turnState: () => turnState,
     };
@@ -307,6 +316,38 @@ describe('TurnState', () => {
     });
 
     describe('serialization', () => {
+        it('round-trips resolved PSR outcomes', () => {
+            const { turnState } = createTurnStateHarness();
+            turnState.addDmgReceived(20);
+            const check = turnState.getPSRChecks().find(entry => entry.fallCheck !== undefined)!;
+
+            expect(check.id).toBeDefined();
+            expect(check.failureOutcome).toBe('Fall');
+            expect(turnState.resolvePSRCheck(check.id!, 'success')).toBeTrue();
+            expect(turnState.PSRRollsCount()).toBe(0);
+
+            const serialized = turnState.serialize();
+            expect(serialized?.psrOutcomes).toEqual({ [check.id!]: 'success' });
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(serialized);
+            expect(restored.getPSROutcome(check.id!)).toBe('success');
+            expect(restored.PSRRollsCount()).toBe(0);
+        });
+
+        it('keeps duplicate checks distinct and applies prone on failure', () => {
+            const { turnState } = createTurnStateHarness();
+            turnState.setPSRCheckState({ legActuators: new Map([['LL', 2]]) });
+            const checks = turnState.getPSRChecks().filter(entry => entry.reason === 'Leg actuator hit');
+
+            expect(checks.length).toBe(2);
+            expect(checks[0].id).not.toBe(checks[1].id);
+            expect(turnState.resolvePSRCheck(checks[1].id!, 'failed')).toBeTrue();
+            expect(turnState.getPSROutcome(checks[1].id!)).toBe('failed');
+            expect(turnState.unitState.unit.setCondition).toHaveBeenCalledOnceWith('prone', true);
+            expect(turnState.PSRRollsCount()).toBe(1);
+        });
+
         it('round-trips turn signals and PSR check state through a plain object', () => {
             const { turnState } = createTurnStateHarness();
             turnState.airborne.set(true);

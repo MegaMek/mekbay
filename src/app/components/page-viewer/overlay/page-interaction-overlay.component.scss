@@ -144,13 +144,6 @@
             fill: var(--phase-heat);
         }
 
-        &.warning {
-            color: var(--damage-color);
-
-            text {
-                fill: #000;
-            }
-        }
     }
 
     :host-context(.night-mode) & {
@@ -162,6 +155,26 @@
 
         svg .octagon {
             stroke-width: 0;
+        }
+    }
+}
+
+.check-warning-button {
+    width: 40px;
+    height: 40px;
+
+    svg {
+        width: 100%;
+        height: 100%;
+
+        &.warning {
+            color: var(--damage-color);
+
+            text {
+                pointer-events: none;
+                font-weight: bold;
+                fill: #000;
+            }
         }
     }
 }

@@ -49,7 +49,7 @@ import { canChangeAirborneGround, type MotiveModeOption, type MotiveModes } from
 import { HexSliderComponent } from '../../hex-slider/hex-slider.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import type { TooltipLine } from '../../tooltip/tooltip.component';
-import { calculateModifierTotal, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitModifierTotal } from '../../../models/rules/unit-type-rules';
+import { calculateModifierTotal, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitModifierTotal } from '../../../models/rules/unit-type-rules';
 import { EquipmentInteractionRegistryService, type HandlerChoice, type HandlerContext } from '../../../services/equipment-interaction-registry.service';
 import { ToastService } from '../../../services/toast.service';
 import { DialogsService } from '../../../services/dialogs.service';
@@ -91,6 +91,55 @@ export function composeTurnSummaryHeatRows(
         value: selection.value,
         selectedOnly: true,
     }, ...rows];
+}
+
+export function displayPsrModifiers(modifiers: readonly PSRCheck[]): Array<PSRCheck & { pilotCheck: number }> {
+    return modifiers
+        .filter((modifier): modifier is PSRCheck & { pilotCheck: number } =>
+            modifier.pilotCheck !== undefined && modifier.pilotCheck !== 0
+        )
+        .sort((left, right) => left.reason.localeCompare(right.reason));
+}
+
+export function countActionablePsrChecks(
+    checks: readonly Pick<PSRCheck, 'failureOutcome'>[],
+    autoFall: boolean
+): number {
+    return autoFall ? checks.filter(check => check.failureOutcome !== 'Fall').length : checks.length;
+}
+
+export function togglePsrWarningOverlay(
+    parent: PageInteractionOverlayComponent,
+    overlayManager: OverlayManagerService,
+    injector: Injector,
+    overlay: Overlay,
+    beforeOpen?: () => void
+): void {
+    const unitId = parent.unit()?.id;
+    if (!unitId) return;
+
+    const overlayKey = `psrWarning-${unitId}`;
+    if (overlayManager.has(overlayKey)) {
+        overlayManager.closeManagedOverlay(overlayKey);
+        return;
+    }
+
+    beforeOpen?.();
+    const customInjector = Injector.create({
+        providers: [
+            { provide: PageInteractionOverlayComponent, useValue: parent }
+        ],
+        parent: injector
+    });
+    const portal = new ComponentPortal(PagePsrWarningPanelComponent, null, customInjector);
+    overlayManager.createManagedOverlay(overlayKey, null, portal, {
+        hasBackdrop: true,
+        backdropClass: 'cdk-overlay-dark-backdrop',
+        panelClass: 'psr-warning-overlay-panel',
+        closeOnOutsideClick: true,
+        scrollStrategy: overlay.scrollStrategies.block(),
+        positions: []
+    });
 }
 
 /*
@@ -246,7 +295,7 @@ export class PageTurnSummaryPanelComponent {
     psrModifiers = computed(() => {
         const unit = this.unit();
         if (!unit) return [];
-        return unit.PSRModifiers().modifiers.filter(modifier => modifier.pilotCheck !== undefined && modifier.pilotCheck !== 0);
+        return displayPsrModifiers(unit.PSRModifiers().modifiers);
     });
 
     equipmentTrackControlRows = computed<EquipmentTrackControlRow[]>(() => {
@@ -288,33 +337,7 @@ export class PageTurnSummaryPanelComponent {
 
     openPsrWarning(event: MouseEvent) {
         event.stopPropagation();
-
-        const unitId = this.unit()?.id;
-        const overlayKey = `psrWarning-${unitId}`;
-
-        // Toggle: close if already open
-        if (this.overlayManager.has(overlayKey)) {
-            this.overlayManager.closeManagedOverlay(overlayKey);
-            return;
-        }
-
-        // Create a custom injector that provides this component as the parent
-        const customInjector = Injector.create({
-            providers: [
-                { provide: PageInteractionOverlayComponent, useValue: this.parent }
-            ],
-            parent: this.injector
-        });
-
-        const portal = new ComponentPortal(PagePsrWarningPanelComponent, null, customInjector);
-        this.overlayManager.createManagedOverlay(overlayKey, null as any, portal, {
-            hasBackdrop: true,
-            backdropClass: 'cdk-overlay-dark-backdrop',
-            panelClass: 'psr-warning-overlay-panel',
-            closeOnOutsideClick: true,
-            scrollStrategy: this.overlay.scrollStrategies.block(),
-            positions: [] // empty positions array signals to use global positioning
-        });
+        togglePsrWarningOverlay(this.parent, this.overlayManager, this.injector, this.overlay);
     }
 
     airborne = computed(() => {
@@ -478,26 +501,54 @@ export class PageTurnSummaryPanelComponent {
             <div class="psr-list">
                 @for (check of psrChecks(); let i = $index; track i) {
                     @if (check.fallCheck !== undefined) {
-                        <div class="psr-item">
-                            <div class="psr-marker">▸</div>
-                            <div class="psr-reason">{{ check.reason }}</div>
+                        <div class="psr-item" [class.resolved]="!isAutomaticFailure(check) && outcome(check)"
+                            [class.automatic-failure]="isAutomaticFailure(check)">
+                            <div class="psr-check-header">
+                                <div class="psr-number">{{ i + 1 }}</div>
+                                <div class="psr-item-content">
+                                    <div class="psr-reason">{{ check.reason }}</div>
+                                    <div class="psr-failure">
+                                        <span>Failure</span>
+                                        <strong>{{ check.failureOutcome }}</strong>
+                                    </div>
+                                </div>
+                                @if (!isAutomaticFailure(check) && outcome(check); as result) {
+                                    <div class="psr-result" [class.failed]="result === 'failed'">{{ result }}</div>
+                                }
+                            </div>
+                            @if (isAutomaticFailure(check)) {
+                                <div class="psr-automatic-failure">AUTOMATIC FAILURE</div>
+                            } @else if (!outcome(check)) {
+                                <div class="psr-resolution-actions">
+                                    <button class="bt-button success" type="button" (click)="resolve(check, 'success')">SUCCESS</button>
+                                    <button class="bt-button danger" type="button" (click)="resolve(check, 'failed')">FAILED</button>
+                                </div>
+                            }
                         </div>
                     }
                 }
             </div>
-            <div class="header">Modifiers</div>
-            <div class="modifiers">
-                @for (modifier of modifiersList(); let i = $index; track i) {
-                    @if (modifier.pilotCheck) {
-                        <div class="modifier-item">
-                            {{ modifier.reason }}: {{ modifier.pilotCheck >= 0 ? '+' : '' }}{{ modifier.pilotCheck }}
+            @if (!allChecksAutomaticFailure()) {
+                <div class="roll-details">
+                    @if (modifiersList().length > 0) {
+                        <div class="roll-details-label">Modifiers</div>
+                        <div class="modifiers">
+                            @for (modifier of modifiersList(); let i = $index; track i) {
+                                <div class="modifier-item">
+                                    <span class="modifier-reason">{{ modifier.reason }}</span>
+                                    <strong class="modifier-value" [class.bonus]="modifier.pilotCheck < 0">
+                                        {{ modifier.pilotCheck >= 0 ? '+' : '' }}{{ modifier.pilotCheck }}
+                                    </strong>
+                                </div>
+                            }
                         </div>
                     }
-                }
-            </div>
-            <div class="psr-target">
-                Target roll: {{ unit()?.PSRTargetRoll() }}
-            </div>
+                    <div class="psr-target">
+                        <span>Target roll</span>
+                        <strong>{{ unit()?.PSRTargetRoll() }}</strong>
+                    </div>
+                </div>
+            }
         </div>
         <div class="actions">
             <button class="bt-button" type="button" (click)="close()">DISMISS</button>
@@ -512,7 +563,8 @@ export class PageTurnSummaryPanelComponent {
         }
         .panel {
             pointer-events: auto;
-            min-width: 200px;
+            width: min(420px, calc(100vw - 24px));
+            box-sizing: border-box;
             display: flex;
             flex-direction: column;
             padding: 8px;
@@ -532,38 +584,145 @@ export class PageTurnSummaryPanelComponent {
         .psr-list {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 6px;
             padding: 8px;
         }
         .psr-item {
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-left: 3px solid var(--bt-yellow);
+            background: var(--background-input);
+            transition: opacity 0.2s, border-color 0.2s;
+        }
+        .psr-item.resolved {
+            border-left-color: #4caf50;
+            opacity: 0.8;
+        }
+        .psr-item.automatic-failure {
+            border-left-color: var(--danger);
+        }
+        .psr-check-header {
             display: flex;
             align-items: center;
-            gap: 12px;
-            transition: background 0.2s;
+            gap: 8px;
         }
-        .psr-marker {
-            color: var(--danger);
+        .psr-number {
+            display: grid;
+            place-items: center;
+            width: 24px;
+            height: 24px;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
             font-weight: bold;
-            font-size: 2em;
-            line-height: 0;
+            font-size: 0.8em;
             flex-shrink: 0;
         }
         .psr-reason {
-            flex: 1;
-            color: var(--text-color-secondary);
-            line-height: 1.4;
-        }
-        .psr-target {
-            padding: 8px 12px;
-            font-weight: bold;
-            font-size: 1em;
             color: var(--text-color);
-            text-align: center;
+            line-height: 1.25;
+            font-weight: 600;
+        }
+        .psr-item-content {
+            flex: 1;
+            min-width: 0;
+        }
+        .psr-failure {
+            display: flex;
+            gap: 5px;
+            margin-top: 2px;
+            color: var(--text-color-tertiary);
+            font-size: 0.78em;
+            text-transform: uppercase;
+        }
+        .psr-failure strong {
+            color: var(--danger);
+        }
+        .psr-result {
+            color: #7dcc80;
+            font-size: 0.75em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .psr-result.failed {
+            color: var(--danger);
+        }
+        .psr-resolution-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-top: 8px;
+            padding-left: 32px;
+        }
+        .psr-automatic-failure {
+            margin-top: 8px;
+            padding-left: 32px;
+            color: var(--danger);
+            font-size: 0.8em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .roll-details {
+            --roll-value-width: 52px;
+            margin: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .roll-details-label {
+            padding: 5px 8px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-color-tertiary);
+            font-size: 0.72em;
+            font-weight: 700;
+            text-transform: uppercase;
         }
         .modifiers {
-            margin-top: 8px;
-            padding: 8px 12px;
             font-size: 0.9em;
+        }
+        .modifier-item {
+            display: grid;
+            background: var(--background-input);
+            grid-template-columns: minmax(0, 1fr) var(--roll-value-width);
+            min-height: 30px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .modifier-reason {
+            align-self: center;
+            min-width: 0;
+            padding: 5px 8px;
+            color: var(--text-color-secondary);
+        }
+        .modifier-value {
+            display: grid;
+            place-items: center;
+            font-variant-numeric: tabular-nums;
+            border: 1px solid var(--danger);
+            background-color: var(--danger);
+            color: #fff;
+        }
+        .modifier-value.bonus {
+            color: #7dcc80;
+        }
+        .psr-target {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) var(--roll-value-width);
+            background: var(--background-input);
+            min-height: 42px;
+            color: var(--text-color);
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .psr-target span {
+            align-self: center;
+            padding: 8px;
+            font-size: 0.82em;
+        }
+        .psr-target strong {
+            display: grid;
+            place-items: center;
+            border: 1px solid var(--bt-yellow);
+            background: var(--bt-yellow-background);
+            color: var(--bt-yellow);
+            font-size: 1.35em;
+            font-variant-numeric: tabular-nums;
         }
         .actions {
             display: flex;
@@ -585,10 +744,30 @@ export class PagePsrWarningPanelComponent {
         this.overlayManager.closeManagedOverlay(`psrWarning-${unitId}`);
     }
 
+    resolve(check: PSRCheck, result: 'success' | 'failed') {
+        const unit = this.unit();
+        if (!unit) return;
+        if (check.resolution) {
+            unit.resolveRuleCheck(check.resolution.key, check.resolution.token, result);
+        } else if (check.id) {
+            unit.turnState().resolvePSRCheck(check.id, result);
+        }
+        if (this.psrChecks().length === 0) this.close();
+    }
+
+    outcome(check: PSRCheck) {
+        if (!check.id || check.resolution) return undefined;
+        return this.unit()?.turnState().getPSROutcome(check.id);
+    }
+
+    isAutomaticFailure(check: PSRCheck): boolean {
+        return this.unit()?.turnState().autoFall() === true && check.failureOutcome === 'Fall';
+    }
+
     modifiersList = computed(() => {
         const unit = this.unit();
         if (!unit) return [];
-        return unit.PSRModifiers().modifiers;
+        return displayPsrModifiers(unit.PSRModifiers().modifiers);
     });
 
     controlRollFullLabel = computed(() => {
@@ -600,6 +779,19 @@ export class PagePsrWarningPanelComponent {
     psrChecks = computed(() => {
         const unit = this.unit();
         if (!unit) return [];
-        return unit.turnState().getPSRChecks().filter(c => c.fallCheck !== undefined);
+        return unit.turnState().getPSRChecks()
+            .filter(check => check.fallCheck !== undefined)
+            .sort((left, right) => this.checkDisplayOrder(left) - this.checkDisplayOrder(right));
     });
+
+    allChecksAutomaticFailure = computed(() => {
+        const checks = this.psrChecks();
+        return checks.length > 0 && checks.every(check => this.isAutomaticFailure(check));
+    });
+
+    private checkDisplayOrder(check: PSRCheck): number {
+        if (this.isAutomaticFailure(check)) return 2;
+        if (this.outcome(check)) return 1;
+        return 0;
+    }
 }

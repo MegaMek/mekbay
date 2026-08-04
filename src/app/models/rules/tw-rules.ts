@@ -28,6 +28,10 @@ function calculateTWC3Tax(
 }
 
 export class TWMekRules extends MekRules {
+    protected override usesTorsoCripplingRules(): boolean {
+        return false;
+    }
+
     protected override readonly crippled = computed<boolean>(() => {
         if (!this.unit.isLoaded()) return false;
         return this.allCrewCrippled()

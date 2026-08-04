@@ -1,4 +1,31 @@
-import { composeTurnSummaryHeatRows } from './page-turn-summary.component';
+import { composeTurnSummaryHeatRows, countActionablePsrChecks, displayPsrModifiers } from './page-turn-summary.component';
+
+describe('countActionablePsrChecks', () => {
+    const fallCheck = { failureOutcome: 'Fall' };
+    const crippleCheck = { failureOutcome: 'Crippled' };
+
+    it('shows all checks when the unit is not automatically falling', () => {
+        expect(countActionablePsrChecks([fallCheck, crippleCheck], false)).toBe(2);
+    });
+
+    it('hides the warning when autofall already represents every check', () => {
+        expect(countActionablePsrChecks([fallCheck, fallCheck], true)).toBe(0);
+    });
+
+    it('keeps non-fall checks actionable during autofall', () => {
+        expect(countActionablePsrChecks([fallCheck, crippleCheck], true)).toBe(1);
+    });
+});
+
+describe('displayPsrModifiers', () => {
+    it('filters and consistently orders displayed modifiers', () => {
+        expect(displayPsrModifiers([
+            { reason: 'Leg Destroyed', pilotCheck: 4 },
+            { reason: 'Ignored', pilotCheck: 0 },
+            { reason: 'Gyro damaged', pilotCheck: 2 },
+        ]).map(modifier => modifier.reason)).toEqual(['Gyro damaged', 'Leg Destroyed']);
+    });
+});
 
 describe('composeTurnSummaryHeatRows', () => {
     it('keeps committed Weapons when no weapon is selected', () => {
