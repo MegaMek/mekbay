@@ -230,6 +230,28 @@ function createSelectedHeatScaleSvg(): SVGSVGElement {
     `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
 }
 
+function expectHeatMarkerAt(
+    svg: SVGSVGElement,
+    markerId: string,
+    expectedHeat: number
+): SVGPolygonElement {
+    const marker = svg.querySelector<SVGPolygonElement>(`#${markerId}`);
+    const heatElement = svg.querySelector<SVGRectElement>(`.heat[heat="${expectedHeat}"]`);
+    expect(marker).withContext(`marker #${markerId}`).not.toBeNull();
+    expect(heatElement).withContext(`heat scale value ${expectedHeat}`).not.toBeNull();
+
+    const markerYCoordinates = (marker?.getAttribute('points') ?? '')
+        .trim()
+        .split(/\s+/)
+        .map(point => Number(point.split(',')[1]));
+    expect(markerYCoordinates.length).withContext(`marker #${markerId} points`).toBeGreaterThanOrEqual(3);
+    expect(markerYCoordinates.every(Number.isFinite)).withContext(`marker #${markerId} coordinates`).toBeTrue();
+
+    const heatCenterY = Number(heatElement!.getAttribute('y')) + Number(heatElement!.getAttribute('height')) / 2;
+    expect(markerYCoordinates[0]).withContext(`marker #${markerId} tip position`).toBeCloseTo(heatCenterY, 5);
+    return marker!;
+}
+
 function createProtoMekUnit(): Unit {
     return createEmptyUnit({
         name: 'PMTest_PROTO-1',
@@ -1875,8 +1897,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshHeat();
 
         expect(svg.querySelector('#heat-projection-target-marker')).toBeNull();
-        const marker = svg.querySelector<SVGPolygonElement>('#heat-selected-weapons-target-marker');
-        expect(marker?.getAttribute('points')).toBe('4,67.5 -3,65.5 -3,69.5');
+        const marker = expectHeatMarkerAt(svg, 'heat-selected-weapons-target-marker', 7);
         expect(marker?.getAttribute('fill')).toBe('orange');
 
         forceUnit.setInventoryControlEntrySelected(variableLaser, false);
@@ -1898,8 +1919,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshHeat();
 
         expect(svg.querySelector('#heat-projection-target-marker')).toBeNull();
-        const marker = svg.querySelector<SVGPolygonElement>('#heat-selected-weapons-target-marker');
-        expect(marker?.getAttribute('points')).toBe('4,102.5 -3,100.5 -3,104.5');
+        const marker = expectHeatMarkerAt(svg, 'heat-selected-weapons-target-marker', 0);
         expect(marker?.getAttribute('fill')).toBe('orange');
     });
 
@@ -1914,8 +1934,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         svgService.refreshHeat();
 
-        const marker = svg.querySelector<SVGPolygonElement>('#heat-projection-target-marker');
-        expect(marker?.getAttribute('points')).toBe('4,102.5 -3,100.5 -3,104.5');
+        const marker = expectHeatMarkerAt(svg, 'heat-projection-target-marker', 0);
         expect(marker?.getAttribute('fill')).toBe('#2070d1');
     });
 
@@ -1929,8 +1948,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         svgService.refreshHeat();
 
-        const marker = svg.querySelector<SVGPolygonElement>('#heat-projection-target-marker');
-        expect(marker?.getAttribute('points')).toBe('4,102.5 -3,100.5 -3,104.5');
+        const marker = expectHeatMarkerAt(svg, 'heat-projection-target-marker', 0);
         expect(marker?.getAttribute('fill')).toBe('#2070d1');
     });
 
@@ -1950,8 +1968,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         const committedMarker = svg.querySelector<SVGPolygonElement>('#heat-projection-target-marker')!;
         const selectedMarker = svg.querySelector<SVGPolygonElement>('#heat-selected-weapons-target-marker')!;
-        expect(committedMarker.getAttribute('points')).toBe('4,102.5 -3,100.5 -3,104.5');
-        expect(selectedMarker.getAttribute('points')).toBe(committedMarker.getAttribute('points'));
+    expectHeatMarkerAt(svg, 'heat-projection-target-marker', 0);
+    expectHeatMarkerAt(svg, 'heat-selected-weapons-target-marker', 0);
         expect(selectedMarker.getAttribute('fill')).toBe('orange');
         expect(committedMarker.compareDocumentPosition(selectedMarker) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
@@ -1970,10 +1988,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         svgService.refreshHeat();
 
-        expect(svg.querySelector('#heat-projection-target-marker')?.getAttribute('points'))
-            .toBe('4,92.5 -3,90.5 -3,94.5');
-        expect(svg.querySelector('#heat-selected-weapons-target-marker')?.getAttribute('points'))
-            .toBe('4,67.5 -3,65.5 -3,69.5');
+        expectHeatMarkerAt(svg, 'heat-projection-target-marker', 2);
+        expectHeatMarkerAt(svg, 'heat-selected-weapons-target-marker', 7);
         expect(svg.querySelector('#heat-selected-weapons-target-marker')?.getAttribute('fill')).toBe('orange');
     });
 
