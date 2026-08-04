@@ -6,37 +6,12 @@
         <button type="button" class="close-button" aria-label="Close" (click)="close()">×</button>
     </header>
 
-    <div #dialogContent class="dialog-content">
-        @if (locationRows.length && clusterSizes.length) {
-        <table #combinedTable class="combined-table measurement-table" aria-hidden="true">
-            <thead><tr>
-                <th class="roll-column">2d6 roll</th>
-                <th><span class="table-roll-button">LS</span></th>
-                <th><span class="table-roll-button">F/R</span></th>
-                <th><span class="table-roll-button">RS</span></th>
-                @for (size of clusterSizes; track size) {<th><span class="table-roll-button cluster">{{ size }}</span></th>}
-            </tr></thead>
-            <tbody>
-                @for (row of locationRows; track row.roll; let rowIndex = $index) {
-                <tr>
-                    <td>{{ row.roll }}</td>
-                    <td><span class="table-roll-button">{{ row.leftSide }}</span></td>
-                    <td><span class="table-roll-button">{{ row.frontRear }}</span></td>
-                    <td><span class="table-roll-button">{{ row.rightSide }}</span></td>
-                    @for (size of clusterSizes; track size; let clusterIndex = $index) {
-                    <td><span class="table-roll-button cluster">{{ clusterRows[rowIndex][clusterIndex + 1] }}</span></td>
-                    }
-                </tr>
-                }
-            </tbody>
-        </table>
-        }
-
+    <div #dialogContent class="dialog-content" [class.layout-pending]="!layoutResolved()">
         @if (useCombinedTable()) {
         <section class="table-section">
             <h3>HIT LOCATIONS &amp; CLUSTER TABLE</h3>
             <div class="table-scroll">
-                <table class="combined-table">
+                <table #combinedTable class="combined-table">
                     <thead><tr>
                         <th class="roll-column" scope="col">2d6 roll</th>
                         <th scope="col" (click)="rollLocationColumn('leftSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('leftSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('leftSide'))"><button type="button" class="table-roll-button">LS</button></th>

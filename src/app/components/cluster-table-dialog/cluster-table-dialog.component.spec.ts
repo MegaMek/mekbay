@@ -151,14 +151,32 @@ describe('ClusterTableDialogComponent', () => {
         fixture.componentInstance.useCombinedTable.set(true);
         fixture.detectChanges();
 
-        const table = fixture.nativeElement.querySelector('.combined-table:not(.measurement-table)') as HTMLTableElement;
+        const table = fixture.nativeElement.querySelector('.combined-table') as HTMLTableElement;
         const headers = [...table.querySelectorAll('thead th')].map(cell => cell.textContent?.trim());
         expect(headers).toEqual(['2d6 roll', 'LS', 'F/R', 'RS', '5']);
+        expect(fixture.nativeElement.querySelectorAll('.combined-table')).toHaveSize(1);
         expect(fixture.nativeElement.querySelector('.hit-location-table')).toBeNull();
         expect(fixture.nativeElement.querySelector('.cluster-hit-table')).toBeNull();
         expect(table.querySelectorAll('tbody tr')).toHaveSize(11);
         expect(fixture.nativeElement.querySelector('.physical-location-table')).not.toBeNull();
-        expect(fixture.nativeElement.querySelector('.combined-table:not(.measurement-table) .physical-location-table')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.combined-table .physical-location-table')).toBeNull();
+    });
+
+    it('keeps dialog content hidden until the responsive layout is resolved', () => {
+        const fixture = createFixture(clusterUnit());
+        const component = fixture.componentInstance;
+        component.useCombinedTable.set(true);
+        component.layoutResolved.set(false);
+        fixture.detectChanges();
+
+        const content = fixture.nativeElement.querySelector('.dialog-content') as HTMLElement;
+        expect(content.classList).toContain('layout-pending');
+        expect(fixture.nativeElement.querySelectorAll('.combined-table')).toHaveSize(1);
+
+        component.layoutResolved.set(true);
+        fixture.detectChanges();
+
+        expect(content.classList).not.toContain('layout-pending');
     });
 
     it('renders the grouped punch and kick table as a separate section after hit locations', () => {

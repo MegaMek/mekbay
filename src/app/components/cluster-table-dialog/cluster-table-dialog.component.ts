@@ -89,7 +89,8 @@ export class ClusterTableDialogComponent {
     readonly clusterNotes = this.allNotes.filter(note => note.id !== 'tripodLeg');
     readonly rolledResult = signal<ReferenceRollResult | null>(null);
     readonly hoveredColumnKey = signal<string | null>(null);
-    readonly useCombinedTable = signal(false);
+    readonly useCombinedTable = signal(this.locationRows.length > 0 && this.clusterSizes.length > 0);
+    readonly layoutResolved = signal(!this.useCombinedTable());
 
     constructor() {
         afterNextRender(() => this.observeAvailableTableWidth());
@@ -211,19 +212,28 @@ export class ClusterTableDialogComponent {
     private observeAvailableTableWidth(): void {
         const content = this.dialogContent()?.nativeElement;
         const table = this.combinedTable()?.nativeElement;
-        if (!content || !table || !this.locationRows.length || !this.clusterSizes.length) return;
+        if (!this.locationRows.length || !this.clusterSizes.length) {
+            this.layoutResolved.set(true);
+            return;
+        }
+        if (!content || !table) {
+            this.useCombinedTable.set(false);
+            this.layoutResolved.set(true);
+            return;
+        }
+
+        const requiredWidth = table.getBoundingClientRect().width;
 
         const updateLayout = () => {
             const contentStyle = getComputedStyle(content);
             const horizontalPadding = (parseFloat(contentStyle.paddingLeft) || 0)
                 + (parseFloat(contentStyle.paddingRight) || 0);
             const availableWidth = content.clientWidth - horizontalPadding;
-            const requiredWidth = table.getBoundingClientRect().width;
             this.useCombinedTable.set(shouldCombineReferenceTables(availableWidth, requiredWidth));
+            this.layoutResolved.set(true);
         };
         const observer = new ResizeObserver(updateLayout);
         observer.observe(content);
-        observer.observe(table);
         updateLayout();
         this.destroyRef.onDestroy(() => observer.disconnect());
     }
