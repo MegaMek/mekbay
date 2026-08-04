@@ -46,6 +46,14 @@ describe('PagePsrWarningPanelComponent', () => {
             .componentInstance as DiceRollerComponent;
         spyOn(roller, 'roll');
 
+        const panel = fixture.nativeElement.querySelector('.panel') as HTMLElement;
+        const body = panel.querySelector('.body') as HTMLElement;
+        expect(Array.from(panel.children).map(child => child.className)).toEqual([
+            'header', 'psr-target', 'body', 'actions'
+        ]);
+        expect(getComputedStyle(panel).overflowY).toBe('hidden');
+        expect(getComputedStyle(body).overflowY).toBe('auto');
+
         const actions = fixture.nativeElement.querySelector('.psr-resolution-actions') as HTMLElement;
         const rollButton = actions.firstElementChild as HTMLButtonElement;
         rollButton.click();

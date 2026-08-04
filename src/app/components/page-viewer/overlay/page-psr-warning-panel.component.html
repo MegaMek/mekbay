@@ -1,5 +1,11 @@
 <div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
     <div class="header">{{ controlRollFullLabel() }}</div>
+    @if (!allChecksAutomaticFailure()) {
+        <div class="psr-target">
+            <span>Target roll</span>
+            <strong>{{ unit()?.PSRTargetRoll() }}</strong>
+        </div>
+    }
     <div class="body">
         <div class="psr-list">
             @for (check of psrChecks(); let i = $index; track check.id ?? i) {
@@ -50,10 +56,6 @@
                         }
                     </div>
                 }
-                <div class="psr-target">
-                    <span>Target roll</span>
-                    <strong>{{ unit()?.PSRTargetRoll() }}</strong>
-                </div>
             </div>
         }
     </div>

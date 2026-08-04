@@ -15,15 +15,20 @@
     transition: opacity 0.2s;
     max-height: 80dvh;
     overflow-x: hidden;
-    overflow-y: auto;
+    overflow-y: hidden;
 }
 
 .header {
+    flex: 0 0 auto;
     font-weight: bold;
     text-align: center;
 }
 
 .body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
     color: var(--text-color-secondary);
 }
 
@@ -31,11 +36,11 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 8px;
+    padding: 0px 8px;
 }
 
 .psr-item {
-    padding: 8px;
+    padding: 6px 8px;
     border: 1px solid var(--border-color);
     border-left: 3px solid var(--bt-yellow);
     background: var(--background-input);
@@ -158,7 +163,6 @@
 .roll-details {
     --roll-value-width: 52px;
     margin: 8px;
-    border-bottom: 1px solid var(--border-color);
 }
 
 .roll-details-label {
@@ -178,14 +182,14 @@
     display: grid;
     background: var(--background-input);
     grid-template-columns: minmax(0, 1fr) var(--roll-value-width);
-    min-height: 30px;
+    min-height: 20px;
     border-bottom: 1px solid var(--border-color);
 }
 
 .modifier-reason {
     align-self: center;
     min-width: 0;
-    padding: 5px 8px;
+    padding: 2px 8px;
     color: var(--text-color-secondary);
 }
 
@@ -203,6 +207,8 @@
 }
 
 .psr-target {
+    --roll-value-width: 52px;
+    flex: 0 0 auto;
     display: grid;
     grid-template-columns: minmax(0, 1fr) var(--roll-value-width);
     background: var(--background-input);
@@ -229,6 +235,7 @@
 }
 
 .actions {
+    flex: 0 0 auto;
     display: flex;
     justify-content: center;
 }
