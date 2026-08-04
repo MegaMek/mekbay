@@ -647,4 +647,22 @@ describe('DataService', () => {
         expect(unitsCatalogMock.initialize).not.toHaveBeenCalled();
         expect(service.isDataReady()).toBeFalse();
     });
+
+    it('logs actionable HTTP details when a required catalog request fails', async () => {
+        quirksCatalogMock.initialize.and.rejectWith({
+            message: 'Http failure response for https://db.mekbay.com/quirks.json: 504 Gateway Timeout',
+        });
+
+        await service.initialize();
+
+        const catalogLog = loggerServiceMock.error.calls.allArgs()
+            .map(([message]) => message as string)
+            .find((message) => message.includes('catalog service "quirks"'));
+        expect(catalogLog).toContain(
+            'Http failure response for https://db.mekbay.com/quirks.json: 504 Gateway Timeout',
+        );
+        expect(catalogLog).not.toContain('[object Object]');
+        expect(unitsCatalogMock.initialize).not.toHaveBeenCalled();
+        expect(service.isDataReady()).toBeFalse();
+    });
 });
