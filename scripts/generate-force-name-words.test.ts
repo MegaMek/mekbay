@@ -9,7 +9,6 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {
-    parseCsvRows,
     parseWeight,
     compactPilotNameCatalog,
     readCallsigns,
@@ -19,6 +18,7 @@ import {
     readBloodnameData,
     buildPilotFactionProfiles,
 } from './generate-force-name-words';
+import { parseCsvRows } from './lib/csv';
 
 const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'mekbay-pilot-names-'));
 

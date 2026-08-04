@@ -44,6 +44,7 @@ import type {
     PilotNameFactionMatrix,
     WeightedValue,
 } from '../src/app/models/pilot-name-catalog.model';
+import { parseCsvRows } from './lib/csv';
 
 const {
     loadOptionalEnvFile,
@@ -152,59 +153,6 @@ const EXCLUDED_WORDS = new Set([
 ]);
 
 loadOptionalEnvFile(APP_ROOT, { logPrefix: 'Force Name Words' });
-
-export function parseCsvRows(content: string): string[][] {
-    const rows: string[][] = [];
-    let row: string[] = [];
-    let cell = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < content.length; i += 1) {
-        const char = content[i];
-
-        if (inQuotes) {
-            if (char === '"') {
-                if (content[i + 1] === '"') {
-                    cell += '"';
-                    i += 1;
-                } else {
-                    inQuotes = false;
-                }
-            } else {
-                cell += char;
-            }
-            continue;
-        }
-
-        if (char === '"') {
-            inQuotes = true;
-        } else if (char === ',') {
-            row.push(cell);
-            cell = '';
-        } else if (char === '\r' || char === '\n') {
-            if (char === '\r' && content[i + 1] === '\n') {
-                i += 1;
-            }
-            row.push(cell);
-            rows.push(row);
-            row = [];
-            cell = '';
-        } else {
-            cell += char;
-        }
-    }
-
-    if (inQuotes) {
-        throw new Error('CSV ended while inside a quoted value.');
-    }
-
-    if (cell.length > 0 || row.length > 0) {
-        row.push(cell);
-        rows.push(row);
-    }
-
-    return rows.filter(candidate => candidate.some(cellValue => cellValue.trim().length > 0));
-}
 
 export function parseWeight(rawWeight: string, filePath: string, rowNumber: number): number {
     const normalizedWeight = rawWeight.trim();
