@@ -43,7 +43,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, injec
     styleUrls: ['./dice-roller.component.scss']
 })
 export class DiceRollerComponent {
-    private _endTimer: ReturnType<typeof setTimeout> | null = null;
+    private endTimer: ReturnType<typeof setTimeout> | null = null;
     diceCount = input<number>(2);
     diceSides = input<number>(6);
     modifier = input<number>(0);
@@ -71,8 +71,8 @@ export class DiceRollerComponent {
     canCloseOverlay = signal(false);
     rollFinished = computed(() => !this.isRolling() && this.rolled());
 
-    private _animationTimer: ReturnType<typeof setInterval> | null = null;
-    private _postEndTimer: ReturnType<typeof setTimeout> | null = null;
+    private animationTimer: ReturnType<typeof setInterval> | null = null;
+    private postEndTimer: ReturnType<typeof setTimeout> | null = null;
 
     constructor() {
         let lastDiceCount = 0;
@@ -81,14 +81,14 @@ export class DiceRollerComponent {
                 return;
             }
             lastDiceCount = this.diceCount();
-            this._resetArrays();
-            this._clearTimers();
+            this.resetArrays();
+            this.clearTimers();
             cleanup(() => {
-                this._clearTimers();
+                this.clearTimers();
             });
         });
         inject(DestroyRef).onDestroy(() => {
-            this._clearTimers();
+            this.clearTimers();
         });
     }
 
@@ -101,33 +101,33 @@ export class DiceRollerComponent {
         this.isRolling.set(true);
         this.overlayVisible.set(this.showOverlay());
         this.canCloseOverlay.set(false);
-        this._clearTimers();
+        this.clearTimers();
 
         const diceCount = Math.max(0, Math.floor(this.diceCount()));
         const animationIntervalMs = Math.max(1, this.animationIntervalMs());
 
         // start fast-changing overlay values
-        this._animationTimer = setInterval(() => {
-            this.diceResults.set(this._rollFaces(diceCount));
+        this.animationTimer = setInterval(() => {
+            this.diceResults.set(this.rollFaces(diceCount));
         }, animationIntervalMs);
 
         // stop after configured duration
-        this._endTimer = setTimeout(() => {
-            if (this._animationTimer) {
-                clearInterval(this._animationTimer);
-                this._animationTimer = null;
+        this.endTimer = setTimeout(() => {
+            if (this.animationTimer) {
+                clearInterval(this.animationTimer);
+                this.animationTimer = null;
             }
 
             this.isRolling.set(false);
 
-            const results = this._rollFaces(diceCount);
+            const results = this.rollFaces(diceCount);
             this.diceResults.set(results);
             this.diceSum.set(results.reduce((sum, value) => sum + value, this.modifier()));
 
             const freezeOnRollEnd = Math.max(0, this.freezeOnRollEnd());
             this.canCloseOverlay.set(freezeOnRollEnd === 0);
             if (freezeOnRollEnd > 0) {
-                this._postEndTimer = setTimeout(() => {
+                this.postEndTimer = setTimeout(() => {
                     this.canCloseOverlay.set(true);
                 }, freezeOnRollEnd);
             }
@@ -155,30 +155,30 @@ export class DiceRollerComponent {
         this.overlayClosed.emit();
     }
 
-    private _resetArrays() {
+    private resetArrays() {
         this.diceResults.set(Array(Math.max(0, Math.floor(this.diceCount()))).fill(null));
     }
 
-    private _randomFace() {
+    private randomFace() {
         return Math.floor(Math.random() * Math.max(1, Math.floor(this.diceSides()))) + 1;
     }
 
-    private _rollFaces(diceCount: number): number[] {
-        return Array.from({ length: diceCount }, () => this._randomFace());
+    private rollFaces(diceCount: number): number[] {
+        return Array.from({ length: diceCount }, () => this.randomFace());
     }
 
-    private _clearTimers() {
-        if (this._animationTimer) {
-            clearInterval(this._animationTimer);
-            this._animationTimer = null;
+    private clearTimers() {
+        if (this.animationTimer) {
+            clearInterval(this.animationTimer);
+            this.animationTimer = null;
         }
-        if (this._postEndTimer) {
-            clearTimeout(this._postEndTimer);
-            this._postEndTimer = null;
+        if (this.postEndTimer) {
+            clearTimeout(this.postEndTimer);
+            this.postEndTimer = null;
         }
-        if (this._endTimer) {
-            clearTimeout(this._endTimer);
-            this._endTimer = null;
+        if (this.endTimer) {
+            clearTimeout(this.endTimer);
+            this.endTimer = null;
         }
     }
 }
