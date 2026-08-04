@@ -36,6 +36,7 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { LoggerService } from '../logger.service';
+import { withServiceWorkerBypass } from '../../utils/service-worker-bypass.util';
 import { uuidv7 } from '../../utils/uuid.util';
 
 type CatalogDataSource = 'cache' | 'remote';
@@ -148,7 +149,7 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
 
     protected async getRemoteEtag(): Promise<string> {
         try {
-            const response = await firstValueFrom(this.http.head(this.remoteUrl, {
+            const response = await firstValueFrom(this.http.head(withServiceWorkerBypass(this.remoteUrl), {
                 observe: 'response',
                 responseType: 'text',
             }));
@@ -163,7 +164,7 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
         await this.downloadTracker.trackDownload(async () => {
             this.logger.info(`Downloading ${this.catalogKey}...`);
 
-            const response = await firstValueFrom(this.http.get<TRemoteBody>(this.remoteUrl, {
+            const response = await firstValueFrom(this.http.get<TRemoteBody>(withServiceWorkerBypass(this.remoteUrl), {
                 observe: 'response',
                 reportProgress: false,
             }));

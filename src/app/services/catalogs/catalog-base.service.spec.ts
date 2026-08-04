@@ -6,6 +6,8 @@ import { TestBed } from '@angular/core/testing';
 import { LoggerService } from '../logger.service';
 import { CatalogBaseService, CatalogDownloadTrackerService } from './catalog-base.service';
 
+const TEST_CATALOG_URL = 'https://catalog.example/test-catalog.json?ngsw-bypass=true';
+
 interface TestCatalogData {
     items?: number[];
     etag?: string;
@@ -28,7 +30,7 @@ class TestCatalogService extends CatalogBaseService<TestCatalogData, TestCatalog
     }
 
     protected override get remoteUrl(): string {
-        return '/test-catalog.json';
+        return 'https://catalog.example/test-catalog.json';
     }
 
     public getItems(): number[] {
@@ -117,14 +119,14 @@ describe('CatalogBaseService', () => {
         const initializePromise = service.initialize();
         await settleMicrotasks();
 
-        const headRequest = httpMock.expectOne('/test-catalog.json');
+        const headRequest = httpMock.expectOne(TEST_CATALOG_URL);
         expect(headRequest.request.method).toBe('HEAD');
         headRequest.flush('', {
             headers: new HttpHeaders({ ETag: 'etag-1' }),
         });
         await settleMicrotasks();
 
-        const getRequest = httpMock.expectOne('/test-catalog.json');
+        const getRequest = httpMock.expectOne(TEST_CATALOG_URL);
         expect(getRequest.request.method).toBe('GET');
         getRequest.flush({ items: [1, 2, 3, 4, 5, 6] }, {
             headers: new HttpHeaders({ ETag: 'etag-1' }),
@@ -145,13 +147,13 @@ describe('CatalogBaseService', () => {
         const initializePromise = service.initialize();
         await settleMicrotasks();
 
-        const headRequest = httpMock.expectOne('/test-catalog.json');
+        const headRequest = httpMock.expectOne(TEST_CATALOG_URL);
         headRequest.flush('', {
             headers: new HttpHeaders({ ETag: 'etag-1' }),
         });
         await settleMicrotasks();
 
-        const getRequest = httpMock.expectOne('/test-catalog.json');
+        const getRequest = httpMock.expectOne(TEST_CATALOG_URL);
         expect(downloadTracker.isDownloading()).toBeTrue();
 
         getRequest.flush({ items: [1, 2, 3, 4, 5, 6] }, {
@@ -171,28 +173,28 @@ describe('CatalogBaseService', () => {
         expect(secondInitialization).toBe(firstInitialization);
         await settleMicrotasks();
 
-        const headRequest = httpMock.expectOne('/test-catalog.json');
+        const headRequest = httpMock.expectOne(TEST_CATALOG_URL);
         headRequest.flush('', { headers: new HttpHeaders({ ETag: 'etag-1' }) });
         await Promise.all([firstInitialization, secondInitialization]);
 
         await service.initialize();
-        httpMock.expectNone('/test-catalog.json');
+        httpMock.expectNone(TEST_CATALOG_URL);
     });
 
     it('allows initialization to retry after failure', async () => {
         const failedInitialization = service.initialize();
         await settleMicrotasks();
 
-        httpMock.expectOne('/test-catalog.json').flush('offline', { status: 503, statusText: 'Unavailable' });
+        httpMock.expectOne(TEST_CATALOG_URL).flush('offline', { status: 503, statusText: 'Unavailable' });
         await settleMicrotasks();
-        httpMock.expectOne('/test-catalog.json').flush('offline', { status: 503, statusText: 'Unavailable' });
+        httpMock.expectOne(TEST_CATALOG_URL).flush('offline', { status: 503, statusText: 'Unavailable' });
         await expectAsync(failedInitialization).toBeRejected();
 
         const retry = service.initialize();
         await settleMicrotasks();
-        httpMock.expectOne('/test-catalog.json').flush('offline', { status: 503, statusText: 'Unavailable' });
+        httpMock.expectOne(TEST_CATALOG_URL).flush('offline', { status: 503, statusText: 'Unavailable' });
         await settleMicrotasks();
-        httpMock.expectOne('/test-catalog.json').flush({ items: [1, 2, 3, 4, 5, 6] });
+        httpMock.expectOne(TEST_CATALOG_URL).flush({ items: [1, 2, 3, 4, 5, 6] });
         await retry;
     });
 
@@ -225,14 +227,14 @@ describe('CatalogBaseService', () => {
         const initializePromise = service.initialize();
         await settleMicrotasks();
 
-        const headRequest = httpMock.expectOne('/test-catalog.json');
+        const headRequest = httpMock.expectOne(TEST_CATALOG_URL);
         expect(headRequest.request.method).toBe('HEAD');
         headRequest.flush('', {
             headers: new HttpHeaders({ ETag: 'etag-new' }),
         });
         await settleMicrotasks();
 
-        const getRequest = httpMock.expectOne('/test-catalog.json');
+        const getRequest = httpMock.expectOne(TEST_CATALOG_URL);
         expect(getRequest.request.method).toBe('GET');
         getRequest.flush({ items: [] }, {
             headers: new HttpHeaders({ ETag: 'etag-new' }),
@@ -254,14 +256,14 @@ describe('CatalogBaseService', () => {
         const initializePromise = service.initialize();
         await settleMicrotasks();
 
-        const headRequest = httpMock.expectOne('/test-catalog.json');
+        const headRequest = httpMock.expectOne(TEST_CATALOG_URL);
         expect(headRequest.request.method).toBe('HEAD');
         headRequest.flush('', {
             headers: new HttpHeaders({ ETag: 'etag-new' }),
         });
         await settleMicrotasks();
 
-        const getRequest = httpMock.expectOne('/test-catalog.json');
+        const getRequest = httpMock.expectOne(TEST_CATALOG_URL);
         expect(getRequest.request.method).toBe('GET');
         getRequest.flush({ items: [1, 2, 3, 4, 5] }, {
             headers: new HttpHeaders({ ETag: 'etag-new' }),

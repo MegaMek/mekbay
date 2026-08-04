@@ -104,17 +104,17 @@ describe('UnitsCatalogService custom servers', () => {
         await settleMicrotasks();
 
         // Primary db.mekbay.com flow
-        await flush(`${REMOTE_HOST}/units.json`, 'HEAD', '', 'primary-etag');
-        await flush(`${REMOTE_HOST}/units.json`, 'GET', primaryBody, 'primary-etag');
+        await flush(`${REMOTE_HOST}/units.json?ngsw-bypass=true`, 'HEAD', '', 'primary-etag');
+        await flush(`${REMOTE_HOST}/units.json?ngsw-bypass=true`, 'GET', primaryBody, 'primary-etag');
 
         // Custom server flow
-        await flush(`${CUSTOM_SERVER}/units.json`, 'HEAD', '', 'custom-etag');
-        await flush(`${CUSTOM_SERVER}/units.json`, 'GET', customBody, 'custom-etag');
+        await flush(`${CUSTOM_SERVER}/units.json?ngsw-bypass=true`, 'HEAD', '', 'custom-etag');
+        await flush(`${CUSTOM_SERVER}/units.json?ngsw-bypass=true`, 'GET', customBody, 'custom-etag');
 
         await Promise.all([initializePromise, concurrentInitializePromise]);
         await service.initialize();
-        httpMock.expectNone(`${REMOTE_HOST}/units.json`);
-        httpMock.expectNone(`${CUSTOM_SERVER}/units.json`);
+        httpMock.expectNone(`${REMOTE_HOST}/units.json?ngsw-bypass=true`);
+        httpMock.expectNone(`${CUSTOM_SERVER}/units.json?ngsw-bypass=true`);
 
         const units = service.getUnits();
         const byName = new Map(units.map(u => [u.name, u]));
@@ -150,8 +150,8 @@ describe('UnitsCatalogService custom servers', () => {
         const initializePromise = service.initialize();
         await settleMicrotasks();
 
-        await flush(`${REMOTE_HOST}/units.json`, 'HEAD', '', 'primary-etag');
-        await flush(`${REMOTE_HOST}/units.json`, 'GET', primaryBody, 'primary-etag');
+        await flush(`${REMOTE_HOST}/units.json?ngsw-bypass=true`, 'HEAD', '', 'primary-etag');
+        await flush(`${REMOTE_HOST}/units.json?ngsw-bypass=true`, 'GET', primaryBody, 'primary-etag');
 
         await initializePromise;
 

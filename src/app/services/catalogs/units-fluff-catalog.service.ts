@@ -46,6 +46,7 @@ import type {
 import { DbService } from '../db.service';
 import { LoggerService } from '../logger.service';
 import { CatalogDownloadTrackerService } from './catalog-base.service';
+import { withServiceWorkerBypass } from '../../utils/service-worker-bypass.util';
 import { uuidv7 } from '../../utils/uuid.util';
 
 const MINIMUM_FLUFF_ENTRY_COUNT = 100;
@@ -228,7 +229,7 @@ export class UnitsFluffCatalogService {
         return await this.downloadTracker.trackDownload(async () => {
             this.logger.info(`Downloading units_fluff from ${url}...`);
 
-            const response = await firstValueFrom(this.http.get<UnitFluffCatalog>(url, {
+            const response = await firstValueFrom(this.http.get<UnitFluffCatalog>(withServiceWorkerBypass(url), {
                 observe: 'response',
                 reportProgress: false,
             }));
@@ -248,7 +249,7 @@ export class UnitsFluffCatalogService {
 
     private async getRemoteEtag(url: string = this.remoteUrl): Promise<string> {
         try {
-            const response = await firstValueFrom(this.http.head(url, {
+            const response = await firstValueFrom(this.http.head(withServiceWorkerBypass(url), {
                 observe: 'response',
                 responseType: 'text',
             }));

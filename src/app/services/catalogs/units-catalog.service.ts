@@ -39,6 +39,7 @@ import type { Unit, Units } from '../../models/units.model';
 import { DbService } from '../db.service';
 import { OptionsService } from '../options.service';
 import { UnitRuntimeService } from '../unit-runtime.service';
+import { withServiceWorkerBypass } from '../../utils/service-worker-bypass.util';
 import { CatalogBaseService } from './catalog-base.service';
 import { uuidv7 } from '../../utils/uuid.util';
 
@@ -186,7 +187,7 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
         }
 
         try {
-            const response = await firstValueFrom(this.http.get<Units>(url, {
+            const response = await firstValueFrom(this.http.get<Units>(withServiceWorkerBypass(url), {
                 observe: 'response',
                 reportProgress: false,
             }));
@@ -209,7 +210,7 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
 
     private async getRemoteEtagFor(url: string): Promise<string> {
         try {
-            const response = await firstValueFrom(this.http.head(url, {
+            const response = await firstValueFrom(this.http.head(withServiceWorkerBypass(url), {
                 observe: 'response',
                 responseType: 'text',
             }));
