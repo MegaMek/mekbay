@@ -157,6 +157,9 @@ export abstract class EquipmentInteractionHandler {
     /** Applies equipment-state modifiers to typed weapon firing heat. */
     applyInventoryControlHeatEffects?(equipment: MountedEquipment, effect: InventoryControlHeatEffect, context: HandlerContext): InventoryControlHeatEffect;
 
+    /** Supplies typed selectable heat for physical or miscellaneous equipment. */
+    getInventoryControlHeatEffect?(equipment: MountedEquipment, context: HandlerContext): InventoryControlHeatEffect | null;
+
     /**
      * Hook called for linked equipment while building a parent entry's inventory-control row display.
      */
@@ -422,6 +425,14 @@ export class EquipmentInteractionRegistry {
         return nextEffect;
     }
 
+    getInventoryControlHeatEffect(equipment: MountedEquipment, context: HandlerContext): InventoryControlHeatEffect | null {
+        for (const handler of this.getHandlers(equipment)) {
+            const effect = handler.getInventoryControlHeatEffect?.(equipment, context);
+            if (effect) return effect;
+        }
+        return null;
+    }
+
     matchesInventoryAmmo(equipment: MountedEquipment, ammo: AmmoEquipment, mode: string | null, context: HandlerContext): boolean | null {
         for (const handler of this.getHandlers(equipment)) {
             const result = handler.matchesInventoryAmmo?.(equipment, ammo, mode, context);
@@ -460,6 +471,7 @@ export class EquipmentInteractionRegistry {
             applyDisplayEffects: (equipment, display, options) => this.applyInventoryControlDisplayEffects(equipment, display, options, context),
             applyDamageEffects: (equipment, damage, options) => this.applyInventoryControlDamageEffects(equipment, damage, options, context),
             applyPhysicalDamageEffects: (equipment, effect) => this.applyInventoryControlPhysicalDamageEffects(equipment, effect, context),
+            resolveHeatEffect: equipment => this.getInventoryControlHeatEffect(equipment, context),
             applyHeatEffects: (equipment, heat) => this.applyInventoryControlHeatEffects(equipment, heat, context),
             applyWeaponTypes: (equipment, types) => this.applyWeaponTypes(equipment, types, context),
             matchesAmmo: (equipment, ammo, mode) => this.matchesInventoryAmmo(equipment, ammo, mode, context),

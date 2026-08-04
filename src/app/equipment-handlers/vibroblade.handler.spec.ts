@@ -104,13 +104,10 @@ describe('VibrobladeHandler', () => {
             const display = handler.applyInventoryControlDisplayEffects(entry, DISPLAY, {} as never, context);
             expect(display.heat).withContext(size).toBe(`${heat}`);
             expect(display.damage).withContext(size).toBe(`${damage}`);
-            expect(handler.getInventoryHeatSources(entry, {} as never))
-                .withContext(size)
-                .toEqual([{
-                    id: `vibroblade:${entry.id}`,
-                    label: entry.equipment?.name ?? entry.name,
-                    value: heat,
-                }]);
+            expect(handler.getInventoryControlHeatEffect(entry)).withContext(size).toEqual({
+                value: heat,
+                weakened: false,
+            });
         }
     });
 
@@ -156,10 +153,10 @@ describe('VibrobladeHandler', () => {
         const display = handler.applyInventoryControlDisplayEffects(off, { ...DISPLAY, heat: '3', damage: '6 [12]' }, {} as never, context);
         expect(display.heat).toBe('[3]');
         expect(display.damage).toBe('6 [7]');
-        expect(handler.getInventoryHeatSources(off, {} as never)).toEqual([]);
+        expect(handler.getInventoryControlHeatEffect(off)).toBeNull();
 
         const unavailable = setup('LARGE', true).entry;
         unavailable.states.set(VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE);
-        expect(handler.getInventoryHeatSources(unavailable, {} as never)).toEqual([]);
+        expect(handler.getInventoryControlHeatEffect(unavailable)).toEqual({ value: 7, weakened: false });
     });
 });

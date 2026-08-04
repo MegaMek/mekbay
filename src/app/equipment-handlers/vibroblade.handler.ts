@@ -1,13 +1,12 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
-import type { UnitHeatSource } from '../models/rules/unit-type-rules';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
-import type { TurnState } from '../models/turn-state.model';
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
 import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions } from '../utils/inventory-control.util';
 import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-control-physical-damage.util';
 import { getVibrobladeProfile } from '../models/rules/vibroblade-rules';
 import { EquipmentFlag } from '../models/equipment-flags.type';
+import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 
 export const VIBROBLADE_MODE_STATE = 'vibroblade_mode';
 export const VIBROBLADE_ON_MODE = 'ON';
@@ -101,13 +100,9 @@ export class VibrobladeHandler extends EquipmentInteractionHandler {
         };
     }
 
-    override getInventoryHeatSources(mounted: MountedEquipment, _turnState: TurnState): UnitHeatSource[] {
+    override getInventoryControlHeatEffect(mounted: MountedEquipment): InventoryControlHeatEffect | null {
         const profile = getVibrobladeProfile(mounted.equipment);
-        if (!profile || getVibrobladeMode(mounted) !== VIBROBLADE_ON_MODE || mounted.isUnavailable()) return [];
-        return [{
-            id: `vibroblade:${mounted.id}`,
-            label: mounted.equipment?.name ?? mounted.name,
-            value: profile.activeHeat,
-        }];
+        if (!profile || getVibrobladeMode(mounted) !== VIBROBLADE_ON_MODE) return null;
+        return { value: profile.activeHeat, weakened: false };
     }
 }
