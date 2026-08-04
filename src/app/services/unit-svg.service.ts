@@ -58,6 +58,7 @@ const INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY = '--inventory-control-selectio
 const HEAT_PROJECTION_ORIGINAL_OVERFLOW_STROKE = 'data-heat-projection-original-stroke';
 const AMMO_PROFILE_MIN_TEXT_SCALE = 0.82;
 const AMMO_PROFILE_COMPRESSED_ATTRIBUTE = 'data-ammo-profile-compressed';
+const HEAT_PROFILE_ORIGINAL_VALUE_ATTRIBUTE = 'data-mekbay-original-heat-profile-value';
 
 const INVENTORY_CONTROL_RANGE_CLASS_NAMES: Record<InventoryControlRuntimeRangeKey, string> = {
     short: 'selected-range-short',
@@ -850,14 +851,17 @@ export class UnitSvgService {
             marker = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
             marker.setAttribute('id', markerId);
             marker.setAttribute('class', markerClass);
+            marker.setAttribute('stroke', '#000');
+            marker.setAttribute('stroke-width', '0.5');
             marker.setAttribute('pointer-events', 'none');
             heatScale.appendChild(marker);
         }
 
         const tipX = Number(heatZeroElement.getAttribute('x') ?? 0) + 4;
-        const baseX = tipX - 7;
+        const baseX = tipX - 8;
+        const halfHeight = 2.5;
         marker.setAttribute('fill', fill);
-        marker.setAttribute('points', `${tipX},${targetCenter.y} ${baseX},${targetCenter.y - 2} ${baseX},${targetCenter.y + 2}`);
+        marker.setAttribute('points', `${tipX},${targetCenter.y} ${baseX},${targetCenter.y - halfHeight} ${baseX},${targetCenter.y + halfHeight}`);
     }
 
     private updateNowArrowLabel(parent: Element | null, x: number, y: number): void {
@@ -1034,6 +1038,31 @@ export class UnitSvgService {
 
     protected updateHeatSinkPips() {
         // No-op for non-heat units (vehicles, etc.)
+    }
+
+    protected updateHeatProfileDisplay(dissipation: number): void {
+        const heatProfileElement = this.unit.svg()?.querySelector('#heatProfile');
+        if (!heatProfileElement) return;
+
+        let totalHeat = heatProfileElement.getAttribute(HEAT_PROFILE_ORIGINAL_VALUE_ATTRIBUTE);
+        if (totalHeat === null) {
+            totalHeat = heatProfileElement.textContent?.match(/:\s*(-?\d+(?:\.\d+)?)/)?.[1] ?? '0';
+            heatProfileElement.setAttribute(HEAT_PROFILE_ORIGINAL_VALUE_ATTRIBUTE, totalHeat);
+        }
+
+        const hasSelection = Array.from(this.unit.inventoryControl.entryStates().values())
+            .some(state => state.selected);
+        if (!hasSelection) {
+            heatProfileElement.textContent = `Total Heat (Dissipation): ${totalHeat} (${dissipation})`;
+            return;
+        }
+
+        heatProfileElement.textContent = 'Selected Heat (Dissipation): ';
+        const selectedHeat = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+        selectedHeat.setAttribute('font-weight', 'bold');
+        selectedHeat.textContent = this.unit.selectedInventoryWeaponHeat().value.toString();
+        heatProfileElement.appendChild(selectedHeat);
+        heatProfileElement.appendChild(document.createTextNode(` (${dissipation})`));
     }
 
     private getInventoryOriginalTotalAmmo(entry: MountedAmmo): number {

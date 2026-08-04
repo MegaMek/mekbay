@@ -104,14 +104,7 @@ export class UnitSvgAeroService extends UnitSvgService {
             }
         }
 
-        // Update heat profile display
-        const heatProfileElement = svg.querySelector('#heatProfile');
-        if (heatProfileElement) {
-            const existingText = heatProfileElement.textContent || '';
-            const match = existingText.match(/:\s*(\d+)/);
-            const heatProfileValue = match ? match[1] : '0';
-            heatProfileElement.textContent = `Total Heat (Dissipation): ${heatProfileValue} (${dissipation.totalDissipation})`;
-        }
+        this.updateHeatProfileDisplay(dissipation.totalDissipation);
     }
 
     // ── Hit Modifiers ────────────────────────────────────────────────────────

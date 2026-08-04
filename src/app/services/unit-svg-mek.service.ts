@@ -411,14 +411,7 @@ export class UnitSvgMekService extends UnitSvgService {
             }
         }
 
-        // Update heat profile display
-        const heatProfileElement = svg.querySelector('#heatProfile');
-        if (heatProfileElement) {
-            const existingText = heatProfileElement.textContent || '';
-            const match = existingText.match(/:\s*(\d+)/);
-            const heatProfileValue = match ? match[1] : '0';
-            heatProfileElement.textContent = `Total Heat (Dissipation): ${heatProfileValue} (${dissipation.totalDissipationWithWings})`;
-        }
+        this.updateHeatProfileDisplay(dissipation.totalDissipationWithWings ?? dissipation.totalDissipation);
     }
 
     protected override updateArmorDisplay(initial: boolean = false) {
