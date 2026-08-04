@@ -53,6 +53,13 @@ h3 {
     margin-top: 1.2rem;
 }
 
+.roll-instructions {
+    margin-top: 1rem;
+    text-align: center;
+    color: var(--text-color-secondary);
+    font-size: .9rem;
+}
+
 .table-scroll {
     overflow-x: auto;
     max-width: 100%;
@@ -79,12 +86,13 @@ table {
 
 .physical-location-table {
     width: 100%;
-    min-width: 430px;
+    min-width: 260px;
 }
 
-.physical-location-table th:nth-child(5),
-.physical-location-table td:nth-child(5) {
-    border-left-width: 2px;
+.physical-location-table thead tr:first-child th:last-child,
+.physical-location-table thead tr:nth-child(2) th:nth-child(4),
+.physical-location-table tbody td:nth-child(5) {
+    border-left-width: 4px;
 }
 
 .measurement-table {
@@ -99,14 +107,14 @@ table {
 
 th,
 td {
-    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    border: 1px solid var(--border-color);
     text-align: center;
     white-space: nowrap;
     min-width: 24px;
 }
 
 th {
-    background: color-mix(in srgb, currentColor 10%, transparent);
+    background: #FFF2;
 }
 
 th.roll-column,
@@ -137,6 +145,11 @@ th.roll-column {
     font: inherit;
     cursor: pointer;
     white-space: nowrap;
+
+    &.cluster {
+        min-width: 42px;
+        padding: .35rem;
+    }
 }
 
 // State precedence: hover column, then rolled row, then selected result cell.
@@ -169,15 +182,32 @@ td.rolled-highlight {
         padding: .75rem;
     }
 
+    .physical-location-table {
+        table-layout: fixed;
+    }
+
+    .physical-location-table th,
+    .physical-location-table td {
+        min-width: 0;
+    }
+
     th.roll-column,
     td:first-child {
-        width: 4rem;
-        min-width: 4rem;
-        max-width: 4rem;
+        width: 2.5rem;
+        min-width: 2.5rem;
+        max-width: 2.5rem;
         padding: .3rem .35rem;
+    }
+
+    th.roll-column {
+        white-space: normal;
     }
 
     .table-roll-button {
         padding: .3rem .35rem;
+    }
+
+    .physical-location-table .table-roll-button {
+        padding-inline: .15rem;
     }
 }
