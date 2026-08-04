@@ -331,10 +331,15 @@ export class SvgInteractionService {
         el: SVGElement,
         handler: (evt: PointerEvent, primaryAction: boolean) => void,
         signal: AbortSignal,
-        capture = false
+        capture = false,
+        keyboardAccessible = false,
     ) {
         let longTouchTimer: any = null;
         el.classList.add('interactive');
+        if (keyboardAccessible) {
+            el.setAttribute('tabindex', '0');
+            el.setAttribute('role', 'button');
+        }
         const eventOptions = { passive: false, signal, capture };
         const globalEventOptions = { passive: false, signal, capture: true };
 
@@ -476,6 +481,14 @@ export class SvgInteractionService {
         el.addEventListener('pointerleave', leaveHandler, eventOptions);
         el.addEventListener('pointercancel', cancelHandler, eventOptions);
         el.addEventListener('pointerup', upHandler, eventOptions);
+        if (keyboardAccessible) {
+            el.addEventListener('keydown', (event: KeyboardEvent) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                event.stopPropagation();
+                handler(new PointerEvent('pointerup', { bubbles: true, pointerType: 'keyboard' }), true);
+            }, eventOptions);
+        }
         signal.addEventListener('abort', () => {
             clearLongTouch();
         }, { once: true });
@@ -2246,8 +2259,8 @@ export class SvgInteractionService {
     private async editCrewName(crewId: number) {
         const unit = this.unit()!;
         if (!unit) return;
-        const crewMember = unit.getCrewMember(crewId);
-        await this.forceBuilderService.editPilotOfUnit(unit, crewMember);
+        if (!unit.getCrewMember(crewId)) return;
+        await this.forceBuilderService.editPilotOfUnit(unit);
     }
 
     cleanup() {

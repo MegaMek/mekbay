@@ -53,7 +53,6 @@ import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview
 import { ForceRadarPanelComponent } from '../force-radar-panel/force-radar-panel.component';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { UnitBlockComponent } from '../unit-block/unit-block.component';
-import type { CrewMember } from '../../models/crew-member.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
@@ -660,9 +659,9 @@ export class ForceOverviewDialogComponent {
     }
 
     /** Handle pilot click - open pilot edit dialog */
-    async onPilotClick(forceUnit: ForceUnit, crewMember?: CrewMember): Promise<void> {
+    async onPilotClick(forceUnit: ForceUnit): Promise<void> {
         if (forceUnit.readOnly()) return;
-        await this.forceBuilderService.editPilotOfUnit(forceUnit, crewMember);
+        await this.forceBuilderService.editPilotOfUnit(forceUnit);
     }
 
     /** Handle force name click - open rename dialog */

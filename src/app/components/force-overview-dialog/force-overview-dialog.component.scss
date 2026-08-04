@@ -752,6 +752,10 @@
 
 .as-td-skill {
     color: var(--primary-focus-color);
+    appearance: none;
+    border: 0;
+    background: none;
+    font: inherit;
 }
 
 .as-td-skill.clickable {

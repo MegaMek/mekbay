@@ -126,6 +126,11 @@
     }
 
     .pilot-info {
+        appearance: none;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
         position: static;
         line-height: 1;
         paint-order: stroke fill;
@@ -237,6 +242,11 @@
             cursor: pointer;
             transition: background-color 0.2s;
             position: relative;
+            appearance: none;
+            border: 0;
+            background: none;
+            color: inherit;
+            font: inherit;
 
             &:hover {
                 text-decoration: underline;

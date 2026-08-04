@@ -65,7 +65,10 @@ function cloneLoadForceGroups(groups: readonly ForcePreviewGroup[]): LoadForceGr
     return groups.map((group) => ({
         name: group.name,
         formationId: group.formationId,
-        units: group.units.map((unit) => ({ ...unit })),
+        units: group.units.map((unit) => ({
+            ...unit,
+            crew: unit.crew?.map((member) => ({ ...member })),
+        })),
     }));
 }
 

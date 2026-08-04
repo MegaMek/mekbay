@@ -37,15 +37,15 @@
         }
         <div class="pilot-info-list">
             @if (isAlphaStrike()) {
-            <div class="pilot-info info-slot numeric slim interactive" (click)="editPilot($event)" title="Edit Pilot">
+            <button type="button" class="pilot-info info-slot numeric slim interactive" (click)="editPilot($event)"
+                title="Edit Pilot" aria-label="Edit pilot">
                 <span class="value">{{ alphaStrikePilotSkill() }}</span>
-            </div>
+            </button>
             } @else {
-            @for (crewMember of crewMembers(); track crewMember.getId()) {
-            <div class="pilot-info info-slot numeric slim interactive" (click)="editPilot($event, crewMember)" title="Edit Pilot">
-                <span class="value">{{ getCrewMemberPilotStats(crewMember) }}</span>
-            </div>
-            }
+            <button type="button" class="pilot-info info-slot numeric slim interactive" (click)="editPilot($event)"
+                title="Edit Crew" aria-label="Edit crew">
+                <span class="value">{{ fu?.getPilotStats() }}</span>
+            </button>
             }
         </div>
     </div>
@@ -184,10 +184,11 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                         <div class="info-slot slim centered">
                             <span class="value">MV: <span [innerHTML]="getEffectiveMovement()"></span></span>
                         </div>
-                        <div class="info-slot slim centered pilot-info interactive" (click)="editPilot($event)" title="Edit Pilot">
+                        <button type="button" class="info-slot slim centered pilot-info interactive" (click)="editPilot($event)"
+                            title="Edit Pilot" aria-label="Edit pilot">
                             <span class="value">{{ alphaStrikePilotSkill() }}</span>
                             <img src="/images/helmet.svg" class="icon" alt="Pilot">
-                        </div>
+                        </button>
                     } @else {
                         <div class="info-slot slim numeric" [tooltip]="bvTooltip()">
                             <span class="value">BV: {{ displayedBvPv() }}</span>
@@ -196,12 +197,11 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                             <span class="value">{{ unit()?.tons | formatTons }}</span>
                             <img src="/images/weight.svg" class="icon" alt="Tonnage">
                         </div>
-                        @for (crewMember of crewMembers(); track crewMember.getId()) {
-                        <div class="info-slot slim numeric pilot-info interactive" (click)="editPilot($event, crewMember)" title="Edit Pilot">
-                            <span class="value">{{ getCrewMemberPilotStats(crewMember) }}</span>
+                        <button type="button" class="info-slot slim numeric pilot-info interactive" (click)="editPilot($event)"
+                            title="Edit Crew" aria-label="Edit crew">
+                            <span class="value">{{ fu?.getPilotStats() }}</span>
                             <img src="/images/helmet.svg" class="icon" alt="Pilot">
-                        </div>
-                        }
+                        </button>
                     }
                     @for (c3Item of c3NetworkItems(); track c3Item.networkType) {
                     <button type="button" class="info-slot slim c3link interactive"

@@ -7,7 +7,6 @@
 import { signal } from '@angular/core';
 
 import { EditASPilotDialogComponent } from './edit-as-pilot-dialog/edit-as-pilot-dialog.component';
-import { EditPilotDialogComponent } from './edit-pilot-dialog/edit-pilot-dialog.component';
 
 interface RandomNameDialogHarness {
     data: {
@@ -52,17 +51,14 @@ function createHarness(generatedName: string | null, error?: Error): RandomNameD
 }
 
 async function invokeFillRandomName(
-    component: typeof EditPilotDialogComponent | typeof EditASPilotDialogComponent,
+    component: typeof EditASPilotDialogComponent,
     harness: RandomNameDialogHarness,
 ): Promise<void> {
     await component.prototype.fillRandomName.call(harness as never);
 }
 
 describe('pilot dialog random name behavior', () => {
-    for (const [label, component] of [
-        ['Classic', EditPilotDialogComponent],
-        ['Alpha Strike', EditASPilotDialogComponent],
-    ] as const) {
+    for (const [label, component] of [['Alpha Strike', EditASPilotDialogComponent]] as const) {
         it(`${label} passes all generation context and updates the input`, async () => {
             const harness = createHarness('Jane "Specter" Smith');
 

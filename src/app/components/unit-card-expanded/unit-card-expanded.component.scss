@@ -135,6 +135,16 @@
     align-items: baseline;
     gap: 8px;
 
+    &:is(button) {
+        width: 100%;
+        appearance: none;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        padding: 0;
+    }
+
     &.interactive {
         cursor: pointer;
         transition: color 0.2s;
@@ -347,6 +357,10 @@
     }
 
     .pilot-info {
+        appearance: none;
+        border: 0;
+        color: inherit;
+        font: inherit;
         background-color: rgba(255, 196, 0, 0.4);
 
         &.interactive {

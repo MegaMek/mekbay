@@ -129,7 +129,7 @@ describe('createLoadForceEntryFromSerializedForce', () => {
         expect(result.groups[0].units[0]).toEqual(jasmine.objectContaining({
             unit: resolvedUnit,
             gunnery: 3,
-            piloting: 5,
+            piloting: 4,
         }));
         expect(result.faction).toBe(resolvedFaction);
         expect(result.era).toBe(resolvedEra);

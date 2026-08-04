@@ -15,10 +15,32 @@
     flex: 1 1 0;
     min-width: 0;
 
-    > .form-fields {
+    > .crew-list {
         flex: 1 1 0;
         min-width: 0;
     }
+}
+
+.crew-list {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.crew-member-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+
+    & + & {
+        border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.18));
+        margin-top: 16px;
+        padding-top: 16px;
+    }
+}
+
+.crew-skills {
+    margin: 0;
 }
 
 .name-field {
@@ -78,8 +100,12 @@
     flex-shrink: 0;
 }
 
-.group-commander-inline-note {
-    color: var(--bt-yellow) !important;
+.group-commander-status {
+    padding: 0;
+    color: var(--bt-yellow);
+    font-size: 0.8em;
+    font-weight: 600;
+    text-align: center;
 }
 
 .skill-selector {

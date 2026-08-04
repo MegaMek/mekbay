@@ -192,7 +192,10 @@
 
                 <ng-template #tableSkillCell let-row>
                     @if (row.kind === 'unit') {
-                    <div class="as-td as-td-skill clickable" (click)="onPilotClick(row.vm.forceUnit); $event.stopPropagation()" title="Click to edit pilot">{{ getPilotSkill(row.vm) }}</div>
+                    <button type="button" class="as-td as-td-skill clickable"
+                        (click)="onPilotClick(row.vm.forceUnit); $event.stopPropagation()"
+                        [attr.aria-label]="isAlphaStrike() ? 'Edit pilot' : 'Edit crew'"
+                        [title]="isAlphaStrike() ? 'Edit pilot' : 'Edit crew'">{{ getPilotSkill(row.vm) }}</button>
                     }
                 </ng-template>
 
@@ -274,7 +277,7 @@
                                     <unit-block
                                         [forceUnit]="forceUnit"
                                         [compactMode]="false"
-                                        (onEditPilot)="onPilotClick(forceUnit, $event.crewMember)"
+                                        (onEditPilot)="onPilotClick(forceUnit)"
                                         (onOpenC3Network)="openC3Network($event, forceUnit)"
                                         (onRemoveUnit)="removeUnit($event, forceUnit)"
                                         (onRepairUnit)="repairUnit($event, forceUnit)"

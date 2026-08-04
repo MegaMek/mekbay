@@ -9,7 +9,11 @@ import {
 } from './force-preview.model';
 
 describe('createForcePreviewUnitFromSerializedUnit', () => {
-    const getUnitByName = (name: string) => ({ name, type: 'Mek' } as any);
+    const getUnitByName = (name: string) => ({
+        name,
+        type: 'Mek',
+        subtype: name === 'Phoenix Hawk LAM' ? 'Land-Air BattleMek' : 'BattleMek',
+    } as any);
 
     it('reads alpha strike pilot skill from serialized AS units', () => {
         const serializedUnit = {
@@ -68,10 +72,82 @@ describe('createForcePreviewUnitFromSerializedUnit', () => {
 
         expect(result).toEqual(jasmine.objectContaining({
             gunnery: 3,
-            piloting: 5,
+            piloting: 4,
             commander: false,
+            crew: [
+                { id: 0, name: 'Pilot 1', gunnery: 4, piloting: 5 },
+                { id: 1, name: 'Pilot 2', gunnery: 3, piloting: 4 },
+            ],
         }));
         expect(result.skill).toBeUndefined();
+    });
+
+    it('includes LAM aerospace skills in serialized synthetic minima', () => {
+        const serializedUnit = {
+            id: 'lam-1',
+            unit: 'Phoenix Hawk LAM',
+            state: {
+                crew: [{
+                    id: 0,
+                    name: 'LAM Pilot',
+                    gunnerySkill: 4,
+                    pilotingSkill: 5,
+                    asfGunnerySkill: 2,
+                    asfPilotingSkill: 3,
+                    hits: 0,
+                    state: 0,
+                }],
+                crits: [],
+                locations: {},
+                heat: { current: 0, previous: 0 },
+            },
+        } as any;
+
+        const result = createForcePreviewUnitFromSerializedUnit(serializedUnit, getUnitByName);
+
+        expect(result.gunnery).toBe(2);
+        expect(result.piloting).toBe(3);
+        expect(result.crew).toEqual([{
+            id: 0,
+            name: 'LAM Pilot',
+            gunnery: 4,
+            piloting: 5,
+            asfGunnery: 2,
+            asfPiloting: 3,
+        }]);
+    });
+
+    it('ignores serialized aerospace fallback skills for non-LAM units', () => {
+        const serializedUnit = {
+            id: 'cbt-2',
+            unit: 'Atlas AS7-D',
+            state: {
+                crew: [{
+                    id: 0,
+                    name: 'Recruit',
+                    gunnerySkill: 6,
+                    pilotingSkill: 7,
+                    asfGunnerySkill: 4,
+                    asfPilotingSkill: 5,
+                    hits: 0,
+                    state: 0,
+                }],
+                crits: [],
+                locations: {},
+                heat: { current: 0, previous: 0 },
+            },
+        } as any;
+
+        const result = createForcePreviewUnitFromSerializedUnit(serializedUnit, getUnitByName);
+
+        expect(result.gunnery).toBe(6);
+        expect(result.piloting).toBe(7);
+        expect(result.crew).toEqual([{
+            id: 0,
+            name: 'Recruit',
+            gunnery: 6,
+            piloting: 7,
+        }]);
     });
 });
 
@@ -135,6 +211,18 @@ describe('createForcePreviewEntryFromForce', () => {
             getPilotStats: () => '3/4',
             gunnerySkill: () => 3,
             pilotingSkill: () => 4,
+            getCrewMembers: () => [
+                {
+                    getId: () => 0,
+                    getName: () => 'Veteran',
+                    getSkill: (skillType: 'gunnery' | 'piloting') => skillType === 'gunnery' ? 3 : 5,
+                },
+                {
+                    getId: () => 1,
+                    getName: () => 'Driver',
+                    getSkill: (skillType: 'gunnery' | 'piloting') => skillType === 'gunnery' ? 4 : 4,
+                },
+            ],
         } as any;
 
         const force = {
@@ -174,6 +262,10 @@ describe('createForcePreviewEntryFromForce', () => {
             alias: 'Veteran',
             gunnery: 3,
             piloting: 4,
+            crew: [
+                { id: 0, name: 'Veteran', gunnery: 3, piloting: 5 },
+                { id: 1, name: 'Driver', gunnery: 4, piloting: 4 },
+            ],
         }));
         expect(getForcePreviewResolvedUnits(result)).toEqual([resolvedUnit]);
         expect(getForcePreviewUnitPilotStats(result.groups[0].units[0], result.type)).toBe('3/4');

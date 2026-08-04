@@ -69,7 +69,8 @@ import { evaluateFormationPredicate } from '../utils/formation-predicates.util';
 import { collectGroupUnits } from '../utils/org/org-facts.util';
 import type { GroupSizeResult, OrgDefinition, OrgRuleDefinition, OrgType } from '../utils/org/org-types';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
-import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
+import { getEffectivePilotingSkill, getFixedPilotingSkill } from '../utils/cbt-common.util';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type CrewMemberDetails } from '../models/crew-member.model';
 import { getPositiveDropdownNamesFromFilter, resolveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { adjustPointValueForSkill } from '../utils/pv-skill-adjustment.util';
@@ -129,6 +130,7 @@ interface ForceGenerationCandidateUnit {
     skill?: number;
     gunnery?: number;
     piloting?: number;
+    crew?: CrewMemberDetails[];
     lockKey?: string;
     variantGroupKey?: string;
     locked: boolean;
@@ -571,10 +573,55 @@ export interface GeneratedForceUnit {
     skill?: number;
     gunnery?: number;
     piloting?: number;
+    crew?: CrewMemberDetails[];
     alias?: string;
     commander?: boolean;
     lockKey?: string;
     variantGroupKey?: string;
+}
+
+export function normalizeGeneratedClassicCrew(
+    unit: Unit,
+    crew: readonly CrewMemberDetails[] | undefined,
+    gunnery: number,
+    piloting: number,
+    alias?: string,
+): CrewMemberDetails[] | undefined {
+    const isLandAirMek = unit.subtype === 'Land-Air BattleMek';
+    if (!crew?.length && !isLandAirMek) {
+        return undefined;
+    }
+
+    const effectivePiloting = getEffectivePilotingSkill(unit, piloting);
+    return Array.from({ length: Math.max(1, unit.crewSize || 1) }, (_, id) => {
+        const existing = crew?.find((member) => member.id === id);
+        const memberGunnery = existing?.gunnery ?? gunnery ?? DEFAULT_GUNNERY_SKILL;
+        const memberPiloting = getEffectivePilotingSkill(
+            unit,
+            existing?.piloting ?? effectivePiloting ?? DEFAULT_PILOTING_SKILL,
+        );
+        return {
+            id,
+            name: existing?.name ?? (id === 0 ? alias ?? '' : ''),
+            gunnery: memberGunnery,
+            piloting: memberPiloting,
+            ...(isLandAirMek ? {
+                asfGunnery: existing?.asfGunnery ?? memberGunnery,
+                asfPiloting: existing?.asfPiloting ?? memberPiloting,
+            } : {}),
+        };
+    });
+}
+
+export function getGeneratedClassicCrewSkill(
+    crew: readonly CrewMemberDetails[] | undefined,
+    skillType: 'gunnery' | 'piloting',
+    fallback: number,
+): number {
+    if (!crew?.length) return fallback;
+    const asfSkill = skillType === 'gunnery' ? 'asfGunnery' : 'asfPiloting';
+    return Math.min(...crew.flatMap((member) => [member[skillType], member[asfSkill]]
+        .filter((skill): skill is number => skill !== undefined)));
 }
 
 export interface ForceGeneratorBudgetDefaults {
@@ -847,6 +894,9 @@ function createGeneratedPreviewGroup(
             piloting: gameSystem === GameSystem.CLASSIC ? generatedUnit.piloting : undefined,
             skill: gameSystem === GameSystem.ALPHA_STRIKE ? generatedUnit.skill : undefined,
             alias: generatedUnit.alias,
+            crew: gameSystem === GameSystem.CLASSIC
+                ? generatedUnit.crew?.map((member) => ({ ...member }))
+                : undefined,
             commander: requiresCommander ? index === commanderIndex : generatedUnit.commander,
             lockKey: generatedUnit.lockKey,
         })),
@@ -1395,17 +1445,18 @@ function pickRandomIntegerInRange(range: ForceGenerationSkillRange): number {
     return range.min + Math.floor(Math.random() * (range.max - range.min + 1));
 }
 
-function getForceGenerationClassicSkillPairs(
+export function getForceGenerationClassicSkillPairs(
     settings: ForceGenerationSkillSettings,
     unit?: Unit,
 ): ForceGenerationClassicSkillPair[] {
     const pairs: ForceGenerationClassicSkillPair[] = [];
     const pairKeys = new Set<string>();
+    const fixedPiloting = unit ? getFixedPilotingSkill(unit) : null;
 
     for (let gunnery = settings.gunnery.min; gunnery <= settings.gunnery.max; gunnery += 1) {
         for (let requestedPiloting = settings.piloting.min; requestedPiloting <= settings.piloting.max; requestedPiloting += 1) {
-            const piloting = unit ? getEffectivePilotingSkill(unit, requestedPiloting) : requestedPiloting;
-            if (Math.abs(gunnery - piloting) <= settings.maxDelta) {
+            const piloting = fixedPiloting ?? requestedPiloting;
+            if (fixedPiloting !== null || Math.abs(gunnery - piloting) <= settings.maxDelta) {
                 const pairKey = `${gunnery}:${piloting}`;
                 if (!pairKeys.has(pairKey)) {
                     pairKeys.add(pairKey);
@@ -1455,7 +1506,10 @@ function clonePreviewGroups(groups: readonly ForcePreviewGroup[]): ForcePreviewG
     return groups.map((group) => ({
         name: group.name,
         formationId: group.formationId,
-        units: group.units.map((unit) => ({ ...unit })),
+        units: group.units.map((unit) => ({
+            ...unit,
+            crew: unit.crew?.map((member) => ({ ...member })),
+        })),
     }));
 }
 
@@ -3595,6 +3649,7 @@ export class ForceGeneratorService implements OnDestroy {
             skill: lockedUnit?.skill ?? baseCandidate.skill,
             gunnery: lockedUnit?.gunnery ?? baseCandidate.gunnery,
             piloting: lockedUnit?.piloting ?? baseCandidate.piloting,
+            crew: lockedUnit?.crew?.map((member) => ({ ...member })),
             lockKey: lockedUnit?.lockKey,
             variantGroupKey: lockedUnit?.variantGroupKey,
             locked: lockedUnit !== undefined,
@@ -3637,21 +3692,31 @@ export class ForceGeneratorService implements OnDestroy {
             ? lockedUnit.gunnery ?? lockedUnit.skill ?? options.gunnery
             : undefined;
         const piloting = options.gameSystem === GameSystem.CLASSIC
-            ? lockedUnit.piloting ?? options.piloting
+            ? getEffectivePilotingSkill(unit, lockedUnit.piloting ?? options.piloting)
             : undefined;
+        const crew = options.gameSystem === GameSystem.CLASSIC
+            ? normalizeGeneratedClassicCrew(unit, lockedUnit.crew, gunnery!, piloting!, lockedUnit.alias)
+            : undefined;
+        const resolvedGunnery = gunnery === undefined
+            ? undefined
+            : getGeneratedClassicCrewSkill(crew, 'gunnery', gunnery);
+        const resolvedPiloting = piloting === undefined
+            ? undefined
+            : getGeneratedClassicCrewSkill(crew, 'piloting', piloting);
 
         return {
             ...lockedUnit,
+            crew,
             unit,
             cost: getBudgetMetric(
                 unit,
                 options.gameSystem,
-                skill ?? gunnery ?? options.gunnery,
-                piloting ?? options.piloting,
+                skill ?? resolvedGunnery ?? options.gunnery,
+                resolvedPiloting ?? options.piloting,
             ),
             skill,
-            gunnery,
-            piloting,
+            gunnery: resolvedGunnery,
+            piloting: resolvedPiloting,
             lockKey: lockedUnit.lockKey ?? uuidv7(),
         };
     }
@@ -5187,12 +5252,30 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private createGeneratedUnit(candidate: ForceGenerationCandidateUnit): GeneratedForceUnit {
+        const crew = candidate.gunnery !== undefined && candidate.piloting !== undefined
+            ? normalizeGeneratedClassicCrew(
+                candidate.unit,
+                candidate.crew,
+                candidate.gunnery,
+                candidate.piloting,
+                candidate.alias,
+            )
+            : undefined;
+        const gunnery = candidate.gunnery === undefined
+            ? undefined
+            : getGeneratedClassicCrewSkill(crew, 'gunnery', candidate.gunnery);
+        const piloting = candidate.piloting === undefined
+            ? undefined
+            : getGeneratedClassicCrewSkill(crew, 'piloting', candidate.piloting);
         return {
             unit: candidate.unit,
-            cost: candidate.cost,
+            cost: gunnery === undefined || piloting === undefined
+                ? candidate.cost
+                : getBudgetMetric(candidate.unit, GameSystem.CLASSIC, gunnery, piloting),
             skill: candidate.skill,
-            gunnery: candidate.gunnery,
-            piloting: candidate.piloting,
+            gunnery,
+            piloting,
+            crew,
             alias: candidate.alias,
             commander: candidate.commander,
             lockKey: candidate.lockKey ?? uuidv7(),

@@ -48,7 +48,6 @@ import { C3Capabilities, C3Network, c3NetworkTypeName, type C3Component, type C3
 import { GameSystem } from '../../models/common.model';
 import { formatMovement, formatMovementWithAlternate } from '../../utils/as-common.util';
 import { getUnitConditionDefinition, unitConditionSortIndex } from '../../models/rules/unit-type-rules';
-import type { CrewMember } from '../../models/crew-member.model';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 
 interface UnitConditionDisplay {
@@ -64,7 +63,6 @@ interface ECMDisplay {
 
 export interface UnitBlockPilotEditEvent {
     event: MouseEvent;
-    crewMember?: CrewMember;
 }
 
 /**
@@ -93,8 +91,6 @@ export class UnitBlockComponent {
     unit = computed<Unit | undefined>(() => {
         return this.forceUnit()?.getUnit();
     });
-
-    crewMembers = computed<CrewMember[]>(() => this.forceUnit()?.getCrewMembers() ?? []);
 
     alphaStrikePilotSkill = computed<number | undefined>(() => {
         const forceUnit = this.forceUnit();
@@ -353,13 +349,6 @@ export class UnitBlockComponent {
         return entries;
     }
 
-    getCrewMemberPilotStats(crewMember: CrewMember): string {
-        if (this.unit()?.type === 'ProtoMek') {
-            return `${crewMember.getSkill('gunnery')}`;
-        }
-        return `${crewMember.getSkill('gunnery')}/${crewMember.getSkill('piloting')}`;
-    }
-
     bvTooltip = computed<TooltipLine[] | null>(() => {
         const forceUnit = this.forceUnit();
         const unit = this.unit();
@@ -424,8 +413,8 @@ export class UnitBlockComponent {
         this.onOpenC3Network.emit(event);
     }
 
-    editPilot(event: MouseEvent, crewMember?: CrewMember): void {
+    editPilot(event: MouseEvent): void {
         event.stopPropagation();
-        this.onEditPilot.emit({ event, crewMember });
+        this.onEditPilot.emit({ event });
     }
 }

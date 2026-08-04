@@ -11,7 +11,7 @@ import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { ForceBuilderService } from './force-builder.service';
 import { CBTForce } from '../models/cbt-force.model';
-import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 
 function createFaction(id: number, name: string): Faction {
@@ -226,6 +226,123 @@ describe('ForceBuilderService formation filter integration', () => {
         expect(groupsSignal().map((group) => [...group.formationHistory])).toEqual([[lightFireFormation.id], []]);
         expect(groupsSignal().map((group) => group.formationLock)).toEqual([undefined, undefined]);
         expect(service.reconcileASFormationAssignments).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('ForceBuilderService CBT crew editing', () => {
+    function createCrewMember(id: number, name: string, gunnery: number, piloting: number) {
+        return {
+            getId: () => id,
+            getName: () => name,
+            getSkill: (skillType: 'gunnery' | 'piloting', asf = false) => {
+                if (asf) return skillType === 'gunnery' ? gunnery + 1 : piloting + 1;
+                return skillType === 'gunnery' ? gunnery : piloting;
+            },
+            setName: jasmine.createSpy(`setName${id}`),
+            setSkill: jasmine.createSpy(`setSkill${id}`),
+        };
+    }
+
+    function createClassicHarness(
+        crew: ReturnType<typeof createCrewMember>[],
+        result: unknown,
+        baseUnit: any = { type: 'Mek', subtype: 'Land-Air BattleMek' },
+    ) {
+        const service = Object.create(ForceBuilderService.prototype) as any;
+        let dialogData: any;
+        service.dialogsService = {
+            createDialog: jasmine.createSpy('createDialog').and.callFake((_component: unknown, config: any) => {
+                dialogData = config.data;
+                return { closed: of(result) };
+            }),
+        };
+        service.toastService = { showToast: jasmine.createSpy('showToast') };
+
+        const unit = Object.create(CBTForceUnit.prototype) as any;
+        Object.defineProperty(unit, 'force', {
+            value: { faction: () => ({ id: 27 }), era: () => ({ years: { from: 3050 } }) },
+            configurable: true,
+        });
+        Object.assign(unit, {
+            id: 'unit-1',
+            disabledSaving: false,
+            readOnly: () => false,
+            getUnit: () => baseUnit,
+            getCrewMembers: () => crew,
+            getGroup: () => null,
+            commander: () => false,
+            getPreSkillBv: () => 1200,
+            setFormationCommander: jasmine.createSpy('setFormationCommander'),
+            setModified: jasmine.createSpy('setModified'),
+        });
+
+        return { service, unit, dialogData: () => dialogData };
+    }
+
+    it('opens one dialog with all crew and applies every returned member', async () => {
+        const crew = [createCrewMember(0, 'Pilot', 4, 2), createCrewMember(1, 'Gunner', 3, 5)];
+        const result = {
+            crew: [
+                { id: 0, name: 'New Pilot', gunnery: 2, piloting: 3, asfGunnery: 1, asfPiloting: 2 },
+                { id: 1, name: 'New Gunner', gunnery: 1, piloting: 4, asfGunnery: 2, asfPiloting: 3 },
+                { id: 99, name: 'Unknown', gunnery: 0, piloting: 0 },
+            ],
+            commander: true,
+        };
+        const { service, unit, dialogData } = createClassicHarness(crew, result);
+
+        await service.editPilotOfUnit(unit);
+
+        expect(dialogData().crew).toEqual([
+            { id: 0, name: 'Pilot', gunnery: 4, piloting: 2, asfGunnery: 5, asfPiloting: 3 },
+            { id: 1, name: 'Gunner', gunnery: 3, piloting: 5, asfGunnery: 4, asfPiloting: 6 },
+        ]);
+        expect(dialogData().preSkillBv).toBe(1200);
+        expect(crew[0].setName).toHaveBeenCalledOnceWith('New Pilot');
+        expect(crew[0].setSkill).toHaveBeenCalledWith('gunnery', 2);
+        expect(crew[0].setSkill).toHaveBeenCalledWith('piloting', 3);
+        expect(crew[0].setSkill).toHaveBeenCalledWith('gunnery', 1, true);
+        expect(crew[0].setSkill).toHaveBeenCalledWith('piloting', 2, true);
+        expect(crew[1].setName).toHaveBeenCalledOnceWith('New Gunner');
+        expect(unit.setModified).toHaveBeenCalledTimes(1);
+        expect(unit.disabledSaving).toBeFalse();
+        expect(unit.setFormationCommander).toHaveBeenCalledOnceWith(true);
+    });
+
+    it('does not mutate or mark unchanged crew', async () => {
+        const crew = [createCrewMember(0, 'Pilot', 4, 5)];
+        const { service, unit } = createClassicHarness(crew, {
+            crew: [{ id: 0, name: 'Pilot', gunnery: 4, piloting: 5 }],
+            commander: false,
+        });
+
+        await service.editPilotOfUnit(unit);
+
+        expect(crew[0].setName).not.toHaveBeenCalled();
+        expect(crew[0].setSkill).not.toHaveBeenCalled();
+        expect(unit.setModified).not.toHaveBeenCalled();
+    });
+
+    it('enforces fixed Piloting when applying a dialog result', async () => {
+        const crew = [createCrewMember(0, 'Pilot', 4, 5)];
+        const { service, unit } = createClassicHarness(crew, {
+            crew: [{ id: 0, name: 'Pilot', gunnery: 4, piloting: 0 }],
+            commander: false,
+        }, { type: 'ProtoMek', subtype: 'ProtoMek' });
+
+        await service.editPilotOfUnit(unit);
+
+        expect(crew[0].setSkill).not.toHaveBeenCalledWith('piloting', 0);
+        expect(crew[0].setSkill).not.toHaveBeenCalledWith('piloting', 5);
+    });
+
+    it('rejects crewless CBT units before opening a dialog', async () => {
+        const { service, unit } = createClassicHarness([], null);
+
+        await service.editPilotOfUnit(unit);
+
+        expect(service.dialogsService.createDialog).not.toHaveBeenCalled();
+        expect(service.toastService.showToast).toHaveBeenCalledOnceWith('This unit has no crew to edit.', 'error');
     });
 });
 

@@ -64,9 +64,8 @@
 }
 
 .formation-commander-toggle {
-    align-self: flex-start;
+    align-self: end;
     flex: 0 0 auto;
-    margin-top: 21px;
     line-height: 0;
 }
 
@@ -77,8 +76,12 @@
     flex-shrink: 0;
 }
 
-.formation-commander-inline-note {
-    color: var(--bt-yellow) !important;
+.formation-commander-status {
+    padding: 0;
+    color: var(--bt-yellow);
+    font-size: 0.8em;
+    font-weight: 600;
+    text-align: center;
 }
 
 .skill-field {

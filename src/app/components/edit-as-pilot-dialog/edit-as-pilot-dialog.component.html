@@ -1,5 +1,8 @@
 <div class="wide-dialog">
     <h2 class="wide-dialog-title">Warrior Data</h2>
+    @if (data.group && selectedFormationCommander()) {
+    <div class="formation-commander-status" role="status">This unit is the group commander.</div>
+    }
     <div class="wide-dialog-body">
         <div class="form-row commander-layout">
             <div class="commander-name-row">
@@ -37,9 +40,6 @@
                             [disabled]="generatingName()" aria-label="Generate random pilot name"
                             title="Generate random pilot name"></button>
                     </div>
-                    @if (data.group && selectedFormationCommander()) {
-                    <div class="field-note formation-commander-inline-note">This unit is the group commander.</div>
-                    }
                 </div>
             </div>
             <div class="form-fields skill-field">

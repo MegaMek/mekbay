@@ -43,6 +43,15 @@ export type SkillType = 'gunnery' | 'piloting';
 export type CrewMemberState = 'healthy' | 'ejected' | 'unconscious' | 'dead' | 'killed' | 'stunned';
 type StoredCrewMemberState = Exclude<CrewMemberState, 'dead'>;
 
+export interface CrewMemberDetails {
+    id: number;
+    name: string;
+    gunnery: number;
+    piloting: number;
+    asfGunnery?: number;
+    asfPiloting?: number;
+}
+
 export class CrewMember {
     private unit: CBTForceUnit;
     private id: number;
@@ -154,13 +163,16 @@ export class CrewMember {
 
     /** Serialize this CrewMember instance to a plain object */
     public serialize(): SerializedCrewMember {
+        const isLandAirMek = this.unit.getUnit().subtype === 'Land-Air BattleMek';
         return {
             id: this.getId(),
             name: this.getName(),
             gunnerySkill: this.getSkill('gunnery'),
             pilotingSkill: this.getSkill('piloting'),
-            asfGunnerySkill: this.getSkill('gunnery', true),
-            asfPilotingSkill: this.getSkill('piloting', true),
+            ...(isLandAirMek ? {
+                asfGunnerySkill: this.getSkill('gunnery', true),
+                asfPilotingSkill: this.getSkill('piloting', true),
+            } : {}),
             hits: this.getHits(),
             state: this.serializeState()
         };

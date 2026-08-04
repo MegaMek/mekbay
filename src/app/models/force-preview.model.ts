@@ -18,6 +18,7 @@ import type {
 } from './remote-load-force-entry.model';
 import type { Unit } from './units.model';
 import { uuidv7 } from '../utils/uuid.util';
+import type { CrewMemberDetails } from './crew-member.model';
 
 export interface ForcePreviewUnit {
     unit: Unit | undefined;
@@ -26,6 +27,7 @@ export interface ForcePreviewUnit {
     skill?: number;
     gunnery?: number;
     piloting?: number;
+    crew?: CrewMemberDetails[];
     commander?: boolean;
     lockKey?: string;
 }
@@ -85,6 +87,11 @@ function isCBTSerializedUnit(unit: SerializedUnit): unit is CBTSerializedUnit {
 type LiveClassicPilotStatsForceUnit = ForceUnit & {
     gunnerySkill: () => number;
     pilotingSkill: () => number;
+    getCrewMembers?: () => Array<{
+        getId: () => number;
+        getName: () => string;
+        getSkill: (skillType: 'gunnery' | 'piloting', asf?: boolean) => number;
+    }>;
 };
 
 type LiveAlphaStrikePilotStatsForceUnit = ForceUnit & {
@@ -170,8 +177,9 @@ export function createForcePreviewUnitFromSerializedUnit(
     unit: SerializedUnit,
     getUnitByName: (name: string) => Unit | undefined,
 ): ForcePreviewUnit {
+    const resolvedUnit = getUnitByName(unit.unit);
     const previewUnit: ForcePreviewUnit = {
-        unit: getUnitByName(unit.unit),
+        unit: resolvedUnit,
         destroyed: unit.state?.destroyed ?? false,
         lockKey: resolveSerializedUnitId(unit.id),
     };
@@ -188,12 +196,25 @@ export function createForcePreviewUnitFromSerializedUnit(
         return previewUnit;
     }
 
-    const [pilot, gunner] = unit.state.crew;
-    const gunnery = gunner?.gunnerySkill ?? pilot?.gunnerySkill;
-    const piloting = pilot?.pilotingSkill;
+    const isLandAirMek = resolvedUnit?.subtype === 'Land-Air BattleMek';
+    const crew = unit.state.crew.map((member) => ({
+        id: member.id,
+        name: member.name,
+        gunnery: member.gunnerySkill,
+        piloting: member.pilotingSkill,
+        ...(isLandAirMek && member.asfGunnerySkill !== undefined ? { asfGunnery: member.asfGunnerySkill } : {}),
+        ...(isLandAirMek && member.asfPilotingSkill !== undefined ? { asfPiloting: member.asfPilotingSkill } : {}),
+    }));
+    const gunnerySkills = crew.flatMap((member) => [member.gunnery, member.asfGunnery]
+        .filter((skill): skill is number => skill !== undefined));
+    const pilotingSkills = crew.flatMap((member) => [member.piloting, member.asfPiloting]
+        .filter((skill): skill is number => skill !== undefined));
+    const gunnery = gunnerySkills.length ? Math.min(...gunnerySkills) : undefined;
+    const piloting = pilotingSkills.length ? Math.min(...pilotingSkills) : undefined;
 
     assignForcePreviewUnitField(previewUnit, 'gunnery', gunnery);
     assignForcePreviewUnitField(previewUnit, 'piloting', piloting);
+    assignForcePreviewUnitField(previewUnit, 'crew', crew);
     return previewUnit;
 }
 
@@ -224,6 +245,20 @@ export function createForcePreviewUnitFromForceUnit(
     if (hasLiveClassicPilotStats(forceUnit)) {
         assignForcePreviewUnitField(previewUnit, 'gunnery', forceUnit.gunnerySkill());
         assignForcePreviewUnitField(previewUnit, 'piloting', forceUnit.pilotingSkill());
+        if (forceUnit.getCrewMembers) {
+            assignForcePreviewUnitField(previewUnit, 'crew', forceUnit.getCrewMembers().map((member) => ({
+                id: member.getId(),
+                name: member.getName(),
+                gunnery: member.getSkill('gunnery'),
+                piloting: member.getSkill('piloting'),
+                ...(forceUnit.getUnit().subtype === 'Land-Air BattleMek'
+                    ? {
+                        asfGunnery: member.getSkill('gunnery', true),
+                        asfPiloting: member.getSkill('piloting', true),
+                    }
+                    : {}),
+            })));
+        }
     }
 
     return previewUnit;

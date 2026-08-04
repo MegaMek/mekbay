@@ -1,5 +1,10 @@
 <div class="wide-dialog">
     <h2 class="wide-dialog-title">Warrior Data</h2>
+    @if (data.group && selectedGroupCommander()) {
+    <div class="group-commander-status" role="status">
+        This unit is the group commander.
+    </div>
+    }
     <div class="wide-dialog-body">
         <div class="form-row commander-layout">
             <div class="commander-name-row">
@@ -22,44 +27,71 @@
                     </svg>
                 </button>
                 }
-                <div class="form-fields name-field">
-                    <label class="field-label" for="classic-pilot-name">Name</label>
-                    <div class="input-wrapper">
-                        <div class="name-input-wrapper">
-                            <input #nameInput id="classic-pilot-name" type="text" class="field-input" autocomplete="off"
-                                [value]="data.name || ''" maxlength="80" [attr.aria-busy]="generatingName()"
-                                (input)="onNameInput($event)" (keydown.enter)="submit()" />
-                            @if (nameHasText()) {
-                            <button type="button" class="clear-btn" (click)="clearName()" title="Clear"
-                                aria-label="Clear" tabindex="-1">&#10005;</button>
-                            }
+                <div class="crew-list">
+                    @for (member of crew; let index = $index; track member.id) {
+                    <section class="crew-member-editor" [attr.aria-label]="crewNameLabel(index).replace(' Name', '')">
+                        <div class="form-fields name-field">
+                            <label class="field-label" [for]="'classic-crew-name-' + member.id">{{ crewNameLabel(index) }}</label>
+                            <div class="input-wrapper">
+                                <div class="name-input-wrapper">
+                                    <input #nameInput [id]="'classic-crew-name-' + member.id" type="text" class="field-input" autocomplete="off"
+                                        [value]="member.name()" maxlength="80" [attr.aria-busy]="member.generatingName()"
+                                        (input)="onNameInput(index, $event)" (keydown.enter)="submit()" />
+                                    @if (member.name().trim()) {
+                                    <button type="button" class="clear-btn" (click)="clearName(index)" title="Clear"
+                                        [attr.aria-label]="'Clear ' + crewNameLabel(index).toLowerCase()">&#10005;</button>
+                                    }
+                                </div>
+                                <button type="button" class="random-button" (click)="fillRandomName(index)"
+                                    [disabled]="member.generatingName()" [attr.aria-label]="'Generate random ' + crewNameLabel(index).toLowerCase()"
+                                    [attr.title]="'Generate random ' + crewNameLabel(index).toLowerCase()"></button>
+                            </div>
                         </div>
-                        <button type="button" class="random-button" (click)="fillRandomName()"
-                            [disabled]="generatingName()" aria-label="Generate random pilot name"
-                            title="Generate random pilot name"></button>
-                    </div>
-                    @if (data.group && selectedGroupCommander()) {
-                    <div class="field-note group-commander-inline-note">This unit is the group commander.</div>
+                        <div class="form-row no-stack crew-skills">
+                            <div class="form-fields">
+                                <label class="field-label" [for]="'classic-crew-gunnery-' + member.id">{{ data.labelGunnery || 'Gunnery Skill' }}</label>
+                                <div #gunneryTrigger>
+                                    <button [id]="'classic-crew-gunnery-' + member.id" class="bt-select skill-selector"
+                                        type="button" aria-haspopup="listbox" (click)="toggleGunneryDropdown(index)">
+                                        <span class="skill-selector-value">{{ member.gunnery() }}</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="form-fields" [class.disabled]="!!data.disablePiloting">
+                                <label class="field-label" [for]="'classic-crew-piloting-' + member.id">{{ data.labelPiloting || 'Piloting Skill' }}</label>
+                                <div #pilotingTrigger>
+                                    <button [id]="'classic-crew-piloting-' + member.id" class="bt-select skill-selector" type="button"
+                                        aria-haspopup="listbox" [disabled]="!!data.disablePiloting"
+                                        (click)="togglePilotingDropdown(index)">
+                                        <span class="skill-selector-value">{{ member.piloting() }}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        @if (member.asfGunnery && member.asfPiloting) {
+                        <div class="form-row no-stack crew-skills aerospace-skills">
+                            <div class="form-fields">
+                                <label class="field-label" [for]="'classic-crew-asf-gunnery-' + member.id">Aerospace Gunnery Skill</label>
+                                <div #asfGunneryTrigger>
+                                    <button [id]="'classic-crew-asf-gunnery-' + member.id" class="bt-select skill-selector"
+                                        type="button" aria-haspopup="listbox" (click)="toggleAsfGunneryDropdown(index)">
+                                        <span class="skill-selector-value">{{ member.asfGunnery() }}</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="form-fields">
+                                <label class="field-label" [for]="'classic-crew-asf-piloting-' + member.id">Aerospace Piloting Skill</label>
+                                <div #asfPilotingTrigger>
+                                    <button [id]="'classic-crew-asf-piloting-' + member.id" class="bt-select skill-selector"
+                                        type="button" aria-haspopup="listbox" (click)="toggleAsfPilotingDropdown(index)">
+                                        <span class="skill-selector-value">{{ member.asfPiloting() }}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        }
+                    </section>
                     }
-                </div>
-            </div>
-        </div>
-        <div class="form-row no-stack">
-            <div class="form-fields">
-                <label class="field-label">{{ data.labelGunnery || 'Gunnery Skill' }}</label>
-                <div #gunneryTrigger>
-                    <button class="bt-select skill-selector" (click)="toggleGunneryDropdown()">
-                        <span class="skill-selector-value">{{ currentGunnery() }}</span>
-                    </button>
-                </div>
-            </div>
-            <div class="form-fields" [class.disabled]="!!data.disablePiloting">
-                <label class="field-label">{{ data.labelPiloting || 'Piloting Skill' }}</label>
-                <div #pilotingTrigger>
-                    <button class="bt-select skill-selector" [disabled]="!!data.disablePiloting"
-                        (click)="togglePilotingDropdown()">
-                        <span class="skill-selector-value">{{ currentPiloting() }}</span>
-                    </button>
                 </div>
             </div>
         </div>
@@ -67,7 +99,7 @@
     <div class="wide-dialog-actions">
         <button (click)="submit()" class="bt-button">CONFIRM</button>
         @if (!data.disablePiloting && hasBvPreview) {
-        <button #matrixTrigger class="bt-button square" title="Skill Matrix" (click)="toggleMatrixView()">
+        <button #matrixTrigger class="bt-button square" title="Skill Matrix" aria-label="Skill Matrix" (click)="toggleMatrixView()">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                 <rect x="1" y="1" width="4" height="4" rx="0.5" />
                 <rect x="6" y="1" width="4" height="4" rx="0.5" />

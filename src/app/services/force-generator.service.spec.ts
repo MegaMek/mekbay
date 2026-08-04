@@ -14,11 +14,90 @@ import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { DataService } from './data.service';
 import type { ForceGenerationContext } from './force-generator.service';
-import { ForceGeneratorService } from './force-generator.service';
+import {
+    ForceGeneratorService,
+    getGeneratedClassicCrewSkill,
+    getForceGenerationClassicSkillPairs,
+    normalizeGeneratedClassicCrew,
+} from './force-generator.service';
 import { OptionsService } from './options.service';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
+
+describe('generated Classic crew normalization', () => {
+    it('creates every LAM crew member with matching ground and aerospace skills', () => {
+        const unit = createEmptyUnit({ subtype: 'Land-Air BattleMek', crewSize: 2 });
+
+        const crew = normalizeGeneratedClassicCrew(unit, undefined, 6, 7, 'Pilot');
+
+        expect(crew).toEqual([
+            { id: 0, name: 'Pilot', gunnery: 6, piloting: 7, asfGunnery: 6, asfPiloting: 7 },
+            { id: 1, name: '', gunnery: 6, piloting: 7, asfGunnery: 6, asfPiloting: 7 },
+        ]);
+        expect(getGeneratedClassicCrewSkill(crew, 'gunnery', 4)).toBe(6);
+        expect(getGeneratedClassicCrewSkill(crew, 'piloting', 5)).toBe(7);
+    });
+
+    it('preserves matching crew IDs, drops obsolete crew, and fills new positions', () => {
+        const unit = createEmptyUnit({ crewSize: 2 });
+        const crew = normalizeGeneratedClassicCrew(unit, [
+            { id: 0, name: 'Pilot', gunnery: 3, piloting: 4 },
+            { id: 9, name: 'Obsolete', gunnery: 0, piloting: 0 },
+        ], 5, 6);
+
+        expect(crew).toEqual([
+            { id: 0, name: 'Pilot', gunnery: 3, piloting: 4 },
+            { id: 1, name: '', gunnery: 5, piloting: 6 },
+        ]);
+    });
+
+    it('enforces fixed Piloting and leaves ordinary crewless units compact', () => {
+        const protoMek = createEmptyUnit({ type: 'ProtoMek', subtype: 'ProtoMek', crewSize: 1 });
+        const normalized = normalizeGeneratedClassicCrew(
+            protoMek,
+            [{ id: 0, name: '', gunnery: 2, piloting: 0 }],
+            2,
+            0,
+        );
+
+        expect(normalized?.[0].piloting).toBe(5);
+        expect(normalizeGeneratedClassicCrew(createEmptyUnit(), undefined, 4, 5)).toBeUndefined();
+        expect(getGeneratedClassicCrewSkill(undefined, 'gunnery', 4)).toBe(4);
+    });
+});
+
+describe('Classic generation skill pairs', () => {
+    it('ignores Piloting range and max delta for fixed-Piloting units', () => {
+        const conventionalInfantry = createEmptyUnit({
+            type: 'Infantry',
+            subtype: 'Conventional Infantry',
+            canAntiMech: false,
+        });
+
+        const pairs = getForceGenerationClassicSkillPairs({
+            gunnery: { min: 4, max: 4 },
+            piloting: { min: 0, max: 1 },
+            maxDelta: 1,
+        }, conventionalInfantry);
+
+        expect(pairs).toEqual([{ gunnery: 4, piloting: 8 }]);
+    });
+
+    it('still applies max delta to editable Piloting', () => {
+        const pairs = getForceGenerationClassicSkillPairs({
+            gunnery: { min: 4, max: 4 },
+            piloting: { min: 2, max: 6 },
+            maxDelta: 1,
+        }, createEmptyUnit());
+
+        expect(pairs).toEqual([
+            { gunnery: 4, piloting: 3 },
+            { gunnery: 4, piloting: 4 },
+            { gunnery: 4, piloting: 5 },
+        ]);
+    });
+});
 
 describe('ForceGeneratorService', () => {
     let service: ForceGeneratorService;
@@ -2322,7 +2401,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBe('No valid Gunnery/Piloting skill pairs match the selected ranges with max delta 1.');
     });
 
-    it('applies Classic max delta to effective piloting values', () => {
+    it('ignores Classic max delta for fixed-Piloting units', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
         const unit = createUnit({
@@ -2349,8 +2428,13 @@ describe('ForceGeneratorService', () => {
             },
         });
 
-        expect(preview.units).toEqual([]);
-        expect(preview.error).toBe('Only 0 availability-positive units can satisfy the selected skill ranges with max delta 1.');
+        expect(preview.units).toHaveSize(1);
+        expect(preview.units[0]).toEqual(jasmine.objectContaining({
+            unit,
+            gunnery: 0,
+            piloting: 8,
+        }));
+        expect(preview.error).toBeNull();
     });
 
     it('uses max weights across selected eras and factions when multiselect expansion is enabled', () => {
@@ -3581,6 +3665,51 @@ describe('ForceGeneratorService', () => {
         expect(entry!.groups[0].units[0].commander).toBeTrue();
         expect(entry!.groups[0].units.filter((unit) => unit.commander)).toHaveSize(1);
         expect(entry!.groups[0].units[0].lockKey).toBe('locked-atlas');
+    });
+
+    it('preserves all locked Classic crew through generation and preview entry creation', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const lockedAtlas = createUnit({
+            id: 1,
+            name: 'Atlas AS7-D',
+            chassis: 'Atlas',
+            model: 'AS7-D',
+            bv: 1000,
+            crewSize: 2,
+        });
+        const crew = [
+            { id: 0, name: 'Pilot', gunnery: 4, piloting: 2 },
+            { id: 1, name: 'Gunner', gunnery: 3, piloting: 5 },
+        ];
+
+        const preview = service.buildPreview({
+            eligibleUnits: [lockedAtlas],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.CLASSIC,
+            budgetRange: { min: 0, max: 2000 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+            lockedUnits: [{
+                unit: lockedAtlas,
+                cost: 1440,
+                gunnery: 3,
+                piloting: 2,
+                crew,
+                alias: 'Pilot',
+                lockKey: 'locked-atlas-crew',
+            }],
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units[0].crew).toEqual(crew);
+        expect(preview.units[0].crew).not.toBe(crew);
+
+        const entry = service.createForceEntry(preview);
+        expect(entry!.groups[0].units[0].crew).toEqual(crew);
+        expect(entry!.groups[0].units[0].crew).not.toBe(preview.units[0].crew);
     });
 
     it('assigns Classic group command to the best crew', () => {

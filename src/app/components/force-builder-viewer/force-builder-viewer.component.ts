@@ -365,10 +365,10 @@ export class ForceBuilderViewerComponent {
         await this.forceBuilderService.openC3Network(unit.force, unit.readOnly());
     }
 
-    async editPilot({ event, crewMember }: UnitBlockPilotEditEvent, unit: ForceUnit) {
+    async editPilot({ event }: UnitBlockPilotEditEvent, unit: ForceUnit) {
         if (unit.readOnly()) return;
         event.stopPropagation();
-        await this.forceBuilderService.editPilotOfUnit(unit, crewMember);
+        await this.forceBuilderService.editPilotOfUnit(unit);
     }
 
 

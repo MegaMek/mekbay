@@ -46,6 +46,7 @@ import {
     type InventoryControlRuntimeTarget,
     type InventoryControlRuntimeTargetId
 } from './inventory-control-runtime-state.model';
+import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 
 /*
  * Author: Drake
@@ -174,6 +175,8 @@ export class CBTForce extends Force<CBTForceUnit> {
     protected override transferPilotData(fromUnit: CBTForceUnit, toUnit: CBTForceUnit): void {
         const fromCrew = fromUnit.getCrewMembers();
         const toCrew = toUnit.getCrewMembers();
+        const fromIsLandAirMek = fromUnit.getUnit().subtype === 'Land-Air BattleMek';
+        const toIsLandAirMek = toUnit.getUnit().subtype === 'Land-Air BattleMek';
 
         // Transfer data for each crew member that exists in both units
         const crewCount = Math.min(fromCrew.length, toCrew.length);
@@ -185,8 +188,22 @@ export class CBTForce extends Force<CBTForceUnit> {
                 if (name) {
                     toMember.setName(name);
                 }
-                toMember.setSkill('gunnery', fromMember.getSkill('gunnery'));
-                toMember.setSkill('piloting', fromMember.getSkill('piloting'));
+                const gunnery = fromMember.getSkill('gunnery');
+                const piloting = getEffectivePilotingSkill(toUnit.getUnit(), fromMember.getSkill('piloting'));
+                toMember.setSkill('gunnery', gunnery);
+                toMember.setSkill('piloting', piloting);
+                if (toIsLandAirMek) {
+                    toMember.setSkill(
+                        'gunnery',
+                        fromIsLandAirMek ? fromMember.getSkill('gunnery', true) : gunnery,
+                        true,
+                    );
+                    toMember.setSkill(
+                        'piloting',
+                        fromIsLandAirMek ? fromMember.getSkill('piloting', true) : piloting,
+                        true,
+                    );
+                }
             }
         }
 

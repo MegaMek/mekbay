@@ -59,7 +59,6 @@ import { EditPilotDialogComponent, type EditPilotDialogData, type EditPilotResul
 import { EditASPilotDialogComponent, type EditASPilotDialogData, type EditASPilotResult } from '../components/edit-as-pilot-dialog/edit-as-pilot-dialog.component';
 import { ShareForceDialogComponent } from '../components/share-force-dialog/share-force-dialog.component';
 import { FormationInfoDialogComponent, type FormationInfoDialogData } from '../components/formation-info-dialog/formation-info-dialog.component';
-import type { CrewMember } from '../models/crew-member.model';
 import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
@@ -900,10 +899,22 @@ export class ForceBuilderService {
     }
 
     private applyGeneratedUnitOverrides(createdUnit: ForceUnit, loadUnit: LoadForceUnit): void {
-        if (loadUnit.alias) {
-            if (createdUnit instanceof ASForceUnit) {
+        if (createdUnit instanceof ASForceUnit) {
+            if (loadUnit.alias) {
                 createdUnit.setPilotName(loadUnit.alias);
-            } else if (createdUnit instanceof CBTForceUnit) {
+            }
+        } else if (createdUnit instanceof CBTForceUnit) {
+            const crewById = new Map(createdUnit.getCrewMembers().map((member) => [member.getId(), member]));
+            for (const details of loadUnit.crew ?? []) {
+                const member = crewById.get(details.id);
+                if (!member) continue;
+                member.setName(details.name);
+                member.setSkill('gunnery', details.gunnery);
+                member.setSkill('piloting', getEffectivePilotingSkill(createdUnit.getUnit(), details.piloting));
+                if (details.asfGunnery !== undefined) member.setSkill('gunnery', details.asfGunnery, true);
+                if (details.asfPiloting !== undefined) member.setSkill('piloting', details.asfPiloting, true);
+            }
+            if (!loadUnit.crew?.length && loadUnit.alias) {
                 createdUnit.getCrewMembers()[0]?.setName(loadUnit.alias);
             }
         }
@@ -2414,6 +2425,7 @@ export class ForceBuilderService {
             // Classic BattleTech
             const cbtSource = sourceUnit as CBTForceUnit;
             const cbtTarget = targetUnit as CBTForceUnit;
+            const sourceBaseUnit = sourceUnit.getUnit();
             const fromCrew = sourceUnit.getCrewMembers();
             const toCrew = targetUnit.getCrewMembers();
             const crewCount = Math.min(fromCrew.length, toCrew.length);
@@ -2427,6 +2439,10 @@ export class ForceBuilderService {
                     }
                     toMember.setSkill('gunnery', fromMember.getSkill('gunnery'));
                     toMember.setSkill('piloting', fromMember.getSkill('piloting'));
+                    if (sourceBaseUnit?.subtype === 'Land-Air BattleMek') {
+                        toMember.setSkill('gunnery', fromMember.getSkill('gunnery', true), true);
+                        toMember.setSkill('piloting', fromMember.getSkill('piloting', true), true);
+                    }
                 }
             }
             cbtTarget.setFormationCommander(cbtSource.commander());
@@ -3063,7 +3079,7 @@ export class ForceBuilderService {
         return true;
     }
 
-    public async editPilotOfUnit(unit: ForceUnit, pilot?: CrewMember): Promise<void> {
+    public async editPilotOfUnit(unit: ForceUnit): Promise<void> {
         if (unit.readOnly()) return;
         const baseUnit = unit.getUnit();
         if (!baseUnit) return;
@@ -3081,13 +3097,10 @@ export class ForceBuilderService {
         const cbtUnit = unit;
 
         // Handle Classic BattleTech units
-        if (!pilot) {
-            const crewMembers = cbtUnit.getCrewMembers();
-            if (crewMembers.length === 0) {
-                this.toastService.showToast('This unit has no crew to edit.', 'error');
-                return;
-            }
-            pilot = crewMembers[0];
+        const crewMembers = cbtUnit.getCrewMembers();
+        if (crewMembers.length === 0) {
+            this.toastService.showToast('This unit has no crew to edit.', 'error');
+            return;
         }
         const group = cbtUnit.getGroup() as UnitGroup<CBTForceUnit> | null;
         const disablePiloting = baseUnit.type === 'ProtoMek' || ((baseUnit.type === 'Infantry') && (!baseUnit.canAntiMech));
@@ -3104,9 +3117,14 @@ export class ForceBuilderService {
             {
                 data: {
                     unitId: cbtUnit.id,
-                    name: pilot.getName(),
-                    gunnery: pilot.getSkill('gunnery'),
-                    piloting: pilot.getSkill('piloting'),
+                    crew: crewMembers.map((member) => ({
+                        id: member.getId(),
+                        name: member.getName(),
+                        gunnery: member.getSkill('gunnery'),
+                        piloting: member.getSkill('piloting'),
+                        asfGunnery: baseUnit.subtype === 'Land-Air BattleMek' ? member.getSkill('gunnery', true) : undefined,
+                        asfPiloting: baseUnit.subtype === 'Land-Air BattleMek' ? member.getSkill('piloting', true) : undefined,
+                    })),
                     labelGunnery: `Gunnery Skill`,
                     labelPiloting: `${labelPiloting} Skill`,
                     disablePiloting: disablePiloting,
@@ -3115,7 +3133,7 @@ export class ForceBuilderService {
                     factionId: cbtUnit.force.faction()?.id,
                     isAerospace: baseUnit.type === 'Aero',
                     era: cbtUnit.force.era(),
-                    preSkillBv: cbtUnit.getBaseBv() + cbtUnit.tagBV() + cbtUnit.c3Tax(),
+                    preSkillBv: cbtUnit.getPreSkillBv(),
                     unit: baseUnit,
                 }
             }
@@ -3124,15 +3142,39 @@ export class ForceBuilderService {
         const result = await firstValueFrom(ref.closed);
         if (!result) return;
 
-        if (result.name !== undefined && result.name !== pilot.getName()) {
-            pilot.setName(result.name);
+        const crewById = new Map(crewMembers.map((member) => [member.getId(), member]));
+        let crewChanged = false;
+        cbtUnit.disabledSaving = true;
+        try {
+            for (const editedMember of result.crew) {
+                const member = crewById.get(editedMember.id);
+                if (!member) continue;
+                if (editedMember.name !== member.getName()) {
+                    member.setName(editedMember.name);
+                    crewChanged = true;
+                }
+                if (editedMember.gunnery !== member.getSkill('gunnery')) {
+                    member.setSkill('gunnery', editedMember.gunnery);
+                    crewChanged = true;
+                }
+                const effectivePiloting = getEffectivePilotingSkill(baseUnit, editedMember.piloting);
+                if (effectivePiloting !== member.getSkill('piloting')) {
+                    member.setSkill('piloting', effectivePiloting);
+                    crewChanged = true;
+                }
+                if (editedMember.asfGunnery !== undefined && editedMember.asfGunnery !== member.getSkill('gunnery', true)) {
+                    member.setSkill('gunnery', editedMember.asfGunnery, true);
+                    crewChanged = true;
+                }
+                if (editedMember.asfPiloting !== undefined && editedMember.asfPiloting !== member.getSkill('piloting', true)) {
+                    member.setSkill('piloting', editedMember.asfPiloting, true);
+                    crewChanged = true;
+                }
+            }
+        } finally {
+            cbtUnit.disabledSaving = false;
         }
-        if (result.gunnery !== undefined) {
-            pilot.setSkill('gunnery', result.gunnery);
-        }
-        if (result.piloting !== undefined) {
-            pilot.setSkill('piloting', result.piloting);
-        }
+        if (crewChanged) cbtUnit.setModified();
 
         if (group) {
             const commanderUnitId = result.commander

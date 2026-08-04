@@ -1923,6 +1923,116 @@ describe('SearchForceGeneratorDialogComponent', () => {
         ]);
     });
 
+    it('normalizes fixed Piloting when replacing a Classic preview unit', () => {
+        const originalUnit = createEmptyUnit({ id: 1, name: 'Original', crewSize: 1 });
+        const protoMek = createEmptyUnit({
+            id: 2,
+            name: 'ProtoMek',
+            type: 'ProtoMek',
+            subtype: 'ProtoMek',
+            crewSize: 1,
+        });
+        const original = {
+            unit: originalUnit,
+            cost: 100,
+            gunnery: 2,
+            piloting: 0,
+            crew: [{ id: 0, name: 'Pilot', gunnery: 2, piloting: 0 }],
+        };
+
+        const replacement = (component as any).createReplacementPreviewUnit(
+            original,
+            protoMek,
+            GameSystem.CLASSIC,
+        );
+
+        expect(replacement.piloting).toBe(5);
+        expect(replacement.crew).toEqual([{ id: 0, name: 'Pilot', gunnery: 2, piloting: 5 }]);
+    });
+
+    it('adds LAM aerospace skills when keeping a pilot during variant replacement', () => {
+        const originalUnit = createEmptyUnit({ id: 1, name: 'Original', crewSize: 1 });
+        const lam = createEmptyUnit({
+            id: 2,
+            name: 'LAM',
+            subtype: 'Land-Air BattleMek',
+            crewSize: 1,
+        });
+        const original = {
+            unit: originalUnit,
+            cost: 100,
+            gunnery: 6,
+            piloting: 7,
+            crew: [{ id: 0, name: 'Pilot', gunnery: 6, piloting: 7 }],
+        };
+
+        const replacement = (component as any).createReplacementPreviewUnit(
+            original,
+            lam,
+            GameSystem.CLASSIC,
+        );
+
+        expect(replacement.gunnery).toBe(6);
+        expect(replacement.piloting).toBe(7);
+        expect(replacement.crew).toEqual([{
+            id: 0,
+            name: 'Pilot',
+            gunnery: 6,
+            piloting: 7,
+            asfGunnery: 6,
+            asfPiloting: 7,
+        }]);
+    });
+
+    it('creates complete LAM crew when rerolling both unit and pilot', () => {
+        const lam = createEmptyUnit({
+            id: 2,
+            name: 'LAM',
+            subtype: 'Land-Air BattleMek',
+            crewSize: 2,
+        });
+        component.gunnerySkillRange.set([6, 6]);
+        component.pilotingSkillRange.set([7, 7]);
+        component.maxPilotSkillDelta.set(1);
+
+        const candidates = (component as any).createPreviewSlotPilotRerollCandidates(
+            { unit: createEmptyUnit(), cost: 100 },
+            lam,
+            GameSystem.CLASSIC,
+        );
+
+        expect(candidates).toHaveSize(1);
+        expect(candidates[0].gunnery).toBe(6);
+        expect(candidates[0].piloting).toBe(7);
+        expect(candidates[0].crew).toEqual([
+            { id: 0, name: '', gunnery: 6, piloting: 7, asfGunnery: 6, asfPiloting: 7 },
+            { id: 1, name: '', gunnery: 6, piloting: 7, asfGunnery: 6, asfPiloting: 7 },
+        ]);
+    });
+
+    it('ignores Piloting range and max delta when rerolling a fixed-Piloting unit', () => {
+        const conventionalInfantry = createEmptyUnit({
+            type: 'Infantry',
+            subtype: 'Conventional Infantry',
+            canAntiMech: false,
+            crewSize: 1,
+        });
+        component.gunnerySkillRange.set([4, 4]);
+        component.pilotingSkillRange.set([0, 1]);
+        component.maxPilotSkillDelta.set(1);
+
+        const candidates = (component as any).createPreviewSlotPilotRerollCandidates(
+            { unit: createEmptyUnit(), cost: 100 },
+            conventionalInfantry,
+            GameSystem.CLASSIC,
+        );
+
+        expect(candidates).toHaveSize(1);
+        expect(candidates[0].gunnery).toBe(4);
+        expect(candidates[0].piloting).toBe(8);
+        expect(candidates[0].crew).toBeUndefined();
+    });
+
     it('recomputes locked unit values when switching from Alpha Strike to Classic', () => {
         const atlas = createEmptyUnit({
             id: 1,
