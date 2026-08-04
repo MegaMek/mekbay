@@ -188,7 +188,18 @@ export class TurnState {
     resolvePSRCheck(checkId: string, outcome: RuleCheckOutcome): boolean {
         const check = this.getPSRChecks().find(entry => entry.id === checkId);
         if (!check || check.resolution || this.getPSROutcome(checkId)) return false;
-        this.psrOutcomes.update(current => ({ ...current, [checkId]: outcome }));
+        const resolvedChecks = outcome === 'failed'
+            ? this.getPSRChecks().filter(entry =>
+                !entry.resolution
+                && entry.id !== undefined
+                && entry.failureOutcome === check.failureOutcome
+                && this.getPSROutcome(entry.id) === undefined
+            )
+            : [check];
+        this.psrOutcomes.update(current => ({
+            ...current,
+            ...Object.fromEntries(resolvedChecks.map(entry => [entry.id!, outcome])),
+        }));
         if (outcome === 'failed') this.unitState.unit.setCondition('prone', true);
         return true;
     }

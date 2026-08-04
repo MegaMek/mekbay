@@ -1,0 +1,238 @@
+@media print {
+    :host {
+        display: none !important;
+    }
+}
+
+.panel {
+    pointer-events: auto;
+    width: min(420px, calc(100vw - 24px));
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    gap: 8px;
+    transition: opacity 0.2s;
+    max-height: 80dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.header {
+    font-weight: bold;
+    text-align: center;
+}
+
+.body {
+    color: var(--text-color-secondary);
+}
+
+.psr-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+}
+
+.psr-item {
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--bt-yellow);
+    background: var(--background-input);
+    transition: opacity 0.2s, border-color 0.2s;
+}
+
+.psr-item.resolved {
+    border-left-color: #4caf50;
+    opacity: 0.8;
+}
+
+.psr-item.failed,
+.psr-item.automatic-failure {
+    border-left-color: var(--danger);
+}
+
+.psr-check-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.psr-number {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-weight: bold;
+    font-size: 0.8em;
+    flex-shrink: 0;
+}
+
+.psr-item.resolved .psr-number {
+    border-color: #4caf50;
+    color: #54ef59;
+    background-color: #131;
+}
+
+.psr-item.failed .psr-number {
+    border-color: var(--danger);
+    color: var(--danger);
+    background-color: #311;
+}
+
+.psr-reason {
+    color: var(--text-color);
+    line-height: 1.25;
+    font-weight: 600;
+}
+
+.psr-item-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.psr-failure {
+    display: flex;
+    gap: 5px;
+    margin-top: 2px;
+    color: var(--text-color-secondary);
+    font-size: 0.78em;
+    text-transform: uppercase;
+}
+
+.psr-failure strong {
+    color: var(--danger);
+}
+
+.psr-result {
+    color: #54ef59;
+    font-size: 0.75em;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.psr-result.failed {
+    color: var(--danger);
+}
+
+.psr-resolution-actions {
+    display: grid;
+    grid-template-columns: 24px 1fr 1fr;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.random-button {
+    width: 24px;
+    min-width: 24px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    background: transparent url('/images/random.svg') center / 20px 20px no-repeat;
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.2s ease-in-out;
+}
+
+.random-button:hover,
+.random-button:focus-visible {
+    opacity: 1;
+}
+
+.random-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.35;
+}
+
+.psr-automatic-failure {
+    margin-top: 8px;
+    padding-left: 32px;
+    color: var(--danger);
+    font-size: 0.8em;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.roll-details {
+    --roll-value-width: 52px;
+    margin: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.roll-details-label {
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-color-tertiary);
+    font-size: 0.72em;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.modifiers {
+    font-size: 0.9em;
+}
+
+.modifier-item {
+    display: grid;
+    background: var(--background-input);
+    grid-template-columns: minmax(0, 1fr) var(--roll-value-width);
+    min-height: 30px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modifier-reason {
+    align-self: center;
+    min-width: 0;
+    padding: 5px 8px;
+    color: var(--text-color-secondary);
+}
+
+.modifier-value {
+    display: grid;
+    place-items: center;
+    font-variant-numeric: tabular-nums;
+    border: 1px solid var(--danger);
+    background-color: #a00;
+    color: #fff;
+}
+
+.modifier-value.bonus {
+    color: #7dcc80;
+}
+
+.psr-target {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--roll-value-width);
+    background: var(--background-input);
+    min-height: 42px;
+    color: var(--text-color);
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.psr-target span {
+    align-self: center;
+    padding: 8px;
+    font-size: 1em;
+}
+
+.psr-target strong {
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--bt-yellow);
+    background: var(--bt-yellow-background);
+    color: var(--bt-yellow);
+    font-size: 1.35em;
+    font-variant-numeric: tabular-nums;
+}
+
+.actions {
+    display: flex;
+    justify-content: center;
+}
+
+.bt-button {
+    width: 100%;
+}

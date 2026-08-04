@@ -11,7 +11,7 @@ import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.compon
 import { AmmoLoadoutPanelComponent, type AmmoLoadoutPanelData } from './ammo-loadout-panel.component';
 import type { EquipmentDialogData, EquipmentDialogTab } from './equipment-dialog.model';
 import { PageInteractionOverlayComponent } from '../page-viewer/overlay/page-interaction-overlay.component';
-import { PageTurnSummaryPanelComponent } from '../page-viewer/overlay/page-turn-summary.component';
+import { PageTurnSummaryPanelComponent } from '../page-viewer/overlay/page-turn-summary-panel.component';
 import { WeaponTargetsOverlayController } from './weapon-targets-overlay.controller';
 
 const WEAPON_TARGETS_OVERLAY_KEY = 'weapon-equipment-targets';

@@ -59,6 +59,9 @@ export class DiceRollerComponent {
     showInline = input<boolean>(true);
     overlayResult = input<string | null>(null);
     reserveOverlayResultSpace = input<boolean>(false);
+    compactOverlayResult = input<boolean>(false);
+    overlayResultTone = input<'default' | 'success' | 'failed'>('default');
+    overlayCloseHint = input<string>('');
 
     // outputs
     finished = output<{ results: number[]; sum: number }>();

@@ -94,6 +94,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         getEquipmentHeatSources: () => inventory().flatMap(entry => heatSourceHandlers
             .flatMap(handler => handler.getInventoryHeatSources?.(entry, turnState) ?? [])),
         getRunMovementMultiplierBonus: () => 0,
+        usesTorsoCripplePSRCheck: () => true,
         isInternalLocCommittedDestroyed: (loc: string) => committedDestroyedLegs.has(loc),
         isInternalLocDestroyed: (loc: string) => currentDestroyedLegs.has(loc) || committedDestroyedLegs.has(loc),
         isEquipmentUnavailable: (slot: CriticalSlot) => !!slot.destroyed || (slot.loc ? committedDestroyedLegs.has(slot.loc) : false),
@@ -335,7 +336,7 @@ describe('TurnState', () => {
             expect(restored.PSRRollsCount()).toBe(0);
         });
 
-        it('keeps duplicate checks distinct and applies prone on failure', () => {
+        it('fails every check with the same outcome and applies prone', () => {
             const { turnState } = createTurnStateHarness();
             turnState.setPSRCheckState({ legActuators: new Map([['LL', 2]]) });
             const checks = turnState.getPSRChecks().filter(entry => entry.reason === 'Leg actuator hit');
@@ -343,9 +344,26 @@ describe('TurnState', () => {
             expect(checks.length).toBe(2);
             expect(checks[0].id).not.toBe(checks[1].id);
             expect(turnState.resolvePSRCheck(checks[1].id!, 'failed')).toBeTrue();
+            expect(turnState.getPSROutcome(checks[0].id!)).toBe('failed');
             expect(turnState.getPSROutcome(checks[1].id!)).toBe('failed');
             expect(turnState.unitState.unit.setCondition).toHaveBeenCalledOnceWith('prone', true);
-            expect(turnState.PSRRollsCount()).toBe(1);
+            expect(turnState.PSRRollsCount()).toBe(0);
+        });
+
+        it('groups unresolved failures by outcome without overwriting resolved checks', () => {
+            const { turnState, rules } = createTurnStateHarness();
+            spyOn(rules, 'getPSRChecks').and.returnValue([
+                { reason: 'First fall check', fallCheck: 0, failureOutcome: 'Fall' },
+                { reason: 'Second fall check', fallCheck: 1, failureOutcome: 'Fall' },
+                { reason: 'Control check', fallCheck: 2, failureOutcome: 'Immobilized' },
+            ]);
+            const [firstFall, secondFall, control] = turnState.getPSRChecks();
+
+            expect(turnState.resolvePSRCheck(firstFall.id!, 'success')).toBeTrue();
+            expect(turnState.resolvePSRCheck(secondFall.id!, 'failed')).toBeTrue();
+            expect(turnState.getPSROutcome(firstFall.id!)).toBe('success');
+            expect(turnState.getPSROutcome(secondFall.id!)).toBe('failed');
+            expect(turnState.getPSROutcome(control.id!)).toBeUndefined();
         });
 
         it('round-trips turn signals and PSR check state through a plain object', () => {

@@ -5,13 +5,9 @@
             @if (canSwitchAirborneMode()) {
             <div class="row grid">
                 <button type="button" class="bt-button move-button" [class.selected]="airborne() === false"
-                    aria-pressed="{{ airborne() === false }}" (click)="setAirborne(false)">
-                    Grounded
-                </button>
+                    aria-pressed="{{ airborne() === false }}" (click)="setAirborne(false)">Grounded</button>
                 <button type="button" class="bt-button move-button" [class.selected]="airborne() === true"
-                    aria-pressed="{{ airborne() === true }}" (click)="setAirborne(true)">
-                    Airborne
-                </button>
+                    aria-pressed="{{ airborne() === true }}" (click)="setAirborne(true)">Airborne</button>
             </div>
             }
             @if (canSwitchAirborneMode() === false || airborne() !== null) {
@@ -19,40 +15,24 @@
                 @for (moveMode of moveModes(); track moveMode.mode) {
                 @let mode = moveMode.mode;
                 <button type="button" class="bt-button move-button" [class.selected]="currentMoveMode() === mode"
-                    [class.danger]="moveMode.psr"
-                    aria-pressed="{{ currentMoveMode() === mode }}" (click)="selectMove(mode)">
+                    [class.danger]="moveMode.psr" aria-pressed="{{ currentMoveMode() === mode }}" (click)="selectMove(mode)">
                     @if (mode === 'stationary') {
-                    <svg width="16px" height="16px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"
-                        preserveAspectRatio="xMidYMid meet">
-                        <path
-                            d="M32 2C15.432 2 2 15.432 2 32c-.001 16.568 13.432 30 30 30s30.001-13.432 30-30c.001-16.568-13.432-30-30-30zM9 38V26h46v12H9z"
-                            fill="currentColor"></path>
+                    <svg width="16px" height="16px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+                        <path d="M32 2C15.432 2 2 15.432 2 32c-.001 16.568 13.432 30 30 30s30.001-13.432 30-30c.001-16.568-13.432-30-30-30zM9 38V26h46v12H9z" fill="currentColor"></path>
                     </svg>
                     } @else {
                     <span>{{ moveMode.label }}</span>
-                    @if (moveModeModifierLabel(mode); as modifierLabel) {
-                        <span class="modifier-badge">{{ modifierLabel }}</span>
-                    }
+                    @if (moveModeModifierLabel(mode); as modifierLabel) {<span class="modifier-badge">{{ modifierLabel }}</span>}
                     }
                 </button>
                 }
             </div>
             @if (currentMoveMode() !== 'stationary' && currentMoveMode() !== null) {
             <div class="row">
-                <hex-slider
-                    class="move-slider"
-                    [min]="0"
-                    [max]="moveMax()"
-                    [blockedMin]="moveMin()"
-                    [step]="1"
-                    [value]="moveDistance()"
-                    [ticks]="moveDistanceTicks()"
-                    [label]="moveDistance()"
-                    [ariaLabel]="'Move distance'"
-                    [valueAssigned]="hasMoveDistance()"
-                    [danger]="overDistance()"
-                    (valueChange)="setMoveDistance($event, false)"
-                    (valueCommit)="commitMoveDistance($event)"></hex-slider>
+                <hex-slider class="move-slider" [min]="0" [max]="moveMax()" [blockedMin]="moveMin()" [step]="1"
+                    [value]="moveDistance()" [ticks]="moveDistanceTicks()" [label]="moveDistance()"
+                    [ariaLabel]="'Move distance'" [valueAssigned]="hasMoveDistance()" [danger]="overDistance()"
+                    (valueChange)="setMoveDistance($event, false)" (valueCommit)="commitMoveDistance($event)"></hex-slider>
             </div>
             }
             @for (trackRow of equipmentTrackControlRows(); track trackRow.entry.id) {
@@ -96,15 +76,14 @@
             }
             }
             <div class="row grid">
-                <button type="button" class="bt-button move-button" [class.selected]="spotting()" [attr.aria-pressed]="spotting()" (click)="toggleSpotting()">
-                    <span>Spotting</span>@if (spottingModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }
+                <button type="button" class="bt-button move-button" [class.selected]="spotting()"
+                    [attr.aria-pressed]="spotting()" (click)="toggleSpotting()">
+                    <span>Spotting</span>@if (spottingModifierLabel(); as modifierLabel) {<span class="modifier-badge">{{ modifierLabel }}</span>}
                 </button>
             </div>
         </div>
-        
     </div>
     <div class="group">
-
         <div class="sectionTitle">Combat</div>
         <div class="summary-entry">
             <div class="row has-tooltip" [tooltip]="attackModifierTooltip()">
@@ -123,35 +102,24 @@
         <div class="sectionTitle">Heat</div>
         <div class="summary-entry heat-modifiers">
             @for (row of heatRows(); track row.id) {
-                <div class="row">
-                    <span [class.selected-weapon-heat]="row.selectedOnly">
-                        {{ row.label }}@if (row.selectedValue !== undefined) { <span class="selected-weapon-heat"> (Selected)</span> }:
-                    </span>
-                    <span class="modifier heat" [class.selected-weapon-heat]="row.selectedOnly">
-                        {{ (row.value > 0 ? '+' : '') + row.value }}@if (row.selectedValue !== undefined) { <span class="selected-weapon-heat"> ({{ (row.selectedValue > 0 ? '+' : '') + row.selectedValue }})</span> }
-                    </span>
-                </div>
+            <div class="row">
+                <span [class.selected-weapon-heat]="row.selectedOnly">{{ row.label }}@if (row.selectedValue !== undefined) {<span class="selected-weapon-heat"> (Selected)</span>}:</span>
+                <span class="modifier heat" [class.selected-weapon-heat]="row.selectedOnly">{{ (row.value > 0 ? '+' : '') + row.value }}@if (row.selectedValue !== undefined) {<span class="selected-weapon-heat"> ({{ (row.selectedValue > 0 ? '+' : '') + row.selectedValue }})</span>}</span>
+            </div>
             }
         </div>
     </div>
     }
     <div class="group">
         <div class="sectionTitle">Other</div>
-        <div class="summary-entry">
-            <div class="row">
-                <span>Damage received:</span><span class="modifier warning">{{ damageReceived() }}</span>
-            </div>
-        </div>
+        <div class="summary-entry"><div class="row"><span>Damage received:</span><span class="modifier warning">{{ damageReceived() }}</span></div></div>
     </div>
     @if (psrModifiers().length > 0) {
     <div class="group">
         <div class="sectionTitle">{{ controlRollShortLabel() }} Modifiers</div>
         <div class="summary-entry psr-modifiers">
             @for (modifier of psrModifiers(); track $index) {
-            <div class="row wrap">
-                <span>{{ modifier.reason }}</span>
-                <span class="modifier danger">{{ modifier.pilotCheck! >= 0 ? '+' : '' }}{{ modifier.pilotCheck }}</span>
-            </div>
+            <div class="row wrap"><span>{{ modifier.reason }}</span><span class="modifier danger">{{ modifier.pilotCheck! >= 0 ? '+' : '' }}{{ modifier.pilotCheck }}</span></div>
             }
         </div>
     </div>
@@ -160,22 +128,10 @@
         @if (falling() || hasPSRChecks()) {
             <button role="button" class="summary-entry bt-button" [class.full-danger]="falling()"
                 [class.warning]="!falling()" (click)="openPsrWarning($event)" tabindex="0">
-                @if (falling()) {
-                ⚠ FALLING! ⚠
-                } @else {
-                ⚠ {{ controlRollShortLabel() }} Checks! ({{ PSRChecksCount() }})
-                }
+                @if (falling()) {⚠ FALLING! ⚠} @else {⚠ {{ controlRollShortLabel() }} Checks! ({{ PSRChecksCount() }})}
             </button>
         }
-        @if (dirty()) {
-            <button role="button" class="summary-entry bt-button" tabindex="0" (click)="endTurn()">
-                End Turn
-            </button>
-        }
-        @if (endTurnForAllButtonVisible()) {
-            <button role="button" class="summary-entry bt-button" tabindex="0" (click)="endTurnForAll($event)">
-                End Turn for All Units
-            </button>
-        }
+        @if (dirty()) {<button role="button" class="summary-entry bt-button" tabindex="0" (click)="endTurn()">End Turn</button>}
+        @if (endTurnForAllButtonVisible()) {<button role="button" class="summary-entry bt-button" tabindex="0" (click)="endTurnForAll($event)">End Turn for All Units</button>}
     </div>
 </div>

@@ -146,6 +146,7 @@
         [showOverlay]="true"
         [reserveOverlayResultSpace]="true"
         [overlayResult]="rolledResult()?.column?.table !== 'physical' ? rolledResult()?.value ?? null : null"
+        overlayCloseHint="Click to return to the table"
         (finished)="onRollFinished($event)"
     />
 
@@ -157,6 +158,7 @@
         [showOverlay]="true"
         [reserveOverlayResultSpace]="true"
         [overlayResult]="rolledResult()?.column?.table === 'physical' ? rolledResult()?.value ?? null : null"
+        overlayCloseHint="Click to return to the table"
         (finished)="onRollFinished($event)"
     />
 

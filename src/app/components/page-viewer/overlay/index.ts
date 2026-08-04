@@ -32,4 +32,5 @@
  */
 
 export { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
-export { PageTurnSummaryPanelComponent, PagePsrWarningPanelComponent } from './page-turn-summary.component';
+export { PagePsrWarningPanelComponent } from './page-psr-warning-panel.component';
+export { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';

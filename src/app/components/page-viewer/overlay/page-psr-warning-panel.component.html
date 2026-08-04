@@ -1,0 +1,77 @@
+<div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
+    <div class="header">{{ controlRollFullLabel() }}</div>
+    <div class="body">
+        <div class="psr-list">
+            @for (check of psrChecks(); let i = $index; track check.id ?? i) {
+                @if (check.fallCheck !== undefined) {
+                    <div class="psr-item" [class.resolved]="!isAutomaticFailure(check) && outcome(check)"
+                        [class.failed]="outcome(check) === 'failed'"
+                        [class.automatic-failure]="isAutomaticFailure(check)">
+                        <div class="psr-check-header">
+                            <div class="psr-number">{{ i + 1 }}</div>
+                            <div class="psr-item-content">
+                                <div class="psr-reason">{{ check.reason }}</div>
+                                <div class="psr-failure">
+                                    <span>Failure</span>
+                                    <strong>{{ check.failureOutcome }}</strong>
+                                </div>
+                            </div>
+                            @if (!isAutomaticFailure(check) && outcome(check); as result) {
+                                <div class="psr-result" [class.failed]="result === 'failed'">{{ result }}</div>
+                            }
+                        </div>
+                        @if (isAutomaticFailure(check)) {
+                            <div class="psr-automatic-failure">AUTOMATIC FAILURE</div>
+                        } @else if (!outcome(check)) {
+                            <div class="psr-resolution-actions">
+                                <button type="button" class="random-button" [disabled]="diceRoller()?.isRolling()"
+                                    [attr.aria-label]="'Roll 2d6 for ' + check.reason"
+                                    [title]="'Roll 2d6 for ' + check.reason" (click)="roll(check)"></button>
+                                <button class="bt-button success" type="button" (click)="resolve(check, 'success')">SUCCESS</button>
+                                <button class="bt-button danger" type="button" (click)="resolve(check, 'failed')">FAILED</button>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+        @if (!allChecksAutomaticFailure()) {
+            <div class="roll-details">
+                @if (modifiersList().length > 0) {
+                    <div class="roll-details-label">Modifiers</div>
+                    <div class="modifiers">
+                        @for (modifier of modifiersList(); track $index) {
+                            <div class="modifier-item">
+                                <span class="modifier-reason">{{ modifier.reason }}</span>
+                                <strong class="modifier-value" [class.bonus]="modifier.pilotCheck < 0">
+                                    {{ modifier.pilotCheck >= 0 ? '+' : '' }}{{ modifier.pilotCheck }}
+                                </strong>
+                            </div>
+                        }
+                    </div>
+                }
+                <div class="psr-target">
+                    <span>Target roll</span>
+                    <strong>{{ unit()?.PSRTargetRoll() }}</strong>
+                </div>
+            </div>
+        }
+    </div>
+    <div class="actions">
+        <button class="bt-button" type="button" (click)="close()">DISMISS</button>
+    </div>
+</div>
+
+<dice-roller
+    #roller
+    [diceCount]="2"
+    [diceSides]="6"
+    [showInline]="false"
+    [showOverlay]="true"
+    [reserveOverlayResultSpace]="true"
+    [compactOverlayResult]="true"
+    [overlayResult]="rolledResult()"
+    [overlayResultTone]="rolledResultTone()"
+    overlayCloseHint="Click to return to pilot checks"
+    (finished)="onRollFinished($event)"
+/>

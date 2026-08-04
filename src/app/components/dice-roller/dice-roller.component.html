@@ -21,7 +21,10 @@
     <div class="dice-overlay" [class.can-close]="canCloseOverlay()" (click)="onOverlayBackgroundClick()">
         <div class="dice-overlay-inner">
             @if (reserveOverlayResultSpace() || overlayResult()) {
-            <div class="overlay-result" [class.pending]="!rollFinished() || !overlayResult()">
+            <div class="overlay-result" [class.pending]="!rollFinished() || !overlayResult()"
+                [class.compact]="compactOverlayResult()"
+                [class.success]="overlayResultTone() === 'success'"
+                [class.failed]="overlayResultTone() === 'failed'">
                 {{ rollFinished() ? overlayResult() : '' }}
             </div>
             }
@@ -39,8 +42,8 @@
             @if (rollFinished() && !overlayResult()) {
             <div class="overlay-sum">{{ diceSum() }}</div>
             }
-            @if (reserveOverlayResultSpace() || rollFinished()) {
-            <div class="overlay-hint" [class.pending]="!rollFinished()">Click to return to the table</div>
+            @if ((reserveOverlayResultSpace() || rollFinished()) && overlayCloseHint()) {
+            <div class="overlay-hint" [class.pending]="!rollFinished()">{{ overlayCloseHint() }}</div>
             }
         </div>
     </div>

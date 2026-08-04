@@ -31,7 +31,6 @@
         flex-direction: column;
         gap: 2px;
     }
-
 }
 
 .modifier {
@@ -44,7 +43,6 @@
     min-height: 18px;
     display: flex;
     align-items: center;
-    display: flex;
     justify-content: center;
 
     &.important {
@@ -121,10 +119,10 @@
 
         &.wrap {
             flex-wrap: wrap;
-            
+
             .bt-button {
                 flex: 1 1 auto;
-            };
+            }
         }
 
         &.grid {
@@ -137,7 +135,7 @@
                 width: 100%;
                 min-width: 0;
                 box-sizing: border-box;
-            };
+            }
         }
 
         &.has-tooltip {
@@ -147,7 +145,6 @@
                 text-decoration: underline dotted #999;
             }
         }
-
     }
 
     .bt-button {
@@ -159,13 +156,11 @@
         box-sizing: border-box;
 
         &:hover {
-            opacity: 1.0;
+            opacity: 1;
         }
 
-        &.selected {
-            .modifier-badge {
-                background-color: #000;
-            }
+        &.selected .modifier-badge {
+            background-color: #000;
         }
 
         &.warning {
@@ -209,6 +204,7 @@
             font-size: 0.9em;
             font-weight: 500;
         }
+
         &.damaged {
             .caption {
                 color: var(--danger);
@@ -221,22 +217,16 @@
         }
     }
 
-    .masc-controls {
+    .masc-controls,
+    .masc-status-control {
         display: inline-flex;
         align-items: center;
         flex: 0 0 auto;
         border: 2px solid #666;
     }
 
-    .masc-status-control {
-        display: inline-flex;
-        align-items: center;
-        flex: 0 0 auto;
-        border: 2px solid #666;
-
-        &.failed {
-            border-color: #800;
-        }
+    .masc-status-control.failed {
+        border-color: #800;
     }
 
     .masc-button {
@@ -272,17 +262,16 @@
     .move-slider {
         --hex-slider-track-height: 12px;
         --hex-slider-track-overhang: 14px;
-
         flex: 1 1 auto;
         min-width: 0;
     }
 
     &.heat-modifiers {
-        gap: 0px;
+        gap: 0;
     }
-    
+
     &.psr-modifiers {
-        gap: 0px;
+        gap: 0;
         text-wrap: auto;
 
         .row {

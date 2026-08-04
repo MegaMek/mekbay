@@ -86,6 +86,20 @@
     text-align: center;
     text-shadow: 0 3px 12px #000;
 
+    &.compact {
+        height: 1em;
+        font-size: clamp(2.5rem, 12vw, 4rem);
+        white-space: nowrap;
+    }
+
+    &.success {
+        color: #7dcc80;
+    }
+
+    &.failed {
+        color: #f00;
+    }
+
     &.pending {
         visibility: hidden;
     }
