@@ -7,13 +7,16 @@
 import { AeroRules } from './aero-rules';
 import { computed } from '@angular/core';
 import { InfantryRules } from './infantry-rules';
-import { MekRules, type MekLegDamageState, type MekLegMovementResult } from './mek-rules';
+import { MekRules, TORSO_LOCATIONS, type MekLegDamageState, type MekLegMovementResult } from './mek-rules';
 import { ProtoMekRules } from './protomek-rules';
 import { VehicleRules } from './vehicle-rules';
 import type { ChargeDamage, PSRCheck } from './unit-type-rules';
 import type { SerializedC3NetworkGroup } from '../force-serialization';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import { C3TaxCalculator } from '../c3-network.model';
+import { getMekLimbLocations, inferMekConfigFromLocations } from '../entity/types';
+
+const SIDE_TORSO_LOCATIONS = ['LT', 'RT'] as const;
 
 function calculateTWC3Tax(
     unit: CBTForceUnit,
@@ -25,6 +28,52 @@ function calculateTWC3Tax(
 }
 
 export class TWMekRules extends MekRules {
+    protected override readonly crippled = computed<boolean>(() => {
+        if (!this.unit.isLoaded()) return false;
+        return this.allCrewCrippled()
+            || this.allSensorsDestroyedOrDestroying()
+            || this.gyroEngineCrippledOrCrippling()
+            || this.sideTorsoDestroyedOrDestroying()
+            || this.internalStructureCrippledOrCrippling();
+    });
+
+    private allSensorsDestroyedOrDestroying(): boolean {
+        const sensorSlots = this.unit.getCritSlots().filter(slot => this.isNamedCrit(slot, 'Sensor'));
+        return sensorSlots.length > 0 && sensorSlots.every(slot => this.isDestroyedOrDestroyingCrit(slot));
+    }
+
+    private gyroEngineCrippledOrCrippling(): boolean {
+        const critSlots = this.unit.getCritSlots();
+        const gyroHits = critSlots.filter(slot => this.isNamedCrit(slot, 'Gyro') && this.isDestroyedOrDestroyingCrit(slot)).length;
+        const engineHits = critSlots.filter(slot => this.isNamedCrit(slot, 'Engine') && this.isDestroyedOrDestroyingCrit(slot)).length;
+        return engineHits >= 2 || (engineHits >= 1 && gyroHits >= 1);
+    }
+
+    private sideTorsoDestroyedOrDestroying(): boolean {
+        return SIDE_TORSO_LOCATIONS.some(loc => this.unit.isInternalLocDestroyed(loc));
+    }
+
+    private internalStructureCrippledOrCrippling(): boolean {
+        let damagedLimbs = 0;
+        let damagedTorsos = 0;
+        const internalLocations = this.unit.locations?.internal;
+        if (!internalLocations) return false;
+
+        const config = inferMekConfigFromLocations(internalLocations.keys());
+        const limbLocations = new Set<string>(getMekLimbLocations(config));
+
+        internalLocations.forEach((_value, loc) => {
+            if (this.unit.getInternalHits(loc) <= 0) return;
+            if (limbLocations.has(loc)) {
+                damagedLimbs++;
+            } else if (TORSO_LOCATIONS.has(loc) && this.unit.isArmorLocDestroyed(loc)) {
+                damagedTorsos++;
+            }
+        });
+
+        return damagedLimbs >= 3 || damagedTorsos >= 2;
+    }
+
     override calculateC3Tax(
         networks: SerializedC3NetworkGroup[],
         allUnits: CBTForceUnit[],

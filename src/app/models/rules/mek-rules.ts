@@ -75,9 +75,7 @@ interface MekArmStatus {
     singleArmMod: number;
 }
 
-const SIDE_TORSO_LOCATIONS = new Set(['LT', 'RT']);
 export const TORSO_LOCATIONS = new Set(['CT', 'LT', 'RT']);
-const LIMB_LOCATIONS = new Set(['LA', 'RA', 'LL', 'RL', 'CL', 'RLL', 'FLL', 'RRL', 'FRL']);
 export const LINKED_LOCATIONS: { [key: string]: string[] } = {
     'RT': ['RA', 'FRL'],
     'LT': ['LA', 'FLL'],
@@ -181,11 +179,26 @@ export class MekRules extends UnitTypeRulesBase {
 
     protected override readonly crippled = computed<boolean>(() => {
         if (!this.unit.isLoaded()) return false;
-        return this.allCrewCrippled()
-            || this.allSensorsDestroyedOrDestroying()
-            || this.gyroEngineCrippledOrCrippling()
-            || this.sideTorsoDestroyedOrDestroying()
-            || this.internalStructureCrippledOrCrippling()
+        const critSlots = this.unit.getCritSlots();
+        const engineHits = critSlots.filter(slot =>
+            this.isNamedCrit(slot, 'Engine') && this.isDestroyedOrDestroyingCrit(slot)
+        ).length;
+        if (engineHits >= 2) return true;
+
+        const internalLocations = this.unit.locations?.internal;
+        if (!internalLocations) return false;
+
+        const config = inferMekConfigFromLocations(internalLocations.keys());
+        const destroyedLimbs = getMekLimbLocations(config).filter(loc =>
+            internalLocations.has(loc) && this.unit.isInternalLocDestroyed(loc)
+        );
+        if (destroyedLimbs.length >= 2 && destroyedLimbs.some(loc => isMekLegLocation(config, loc))) {
+            return true;
+        }
+
+        return Array.from(TORSO_LOCATIONS).some(loc =>
+            internalLocations.has(loc) && this.unit.isInternalLocDestroyed(loc)
+        );
     });
 
     private readonly heatMgmt: HeatManagement;
@@ -206,39 +219,7 @@ export class MekRules extends UnitTypeRulesBase {
         return limbLocations.every(loc => !internalLocations.has(loc) || this.unit.isInternalLocCommittedDestroyed(loc));
     }
 
-    private allSensorsDestroyedOrDestroying(): boolean {
-        const sensorSlots = this.unit.getCritSlots().filter(slot => this.isNamedCrit(slot, 'Sensor'));
-        return sensorSlots.length > 0 && sensorSlots.every(slot => this.isDestroyedOrDestroyingCrit(slot));
-    }
-
-    private gyroEngineCrippledOrCrippling(): boolean {
-        const critSlots = this.unit.getCritSlots();
-        const gyroHits = critSlots.filter(slot => this.isNamedCrit(slot, 'Gyro') && this.isDestroyedOrDestroyingCrit(slot)).length;
-        const engineHits = critSlots.filter(slot => this.isNamedCrit(slot, 'Engine') && this.isDestroyedOrDestroyingCrit(slot)).length;
-        return engineHits >= 2 || (engineHits >= 1 && gyroHits >= 1);
-    }
-
-    private sideTorsoDestroyedOrDestroying(): boolean {
-        return Array.from(SIDE_TORSO_LOCATIONS).some(loc => this.unit.isInternalLocDestroyed(loc));
-    }
-
-    private internalStructureCrippledOrCrippling(): boolean {
-        let damagedLimbs = 0;
-        let damagedTorsos = 0;
-
-        this.unit.locations?.internal?.forEach((_value, loc) => {
-            if (this.unit.getInternalHits(loc) <= 0) return;
-            if (LIMB_LOCATIONS.has(loc)) {
-                damagedLimbs++;
-            } else if (TORSO_LOCATIONS.has(loc) && this.unit.isArmorLocDestroyed(loc)) {
-                damagedTorsos++;
-            }
-        });
-
-        return damagedLimbs >= 3 || damagedTorsos >= 2;
-    }
-
-    private isDestroyedOrDestroyingCrit(slot: CriticalSlot): boolean {
+    protected isDestroyedOrDestroyingCrit(slot: CriticalSlot): boolean {
         return !!slot.destroying || this.isCritUnavailable(slot);
     }
 
@@ -1993,7 +1974,7 @@ export class MekRules extends UnitTypeRulesBase {
         return { damage, maxDamage };
     }
 
-    private isNamedCrit(slot: CriticalSlot, name: string): boolean {
+    protected isNamedCrit(slot: CriticalSlot, name: string): boolean {
         return (slot.name && slot.name.includes(name)) ? true : false;
     }
 

@@ -1260,38 +1260,113 @@ describe('MekRules', () => {
         expect(rules.hasComputedCondition('abandoned')).toBeFalse();
     });
 
-    it('marks Meks crippled when the MechWarrior is crippled', () => {
-        const rules = createRulesHarness({ crewHits: [4] });
-
-        expect(rules.hasComputedCondition('crippled')).toBeTrue();
-    });
-
-    it('marks Meks crippled from sensor, gyro, and engine critical damage', () => {
-        expect(createRulesHarness({ critSlots: [crit('Sensor'), crit('Sensor')] }).hasComputedCondition('crippled')).toBeTrue();
-        expect(createRulesHarness({ critSlots: [crit('Gyro'), crit('Engine')] }).hasComputedCondition('crippled')).toBeTrue();
+    it('uses only the Core 2026 damage criteria for crippled Meks', () => {
+        expect(createRulesHarness({ crewHits: [4] }).hasComputedCondition('crippled')).toBeFalse();
+        expect(createRulesHarness({ critSlots: [crit('Sensor'), crit('Sensor')] }).hasComputedCondition('crippled')).toBeFalse();
+        expect(createRulesHarness({ critSlots: [crit('Gyro'), crit('Engine')] }).hasComputedCondition('crippled')).toBeFalse();
+        expect(createRulesHarness({ critSlots: [crit('Engine')] }).hasComputedCondition('crippled')).toBeFalse();
         expect(createRulesHarness({ critSlots: [crit('Engine'), crit('Engine')] }).hasComputedCondition('crippled')).toBeTrue();
-        expect(createRulesHarness({ critSlots: [crit('Sensor'), crit('Sensor', false)] }).hasComputedCondition('crippled')).toBeFalse();
+        expect(createRulesHarness({
+            critSlots: [
+                { ...crit('Engine'), id: 'engine-1' },
+                { ...crit('Engine', false), id: 'engine-2', destroying: 1 },
+            ],
+        }).hasComputedCondition('crippled')).toBeTrue();
     });
 
-    it('marks Meks crippled from side torso destruction and qualifying internal structure damage', () => {
+    it('marks Core 2026 Meks crippled from two destroyed limbs including a leg', () => {
+        const internalLocations = ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'];
+
         expect(createRulesHarness({
+            internalLocations,
+            committedDestroyedLocations: ['LA', 'LL'],
+        }).hasComputedCondition('crippled')).toBeTrue();
+        expect(createRulesHarness({
+            internalLocations,
+            committedDestroyedLocations: ['LA', 'RA'],
+        }).hasComputedCondition('crippled')).toBeFalse();
+        expect(createRulesHarness({
+            internalLocations,
+            committedDestroyedLocations: ['LL'],
+        }).hasComputedCondition('crippled')).toBeFalse();
+        expect(createRulesHarness({
+            internalLocations,
+            locationPoints: 10,
+            locationState: { LA: { internal: 1 }, LL: { internal: 1 } },
+        }).hasComputedCondition('crippled')).toBeFalse();
+    });
+
+    it('applies Core 2026 destroyed-limb criteria to quadruped and tripod Meks', () => {
+        expect(createRulesHarness({
+            internalLocations: ['CT', 'LT', 'RT', 'FLL', 'FRL', 'RLL', 'RRL'],
+            committedDestroyedLocations: ['FLL', 'FRL'],
+        }).hasComputedCondition('crippled')).toBeTrue();
+        expect(createRulesHarness({
+            internalLocations: ['CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL', 'CL'],
+            committedDestroyedLocations: ['LA', 'CL'],
+        }).hasComputedCondition('crippled')).toBeTrue();
+    });
+
+    it('marks Core 2026 Meks crippled from one destroyed torso location', () => {
+        const internalLocations = ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'];
+
+        for (const torso of ['LT', 'RT', 'CT']) {
+            expect(createRulesHarness({
+                internalLocations,
+                committedDestroyedLocations: [torso],
+            }).hasComputedCondition('crippled')).withContext(torso).toBeTrue();
+        }
+        expect(createRulesHarness({
+            internalLocations,
+            locationPoints: 10,
+            locationState: { CT: { internal: 9 } },
+        }).hasComputedCondition('crippled')).toBeFalse();
+    });
+
+    it('includes pending fatal internal damage in Core 2026 limb criteria', () => {
+        const forceUnit = createForceUnitHarness({
+            internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
+            committedDestroyedLocations: ['LA'],
+        });
+
+        expect(forceUnit.rules.hasComputedCondition('crippled')).toBeFalse();
+
+        forceUnit.addInternalHits('LL', 1);
+
+        expect(forceUnit.rules.hasComputedCondition('crippled')).toBeTrue();
+    });
+
+    it('retains Total Warfare crew and critical-damage crippling criteria', () => {
+        expect(createRulesHarness({ rulesId: 'tw', crewHits: [4] }).hasComputedCondition('crippled')).toBeTrue();
+        expect(createRulesHarness({ rulesId: 'tw', critSlots: [crit('Sensor'), crit('Sensor')] }).hasComputedCondition('crippled')).toBeTrue();
+        expect(createRulesHarness({ rulesId: 'tw', critSlots: [crit('Gyro'), crit('Engine')] }).hasComputedCondition('crippled')).toBeTrue();
+        expect(createRulesHarness({ rulesId: 'tw', critSlots: [crit('Engine'), crit('Engine')] }).hasComputedCondition('crippled')).toBeTrue();
+        expect(createRulesHarness({ rulesId: 'tw', critSlots: [crit('Sensor'), crit('Sensor', false)] }).hasComputedCondition('crippled')).toBeFalse();
+    });
+
+    it('retains Total Warfare internal-damage crippling criteria', () => {
+        expect(createRulesHarness({
+            rulesId: 'tw',
             internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
             committedDestroyedLocations: ['LT'],
         }).hasComputedCondition('crippled')).toBeTrue();
 
         expect(createRulesHarness({
+            rulesId: 'tw',
             internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
             locationPoints: 10,
             locationState: { LA: { internal: 1 }, RA: { internal: 1 }, LL: { internal: 1 } },
         }).hasComputedCondition('crippled')).toBeTrue();
 
         expect(createRulesHarness({
+            rulesId: 'tw',
             internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
             locationPoints: 10,
             locationState: { CT: { internal: 1, armor: 10 }, RT: { internal: 1, armor: 10 } },
         }).hasComputedCondition('crippled')).toBeTrue();
 
         expect(createRulesHarness({
+            rulesId: 'tw',
             internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
             locationPoints: 10,
             locationState: { CT: { internal: 1, armor: 0 }, RT: { internal: 1, armor: 10 } },
