@@ -33,7 +33,7 @@
 
 import { Injectable, effect, signal, inject, DestroyRef } from '@angular/core';
 import { type CrewMember, type CrewMemberState, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type SkillType } from '../models/crew-member.model';
-import { MountedAmmo, type MountedEquipment  } from '../models/mounted-equipment.model';
+import { MountedAmmo, type MountedEquipment } from '../models/mounted-equipment.model';
 import { type CriticalSlot, type HeatProfile } from '../models/force-serialization';
 import { SheetService } from './sheet.service';
 import { DataService } from './data.service';
@@ -110,7 +110,7 @@ export class UnitSvgService {
             this.updateDestroyedOverlayDisplay(destroyed);
             this.version(); // Track version to force a repaint
         });
-        inject(DestroyRef).onDestroy(() => {        
+        inject(DestroyRef).onDestroy(() => {
             this.unit.svg.set(null); // Clear SVG on destruction
         });
     }
@@ -394,7 +394,7 @@ export class UnitSvgService {
             - turnState.getAttackMovementModifier();
 
         // Check if all crew members have default values (no name and default skills)
-        const allCrewDefault = crew.every(member => 
+        const allCrewDefault = crew.every(member =>
             !member.getName() && // No name set
             member.getSkill('gunnery') === DEFAULT_GUNNERY_SKILL && // Default gunnery skill
             member.getSkill('piloting') === DEFAULT_PILOTING_SKILL // Default piloting skill
@@ -406,9 +406,9 @@ export class UnitSvgService {
         svg.querySelectorAll('.skillValue').forEach(el => {
             el.classList.toggle('screen-only', allCrewDefault);
         });
-        const blanks = ['blankPilotingSkill0', 
-            'blankGunnerySkill0', 
-            'blankAsfGunnerySkill0', 
+        const blanks = ['blankPilotingSkill0',
+            'blankGunnerySkill0',
+            'blankAsfGunnerySkill0',
             'blankAsfPilotingSkill0',
             'blankPilotingSkill1',
             'blankGunnerySkill1',
@@ -496,18 +496,21 @@ export class UnitSvgService {
         const suffixStart = pilotingSkill.toString().length;
         const labelStart = displayText.lastIndexOf(controlRollLabel);
         element.textContent = displayText.slice(0, suffixStart);
+        const labelFontScale = 0.5;
+        const labelSuperscriptOffset = -0.3;
         const suffix = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
         suffix.setAttribute('class', 'controlRollModifier');
         suffix.setAttribute('font-size', '0.72em');
+        suffix.setAttribute('dominant-baseline', 'central');
+        suffix.setAttribute('dy', '-0.15em');
         suffix.textContent = displayText.slice(suffixStart, labelStart);
         const label = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
         label.setAttribute('class', 'controlRollLabel');
-        label.setAttribute('font-size', '0.5em');
+        label.setAttribute('font-size', `${labelFontScale}em`);
         label.setAttribute('font-family', 'Roboto Condensed');
-        label.setAttribute('alignment-baseline', 'alphabetic');
+        label.setAttribute('dy', `${labelSuperscriptOffset}em`);
         label.textContent = controlRollLabel;
         suffix.appendChild(label);
-        suffix.appendChild(document.createTextNode(displayText.slice(labelStart + controlRollLabel.length)));
         element.appendChild(suffix);
     }
 
@@ -621,8 +624,8 @@ export class UnitSvgService {
 
         critLocs.forEach(critLoc => {
             if (!critLoc.el) return;
-                critLoc.el.classList.toggle('damaged', !!critLoc.destroyed);
-                critLoc.el.classList.toggle('willChange', !!critLoc.destroying != !!critLoc.destroyed);
+            critLoc.el.classList.toggle('damaged', !!critLoc.destroyed);
+            critLoc.el.classList.toggle('willChange', !!critLoc.destroying != !!critLoc.destroyed);
         });
     }
 

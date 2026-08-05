@@ -774,11 +774,14 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const label = suffix?.querySelector<SVGTSpanElement>(':scope > .controlRollLabel');
         const suffixScale = Number.parseFloat(suffix?.getAttribute('font-size') ?? '');
         const labelScale = Number.parseFloat(label?.getAttribute('font-size') ?? '');
+        const labelOffset = Number.parseFloat(label?.getAttribute('dy') ?? '');
         expect(suffixScale).toBeLessThan(1);
+        expect(suffix?.getAttribute('dominant-baseline')).toBe('central');
+        expect(Number.parseFloat(suffix?.getAttribute('dy') ?? '')).toBeLessThan(0);
         expect(labelScale).toBeLessThan(1);
+        expect(labelOffset).toBeLessThan(0);
         expect(label?.textContent).toBe(expectedLabel);
         expect(label?.getAttribute('font-family')).toBe('Roboto Condensed');
-        expect(label?.getAttribute('alignment-baseline')).toBe('alphabetic');
     }
 
     it('exposes live Extreme Range option state', () => {
@@ -3318,7 +3321,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshCrew();
 
         expect(svg.getElementById('asfGunnerySkill')?.textContent).toBe('4+1');
-        expectControlRollDisplay(svg.getElementById('asfPilotingSkill'), '5(+1PSR)', 'PSR');
+        expectControlRollDisplay(svg.getElementById('asfPilotingSkill'), '5 +1PSR', 'PSR');
     });
 
     it('derives the driving skill roll label for vehicle skill displays', () => {
@@ -3340,12 +3343,13 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         svgService.refreshCrew();
 
-        expectControlRollDisplay(svg.getElementById('pilotingSkill0'), '5(+1DSR)', 'DSR');
+        expectControlRollDisplay(svg.getElementById('pilotingSkill0'), '5 +1DSR', 'DSR');
     });
 
     it('formats piloting modifiers as a labeled PSR suffix', () => {
-        expect(formatPilotingDisplay(5, 2)).toBe('5(+2PSR)');
-        expect(formatPilotingDisplay(5, 2, 'DSR')).toBe('5(+2DSR)');
+        expect(formatPilotingDisplay(5, 2)).toBe('5 +2PSR');
+        expect(formatPilotingDisplay(5, -1)).toBe('5 -1PSR');
+        expect(formatPilotingDisplay(5, 2, 'DSR')).toBe('5 +2DSR');
     });
 
     it('excludes movement but retains undisplayed attack modifiers in crew gunnery skill displays', () => {

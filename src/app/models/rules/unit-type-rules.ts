@@ -809,7 +809,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 export function formatPilotingDisplay(pilotingSkill: number, controlRollModifier: number, controlRollLabel = 'PSR'): string {
     if (!controlRollModifier) return pilotingSkill.toString();
     const sign = controlRollModifier > 0 ? '+' : '';
-    return `${pilotingSkill}(${sign}${controlRollModifier}${controlRollLabel})`;
+    return `${pilotingSkill} ${sign}${controlRollModifier}${controlRollLabel}`;
 }
 
 /** Format a gunnery skill value for display, applying the unit's own attack modifier. */
