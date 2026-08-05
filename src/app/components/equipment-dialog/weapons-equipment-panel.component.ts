@@ -434,6 +434,7 @@ export class WeaponsEquipmentPanelComponent {
             ...(entry.kind && { kind: entry.kind })
         })));
         if (typeof resolution.value !== 'number') return lines;
+        if (lines.length <= 1) return lines;
         return [
             ...lines,
             { isBreak: true },
