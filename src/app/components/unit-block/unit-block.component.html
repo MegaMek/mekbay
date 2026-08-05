@@ -37,13 +37,11 @@
         }
         <div class="pilot-info-list">
             @if (isAlphaStrike()) {
-            <button type="button" class="pilot-info info-slot numeric slim interactive" (click)="editPilot($event)"
-                title="Edit Pilot" aria-label="Edit pilot">
+            <button type="button" class="pilot-info info-slot numeric slim interactive">
                 <span class="value">{{ alphaStrikePilotSkill() }}</span>
             </button>
             } @else {
-            <button type="button" class="pilot-info info-slot numeric slim interactive" (click)="editPilot($event)"
-                title="Edit Crew" aria-label="Edit crew">
+            <button type="button" class="pilot-info info-slot numeric slim interactive">
                 <span class="value">{{ fu?.getPilotStats() }}</span>
             </button>
             }
