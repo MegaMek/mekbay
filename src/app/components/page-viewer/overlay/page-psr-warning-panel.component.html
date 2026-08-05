@@ -17,9 +17,12 @@
                             <div class="psr-number">{{ i + 1 }}</div>
                             <div class="psr-item-content">
                                 <div class="psr-reason">{{ check.reason }}</div>
-                                <div class="psr-failure">
-                                    <span>Failure</span>
-                                    <strong>{{ check.failureOutcome }}</strong>
+                                <div class="psr-subtitle">
+                                    @if (locationLabel(check.loc); as location) {
+                                        <span class="psr-location-value">{{ location }}</span>
+                                        <span class="psr-subtitle-separator" aria-hidden="true">&nbsp;—&nbsp;</span>
+                                    }
+                                    <span>Failure: <span class="psr-failure-value">{{ check.failureOutcome }}</span></span>
                                 </div>
                             </div>
                             @if (!isAutomaticFailure(check) && outcome(check); as result) {

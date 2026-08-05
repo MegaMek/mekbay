@@ -7,16 +7,15 @@
 import { AeroRules } from './aero-rules';
 import { computed } from '@angular/core';
 import { InfantryRules } from './infantry-rules';
-import { MekRules, TORSO_LOCATIONS, type MekLegDamageState, type MekLegMovementResult } from './mek-rules';
+import { MekRules, type MekLegDamageState, type MekLegMovementResult } from './mek-rules';
 import { ProtoMekRules } from './protomek-rules';
 import { VehicleRules } from './vehicle-rules';
 import type { ChargeDamage, PSRCheck } from './unit-type-rules';
-import type { SerializedC3NetworkGroup } from '../force-serialization';
+import type { CriticalSlot, SerializedC3NetworkGroup } from '../force-serialization';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import { C3TaxCalculator } from '../c3-network.model';
-import { getMekLimbLocations, inferMekConfigFromLocations } from '../entity/types';
-
-const SIDE_TORSO_LOCATIONS = ['LT', 'RT'] as const;
+import { getMekLimbLocations, inferMekConfigFromLocations, LEG_LOCATIONS, MEK_SIDE_TORSO_LOCATIONS, MEK_TORSO_LOCATIONS } from '../entity/types';
+import type { TurnState } from '../turn-state.model';
 
 function calculateTWC3Tax(
     unit: CBTForceUnit,
@@ -28,6 +27,69 @@ function calculateTWC3Tax(
 }
 
 export class TWMekRules extends MekRules {
+    protected override getLegActuatorPSRChecks(
+        turnState: TurnState,
+        movementCheck: PSRCheck | null,
+    ): PSRCheck[] {
+        const checks: PSRCheck[] = [];
+        const psr = turnState.getPSRCheckState();
+        psr.legActuators?.forEach((count, loc) => {
+            for (let index = 0; index < count; index++) {
+                checks.push({
+                    fallCheck: 1,
+                    pilotCheck: 1,
+                    loc,
+                    reason: 'Leg actuator hit',
+                });
+            }
+        });
+        psr.hipsHit?.forEach(loc => {
+            checks.push({
+                fallCheck: this.hipPSRModifier,
+                pilotCheck: this.hipPSRModifier,
+                loc,
+                legFilter: loc,
+                reason: 'Hip hit',
+            });
+        });
+        if (movementCheck?.reason === 'Jumping with damaged leg actuator'
+            || movementCheck?.reason === 'Running with damaged hip') {
+            checks.push(movementCheck);
+        }
+        return checks;
+    }
+
+    protected override getPreExistingLegActuatorPSRModifiers(
+        critSlots: readonly CriticalSlot[],
+        ignoreLeg: Set<string>,
+    ): { modifier: number; modifiers: PSRCheck[] } {
+        let modifier = 0;
+        const modifiers: PSRCheck[] = [];
+        const destroyedHips = critSlots.filter(slot => slot.loc
+            && LEG_LOCATIONS.has(slot.loc)
+            && this.unit.isEquipmentUnavailable(slot)
+            && !ignoreLeg.has(slot.loc)
+            && this.isNamedCrit(slot, 'Hip'));
+        for (const hip of destroyedHips) {
+            modifier += this.hipPSRModifier;
+            modifiers.push({ pilotCheck: this.hipPSRModifier, reason: 'Hip Destroyed' });
+            ignoreLeg.add(hip.loc!);
+        }
+        const destroyedLegActuatorsCount = critSlots.filter(slot => slot.loc
+            && LEG_LOCATIONS.has(slot.loc)
+            && this.unit.isEquipmentUnavailable(slot)
+            && !ignoreLeg.has(slot.loc)
+            && (this.isNamedCrit(slot, 'Leg') || this.isNamedCrit(slot, 'Foot'))).length;
+        if (destroyedLegActuatorsCount > 0) {
+            modifier += destroyedLegActuatorsCount;
+            modifiers.push({
+                pilotCheck: destroyedLegActuatorsCount,
+                reason: 'Leg Actuator(s) Destroyed',
+            });
+        }
+        return { modifier, modifiers };
+    }
+
     protected override usesTorsoCripplingRules(): boolean {
         return false;
     }
@@ -54,7 +116,7 @@ export class TWMekRules extends MekRules {
     }
 
     private sideTorsoDestroyedOrDestroying(): boolean {
-        return SIDE_TORSO_LOCATIONS.some(loc => this.unit.isInternalLocDestroyed(loc));
+        return MEK_SIDE_TORSO_LOCATIONS.some(loc => this.unit.isInternalLocDestroyed(loc));
     }
 
     private internalStructureCrippledOrCrippling(): boolean {
@@ -70,7 +132,7 @@ export class TWMekRules extends MekRules {
             if (this.unit.getInternalHits(loc) <= 0) return;
             if (limbLocations.has(loc)) {
                 damagedLimbs++;
-            } else if (TORSO_LOCATIONS.has(loc) && this.unit.isArmorLocDestroyed(loc)) {
+            } else if (MEK_TORSO_LOCATIONS.has(loc) && this.unit.isArmorLocDestroyed(loc)) {
                 damagedTorsos++;
             }
         });

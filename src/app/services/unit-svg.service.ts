@@ -39,7 +39,7 @@ import { SheetService } from './sheet.service';
 import { DataService } from './data.service';
 import { UnitInitializerService } from './unit-initializer.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
-import { LINKED_LOCATIONS } from "../models/rules/mek-rules";
+import { getMekLocationParent } from '../models/entity/types';
 import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { formatGunneryDisplay, formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS, unitConditionSortIndex, type ChargeDamage, type UnitHeatSource } from '../models/rules/unit-type-rules';
@@ -1017,10 +1017,9 @@ export class UnitSvgService {
     }
 
     private isLinkedLocationCommittedDestroyed(loc: string, destroyed: (sourceLoc: string) => boolean): boolean {
-        return Object.entries(LINKED_LOCATIONS).some(([sourceLoc, linkedLocations]) => {
-            if (!linkedLocations.includes(loc)) return false;
-            return destroyed(sourceLoc);
-        });
+        const locationKeys = this.unit.locations?.internal.keys() ?? [];
+        const parent = getMekLocationParent(locationKeys, loc);
+        return parent !== null && destroyed(parent);
     }
 
     private updateLocationConditionButton(svg: SVGSVGElement, loc: string, narcCount: number): void {

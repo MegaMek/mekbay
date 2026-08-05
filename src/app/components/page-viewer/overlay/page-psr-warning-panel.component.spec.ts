@@ -15,10 +15,11 @@ describe('psrRollOutcome', () => {
 
 describe('PagePsrWarningPanelComponent', () => {
     it('rolls 2d6 from the action column and resolves against the target roll', () => {
-        const check = { id: 'fall-check', fallCheck: 0, reason: 'Hip hit', failureOutcome: 'Fall' };
+        const check = { id: 'fall-check', fallCheck: 0, loc: 'RL', reason: 'Hip hit', failureOutcome: 'Fall' };
+        const damageCheck = { id: 'damage-check', fallCheck: 1, reason: 'Received 20 damage', failureOutcome: 'Fall' };
         const resolvePSRCheck = jasmine.createSpy('resolvePSRCheck');
         const turnState = {
-            getPSRChecks: () => [check],
+            getPSRChecks: () => [check, damageCheck],
             getPSROutcome: () => undefined,
             resolvePSRCheck,
             autoFall: () => false,
@@ -55,6 +56,7 @@ describe('PagePsrWarningPanelComponent', () => {
         expect(getComputedStyle(body).overflowY).toBe('auto');
 
         const actions = fixture.nativeElement.querySelector('.psr-resolution-actions') as HTMLElement;
+        const subtitles = fixture.nativeElement.querySelectorAll('.psr-subtitle') as NodeListOf<HTMLElement>;
         const rollButton = actions.firstElementChild as HTMLButtonElement;
         rollButton.click();
         fixture.componentInstance.onRollFinished({ results: [4, 4], sum: 8 });
@@ -65,5 +67,7 @@ describe('PagePsrWarningPanelComponent', () => {
         expect(roller.roll).toHaveBeenCalledTimes(1);
         expect(resolvePSRCheck).toHaveBeenCalledOnceWith('fall-check', 'success');
         expect(fixture.componentInstance.rolledResult()).toBe('SUCCESS');
+        expect(subtitles[0].textContent?.replace(/\s+/g, ' ').trim()).toBe('Right Leg — Failure: Fall');
+        expect(subtitles[1].textContent?.replace(/\s+/g, ' ').trim()).toBe('Failure: Fall');
     });
 });

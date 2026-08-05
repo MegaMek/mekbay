@@ -58,6 +58,8 @@ import {
   MekSystemType,
   MotiveType,
   factionFromAbbr,
+  areMekSplitLocationsAdjacent,
+  getMekSplitPrimaryLocation,
   locationArmor,
   normalizeSystemManufacturerKey,
   createCompoundTechLevel,
@@ -494,12 +496,12 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
           const criticalSlots = numericCriticalSlotRequirement(m, entity);
           return m.placedCriticalSlotCount < criticalSlots
             && m.location !== locCode
-            && areLocationsAdjacent(m.location, locCode);
+            && areMekSplitLocationsAdjacent(m.location, locCode);
         });
         if (incompleteIndex >= 0) {
           const incomplete = mountedEquipment[incompleteIndex];
           // Primary location is the more restrictive one (torso > arm)
-          const primaryLocation = getSplitPrimaryLocation(incomplete.location, locCode);
+          const primaryLocation = getMekSplitPrimaryLocation(incomplete.location, locCode);
           const updated = incomplete.withAddedPlacement(
             { location: locCode, slotIndex: slotIdx }, primaryLocation,
           );
@@ -966,38 +968,6 @@ function createMekEntity(config: string, equipmentRegistry: EquipmentRegistry): 
 
 function parseMetadataList(value: string): string[] {
   return value.split(',').map(item => item.trim()).filter(Boolean);
-}
-
-/**
- * For split weapons (spanning two adjacent locations), determine which
- * location is the primary one.  Per TechManual rules, the weapon receives
- * the more restrictive firing arc - that's always the torso side.
- * LT > LA, RT > RA, CT > LT/RT.
- */
-const TORSO_LOCATIONS = new Set(['CT', 'LT', 'RT']);
-
-/** Adjacent location pairs for split weapons (not including legs). */
-const ADJACENT_LOCATIONS = new Map<string, Set<string>>([
-  ['LA', new Set(['LT'])],
-  ['LT', new Set(['LA', 'CT'])],
-  ['RA', new Set(['RT'])],
-  ['RT', new Set(['RA', 'CT'])],
-  ['CT', new Set(['LT', 'RT'])],
-]);
-
-function areLocationsAdjacent(a: string, b: string): boolean {
-  return ADJACENT_LOCATIONS.get(a)?.has(b) ?? false;
-}
-
-function getSplitPrimaryLocation(locA: string, locB: string): string {
-  // Prefer the torso location as primary
-  if (TORSO_LOCATIONS.has(locB) && !TORSO_LOCATIONS.has(locA)) return locB;
-  if (TORSO_LOCATIONS.has(locA) && !TORSO_LOCATIONS.has(locB)) return locA;
-  // Both torsos (CT↔LT or CT↔RT) - CT is more restrictive
-  if (locA === 'CT') return locA;
-  if (locB === 'CT') return locB;
-  // Fallback: keep first
-  return locA;
 }
 
 function numericCriticalSlotRequirement(mount: EntityMountedEquipment, entity: MekEntity): number {

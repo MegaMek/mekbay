@@ -6,6 +6,7 @@ import { OverlayManagerService } from '../../../services/overlay-manager.service
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 import { displayPsrModifiers } from './page-turn-summary.util';
+import { getMekLocationLabel } from '../../../models/entity/types';
 
 export function psrRollOutcome(sum: number, target: number): 'success' | 'failed' {
     return sum >= target ? 'success' : 'failed';
@@ -64,6 +65,7 @@ export class PagePsrWarningPanelComponent {
         return 'default';
     });
     private rollingCheck: PSRCheck | null = null;
+    readonly locationLabel = getMekLocationLabel;
 
     close(): void {
         const unitId = this.unit()?.id;

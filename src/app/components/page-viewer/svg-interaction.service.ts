@@ -66,7 +66,7 @@ import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
 import { UnitStateDropdownComponent, type UnitStateDropdownChoice } from './unit-state-dropdown.component';
 import { getAmmoControlEntryForCriticalSlot, setAmmoEntry } from '../../utils/ammo-interaction.util';
-import { TORSO_LOCATIONS } from '../../models/rules/mek-rules';
+import { MEK_TORSO_LOCATIONS } from '../../models/entity/types';
 import { isLaserWithRiscModule, isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE, selectedRiscLaserMode } from '../../equipment-handlers/risc-laser-pulse-module.handler';
 import { ClusterTableDialogComponent } from '../cluster-table-dialog/cluster-table-dialog.component';
 import { clusterTableForUnit } from '../../utils/record-sheet-reference-table';
@@ -1587,7 +1587,7 @@ export class SvgInteractionService {
 
     private locationConditionDropdownChoices(unit: CBTForceUnit, loc: string): UnitStateDropdownChoice[] {
         return unit.rules.locationConditionControls
-            .filter(state => state.key !== 'blown-off' || !TORSO_LOCATIONS.has(loc))
+            .filter(state => state.key !== 'blown-off' || !MEK_TORSO_LOCATIONS.has(loc))
             .map(state => {
             const value = unit.getLocationConditionValue(loc, state.key) ?? 0;
             return {

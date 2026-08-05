@@ -98,17 +98,22 @@
     min-width: 0;
 }
 
-.psr-failure {
+.psr-subtitle {
     display: flex;
-    gap: 5px;
+    flex-wrap: wrap;
+    gap: 2px 5px;
     margin-top: 2px;
     color: var(--text-color-secondary);
     font-size: 0.78em;
-    text-transform: uppercase;
 }
 
-.psr-failure strong {
+.psr-location-value {
+    color: var(--text-color-secondary);
+}
+
+.psr-failure-value {
     color: var(--danger);
+    font-weight: 600;
 }
 
 .psr-result {

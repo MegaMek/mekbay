@@ -53,6 +53,30 @@ export const MEK_SLOTS_PER_LOCATION = 12;
 /** Mek locations that support rear armor */
 export const MEK_REAR_ARMOR_LOCATIONS: ReadonlySet<string> = new Set(['CT', 'LT', 'RT']);
 
+export const MEK_TORSO_LOCATIONS: ReadonlySet<string> = new Set(['CT', 'LT', 'RT']);
+export const MEK_SIDE_TORSO_LOCATIONS = ['LT', 'RT'] as const satisfies readonly MekLocation[];
+
+const MEK_LOCATION_LABELS: Readonly<Record<MekLocation, string>> = {
+  HD: 'Head',
+  CT: 'Center Torso',
+  LT: 'Left Torso',
+  RT: 'Right Torso',
+  LA: 'Left Arm',
+  RA: 'Right Arm',
+  LL: 'Left Leg',
+  RL: 'Right Leg',
+  CL: 'Center Leg',
+  FLL: 'Front Left Leg',
+  FRL: 'Front Right Leg',
+  RLL: 'Rear Left Leg',
+  RRL: 'Rear Right Leg',
+};
+
+/** Full display label for a canonical Mek location. */
+export function getMekLocationLabel(location: string | undefined): string | null {
+  return location && isMekLocation(location) ? MEK_LOCATION_LABELS[location] : null;
+}
+
 // ============================================================================
 // Location Topology
 //
@@ -77,17 +101,21 @@ export interface LocTopology {
   readonly dependents: readonly MekLocation[];
 }
 
+type BipedTopologyLocation = Exclude<MekLocation, 'CL' | 'FLL' | 'FRL' | 'RLL' | 'RRL'>;
+type TripodTopologyLocation = BipedTopologyLocation | 'CL';
+type QuadTopologyLocation = Exclude<MekLocation, 'LA' | 'RA' | 'LL' | 'RL' | 'CL'>;
+export type MekTopology = Readonly<Partial<Record<MekLocation, LocTopology>>>;
+
 /**
- * Biped / Tripod Mek location topology.
+ * Biped Mek location topology.
  *
  *            HD
  *            │
  *    LA─LT──CT──RT─RA
  *        │       │
  *       LL      RL
- *       (CL)              ← Tripod only
  */
-export const BIPED_TOPOLOGY: Readonly<Record<MekLocation, LocTopology>> = {
+export const BIPED_TOPOLOGY = {
   HD:  { transfersTo: 'CT',   dependents: [] },
   CT:  { transfersTo: null,   dependents: [] },
   RT:  { transfersTo: 'CT',   dependents: ['RA'] },
@@ -96,13 +124,22 @@ export const BIPED_TOPOLOGY: Readonly<Record<MekLocation, LocTopology>> = {
   LA:  { transfersTo: 'LT',   dependents: [] },
   RL:  { transfersTo: 'RT',   dependents: [] },
   LL:  { transfersTo: 'LT',   dependents: [] },
-  CL:  { transfersTo: 'CT',   dependents: [] },   // Tripod only
-  // Quad keys - present but unused for bipeds
-  FLL: { transfersTo: 'LT',   dependents: [] },
-  FRL: { transfersTo: 'RT',   dependents: [] },
-  RLL: { transfersTo: 'LT',   dependents: [] },
-  RRL: { transfersTo: 'RT',   dependents: [] },
-};
+} as const satisfies Readonly<Record<BipedTopologyLocation, LocTopology>>;
+
+/**
+ * Tripod Mek location topology.
+ *
+ *            HD
+ *            │
+ *    LA─LT──CT──RT─RA
+ *        │   |   │
+ *       LL  CL  RL
+ */
+/** Tripod Mek location topology: biped structure with a center leg. */
+export const TRIPOD_TOPOLOGY = {
+  ...BIPED_TOPOLOGY,
+  CL: { transfersTo: 'CT', dependents: [] },
+} as const satisfies Readonly<Record<TripodTopologyLocation, LocTopology>>;
 
 /**
  * Quad Mek location topology.
@@ -113,22 +150,40 @@ export const BIPED_TOPOLOGY: Readonly<Record<MekLocation, LocTopology>> = {
  *        │       │
  *       RLL     RRL
  */
-export const QUAD_TOPOLOGY: Readonly<Record<MekLocation, LocTopology>> = {
+export const QUAD_TOPOLOGY = {
   HD:  { transfersTo: 'CT',   dependents: [] },
   CT:  { transfersTo: null,   dependents: [] },
-  RT:  { transfersTo: 'CT',   dependents: ['FRL', 'RRL'] },
-  LT:  { transfersTo: 'CT',   dependents: ['FLL', 'RLL'] },
+  RT:  { transfersTo: 'CT',   dependents: ['FRL'] },
+  LT:  { transfersTo: 'CT',   dependents: ['FLL'] },
   FRL: { transfersTo: 'RT',   dependents: [] },
   FLL: { transfersTo: 'LT',   dependents: [] },
   RRL: { transfersTo: 'RT',   dependents: [] },
   RLL: { transfersTo: 'LT',   dependents: [] },
-  // Biped keys - present but unused for quads
-  RA:  { transfersTo: 'RT',   dependents: [] },
-  LA:  { transfersTo: 'LT',   dependents: [] },
-  RL:  { transfersTo: 'RT',   dependents: [] },
-  LL:  { transfersTo: 'LT',   dependents: [] },
-  CL:  { transfersTo: 'CT',   dependents: [] },
-};
+} as const satisfies Readonly<Record<QuadTopologyLocation, LocTopology>>;
+
+/** Adjacent location pairs that may share split equipment (legs excluded). */
+const MEK_SPLIT_ADJACENT_LOCATIONS: ReadonlyMap<MekLocation, ReadonlySet<MekLocation>> = new Map([
+  ['LA', new Set<MekLocation>(['LT'])],
+  ['LT', new Set<MekLocation>(['LA', 'CT'])],
+  ['RA', new Set<MekLocation>(['RT'])],
+  ['RT', new Set<MekLocation>(['RA', 'CT'])],
+  ['CT', new Set<MekLocation>(['LT', 'RT'])],
+]);
+
+export function areMekSplitLocationsAdjacent(locationA: string, locationB: string): boolean {
+  return isMekLocation(locationA)
+    && isMekLocation(locationB)
+    && (MEK_SPLIT_ADJACENT_LOCATIONS.get(locationA)?.has(locationB) ?? false);
+}
+
+/** Returns the split location with the more restrictive firing arc. */
+export function getMekSplitPrimaryLocation(locationA: string, locationB: string): string {
+  if (MEK_TORSO_LOCATIONS.has(locationB) && !MEK_TORSO_LOCATIONS.has(locationA)) return locationB;
+  if (MEK_TORSO_LOCATIONS.has(locationA) && !MEK_TORSO_LOCATIONS.has(locationB)) return locationA;
+  if (locationA === 'CT') return locationA;
+  if (locationB === 'CT') return locationB;
+  return locationA;
+}
 
 export const BIPED_LEG_LOCATIONS = ['LL', 'RL'] as const satisfies readonly MekLocation[];
 export const TRIPOD_LEG_LOCATIONS = ['LL', 'RL', 'CL'] as const satisfies readonly MekLocation[];
@@ -187,8 +242,22 @@ export function isMekLocation(s: string): s is MekLocation {
 /** Returns the appropriate topology map for a set of location keys. */
 export function getTopologyFor(
   locationKeys: Iterable<string>,
-): Readonly<Record<MekLocation, LocTopology>> {
-  return inferMekConfigFromLocations(locationKeys) === 'Quad' ? QUAD_TOPOLOGY : BIPED_TOPOLOGY;
+): MekTopology {
+  const config = inferMekConfigFromLocations(locationKeys);
+  if (config === 'Quad') return QUAD_TOPOLOGY;
+  if (config === 'Tripod') return TRIPOD_TOPOLOGY;
+  return BIPED_TOPOLOGY;
+}
+
+/** Returns the location whose destruction also destroys the given dependent location. */
+export function getMekLocationParent(
+  locationKeys: Iterable<string>,
+  location: string,
+): MekLocation | null {
+  if (!isMekLocation(location)) return null;
+  const topology = getTopologyFor(locationKeys);
+  return (Object.entries(topology) as [MekLocation, LocTopology][])
+    .find(([, descriptor]) => descriptor.dependents.includes(location))?.[0] ?? null;
 }
 
 // ============================================================================

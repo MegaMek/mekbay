@@ -59,7 +59,7 @@ import { Sanitizer } from '../utils/sanitizer.util';
 import type { UnitTypeRules } from './rules/unit-type-rules';
 import { type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
 import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
-import { LINKED_LOCATIONS } from '../models/rules/mek-rules';
+import { getMekLocationParent } from './entity/types';
 import { EquipmentInteractionRegistry, EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
 import type { UnitHeatSource } from './rules/unit-type-rules';
 import { getInventoryControlModeAmmoSummary, resolveInventoryControlSelectedAmmoOption, type InventoryControlDisplayData, type InventoryControlDisplayEffectOptions, type InventoryControlRules } from '../utils/inventory-control.util';
@@ -825,11 +825,8 @@ export class CBTForceUnit extends ForceUnit {
         if (this.getLocationCondition(loc, 'blown-off')) return true;
         if (this.getInternalHits(loc) >= this.getInternalPoints(loc)) return true;
 
-        return Object.entries(LINKED_LOCATIONS).some(([sourceLoc, linkedLocations]) => {
-            if (!linkedLocations.includes(loc)) return false;
-            if (!this.locations?.internal.has(sourceLoc)) return false;
-            return this.isInternalLocPhysicallyDestroyed(sourceLoc);
-        });
+        const parent = getMekLocationParent(this.locations.internal.keys(), loc);
+        return parent !== null && this.isInternalLocPhysicallyDestroyed(parent);
     }
 
     getCommittedArmorHits(loc: string, rear?: boolean): number {
@@ -848,11 +845,8 @@ export class CBTForceUnit extends ForceUnit {
         const hits = this.getCommittedArmorHits(loc, rear);
         if (hits >= this.getArmorPoints(loc, rear)) return true;
 
-        return Object.entries(LINKED_LOCATIONS).some(([sourceLoc, linkedLocations]) => {
-            if (!linkedLocations.includes(loc)) return false;
-            if (!this.locations?.internal.has(sourceLoc)) return false;
-            return this.isInternalLocCommittedDestroyed(sourceLoc);
-        });
+        const parent = getMekLocationParent(this.locations.internal.keys(), loc);
+        return parent !== null && this.isInternalLocCommittedDestroyed(parent);
     }
 
     isInternalLocCommittedDestroyed(loc: string): boolean {
@@ -861,11 +855,8 @@ export class CBTForceUnit extends ForceUnit {
         const hits = this.getCommittedInternalHits(loc);
         if (hits >= this.getInternalPoints(loc)) return true;
 
-        return Object.entries(LINKED_LOCATIONS).some(([sourceLoc, linkedLocations]) => {
-            if (!linkedLocations.includes(loc)) return false;
-            if (!this.locations?.internal.has(sourceLoc)) return false;
-            return this.isInternalLocCommittedDestroyed(sourceLoc);
-        });
+        const parent = getMekLocationParent(this.locations.internal.keys(), loc);
+        return parent !== null && this.isInternalLocCommittedDestroyed(parent);
     }
 
     isInternalLocCommittedPhysicallyDestroyed(loc: string): boolean {
@@ -874,11 +865,8 @@ export class CBTForceUnit extends ForceUnit {
         const hits = this.getCommittedInternalHits(loc);
         if (hits >= this.getInternalPoints(loc)) return true;
 
-        return Object.entries(LINKED_LOCATIONS).some(([sourceLoc, linkedLocations]) => {
-            if (!linkedLocations.includes(loc)) return false;
-            if (!this.locations?.internal.has(sourceLoc)) return false;
-            return this.isInternalLocCommittedPhysicallyDestroyed(sourceLoc);
-        });
+        const parent = getMekLocationParent(this.locations.internal.keys(), loc);
+        return parent !== null && this.isInternalLocCommittedPhysicallyDestroyed(parent);
     }
 
     isInternalLocStructurallyDestroyed(loc: string): boolean {

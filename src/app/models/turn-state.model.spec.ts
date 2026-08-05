@@ -337,7 +337,7 @@ describe('TurnState', () => {
         });
 
         it('fails every check with the same outcome and applies prone', () => {
-            const { turnState } = createTurnStateHarness();
+            const { turnState } = createTurnStateHarness({ rulesId: 'tw' });
             turnState.setPSRCheckState({ legActuators: new Map([['LL', 2]]) });
             const checks = turnState.getPSRChecks().filter(entry => entry.reason === 'Leg actuator hit');
 
@@ -529,7 +529,7 @@ describe('TurnState', () => {
 
             rules.evaluateCritSlotHit(legCrit);
 
-            expect(getReasons(turnState)).toContain('Leg actuator hit');
+            expect(getReasons(turnState)).toContain('Leg Actuator hit');
             expect(getReasons(turnState)).not.toContain('Jumping with damaged leg actuator');
         });
     });

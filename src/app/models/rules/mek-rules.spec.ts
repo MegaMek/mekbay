@@ -169,6 +169,16 @@ function heavyDutyGyroCrit(index: number, destroyed = true): CriticalSlot {
     };
 }
 
+function legActuatorCrit(id: string, name: string, loc: string, destroyed = true): CriticalSlot {
+    return {
+        id,
+        name,
+        loc,
+        slot: 0,
+        destroyed: destroyed ? 1 : undefined,
+    };
+}
+
 function weapon(id: string, damage: string | number | number[], ranges: number[], ammoType: 'NA' | 'AC' = 'NA', rackSize = 0): WeaponEquipment {
     return new WeaponEquipment({
         id,
@@ -1331,6 +1341,7 @@ describe('MekRules', () => {
 
         expect(successfulUnit.rules.hasComputedCondition('crippled')).toBeFalse();
         expect(successfulCheck).toBeDefined();
+        expect(successfulCheck?.loc).toBe('LT');
         expect(successfulCheck?.pilotCheck).toBe(0);
         expect(successfulCheck?.failureOutcome).toBe('Crippled');
         expect(successfulCheck?.resolution).toBeDefined();
@@ -1700,6 +1711,8 @@ describe('MekRules', () => {
     it('requires one hex for running damage PSRs but checks zero-hex jumps', () => {
         const biped = createRulesHarness({ committedDestroyedLocations: ['LL'] });
 
+        expect(biped.getCommittedDamageMovementModePSRCheck('run')?.loc).toBe('LL');
+        expect(biped.getCommittedDamageMovementModePSRCheck('jump')?.loc).toBe('LL');
         expect(biped.getCommittedDamageMovementModePSRCheck('run')?.reason).toBe('Running with damaged leg');
         expect(biped.getCommittedDamageMovementModePSRCheck('jump')?.reason).toBe('Jumping with damaged leg');
         expect(biped.getCommittedDamageMovementModePSRCheck('run', 0)).toBeNull();
@@ -1719,6 +1732,7 @@ describe('MekRules', () => {
 
         expect(oneLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)).toBeNull();
         expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)?.reason).toBe('Running with damaged leg');
+        expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)?.loc).toBeUndefined();
     });
 
     it('requires a jump PSR for foot damage without requiring a run PSR', () => {
@@ -1729,6 +1743,134 @@ describe('MekRules', () => {
         expect(rules.getCommittedDamageMovementModePSRCheck('jump', 0)?.reason)
             .toBe('Jumping with damaged leg actuator');
         expect(rules.getCommittedDamageMovementModePSRCheck('run', 1)).toBeNull();
+    });
+
+    it('consolidates same-leg actuator hits into one Core PSR with cumulative modifiers', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [
+                { ...legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL', false), destroying: 1 },
+                { ...legActuatorCrit('lower-leg', 'Lower Leg Actuator', 'LL', false), destroying: 1 },
+                { ...legActuatorCrit('hip', 'Hip', 'LL', false), destroying: 1 },
+            ],
+        });
+        const turnState = forceUnit.turnState();
+        forceUnit.getCritSlots().forEach(slot => forceUnit.rules.evaluateCritSlotHit(slot));
+
+        expect(turnState.getPSRCheckState().legActuators?.get('LL')).toBe(2);
+        expect(turnState.getPSRCheckState().hipsHit?.has('LL')).toBeTrue();
+        expect(turnState.getPSRChecks()).toEqual([jasmine.objectContaining({
+            loc: 'LL',
+            fallCheck: 3,
+            pilotCheck: 3,
+            reason: 'Hip hit, Leg Actuator hit',
+        })]);
+        expect(turnState.PSRRollsCount()).toBe(1);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+    });
+
+    it('consolidates Core actuator triggers per leg rather than per unit', () => {
+        const forceUnit = createForceUnitHarness();
+        const turnState = forceUnit.turnState();
+        turnState.setPSRCheckState({
+            legActuators: new Map([['LL', 2], ['RL', 1]]),
+            hipsHit: new Set(['RL']),
+        });
+
+        expect(turnState.getPSRChecks()).toEqual([
+            jasmine.objectContaining({ loc: 'LL', fallCheck: 2, pilotCheck: 2, reason: 'Leg Actuator hit' }),
+            jasmine.objectContaining({ loc: 'RL', fallCheck: 2, pilotCheck: 2, reason: 'Hip hit, Leg Actuator hit' }),
+        ]);
+        expect(turnState.PSRRollsCount()).toBe(2);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(4);
+    });
+
+    it('stacks consolidated Core actuator modifiers onto every other phase PSR', () => {
+        const forceUnit = createForceUnitHarness();
+        const turnState = forceUnit.turnState();
+        turnState.addDmgReceived(20);
+        turnState.setPSRCheckState({
+            hipsHit: new Set(['LL']),
+            gyroHit: 1,
+        });
+
+        const checks = turnState.getPSRChecks();
+
+        expect(checks.map(check => check.reason)).toEqual([
+            'Received 20 damage',
+            'Hip hit',
+            'Gyro hit',
+        ]);
+        expect(checks.map(check => check.pilotCheck)).toEqual([1, 1, 2]);
+        expect(checks.find(check => check.reason === 'Received 20 damage')?.loc).toBeUndefined();
+        expect(checks.find(check => check.reason === 'Hip hit')?.loc).toBe('LL');
+        expect(turnState.PSRRollsCount()).toBe(3);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(4);
+    });
+
+    it('uses one Core jump PSR for hip, leg, and foot damage in the same leg', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [
+                legActuatorCrit('hip', 'Hip', 'LL'),
+                legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL'),
+                legActuatorCrit('foot', 'Foot', 'LL'),
+            ],
+        });
+        const turnState = forceUnit.turnState();
+        turnState.moveMode.set('jump');
+        turnState.moveDistance.set(1);
+
+        expect(turnState.getPSRChecks()).toEqual([jasmine.objectContaining({
+            loc: 'LL',
+            fallCheck: 0,
+            pilotCheck: 0,
+            reason: 'Hip hit, Leg Actuator hit, Foot hit',
+        })]);
+        expect(turnState.PSRRollsCount()).toBe(1);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+        expect(forceUnit.rules.PSRModifiers().modifiers).toEqual(jasmine.arrayContaining([
+            jasmine.objectContaining({ pilotCheck: 1, reason: 'Hip Destroyed' }),
+            jasmine.objectContaining({ pilotCheck: 1, reason: 'Leg Actuator(s) Destroyed' }),
+            jasmine.objectContaining({ pilotCheck: 1, reason: 'Foot Actuator(s) Destroyed' }),
+        ]));
+    });
+
+    it('uses separate Core jump PSRs for actuator damage in different legs', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [
+                legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL'),
+                legActuatorCrit('foot', 'Foot', 'LL'),
+                legActuatorCrit('hip', 'Hip', 'RL'),
+            ],
+        });
+        const turnState = forceUnit.turnState();
+        turnState.moveMode.set('jump');
+        turnState.moveDistance.set(1);
+
+        expect(turnState.getPSRChecks()).toEqual([
+            jasmine.objectContaining({ loc: 'LL', reason: 'Leg Actuator hit, Foot hit' }),
+            jasmine.objectContaining({ loc: 'RL', reason: 'Hip hit' }),
+        ]);
+        expect(turnState.PSRRollsCount()).toBe(2);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+    });
+
+    it('merges current and movement actuator triggers for the same Core leg', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [legActuatorCrit('lower-leg', 'Lower Leg Actuator', 'LL')],
+        });
+        const turnState = forceUnit.turnState();
+        turnState.setPSRCheckState({ hipsHit: new Set(['LL']) });
+        turnState.moveMode.set('jump');
+        turnState.moveDistance.set(1);
+
+        expect(turnState.getPSRChecks()).toEqual([jasmine.objectContaining({
+            loc: 'LL',
+            fallCheck: 1,
+            pilotCheck: 1,
+            reason: 'Hip hit, Leg Actuator hit',
+        })]);
+        expect(turnState.PSRRollsCount()).toBe(1);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(2);
     });
 
     it('keeps the Core2026 PSR modifier unchanged when a second gyro hit causes autofall', () => {
@@ -1750,6 +1892,7 @@ describe('MekRules', () => {
             expect(turnState.getPSRChecks()).toContain(jasmine.objectContaining({
                 fallCheck: 2,
                 pilotCheck: 2,
+                loc: 'CT',
                 reason: 'Gyro hit',
             }));
             expect(forceUnit.rules.PSRModifiers().modifier).toBe(2);
@@ -1771,6 +1914,7 @@ describe('MekRules', () => {
         expect(turnState.getPSRChecks()).toContain(jasmine.objectContaining({
             fallCheck: 100,
             pilotCheck: 6,
+            loc: 'CT',
             reason: 'Gyro destroyed',
         }));
     });
@@ -1821,6 +1965,7 @@ describe('MekRules', () => {
         expect(rules.getCommittedDamageMovementModePSRCheck('jump', 1)).toEqual(jasmine.objectContaining({
             fallCheck: 2,
             pilotCheck: 2,
+            loc: 'CT',
             reason: 'Jumping with damaged heavy-duty gyro',
             ignorePreExistingGyro: true,
         }));
