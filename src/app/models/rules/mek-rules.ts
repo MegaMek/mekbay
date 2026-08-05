@@ -1315,7 +1315,7 @@ export class MekRules extends UnitTypeRulesBase {
     override getPhysicalAttackModifierBreakdown(): UnitModifierBreakdownEntry[] {
         const entries = super.getPhysicalAttackModifierBreakdown();
         return this.isSuperheavy()
-            ? [...entries, { label: 'Superheavy', modifier: 1 }]
+            ? [...entries, { label: 'Superheavy', modifier: 1, designBaseline: true }]
             : entries;
     }
 
