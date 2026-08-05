@@ -22,8 +22,19 @@ describe('displayPsrModifiers', () => {
         expect(displayPsrModifiers([
             { reason: 'Leg Destroyed', pilotCheck: 4 },
             { reason: 'Ignored', pilotCheck: 0 },
-            { reason: 'Gyro damaged', pilotCheck: 2 },
-        ]).map(modifier => modifier.reason)).toEqual(['Gyro damaged', 'Leg Destroyed']);
+            { reason: 'Gyro damaged', modifierReason: 'Gyro hit', pilotCheck: 2 },
+        ]).map(modifier => modifier.reason)).toEqual(['Gyro hit', 'Leg Destroyed']);
+    });
+
+    it('uses a dedicated modifier reason without changing the source check', () => {
+        const check = {
+            reason: 'Hip hit, Leg Actuator hit',
+            modifierReason: 'Hip hit, Leg Actuators hit (2)',
+            pilotCheck: 3,
+        };
+
+        expect(displayPsrModifiers([check])[0].reason).toBe('Hip hit, Leg Actuators hit (2)');
+        expect(check.reason).toBe('Hip hit, Leg Actuator hit');
     });
 });
 

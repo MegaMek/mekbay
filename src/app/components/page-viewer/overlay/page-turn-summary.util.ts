@@ -33,6 +33,10 @@ export function displayPsrModifiers(modifiers: readonly PSRCheck[]): Array<PSRCh
         .filter((modifier): modifier is PSRCheck & { pilotCheck: number } =>
             modifier.pilotCheck !== undefined && modifier.pilotCheck !== 0
         )
+        .map(modifier => ({
+            ...modifier,
+            reason: modifier.modifierReason ?? modifier.reason,
+        }))
         .sort((left, right) => left.reason.localeCompare(right.reason));
 }
 

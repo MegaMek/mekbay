@@ -1666,7 +1666,9 @@ describe('MekRules', () => {
             });
 
             expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 1, run: 2, maxRun: 2 }));
-            expect(rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({ pilotCheck: 4, reason: 'Leg Destroyed' }));
+            expect(rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({
+                pilotCheck: 4, loc: 'LL', reason: 'Leg Destroyed',
+            }));
         }
     });
 
@@ -1763,6 +1765,7 @@ describe('MekRules', () => {
             fallCheck: 3,
             pilotCheck: 3,
             reason: 'Hip hit, Leg Actuator hit',
+            modifierReason: 'Hip hit, Leg Actuators hit (2)',
         })]);
         expect(turnState.PSRRollsCount()).toBe(1);
         expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
@@ -1777,8 +1780,14 @@ describe('MekRules', () => {
         });
 
         expect(turnState.getPSRChecks()).toEqual([
-            jasmine.objectContaining({ loc: 'LL', fallCheck: 2, pilotCheck: 2, reason: 'Leg Actuator hit' }),
-            jasmine.objectContaining({ loc: 'RL', fallCheck: 2, pilotCheck: 2, reason: 'Hip hit, Leg Actuator hit' }),
+            jasmine.objectContaining({
+                loc: 'LL', fallCheck: 2, pilotCheck: 2,
+                reason: 'Leg Actuator hit', modifierReason: 'Leg Actuators hit (2)',
+            }),
+            jasmine.objectContaining({
+                loc: 'RL', fallCheck: 2, pilotCheck: 2,
+                reason: 'Hip hit, Leg Actuator hit', modifierReason: 'Hip hit, Leg Actuator hit',
+            }),
         ]);
         expect(turnState.PSRRollsCount()).toBe(2);
         expect(forceUnit.rules.PSRModifiers().modifier).toBe(4);
@@ -1828,9 +1837,9 @@ describe('MekRules', () => {
         expect(turnState.PSRRollsCount()).toBe(1);
         expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
         expect(forceUnit.rules.PSRModifiers().modifiers).toEqual(jasmine.arrayContaining([
-            jasmine.objectContaining({ pilotCheck: 1, reason: 'Hip Destroyed' }),
-            jasmine.objectContaining({ pilotCheck: 1, reason: 'Leg Actuator(s) Destroyed' }),
-            jasmine.objectContaining({ pilotCheck: 1, reason: 'Foot Actuator(s) Destroyed' }),
+            jasmine.objectContaining({ pilotCheck: 1, loc: 'LL', reason: 'Hip Destroyed' }),
+            jasmine.objectContaining({ pilotCheck: 1, loc: 'LL', reason: 'Leg Actuator(s) Destroyed' }),
+            jasmine.objectContaining({ pilotCheck: 1, loc: 'LL', reason: 'Foot Actuator(s) Destroyed' }),
         ]));
     });
 
@@ -1852,6 +1861,32 @@ describe('MekRules', () => {
         ]);
         expect(turnState.PSRRollsCount()).toBe(2);
         expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+    });
+
+    it('keeps pre-existing destroyed actuator modifiers grouped by location', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [
+                legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL'),
+                legActuatorCrit('lower-leg', 'Lower Leg Actuator', 'LL'),
+                legActuatorCrit('foot', 'Foot', 'RL'),
+            ],
+        });
+
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+        expect(forceUnit.rules.PSRModifiers().modifiers).toEqual(jasmine.arrayContaining([
+            jasmine.objectContaining({
+                pilotCheck: 2,
+                loc: 'LL',
+                reason: 'Leg Actuator(s) Destroyed',
+                modifierReason: 'Leg Actuators Destroyed (2)',
+            }),
+            jasmine.objectContaining({
+                pilotCheck: 1,
+                loc: 'RL',
+                reason: 'Foot Actuator(s) Destroyed',
+                modifierReason: 'Foot Actuator Destroyed',
+            }),
+        ]));
     });
 
     it('merges current and movement actuator triggers for the same Core leg', () => {
@@ -2030,7 +2065,9 @@ describe('MekRules', () => {
         const armWeapon = directFireWeaponEntry(forceUnit);
         armWeapon.locations = new Set(['LA']);
 
-        expect(rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({ pilotCheck: 1, reason: 'Hip Destroyed' }));
+        expect(rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({
+            pilotCheck: 1, loc: 'LL', reason: 'Hip Destroyed',
+        }));
         expect(rules.PSRModifiers().modifiers.some(modifier => modifier.reason === 'Leg Actuator(s) Destroyed')).toBeFalse();
         expect(rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({ pilotCheck: 2, reason: 'Gyro damaged' }));
         expect(rules.computeEntryState(armWeapon).hitMod).toBe(0);
@@ -2048,8 +2085,12 @@ describe('MekRules', () => {
         const twRules = twForceUnit.rules as MekRules;
         const twArmWeapon = directFireWeaponEntry(twForceUnit);
         twArmWeapon.locations = new Set(['LA']);
-        expect(twRules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({ pilotCheck: 2, reason: 'Hip Destroyed' }));
-        expect(twRules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({ pilotCheck: 1, reason: 'Leg Actuator(s) Destroyed' }));
+        expect(twRules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({
+            pilotCheck: 2, loc: 'LL', reason: 'Hip Destroyed',
+        }));
+        expect(twRules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({
+            pilotCheck: 1, loc: 'RL', reason: 'Leg Actuator(s) Destroyed',
+        }));
         expect(twRules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({ pilotCheck: 3, reason: 'Gyro damaged' }));
         expect(twRules.computeEntryState(twArmWeapon).hitMod).toBe(1);
     });

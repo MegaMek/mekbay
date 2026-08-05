@@ -51,6 +51,9 @@
                     <div class="modifiers">
                         @for (modifier of modifiersList(); track $index) {
                             <div class="modifier-item">
+                                <span class="modifier-location">
+                                    @if (modifier.loc) { {{ modifier.loc }} } @else { &mdash; }
+                                </span>
                                 <span class="modifier-reason">{{ modifier.reason }}</span>
                                 <strong class="modifier-value" [class.bonus]="modifier.pilotCheck < 0">
                                     {{ modifier.pilotCheck >= 0 ? '+' : '' }}{{ modifier.pilotCheck }}

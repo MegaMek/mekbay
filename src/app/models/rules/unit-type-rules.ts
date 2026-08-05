@@ -57,6 +57,7 @@ export interface PSRCheck {
     fallCheck?: number;
     pilotCheck?: number;
     reason: string;
+    modifierReason?: string;
     failureOutcome?: string;
     loc?: string;
     legFilter?: string;

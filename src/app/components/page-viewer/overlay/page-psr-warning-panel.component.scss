@@ -167,6 +167,7 @@
 
 .roll-details {
     --roll-value-width: 52px;
+    --modifier-location-width: 34px;
     margin: 8px;
 }
 
@@ -186,9 +187,18 @@
 .modifier-item {
     display: grid;
     background: var(--background-input);
-    grid-template-columns: minmax(0, 1fr) var(--roll-value-width);
+    grid-template-columns: var(--modifier-location-width) minmax(0, 1fr) var(--roll-value-width);
     min-height: 20px;
     border-bottom: 1px solid var(--border-color);
+}
+
+.modifier-location {
+    display: grid;
+    place-items: center;
+    background-color: var(--border-color);
+    color: var(--text-color);
+    font-size: 0.8em;
+    font-weight: 700;
 }
 
 .modifier-reason {

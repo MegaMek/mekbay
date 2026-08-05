@@ -72,19 +72,27 @@ export class TWMekRules extends MekRules {
             && this.isNamedCrit(slot, 'Hip'));
         for (const hip of destroyedHips) {
             modifier += this.hipPSRModifier;
-            modifiers.push({ pilotCheck: this.hipPSRModifier, reason: 'Hip Destroyed' });
+            modifiers.push({ pilotCheck: this.hipPSRModifier, loc: hip.loc!, reason: 'Hip Destroyed' });
             ignoreLeg.add(hip.loc!);
         }
-        const destroyedLegActuatorsCount = critSlots.filter(slot => slot.loc
+        const destroyedActuators = critSlots.filter(slot => slot.loc
             && LEG_LOCATIONS.has(slot.loc)
             && this.unit.isEquipmentUnavailable(slot)
             && !ignoreLeg.has(slot.loc)
-            && (this.isNamedCrit(slot, 'Leg') || this.isNamedCrit(slot, 'Foot'))).length;
-        if (destroyedLegActuatorsCount > 0) {
-            modifier += destroyedLegActuatorsCount;
+            && (this.isNamedCrit(slot, 'Leg') || this.isNamedCrit(slot, 'Foot')));
+        const destroyedActuatorCounts = new Map<string, number>();
+        for (const actuator of destroyedActuators) {
+            destroyedActuatorCounts.set(actuator.loc!, (destroyedActuatorCounts.get(actuator.loc!) ?? 0) + 1);
+        }
+        for (const [loc, count] of destroyedActuatorCounts) {
+            modifier += count;
             modifiers.push({
-                pilotCheck: destroyedLegActuatorsCount,
+                pilotCheck: count,
+                loc,
                 reason: 'Leg Actuator(s) Destroyed',
+                modifierReason: count === 1
+                    ? 'Leg Actuator Destroyed'
+                    : `Leg Actuators Destroyed (${count})`,
             });
         }
         return { modifier, modifiers };

@@ -168,6 +168,7 @@ describe('TWMekRules', () => {
         expect(forceUnit.rules.PSRModifiers().modifier).toBe(2);
         expect(forceUnit.rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({
             pilotCheck: 2,
+            loc: 'LL',
             reason: 'Hip Destroyed',
         }));
     });

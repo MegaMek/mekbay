@@ -29,7 +29,16 @@ describe('PagePsrWarningPanelComponent', () => {
             rules: { controlRollFullLabel: 'Piloting Skill Rolls' },
             turnState: () => turnState,
             PSRTargetRoll: () => 8,
-            PSRModifiers: () => ({ modifiers: [] }),
+            PSRModifiers: () => ({ modifiers: [
+                { pilotCheck: 2, reason: 'Gyro hit' },
+                { pilotCheck: 1, loc: 'RL', reason: 'Hip hit' },
+                {
+                    pilotCheck: 3,
+                    loc: 'LL',
+                    reason: 'Hip hit, Leg Actuator hit',
+                    modifierReason: 'Hip hit, Leg Actuators hit (2)',
+                },
+            ] }),
             resolveRuleCheck: jasmine.createSpy('resolveRuleCheck'),
         };
 
@@ -57,6 +66,8 @@ describe('PagePsrWarningPanelComponent', () => {
 
         const actions = fixture.nativeElement.querySelector('.psr-resolution-actions') as HTMLElement;
         const subtitles = fixture.nativeElement.querySelectorAll('.psr-subtitle') as NodeListOf<HTMLElement>;
+        const modifierLocations = fixture.nativeElement.querySelectorAll('.modifier-location') as NodeListOf<HTMLElement>;
+        const modifierReasons = fixture.nativeElement.querySelectorAll('.modifier-reason') as NodeListOf<HTMLElement>;
         const rollButton = actions.firstElementChild as HTMLButtonElement;
         rollButton.click();
         fixture.componentInstance.onRollFinished({ results: [4, 4], sum: 8 });
@@ -69,5 +80,12 @@ describe('PagePsrWarningPanelComponent', () => {
         expect(fixture.componentInstance.rolledResult()).toBe('SUCCESS');
         expect(subtitles[0].textContent?.replace(/\s+/g, ' ').trim()).toBe('Right Leg — Failure: Fall');
         expect(subtitles[1].textContent?.replace(/\s+/g, ' ').trim()).toBe('Failure: Fall');
+        expect(Array.from(modifierLocations, location => location.textContent?.trim())).toEqual(['—', 'RL', 'LL']);
+        expect(Array.from(modifierReasons, reason => reason.textContent?.trim())).toEqual([
+            'Gyro hit',
+            'Hip hit',
+            'Hip hit, Leg Actuators hit (2)',
+        ]);
+        expect(new Set(Array.from(modifierLocations, location => location.getBoundingClientRect().width)).size).toBe(1);
     });
 });

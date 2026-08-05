@@ -449,6 +449,7 @@ export class MekRules extends UnitTypeRulesBase {
                 pilotCheck: count,
                 loc,
                 reason: 'Leg Actuator hit',
+                modifierReason: this.formatLegActuatorModifierReason('Leg Actuator hit', count),
             });
         });
         psr.hipsHit?.forEach(loc => {
@@ -477,6 +478,10 @@ export class MekRules extends UnitTypeRulesBase {
                 pilotCheck: (existing.pilotCheck ?? 0) + (check.pilotCheck ?? 0),
                 legFilter: existing.legFilter ?? check.legFilter,
                 reason: this.formatLegActuatorPSRReasons(existing.reason, check.reason),
+                modifierReason: this.formatLegActuatorModifierReason(
+                    this.formatLegActuatorPSRReasons(existing.reason, check.reason),
+                    psr.legActuators?.get(check.loc),
+                ),
             });
         }
         return Array.from(checksByLeg.values());
@@ -515,6 +520,11 @@ export class MekRules extends UnitTypeRulesBase {
         return ['Hip hit', 'Leg Actuator hit', 'Foot hit']
             .filter(reason => included.has(reason))
             .join(', ');
+    }
+
+    private formatLegActuatorModifierReason(reason: string, actuatorHits: number | undefined): string {
+        if (!actuatorHits || actuatorHits <= 1) return reason;
+        return reason.replace('Leg Actuator hit', `Leg Actuators hit (${actuatorHits})`);
     }
 
     protected gyroHitPSRCheck(_gyroHits: number): PSRCheck | null {
@@ -1048,7 +1058,8 @@ export class MekRules extends UnitTypeRulesBase {
                 preExisting += modifier;
                 modifiers.push({
                     pilotCheck: modifier,
-                    reason: 'Leg Destroyed'
+                    loc,
+                    reason: 'Leg Destroyed',
                 });
             }
         }
@@ -1159,27 +1170,44 @@ export class MekRules extends UnitTypeRulesBase {
             && LEG_LOCATIONS.has(slot.loc)
             && !ignoreLeg.has(slot.loc)
             && this.isCritUnavailable(slot));
-        const destroyedHipsCount = relevantSlots.filter(slot => this.isNamedCrit(slot, 'Hip')).length;
-        const destroyedLegActuatorsCount = relevantSlots.filter(slot => this.isNamedCrit(slot, 'Leg')).length;
-        const destroyedFeetCount = relevantSlots.filter(slot => this.isNamedCrit(slot, 'Foot')).length;
+        const slotsByLocation = new Map<string, CriticalSlot[]>();
+        for (const slot of relevantSlots) {
+            const slots = slotsByLocation.get(slot.loc!) ?? [];
+            slots.push(slot);
+            slotsByLocation.set(slot.loc!, slots);
+        }
         const modifiers: PSRCheck[] = [];
-        if (destroyedHipsCount > 0) {
-            modifiers.push({
-                pilotCheck: destroyedHipsCount * this.hipPSRModifier,
-                reason: 'Hip Destroyed',
-            });
-        }
-        if (destroyedLegActuatorsCount > 0) {
-            modifiers.push({
-                pilotCheck: destroyedLegActuatorsCount,
-                reason: 'Leg Actuator(s) Destroyed',
-            });
-        }
-        if (destroyedFeetCount > 0) {
-            modifiers.push({
-                pilotCheck: destroyedFeetCount,
-                reason: 'Foot Actuator(s) Destroyed',
-            });
+        for (const [loc, slots] of slotsByLocation) {
+            const destroyedHipsCount = slots.filter(slot => this.isNamedCrit(slot, 'Hip')).length;
+            const destroyedLegActuatorsCount = slots.filter(slot => this.isNamedCrit(slot, 'Leg')).length;
+            const destroyedFeetCount = slots.filter(slot => this.isNamedCrit(slot, 'Foot')).length;
+            if (destroyedHipsCount > 0) {
+                modifiers.push({
+                    pilotCheck: destroyedHipsCount * this.hipPSRModifier,
+                    loc,
+                    reason: 'Hip Destroyed',
+                });
+            }
+            if (destroyedLegActuatorsCount > 0) {
+                modifiers.push({
+                    pilotCheck: destroyedLegActuatorsCount,
+                    loc,
+                    reason: 'Leg Actuator(s) Destroyed',
+                    modifierReason: destroyedLegActuatorsCount === 1
+                        ? 'Leg Actuator Destroyed'
+                        : `Leg Actuators Destroyed (${destroyedLegActuatorsCount})`,
+                });
+            }
+            if (destroyedFeetCount > 0) {
+                modifiers.push({
+                    pilotCheck: destroyedFeetCount,
+                    loc,
+                    reason: 'Foot Actuator(s) Destroyed',
+                    modifierReason: destroyedFeetCount === 1
+                        ? 'Foot Actuator Destroyed'
+                        : `Foot Actuators Destroyed (${destroyedFeetCount})`,
+                });
+            }
         }
         return {
             modifier: modifiers.reduce((total, modifier) => total + (modifier.pilotCheck ?? 0), 0),
