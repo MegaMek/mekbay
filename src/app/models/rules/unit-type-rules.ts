@@ -34,6 +34,7 @@
 import { computed, signal, type Signal } from '@angular/core';
 import { MountedWeapon, type MountedEquipment } from '../mounted-equipment.model';
 import type { ToHitModifierBreakdownEntry } from './game-rules';
+import { WeaponEquipment } from '../equipment.model';
 import type { WeaponType } from '../weapon-types.model';
 import type { CriticalSlot, RuleCheckOutcome, SerializedC3NetworkGroup } from '../force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../motiveModes.model';
@@ -115,9 +116,7 @@ export interface LocationConditionControl {
     counted?: boolean;
 }
 
-export interface UnitModifierBreakdownEntry {
-    label: string;
-    modifier: number;
+export interface UnitModifierBreakdownEntry extends ToHitModifierBreakdownEntry {
     alternateModifier?: number;
     alternateModifierLabel?: string;
 }
@@ -358,6 +357,9 @@ export interface UnitTypeRules {
     /** Gunnery-specific runtime target-number modifier breakdown. */
     getTargetNumberGunneryModifierBreakdown(): UnitModifierBreakdownEntry[];
 
+    /** Gunnery modifiers shown beside the crew skill, excluding attack-only context. */
+    getGunnerySkillDisplayModifierBreakdown(): UnitModifierBreakdownEntry[];
+
     /** Piloting-specific runtime target-number modifier breakdown. */
     getTargetNumberPilotingModifierBreakdown(): UnitModifierBreakdownEntry[];
 
@@ -366,6 +368,9 @@ export interface UnitTypeRules {
 
     /** Attack modifier breakdown for turn summary UI. */
     getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[];
+
+    /** Complete gunnery attack breakdown for summary UI. */
+    getGunneryAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[];
 
     /** Target movement modifier breakdown for turn summary UI. */
     getDefenseModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[];
@@ -489,6 +494,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         entry: MountedEquipment,
         state: MountedEquipmentRuleState,
     ): MountedEquipmentRuleState {
+        if (!entry.isPhysicalWeapon() && !(entry.equipment instanceof WeaponEquipment)) return state;
         const modifiers = entry.isPhysicalWeapon()
             ? this.getPhysicalAttackModifierBreakdown()
             : this.getTargetNumberGunneryModifierBreakdown();
@@ -678,6 +684,10 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
             .map(modifier => ({ label: modifier.reason, modifier: modifier.modifier }));
     }
 
+    getGunnerySkillDisplayModifierBreakdown(): UnitModifierBreakdownEntry[] {
+        return this.getTargetNumberGunneryModifierBreakdown();
+    }
+
     getTargetNumberPilotingModifierBreakdown(): UnitModifierBreakdownEntry[] {
         return this.pilotingModifiers()
             .filter(modifier => modifier.modifier !== 0)
@@ -703,6 +713,13 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
             entries.push({ label: 'Spotting', modifier: spottingModifier });
         }
         return entries;
+    }
+
+    getGunneryAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
+        return [
+            ...this.getTargetNumberGunneryModifierBreakdown(),
+            ...this.getAttackModifierBreakdown(turnState),
+        ];
     }
 
     getDefenseModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
@@ -788,14 +805,11 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 }
 
-/**
- * Format a piloting skill value for display, applying PSR modifiers.
- * Encapsulates the BattleTech rule: PSR target > 12 = automatic failure.
- */
-export function formatPilotingDisplay(pilotingSkill: number, psrModifier: number): string {
-    if (!psrModifier) return pilotingSkill.toString();
-    const sign = psrModifier > 0 ? '+' : '';
-    return `${pilotingSkill}${sign}${psrModifier}`;
+/** Format a piloting skill value for display with its control-roll modifier. */
+export function formatPilotingDisplay(pilotingSkill: number, controlRollModifier: number, controlRollLabel = 'PSR'): string {
+    if (!controlRollModifier) return pilotingSkill.toString();
+    const sign = controlRollModifier > 0 ? '+' : '';
+    return `${pilotingSkill}(${sign}${controlRollModifier}${controlRollLabel})`;
 }
 
 /** Format a gunnery skill value for display, applying the unit's own attack modifier. */

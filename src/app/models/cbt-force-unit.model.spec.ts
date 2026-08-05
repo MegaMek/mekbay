@@ -28,6 +28,7 @@ import { VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '..
 import { EquipmentFlag } from './equipment-flags.type';
 import { EquipmentRegistry } from './equipment-lookup';
 import { OptionsService } from '../services/options.service';
+import { formatPilotingDisplay } from './rules/unit-type-rules';
 
 function createEquipment(): EquipmentMap {
     const ultraAc20 = new WeaponEquipment({
@@ -635,6 +636,10 @@ class ExposedUnitSvgService extends UnitSvgService {
 }
 
 class ExposedUnitSvgVehicleService extends UnitSvgVehicleService {
+    refreshCrew(): void {
+        this.updateCrewDisplay(this.unit.getCrewMembers());
+    }
+
     refreshInventory(): void {
         this.updateInventory();
     }
@@ -761,6 +766,19 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         unit.svg.set(svg);
         unitInitializer.initializeUnitIfNeeded(unit, svg);
         unit.isLoaded.set(true);
+    }
+
+    function expectControlRollDisplay(element: Element | null, expectedText: string, expectedLabel: string): void {
+        expect(element?.textContent).toBe(expectedText);
+        const suffix = element?.querySelector<SVGTSpanElement>(':scope > .controlRollModifier');
+        const label = suffix?.querySelector<SVGTSpanElement>(':scope > .controlRollLabel');
+        const suffixScale = Number.parseFloat(suffix?.getAttribute('font-size') ?? '');
+        const labelScale = Number.parseFloat(label?.getAttribute('font-size') ?? '');
+        expect(suffixScale).toBeLessThan(1);
+        expect(labelScale).toBeLessThan(1);
+        expect(label?.textContent).toBe(expectedLabel);
+        expect(label?.getAttribute('font-family')).toBe('Roboto Condensed');
+        expect(label?.getAttribute('alignment-baseline')).toBe('alphabetic');
     }
 
     it('exposes live Extreme Range option state', () => {
@@ -3300,10 +3318,37 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshCrew();
 
         expect(svg.getElementById('asfGunnerySkill')?.textContent).toBe('4+1');
-        expect(svg.getElementById('asfPilotingSkill')?.textContent).toBe('5+1');
+        expectControlRollDisplay(svg.getElementById('asfPilotingSkill'), '5(+1PSR)', 'PSR');
     });
 
-    it('excludes movement from crew gunnery skill displays', () => {
+    it('derives the driving skill roll label for vehicle skill displays', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({ type: 'Tank', crewSize: 1 }));
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <text id="pilotingSkill0"></text>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        initialize(forceUnit, svg);
+        forceUnit.setInventory([new MountedEquipment({
+            owner: forceUnit,
+            id: 'ISDroneOperatingSystem@NOS#0',
+            name: 'Drone (Remote) Operating System',
+            equipment: equipment['ISDroneOperatingSystem'],
+            locations: new Set(['NOS']),
+        })]);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshCrew();
+
+        expectControlRollDisplay(svg.getElementById('pilotingSkill0'), '5(+1DSR)', 'DSR');
+    });
+
+    it('formats piloting modifiers as a labeled PSR suffix', () => {
+        expect(formatPilotingDisplay(5, 2)).toBe('5(+2PSR)');
+        expect(formatPilotingDisplay(5, 2, 'DSR')).toBe('5(+2DSR)');
+    });
+
+    it('excludes movement but retains undisplayed attack modifiers in crew gunnery skill displays', () => {
         const forceUnit = createForceUnit(createEmptyUnit({ crewSize: 1 }));
         const svg = new DOMParser().parseFromString(`
             <svg xmlns="http://www.w3.org/2000/svg">
@@ -3322,6 +3367,47 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             { label: 'Spotting', modifier: 1 },
         ]);
         expect(svg.getElementById('gunnerySkill0')?.textContent).toBe('4+1');
+    });
+
+    it('shows the Prone attacker modifier in the crew gunnery skill field', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            type: 'Mek',
+            subtype: 'BattleMek',
+            crewSize: 1,
+        }));
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <text id="gunnerySkill0"></text>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        initialize(forceUnit, svg);
+        forceUnit.setCondition('prone', true);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshCrew();
+
+        expect(forceUnit.turnState().getAttackModifierBreakdown()).toContain(jasmine.objectContaining({
+            label: 'Prone',
+            modifier: 2,
+        }));
+        expect(svg.getElementById('gunnerySkill0')?.textContent).toBe('4+2');
+    });
+
+    it('shows vehicle sensor damage on weapons but not the gunnery skill field', () => {
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
+        const svg = createVehicleSvg();
+        const gunnerySkill = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        gunnerySkill.id = 'gunnerySkill0';
+        svg.appendChild(gunnerySkill);
+        initialize(forceUnit, svg);
+        forceUnit.setCritLoc({ id: 'sensor_hit_3', destroyed: 10, destroying: 10 });
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgVehicleService(forceUnit, unitInitializer));
+
+        svgService.refreshCrew();
+        svgService.refreshInventory();
+
+        expect(gunnerySkill.textContent).toBe('4');
+        expect(svg.querySelector('.inventoryEntry > .hitMod-text')?.textContent).toBe('+3');
     });
 
     it('replaces crew damage groups with remote drone text at runtime for drone operating system units', () => {

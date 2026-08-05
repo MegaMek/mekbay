@@ -386,9 +386,9 @@ export class UnitSvgService {
         const PSRMod = this.unit.PSRModifiers();
         const pilotingDisplayModifier = PSRMod?.modifier || this.unit.pilotingModifier();
         const turnState = this.unit.turnState();
-        // Movement is displayed separately on the record sheet, so exclude it from the skill field.
+        // Weapon modifiers use their rows and movement has its own marker; undisplayed modifiers fall back here.
         const gunneryDisplayModifier = [
-            ...this.unit.rules.getTargetNumberGunneryModifierBreakdown(),
+            ...this.unit.rules.getGunnerySkillDisplayModifierBreakdown(),
             ...turnState.getAttackModifierBreakdown(),
         ].reduce((total, modifier) => total + modifier.modifier, 0)
             - turnState.getAttackMovementModifier();
@@ -450,7 +450,12 @@ export class UnitSvgService {
                 if (svgElement) {
                     const skillValue = member.getSkill(skill.name, skill.asf);
                     if (skill.name === 'piloting') {
-                        svgElement.textContent = formatPilotingDisplay(skillValue, pilotingDisplayModifier);
+                        this.renderPilotingSkillDisplay(
+                            svgElement,
+                            skillValue,
+                            pilotingDisplayModifier,
+                            this.unit.rules.controlRollShortLabel,
+                        );
                     } else {
                         svgElement.textContent = formatGunneryDisplay(skillValue, gunneryDisplayModifier);
                     }
@@ -476,6 +481,34 @@ export class UnitSvgService {
             this.updateCrewStateControls(svg, crewId, state);
 
         });
+    }
+
+    private renderPilotingSkillDisplay(
+        element: SVGElement,
+        pilotingSkill: number,
+        controlRollModifier: number,
+        controlRollLabel: string,
+    ): void {
+        const displayText = formatPilotingDisplay(pilotingSkill, controlRollModifier, controlRollLabel);
+        element.textContent = displayText;
+        if (!controlRollModifier) return;
+
+        const suffixStart = pilotingSkill.toString().length;
+        const labelStart = displayText.lastIndexOf(controlRollLabel);
+        element.textContent = displayText.slice(0, suffixStart);
+        const suffix = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+        suffix.setAttribute('class', 'controlRollModifier');
+        suffix.setAttribute('font-size', '0.72em');
+        suffix.textContent = displayText.slice(suffixStart, labelStart);
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+        label.setAttribute('class', 'controlRollLabel');
+        label.setAttribute('font-size', '0.5em');
+        label.setAttribute('font-family', 'Roboto Condensed');
+        label.setAttribute('alignment-baseline', 'alphabetic');
+        label.textContent = controlRollLabel;
+        suffix.appendChild(label);
+        suffix.appendChild(document.createTextNode(displayText.slice(labelStart + controlRollLabel.length)));
+        element.appendChild(suffix);
     }
 
     private updateCrewDamageDisplay(svg: SVGSVGElement, crew: CrewMember[]): void {

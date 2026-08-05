@@ -142,10 +142,7 @@ export class PageTurnSummaryPanelComponent {
     private readonly gunneryAttackModifierBreakdown = computed<UnitModifierBreakdownEntry[]>(() => {
         const unit = this.unit();
         if (!unit) return [];
-        return [
-            ...unit.rules.getTargetNumberGunneryModifierBreakdown(),
-            ...unit.turnState().getAttackModifierBreakdown(),
-        ];
+        return unit.rules.getGunneryAttackModifierBreakdown(unit.turnState());
     });
 
     readonly spotting = computed(() => {

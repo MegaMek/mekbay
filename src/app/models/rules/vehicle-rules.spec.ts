@@ -528,6 +528,16 @@ describe('VehicleRules', () => {
             { modifier: 3, reason: 'Sensor hit 3' },
             { modifier: 1, reason: 'Flight stabilizer hit' },
         ]);
+        expect(rules.getGunnerySkillDisplayModifierBreakdown()).toEqual([
+            { label: 'Commander hit', modifier: 1 },
+            { label: 'Co-Pilot hit', modifier: 1 },
+        ]);
+        expect(rules.getTargetNumberGunneryModifierBreakdown()).toEqual([
+            { label: 'Commander hit', modifier: 1 },
+            { label: 'Co-Pilot hit', modifier: 1 },
+            { label: 'Sensor hit 3', modifier: 3 },
+            { label: 'Flight stabilizer hit', modifier: 1 },
+        ]);
         expect(rules.pilotingModifiers()).toEqual([
             { modifier: 1, reason: 'Commander hit' },
             { modifier: 2, reason: 'Driver/Pilot hit' },

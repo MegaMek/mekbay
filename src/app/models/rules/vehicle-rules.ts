@@ -33,7 +33,7 @@
 
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
-import type { CrewStateControlDefinition, CrewStateDefinition, UnitConditionControl, MountedEquipmentRuleState, UnitSkillModifier } from './unit-type-rules';
+import type { CrewStateControlDefinition, CrewStateDefinition, UnitConditionControl, MountedEquipmentRuleState, UnitModifierBreakdownEntry, UnitSkillModifier } from './unit-type-rules';
 import type { ToHitModifierBreakdownEntry } from './game-rules';
 import { crewStateDefinitions, unitConditionControls, UnitTypeRulesBase } from './unit-type-rules';
 import type { PSRCheck, TurnState } from '../turn-state.model';
@@ -158,13 +158,7 @@ export class VehicleRules extends UnitTypeRulesBase {
 
     override readonly gunneryModifiers = computed<UnitSkillModifier[]>(() => {
         const status = this.systemsStatus();
-        const modifiers: UnitSkillModifier[] = [...this.droneOperatingSystemSkillModifiers()];
-        if (status.commanderHit) {
-            modifiers.push({ modifier: 1, reason: 'Commander hit' });
-        }
-        if (status.copilotHit) {
-            modifiers.push({ modifier: 1, reason: 'Co-Pilot hit' });
-        }
+        const modifiers = this.getGunnerySkillDisplayModifiers();
         if (status.sensorHits > 0) {
             modifiers.push({ modifier: status.sensorHits, reason: `Sensor hit ${status.sensorHits}` });
         }
@@ -173,6 +167,24 @@ export class VehicleRules extends UnitTypeRulesBase {
         }
         return modifiers;
     });
+
+    private getGunnerySkillDisplayModifiers(): UnitSkillModifier[] {
+        const status = this.systemsStatus();
+        const modifiers: UnitSkillModifier[] = [...this.droneOperatingSystemSkillModifiers()];
+        if (status.commanderHit) {
+            modifiers.push({ modifier: 1, reason: 'Commander hit' });
+        }
+        if (status.copilotHit) {
+            modifiers.push({ modifier: 1, reason: 'Co-Pilot hit' });
+        }
+        return modifiers;
+    }
+
+    override getGunnerySkillDisplayModifierBreakdown(): UnitModifierBreakdownEntry[] {
+        return this.getGunnerySkillDisplayModifiers()
+            .filter(modifier => modifier.modifier !== 0)
+            .map(modifier => ({ label: modifier.reason, modifier: modifier.modifier }));
+    }
 
     override readonly pilotingModifiers = computed<UnitSkillModifier[]>(() => {
         const status = this.systemsStatus();
