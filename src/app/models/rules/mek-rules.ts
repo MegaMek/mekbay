@@ -176,6 +176,7 @@ export class MekRules extends UnitTypeRulesBase {
     });
 
     protected override readonly crippled = computed<boolean>(() => {
+        if (!this.unit.usesForcedWithdrawal()) return false;
         if (!this.unit.isLoaded()) return false;
         const critSlots = this.unit.getCritSlots();
         const engineHits = critSlots.filter(slot =>
@@ -242,7 +243,7 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     private requiresTorsoCripplingCheck(): boolean {
-        if (!this.usesTorsoCripplingRules() || !this.unit.usesTorsoCripplePSRCheck()) return false;
+        if (!this.unit.usesForcedWithdrawal() || !this.usesTorsoCripplingRules()) return false;
         const engine = (this.unit.getUnit().engine ?? '').trim().toLowerCase();
         return engine === 'fusion' || engine === 'compact';
     }

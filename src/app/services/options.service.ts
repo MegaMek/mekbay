@@ -57,7 +57,7 @@ const DEFAULT_OPTIONS: Options = {
     printMargin: 'browserDefined',
     performanceMode: false,
     unitServers: [],
-    
+
     // Theme
     colorScheme: 'default',
     pickerStyle: 'default',
@@ -68,12 +68,12 @@ const DEFAULT_OPTIONS: Options = {
     trackPhaseAndTurn: true,
     cbtAutomations: false,
     CBTOptionalRules: {
-        torsoCripplePSRCheck: true,
+        forcedWithdrawal: true,
         extremeRange: false,
     },
     allowMultipleActiveSheets: false,
     CBTRules: 'tw',
-    
+
     // Alpha Strike
     ASUseHex: false,
     ASPrintPageBreakOnGroups: true,
@@ -186,7 +186,7 @@ function resolveForceGeneratorOptions(saved: Options | null | undefined): ForceG
 function resolveCBTOptionalRules(saved: Options | null | undefined): CBTOptionalRules {
     const defaults = DEFAULT_OPTIONS.CBTOptionalRules;
     return {
-        torsoCripplePSRCheck: saved?.CBTOptionalRules?.torsoCripplePSRCheck ?? defaults.torsoCripplePSRCheck,
+        forcedWithdrawal: saved?.CBTOptionalRules?.forcedWithdrawal ?? defaults.forcedWithdrawal,
         extremeRange: saved?.CBTOptionalRules?.extremeRange ?? defaults.extremeRange,
     };
 }

@@ -740,7 +740,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
                 { provide: OptionsService, useValue: { options: () => ({
                     cbtAutomations: cbtAutomations(),
                     CBTOptionalRules: {
-                        torsoCripplePSRCheck: true,
+                        forcedWithdrawal: true,
                         extremeRange: extremeRange(),
                     },
                 }) } },

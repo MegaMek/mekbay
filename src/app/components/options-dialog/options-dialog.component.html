@@ -518,16 +518,16 @@
             </div>
             <div class="option-section-title">Optional rules</div>
             <div class="option-row">
-                <label for="CBTTorsoCripplePSRCheck">Torso crippling PSR check:</label>
-                <select id="CBTTorsoCripplePSRCheck" class="bt-select"
-                    [value]="optionsService.options().CBTOptionalRules.torsoCripplePSRCheck"
-                    (change)="onCBTOptionalRuleChange('torsoCripplePSRCheck', $event)">
+                <label for="CBTForcedWithdrawal">Forced Withdrawal (Cripple):</label>
+                <select id="CBTForcedWithdrawal" class="bt-select"
+                    [value]="optionsService.options().CBTOptionalRules.forcedWithdrawal"
+                    (change)="onCBTOptionalRuleChange('forcedWithdrawal', $event)">
                     <option value="true">Enabled (default)</option>
                     <option value="false">Disabled</option>
                 </select>
             </div>
             <div class="option-row">
-                <label for="CBTOptionalExtremeRange">Enable "Extreme" range:</label>
+                <label for="CBTOptionalExtremeRange">"Extreme" range:</label>
                 <select id="CBTOptionalExtremeRange" class="bt-select"
                     [value]="optionsService.options().CBTOptionalRules.extremeRange"
                     (change)="onCBTOptionalRuleChange('extremeRange', $event)">

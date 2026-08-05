@@ -134,7 +134,7 @@ export class CBTForceUnit extends ForceUnit {
         const optionsService = this.injector.get(OptionsService, null, { optional: true });
         if (optionsService) {
             this.optionalRulesEffect = effect(() => {
-                optionsService.options().CBTOptionalRules?.torsoCripplePSRCheck;
+                optionsService.options().CBTOptionalRules?.forcedWithdrawal;
                 if (this.isLoaded()) untracked(() => this.reconcileRuleChecks());
             }, { injector: this.injector, manualCleanup: true });
         }
@@ -152,8 +152,8 @@ export class CBTForceUnit extends ForceUnit {
         return this.injector.get(OptionsService, null, { optional: true })?.options().CBTOptionalRules?.extremeRange ?? false;
     }
 
-    usesTorsoCripplePSRCheck(): boolean {
-        return this.injector.get(OptionsService, null, { optional: true })?.options().CBTOptionalRules?.torsoCripplePSRCheck ?? true;
+    usesForcedWithdrawal(): boolean {
+        return this.injector.get(OptionsService, null, { optional: true })?.options().CBTOptionalRules?.forcedWithdrawal ?? true;
     }
 
     private getEquipmentInteractionRegistry(): EquipmentInteractionRegistry {

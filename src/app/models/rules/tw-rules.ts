@@ -103,6 +103,7 @@ export class TWMekRules extends MekRules {
     }
 
     protected override readonly crippled = computed<boolean>(() => {
+        if (!this.unit.usesForcedWithdrawal()) return false;
         if (!this.unit.isLoaded()) return false;
         return this.allCrewCrippled()
             || this.allSensorsDestroyedOrDestroying()

@@ -80,7 +80,7 @@ describe('OptionsDialogComponent', () => {
         const component = configureComponent({
             options: () => ({
                 unitServers: [],
-                CBTOptionalRules: { torsoCripplePSRCheck: true, extremeRange: false },
+                CBTOptionalRules: { forcedWithdrawal: true, extremeRange: false },
             }),
             setOption,
         });
@@ -88,10 +88,10 @@ describe('OptionsDialogComponent', () => {
         select.innerHTML = '<option value="true">Enabled</option><option value="false">Disabled</option>';
         select.value = 'false';
 
-        component.onCBTOptionalRuleChange('torsoCripplePSRCheck', { target: select } as unknown as Event);
+        component.onCBTOptionalRuleChange('forcedWithdrawal', { target: select } as unknown as Event);
 
         expect(setOption).toHaveBeenCalledOnceWith('CBTOptionalRules', {
-            torsoCripplePSRCheck: false,
+            forcedWithdrawal: false,
             extremeRange: false,
         });
     });

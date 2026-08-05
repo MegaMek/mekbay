@@ -73,7 +73,7 @@ export interface ForceGeneratorOptions {
 export type ForceViewerBVPVDisplay = 'adjusted' | 'base' | 'both';
 
 export interface CBTOptionalRules {
-    torsoCripplePSRCheck: boolean;
+    forcedWithdrawal: boolean;
     extremeRange: boolean;
 }
 

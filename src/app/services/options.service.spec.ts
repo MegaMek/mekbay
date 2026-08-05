@@ -46,7 +46,7 @@ describe('OptionsService theme migration', () => {
         const service = await createService();
 
         expect(service.options().CBTOptionalRules).toEqual({
-            torsoCripplePSRCheck: true,
+            forcedWithdrawal: true,
             extremeRange: false,
         });
     });
@@ -54,7 +54,7 @@ describe('OptionsService theme migration', () => {
     it('restores structured CBT optional rules', async () => {
         savedOptions = {
             CBTOptionalRules: {
-                torsoCripplePSRCheck: false,
+                forcedWithdrawal: false,
                 extremeRange: true,
             },
         };
@@ -62,7 +62,7 @@ describe('OptionsService theme migration', () => {
         const service = await createService();
 
         expect(service.options().CBTOptionalRules).toEqual({
-            torsoCripplePSRCheck: false,
+            forcedWithdrawal: false,
             extremeRange: true,
         });
     });

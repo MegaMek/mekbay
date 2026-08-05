@@ -94,7 +94,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         getEquipmentHeatSources: () => inventory().flatMap(entry => heatSourceHandlers
             .flatMap(handler => handler.getInventoryHeatSources?.(entry, turnState) ?? [])),
         getRunMovementMultiplierBonus: () => 0,
-        usesTorsoCripplePSRCheck: () => true,
+        usesForcedWithdrawal: () => true,
         isInternalLocCommittedDestroyed: (loc: string) => committedDestroyedLegs.has(loc),
         isInternalLocDestroyed: (loc: string) => currentDestroyedLegs.has(loc) || committedDestroyedLegs.has(loc),
         isEquipmentUnavailable: (slot: CriticalSlot) => !!slot.destroyed || (slot.loc ? committedDestroyedLegs.has(slot.loc) : false),
