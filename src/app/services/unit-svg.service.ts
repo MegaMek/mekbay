@@ -550,14 +550,20 @@ export class UnitSvgService {
 
     private updateRemoteDroneCrewDamageLabel(svg: SVGSVGElement, container: Element | null, visible: boolean, x: string, y: string): void {
         let label = svg.getElementById('remoteDroneCrewDamage0Label') as SVGTextElement | null;
+        let reminder = svg.getElementById('remoteDroneCrewDamage0Reminder') as SVGTextElement | null;
         if (!visible || !container) {
             label?.remove();
+            reminder?.remove();
             return;
         }
         if (!label) {
             label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         }
+        if (!reminder) {
+            reminder = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        }
         container.appendChild(label);
+        container.appendChild(reminder);
         label.setAttribute('id', 'remoteDroneCrewDamage0Label');
         label.setAttribute('class', 'remoteDroneCrewDamageLabel screen-only');
         label.setAttribute('text-anchor', 'middle');
@@ -566,11 +572,31 @@ export class UnitSvgService {
         label.setAttribute('font-size', '9');
         label.setAttribute('font-weight', 'bold');
         label.setAttribute('fill', '#000');
-        label.setAttribute('x', x);
-        label.setAttribute('y', y);
         label.textContent = 'REMOTE DRONE';
         label.style.display = '';
         label.removeAttribute('display');
+        reminder.setAttribute('id', 'remoteDroneCrewDamage0Reminder');
+        reminder.setAttribute('class', 'remoteDroneCrewDamageReminder screen-only');
+        reminder.setAttribute('text-anchor', 'middle');
+        reminder.setAttribute('dominant-baseline', 'middle');
+        reminder.setAttribute('font-family', 'Roboto, sans-serif');
+        reminder.setAttribute('font-size', '5.5');
+        reminder.setAttribute('fill', '#000');
+        reminder.style.display = '';
+        reminder.removeAttribute('display');
+        if (this.unit.getUnit().type === 'Tank') {
+            reminder.textContent = 'G/P = OPERATOR +1';
+            label.setAttribute('x', (Number(x) - 32).toString());
+            label.setAttribute('y', y);
+            reminder.setAttribute('x', (Number(x) + 32).toString());
+            reminder.setAttribute('y', y);
+        } else {
+            reminder.textContent = 'Gunnery/Piloting = OPERATOR +1';
+            label.setAttribute('x', x);
+            label.setAttribute('y', y);
+            reminder.setAttribute('x', x);
+            reminder.setAttribute('y', (Number(y) + 8).toString());
+        }
     }
 
     private updateCrewStateControls(svg: SVGSVGElement, crewId: number, state: CrewMemberState): void {

@@ -387,9 +387,9 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     readonly controlRollFullLabel: string;
     readonly PSRModifiers: Signal<{ modifier: number; modifiers: PSRCheck[] }> = signal({ modifier: 0, modifiers: [] });
     readonly PSRTargetRoll: Signal<number> = signal(0);
-    readonly gunneryModifiers: Signal<UnitSkillModifier[]> = computed(() => this.droneOperatingSystemSkillModifiers());
+    readonly gunneryModifiers: Signal<UnitSkillModifier[]> = signal([]);
     readonly gunneryModifier: Signal<number> = computed(() => this.gunneryModifiers().reduce((total, modifier) => total + modifier.modifier, 0));
-    readonly pilotingModifiers: Signal<UnitSkillModifier[]> = computed(() => this.droneOperatingSystemSkillModifiers());
+    readonly pilotingModifiers: Signal<UnitSkillModifier[]> = signal([]);
     readonly pilotingModifier: Signal<number> = computed(() => this.pilotingModifiers().reduce((total, modifier) => total + modifier.modifier, 0));
     readonly autoFall: Signal<boolean> = signal(false);
     readonly heatDissipation: Signal<HeatDissipationState | null> = signal(null);
@@ -602,12 +602,6 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     protected isDroneOperatingSystemUnavailable(): boolean {
         const droneOperatingSystem = this.droneOperatingSystem();
         return droneOperatingSystem !== undefined && this.unit.isEquipmentUnavailable(droneOperatingSystem);
-    }
-
-    protected droneOperatingSystemSkillModifiers(): UnitSkillModifier[] {
-        return this.hasDroneOperatingSystem()
-            ? [{ modifier: 1, reason: 'Drone operating system' }]
-            : [];
     }
 
     getPSRChecks(_turnState: TurnState): PSRCheck[] {

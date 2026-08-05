@@ -864,34 +864,6 @@ describe('MekRules', () => {
         expect(rules.getEffectiveMaxDistanceForMoveMode('run', forceUnit.turnState())).toBe(10);
     });
 
-    it('applies drone operating system controls and skill modifiers', () => {
-        const forceUnit = createForceUnitHarness();
-        forceUnit.setInventory([droneOperatingSystemEntry(forceUnit)]);
-        const rules = forceUnit.rules as MekRules;
-
-        expect(rules.conditionControls.map(control => control.key)).toContain('disconnected');
-        expect(rules.crewStateControls).toEqual([]);
-        expect(rules.crewStateDefinition('dead')).toBeUndefined();
-        expect(rules.gunneryModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
-        expect(rules.pilotingModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
-        expect(rules.getTargetNumberGunneryModifierBreakdown()).toEqual([{ label: 'Drone operating system', modifier: 1 }]);
-        expect(rules.getTargetNumberPilotingModifierBreakdown()).toEqual([{ label: 'Drone operating system', modifier: 1 }]);
-        expect(rules.gunneryModifier()).toBe(1);
-        expect(rules.pilotingModifier()).toBe(1);
-
-        const ranged = directFireWeaponEntry(forceUnit);
-        const physical = new MountedEquipment({ owner: forceUnit, id: 'kick', name: 'Kick', intrinsicPhysicalAttack: true });
-        expect(rules.computeEntryState(ranged)).toEqual(jasmine.objectContaining({
-            hitMod: 1,
-            hitModifierBreakdown: [{ label: 'Drone operating system', modifier: 1 }],
-        }));
-        expect(rules.computeEntryState(physical)).toEqual(jasmine.objectContaining({
-            hitMod: 1,
-            hitModifierBreakdown: [{ label: 'Drone operating system', modifier: 1 }],
-        }));
-        expect(forceUnit.turnState().getAttackModifierBreakdown()).toEqual([]);
-    });
-
     it('uses active Tripod dedicated crew for target-number skills', () => {
         const forceUnit = createForceUnitHarness({ subtype: 'Tripod BattleMek', crewStates: ['healthy', 'healthy', 'healthy'] });
         forceUnit.getCrewMember(0).setSkill('piloting', 5);
@@ -1077,8 +1049,7 @@ describe('MekRules', () => {
         forceUnit.setInventory([droneOperatingSystemEntry(forceUnit)]);
         const rules = forceUnit.rules as MekRules;
 
-        expect(rules.PSRModifiers().modifier).toBe(1);
-        expect(rules.PSRModifiers().modifiers.map(modifier => modifier.reason)).toContain('Drone operating system');
+        expect(rules.PSRModifiers().modifier).toBe(0);
         expect(rules.PSRModifiers().modifiers.map(modifier => modifier.reason)).not.toContain('Mounts small or torso cockpit');
     });
 

@@ -3293,7 +3293,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect((svg.getElementById('crew_state_button_0_pilotName0') as SVGElement).style.display).toBe('none');
     });
 
-    it('renders drone operating system piloting modifier for aero skill displays', () => {
+    it('does not apply drone controller modifiers to aero skill displays', () => {
         const forceUnit = createForceUnit(createEmptyUnit({
             name: 'DroneAero_TEST-1',
             chassis: 'Drone Aero',
@@ -3320,11 +3320,11 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         svgService.refreshCrew();
 
-        expect(svg.getElementById('asfGunnerySkill')?.textContent).toBe('4+1');
-        expectControlRollDisplay(svg.getElementById('asfPilotingSkill'), '5 +1PSR', 'PSR');
+        expect(svg.getElementById('asfGunnerySkill')?.textContent).toBe('4');
+        expect(svg.getElementById('asfPilotingSkill')?.textContent).toBe('5');
     });
 
-    it('derives the driving skill roll label for vehicle skill displays', () => {
+    it('does not apply drone controller modifiers to vehicle skill displays', () => {
         const forceUnit = createForceUnit(createEmptyUnit({ type: 'Tank', crewSize: 1 }));
         const svg = new DOMParser().parseFromString(`
             <svg xmlns="http://www.w3.org/2000/svg">
@@ -3343,7 +3343,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         svgService.refreshCrew();
 
-        expectControlRollDisplay(svg.getElementById('pilotingSkill0'), '5 +1DSR', 'DSR');
+        expect(svg.getElementById('pilotingSkill0')?.textContent).toBe('5');
     });
 
     it('formats piloting modifiers as a labeled PSR suffix', () => {
@@ -3445,11 +3445,17 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(crewDamage.style.display).toBe('none');
         expect(remoteDroneLabel.parentNode).toBe(crewDamageContainer);
         expect(remoteDroneLabel.textContent).toBe('REMOTE DRONE');
-
         svgService.refreshCrew();
 
         expect((svg.getElementById('remoteDroneCrewDamage0Label') as SVGTextElement).getAttribute('display')).toBeNull();
         expect((svg.getElementById('remoteDroneCrewDamage0Label') as SVGTextElement).style.display).toBe('');
+        expect(svg.querySelectorAll('#remoteDroneCrewDamage0Reminder').length).toBe(1);
+
+        forceUnit.setInventory([]);
+        svgService.refreshCrew();
+
+        expect(svg.getElementById('remoteDroneCrewDamage0Label')).toBeNull();
+        expect(svg.getElementById('remoteDroneCrewDamage0Reminder')).toBeNull();
     });
 
     it('uses the blank crew name container for remote drone text when crew damage is missing', () => {

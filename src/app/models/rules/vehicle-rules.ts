@@ -170,7 +170,7 @@ export class VehicleRules extends UnitTypeRulesBase {
 
     private getGunnerySkillDisplayModifiers(): UnitSkillModifier[] {
         const status = this.systemsStatus();
-        const modifiers: UnitSkillModifier[] = [...this.droneOperatingSystemSkillModifiers()];
+        const modifiers: UnitSkillModifier[] = [];
         if (status.commanderHit) {
             modifiers.push({ modifier: 1, reason: 'Commander hit' });
         }
@@ -188,7 +188,7 @@ export class VehicleRules extends UnitTypeRulesBase {
 
     override readonly pilotingModifiers = computed<UnitSkillModifier[]>(() => {
         const status = this.systemsStatus();
-        const modifiers: UnitSkillModifier[] = [...this.droneOperatingSystemSkillModifiers()];
+        const modifiers: UnitSkillModifier[] = [];
         if (status.commanderHit) {
             modifiers.push({ modifier: 1, reason: 'Commander hit' });
         }
@@ -315,9 +315,6 @@ export class VehicleRules extends UnitTypeRulesBase {
                 pilotCheck: 1,
                 reason: 'Mounts Hardened Armor'
             });
-        }
-        if (this.hasDroneOperatingSystem()) {
-            modifiers.push({ pilotCheck: 1, reason: 'Drone operating system' });
         }
         if (status.commanderHit) {
             modifiers.push({ pilotCheck: 1, reason: 'Commander hit' });

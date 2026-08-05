@@ -546,22 +546,6 @@ describe('VehicleRules', () => {
         ]);
     });
 
-    it('applies drone operating system controls and skill modifiers to vehicles', () => {
-        const rules = createRulesHarness({
-            inventory: [entry({ equipment: equipment('ISDroneOperatingSystem', ['F_DRONE_OPERATING_SYSTEM']) })],
-        });
-
-        expect(rules.conditionControls.map(control => control.key)).toContain('disconnected');
-        expect(rules.crewStateControls).toEqual([]);
-        expect(rules.crewStateDefinition('killed')).toBeUndefined();
-        expect(rules.gunneryModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
-        expect(rules.pilotingModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
-        expect(rules.gunneryModifier()).toBe(1);
-        expect(rules.pilotingModifier()).toBe(1);
-        expect(rules.PSRModifiers().modifier).toBe(1);
-        expect(rules.PSRModifiers().modifiers.map(modifier => modifier.reason)).toContain('Drone operating system');
-    });
-
     it('makes drone vehicles Immobile after a commander hit disconnects them', () => {
         const rules = createRulesHarness({
             crits: [
@@ -576,9 +560,9 @@ describe('VehicleRules', () => {
         expect(rules.hasComputedCondition('disconnected')).toBeTrue();
         expect(rules.hasComputedCondition('immobile')).toBeTrue();
         expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, moveImpaired: true }));
-        expect(rules.gunneryModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
-        expect(rules.pilotingModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
-        expect(rules.PSRModifiers().modifier).toBe(1);
+        expect(rules.gunneryModifiers()).toEqual([]);
+        expect(rules.pilotingModifiers()).toEqual([]);
+        expect(rules.PSRModifiers().modifier).toBe(0);
     });
 
     it('makes disconnected drone vehicles Immobile under every rules system', () => {
