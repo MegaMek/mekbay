@@ -2203,6 +2203,10 @@ describe('WeaponsEquipmentPanelComponent', () => {
         fixture.detectChanges();
 
         expect(component.selectedHeatProjection()).toBeNull();
+        expect(fixture.nativeElement.querySelector('.heat-header')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.heat-cell')).toBeNull();
+        expect((fixture.nativeElement.querySelector('.weapons-equipment-panel') as HTMLElement).classList.contains('hide-heat-column')).toBeTrue();
+        expect(getComputedStyle(fixture.nativeElement.querySelector('.damage-cell')).gridColumnStart).toBe('span 2');
 
         await component.consumeSelectedHeatAndAmmo();
 

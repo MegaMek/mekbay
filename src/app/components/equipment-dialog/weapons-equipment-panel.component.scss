@@ -403,6 +403,11 @@
     grid-column: 9;
 }
 
+.weapons-equipment-panel.hide-heat-column .damage-header,
+.weapons-equipment-panel.hide-heat-column .damage-cell {
+    grid-column: span 2;
+}
+
 .weapons-equipment-panel.has-targets .min-cell {
     grid-column: 10;
 }

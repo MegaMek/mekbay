@@ -177,6 +177,7 @@ export class WeaponsEquipmentPanelComponent {
     readonly hasAmmoColumn = computed(() => this.groups().some(group => this.groupTracksAmmo(group)));
     readonly hasControlsColumn = computed(() => this.groups().some(group => this.groupHasControls(group)));
     readonly hasActionsColumn = computed(() => this.groups().some(group => this.groupHasActions(group)));
+    readonly tracksHeat = computed(() => this.heatDissipationState() !== null);
     readonly selectedRows = computed(() => {
         const entryStates = this.inventoryControl().entryStates();
         return this.groups()
