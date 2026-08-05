@@ -1405,8 +1405,6 @@ export class SvgInteractionService {
             target: effectiveTarget,
             gunnerySkill: unit.rules.getTargetNumberGunnerySkill(),
             pilotingSkill: unit.rules.getTargetNumberPilotingSkill(),
-            gunneryModifierBreakdown: unit.rules.getTargetNumberGunneryModifierBreakdown(),
-            pilotingModifierBreakdown: unit.rules.getTargetNumberPilotingModifierBreakdown(),
             missingMovementModifier,
             attackModifierBreakdown: unit.turnState().getAttackModifierBreakdown(),
             hitModifier,

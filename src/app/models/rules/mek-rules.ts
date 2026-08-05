@@ -1064,12 +1064,21 @@ export class MekRules extends UnitTypeRulesBase {
                 });
             }
         }
-        if (config === 'Quad' && undamagedLegs) {
-            preExisting -= 2; // Four-legged unit with all legs intact gets -2 modifier
-            modifiers.push({
-                pilotCheck: -2,
-                reason: "All legs are intact"
-            });
+        if (undamagedLegs) {
+            if (config === 'Tripod') {
+                preExisting -= 1; // Tripod unit with all legs intact gets -1 modifier
+                modifiers.push({
+                    pilotCheck: -1,
+                    reason: "All legs are intact"
+                });
+            } else
+            if (config === 'Quad') {
+                preExisting -= 2; // Four-legged unit with all legs intact gets -2 modifier
+                modifiers.push({
+                    pilotCheck: -2,
+                    reason: "All legs are intact"
+                });
+            }
         }
         // Calculate current turn modifiers
         let ignorePreExistingGyro = false;
@@ -1123,13 +1132,6 @@ export class MekRules extends UnitTypeRulesBase {
                 });
             }
         }
-        if (this.hasDroneOperatingSystem()) {
-            preExisting += 1;
-            modifiers.push({
-                pilotCheck: 1,
-                reason: 'Drone operating system'
-            });
-        }
         const hasSmallOrTorsoCockpit = critSlots.some(slot => slot.loc
             && ((this.isNamedCrit(slot, 'Cockpit') && this.isNamedCrit(slot, 'Small'))
                 || (this.isNamedCrit(slot, 'Command') && this.isNamedCrit(slot, 'Small'))))
@@ -1141,12 +1143,11 @@ export class MekRules extends UnitTypeRulesBase {
                 reason: "Mounts small or torso cockpit"
             });
         }
-        const dedicatedPilotModifier = this.getTripodDedicatedPilotModifierEntry();
-        if (dedicatedPilotModifier) {
-            preExisting += dedicatedPilotModifier.modifier;
+        for (const pilotingModifier of this.getTargetNumberPilotingModifierBreakdown()) {
+            preExisting += pilotingModifier.modifier;
             modifiers.push({
-                pilotCheck: dedicatedPilotModifier.modifier,
-                reason: dedicatedPilotModifier.label
+                pilotCheck: pilotingModifier.modifier,
+                reason: pilotingModifier.label
             });
         }
         const legActuatorModifiers = this.getPreExistingLegActuatorPSRModifiers(critSlots, ignoreLeg);
@@ -1299,18 +1300,27 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     override getTargetNumberPilotingModifierBreakdown(): UnitModifierBreakdownEntry[] {
-        const dedicatedPilotModifier = this.getTripodDedicatedPilotModifierEntry();
-        if (!dedicatedPilotModifier) return super.getTargetNumberPilotingModifierBreakdown();
-        return [...super.getTargetNumberPilotingModifierBreakdown(), dedicatedPilotModifier];
+        const entries = super.getTargetNumberPilotingModifierBreakdown();
+        if (!this.isTripodMek()) return entries;
+        const dedicatedPilot = this.unit.getCrewMember(0);
+        if (!dedicatedPilot) return entries;
+        return [
+            ...entries,
+            this.isActiveCrewMember(dedicatedPilot)
+                ? { label: 'Dedicated Pilot', modifier: -1 }
+                : { label: 'Dedicated Pilot disabled', modifier: 2 },
+        ];
     }
 
-    private getTripodDedicatedPilotModifierEntry(): UnitModifierBreakdownEntry | null {
-        if (!this.isTripodMek()) return null;
-        const dedicatedPilot = this.unit.getCrewMember(0);
-        if (!dedicatedPilot) return null;
-        return this.isActiveCrewMember(dedicatedPilot)
-            ? { label: 'Dedicated Pilot', modifier: -1 }
-            : { label: 'Dedicated Pilot disabled', modifier: 2 };
+    override getPhysicalAttackModifierBreakdown(): UnitModifierBreakdownEntry[] {
+        const entries = super.getPhysicalAttackModifierBreakdown();
+        return this.isSuperheavy()
+            ? [...entries, { label: 'Superheavy', modifier: 1 }]
+            : entries;
+    }
+
+    protected isSuperheavy(): boolean {
+        return this.unit.getUnit().tons > 100;
     }
 
     private isTripodMek(): boolean {
@@ -1865,7 +1875,9 @@ export class MekRules extends UnitTypeRulesBase {
         const physical = this.physicalCombat();
         const fire = this.fireControl();
         const systemsStatus = this.systemsStatus();
-        if (!physical || !fire) return { isDamaged, isDisabled, hitMod, hitModifierBreakdown, weakenedHitMod };
+        if (!physical || !fire) {
+            return this.applyTargetNumberSkillModifiers(entry, { isDamaged, isDisabled, hitMod, hitModifierBreakdown, weakenedHitMod });
+        }
 
         if (fire.torsoCockpitHeadSensorModifier !== 0) {
             hitMod += fire.torsoCockpitHeadSensorModifier;
@@ -2019,7 +2031,7 @@ export class MekRules extends UnitTypeRulesBase {
         if (describedModifier !== hitMod) {
             hitModifierBreakdown.push({ label: 'Hit Modifier', modifier: hitMod - describedModifier });
         }
-        return { isDamaged, isDisabled, hitMod, hitModifierBreakdown, weakenedHitMod };
+        return this.applyTargetNumberSkillModifiers(entry, { isDamaged, isDisabled, hitMod, hitModifierBreakdown, weakenedHitMod });
     }
 
     private addArmActuatorBreakdown(

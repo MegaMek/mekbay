@@ -3303,6 +3303,27 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(svg.getElementById('asfPilotingSkill')?.textContent).toBe('5+1');
     });
 
+    it('excludes movement from crew gunnery skill displays', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({ crewSize: 1 }));
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <text id="gunnerySkill0"></text>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        initialize(forceUnit, svg);
+        forceUnit.turnState().moveMode.set('run');
+        forceUnit.turnState().spotting.set(true);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshCrew();
+
+        expect(forceUnit.turnState().getAttackModifierBreakdown()).toEqual([
+            { label: 'Run', modifier: 2 },
+            { label: 'Spotting', modifier: 1 },
+        ]);
+        expect(svg.getElementById('gunnerySkill0')?.textContent).toBe('4+1');
+    });
+
     it('replaces crew damage groups with remote drone text at runtime for drone operating system units', () => {
         const forceUnit = createForceUnit(createDroneMekUnit(equipment));
         const svg = new DOMParser().parseFromString(`

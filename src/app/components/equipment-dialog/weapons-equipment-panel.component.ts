@@ -427,12 +427,18 @@ export class WeaponsEquipmentPanelComponent {
 
     private hitModifierTooltip(resolution: ToHitResolution): TooltipLine[] | null {
         if (resolution.modifierBreakdown.length === 0) return null;
-        return orderHitTargetTooltipLines(resolution.modifierBreakdown.map(entry => ({
+        const lines = orderHitTargetTooltipLines(resolution.modifierBreakdown.map(entry => ({
             label: entry.label,
             value: formatInventoryTargetSignedModifier(entry.modifier),
             ...(entry.negative && { negative: true }),
             ...(entry.kind && { kind: entry.kind })
         })));
+        if (typeof resolution.value !== 'number') return lines;
+        return [
+            ...lines,
+            { isBreak: true },
+            { label: 'Total', value: formatInventoryTargetSignedModifier(resolution.value), isHeader: true },
+        ];
     }
 
     rangeValue(row: InventoryControlRow, range: InventoryRangeDisplayKey): string {
@@ -473,8 +479,6 @@ export class WeaponsEquipmentPanelComponent {
             target,
             gunnerySkill: this.unit().rules.getTargetNumberGunnerySkill(),
             pilotingSkill: this.unit().rules.getTargetNumberPilotingSkill(),
-            gunneryModifierBreakdown: this.unit().rules.getTargetNumberGunneryModifierBreakdown(),
-            pilotingModifierBreakdown: this.unit().rules.getTargetNumberPilotingModifierBreakdown(),
             missingMovementModifier,
             attackModifierBreakdown: this.unit().turnState().getAttackModifierBreakdown(),
             hitModifier,

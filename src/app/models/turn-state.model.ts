@@ -157,11 +157,6 @@ export class TurnState {
         return this.moveMode() === null && this.attackMovementModifierCanApply();
     });
 
-    getTotalTargetModifierAsAttacker = computed<number>(() => {
-        return this.getAttackModifierBreakdown()
-            .reduce((total, entry) => total + entry.modifier, 0);
-    });
-
     getAttackModifierBreakdown = computed<UnitModifierBreakdownEntry[]>(() => {
         return this.unitState.unit.rules.getAttackModifierBreakdown(this);
     });

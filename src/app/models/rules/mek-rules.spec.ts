@@ -44,6 +44,7 @@ function createRulesHarness(options: {
     run?: number;
     jump?: number;
     umu?: number;
+    tons?: number;
     engine?: string;
     subtype?: UnitSubtype;
     rulesId?: 'core2026' | 'tw';
@@ -72,6 +73,7 @@ function createForceUnitHarness(options: {
     run?: number;
     jump?: number;
     umu?: number;
+    tons?: number;
     engine?: string;
     subtype?: UnitSubtype;
     rulesId?: 'core2026' | 'tw';
@@ -95,6 +97,7 @@ function createForceUnitHarness(options: {
         run: options.run ?? 8,
         jump: options.jump ?? 4,
         umu: options.umu ?? 2,
+        tons: options.tons ?? 50,
         engine: options.engine ?? 'Fusion',
     });
 
@@ -871,8 +874,22 @@ describe('MekRules', () => {
         expect(rules.crewStateDefinition('dead')).toBeUndefined();
         expect(rules.gunneryModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
         expect(rules.pilotingModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
+        expect(rules.getTargetNumberGunneryModifierBreakdown()).toEqual([{ label: 'Drone operating system', modifier: 1 }]);
+        expect(rules.getTargetNumberPilotingModifierBreakdown()).toEqual([{ label: 'Drone operating system', modifier: 1 }]);
         expect(rules.gunneryModifier()).toBe(1);
         expect(rules.pilotingModifier()).toBe(1);
+
+        const ranged = new MountedEquipment({ owner: forceUnit, id: 'laser', name: 'Laser' });
+        const physical = new MountedEquipment({ owner: forceUnit, id: 'kick', name: 'Kick', intrinsicPhysicalAttack: true });
+        expect(rules.computeEntryState(ranged)).toEqual(jasmine.objectContaining({
+            hitMod: 1,
+            hitModifierBreakdown: [{ label: 'Drone operating system', modifier: 1 }],
+        }));
+        expect(rules.computeEntryState(physical)).toEqual(jasmine.objectContaining({
+            hitMod: 1,
+            hitModifierBreakdown: [{ label: 'Drone operating system', modifier: 1 }],
+        }));
+        expect(forceUnit.turnState().getAttackModifierBreakdown()).toEqual([]);
     });
 
     it('uses active Tripod dedicated crew for target-number skills', () => {
@@ -899,6 +916,12 @@ describe('MekRules', () => {
 
         expect(rules.getTargetNumberGunnerySkill()).toBe(5);
         expect(rules.getTargetNumberGunneryModifierBreakdown()).toEqual([{ label: 'Dedicated Gunnery Officer disabled', modifier: 2 }]);
+        const ranged = new MountedEquipment({ owner: forceUnit, id: 'laser', name: 'Laser' });
+        expect(rules.computeEntryState(ranged)).toEqual(jasmine.objectContaining({
+            hitMod: 2,
+            hitModifierBreakdown: [{ label: 'Dedicated Gunnery Officer disabled', modifier: 2 }],
+        }));
+        expect(forceUnit.turnState().getAttackModifierBreakdown()).toEqual([]);
     });
 
     it('uses the first active alternate pilot with a modifier when the Tripod dedicated pilot is disabled', () => {
@@ -911,6 +934,56 @@ describe('MekRules', () => {
         expect(rules.getTargetNumberPilotingSkill()).toBe(6);
         expect(rules.getTargetNumberPilotingModifierBreakdown()).toEqual([{ label: 'Dedicated Pilot disabled', modifier: 2 }]);
         expect(rules.PSRTargetRoll()).toBe(8);
+    });
+
+    it('applies the Tripod dedicated pilot modifier to physical attacks', () => {
+        const forceUnit = createForceUnitHarness({ subtype: 'Tripod BattleMek', crewStates: ['healthy', 'healthy', 'healthy'] });
+        const punch = new MountedEquipment({
+            owner: forceUnit,
+            id: 'punch',
+            name: 'Punch',
+            intrinsicPhysicalAttack: true,
+            locations: new Set(['LA']),
+        });
+        const ranged = new MountedEquipment({ owner: forceUnit, id: 'laser', name: 'Laser' });
+
+        expect(forceUnit.rules.computeEntryState(punch)).toEqual(jasmine.objectContaining({
+            hitMod: -1,
+            hitModifierBreakdown: [{ label: 'Dedicated Pilot', modifier: -1 }],
+        }));
+        expect(forceUnit.rules.computeEntryState(ranged)).toEqual(jasmine.objectContaining({
+            hitMod: 0,
+            hitModifierBreakdown: [],
+        }));
+
+        forceUnit.getCrewMember(0).setState('unconscious');
+
+        expect(forceUnit.rules.computeEntryState(punch)).toEqual(jasmine.objectContaining({
+            hitMod: 2,
+            hitModifierBreakdown: [{ label: 'Dedicated Pilot disabled', modifier: 2 }],
+        }));
+    });
+
+    it('applies the Superheavy modifier only to physical attacks above 100 tons', () => {
+        const superheavy = createForceUnitHarness({ tons: 101 });
+        const assault = createForceUnitHarness({ tons: 100 });
+        const physical = (forceUnit: CBTForceUnit) => new MountedEquipment({
+            owner: forceUnit,
+            id: 'kick',
+            name: 'Kick',
+            intrinsicPhysicalAttack: true,
+        });
+        const ranged = new MountedEquipment({ owner: superheavy, id: 'laser', name: 'Laser' });
+
+        expect(superheavy.rules.getPhysicalAttackModifierBreakdown()).toEqual([{ label: 'Superheavy', modifier: 1 }]);
+        expect(superheavy.rules.getTargetNumberPilotingModifierBreakdown()).toEqual([]);
+        expect(superheavy.rules.PSRModifiers().modifiers.map(modifier => modifier.reason)).not.toContain('Superheavy');
+        expect(superheavy.rules.computeEntryState(physical(superheavy))).toEqual(jasmine.objectContaining({
+            hitMod: 1,
+            hitModifierBreakdown: [{ label: 'Superheavy', modifier: 1 }],
+        }));
+        expect(superheavy.rules.computeEntryState(ranged)).toEqual(jasmine.objectContaining({ hitMod: 0 }));
+        expect(assault.rules.computeEntryState(physical(assault))).toEqual(jasmine.objectContaining({ hitMod: 0 }));
     });
 
     it('does not apply the spotting attack modifier when an active command console crew member can spot', () => {

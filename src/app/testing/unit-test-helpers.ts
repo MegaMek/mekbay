@@ -283,6 +283,7 @@ export class CBTForceUnitTestHarness {
             getTargetNumberPilotingSkill: () => options.pilotingSkill ?? 5,
             getTargetNumberGunneryModifierBreakdown: () => [],
             getTargetNumberPilotingModifierBreakdown: () => [],
+            getPhysicalAttackModifierBreakdown: () => [],
             applyInventoryControlDisplayEffects: (entry: MountedEquipment, display: InventoryControlDisplayData) =>
                 options.applyInventoryControlDisplayEffects?.(entry, display) ?? display
         };

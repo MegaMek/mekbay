@@ -737,11 +737,12 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(row.display.hit).toBe('+1');
         expect(targetState.hitModifierWeakened).toBeTrue();
-        expect(targetState.hitModifierTooltip).toEqual([{
-            label: 'Hit Modifier', value: '+1'
-        }, {
-            label: 'Apollo Destroyed', value: '+0', negative: true
-        }]);
+        expect(targetState.hitModifierTooltip).toEqual([
+            { label: 'Hit Modifier', value: '+1' },
+            { label: 'Apollo Destroyed', value: '+0', negative: true },
+            { isBreak: true },
+            { label: 'Total', value: '+1', isHeader: true },
+        ]);
         expect(hitCell.classList.contains('weakened')).toBeTrue();
         expect(hitCell.hasAttribute('data-tooltip-host')).toBeTrue();
     });
@@ -773,7 +774,9 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.hitModifierWeakened).toBeTrue();
         expect(targetState.hitModifierTooltip).toEqual([
             { label: 'Targeting Computer', value: '-1' },
-            { label: 'Heat - Fire Modifier', value: '+1', negative: true, kind: 'heat' }
+            { label: 'Heat - Fire Modifier', value: '+1', negative: true, kind: 'heat' },
+            { isBreak: true },
+            { label: 'Total', value: '+0', isHeader: true },
         ]);
         expect(hitCell.classList.contains('weakened')).toBeTrue();
     });
@@ -828,7 +831,9 @@ describe('WeaponsEquipmentPanelComponent', () => {
             { label: 'Targeting Computer', value: '-1' },
             { label: 'Pulse Module', value: '-1' },
             { label: 'Damaged Fire Control', value: '+1', negative: true },
-            { label: 'Heat - Fire Modifier', value: '+0', negative: true, kind: 'heat' }
+            { label: 'Heat - Fire Modifier', value: '+0', negative: true, kind: 'heat' },
+            { isBreak: true },
+            { label: 'Total', value: '-2', isHeader: true },
         ]);
         expect(hitCell.hasAttribute('data-tooltip-host')).toBeTrue();
     });

@@ -48,7 +48,8 @@ const NO_CONDITION_RULES = {
     getTargetNumberGunnerySkill: () => 4,
     getTargetNumberPilotingSkill: () => 5,
     getTargetNumberGunneryModifierBreakdown: () => [],
-    getTargetNumberPilotingModifierBreakdown: () => []
+    getTargetNumberPilotingModifierBreakdown: () => [],
+    getPhysicalAttackModifierBreakdown: () => [],
 };
 
 function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInventory: () => MountedEquipment[]; rules: typeof NO_CONDITION_RULES } {

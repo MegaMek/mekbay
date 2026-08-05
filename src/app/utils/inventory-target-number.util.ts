@@ -75,8 +75,6 @@ export interface InventoryTargetNumberInput {
     target: InventoryControlRuntimeTarget | null;
     gunnerySkill: number;
     pilotingSkill: number;
-    gunneryModifierBreakdown?: readonly UnitModifierBreakdownEntry[];
-    pilotingModifierBreakdown?: readonly UnitModifierBreakdownEntry[];
     missingMovementModifier?: boolean;
     attackModifierBreakdown: readonly UnitModifierBreakdownEntry[];
     hitModifier: HitModifier;
@@ -239,7 +237,6 @@ export function inventoryTargetNumberBreakdown(
     const physical = isPhysicalInventoryTargetNumberEntry(input.entry, input.category);
     const skillLabel = physical ? 'Piloting' : 'Gunnery';
     const skill = physical ? input.pilotingSkill : input.gunnerySkill;
-    const skillModifierBreakdown = physical ? input.pilotingModifierBreakdown ?? [] : input.gunneryModifierBreakdown ?? [];
     const gameRules = input.gameRules ?? CORE_2026_GAME_RULES;
     const artilleryRangeModifier = input.selectedAmmo?.category === 'Artillery'
         ? gameRules.artilleryFlatRangeModifier : null;
@@ -260,11 +257,6 @@ export function inventoryTargetNumberBreakdown(
     ];
 
     terms.push(...input.attackModifierBreakdown.map(entry => ({
-        label: entry.label,
-        value: formatInventoryTargetSignedModifier(entry.modifier)
-    })));
-
-    terms.push(...skillModifierBreakdown.map(entry => ({
         label: entry.label,
         value: formatInventoryTargetSignedModifier(entry.modifier)
     })));
@@ -312,8 +304,7 @@ export function inventoryTargetNumberBreakdown(
     }
 
     const attackModifier = input.attackModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
-    const skillModifier = skillModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
-    const total = skill + skillModifier + attackModifier + target.tnModifier + rangeModifier + c3ModifierValue + minimumRangeModifier + input.hitModifier + numericAmmoToHitModifier + heatFireModifier;
+    const total = skill + attackModifier + target.tnModifier + rangeModifier + c3ModifierValue + minimumRangeModifier + input.hitModifier + numericAmmoToHitModifier + heatFireModifier;
     return {
         total,
         lines: [

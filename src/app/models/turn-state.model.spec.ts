@@ -544,7 +544,6 @@ describe('TurnState', () => {
                 { label: 'Jump', modifier: 3 },
                 { label: 'Spotting', modifier: 1 },
             ]);
-            expect(turnState.getTotalTargetModifierAsAttacker()).toBe(4);
         });
 
         it('uses LAM airborne attack movement modifiers', () => {

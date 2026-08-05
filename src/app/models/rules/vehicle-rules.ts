@@ -365,7 +365,7 @@ export class VehicleRules extends UnitTypeRulesBase {
                 hitModifierBreakdown.push({ label: 'Stabilizer Hit', modifier: stabilizerModifier, negative: true });
             }
         }
-        return { isDamaged, isDisabled, hitMod, hitModifierBreakdown, weakenedHitMod };
+        return this.applyTargetNumberSkillModifiers(entry, { isDamaged, isDisabled, hitMod, hitModifierBreakdown, weakenedHitMod });
     }
 
     hasDamagedStabilizerAffectingEntry(entry: MountedEquipment): boolean {

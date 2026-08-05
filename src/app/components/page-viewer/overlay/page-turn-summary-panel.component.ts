@@ -129,14 +129,23 @@ export class PageTurnSummaryPanelComponent {
     });
 
     readonly getTotalTargetModifierAsAttacker = computed<number>(() => {
-        const unit = this.unit();
-        return unit?.turnState().getTotalTargetModifierAsAttacker() ?? 0;
+        return this.gunneryAttackModifierBreakdown()
+            .reduce((total, entry) => total + entry.modifier, 0);
     });
 
     readonly attackModifierTooltip = computed<TooltipLine[] | null>(() => {
         const unit = this.unit();
         if (!unit) return null;
-        return this.buildModifierTooltip('Attack Target Modifier', unit.turnState().getAttackModifierBreakdown());
+        return this.buildModifierTooltip('Attack Target Modifier', this.gunneryAttackModifierBreakdown());
+    });
+
+    private readonly gunneryAttackModifierBreakdown = computed<UnitModifierBreakdownEntry[]>(() => {
+        const unit = this.unit();
+        if (!unit) return [];
+        return [
+            ...unit.rules.getTargetNumberGunneryModifierBreakdown(),
+            ...unit.turnState().getAttackModifierBreakdown(),
+        ];
     });
 
     readonly spotting = computed(() => {
@@ -189,12 +198,6 @@ export class PageTurnSummaryPanelComponent {
             })
             .filter(row => !row.damaged || row.active)
             .filter(row => row.sequenceChoices.length > 0);
-    });
-
-    readonly gunneryModifiers = computed(() => {
-        const unit = this.unit();
-        if (!unit) return [];
-        return unit.rules.gunneryModifiers().filter(modifier => modifier.modifier !== 0);
     });
 
     close(): void {

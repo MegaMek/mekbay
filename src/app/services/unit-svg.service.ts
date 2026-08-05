@@ -385,7 +385,13 @@ export class UnitSvgService {
         if (!svg) return;
         const PSRMod = this.unit.PSRModifiers();
         const pilotingDisplayModifier = PSRMod?.modifier || this.unit.pilotingModifier();
-        const attackerModifier = this.unit.turnState().getTotalTargetModifierAsAttacker();
+        const turnState = this.unit.turnState();
+        // Movement is displayed separately on the record sheet, so exclude it from the skill field.
+        const gunneryDisplayModifier = [
+            ...this.unit.rules.getTargetNumberGunneryModifierBreakdown(),
+            ...turnState.getAttackModifierBreakdown(),
+        ].reduce((total, modifier) => total + modifier.modifier, 0)
+            - turnState.getAttackMovementModifier();
 
         // Check if all crew members have default values (no name and default skills)
         const allCrewDefault = crew.every(member => 
@@ -446,7 +452,7 @@ export class UnitSvgService {
                     if (skill.name === 'piloting') {
                         svgElement.textContent = formatPilotingDisplay(skillValue, pilotingDisplayModifier);
                     } else {
-                        svgElement.textContent = formatGunneryDisplay(skillValue, attackerModifier);
+                        svgElement.textContent = formatGunneryDisplay(skillValue, gunneryDisplayModifier);
                     }
                 }
             });
@@ -1251,8 +1257,6 @@ export class UnitSvgService {
             target: c3Resolution.target,
             gunnerySkill: this.unit.rules.getTargetNumberGunnerySkill(),
             pilotingSkill: this.unit.rules.getTargetNumberPilotingSkill(),
-            gunneryModifierBreakdown: this.unit.rules.getTargetNumberGunneryModifierBreakdown(),
-            pilotingModifierBreakdown: this.unit.rules.getTargetNumberPilotingModifierBreakdown(),
             missingMovementModifier,
             attackModifierBreakdown: this.unit.turnState().getAttackModifierBreakdown(),
             hitModifier,
