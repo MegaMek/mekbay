@@ -98,6 +98,7 @@ describe('RsPolyfillUtil', () => {
         expect(svg.querySelector('.unitConditionBanner[condition="immobile"]')).not.toBeNull();
         expect(svg.querySelector('.unitConditionBanner[condition="crippled"]')).not.toBeNull();
         expect(svg.querySelector('.unitConditionBanner[condition="disconnected"]')).not.toBeNull();
+        expect(svg.querySelector('.unitConditionBanner[condition="spotting"]')).not.toBeNull();
     });
 
     it('adds only one disconnected banner when disconnected is also a unit condition control', () => {

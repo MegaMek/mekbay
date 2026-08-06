@@ -180,6 +180,7 @@ export interface UnitConditionDefinition {
     label: string;
     bannerLabel?: string;
     bannerFontScaling?: number;
+    bannerTextColor?: string;
     color: string;
     placement?: UnitConditionControlPlacement;
     important?: boolean;
@@ -204,10 +205,11 @@ export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = [
     { key: 'immobile', label: 'IMMOBILE', color: '#ff8800' },
     { key: 'prone', label: 'PRONE', color: '#666', placement: 'button' },
     { key: 'crippled', label: 'CRIPPLED', color: '#b70000' },
-    { key: 'swarmed', label: 'SWARMED', color: '#56ddae', placement: 'menu' },
+    { key: 'swarmed', label: 'SWARMED', color: '#46b48e', placement: 'menu' },
     { key: 'tagged', label: 'TAGGED', color: '#3385d7', placement: 'menu' },
-    { key: 'skidding', label: 'SKIDDING', color: '#dccd00', placement: 'menu' },
+    { key: 'skidding', label: 'SKIDDING', color: '#bfb300', placement: 'menu' },
     { key: 'jammed', label: 'JAMMED', color: '#ff6be6', placement: 'menu' },
+    { key: 'spotting', label: 'SPOTTING', color: '#471fad' },
 ];
 
 const UNIT_CONDITION_BY_KEY = new Map<string, UnitConditionDefinition>(UNIT_CONDITION_DEFINITIONS.map(condition => [condition.key, condition]));
@@ -221,8 +223,8 @@ export function unitConditionControls(keys: readonly string[]): readonly UnitCon
     });
 }
 
-export function getUnitConditionDefinition(key: string): UnitConditionDefinition | undefined {
-    return UNIT_CONDITION_BY_KEY.get(key);
+export function getUnitConditionDefinition(key: string): UnitConditionDefinition {
+    return UNIT_CONDITION_BY_KEY.get(key) ?? { key, label: key, color: '#666'};
 }
 
 export function unitConditionSortIndex(key: string): number {
@@ -485,12 +487,13 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     isComputedCondition(condition: string): boolean {
-        return condition === 'abandoned' || condition === 'immobile' || condition === 'crippled';
+        return condition === 'abandoned' || condition === 'immobile' || condition === 'crippled' || condition === 'spotting';
     }
 
     hasComputedCondition(condition: string): boolean {
         if (condition === 'abandoned' && this.hasDroneOperatingSystem()) return false;
         if (condition === 'disconnected') return this.isDroneOperatingSystemUnavailable();
+        if (condition === 'spotting') return this.unit.turnState().spotting();
         if (condition === 'abandoned') return this.abandoned();
         if (condition === 'immobile') {
             const disconnectedDroneImmobile = this.hasDroneOperatingSystem() && this.unit.getCondition('disconnected');
@@ -501,7 +504,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     computedConditions(): readonly string[] {
-        return ['abandoned', 'immobile', 'crippled', 'disconnected'];
+        return ['abandoned', 'immobile', 'crippled', 'disconnected', 'spotting'];
     }
 
     computeAllEntryStates(): Map<MountedEquipment, MountedEquipmentRuleState> {

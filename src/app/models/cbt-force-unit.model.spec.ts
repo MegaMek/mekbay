@@ -2301,6 +2301,20 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(restored.turnState().getPSRCheckState().hipsHit?.has('RL')).toBeTrue();
     });
 
+    it('exposes spotting as a transient condition and clears it at end of turn', () => {
+        const forceUnit = createForceUnit();
+
+        forceUnit.turnState().spotting.set(true);
+
+        expect(forceUnit.getCondition('spotting')).toBeTrue();
+        expect(forceUnit.getConditions().has('spotting')).toBeTrue();
+
+        forceUnit.endTurn();
+
+        expect(forceUnit.getCondition('spotting')).toBeFalse();
+        expect(forceUnit.getConditions().has('spotting')).toBeFalse();
+    });
+
     it('marks the unit modified when turn state changes', () => {
         const forceUnit = createForceUnit();
         const force = forceUnit.force as TestCBTForce;

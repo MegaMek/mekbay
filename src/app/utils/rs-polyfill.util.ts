@@ -241,16 +241,18 @@ export class RsPolyfillUtil {
 
         if (hasBannerWrapper) return;
 
-        const immobileCondition = getUnitConditionDefinition('immobile') ?? { key: 'immobile', label: 'IMMOBILE', color: '#444' };
-        const abandonedCondition = getUnitConditionDefinition('abandoned') ?? { key: 'abandoned', label: 'ABANDONED', color: '#7a1f1f' };
-        const crippledCondition = getUnitConditionDefinition('crippled') ?? { key: 'crippled', label: 'CRIPPLED', color: '#b70000' };
-        const disconnectedCondition = getUnitConditionDefinition('disconnected') ?? { key: 'disconnected', label: 'DISCONNECTED', color: '#455a64' };
+        const immobileCondition = getUnitConditionDefinition('immobile');
+        const abandonedCondition = getUnitConditionDefinition('abandoned');
+        const crippledCondition = getUnitConditionDefinition('crippled');
+        const disconnectedCondition = getUnitConditionDefinition('disconnected');
+        const spottingCondition = getUnitConditionDefinition('spotting');
         const conditions = Array.from(new Map([
             ...conditionControls,
             abandonedCondition,
             immobileCondition,
             crippledCondition,
             disconnectedCondition,
+            spottingCondition,
         ].map(condition => [condition.key, condition])).values());
 
         const bannerWrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -302,7 +304,7 @@ export class RsPolyfillUtil {
             text.setAttribute('font-family', 'Roboto, sans-serif');
             text.setAttribute('font-size', bannerFontSize.toString());
             text.setAttribute('font-weight', 'bold');
-            text.setAttribute('fill', '#fff');
+            text.setAttribute('fill', definition?.bannerTextColor ?? '#fff');
             text.textContent = condition.bannerLabel ?? condition.label;
 
             bannerGroup.appendChild(rect);
