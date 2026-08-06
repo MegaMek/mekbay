@@ -275,9 +275,6 @@ export class ForceTaggingService {
             for (const loadedForce of this.forceBuilderService.loadedForces()) {
                 if (loadedForce.force.instanceId() === force.instanceId) {
                     loadedForce.force.setTags(normalizedTags, false);
-                    if (updateResult.timestamp) {
-                        loadedForce.force.timestamp = updateResult.timestamp;
-                    }
                 }
             }
 
