@@ -538,11 +538,10 @@ describe('TurnState', () => {
         it('keeps the attacker modifier total in sync with the rules breakdown', () => {
             const { turnState } = createTurnStateHarness();
             turnState.moveMode.set('jump');
-            turnState.spotting.set(true);
+            turnState.spotting.set(true); // This will not affect
 
             expect(turnState.getAttackModifierBreakdown()).toEqual([
                 { label: 'Jump', modifier: 3 },
-                { label: 'Spotting', modifier: 1 },
             ]);
         });
 

@@ -3365,14 +3365,13 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
         initialize(forceUnit, svg);
         forceUnit.turnState().moveMode.set('run');
-        forceUnit.turnState().spotting.set(true);
+        forceUnit.turnState().spotting.set(true); // This will not affect
         const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
 
         svgService.refreshCrew();
 
         expect(forceUnit.turnState().getAttackModifierBreakdown()).toEqual([
             { label: 'Run', modifier: 2 },
-            { label: 'Spotting', modifier: 1 },
         ]);
         expect(svg.getElementById('gunnerySkill0')?.textContent).toBe('4');
     });
@@ -3725,7 +3724,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.renderHitModifier(createEntry(-1), 0);
         expect(hitModRect.getAttribute('display')).toBe('block');
         expect(hitModText.textContent).toBe('+0');
-        expect(entryElement.classList.contains('weakenedHitMod')).toBeTrue();
+        expect(entryElement.classList.contains('weakenedHitMod')).toBeFalse();
     });
 
     it('renders VTOL rotor committed and pending hit counts separately', () => {

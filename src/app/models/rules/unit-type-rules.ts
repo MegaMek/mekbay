@@ -129,7 +129,6 @@ export interface UnitRuleModifier {
     readonly values: Partial<Record<UnitRuleModifierDomain, number>>;
     readonly weakened?: boolean;
     readonly kind?: ToHitModifierBreakdownEntry['kind'];
-    readonly designBaseline?: boolean;
 }
 
 export type UnitRuleModifierDomain = 'ranged' | 'physical' | 'psr';
@@ -147,7 +146,6 @@ export function projectRuleModifiers(
             modifier: value,
             ...(modifier.weakened !== undefined && { weakened: modifier.weakened }),
             ...(modifier.kind !== undefined && { kind: modifier.kind }),
-            ...(modifier.designBaseline !== undefined && { designBaseline: modifier.designBaseline }),
         });
     }
     return result;
@@ -392,7 +390,10 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     readonly controlRollFullLabel: string;
     readonly PSRModifiers: Signal<{ modifier: number; modifiers: PSRCheck[] }> = signal({ modifier: 0, modifiers: [] });
     readonly PSRTargetRoll: Signal<number> = signal(0);
-    protected readonly ruleModifiers: Signal<UnitRuleModifier[]> = computed(() => this.buildRuleModifiers());
+    protected readonly ruleModifiers: Signal<UnitRuleModifier[]> = computed(() => [
+        ...this.buildRuleModifiers(),
+        ...this.buildTurnStateRuleModifiers(this.unit.turnState?.()),
+    ]);
     protected readonly rangedHitModifiers: Signal<ToHitModifierBreakdownEntry[]> = computed(() =>
         projectRuleModifiers(this.ruleModifiers(), 'ranged'));
     protected readonly physicalHitModifiers: Signal<ToHitModifierBreakdownEntry[]> = computed(() =>
@@ -417,6 +418,26 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     protected buildRuleModifiers(): UnitRuleModifier[] {
         return [];
+    }
+
+    protected buildTurnStateRuleModifiers(turnState: TurnState | undefined): UnitRuleModifier[] {
+        if (!turnState) return [];
+
+        const modifiers: UnitRuleModifier[] = [];
+        if (this.unit.gameRules.supportsSkidding && turnState.unitState.hasCondition('skidding')) {
+            modifiers.push({
+                label: 'Skidding',
+                values: { ranged: TN_SKIDDING_ATTACKER, physical: TN_SKIDDING_ATTACKER },
+            });
+        }
+        const spottingModifier = turnState.spotting() ? this.getSpottingModifier() : 0;
+        if (spottingModifier !== 0) {
+            modifiers.push({
+                label: 'Spotting',
+                values: { ranged: spottingModifier, physical: spottingModifier },
+            });
+        }
+        return modifiers;
     }
 
     get conditionControls(): readonly UnitConditionControl[] {
@@ -679,13 +700,6 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         const movementModifier = this.getAttackMovementModifier(turnState.moveMode(), turnState.airborne() ?? false);
         if (movementModifier !== 0 && moveMode !== null) {
             entries.push({ label: getMotiveModeLabel(moveMode, this.unit.getUnit(), turnState.airborne() ?? false), modifier: movementModifier });
-        }
-        if (this.unit.gameRules.supportsSkidding && turnState.unitState.hasCondition('skidding')) {
-            entries.push({ label: 'Skidding', modifier: TN_SKIDDING_ATTACKER });
-        }
-        const spottingModifier = turnState.spotting() ? this.getSpottingModifier() : 0;
-        if (spottingModifier !== 0) {
-            entries.push({ label: 'Spotting', modifier: spottingModifier });
         }
         return entries;
     }

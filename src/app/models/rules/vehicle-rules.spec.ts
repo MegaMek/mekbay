@@ -60,7 +60,7 @@ function entry(options: {
 }
 
 function turnState(airborne: boolean | null = null): TurnState {
-    return { airborne: () => airborne } as unknown as TurnState;
+    return { airborne: () => airborne, spotting: () => false } as unknown as TurnState;
 }
 
 function createRulesHarness(options: {
@@ -119,6 +119,7 @@ function createRulesHarness(options: {
         turnState: () => ({
             moveMode: () => options.moveMode ?? null,
             moveDistance: () => options.moveDistance ?? 0,
+            spotting: () => false,
             getAttackMovementModifier: () => rules.getAttackMovementModifier(options.moveMode ?? null),
         }),
         locations: { internal: new Map() },

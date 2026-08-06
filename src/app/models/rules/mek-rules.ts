@@ -1321,7 +1321,7 @@ export class MekRules extends UnitTypeRulesBase {
         const proneModifier = this.proneAttackerModifier();
         if (proneModifier !== null) modifiers.push(proneModifier);
         if (this.isSuperheavy()) {
-            modifiers.push({ label: 'Superheavy', values: { physical: 1 }, designBaseline: true });
+            modifiers.push({ label: 'Superheavy', values: { physical: 1 } });
         }
         const fire = this.fireControl();
         if (fire?.torsoCockpitHeadSensorModifier) {
@@ -2016,7 +2016,7 @@ export class MekRules extends UnitTypeRulesBase {
         if (armStatus.destroyedHand) {
             breakdown.push({ label: `Hand Actuator Destroyed (${loc})`, modifier: modifiers.hand, weakened: true });
         } else if (includeMissing && armStatus.missingHand) {
-            breakdown.push({ label: `Hand Actuator Missing (${loc})`, modifier: modifiers.hand, designBaseline: true });
+            breakdown.push({ label: `Hand Actuator Missing (${loc})`, modifier: modifiers.hand });
         }
         if (armStatus.destroyedUpperArms) {
             breakdown.push({ label: `Upper Arm Actuator Destroyed (${loc})`, modifier: modifiers.upperArm, weakened: true });
@@ -2024,7 +2024,7 @@ export class MekRules extends UnitTypeRulesBase {
         if (armStatus.destroyedLowerArms) {
             breakdown.push({ label: `Lower Arm Actuator Destroyed (${loc})`, modifier: modifiers.lowerArm, weakened: true });
         } else if (includeMissing && armStatus.missingLowerArm) {
-            breakdown.push({ label: `Lower Arm Actuator Missing (${loc})`, modifier: modifiers.lowerArm, designBaseline: true });
+            breakdown.push({ label: `Lower Arm Actuator Missing (${loc})`, modifier: modifiers.lowerArm });
         }
     }
 

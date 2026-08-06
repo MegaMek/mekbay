@@ -547,19 +547,19 @@ describe('MekRules', () => {
             { label: 'fully actuated', options: {}, hitMod: 0, breakdown: [] },
             {
                 label: 'missing hand', options: { hand: 'missing' as const }, hitMod: 1,
-                breakdown: [{ label: 'Hand Actuator Missing (LA)', modifier: 1, designBaseline: true }]
+                breakdown: [{ label: 'Hand Actuator Missing (LA)', modifier: 1 }]
             },
             {
                 label: 'missing lower arm', options: { lowerArm: 'missing' as const }, hitMod: 2,
-                breakdown: [{ label: 'Lower Arm Actuator Missing (LA)', modifier: 2, designBaseline: true }]
+                breakdown: [{ label: 'Lower Arm Actuator Missing (LA)', modifier: 2 }]
             },
             {
                 label: 'missing hand and lower arm',
                 options: { hand: 'missing' as const, lowerArm: 'missing' as const },
                 hitMod: 3,
                 breakdown: [
-                    { label: 'Hand Actuator Missing (LA)', modifier: 1, designBaseline: true },
-                    { label: 'Lower Arm Actuator Missing (LA)', modifier: 2, designBaseline: true }
+                    { label: 'Hand Actuator Missing (LA)', modifier: 1 },
+                    { label: 'Lower Arm Actuator Missing (LA)', modifier: 2 }
                 ]
             },
         ];
@@ -1038,7 +1038,7 @@ describe('MekRules', () => {
         expect(superheavy.rules.PSRModifiers().modifiers.map(modifier => modifier.reason)).not.toContain('Superheavy');
         expect(superheavy.rules.computeEntryState(superheavyPhysical)).toEqual(jasmine.objectContaining({
             hitMod: 1,
-            hitModifierBreakdown: [{ label: 'Superheavy', modifier: 1, designBaseline: true }],
+            hitModifierBreakdown: [{ label: 'Superheavy', modifier: 1 }],
         }));
         const superheavyState = superheavy.rules.computeEntryState(superheavyPhysical);
         expect(superheavy.gameRules.resolveToHit({
@@ -1066,7 +1066,7 @@ describe('MekRules', () => {
         }));
     });
 
-    it('does not apply the spotting attack modifier when an active command console crew member can spot', () => {
+    it('does not apply the spotting attack modifier with an active command console', () => {
         const forceUnit = createForceUnitHarness({
             crewStates: ['healthy', 'healthy'],
             critSlots: [
@@ -1076,22 +1076,44 @@ describe('MekRules', () => {
         });
         forceUnit.turnState().spotting.set(true);
 
-        expect(forceUnit.turnState().getSpottingModifier()).toBe(0);
-        expect(forceUnit.turnState().getAttackModifierBreakdown()).toEqual([]);
+        expect(forceUnit.rules.computeEntryState(directFireWeaponEntry(forceUnit))).toEqual(jasmine.objectContaining({
+            hitMod: 0,
+            hitModifierBreakdown: [],
+        }));
     });
 
-    it('applies the spotting attack modifier when the command console crew member is disabled', () => {
+    it('applies the spotting attack modifier without a command console', () => {
         const forceUnit = createForceUnitHarness({
-            crewStates: ['healthy', 'unconscious'],
-            critSlots: [
-                { id: 'cockpit', name: 'Cockpit', loc: 'HD', slot: 2 },
-                { id: 'command-console', name: 'Command Console', loc: 'HD', slot: 3 },
-            ],
+            crewStates: ['healthy'],
+            critSlots: [],
         });
         forceUnit.turnState().spotting.set(true);
 
-        expect(forceUnit.turnState().getSpottingModifier()).toBe(1);
-        expect(forceUnit.turnState().getAttackModifierBreakdown()).toEqual([{ label: 'Spotting', modifier: 1 }]);
+        expect(forceUnit.rules.computeEntryState(directFireWeaponEntry(forceUnit))).toEqual(jasmine.objectContaining({
+            hitMod: 1,
+            hitModifierBreakdown: [{ label: 'Spotting', modifier: 1 }],
+        }));
+    });
+
+    it('applies skidding and spotting to ranged and physical equipment modifiers', () => {
+        const forceUnit = createForceUnitHarness({ rulesId: 'tw' });
+        forceUnit.setCondition('skidding', true);
+        forceUnit.turnState().spotting.set(true);
+
+        expect(forceUnit.rules.computeEntryState(directFireWeaponEntry(forceUnit))).toEqual(jasmine.objectContaining({
+            hitMod: 2,
+            hitModifierBreakdown: [
+                { label: 'Skidding', modifier: 1 },
+                { label: 'Spotting', modifier: 1 },
+            ],
+        }));
+        expect(forceUnit.rules.computeEntryState(punchEntry(forceUnit))).toEqual(jasmine.objectContaining({
+            hitMod: 2,
+            hitModifierBreakdown: [
+                { label: 'Skidding', modifier: 1 },
+                { label: 'Spotting', modifier: 1 },
+            ],
+        }));
     });
 
     it('uses crew order instead of best skill for non-Tripod Mek target-number skills', () => {

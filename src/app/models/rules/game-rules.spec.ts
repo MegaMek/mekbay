@@ -376,19 +376,6 @@ describe('game rules', () => {
         expect(resolution.weakened).toBeFalse();
     });
 
-    it('evaluates weakening against the effective replacement baseline', () => {
-        const resolution = CORE_2026_GAME_RULES.resolveToHit({
-            subject: mountedWeapon(-2),
-            adjustments: [
-                { kind: 'replace-base', value: 0 },
-                { kind: 'add', value: 1 }
-            ]
-        });
-
-        expect(resolution.value).toBe(1);
-        expect(resolution.weakened).toBeTrue();
-    });
-
     it('keeps the first and highest-priority base replacement', () => {
         const resolution = CORE_2026_GAME_RULES.resolveToHit({
             subject: mountedWeapon(-2),

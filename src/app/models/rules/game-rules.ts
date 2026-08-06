@@ -15,7 +15,6 @@ export interface ToHitModifierBreakdownEntry {
     readonly modifier: number;
     readonly weakened?: boolean;
     readonly kind?: 'heat';
-    readonly designBaseline?: boolean;
 }
 export type ToHitAdjustment =
     | { readonly kind: 'replace-base'; readonly value: number | readonly number[]; readonly label?: string }
@@ -223,15 +222,10 @@ export abstract class CBTGameRules {
         const changed = !sameProfile(profile, rulesProfile);
         const baseLabel = replacement?.label ?? BASE_HIT_MODIFIER_LABEL;
         const stateBreakdown = validatedToHitModifierBreakdown(stateModifier, request.stateModifierBreakdown);
-        const designModifier = stateBreakdown.reduce(
-            (total, entry) => total + (entry.designBaseline === true ? entry.modifier : 0),
-            0
-        );
         const weakened = adjustments.some(adjustment => adjustment.kind === 'add'
                 && validatedToHitModifierBreakdown(adjustment.value, adjustment.breakdown, adjustment.label)
                     .some(entry => entry.weakened === true))
-            || stateBreakdown.some(entry => entry.weakened === true)
-            || selectedValue > baseValue + designModifier;
+            || stateBreakdown.some(entry => entry.weakened === true);
         const modifierBreakdown = typeof value === 'number'
             ? this.resolveModifierBreakdown(baseValue, stateModifier, request.stateModifierBreakdown, adjustments, baseLabel)
             : [];
