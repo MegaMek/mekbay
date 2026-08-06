@@ -447,6 +447,11 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('performanceMode', value);
     }
 
+    onForceSyncConflictDialogChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('enableForceSyncConflictDialog', value);
+    }
+
     onNewUnitServerUrlInput(event: Event) {
         this.newUnitServerUrl.set((event.target as HTMLInputElement).value);
         if (this.unitServerError()) {

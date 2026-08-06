@@ -36,6 +36,22 @@ describe('OptionsService theme migration', () => {
         expect(service.options().colorScheme).toBe('default');
     });
 
+    it('disables the force sync conflict dialog by default', async () => {
+        savedOptions = null;
+
+        const service = await createService();
+
+        expect(service.options().enableForceSyncConflictDialog).toBeFalse();
+    });
+
+    it('restores the force sync conflict dialog preference', async () => {
+        savedOptions = { enableForceSyncConflictDialog: true };
+
+        const service = await createService();
+
+        expect(service.options().enableForceSyncConflictDialog).toBeTrue();
+    });
+
     it('restores a disabled CBT automations preference', async () => {
         savedOptions = { cbtAutomations: false };
 

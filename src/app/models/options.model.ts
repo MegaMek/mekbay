@@ -83,6 +83,7 @@ export interface Options {
     printRosterSummary: boolean;
     printMargin: 'none' | 'browserDefined';
     performanceMode: boolean;
+    enableForceSyncConflictDialog: boolean;
 
     // Additional user-supplied unit database servers (base URLs). db.mekbay.com is always
     // the primary source; these servers may only contribute additional (new-named) units,

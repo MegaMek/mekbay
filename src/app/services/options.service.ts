@@ -25,6 +25,7 @@ const DEFAULT_OPTIONS: Options = {
     printRosterSummary: false,
     printMargin: 'browserDefined',
     performanceMode: false,
+    enableForceSyncConflictDialog: false,
     unitServers: [],
 
     // Theme
@@ -197,6 +198,7 @@ export class OptionsService {
         printRosterSummary: DEFAULT_OPTIONS.printRosterSummary,
         printMargin: DEFAULT_OPTIONS.printMargin,
         performanceMode: DEFAULT_OPTIONS.performanceMode,
+        enableForceSyncConflictDialog: DEFAULT_OPTIONS.enableForceSyncConflictDialog,
         unitServers: DEFAULT_OPTIONS.unitServers,
         forceGenerator: DEFAULT_OPTIONS.forceGenerator,
         forceBudgetOptimizerLastSkills: DEFAULT_OPTIONS.forceBudgetOptimizerLastSkills,
@@ -242,6 +244,7 @@ export class OptionsService {
             printRosterSummary: saved?.printRosterSummary ?? DEFAULT_OPTIONS.printRosterSummary,
             printMargin: saved?.printMargin ?? DEFAULT_OPTIONS.printMargin,
             performanceMode: saved?.performanceMode ?? DEFAULT_OPTIONS.performanceMode,
+            enableForceSyncConflictDialog: saved?.enableForceSyncConflictDialog ?? DEFAULT_OPTIONS.enableForceSyncConflictDialog,
             unitServers: saved?.unitServers ?? DEFAULT_OPTIONS.unitServers,
             forceGenerator: resolveForceGeneratorOptions(saved),
             forceBudgetOptimizerLastSkills: resolveForceBudgetOptimizerLastSkills(saved),
