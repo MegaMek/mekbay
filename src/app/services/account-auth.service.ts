@@ -75,7 +75,8 @@ export class AccountAuthService {
 
     private getOAuthResultFromUrl(): OAuthFlowResult | null {
         const url = new URL(window.location.href);
-        const encodedResult = url.searchParams.get(OAUTH_RESULT_PARAM);
+        const hashParams = new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : url.hash);
+        const encodedResult = url.searchParams.get(OAUTH_RESULT_PARAM) || hashParams.get(OAUTH_RESULT_PARAM);
         if (!encodedResult) {
             return null;
         }
@@ -97,13 +98,25 @@ export class AccountAuthService {
 
     private clearOAuthResultFromUrl(): void {
         const url = new URL(window.location.href);
-        if (!url.searchParams.has(OAUTH_RESULT_PARAM)) {
+        const hashParams = new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : url.hash);
+        const hasSearchResult = url.searchParams.has(OAUTH_RESULT_PARAM);
+        const hasHashResult = hashParams.has(OAUTH_RESULT_PARAM);
+        if (!hasSearchResult && !hasHashResult) {
             return;
         }
 
-        url.searchParams.delete(OAUTH_RESULT_PARAM);
-        const nextUrl = `${url.pathname}${url.search}${url.hash}`;
-        window.history.replaceState(null, '', nextUrl);
+        if (hasSearchResult) {
+            url.searchParams.delete(OAUTH_RESULT_PARAM);
+        }
+
+        let nextHash = url.hash;
+        if (hasHashResult) {
+            hashParams.delete(OAUTH_RESULT_PARAM);
+            const remainingHash = hashParams.toString();
+            nextHash = remainingHash ? `#${remainingHash}` : '';
+        }
+
+        window.history.replaceState(null, '', `${url.pathname}${url.search}${nextHash}`);
     }
 
     private isOAuthFlowResult(value: unknown): value is OAuthFlowResult {
@@ -165,7 +178,7 @@ export class AccountAuthService {
             };
 
             const onMessage = (event: MessageEvent<unknown>) => {
-                if (event.origin !== window.location.origin || !this.isOAuthFlowResult(event.data)) {
+                if (event.origin !== window.location.origin || event.source !== popup || !this.isOAuthFlowResult(event.data)) {
                     return;
                 }
 
@@ -187,23 +200,54 @@ export class AccountAuthService {
 
     private async startPopupFlow(provider: OAuthProvider, mode: 'link' | 'login', replaceExisting = false): Promise<void> {
         const popup = this.openPopupShell(provider, mode);
-        const resultPromise = this.waitForPopupResult(popup);
+        let resultPromise: Promise<OAuthFlowResult> | undefined;
 
         try {
             if (mode === 'link') {
                 await this.wsService.waitForWebSocket();
             }
 
-            popup.location.replace(this.buildAuthStartUrl(provider, mode, replaceExisting, 'popup', 'redirect'));
+            const authorizationUrl = await this.requestOAuthAuthorizationUrl(
+                this.buildAuthStartUrl(provider, mode, replaceExisting, 'popup', 'json'),
+            );
+            resultPromise = this.waitForPopupResult(popup);
+            popup.location.replace(authorizationUrl);
             const result = await resultPromise;
             await this.applyOAuthResult(result, 'popup');
         } catch (err) {
+            if (resultPromise) {
+                void resultPromise.catch(() => undefined);
+            }
+
             if (!popup.closed) {
                 popup.close();
             }
 
             throw err;
         }
+    }
+
+    private async requestOAuthAuthorizationUrl(startUrl: string): Promise<string> {
+        const response = await fetch(startUrl, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: '',
+        });
+
+        let payload: { ok?: unknown; authorizeUrl?: unknown; error?: unknown };
+        try {
+            payload = await response.json() as { ok?: unknown; authorizeUrl?: unknown; error?: unknown };
+        } catch {
+            throw new Error('OAuth server returned an invalid response.');
+        }
+
+        if (!response.ok || payload.ok !== true || typeof payload.authorizeUrl !== 'string') {
+            const message = typeof payload.error === 'string' ? payload.error : 'OAuth could not be started.';
+            throw new Error(message);
+        }
+
+        return payload.authorizeUrl;
     }
 
     private async applyOAuthResult(result: OAuthFlowResult, flowKind: 'popup' | 'redirect'): Promise<boolean> {

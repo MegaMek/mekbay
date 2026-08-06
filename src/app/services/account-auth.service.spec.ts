@@ -116,4 +116,42 @@ describe('AccountAuthService', () => {
         expect(userStateService.applyServerState).toHaveBeenCalledOnceWith(createLoginResult().userState);
         expect(toastService.showToast).toHaveBeenCalledWith('Signed in with Google', 'success');
     });
+
+    it('clears an OAuth result stored in the URL hash', () => {
+        const service = TestBed.inject(AccountAuthService);
+        const originalUrl = window.location.href;
+        const url = new URL(originalUrl);
+        url.search = '';
+        url.hash = '#oauthResult=encoded-result';
+        window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+
+        try {
+            (service as any).clearOAuthResultFromUrl();
+
+            const cleanedUrl = new URL(window.location.href);
+            expect(cleanedUrl.searchParams.has('oauthResult')).toBeFalse();
+            expect(cleanedUrl.hash).toBe('');
+        } finally {
+            window.history.replaceState(null, '', originalUrl);
+        }
+    });
+
+    it('preserves an unrelated fragment while clearing a query OAuth result', () => {
+        const service = TestBed.inject(AccountAuthService);
+        const originalUrl = window.location.href;
+        const url = new URL(originalUrl);
+        url.search = '?oauthResult=encoded-result';
+        url.hash = '#/options';
+        window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+
+        try {
+            (service as any).clearOAuthResultFromUrl();
+
+            const cleanedUrl = new URL(window.location.href);
+            expect(cleanedUrl.searchParams.has('oauthResult')).toBeFalse();
+            expect(cleanedUrl.hash).toBe('#/options');
+        } finally {
+            window.history.replaceState(null, '', originalUrl);
+        }
+    });
 });

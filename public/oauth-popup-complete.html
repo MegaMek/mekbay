@@ -69,7 +69,9 @@
                 }
             }
 
-            const encodedResult = new URL(window.location.href).searchParams.get(resultParam);
+            const completionUrl = new URL(window.location.href);
+            const hashParams = new URLSearchParams(completionUrl.hash.startsWith('#') ? completionUrl.hash.slice(1) : completionUrl.hash);
+            const encodedResult = completionUrl.searchParams.get(resultParam) || hashParams.get(resultParam);
             let result = null;
 
             if (encodedResult) {
