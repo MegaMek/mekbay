@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 export function formatMovement(inches: number, suffix: string = '', useHex: boolean): string {
     if (useHex) {
         return Math.floor(inches) / 2 + '<span class="hex-symbol">⬢</span>' + suffix;

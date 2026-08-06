@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment } from '../../models/equipment.model';
 import { EquipmentRegistry } from '../../models/equipment-lookup';

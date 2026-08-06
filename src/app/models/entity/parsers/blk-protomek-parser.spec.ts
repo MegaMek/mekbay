@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { AmmoEquipment, ArmorEquipment } from '../../equipment.model';
 import { EquipmentRegistry } from '../../equipment-lookup';
 import { writeBlkProtoMek } from '../writers/blk-protomek-writer';

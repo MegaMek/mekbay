@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { AmmoMunitionFlag } from "./ammo-munition-flags.type";
 import { EquipmentFlag } from "./equipment-flags.type";
 import type { RangeBrackets } from './equipment.model';

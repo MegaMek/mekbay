@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { encodeEquipmentLine } from '../writers/equipment-encoder';
 import { EntityMountedEquipment } from '../types/equipment';
 import { parseEquipmentLine } from './equipment-resolver';

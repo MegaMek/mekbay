@@ -1,11 +1,8 @@
-/*
- * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
- *
- * This file is part of MekBay.
- */
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
 
 import { signal } from '@angular/core';
-
 import { EditASPilotDialogComponent } from './edit-as-pilot-dialog/edit-as-pilot-dialog.component';
 
 interface RandomNameDialogHarness {

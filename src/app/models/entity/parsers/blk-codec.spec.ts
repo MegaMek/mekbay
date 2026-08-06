@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { MountedArmor } from '../components/armor';
 import { ArmorEquipment, createEquipment } from '../../equipment.model';
 import type { GyroType } from '../components/gyro-data';

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
 import type { BattleArmorEntity } from '../../entities/infantry/battle-armor-entity';
 import type { EntityMountedEquipment } from '../../types/equipment';

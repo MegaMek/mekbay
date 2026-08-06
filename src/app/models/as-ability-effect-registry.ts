@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { isAerospaceMovementMode } from '../utils/as-common.util';
 import type { ASAbilityEffectDefinition } from './as-ability-effects.model';
 import type { Unit } from './units.model';

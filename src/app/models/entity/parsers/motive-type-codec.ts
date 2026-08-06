@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { ALL_MOTIVE_TYPES, type MotiveType } from '../types/motive';
 
 const MOTIVE_TYPE_BY_LOWERCASE = new Map<string, MotiveType>(

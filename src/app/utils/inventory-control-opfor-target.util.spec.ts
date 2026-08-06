@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { signal } from '@angular/core';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { MotiveModes } from '../models/motiveModes.model';

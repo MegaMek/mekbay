@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { EquipmentFlag } from '../../../equipment-flags.type';
 import type { FixedWingSupportEntity } from '../../entities/aero/fixed-wing-support-entity';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';

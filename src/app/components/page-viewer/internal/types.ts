@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { ViewportTransform } from '../../../models/force-serialization';
 import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 

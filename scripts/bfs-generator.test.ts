@@ -1,9 +1,3 @@
-/*
- * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
- *
- * This file is part of MekBay.
- */
-
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';

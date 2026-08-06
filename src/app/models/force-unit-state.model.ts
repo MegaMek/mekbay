@@ -1,3 +1,6 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
 
 import { signal } from '@angular/core';
 import type { ForceUnit } from './force-unit.model';

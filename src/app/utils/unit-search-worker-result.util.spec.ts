@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { Unit } from '../models/units.model';
 import type { UnitSearchWorkerResultMessage } from './unit-search-worker-protocol.util';
 import { hydrateWorkerSearchResult } from './unit-search-worker-result.util';

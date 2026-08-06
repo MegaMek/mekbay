@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { AmmoEquipment, WeaponEquipment, ammoMatchesWeapon } from '../../../../equipment.model';
 import type { BattleArmorEntity } from '../../../entities';
 import type { EntityMountedEquipment } from '../../../types';

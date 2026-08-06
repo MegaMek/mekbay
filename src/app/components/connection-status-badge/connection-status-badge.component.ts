@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { LayoutService } from '../../services/layout.service';
 import { WsService, type ConnectionStatusPhase } from '../../services/ws.service';

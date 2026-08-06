@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { createEquipment, WeaponEquipment } from '../../../equipment.model';
 import { SmallCraftEntity } from './small-craft-entity';
 import { createTestEquipmentRegistry } from '../../testing/test-equipment-registry';

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { EMPTY_EQUIPMENT_REGISTRY } from '../../equipment-lookup';
 import { ParseContext } from './parse-context';
 import { parseTransporterLines, serializeTransporterLines } from './transporter-codec';

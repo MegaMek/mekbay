@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { BaseEntity } from '../models/entity/base-entity';
 import { MountedArmor, MountedEngine, MountedStructure, STANDARD_STRUCTURE_EQUIPMENT } from '../models/entity/components';
 import { EntityMountedEquipment } from '../models/entity/types/equipment';

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { TestBed } from '@angular/core/testing';
 import { Equipment } from '../../models/equipment.model';
 import type { WireEquipmentTechData } from '../../models/equipment-tech-codec';

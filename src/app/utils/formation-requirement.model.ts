@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { GameSystem } from '../models/common.model';
 import type { FormationUnitLike } from './formation-unit-facts.util';
 

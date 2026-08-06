@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { type Force, UnitGroup } from '../../models/force.model';
 import type { Era } from '../../models/eras.model';
 import { type Faction } from '../../models/factions.model';
@@ -10,7 +14,6 @@ import { type GroupSizeResult, type OrgDefinition, type OrgSizeResult } from './
 import { MULFACTION_MERCENARY } from '../../models/mulfactions.model';
 
 /**
- * Author: Drake
  * 
  * This module provides utilities for generating human-readable organizational names and summaries 
  * based on the structure of forces and groups.

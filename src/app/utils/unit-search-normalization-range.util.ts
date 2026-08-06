@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { UnitSearchNumericRange } from '../models/unit-search-result.model';
 
 export const MIN_NORMALIZATION_SKILL = 0;

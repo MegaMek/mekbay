@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { Component, ChangeDetectionStrategy, inject, input, output, type TemplateRef, type ViewChild, type ElementRef, ViewContainerRef, computed, signal, viewChild, DestroyRef, effect } from '@angular/core';
 
 import { Overlay, type OverlayRef } from '@angular/cdk/overlay';

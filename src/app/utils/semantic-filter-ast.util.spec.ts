@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { GameSystem } from '../models/common.model';
 import { filterUnitsWithAST, parseSemanticQueryAST, tokenizeForHighlight, type ParseResult } from './semantic-filter-ast.util';
 import { filterStateToSemanticText, tokensToFilterState } from './semantic-filter.util';

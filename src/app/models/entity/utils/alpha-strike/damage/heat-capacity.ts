@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { AmmoEquipment } from '../../../../equipment.model';
 import type { BaseEntity } from '../../../base-entity';
 import { alphaStrikeHeatCapacity } from './heat-adjustment';

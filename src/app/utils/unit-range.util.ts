@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { Unit, UnitComponent } from '../models/units.model';
 
 type WeightedRangeUnit = Pick<Unit, 'subtype' | 'internal' | 'comp'>;

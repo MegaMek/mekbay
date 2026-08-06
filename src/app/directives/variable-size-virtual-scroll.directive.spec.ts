@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { ListRange } from '@angular/cdk/collections';
 import type { CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { VariableSizeVirtualScrollStrategy } from './variable-size-virtual-scroll.directive';

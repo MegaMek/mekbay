@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { AmmoEquipment, type AmmoType, WeaponEquipment } from '../equipment.model';
 import type { MountedEquipment } from '../mounted-equipment.model';
 import type { TnTargetNumberCalculatorState } from '../target-number-calculator.model';

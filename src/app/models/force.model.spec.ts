@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { Injector } from '@angular/core';
 import { GameSystem } from './common.model';
 import type { Era } from './eras.model';

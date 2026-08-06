@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { signal } from '@angular/core';
 import { of } from 'rxjs';
 import { GameSystem } from '../models/common.model';

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
 import { effectiveTechDateYear, TechAdvancementDates } from '../models/entity/types/tech';
 import { EquipmentFlag } from '../models/equipment-flags.type';

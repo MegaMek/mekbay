@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { BaseEntity } from '../base-entity';
 
 export function getTargetingComputerRelevantWeight(entity: BaseEntity): number | undefined {

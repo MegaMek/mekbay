@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
 import type { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
 import type { HandlerContext } from '../../services/equipment-interaction-registry.service';

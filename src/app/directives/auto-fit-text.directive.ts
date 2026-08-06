@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { Directive, ElementRef, InjectionToken, OnDestroy, afterRenderEffect, inject, input } from '@angular/core';
 
 const DEFAULT_MIN_FONT_SCALE = 0.55;

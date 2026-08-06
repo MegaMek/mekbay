@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { WeaponEquipment, type EquipmentRawData } from '../../../../equipment.model';
 import { TestBipedMekEntity } from '../../../testing/test-entities';
 import { addTestEquipment, addTestEquipmentWithFlags } from '../../../testing/test-mounted-equipment';

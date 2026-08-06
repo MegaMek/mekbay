@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { EntityTransporter } from '../models/entity/types/transport';
 import { projectRecordSheetBays } from '../models/entity/bays/record-sheet-bay-projection';
 import type { Unit } from '../models/units.model';

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { Faction } from '../models/factions.model';
 import { CBT_WEIGHT_CLASS_ORDINALS, type Unit } from '../models/units.model';
 import { isGroundMovementMode } from './as-common.util';

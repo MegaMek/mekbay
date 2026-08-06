@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { InfantryWeaponEquipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import { createTestEquipmentRegistry } from '../testing/test-equipment-registry';
 import { writeBlkInfantry } from '../writers/blk-infantry-writer';

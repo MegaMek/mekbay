@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { DEFAULT_GUNNERY_SKILL } from '../models/crew-member.model';
 import {
     DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX,

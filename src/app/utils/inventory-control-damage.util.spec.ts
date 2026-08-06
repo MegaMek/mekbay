@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { AmmoEquipment, EquipmentMap, StructureEquipment, WeaponEquipment, type AmmoType } from '../models/equipment.model';
 import { EquipmentRegistry } from '../models/equipment-lookup';
 import type { EquipmentFlag } from '../models/equipment-flags.type';

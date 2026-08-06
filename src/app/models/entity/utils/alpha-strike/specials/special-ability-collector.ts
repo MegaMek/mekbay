@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 /**
  * Collects Alpha Strike special abilities without parsing their serialized text.
  *

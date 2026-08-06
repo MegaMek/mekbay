@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { AeroEntity, ConvFighterEntity, DropShipEntity, FixedWingSupportEntity, JumpShipEntity, LamEntity, SmallCraftEntity, VtolEntity, type BaseEntity } from '../../../entities';
 import type { ASUnitTypeCode } from '../../../../units.model';
 import type { AlphaStrikeMovement } from '../foundation/movement';

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { GameSystem } from '../models/common.model';
 import { isClan } from './org/org-registry.util';
 import type { FormationFactKey, FormationPredicateId } from './formation-requirement.model';

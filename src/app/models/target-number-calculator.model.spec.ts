@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { calculateTargetTnModifier } from './target-number-calculator.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
 
