@@ -108,4 +108,54 @@ describe('WsService', () => {
 
         expect(getPhase(service)).toBe('offline');
     });
+
+    it('resubscribes force updates on a replacement socket', async () => {
+        const service = TestBed.inject(WsService);
+        uuid.set('user-1');
+        const oldSocket = createSocketMock();
+        (service as any).ws = oldSocket;
+        const onRemoteUpdate = jasmine.createSpy('onRemoteUpdate');
+
+        await service.subscribeToForceUpdates('force-1', onRemoteUpdate);
+        expect(sentActions(oldSocket)).toEqual(['subscribeToForceUpdates']);
+
+        (service as any).shouldReconnect = false;
+        (service as any).handleClose({ code: 1006, reason: 'restart' } as CloseEvent, oldSocket);
+
+        const newSocket = createSocketMock();
+        (service as any).ws = newSocket;
+        (service as any).handleOpen();
+
+        expect(sentActions(newSocket)).toEqual(['register', 'subscribeToForceUpdates']);
+        expect(oldSocket.removeEventListener).toHaveBeenCalled();
+
+        const messageHandler = newSocket.addEventListener.calls.mostRecent().args[1] as (event: MessageEvent) => void;
+        const updatedForce = { instanceId: 'force-1' };
+        messageHandler({
+            data: JSON.stringify({ action: 'updatedForce', data: updatedForce }),
+        } as MessageEvent);
+
+        expect(onRemoteUpdate).toHaveBeenCalledWith(updatedForce);
+    });
 });
+
+function createSocketMock(): WebSocket & {
+    send: jasmine.Spy;
+    addEventListener: jasmine.Spy;
+    removeEventListener: jasmine.Spy;
+} {
+    return {
+        readyState: WebSocket.OPEN,
+        send: jasmine.createSpy('send'),
+        addEventListener: jasmine.createSpy('addEventListener'),
+        removeEventListener: jasmine.createSpy('removeEventListener'),
+    } as unknown as WebSocket & {
+        send: jasmine.Spy;
+        addEventListener: jasmine.Spy;
+        removeEventListener: jasmine.Spy;
+    };
+}
+
+function sentActions(socket: WebSocket & { send: jasmine.Spy }): string[] {
+    return socket.send.calls.allArgs().map(([payload]) => JSON.parse(payload as string).action);
+}

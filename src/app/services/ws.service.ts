@@ -13,6 +13,12 @@ export const PROTOCOL_VERSION = 2;
 
 export type ConnectionStatusPhase = 'hidden' | 'offline' | 'online';
 
+interface ForceSubscription {
+    onRemoteUpdate: (data: SerializedForce) => void;
+    handler: ((event: MessageEvent) => void) | null;
+    socket: WebSocket | null;
+}
+
 @Injectable({
     providedIn: 'root'
 })
@@ -23,7 +29,7 @@ export class WsService {
     private wsReady?: Promise<void>;
     private wsReadyResolver: (() => void) | null = null;
     private readonly wsSessionId = uuidv7();
-    private subscriptions = new Map<string, (event: MessageEvent) => void>();
+    private subscriptions = new Map<string, ForceSubscription>();
     private actionHandlers = new Map<string, Set<(msg: any, event: MessageEvent) => void>>();
     
     // Connection state management
@@ -156,12 +162,13 @@ export class WsService {
      * Setup WebSocket event handlers
      */
     private setupWebSocketHandlers(): void {
-        if (!this.ws) return;
+        const socket = this.ws;
+        if (!socket) return;
 
-        this.ws.onopen = () => this.handleOpen();
-        this.ws.onclose = (event) => this.handleClose(event);
-        this.ws.onerror = () => this.handleError();
-        this.ws.onmessage = (event) => this.handleMessage(event);
+        socket.onopen = () => this.handleOpen();
+        socket.onclose = (event) => this.handleClose(event, socket);
+        socket.onerror = () => this.handleError();
+        socket.onmessage = (event) => this.handleMessage(event);
     }
 
     /**
@@ -193,13 +200,17 @@ export class WsService {
         this.showReconnectedBadge();
         this.resolveConnectionPromise();
         this.registerSession();
+        this.resubscribeToForceUpdates();
     }
 
     /**
      * Handle WebSocket close event
      */
-    private handleClose(event: CloseEvent): void {
+    private handleClose(event: CloseEvent, closedSocket: WebSocket | null = this.ws): void {
         this.logger.error(`WebSocket closed: ${event.code}, ${event.reason}`);
+        if (closedSocket) {
+            this.detachForceSubscriptions(closedSocket);
+        }
         this.isConnecting = false;
         this.wsConnected.set(false);
         this.showDisconnectedBadge();
@@ -366,6 +377,7 @@ export class WsService {
             }
             return;
         }
+        this.detachForceSubscriptions(this.ws);
         // Remove event handlers to prevent them from firing
         this.ws.onopen = null;
         this.ws.onclose = null;
@@ -542,45 +554,34 @@ export class WsService {
      * Subscribe to instance updates
      */
     public async subscribeToForceUpdates(instanceId: string, onRemoteUpdate: (data: SerializedForce) => void): Promise<void> {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            this.logger.warn('Cannot subscribe: WebSocket not connected');
-            return;
-        }
-
         // Unsubscribe from previous subscription if exists
         await this.unsubscribeFromForceUpdates(instanceId);
 
-        // Setup message handler
-        const handler = (event: MessageEvent) => {
-            try {
-                const msg = JSON.parse(event.data);
-                if (msg.action === 'updatedForce' && msg.data?.instanceId === instanceId) {
-                    onRemoteUpdate(msg.data as SerializedForce);
-                }
-            } catch {
-                // Ignore parse errors
-            }
-        };
-
-        this.ws.addEventListener('message', handler);
-        this.subscriptions.set(instanceId, handler);
-
-        // Send subscribe message
-        this.send({
-            action: 'subscribeToForceUpdates',
-            instanceId
+        this.subscriptions.set(instanceId, {
+            onRemoteUpdate,
+            handler: null,
+            socket: null,
         });
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            this.logger.warn('Cannot subscribe: WebSocket not connected; will subscribe after reconnect');
+            return;
+        }
 
+        this.attachForceSubscription(instanceId);
     }
 
     /**
      * Unsubscribe from instance updates
      */
     public async unsubscribeFromForceUpdates(instanceId: string): Promise<void> {
-        const handler = this.subscriptions.get(instanceId);
-        if (!handler) return;
+        const subscription = this.subscriptions.get(instanceId);
+        if (!subscription) return;
 
         this.subscriptions.delete(instanceId);
+
+        if (subscription.socket && subscription.handler) {
+            subscription.socket.removeEventListener('message', subscription.handler);
+        }
 
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             try {
@@ -593,9 +594,6 @@ export class WsService {
             }
         }
 
-        if (this.ws) {
-            this.ws.removeEventListener('message', handler);
-        }
     }
 
     /**
@@ -606,6 +604,60 @@ export class WsService {
         instanceIds.forEach(instanceId => {
             this.unsubscribeFromForceUpdates(instanceId);
         });
+    }
+
+    private attachForceSubscription(instanceId: string): void {
+        const subscription = this.subscriptions.get(instanceId);
+        const socket = this.ws;
+        if (!subscription || !socket || socket.readyState !== WebSocket.OPEN) {
+            return;
+        }
+
+        if (subscription.socket === socket && subscription.handler) {
+            return;
+        }
+
+        if (subscription.socket && subscription.handler) {
+            subscription.socket.removeEventListener('message', subscription.handler);
+        }
+
+        const handler = (event: MessageEvent) => {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.action === 'updatedForce' && msg.data?.instanceId === instanceId) {
+                    subscription.onRemoteUpdate(msg.data as SerializedForce);
+                }
+            } catch {
+                // Ignore parse errors
+            }
+        };
+
+        socket.addEventListener('message', handler);
+        subscription.handler = handler;
+        subscription.socket = socket;
+        this.send({
+            action: 'subscribeToForceUpdates',
+            instanceId,
+        });
+    }
+
+    private resubscribeToForceUpdates(): void {
+        for (const instanceId of this.subscriptions.keys()) {
+            this.attachForceSubscription(instanceId);
+        }
+    }
+
+    private detachForceSubscriptions(socket: WebSocket): void {
+        for (const subscription of this.subscriptions.values()) {
+            if (subscription.socket !== socket) {
+                continue;
+            }
+            if (subscription.handler) {
+                socket.removeEventListener('message', subscription.handler);
+            }
+            subscription.handler = null;
+            subscription.socket = null;
+        }
     }
 
     public registerMessageHandler(actions: string | string[], handler: (msg: any, event: MessageEvent) => void): () => void {
