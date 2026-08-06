@@ -18,7 +18,7 @@ export interface ToHitModifierBreakdownEntry {
 }
 export type ToHitAdjustment =
     | { readonly kind: 'replace-base'; readonly value: number | readonly number[]; readonly label?: string }
-    | { readonly kind: 'add'; readonly value: number; readonly label?: string; readonly breakdown?: readonly ToHitModifierBreakdownEntry[] }
+    | { readonly kind: 'add'; readonly modifier: number; readonly label?: string; readonly weakened?: boolean }
     | { readonly kind: 'unsupported' };
 
 export interface ToHitRequest {
@@ -134,15 +134,24 @@ export abstract class CBTGameRules {
         const replacement = adjustments.find(adjustment => adjustment.kind === 'replace-base');
         const hasBaseReplacement = replacement !== undefined;
         if (unsupported || (entry && !this.supportsToHit(entry) && !hasBaseReplacement)) return emptyToHitResolution();
+        const stateModifier = request.stateModifier ?? 0;
+        const stateBreakdown = validatedToHitModifierBreakdown(stateModifier, request.stateModifierBreakdown);
+        const adjustmentBreakdowns = adjustments
+            .filter((adjustment): adjustment is Extract<ToHitAdjustment, { readonly kind: 'add' }> => adjustment.kind === 'add')
+            .filter(adjustment => adjustment.modifier !== 0 || adjustment.weakened !== undefined)
+            .map(({ label, modifier, weakened }) => ({
+                label: label ?? 'Hit Modifier',
+                modifier,
+                ...(weakened !== undefined && { weakened })
+            }));
 
         if (entry?.isIntrinsicPhysicalAttack()) {
             const physicalValue = this.physicalBaseHitModifiers[entry.name.toLowerCase()] ?? null;
             if (physicalValue === null || physicalValue === 'Vs') {
                 const modifierBreakdown = this.resolveModifierBreakdown(
                     0,
-                    request.stateModifier ?? 0,
-                    request.stateModifierBreakdown,
-                    adjustments,
+                    stateBreakdown,
+                    adjustmentBreakdowns,
                     BASE_HIT_MODIFIER_LABEL,
                 );
                 const weakened = modifierBreakdown.some(modifier => modifier.weakened === true);
@@ -154,7 +163,7 @@ export abstract class CBTGameRules {
                     modifierBreakdown: physicalValue === 'Vs' ? modifierBreakdown : [],
                 };
             }
-            return this.composeToHit([physicalValue], request, adjustments);
+            return this.composeToHit([physicalValue], request, adjustments, stateBreakdown, adjustmentBreakdowns);
         }
         if (!equipment) return emptyToHitResolution();
 
@@ -162,7 +171,7 @@ export abstract class CBTGameRules {
         const baseProfile = replacement?.kind === 'replace-base'
             ? normalizeToHitProfile(replacement.value)
             : rulesProfile;
-        return this.composeToHit(baseProfile, request, adjustments, rulesProfile);
+        return this.composeToHit(baseProfile, request, adjustments, stateBreakdown, adjustmentBreakdowns, rulesProfile);
     }
 
     getAmmoShots(ammo: AmmoEquipment): number {
@@ -206,11 +215,13 @@ export abstract class CBTGameRules {
         baseProfile: readonly number[],
         request: ToHitRequest,
         adjustments: readonly ToHitAdjustment[],
+        stateBreakdown: readonly ToHitModifierBreakdownEntry[],
+        adjustmentBreakdowns: readonly ToHitModifierBreakdownEntry[],
         rulesProfile: readonly number[] = baseProfile
     ): ToHitResolution {
         const stateModifier = request.stateModifier ?? 0;
         const adjustmentModifier = adjustments.reduce(
-            (total, adjustment) => total + (adjustment.kind === 'add' ? adjustment.value : 0),
+            (total, adjustment) => total + (adjustment.kind === 'add' ? adjustment.modifier : 0),
             0
         );
         const totalModifier = stateModifier + adjustmentModifier;
@@ -218,34 +229,26 @@ export abstract class CBTGameRules {
         const baseValue = valueAtRange(baseProfile, request.range);
         const replacement = adjustments.find(adjustment => adjustment.kind === 'replace-base');
         const value = !request.range && profile.length > 1 ? '*' : valueAtRange(profile, request.range);
-        const selectedValue = valueAtRange(profile, request.range);
         const changed = !sameProfile(profile, rulesProfile);
         const baseLabel = replacement?.label ?? BASE_HIT_MODIFIER_LABEL;
-        const stateBreakdown = validatedToHitModifierBreakdown(stateModifier, request.stateModifierBreakdown);
-        const weakened = adjustments.some(adjustment => adjustment.kind === 'add'
-                && validatedToHitModifierBreakdown(adjustment.value, adjustment.breakdown, adjustment.label)
-                    .some(entry => entry.weakened === true))
+        const weakened = adjustmentBreakdowns.some(entry => entry.weakened === true)
             || stateBreakdown.some(entry => entry.weakened === true);
         const modifierBreakdown = typeof value === 'number'
-            ? this.resolveModifierBreakdown(baseValue, stateModifier, request.stateModifierBreakdown, adjustments, baseLabel)
+            ? this.resolveModifierBreakdown(baseValue, stateBreakdown, adjustmentBreakdowns, baseLabel)
             : [];
         return { profile, value, changed, weakened, modifierBreakdown };
     }
 
     private resolveModifierBreakdown(
         baseValue: number,
-        stateModifier: number,
-        stateBreakdown: readonly ToHitModifierBreakdownEntry[] | undefined,
-        adjustments: readonly ToHitAdjustment[],
+        stateBreakdown: readonly ToHitModifierBreakdownEntry[],
+        adjustmentBreakdowns: readonly ToHitModifierBreakdownEntry[],
         baseLabel: string
     ): ToHitModifierBreakdownEntry[] {
         const result: ToHitModifierBreakdownEntry[] = [];
         if (baseValue !== 0) result.push({ label: baseLabel, modifier: baseValue });
-        result.push(...validatedToHitModifierBreakdown(stateModifier, stateBreakdown));
-        for (const adjustment of adjustments) {
-            if (adjustment.kind !== 'add') continue;
-            result.push(...validatedToHitModifierBreakdown(adjustment.value, adjustment.breakdown, adjustment.label));
-        }
+        result.push(...stateBreakdown);
+        result.push(...adjustmentBreakdowns);
         return result;
     }
 }

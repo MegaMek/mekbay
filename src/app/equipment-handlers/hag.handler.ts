@@ -94,8 +94,8 @@ export class HagHandler extends EquipmentInteractionHandler {
         return selectedHagMode(equipment) === HAG_FLAK_MODE
             ? [{
                 kind: 'add',
-                value: -1,
-                breakdown: [{ label: `${equipment.equipment?.shortName ?? equipment.name} (FLAK)`, modifier: -1 }]
+                label: `${equipment.equipment?.shortName ?? equipment.name} (FLAK)`,
+                modifier: -1
             }]
             : [];
     }

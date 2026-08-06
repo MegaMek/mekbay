@@ -382,7 +382,7 @@ describe('game rules', () => {
             adjustments: [
                 { kind: 'replace-base', value: 0 },
                 { kind: 'replace-base', value: 4 },
-                { kind: 'add', value: 1 }
+                { kind: 'add', modifier: 1 }
             ]
         });
 
@@ -428,7 +428,7 @@ describe('game rules', () => {
 
         expect(CORE_2026_GAME_RULES.resolveToHit({
             subject: launcher,
-            adjustments: [{ kind: 'add', value: 1 }]
+            adjustments: [{ kind: 'add', modifier: 1 }]
         }).value).toBe(0);
     });
 
@@ -438,8 +438,9 @@ describe('game rules', () => {
             stateModifier: 1,
             adjustments: [{
                 kind: 'add',
-                value: 0,
-                breakdown: [{ label: 'Lost bonus', modifier: 0, weakened: true }],
+                label: 'Lost bonus',
+                modifier: 0,
+                weakened: true,
             }]
         });
 
@@ -491,8 +492,7 @@ describe('game rules', () => {
             stateModifier: -1,
             stateModifierBreakdown: [{ label: 'Targeting Computer', modifier: -1 }],
             adjustments: [{
-                kind: 'add', value: -1,
-                breakdown: [{ label: 'Apollo MRM FCS', modifier: -1 }]
+                kind: 'add', label: 'Apollo MRM FCS', modifier: -1
             }]
         });
 

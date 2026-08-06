@@ -54,8 +54,8 @@ export class RiscLaserPulseModuleHandler extends EquipmentInteractionHandler {
         const active = this.isModuleUsable(parent, equipment) && this.selectedMode(parent) === RISC_LASER_PULSE_MODE;
         return [{
             kind: 'add',
-            value: active ? -2 : 0,
-            breakdown: active ? [{ label, modifier: -2 }] : []
+            ...(active && { label }),
+            modifier: active ? -2 : 0
         }];
     }
 

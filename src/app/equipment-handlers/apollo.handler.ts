@@ -48,10 +48,9 @@ export class ApolloHandler extends EquipmentInteractionHandler {
         const label = equipment.equipment?.shortName ?? equipment.name;
         return [{
             kind: 'add',
-            value: weakened ? 0 : -1,
-            breakdown: weakened
-                ? [{ label: `${label} Destroyed`, modifier: 0, weakened: true }]
-                : [{ label, modifier: -1 }]
+            label: weakened ? `${label} Destroyed` : label,
+            modifier: weakened ? 0 : -1,
+            weakened
         }];
     }
 

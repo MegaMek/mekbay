@@ -35,10 +35,9 @@ export class ArtemisVHandler extends EquipmentInteractionHandler {
                     : 'Artemis V Ammo Not Selected';
         return [{
             kind: 'add',
-            value: weakened ? 0 : -1,
-            breakdown: weakened
-                ? [{ label: unavailableLabel, modifier: 0, weakened: true }]
-                : [{ label, modifier: -1 }]
+            label: weakened ? unavailableLabel : label,
+            modifier: weakened ? 0 : -1,
+            weakened
         }];
     }
 }

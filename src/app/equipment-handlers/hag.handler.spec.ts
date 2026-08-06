@@ -82,8 +82,7 @@ describe('HagHandler', () => {
         expect(handler.getToHitAdjustments(hag(HAG_STANDARD_MODE), {}, context())).toEqual([]);
         expect(handler.getToHitAdjustments(hag(HAG_FLAK_MODE), {}, context()))
             .toEqual([{
-                kind: 'add', value: -1,
-                breakdown: [{ label: 'HAG/20 (FLAK)', modifier: -1 }]
+                kind: 'add', label: 'HAG/20 (FLAK)', modifier: -1
             }]);
     });
 
