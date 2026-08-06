@@ -10,12 +10,18 @@ import type { InventoryControlRuntimeTarget } from '../inventory-control-runtime
 import { MountedEquipment } from '../mounted-equipment.model';
 
 export type HitModifier = number | 'Vs' | '*' | null;
+
+export const SKILL_BREAKDOWN_PRIORITY = -100; // Priority for display order in tooltips
+export const ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY = -50; // Priority for display order in tooltips
+
 export interface ToHitModifierBreakdownEntry {
     readonly label: string;
     readonly modifier: number;
+    readonly priority?: number;
     readonly weakened?: boolean;
     readonly kind?: 'heat';
 }
+
 export type ToHitAdjustment =
     | { readonly kind: 'replace-base'; readonly value: number | readonly number[]; readonly label?: string }
     | { readonly kind: 'add'; readonly modifier: number; readonly label?: string; readonly weakened?: boolean }

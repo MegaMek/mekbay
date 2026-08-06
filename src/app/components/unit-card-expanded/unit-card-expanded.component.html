@@ -33,7 +33,7 @@
             </div>
             @if (showTags()) {
             <div class="subtitle-line">
-                <unit-tags [unit]="u" mode="full" (tagClick)="onTagClick($event)" />
+                <unit-tags [unit]="u" mode="full" [enableTagsEditing]="enableTagsEditing()" (tagClick)="onTagClick($event)" />
             </div>
             }
         </div>
@@ -175,7 +175,7 @@
             </div>
             @if (showTags()) {
             <div class="subtitle-line">
-                <unit-tags [unit]="u" mode="full" (tagClick)="onTagClick($event)" />
+                <unit-tags [unit]="u" mode="full" [enableTagsEditing]="enableTagsEditing()" (tagClick)="onTagClick($event)" />
             </div>
             }
         </div>
@@ -399,7 +399,7 @@
             </div>
             <span class="spanner"></span>
             @if (showTags()) {
-                <unit-tags [unit]="u" mode="compact" (tagClick)="onTagClick($event)" />
+                <unit-tags [unit]="u" mode="compact" [enableTagsEditing]="enableTagsEditing()" (tagClick)="onTagClick($event)" />
             }
         </div>
     </div>

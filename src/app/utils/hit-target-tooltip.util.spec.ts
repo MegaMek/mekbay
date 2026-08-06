@@ -23,6 +23,16 @@ describe('orderHitTargetTooltipLines', () => {
         expect(lines.map(line => line.label)).toEqual(['Bonus', 'Damage']);
     });
 
+    it('applies priority before the regular, weakened, and heat groups', () => {
+        const lines = orderedModifierTooltipLines([
+            { label: 'Heat', modifier: 1, weakened: true, kind: 'heat' },
+            { label: 'Movement', modifier: 2, priority: -1 },
+            { label: 'Bonus', modifier: -1 },
+        ], entry => `${entry.modifier}`);
+
+        expect(lines.map(line => line.label)).toEqual(['Movement', 'Bonus', 'Heat']);
+    });
+
     it('keeps regular and weakened lines in insertion order within their groups', () => {
         const lines: TooltipLine[] = [
             { label: 'Damage A', weakened: true },

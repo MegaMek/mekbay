@@ -21,7 +21,7 @@ import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.compon
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import type { MotiveModes } from '../../models/motiveModes.model';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../../models/rules/unit-type-rules';
-import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules, type C3DegradationSource } from '../../models/rules/game-rules';
+import { ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY, CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules, type C3DegradationSource, SKILL_BREAKDOWN_PRIORITY } from '../../models/rules/game-rules';
 import { createCBTForceUnitTestHarness, type CBTForceUnitTestEntryState, type TestUnitOverrides } from '../../testing/unit-test-helpers';
 import { getVibrobladeMode, VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../../equipment-handlers/vibroblade.handler';
 import { EquipmentFlag } from '../../models/equipment-flags.type';
@@ -247,10 +247,25 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(rangedSkill.textContent?.trim()).toBe('Gunnery 4');
         expect(rangedSkill.hasAttribute('data-tooltip-host')).toBeFalse();
-        expect(component.gunnerySkillDisplay().tooltip).toBeNull();
+        expect(component.gunnerySkillDisplay()).toEqual({ label: 'Gunnery', value: '4' });
         expect(physicalSkill.textContent?.trim()).toBe('Piloting 5');
         expect(physicalSkill.hasAttribute('data-tooltip-host')).toBeFalse();
-        expect(component.pilotingSkillDisplay().tooltip).toBeNull();
+        expect(component.pilotingSkillDisplay()).toEqual({ label: 'Piloting', value: '5' });
+    });
+
+    it('adds movement modifiers numerically to the displayed hit value', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('Medium Laser', 'NA', 0, [1, 2, 3, 4], 3) });
+        const { component, fixture } = createComponent([laser], {}, [], new Map(), { moveMode: 'run' });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(component.targetState(row).hitText).toBe('+5');
+        expect(component.targetState(row).hitModifierTooltip).toEqual([
+            { label: 'Run', value: '+2', priority: ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY },
+            { label: 'Base Hit Modifier', value: '+3' },
+            { isBreak: true },
+            { label: 'Total', value: '+5', isHeader: true },
+        ]);
+        expect((fixture.nativeElement.querySelector('.hit-cell') as HTMLElement).textContent?.trim()).toBe('+5');
     });
 
     it('shows modifiers and tooltips for VS physical attacks', () => {
@@ -299,7 +314,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const tnCell = fixture.nativeElement.querySelector('.weapon-equipment-row .tn-cell') as HTMLElement;
         expect(chargeTargetState.targetNumberText).toBe('Vs');
         expect(chargeTargetState.targetNumberTooltip).toEqual([
-            { label: 'Charge', value: 'Vs' },
+            { label: 'Charge', value: 'Vs', priority: SKILL_BREAKDOWN_PRIORITY },
             { label: 'Prone', value: '+2' },
             { label: 'Damaged actuator', value: '+1', weakened: true },
             { isBreak: true },
@@ -1707,8 +1722,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.rangeSelection?.outOfExtremeRange).toBeFalse();
         expect(targetState.targetNumberText).toBe('12');
         expect(targetState.breakdown?.lines).toEqual([
-            { label: 'Gunnery', value: '4' },
-            { label: 'Run', value: '+2' },
+            { label: 'Gunnery', value: '4', priority: SKILL_BREAKDOWN_PRIORITY },
+            { label: 'Run', value: '+2', priority: ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY },
             { label: 'Target (A)', value: '+1' },
             { label: 'Range (Long)', value: '+4' },
             { label: 'Hit Modifier', value: '+1' },
@@ -1738,8 +1753,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.rangeSelection?.minimumRangeModifier).toBe(0);
         expect(targetState.targetNumberText).toBe('6');
         expect(targetState.breakdown?.lines).toEqual([
-            { label: 'Gunnery', value: '4' },
-            { label: 'Run', value: '+2' },
+            { label: 'Gunnery', value: '4', priority: SKILL_BREAKDOWN_PRIORITY },
+            { label: 'Run', value: '+2', priority: ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY },
             { label: 'Range (Short)', value: '+0' },
             { label: 'C³ Distance', value: '2 (actual 20)' },
             { isBreak: true },
@@ -1873,7 +1888,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const targetState = component.targetState(row);
         expect(targetState.targetNumberText).toBe('5');
         expect(targetState.breakdown?.lines).toEqual([
-            { label: 'Gunnery', value: '4' },
+            { label: 'Gunnery', value: '4', priority: SKILL_BREAKDOWN_PRIORITY },
             { label: 'Range (Medium)', value: '+2' },
             { label: 'Ammo (LB 10-X Cluster)', value: '-1' },
             { isBreak: true },
@@ -1955,7 +1970,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const targetState = component.targetState(row);
         expect(targetState.targetNumberText).toBe('10');
         expect(targetState.breakdown?.lines).toEqual([
-            { label: 'Gunnery', value: '4' },
+            { label: 'Gunnery', value: '4', priority: SKILL_BREAKDOWN_PRIORITY },
             { label: 'Target (A)', value: '+1' },
             { label: 'Range (Medium)', value: '+2' },
             { label: 'Hit Modifier', value: '+1' },
@@ -2042,7 +2057,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.rangeSelection?.outOfExtremeRange).toBeFalse();
         expect(targetState.targetNumberText).toBe('6');
         expect(targetState.breakdown?.lines).toEqual([
-            { label: 'Piloting', value: '6' },
+            { label: 'Piloting', value: '6', priority: SKILL_BREAKDOWN_PRIORITY },
             { label: 'Target (A)', value: '+1' },
             { label: 'Base Hit Modifier', value: '-1' },
             { isBreak: true },

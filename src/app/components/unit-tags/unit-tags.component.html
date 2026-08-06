@@ -10,6 +10,7 @@
             <span class="tag tag-public" [class.subscribed]="pt.subscribed" [title]="'From: ' + pt.publicId">{{ pt.tag }}</span>
         }
     }
+    @if (enableTagsEditing()) {
     <a class="add-tag-btn" (click)="onTagClick($event)" title="Add tag" aria-label="Add tag">
         @if (mode() === 'compact') {
             @if (hasTags()) {
@@ -30,4 +31,5 @@
             </svg>
         }
     </a>
+    }
 </div>

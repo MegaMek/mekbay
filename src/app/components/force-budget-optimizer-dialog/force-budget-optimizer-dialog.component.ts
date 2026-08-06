@@ -94,7 +94,7 @@ const MIN_PILOT_SKILL = 0;
 const MAX_PILOT_SKILL = 8;
 const DEFAULT_MAX_SKILL_DELTA = 1;
 const OPTIMIZATION_STATE_LIMIT = 50_000;
-const MIN_SKILL_PRIORITY = 1;
+const MIN_SKILL_BREAKDOWN_PRIORITY = 1;
 const BALANCED_DAMAGE_RATIO = 0.5;
 
 @Component({
@@ -409,12 +409,12 @@ export class ForceBudgetOptimizerDialogComponent {
         const strongerDamage = Math.max(rangedDamage, physicalDamage);
         const weakerDamage = Math.min(rangedDamage, physicalDamage);
         const balance = strongerDamage > 0 && weakerDamage / strongerDamage >= BALANCED_DAMAGE_RATIO
-            ? Math.max(MIN_SKILL_PRIORITY, weakerDamage)
+            ? Math.max(MIN_SKILL_BREAKDOWN_PRIORITY, weakerDamage)
             : 0;
 
         return {
-            gunnery: MIN_SKILL_PRIORITY + rangedDamage,
-            piloting: MIN_SKILL_PRIORITY + physicalDamage,
+            gunnery: MIN_SKILL_BREAKDOWN_PRIORITY + rangedDamage,
+            piloting: MIN_SKILL_BREAKDOWN_PRIORITY + physicalDamage,
             balance,
         };
     }

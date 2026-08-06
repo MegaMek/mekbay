@@ -8,6 +8,7 @@ export function modifierTooltipLines<T extends ToHitModifierBreakdownEntry>(
     return entries.map(entry => ({
         label: entry.label,
         value: formatValue(entry),
+        ...(entry.priority !== undefined && { priority: entry.priority }),
         ...(entry.weakened && { weakened: true }),
         ...(entry.kind && { kind: entry.kind }),
     }));
@@ -21,19 +22,19 @@ export function orderedModifierTooltipLines<T extends ToHitModifierBreakdownEntr
 }
 
 export function orderHitTargetTooltipLines(lines: readonly TooltipLine[]): TooltipLine[] {
-    const regular: TooltipLine[] = [];
-    const weakened: TooltipLine[] = [];
-    const heat: TooltipLine[] = [];
+    return lines
+        .map((line, index) => ({ line, index }))
+        .sort((left, right) => {
+            const priorityDifference = (left.line.priority ?? 0) - (right.line.priority ?? 0);
+            if (priorityDifference !== 0) return priorityDifference;
+            const groupDifference = tooltipLineGroup(left.line) - tooltipLineGroup(right.line);
+            return groupDifference !== 0 ? groupDifference : left.index - right.index;
+        })
+        .map(({ line }) => line);
+}
 
-    for (const line of lines) {
-        if (line.kind === 'heat') {
-            heat.push(line);
-        } else if (line.weakened === true) {
-            weakened.push(line);
-        } else {
-            regular.push(line);
-        }
-    }
-
-    return [...regular, ...weakened, ...heat];
+function tooltipLineGroup(line: TooltipLine): number {
+    if (line.kind === 'heat') return 2;
+    if (line.weakened === true) return 1;
+    return 0;
 }

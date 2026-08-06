@@ -33,7 +33,7 @@
 
 import { computed, signal, type Signal } from '@angular/core';
 import { MountedWeapon, type MountedEquipment } from '../mounted-equipment.model';
-import type { ToHitModifierBreakdownEntry } from './game-rules';
+import { ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY, type ToHitModifierBreakdownEntry } from './game-rules';
 import { WeaponEquipment } from '../equipment.model';
 import type { WeaponType } from '../weapon-types.model';
 import type { CriticalSlot, RuleCheckOutcome, SerializedC3NetworkGroup } from '../force-serialization';
@@ -702,7 +702,11 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         const moveMode = turnState.moveMode();
         const movementModifier = this.getAttackMovementModifier(turnState.moveMode(), turnState.airborne() ?? false);
         if (movementModifier !== 0 && moveMode !== null) {
-            entries.push({ label: getMotiveModeLabel(moveMode, this.unit.getUnit(), turnState.airborne() ?? false), modifier: movementModifier });
+            entries.push({
+                label: getMotiveModeLabel(moveMode, this.unit.getUnit(), turnState.airborne() ?? false),
+                modifier: movementModifier,
+                priority: ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY
+            });
         }
         return entries;
     }

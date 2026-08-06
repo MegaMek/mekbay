@@ -143,8 +143,16 @@
 }
 
 .section-skill {
-    justify-self: end;
+    display: flex;
+    align-items: center;
+    gap: 4px;
     white-space: nowrap;
+    
+    .value {
+        color: var(--text-color);
+        font-size: 1.32em;
+        line-height: 0;
+    }
 }
 
 .grid-fill {
@@ -322,6 +330,8 @@
 
 .hit-cell {
     grid-column: 5;
+    font-weight: 800;
+    font-size: 1.2em;
 }
 
 .hit-cell.weakened {

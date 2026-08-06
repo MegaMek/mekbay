@@ -541,7 +541,7 @@ describe('TurnState', () => {
             turnState.spotting.set(true); // This will not affect
 
             expect(turnState.getAttackModifierBreakdown()).toEqual([
-                { label: 'Jump', modifier: 3 },
+                { label: 'Jump', modifier: 3, priority: -50 },
             ]);
         });
 

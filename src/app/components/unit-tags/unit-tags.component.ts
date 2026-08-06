@@ -70,6 +70,8 @@ export class UnitTagsComponent {
      */
     mode = input<'compact' | 'full'>('compact');
 
+    enableTagsEditing = input(true);
+
     /** Emitted when the add/edit tag button is clicked. Passes both the unit and MouseEvent for overlay positioning. */
     tagClick = output<TagClickEvent>();
 

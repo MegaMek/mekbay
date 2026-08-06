@@ -145,6 +145,8 @@ export class UnitCardExpandedComponent {
     /** Whether to show tags on the unit card */
     showTags = input(true);
 
+    enableTagsEditing = input(true);
+
     /** Check if the input is a ForceUnit */
     protected isForceUnit(u: Unit | ForceUnit): u is ForceUnit {
         return u instanceof ForceUnit;

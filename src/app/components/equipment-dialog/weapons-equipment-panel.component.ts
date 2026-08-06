@@ -16,7 +16,7 @@ import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget, In
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import { formatInventoryTargetSignedModifier, inventoryTargetNumberState, inventoryTargetRangeSelection, type InventoryTargetNumberInput, type InventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
-import { separateHeatFireModifier, type C3DegradationSource, type ToHitResolution } from '../../models/rules/game-rules';
+import { separateHeatFireModifier, SKILL_BREAKDOWN_PRIORITY, type C3DegradationSource, type ToHitResolution } from '../../models/rules/game-rules';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import {
     formatInventoryControlModeName,
@@ -87,7 +87,6 @@ interface TargetNumberBreakdown {
 interface SectionSkillDisplay {
     label: 'Gunnery' | 'Piloting';
     value: string;
-    tooltip: TooltipLine[] | null;
 }
 
 interface TargetRowState {
@@ -169,16 +168,14 @@ export class WeaponsEquipmentPanelComponent {
         : this.showsGroundExtremeRange() ? GROUND_EXTREME_RANGE_COLUMNS : GROUND_RANGE_COLUMNS);
     readonly context = computed(() => this.contextInput());
     readonly inventoryControl = computed(() => this.unit().inventoryControl);
-    readonly gunnerySkillDisplay = computed(() => this.sectionSkillDisplay(
-        'Gunnery',
-        this.unit().rules.getBaseGunnerySkill(),
-        []
-    ));
-    readonly pilotingSkillDisplay = computed(() => this.sectionSkillDisplay(
-        'Piloting',
-        this.unit().rules.getBasePilotingSkill(),
-        []
-    ));
+    readonly gunnerySkillDisplay = computed<SectionSkillDisplay>(() => ({
+        label: 'Gunnery',
+        value: this.unit().rules.getBaseGunnerySkill().toString()
+    }));
+    readonly pilotingSkillDisplay = computed<SectionSkillDisplay>(() => ({
+        label: 'Piloting',
+        value: this.unit().rules.getBasePilotingSkill().toString()
+    }));
     readonly groups = computed(() => {
         this.inventoryControl().inventoryViewVersion();
         return getInventoryControlGroups(
@@ -194,23 +191,6 @@ export class WeaponsEquipmentPanelComponent {
         return null;
     }
 
-    private sectionSkillDisplay(
-        label: SectionSkillDisplay['label'],
-        skill: number,
-        modifiers: readonly UnitModifierBreakdownEntry[]
-    ): SectionSkillDisplay {
-        const modifier = modifiers.reduce((total, entry) => total + entry.modifier, 0);
-        return {
-            label,
-            value: (skill + modifier).toString(),
-            tooltip: modifiers.length === 0 ? null : [
-                { label, value: skill.toString() },
-                ...orderedModifierTooltipLines(modifiers, entry => formatInventoryTargetSignedModifier(entry.modifier)),
-                { isBreak: true },
-                { label: 'Total', value: (skill + modifier).toString(), isHeader: true },
-            ]
-        };
-    }
     readonly targets = computed(() => {
         this.unit().getInventoryControlTargetsMap();
         return this.unit().getInventoryControlTargets();
@@ -459,27 +439,48 @@ export class WeaponsEquipmentPanelComponent {
         });
     }
 
-    private hitTextForResolution(row: InventoryControlRow, resolution: ToHitResolution, hasTarget: boolean): string {
-        if (resolution.value === 'Vs' && resolution.modifierBreakdown.length > 0) {
-            const modifier = resolution.modifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
-            return `VS${formatInventoryTargetSignedModifier(modifier)}`;
+    private hitTextForResolution(
+        row: InventoryControlRow,
+        resolution: ToHitResolution,
+        hasTarget: boolean,
+        attackModifierBreakdown: readonly UnitModifierBreakdownEntry[]
+    ): string {
+        const attackModifier = attackModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
+        if (!hasTarget && resolution.value === null) {
+            return row.display.hit;
         }
-        if (!hasTarget) return row.display.hit;
-        const hitModifier = resolution.value;
-        if (hitModifier === null) return '';
-        if (hitModifier === 'Vs' || hitModifier === '*') return hitModifier;
-        return formatInventoryTargetSignedModifier(hitModifier);
+        if (!hasTarget && resolution.profile.length > 1) {
+            return resolution.profile
+                .map(value => formatInventoryTargetSignedModifier(value + attackModifier))
+                .join('/');
+        }
+        return this.formatHitValue(resolution, attackModifier);
     }
 
-    private hitModifierTooltip(resolution: ToHitResolution): TooltipLine[] | null {
-        if (resolution.modifierBreakdown.length === 0) return null;
-        const lines = orderedModifierTooltipLines(
-            resolution.modifierBreakdown,
-            entry => formatInventoryTargetSignedModifier(entry.modifier),
-        );
+    private formatHitValue(resolution: ToHitResolution, attackModifier: number): string {
+        const { value } = resolution;
+        if (value === null) return '';
+        if (value === 'Vs') {
+            if (resolution.modifierBreakdown.length === 0 && attackModifier === 0) return value;
+            const modifier = resolution.modifierBreakdown.reduce((total, entry) => total + entry.modifier, attackModifier);
+            const prefix = resolution.modifierBreakdown.length > 0 ? 'VS' : value;
+            return `${prefix}${formatInventoryTargetSignedModifier(modifier)}`;
+        }
+        if (typeof value === 'number') return formatInventoryTargetSignedModifier(value + attackModifier);
+        return value;
+    }
+
+    private hitModifierTooltip(
+        resolution: ToHitResolution,
+        attackModifierBreakdown: readonly UnitModifierBreakdownEntry[]
+    ): TooltipLine[] | null {
+        const modifierBreakdown = [...attackModifierBreakdown, ...resolution.modifierBreakdown];
+        if (modifierBreakdown.length === 0) return null;
+        const formatModifier = (entry: UnitModifierBreakdownEntry): string => formatInventoryTargetSignedModifier(entry.modifier);
+        const lines = orderedModifierTooltipLines(modifierBreakdown, formatModifier);
         if (lines.length <= 1) return lines;
+        const modifier = modifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
         if (resolution.value === 'Vs') {
-            const modifier = resolution.modifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
             return [
                 ...lines,
                 { isBreak: true },
@@ -490,7 +491,7 @@ export class WeaponsEquipmentPanelComponent {
         return [
             ...lines,
             { isBreak: true },
-            { label: 'Total', value: formatInventoryTargetSignedModifier(resolution.value), isHeader: true },
+            { label: 'Total', value: formatInventoryTargetSignedModifier(modifier), isHeader: true },
         ];
     }
 
@@ -504,7 +505,7 @@ export class WeaponsEquipmentPanelComponent {
         const modifier = resolution.modifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
         const total = modifier === 0 ? 'Vs' : `Vs${formatInventoryTargetSignedModifier(modifier)}`;
         const lines: TooltipLine[] = [
-            { label: row.display.name, value: 'Vs' },
+            { label: row.display.name, value: 'Vs', priority: SKILL_BREAKDOWN_PRIORITY },
             ...orderedModifierTooltipLines(
                 resolution.modifierBreakdown,
                 entry => formatInventoryTargetSignedModifier(entry.modifier),
@@ -599,7 +600,8 @@ export class WeaponsEquipmentPanelComponent {
         });
         const weaponRuleRange = weaponRuleRangeSelection?.range ?? this.unit().getInventoryControlEntryRange(row.id) ?? null;
         const hitResolution = this.resolveHitForRange(row, weaponRuleRange);
-        const hitText = this.hitTextForResolution(row, hitResolution, !!target);
+        const attackModifierBreakdown = this.unit().turnState().getAttackModifierBreakdown();
+        const hitText = this.hitTextForResolution(row, hitResolution, !!target, attackModifierBreakdown);
         const input = this.targetNumberInput(row, calculationTarget, hitResolution, c3Resolution.degradationSource);
         const targetNumber = inventoryTargetNumberState(input, rangeSelection);
         const breakdown = targetNumber.breakdown === null ? null : { total: targetNumber.breakdown.total, lines: targetNumber.breakdown.lines };
@@ -612,8 +614,8 @@ export class WeaponsEquipmentPanelComponent {
             invalidTargetReason,
             rangeSelection,
             hitText,
-            hitModifierTooltip: this.hitModifierTooltip(hitResolution),
-            hitModifierWeakened: hitResolution.weakened,
+            hitModifierTooltip: this.hitModifierTooltip(hitResolution, attackModifierBreakdown),
+            hitModifierWeakened: hitResolution.weakened || attackModifierBreakdown.some(entry => entry.weakened === true),
             damageText: resolveInventoryControlDamageText(
                 row.entry,
                 {

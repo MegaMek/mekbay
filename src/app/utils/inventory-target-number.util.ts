@@ -35,7 +35,7 @@ import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { WeaponEquipment, type AmmoEquipment } from '../models/equipment.model';
 import { resolveAmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
 import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
-import { CORE_2026_GAME_RULES, validatedToHitModifierBreakdown, type C3DegradationSource, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry } from '../models/rules/game-rules';
+import { CORE_2026_GAME_RULES, SKILL_BREAKDOWN_PRIORITY, validatedToHitModifierBreakdown, type C3DegradationSource, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry } from '../models/rules/game-rules';
 import { modifierTooltipLines, orderHitTargetTooltipLines } from './hit-target-tooltip.util';
 import type { UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
 import type { InventoryControlDisplayData, InventoryControlGroupId, InventoryRangeKey } from './inventory-control.util';
@@ -253,7 +253,7 @@ export function inventoryTargetNumberBreakdown(
     const numericAmmoToHitModifier = typeof ammoToHitModifier === 'number' ? ammoToHitModifier : 0;
     const heatFireModifier = physical ? 0 : input.heatFireModifier ?? 0;
     const terms: TooltipLine[] = [
-        { label: skillLabel, value: skill.toString() }
+        { label: skillLabel, value: skill.toString(), priority: SKILL_BREAKDOWN_PRIORITY }
     ];
 
     terms.push(...modifierTooltipLines(input.attackModifierBreakdown, entry => formatInventoryTargetSignedModifier(entry.modifier)));

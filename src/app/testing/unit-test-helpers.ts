@@ -8,7 +8,7 @@ import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget, In
 import { type MountedEquipmentInit, MountedEquipment  } from '../models/mounted-equipment.model';
 import { type CriticalSlot, type HeatProfile } from '../models/force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../models/motiveModes.model';
-import { CORE_2026_GAME_RULES, type CBTGameRules, type C3DegradationSource, type ToHitAdjustment, type ToHitModifierBreakdownEntry } from '../models/rules/game-rules';
+import { ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY, CORE_2026_GAME_RULES, type CBTGameRules, type C3DegradationSource, type ToHitAdjustment, type ToHitModifierBreakdownEntry } from '../models/rules/game-rules';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE, type UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
 import { resolveSelectedInventoryWeaponHeat } from '../utils/inventory-control-heat.util';
 import type { InventoryControlDisplayData, InventoryControlRules } from '../utils/inventory-control.util';
@@ -238,7 +238,7 @@ export class CBTForceUnitTestHarness {
             airborne: () => false,
             getAttackMovementModifier: attackMovementModifier,
             getAttackModifierBreakdown: () => options.attackModifierBreakdown ?? (attackMovementModifier() !== 0
-                ? [{ label: getMotiveModeLabel(options.moveMode!, baseUnit, false), modifier: attackMovementModifier() }]
+                ? [{ label: getMotiveModeLabel(options.moveMode!, baseUnit, false), modifier: attackMovementModifier(), priority: ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY }]
                 : []),
             missingAttackMovementModifier: () => (options.moveMode ?? null) === null && (options.attackMovementCanAffectTargetNumbers ?? true),
             getSpottingModifier: () => 0,

@@ -7,7 +7,7 @@
                         <span class="section-title">
                             <span class="section-title-text">{{ group.title }}</span>
                             @if (sectionSkill(group); as skill) {
-                                <span class="section-skill" [tooltip]="skill.tooltip">{{ skill.label }} {{ skill.value }}</span>
+                                <span class="section-skill">{{ skill.label }} <span class="value">{{ skill.value }}</span></span>
                             }
                         </span>
                         <span class="grid-fill grid-fill-right" aria-hidden="true"></span>

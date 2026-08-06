@@ -8,6 +8,7 @@ export interface TooltipLine {
     iconAlt?: string;
     isHeader?: boolean;
     isBreak?: boolean;
+    priority?: number;
     weakened?: boolean;
     kind?: 'heat';
 }

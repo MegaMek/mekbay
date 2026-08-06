@@ -3385,7 +3385,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshCrew();
 
         expect(forceUnit.turnState().getAttackModifierBreakdown()).toEqual([
-            { label: 'Run', modifier: 2 },
+            { label: 'Run', modifier: 2, priority: -50 },
         ]);
         expect(svg.getElementById('gunnerySkill0')?.textContent).toBe('4');
     });
