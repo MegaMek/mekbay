@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { InventoryControlRuntimeTarget } from '../../models/inventory-control-runtime-state.model';
 import { WeaponTargetsMenuComponent } from './weapon-targets-menu.component';

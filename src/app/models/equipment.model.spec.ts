@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { MountedWeapon } from './mounted-equipment.model';
 import type { CBTForceUnit } from './cbt-force-unit.model';
 import { MML_LRM_PROFILE, MML_SRM_PROFILE } from './ammo-weapon-profile.model';

@@ -1,50 +1,26 @@
-/*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
- *
- * This file is part of MekBay.
- *
- * MekBay is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License (GPL),
- * version 3 or (at your option) any later version,
- * as published by the Free Software Foundation.
- *
- * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * A copy of the GPL should have been included with this project;
- * if not, see <https://www.gnu.org/licenses/>.
- *
- * NOTICE: The MegaMek organization is a non-profit group of volunteers
- * creating free software for the BattleTech community.
- *
- * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
- * of The Topps Company, Inc. All Rights Reserved.
- *
- * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
- * InMediaRes Productions, LLC.
- *
- * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
- * Microsoft's "Game Content Usage Rules"
- * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
- * affiliated with Microsoft.
- */
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
 
 import { effect, inject, Injectable, signal } from '@angular/core';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import type { SerializedForce } from '../models/force-serialization';
+import { APP_VERSION, BUILD_BRANCH, BUILD_COMMIT_NUMBER } from '../build-meta';
 import { uuidv7 } from '../utils/uuid.util';
-
-/*
- * Author: Drake
- */
 
 /** Client protocol version - increment when breaking changes are made */
 export const PROTOCOL_VERSION = 2;
 
 export type ConnectionStatusPhase = 'hidden' | 'offline' | 'online';
+export type ForceUpdateSource = 'live' | 'reconnect';
+
+interface ForceSubscription {
+    onRemoteUpdate: (data: SerializedForce, source: ForceUpdateSource) => void | Promise<void>;
+    handler: ((event: MessageEvent) => void) | null;
+    socket: WebSocket | null;
+    updateQueue: Promise<void>;
+}
 
 @Injectable({
     providedIn: 'root'
@@ -56,7 +32,7 @@ export class WsService {
     private wsReady?: Promise<void>;
     private wsReadyResolver: (() => void) | null = null;
     private readonly wsSessionId = uuidv7();
-    private subscriptions = new Map<string, (event: MessageEvent) => void>();
+    private subscriptions = new Map<string, ForceSubscription>();
     private actionHandlers = new Map<string, Set<(msg: any, event: MessageEvent) => void>>();
     
     // Connection state management
@@ -189,12 +165,13 @@ export class WsService {
      * Setup WebSocket event handlers
      */
     private setupWebSocketHandlers(): void {
-        if (!this.ws) return;
+        const socket = this.ws;
+        if (!socket) return;
 
-        this.ws.onopen = () => this.handleOpen();
-        this.ws.onclose = (event) => this.handleClose(event);
-        this.ws.onerror = () => this.handleError();
-        this.ws.onmessage = (event) => this.handleMessage(event);
+        socket.onopen = () => this.handleOpen();
+        socket.onclose = (event) => this.handleClose(event, socket);
+        socket.onerror = () => this.handleError();
+        socket.onmessage = (event) => this.handleMessage(event);
     }
 
     /**
@@ -226,13 +203,17 @@ export class WsService {
         this.showReconnectedBadge();
         this.resolveConnectionPromise();
         this.registerSession();
+        void this.resubscribeToForceUpdates();
     }
 
     /**
      * Handle WebSocket close event
      */
-    private handleClose(event: CloseEvent): void {
+    private handleClose(event: CloseEvent, closedSocket: WebSocket | null = this.ws): void {
         this.logger.error(`WebSocket closed: ${event.code}, ${event.reason}`);
+        if (closedSocket) {
+            this.detachForceSubscriptions(closedSocket);
+        }
         this.isConnecting = false;
         this.wsConnected.set(false);
         this.showDisconnectedBadge();
@@ -308,7 +289,15 @@ export class WsService {
         }
         this.lastRegisteredUuid = uuid;
         try {
-            this.send({ action: 'register', sessionId: this.wsSessionId, uuid, version: PROTOCOL_VERSION });
+            this.send({
+                action: 'register',
+                sessionId: this.wsSessionId,
+                uuid,
+                version: PROTOCOL_VERSION,
+                appVersion: APP_VERSION,
+                buildBranch: BUILD_BRANCH,
+                buildCommitNumber: BUILD_COMMIT_NUMBER,
+            });
         } catch (error) {
             this.logger.error(`Failed to register session: ${error}`);
         }
@@ -399,6 +388,7 @@ export class WsService {
             }
             return;
         }
+        this.detachForceSubscriptions(this.ws);
         // Remove event handlers to prevent them from firing
         this.ws.onopen = null;
         this.ws.onclose = null;
@@ -574,46 +564,39 @@ export class WsService {
     /**
      * Subscribe to instance updates
      */
-    public async subscribeToForceUpdates(instanceId: string, onRemoteUpdate: (data: SerializedForce) => void): Promise<void> {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            this.logger.warn('Cannot subscribe: WebSocket not connected');
-            return;
-        }
-
+    public async subscribeToForceUpdates(
+        instanceId: string,
+        onRemoteUpdate: (data: SerializedForce, source: ForceUpdateSource) => void | Promise<void>,
+    ): Promise<void> {
         // Unsubscribe from previous subscription if exists
         await this.unsubscribeFromForceUpdates(instanceId);
 
-        // Setup message handler
-        const handler = (event: MessageEvent) => {
-            try {
-                const msg = JSON.parse(event.data);
-                if (msg.action === 'updatedForce' && msg.data?.instanceId === instanceId) {
-                    onRemoteUpdate(msg.data as SerializedForce);
-                }
-            } catch {
-                // Ignore parse errors
-            }
-        };
-
-        this.ws.addEventListener('message', handler);
-        this.subscriptions.set(instanceId, handler);
-
-        // Send subscribe message
-        this.send({
-            action: 'subscribeToForceUpdates',
-            instanceId
+        this.subscriptions.set(instanceId, {
+            onRemoteUpdate,
+            handler: null,
+            socket: null,
+            updateQueue: Promise.resolve(),
         });
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            this.logger.warn('Cannot subscribe: WebSocket not connected; will subscribe after reconnect');
+            return;
+        }
 
+        this.attachForceSubscription(instanceId);
     }
 
     /**
      * Unsubscribe from instance updates
      */
     public async unsubscribeFromForceUpdates(instanceId: string): Promise<void> {
-        const handler = this.subscriptions.get(instanceId);
-        if (!handler) return;
+        const subscription = this.subscriptions.get(instanceId);
+        if (!subscription) return;
 
         this.subscriptions.delete(instanceId);
+
+        if (subscription.socket && subscription.handler) {
+            subscription.socket.removeEventListener('message', subscription.handler);
+        }
 
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             try {
@@ -626,9 +609,6 @@ export class WsService {
             }
         }
 
-        if (this.ws) {
-            this.ws.removeEventListener('message', handler);
-        }
     }
 
     /**
@@ -639,6 +619,122 @@ export class WsService {
         instanceIds.forEach(instanceId => {
             this.unsubscribeFromForceUpdates(instanceId);
         });
+    }
+
+    private attachForceSubscription(instanceId: string): void {
+        const subscription = this.subscriptions.get(instanceId);
+        const socket = this.ws;
+        if (!subscription || !socket || socket.readyState !== WebSocket.OPEN) {
+            return;
+        }
+
+        if (subscription.socket === socket && subscription.handler) {
+            return;
+        }
+
+        if (subscription.socket && subscription.handler) {
+            subscription.socket.removeEventListener('message', subscription.handler);
+        }
+
+        const handler = (event: MessageEvent) => {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.action === 'updatedForce' && msg.data?.instanceId === instanceId) {
+                    void this.notifyForceSubscription(subscription, msg.data as SerializedForce, 'live', instanceId);
+                }
+            } catch {
+                // Ignore parse errors
+            }
+        };
+
+        socket.addEventListener('message', handler);
+        subscription.handler = handler;
+        subscription.socket = socket;
+        this.send({
+            action: 'subscribeToForceUpdates',
+            instanceId,
+        });
+    }
+
+    private async resubscribeToForceUpdates(): Promise<void> {
+        const socket = this.ws;
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            return;
+        }
+
+        const reconnectSubscriptions: Array<{
+            instanceId: string;
+            subscription: ForceSubscription;
+        }> = [];
+
+        for (const instanceId of this.subscriptions.keys()) {
+            const subscription = this.subscriptions.get(instanceId);
+            if (!subscription) {
+                continue;
+            }
+
+            this.attachForceSubscription(instanceId);
+            reconnectSubscriptions.push({ instanceId, subscription });
+        }
+
+        await Promise.all(reconnectSubscriptions.map(({ instanceId, subscription }) => {
+            if (this.ws !== socket) {
+                return Promise.resolve();
+            }
+            return this.refreshForceSubscription(instanceId, subscription, socket);
+        }));
+    }
+
+    private async refreshForceSubscription(
+        instanceId: string,
+        subscription: ForceSubscription,
+        socket: WebSocket,
+    ): Promise<void> {
+        try {
+            const response = await this.sendAndWaitForResponse({
+                action: 'getForce',
+                instanceId,
+            });
+
+            if (this.ws !== socket || this.subscriptions.get(instanceId) !== subscription) {
+                return;
+            }
+
+            const data = response?.data;
+            if (data?.instanceId === instanceId) {
+                await this.notifyForceSubscription(subscription, data as SerializedForce, 'reconnect', instanceId);
+            }
+        } catch (error) {
+            this.logger.error(`Failed to refresh force subscription ${instanceId}: ${error}`);
+        }
+    }
+
+    private notifyForceSubscription(
+        subscription: ForceSubscription,
+        data: SerializedForce,
+        source: ForceUpdateSource,
+        instanceId: string,
+    ): Promise<void> {
+        const update = subscription.updateQueue
+            .then(() => subscription.onRemoteUpdate(data, source))
+            .catch(error => {
+                this.logger.error(`Force update handler error for ${instanceId}: ${error}`);
+            });
+        subscription.updateQueue = update;
+        return update;
+    }
+
+    private detachForceSubscriptions(socket: WebSocket): void {
+        for (const subscription of this.subscriptions.values()) {
+            if (subscription.socket !== socket) {
+                continue;
+            }
+            if (subscription.handler) {
+                socket.removeEventListener('message', subscription.handler);
+            }
+            subscription.handler = null;
+            subscription.socket = null;
+        }
     }
 
     public registerMessageHandler(actions: string | string[], handler: (msg: any, event: MessageEvent) => void): () => void {

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { DropShipEntity } from '../../entities/aero/dropship-entity';
 import type { JumpShipEntity } from '../../entities/largecraft/jumpship-entity';
 import type { SpaceStationEntity } from '../../entities/largecraft/space-station-entity';

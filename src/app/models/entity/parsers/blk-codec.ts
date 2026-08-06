@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { MountedArmor } from '../components/armor';
 import type { GyroType } from '../components/gyro-data';
 import type { AeroCockpitType, AeroDesignType, DriveCoreType, DropShipCollarType, CockpitType, ArmorType, EngineType } from '../types';

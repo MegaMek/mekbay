@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { signal } from '@angular/core';
 import { EntityType, WeightClass } from '../../types';
 import { SupportVehicleData, type SupportVehicle } from '../support-vehicle';

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { WeaponEquipment } from '../../../../equipment.model';
 import { TestVtolEntity as VtolEntity } from '../../../testing/test-entities';
 import { addTestEquipment } from '../../../testing/test-mounted-equipment';

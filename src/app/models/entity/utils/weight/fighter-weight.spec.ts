@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { AmmoEquipment, WeaponEquipment } from '../../../equipment.model';
 import { MountedEngine } from '../../components';
 import { TestAeroSpaceFighterEntity, TestConvFighterEntity } from '../../testing/test-entities';

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { ArmorEquipment, createEquipment, StructureEquipment } from '../../../equipment.model';
 import { MountedArmor, MountedEngine, MountedStructure } from '../../components';
 import { TestBipedMekEntity, TestTripodMekEntity } from '../../testing/test-entities';

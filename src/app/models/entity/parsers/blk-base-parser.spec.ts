@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { signal } from '@angular/core';
 import { EMPTY_EQUIPMENT_REGISTRY, EquipmentRegistry } from '../../equipment-lookup';
 import { ArmorEquipment } from '../../equipment.model';

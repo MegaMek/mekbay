@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { ApplicationRef, Injectable, Injector, createComponent, type ComponentRef } from '@angular/core';
 
 import type { CBTForce } from '../../../models/cbt-force.model';

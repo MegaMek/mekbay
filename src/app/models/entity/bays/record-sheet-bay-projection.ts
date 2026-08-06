@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { EntityTransportBay, EntityTransporter } from '../types/transport';
 import { getBayRecordSheetCapacity, getBayRecordSheetName, isQuartersBay } from './bay-definitions';
 

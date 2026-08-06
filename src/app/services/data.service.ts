@@ -1,35 +1,6 @@
-/*
- * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
- *
- * This file is part of MekBay.
- *
- * MekBay is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License (GPL),
- * version 3 or (at your option) any later version,
- * as published by the Free Software Foundation.
- *
- * MekBay is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * A copy of the GPL should have been included with this project;
- * if not, see <https://www.gnu.org/licenses/>.
- *
- * NOTICE: The MegaMek organization is a non-profit group of volunteers
- * creating free software for the BattleTech community.
- *
- * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
- * of The Topps Company, Inc. All Rights Reserved.
- *
- * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
- * InMediaRes Productions, LLC.
- *
- * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
- * Microsoft's "Game Content Usage Rules"
- * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
- * affiliated with Microsoft.
- */
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
 
 import { Injectable, signal, Injector, inject, DestroyRef } from '@angular/core';
 import type { Unit, UnitFluffCatalogEntry } from '../models/units.model';
@@ -88,9 +59,7 @@ import { naturalCompare } from '../utils/sort.util';
 import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 import { uuidv7 } from '../utils/uuid.util';
 
-/*
- * Author: Drake
- */
+
 export const DOES_NOT_TRACK = 999;
 
 export interface BucketStatSummary {
@@ -140,6 +109,11 @@ export type BroadcastPayload = {
     context?: string;     // e.g. 'tags'
     meta?: any;         // optional misc info
 };
+
+export interface ForceTagsUpdateResult {
+    tags: string[];
+    timestamp: string | null;
+}
 
 @Injectable({
     providedIn: 'root'
@@ -745,7 +719,9 @@ export class DataService {
         // If we reached cloud but the force only exists locally, push it up
         if (triedCloud && local && !cloud) {
             this.logger.info(`Force "${local.name}" exists locally but not in cloud: pushing to cloud.`);
-            this.saveForceCloud(local);
+            void this.saveForceCloud(local).catch(error => {
+                this.logger.error(`Failed to save force ${local.instanceId()} to cloud: ${error}`);
+            });
         } else 
         if (triedCloud && (cloudIsNewer || !local) && cloud && cloud.owned()) {
             if (!local) {
@@ -766,26 +742,40 @@ export class DataService {
     }
 
     public async saveForce(force: Force, localOnly: boolean = false): Promise<void> {
+        if (!await this.saveForceLocally(force)) return;
+        if (!localOnly) {
+            void this.saveForceCloud(force).catch(error => {
+                this.logger.error(`Failed to save force ${force.instanceId()} to cloud: ${error}`);
+            });
+        }
+    }
+
+    public async saveForceAndWaitForCloud(force: Force): Promise<void> {
+        if (!await this.saveForceLocally(force)) return;
+        await this.saveForceCloudImmediately(force);
+    }
+
+    private async saveForceLocally(force: Force): Promise<boolean> {
         if (force.readOnly()) {
             this.logger.warn(`DataService.saveForce() blocked: force "${force.name}" is read-only.`);
-            return;
+            return false;
         }
         if (!force.instanceId()) {
             force.instanceId.set(uuidv7());
         }
         await this.dbService.saveForce(force.serialize());
-        if (!localOnly) {
-            this.saveForceCloud(force);
-        }
+        return true;
     }
 
-    public async updateForceTags(instanceId: string, tags: readonly string[], updateCloud: boolean = true): Promise<string[]> {
+    public async updateForceTags(instanceId: string, tags: readonly string[], updateCloud: boolean = true): Promise<ForceTagsUpdateResult> {
         const normalizedTags = sanitizeForceTags(tags);
         const updatedLocalForce = await this.dbService.updateForceTags(instanceId, normalizedTags);
         let updated = updatedLocalForce !== null;
+        let cloudUpdate: { updated: boolean; timestamp: string | null } | null = null;
 
         if (updateCloud) {
-            updated = (await this.updateForceTagsCloud(instanceId, normalizedTags)) || updated;
+            cloudUpdate = await this.updateForceTagsCloud(instanceId, normalizedTags);
+            updated = cloudUpdate.updated || updated;
         }
 
         if (!updated) {
@@ -793,7 +783,12 @@ export class DataService {
         }
 
         this.updateCachedForceTags(instanceId, normalizedTags);
-        return normalizedTags;
+        const timestamp = cloudUpdate?.timestamp ?? updatedLocalForce?.timestamp ?? null;
+        if (updatedLocalForce && timestamp && updatedLocalForce.timestamp !== timestamp) {
+            updatedLocalForce.timestamp = timestamp;
+            await this.dbService.saveForce(updatedLocalForce);
+        }
+        return { tags: normalizedTags, timestamp };
     }
 
     public getCachedForceTagLabels(): string[] {
@@ -1531,10 +1526,11 @@ export class DataService {
         });
     }
 
-    private async updateForceTagsCloud(instanceId: string, tags: readonly string[]): Promise<boolean> {
+    private async updateForceTagsCloud(instanceId: string, tags: readonly string[]): Promise<{ updated: boolean; timestamp: string | null }> {
+        const failed = { updated: false, timestamp: null };
         const ws = await this.canUseCloud();
         if (!ws) {
-            return false;
+            return failed;
         }
 
         try {
@@ -1547,23 +1543,77 @@ export class DataService {
             });
 
             if (!response) {
-                return false;
+                return failed;
             }
 
             if (response.code === 'not_owner') {
                 this.logger.warn(`Cannot update force tags in cloud for ${instanceId}: not the owner.`);
-                return false;
+                return failed;
             }
 
             if (response.action === 'error') {
                 this.logger.error(`Failed to update force tags in cloud for ${instanceId}: ${response.message ?? 'unknown error'}`);
-                return false;
+                return failed;
             }
 
-            return response.action === 'forceTagsUpdated';
+            return response.action === 'forceTagsUpdated'
+                ? { updated: true, timestamp: typeof response.timestamp === 'string' ? response.timestamp : null }
+                : failed;
         } catch (err) {
             this.logger.error(`Failed to update force tags in cloud for ${instanceId}: ${err}`);
-            return false;
+            return failed;
+        }
+    }
+
+    private async saveForceCloudImmediately(force: Force): Promise<void> {
+        const instanceId = force.instanceId();
+        if (!instanceId) return;
+
+        const pending = this.saveForceCloudDebounce.get(instanceId);
+        if (pending) {
+            clearTimeout(pending.timeout);
+            this.saveForceCloudDebounce.delete(instanceId);
+        }
+
+        try {
+            await this.sendForceToCloud(force);
+            for (const resolver of pending?.resolvers ?? []) {
+                resolver.resolve();
+            }
+        } catch (error) {
+            for (const resolver of pending?.resolvers ?? []) {
+                resolver.reject(error);
+            }
+            throw error;
+        }
+    }
+
+    private async sendForceToCloud(force: Force): Promise<void> {
+        const ws = await this.canUseCloud();
+        if (!ws) {
+            throw new Error('Cloud save skipped because WebSocket is unavailable.');
+        }
+
+        const uuid = this.userStateService.uuid();
+        const response = await this.wsService.sendAndWaitForResponse({
+            action: 'saveForce',
+            uuid,
+            data: force.serialize()
+        });
+
+        if (!response) {
+            throw new Error('Cloud save did not receive a response.');
+        }
+        if (response.code === 'not_owner') {
+            this.logger.warn('Cannot save force to cloud: not the owner.');
+            this.forceNeedsAdoption.next(force);
+            throw new Error('Cannot save force to cloud: not the owner.');
+        }
+        if (response.action === 'error') {
+            throw new Error(response.message ?? 'Cloud save failed.');
+        }
+        if (response.action !== 'forceSaved') {
+            throw new Error(`Cloud save returned unexpected response: ${response.action ?? 'unknown'}.`);
         }
     }
 
@@ -1584,24 +1634,7 @@ export class DataService {
         }
 
         try {
-            const ws = await this.canUseCloud();
-            if (!ws) {
-                // Nothing to do, resolve all pending promises
-                for (const r of resolvers) r.resolve();
-                return;
-            }
-            const uuid = this.userStateService.uuid();
-            const payload = {
-                action: 'saveForce',
-                uuid,
-                data: force.serialize()
-            };
-            const response = await this.wsService.sendAndWaitForResponse(payload);
-            if (response && response.code === 'not_owner') {
-                this.logger.warn('Cannot save force to cloud: not the owner.');
-                // Signal that this force needs adoption (clone with fresh IDs)
-                this.forceNeedsAdoption.next(force);
-            }
+            await this.sendForceToCloud(force);
             for (const r of resolvers) r.resolve();
         } catch (err) {
             for (const r of resolvers) r.reject(err);

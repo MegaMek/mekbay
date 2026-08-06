@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { BattleArmorEntity } from '../../entities/infantry/battle-armor-entity';
 import type { InfantryEntity } from '../../entities/infantry/infantry-entity';
 import { WeaponEquipment } from '../../../equipment.model';

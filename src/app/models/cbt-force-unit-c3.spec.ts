@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { CBTForceUnit } from './cbt-force-unit.model';
 import { C3_FLAGS, C3Network, C3NetworkType } from './c3-network.model';
 import type { Equipment } from './equipment.model';

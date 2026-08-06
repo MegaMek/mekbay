@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { PickerChoice } from '../components/picker/picker.interface';
 import { ApolloHandler } from '../equipment-handlers/apollo.handler';
 import { AtmHandler } from '../equipment-handlers/atm.handler';

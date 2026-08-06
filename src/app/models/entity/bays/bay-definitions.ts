@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { INFANTRY_TRANSPORT_WEIGHTS } from '../types/transport';
 import type {
   EntityTransportBay,

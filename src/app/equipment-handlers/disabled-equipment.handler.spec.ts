@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { Equipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';

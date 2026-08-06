@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { FactionEraDisplayInfo } from '../../utils/force-namer.util';
 
 function clamp(value: number, min: number, max: number): number {

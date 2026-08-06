@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX, type PvNormalizationSettings } from '../models/unit-search-result.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { adjustPointValueForSkill } from './pv-skill-adjustment.util';

@@ -1,8 +1,6 @@
-/*
- * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
- *
- * This file is part of MekBay.
- */
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
 
 const CENTER_MARKER = '[data-mekbay-region="center-panel"]';
 const CENTER_IDS = [

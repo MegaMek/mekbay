@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { SmallCraftEntity } from '../../entities/aero/small-craft-entity';
 import { calculateSmallCraftFuelSystemWeight, nextHalfTon } from './common';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { approx } from './entity/types/tech';
 import { decodeEquipmentTechData } from './equipment-tech-codec';
 

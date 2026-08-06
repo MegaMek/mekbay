@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { DOCUMENT } from '@angular/common';
 import { Dialog } from '@angular/cdk/dialog';
 import { provideZonelessChangeDetection } from '@angular/core';

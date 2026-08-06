@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { MiscEquipment } from '../models/equipment.model';
 import {
     C3EM_MODE_STATE_KEY,

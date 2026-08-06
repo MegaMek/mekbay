@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { MekEntity, MekWithArmsEntity } from '../../entities/mek/mek-entity';
 import { calculateArmorCost } from './common';
 import { amount, buildCostReport, multiplier } from './cost-report';

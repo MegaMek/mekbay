@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { ASUnitTypeCode } from '../../../models/units.model';
 import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
 import type {

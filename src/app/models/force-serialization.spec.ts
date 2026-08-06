@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { CBT_SERIALIZED_STATE_SCHEMA, C3_NETWORK_GROUP_SCHEMA, FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { C3NetworkType } from './c3-network.model';

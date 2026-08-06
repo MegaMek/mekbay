@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { Injectable, inject } from '@angular/core';
 
 import { PAGE_GAP, PAGE_WIDTH } from '../page-viewer-zoom-pan.service';

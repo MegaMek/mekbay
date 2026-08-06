@@ -1,35 +1,6 @@
-/*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
- *
- * This file is part of MekBay.
- *
- * MekBay is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License (GPL),
- * version 3 or (at your option) any later version,
- * as published by the Free Software Foundation.
- *
- * MekBay is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * A copy of the GPL should have been included with this project;
- * if not, see <https://www.gnu.org/licenses/>.
- *
- * NOTICE: The MegaMek organization is a non-profit group of volunteers
- * creating free software for the BattleTech community.
- *
- * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
- * of The Topps Company, Inc. All Rights Reserved.
- *
- * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
- * InMediaRes Productions, LLC.
- *
- * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
- * Microsoft's "Game Content Usage Rules"
- * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
- * affiliated with Microsoft.
- */
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
 
 import { Injectable, signal, effect, computed, Injector, inject, untracked, DestroyRef, ApplicationRef } from '@angular/core';
 import type { Unit } from '../models/units.model';
@@ -46,7 +17,7 @@ import { RenameForceDialogComponent, type RenameForceDialogData, type RenameForc
 import { RenameGroupDialogComponent, type RenameGroupDialogData, type RenameGroupDialogResult } from '../components/rename-group-dialog/rename-group-dialog.component';
 import { UnitInitializerService } from './unit-initializer.service';
 import { DialogsService, type DialogRef } from './dialogs.service';
-import { WsService } from './ws.service';
+import { WsService, type ForceUpdateSource } from './ws.service';
 import { ToastService } from './toast.service';
 import { LoggerService } from './logger.service';
 import { OptionsService } from './options.service';
@@ -93,6 +64,20 @@ import { EquipmentInteractionRegistryService } from './equipment-interaction-reg
 import { INVENTORY_CONTROL_TARGET_COLORS, getInventoryControlTargetLetter, type InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import { deriveOpforTargetCalculatorState, getOpforInventoryTargetId, resolveInventoryTargetUnitType } from '../utils/inventory-control-opfor-target.util';
 
+function parseForceTimestamp(timestamp: string | null | undefined): number | null {
+    if (!timestamp) return null;
+    const parsed = Date.parse(timestamp);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function compareForceTimestamps(targetForce: Force, incomingForce: SerializedForce): number | null {
+    const currentTimestamp = parseForceTimestamp(targetForce.timestamp);
+    const incomingTimestamp = parseForceTimestamp(incomingForce.timestamp);
+
+    if (currentTimestamp === null || incomingTimestamp === null) return null;
+    return Math.sign(incomingTimestamp - currentTimestamp);
+}
+
 function inventoryControlTargetsEqual(
     currentTargets: readonly InventoryControlRuntimeTarget[],
     nextTargets: readonly InventoryControlRuntimeTarget[]
@@ -126,15 +111,14 @@ function shallowRecordsEqual(
         && currentEntries.every(([key, value]) => value === nextRecord[key]);
 }
 
-/*
- * Author: Drake
- */
+
 @Injectable({
     providedIn: 'root'
 })
 export class ForceBuilderService {
     logger = inject(LoggerService);
     dataService = inject(DataService);
+    optionsService = inject(OptionsService);
     layoutService = inject(LayoutService);
     toastService = inject(ToastService);
     wsService = inject(WsService);
@@ -166,6 +150,7 @@ export class ForceBuilderService {
     /** Guards initializeFromUrl so it only runs once (at startup). */
     private urlInitRan = false;
     private conflictDialogRef: any;
+    private remoteConflictQueue: Promise<void> = Promise.resolve();
 
     /** Current alignment filter: 'all' shows everything, 'friendly'/'enemy' filters by alignment. */
     public alignmentFilter = signal<'friendly' | 'enemy' | 'all'>('friendly');
@@ -202,7 +187,6 @@ export class ForceBuilderService {
     constructor() {
         this.loadUnitsFromUrlOnStartup();
         this.updateUrlOnForceChange();
-        this.monitorWebSocketConnection();
         this.monitorEquipmentHandlerRuntime();
         this.monitorOpforInventoryTargets();
 
@@ -402,12 +386,12 @@ export class ForceBuilderService {
         const instanceId = force.instanceId();
         this.logger.info(`ForceBuilderService: Setting up force slot for "${force.displayName()}"${instanceId ? ` (instance: ${instanceId})` : ''}`);
         if (instanceId) {
-            this.wsService.subscribeToForceUpdates(instanceId, (serializedForce: SerializedForce) => {
+            this.wsService.subscribeToForceUpdates(instanceId, (serializedForce: SerializedForce, source: ForceUpdateSource) => {
                 if (serializedForce.instanceId !== force.instanceId()) {
                     this.logger.warn(`Received force update for instance ID ${serializedForce.instanceId}, but force has instance ID ${force.instanceId()}. Ignoring.`);
                     return;
                 }
-                this.replaceForceInPlace(force, serializedForce);
+                return this.reconcileRemoteForce(force, serializedForce, source);
             });
         }
         // Subscribe to force changes for auto-save
@@ -687,10 +671,34 @@ export class ForceBuilderService {
     }
 
     /**
-     * Handles an incoming WS update for a specific force, updating it in-place.
+     * Reconciles an incoming remote force snapshot with the loaded force.
      */
-    private async replaceForceInPlace(targetForce: Force, serializedForce: SerializedForce) {
+    private async reconcileRemoteForce(
+        targetForce: Force,
+        serializedForce: SerializedForce,
+        source: ForceUpdateSource = 'live',
+    ) {
         if (!targetForce) return;
+        const timestampComparison = compareForceTimestamps(targetForce, serializedForce);
+        if (timestampComparison === null) {
+            this.logger.warn(`Ignoring remote force update for instance ${targetForce.instanceId()}: unable to compare timestamps.`);
+            return;
+        }
+        if (timestampComparison === -1) {
+            if (source === 'reconnect' && targetForce.owned()) {
+                try {
+                    await this.dataService.saveForceAndWaitForCloud(targetForce);
+                } catch (error) {
+                    this.logger.error(`Failed to push local force ${targetForce.instanceId()} after reconnect: ${error}`);
+                }
+            }
+            return;
+        }
+        if (timestampComparison === 0) return;
+        if (source === 'reconnect' && targetForce.owned() && this.optionsService.options().enableForceSyncConflictDialog) {
+            await this.enqueueRemoteForceConflict(targetForce, serializedForce);
+            return;
+        }
         try {
             this.urlStateInitialized.set(false);
             const selectedUnitId = this.selectedUnit()?.id;
@@ -1710,7 +1718,6 @@ export class ForceBuilderService {
         const currentForce = this.currentForce();
         if (!currentForce) return;
 
-        const optionsService = this.injector.get(OptionsService);
         const { PrintOptionsDialogComponent } = await import('../components/print-options-dialog/print-options-dialog.component');
         const ref = this.dialogsService.createDialog<PrintAllOptions | null>(PrintOptionsDialogComponent, {
             disableClose: false,
@@ -1730,25 +1737,8 @@ export class ForceBuilderService {
             }, currentForce.units(), printOptions);
         } else if (currentForce instanceof ASForce) {
             const appRef = this.injector.get(ApplicationRef);
-            await ASPrintUtil.multipagePrint(appRef, this.injector, optionsService, currentForce.groups(), printOptions, true, currentForce);
+            await ASPrintUtil.multipagePrint(appRef, this.injector, this.optionsService, currentForce.groups(), printOptions, true, currentForce);
         }
-    }
-
-    /* ----------------------------------------
-     * Remote conflict detection and resolution
-     */
-
-    private monitorWebSocketConnection() {
-        // Monitor WebSocket connection state changes
-        effect(() => {
-            const isConnected = this.wsService.wsConnected();
-            if (isConnected) {
-                // WebSocket just came online - fire and forget :D
-                untracked(() => {
-                    this.checkForCloudConflict();
-                });
-            }
-        });
     }
 
     private monitorEquipmentHandlerRuntime(): void {
@@ -1766,45 +1756,21 @@ export class ForceBuilderService {
         });
     }
 
-    private async checkForCloudConflict(): Promise<void> {
-        // Check all loaded forces for conflicts
-        for (const slot of this.loadedForces()) {
-            const force = slot.force;
-            const instanceId = force.instanceId();
-            if (!instanceId) continue;
-            this.logger.info('Checking for cloud conflict for force with instance ID ' + instanceId);
-            try {
-                const cloudForce = await this.dataService.getForce(instanceId, force.owned());
-                if (!cloudForce) continue;
-                const localTimestamp = force.timestamp ? new Date(force.timestamp).getTime() : 0;
-                const cloudTimestamp = cloudForce.timestamp ? new Date(cloudForce.timestamp).getTime() : 0;
-
-                if (cloudTimestamp > localTimestamp) {
-                    this.logger.warn(`Conflict detected for force "${force.displayName()}" (${instanceId}).`);
-                    if (!force.owned()) {
-                        this.logger.info(`ForceBuilderService: Force "${force.displayName()}" downloading cloud version.`);
-                        this.urlStateInitialized.set(false);
-                        try {
-                            this.replaceForceInPlace(force, await this.dataService.getForce(instanceId, false) as any);
-                        } finally {
-                            this.urlStateInitialized.set(true);
-                        }
-                        this.toastService.showToast(`Cloud version of "${force.displayName()}" loaded.`, 'success');
-                        continue;
-                    }
-                    await this.handleCloudConflict(force, cloudForce, localTimestamp, cloudTimestamp);
-                }
-            } catch (error) {
-                this.logger.error(`Error checking for cloud conflict on "${force.displayName()}": ${error}`);
-            }
-        }
+    private enqueueRemoteForceConflict(localForce: Force, remoteForce: SerializedForce): Promise<void> {
+        const previousConflict = this.remoteConflictQueue ?? Promise.resolve();
+        this.remoteConflictQueue = previousConflict
+            .then(() => this.handleRemoteForceConflict(localForce, remoteForce))
+            .catch(error => {
+                this.logger.error(`Failed to resolve force sync conflict: ${error}`);
+            });
+        return this.remoteConflictQueue;
     }
 
-    private async handleCloudConflict(localForce: Force, cloudForce: Force, localTimestamp: number, cloudTimestamp: number): Promise<void> {
-        const formatDate = (timestamp: number) => {
-            if (!timestamp) return 'Unknown';
-            return new Date(timestamp).toLocaleString();
-        };
+    private async handleRemoteForceConflict(localForce: Force, remoteForce: SerializedForce): Promise<void> {
+        const localTimestamp = parseForceTimestamp(localForce.timestamp) ?? 0;
+        const remoteTimestamp = parseForceTimestamp(remoteForce.timestamp) ?? 0;
+        const formatDate = (timestamp: number) => timestamp ? new Date(timestamp).toLocaleString() : 'Unknown';
+
         if (this.conflictDialogRef) {
             this.conflictDialogRef.close();
             this.conflictDialogRef = undefined;
@@ -1814,7 +1780,7 @@ export class ForceBuilderService {
             disableClose: true,
             data: <ConfirmDialogData<string>>{
                 title: 'Sync Conflict Detected',
-                message: `"${localForce.displayName()}" was modified on another device while you were offline. The cloud version is newer. (${formatDate(cloudTimestamp)} > ${formatDate(localTimestamp)})`,
+                message: `"${localForce.displayName()}" was modified on another device while you were offline. The cloud version is newer. (${formatDate(remoteTimestamp)} > ${formatDate(localTimestamp)})`,
                 buttons: [
                     { label: 'LOAD CLOUD', value: 'cloud', class: 'primary' },
                     { label: 'KEEP LOCAL', value: 'local' },
@@ -1825,9 +1791,7 @@ export class ForceBuilderService {
 
         const result = await firstValueFrom(this.conflictDialogRef.closed);
         if (result === 'cloud') {
-            // Replace the local force in-place with the cloud version
-            const serialized = cloudForce.serialize();
-            localForce.update(serialized);
+            localForce.update(remoteForce);
             await this.dataService.saveForce(localForce, true);
             this.toastService.showToast(`Cloud version of "${localForce.displayName()}" loaded.`, 'success');
         } else if (result === 'local') {
@@ -1841,7 +1805,6 @@ export class ForceBuilderService {
             const cloned = localForce.clone();
             cloned.setName(localForce.displayName() + ' (Cloned)', false);
 
-            // Unload old, load clone
             await this.removeLoadedForce(localForce);
             this.addLoadedForce(cloned, alignment, { activate: false });
             const units = cloned.units();
@@ -1854,7 +1817,6 @@ export class ForceBuilderService {
             this.toastService.showToast('Local version has been cloned', 'success');
         }
     }
-
 
     /* ----------------------------------------
      * URL State Management

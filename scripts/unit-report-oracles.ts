@@ -1,8 +1,6 @@
-/*
- * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
- *
- * This file is part of MekBay and is licensed under GPL-3.0-or-later.
- */
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';

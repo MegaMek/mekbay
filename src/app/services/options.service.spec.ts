@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { TestBed } from '@angular/core/testing';
 import { DbService } from './db.service';
 import { OptionsService } from './options.service';
@@ -30,6 +34,22 @@ describe('OptionsService theme migration', () => {
         const service = await createService();
 
         expect(service.options().colorScheme).toBe('default');
+    });
+
+    it('disables the force sync conflict dialog by default', async () => {
+        savedOptions = null;
+
+        const service = await createService();
+
+        expect(service.options().enableForceSyncConflictDialog).toBeFalse();
+    });
+
+    it('restores the force sync conflict dialog preference', async () => {
+        savedOptions = { enableForceSyncConflictDialog: true };
+
+        const service = await createService();
+
+        expect(service.options().enableForceSyncConflictDialog).toBeTrue();
     });
 
     it('restores a disabled CBT automations preference', async () => {

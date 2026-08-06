@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
 import type { MekEntity } from '../../entities/mek/mek-entity';
 import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';

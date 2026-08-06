@@ -1,18 +1,6 @@
-/*
- * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
- *
- * This file is part of MekBay.
- *
- * MekBay is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License (GPL),
- * version 3 or (at your option) any later version,
- * as published by the Free Software Foundation.
- *
- * MekBay is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- */
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
 
 /**
  * Compares Battle Value (BV) and Alpha Strike Point Value (PV) between two

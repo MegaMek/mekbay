@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { computed, signal, type WritableSignal } from "@angular/core";
 import { canChangeAirborneGround, getMotiveModeMaxDistance, type MotiveModes } from "./motiveModes.model";
 import { getMekLegLocations, inferMekConfigFromLocations } from "./entity/types";

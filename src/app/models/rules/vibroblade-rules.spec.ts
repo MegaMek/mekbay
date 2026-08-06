@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { EquipmentFlag } from '../equipment-flags.type';
 import { Equipment, type EquipmentRawData } from '../equipment.model';
 import { getVibrobladeHeat, getVibrobladeProfile } from './vibroblade-rules';

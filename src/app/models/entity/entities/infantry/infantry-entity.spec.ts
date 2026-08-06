@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { EquipmentFlag } from '../../../equipment-flags.type';
 import { InfantryWeaponEquipment, WeaponEquipment } from '../../../equipment.model';
 import { TestInfantryEntity as InfantryEntity } from '../../testing/test-entities';

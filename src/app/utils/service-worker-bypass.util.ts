@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 const REMOTE_URL_PATTERN = /^https?:\/\//i;
 
 export function withServiceWorkerBypass(url: string): string {

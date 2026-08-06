@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { Era } from '../../models/eras.model';
 import { getFactionAffinity, type Faction } from '../../models/factions.model';
 import {

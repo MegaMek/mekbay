@@ -1,8 +1,6 @@
-/*
- * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
- *
- * This file is part of MekBay.
- */
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
 
 /** MegaMek's Compute.clusterHitsTable, indexed as [rack size, roll 2 through 12]. */
 const CLUSTER_HIT_TABLE: readonly (readonly number[])[] = [

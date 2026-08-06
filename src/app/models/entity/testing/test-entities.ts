@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { EquipmentRegistry } from '../../equipment-lookup';
 import { AeroSpaceFighterEntity } from '../entities/aero/aero-space-fighter-entity';
 import { ConvFighterEntity } from '../entities/aero/conv-fighter-entity';

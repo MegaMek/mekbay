@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { ChangeDetectionStrategy, Component, computed, type ComponentRef, DestroyRef, inject, Injector, input } from '@angular/core';
 import { DragDropModule, type CdkDragDrop, type CdkDragStart, moveItemInArray } from '@angular/cdk/drag-drop';
 import { Overlay } from '@angular/cdk/overlay';

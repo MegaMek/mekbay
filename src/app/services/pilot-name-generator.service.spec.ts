@@ -1,11 +1,8 @@
-/*
- * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
- *
- * This file is part of MekBay.
- */
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
 
 import { TestBed } from '@angular/core/testing';
-
 import type { PilotNameCatalog } from '../models/pilot-name-catalog.model';
 import { PilotNameCatalogService } from './catalogs/pilot-name-catalog.service';
 import { PilotNameGeneratorService } from './pilot-name-generator.service';

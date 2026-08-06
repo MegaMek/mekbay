@@ -1,3 +1,6 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
 
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, signal, effect, ElementRef, viewChildren } from '@angular/core';
 import { type Subscription, firstValueFrom } from 'rxjs';

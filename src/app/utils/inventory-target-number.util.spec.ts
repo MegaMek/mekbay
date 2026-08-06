@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';

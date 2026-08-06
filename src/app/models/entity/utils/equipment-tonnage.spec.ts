@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { AmmoEquipment, Equipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import {
     TestBattleArmorEntity as BattleArmorEntity,

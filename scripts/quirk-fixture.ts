@@ -1,12 +1,6 @@
-/*
- * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
- *
- * This file is part of MekBay.
- *
- * MekBay is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License (GPL),
- * version 3 or (at your option) any later version.
- */
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
 
 import * as fs from 'fs';
 import * as path from 'path';

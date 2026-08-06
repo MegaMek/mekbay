@@ -1,35 +1,6 @@
-/*
- * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
- *
- * This file is part of MekBay.
- *
- * MekBay is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License (GPL),
- * version 3 or (at your option) any later version,
- * as published by the Free Software Foundation.
- *
- * MekBay is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * A copy of the GPL should have been included with this project;
- * if not, see <https://www.gnu.org/licenses/>.
- *
- * NOTICE: The MegaMek organization is a non-profit group of volunteers
- * creating free software for the BattleTech community.
- *
- * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
- * of The Topps Company, Inc. All Rights Reserved.
- *
- * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
- * InMediaRes Productions, LLC.
- *
- * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
- * Microsoft's "Game Content Usage Rules"
- * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
- * affiliated with Microsoft.
- */
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
 
 import { Injectable, inject, signal } from '@angular/core';
 import { DialogsService } from './dialogs.service';
@@ -39,9 +10,7 @@ import { UserStateService } from './userState.service';
 import { WsService } from './ws.service';
 import type { OAuthFlowResult, OAuthProvider } from '../models/account-auth.model';
 
-/*
- * Author: Drake
- */
+
 
 const PROVIDER_LABELS: Record<OAuthProvider, string> = {
     google: 'Google',
@@ -51,6 +20,8 @@ const PROVIDER_LABELS: Record<OAuthProvider, string> = {
 
 const OAUTH_RESULT_PARAM = 'oauthResult';
 const OAUTH_POPUP_FEATURES = 'popup=yes,width=640,height=760,resizable=yes,scrollbars=yes';
+const OAUTH_POPUP_CLOSE_GRACE_MS = 250;
+const OAUTH_POPUP_TIMEOUT_MS = 10 * 60 * 1000;
 
 @Injectable({
     providedIn: 'root'
@@ -106,7 +77,8 @@ export class AccountAuthService {
 
     private getOAuthResultFromUrl(): OAuthFlowResult | null {
         const url = new URL(window.location.href);
-        const encodedResult = url.searchParams.get(OAUTH_RESULT_PARAM);
+        const hashParams = new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : url.hash);
+        const encodedResult = url.searchParams.get(OAUTH_RESULT_PARAM) || hashParams.get(OAUTH_RESULT_PARAM);
         if (!encodedResult) {
             return null;
         }
@@ -128,13 +100,25 @@ export class AccountAuthService {
 
     private clearOAuthResultFromUrl(): void {
         const url = new URL(window.location.href);
-        if (!url.searchParams.has(OAUTH_RESULT_PARAM)) {
+        const hashParams = new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : url.hash);
+        const hasSearchResult = url.searchParams.has(OAUTH_RESULT_PARAM);
+        const hasHashResult = hashParams.has(OAUTH_RESULT_PARAM);
+        if (!hasSearchResult && !hasHashResult) {
             return;
         }
 
-        url.searchParams.delete(OAUTH_RESULT_PARAM);
-        const nextUrl = `${url.pathname}${url.search}${url.hash}`;
-        window.history.replaceState(null, '', nextUrl);
+        if (hasSearchResult) {
+            url.searchParams.delete(OAUTH_RESULT_PARAM);
+        }
+
+        let nextHash = url.hash;
+        if (hasHashResult) {
+            hashParams.delete(OAUTH_RESULT_PARAM);
+            const remainingHash = hashParams.toString();
+            nextHash = remainingHash ? `#${remainingHash}` : '';
+        }
+
+        window.history.replaceState(null, '', `${url.pathname}${url.search}${nextHash}`);
     }
 
     private isOAuthFlowResult(value: unknown): value is OAuthFlowResult {
@@ -179,10 +163,17 @@ export class AccountAuthService {
     private waitForPopupResult(popup: Window): Promise<OAuthFlowResult> {
         return new Promise((resolve, reject) => {
             let settled = false;
+            let focusCloseTimer: number | null = null;
+            let popupWasFocused = true;
 
             const cleanup = () => {
                 window.removeEventListener('message', onMessage);
-                window.clearInterval(closePollId);
+                window.removeEventListener('blur', onBlur);
+                window.removeEventListener('focus', onFocus);
+                if (focusCloseTimer !== null) {
+                    window.clearTimeout(focusCloseTimer);
+                }
+                window.clearTimeout(timeoutId);
             };
 
             const finish = (callback: () => void) => {
@@ -196,7 +187,7 @@ export class AccountAuthService {
             };
 
             const onMessage = (event: MessageEvent<unknown>) => {
-                if (event.origin !== window.location.origin || !this.isOAuthFlowResult(event.data)) {
+                if (event.origin !== window.location.origin || event.source !== popup || !this.isOAuthFlowResult(event.data)) {
                     return;
                 }
 
@@ -204,42 +195,91 @@ export class AccountAuthService {
                 finish(() => resolve(popupResult));
             };
 
-            const closePollId = window.setInterval(() => {
-                if (!popup.closed) {
+            const onBlur = () => {
+                popupWasFocused = true;
+                if (focusCloseTimer !== null) {
+                    window.clearTimeout(focusCloseTimer);
+                    focusCloseTimer = null;
+                }
+            };
+
+            const onFocus = () => {
+                if (!popupWasFocused || focusCloseTimer !== null) {
                     return;
                 }
 
-                finish(() => reject(new Error('The provider window was closed before MekBay received a response.')));
-            }, 250);
+                focusCloseTimer = window.setTimeout(() => {
+                    focusCloseTimer = null;
+                    finish(() => reject(new Error('The provider window was closed before MekBay received a response.')));
+                }, OAUTH_POPUP_CLOSE_GRACE_MS);
+            };
+
+            const timeoutId = window.setTimeout(() => {
+                finish(() => reject(new Error('OAuth provider did not return a response. Please try again.')));
+            }, OAUTH_POPUP_TIMEOUT_MS);
 
             window.addEventListener('message', onMessage);
+            window.addEventListener('blur', onBlur);
+            window.addEventListener('focus', onFocus);
         });
     }
 
     private async startPopupFlow(provider: OAuthProvider, mode: 'link' | 'login', replaceExisting = false): Promise<void> {
         const popup = this.openPopupShell(provider, mode);
-        const resultPromise = this.waitForPopupResult(popup);
+        let resultPromise: Promise<OAuthFlowResult> | undefined;
 
         try {
             if (mode === 'link') {
                 await this.wsService.waitForWebSocket();
             }
 
-            popup.location.replace(this.buildAuthStartUrl(provider, mode, replaceExisting, 'popup', 'redirect'));
+            const authorizationUrl = await this.requestOAuthAuthorizationUrl(
+                this.buildAuthStartUrl(provider, mode, replaceExisting, 'popup', 'json'),
+            );
+            resultPromise = this.waitForPopupResult(popup);
+            popup.location.replace(authorizationUrl);
             const result = await resultPromise;
             await this.applyOAuthResult(result, 'popup');
         } catch (err) {
-            if (!popup.closed) {
+            if (resultPromise) {
+                void resultPromise.catch(() => undefined);
+            }
+
+            try {
                 popup.close();
+            } catch {
+                // The popup may already be closed or isolated by its cross-origin opener policy.
             }
 
             throw err;
         }
     }
 
+    private async requestOAuthAuthorizationUrl(startUrl: string): Promise<string> {
+        const response = await fetch(startUrl, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: '',
+        });
+
+        let payload: { ok?: unknown; authorizeUrl?: unknown; error?: unknown };
+        try {
+            payload = await response.json() as { ok?: unknown; authorizeUrl?: unknown; error?: unknown };
+        } catch {
+            throw new Error('OAuth server returned an invalid response.');
+        }
+
+        if (!response.ok || payload.ok !== true || typeof payload.authorizeUrl !== 'string') {
+            const message = typeof payload.error === 'string' ? payload.error : 'OAuth could not be started.';
+            throw new Error(message);
+        }
+
+        return payload.authorizeUrl;
+    }
+
     private async applyOAuthResult(result: OAuthFlowResult, flowKind: 'popup' | 'redirect'): Promise<boolean> {
         this.authInFlight.set(false);
-        await this.userStateService.whenReady();
 
         if (!result.ok) {
             const message = result.error || 'Provider authentication failed.';
@@ -254,6 +294,8 @@ export class AccountAuthService {
             this.toastService.showToast('Provider authentication completed, but the result was incomplete.', 'error');
             return true;
         }
+
+        await this.userStateService.whenReady();
 
         const providerLabel = this.getProviderLabel(provider);
         try {

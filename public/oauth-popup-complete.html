@@ -69,7 +69,9 @@
                 }
             }
 
-            const encodedResult = new URL(window.location.href).searchParams.get(resultParam);
+            const completionUrl = new URL(window.location.href);
+            const hashParams = new URLSearchParams(completionUrl.hash.startsWith('#') ? completionUrl.hash.slice(1) : completionUrl.hash);
+            const encodedResult = completionUrl.searchParams.get(resultParam) || hashParams.get(resultParam);
             let result = null;
 
             if (encodedResult) {
@@ -97,12 +99,12 @@
                 setText(messageEl, errorMessage);
             }
 
-            if (window.opener && !window.opener.closed) {
-                try {
+            try {
+                if (window.opener) {
                     window.opener.postMessage(result, window.location.origin);
-                } catch {
-                    // Ignore postMessage failures and leave the manual close fallback visible.
                 }
+            } catch {
+                // Ignore postMessage failures and leave the manual close fallback visible.
             }
 
             window.setTimeout(function () {

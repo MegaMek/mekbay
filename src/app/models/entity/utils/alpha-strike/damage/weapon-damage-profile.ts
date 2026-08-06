@@ -1,8 +1,7 @@
-/*
- * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
- *
- * This file is part of MekBay.
- */
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { WeaponEquipment } from '../../../../equipment.model';
 import type { BaseEntity } from '../../../base-entity';
 import type { EntityMountedWeapon } from '../../../types';

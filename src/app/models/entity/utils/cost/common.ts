@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { BaseEntity } from '../../base-entity';
 import { MiscEquipment } from '../../../equipment.model';
 import { EquipmentFlag } from '../../../equipment-flags.type';

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import type { WeaponEquipment } from '../../../../equipment.model';
 
 const ARTILLERY_ABILITIES: Readonly<Partial<Record<WeaponEquipment['ammoType'], string>>> = {

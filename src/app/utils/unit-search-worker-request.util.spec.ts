@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { GameSystem } from '../models/common.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { parseSemanticQueryAST } from './semantic-filter-ast.util';

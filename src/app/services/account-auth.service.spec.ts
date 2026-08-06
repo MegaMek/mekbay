@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AccountAuthService } from './account-auth.service';
@@ -111,5 +115,85 @@ describe('AccountAuthService', () => {
         expect(userStateService.setUuid).not.toHaveBeenCalled();
         expect(userStateService.applyServerState).toHaveBeenCalledOnceWith(createLoginResult().userState);
         expect(toastService.showToast).toHaveBeenCalledWith('Signed in with Google', 'success');
+    });
+
+    it('shows OAuth failures without waiting for local user state', async () => {
+        const service = TestBed.inject(AccountAuthService);
+        const handled = await (service as any).applyOAuthResult({
+            source: 'mekbay-oauth',
+            ok: false,
+            error: 'This Discord account is already linked to another MekBay account. Sign in with Discord to use that account.',
+        }, 'popup');
+
+        expect(handled).toBeTrue();
+        expect(userStateService.whenReady).not.toHaveBeenCalled();
+        expect(toastService.showToast).toHaveBeenCalledWith(
+            'This Discord account is already linked to another MekBay account. Sign in with Discord to use that account.',
+            'error',
+        );
+    });
+
+    it('cancels a popup flow when focus returns without reading popup.closed', async () => {
+        jasmine.clock().install();
+        try {
+            const service = TestBed.inject(AccountAuthService);
+            let closedRead = false;
+            const popup = new Proxy({} as Window, {
+                get: (_target, property) => {
+                    if (property === 'closed') {
+                        closedRead = true;
+                    }
+                    return undefined;
+                },
+            });
+
+            const resultPromise = (service as any).waitForPopupResult(popup) as Promise<OAuthFlowResult>;
+            window.dispatchEvent(new Event('blur'));
+            window.dispatchEvent(new Event('focus'));
+            jasmine.clock().tick(250);
+
+            await expectAsync(resultPromise).toBeRejectedWithError('The provider window was closed before MekBay received a response.');
+            expect(closedRead).toBeFalse();
+        } finally {
+            jasmine.clock().uninstall();
+        }
+    });
+
+    it('clears an OAuth result stored in the URL hash', () => {
+        const service = TestBed.inject(AccountAuthService);
+        const originalUrl = window.location.href;
+        const url = new URL(originalUrl);
+        url.search = '';
+        url.hash = '#oauthResult=encoded-result';
+        window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+
+        try {
+            (service as any).clearOAuthResultFromUrl();
+
+            const cleanedUrl = new URL(window.location.href);
+            expect(cleanedUrl.searchParams.has('oauthResult')).toBeFalse();
+            expect(cleanedUrl.hash).toBe('');
+        } finally {
+            window.history.replaceState(null, '', originalUrl);
+        }
+    });
+
+    it('preserves an unrelated fragment while clearing a query OAuth result', () => {
+        const service = TestBed.inject(AccountAuthService);
+        const originalUrl = window.location.href;
+        const url = new URL(originalUrl);
+        url.search = '?oauthResult=encoded-result';
+        url.hash = '#/options';
+        window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+
+        try {
+            (service as any).clearOAuthResultFromUrl();
+
+            const cleanedUrl = new URL(window.location.href);
+            expect(cleanedUrl.searchParams.has('oauthResult')).toBeFalse();
+            expect(cleanedUrl.hash).toBe('#/options');
+        } finally {
+            window.history.replaceState(null, '', originalUrl);
+        }
     });
 });

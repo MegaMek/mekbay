@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { Overlay } from '@angular/cdk/overlay';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -68,7 +72,7 @@ describe('ForceTaggingService', () => {
         dataServiceMock.getCachedForceTagLabels.calls.reset();
         dataServiceMock.getCachedForceTagLabels.and.returnValue([]);
         dataServiceMock.updateForceTags.calls.reset();
-        dataServiceMock.updateForceTags.and.resolveTo([]);
+        dataServiceMock.updateForceTags.and.resolveTo({ tags: [], timestamp: null });
         forceBuilderServiceMock.loadedForces.calls.reset();
         forceBuilderServiceMock.loadedForces.and.returnValue([]);
         overlayManagerMock.has.calls.reset();

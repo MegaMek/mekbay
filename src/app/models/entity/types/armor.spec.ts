@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { EquipmentRegistry } from '../../equipment-lookup';
 import { createEquipment, type EquipmentMap } from '../../equipment.model';
 import { requireArmorEquipment, resolveArmorEquipment } from './armor';

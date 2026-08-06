@@ -1,3 +1,7 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Author: Drake
+
 import { MountedArmor, MountedEngine } from '../../../components';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../../../equipment.model';
 import type { EquipmentFlag } from '../../../../equipment-flags.type';
