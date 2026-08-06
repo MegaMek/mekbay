@@ -99,12 +99,12 @@
                 setText(messageEl, errorMessage);
             }
 
-            if (window.opener && !window.opener.closed) {
-                try {
+            try {
+                if (window.opener) {
                     window.opener.postMessage(result, window.location.origin);
-                } catch {
-                    // Ignore postMessage failures and leave the manual close fallback visible.
                 }
+            } catch {
+                // Ignore postMessage failures and leave the manual close fallback visible.
             }
 
             window.setTimeout(function () {

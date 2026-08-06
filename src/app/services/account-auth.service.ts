@@ -20,6 +20,8 @@ const PROVIDER_LABELS: Record<OAuthProvider, string> = {
 
 const OAUTH_RESULT_PARAM = 'oauthResult';
 const OAUTH_POPUP_FEATURES = 'popup=yes,width=640,height=760,resizable=yes,scrollbars=yes';
+const OAUTH_POPUP_CLOSE_GRACE_MS = 250;
+const OAUTH_POPUP_TIMEOUT_MS = 10 * 60 * 1000;
 
 @Injectable({
     providedIn: 'root'
@@ -161,10 +163,17 @@ export class AccountAuthService {
     private waitForPopupResult(popup: Window): Promise<OAuthFlowResult> {
         return new Promise((resolve, reject) => {
             let settled = false;
+            let focusCloseTimer: number | null = null;
+            let popupWasFocused = true;
 
             const cleanup = () => {
                 window.removeEventListener('message', onMessage);
-                window.clearInterval(closePollId);
+                window.removeEventListener('blur', onBlur);
+                window.removeEventListener('focus', onFocus);
+                if (focusCloseTimer !== null) {
+                    window.clearTimeout(focusCloseTimer);
+                }
+                window.clearTimeout(timeoutId);
             };
 
             const finish = (callback: () => void) => {
@@ -186,15 +195,32 @@ export class AccountAuthService {
                 finish(() => resolve(popupResult));
             };
 
-            const closePollId = window.setInterval(() => {
-                if (!popup.closed) {
+            const onBlur = () => {
+                popupWasFocused = true;
+                if (focusCloseTimer !== null) {
+                    window.clearTimeout(focusCloseTimer);
+                    focusCloseTimer = null;
+                }
+            };
+
+            const onFocus = () => {
+                if (!popupWasFocused || focusCloseTimer !== null) {
                     return;
                 }
 
-                finish(() => reject(new Error('The provider window was closed before MekBay received a response.')));
-            }, 250);
+                focusCloseTimer = window.setTimeout(() => {
+                    focusCloseTimer = null;
+                    finish(() => reject(new Error('The provider window was closed before MekBay received a response.')));
+                }, OAUTH_POPUP_CLOSE_GRACE_MS);
+            };
+
+            const timeoutId = window.setTimeout(() => {
+                finish(() => reject(new Error('OAuth provider did not return a response. Please try again.')));
+            }, OAUTH_POPUP_TIMEOUT_MS);
 
             window.addEventListener('message', onMessage);
+            window.addEventListener('blur', onBlur);
+            window.addEventListener('focus', onFocus);
         });
     }
 
@@ -219,8 +245,10 @@ export class AccountAuthService {
                 void resultPromise.catch(() => undefined);
             }
 
-            if (!popup.closed) {
+            try {
                 popup.close();
+            } catch {
+                // The popup may already be closed or isolated by its cross-origin opener policy.
             }
 
             throw err;
@@ -252,7 +280,6 @@ export class AccountAuthService {
 
     private async applyOAuthResult(result: OAuthFlowResult, flowKind: 'popup' | 'redirect'): Promise<boolean> {
         this.authInFlight.set(false);
-        await this.userStateService.whenReady();
 
         if (!result.ok) {
             const message = result.error || 'Provider authentication failed.';
@@ -267,6 +294,8 @@ export class AccountAuthService {
             this.toastService.showToast('Provider authentication completed, but the result was incomplete.', 'error');
             return true;
         }
+
+        await this.userStateService.whenReady();
 
         const providerLabel = this.getProviderLabel(provider);
         try {
