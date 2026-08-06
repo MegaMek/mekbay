@@ -1009,6 +1009,7 @@ export class DbService {
                 } else {
                     delete updatedForce.tags;
                 }
+                updatedForce.timestamp = new Date().toISOString();
 
                 store.put(updatedForce, instanceId);
             };

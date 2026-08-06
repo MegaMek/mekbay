@@ -17,6 +17,7 @@ import { ForceBuilderService } from './force-builder.service';
 import { CBTForce } from '../models/cbt-force.model';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
+import type { SerializedForce } from '../models/force-serialization';
 
 function createFaction(id: number, name: string): Faction {
     return {
@@ -46,6 +47,18 @@ function createUnit(): Unit {
         model: 'Mek',
         type: 'BM',
     } as unknown as Unit;
+}
+
+function createSerializedForce(overrides: Partial<SerializedForce> = {}): SerializedForce {
+    return {
+        version: 1,
+        timestamp: '2026-08-06T20:00:00.000Z',
+        instanceId: 'force-1',
+        type: GameSystem.ALPHA_STRIKE,
+        name: 'Test Force',
+        groups: [],
+        ...overrides,
+    };
 }
 
 function createHarness(formation: FormationTypeDefinition, factions: Faction[]) {
@@ -230,6 +243,178 @@ describe('ForceBuilderService formation filter integration', () => {
         expect(groupsSignal().map((group) => [...group.formationHistory])).toEqual([[lightFireFormation.id], []]);
         expect(groupsSignal().map((group) => group.formationLock)).toEqual([undefined, undefined]);
         expect(service.reconcileASFormationAssignments).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('ForceBuilderService remote force updates', () => {
+    function createUpdateHarness(currentData: SerializedForce) {
+        const service = Object.create(ForceBuilderService.prototype) as any;
+        const targetForce = {
+            timestamp: currentData.timestamp,
+            owned: signal(currentData.owned !== false),
+            instanceId: signal(currentData.instanceId),
+            update: jasmine.createSpy('update'),
+            units: () => [],
+        } as unknown as Force;
+        service.dataService = {
+            saveForce: jasmine.createSpy('saveForce').and.resolveTo(),
+            saveForceAndWaitForCloud: jasmine.createSpy('saveForceAndWaitForCloud').and.resolveTo(),
+            saveSerializedForceToLocalStorage: jasmine.createSpy('saveSerializedForceToLocalStorage'),
+        };
+        service.logger = {
+            warn: jasmine.createSpy('warn'),
+            error: jasmine.createSpy('error'),
+        };
+        service.optionsService = {
+            options: () => ({ enableForceSyncConflictDialog: false }),
+        };
+        service.dialogsService = {
+            createDialog: jasmine.createSpy('createDialog'),
+        };
+        service.urlStateInitialized = signal(true);
+        service.selectedUnit = () => null;
+        service.followLastModifiedUnit = () => false;
+        service.getForceSlot = () => undefined;
+        service.remoteForceUpdated$ = { next: jasmine.createSpy('next') };
+        service.remoteConflictQueue = Promise.resolve();
+        return { service, targetForce };
+    }
+
+    it('skips a same-timestamp remote snapshot', async () => {
+        const currentData = createSerializedForce();
+        const { service, targetForce } = createUpdateHarness(currentData);
+
+        await service.reconcileRemoteForce(targetForce, createSerializedForce());
+
+        expect(targetForce.update).not.toHaveBeenCalled();
+        expect(service.dataService.saveSerializedForceToLocalStorage).not.toHaveBeenCalled();
+    });
+
+    it('skips an older remote snapshot', async () => {
+        const currentData = createSerializedForce();
+        const { service, targetForce } = createUpdateHarness(currentData);
+
+        await service.reconcileRemoteForce(targetForce, createSerializedForce({
+            timestamp: '2026-08-06T19:59:00.000Z',
+            name: 'Older Force',
+        }));
+
+        expect(targetForce.update).not.toHaveBeenCalled();
+    });
+
+    it('ignores a remote snapshot when its timestamp cannot be compared', async () => {
+        const currentData = createSerializedForce();
+        const { service, targetForce } = createUpdateHarness(currentData);
+
+        targetForce.timestamp = null;
+        await service.reconcileRemoteForce(targetForce, createSerializedForce());
+
+        targetForce.timestamp = currentData.timestamp;
+        await service.reconcileRemoteForce(targetForce, createSerializedForce({
+            timestamp: 'not-a-timestamp',
+            name: 'Invalid Remote Force',
+        }));
+
+        expect(targetForce.update).not.toHaveBeenCalled();
+        expect(service.dataService.saveForce).not.toHaveBeenCalled();
+        expect(service.dataService.saveForceAndWaitForCloud).not.toHaveBeenCalled();
+        expect(service.dataService.saveSerializedForceToLocalStorage).not.toHaveBeenCalled();
+    });
+
+    it('serializes reconnect conflict dialogs across forces', async () => {
+        const currentData = createSerializedForce();
+        const { service, targetForce: firstForce } = createUpdateHarness(currentData);
+        const secondForce = {
+            timestamp: currentData.timestamp,
+            owned: signal(true),
+            instanceId: signal('force-2'),
+            update: jasmine.createSpy('update'),
+            units: () => [],
+        } as unknown as Force;
+        service.optionsService.options = () => ({ enableForceSyncConflictDialog: true });
+
+        let releaseFirstConflict!: () => void;
+        const firstConflictReleased = new Promise<void>(resolve => {
+            releaseFirstConflict = resolve;
+        });
+        const conflictSpy = spyOn(service, 'handleRemoteForceConflict').and.callFake(async (force: Force) => {
+            if (force === firstForce) {
+                await firstConflictReleased;
+            }
+        });
+
+        const firstPromise = service.reconcileRemoteForce(firstForce, createSerializedForce({
+            timestamp: '2026-08-06T20:01:00.000Z',
+        }), 'reconnect');
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        expect(conflictSpy).toHaveBeenCalledOnceWith(firstForce, jasmine.anything());
+
+        const secondPromise = service.reconcileRemoteForce(secondForce, createSerializedForce({
+            instanceId: 'force-2',
+            timestamp: '2026-08-06T20:02:00.000Z',
+        }), 'reconnect');
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        expect(conflictSpy).toHaveBeenCalledTimes(1);
+
+        releaseFirstConflict();
+        await Promise.all([firstPromise, secondPromise]);
+
+        expect(conflictSpy).toHaveBeenCalledTimes(2);
+        expect(conflictSpy.calls.argsFor(1)[0]).toBe(secondForce);
+    });
+
+    it('pushes the local force when reconnect finds an older owned snapshot', async () => {
+        const currentData = createSerializedForce();
+        const { service, targetForce } = createUpdateHarness(currentData);
+
+        await service.reconcileRemoteForce(targetForce, createSerializedForce({
+            timestamp: '2026-08-06T19:59:00.000Z',
+        }), 'reconnect');
+
+        expect(targetForce.update).not.toHaveBeenCalled();
+        expect(service.dataService.saveForceAndWaitForCloud).toHaveBeenCalledOnceWith(targetForce);
+        expect(service.dataService.saveSerializedForceToLocalStorage).not.toHaveBeenCalled();
+    });
+
+    it('does not push a local-only force when reconnect finds an older snapshot', async () => {
+        const currentData = createSerializedForce({ owned: false });
+        const { service, targetForce } = createUpdateHarness(currentData);
+
+        await service.reconcileRemoteForce(targetForce, createSerializedForce({
+            timestamp: '2026-08-06T19:59:00.000Z',
+        }), 'reconnect');
+
+        expect(targetForce.update).not.toHaveBeenCalled();
+        expect(service.dataService.saveForce).not.toHaveBeenCalled();
+    });
+
+    it('applies a newer reconnect snapshot without pushing local state', async () => {
+        const currentData = createSerializedForce();
+        const { service, targetForce } = createUpdateHarness(currentData);
+        const incomingData = createSerializedForce({
+            timestamp: '2026-08-06T20:01:00.000Z',
+        });
+
+        await service.reconcileRemoteForce(targetForce, incomingData, 'reconnect');
+
+        expect(targetForce.update).toHaveBeenCalledOnceWith(incomingData);
+        expect(service.dataService.saveForce).not.toHaveBeenCalled();
+        expect(service.dialogsService.createDialog).not.toHaveBeenCalled();
+    });
+
+    it('opens the conflict dialog when the reconnect option is enabled', async () => {
+        const currentData = createSerializedForce();
+        const { service, targetForce } = createUpdateHarness(currentData);
+        const incomingData = createSerializedForce({
+            timestamp: '2026-08-06T20:01:00.000Z',
+        });
+        service.optionsService.options = () => ({ enableForceSyncConflictDialog: true });
+        spyOn(service, 'handleRemoteForceConflict').and.resolveTo();
+
+        await service.reconcileRemoteForce(targetForce, incomingData, 'reconnect');
+
+        expect(service.handleRemoteForceConflict).toHaveBeenCalledOnceWith(targetForce, incomingData);
+        expect(targetForce.update).not.toHaveBeenCalled();
     });
 });
 

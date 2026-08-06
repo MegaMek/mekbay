@@ -6,17 +6,20 @@ import { effect, inject, Injectable, signal } from '@angular/core';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import type { SerializedForce } from '../models/force-serialization';
+import { APP_VERSION, BUILD_BRANCH, BUILD_COMMIT_NUMBER } from '../build-meta';
 import { uuidv7 } from '../utils/uuid.util';
 
 /** Client protocol version - increment when breaking changes are made */
 export const PROTOCOL_VERSION = 2;
 
 export type ConnectionStatusPhase = 'hidden' | 'offline' | 'online';
+export type ForceUpdateSource = 'live' | 'reconnect';
 
 interface ForceSubscription {
-    onRemoteUpdate: (data: SerializedForce) => void;
+    onRemoteUpdate: (data: SerializedForce, source: ForceUpdateSource) => void | Promise<void>;
     handler: ((event: MessageEvent) => void) | null;
     socket: WebSocket | null;
+    updateQueue: Promise<void>;
 }
 
 @Injectable({
@@ -200,7 +203,7 @@ export class WsService {
         this.showReconnectedBadge();
         this.resolveConnectionPromise();
         this.registerSession();
-        this.resubscribeToForceUpdates();
+        void this.resubscribeToForceUpdates();
     }
 
     /**
@@ -286,7 +289,15 @@ export class WsService {
         }
         this.lastRegisteredUuid = uuid;
         try {
-            this.send({ action: 'register', sessionId: this.wsSessionId, uuid, version: PROTOCOL_VERSION });
+            this.send({
+                action: 'register',
+                sessionId: this.wsSessionId,
+                uuid,
+                version: PROTOCOL_VERSION,
+                appVersion: APP_VERSION,
+                buildBranch: BUILD_BRANCH,
+                buildCommitNumber: BUILD_COMMIT_NUMBER,
+            });
         } catch (error) {
             this.logger.error(`Failed to register session: ${error}`);
         }
@@ -553,7 +564,10 @@ export class WsService {
     /**
      * Subscribe to instance updates
      */
-    public async subscribeToForceUpdates(instanceId: string, onRemoteUpdate: (data: SerializedForce) => void): Promise<void> {
+    public async subscribeToForceUpdates(
+        instanceId: string,
+        onRemoteUpdate: (data: SerializedForce, source: ForceUpdateSource) => void | Promise<void>,
+    ): Promise<void> {
         // Unsubscribe from previous subscription if exists
         await this.unsubscribeFromForceUpdates(instanceId);
 
@@ -561,6 +575,7 @@ export class WsService {
             onRemoteUpdate,
             handler: null,
             socket: null,
+            updateQueue: Promise.resolve(),
         });
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             this.logger.warn('Cannot subscribe: WebSocket not connected; will subscribe after reconnect');
@@ -625,7 +640,7 @@ export class WsService {
             try {
                 const msg = JSON.parse(event.data);
                 if (msg.action === 'updatedForce' && msg.data?.instanceId === instanceId) {
-                    subscription.onRemoteUpdate(msg.data as SerializedForce);
+                    void this.notifyForceSubscription(subscription, msg.data as SerializedForce, 'live', instanceId);
                 }
             } catch {
                 // Ignore parse errors
@@ -641,10 +656,72 @@ export class WsService {
         });
     }
 
-    private resubscribeToForceUpdates(): void {
-        for (const instanceId of this.subscriptions.keys()) {
-            this.attachForceSubscription(instanceId);
+    private async resubscribeToForceUpdates(): Promise<void> {
+        const socket = this.ws;
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            return;
         }
+
+        const reconnectSubscriptions: Array<{
+            instanceId: string;
+            subscription: ForceSubscription;
+        }> = [];
+
+        for (const instanceId of this.subscriptions.keys()) {
+            const subscription = this.subscriptions.get(instanceId);
+            if (!subscription) {
+                continue;
+            }
+
+            this.attachForceSubscription(instanceId);
+            reconnectSubscriptions.push({ instanceId, subscription });
+        }
+
+        await Promise.all(reconnectSubscriptions.map(({ instanceId, subscription }) => {
+            if (this.ws !== socket) {
+                return Promise.resolve();
+            }
+            return this.refreshForceSubscription(instanceId, subscription, socket);
+        }));
+    }
+
+    private async refreshForceSubscription(
+        instanceId: string,
+        subscription: ForceSubscription,
+        socket: WebSocket,
+    ): Promise<void> {
+        try {
+            const response = await this.sendAndWaitForResponse({
+                action: 'getForce',
+                instanceId,
+            });
+
+            if (this.ws !== socket || this.subscriptions.get(instanceId) !== subscription) {
+                return;
+            }
+
+            const data = response?.data;
+            if (data?.instanceId === instanceId) {
+                await this.notifyForceSubscription(subscription, data as SerializedForce, 'reconnect', instanceId);
+            }
+        } catch (error) {
+            this.logger.error(`Failed to refresh force subscription ${instanceId}: ${error}`);
+        }
+    }
+
+    private notifyForceSubscription(
+        subscription: ForceSubscription,
+        data: SerializedForce,
+        source: ForceUpdateSource,
+        instanceId: string,
+    ): Promise<void> {
+        const update = subscription.updateQueue
+            .then(() => subscription.onRemoteUpdate(data, source))
+            .catch(error => {
+                this.logger.error(`Force update handler error for ${instanceId}: ${error}`);
+            });
+        subscription.updateQueue = update;
+        return update;
     }
 
     private detachForceSubscriptions(socket: WebSocket): void {

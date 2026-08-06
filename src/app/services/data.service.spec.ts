@@ -533,6 +533,37 @@ describe('DataService', () => {
         expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(cloudRawForce as any);
     });
 
+    it('flushes reconnect cloud saves immediately and waits for acknowledgement', async () => {
+        const serializedForce = {
+            version: 1,
+            instanceId: 'force-1',
+            timestamp: '2026-04-05T00:00:00Z',
+            type: GameSystem.CLASSIC,
+            name: 'Reconnect Force',
+            groups: [],
+        };
+        const force = {
+            name: 'Reconnect Force',
+            readOnly: () => false,
+            instanceId: () => 'force-1',
+            serialize: () => serializedForce,
+        } as any;
+        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({
+            action: 'forceSaved',
+            instanceId: 'force-1',
+        });
+
+        await service.saveForce(force);
+        await service.saveForceAndWaitForCloud(force);
+
+        expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledOnceWith({
+            action: 'saveForce',
+            uuid: 'user-1',
+            data: serializedForce,
+        });
+    });
+
     it('updates force tags through the lightweight local and cloud path', async () => {
         dbServiceMock.updateForceTags.and.resolveTo({
             version: 1,
@@ -547,12 +578,16 @@ describe('DataService', () => {
             action: 'forceTagsUpdated',
             instanceId: 'force-1',
             tags: ['Recon', 'Fire Support'],
+            timestamp: '2026-04-02T00:00:00Z',
         });
         spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
 
-        const tags = await service.updateForceTags('force-1', ['  Recon ', 'recon', 'Fire   Support'], true);
+        const result = await service.updateForceTags('force-1', ['  Recon ', 'recon', 'Fire   Support'], true);
 
-        expect(tags).toEqual(['Recon', 'Fire Support']);
+        expect(result).toEqual({
+            tags: ['Recon', 'Fire Support'],
+            timestamp: '2026-04-02T00:00:00Z',
+        });
         expect(dbServiceMock.updateForceTags).toHaveBeenCalledWith('force-1', ['Recon', 'Fire Support']);
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
             action: 'setForceTags',

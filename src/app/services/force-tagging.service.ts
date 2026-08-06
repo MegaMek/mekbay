@@ -268,12 +268,16 @@ export class ForceTaggingService {
 
         try {
             const updateCloud = options.updateCloud ?? force.cloud ?? true;
-            const normalizedTags = await this.dataService.updateForceTags(force.instanceId, nextTags, updateCloud);
+            const updateResult = await this.dataService.updateForceTags(force.instanceId, nextTags, updateCloud);
+            const normalizedTags = updateResult.tags;
             force.tags = normalizedTags.length > 0 ? normalizedTags : undefined;
 
             for (const loadedForce of this.forceBuilderService.loadedForces()) {
                 if (loadedForce.force.instanceId() === force.instanceId) {
                     loadedForce.force.setTags(normalizedTags, false);
+                    if (updateResult.timestamp) {
+                        loadedForce.force.timestamp = updateResult.timestamp;
+                    }
                 }
             }
 
