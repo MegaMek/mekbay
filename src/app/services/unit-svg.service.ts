@@ -384,14 +384,7 @@ export class UnitSvgService {
         const svg = this.unit.svg();
         if (!svg) return;
         const PSRMod = this.unit.PSRModifiers();
-        const pilotingDisplayModifier = PSRMod?.modifier || this.unit.pilotingModifier();
-        const turnState = this.unit.turnState();
-        // Weapon modifiers use their rows and movement has its own marker; undisplayed modifiers fall back here.
-        const gunneryDisplayModifier = [
-            ...this.unit.rules.getGunnerySkillDisplayModifierBreakdown(),
-            ...turnState.getAttackModifierBreakdown(),
-        ].reduce((total, modifier) => total + modifier.modifier, 0)
-            - turnState.getAttackMovementModifier();
+        const pilotingDisplayModifier = PSRMod.modifier;
 
         // Check if all crew members have default values (no name and default skills)
         const allCrewDefault = crew.every(member =>
@@ -457,7 +450,7 @@ export class UnitSvgService {
                             this.unit.rules.controlRollShortLabel,
                         );
                     } else {
-                        svgElement.textContent = formatGunneryDisplay(skillValue, gunneryDisplayModifier);
+                        svgElement.textContent = formatGunneryDisplay(skillValue, 0);
                     }
                 }
             });
@@ -1295,7 +1288,6 @@ export class UnitSvgService {
             subject: entry,
             stateModifier: state.hitMod,
             stateModifierBreakdown: state.hitModifierBreakdown,
-            stateWeakened: state.weakenedHitMod,
             range,
             adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
         });
@@ -1317,8 +1309,8 @@ export class UnitSvgService {
             allowExtremeRange: this.unit.allowsExtremeRangeAttacks(),
             selectedAmmo: this.inventoryTargetSelectedAmmo(entry),
             target: c3Resolution.target,
-            gunnerySkill: this.unit.rules.getTargetNumberGunnerySkill(),
-            pilotingSkill: this.unit.rules.getTargetNumberPilotingSkill(),
+            gunnerySkill: this.unit.rules.getBaseGunnerySkill(),
+            pilotingSkill: this.unit.rules.getBasePilotingSkill(),
             missingMovementModifier,
             attackModifierBreakdown: this.unit.turnState().getAttackModifierBreakdown(),
             hitModifier,
@@ -1615,7 +1607,6 @@ export class UnitSvgService {
     protected renderHitModEntry(
         entry: MountedEquipment,
         resolution: ToHitResolution,
-        forceWeakened = false
     ) {
         const hitModifier = resolution.value;
         if (!entry.el) return;
@@ -1629,17 +1620,15 @@ export class UnitSvgService {
             entry.el.classList.remove('weakenedHitMod');
             return;
         }
-        forceWeakened ||= resolution.weakened;
         if (hitModifier === 'Vs' || hitModifier === '*') {
             hitModRect.setAttribute('display', 'block');
             hitModText.setAttribute('display', 'block');
             hitModText.textContent = hitModifier;
-            entry.el.classList.toggle('weakenedHitMod', forceWeakened);
+            entry.el.classList.toggle('weakenedHitMod', resolution.weakened);
             return;
         }
 
-        const weakenedHitMod = forceWeakened;
-        if (hitModifier !== 0 || resolution.changed || forceWeakened) {
+        if (hitModifier !== 0 || resolution.changed || resolution.weakened) {
             hitModRect.setAttribute('display', 'block');
             hitModText.setAttribute('display', 'block');
             hitModText.textContent = (hitModifier >= 0 ? '+' : '') + hitModifier.toString();
@@ -1647,7 +1636,7 @@ export class UnitSvgService {
             hitModRect.setAttribute('display', 'none');
             hitModText.setAttribute('display', 'none');
         }
-        entry.el.classList.toggle('weakenedHitMod', weakenedHitMod);
+        entry.el.classList.toggle('weakenedHitMod', resolution.weakened);
     }
 
     protected updateInventory() {
@@ -1672,8 +1661,7 @@ export class UnitSvgService {
             } else {
                 this.renderHitModEntry(
                     entry,
-                    this.resolveInventoryControlToHit(entry),
-                    state.weakenedHitMod
+                    this.resolveInventoryControlToHit(entry)
                 );
             }
             this.renderInventoryControlHeatEntry(entry, null);

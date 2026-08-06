@@ -13,13 +13,13 @@ export type HitModifier = number | 'Vs' | '*' | null;
 export interface ToHitModifierBreakdownEntry {
     readonly label: string;
     readonly modifier: number;
-    readonly negative?: boolean;
+    readonly weakened?: boolean;
     readonly kind?: 'heat';
     readonly designBaseline?: boolean;
 }
 export type ToHitAdjustment =
     | { readonly kind: 'replace-base'; readonly value: number | readonly number[]; readonly label?: string }
-    | { readonly kind: 'add'; readonly value: number; readonly weakened?: boolean; readonly label?: string; readonly breakdown?: readonly ToHitModifierBreakdownEntry[] }
+    | { readonly kind: 'add'; readonly value: number; readonly label?: string; readonly breakdown?: readonly ToHitModifierBreakdownEntry[] }
     | { readonly kind: 'unsupported' };
 
 export interface ToHitRequest {
@@ -27,7 +27,6 @@ export interface ToHitRequest {
     range?: RangeBrackets | null;
     stateModifier?: number;
     stateModifierBreakdown?: readonly ToHitModifierBreakdownEntry[];
-    stateWeakened?: boolean;
     adjustments?: readonly ToHitAdjustment[];
 }
 
@@ -53,12 +52,41 @@ export interface C3TargetingResolution {
     readonly degradationSource: C3DegradationSource;
 }
 
+export interface PhysicalLocationRow {
+    readonly roll: number;
+    readonly punchLeftSide: string;
+    readonly punchFrontRear: string;
+    readonly punchRightSide: string;
+    readonly kickLeftSide: string;
+    readonly kickFrontRear: string;
+    readonly kickRightSide: string;
+}
+
+const CORE_2026_PHYSICAL_LOCATION_ROWS: readonly PhysicalLocationRow[] = [
+    { roll: 1, punchLeftSide: 'LT', punchFrontRear: 'RA', punchRightSide: 'RT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
+    { roll: 2, punchLeftSide: 'LT', punchFrontRear: 'RT', punchRightSide: 'RT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
+    { roll: 3, punchLeftSide: 'CT', punchFrontRear: 'CT', punchRightSide: 'CT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
+    { roll: 4, punchLeftSide: 'LA', punchFrontRear: 'LT', punchRightSide: 'RA', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
+    { roll: 5, punchLeftSide: 'LA', punchFrontRear: 'LA', punchRightSide: 'RA', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
+    { roll: 6, punchLeftSide: 'HD', punchFrontRear: 'HD', punchRightSide: 'HD', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
+];
+
+const TW_PHYSICAL_LOCATION_ROWS: readonly PhysicalLocationRow[] = [
+    { roll: 1, punchLeftSide: 'LT', punchFrontRear: 'LA', punchRightSide: 'RT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
+    { roll: 2, punchLeftSide: 'LT', punchFrontRear: 'LT', punchRightSide: 'RT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
+    { roll: 3, punchLeftSide: 'CT', punchFrontRear: 'CT', punchRightSide: 'CT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
+    { roll: 4, punchLeftSide: 'LA', punchFrontRear: 'RT', punchRightSide: 'RA', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
+    { roll: 5, punchLeftSide: 'LA', punchFrontRear: 'RA', punchRightSide: 'RA', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
+    { roll: 6, punchLeftSide: 'HD', punchFrontRear: 'HD', punchRightSide: 'HD', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
+];
+
 const TO_HIT_MODIFIER_RANGE_INDEX: Record<RangeBrackets, number> = {
     short: 0,
     medium: 1,
     long: 2,
     extreme: 2,
 };
+const BASE_HIT_MODIFIER_LABEL = 'Base Hit Modifier';
 
 export function validatedToHitModifierBreakdown(
     modifier: number,
@@ -94,6 +122,7 @@ export abstract class CBTGameRules {
     abstract readonly artilleryFlatRangeModifier: number | null;
     abstract readonly supportsApolloSaturationMode: boolean;
     abstract readonly supportsBombastLaserRules: boolean;
+    abstract readonly physicalLocationRows: readonly PhysicalLocationRow[];
 
     abstract resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution;
     abstract resolveC3TargetingModifier(degradationSource: C3DegradationSource, rangeBracketImprovement: number): ToHitModifierBreakdownEntry | null;
@@ -110,7 +139,21 @@ export abstract class CBTGameRules {
         if (entry?.isIntrinsicPhysicalAttack()) {
             const physicalValue = this.physicalBaseHitModifiers[entry.name.toLowerCase()] ?? null;
             if (physicalValue === null || physicalValue === 'Vs') {
-                return { profile: [], value: physicalValue, changed: false, weakened: request.stateWeakened ?? false, modifierBreakdown: [] };
+                const modifierBreakdown = this.resolveModifierBreakdown(
+                    0,
+                    request.stateModifier ?? 0,
+                    request.stateModifierBreakdown,
+                    adjustments,
+                    BASE_HIT_MODIFIER_LABEL,
+                );
+                const weakened = modifierBreakdown.some(modifier => modifier.weakened === true);
+                return {
+                    profile: [],
+                    value: physicalValue,
+                    changed: false,
+                    weakened,
+                    modifierBreakdown: physicalValue === 'Vs' ? modifierBreakdown : [],
+                };
             }
             return this.composeToHit([physicalValue], request, adjustments);
         }
@@ -178,17 +221,19 @@ export abstract class CBTGameRules {
         const value = !request.range && profile.length > 1 ? '*' : valueAtRange(profile, request.range);
         const selectedValue = valueAtRange(profile, request.range);
         const changed = !sameProfile(profile, rulesProfile);
+        const baseLabel = replacement?.label ?? BASE_HIT_MODIFIER_LABEL;
         const stateBreakdown = validatedToHitModifierBreakdown(stateModifier, request.stateModifierBreakdown);
         const designModifier = stateBreakdown.reduce(
             (total, entry) => total + (entry.designBaseline === true ? entry.modifier : 0),
             0
         );
-        const weakened = request.stateWeakened === true
-            || adjustments.some(adjustment => adjustment.kind === 'add' && adjustment.weakened === true)
-            || stateBreakdown.some(entry => entry.negative === true && entry.modifier > 0)
+        const weakened = adjustments.some(adjustment => adjustment.kind === 'add'
+                && validatedToHitModifierBreakdown(adjustment.value, adjustment.breakdown, adjustment.label)
+                    .some(entry => entry.weakened === true))
+            || stateBreakdown.some(entry => entry.weakened === true)
             || selectedValue > baseValue + designModifier;
         const modifierBreakdown = typeof value === 'number'
-            ? this.resolveModifierBreakdown(baseValue, stateModifier, request.stateModifierBreakdown, adjustments, replacement?.label)
+            ? this.resolveModifierBreakdown(baseValue, stateModifier, request.stateModifierBreakdown, adjustments, baseLabel)
             : [];
         return { profile, value, changed, weakened, modifierBreakdown };
     }
@@ -198,10 +243,10 @@ export abstract class CBTGameRules {
         stateModifier: number,
         stateBreakdown: readonly ToHitModifierBreakdownEntry[] | undefined,
         adjustments: readonly ToHitAdjustment[],
-        replacementLabel?: string
+        baseLabel: string
     ): ToHitModifierBreakdownEntry[] {
         const result: ToHitModifierBreakdownEntry[] = [];
-        if (baseValue !== 0) result.push({ label: replacementLabel ?? 'Hit Modifier', modifier: baseValue });
+        if (baseValue !== 0) result.push({ label: baseLabel, modifier: baseValue });
         result.push(...validatedToHitModifierBreakdown(stateModifier, stateBreakdown));
         for (const adjustment of adjustments) {
             if (adjustment.kind !== 'add') continue;
@@ -234,6 +279,7 @@ export class GameRules extends CBTGameRules {
     readonly artilleryFlatRangeModifier = 4;
     readonly supportsApolloSaturationMode = true;
     readonly supportsBombastLaserRules = true;
+    readonly physicalLocationRows = CORE_2026_PHYSICAL_LOCATION_ROWS;
 
     override resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
         return { target, degradationSource };
@@ -241,7 +287,7 @@ export class GameRules extends CBTGameRules {
 
     override resolveC3TargetingModifier(degradationSource: C3DegradationSource, rangeBracketImprovement: number): ToHitModifierBreakdownEntry | null {
         return degradationSource !== 'none' && rangeBracketImprovement > 0
-            ? { label: 'ECM', modifier: rangeBracketImprovement, negative: true }
+            ? { label: 'ECM', modifier: rangeBracketImprovement, weakened: true }
             : null;
     }
 
@@ -289,6 +335,7 @@ export class TWGameRules extends CBTGameRules {
     readonly artilleryFlatRangeModifier = null;
     readonly supportsApolloSaturationMode = false;
     readonly supportsBombastLaserRules = false;
+    readonly physicalLocationRows = TW_PHYSICAL_LOCATION_ROWS;
 
     override resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
         return {

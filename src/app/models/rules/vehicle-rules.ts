@@ -33,9 +33,9 @@
 
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
-import type { CrewStateControlDefinition, CrewStateDefinition, UnitConditionControl, MountedEquipmentRuleState, UnitModifierBreakdownEntry, UnitSkillModifier } from './unit-type-rules';
+import type { CrewStateControlDefinition, CrewStateDefinition, UnitConditionControl, MountedEquipmentRuleState, UnitRuleModifier } from './unit-type-rules';
 import type { ToHitModifierBreakdownEntry } from './game-rules';
-import { crewStateDefinitions, unitConditionControls, UnitTypeRulesBase } from './unit-type-rules';
+import { crewStateDefinitions, sortPSRModifiers, unitConditionControls, UnitTypeRulesBase } from './unit-type-rules';
 import type { PSRCheck, TurnState } from '../turn-state.model';
 import type { MountedEquipment } from '../mounted-equipment.model';
 import type { CriticalSlot } from '../force-serialization';
@@ -156,57 +156,36 @@ export class VehicleRules extends UnitTypeRulesBase {
         return super.hasComputedCondition(condition);
     }
 
-    override readonly gunneryModifiers = computed<UnitSkillModifier[]>(() => {
+    protected override buildRuleModifiers(): UnitRuleModifier[] {
         const status = this.systemsStatus();
-        const modifiers = this.getGunnerySkillDisplayModifiers();
-        if (status.sensorHits > 0) {
-            modifiers.push({ modifier: status.sensorHits, reason: `Sensor hit ${status.sensorHits}` });
+        const modifiers: UnitRuleModifier[] = [];
+        if (this.unit.getUnit().armorType === 'Hardened') {
+            modifiers.push({ label: 'Mounts Hardened Armor', values: { psr: 1 } });
         }
-        if (status.flightStabilizerHit) {
-            modifiers.push({ modifier: 1, reason: 'Flight stabilizer hit' });
-        }
-        return modifiers;
-    });
-
-    private getGunnerySkillDisplayModifiers(): UnitSkillModifier[] {
-        const status = this.systemsStatus();
-        const modifiers: UnitSkillModifier[] = [];
         if (status.commanderHit) {
-            modifiers.push({ modifier: 1, reason: 'Commander hit' });
+            modifiers.push({ label: 'Commander hit', values: { ranged: 1, physical: 1, psr: 1 }, weakened: true });
         }
         if (status.copilotHit) {
-            modifiers.push({ modifier: 1, reason: 'Co-Pilot hit' });
-        }
-        return modifiers;
-    }
-
-    override getGunnerySkillDisplayModifierBreakdown(): UnitModifierBreakdownEntry[] {
-        return this.getGunnerySkillDisplayModifiers()
-            .filter(modifier => modifier.modifier !== 0)
-            .map(modifier => ({ label: modifier.reason, modifier: modifier.modifier }));
-    }
-
-    override readonly pilotingModifiers = computed<UnitSkillModifier[]>(() => {
-        const status = this.systemsStatus();
-        const modifiers: UnitSkillModifier[] = [];
-        if (status.commanderHit) {
-            modifiers.push({ modifier: 1, reason: 'Commander hit' });
+            modifiers.push({ label: 'Co-pilot hit', values: { ranged: 1 }, weakened: true });
         }
         if (status.driverOrPilotHit) {
-            modifiers.push({ modifier: 2, reason: 'Driver/Pilot hit' });
+            modifiers.push({ label: 'Driver/Pilot hit', values: { psr: 2 }, weakened: true });
         }
         if (status.flightStabilizerHit) {
-            modifiers.push({ modifier: 3, reason: 'Flight stabilizer hit' });
+            modifiers.push({ label: 'Flight stabilizer hit', values: { ranged: 1, psr: 3 }, weakened: true });
+        }
+        if (status.sensorHits > 0) {
+            modifiers.push({ label: 'Sensor hits', values: { ranged: status.sensorHits }, weakened: true });
         }
         const appliedMotivePilotingLevels = new Set<number>();
         for (const motiveHit of status.motiveHits) {
             if (motiveHit.level >= 1 && motiveHit.level <= 3 && !appliedMotivePilotingLevels.has(motiveHit.level)) {
-                modifiers.push({ modifier: motiveHit.level, reason: 'Motive system hit' });
+                modifiers.push({ label: 'Motive system hit', values: { psr: motiveHit.level }, weakened: true });
                 appliedMotivePilotingLevels.add(motiveHit.level);
             }
         }
         return modifiers;
-    });
+    }
 
     readonly movementState = computed<VehicleMovementState>(() => {
         const unit = this.unit.getUnit();
@@ -305,37 +284,11 @@ export class VehicleRules extends UnitTypeRulesBase {
     }
 
     override readonly PSRModifiers = computed<{ modifier: number; modifiers: PSRCheck[] }>(() => {
-        const status = this.systemsStatus();
-        const modifiers: PSRCheck[] = [];
-        let preExisting = 0;
-        const hardenedArmor = this.unit.getUnit().armorType === 'Hardened';
-        if (hardenedArmor) {
-            preExisting += 1;
-            modifiers.push({
-                pilotCheck: 1,
-                reason: 'Mounts Hardened Armor'
-            });
-        }
-        if (status.commanderHit) {
-            modifiers.push({ pilotCheck: 1, reason: 'Commander hit' });
-        }
-        if (status.driverOrPilotHit) {
-            modifiers.push({ pilotCheck: 2, reason: 'Driver/Pilot hit' });
-        }
-        if (status.sensorHits > 0) {
-            modifiers.push({ pilotCheck: status.sensorHits, reason: `Sensor hit` });
-        }
-        if (status.flightStabilizerHit) {
-            modifiers.push({ pilotCheck: 3, reason: 'Flight stabilizer hit' });
-        }
-        const appliedMotivePilotingLevels = new Set<number>();
-        for (const motiveHit of status.motiveHits) {
-            if (motiveHit.level >= 1 && motiveHit.level <= 3 && !appliedMotivePilotingLevels.has(motiveHit.level)) {
-                modifiers.push({ pilotCheck: motiveHit.level, reason: `Motive system hit` });
-                appliedMotivePilotingLevels.add(motiveHit.level);
-            }
-        }
-        return { modifier: this.pilotingModifier() + preExisting, modifiers };
+        const projected = this.psrModifiers();
+        return {
+            modifier: projected.reduce((total, modifier) => total + modifier.modifier, 0),
+            modifiers: sortPSRModifiers(projected.map(modifier => ({ pilotCheck: modifier.modifier, reason: modifier.label }))),
+        };
     });
 
     override readonly PSRTargetRoll = computed<number>(() => this.unit.pilotingSkill() + this.PSRModifiers().modifier);
@@ -352,16 +305,11 @@ export class VehicleRules extends UnitTypeRulesBase {
         const status = this.systemsStatus();
         const isDamaged = this.entryCriticalSlots(entry).some(slot => slot.destroyed) || entry.committedDestroyed();
         let isDisabled = this.isEntryStateDisabled(entry);
-        let hitMod = 0;
         const hitModifierBreakdown: ToHitModifierBreakdownEntry[] = [];
-        let weakenedHitMod = false;
         const isPhysical = this.isPhysicalEntry(entry);
 
         if (!isPhysical) {
-            const targetingComputer = this.getMountedTargetingComputerModifier(entry);
-            hitMod += targetingComputer.modifier;
-            hitModifierBreakdown.push(...targetingComputer.breakdown);
-            weakenedHitMod ||= targetingComputer.weakened;
+            hitModifierBreakdown.push(...this.getMountedTargetingComputerModifiers(entry));
             if (status.engineHit && entry.equipment?.flags.has('F_ENERGY')) {
                 isDisabled = true;
             }
@@ -369,17 +317,11 @@ export class VehicleRules extends UnitTypeRulesBase {
                 isDisabled = true;
             }
             const stabilizerModifier = this.stabilizerHitModifier(entry, status);
-            hitMod += stabilizerModifier;
-            if (stabilizerModifier !== 0) {
-                hitModifierBreakdown.push({ label: 'Stabilizer Hit', modifier: stabilizerModifier, negative: true });
+            if (this.stabilizerHitApplies(entry, status)) {
+                hitModifierBreakdown.push({ label: 'Stabilizer Hit', modifier: stabilizerModifier, weakened: true });
             }
         }
-        return this.applyTargetNumberSkillModifiers(entry, { isDamaged, isDisabled, hitMod, hitModifierBreakdown, weakenedHitMod });
-    }
-
-    hasDamagedStabilizerAffectingEntry(entry: MountedEquipment): boolean {
-        if (this.isPhysicalEntry(entry)) return false;
-        return this.stabilizerHitApplies(entry, this.systemsStatus());
+        return this.composeEntryState(entry, { isDamaged, isDisabled }, hitModifierBreakdown);
     }
 
     private applyMotiveDamage(base: number, motiveHits: MotiveHitTimestamp[]): number {

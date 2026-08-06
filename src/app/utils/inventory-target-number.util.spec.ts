@@ -101,7 +101,7 @@ describe('inventory target number rules profiles', () => {
 
         expect(state.rangeSelection?.range).toBe('medium');
         expect(state.breakdown?.total).toBe(7);
-        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({ label: 'ECM', value: '+1', negative: true }));
+        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({ label: 'ECM', value: '+1', weakened: true }));
     });
 
     it('adds +1 ECM when C3 improves medium range to short', () => {
@@ -116,7 +116,7 @@ describe('inventory target number rules profiles', () => {
 
         expect(state.rangeSelection?.range).toBe('short');
         expect(state.breakdown?.total).toBe(6);
-        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({ label: 'ECM', value: '+2', negative: true }));
+        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({ label: 'ECM', value: '+2', weakened: true }));
     });
 
     it('does not add ECM without a C3 bracket improvement', () => {
@@ -359,17 +359,17 @@ describe('inventory target number rules profiles', () => {
         expect(state.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'Hit Modifier' }));
     });
 
-    it('retains a concise negative destruction detail without changing the total', () => {
+    it('retains a concise weakened destruction detail without changing the total', () => {
         const state = inventoryTargetNumberState({
             ...artilleryInput(8),
             selectedAmmo: null,
             hitModifier: 0,
-            hitModifierBreakdown: [{ label: 'Targeting Computer Destroyed', modifier: 0, negative: true }]
+            hitModifierBreakdown: [{ label: 'Targeting Computer Destroyed', modifier: 0, weakened: true }]
         });
 
         expect(state.breakdown?.total).toBe(4);
         expect(state.breakdown?.lines).toContain(jasmine.objectContaining({
-            label: 'Targeting Computer Destroyed', value: '+0', negative: true
+            label: 'Targeting Computer Destroyed', value: '+0', weakened: true
         }));
     });
 
@@ -385,13 +385,13 @@ describe('inventory target number rules profiles', () => {
         expect(state.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'Incomplete' }));
     });
 
-    it('orders regular terms before negative terms and heat last', () => {
+    it('orders regular terms before weakened terms and heat last', () => {
         const state = inventoryTargetNumberState({
             ...artilleryInput(8),
             selectedAmmo: null,
             hitModifier: 0,
             hitModifierBreakdown: [
-                { label: 'Damaged Fire Control', modifier: 1, negative: true },
+                { label: 'Damaged Fire Control', modifier: 1, weakened: true },
                 { label: 'Targeting Computer', modifier: -1 }
             ],
             heatFireModifier: 2

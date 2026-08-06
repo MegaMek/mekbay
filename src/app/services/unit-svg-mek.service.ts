@@ -261,18 +261,9 @@ export class UnitSvgMekService extends UnitSvgService {
             subject: entry,
             stateModifier: state.hitMod,
             stateModifierBreakdown: state.hitModifierBreakdown,
-            stateWeakened: state.weakenedHitMod,
             range,
             adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
         });
-    }
-
-    protected override renderHitModEntry(
-        entry: MountedEquipment,
-        resolution: ReturnType<UnitSvgMekService['resolveInventoryControlToHit']>
-    ) {
-        const state = this.currentEntryStates?.get(entry) ?? this.mekRules.computeEntryState(entry);
-        super.renderHitModEntry(entry, resolution, !!state.weakenedHitMod);
     }
 
     protected override updateTurnState() {

@@ -53,6 +53,14 @@ describe('PageViewerPresentationService', () => {
         expect(getReferenceTable(svg)?.style.display).toBe('block');
     });
 
+    it('keeps reference tables visible when artwork is unavailable', () => {
+        const svg = createSheetSvgWithoutFluff();
+
+        service.applyFluffImageVisibilityToSvg(svg, true);
+
+        expect(getReferenceTable(svg)?.style.display).toBe('block');
+    });
+
     it('applies fluff visibility to shadow wrapper svgs', () => {
         const wrapper = document.createElement('div');
         const svg = createSheetSvg();
@@ -79,6 +87,15 @@ function createSheetSvg(): SVGSVGElement {
     referenceTable.classList.add('referenceTable');
     svg.appendChild(referenceTable);
 
+    return svg as SVGSVGElement;
+}
+
+function createSheetSvgWithoutFluff(): SVGSVGElement {
+    const svgNs = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNs, 'svg');
+    const referenceTable = document.createElementNS(svgNs, 'g');
+    referenceTable.classList.add('referenceTable');
+    svg.appendChild(referenceTable);
     return svg as SVGSVGElement;
 }
 

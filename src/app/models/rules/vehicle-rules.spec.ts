@@ -78,6 +78,7 @@ function createRulesHarness(options: {
     tons?: number;
     moveDistance?: number;
     selectedAmmo?: AmmoEquipment | null;
+    gunnery?: number;
 } = {}): VehicleRules {
     const baseUnit = createEmptyUnit({
         type: options.type ?? 'Tank',
@@ -89,6 +90,10 @@ function createRulesHarness(options: {
         tons: options.tons ?? 40,
     });
     const crewStates = options.crewStates ?? ['healthy'];
+    const crewMembers = crewStates.map(state => ({
+        getState: () => state,
+        getSkill: (skill: 'gunnery' | 'piloting') => skill === 'gunnery' ? options.gunnery ?? 4 : 5,
+    }));
     let rules: VehicleRules;
     const unit = {
         gameRules: options.rulesId === 'tw' ? TW_GAME_RULES : CORE_2026_GAME_RULES,
@@ -104,11 +109,13 @@ function createRulesHarness(options: {
             if (state === 'disconnected') return rules.hasComputedCondition('disconnected');
             return false;
         },
-        getCrewMembers: () => crewStates.map(state => ({ getState: () => state })),
+        getCrewMembers: () => crewMembers,
+        getCrewMember: (id: number) => crewMembers[id],
         isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot) => source instanceof MountedEquipment ? source.committedDestroyed() : !!source.destroyed,
         getRunMovementMultiplierBonus: (turnState: TurnState) => (options.inventory ?? [])
             .reduce((total, entry) => total + mascHandler.getRunMovementMultiplierBonus(entry, turnState), 0),
         pilotingSkill: () => 5,
+        gunnerySkill: () => options.gunnery ?? 4,
         turnState: () => ({
             moveMode: () => options.moveMode ?? null,
             moveDistance: () => options.moveDistance ?? 0,
@@ -144,7 +151,7 @@ describe('VehicleRules', () => {
         const targetingComputer = entry({ equipment: equipment('TargetingComputer', ['F_TARGETING_COMPUTER']) });
         const activeRules = createRulesHarness({ inventory: [directFire, targetingComputer] });
 
-        expect(activeRules.computeEntryState(directFire)).toEqual(jasmine.objectContaining({ hitMod: -1, weakenedHitMod: false }));
+        expect(activeRules.computeEntryState(directFire)).toEqual(jasmine.objectContaining({ hitMod: -1 }));
 
         const destroyedDirectFire = new MountedWeapon({
             owner: undefined as unknown as CBTForceUnit,
@@ -158,7 +165,10 @@ describe('VehicleRules', () => {
         });
         const destroyedRules = createRulesHarness({ inventory: [destroyedDirectFire, destroyedTargetingComputer] });
 
-        expect(destroyedRules.computeEntryState(destroyedDirectFire)).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: true }));
+        expect(destroyedRules.computeEntryState(destroyedDirectFire)).toEqual(jasmine.objectContaining({
+            hitMod: 0,
+            hitModifierBreakdown: [{ label: 'DestroyedTargetingComputer Destroyed', modifier: 0, weakened: true }],
+        }));
     });
 
     it('does not apply a targeting computer when selected ammo creates a cluster flak attack', () => {
@@ -188,7 +198,7 @@ describe('VehicleRules', () => {
             selectedAmmo: flechetteAmmo
         });
 
-        expect(rules.computeEntryState(mountedAutocannon)).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: false }));
+        expect(rules.computeEntryState(mountedAutocannon)).toEqual(jasmine.objectContaining({ hitMod: 0 }));
     });
 
     it('excludes cluster and flak weapons from targeting computers except non-flak HAGs', () => {
@@ -225,9 +235,9 @@ describe('VehicleRules', () => {
         });
         const rules = createRulesHarness({ inventory: [clusterWeapon, flakWeapon, hag, targetingComputer] });
 
-        expect(rules.computeEntryState(clusterWeapon)).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: false }));
-        expect(rules.computeEntryState(flakWeapon)).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: false }));
-        expect(rules.computeEntryState(hag)).toEqual(jasmine.objectContaining({ hitMod: -1, weakenedHitMod: false }));
+        expect(rules.computeEntryState(clusterWeapon)).toEqual(jasmine.objectContaining({ hitMod: 0 }));
+        expect(rules.computeEntryState(flakWeapon)).toEqual(jasmine.objectContaining({ hitMod: 0 }));
+        expect(rules.computeEntryState(hag)).toEqual(jasmine.objectContaining({ hitMod: -1 }));
     });
 
     it('does not allow pulse weapons to make aimed shots against mobile targets', () => {
@@ -457,11 +467,13 @@ describe('VehicleRules', () => {
     });
 
     it('applies repeatable motive damage chronologically but counts each piloting level once', () => {
+        const physicalEntry = entry({ intrinsicPhysicalAttack: true });
         const rules = createRulesHarness({
             crits: [
                 { id: 'motive_system_hit_2', hits: 2, hitTimestamps: [10, 30] },
                 { id: 'motive_system_hit_3', hits: 1, hitTimestamps: [20] },
             ],
+            inventory: [physicalEntry],
             walk: 8,
             run: 12,
         });
@@ -473,7 +485,6 @@ describe('VehicleRules', () => {
             maxRun: 5,
             moveImpaired: true,
         }));
-        expect(rules.pilotingModifier()).toBe(5);
         expect(rules.PSRModifiers().modifiers.filter(modifier => modifier.reason === 'Motive system hit')).toEqual([
             { pilotCheck: 2, reason: 'Motive system hit' },
             { pilotCheck: 3, reason: 'Motive system hit' },
@@ -508,6 +519,8 @@ describe('VehicleRules', () => {
     });
 
     it('derives gunnery and piloting modifiers from vehicle crits', () => {
+        const weaponEntry = entry({ equipment: weapon('AC/5') });
+        const physicalEntry = entry({ intrinsicPhysicalAttack: true });
         const rules = createRulesHarness({
             crits: [
                 crit('commander_hit', 10),
@@ -517,36 +530,33 @@ describe('VehicleRules', () => {
                 crit('flight_stabilizer_hit', 40),
                 crit('motive_system_hit_2', 50),
             ],
+            inventory: [weaponEntry, physicalEntry],
+            gunnery: 4,
         });
 
-        expect(rules.gunneryModifier()).toBe(6);
-        expect(rules.pilotingModifier()).toBe(8);
         expect(rules.PSRModifiers().modifier).toBe(8);
-        expect(rules.gunneryModifiers()).toEqual([
-            { modifier: 1, reason: 'Commander hit' },
-            { modifier: 1, reason: 'Co-Pilot hit' },
-            { modifier: 3, reason: 'Sensor hit 3' },
-            { modifier: 1, reason: 'Flight stabilizer hit' },
-        ]);
-        expect(rules.getGunnerySkillDisplayModifierBreakdown()).toEqual([
-            { label: 'Commander hit', modifier: 1 },
-            { label: 'Co-Pilot hit', modifier: 1 },
-        ]);
-        expect(rules.getTargetNumberGunneryModifierBreakdown()).toEqual([
-            { label: 'Commander hit', modifier: 1 },
-            { label: 'Co-Pilot hit', modifier: 1 },
-            { label: 'Sensor hit 3', modifier: 3 },
-            { label: 'Flight stabilizer hit', modifier: 1 },
-        ]);
-        expect(rules.pilotingModifiers()).toEqual([
-            { modifier: 1, reason: 'Commander hit' },
-            { modifier: 2, reason: 'Driver/Pilot hit' },
-            { modifier: 3, reason: 'Flight stabilizer hit' },
-            { modifier: 2, reason: 'Motive system hit' },
-        ]);
+        const expectedRangedModifiers = [
+            { label: 'Commander hit', modifier: 1, weakened: true },
+            { label: 'Co-pilot hit', modifier: 1, weakened: true },
+            { label: 'Flight stabilizer hit', modifier: 1, weakened: true },
+            { label: 'Sensor hits', modifier: 3, weakened: true },
+        ];
+        expect(rules.getBaseGunnerySkill()).toBe(4);
+        const weaponState = rules.computeEntryState(weaponEntry);
+        expect(weaponState.hitMod).toBe(6);
+        expect(weaponState.hitModifierBreakdown).toEqual(expectedRangedModifiers);
+        expect(rules.getBaseGunnerySkill() + weaponState.hitMod).toBe(10);
+        expect(rules.computeEntryState(physicalEntry)).toEqual(jasmine.objectContaining({
+            hitMod: 1,
+            hitModifierBreakdown: [
+                { label: 'Commander hit', modifier: 1, weakened: true },
+            ],
+        }));
     });
 
     it('makes drone vehicles Immobile after a commander hit disconnects them', () => {
+        const weaponEntry = entry({ equipment: weapon('AC/5') });
+        const physicalEntry = entry({ intrinsicPhysicalAttack: true });
         const rules = createRulesHarness({
             crits: [
                 crit('commander_hit', 10),
@@ -554,14 +564,24 @@ describe('VehicleRules', () => {
                 crit('driver_hit', 20),
                 crit('pilot_hit', 25),
             ],
-            inventory: [entry({ equipment: equipment('ISDroneOperatingSystem', ['F_DRONE_OPERATING_SYSTEM']) })],
+            inventory: [
+                weaponEntry,
+                physicalEntry,
+                entry({ equipment: equipment('ISDroneOperatingSystem', ['F_DRONE_OPERATING_SYSTEM']) }),
+            ],
         });
 
         expect(rules.hasComputedCondition('disconnected')).toBeTrue();
         expect(rules.hasComputedCondition('immobile')).toBeTrue();
         expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, moveImpaired: true }));
-        expect(rules.gunneryModifiers()).toEqual([]);
-        expect(rules.pilotingModifiers()).toEqual([]);
+        expect(rules.computeEntryState(weaponEntry)).toEqual(jasmine.objectContaining({
+            hitMod: 0,
+            hitModifierBreakdown: [],
+        }));
+        expect(rules.computeEntryState(physicalEntry)).toEqual(jasmine.objectContaining({
+            hitMod: 0,
+            hitModifierBreakdown: [],
+        }));
         expect(rules.PSRModifiers().modifier).toBe(0);
     });
 
@@ -593,7 +613,7 @@ describe('VehicleRules', () => {
         expect(rules.computeEntryState(ballisticEntry).isDisabled).toBeFalse();
     });
 
-    it('disables non-physical weapons at sensor hit level four', () => {
+    it('disables non-physical weapons at Sensor hits level four', () => {
         const weaponEntry = entry({ equipment: weapon('AC/5') });
         const chargeEntry = entry({ id: 'Charge', intrinsicPhysicalAttack: true });
         const rules = createRulesHarness({
@@ -648,7 +668,11 @@ describe('VehicleRules', () => {
         });
 
         expect(rules.computeEntryState(frontRightWeapon).hitMod).toBe(0);
-        expect(rules.hasDamagedStabilizerAffectingEntry(frontRightWeapon)).toBeTrue();
-        expect(rules.hasDamagedStabilizerAffectingEntry(rearWeapon)).toBeFalse();
+        expect(rules.computeEntryState(frontRightWeapon).hitModifierBreakdown).toContain(jasmine.objectContaining({
+            label: 'Stabilizer Hit', modifier: 0, weakened: true,
+        }));
+        expect(rules.computeEntryState(rearWeapon).hitModifierBreakdown).not.toContain(jasmine.objectContaining({
+            label: 'Stabilizer Hit',
+        }));
     });
 });

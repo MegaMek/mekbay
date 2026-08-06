@@ -36,8 +36,7 @@ export function displayPsrModifiers(modifiers: readonly PSRCheck[]): Array<PSRCh
         .map(modifier => ({
             ...modifier,
             reason: modifier.modifierReason ?? modifier.reason,
-        }))
-        .sort((left, right) => left.reason.localeCompare(right.reason));
+        }));
 }
 
 export function countActionablePsrChecks(

@@ -34,7 +34,7 @@
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { MountedEquipment } from '../mounted-equipment.model';
-import { UnitTypeRulesBase, type MountedEquipmentRuleState } from './unit-type-rules';
+import { UnitTypeRulesBase, type UnitRuleModifier } from './unit-type-rules';
 import {
     type HeatScaleEntry,
     type HeatDissipationState,
@@ -122,24 +122,14 @@ export class AeroRules extends UnitTypeRulesBase {
         return getHeatEffects(AeroRules.HEAT_SCALE, heat);
     }
 
-    override computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
-        const state = super.computeEntryState(entry);
-        if (entry.isPhysicalWeapon()) return state;
+    protected override buildRuleModifiers(): UnitRuleModifier[] {
         const heatFireModifier = AeroRules.getHeatEffects(this.unit.getHeat().current).fireModifier;
-        if (heatFireModifier === 0) return state;
-        return {
-            ...state,
-            hitMod: state.hitMod + heatFireModifier,
-            hitModifierBreakdown: [
-                ...(state.hitModifierBreakdown ?? []),
-                {
-                    label: 'Heat - Fire Modifier',
-                    modifier: heatFireModifier,
-                    negative: true,
-                    kind: 'heat'
-                }
-            ]
-        };
+        return heatFireModifier === 0 ? [] : [{
+            label: 'Heat - Fire Modifier',
+            values: { ranged: heatFireModifier },
+            weakened: true,
+            kind: 'heat',
+        }];
     }
 
     // ── Heat Dissipation ─────────────────────────────────────────────────────

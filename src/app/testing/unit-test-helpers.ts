@@ -146,7 +146,6 @@ export interface CBTForceUnitTestEntryState {
     isDisabled: boolean;
     hitMod: number;
     hitModifierBreakdown?: readonly ToHitModifierBreakdownEntry[];
-    weakenedHitMod?: boolean;
 }
 
 export interface CBTForceUnitTestHarnessOptions {
@@ -279,13 +278,8 @@ export class CBTForceUnitTestHarness {
                     default: return 0;
                 }
             },
-            getTargetNumberGunnerySkill: () => options.gunnerySkill ?? 4,
-            getTargetNumberPilotingSkill: () => options.pilotingSkill ?? 5,
-            getTargetNumberGunneryModifierBreakdown: () => [],
-            getGunnerySkillDisplayModifierBreakdown: () => [],
-            getTargetNumberPilotingModifierBreakdown: () => [],
-            getPhysicalAttackModifierBreakdown: () => [],
-            getGunneryAttackModifierBreakdown: () => [],
+            getBaseGunnerySkill: () => options.gunnerySkill ?? 4,
+            getBasePilotingSkill: () => options.pilotingSkill ?? 5,
             applyInventoryControlDisplayEffects: (entry: MountedEquipment, display: InventoryControlDisplayData) =>
                 options.applyInventoryControlDisplayEffects?.(entry, display) ?? display
         };

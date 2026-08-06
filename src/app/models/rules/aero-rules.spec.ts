@@ -1,4 +1,5 @@
 import type { CBTForceUnit } from '../cbt-force-unit.model';
+import { WeaponEquipment } from '../equipment.model';
 import type { MountedEquipment } from '../mounted-equipment.model';
 import { AeroRules } from './aero-rules';
 
@@ -12,6 +13,7 @@ function createHarness(heat: number, physical = false): { rules: AeroRules; entr
     const entry = {
         committedDestroyed: () => false,
         isPhysicalWeapon: () => physical,
+        equipment: Object.create(WeaponEquipment.prototype),
         critSlots: [],
         states: new Map<string, string>(),
     } as unknown as MountedEquipment;
@@ -28,13 +30,13 @@ describe('AeroRules', () => {
         }));
     });
 
-    it('includes heat as a named negative entry-state modifier', () => {
+    it('includes heat as a named weakened entry-state modifier', () => {
         const { rules, entry } = createHarness(8);
 
         expect(rules.computeEntryState(entry)).toEqual(jasmine.objectContaining({
             hitMod: 1,
             hitModifierBreakdown: [
-                { label: 'Heat - Fire Modifier', modifier: 1, negative: true, kind: 'heat' }
+                { label: 'Heat - Fire Modifier', modifier: 1, weakened: true, kind: 'heat' }
             ]
         }));
     });
@@ -45,7 +47,7 @@ describe('AeroRules', () => {
         expect(rules.computeEntryState(entry)).toEqual(jasmine.objectContaining({
             hitMod: 4,
             hitModifierBreakdown: [
-                { label: 'Heat - Fire Modifier', modifier: 4, negative: true, kind: 'heat' }
+                { label: 'Heat - Fire Modifier', modifier: 4, weakened: true, kind: 'heat' }
             ]
         }));
     });

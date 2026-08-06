@@ -33,19 +33,19 @@ describe('ArtemisVHandler', () => {
 
     it('applies the Artemis V bonus when linked to a launcher using Artemis V-capable ammo', () => {
         expect(handler.getToHitAdjustments(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), { parent: entry(['F_ARTEMIS_COMPATIBLE']), selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) })).toEqual([{
-            kind: 'add', value: -1, weakened: false,
+            kind: 'add', value: -1,
             breakdown: [{ label: 'Entry', modifier: -1 }]
         }]);
     });
 
     it('no Artemis V hit modifier bonus when selected ammo is not Artemis V-capable', () => {
         expect(handler.getToHitAdjustments(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), { parent: entry(['F_ARTEMIS_COMPATIBLE']), selectedAmmo: ammo(['M_ARTEMIS_CAPABLE']) })).toEqual([{
-            kind: 'add', value: 0, weakened: true,
-            breakdown: [{ label: 'Incompatible Ammo (Test Ammo)', modifier: 0, negative: true }]
+            kind: 'add', value: 0,
+            breakdown: [{ label: 'Incompatible Ammo (Test Ammo)', modifier: 0, weakened: true }]
         }]);
         expect(handler.getToHitAdjustments(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), { parent: entry(['F_ARTEMIS_COMPATIBLE']), selectedAmmo: null })).toEqual([{
-            kind: 'add', value: 0, weakened: true,
-            breakdown: [{ label: 'Artemis V Ammo Not Selected', modifier: 0, negative: true }]
+            kind: 'add', value: 0,
+            breakdown: [{ label: 'Artemis V Ammo Not Selected', modifier: 0, weakened: true }]
         }]);
     });
 
@@ -54,8 +54,8 @@ describe('ArtemisVHandler', () => {
         artemis.owner = owner(artemis);
 
         expect(handler.getToHitAdjustments(artemis, { parent: entry(['F_ARTEMIS_COMPATIBLE']), selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) })).toEqual([{
-            kind: 'add', value: 0, weakened: true,
-            breakdown: [{ label: 'Entry Destroyed', modifier: 0, negative: true }]
+            kind: 'add', value: 0,
+            breakdown: [{ label: 'Entry Destroyed', modifier: 0, weakened: true }]
         }]);
     });
 
@@ -64,8 +64,8 @@ describe('ArtemisVHandler', () => {
         artemis.owner = owner(undefined, true);
 
         expect(handler.getToHitAdjustments(artemis, { parent: entry(['F_ARTEMIS_COMPATIBLE']), selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) })).toEqual([{
-            kind: 'add', value: 0, weakened: true,
-            breakdown: [{ label: 'Unit Jammed', modifier: 0, negative: true }]
+            kind: 'add', value: 0,
+            breakdown: [{ label: 'Unit Jammed', modifier: 0, weakened: true }]
         }]);
     });
 

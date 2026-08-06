@@ -125,7 +125,9 @@
                         <tr [class.rolled-row-highlight]="isPhysicalRollHighlighted(row.roll)">
                             <td>{{ row.roll }}</td>
                             @for (column of physicalColumns; track column.key) {
-                            <td [class.column-hovered]="hoveredColumnKey() === physicalColumnKey(column.key)" [class.rolled-highlight]="isPhysicalCellHighlighted(row.roll, column.key)" (click)="rollPhysicalColumn(column.key)" (pointerenter)="setHoveredColumn($event, physicalColumnKey(column.key))" (pointerleave)="clearHoveredColumn(physicalColumnKey(column.key))"><button type="button" class="table-roll-button" tabindex="-1">{{ row[column.key] }}</button></td>
+                            @if (!column.key.startsWith('kick') || (row.roll - 1) % 3 === 0) {
+                            <td [attr.rowspan]="column.key.startsWith('kick') ? 3 : null" [class.column-hovered]="hoveredColumnKey() === physicalColumnKey(column.key)" [class.rolled-row-highlight]="column.key.startsWith('kick') && isPhysicalKickGroupHighlighted(row.roll)" [class.rolled-highlight]="isPhysicalCellHighlighted(row.roll, column.key)" (click)="rollPhysicalColumn(column.key)" (pointerenter)="setHoveredColumn($event, physicalColumnKey(column.key))" (pointerleave)="clearHoveredColumn(physicalColumnKey(column.key))"><button type="button" class="table-roll-button" tabindex="-1">{{ row[column.key] }}</button></td>
+                            }
                             }
                         </tr>
                         }

@@ -36,7 +36,7 @@ import { WeaponEquipment, type AmmoEquipment } from '../models/equipment.model';
 import { resolveAmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
 import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import { CORE_2026_GAME_RULES, validatedToHitModifierBreakdown, type C3DegradationSource, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry } from '../models/rules/game-rules';
-import { orderHitTargetTooltipLines } from './hit-target-tooltip.util';
+import { modifierTooltipLines, orderHitTargetTooltipLines } from './hit-target-tooltip.util';
 import type { UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
 import type { InventoryControlDisplayData, InventoryControlGroupId, InventoryRangeKey } from './inventory-control.util';
 import type { TooltipLine } from '../components/tooltip/tooltip.component';
@@ -256,10 +256,7 @@ export function inventoryTargetNumberBreakdown(
         { label: skillLabel, value: skill.toString() }
     ];
 
-    terms.push(...input.attackModifierBreakdown.map(entry => ({
-        label: entry.label,
-        value: formatInventoryTargetSignedModifier(entry.modifier)
-    })));
+    terms.push(...modifierTooltipLines(input.attackModifierBreakdown, entry => formatInventoryTargetSignedModifier(entry.modifier)));
 
     if (target.tnModifier !== 0) {
         terms.push({ label: `Target (${target.letter})`, value: formatInventoryTargetSignedModifier(target.tnModifier) });
@@ -277,20 +274,15 @@ export function inventoryTargetNumberBreakdown(
             terms.push({
                 label: c3Modifier.label,
                 value: formatInventoryTargetSignedModifier(c3Modifier.modifier),
-                ...(c3Modifier.negative && { negative: true })
+                ...(c3Modifier.weakened && { weakened: true })
             });
         }
     }
     if (minimumRangeModifier !== 0) {
-        terms.push({ label: 'Minimum Range', value: formatInventoryTargetSignedModifier(minimumRangeModifier), negative: true });
+        terms.push({ label: 'Minimum Range', value: formatInventoryTargetSignedModifier(minimumRangeModifier), weakened: true });
     }
     const hitModifierBreakdown = validatedToHitModifierBreakdown(input.hitModifier, input.hitModifierBreakdown);
-    terms.push(...hitModifierBreakdown.map(entry => ({
-        label: entry.label,
-        value: formatInventoryTargetSignedModifier(entry.modifier),
-        ...(entry.negative && { negative: true }),
-        ...(entry.kind && { kind: entry.kind })
-    })));
+    terms.push(...modifierTooltipLines(hitModifierBreakdown, entry => formatInventoryTargetSignedModifier(entry.modifier)));
     if (numericAmmoToHitModifier !== 0 && input.selectedAmmo) {
         terms.push({ label: `Ammo (${input.selectedAmmo.shortName})`, value: formatInventoryTargetSignedModifier(numericAmmoToHitModifier) });
     }
@@ -298,7 +290,7 @@ export function inventoryTargetNumberBreakdown(
         terms.push({
             label: 'Heat - Fire Modifier',
             value: formatInventoryTargetSignedModifier(heatFireModifier),
-            negative: true,
+            weakened: true,
             kind: 'heat'
         });
     }

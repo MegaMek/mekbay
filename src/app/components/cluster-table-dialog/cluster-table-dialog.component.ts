@@ -7,11 +7,11 @@
 import { afterNextRender, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { Unit } from '../../models/units.model';
+import { CBTGameRules, CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
 import {
     clusterTableForUnit,
     clusterTableRows,
     hitLocationRows,
-    PHYSICAL_LOCATION_ROWS,
     referenceTableNotes,
     type HitLocationRow,
     type PhysicalLocationColumn,
@@ -41,6 +41,7 @@ interface ReferenceRollResult {
 
 export interface ClusterTableDialogData {
     readonly unit: Unit;
+    readonly gameRules?: CBTGameRules;
 }
 
 export function shouldCombineReferenceTables(availableWidth: number, requiredWidth: number): boolean {
@@ -64,6 +65,7 @@ export class ClusterTableDialogComponent {
     private readonly combinedTable = viewChild<ElementRef<HTMLTableElement>>('combinedTable');
     private selectedColumn: ReferenceTableColumn | null = null;
     readonly data = inject<ClusterTableDialogData>(DIALOG_DATA);
+    readonly gameRules = this.data.gameRules ?? CORE_2026_GAME_RULES;
     readonly table = clusterTableForUnit(this.data.unit);
     readonly locationRows: readonly HitLocationRow[] = this.table.hitLocationTable
         ? hitLocationRows(this.table.hitLocationTable)
@@ -79,7 +81,7 @@ export class ClusterTableDialogComponent {
         { key: 'kickRightSide', label: 'RS' },
     ];
     readonly physicalRows: readonly PhysicalLocationRow[] = this.locationRows.length
-        ? PHYSICAL_LOCATION_ROWS
+        ? this.gameRules.physicalLocationRows
         : [];
     private readonly allNotes: readonly ReferenceTableNote[] = referenceTableNotes(
         this.table.hitLocationTable,
@@ -182,10 +184,19 @@ export class ClusterTableDialogComponent {
         return result?.column.table === 'physical' && result.roll === roll;
     }
 
-    isPhysicalCellHighlighted(roll: number, column: PhysicalLocationColumn): boolean {
+    isPhysicalKickGroupHighlighted(roll: number): boolean {
         const result = this.rolledResult();
         return result?.column.table === 'physical'
-            && result.roll === roll
+            && result.column.column.startsWith('kick')
+            && Math.ceil(result.roll / 3) === Math.ceil(roll / 3);
+    }
+
+    isPhysicalCellHighlighted(roll: number, column: PhysicalLocationColumn): boolean {
+        const result = this.rolledResult();
+        const isMatchingKickGroup = column.startsWith('kick')
+            && this.isPhysicalKickGroupHighlighted(roll);
+        return result?.column.table === 'physical'
+            && (result.roll === roll || isMatchingKickGroup)
             && result.column.column === column;
     }
 

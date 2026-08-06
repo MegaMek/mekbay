@@ -69,9 +69,13 @@ export interface PSRCheck {
     };
 }
 
-export interface UnitSkillModifier {
-    modifier: number;
-    reason: string;
+export function sortPSRModifiers(modifiers: readonly PSRCheck[]): PSRCheck[] {
+    return [...modifiers].sort((left, right) => {
+        const leftIsNegative = (left.pilotCheck ?? 0) < 0;
+        const rightIsNegative = (right.pilotCheck ?? 0) < 0;
+        if (leftIsNegative !== rightIsNegative) return leftIsNegative ? -1 : 1;
+        return (left.modifierReason ?? left.reason).localeCompare(right.modifierReason ?? right.reason);
+    });
 }
 
 export interface UnitHeatSource {
@@ -96,7 +100,6 @@ export interface MountedEquipmentRuleState {
     isDisabled: boolean;
     hitMod: number;
     hitModifierBreakdown?: ToHitModifierBreakdownEntry[];
-    weakenedHitMod: boolean;
 }
 
 export interface ChargeDamage {
@@ -119,6 +122,35 @@ export interface LocationConditionControl {
 export interface UnitModifierBreakdownEntry extends ToHitModifierBreakdownEntry {
     alternateModifier?: number;
     alternateModifierLabel?: string;
+}
+
+export interface UnitRuleModifier {
+    readonly label: string;
+    readonly values: Partial<Record<UnitRuleModifierDomain, number>>;
+    readonly weakened?: boolean;
+    readonly kind?: ToHitModifierBreakdownEntry['kind'];
+    readonly designBaseline?: boolean;
+}
+
+export type UnitRuleModifierDomain = 'ranged' | 'physical' | 'psr';
+
+export function projectRuleModifiers(
+    modifiers: readonly UnitRuleModifier[],
+    domain: UnitRuleModifierDomain,
+): ToHitModifierBreakdownEntry[] {
+    const result: ToHitModifierBreakdownEntry[] = [];
+    for (const modifier of modifiers) {
+        const value = modifier.values[domain];
+        if (value === undefined) continue;
+        result.push({
+            label: modifier.label,
+            modifier: value,
+            ...(modifier.weakened !== undefined && { weakened: modifier.weakened }),
+            ...(modifier.kind !== undefined && { kind: modifier.kind }),
+            ...(modifier.designBaseline !== undefined && { designBaseline: modifier.designBaseline }),
+        });
+    }
+    return result;
 }
 
 export interface UnitModifierTotal {
@@ -246,18 +278,6 @@ export interface UnitTypeRules {
     /** PSR target roll number (piloting skill + modifiers). Non-Mek types return 0. */
     readonly PSRTargetRoll: Signal<number>;
 
-    /** Gunnery modifier breakdown for UI display. */
-    readonly gunneryModifiers: Signal<UnitSkillModifier[]>;
-
-    /** Gunnery skill modifier total from unit-type-specific rules. */
-    readonly gunneryModifier: Signal<number>;
-
-    /** Piloting modifier breakdown from unit-type-specific rules. */
-    readonly pilotingModifiers: Signal<UnitSkillModifier[]>;
-
-    /** Piloting skill modifier total from unit-type-specific rules. */
-    readonly pilotingModifier: Signal<number>;
-
     /** Whether current phase damage causes automatic falling or equivalent unit-type failure. */
     readonly autoFall: Signal<boolean>;
 
@@ -349,28 +369,13 @@ export interface UnitTypeRules {
     getIndirectFireModifier(): number;
 
     /** Unit-type-specific gunnery skill for runtime target-number calculations. */
-    getTargetNumberGunnerySkill(): number;
+    getBaseGunnerySkill(): number;
 
     /** Unit-type-specific piloting skill for runtime target-number calculations. */
-    getTargetNumberPilotingSkill(): number;
-
-    /** Gunnery-specific runtime target-number modifier breakdown. */
-    getTargetNumberGunneryModifierBreakdown(): UnitModifierBreakdownEntry[];
-
-    /** Gunnery modifiers shown beside the crew skill, excluding attack-only context. */
-    getGunnerySkillDisplayModifierBreakdown(): UnitModifierBreakdownEntry[];
-
-    /** Piloting-specific runtime target-number modifier breakdown. */
-    getTargetNumberPilotingModifierBreakdown(): UnitModifierBreakdownEntry[];
-
-    /** Physical-attack runtime target-number modifier breakdown. */
-    getPhysicalAttackModifierBreakdown(): UnitModifierBreakdownEntry[];
+    getBasePilotingSkill(): number;
 
     /** Attack modifier breakdown for turn summary UI. */
     getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[];
-
-    /** Complete gunnery attack breakdown for summary UI. */
-    getGunneryAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[];
 
     /** Target movement modifier breakdown for turn summary UI. */
     getDefenseModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[];
@@ -387,10 +392,13 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     readonly controlRollFullLabel: string;
     readonly PSRModifiers: Signal<{ modifier: number; modifiers: PSRCheck[] }> = signal({ modifier: 0, modifiers: [] });
     readonly PSRTargetRoll: Signal<number> = signal(0);
-    readonly gunneryModifiers: Signal<UnitSkillModifier[]> = signal([]);
-    readonly gunneryModifier: Signal<number> = computed(() => this.gunneryModifiers().reduce((total, modifier) => total + modifier.modifier, 0));
-    readonly pilotingModifiers: Signal<UnitSkillModifier[]> = signal([]);
-    readonly pilotingModifier: Signal<number> = computed(() => this.pilotingModifiers().reduce((total, modifier) => total + modifier.modifier, 0));
+    protected readonly ruleModifiers: Signal<UnitRuleModifier[]> = computed(() => this.buildRuleModifiers());
+    protected readonly rangedHitModifiers: Signal<ToHitModifierBreakdownEntry[]> = computed(() =>
+        projectRuleModifiers(this.ruleModifiers(), 'ranged'));
+    protected readonly physicalHitModifiers: Signal<ToHitModifierBreakdownEntry[]> = computed(() =>
+        projectRuleModifiers(this.ruleModifiers(), 'physical'));
+    protected readonly psrModifiers: Signal<ToHitModifierBreakdownEntry[]> = computed(() =>
+        projectRuleModifiers(this.ruleModifiers(), 'psr'));
     readonly autoFall: Signal<boolean> = signal(false);
     readonly heatDissipation: Signal<HeatDissipationState | null> = signal(null);
     protected readonly baseConditionControls: readonly UnitConditionControl[] = [];
@@ -406,6 +414,10 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     protected readonly immobile = computed<boolean>(() => {
         return false;
     });
+
+    protected buildRuleModifiers(): UnitRuleModifier[] {
+        return [];
+    }
 
     get conditionControls(): readonly UnitConditionControl[] {
         const controls = this.unit.gameRules.supportsSkidding
@@ -480,43 +492,36 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
-        const targetingComputer = this.getMountedTargetingComputerModifier(entry);
-        return this.applyTargetNumberSkillModifiers(entry, {
+        return this.composeEntryState(entry, {
             isDamaged: entry.committedDestroyed() || this.entryCriticalSlots(entry).some(slot => !!slot.destroyed),
             isDisabled: this.isEntryStateDisabled(entry),
-            hitMod: targetingComputer.modifier,
-            hitModifierBreakdown: targetingComputer.breakdown,
-            weakenedHitMod: targetingComputer.weakened
-        });
+        }, this.getMountedTargetingComputerModifiers(entry));
     }
 
-    protected applyTargetNumberSkillModifiers(
+    protected composeEntryState(
         entry: MountedEquipment,
-        state: MountedEquipmentRuleState,
+        state: Pick<MountedEquipmentRuleState, 'isDamaged' | 'isDisabled'>,
+        localModifiers: readonly ToHitModifierBreakdownEntry[] = [],
     ): MountedEquipmentRuleState {
-        if (!entry.isPhysicalWeapon() && !(entry.equipment instanceof WeaponEquipment)) return state;
-        const modifiers = entry.isPhysicalWeapon()
-            ? this.getPhysicalAttackModifierBreakdown()
-            : this.getTargetNumberGunneryModifierBreakdown();
-        if (modifiers.length === 0) return state;
+        const unitModifiers = entry.isPhysicalWeapon()
+            ? this.physicalHitModifiers()
+            : entry.equipment instanceof WeaponEquipment
+                ? this.rangedHitModifiers()
+                : [];
+        const modifiers = [...localModifiers, ...unitModifiers];
         return {
             ...state,
-            hitMod: state.hitMod + modifiers.reduce((total, modifier) => total + modifier.modifier, 0),
-            hitModifierBreakdown: [
-                ...(state.hitModifierBreakdown ?? []),
-                ...modifiers,
-            ],
+            hitMod: modifiers.reduce((total, modifier) => total + modifier.modifier, 0),
+            hitModifierBreakdown: modifiers,
         };
     }
 
-    protected getMountedTargetingComputerModifier(entry: MountedEquipment): { modifier: number; weakened: boolean; breakdown: ToHitModifierBreakdownEntry[] } {
-        if (!this.isTargetingComputerEligible(entry)) {
-            return { modifier: 0, weakened: false, breakdown: [] };
-        }
+    protected getMountedTargetingComputerModifiers(entry: MountedEquipment): ToHitModifierBreakdownEntry[] {
+        if (!this.isTargetingComputerEligible(entry)) return [];
 
         const targetingComputers = this.unit.getInventory()
             .filter(candidate => candidate.equipment?.flags.has('F_TARGETING_COMPUTER'));
-        if (targetingComputers.length === 0) return { modifier: 0, weakened: false, breakdown: [] };
+        if (targetingComputers.length === 0) return [];
 
         const functionalTargetingComputer = targetingComputers.find(candidate =>
             !candidate.committedDestroyed()
@@ -526,12 +531,8 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         const targetingComputer = functionalTargetingComputer ?? targetingComputers[0];
         const label = targetingComputer.equipment?.shortName ?? targetingComputer.name;
         return functionalTargetingComputer
-            ? { modifier: -1, weakened: false, breakdown: [{ label, modifier: -1 }] }
-            : {
-                modifier: 0,
-                weakened: true,
-                breakdown: [{ label: `${label} Destroyed`, modifier: 0, negative: true }]
-            };
+            ? [{ label, modifier: -1 }]
+            : [{ label: `${label} Destroyed`, modifier: 0, weakened: true }];
     }
 
     canMakeTargetingComputerAimedShot(entry: MountedEquipment, targetIsMobile: boolean): boolean {
@@ -664,32 +665,12 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         return 1;
     }
 
-    getTargetNumberGunnerySkill(): number {
+    getBaseGunnerySkill(): number {
         return this.unit.getCrewMember(0)?.getSkill('gunnery') ?? this.unit.gunnerySkill();
     }
 
-    getTargetNumberPilotingSkill(): number {
+    getBasePilotingSkill(): number {
         return this.unit.getCrewMember(0)?.getSkill('piloting') ?? this.unit.pilotingSkill();
-    }
-
-    getTargetNumberGunneryModifierBreakdown(): UnitModifierBreakdownEntry[] {
-        return this.gunneryModifiers()
-            .filter(modifier => modifier.modifier !== 0)
-            .map(modifier => ({ label: modifier.reason, modifier: modifier.modifier }));
-    }
-
-    getGunnerySkillDisplayModifierBreakdown(): UnitModifierBreakdownEntry[] {
-        return this.getTargetNumberGunneryModifierBreakdown();
-    }
-
-    getTargetNumberPilotingModifierBreakdown(): UnitModifierBreakdownEntry[] {
-        return this.pilotingModifiers()
-            .filter(modifier => modifier.modifier !== 0)
-            .map(modifier => ({ label: modifier.reason, modifier: modifier.modifier }));
-    }
-
-    getPhysicalAttackModifierBreakdown(): UnitModifierBreakdownEntry[] {
-        return this.getTargetNumberPilotingModifierBreakdown();
     }
 
     getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
@@ -707,13 +688,6 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
             entries.push({ label: 'Spotting', modifier: spottingModifier });
         }
         return entries;
-    }
-
-    getGunneryAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
-        return [
-            ...this.getTargetNumberGunneryModifierBreakdown(),
-            ...this.getAttackModifierBreakdown(turnState),
-        ];
     }
 
     getDefenseModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {

@@ -232,6 +232,99 @@ function createComponent(
 }
 
 describe('WeaponsEquipmentPanelComponent', () => {
+    it('shows base Gunnery and Piloting in section headings', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('Medium Laser') });
+        const charge = entry({ id: 'Charge', intrinsicPhysicalAttack: true });
+        const { component, fixture } = createComponent([laser, charge], {}, [], new Map(), {
+            gunnerySkill: 4,
+            pilotingSkill: 5
+        });
+        const sections = Array.from(fixture.nativeElement.querySelectorAll('.weapon-equipment-section')) as HTMLElement[];
+        const rangedSkill = sections.find(section => section.querySelector('.section-title-text')?.textContent?.trim() === 'Ranged Weapons')!
+            .querySelector('.section-skill') as HTMLElement;
+        const physicalSkill = sections.find(section => section.querySelector('.section-title-text')?.textContent?.trim() === 'Physical Weapons')!
+            .querySelector('.section-skill') as HTMLElement;
+
+        expect(rangedSkill.textContent?.trim()).toBe('Gunnery 4');
+        expect(rangedSkill.hasAttribute('data-tooltip-host')).toBeFalse();
+        expect(component.gunnerySkillDisplay().tooltip).toBeNull();
+        expect(physicalSkill.textContent?.trim()).toBe('Piloting 5');
+        expect(physicalSkill.hasAttribute('data-tooltip-host')).toBeFalse();
+        expect(component.pilotingSkillDisplay().tooltip).toBeNull();
+    });
+
+    it('shows modifiers and tooltips for VS physical attacks', () => {
+        const charge = entry({ id: 'Charge', intrinsicPhysicalAttack: true });
+        const deathFromAbove = entry({ id: 'Death From Above', intrinsicPhysicalAttack: true });
+        const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([
+            [charge, {
+                isDamaged: false,
+                isDisabled: false,
+                hitMod: 3,
+                hitModifierBreakdown: [
+                    { label: 'Damaged actuator', modifier: 1, weakened: true },
+                    { label: 'Prone', modifier: 2 }
+                ]
+            }],
+            [deathFromAbove, {
+                isDamaged: false,
+                isDisabled: false,
+                hitMod: -1,
+                hitModifierBreakdown: [{ label: 'Dedicated Pilot', modifier: -1 }]
+            }]
+        ]);
+        const { component, fixture, unit } = createComponent([charge, deathFromAbove], {}, [], entryStates);
+        const rows = component.groups().find(group => group.id === 'physical')!.rows;
+        const hitCells = Array.from(fixture.nativeElement.querySelectorAll('.hit-cell')) as HTMLElement[];
+
+        expect(rows.map(row => row.display.hit)).toEqual(['Vs', 'Vs']);
+        expect(rows.map(row => component.targetState(row).hitText)).toEqual(['VS+3', 'VS-1']);
+        expect(component.targetState(rows[0]).hitModifierTooltip).toEqual([
+            { label: 'Prone', value: '+2' },
+            { label: 'Damaged actuator', value: '+1', weakened: true },
+            { isBreak: true },
+            { label: 'Total', value: 'VS+3', isHeader: true },
+        ]);
+        expect(component.targetState(rows[1]).hitModifierTooltip).toEqual([
+            { label: 'Dedicated Pilot', value: '-1' },
+        ]);
+        expect(hitCells.map(cell => cell.textContent?.trim())).toEqual(['VS+3', 'VS-1']);
+        expect(hitCells.every(cell => cell.hasAttribute('data-tooltip-host'))).toBeTrue();
+
+        unit.createInventoryControlTarget();
+        unit.setInventoryControlEntryTarget(charge, 'A');
+        fixture.detectChanges();
+
+        const chargeTargetState = component.targetState(rows[0]);
+        const tnCell = fixture.nativeElement.querySelector('.weapon-equipment-row .tn-cell') as HTMLElement;
+        expect(chargeTargetState.targetNumberText).toBe('Vs');
+        expect(chargeTargetState.targetNumberTooltip).toEqual([
+            { label: 'Charge', value: 'Vs' },
+            { label: 'Prone', value: '+2' },
+            { label: 'Damaged actuator', value: '+1', weakened: true },
+            { isBreak: true },
+            { label: 'Total', value: 'Vs+3', isHeader: true },
+        ]);
+        expect(tnCell.hasAttribute('data-tooltip-host')).toBeTrue();
+        expect(getComputedStyle(tnCell).cursor).toBe('help');
+    });
+
+    it('does not show a target-number tooltip for an unmodified VS physical attack', () => {
+        const charge = entry({ id: 'Charge', intrinsicPhysicalAttack: true });
+        const { component, fixture, unit } = createComponent([charge]);
+        const row = component.groups().find(group => group.id === 'physical')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.setInventoryControlEntryTarget(charge, 'A');
+        fixture.detectChanges();
+
+        const targetState = component.targetState(row);
+        const tnCell = fixture.nativeElement.querySelector('.tn-cell') as HTMLElement;
+        expect(targetState.targetNumberText).toBe('Vs');
+        expect(targetState.targetNumberTooltip).toBeNull();
+        expect(tnCell.hasAttribute('data-tooltip-host')).toBeFalse();
+        expect(getComputedStyle(tnCell).cursor).not.toBe('help');
+    });
+
     it('updates inventory display fields directly from reactive unit rules', () => {
         const ruleDamage = signal('5');
         const charge = entry({ id: 'Charge', intrinsicPhysicalAttack: true });
@@ -727,7 +820,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         apollo.parent = mrm;
         const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([
-            [apollo, { isDamaged: true, isDisabled: false, hitMod: 0, weakenedHitMod: false }]
+            [apollo, { isDamaged: true, isDisabled: false, hitMod: 0 }]
         ]);
 
         const { component, fixture } = createComponent([mrm, apollo], {}, [], entryStates, { gameRules: TW_GAME_RULES });
@@ -738,8 +831,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(row.display.hit).toBe('+1');
         expect(targetState.hitModifierWeakened).toBeTrue();
         expect(targetState.hitModifierTooltip).toEqual([
-            { label: 'Hit Modifier', value: '+1' },
-            { label: 'Apollo Destroyed', value: '+0', negative: true },
+            { label: 'Base Hit Modifier', value: '+1' },
+            { label: 'Apollo Destroyed', value: '+0', weakened: true },
             { isBreak: true },
             { label: 'Total', value: '+1', isHeader: true },
         ]);
@@ -758,10 +851,9 @@ describe('WeaponsEquipmentPanelComponent', () => {
             isDisabled: false,
             hitMod: 0,
             hitModifierBreakdown: [
-                { label: 'Heat - Fire Modifier', modifier: 1, negative: true, kind: 'heat' },
+                { label: 'Heat - Fire Modifier', modifier: 1, weakened: true, kind: 'heat' },
                 { label: 'Targeting Computer', modifier: -1 }
-            ],
-            weakenedHitMod: false
+            ]
         }]]);
         const { component, fixture } = createComponent([laser], {}, [], entryStates);
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
@@ -774,7 +866,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.hitModifierWeakened).toBeTrue();
         expect(targetState.hitModifierTooltip).toEqual([
             { label: 'Targeting Computer', value: '-1' },
-            { label: 'Heat - Fire Modifier', value: '+1', negative: true, kind: 'heat' },
+            { label: 'Heat - Fire Modifier', value: '+1', weakened: true, kind: 'heat' },
             { isBreak: true },
             { label: 'Total', value: '+0', isHeader: true },
         ]);
@@ -791,8 +883,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             isDamaged: false,
             isDisabled: false,
             hitMod: 0,
-            hitModifierBreakdown: [{ label: 'Targeting Computer Destroyed', modifier: 0, negative: true }],
-            weakenedHitMod: true
+            hitModifierBreakdown: [{ label: 'Targeting Computer Destroyed', modifier: 0, weakened: true }]
         }]]);
         const { component, fixture } = createComponent([laser], {}, [], entryStates);
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
@@ -815,23 +906,22 @@ describe('WeaponsEquipmentPanelComponent', () => {
             isDisabled: false,
             hitMod: -1,
             hitModifierBreakdown: [
-                { label: 'Damaged Fire Control', modifier: 1, negative: true },
+                { label: 'Damaged Fire Control', modifier: 1, weakened: true },
                 { label: 'Targeting Computer', modifier: -1 },
-                { label: 'Heat - Fire Modifier', modifier: 0, negative: true, kind: 'heat' },
+                { label: 'Heat - Fire Modifier', modifier: 0, weakened: true, kind: 'heat' },
                 { label: 'Pulse Module', modifier: -1 }
-            ],
-            weakenedHitMod: false
+            ]
         }]]);
         const { component, fixture } = createComponent([laser], {}, [], entryStates);
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         const hitCell = fixture.nativeElement.querySelector('.hit-cell') as HTMLElement;
 
         expect(component.targetState(row).hitModifierTooltip).toEqual([
-            { label: 'Hit Modifier', value: '-1' },
+            { label: 'Base Hit Modifier', value: '-1' },
             { label: 'Targeting Computer', value: '-1' },
             { label: 'Pulse Module', value: '-1' },
-            { label: 'Damaged Fire Control', value: '+1', negative: true },
-            { label: 'Heat - Fire Modifier', value: '+0', negative: true, kind: 'heat' },
+            { label: 'Damaged Fire Control', value: '+1', weakened: true },
+            { label: 'Heat - Fire Modifier', value: '+0', weakened: true, kind: 'heat' },
             { isBreak: true },
             { label: 'Total', value: '-2', isHeader: true },
         ]);
@@ -1568,7 +1658,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();
         const rangedSection = (Array.from(fixture.nativeElement.querySelectorAll('.weapon-equipment-section')) as HTMLElement[])
-            .find(section => section.querySelector('h3')?.textContent?.trim() === 'Ranged Weapons')!;
+            .find(section => section.querySelector('.section-title-text')?.textContent?.trim() === 'Ranged Weapons')!;
         const headerSelector = rangedSection.querySelector('.select-header .target-selector') as HTMLButtonElement;
         const rows = component.groups().flatMap(group => group.rows);
         const firstRow = rows.find(row => row.id === 'first')!;
@@ -1744,7 +1834,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const targetState = component.targetState(row);
         expect(targetState.rangeSelection?.range).toBe('medium');
         expect(targetState.targetNumberText).toBe('7');
-        expect(targetState.breakdown?.lines).toContain(jasmine.objectContaining({ label: 'ECM', value: '+1', negative: true }));
+        expect(targetState.breakdown?.lines).toContain(jasmine.objectContaining({ label: 'ECM', value: '+1', weakened: true }));
     });
 
     it('uses actual distance when it is shorter than C3 distance', () => {
@@ -1807,7 +1897,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.targetNumberText).toBe('7');
         expect(targetState.rangeSelection?.minimumRangeModifier).toBe(1);
         expect((fixture.nativeElement.querySelector('.min-cell') as HTMLElement).classList.contains('minimum-range-active')).toBeTrue();
-        expect(targetState.breakdown?.lines).toContain({ label: 'Minimum Range', value: '+1', negative: true });
+        expect(targetState.breakdown?.lines).toContain({ label: 'Minimum Range', value: '+1', weakened: true });
 
         unit.updateInventoryControlTarget('A', { distance: 7 });
         unit.inventoryControl.markInventoryViewChanged();
@@ -1852,7 +1942,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             hitMod: 3,
             hitModifierBreakdown: [
                 { label: 'Hit Modifier', modifier: 1 },
-                { label: 'Heat - Fire Modifier', modifier: 2, negative: true, kind: 'heat' }
+                { label: 'Heat - Fire Modifier', modifier: 2, weakened: true, kind: 'heat' }
             ]
         }]]), { gunnerySkill: 4, moveMode: 'stationary' });
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
@@ -1869,7 +1959,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             { label: 'Target (A)', value: '+1' },
             { label: 'Range (Medium)', value: '+2' },
             { label: 'Hit Modifier', value: '+1' },
-            { label: 'Heat - Fire Modifier', value: '+2', negative: true, kind: 'heat' },
+            { label: 'Heat - Fire Modifier', value: '+2', weakened: true, kind: 'heat' },
             { isBreak: true },
             { label: 'Total', value: '10', isHeader: true },
         ]);
@@ -1882,7 +1972,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             isDisabled: false,
             hitMod: 1,
             hitModifierBreakdown: [
-                { label: 'Heat - Fire Modifier', modifier: 1, negative: true, kind: 'heat' }
+                { label: 'Heat - Fire Modifier', modifier: 1, weakened: true, kind: 'heat' }
             ]
         }]]), { gunnerySkill: 4, moveMode: 'stationary' });
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
@@ -1896,7 +1986,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.breakdown?.lines).toContain(jasmine.objectContaining({
             label: 'Heat - Fire Modifier',
             value: '+1',
-            negative: true,
+            weakened: true,
             kind: 'heat'
         }));
         expect(targetState.breakdown?.lines.some(line => line.label === 'Hit Modifier')).toBeFalse();
@@ -1954,7 +2044,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.breakdown?.lines).toEqual([
             { label: 'Piloting', value: '6' },
             { label: 'Target (A)', value: '+1' },
-            { label: 'Hit Modifier', value: '-1' },
+            { label: 'Base Hit Modifier', value: '-1' },
             { isBreak: true },
             { label: 'Total', value: '6', isHeader: true },
         ]);
@@ -1995,7 +2085,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         fixture.detectChanges();
 
         const sections = Array.from(fixture.nativeElement.querySelectorAll('.weapon-equipment-section')) as HTMLElement[];
-        const rangedSection = sections.find(section => section.querySelector('h3')?.textContent?.trim() === 'Ranged Weapons')!;
+        const rangedSection = sections.find(section => section.querySelector('.section-title-text')?.textContent?.trim() === 'Ranged Weapons')!;
         const checkbox = rangedSection.querySelector<HTMLInputElement>('.ranged-select-all')!;
         const rows = component.groups().flatMap(group => group.rows);
         const firstRow = rows.find(row => row.id === 'first')!;
@@ -2540,8 +2630,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         fixture.detectChanges();
         const sections = Array.from(fixture.nativeElement.querySelectorAll('.weapon-equipment-section')) as HTMLElement[];
-        const rangedSection = sections.find(section => section.querySelector('h3')?.textContent?.trim() === 'Ranged Weapons')!;
-        const physicalSection = sections.find(section => section.querySelector('h3')?.textContent?.trim() === 'Physical Weapons')!;
+        const rangedSection = sections.find(section => section.querySelector('.section-title-text')?.textContent?.trim() === 'Ranged Weapons')!;
+        const physicalSection = sections.find(section => section.querySelector('.section-title-text')?.textContent?.trim() === 'Physical Weapons')!;
         expect(rangedSection.querySelector('.actions-header')?.textContent?.trim()).toBe('Ammo');
         expect(rangedSection.querySelector('.ammo-header')).toBeNull();
         expect(rangedSection.querySelector('.controls-header')).toBeNull();
@@ -2573,8 +2663,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         fixture.detectChanges();
         const sections = Array.from(fixture.nativeElement.querySelectorAll('.weapon-equipment-section')) as HTMLElement[];
-        const rangedSection = sections.find(section => section.querySelector('h3')?.textContent?.trim() === 'Ranged Weapons')!;
-        const physicalSection = sections.find(section => section.querySelector('h3')?.textContent?.trim() === 'Physical Weapons')!;
+        const rangedSection = sections.find(section => section.querySelector('.section-title-text')?.textContent?.trim() === 'Ranged Weapons')!;
+        const physicalSection = sections.find(section => section.querySelector('.section-title-text')?.textContent?.trim() === 'Physical Weapons')!;
         expect(rangedSection.querySelector('.actions-header')?.textContent?.trim()).toBe('Ammo & Controls');
         expect(physicalSection.querySelector('.actions-header')?.textContent?.trim()).toBe('Controls');
     });

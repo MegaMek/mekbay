@@ -67,6 +67,11 @@
         border-color: #f00;
     }
 
+    &.bonus {
+        background-color: #304730;
+        border-color: #54ef59;
+    }
+
     &.heat,
     .psr-modifiers & {
         min-height: auto;

@@ -2,6 +2,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
 import { WeaponEquipment } from '../../models/equipment.model';
 import type { Unit } from '../../models/units.model';
+import { CBTGameRules, CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../models/rules/game-rules';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 import { ClusterTableDialogComponent, shouldCombineReferenceTables } from './cluster-table-dialog.component';
 
@@ -16,13 +17,13 @@ describe('shouldCombineReferenceTables', () => {
 describe('ClusterTableDialogComponent', () => {
     const close = jasmine.createSpy('close');
 
-    function createFixture(unit: Unit) {
+    function createFixture(unit: Unit, gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
         TestBed.resetTestingModule();
         TestBed.configureTestingModule({
             imports: [ClusterTableDialogComponent],
             providers: [
                 { provide: DialogRef, useValue: { close } },
-                { provide: DIALOG_DATA, useValue: { unit } },
+                { provide: DIALOG_DATA, useValue: { unit, gameRules } },
             ],
         });
         const fixture = TestBed.createComponent(ClusterTableDialogComponent);
@@ -198,6 +199,19 @@ describe('ClusterTableDialogComponent', () => {
             .toEqual(['LS', 'F/R', 'RS', 'LS', 'F/R', 'RS']);
         expect(table.querySelectorAll('tbody tr')).toHaveSize(6);
         expect([...table.querySelectorAll('tbody tr:first-child td')].map(cell => cell.textContent?.trim()))
+            .toEqual(['1', 'LT', 'RA', 'RT', 'LL', 'RL', 'RL']);
+        const kickCells = [...table.querySelectorAll('tbody td[rowspan="3"]')];
+        expect(kickCells).toHaveSize(6);
+        expect(kickCells.map(cell => cell.textContent?.trim())).toEqual(['LL', 'RL', 'RL', 'LL', 'LL', 'RL']);
+        expect([...table.querySelectorAll('tbody tr:nth-child(2) td')].map(cell => cell.textContent?.trim()))
+            .toEqual(['2', 'LT', 'RT', 'RT']);
+    });
+
+    it('uses the Technical Warfare physical location table when its rules are active', () => {
+        const fixture = createFixture(mekUnit(), TW_GAME_RULES);
+        const firstRow = fixture.nativeElement.querySelector('.physical-location-table tbody tr:first-child') as HTMLTableRowElement;
+
+        expect([...firstRow.cells].map(cell => cell.textContent?.trim()))
             .toEqual(['1', 'LT', 'LA', 'RT', 'LL', 'RL', 'RL']);
     });
 
@@ -222,6 +236,20 @@ describe('ClusterTableDialogComponent', () => {
         });
         expect(fixture.nativeElement.querySelectorAll('.physical-location-table tr.rolled-row-highlight')).toHaveSize(1);
         expect(fixture.nativeElement.querySelector('.physical-location-table td.rolled-highlight')?.textContent.trim()).toBe('LL');
+        expect(fixture.nativeElement.querySelectorAll('.physical-location-table td.rolled-row-highlight')).toHaveSize(3);
+
+        physicalRoller.isRolling.set(false);
+        component.rollPhysicalColumn('kickFrontRear');
+        component.onRollFinished({ results: [2], sum: 2 });
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('.physical-location-table td.rolled-highlight')?.textContent.trim()).toBe('RL');
+        expect(fixture.nativeElement.querySelectorAll('.physical-location-table td.rolled-row-highlight')).toHaveSize(3);
+
+        physicalRoller.isRolling.set(false);
+        component.onRollFinished({ results: [5], sum: 5 });
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('.physical-location-table td.rolled-highlight')?.textContent.trim()).toBe('LL');
+        expect(fixture.nativeElement.querySelectorAll('.physical-location-table td.rolled-row-highlight')).toHaveSize(3);
 
         physicalRoller.isRolling.set(false);
         component.rollPhysicalColumn('punchLeftSide');

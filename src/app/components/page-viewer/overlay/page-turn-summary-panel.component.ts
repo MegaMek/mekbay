@@ -16,6 +16,7 @@ import type { MountedEquipment } from '../../../models/mounted-equipment.model';
 import { MascHandler } from '../../../equipment-handlers/masc.handler';
 import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
 import { composeTurnSummaryHeatRows, displayPsrModifiers } from './page-turn-summary.util';
+import { orderedModifierTooltipLines } from '../../../utils/hit-target-tooltip.util';
 
 interface EquipmentTrackControlRow {
     entry: MountedEquipment;
@@ -126,23 +127,6 @@ export class PageTurnSummaryPanelComponent {
         const unit = this.unit();
         if (!unit) return null;
         return this.buildModifierTooltip('Defense Target Modifier', unit.turnState().getDefenseModifierBreakdown());
-    });
-
-    readonly getTotalTargetModifierAsAttacker = computed<number>(() => {
-        return this.gunneryAttackModifierBreakdown()
-            .reduce((total, entry) => total + entry.modifier, 0);
-    });
-
-    readonly attackModifierTooltip = computed<TooltipLine[] | null>(() => {
-        const unit = this.unit();
-        if (!unit) return null;
-        return this.buildModifierTooltip('Attack Target Modifier', this.gunneryAttackModifierBreakdown());
-    });
-
-    private readonly gunneryAttackModifierBreakdown = computed<UnitModifierBreakdownEntry[]>(() => {
-        const unit = this.unit();
-        if (!unit) return [];
-        return unit.rules.getGunneryAttackModifierBreakdown(unit.turnState());
     });
 
     readonly spotting = computed(() => {
@@ -334,10 +318,11 @@ export class PageTurnSummaryPanelComponent {
 
     private buildModifierTooltip(title: string, entries: UnitModifierBreakdownEntry[]): TooltipLine[] {
         const total = calculateModifierTotal(entries);
+        const modifierLines = orderedModifierTooltipLines(entries, entry => this.formatModifierTotal(entry));
         return [
             { value: title, isHeader: true },
             ...(entries.length > 0
-                ? entries.map(entry => ({ label: entry.label, value: this.formatModifierTotal(entry) }))
+                ? modifierLines
                 : [{ label: 'No active modifiers', value: '+0' }]),
             { isBreak: true },
             { label: 'Total', value: this.formatModifierTotal(total) },

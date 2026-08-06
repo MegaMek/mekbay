@@ -84,16 +84,9 @@
         </div>
     </div>
     <div class="group">
-        <div class="sectionTitle">Combat</div>
-        <div class="summary-entry">
-            <div class="row has-tooltip" [tooltip]="attackModifierTooltip()">
-                @let modifierAtk = getTotalTargetModifierAsAttacker();
-                <span class="caption">Attack Target Modifier:</span><span class="modifier important totalAttack">{{ modifierAtk >= 0 ? '+' : '' }}{{ modifierAtk }}</span>
-            </div>
-        </div>
         <div class="summary-entry">
             <div class="row has-tooltip" [tooltip]="defenseTargetModifierTooltip()">
-                <span class="caption">Defense Target Modifier:</span><span class="modifier important totalDefense">{{ getTotalTargetModifierAsDefender() }}</span>
+                <span class="caption">Defense Movement Modifier:</span><span class="modifier important totalDefense">{{ getTotalTargetModifierAsDefender() }}</span>
             </div>
         </div>
     </div>
@@ -119,7 +112,7 @@
         <div class="sectionTitle">{{ controlRollShortLabel() }} Modifiers</div>
         <div class="summary-entry psr-modifiers">
             @for (modifier of psrModifiers(); track $index) {
-            <div class="row wrap"><span>{{ modifier.reason }}</span><span class="modifier danger">{{ modifier.pilotCheck! >= 0 ? '+' : '' }}{{ modifier.pilotCheck }}</span></div>
+            <div class="row wrap"><span>{{ modifier.reason }}</span><span class="modifier" [class.danger]="modifier.pilotCheck >= 0" [class.bonus]="modifier.pilotCheck < 0">{{ modifier.pilotCheck! >= 0 ? '+' : '' }}{{ modifier.pilotCheck }}</span></div>
             }
         </div>
     </div>

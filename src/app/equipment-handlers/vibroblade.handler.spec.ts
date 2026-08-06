@@ -26,7 +26,6 @@ function setup(size: 'SMALL' | 'MEDIUM' | 'LARGE' = 'SMALL', destroyed = false, 
                 isDamaged: entry.committedDestroyed(),
                 isDisabled: false,
                 hitMod: 0,
-                weakenedHitMod: false,
             }),
         },
     } as unknown as CBTForceUnit;

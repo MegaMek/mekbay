@@ -509,7 +509,6 @@ function buildInventoryControlRow(
         entry,
         additionalHitModifier,
         hitModifierBreakdown,
-        state?.weakenedHitMod ?? false,
         selectedAmmo,
         rules
     );
@@ -584,7 +583,6 @@ function resolveInventoryControlHitModifier(
     entry: MountedEquipment,
     additionalHitModifier: number,
     hitModifierBreakdown: readonly ToHitModifierBreakdownEntry[],
-    weakenedHitModifier: boolean,
     selectedAmmo: AmmoEquipment | null,
     rules: InventoryControlRules
 ): ToHitResolution {
@@ -592,7 +590,6 @@ function resolveInventoryControlHitModifier(
         subject: entry,
         stateModifier: additionalHitModifier,
         stateModifierBreakdown: hitModifierBreakdown,
-        stateWeakened: weakenedHitModifier,
         adjustments: rules.resolveToHitAdjustments?.(entry, selectedAmmo)
     });
 }

@@ -8,7 +8,7 @@ export interface TooltipLine {
     iconAlt?: string;
     isHeader?: boolean;
     isBreak?: boolean;
-    negative?: boolean;
+    weakened?: boolean;
     kind?: 'heat';
 }
 
@@ -31,7 +31,7 @@ export type TooltipContent = string | TooltipLine[];
                     @if (line.isBreak) {
                         <hr class="divisor" />
                     } @else {
-                        <div class="tooltip-row" [class.plain]="!line.label" [class.header]="!!line.isHeader" [class.negative]="!!line.negative">
+                        <div class="tooltip-row" [class.plain]="!line.label" [class.header]="!!line.isHeader" [class.weakened]="!!line.weakened">
                             @if (line.iconSrc) {
                                 <img class="tooltip-icon" [src]="line.iconSrc" [alt]="line.iconAlt ?? ''" />
                             }
@@ -95,7 +95,7 @@ export type TooltipContent = string | TooltipLine[];
         .tooltip-row.header .value {
             font-weight: 600;
         }
-        .tooltip-row.negative {
+        .tooltip-row.weakened {
             color: #f00;
         }
         .tooltip-row .value {

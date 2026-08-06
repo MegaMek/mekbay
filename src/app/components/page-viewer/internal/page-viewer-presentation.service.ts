@@ -47,7 +47,7 @@ export class PageViewerPresentationService {
             return;
         }
 
-        if (showFluff) {
+        if (showFluff && fluffElements.length > 0) {
             fluffElements.forEach(element => element.style.setProperty('display', 'block'));
             referenceTables.forEach((referenceTable) => {
                 referenceTable.style.display = 'none';

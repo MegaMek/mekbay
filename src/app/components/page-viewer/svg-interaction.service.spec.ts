@@ -45,13 +45,8 @@ const NO_CONDITION_RULES = {
     computeAllEntryStates: () => new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>(),
     computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }),
     heatDissipation: () => null,
-    getTargetNumberGunnerySkill: () => 4,
-    getTargetNumberPilotingSkill: () => 5,
-    getTargetNumberGunneryModifierBreakdown: () => [],
-    getGunnerySkillDisplayModifierBreakdown: () => [],
-    getTargetNumberPilotingModifierBreakdown: () => [],
-    getPhysicalAttackModifierBreakdown: () => [],
-    getGunneryAttackModifierBreakdown: () => [],
+    getBaseGunnerySkill: () => 4,
+    getBasePilotingSkill: () => 5,
 };
 
 function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInventory: () => MountedEquipment[]; rules: typeof NO_CONDITION_RULES } {
@@ -499,7 +494,7 @@ describe('SvgInteractionService', () => {
         expect(registryHandleSelection).toHaveBeenCalledWith(entry, handlerChoice, jasmine.any(Object));
     });
 
-    it('updates sensor hit tiers from critical hit state', () => {
+    it('updates Sensor hits tiers from critical hit state', () => {
         const { svg, unit, sensorHit3, sensorHit4, sensorHit1 } = createSensorHitInteractionUnit();
         sensorHit3.classList.add('damaged');
         service.updateUnit(unit);
@@ -1592,8 +1587,6 @@ function createInventoryInteractionUnit(html = `
         hasDirectInventory: () => true,
         gunnerySkill: () => 4,
         pilotingSkill: () => 5,
-        effectiveGunnerySkill: () => 4,
-        effectivePilotingSkill: () => 5,
         turnState: () => ({
             moveMode: () => null,
             airborne: () => false,

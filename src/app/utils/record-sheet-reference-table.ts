@@ -7,6 +7,7 @@
 import type { Unit } from '../models/units.model';
 import { WeaponEquipment, type Equipment } from '../models/equipment.model';
 import type { EquipmentFlag } from '../models/equipment-flags.type';
+import { CORE_2026_GAME_RULES, TW_GAME_RULES, type PhysicalLocationRow } from '../models/rules/game-rules';
 import { clusterHits } from './cluster-hit-table';
 
 export type MekHitLocationTable = 'biped' | 'quad' | 'tripod';
@@ -32,15 +33,7 @@ export type PhysicalLocationColumn =
     | 'kickFrontRear'
     | 'kickRightSide';
 
-export interface PhysicalLocationRow {
-    readonly roll: number;
-    readonly punchLeftSide: string;
-    readonly punchFrontRear: string;
-    readonly punchRightSide: string;
-    readonly kickLeftSide: string;
-    readonly kickFrontRear: string;
-    readonly kickRightSide: string;
-}
+export type { PhysicalLocationRow } from '../models/rules/game-rules';
 
 export interface ReferenceTableNote {
     readonly id: string;
@@ -106,14 +99,7 @@ const LOCATION_ROWS: Readonly<Record<MekHitLocationTable, readonly HitLocationRo
     tripod: TRIPOD_ROWS,
 };
 
-export const PHYSICAL_LOCATION_ROWS: readonly PhysicalLocationRow[] = [
-    { roll: 1, punchLeftSide: 'LT', punchFrontRear: 'LA', punchRightSide: 'RT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
-    { roll: 2, punchLeftSide: 'LT', punchFrontRear: 'LT', punchRightSide: 'RT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
-    { roll: 3, punchLeftSide: 'CT', punchFrontRear: 'CT', punchRightSide: 'CT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
-    { roll: 4, punchLeftSide: 'LA', punchFrontRear: 'RT', punchRightSide: 'RA', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
-    { roll: 5, punchLeftSide: 'LA', punchFrontRear: 'RA', punchRightSide: 'RA', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
-    { roll: 6, punchLeftSide: 'HD', punchFrontRear: 'HD', punchRightSide: 'HD', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
-];
+export const PHYSICAL_LOCATION_ROWS: readonly PhysicalLocationRow[] = CORE_2026_GAME_RULES.physicalLocationRows;
 
 const NOTE_TEXT: Readonly<Record<string, string>> = {
     tripodLeg: '† For a tripod, apply the indicated modifier when determining the leg hit.',

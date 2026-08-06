@@ -1048,18 +1048,6 @@ export class CBTForceUnit extends ForceUnit {
         return Math.min(...skills);
     }
 
-    public gunneryModifier = computed<number>(() => {
-        return this.rules.gunneryModifier();
-    });
-
-    public pilotingModifier = computed<number>(() => {
-        return this.rules.pilotingModifier();
-    });
-
-    public effectiveGunnerySkill = computed<number>(() => this.gunnerySkill() + this.gunneryModifier());
-
-    public effectivePilotingSkill = computed<number>(() => this.pilotingSkill() + this.pilotingModifier());
-
     public customAmmoBvVariation = computed<number>(() => {
         if (!this.isLoaded()) return 0; // Ensure unit is loaded so that inventory and crits are available
         let bvVariation = 0;

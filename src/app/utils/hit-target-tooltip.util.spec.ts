@@ -1,13 +1,34 @@
 import type { TooltipLine } from '../components/tooltip/tooltip.component';
-import { orderHitTargetTooltipLines } from './hit-target-tooltip.util';
+import { modifierTooltipLines, orderedModifierTooltipLines, orderHitTargetTooltipLines } from './hit-target-tooltip.util';
 
 describe('orderHitTargetTooltipLines', () => {
-    it('keeps regular and negative lines in insertion order within their groups', () => {
+    it('maps modifier entries with display metadata', () => {
+        const lines = modifierTooltipLines([
+            { label: 'Damage', modifier: 2, weakened: true },
+            { label: 'Heat', modifier: 1, weakened: true, kind: 'heat' },
+        ], entry => `+${entry.modifier}`);
+
+        expect(lines).toEqual([
+            { label: 'Damage', value: '+2', weakened: true },
+            { label: 'Heat', value: '+1', weakened: true, kind: 'heat' },
+        ]);
+    });
+
+    it('maps and orders modifier entries in one operation', () => {
+        const lines = orderedModifierTooltipLines([
+            { label: 'Damage', modifier: 2, weakened: true },
+            { label: 'Bonus', modifier: -1 },
+        ], entry => `${entry.modifier}`);
+
+        expect(lines.map(line => line.label)).toEqual(['Bonus', 'Damage']);
+    });
+
+    it('keeps regular and weakened lines in insertion order within their groups', () => {
         const lines: TooltipLine[] = [
-            { label: 'Damage A', negative: true },
+            { label: 'Damage A', weakened: true },
             { label: 'Regular A' },
-            { label: 'Damage B', negative: true },
-            { label: 'Regular B', negative: false }
+            { label: 'Damage B', weakened: true },
+            { label: 'Regular B', weakened: false }
         ];
 
         expect(orderHitTargetTooltipLines(lines).map(line => line.label)).toEqual([
@@ -18,10 +39,10 @@ describe('orderHitTargetTooltipLines', () => {
         ]);
     });
 
-    it('places heat after all other negative lines', () => {
+    it('places heat after all other weakened lines', () => {
         const lines: TooltipLine[] = [
-            { label: 'Heat - Fire Modifier', negative: true, kind: 'heat' },
-            { label: 'Damage', negative: true },
+            { label: 'Heat - Fire Modifier', weakened: true, kind: 'heat' },
+            { label: 'Damage', weakened: true },
             { label: 'Targeting Computer' }
         ];
 
@@ -34,15 +55,15 @@ describe('orderHitTargetTooltipLines', () => {
 
     it('does not mutate the input array or entries', () => {
         const regular: TooltipLine = { label: 'Regular' };
-        const negative: TooltipLine = { label: 'Damage', negative: true };
-        const lines = [negative, regular] as const;
+        const weakened: TooltipLine = { label: 'Damage', weakened: true };
+        const lines = [weakened, regular] as const;
 
         const ordered = orderHitTargetTooltipLines(lines);
 
-        expect(lines).toEqual([negative, regular]);
-        expect(ordered).toEqual([regular, negative]);
+        expect(lines).toEqual([weakened, regular]);
+        expect(ordered).toEqual([regular, weakened]);
         expect(ordered[0]).toBe(regular);
-        expect(ordered[1]).toBe(negative);
+        expect(ordered[1]).toBe(weakened);
     });
 
     it('handles empty input', () => {

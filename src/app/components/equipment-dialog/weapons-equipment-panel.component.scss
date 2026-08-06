@@ -133,9 +133,18 @@
 
 .section-title {
     grid-column: 2 / -2;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
     min-width: 0;
     padding: 2px 8px;
     overflow-wrap: anywhere;
+}
+
+.section-skill {
+    justify-self: end;
+    white-space: nowrap;
 }
 
 .grid-fill {
@@ -281,6 +290,9 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
+}
+
+.tn-cell[data-tooltip-host] {
     cursor: help;
 }
 

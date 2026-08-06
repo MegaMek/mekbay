@@ -4,7 +4,12 @@
                 <section class="weapon-equipment-section">
                     <h3>
                         <span class="grid-fill grid-fill-left" aria-hidden="true"></span>
-                        <span class="section-title">{{ group.title }}</span>
+                        <span class="section-title">
+                            <span class="section-title-text">{{ group.title }}</span>
+                            @if (sectionSkill(group); as skill) {
+                                <span class="section-skill" [tooltip]="skill.tooltip">{{ skill.label }} {{ skill.value }}</span>
+                            }
+                        </span>
                         <span class="grid-fill grid-fill-right" aria-hidden="true"></span>
                     </h3>
                     <div class="weapon-equipment-header">
@@ -98,7 +103,7 @@
                                         }
                                     </div>
                                     @if (hasTargets()) {
-                                        <span class="tn-cell" [class.out-of-range]="rowTarget.invalidTarget" [tooltip]="rowTarget.invalidTargetReason === 'type' ? invalidTargetTypeTooltip : rowTarget.invalidTargetReason === 'out-of-range' ? outOfRangeTooltip : rowTarget.breakdown?.lines ?? null">
+                                        <span class="tn-cell" [class.out-of-range]="rowTarget.invalidTarget" [tooltip]="rowTarget.invalidTargetReason === 'type' ? invalidTargetTypeTooltip : rowTarget.invalidTargetReason === 'out-of-range' ? outOfRangeTooltip : rowTarget.targetNumberTooltip">
                                             @if (rowTarget.targetNumberText; as tnText) {
                                                 <span class="tn-value">{{ tnText }}</span>
                                             }

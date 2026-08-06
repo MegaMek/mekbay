@@ -1,0 +1,55 @@
+MekBay
+======
+
+Copyright (C) 2025-2026 The MegaMek Team. All Rights Reserved.
+
+MekBay is free software licensed under the GNU General Public License,
+version 3 or, at your option, any later version.
+
+The complete license terms are provided in the LICENSE file distributed
+with this project.
+
+MekBay is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranties of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+more details.
+
+
+MegaMek
+-------
+
+The MegaMek organization is a non-profit group of volunteers creating
+free software for the BattleTech community.
+
+
+Trademarks and Third-Party Rights
+---------------------------------
+
+MechWarrior, BattleMech, 'Mech, and AeroTech are registered trademarks
+of The Topps Company, Inc. All rights reserved.
+
+Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+InMediaRes Productions, LLC.
+
+MechWarrior is copyright Microsoft Corporation.
+
+MegaMek was created under Microsoft's Game Content Usage Rules:
+
+https://www.xbox.com/en-US/developers/rules
+
+MekBay is not endorsed by or affiliated with Microsoft Corporation,
+The Topps Company, Inc., Catalyst Game Labs, or InMediaRes Productions,
+LLC, except where explicitly stated otherwise.
+
+
+Project Attribution
+-------------------
+
+This notice applies to MekBay source files that contain the following
+SPDX license identifier:
+
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Individual files, assets, libraries, or other components may be subject
+to additional copyright, licensing, attribution, or trademark notices.
+Where such notices are present, they remain applicable.

@@ -18,12 +18,12 @@ describe('countActionablePsrChecks', () => {
 });
 
 describe('displayPsrModifiers', () => {
-    it('filters and consistently orders displayed modifiers', () => {
+    it('filters and preserves the rules-level modifier order', () => {
         expect(displayPsrModifiers([
             { reason: 'Leg Destroyed', pilotCheck: 4 },
             { reason: 'Ignored', pilotCheck: 0 },
             { reason: 'Gyro damaged', modifierReason: 'Gyro hit', pilotCheck: 2 },
-        ]).map(modifier => modifier.reason)).toEqual(['Gyro hit', 'Leg Destroyed']);
+        ]).map(modifier => modifier.reason)).toEqual(['Leg Destroyed', 'Gyro hit']);
     });
 
     it('uses a dedicated modifier reason without changing the source check', () => {

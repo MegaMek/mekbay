@@ -36,7 +36,7 @@ import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CrewMember, SkillType } from '../crew-member.model';
 import type { MountedEquipment } from '../mounted-equipment.model';
 import type { CriticalSlot, RuleCheckOutcome } from '../force-serialization';
-import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type ChargeDamage, type LocationConditionControl, type PSRCheck, type MountedEquipmentRuleState, type UnitHeatSource, type UnitModifierBreakdownEntry } from './unit-type-rules';
+import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, sortPSRModifiers, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type ChargeDamage, type LocationConditionControl, type PSRCheck, type MountedEquipmentRuleState, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitRuleModifier } from './unit-type-rules';
 import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
 import type { MotiveModes } from '../motiveModes.model';
@@ -784,16 +784,25 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     private computeJumpHeat(distance: number, hasXXLEngine: boolean): number {
+        const partialWingBonus = this.partialWingJumpBonus();
+        const heatDistance = Math.max(0, distance - partialWingBonus);
         const jumpJetType = this.getWorkingJumpJetType();
         const engineMultiplier = hasXXLEngine ? 2 : 1;
         if (jumpJetType === 'improved') {
-            return Math.max(3, Math.ceil((distance * engineMultiplier) / 2));
+            return Math.max(3, Math.ceil((heatDistance * engineMultiplier) / 2));
         }
         const prototypeMultiplier = jumpJetType === 'prototypeImproved' ? 2 : 1;
         const multiplier = engineMultiplier * prototypeMultiplier;
-        const heat = distance * multiplier;
+        const heat = heatDistance * multiplier;
         const minimum = 3 * multiplier;
         return Math.max(minimum, heat);
+    }
+
+    private partialWingJumpBonus(destroyedCriticals = this.systemsStatus().destroyedPartialWingsCount): number {
+        const systemsStatus = this.systemsStatus();
+        if (!systemsStatus.hasPartialWings) return 0;
+        const maximumBonus = this.unit.getUnit().tons <= 55 ? 2 : 1;
+        return Math.max(0, maximumBonus - destroyedCriticals);
     }
 
     private getWorkingJumpJetType(): 'standard' | 'improved' | 'prototypeImproved' {
@@ -1069,14 +1078,14 @@ export class MekRules extends UnitTypeRulesBase {
                 preExisting -= 1; // Tripod unit with all legs intact gets -1 modifier
                 modifiers.push({
                     pilotCheck: -1,
-                    reason: "All legs are intact"
+                    reason: "No Destroyed Legs"
                 });
             } else
             if (config === 'Quad') {
                 preExisting -= 2; // Four-legged unit with all legs intact gets -2 modifier
                 modifiers.push({
                     pilotCheck: -2,
-                    reason: "All legs are intact"
+                    reason: "No Destroyed Legs"
                 });
             }
         }
@@ -1143,7 +1152,7 @@ export class MekRules extends UnitTypeRulesBase {
                 reason: "Mounts small or torso cockpit"
             });
         }
-        for (const pilotingModifier of this.getTargetNumberPilotingModifierBreakdown()) {
+        for (const pilotingModifier of this.psrModifiers()) {
             preExisting += pilotingModifier.modifier;
             modifiers.push({
                 pilotCheck: pilotingModifier.modifier,
@@ -1161,7 +1170,7 @@ export class MekRules extends UnitTypeRulesBase {
             }
         }
         const finalModifier = preExisting + currentModifiers;
-        return { modifier: finalModifier, modifiers: modifiers };
+        return { modifier: finalModifier, modifiers: sortPSRModifiers(modifiers) };
     });
 
     protected getPreExistingLegActuatorPSRModifiers(
@@ -1243,7 +1252,7 @@ export class MekRules extends UnitTypeRulesBase {
 
     override readonly PSRTargetRoll = computed<number>(() => {
         const modifiers = this.PSRModifiers();
-        return this.getTargetNumberPilotingSkill() + modifiers.modifier;
+        return this.getBasePilotingSkill() + modifiers.modifier;
     });
 
     override getMaxDistanceForMoveMode(moveMode: MotiveModes): number | null {
@@ -1283,40 +1292,57 @@ export class MekRules extends UnitTypeRulesBase {
         return this.canUseCommandConsole() ? 0 : 1;
     }
 
-    override getTargetNumberGunnerySkill(): number {
-        const primaryCrewId = this.isTripodMek() ? 1 : 0;
-        return this.getTargetNumberCrewSkill('gunnery', primaryCrewId) ?? super.getTargetNumberGunnerySkill();
+    override getBaseGunnerySkill(): number {
+        const gunnerCrewId = this.isTripodMek() ? 1 : 0;
+        return this.getTargetNumberCrewSkill('gunnery', gunnerCrewId) ?? super.getBaseGunnerySkill();
     }
 
-    override getTargetNumberPilotingSkill(): number {
-        return this.getTargetNumberCrewSkill('piloting', 0) ?? super.getTargetNumberPilotingSkill();
+    override getBasePilotingSkill(): number {
+        return this.getTargetNumberCrewSkill('piloting', 0) ?? super.getBasePilotingSkill();
     }
 
-    override getTargetNumberGunneryModifierBreakdown(): UnitModifierBreakdownEntry[] {
-        if (!this.isTripodMek()) return super.getTargetNumberGunneryModifierBreakdown();
-        const dedicatedGunneryOfficer = this.unit.getCrewMember(1);
-        if (!dedicatedGunneryOfficer || this.isActiveCrewMember(dedicatedGunneryOfficer)) return super.getTargetNumberGunneryModifierBreakdown();
-        return [...super.getTargetNumberGunneryModifierBreakdown(), { label: 'Dedicated Gunnery Officer disabled', modifier: 2 }];
-    }
-
-    override getTargetNumberPilotingModifierBreakdown(): UnitModifierBreakdownEntry[] {
-        const entries = super.getTargetNumberPilotingModifierBreakdown();
-        if (!this.isTripodMek()) return entries;
-        const dedicatedPilot = this.unit.getCrewMember(0);
-        if (!dedicatedPilot) return entries;
-        return [
-            ...entries,
-            this.isActiveCrewMember(dedicatedPilot)
-                ? { label: 'Dedicated Pilot', modifier: -1 }
-                : { label: 'Dedicated Pilot disabled', modifier: 2 },
-        ];
-    }
-
-    override getPhysicalAttackModifierBreakdown(): UnitModifierBreakdownEntry[] {
-        const entries = super.getPhysicalAttackModifierBreakdown();
-        return this.isSuperheavy()
-            ? [...entries, { label: 'Superheavy', modifier: 1, designBaseline: true }]
-            : entries;
+    protected override buildRuleModifiers(): UnitRuleModifier[] {
+        const modifiers: UnitRuleModifier[] = [];
+        if (this.isTripodMek()) {
+            const dedicatedGunneryOfficer = this.unit.getCrewMember(1);
+            if (dedicatedGunneryOfficer && !this.isActiveCrewMember(dedicatedGunneryOfficer)) {
+                modifiers.push({ label: 'Dedicated Gunnery Officer disabled', values: { ranged: 2 }, weakened: true });
+            }
+            const dedicatedPilot = this.unit.getCrewMember(0);
+            if (dedicatedPilot) {
+                const modifier = this.isActiveCrewMember(dedicatedPilot) ? -1 : 2;
+                modifiers.push({
+                    label: modifier < 0 ? 'Dedicated Pilot' : 'Dedicated Pilot disabled',
+                    ...(modifier > 0 && { weakened: true }),
+                    values: { physical: modifier, psr: modifier },
+                });
+            }
+        }
+        const proneModifier = this.proneAttackerModifier();
+        if (proneModifier !== null) modifiers.push(proneModifier);
+        if (this.isSuperheavy()) {
+            modifiers.push({ label: 'Superheavy', values: { physical: 1 }, designBaseline: true });
+        }
+        const fire = this.fireControl();
+        if (fire?.torsoCockpitHeadSensorModifier) {
+            modifiers.push({
+                label: 'Head Sensors Destroyed (Torso-Mounted Cockpit)',
+                values: { ranged: fire.torsoCockpitHeadSensorModifier },
+                weakened: true,
+            });
+        }
+        if (fire?.heatFireModifier) {
+            modifiers.push({
+                label: 'Heat - Fire Modifier',
+                values: { ranged: fire.heatFireModifier },
+                weakened: true,
+                kind: 'heat',
+            });
+        }
+        if (fire?.rangedSensorModifier) {
+            modifiers.push({ label: 'Sensors Destroyed', values: { ranged: fire.rangedSensorModifier }, weakened: true });
+        }
+        return modifiers;
     }
 
     protected isSuperheavy(): boolean {
@@ -1359,36 +1385,32 @@ export class MekRules extends UnitTypeRulesBase {
             .filter(crewMember => crewMember.getId() !== primaryCrewId && this.isActiveCrewMember(crewMember))[0] ?? null;
     }
 
-    override getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
-        const entries = [...super.getAttackModifierBreakdown(turnState)];
-        if (turnState.unitState.hasCondition('prone')) {
-            const subtype = this.unit.getUnit().subtype;
-            let proneEntry: UnitModifierBreakdownEntry | null = null;
-            const isTripod = subtype.startsWith('Tripod');
-            const isQuad = subtype.startsWith('Quad');
-            if (isTripod || isQuad) {
-                const config = isTripod ? 'Tripod' : 'Quad';
-                let proneModifier = isTripod ? 1 : 0;
-                for (const loc of getMekLegLocations(config)) {
-                    if (!this.unit.locations?.internal?.has(loc) || this.unit.isInternalLocCommittedDestroyed(loc)) {
-                        proneModifier = TN_PRONE_ATTACKER;
-                    }
-                }
-                const hasCommittedHipHit = this.unit.getCritSlots().some(slot => {
-                    if (!slot.loc || !isMekLegLocation(config, slot.loc)) return false;
-                    if (!this.isNamedCrit(slot, 'Hip')) return false;
-                    return this.isCritUnavailable(slot);
-                });
-                proneEntry = { label: 'Prone', modifier: hasCommittedHipHit ? TN_PRONE_ATTACKER : proneModifier };
-            } else { 
-                // Biped
-                proneEntry = { label: 'Prone', modifier: TN_PRONE_ATTACKER };
-            }
-            if (proneEntry) {
-                entries.push(proneEntry);
+    private proneAttackerModifier(): UnitRuleModifier | null {
+        if (!this.unit.getCondition('prone')) return null;
+        const subtype = this.unit.getUnit().subtype;
+        const isTripod = subtype.startsWith('Tripod');
+        const isQuad = subtype.startsWith('Quad');
+        if (!isTripod && !isQuad) {
+            return { label: 'Prone', values: { ranged: TN_PRONE_ATTACKER }, weakened: true };
+        }
+
+        const config = isTripod ? 'Tripod' : 'Quad';
+        let modifier = isTripod ? 1 : 0;
+        for (const loc of getMekLegLocations(config)) {
+            if (!this.unit.locations?.internal?.has(loc) || this.unit.isInternalLocCommittedDestroyed(loc)) {
+                modifier = TN_PRONE_ATTACKER;
             }
         }
-        return entries;
+        const hasCommittedHipHit = this.unit.getCritSlots().some(slot => {
+            if (!slot.loc || !isMekLegLocation(config, slot.loc)) return false;
+            if (!this.isNamedCrit(slot, 'Hip')) return false;
+            return this.isCritUnavailable(slot);
+        });
+        return {
+            label: isTripod ? 'Prone Tripod' : 'Prone Quad',
+            values: { ranged: hasCommittedHipHit ? TN_PRONE_ATTACKER : modifier },
+            weakened: true,
+        };
     }
 
     override getDefenseModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
@@ -1517,8 +1539,7 @@ export class MekRules extends UnitTypeRulesBase {
         } else {
             jumpValue = Math.max(0, jumpValue - systemsStatus.destroyedJumpJetsCount);
             if (systemsStatus.hasPartialWings) {
-                const maxWingBonus = unit.tons <= 55 ? 2 : 1;
-                jumpValue -= Math.min(systemsStatus.destroyedPartialWingsCount, maxWingBonus);
+                jumpValue -= this.partialWingJumpBonus(0) - this.partialWingJumpBonus();
             }
         }
 
@@ -1868,24 +1889,13 @@ export class MekRules extends UnitTypeRulesBase {
         const functionallyDestroyed = this.entryInFunctionallyDestroyedLocation(entry);
         const isDamaged = entry.committedDestroyed() || physicallyDestroyed || this.isEntryDestroyedByCriticalDamage(entry);
         let isDisabled = functionallyDestroyed || this.isEntryStateDisabled(entry);
-        let hitMod = 0;
         const hitModifierBreakdown: ToHitModifierBreakdownEntry[] = [];
-        let weakenedHitMod = false;
 
         const physical = this.physicalCombat();
         const fire = this.fireControl();
         const systemsStatus = this.systemsStatus();
         if (!physical || !fire) {
-            return this.applyTargetNumberSkillModifiers(entry, { isDamaged, isDisabled, hitMod, hitModifierBreakdown, weakenedHitMod });
-        }
-
-        if (fire.torsoCockpitHeadSensorModifier !== 0) {
-            hitMod += fire.torsoCockpitHeadSensorModifier;
-            hitModifierBreakdown.push({
-                label: 'Head Sensors Destroyed (Torso-Mounted Cockpit)',
-                modifier: fire.torsoCockpitHeadSensorModifier,
-                negative: true
-            });
+            return this.composeEntryState(entry, { isDamaged, isDisabled }, hitModifierBreakdown);
         }
 
         if (entry.isIntrinsicPhysicalAttack()) {
@@ -1894,7 +1904,6 @@ export class MekRules extends UnitTypeRulesBase {
                     const loc = Array.from(entry.locations!)[0] as ArmLocation;
                     if (loc in physical.canPunch && !physical.canPunch[loc]) isDisabled = true;
                     if (loc in physical.punchMod) {
-                        hitMod += physical.punchMod[loc];
                         this.addArmActuatorBreakdown(hitModifierBreakdown, systemsStatus.locationModifiers[loc], loc, {
                             hand: 1,
                             upperArm: 2,
@@ -1902,51 +1911,41 @@ export class MekRules extends UnitTypeRulesBase {
                         }, true);
                     }
                     const aesModifier = fire.singleArmMod[loc] ?? 0;
-                    hitMod += aesModifier;
                     this.addArmAESBreakdown(hitModifierBreakdown, systemsStatus.locationModifiers[loc], loc, aesModifier);
-                    const armStatus = systemsStatus.locationModifiers[loc];
-                    if (armStatus?.destroyedHand || armStatus?.destroyedUpperArms || armStatus?.destroyedLowerArms
-                        || this.hasBrokenArmAES(systemsStatus.locationModifiers, loc)) weakenedHitMod = true;
                     break;
                 }
                 case 'club': {
                     if (!physical.canClub) isDisabled = true;
-                    hitMod += physical.clubMod;
                     this.addTwoArmPhysicalBreakdown(hitModifierBreakdown, systemsStatus.locationModifiers, 'club');
-                    if (this.hasLostClubAESBonus(systemsStatus.locationModifiers)) weakenedHitMod = true;
                     break;
                 }
                 case 'push': {
                     if (!physical.canPush) isDisabled = true;
-                    hitMod += physical.pushMod || 0;
                     this.addTwoArmPhysicalBreakdown(hitModifierBreakdown, systemsStatus.locationModifiers, 'push');
-                    if (this.hasBrokenPairedArmAES(systemsStatus.locationModifiers)) weakenedHitMod = true;
                     break;
                 }
                 case 'kick [talons]':
                 case 'kick': {
                     if (!physical.canKick) isDisabled = true;
-                    hitMod += physical.kickMod;
                     if (systemsStatus.destroyedLegActuatorsCount > 0) {
                         hitModifierBreakdown.push({
                             label: this.countedDestroyedLabel('Leg Actuator', systemsStatus.destroyedLegActuatorsCount),
                             modifier: systemsStatus.destroyedLegActuatorsCount * 2,
-                            negative: true
+                            weakened: true
                         });
                     }
                     if (systemsStatus.destroyedFeetCount > 0) {
                         hitModifierBreakdown.push({
                             label: this.countedDestroyedLabel('Foot Actuator', systemsStatus.destroyedFeetCount),
                             modifier: systemsStatus.destroyedFeetCount,
-                            negative: true
+                            weakened: true
                         });
                     }
                     if (systemsStatus.hasFunctionalLegAES) {
                         hitModifierBreakdown.push({ label: 'Leg AES', modifier: -1 });
                     } else if (systemsStatus.hasLegAES) {
-                        hitModifierBreakdown.push({ label: 'Leg AES Destroyed', modifier: 0, negative: true });
+                        hitModifierBreakdown.push({ label: 'Leg AES Destroyed', modifier: 0, weakened: true });
                     }
-                    if (systemsStatus.hasLegAES && !systemsStatus.hasFunctionalLegAES) weakenedHitMod = true;
                     break;
                 }
             }
@@ -1954,7 +1953,6 @@ export class MekRules extends UnitTypeRulesBase {
             entry.locations?.forEach(loc => {
                 if ((loc in physical.canPhysWeapon) && !physical.canPhysWeapon[loc as ArmLocation]) isDisabled = true;
                 if (loc in physical.physWeaponMod) {
-                    hitMod += physical.physWeaponMod[loc as ArmLocation];
                     const armLoc = loc as ArmLocation;
                     const armStatus = systemsStatus.locationModifiers[armLoc];
                     this.addArmActuatorBreakdown(hitModifierBreakdown, armStatus, armLoc, {
@@ -1964,74 +1962,47 @@ export class MekRules extends UnitTypeRulesBase {
                     });
                     this.addArmAESBreakdown(hitModifierBreakdown, armStatus, armLoc, armStatus?.singleArmMod ?? 0);
                 }
-                if (this.hasBrokenArmAES(systemsStatus.locationModifiers, loc)) weakenedHitMod = true;
             });
         } else {
             if (entry.locations?.size === 1) {
                 const singleLoc = Array.from(entry.locations)[0];
                 if (singleLoc in fire.singleArmMod) {
                     const armModifier = fire.singleArmMod[singleLoc as ArmLocation];
-                    hitMod += armModifier;
                     const armStatus = systemsStatus.locationModifiers[singleLoc];
                     if (armStatus?.hasAES) {
                         hitModifierBreakdown.push(armStatus.hasFunctionalAES
                             ? { label: `Arm AES (${singleLoc})`, modifier: -1 }
-                            : { label: `Arm AES Destroyed (${singleLoc})`, modifier: 0, negative: true });
+                            : { label: `Arm AES Destroyed (${singleLoc})`, modifier: 0, weakened: true });
                     }
-                    if (this.hasBrokenArmAES(systemsStatus.locationModifiers, singleLoc)) weakenedHitMod = true;
                 }
             }
             if (!fire.canFire) isDisabled = true;
-            if (fire.heatFireModifier) {
-                hitMod += fire.heatFireModifier;
-                hitModifierBreakdown.push({
-                    label: 'Heat - Fire Modifier',
-                    modifier: fire.heatFireModifier,
-                    negative: true,
-                    kind: 'heat'
-                });
-            }
-            if (fire.rangedSensorModifier) {
-                hitMod += fire.rangedSensorModifier;
-                hitModifierBreakdown.push({
-                    label: 'Sensors Destroyed',
-                    modifier: fire.rangedSensorModifier,
-                    negative: true
-                });
-            }
             entry.locations?.forEach(loc => {
                 if (!(loc in fire.fireMod)) return;
                 const armStatus = systemsStatus.locationModifiers[loc];
                 const armModifier = fire.fireMod[loc as ArmLocation];
-                hitMod += armModifier;
                 if (!armStatus || armModifier === 0) return;
                 if (armStatus.destroyedShoulder) {
-                    hitModifierBreakdown.push({ label: `Shoulder Destroyed (${loc})`, modifier: armModifier, negative: true });
+                    hitModifierBreakdown.push({ label: `Shoulder Destroyed (${loc})`, modifier: armModifier, weakened: true });
                     return;
                 }
                 if (armStatus.destroyedUpperArms) {
-                    hitModifierBreakdown.push({ label: `Upper Arm Actuator Destroyed (${loc})`, modifier: 1, negative: true });
+                    hitModifierBreakdown.push({ label: `Upper Arm Actuator Destroyed (${loc})`, modifier: 1, weakened: true });
                 }
                 if (armStatus.destroyedLowerArms && this.lowerArmFireModifier !== 0) {
-                    hitModifierBreakdown.push({ label: `Lower Arm Actuator Destroyed (${loc})`, modifier: this.lowerArmFireModifier, negative: true });
+                    hitModifierBreakdown.push({ label: `Lower Arm Actuator Destroyed (${loc})`, modifier: this.lowerArmFireModifier, weakened: true });
                 }
             });
             const tarcompWeapon = entry.parent ?? entry;
             if (systemsStatus.hasTargetingComputer && this.isTargetingComputerEligible(tarcompWeapon)) {
                 if (systemsStatus.destroyedTargetingComputers === 0) {
                     hitModifierBreakdown.push({ label: 'Targeting Computer', modifier: -1 });
-                    hitMod--;
                 } else {
-                    hitModifierBreakdown.push({ label: 'Targeting Computer Destroyed', modifier: 0, negative: true });
-                    weakenedHitMod = true;
+                    hitModifierBreakdown.push({ label: 'Targeting Computer Destroyed', modifier: 0, weakened: true });
                 }
             }
         }
-        const describedModifier = hitModifierBreakdown.reduce((total, item) => total + item.modifier, 0);
-        if (describedModifier !== hitMod) {
-            hitModifierBreakdown.push({ label: 'Hit Modifier', modifier: hitMod - describedModifier });
-        }
-        return this.applyTargetNumberSkillModifiers(entry, { isDamaged, isDisabled, hitMod, hitModifierBreakdown, weakenedHitMod });
+        return this.composeEntryState(entry, { isDamaged, isDisabled }, hitModifierBreakdown);
     }
 
     private addArmActuatorBreakdown(
@@ -2043,15 +2014,15 @@ export class MekRules extends UnitTypeRulesBase {
     ): void {
         if (!armStatus) return;
         if (armStatus.destroyedHand) {
-            breakdown.push({ label: `Hand Actuator Destroyed (${loc})`, modifier: modifiers.hand, negative: true });
+            breakdown.push({ label: `Hand Actuator Destroyed (${loc})`, modifier: modifiers.hand, weakened: true });
         } else if (includeMissing && armStatus.missingHand) {
             breakdown.push({ label: `Hand Actuator Missing (${loc})`, modifier: modifiers.hand, designBaseline: true });
         }
         if (armStatus.destroyedUpperArms) {
-            breakdown.push({ label: `Upper Arm Actuator Destroyed (${loc})`, modifier: modifiers.upperArm, negative: true });
+            breakdown.push({ label: `Upper Arm Actuator Destroyed (${loc})`, modifier: modifiers.upperArm, weakened: true });
         }
         if (armStatus.destroyedLowerArms) {
-            breakdown.push({ label: `Lower Arm Actuator Destroyed (${loc})`, modifier: modifiers.lowerArm, negative: true });
+            breakdown.push({ label: `Lower Arm Actuator Destroyed (${loc})`, modifier: modifiers.lowerArm, weakened: true });
         } else if (includeMissing && armStatus.missingLowerArm) {
             breakdown.push({ label: `Lower Arm Actuator Missing (${loc})`, modifier: modifiers.lowerArm, designBaseline: true });
         }
@@ -2066,7 +2037,7 @@ export class MekRules extends UnitTypeRulesBase {
         if (!armStatus?.hasAES) return;
         breakdown.push(armStatus.hasFunctionalAES
             ? { label: `Arm AES (${loc})`, modifier }
-            : { label: `Arm AES Destroyed (${loc})`, modifier: 0, negative: true });
+            : { label: `Arm AES Destroyed (${loc})`, modifier: 0, weakened: true });
     }
 
     private addTwoArmPhysicalBreakdown(
@@ -2078,7 +2049,7 @@ export class MekRules extends UnitTypeRulesBase {
         if (attack === 'push') {
             for (const { loc, status } of arms) {
                 if (status?.destroyedShoulder) {
-                    breakdown.push({ label: `Shoulder Destroyed (${loc})`, modifier: 2, negative: true });
+                    breakdown.push({ label: `Shoulder Destroyed (${loc})`, modifier: 2, weakened: true });
                 }
             }
         } else {
@@ -2097,7 +2068,7 @@ export class MekRules extends UnitTypeRulesBase {
             });
         } else if ((attack === 'push' && this.hasBrokenPairedArmAES(locationModifiers))
             || (attack === 'club' && this.hasLostClubAESBonus(locationModifiers))) {
-            breakdown.push({ label: 'Arm AES Destroyed', modifier: 0, negative: true });
+            breakdown.push({ label: 'Arm AES Destroyed', modifier: 0, weakened: true });
         }
     }
 

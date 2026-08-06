@@ -212,7 +212,7 @@ describe('game rules', () => {
             expect(resolution.target).toBe(target);
             expect(resolution.degradationSource).toBe('network-member');
             expect(CORE_2026_GAME_RULES.resolveC3TargetingModifier('network-member', 2)).toEqual({
-                label: 'ECM', modifier: 2, negative: true
+                label: 'ECM', modifier: 2, weakened: true
             });
         });
 
@@ -404,7 +404,10 @@ describe('game rules', () => {
     });
 
     it('resolves ruleset-specific physical attack modifiers', () => {
-        expect(CORE_2026_GAME_RULES.resolveToHit({ subject: physicalAttack('punch') }).value).toBe(-1);
+        expect(CORE_2026_GAME_RULES.resolveToHit({ subject: physicalAttack('punch') })).toEqual(jasmine.objectContaining({
+            value: -1,
+            modifierBreakdown: [{ label: 'Base Hit Modifier', modifier: -1 }],
+        }));
         expect(CORE_2026_GAME_RULES.resolveToHit({ subject: physicalAttack('Punch') }).value).toBe(-1);
         expect(CORE_2026_GAME_RULES.resolveToHit({ subject: physicalAttack('kick') }).value).toBe(-1);
         expect(CORE_2026_GAME_RULES.resolveToHit({ subject: physicalAttack('club') }).value).toBe(-1);
@@ -446,12 +449,20 @@ describe('game rules', () => {
         const resolution = CORE_2026_GAME_RULES.resolveToHit({
             subject: mountedWeapon(-2),
             stateModifier: 1,
-            adjustments: [{ kind: 'add', value: 0, weakened: true }]
+            adjustments: [{
+                kind: 'add',
+                value: 0,
+                breakdown: [{ label: 'Lost bonus', modifier: 0, weakened: true }],
+            }]
         });
 
         expect(resolution).toEqual({
             profile: [-1], value: -1, changed: true, weakened: true,
-            modifierBreakdown: [{ label: 'Hit Modifier', modifier: -2 }, { label: 'Hit Modifier', modifier: 1 }]
+            modifierBreakdown: [
+                { label: 'Base Hit Modifier', modifier: -2 },
+                { label: 'Hit Modifier', modifier: 1 },
+                { label: 'Lost bonus', modifier: 0, weakened: true },
+            ]
         });
     });
 
@@ -461,7 +472,7 @@ describe('game rules', () => {
             stateModifier: 0,
             stateModifierBreakdown: [
                 { label: 'Targeting Computer', modifier: -1 },
-                { label: 'Heat - Fire Modifier', modifier: 1, negative: true, kind: 'heat' }
+                { label: 'Heat - Fire Modifier', modifier: 1, weakened: true, kind: 'heat' }
             ]
         });
 
@@ -470,7 +481,7 @@ describe('game rules', () => {
         expect(resolution.weakened).toBeTrue();
         expect(resolution.modifierBreakdown).toEqual([
             { label: 'Targeting Computer', modifier: -1 },
-            { label: 'Heat - Fire Modifier', modifier: 1, negative: true, kind: 'heat' }
+            { label: 'Heat - Fire Modifier', modifier: 1, weakened: true, kind: 'heat' }
         ]);
     });
 
@@ -478,7 +489,7 @@ describe('game rules', () => {
         const resolution = CORE_2026_GAME_RULES.resolveToHit({
             subject: mountedWeapon(0),
             stateModifier: 0,
-            stateModifierBreakdown: [{ label: 'Heat - Fire Modifier', modifier: 1, negative: true, kind: 'heat' }]
+            stateModifierBreakdown: [{ label: 'Heat - Fire Modifier', modifier: 1, weakened: true, kind: 'heat' }]
         });
 
         expect(resolution.value).toBe(0);
@@ -527,7 +538,7 @@ describe('game rules', () => {
             weakened: true,
             modifierBreakdown: [
                 { label: 'Targeting Computer', modifier: -1 },
-                { label: 'Localized heat label', modifier: 3, negative: true, kind: 'heat' }
+                { label: 'Localized heat label', modifier: 3, weakened: true, kind: 'heat' }
             ]
         });
 

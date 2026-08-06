@@ -310,6 +310,7 @@ export class SvgInteractionService {
             const dialogRef = this.dialogsService.createDialog(ClusterTableDialogComponent, {
                 data: {
                     unit: unitData,
+                    gameRules: currentUnit.gameRules,
                 },
                 width: 'min(920px, 96vw)',
                 maxHeight: '92vh',
@@ -1389,7 +1390,6 @@ export class SvgInteractionService {
             subject: entry,
             stateModifier: state.hitMod,
             stateModifierBreakdown: state.hitModifierBreakdown,
-            stateWeakened: state.weakenedHitMod ?? false,
             range: weaponRangeSelection?.range ?? null,
             adjustments: rules.resolveToHitAdjustments?.(entry, selectedAmmo)
         });
@@ -1403,8 +1403,8 @@ export class SvgInteractionService {
             allowExtremeRange: unit.allowsExtremeRangeAttacks(),
             selectedAmmo,
             target: effectiveTarget,
-            gunnerySkill: unit.rules.getTargetNumberGunnerySkill(),
-            pilotingSkill: unit.rules.getTargetNumberPilotingSkill(),
+            gunnerySkill: unit.rules.getBaseGunnerySkill(),
+            pilotingSkill: unit.rules.getBasePilotingSkill(),
             missingMovementModifier,
             attackModifierBreakdown: unit.turnState().getAttackModifierBreakdown(),
             hitModifier,

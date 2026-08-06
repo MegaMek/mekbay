@@ -617,9 +617,13 @@ class ExposedUnitSvgService extends UnitSvgService {
         const resolution = this.unit.gameRules.resolveToHit({
             subject: entry,
             stateModifier: hitModifier - baseValue,
-            stateWeakened: forceWeakened
+            stateModifierBreakdown: [{
+                label: 'Test modifier',
+                modifier: hitModifier - baseValue,
+                ...(forceWeakened && { weakened: true }),
+            }],
         });
-        this.renderHitModEntry(entry, resolution, forceWeakened);
+        this.renderHitModEntry(entry, resolution);
     }
 
     refreshArmor(): void {
@@ -3151,8 +3155,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const laserHitText = laser.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
         const moduleHitText = module.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
         spyOn(forceUnit.rules, 'computeAllEntryStates').and.returnValue(new Map([
-            [laser, { isDamaged: false, isDisabled: false, hitMod: 0, weakenedHitMod: false }],
-            [module, { isDamaged: false, isDisabled: false, hitMod: 1, weakenedHitMod: false }],
+            [laser, { isDamaged: false, isDisabled: false, hitMod: 0 }],
+            [module, { isDamaged: false, isDisabled: false, hitMod: 1 }],
         ]));
         const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgVehicleService(forceUnit, unitInitializer));
 
@@ -3352,7 +3356,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(formatPilotingDisplay(5, 2, 'DSR')).toBe('5 +2DSR');
     });
 
-    it('excludes movement but retains undisplayed attack modifiers in crew gunnery skill displays', () => {
+    it('keeps crew gunnery skill displays unchanged by attack modifiers', () => {
         const forceUnit = createForceUnit(createEmptyUnit({ crewSize: 1 }));
         const svg = new DOMParser().parseFromString(`
             <svg xmlns="http://www.w3.org/2000/svg">
@@ -3370,15 +3374,26 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             { label: 'Run', modifier: 2 },
             { label: 'Spotting', modifier: 1 },
         ]);
-        expect(svg.getElementById('gunnerySkill0')?.textContent).toBe('4+1');
+        expect(svg.getElementById('gunnerySkill0')?.textContent).toBe('4');
     });
 
-    it('shows the Prone attacker modifier in the crew gunnery skill field', () => {
+    it('keeps the crew gunnery skill unchanged while Prone modifies ranged weapons', () => {
         const forceUnit = createForceUnit(createEmptyUnit({
             type: 'Mek',
             subtype: 'BattleMek',
             crewSize: 1,
         }));
+        const ranged = new MountedEquipment({
+            owner: forceUnit,
+            id: 'medium-laser',
+            name: 'Medium Laser',
+            equipment: new WeaponEquipment({
+                id: 'medium-laser',
+                name: 'Medium Laser',
+                type: 'weapon',
+                weapon: { ranges: [3, 6, 9, 12] },
+            }),
+        });
         const svg = new DOMParser().parseFromString(`
             <svg xmlns="http://www.w3.org/2000/svg">
                 <text id="gunnerySkill0"></text>
@@ -3390,14 +3405,13 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         svgService.refreshCrew();
 
-        expect(forceUnit.turnState().getAttackModifierBreakdown()).toContain(jasmine.objectContaining({
-            label: 'Prone',
-            modifier: 2,
-        }));
-        expect(svg.getElementById('gunnerySkill0')?.textContent).toBe('4+2');
+        expect(forceUnit.turnState().getAttackModifierBreakdown()).not.toContain(jasmine.objectContaining({ label: 'Prone' }));
+        expect(forceUnit.rules.computeEntryState(ranged).hitModifierBreakdown)
+            .toContain(jasmine.objectContaining({ label: 'Prone', modifier: 2 }));
+        expect(svg.getElementById('gunnerySkill0')?.textContent).toBe('4');
     });
 
-    it('shows vehicle sensor damage on weapons but not the gunnery skill field', () => {
+    it('shows vehicle sensor damage on weapons but not gunnery skill', () => {
         const forceUnit = createForceUnit(createVehicleUnit(equipment));
         const svg = createVehicleSvg();
         const gunnerySkill = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -3617,8 +3631,9 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         forceUnit.setCritLoc({ id: 'stabilizer_hit_front', destroyed: 10, destroying: 10 });
         svgService.refreshInventory();
-        expect(hitModRect.getAttribute('display')).toBe('none');
-        expect(weaponEntry.el!.classList.contains('weakenedHitMod')).toBeFalse();
+        expect(hitModRect.getAttribute('display')).toBe('block');
+        expect(hitModText.textContent).toBe('+0');
+        expect(weaponEntry.el!.classList.contains('weakenedHitMod')).toBeTrue();
 
         forceUnit.turnState().moveMode.set('run');
         svgService.refreshInventory();

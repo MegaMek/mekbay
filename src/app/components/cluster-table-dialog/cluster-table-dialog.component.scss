@@ -155,7 +155,8 @@ td.column-hovered {
     background: var(--hover-highlight-transparent, #fff1);
 }
 
-tr.rolled-row-highlight td {
+tr.rolled-row-highlight td,
+td.rolled-row-highlight {
     background: var(--bt-yellow-background);
 }
 

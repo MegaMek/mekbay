@@ -191,20 +191,9 @@ export class UnitSvgVehicleService extends UnitSvgService {
             subject: entry,
             stateModifier: state.hitMod,
             stateModifierBreakdown: state.hitModifierBreakdown,
-            stateWeakened: state.weakenedHitMod,
             range,
             adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
         });
     }
 
-    protected override renderHitModEntry(
-        entry: MountedEquipment,
-        resolution: ReturnType<UnitSvgVehicleService['resolveInventoryControlToHit']>
-    ) {
-        const state = this.currentEntryStates?.get(entry) ?? this.vehicleRules.computeEntryState(entry);
-        super.renderHitModEntry(entry, resolution, !!state.weakenedHitMod);
-        if (resolution.value === '*' && this.vehicleRules.hasDamagedStabilizerAffectingEntry(entry)) {
-            entry.el?.classList.add('weakenedHitMod');
-        }
-    }
 }

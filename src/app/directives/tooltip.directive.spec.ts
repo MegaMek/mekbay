@@ -10,7 +10,7 @@ import { TooltipDirective } from './tooltip.directive';
         <div class="parent" [tooltip]="'Parent tooltip'" [tooltipDelay]="0">
             <span class="parent-label">Parent</span>
             <button class="child" type="button" [tooltip]="'Child tooltip'" tooltipType="error" [tooltipDelay]="0">Child</button>
-            <button class="negative" type="button" [tooltip]="[{ label: 'Apollo Destroyed', value: '+0', negative: true }]" [tooltipDelay]="0">Negative</button>
+            <button class="weakened" type="button" [tooltip]="[{ label: 'Apollo Destroyed', value: '+0', weakened: true }]" [tooltipDelay]="0">Weakened</button>
         </div>
         <label class="mode-label">
             <input class="mode-radio" type="radio">
@@ -86,16 +86,16 @@ describe('TooltipDirective', () => {
         expect(tooltip?.classList.contains('error')).toBeTrue();
     });
 
-    it('marks negative breakdown lines for red styling', async () => {
+    it('marks weakened breakdown lines for red styling', async () => {
         const fixture = TestBed.createComponent(TestHostComponent);
         fixture.detectChanges();
 
-        const negative = fixture.nativeElement.querySelector('.negative') as HTMLElement;
-        dispatchPointerOver(negative);
+        const weakened = fixture.nativeElement.querySelector('.weakened') as HTMLElement;
+        dispatchPointerOver(weakened);
         await flushTooltipTasks(fixture);
 
         const row = overlayContainerElement.querySelector('.tooltip-row');
-        expect(row?.classList.contains('negative')).toBeTrue();
+        expect(row?.classList.contains('weakened')).toBeTrue();
         expect(row?.textContent).toContain('Apollo Destroyed');
         expect(row?.textContent).toContain('+0');
     });

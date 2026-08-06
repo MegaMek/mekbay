@@ -38,7 +38,7 @@ describe('ApolloHandler', () => {
         apollo.owner = owner(undefined, TW_GAME_RULES);
 
         expect(handler.getToHitAdjustments(apollo, { parent: weapon('MRM', TW_GAME_RULES) })).toEqual([{
-            kind: 'add', value: -1, weakened: false,
+            kind: 'add', value: -1,
             breakdown: [{ label: 'Entry', modifier: -1 }]
         }]);
     });
@@ -48,8 +48,8 @@ describe('ApolloHandler', () => {
         apollo.owner = owner(apollo, TW_GAME_RULES);
 
         expect(handler.getToHitAdjustments(apollo, { parent: weapon('MRM', TW_GAME_RULES) })).toEqual([{
-            kind: 'add', value: 0, weakened: true,
-            breakdown: [{ label: 'Entry Destroyed', modifier: 0, negative: true }]
+            kind: 'add', value: 0,
+            breakdown: [{ label: 'Entry Destroyed', modifier: 0, weakened: true }]
         }]);
     });
 
@@ -74,7 +74,7 @@ describe('ApolloHandler', () => {
 
         expect(handler.getToHitAdjustments(apollo, { parent: weapon('MRM', TW_GAME_RULES, []) })).toEqual([]);
         expect(handler.getToHitAdjustments(apollo, { parent: weapon('LRM', TW_GAME_RULES, ['F_MRM']) })).toEqual([{
-            kind: 'add', value: -1, weakened: false,
+            kind: 'add', value: -1,
             breakdown: [{ label: 'Entry', modifier: -1 }]
         }]);
     });
