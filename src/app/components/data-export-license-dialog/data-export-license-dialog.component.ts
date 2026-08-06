@@ -130,7 +130,7 @@ import { DialogRef } from '@angular/cdk/dialog';
     `]
 })
 export class DataExportLicenseDialogComponent {
-    private dialogRef: DialogRef<boolean, DataExportLicenseDialogComponent> = inject(DialogRef);
+    private dialogRef = inject<DialogRef<boolean, DataExportLicenseDialogComponent>>(DialogRef);
 
     accepted = signal(false);
 
