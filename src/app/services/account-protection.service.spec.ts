@@ -102,7 +102,7 @@ describe('AccountProtectionService', () => {
             jasmine.anything(),
             jasmine.objectContaining({
                 data: jasmine.objectContaining({
-                    title: 'Protect your MekBay account',
+                    title: 'Keep your MekBay data with you',
                     actionLabel: 'Link',
                     dismissLabel: 'NO THANKS',
                 }),

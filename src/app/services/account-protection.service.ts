@@ -75,8 +75,8 @@ export class AccountProtectionService {
             const ref = this.dialogsService.createDialog<OAuthProviderPickerDialogResult>(OAuthProviderPickerDialogComponent, {
                 disableClose: true,
                 data: {
-                    title: 'Protect your MekBay account',
-                    message: 'You have started saving enough data that losing this browser could mean losing your work. Link an OAuth provider to make this account recoverable on another device. OAuth is optional, and you can link it later from Options.',
+                    title: 'Keep your MekBay data with you',
+                    message: 'Link an OAuth provider to recover your data and access it easily on other devices. This is optional and can also be done later in Options.',
                     providers,
                     actionLabel: 'Link',
                     dismissLabel: 'NO THANKS',
