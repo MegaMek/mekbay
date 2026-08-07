@@ -62,4 +62,35 @@ describe('UserStateService', () => {
         expect(service.oauthProviders()).toEqual([]);
         expect(service.availableAuthProviders()).toEqual([]);
     });
+
+    it('persists an account protection refusal locally', async () => {
+        const service = TestBed.inject(UserStateService);
+        await service.whenReady();
+
+        await service.dismissAccountProtectionPrompt();
+
+        expect(service.accountProtectionPromptDismissed()).toBeTrue();
+        expect(dbService.saveUserData).toHaveBeenCalledWith(
+            jasmine.objectContaining({ accountProtectionPromptDismissed: true }),
+        );
+    });
+
+    it('restores the prompt after the server reports a full OAuth unlink', async () => {
+        const service = TestBed.inject(UserStateService);
+        await service.whenReady();
+
+        await service.dismissAccountProtectionPrompt();
+        await service.applyServerState({ accountProtectionPromptDismissed: false, hasOAuth: false });
+
+        expect(service.accountProtectionPromptDismissed()).toBeFalse();
+    });
+
+    it('automatically dismisses account protection when OAuth is linked', async () => {
+        const service = TestBed.inject(UserStateService);
+        await service.whenReady();
+
+        await service.applyServerState({ hasOAuth: true, accountProtectionPromptDismissed: false });
+
+        expect(service.accountProtectionPromptDismissed()).toBeTrue();
+    });
 });

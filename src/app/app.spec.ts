@@ -83,6 +83,8 @@ describe('App', () => {
     };
     wsServiceMock = {
       setGlobalErrorHandler: jasmine.createSpy('setGlobalErrorHandler'),
+      registerMessageHandler: jasmine.createSpy('registerMessageHandler').and.returnValue(() => {}),
+      registerServerMessageHandler: jasmine.createSpy('registerServerMessageHandler').and.returnValue(() => {}),
     };
     dialogsServiceMock = {
       createDialog: jasmine.createSpy('createDialog').and.returnValue({ componentInstance: null }),

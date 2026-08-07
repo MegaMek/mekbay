@@ -1595,10 +1595,17 @@ export class DataService {
         }
 
         const uuid = this.userStateService.uuid();
+        let savedForceCount: number | undefined;
+        try {
+            savedForceCount = await this.dbService.countForces();
+        } catch (error) {
+            this.logger.warn(`Could not count local forces before cloud save: ${error}`);
+        }
         const response = await this.wsService.sendAndWaitForResponse({
             action: 'saveForce',
             uuid,
-            data: force.serialize()
+            data: force.serialize(),
+            ...(savedForceCount === undefined ? {} : { savedForceCount }),
         });
 
         if (!response) {
@@ -1615,6 +1622,7 @@ export class DataService {
         if (response.action !== 'forceSaved') {
             throw new Error(`Cloud save returned unexpected response: ${response.action ?? 'unknown'}.`);
         }
+
     }
 
     // Flush function performs the actual cloud save for the latest Force for a given instanceId

@@ -27,6 +27,7 @@ export interface UserStateSnapshot {
     oauthProviderCount?: number;
     oauthProviders?: LinkedOAuthProvider[];
     availableAuthProviders?: AvailableAuthProvider[];
+    accountProtectionPromptDismissed?: boolean;
 }
 
 export interface OAuthFlowResult {

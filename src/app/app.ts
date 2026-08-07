@@ -33,6 +33,7 @@ import { LoggerService } from './services/logger.service';
 import { isAndroid, isIOS, isRunningStandalone } from './utils/platform.util';
 import { GameService } from './services/game.service';
 import { AccountAuthService } from './services/account-auth.service';
+import { AccountProtectionService } from './services/account-protection.service';
 import { AppUpdateService } from './services/app-update.service';
 import { LoadingSpinnerComponent } from './components/loading-spinner/loading-spinner.component';
 
@@ -84,6 +85,7 @@ export class App {
     public injector = inject(Injector);
     public gameService = inject(GameService);
     private accountAuthService = inject(AccountAuthService);
+    private accountProtectionService = inject(AccountProtectionService);
     private router = inject(Router);
     private urlService = inject(UrlService);
     private savedSearchesService = inject(SavedSearchesService);
@@ -129,6 +131,7 @@ export class App {
         // if ("virtualKeyboard" in navigator) {
         //     (navigator as any).virtualKeyboard.overlaysContent = true; // Opt out of the automatic handling.
         // }
+        void this.accountProtectionService;
         this.dataService.initialize();
         this.savedSearchesService.initialize();
         this.savedSearchesService.registerWsHandlers();

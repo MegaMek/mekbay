@@ -180,7 +180,8 @@ export class SavedSearchesService {
             const response = await this.wsService.sendAndWaitForResponse({
                 action: 'savedSearchOps',
                 uuid,
-                ops: syncState.pendingOps
+                ops: syncState.pendingOps,
+                savedSearchCount: Object.keys(this.cachedSearches()).length,
             });
 
             if (response && response.action !== 'error') {
@@ -310,7 +311,8 @@ export class SavedSearchesService {
         const response = await this.wsService.sendAndWaitForResponse({
             action: 'setSavedSearches',
             uuid,
-            searches
+            searches,
+            savedSearchCount: Object.keys(searches).length,
         });
 
         if (response && response.action !== 'error') {

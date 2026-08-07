@@ -12,6 +12,8 @@ export interface OAuthProviderPickerDialogData {
     title: string;
     message: string;
     providers: AvailableAuthProvider[];
+    actionLabel?: string;
+    dismissLabel?: string;
 }
 
 export type OAuthProviderPickerDialogResult = OAuthProvider | 'dismiss';
@@ -36,14 +38,14 @@ export type OAuthProviderPickerDialogResult = OAuthProvider | 'dismiss';
                     <span class="provider-icon-frame">
                         <img class="provider-icon" [src]="'/images/' + provider.provider + '.svg'" alt="" aria-hidden="true" />
                     </span>
-                    <span class="provider-action-label">Sign in with {{ provider.label }}</span>
+                    <span class="provider-action-label">{{ data.actionLabel ?? 'Sign in' }} with {{ provider.label }}</span>
                 </span>
             </button>
             }
         </div>
 
         <div class="dialog-actions">
-            <button class="bt-button" (click)="dismiss()">DISMISS</button>
+            <button class="bt-button" (click)="dismiss()">{{ data.dismissLabel ?? 'DISMISS' }}</button>
         </div>
     </div>
     `,

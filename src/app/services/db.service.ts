@@ -218,6 +218,7 @@ export interface UserData {
     hasOAuth?: boolean;
     oauthProviderCount?: number;
     oauthProviders?: LinkedOAuthProvider[];
+    accountProtectionPromptDismissed?: boolean;
     tabSubs?: string[];
     /** Tag subscriptions: "publicId:tagName" pairs */
     tagSubscriptions?: string[];
@@ -978,6 +979,19 @@ export class DbService {
 
     public async getForce(instanceId: string): Promise<SerializedForce | null> {
         return await this.getDataFromStore<SerializedForce>(instanceId, FORCE_STORE);
+    }
+
+    public async countForces(): Promise<number> {
+        const db = await this.dbPromise;
+        if (!db) return 0;
+
+        return new Promise<number>((resolve, reject) => {
+            const transaction = db.transaction(FORCE_STORE, 'readonly');
+            const request = transaction.objectStore(FORCE_STORE).count();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+            transaction.onerror = () => reject(transaction.error);
+        });
     }
 
     public async saveForce(force: SerializedForce): Promise<void> {

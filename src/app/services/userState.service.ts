@@ -22,6 +22,7 @@ export class UserStateService {
     public hasOAuth = computed<boolean>(() => this.userData().hasOAuth ?? ((this.userData().oauthProviders?.length ?? 0) > 0));
     public oauthProviderCount = computed<number>(() => this.userData().oauthProviderCount ?? (this.userData().oauthProviders?.length ?? 0));
     public oauthProviders = computed<LinkedOAuthProvider[]>(() => this.userData().oauthProviders || []);
+    public accountProtectionPromptDismissed = computed<boolean>(() => this.userData().accountProtectionPromptDismissed === true);
     public availableAuthProviders = computed<AvailableAuthProvider[]>(() => this.availableAuthProvidersState());
 
     constructor() {
@@ -98,6 +99,17 @@ export class UserStateService {
         this.logger.info(`User publicId updated: ${publicId}`);
     }
 
+    public async dismissAccountProtectionPrompt(): Promise<void> {
+        if (this.accountProtectionPromptDismissed()) {
+            return;
+        }
+
+        await this.persistUserData({
+            ...this.userData(),
+            accountProtectionPromptDismissed: true,
+        });
+    }
+
     public async applyServerState(snapshot: UserStateSnapshot): Promise<void> {
         const nextUserData = { ...this.userData() };
 
@@ -115,6 +127,12 @@ export class UserStateService {
 
         if ('oauthProviderCount' in snapshot) {
             nextUserData.oauthProviderCount = snapshot.oauthProviderCount;
+        }
+
+        if (nextUserData.hasOAuth === true) {
+            nextUserData.accountProtectionPromptDismissed = true;
+        } else if ('accountProtectionPromptDismissed' in snapshot) {
+            nextUserData.accountProtectionPromptDismissed = snapshot.accountProtectionPromptDismissed === true;
         }
 
         if (Array.isArray(snapshot.oauthProviders)) {

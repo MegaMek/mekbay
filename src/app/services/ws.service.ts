@@ -6,6 +6,7 @@ import { effect, inject, Injectable, signal } from '@angular/core';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import type { SerializedForce } from '../models/force-serialization';
+import type { ServerMessage } from '../models/server-message.model';
 import { APP_VERSION, BUILD_BRANCH, BUILD_COMMIT_NUMBER } from '../build-meta';
 import { uuidv7 } from '../utils/uuid.util';
 
@@ -81,13 +82,17 @@ export class WsService {
      */
     private setupUserStateHandler(): void {
         this.registerMessageHandler('userState', (msg) => {
-            void this.userStateService.applyServerState({
+            const snapshot = {
                 publicId: msg.publicId ?? null,
                 hasOAuth: msg.hasOAuth,
                 oauthProviderCount: msg.oauthProviderCount,
                 oauthProviders: Array.isArray(msg.oauthProviders) ? msg.oauthProviders : undefined,
                 availableAuthProviders: Array.isArray(msg.availableAuthProviders) ? msg.availableAuthProviders : undefined,
-            });
+                ...(typeof msg.accountProtectionPromptDismissed === 'boolean'
+                    ? { accountProtectionPromptDismissed: msg.accountProtectionPromptDismissed }
+                    : {}),
+            };
+            void this.userStateService.applyServerState(snapshot);
         });
     }
 
@@ -759,6 +764,19 @@ export class WsService {
                 }
             });
         };
+    }
+
+    public registerServerMessageHandler(
+        messageTypes: string | string[],
+        handler: (msg: ServerMessage, event: MessageEvent) => void,
+    ): () => void {
+        const types = Array.isArray(messageTypes) ? messageTypes : [messageTypes];
+        return this.registerMessageHandler('serverMessage', (msg, event) => {
+            if (!types.includes(msg?.messageType)) {
+                return;
+            }
+            handler(msg as ServerMessage, event);
+        });
     }
 
     public clearHandlersForAction(action: string): void {

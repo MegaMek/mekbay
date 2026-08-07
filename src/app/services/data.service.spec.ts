@@ -43,6 +43,7 @@ describe('DataService', () => {
     let service: DataService;
     const dbServiceMock = {
         getForce: jasmine.createSpy('getForce'),
+        countForces: jasmine.createSpy('countForces'),
         saveForce: jasmine.createSpy('saveForce'),
         updateForceTags: jasmine.createSpy('updateForceTags'),
         waitForDbReady: jasmine.createSpy('waitForDbReady').and.resolveTo(undefined),
@@ -139,6 +140,8 @@ describe('DataService', () => {
         TestBed.resetTestingModule();
         dbServiceMock.getForce.calls.reset();
         dbServiceMock.getForce.and.resolveTo(null);
+        dbServiceMock.countForces.calls.reset();
+        dbServiceMock.countForces.and.resolveTo(1);
         dbServiceMock.saveForce.calls.reset();
         dbServiceMock.updateForceTags.calls.reset();
         dbServiceMock.updateForceTags.and.resolveTo(null);
@@ -561,6 +564,7 @@ describe('DataService', () => {
             action: 'saveForce',
             uuid: 'user-1',
             data: serializedForce,
+            savedForceCount: 1,
         });
     });
 
