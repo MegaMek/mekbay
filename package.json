@@ -37,7 +37,6 @@
     "@angular/service-worker": "^22.1.0",
     "@zxing/browser": "^0.2.1",
     "@zxing/library": "^0.23.0",
-    "@zxing/ngx-scanner": "^22.0.1",
     "angularx-qrcode": "^22.0.1",
     "jszip": "^3.10.1",
     "tslib": "^2.8.1",

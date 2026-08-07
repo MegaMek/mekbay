@@ -31,7 +31,6 @@ dependencies.
 | Angular packages (`@angular/cdk`, `@angular/common`, `@angular/compiler`, `@angular/core`, `@angular/forms`, `@angular/platform-browser`, `@angular/pwa`, `@angular/router`, `@angular/service-worker`) | MIT |
 | `@zxing/browser` | MIT |
 | `@zxing/library` | Apache-2.0 |
-| `@zxing/ngx-scanner` | MIT |
 | `angularx-qrcode` | MIT |
 | `jszip` | MIT OR GPL-3.0-or-later |
 | `tslib` | 0BSD |
