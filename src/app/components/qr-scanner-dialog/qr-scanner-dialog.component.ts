@@ -2,35 +2,25 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { BarcodeFormat } from '@zxing/library';
-import { ZXingScannerModule } from '@zxing/ngx-scanner';
-
-
+import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, OnDestroy, input, signal, viewChild } from '@angular/core';
+import { BrowserCodeReader, BrowserQRCodeReader, IScannerControls } from '@zxing/browser';
+import { ChecksumException, Exception, FormatException, NotFoundException, Result } from '@zxing/library';
 
 @Component({
     selector: 'qr-scanner-inline',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ZXingScannerModule],
     template: `
         <div class="scanner-inline-shell">
             <div class="scanner-shell" [class.error-state]="!!scanError()">
-                <zxing-scanner
+                <video
+                    #videoElement
                     class="scanner-view"
-                    [autostart]="true"
-                    [autofocusEnabled]="true"
-                    [formats]="formats"
-                    [device]="manualDevice() ?? undefined"
-                    [videoConstraints]="videoConstraints"
-                    (camerasFound)="onCamerasFound($event)"
-                    (camerasNotFound)="onCamerasNotFound()"
-                    (permissionResponse)="onPermissionResponse($event)"
-                    (deviceChange)="onActiveDeviceChange($event)"
-                    (scanSuccess)="onScanSuccess($event)"
-                    (scanError)="onScanError($event)"
-                ></zxing-scanner>
+                    autoplay
+                    muted
+                    playsinline
+                    aria-label="QR code camera preview"
+                ></video>
                 <div class="scanner-frame"></div>
             </div>
             @if (devices().length > 1) {
@@ -82,7 +72,7 @@ import { ZXingScannerModule } from '@zxing/ngx-scanner';
             min-width: 0;
         }
 
-        .scanner-view ::ng-deep video {
+        .scanner-view {
             display: block;
             width: 100%;
             height: 100%;
@@ -151,75 +141,171 @@ import { ZXingScannerModule } from '@zxing/ngx-scanner';
         }
     `]
 })
-export class QrScannerInlineComponent {
+export class QrScannerInlineComponent implements AfterViewInit, OnDestroy {
     onScan = input.required<(value: string) => void>();
 
-    readonly formats = [BarcodeFormat.QR_CODE];
-    readonly videoConstraints: MediaTrackConstraints = {
-        facingMode: { ideal: 'environment' }
-    };
-
+    private readonly videoElement = viewChild.required<ElementRef<HTMLVideoElement>>('videoElement');
+    private readonly reader = new BrowserQRCodeReader(undefined, {
+        delayBetweenScanAttempts: 300,
+        delayBetweenScanSuccess: 750
+    });
+    private scannerControls: IScannerControls | null = null;
+    private startSequence = 0;
+    private destroyed = false;
     devices = signal<MediaDeviceInfo[]>([]);
-    manualDevice = signal<MediaDeviceInfo | null>(null);
     selectedDeviceId = signal('');
     status = signal('Requesting camera access...');
     scanError = signal<string | null>(null);
 
-    onCamerasFound(devices: MediaDeviceInfo[]): void {
-        this.devices.set(devices);
-        if (!devices.some(device => device.deviceId === this.selectedDeviceId())) {
+    ngAfterViewInit(): void {
+        void this.startScanner();
+    }
+
+    ngOnDestroy(): void {
+        this.destroyed = true;
+        this.stopScanner();
+    }
+
+    private async startScanner(deviceId?: string): Promise<void> {
+        this.stopReader();
+        const sequence = ++this.startSequence;
+        this.scanError.set(null);
+        this.status.set('Requesting camera access...');
+
+        try {
+            const controls = await this.reader.decodeFromVideoDevice(
+                deviceId || undefined,
+                this.videoElement().nativeElement,
+                (result, error) => this.onDecode(result, error)
+            );
+
+            if (this.destroyed || sequence !== this.startSequence) {
+                controls.stop();
+                return;
+            }
+
+            this.scannerControls = controls;
+            await this.refreshDevices(sequence, deviceId);
+            if (this.destroyed || sequence !== this.startSequence) return;
+
+            this.status.set(this.devices().length > 1
+                ? 'Camera ready. You can switch cameras if needed.'
+                : 'Camera ready. Align the QR code inside the frame.');
+        } catch (error) {
+            if (this.destroyed || sequence !== this.startSequence) return;
+
+            this.devices.set([]);
+            this.selectedDeviceId.set('');
+            this.scanError.set(this.describeCameraError(error));
+        }
+    }
+
+    private async refreshDevices(sequence: number, requestedDeviceId?: string): Promise<void> {
+        try {
+            const devices = await BrowserCodeReader.listVideoInputDevices();
+            if (this.destroyed || sequence !== this.startSequence) return;
+
+            this.devices.set(devices);
+            const activeDeviceId = this.getActiveDeviceId();
+            if (activeDeviceId && devices.some(device => device.deviceId === activeDeviceId)) {
+                this.selectedDeviceId.set(activeDeviceId);
+            } else if (requestedDeviceId && devices.some(device => device.deviceId === requestedDeviceId)) {
+                this.selectedDeviceId.set(requestedDeviceId);
+            } else if (devices.length === 1) {
+                this.selectedDeviceId.set(devices[0].deviceId);
+            } else {
+                this.selectedDeviceId.set('');
+            }
+        } catch {
+            if (this.destroyed || sequence !== this.startSequence) return;
+
+            this.devices.set([]);
             this.selectedDeviceId.set('');
         }
-        this.status.set(devices.length > 1 ? 'Camera ready. You can switch cameras if needed.' : 'Camera ready. Align the QR code inside the frame.');
-        this.scanError.set(null);
     }
 
-    onCamerasNotFound(): void {
-        this.devices.set([]);
-        this.manualDevice.set(null);
-        this.selectedDeviceId.set('');
-        this.scanError.set('No camera was found on this device.');
-    }
-
-    onPermissionResponse(hasPermission: boolean): void {
-        if (hasPermission) {
-            this.status.set('Camera ready. Align the QR code inside the frame.');
-            this.scanError.set(null);
-            return;
+    private getActiveDeviceId(): string | undefined {
+        try {
+            const stream = this.videoElement().nativeElement.srcObject as MediaStream | null;
+            return stream?.getVideoTracks()[0]?.getSettings().deviceId;
+        } catch {
+            return undefined;
         }
-
-        this.scanError.set('Camera access was denied.');
-    }
-
-    onActiveDeviceChange(device: MediaDeviceInfo | null): void {
-        if (!device) {
-            this.selectedDeviceId.set('');
-            return;
-        }
-
-        this.selectedDeviceId.set(device.deviceId);
-        this.scanError.set(null);
     }
 
     onScanSuccess(value: string): void {
         const scannedValue = value.trim();
         if (!scannedValue) return;
+        this.stopScanner();
         this.onScan()(scannedValue);
     }
 
-    onScanError(error: Error): void {
-        this.scanError.set(error.message || 'QR scanning failed.');
+    private onDecode(result: Result | undefined, error: Exception | undefined): void {
+        if (result) {
+            this.onScanSuccess(result.getText());
+            return;
+        }
+
+        if (error && !this.isExpectedDecodeFailure(error)) {
+            this.scanError.set(error.message || 'QR scanning failed.');
+        }
     }
 
     onDeviceChange(event: Event): void {
         const selectedId = (event.target as HTMLSelectElement).value;
         this.selectedDeviceId.set(selectedId);
-        const device = this.devices().find(entry => entry.deviceId === selectedId) ?? null;
-        this.manualDevice.set(device);
+        void this.startScanner(selectedId);
     }
 
     getDeviceLabel(device: MediaDeviceInfo, index: number): string {
         return device.label || `Camera ${index + 1}`;
+    }
+
+    private isExpectedDecodeFailure(error: Exception): boolean {
+        return error instanceof NotFoundException
+            || error instanceof ChecksumException
+            || error instanceof FormatException
+            || ['NotFoundException', 'ChecksumException', 'FormatException'].includes(error.name);
+    }
+
+    private describeCameraError(error: unknown): string {
+        const errorName = error instanceof Error ? error.name : '';
+        switch (errorName) {
+            case 'NotAllowedError':
+                return 'Camera access was denied.';
+            case 'NotFoundError':
+                return 'No camera was found on this device.';
+            case 'NotReadableError':
+                return 'The camera is already in use by another application.';
+            case 'OverconstrainedError':
+                return 'The selected camera is no longer available.';
+            case 'NotSupportedError':
+            case 'SecurityError':
+                return 'Camera access requires a secure connection.';
+            default:
+                return error instanceof Error && error.message
+                    ? error.message
+                    : 'QR scanner could not start.';
+        }
+    }
+
+    private stopScanner(): void {
+        this.startSequence += 1;
+        this.stopReader();
+    }
+
+    private stopReader(): void {
+        const controls = this.scannerControls;
+        this.scannerControls = null;
+        controls?.stop();
+
+        const video = this.videoElement()?.nativeElement;
+        if (!video) return;
+
+        const stream = video.srcObject as MediaStream | null;
+        stream?.getTracks().forEach(track => track.stop());
+        video.pause();
+        BrowserCodeReader.cleanVideoSource(video);
     }
 
 }

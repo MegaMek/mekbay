@@ -161,10 +161,4 @@ A copy of the GPL should have been included with this project; if not, see <http
 
 ### Notice
 
-The MegaMek organization is a non-profit group of volunteers creating free software for the BattleTech community.
-
-MechWarrior, BattleMech, 'Mech and AeroTech are registered trademarks of The Topps Company, Inc. All Rights Reserved.
-
-Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of InMediaRes Productions, LLC.
-
-MechWarrior Copyright Microsoft Corporation. MegaMek was created under Microsoft's "Game Content Usage Rules" <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or affiliated with Microsoft.
+See [NOTICE](NOTICE) for copyright, trademark, and third-party attribution details.
