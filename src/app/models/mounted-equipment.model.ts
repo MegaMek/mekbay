@@ -354,7 +354,7 @@ export class MountedAmmo extends MountedEquipment {
     }
 
     getMaxShots(): number {
-        return this.equipment.getShots(this.owner.gameRules);
+        return this.equipment.getShots(this.owner.gameRules, this.owner.getEquipmentRegistry());
     }
 
     override clone(overrides: Partial<MountedEquipmentInit> = {}): MountedEquipment {

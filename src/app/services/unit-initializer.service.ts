@@ -370,7 +370,7 @@ export class UnitInitializerService {
             if (!(equipment instanceof AmmoEquipment)) return;
 
             const binCount = Math.max(1, component.q || 1);
-            const totalAmmo = component.q2 || (equipment.getShots(unit.gameRules) * binCount) || 0;
+            const totalAmmo = component.q2 || (equipment.getShots(unit.gameRules, unit.getEquipmentRegistry()) * binCount) || 0;
             const baseBinAmmo = Math.floor(totalAmmo / binCount);
             const extraBinAmmo = totalAmmo % binCount;
             const locations = component.l && component.l !== '—'

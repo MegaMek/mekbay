@@ -54,6 +54,13 @@ export class EquipmentRegistry {
         return this.#internalNames.get(key) ?? this.#aliases.get(key) ?? null;
     }
 
+    /** Returns the catalog definition of the ammo that a derived munition is based on. */
+    getBaseAmmo(ammo: AmmoEquipment): AmmoEquipment | null {
+        if (!ammo.baseAmmo) return null;
+        const baseAmmo = this.findEquipment(ammo.baseAmmo);
+        return baseAmmo instanceof AmmoEquipment ? baseAmmo : null;
+    }
+
     findForTechBase(name: string, techBase: 'IS' | 'Clan'): Equipment | null {
         if (!name) return null;
         const exact = this.equipment[name];

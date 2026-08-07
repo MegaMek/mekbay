@@ -5,6 +5,7 @@
 import { ChangeDetectionStrategy, Component, computed, type ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { AmmoEquipment } from '../../models/equipment.model';
+import type { EquipmentRegistry } from '../../models/equipment-lookup';
 import type { Era } from '../../models/eras.model';
 import type { MountedEquipment } from '../../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, type CBTGameRules } from '../../models/rules/game-rules';
@@ -26,6 +27,7 @@ export interface SetAmmoDialogData {
     era?: Era | null;
     inventory?: readonly MountedEquipment[];
     gameRules?: CBTGameRules;
+    equipmentRegistry?: EquipmentRegistry;
 }
 
 @Component({
@@ -52,6 +54,7 @@ export interface SetAmmoDialogData {
                         [currentAmmo]="data.currentAmmo"
                         [originalAmmo]="data.originalAmmo"
                         [gameRules]="data.gameRules ?? defaultGameRules"
+                        [equipmentRegistry]="data.equipmentRegistry ?? null"
                         (valueChange)="setSelectedAmmo($event)"
                     />
                     @let issues = selectedAmmoSelectionIssues();
@@ -262,16 +265,26 @@ export class SetAmmoDialogComponent {
     selectedAmmo = computed(() => this.ammoOptions().find(
         ammo => ammo.internalName === this.selectedAmmoName()
     ) ?? this.data.currentAmmo);
-    selectedAmmoInfoItems = computed(() => getAmmoInfoItems(this.selectedAmmo(), this.data.gameRules));
+    selectedAmmoInfoItems = computed(() => getAmmoInfoItems(
+        this.selectedAmmo(),
+        this.data.gameRules,
+        this.data.equipmentRegistry,
+    ));
     selectedAmmoSelectionIssues = computed(() => this.ammoSelectionStatus()[this.selectedAmmo().internalName]?.issues ?? []);
     advancement = computed<EquipmentAdvancementTimeline>(() => getEquipmentAdvancementTimeline(this.selectedAmmo()));
     
     public currentMaxQuantity = computed(() => {
-        return Math.floor(this.totalKgAvailable / this.selectedAmmo().getEffectiveKgPerShot(this.data.gameRules ?? this.defaultGameRules));
+        return Math.floor(this.totalKgAvailable / this.selectedAmmo().getEffectiveKgPerShot(
+            this.data.gameRules ?? this.defaultGameRules,
+            this.data.equipmentRegistry,
+        ));
     });
 
     constructor() {
-        this.totalKgAvailable = this.data.originalAmmo.getEffectiveKgPerShot(this.data.gameRules ?? this.defaultGameRules) * this.data.originalTotalAmmo;
+        this.totalKgAvailable = this.data.originalAmmo.getEffectiveKgPerShot(
+            this.data.gameRules ?? this.defaultGameRules,
+            this.data.equipmentRegistry,
+        ) * this.data.originalTotalAmmo;
     }
 
     setSelectedAmmo(internalName: string) {

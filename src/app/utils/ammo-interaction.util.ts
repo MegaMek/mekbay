@@ -614,10 +614,16 @@ function sortCompatibleAmmo(ammoOptions: AmmoEquipment[]): AmmoEquipment[] {
     });
 }
 
-function getTotalAmmoForAmmoType(originalAmmo: AmmoEquipment, originalTotalAmmo: number, selectedAmmo: AmmoEquipment, gameRules: CBTGameRules): number {
-    const selectedKgPerShot = selectedAmmo.getEffectiveKgPerShot(gameRules);
+function getTotalAmmoForAmmoType(
+    originalAmmo: AmmoEquipment,
+    originalTotalAmmo: number,
+    selectedAmmo: AmmoEquipment,
+    gameRules: CBTGameRules,
+    equipmentRegistry: EquipmentRegistry,
+): number {
+    const selectedKgPerShot = selectedAmmo.getEffectiveKgPerShot(gameRules, equipmentRegistry);
     if (selectedKgPerShot <= 0) return originalTotalAmmo;
-    return Math.floor((originalAmmo.getEffectiveKgPerShot(gameRules) * originalTotalAmmo) / selectedKgPerShot);
+    return Math.floor((originalAmmo.getEffectiveKgPerShot(gameRules, equipmentRegistry) * originalTotalAmmo) / selectedKgPerShot);
 }
 
 export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerContext): Promise<boolean> {
@@ -641,6 +647,7 @@ export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerCont
             era: entry.owner.force.era(),
             inventory,
             gameRules: entry.owner.gameRules,
+            equipmentRegistry,
         } as SetAmmoDialogData
     });
 
@@ -654,7 +661,7 @@ export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerCont
     const intrinsic = isIntrinsicOneShotAmmoMount(entry.source as MountedEquipment);
     const newTotalAmmo = intrinsic
         ? entry.totalAmmo
-        : getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo, entry.owner.gameRules);
+        : getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo, entry.owner.gameRules, equipmentRegistry);
     setAmmoEntryValue(entry, selectedAmmo, newTotalAmmo, newAmmoValue.quantity);
     syncEntryFromSource(entry, equipmentRegistry);
 
@@ -689,6 +696,7 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
             era: firstEntry.owner.force.era(),
             inventory,
             gameRules: firstEntry.owner.gameRules,
+            equipmentRegistry,
         } as SetAmmoDialogData
     });
 
@@ -699,12 +707,16 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
     const selectedAmmo = selectedEquipment instanceof AmmoEquipment
         ? selectedEquipment
         : firstEntry.currentAmmo;
-    let remainingToAllocate = clamp(newAmmoValue.quantity, 0, getTotalAmmoForAmmoType(firstEntry.originalAmmo, originalTotalAmmo, selectedAmmo, firstEntry.owner.gameRules));
+    let remainingToAllocate = clamp(
+        newAmmoValue.quantity,
+        0,
+        getTotalAmmoForAmmoType(firstEntry.originalAmmo, originalTotalAmmo, selectedAmmo, firstEntry.owner.gameRules, equipmentRegistry),
+    );
 
     for (const entry of group.entries.sort(compareAmmoControlEntryOrder)) {
         const newTotalAmmo = isIntrinsicOneShotAmmoMount(entry.source as MountedEquipment)
             ? entry.totalAmmo
-            : getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo, entry.owner.gameRules);
+            : getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo, entry.owner.gameRules, equipmentRegistry);
         const newRemaining = Math.min(newTotalAmmo, remainingToAllocate);
         remainingToAllocate -= newRemaining;
         setAmmoEntryValue(entry, selectedAmmo, newTotalAmmo, newRemaining);

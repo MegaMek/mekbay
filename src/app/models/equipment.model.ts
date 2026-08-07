@@ -878,12 +878,12 @@ export class AmmoEquipment extends Equipment {
             : super.toHitModifier;
     }
 
-    getShots(gameRules: CBTGameRules): number {
-        return gameRules.getAmmoShots(this);
+    getShots(gameRules: CBTGameRules, equipmentRegistry?: EquipmentRegistry): number {
+        return gameRules.getAmmoShots(this, equipmentRegistry);
     }
 
-    getEffectiveKgPerShot(gameRules: CBTGameRules): number {
-        return gameRules.getAmmoKgPerShot(this);
+    getEffectiveKgPerShot(gameRules: CBTGameRules, equipmentRegistry?: EquipmentRegistry): number {
+        return gameRules.getAmmoKgPerShot(this, equipmentRegistry);
     }
 
     /** Returns true if kgPerShot was explicitly set (> 0) */

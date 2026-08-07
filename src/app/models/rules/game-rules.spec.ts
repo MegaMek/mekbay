@@ -266,16 +266,33 @@ describe('game rules', () => {
         expect(TW_GAME_RULES.resolveToHit({ subject: mrm }).value).toBe(1);
     });
 
-    it('increases Core 2026 precision ammo shots without changing TW values', () => {
+    it('calculates Core 2026 special ammo from its base ammo without changing TW values', () => {
+        const baseAmmo = new AmmoEquipment({
+            id: 'AC5Ammo', name: 'AC/5 Ammo', type: 'ammo',
+            ammo: { type: 'AC', shots: 10 }
+        });
         const precisionAmmo = new AmmoEquipment({
             id: 'PrecisionAC5', name: 'Precision AC/5', type: 'ammo',
-            ammo: { type: 'AC', shots: 10, munitionType: ['M_PRECISION'] }
+            ammo: { type: 'AC', shots: 20, baseAmmo: baseAmmo.id, munitionType: ['M_PRECISION'] }
+        });
+        const armorPiercingAmmo = new AmmoEquipment({
+            id: 'ArmorPiercingAC5', name: 'Armor-Piercing AC/5', type: 'ammo',
+            ammo: { type: 'AC', shots: 20, kgPerShot: 50, baseAmmo: baseAmmo.id, munitionType: ['M_ARMOR_PIERCING'] }
+        });
+        const registry = new EquipmentRegistry({
+            [baseAmmo.id]: baseAmmo,
+            [precisionAmmo.id]: precisionAmmo,
+            [armorPiercingAmmo.id]: armorPiercingAmmo,
         });
 
-        expect(precisionAmmo.getShots(CORE_2026_GAME_RULES)).toBe(16);
-        expect(precisionAmmo.getShots(TW_GAME_RULES)).toBe(10);
-        expect(precisionAmmo.getEffectiveKgPerShot(CORE_2026_GAME_RULES)).toBe(62.5);
-        expect(precisionAmmo.getEffectiveKgPerShot(TW_GAME_RULES)).toBe(100);
+        expect(precisionAmmo.getShots(CORE_2026_GAME_RULES, registry)).toBe(6);
+        expect(armorPiercingAmmo.getShots(CORE_2026_GAME_RULES, registry)).toBe(8);
+        expect(precisionAmmo.getShots(CORE_2026_GAME_RULES)).toBe(20);
+        expect(precisionAmmo.getShots(TW_GAME_RULES, registry)).toBe(20);
+        expect(precisionAmmo.getEffectiveKgPerShot(CORE_2026_GAME_RULES, registry)).toBe(1000 / 6);
+        expect(precisionAmmo.getEffectiveKgPerShot(TW_GAME_RULES, registry)).toBe(50);
+        expect(armorPiercingAmmo.getEffectiveKgPerShot(CORE_2026_GAME_RULES, registry)).toBe(1000 / 8);
+        expect(armorPiercingAmmo.getEffectiveKgPerShot(TW_GAME_RULES, registry)).toBe(50);
     });
 
     describe('Total Warfare TAG BV', () => {

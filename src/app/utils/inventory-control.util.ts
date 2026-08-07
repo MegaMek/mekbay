@@ -832,7 +832,7 @@ function createInventoryAmmoSource(entry: MountedEquipment, equipmentCatalog: Eq
 
     const total = entry.totalAmmo ?? (entry instanceof MountedAmmo
         ? getInventoryOriginalTotalAmmo(entry)
-        : ammo.getShots(entry.owner.gameRules));
+        : ammo.getShots(entry.owner.gameRules, equipmentCatalog));
     const locationLabel = Array.from(entry.locations ?? []).join('/') || 'Ammo';
     return {
         id: `inventory:${entry.id}`,

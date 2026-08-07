@@ -4,6 +4,7 @@
 
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import { AmmoEquipment, Equipment, WeaponEquipment, type RangeBrackets } from '../equipment.model';
+import type { EquipmentRegistry } from '../equipment-lookup';
 import type { InventoryControlRuntimeTarget } from '../inventory-control-runtime-state.model';
 import { MountedEquipment } from '../mounted-equipment.model';
 
@@ -178,14 +179,16 @@ export abstract class CBTGameRules {
         return this.composeToHit(baseProfile, request, adjustments, stateBreakdown, adjustmentBreakdowns, rulesProfile);
     }
 
-    getAmmoShots(ammo: AmmoEquipment): number {
+    getAmmoShots(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number {
         return ammo.shots;
     }
 
-    getAmmoKgPerShot(ammo: AmmoEquipment): number {
-        if (ammo.hasCustomKgPerShot) return ammo.kgPerShot;
-        const shots = this.getAmmoShots(ammo);
-        return shots > 0 ? 1000 / shots : 0;
+    getAmmoKgPerShot(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number {
+        const shots = this.getAmmoShots(ammo, equipmentRegistry);
+        if (shots <= 0) return 0;
+        return ammo.hasCustomKgPerShot
+            ? ammo.kgPerShot * ammo.shots / shots
+            : 1000 / shots;
     }
 
     calculateTagBVCost(_unit: CBTForceUnit): number {
@@ -305,14 +308,16 @@ export class GameRules extends CBTGameRules {
             : modifiers;
     }
 
-    override getAmmoShots(ammo: AmmoEquipment): number {
-        if (ammo.hasMunitionType('M_PRECISION')) {
-            return Math.floor(ammo.shots * 2 * 0.6);
-        } else 
-        if (ammo.hasMunitionType('M_ARMOR_PIERCING')) {
-            return Math.floor(ammo.shots * 2 * 0.8);
-        }
-        return ammo.shots;
+    override getAmmoShots(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number {
+        const multiplier = ammo.hasMunitionType('M_PRECISION')
+            ? 0.6
+            : ammo.hasMunitionType('M_ARMOR_PIERCING')
+                ? 0.8
+                : null;
+        if (multiplier === null) return ammo.shots;
+
+        const baseShots = equipmentRegistry?.getBaseAmmo(ammo)?.shots;
+        return baseShots === undefined ? ammo.shots : Math.floor(baseShots * multiplier);
     }
 }
 
