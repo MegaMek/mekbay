@@ -7,6 +7,7 @@ import { TestBed } from '@angular/core/testing';
 import { LoggerService } from './logger.service';
 import { UserStateService } from './userState.service';
 import { WsService } from './ws.service';
+import { APP_VERSION, BUILD_BRANCH, BUILD_COMMIT_NUMBER } from '../build-meta';
 
 function getPhase(service: WsService) {
     return service.connectionStatusPhase();
@@ -129,9 +130,9 @@ describe('WsService', () => {
         expect(sentActions(newSocket)).toEqual(['register', 'subscribeToForceUpdates', 'getForce']);
         expect(sentMessages(newSocket).find(message => message.action === 'register')).toEqual(jasmine.objectContaining({
             version: 2,
-            appVersion: '0.4',
-            buildBranch: 'next',
-            buildCommitNumber: 3417,
+            appVersion: APP_VERSION,
+            buildBranch: BUILD_BRANCH,
+            buildCommitNumber: BUILD_COMMIT_NUMBER,
         }));
         expect(oldSocket.removeEventListener).toHaveBeenCalled();
 
