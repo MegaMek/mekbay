@@ -76,7 +76,7 @@ export class AccountProtectionService {
                 disableClose: true,
                 data: {
                     title: 'Keep your MekBay data with you',
-                    message: 'Link an OAuth provider to recover your data and access it easily on other devices. This is optional and can also be done later in Options.',
+                    message: 'Link an OAuth provider to easily recover your data and access it on other devices. This is optional and can also be done later in Options.',
                     providers,
                     actionLabel: 'Link',
                     dismissLabel: 'NO THANKS',
