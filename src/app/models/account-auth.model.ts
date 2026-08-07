@@ -35,6 +35,7 @@ export interface OAuthFlowResult {
     mode?: 'link' | 'login';
     provider?: OAuthProvider;
     uuid?: string;
+    conflict?: 'provider-linked-to-another-account';
     error?: string;
     replaceExisting?: boolean;
     userState?: UserStateSnapshot;
