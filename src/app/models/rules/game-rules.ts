@@ -307,9 +307,13 @@ export class GameRules extends CBTGameRules {
 
     override getAmmoShots(ammo: AmmoEquipment): number {
         // Precision ammo divisor went from 0.5 to 0.8 (so, x1.6)
-        return ammo.hasMunitionType('M_PRECISION')
-            ? ammo.shots * 1.6
-            : ammo.shots;
+        if (ammo.hasMunitionType('M_PRECISION')) {
+            return Math.floor(ammo.shots * 2 / 0.6);
+        } else 
+        if (ammo.hasMunitionType('M_ARMOR_PIERCING')) {
+            return Math.floor(ammo.shots * 2 / 0.8);
+        }
+        return ammo.shots;
     }
 }
 
