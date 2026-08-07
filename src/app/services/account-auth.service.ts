@@ -281,14 +281,47 @@ export class AccountAuthService {
     private async applyOAuthResult(result: OAuthFlowResult, flowKind: 'popup' | 'redirect'): Promise<boolean> {
         this.authInFlight.set(false);
 
+        const provider = result.provider;
+        const linkedUuid = result.conflict === 'provider-linked-to-another-account'
+            ? result.uuid?.trim()
+            : undefined;
+
         if (!result.ok) {
+            if (provider && result.mode && linkedUuid) {
+                await this.userStateService.whenReady();
+
+                const providerLabel = this.getProviderLabel(provider);
+                try {
+                    const confirmed = await this.dialogsService.requestConfirmation(
+                        `This ${providerLabel} account is already linked to another MekBay account. Switch this device to that account? Local data on this device remains local, but cloud sync will follow the linked account.`,
+                        'Provider Already Linked',
+                        'warning'
+                    );
+
+                    if (!confirmed) {
+                        return true;
+                    }
+
+                    await this.userStateService.setUuid(linkedUuid);
+                    if (result.userState) {
+                        await this.userStateService.applyServerState(result.userState);
+                    }
+                    window.location.reload();
+                    return true;
+                } catch (err) {
+                    const message = err instanceof Error ? err.message : 'Provider authentication failed.';
+                    this.logger.error(`Failed to apply OAuth ${flowKind} result: ${message}`);
+                    this.toastService.showToast(message, 'error');
+                    return true;
+                }
+            }
+
             const message = result.error || 'Provider authentication failed.';
             this.logger.error(`OAuth ${flowKind} failed: ${message}`);
             this.toastService.showToast(message, 'error');
             return true;
         }
 
-        const provider = result.provider;
         if (!provider || !result.mode) {
             this.logger.error(`OAuth ${flowKind} result was missing required metadata.`);
             this.toastService.showToast('Provider authentication completed, but the result was incomplete.', 'error');

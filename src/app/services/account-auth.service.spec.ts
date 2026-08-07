@@ -104,6 +104,30 @@ describe('AccountAuthService', () => {
         expect(userStateService.applyServerState).not.toHaveBeenCalled();
     });
 
+    it('asks before switching when a linked provider conflicts with the current UUID', async () => {
+        dialogsService.requestConfirmation.and.resolveTo(false);
+        const service = TestBed.inject(AccountAuthService);
+        const result = createLoginResult({
+            ok: false,
+            mode: 'link',
+            uuid: 'linked-uuid-12345',
+            conflict: 'provider-linked-to-another-account',
+            error: 'This Google account is already linked to another MekBay account.',
+        });
+
+        const handled = await (service as any).applyOAuthResult(result, 'popup');
+
+        expect(handled).toBeTrue();
+        expect(dialogsService.requestConfirmation).toHaveBeenCalledWith(
+            'This Google account is already linked to another MekBay account. Switch this device to that account? Local data on this device remains local, but cloud sync will follow the linked account.',
+            'Provider Already Linked',
+            'warning',
+        );
+        expect(userStateService.setUuid).not.toHaveBeenCalled();
+        expect(userStateService.applyServerState).not.toHaveBeenCalled();
+        expect(toastService.showToast).not.toHaveBeenCalled();
+    });
+
     it('applies remote OAuth state when sign-in completes for the current UUID', async () => {
         currentUuid = 'linked-uuid-12345';
         const service = TestBed.inject(AccountAuthService);
