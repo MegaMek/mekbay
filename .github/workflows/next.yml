@@ -59,7 +59,8 @@ jobs:
           mirror --parallel=20 -R --transfer-all --no-perms --verbose --exclude-glob index.html --exclude-glob index.csr.html --exclude-glob ngsw.json ./dist/browser/ ./mekbay_next/;
           put -O ./mekbay_next/ ./dist/browser/index.html;
           ${INDEX_CSR_PUT}
-          put -O ./mekbay_next/ ./dist/browser/ngsw.json;"
+          put -O ./mekbay_next/ ./dist/browser/ngsw.json;
+          put -O ./mekbay_next/ ./dist/3rdpartylicenses.txt;"
 
       - name: Cleanup Old Build and Sprite Files
         env:

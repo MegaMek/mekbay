@@ -3,8 +3,9 @@ MekBay
 
 Copyright (C) 2025-2026 The MegaMek Team.
 
-MekBay is free software licensed under the GNU General Public License,
-version 3 or, at your option, any later version.
+Unless a file or component states otherwise, original MekBay source code is
+free software licensed under the GNU General Public License, version 3 or, at
+your option, any later version (GPL-3.0-or-later).
 
 The complete license terms are provided in the LICENSE file distributed
 with this project.
@@ -42,13 +43,10 @@ The Topps Company, Inc., Catalyst Game Labs, or InMediaRes Productions,
 LLC, except where explicitly stated otherwise.
 
 
-Project License
----------------
+Third-Party Materials
+---------------------
 
-Unless a file or component states otherwise, original MekBay source code is
-copyright (C) 2025-2026 The MegaMek Team and is licensed under the GNU General
-Public License, version 3 or later (GPL-3.0-or-later).
-
-Individual files, assets, libraries, generated files, and other components may
-be subject to additional copyright, licensing, attribution, or trademark
-notices. Where such notices are present, they remain applicable.
+Third-party dependencies, generated data, and assets are not automatically
+covered by the MekBay GPL license. Their applicable terms and attributions are
+listed in THIRD-PARTY-NOTICES.md and in any notices included with the relevant
+file or component. Those terms remain applicable.
