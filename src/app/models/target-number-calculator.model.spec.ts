@@ -53,4 +53,19 @@ describe('target number calculator rules profiles', () => {
         expect(calculateTargetTnModifier({ unitType: 'terrain', range: 5 })).toBe(-4);
         expect(calculateTargetTnModifier({ unitType: 'building', range: 5 })).toBe(-4);
     });
+
+    it('keeps movement modifiers for prone and immobile non-static targets', () => {
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 5,
+            targetMovementBracket: '7-9',
+            stance: 'prone'
+        })).toBe(4);
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 5,
+            targetMovementBracket: '7-9',
+            stance: 'immobile'
+        })).toBe(-1);
+    });
 });

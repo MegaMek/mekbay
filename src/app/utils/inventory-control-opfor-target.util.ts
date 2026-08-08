@@ -45,15 +45,15 @@ export function deriveOpforTargetCalculatorState(
     const stance = immobile ? 'immobile' : prone ? 'prone' : 'normal';
     const moveDistance = unit.turnState().moveDistance();
     const isAirborne = unit.turnState().moveMode() === 'jump' || unit.turnState().airborne() === true;
-    const targetMovementBracket = stance === 'normal' && moveDistance !== null
+    const targetMovementBracket = moveDistance !== null
         ? getTargetMovementBracketForDistance(moveDistance)?.id ?? null
         : null;
 
     return {
         ...current,
-        isAirborne: stance === 'normal' && isAirborne,
+        isAirborne,
         targetMovementBracket,
-        skidding: stance === 'normal' && unit.getCondition('skidding'),
+        skidding: unit.getCondition('skidding'),
         stance,
         largeTarget: isLargeInventoryTarget(unit.getUnit())
     };

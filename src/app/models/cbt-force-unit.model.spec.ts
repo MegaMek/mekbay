@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { computed, Injector, signal } from '@angular/core';
+import { provideHttpClient } from '@angular/common/http';
+import { computed, Injector, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, Equipment, MiscEquipment, resolveWeaponDamage, WeaponEquipment, type EquipmentMap } from './equipment.model';
 import { CBTForce } from './cbt-force.model';
@@ -33,6 +34,8 @@ import { EquipmentFlag } from './equipment-flags.type';
 import { EquipmentRegistry } from './equipment-lookup';
 import { OptionsService } from '../services/options.service';
 import { formatPilotingDisplay } from './rules/unit-type-rules';
+import { createTestEquipmentState } from '../testing/unit-test-helpers';
+import { registerAllHandlers } from '../equipment-handlers';
 
 function createEquipment(): EquipmentMap {
     const ultraAc20 = new WeaponEquipment({
@@ -728,6 +731,61 @@ class RunMovementBonusTestHandler extends EquipmentInteractionHandler {
     }
 }
 
+describe('CBTForceUnit live catalog integration', () => {
+    xit('loads every unit available in the live catalog', async () => {
+        TestBed.configureTestingModule({
+            providers: [
+                provideZonelessChangeDetection(),
+                provideHttpClient(),
+            ],
+        });
+
+        const liveDataService = TestBed.inject(DataService);
+        const liveUnitInitializer = TestBed.inject(UnitInitializerService);
+        const liveInjector = TestBed.inject(Injector);
+        registerAllHandlers(TestBed.inject(EquipmentInteractionRegistryService));
+
+        await liveDataService.initialize();
+
+        const catalogUnits = liveDataService.getUnits();
+        expect(liveDataService.isDataReady())
+            .withContext('The live catalogs did not initialize successfully')
+            .toBeTrue();
+        expect(catalogUnits.length)
+            .withContext('The live unit catalog is empty')
+            .toBeGreaterThan(0);
+
+        const force = new TestCBTForce(
+            'Live Catalog Test Force',
+            liveDataService,
+            liveUnitInitializer,
+            liveInjector,
+        );
+        const failures: string[] = [];
+
+        for (const catalogUnit of catalogUnits) {
+            let forceUnit: CBTForceUnit | undefined;
+            try {
+                forceUnit = force.createCompatibleUnit(catalogUnit);
+                await forceUnit.load();
+
+                if (!forceUnit.initialized || !forceUnit.isLoaded() || !forceUnit.svg() || !forceUnit.svgService) {
+                    throw new Error('load completed without a fully initialized SVG unit');
+                }
+            } catch (error) {
+                const message = error instanceof Error ? error.stack ?? error.message : String(error);
+                failures.push(`${catalogUnit.name} [${catalogUnit.sheets[0] ?? 'no sheet'}]: ${message}`);
+            } finally {
+                forceUnit?.destroy();
+            }
+        }
+
+        expect(failures)
+            .withContext(`Failed to load ${failures.length} of ${catalogUnits.length} live catalog units:\n${failures.join('\n')}`)
+            .toEqual([]);
+    }, 30 * 60 * 1000);
+});
+
 describe('CBTForceUnit direct inventory ammo bins', () => {
     let equipment: EquipmentMap;
     let dataService: jasmine.SpyObj<DataService>;
@@ -855,7 +913,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.setInventory([weaponEntry, ammoEntry], true);
 
         expect(forceUnit.getInventoryControlSelectedAmmo(weaponEntry)).toBe(intrinsicAmmo);
-        expect(() => weaponEntry.ruleState()).not.toThrow();
+        expect(() => weaponEntry.owner.rules.getEquipmentToHit(weaponEntry)).not.toThrow();
     });
 
     it('clones virtual inventory rows from a computed without writing signals', () => {
@@ -3172,9 +3230,9 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const module = laser.linkedWith![0];
         const laserHitText = laser.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
         const moduleHitText = module.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
-        spyOn(forceUnit.rules, 'computeAllEntryStates').and.returnValue(new Map([
-            [laser, { isDamaged: false, isDisabled: false, hitMod: 0 }],
-            [module, { isDamaged: false, isDisabled: false, hitMod: 1 }],
+        spyOn(forceUnit.rules, 'getEquipmentToHits').and.returnValue(new Map([
+            [laser, createTestEquipmentState('available', []).toHit],
+            [module, createTestEquipmentState('available', [{ label: 'RISC Laser Pulse Module', modifier: 1 }]).toHit],
         ]));
         const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgVehicleService(forceUnit, unitInitializer));
 
@@ -3423,7 +3481,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshCrew();
 
         expect(forceUnit.turnState().getAttackModifierBreakdown()).not.toContain(jasmine.objectContaining({ label: 'Prone' }));
-        expect(forceUnit.rules.computeEntryState(ranged).hitModifierBreakdown)
+        expect(forceUnit.rules.getEquipmentToHit(ranged).modifiers)
             .toContain(jasmine.objectContaining({ label: 'Prone', modifier: 2 }));
         expect(svg.getElementById('gunnerySkill0')?.textContent).toBe('4');
     });

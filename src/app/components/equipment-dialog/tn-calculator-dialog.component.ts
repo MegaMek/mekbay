@@ -118,7 +118,7 @@ export interface TnCalculatorDialogResult {
                                 [label]="targetMovementBracketLabel()"
                                 [modifierLabel]="targetMovementModifierLabel()"
                                 [ariaLabel]="'Target movement bracket'"
-                                [valueAssigned]="stance() === 'normal'"
+                                [valueAssigned]="!staticTarget()"
                                 [compactLabel]="true"
                                 (valueChange)="setTargetMovementBracketIndex($event)"></hex-slider>
                         </div>
@@ -855,7 +855,7 @@ export class TnCalculatorDialogComponent {
         unitType: this.unitType(),
         range: this.range(),
         isAirborne: this.isAirborne(),
-        targetMovementBracket: this.stance() === 'normal' ? this.targetMovementBracket().id : null,
+        targetMovementBracket: !this.staticTarget() ? this.targetMovementBracket().id : null,
         skidding: this.skidding(),
         stance: this.stance(),
         interveningWoods: this.interveningWoods(),
@@ -902,11 +902,6 @@ export class TnCalculatorDialogComponent {
 
     constructor() {
         afterNextRender(() => this.renderReady.set(true));
-
-        if (this.stance() !== 'normal') {
-            this.clearAirborne();
-            this.skidding.set(false);
-        }
         this.clearStaticTargetModifiers();
     }
 
@@ -923,29 +918,22 @@ export class TnCalculatorDialogComponent {
     setTargetMovementBracketIndex(value: number): void {
         if (this.staticTarget() || this.targetStateReadOnly) return;
         this.targetMovementBracketIndex.set(this.alignToStep(value, this.MOVEMENT_MIN, this.MOVEMENT_MAX));
-        this.clearStanceForMovement();
     }
 
     toggleAirborne(): void {
         if (this.staticTarget() || this.targetStateReadOnly) return;
         this.isAirborne.set(!this.isAirborne());
-        this.clearStanceForMovement();
     }
 
     toggleSkidding(): void {
         if (this.staticTarget() || this.targetStateReadOnly) return;
         this.skidding.set(!this.skidding());
-        this.clearStanceForMovement();
     }
 
     selectStance(stance: TnTargetStance): void {
         if (this.staticTarget() || this.targetStateReadOnly) return;
         const next = this.stance() === stance ? 'normal' : stance;
         this.stance.set(next);
-        if (next !== 'normal') {
-            this.clearAirborne();
-            this.skidding.set(false);
-        }
         if (next === 'prone') {
             this.partialCover.set(false);
         }
@@ -1030,7 +1018,7 @@ export class TnCalculatorDialogComponent {
     apply(): void {
         const state: TnTargetNumberCalculatorState = {
             isAirborne: this.staticTarget() ? false : this.isAirborne(),
-            targetMovementBracket: !this.staticTarget() && this.stance() === 'normal' ? this.targetMovementBracket().id : null,
+            targetMovementBracket: !this.staticTarget() ? this.targetMovementBracket().id : null,
             skidding: this.staticTarget() ? false : this.skidding(),
             stance: this.staticTarget() ? 'immobile' : this.stance(),
             interveningWoods: this.interveningWoods(),
@@ -1071,12 +1059,6 @@ export class TnCalculatorDialogComponent {
     setC3DistanceValue(value: number): void {
         if (!this.c3Enabled()) return;
         this.c3Distance.set(this.alignToStep(value, this.RANGE_MIN, this.RANGE_MAX));
-    }
-
-    private clearStanceForMovement(): void {
-        if (this.stance() !== 'normal') {
-            this.stance.set('normal');
-        }
     }
 
     private clearStaticTargetModifiers(): void {
