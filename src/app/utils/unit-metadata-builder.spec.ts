@@ -85,7 +85,7 @@ describe('UnitMetadataBuilder', () => {
     entity.hasLowerArmActuator.set({ left: false, right: false });
     entity.hasHandActuator.set({ left: false, right: false });
 
-    expect(entity.entityFeatures()).toEqual(['Reversible Arms']);
+    expect(entity.entityFeatures()).toEqual(jasmine.arrayWithExactContents(['Reversible Arms']));
     expect(builder.build(entity).features).toContain('Reversible Arms');
   });
 
@@ -95,7 +95,52 @@ describe('UnitMetadataBuilder', () => {
 
     const metadata = builder.build(entity);
     expect(metadata.features).toContain('Small Cockpit');
+    expect(metadata.features?.filter(feature => feature === 'Small Cockpit')).toHaveSize(1);
     expect(metadata.comp?.find(component => component.id === 'cockpit')?.n).toBe('Small Cockpit');
+  });
+
+  it('derives Aero cockpit features canonically', () => {
+    const entity = new ConvFighterEntity();
+    entity.cockpitType.set('Small');
+    expect(entity.entityFeatures()).toEqual(jasmine.arrayWithExactContents(['Small Cockpit']));
+
+    entity.cockpitType.set('Command Console');
+    expect(entity.entityFeatures()).toEqual(jasmine.arrayWithExactContents(['Command Console']));
+  });
+
+  it('derives the remaining SVGMassPrinter feature categories', () => {
+    const fighter = new ConvFighterEntity();
+    fighter.vstol.set(true);
+    expect(fighter.entityFeatures()).toEqual(jasmine.arrayWithExactContents(['VSTOL Equipment']));
+
+    const fixedWing = new FixedWingSupportEntity();
+    addTestEquipmentWithFlags(fixedWing, 'F_VSTOL_CHASSIS');
+    expect(fixedWing.entityFeatures()).toContain('VSTOL Equipment');
+
+    const jumpShip = new JumpShipEntity();
+    jumpShip.lithiumFusion.set(true);
+    expect(jumpShip.entityFeatures()).toEqual(jasmine.arrayWithExactContents(['LF Battery']));
+
+    const vehicle = new SupportTankEntity();
+    addTestEquipmentWithFlags(vehicle, 'F_CHASSIS_MODIFICATION');
+    expect(vehicle.entityFeatures().some(feature => feature.startsWith('Chassis Mod: '))).toBeTrue();
+
+    const transport = new BipedMekEntity();
+    transport.transporters.set([
+      { id: 'troop-space', kind: 'troop-space', totalSpace: 1, omni: false },
+      {
+        id: 'quarters', kind: 'bay', configuration: { type: 'crew-quarters' },
+        capacity: 1, doors: 1, bayNumber: 0, omni: false,
+      },
+      {
+        id: 'fighter-bay', kind: 'bay', configuration: { type: 'fighter', arts: false },
+        capacity: 1, doors: 1, bayNumber: 0, omni: false,
+      },
+    ]);
+    expect(transport.entityFeatures()).toEqual(jasmine.arrayWithExactContents([
+      'Infantry Compartment',
+      'Bay: Fighter',
+    ]));
   });
 
   it('exports the Java offensive speed factor from BV movement', () => {

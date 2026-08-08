@@ -13,6 +13,7 @@ import {
   LARGE_CRAFT_LOCATIONS,
   resolveWeightClass,
   WeightClass,
+  type EntityFeature,
 } from '../../types';
 import type { UnitSubtype } from '../../types';
 import type { TechRatingSource } from '../../types';
@@ -43,6 +44,12 @@ export class JumpShipEntity extends LargeAeroEntity {
 
   override unitSubtype(): UnitSubtype {
     return this.withOmniSubtype('JumpShip');
+  }
+
+  protected override computeAeroFeatures(): readonly EntityFeature[] {
+    const features = [...super.computeAeroFeatures()];
+    if (this.lithiumFusion()) features.push('LF Battery');
+    return features;
   }
 
   override entityTechAdvancements(): readonly TechRatingSource[] {

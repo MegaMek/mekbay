@@ -95,7 +95,7 @@ describe('MekEntity features', () => {
     expect(entity.entityFeatures()).not.toContain('Reversible Arms');
 
     removeArmActuators(entity);
-    expect(entity.entityFeatures()).toEqual(['Reversible Arms']);
+    expect(entity.entityFeatures()).toEqual(jasmine.arrayWithExactContents(['Reversible Arms']));
 
     entity.hasHandActuator.set({ left: true, right: false });
     expect(entity.entityFeatures()).not.toContain('Reversible Arms');
@@ -105,6 +105,24 @@ describe('MekEntity features', () => {
 
     entity.hasLowerArmActuator.set({ left: false, right: true });
     expect(entity.entityFeatures()).not.toContain('Reversible Arms');
+  });
+
+  it('derives the Mek features exported by SVGMassPrinter', () => {
+    const entity = new BipedMekEntity();
+    entity.cockpitType.set('Small');
+    entity.gyroType.set('XL');
+    entity.hasFullHeadEjectionSystem.set(true);
+    entity.hasRiscHeatSinkOverrideKit.set(true);
+    entity.setTonnage(50);
+    entity.setStructureAt('LA', standardStructure(70));
+
+    expect(entity.entityFeatures()).toEqual(jasmine.arrayWithExactContents([
+      'Small Cockpit',
+      'XL Gyro',
+      'Full Head Ejection System',
+      'RISC Heat Sink Override Kit',
+      'FrankenMek',
+    ]));
   });
 
   for (const locations of [['LA', 'LT'], ['RA', 'RT']] as const) {

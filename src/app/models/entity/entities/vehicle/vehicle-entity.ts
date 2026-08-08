@@ -27,6 +27,7 @@ import {
   WeightClass,
   TechRatingSource,
   resolveWeightClass,
+  type EntityFeature,
 } from '../../types';
 import { WeaponEquipment, type Equipment } from '../../../equipment.model';
 
@@ -62,6 +63,13 @@ export abstract class VehicleEntity extends BaseEntity {
   }
 
   protected abstract vehicleConstructionTechAdvancement(): TechRatingSource;
+
+  protected override computeEntityFeatures(): readonly EntityFeature[] {
+    return [
+      ...this.computeChassisModificationFeatures(),
+      ...this.computeTransportFeatures(),
+    ];
+  }
 
   protected override omniTechAdvancement(): TechRatingSource {
     return OMNI_VEHICLE_TECH;

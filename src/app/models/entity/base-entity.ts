@@ -77,6 +77,7 @@ import { uuidv7 } from '../../utils/uuid.util';
 import type { SupportVehicle } from './entities/support-vehicle';
 import type { UnitSubtype, UnitType } from './types';
 import { EquipmentRegistry } from '../equipment-lookup';
+import { getBayTransporterType, isQuartersBay } from './bays/bay-definitions';
 import { CLAN_EXCEPTIONAL_BAY_IDS, weaponBayEquipmentId } from './utils/implicit-equipment';
 import { calculateEntityCostDetails } from './utils/cost/entity-cost';
 import {
@@ -1069,7 +1070,30 @@ export abstract class BaseEntity implements EntityTechnology {
 
   /** Override in entity families that derive named features from construction state. */
   protected computeEntityFeatures(): readonly EntityFeature[] {
-    return [];
+    return this.computeTransportFeatures();
+  }
+
+  protected computeTransportFeatures(): readonly EntityFeature[] {
+    const features = new Set<EntityFeature>();
+    for (const transporter of this.transporters()) {
+      if (transporter.kind === 'troop-space') {
+        features.add('Infantry Compartment');
+      } else if (transporter.kind === 'bay' && !isQuartersBay(transporter)) {
+        features.add(`Bay: ${getBayTransporterType(transporter.configuration)}` as EntityFeature);
+      }
+    }
+    return [...features];
+  }
+
+  protected computeChassisModificationFeatures(): readonly EntityFeature[] {
+    const features = new Set<EntityFeature>();
+    for (const mount of this.equipment()) {
+      const equipment = mount.equipment;
+      if (equipment?.hasFlag('F_CHASSIS_MODIFICATION')) {
+        features.add(`Chassis Mod: ${equipment.shortName}` as EntityFeature);
+      }
+    }
+    return [...features];
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
