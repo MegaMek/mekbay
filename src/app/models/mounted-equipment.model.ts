@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { computed, signal, type Signal, type WritableSignal } from '@angular/core';
+import { signal, type WritableSignal } from '@angular/core';
 
 import type { CBTForceUnit } from './cbt-force-unit.model';
 import { AmmoEquipment, MiscEquipment, WeaponEquipment, type Equipment } from './equipment.model';
 import { WEAPON_TYPES, type WeaponType } from './weapon-types.model';
 import type { CriticalSlot } from './force-serialization';
-import type { MountedEquipmentRuleState } from './rules/unit-type-rules';
 import { isPhysicalWeaponEquipment } from './entity/utils/physical-weapon';
 
 export interface MountedEquipmentInit {
@@ -63,7 +62,6 @@ export class MountedEquipment {
     readonly originalTotalAmmo?: number;
     consumed?: number;
     intrinsicOneShotAmmo?: boolean;
-    readonly ruleState: Signal<MountedEquipmentRuleState>;
 
     get linkedWith(): readonly MountedEquipment[] | null | undefined {
         return this.linkedEquipment;
@@ -203,7 +201,6 @@ export class MountedEquipment {
         this.originalTotalAmmo = data.originalTotalAmmo ?? data.totalAmmo;
         this.consumed = data.consumed;
         this.intrinsicOneShotAmmo = data.intrinsicOneShotAmmo;
-        this.ruleState = computed(() => this.owner.rules.computeEntryState(this));
     }
 
     static from(entry: MountedEquipment | MountedEquipmentInit): MountedEquipment {
@@ -256,16 +253,15 @@ export class MountedEquipment {
     }
 
     isDestroyed(): boolean {
-        return this.ruleState().isDamaged;
+        return this.owner.rules.getEquipmentStatus(this) === 'destroyed';
     }
 
     isDisabled(): boolean {
-        return this.ruleState().isDisabled;
+        return this.owner.rules.getEquipmentStatus(this) === 'disabled';
     }
 
     isUnavailable(): boolean {
-        const state = this.ruleState();
-        return state.isDamaged || state.isDisabled;
+        return this.owner.rules.getEquipmentStatus(this) !== 'available';
     }
 
     /** Whether this mount is structurally unavailable or temporarily unable to act. */

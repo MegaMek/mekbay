@@ -5,11 +5,15 @@
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import { MmlHandler } from './mml.handler';
 
 function owner() {
-    return { setInventoryEntry: jasmine.createSpy('setInventoryEntry'), rules: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) } } as never;
+    return {
+        setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
+        rules: createTestEquipmentRules(),
+    } as never;
 }
 
 function weapon(): MountedEquipment {

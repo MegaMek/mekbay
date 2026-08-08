@@ -63,7 +63,7 @@ describe('CBTForceUnitTestHarness', () => {
         });
 
         expect(harness.unit.gameRules).toBe(CORE_2026_GAME_RULES);
-        expect(harness.unit.rules.computeEntryState(mounted).isDisabled).toBeTrue();
+        expect(harness.unit.rules.getEquipmentStatus(mounted)).toBe('disabled');
     });
 
     it('reports no active conditions by default', () => {

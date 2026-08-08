@@ -1354,11 +1354,11 @@ export class SvgInteractionService {
             selectedAmmo,
             target: target.c3Distance === undefined ? target : { ...target, c3Distance: undefined }
         });
-        const state = unit.rules.computeEntryState(entry);
+        const toHit = unit.rules.getEquipmentToHit(entry);
         const hitResolution = gameRules.resolveToHit({
             subject: entry,
-            stateModifier: state.hitMod,
-            stateModifierBreakdown: state.hitModifierBreakdown,
+            stateModifier: toHit.modifier,
+            stateModifierBreakdown: toHit.modifiers,
             range: weaponRangeSelection?.range ?? null,
             adjustments: rules.resolveToHitAdjustments?.(entry, selectedAmmo)
         });

@@ -24,6 +24,7 @@ import { SvgInteractionService } from './svg-interaction.service';
 import type { ZoomPanServiceInterface } from './zoom-pan.interface';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
+import { createTestEquipmentRules } from '../../testing/unit-test-helpers';
 
 type SvgInteractionServicePrivate = {
     addSvgTapHandler(
@@ -46,8 +47,7 @@ const NO_CONDITION_RULES = {
     conditionControls: [],
     crewStateControls: [],
     locationConditionControls: [],
-    computeAllEntryStates: () => new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>(),
-    computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }),
+    ...createTestEquipmentRules(),
     heatDissipation: () => null,
     getBaseGunnerySkill: () => 4,
     getBasePilotingSkill: () => 5,

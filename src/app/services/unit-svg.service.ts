@@ -1252,12 +1252,12 @@ export class UnitSvgService {
     }
 
     protected resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): ToHitResolution {
-        const state = this.unit.rules.computeEntryState(entry);
+        const toHit = this.unit.rules.getEquipmentToHit(entry);
         const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
         return this.unit.gameRules.resolveToHit({
             subject: entry,
-            stateModifier: state.hitMod,
-            stateModifierBreakdown: state.hitModifierBreakdown,
+            stateModifier: toHit.modifier,
+            stateModifierBreakdown: toHit.modifiers,
             range,
             adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
         });
@@ -1614,7 +1614,7 @@ export class UnitSvgService {
         if (!svg) return;
         this.unit.getInventory().forEach(entry => {
             if (!entry.el) return;
-            const state = this.unit.rules.computeEntryState(entry);
+            const status = this.unit.rules.getEquipmentStatus(entry);
             const actionUnavailable = entry.isActionUnavailable();
             if (entry.isIntrinsicPhysicalAttack()) {
                 if (entry.name === 'charge') {
@@ -1623,10 +1623,11 @@ export class UnitSvgService {
             }
             // Inventory state
             entry.el.classList.toggle('disabledInventory', actionUnavailable);
-            entry.el.classList.toggle('damagedInventory', state.isDamaged);
-            if (state.isDamaged || actionUnavailable) entry.el.classList.remove('selected');
+            const destroyed = status === 'destroyed';
+            entry.el.classList.toggle('damagedInventory', destroyed);
+            if (destroyed || actionUnavailable) entry.el.classList.remove('selected');
             // Hit modifier badge
-            if (state.isDamaged) {
+            if (destroyed) {
                 this.renderHitModEntry(entry, { profile: [], value: null, changed: false, weakened: false, modifierBreakdown: [] });
             } else {
                 this.renderHitModEntry(

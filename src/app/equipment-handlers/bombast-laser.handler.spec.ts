@@ -7,6 +7,7 @@ import { MiscEquipment, WeaponEquipment, type WeaponDamage } from '../models/equ
 import type { WeaponType } from '../models/weapon-types.model';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 import { EquipmentInteractionRegistry, type HandlerContext } from '../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
 import {
@@ -29,13 +30,11 @@ function owner(gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
         gameRules,
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         isEquipmentActionUnavailable: jasmine.createSpy('isEquipmentActionUnavailable').and.returnValue(false),
-        rules: {
-            computeEntryState: (entry: MountedEquipment) => ({
-                isDamaged: entry.committedDestroyed(),
-                isDisabled: false,
-                hitMod: 0
-            })
-        }
+        rules: createTestEquipmentRules({
+            getEquipmentStatus: (entry: MountedEquipment) => (
+                entry.committedDestroyed() ? 'destroyed' : 'available'
+            )
+        })
     } as never;
 }
 

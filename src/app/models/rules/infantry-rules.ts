@@ -10,7 +10,7 @@ import type { MotiveModes } from '../motiveModes.model';
 import { getTargetUnitTypeModifier } from '../target-number-calculator.model';
 import type { TurnState } from '../turn-state.model';
 import type { UnitComponent } from '../units.model';
-import type { MountedEquipmentRuleState } from './unit-type-rules';
+import type { MountedEquipmentStatus } from './unit-type-rules';
 import { UnitTypeRulesBase, type UnitModifierBreakdownEntry } from './unit-type-rules';
 
 export const FIELD_GUN_LOCATION = 'FGUN';
@@ -88,12 +88,10 @@ export class InfantryRules extends UnitTypeRulesBase {
         return null;
     }
 
-    override computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
-        const state = super.computeEntryState(entry);
-        return {
-            ...state,
-            isDisabled: state.isDisabled || this.isInfantryFieldGunEntryDisabled(entry)
-        };
+    override getEquipmentStatus(entry: MountedEquipment): MountedEquipmentStatus {
+        const availability = super.getEquipmentStatus(entry);
+        if (availability !== 'available') return availability;
+        return this.isInfantryFieldGunEntryDisabled(entry) ? 'disabled' : 'available';
     }
 
     isInfantryFieldGunEntryDisabled(entry: MountedEquipment): boolean {

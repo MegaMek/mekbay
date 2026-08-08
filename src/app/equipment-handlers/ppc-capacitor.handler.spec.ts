@@ -7,6 +7,7 @@ import { MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 import { EquipmentInteractionRegistry, type HandlerContext } from '../services/equipment-interaction-registry.service';
 import { resolveInventoryControlDamageText } from '../utils/inventory-control-damage.util';
 import {
@@ -20,13 +21,11 @@ import {
 function setup(destroyed = false, compatible = true) {
     const owner = {
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        rules: {
-            computeEntryState: (entry: MountedEquipment) => ({
-                isDamaged: entry.committedDestroyed(),
-                isDisabled: false,
-                hitMod: 0
-            })
-        }
+        rules: createTestEquipmentRules({
+            getEquipmentStatus: (entry: MountedEquipment) => (
+                entry.committedDestroyed() ? 'destroyed' : 'available'
+            )
+        })
     } as unknown as CBTForceUnit;
     const capacitor = new MountedEquipment({
         owner,

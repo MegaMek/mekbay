@@ -5,11 +5,12 @@
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 import type { InventoryTargetNumberInput } from './inventory-target-number.util';
 import { inventoryTargetNumberBreakdown, inventoryTargetNumberState, inventoryTargetRangeSelection } from './inventory-target-number.util';
 
 function artilleryInput(distance: number, gameRules: CBTGameRules = CORE_2026_GAME_RULES): InventoryTargetNumberInput {
-    const owner = { rules: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) } } as never;
+    const owner = { rules: createTestEquipmentRules() } as never;
     const equipment = new WeaponEquipment({
         id: 'ArrowIV',
         name: 'Arrow IV',
@@ -46,7 +47,7 @@ function aeroInput(
 ): InventoryTargetNumberInput {
     const owner = {
         getUnit: () => ({ type: 'Aero' }),
-        rules: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) }
+        rules: createTestEquipmentRules()
     } as never;
     const equipment = new WeaponEquipment({
         id: 'AeroWeapon',
@@ -75,7 +76,7 @@ function aeroInput(
 }
 
 function c3LaserInput(actualDistance: number, c3Distance: number, allowExtremeRange = false): InventoryTargetNumberInput {
-    const owner = { rules: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) } } as never;
+    const owner = { rules: createTestEquipmentRules() } as never;
     const equipment = new WeaponEquipment({
         id: 'ERLargeLaser',
         name: 'ER Large Laser',

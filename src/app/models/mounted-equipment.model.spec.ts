@@ -4,6 +4,7 @@
 
 import { AmmoEquipment, MiscEquipment, WeaponEquipment } from './equipment.model';
 import { getMountedOneShotConsumed, MountedAmmo, MountedEquipment, MountedWeapon } from './mounted-equipment.model';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 
 describe('MountedAmmo capacity baseline', () => {
     const ammoEquipment = new AmmoEquipment({
@@ -152,9 +153,7 @@ describe('MountedEquipment physical classification', () => {
 describe('MountedEquipment action availability', () => {
     it('delegates action availability to its owning unit', () => {
         const owner = jasmine.createSpyObj('CBTForceUnit', ['isEquipmentActionUnavailable']);
-        owner.rules = {
-            computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 })
-        };
+        owner.rules = createTestEquipmentRules();
         const entry = new MountedEquipment({ owner, id: 'laser', name: 'Laser' });
         owner.isEquipmentActionUnavailable.and.returnValue(false);
 
@@ -170,9 +169,7 @@ describe('MountedEquipment action availability', () => {
 
     it('is action-unavailable when structurally unavailable without consulting its owner', () => {
         const owner = jasmine.createSpyObj('CBTForceUnit', ['isEquipmentActionUnavailable']);
-        owner.rules = {
-            computeEntryState: () => ({ isDamaged: true, isDisabled: false, hitMod: 0 })
-        };
+        owner.rules = createTestEquipmentRules({ getEquipmentStatus: () => 'destroyed' });
         const entry = new MountedEquipment({ owner, id: 'laser', name: 'Laser' });
 
         expect(entry.isUnavailable()).toBeTrue();

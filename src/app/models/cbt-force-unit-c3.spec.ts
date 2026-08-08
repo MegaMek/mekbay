@@ -9,6 +9,7 @@ import { MountedEquipment } from './mounted-equipment.model';
 import type { SerializedC3NetworkGroup } from './force-serialization';
 import type { InventoryControlRuntimeTarget } from './inventory-control-runtime-state.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 
 const TARGET: InventoryControlRuntimeTarget = {
     id: 'A',
@@ -51,7 +52,7 @@ function c3BadgeUnit(
         shutdown: { value: false, writable: true, configurable: true },
         getUnit: { value: () => ({ comp: [] }), configurable: true },
         rules: {
-            value: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) },
+            value: createTestEquipmentRules(),
             configurable: true,
         },
         getInventory: { value: () => inventory, configurable: true },

@@ -66,11 +66,11 @@ export interface UnitHeatSource {
     replacedByFiringEntryId?: string;
 }
 
-export interface MountedEquipmentRuleState {
-    isDamaged: boolean;
-    isDisabled: boolean;
-    hitMod: number;
-    hitModifierBreakdown?: ToHitModifierBreakdownEntry[];
+export type MountedEquipmentStatus = 'available' | 'disabled' | 'destroyed';
+
+export interface MountedEquipmentToHit {
+    readonly modifier: number;
+    readonly modifiers: readonly ToHitModifierBreakdownEntry[];
 }
 
 export interface ChargeDamage {
@@ -290,11 +290,14 @@ export interface UnitTypeRules {
     /** Rule-derived condition keys exposed through ForceUnit.getCondition/getConditions. */
     computedConditions(): readonly string[];
 
-    /** Compute rule-derived availability and hit modifiers for all inventory entries. */
-    computeAllEntryStates(): Map<MountedEquipment, MountedEquipmentRuleState>;
+    /** Resolve operational status without invoking equipment interaction handlers. */
+    getEquipmentStatus(entry: MountedEquipment): MountedEquipmentStatus;
 
-    /** Compute rule-derived availability and hit modifiers for a single inventory entry. */
-    computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState;
+    /** Resolve to-hit modifiers for all inventory entries. */
+    getEquipmentToHits(): Map<MountedEquipment, MountedEquipmentToHit>;
+
+    /** Resolve rule-derived to-hit modifiers for one inventory entry. */
+    getEquipmentToHit(entry: MountedEquipment): MountedEquipmentToHit;
 
     /** Required control-roll checks for the current phase. */
     getPSRChecks(turnState: TurnState): PSRCheck[];
@@ -477,37 +480,43 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         return ['abandoned', 'immobile', 'crippled', 'disconnected', 'spotting'];
     }
 
-    computeAllEntryStates(): Map<MountedEquipment, MountedEquipmentRuleState> {
-        const result = new Map<MountedEquipment, MountedEquipmentRuleState>();
+    getEquipmentToHits(): Map<MountedEquipment, MountedEquipmentToHit> {
+        const result = new Map<MountedEquipment, MountedEquipmentToHit>();
         for (const entry of this.unit.getInventory()) {
-            result.set(entry, this.computeEntryState(entry));
+            result.set(entry, this.getEquipmentToHit(entry));
         }
         return result;
     }
 
-    computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
-        return this.composeEntryState(entry, {
-            isDamaged: entry.committedDestroyed() || this.entryCriticalSlots(entry).some(slot => !!slot.destroyed),
-            isDisabled: this.isEntryStateDisabled(entry),
-        }, this.getMountedTargetingComputerModifiers(entry));
+    getEquipmentStatus(entry: MountedEquipment): MountedEquipmentStatus {
+        if (entry.committedDestroyed() || this.entryCriticalSlots(entry).some(slot => !!slot.destroyed)) {
+            return 'destroyed';
+        }
+        return this.isEntryStateDisabled(entry) ? 'disabled' : 'available';
     }
 
-    protected composeEntryState(
-        entry: MountedEquipment,
-        state: Pick<MountedEquipmentRuleState, 'isDamaged' | 'isDisabled'>,
-        localModifiers: readonly ToHitModifierBreakdownEntry[] = [],
-    ): MountedEquipmentRuleState {
+    getEquipmentToHit(entry: MountedEquipment): MountedEquipmentToHit {
+        const modifiers = this.getEquipmentToHitModifiers(entry);
+        return {
+            modifier: modifiers.reduce((total, modifier) => total + modifier.modifier, 0),
+            modifiers,
+        };
+    }
+
+    protected getEquipmentToHitModifiers(entry: MountedEquipment): readonly ToHitModifierBreakdownEntry[] {
+        return [
+            ...this.getMountedTargetingComputerModifiers(entry),
+            ...this.getUnitEquipmentToHitModifiers(entry),
+        ];
+    }
+
+    protected getUnitEquipmentToHitModifiers(entry: MountedEquipment): readonly ToHitModifierBreakdownEntry[] {
         const unitModifiers = entry.isPhysicalWeapon()
             ? this.physicalHitModifiers()
             : entry.equipment instanceof WeaponEquipment
                 ? this.rangedHitModifiers()
                 : [];
-        const modifiers = [...localModifiers, ...unitModifiers];
-        return {
-            ...state,
-            hitMod: modifiers.reduce((total, modifier) => total + modifier.modifier, 0),
-            hitModifierBreakdown: modifiers,
-        };
+        return unitModifiers;
     }
 
     protected getMountedTargetingComputerModifiers(entry: MountedEquipment): ToHitModifierBreakdownEntry[] {

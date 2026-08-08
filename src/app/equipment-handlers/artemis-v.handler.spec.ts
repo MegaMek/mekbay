@@ -4,13 +4,18 @@
 
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { Equipment, type AmmoEquipment } from '../models/equipment.model';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 import { ArtemisVHandler } from './artemis-v.handler';
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
 
 function owner(unavailableEntry?: MountedEquipment, jammed = false) {
     return {
-        rules: { computeEntryState: (candidate: MountedEquipment) => ({ isDamaged: candidate === unavailableEntry || candidate.committedDestroyed(), isDisabled: false, hitMod: 0 }) },
+        rules: createTestEquipmentRules({
+            getEquipmentStatus: (candidate: MountedEquipment) => (
+                candidate === unavailableEntry || candidate.committedDestroyed() ? 'destroyed' : 'available'
+            ),
+        }),
         getCondition: (condition: string) => condition === 'jammed' && jammed
     } as never;
 }

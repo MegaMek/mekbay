@@ -13,7 +13,7 @@ import type { UnitComponent } from '../models/units.model';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
 import type { ToHitAdjustment, ToHitModifierBreakdownEntry, ToHitResolution } from '../models/rules/game-rules';
 import { FIELD_GUN_LOCATION, InfantryRules } from '../models/rules/infantry-rules';
-import type { MountedEquipmentRuleState } from '../models/rules/unit-type-rules';
+import type { MountedEquipmentToHit } from '../models/rules/unit-type-rules';
 import { getBattleArmorTrooperNumber } from '../models/battle-armor-location.model';
 import {
     formatBattleArmorTrooperLocation,
@@ -190,12 +190,12 @@ export function getInventoryControlGroups(
     equipmentCatalog: EquipmentRegistry,
     rules: InventoryControlRules = {}
 ): InventoryControlGroup[] {
-    const entryStates = getEntryStates(unit);
+    const equipmentToHits = unit.rules.getEquipmentToHits();
     const ammoSources = getAmmoSources(unit, equipmentCatalog);
     const rows = unit.getInventory()
         .map((entry, index) => {
             const locationLock = getBattleArmorWeaponLocation(entry);
-            return buildInventoryControlRow(entry, index, entryStates, ammoSources, rules, equipmentCatalog, {
+            return buildInventoryControlRow(entry, index, equipmentToHits, ammoSources, rules, equipmentCatalog, {
                 locationLock,
                 destroyed: locationLock
                     ? unit.isEquipmentUnavailable(entry, locationLock)
@@ -448,7 +448,7 @@ function compareRows(a: InventoryControlRow, b: InventoryControlRow, groupId: In
 function buildInventoryControlRow(
     entry: MountedEquipment,
     originalIndex: number,
-    entryStates: Map<MountedEquipment, MountedEquipmentRuleState>,
+    equipmentToHits: Map<MountedEquipment, MountedEquipmentToHit>,
     ammoSources: AmmoSource[],
     rules: InventoryControlRules,
     equipmentCatalog: EquipmentRegistry,
@@ -462,10 +462,11 @@ function buildInventoryControlRow(
     if (entry.el && !entry.el.classList.contains('inventoryEntry') && !fieldGunComponent && !linkedWeaponEnhancement) return null;
     if (!entry.el && !fieldGunComponent && !hasModelDisplay) return null;
 
-    const state = entryStates.get(entry) ?? entry.ruleState();
-    const destroyed = options.destroyed ?? state.isDamaged;
+    const status = unitRules.getEquipmentStatus(entry);
+    const toHit = equipmentToHits.get(entry) ?? unitRules.getEquipmentToHit(entry);
+    const destroyed = options.destroyed ?? status === 'destroyed';
     const disabled = entry.isActionUnavailable()
-        || state.isDisabled
+        || status === 'disabled'
         || rules.isSelectable?.(entry) === false;
     const category = getEntryCategory(entry);
     const { modes, modifiers } = readInventoryControlModesAndModifiers(entry);
@@ -474,8 +475,8 @@ function buildInventoryControlRow(
     const ammo = getInventoryControlAmmoSummary(entry, ammoSources, selectedMode, equipmentCatalog, rules.matchesAmmo, options.locationLock);
     const selectedAmmoOption = resolveInventoryControlSelectedAmmoOption(ammo.options, entry.owner.getInventoryControlEntryAmmoOption?.(entry.id));
     const selectedAmmo = selectedAmmoOption?.ammo ?? null;
-    const additionalHitModifier = state?.hitMod ?? 0;
-    const hitModifierBreakdown = state?.hitModifierBreakdown ?? [];
+    const additionalHitModifier = toHit.modifier;
+    const hitModifierBreakdown = toHit.modifiers;
     const hitResolution = resolveInventoryControlHitModifier(
         entry,
         additionalHitModifier,
@@ -577,9 +578,6 @@ function getBattleArmorWeaponLocation(entry: MountedEquipment): string | undefin
     return Array.from(entry.locations ?? []).find(location => getBattleArmorTrooperNumber(location) !== null);
 }
 
-function getEntryStates(unit: CBTForceUnit): Map<MountedEquipment, MountedEquipmentRuleState> {
-    return unit.rules.computeAllEntryStates();
-}
 
 function getEntryCategory(entry: MountedEquipment): InventoryControlGroupId {
     if (entry.isPhysicalWeapon()) return 'physical';

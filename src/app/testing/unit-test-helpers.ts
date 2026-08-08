@@ -13,7 +13,7 @@ import { type MountedEquipmentInit, MountedEquipment  } from '../models/mounted-
 import { type CriticalSlot, type HeatProfile } from '../models/force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../models/motiveModes.model';
 import { ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY, CORE_2026_GAME_RULES, type CBTGameRules, type C3DegradationSource, type ToHitAdjustment, type ToHitModifierBreakdownEntry } from '../models/rules/game-rules';
-import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE, type UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
+import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE, type MountedEquipmentStatus, type MountedEquipmentToHit, type UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
 import { resolveSelectedInventoryWeaponHeat } from '../utils/inventory-control-heat.util';
 import type { InventoryControlDisplayData, InventoryControlRules } from '../utils/inventory-control.util';
 
@@ -146,10 +146,38 @@ export function createEmptyUnit(overrides: TestUnitOverrides = {}): Unit {
 }
 
 export interface CBTForceUnitTestEntryState {
-    isDamaged: boolean;
-    isDisabled: boolean;
-    hitMod: number;
-    hitModifierBreakdown?: readonly ToHitModifierBreakdownEntry[];
+    status: MountedEquipmentStatus;
+    toHit: MountedEquipmentToHit;
+}
+
+export function createTestEquipmentState(
+    status: MountedEquipmentStatus = 'available',
+    modifiers: readonly ToHitModifierBreakdownEntry[] = [],
+): CBTForceUnitTestEntryState {
+    return {
+        status,
+        toHit: {
+            modifier: modifiers.reduce((total, modifier) => total + modifier.modifier, 0),
+            modifiers,
+        },
+    };
+}
+
+export interface TestEquipmentRulesOptions {
+    getEquipmentStatus?: (entry: MountedEquipment) => MountedEquipmentStatus;
+    getEquipmentToHit?: (entry: MountedEquipment) => MountedEquipmentToHit;
+}
+
+export function createTestEquipmentRules(options: TestEquipmentRulesOptions = {}) {
+    const getEquipmentStatus = options.getEquipmentStatus
+        ?? ((entry: MountedEquipment): MountedEquipmentStatus => entry.committedDestroyed() ? 'destroyed' : 'available');
+    const getEquipmentToHit = options.getEquipmentToHit
+        ?? (() => ({ modifier: 0, modifiers: [] }));
+    return {
+        getEquipmentStatus,
+        getEquipmentToHit,
+        getEquipmentToHits: () => new Map<MountedEquipment, MountedEquipmentToHit>(),
+    };
 }
 
 export interface CBTForceUnitTestHarnessOptions {
@@ -176,7 +204,8 @@ export interface CBTForceUnitTestHarnessOptions {
     allowExtremeRange?: boolean;
     readOnly?: boolean;
     hasDirectInventory?: boolean;
-    computeEntryState?: (entry: MountedEquipment) => CBTForceUnitTestEntryState;
+    getEquipmentStatus?: (entry: MountedEquipment) => MountedEquipmentStatus;
+    getEquipmentToHit?: (entry: MountedEquipment) => MountedEquipmentToHit;
     isEquipmentUnavailable?: (source: MountedEquipment | CriticalSlot, location?: string) => boolean;
     applyInventoryControlDisplayEffects?: (entry: MountedEquipment, display: InventoryControlDisplayData) => InventoryControlDisplayData;
 }
@@ -262,11 +291,15 @@ export class CBTForceUnitTestHarness {
             }
         };
 
+        const getEntryState = (entry: MountedEquipment) => this.entryStates.get(entry) ?? defaultEntryState(entry);
+        const getEquipmentStatus = (entry: MountedEquipment) => options.getEquipmentStatus?.(entry)
+            ?? getEntryState(entry).status;
+        const getEquipmentToHit = (entry: MountedEquipment) => options.getEquipmentToHit?.(entry)
+            ?? getEntryState(entry).toHit;
         const rules = {
-            computeAllEntryStates: () => this.entryStates,
-            computeEntryState: (entry: MountedEquipment) => this.entryStates.get(entry)
-                ?? options.computeEntryState?.(entry)
-                ?? defaultEntryState(entry),
+            getEquipmentStatus,
+            getEquipmentToHits: () => new Map(Array.from(this.entryStates, ([entry, state]) => [entry, state.toHit])),
+            getEquipmentToHit,
             heatDissipation: () => options.tracksHeat === false ? null : {
                 totalPips: 10,
                 healthyPips: 10,
@@ -405,11 +438,12 @@ export function createCBTForceUnitTestHarness(options: CBTForceUnitTestHarnessOp
 }
 
 function defaultEntryState(entry: MountedEquipment): CBTForceUnitTestEntryState {
-    return {
-        isDamaged: entry.committedDestroyed(),
-        isDisabled: entry.states.get(ENTRY_DISABLED_STATE_KEY) === ENTRY_DISABLED_STATE_VALUE,
-        hitMod: 0
-    };
+    const status = entry.committedDestroyed()
+        ? 'destroyed'
+        : entry.states.get(ENTRY_DISABLED_STATE_KEY) === ENTRY_DISABLED_STATE_VALUE
+            ? 'disabled'
+            : 'available';
+    return createTestEquipmentState(status);
 }
 
 function defaultEquipmentUnavailable(source: MountedEquipment | CriticalSlot): boolean {

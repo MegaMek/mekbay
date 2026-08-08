@@ -10,7 +10,7 @@ import { type Equipment, WeaponEquipment } from '../models/equipment.model';
 import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
-import { createEmptyUnit } from '../testing/unit-test-helpers';
+import { createEmptyUnit, createTestEquipmentRules } from '../testing/unit-test-helpers';
 import { EquipmentInteractionHandler, EquipmentInteractionRegistryService, type HandlerContext } from './equipment-interaction-registry.service';
 import type { Force } from '../models/force.model';
 
@@ -25,7 +25,7 @@ function owner(gameRules?: CBTGameRules): never {
         gameRules,
         getUnit: () => createEmptyUnit(),
         isEquipmentActionUnavailable: () => false,
-        rules: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) },
+        rules: createTestEquipmentRules(),
     } as never;
 }
 
@@ -248,7 +248,9 @@ describe('EquipmentInteractionRegistryService', () => {
         });
         apollo.owner = {
             ...apollo.owner,
-            rules: { computeEntryState: (candidate: MountedEquipment) => ({ isDamaged: candidate === apollo, isDisabled: false, hitMod: 0 }) }
+            rules: createTestEquipmentRules({
+                getEquipmentStatus: (candidate: MountedEquipment) => candidate === apollo ? 'destroyed' : 'available',
+            })
         } as never;
         const mrm = new MountedEquipment({
             owner: owner(TW_GAME_RULES),

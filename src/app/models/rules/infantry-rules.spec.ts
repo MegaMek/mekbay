@@ -43,7 +43,7 @@ describe('InfantryRules', () => {
 
         expect(rules.getFieldGunComponent(entries[0])).toBe(fieldGunComponent);
         expect(rules.getFieldGunFunctionalCount(fieldGunComponent)).toBe(2);
-        expect(entries.map(entry => rules.computeEntryState(entry).isDisabled)).toEqual([false, false, true]);
+        expect(entries.map(entry => rules.getEquipmentStatus(entry))).toEqual(['available', 'available', 'disabled']);
     });
 
     it('does not mutate derived intrinsic ammo while evaluating Battle Armor destruction', () => {

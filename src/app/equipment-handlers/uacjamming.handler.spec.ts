@@ -6,6 +6,7 @@ import { WeaponEquipment, type AmmoType } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../models/rules/unit-type-rules';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import { isEquipmentDisabledByFailure } from './disabled-equipment.handler';
 import { UACJammingHandler } from './uacjamming.handler';
@@ -14,9 +15,15 @@ function owner(gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
     return {
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         gameRules,
-        rules: {
-            computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: isEquipmentDisabledByFailure(entry), hitMod: 0 })
-        }
+        rules: createTestEquipmentRules({
+            getEquipmentStatus: (entry: MountedEquipment) => (
+                entry.committedDestroyed()
+                    ? 'destroyed'
+                    : isEquipmentDisabledByFailure(entry)
+                        ? 'disabled'
+                        : 'available'
+            )
+        })
     } as never;
 }
 

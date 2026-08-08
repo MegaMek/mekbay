@@ -4,12 +4,17 @@
 
 import { MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import { LaserInsulatorHandler } from './laser-insulator.handler';
 
 function owner(unavailableEntry?: MountedEquipment) {
     return {
-        rules: { computeEntryState: (candidate: MountedEquipment) => ({ isDamaged: candidate === unavailableEntry || candidate.committedDestroyed(), isDisabled: false, hitMod: 0 }) }
+        rules: createTestEquipmentRules({
+            getEquipmentStatus: (candidate: MountedEquipment) => (
+                candidate === unavailableEntry || candidate.committedDestroyed() ? 'destroyed' : 'available'
+            ),
+        })
     } as never;
 }
 

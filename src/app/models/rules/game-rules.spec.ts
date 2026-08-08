@@ -6,6 +6,7 @@ import { EquipmentFlag } from '../equipment-flags.type';
 import { EquipmentRegistry } from '../equipment-lookup';
 import { AmmoEquipment, MiscEquipment, WeaponEquipment, type Equipment } from '../equipment.model';
 import { MountedEquipment } from '../mounted-equipment.model';
+import { createTestEquipmentRules } from '../../testing/unit-test-helpers';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, separateHeatFireModifier } from './game-rules';
 
 let entryId = 0;
@@ -13,8 +14,11 @@ let entryId = 0;
 function owner() {
     return {
         rules: {
-            computeEntryState: (candidate: MountedEquipment) => ({ isDamaged: candidate.committedDestroyed(), isDisabled: false, hitMod: 0 }),
-            computeAllEntryStates: () => new Map(),
+            ...createTestEquipmentRules({
+                getEquipmentStatus: (candidate: MountedEquipment) => (
+                    candidate.committedDestroyed() ? 'destroyed' : 'available'
+                ),
+            }),
             heatDissipation: () => null
         }
     } as never;

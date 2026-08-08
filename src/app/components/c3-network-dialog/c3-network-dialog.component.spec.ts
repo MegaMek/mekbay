@@ -10,6 +10,7 @@ import type { Force } from '../../models/force.model';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import type { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import { MountedEquipment } from '../../models/mounted-equipment.model';
+import { createTestEquipmentRules } from '../../testing/unit-test-helpers';
 import {
     C3Capabilities,
     C3_FLAGS,
@@ -90,10 +91,10 @@ function c3UnitWithComponents(id: string, componentFlags: readonly (readonly str
         },
         rules: {
             calculateC3Tax: () => 0,
-            computeEntryState: (entry: MountedEquipment) => ({
-                isDamaged: destroyedComponents().has(inventory.indexOf(entry)),
-                isDisabled: false,
-                hitMod: 0,
+            ...createTestEquipmentRules({
+                getEquipmentStatus: (entry: MountedEquipment) => (
+                    destroyedComponents().has(inventory.indexOf(entry)) ? 'destroyed' : 'available'
+                ),
             }),
         },
     } as unknown as CBTForceUnit;

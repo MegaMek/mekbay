@@ -26,7 +26,7 @@ import type { EquipmentDialogContext } from './equipment-dialog.model';
 import type { MotiveModes } from '../../models/motiveModes.model';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../../models/rules/unit-type-rules';
 import { ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY, CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules, type C3DegradationSource, SKILL_BREAKDOWN_PRIORITY } from '../../models/rules/game-rules';
-import { createCBTForceUnitTestHarness, type CBTForceUnitTestEntryState, type TestUnitOverrides } from '../../testing/unit-test-helpers';
+import { createCBTForceUnitTestHarness, createTestEquipmentState, type CBTForceUnitTestEntryState, type TestUnitOverrides } from '../../testing/unit-test-helpers';
 import { getVibrobladeMode, VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../../equipment-handlers/vibroblade.handler';
 import { EquipmentFlag } from '../../models/equipment-flags.type';
 import { EquipmentRegistry } from '../../models/equipment-lookup';
@@ -276,21 +276,13 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const charge = entry({ id: 'Charge', intrinsicPhysicalAttack: true });
         const deathFromAbove = entry({ id: 'Death From Above', intrinsicPhysicalAttack: true });
         const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([
-            [charge, {
-                isDamaged: false,
-                isDisabled: false,
-                hitMod: 3,
-                hitModifierBreakdown: [
+            [charge, createTestEquipmentState('available', [
                     { label: 'Damaged actuator', modifier: 1, weakened: true },
                     { label: 'Prone', modifier: 2 }
-                ]
-            }],
-            [deathFromAbove, {
-                isDamaged: false,
-                isDisabled: false,
-                hitMod: -1,
-                hitModifierBreakdown: [{ label: 'Dedicated Pilot', modifier: -1 }]
-            }]
+                ])],
+            [deathFromAbove, createTestEquipmentState('available', [
+                { label: 'Dedicated Pilot', modifier: -1 }
+            ])]
         ]);
         const { component, fixture, unit } = createComponent([charge, deathFromAbove], {}, [], entryStates);
         const rows = component.groups().find(group => group.id === 'physical')!.rows;
@@ -481,7 +473,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
     it('shows rule-damaged inventory rows as destroyed', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), destroyed: false, el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
         const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([
-            [laser, { isDamaged: true, isDisabled: false, hitMod: 0 }]
+            [laser, createTestEquipmentState('destroyed', [])]
         ]);
         const { component } = createComponent([laser], {}, [], entryStates);
 
@@ -570,7 +562,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
     it('marks rows disabled from entry state rules', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
         const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([
-            [laser, { isDamaged: false, isDisabled: true, hitMod: 0 }]
+            [laser, createTestEquipmentState('disabled', [])]
         ]);
         const { component } = createComponent([laser], {}, [], entryStates);
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
@@ -839,7 +831,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         apollo.parent = mrm;
         const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([
-            [apollo, { isDamaged: true, isDisabled: false, hitMod: 0 }]
+            [apollo, createTestEquipmentState('destroyed', [])]
         ]);
 
         const { component, fixture } = createComponent([mrm, apollo], {}, [], entryStates, { gameRules: TW_GAME_RULES });
@@ -865,15 +857,13 @@ describe('WeaponsEquipmentPanelComponent', () => {
             equipment: weapon('ER Medium Laser'),
             el: svgEntry('<g><g class="name"><text>ER Medium Laser</text></g><text class="range_short">5</text><text class="range_medium">10</text><text class="range_long">15</text></g>')
         });
-        const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([[laser, {
-            isDamaged: false,
-            isDisabled: false,
-            hitMod: 0,
-            hitModifierBreakdown: [
+        const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([[laser, createTestEquipmentState(
+            'available',
+            [
                 { label: 'Heat - Fire Modifier', modifier: 1, weakened: true, kind: 'heat' },
                 { label: 'Targeting Computer', modifier: -1 }
             ]
-        }]]);
+        )]]);
         const { component, fixture } = createComponent([laser], {}, [], entryStates);
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         const targetState = component.targetState(row);
@@ -898,12 +888,10 @@ describe('WeaponsEquipmentPanelComponent', () => {
             equipment: weapon('ER Medium Laser'),
             el: svgEntry('<g><g class="name"><text>ER Medium Laser</text></g><text class="range_short">5</text><text class="range_medium">10</text><text class="range_long">15</text></g>')
         });
-        const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([[laser, {
-            isDamaged: false,
-            isDisabled: false,
-            hitMod: 0,
-            hitModifierBreakdown: [{ label: 'Targeting Computer Destroyed', modifier: 0, weakened: true }]
-        }]]);
+        const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([[laser, createTestEquipmentState(
+            'available',
+            [{ label: 'Targeting Computer Destroyed', modifier: 0, weakened: true }]
+        )]]);
         const { component, fixture } = createComponent([laser], {}, [], entryStates);
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         const hitCell = fixture.nativeElement.querySelector('.hit-cell') as HTMLElement;
@@ -920,17 +908,15 @@ describe('WeaponsEquipmentPanelComponent', () => {
             equipment: weapon('Pulse Laser', 'NA', 0, [3, 6, 9, 12], -1),
             el: svgEntry('<g><g class="name"><text>Pulse Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>')
         });
-        const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([[laser, {
-            isDamaged: false,
-            isDisabled: false,
-            hitMod: -1,
-            hitModifierBreakdown: [
+        const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([[laser, createTestEquipmentState(
+            'available',
+            [
                 { label: 'Damaged Fire Control', modifier: 1, weakened: true },
                 { label: 'Targeting Computer', modifier: -1 },
                 { label: 'Heat - Fire Modifier', modifier: 0, weakened: true, kind: 'heat' },
                 { label: 'Pulse Module', modifier: -1 }
             ]
-        }]]);
+        )]]);
         const { component, fixture } = createComponent([laser], {}, [], entryStates);
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         const hitCell = fixture.nativeElement.querySelector('.hit-cell') as HTMLElement;
@@ -1669,8 +1655,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
         const disabled = entry({ id: 'disabled', equipment: weapon('disabled'), el: svgEntry('<g><g class="name"><text>Disabled</text></g></g>') });
         const punch = entry({ id: 'punch', intrinsicPhysicalAttack: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
-        const entryStates = new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>([
-            [disabled, { isDamaged: false, isDisabled: true, hitMod: 0 }]
+        const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([
+            [disabled, createTestEquipmentState('disabled', [])]
         ]);
         const { component, fixture, unit } = createComponent([first, second, broken, disabled, punch], {}, [], entryStates);
         unit.createInventoryControlTarget();
@@ -1711,7 +1697,13 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
     it('uses assigned target distance for range selection and target number math', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [3, 6, 9, 12]), el: svgEntry('<g><g class="name"><text>Wrong SVG Name</text></g><text class="range_min">99</text><text class="range_short">99</text><text class="range_medium">99</text><text class="range_long">99</text></g>') });
-        const { component, fixture, unit } = createComponent([laser], {}, [], new Map([[laser, { isDamaged: false, isDisabled: false, hitMod: 1 }]]), { gunnerySkill: 4, moveMode: 'run' });
+        const { component, fixture, unit } = createComponent(
+            [laser],
+            {},
+            [],
+            new Map([[laser, createTestEquipmentState('available', [{ label: 'Hit Modifier', modifier: 1 }])]]),
+            { gunnerySkill: 4, moveMode: 'run' }
+        );
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 8, tnModifier: 1 });
@@ -1955,15 +1947,10 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
     it('shows heat fire modifiers as a separate target number term', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [3, 6, 9, 12]), el: svgEntry('<g><g class="name"><text>Wrong SVG Name</text></g><text class="range_short">99</text><text class="range_medium">99</text><text class="range_long">99</text></g>') });
-        const { component, fixture, unit } = createComponent([laser], {}, [], new Map([[laser, {
-            isDamaged: false,
-            isDisabled: false,
-            hitMod: 3,
-            hitModifierBreakdown: [
+        const { component, fixture, unit } = createComponent([laser], {}, [], new Map([[laser, createTestEquipmentState('available', [
                 { label: 'Hit Modifier', modifier: 1 },
                 { label: 'Heat - Fire Modifier', modifier: 2, weakened: true, kind: 'heat' }
-            ]
-        }]]), { gunnerySkill: 4, moveMode: 'stationary' });
+            ])]]), { gunnerySkill: 4, moveMode: 'stationary' });
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 4, tnModifier: 1 });
@@ -1986,14 +1973,9 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
     it('extracts Aero heat from its entry-state hit modifier', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [3, 6, 9, 12]), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
-        const { component, unit } = createComponent([laser], {}, [], new Map([[laser, {
-            isDamaged: false,
-            isDisabled: false,
-            hitMod: 1,
-            hitModifierBreakdown: [
+        const { component, unit } = createComponent([laser], {}, [], new Map([[laser, createTestEquipmentState('available', [
                 { label: 'Heat - Fire Modifier', modifier: 1, weakened: true, kind: 'heat' }
-            ]
-        }]]), { gunnerySkill: 4, moveMode: 'stationary' });
+            ])]]), { gunnerySkill: 4, moveMode: 'stationary' });
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 1 });
@@ -2097,8 +2079,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
         const disabled = entry({ id: 'disabled', equipment: weapon('disabled'), el: svgEntry('<g><g class="name"><text>Disabled</text></g></g>') });
         const punch = entry({ id: 'punch', intrinsicPhysicalAttack: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
-        const entryStates = new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>([
-            [disabled, { isDamaged: false, isDisabled: true, hitMod: 0 }]
+        const entryStates = new Map<MountedEquipment, CBTForceUnitTestEntryState>([
+            [disabled, createTestEquipmentState('disabled', [])]
         ]);
         const { component, fixture, unit } = createComponent([first, second, broken, disabled, punch], {}, [], entryStates);
         fixture.detectChanges();

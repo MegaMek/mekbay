@@ -156,7 +156,7 @@ describe('VehicleRules', () => {
         const targetingComputer = entry({ equipment: equipment('TargetingComputer', ['F_TARGETING_COMPUTER']) });
         const activeRules = createRulesHarness({ inventory: [directFire, targetingComputer] });
 
-        expect(activeRules.computeEntryState(directFire)).toEqual(jasmine.objectContaining({ hitMod: -1 }));
+        expect(activeRules.getEquipmentToHit(directFire).modifier).toBe(-1);
 
         const destroyedDirectFire = new MountedWeapon({
             owner: undefined as unknown as CBTForceUnit,
@@ -170,10 +170,9 @@ describe('VehicleRules', () => {
         });
         const destroyedRules = createRulesHarness({ inventory: [destroyedDirectFire, destroyedTargetingComputer] });
 
-        expect(destroyedRules.computeEntryState(destroyedDirectFire)).toEqual(jasmine.objectContaining({
-            hitMod: 0,
-            hitModifierBreakdown: [{ label: 'DestroyedTargetingComputer Destroyed', modifier: 0, weakened: true }],
-        }));
+        expect(destroyedRules.getEquipmentToHit(destroyedDirectFire).modifier).toBe(0);
+        expect(destroyedRules.getEquipmentToHit(destroyedDirectFire).modifiers)
+            .toEqual([{ label: 'DestroyedTargetingComputer Destroyed', modifier: 0, weakened: true }]);
     });
 
     it('does not apply a targeting computer when selected ammo creates a cluster flak attack', () => {
@@ -203,7 +202,7 @@ describe('VehicleRules', () => {
             selectedAmmo: flechetteAmmo
         });
 
-        expect(rules.computeEntryState(mountedAutocannon)).toEqual(jasmine.objectContaining({ hitMod: 0 }));
+        expect(rules.getEquipmentToHit(mountedAutocannon).modifier).toBe(0);
     });
 
     it('excludes cluster and flak weapons from targeting computers except non-flak HAGs', () => {
@@ -240,9 +239,9 @@ describe('VehicleRules', () => {
         });
         const rules = createRulesHarness({ inventory: [clusterWeapon, flakWeapon, hag, targetingComputer] });
 
-        expect(rules.computeEntryState(clusterWeapon)).toEqual(jasmine.objectContaining({ hitMod: 0 }));
-        expect(rules.computeEntryState(flakWeapon)).toEqual(jasmine.objectContaining({ hitMod: 0 }));
-        expect(rules.computeEntryState(hag)).toEqual(jasmine.objectContaining({ hitMod: -1 }));
+        expect(rules.getEquipmentToHit(clusterWeapon).modifier).toBe(0);
+        expect(rules.getEquipmentToHit(flakWeapon).modifier).toBe(0);
+        expect(rules.getEquipmentToHit(hag).modifier).toBe(-1);
     });
 
     it('does not allow pulse weapons to make aimed shots against mobile targets', () => {
@@ -547,13 +546,12 @@ describe('VehicleRules', () => {
             { label: 'Sensor hits', modifier: 3, weakened: true },
         ];
         expect(rules.getBaseGunnerySkill()).toBe(4);
-        const weaponState = rules.computeEntryState(weaponEntry);
-        expect(weaponState.hitMod).toBe(6);
-        expect(weaponState.hitModifierBreakdown).toEqual(expectedRangedModifiers);
-        expect(rules.getBaseGunnerySkill() + weaponState.hitMod).toBe(10);
-        expect(rules.computeEntryState(physicalEntry)).toEqual(jasmine.objectContaining({
-            hitMod: 1,
-            hitModifierBreakdown: [
+        const weaponState = rules.getEquipmentToHit(weaponEntry);
+        expect(weaponState.modifier).toBe(6);
+        expect(weaponState.modifiers).toEqual(expectedRangedModifiers);
+        expect(rules.getBaseGunnerySkill() + weaponState.modifier).toBe(10);
+        expect(rules.getEquipmentToHit(physicalEntry)).toEqual(jasmine.objectContaining({
+            modifiers: [
                 { label: 'Commander hit', modifier: 1, weakened: true },
             ],
         }));
@@ -579,14 +577,10 @@ describe('VehicleRules', () => {
         expect(rules.hasComputedCondition('disconnected')).toBeTrue();
         expect(rules.hasComputedCondition('immobile')).toBeTrue();
         expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, moveImpaired: true }));
-        expect(rules.computeEntryState(weaponEntry)).toEqual(jasmine.objectContaining({
-            hitMod: 0,
-            hitModifierBreakdown: [],
-        }));
-        expect(rules.computeEntryState(physicalEntry)).toEqual(jasmine.objectContaining({
-            hitMod: 0,
-            hitModifierBreakdown: [],
-        }));
+        expect(rules.getEquipmentToHit(weaponEntry).modifier).toBe(0);
+        expect(rules.getEquipmentToHit(weaponEntry)).toEqual(jasmine.objectContaining({ modifiers: [] }));
+        expect(rules.getEquipmentToHit(physicalEntry).modifier).toBe(0);
+        expect(rules.getEquipmentToHit(physicalEntry)).toEqual(jasmine.objectContaining({ modifiers: [] }));
         expect(rules.PSRModifiers().modifier).toBe(0);
     });
 
@@ -614,8 +608,8 @@ describe('VehicleRules', () => {
             inventory: [energyEntry, ballisticEntry],
         });
 
-        expect(rules.computeEntryState(energyEntry).isDisabled).toBeTrue();
-        expect(rules.computeEntryState(ballisticEntry).isDisabled).toBeFalse();
+        expect(rules.getEquipmentStatus(energyEntry)).toBe('disabled');
+        expect(rules.getEquipmentStatus(ballisticEntry)).toBe('available');
     });
 
     it('disables non-physical weapons at Sensor hits level four', () => {
@@ -626,8 +620,8 @@ describe('VehicleRules', () => {
             inventory: [weaponEntry, chargeEntry],
         });
 
-        expect(rules.computeEntryState(weaponEntry).isDisabled).toBeTrue();
-        expect(rules.computeEntryState(chargeEntry).isDisabled).toBeFalse();
+        expect(rules.getEquipmentStatus(weaponEntry)).toBe('disabled');
+        expect(rules.getEquipmentStatus(chargeEntry)).toBe('available');
     });
 
     it('calculates charge damage for core2026 vehicles and preserves TW sheet damage', () => {
@@ -658,9 +652,9 @@ describe('VehicleRules', () => {
             moveMode: 'run',
         });
 
-        expect(rules.computeEntryState(frontWeapon).hitMod).toBe(2);
-        expect(rules.computeEntryState(rearWeapon).hitMod).toBe(0);
-        expect(rules.computeEntryState(frontRightWeapon).hitMod).toBe(2);
+        expect(rules.getEquipmentToHit(frontWeapon).modifier).toBe(2);
+        expect(rules.getEquipmentToHit(rearWeapon).modifier).toBe(0);
+        expect(rules.getEquipmentToHit(frontRightWeapon).modifier).toBe(2);
     });
 
     it('reports stabilizer-affected weapons before movement mode is selected', () => {
@@ -672,11 +666,11 @@ describe('VehicleRules', () => {
             moveMode: null,
         });
 
-        expect(rules.computeEntryState(frontRightWeapon).hitMod).toBe(0);
-        expect(rules.computeEntryState(frontRightWeapon).hitModifierBreakdown).toContain(jasmine.objectContaining({
+        expect(rules.getEquipmentToHit(frontRightWeapon).modifier).toBe(0);
+        expect(rules.getEquipmentToHit(frontRightWeapon).modifiers).toContain(jasmine.objectContaining({
             label: 'Stabilizer Hit', modifier: 0, weakened: true,
         }));
-        expect(rules.computeEntryState(rearWeapon).hitModifierBreakdown).not.toContain(jasmine.objectContaining({
+        expect(rules.getEquipmentToHit(rearWeapon).modifiers).not.toContain(jasmine.objectContaining({
             label: 'Stabilizer Hit',
         }));
     });

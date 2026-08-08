@@ -4,7 +4,7 @@
 
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
-import type { CrewStateControlDefinition, CrewStateDefinition, UnitConditionControl, MountedEquipmentRuleState, UnitRuleModifier } from './unit-type-rules';
+import type { CrewStateControlDefinition, CrewStateDefinition, UnitConditionControl, MountedEquipmentStatus, UnitRuleModifier } from './unit-type-rules';
 import type { ToHitModifierBreakdownEntry } from './game-rules';
 import { crewStateDefinitions, sortPSRModifiers, unitConditionControls, UnitTypeRulesBase } from './unit-type-rules';
 import type { PSRCheck, TurnState } from '../turn-state.model';
@@ -263,35 +263,36 @@ export class VehicleRules extends UnitTypeRulesBase {
 
     override readonly PSRTargetRoll = computed<number>(() => this.unit.pilotingSkill() + this.PSRModifiers().modifier);
 
-    override computeAllEntryStates(): Map<MountedEquipment, MountedEquipmentRuleState> {
-        const result = new Map<MountedEquipment, MountedEquipmentRuleState>();
-        for (const entry of this.unit.getInventory()) {
-            result.set(entry, this.computeEntryState(entry));
-        }
-        return result;
-    }
-
-    override computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
+    override getEquipmentStatus(entry: MountedEquipment): MountedEquipmentStatus {
         const status = this.systemsStatus();
-        const isDamaged = this.entryCriticalSlots(entry).some(slot => slot.destroyed) || entry.committedDestroyed();
-        let isDisabled = this.isEntryStateDisabled(entry);
-        const hitModifierBreakdown: ToHitModifierBreakdownEntry[] = [];
-        const isPhysical = this.isPhysicalEntry(entry);
+        if (this.entryCriticalSlots(entry).some(slot => slot.destroyed) || entry.committedDestroyed()) {
+            return 'destroyed';
+        }
+        let disabled = this.isEntryStateDisabled(entry);
 
-        if (!isPhysical) {
-            hitModifierBreakdown.push(...this.getMountedTargetingComputerModifiers(entry));
+        if (!this.isPhysicalEntry(entry)) {
             if (status.engineHit && entry.equipment?.flags.has('F_ENERGY')) {
-                isDisabled = true;
+                disabled = true;
             }
             if (status.sensorHits >= 4 && entry.equipment instanceof WeaponEquipment) {
-                isDisabled = true;
+                disabled = true;
             }
+        }
+        return disabled ? 'disabled' : 'available';
+    }
+
+    protected override getEquipmentToHitModifiers(entry: MountedEquipment): readonly ToHitModifierBreakdownEntry[] {
+        const status = this.systemsStatus();
+        const hitModifierBreakdown: ToHitModifierBreakdownEntry[] = [];
+
+        if (!this.isPhysicalEntry(entry)) {
+            hitModifierBreakdown.push(...this.getMountedTargetingComputerModifiers(entry));
             const stabilizerModifier = this.stabilizerHitModifier(entry, status);
             if (this.stabilizerHitApplies(entry, status)) {
                 hitModifierBreakdown.push({ label: 'Stabilizer Hit', modifier: stabilizerModifier, weakened: true });
             }
         }
-        return this.composeEntryState(entry, { isDamaged, isDisabled }, hitModifierBreakdown);
+        return [...hitModifierBreakdown, ...this.getUnitEquipmentToHitModifiers(entry)];
     }
 
     private applyMotiveDamage(base: number, motiveHits: MotiveHitTimestamp[]): number {

@@ -5,6 +5,7 @@
 import { MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import type { WeaponType } from '../models/weapon-types.model';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
 import { HAG_FLAK_MODE, HAG_STANDARD_MODE, HagHandler, selectedHagMode } from './hag.handler';
@@ -13,9 +14,7 @@ function owner() {
     return {
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         isEquipmentActionUnavailable: jasmine.createSpy('isEquipmentActionUnavailable').and.returnValue(false),
-        rules: {
-            computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 })
-        }
+        rules: createTestEquipmentRules()
     } as never;
 }
 

@@ -12,6 +12,7 @@ import {
     type C3EmergencyMasterStatus,
 } from '../models/c3-emergency-master.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import { C3EmergencyMasterHandler, C3EM_TOGGLE_CHOICE_VALUE } from './c3-emergency-master.handler';
 
@@ -21,7 +22,11 @@ function fixture(initialStatus: C3EmergencyMasterStatus = 'dormant') {
     const owner = {
         id: 'emergency-unit',
         readOnly: () => false,
-        rules: { computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }) },
+        rules: createTestEquipmentRules({
+            getEquipmentStatus: (entry: MountedEquipment) => (
+                entry.committedDestroyed() ? 'destroyed' : 'available'
+            ),
+        }),
         getInventory: () => [equipment],
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         getNotificationDisplayName: () => 'Emergency Unit',

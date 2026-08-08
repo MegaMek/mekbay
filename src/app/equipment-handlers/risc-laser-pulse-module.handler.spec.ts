@@ -4,12 +4,20 @@
 
 import { MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
 import { RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE, RiscLaserPulseModuleHandler } from './risc-laser-pulse-module.handler';
 
 function owner() {
-    return { setInventoryEntry: jasmine.createSpy('setInventoryEntry'), rules: { computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }) } } as never;
+    return {
+        setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
+        rules: createTestEquipmentRules({
+            getEquipmentStatus: (entry: MountedEquipment) => (
+                entry.committedDestroyed() ? 'destroyed' : 'available'
+            ),
+        }),
+    } as never;
 }
 
 function laser(module: MountedEquipment, states = new Map<string, string>()): MountedEquipment {

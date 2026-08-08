@@ -6,13 +6,22 @@ import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { Equipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { ENTRY_DISABLED_STATE_KEY } from '../models/rules/unit-type-rules';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import { DisabledEquipmentHandler, isEquipmentDisabledByFailure } from './disabled-equipment.handler';
 
 function owner() {
     return {
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        rules: { computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: isEquipmentDisabledByFailure(entry), hitMod: 0 }) }
+        rules: createTestEquipmentRules({
+            getEquipmentStatus: (entry: MountedEquipment) => (
+                entry.committedDestroyed()
+                    ? 'destroyed'
+                    : isEquipmentDisabledByFailure(entry)
+                        ? 'disabled'
+                        : 'available'
+            ),
+        })
     } as never;
 }
 
@@ -56,12 +65,12 @@ describe('DisabledEquipmentHandler', () => {
 
         expect(mounted.states.get(ENTRY_DISABLED_STATE_KEY)).toBe('true');
         expect(mounted.owner.setInventoryEntry).toHaveBeenCalledWith(mounted);
-        expect(mounted.owner.rules.computeEntryState(mounted).isDisabled).toBeTrue();
+        expect(mounted.owner.rules.getEquipmentStatus(mounted)).toBe('disabled');
 
         handler.handleSelection(mounted, handler.getChoices(mounted, context)[0], context);
 
         expect(mounted.states.has(ENTRY_DISABLED_STATE_KEY)).toBeFalse();
-        expect(mounted.owner.rules.computeEntryState(mounted).isDisabled).toBeFalse();
+        expect(mounted.owner.rules.getEquipmentStatus(mounted)).toBe('available');
     });
 
     it('keeps the toggle available while the entry is disabled by this handler', () => {

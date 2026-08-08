@@ -5,13 +5,14 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import type { Equipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import { StealthHandler } from './stealth.handler';
 
 function equipment(flag: 'F_STEALTH' | 'F_CHAMELEON_SHIELD' | 'F_ECM'): MountedEquipment {
     const owner = {
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        rules: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) },
+        rules: createTestEquipmentRules(),
     } as never;
     return new MountedEquipment({
         owner,

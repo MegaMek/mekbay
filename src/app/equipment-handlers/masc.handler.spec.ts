@@ -7,6 +7,7 @@ import { MiscEquipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
 import { ENTRY_DISABLED_STATE_KEY } from '../models/rules/unit-type-rules';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import {
     MASC_ACTIVE_STATE_KEY,
@@ -24,9 +25,11 @@ function owner(
         ...turnStateOverrides,
     };
     return {
-        rules: {
-            computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }),
-        },
+        rules: createTestEquipmentRules({
+            getEquipmentStatus: (entry: MountedEquipment) => (
+                entry.committedDestroyed() ? 'destroyed' : 'available'
+            ),
+        }),
         gameRules,
         getNotificationDisplayName: () => 'Atlas AS7-D (Natasha Kerensky)',
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),

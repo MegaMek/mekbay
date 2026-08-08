@@ -5,6 +5,7 @@
 import { Equipment, type EquipmentRawData } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import type { InventoryControlDisplayData } from '../utils/inventory-control.util';
 import { getVibrobladeBaseDamage, VIBROBLADE_MODE_STATE, VIBROBLADE_OFF_MODE, VIBROBLADE_ON_MODE, VibrobladeHandler } from './vibroblade.handler';
@@ -25,13 +26,11 @@ function setup(size: 'SMALL' | 'MEDIUM' | 'LARGE' = 'SMALL', destroyed = false, 
     const owner = {
         getUnit: () => ({ tons }),
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        rules: {
-            computeEntryState: (entry: MountedEquipment) => ({
-                isDamaged: entry.committedDestroyed(),
-                isDisabled: false,
-                hitMod: 0,
-            }),
-        },
+        rules: createTestEquipmentRules({
+            getEquipmentStatus: (entry: MountedEquipment) => (
+                entry.committedDestroyed() ? 'destroyed' : 'available'
+            ),
+        }),
     } as unknown as CBTForceUnit;
     const equipment = new Equipment({
         id: `${size}Vibroblade`,

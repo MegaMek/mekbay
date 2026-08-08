@@ -5,6 +5,7 @@
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { WeaponEquipment, type AmmoType, type Equipment } from '../models/equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
+import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 import { APOLLO_MODE_STATE, APOLLO_SATURATION_MODE, APOLLO_STANDARD_MODE, ApolloHandler } from './apollo.handler';
 import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
 import { EquipmentFlag } from '../models/equipment-flags.type';
@@ -12,7 +13,11 @@ import { EquipmentFlag } from '../models/equipment-flags.type';
 function owner(unavailableEntry?: MountedEquipment, gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
     return {
         gameRules,
-        rules: { computeEntryState: (candidate: MountedEquipment) => ({ isDamaged: candidate === unavailableEntry || candidate.committedDestroyed(), isDisabled: false, hitMod: 0 }) },
+        rules: createTestEquipmentRules({
+            getEquipmentStatus: (candidate: MountedEquipment) => (
+                candidate === unavailableEntry || candidate.committedDestroyed() ? 'destroyed' : 'available'
+            ),
+        }),
         setInventoryEntry: jasmine.createSpy('setInventoryEntry')
     } as never;
 }
