@@ -330,8 +330,11 @@
 
 .hit-cell {
     grid-column: 5;
-    font-weight: 800;
-    font-size: 1.2em;
+
+    .hit-value {
+        font-weight: 800;
+        font-size: 1.2em;
+    }
 }
 
 .hit-cell.weakened {
