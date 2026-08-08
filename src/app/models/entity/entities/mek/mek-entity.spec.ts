@@ -65,13 +65,36 @@ describe('MekEntity optional systems', () => {
 
 describe('MekEntity features', () => {
 
+  function removeArmActuators(entity: BipedMekEntity): void {
+    entity.hasLowerArmActuator.set({ left: false, right: false });
+    entity.hasHandActuator.set({ left: false, right: false });
+  }
+
+  function addSplitComponent(
+    entity: BipedMekEntity,
+    locations: readonly [string, string],
+  ): void {
+    const component = new WeaponEquipment({
+      id: `split-${locations.join('-')}`,
+      name: 'Split Component',
+      type: 'weapon',
+      weapon: { damage: 5, ranges: [3, 6, 9, 12] },
+    });
+    addTestEquipment(entity, component, {
+      allocation: {
+        kind: 'location',
+        location: locations[1],
+        placements: locations.map((location, slotIndex) => ({ location, slotIndex })),
+      },
+    });
+  }
+
   it('derives Reversible Arms when all lower-arm and hand actuators are absent', () => {
     const entity = new BipedMekEntity();
 
     expect(entity.entityFeatures()).not.toContain('Reversible Arms');
 
-    entity.hasLowerArmActuator.set({ left: false, right: false });
-    entity.hasHandActuator.set({ left: false, right: false });
+    removeArmActuators(entity);
     expect(entity.entityFeatures()).toEqual(['Reversible Arms']);
 
     entity.hasHandActuator.set({ left: true, right: false });
@@ -82,6 +105,27 @@ describe('MekEntity features', () => {
 
     entity.hasLowerArmActuator.set({ left: false, right: true });
     expect(entity.entityFeatures()).not.toContain('Reversible Arms');
+  });
+
+  for (const locations of [['LA', 'LT'], ['RA', 'RT']] as const) {
+    it(`does not derive Reversible Arms with a ${locations.join('/')} split component`, () => {
+      const entity = new BipedMekEntity();
+      removeArmActuators(entity);
+
+      expect(entity.entityFeatures()).toContain('Reversible Arms');
+
+      addSplitComponent(entity, locations);
+
+      expect(entity.entityFeatures()).not.toContain('Reversible Arms');
+    });
+  }
+
+  it('allows Reversible Arms when a split component does not occupy an arm', () => {
+    const entity = new BipedMekEntity();
+    removeArmActuators(entity);
+    addSplitComponent(entity, ['LT', 'CT']);
+
+    expect(entity.entityFeatures()).toContain('Reversible Arms');
   });
 
   it('does not add arm-specific features to a Quad Mek', () => {

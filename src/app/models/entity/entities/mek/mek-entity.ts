@@ -1011,7 +1011,14 @@ export abstract class MekWithArmsEntity extends MekEntity {
     const features = [...super.computeEntityFeatures()];
     const lowerArms = this.hasLowerArmActuator();
     const hands = this.hasHandActuator();
-    if (!hands.left && !hands.right && !lowerArms.left && !lowerArms.right) {
+    const hasArmTorsoSplit = this.equipment().some(mount => {
+      const locations = new Set(mount.getOccupiedLocations());
+      return (locations.has('LA') && locations.has('LT'))
+        || (locations.has('RA') && locations.has('RT'));
+    });
+    if (!hasArmTorsoSplit
+      && !hands.left && !hands.right
+      && !lowerArms.left && !lowerArms.right) {
       features.push('Reversible Arms');
     }
     return features;
