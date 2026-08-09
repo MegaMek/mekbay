@@ -114,6 +114,7 @@ export interface UnitFluffCatalog {
 }
 
 export interface Unit {
+    uuid: string; // Unique identifier of the unit
     name: string; // Internal unique name
     id: number; // MUL id
     chassis: string;

@@ -23,6 +23,7 @@ import type { WeaponType } from '../models/weapon-types.model';
 import { resolveSelectedInventoryWeaponHeat } from '../utils/inventory-control-heat.util';
 import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-control-physical-damage.util';
 import { resolveInventoryControlSelectedAmmoType, type InventoryControlDisplayData, type InventoryControlRules } from '../utils/inventory-control.util';
+import { uuidv4 } from '../utils/uuid.util';
 
 type TestAlphaStrikeOverrides = Partial<Omit<Unit['as'], 'dmg'>> & {
     dmg?: Partial<Unit['as']['dmg']>;
@@ -80,6 +81,7 @@ function createEmptyAlphaStrikeStats(overrides: TestAlphaStrikeOverrides = {}): 
 export function createEmptyUnit(overrides: TestUnitOverrides = {}): Unit {
     const { as: asOverrides, ...unitOverrides } = overrides;
     const unit: Unit = {
+        uuid: uuidv4(),
         name: 'Test Unit',
         id: -1,
         chassis: 'Test',
