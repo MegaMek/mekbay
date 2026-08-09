@@ -6,7 +6,6 @@ import type { PickerChoice } from '../components/picker/picker.interface';
 import { MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import { EMPTY_EQUIPMENT_REGISTRY, EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
-import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { CriticalSlot } from '../models/force-serialization';
 import type { DialogsService } from '../services/dialogs.service';
 import {
@@ -15,6 +14,7 @@ import {
     EquipmentInteractionRegistry,
 } from '../services/equipment-interaction-registry.service';
 import type { ToastService } from '../services/toast.service';
+import { createTestEquipmentOwner } from '../testing/unit-test-helpers';
 import { resolveInventoryControlDamageText } from '../utils/inventory-control-damage.util';
 import {
     PPC_CAPACITOR_CHARGING_STATE,
@@ -25,12 +25,8 @@ import {
 } from './ppc-capacitor.handler';
 
 function setup(destroyed = false, compatible = true) {
-    const owner = {
-        setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        getEquipmentStatus: (entry: MountedEquipment) => entry.committedDestroyed() ? 'destroyed' : 'available',
-        isEquipmentOperational: (entry: MountedEquipment) => !entry.committedDestroyed(),
-        canPerformEquipmentAction: (entry: MountedEquipment) => !entry.committedDestroyed(),
-    } as unknown as CBTForceUnit;
+    const fixture = createTestEquipmentOwner();
+    const { owner } = fixture;
     const capacitor = new MountedEquipment({
         owner,
         id: 'capacitor',
@@ -59,7 +55,8 @@ function setup(destroyed = false, compatible = true) {
         }),
         linkedWith: [capacitor]
     });
-    return { owner, weapon, capacitor };
+    fixture.inventory.push(weapon, capacitor);
+    return { ...fixture, weapon, capacitor };
 }
 
 function setupWithCriticalSlots() {
@@ -78,15 +75,10 @@ function setupWithCriticalSlots() {
         loc: 'LA',
         slot: 1,
     };
-    const currentSlots = [...weaponSlots, ...capacitorSlots, unrelatedSlot];
+    const currentSlots = fixture.criticalSlots;
+    currentSlots.push(...weaponSlots, ...capacitorSlots, unrelatedSlot);
     fixture.weapon.critSlots = weaponSlots.map(slot => ({ ...slot }));
     fixture.capacitor.critSlots = capacitorSlots.map(slot => ({ ...slot }));
-    Object.assign(fixture.owner, {
-        getCritSlots: () => currentSlots,
-        findCurrentCriticalSlot: (snapshot: CriticalSlot) => currentSlots.find(slot =>
-            slot.loc === snapshot.loc && slot.slot === snapshot.slot) ?? null,
-        setCritSlots: jasmine.createSpy('setCritSlots'),
-    });
     return { ...fixture, weaponSlots, capacitorSlots, unrelatedSlot };
 }
 
@@ -221,25 +213,25 @@ describe('PpcCapacitorHandler', () => {
     });
 
     it('discharges and marks the capacitor fired after firing', () => {
-        const { weapon, capacitor, owner } = setup();
+        const { weapon, capacitor, inventoryWrites } = setup();
         capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
 
         handler.afterInventoryControlFire(weapon);
 
         expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
         expect(capacitor.states.get(PPC_CAPACITOR_FIRED_STATE_KEY)).toBe('1');
-        expect(owner.setInventoryEntry).toHaveBeenCalledWith(capacitor);
+        expect(inventoryWrites).toEqual([capacitor]);
     });
 
     it('discharges an unavailable capacitor after its linked PPC fires', () => {
-        const { weapon, capacitor, owner } = setup(true);
+        const { weapon, capacitor, inventoryWrites } = setup(true);
         capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
 
         handler.afterInventoryControlFire(weapon);
 
         expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
         expect(capacitor.states.get(PPC_CAPACITOR_FIRED_STATE_KEY)).toBe('1');
-        expect(owner.setInventoryEntry).toHaveBeenCalledWith(capacitor);
+        expect(inventoryWrites).toEqual([capacitor]);
     });
 
     for (const state of [PPC_CAPACITOR_CHARGING_STATE, PPC_CAPACITOR_CHARGED_STATE] as const) {
@@ -264,7 +256,7 @@ describe('PpcCapacitorHandler', () => {
     }
 
     it('does not explode direct-inventory mounts before a charged hit is pending', () => {
-        const { weapon, capacitor, owner } = setup();
+        const { weapon, capacitor, inventoryWrites } = setup();
         capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
 
         handler.beforeEquipmentStateCommit(weapon);
@@ -272,7 +264,7 @@ describe('PpcCapacitorHandler', () => {
         expect(weapon.hasPendingDestroyedChange()).toBeFalse();
         expect(capacitor.hasPendingDestroyedChange()).toBeFalse();
         expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe(PPC_CAPACITOR_CHARGED_STATE);
-        expect(owner.setInventoryEntry).not.toHaveBeenCalled();
+        expect(inventoryWrites).toEqual([]);
     });
 
     it('commits an ordinary direct-inventory hit while the capacitor is discharged', () => {
@@ -291,7 +283,7 @@ describe('PpcCapacitorHandler', () => {
     for (const state of [PPC_CAPACITOR_CHARGING_STATE, PPC_CAPACITOR_CHARGED_STATE] as const) {
         for (const hitEntry of ['PPC', 'capacitor'] as const) {
             it(`destroys every linked Mek critical slot when a ${state} ${hitEntry} slot hit is committed`, () => {
-                const { weapon, capacitor, owner, weaponSlots, capacitorSlots, unrelatedSlot } = setupWithCriticalSlots();
+                const { weapon, capacitor, criticalSlotWrites, weaponSlots, capacitorSlots, unrelatedSlot } = setupWithCriticalSlots();
                 capacitor.states.set(PPC_CAPACITOR_STATE_KEY, state);
                 const hitSlots = hitEntry === 'PPC' ? weaponSlots : capacitorSlots;
                 hitSlots[0].hits = 1;
@@ -307,7 +299,7 @@ describe('PpcCapacitorHandler', () => {
                 expect(weapon.hasPendingDestroyedChange()).toBeFalse();
                 expect(capacitor.hasPendingDestroyedChange()).toBeFalse();
                 expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
-                expect(owner.setCritSlots).toHaveBeenCalledTimes(1);
+                expect(criticalSlotWrites.length).toBe(1);
             });
         }
     }
@@ -323,11 +315,11 @@ describe('PpcCapacitorHandler', () => {
 
         expect(committed.weaponSlots[1].destroying).toBeUndefined();
         expect(committed.capacitorSlots.every(slot => slot.destroying === undefined)).toBeTrue();
-        expect(committed.owner.setCritSlots).not.toHaveBeenCalled();
+        expect(committed.criticalSlotWrites).toEqual([]);
     });
 
     it('does not treat location-derived critical destruction as a PPC critical hit', () => {
-        const { weapon, capacitor, owner, weaponSlots, capacitorSlots } = setupWithCriticalSlots();
+        const { weapon, capacitor, criticalSlotWrites, weaponSlots, capacitorSlots } = setupWithCriticalSlots();
         capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
         weaponSlots[0].destroying = 10;
 
@@ -337,7 +329,7 @@ describe('PpcCapacitorHandler', () => {
         expect(weaponSlots[1].destroying).toBeUndefined();
         expect(capacitorSlots.every(slot => slot.destroying === undefined)).toBeTrue();
         expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe(PPC_CAPACITOR_CHARGED_STATE);
-        expect(owner.setCritSlots).not.toHaveBeenCalled();
+        expect(criticalSlotWrites).toEqual([]);
 
         handler.onEndTurn(weapon);
 
@@ -389,7 +381,7 @@ describe('PpcCapacitorHandler', () => {
     });
 
     it('does not let an unavailable charging capacitor block its usable PPC', () => {
-        const { weapon, capacitor, owner } = setup(true);
+        const { weapon, capacitor, inventoryWrites } = setup(true);
         capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGING_STATE);
 
         expect(handler.isInventoryControlSelectable(weapon, queryContext)).toBeNull();
@@ -397,7 +389,7 @@ describe('PpcCapacitorHandler', () => {
         handler.onEndTurn(weapon);
 
         expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
-        expect(owner.setInventoryEntry).toHaveBeenCalledWith(capacitor);
+        expect(inventoryWrites).toEqual([capacitor]);
     });
 
     it('rejects charging after the linked PPC fired this turn', () => {

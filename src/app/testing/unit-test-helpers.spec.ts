@@ -8,7 +8,43 @@ import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.mod
 import { type CriticalSlot } from '../models/force-serialization';
 import { CORE_2026_GAME_RULES } from '../models/rules/game-rules';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../models/rules/unit-type-rules';
-import { createCBTForceUnitTestHarness } from './unit-test-helpers';
+import { createCBTForceUnitTestHarness, createTestEquipmentOwner } from './unit-test-helpers';
+
+describe('createTestEquipmentOwner', () => {
+    it('derives operational state and action permission from one canonical status', () => {
+        const fixture = createTestEquipmentOwner();
+        const mounted = new MountedEquipment({
+            owner: fixture.owner,
+            id: 'disabled-laser',
+            name: 'Disabled Laser',
+            states: new Map([[ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE]]),
+        });
+
+        expect(fixture.owner.getEquipmentStatus(mounted)).toBe('disabled');
+        expect(fixture.owner.isEquipmentOperational(mounted)).toBeFalse();
+        expect(fixture.owner.canPerformEquipmentAction(mounted, 'fire')).toBeFalse();
+        expect(fixture.owner.canEditEquipmentState(mounted, 'enable')).toBeTrue();
+        expect(fixture.owner.canEditEquipmentState(mounted, 'disable')).toBeFalse();
+    });
+
+    it('persists inventory and critical-slot writes through production-shaped methods', () => {
+        const fixture = createTestEquipmentOwner();
+        const mounted = new MountedEquipment({
+            owner: fixture.owner,
+            id: 'laser',
+            name: 'Laser',
+        });
+        const slot: CriticalSlot = { id: 'Laser@RA#1', loc: 'RA', slot: 1 };
+
+        fixture.owner.setInventoryEntry(mounted);
+        fixture.owner.setCritSlots([slot]);
+
+        expect(fixture.owner.getInventory()).toEqual([mounted]);
+        expect(fixture.inventoryWrites).toEqual([mounted]);
+        expect(fixture.owner.getCritSlots()).toEqual([slot]);
+        expect(fixture.criticalSlotWrites).toEqual([[slot]]);
+    });
+});
 
 describe('CBTForceUnitTestHarness', () => {
     it('adds mounted components and registers their equipment', () => {
@@ -55,7 +91,7 @@ describe('CBTForceUnitTestHarness', () => {
         expect(harness.unit.isInventoryControlEntrySelected(mounted.id)).toBeTrue();
     });
 
-    it('resolves mounted and direct critical status from the current slot identity', () => {
+    it('resolves direct critical status from the current slot identity without aggregating the mount', () => {
         const harness = createCBTForceUnitTestHarness();
         const equipment = new WeaponEquipment({ id: 'TestLaser', name: 'Test Laser', type: 'weapon' });
         const snapshot: CriticalSlot = { id: 'TestLaser@RA#0', loc: 'RA', slot: 0, eq: equipment };
@@ -69,7 +105,7 @@ describe('CBTForceUnitTestHarness', () => {
         harness.addCriticalSlot({ ...snapshot, destroyed: 1 });
 
         expect(harness.unit.getEquipmentStatus(snapshot)).toBe('destroyed');
-        expect(harness.unit.getEquipmentStatus(mounted)).toBe('destroyed');
+        expect(harness.unit.getEquipmentStatus(mounted)).toBe('available');
 
         harness.addCriticalSlot({ ...snapshot, destroyed: undefined });
 
@@ -77,7 +113,7 @@ describe('CBTForceUnitTestHarness', () => {
         expect(harness.unit.getEquipmentStatus(mounted)).toBe('available');
     });
 
-    it('uses the Mek two-critical destruction threshold for autocannons', () => {
+    it('does not invent subtype-specific mounted critical aggregation', () => {
         const harness = createCBTForceUnitTestHarness();
         const autocannon = new WeaponEquipment({
             id: 'ISAC5',
@@ -94,16 +130,12 @@ describe('CBTForceUnitTestHarness', () => {
             critSlots: [first, second],
         });
 
-        harness.addCriticalSlot({ ...first, destroyed: 1 });
+        const firstCritical = harness.addCriticalSlot({ ...first, destroyed: 1 });
         harness.addCriticalSlot(second);
 
+        expect(harness.unit.getEquipmentStatus(firstCritical)).toBe('destroyed');
         expect(harness.unit.getEquipmentStatus(mounted)).toBe('available');
         expect(harness.unit.getEquipmentStatusAtLocation(mounted, 'RA')).toBe('available');
-
-        harness.addCriticalSlot({ ...second, destroyed: 2 });
-
-        expect(harness.unit.getEquipmentStatus(mounted)).toBe('destroyed');
-        expect(harness.unit.getEquipmentStatusAtLocation(mounted, 'RA')).toBe('destroyed');
     });
 
     it('provides production-default game rules and equipment disabled state', () => {
@@ -169,6 +201,34 @@ describe('CBTForceUnitTestHarness', () => {
         expect(defaultHarness.unit.canPerformEquipmentAction(defaultMounted, 'configure-network')).toBeFalse();
     });
 
+    it('applies unit availability gates before subtype action permission', () => {
+        const resolveEquipmentActionPermission = jasmine.createSpy('resolveEquipmentActionPermission')
+            .and.returnValue(true);
+        const destroyedHarness = createCBTForceUnitTestHarness({
+            destroyed: true,
+            resolveEquipmentActionPermission,
+        });
+        const mounted = destroyedHarness.addComponent({ id: 'laser', name: 'Laser' });
+
+        expect(destroyedHarness.unit.canPerformEquipmentAction(mounted, 'fire')).toBeFalse();
+        expect(resolveEquipmentActionPermission).not.toHaveBeenCalled();
+    });
+
+    it('requires an explicitly operational C3 component before configuring its network', () => {
+        const resolveConfigureNetworkPermission = jasmine.createSpy('resolveConfigureNetworkPermission')
+            .and.returnValue(true);
+        const harness = createCBTForceUnitTestHarness({ resolveConfigureNetworkPermission });
+        const mounted = harness.addComponent({ id: 'c3-master', name: 'C3 Master' });
+
+        expect(harness.unit.canPerformEquipmentAction(mounted, 'configure-network')).toBeTrue();
+        expect(resolveConfigureNetworkPermission).toHaveBeenCalledOnceWith(mounted);
+
+        harness.setEquipmentStatus(mounted, 'destroyed');
+
+        expect(harness.unit.canPerformEquipmentAction(mounted, 'configure-network')).toBeFalse();
+        expect(resolveConfigureNetworkPermission).toHaveBeenCalledTimes(1);
+    });
+
     it('resolves lifecycle state through canonical unit helpers', () => {
         const harness = createCBTForceUnitTestHarness({
             resolveEquipmentStatus: () => 'destroyed',
@@ -185,7 +245,7 @@ describe('CBTForceUnitTestHarness', () => {
         expect(harness.unit.isEquipmentResolvedCommittedDestroyed(mounted)).toBeFalse();
     });
 
-    it('keeps installation-location loss separate from a repairing mount', () => {
+    it('blocks repair when the equipment installation location is destroyed', () => {
         const harness = createCBTForceUnitTestHarness();
         const mounted = harness.addComponent({
             id: 'laser',
@@ -203,10 +263,17 @@ describe('CBTForceUnitTestHarness', () => {
         expect(harness.unit.canEditEquipmentState(mounted, 'repair')).toBeFalse();
     });
 
-    it('defaults installation-location status to available', () => {
+    it('keeps a destroyed mount in a healthy installation location repairable', () => {
         const harness = createCBTForceUnitTestHarness();
-        const mounted = harness.addComponent({ id: 'laser', name: 'Laser', destroyed: true });
+        const mounted = harness.addComponent({
+            id: 'laser',
+            name: 'Laser',
+            destroyed: true,
+            locations: new Set(['RA']),
+        });
 
+        expect(harness.unit.getEquipmentStatus(mounted)).toBe('destroyed');
+        expect(harness.unit.getEquipmentStatusAtLocation(mounted, 'RA')).toBe('destroyed');
         expect(harness.unit.getEquipmentInstallationLocationStatus(mounted)).toBe('available');
         expect(harness.unit.canEditEquipmentState(mounted, 'repair')).toBeTrue();
     });

@@ -5,7 +5,6 @@
 import { Equipment, type EquipmentRawData } from '../models/equipment.model';
 import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
 import { MountedEquipment } from '../models/mounted-equipment.model';
-import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import {
     createHandlerCommandContext,
     createHandlerQueryContext,
@@ -13,6 +12,7 @@ import {
 } from '../services/equipment-interaction-registry.service';
 import type { DialogsService } from '../services/dialogs.service';
 import type { ToastService } from '../services/toast.service';
+import { createTestEquipmentOwner } from '../testing/unit-test-helpers';
 import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions } from '../utils/inventory-control.util';
 import { getVibrobladeBaseDamage, VIBROBLADE_MODE_STATE, VIBROBLADE_OFF_MODE, VIBROBLADE_ON_MODE, VibrobladeHandler } from './vibroblade.handler';
 
@@ -29,14 +29,8 @@ const DISPLAY: InventoryControlDisplayData = {
 };
 
 function setup(size: 'SMALL' | 'MEDIUM' | 'LARGE' = 'SMALL', destroyed = false, tons = 50) {
-    const owner = {
-        readOnly: () => false,
-        getUnit: () => ({ tons }),
-        setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        getEquipmentStatus: (entry: MountedEquipment) => entry.committedDestroyed() ? 'destroyed' : 'available',
-        isEquipmentOperational: (entry: MountedEquipment) => !entry.committedDestroyed(),
-        canPerformEquipmentAction: (entry: MountedEquipment) => !entry.committedDestroyed(),
-    } as unknown as CBTForceUnit;
+    const { owner } = createTestEquipmentOwner({ unit: { tons } });
+    spyOn(owner, 'setInventoryEntry').and.callThrough();
     const equipment = new Equipment({
         id: `${size}Vibroblade`,
         name: `Vibroblade (${size})`,

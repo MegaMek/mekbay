@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { EquipmentStateEdit } from '../models/cbt-force-unit.model';
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import { MiscEquipment } from '../models/equipment.model';
 import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
-import type { EquipmentStatus } from '../models/equipment-status.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
-import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../models/rules/unit-type-rules';
+import { ENTRY_DISABLED_STATE_KEY } from '../models/rules/unit-type-rules';
 import type { DialogsService } from '../services/dialogs.service';
 import {
     createHandlerCommandContext,
@@ -18,6 +16,7 @@ import {
     type HandlerQueryContext,
 } from '../services/equipment-interaction-registry.service';
 import type { ToastService } from '../services/toast.service';
+import { createTestEquipmentOwner } from '../testing/unit-test-helpers';
 import {
     MASC_ACTIVE_STATE_KEY,
     MASC_SEQUENCE_STATE_KEY,
@@ -33,25 +32,13 @@ function owner(
         airborne: () => airborne,
         ...turnStateOverrides,
     };
-    const getEquipmentStatus = (entry: MountedEquipment): EquipmentStatus => entry.committedDestroyed()
-        ? 'destroyed'
-        : entry.states.get(ENTRY_DISABLED_STATE_KEY) === ENTRY_DISABLED_STATE_VALUE
-            ? 'disabled'
-            : 'available';
-    return {
-        readOnly: () => false,
-        getEquipmentStatus,
-        isEquipmentOperational: (entry: MountedEquipment) => getEquipmentStatus(entry) === 'available',
-        canPerformEquipmentAction: (entry: MountedEquipment) => getEquipmentStatus(entry) === 'available',
-        canEditEquipmentState: (entry: MountedEquipment, edit: EquipmentStateEdit) => {
-            const status = getEquipmentStatus(entry);
-            return edit === 'enable' ? status === 'disabled' : status === 'available';
-        },
-        gameRules,
+    const { owner } = createTestEquipmentOwner({ gameRules });
+    Object.assign(owner, {
         getNotificationDisplayName: () => 'Atlas AS7-D (Natasha Kerensky)',
-        setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         turnState: () => turnState,
-    } as never;
+    });
+    spyOn(owner, 'setInventoryEntry').and.callThrough();
+    return owner;
 }
 
 function mascEntry(

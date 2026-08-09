@@ -9,13 +9,12 @@ import { MountedEquipment } from '../models/mounted-equipment.model';
 import { createHandlerCommandContext, createHandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import type { DialogsService } from '../services/dialogs.service';
 import type { ToastService } from '../services/toast.service';
+import { createTestEquipmentOwner } from '../testing/unit-test-helpers';
 import { StealthHandler } from './stealth.handler';
 
 function equipment(flag: 'F_STEALTH' | 'F_CHAMELEON_SHIELD' | 'F_ECM'): MountedEquipment {
-    const owner = {
-        setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        isEquipmentOperational: () => true,
-    } as never;
+    const { owner } = createTestEquipmentOwner();
+    spyOn(owner, 'setInventoryEntry').and.callThrough();
     return new MountedEquipment({
         owner,
         id: flag,

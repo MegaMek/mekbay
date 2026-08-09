@@ -536,6 +536,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const { unit } = createCBTForceUnitTestHarness({
             components: [...narcEntries, ...ammoEntries],
             unit: {
+                type: 'Infantry',
                 subtype: 'Battle Armor',
                 squads: 1,
                 squadSize: 4,
@@ -615,6 +616,24 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(row.disabled).toBeTrue();
         expect(uac.el!.classList.contains('disabledInventory')).toBeFalse();
+    });
+
+    it('uses change-mode rather than fire permission for nonweapon equipment rows', () => {
+        const ecm = entry({
+            id: 'ecm',
+            equipment: misc('ecm', ['F_ECM']),
+            el: svgEntry('<g><g class="name"><text>ECM</text></g></g>')
+        });
+        const { unit } = createCBTForceUnitTestHarness({ components: [ecm] });
+        const canPerform = spyOn(unit, 'canPerformEquipmentAction')
+            .and.callFake((_entry, action) => action === 'change-mode');
+
+        const row = getInventoryControlGroups(unit, new EquipmentRegistry({}))
+            .find(group => group.id === 'equipment')!.rows[0];
+
+        expect(row.disabled).toBeFalse();
+        expect(canPerform).toHaveBeenCalledWith(ecm, 'change-mode');
+        expect(canPerform).not.toHaveBeenCalledWith(ecm, 'fire');
     });
 
     it('marks direct inventory hits pending before commit', () => {
@@ -1226,7 +1245,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
             equipment: weapon('ATM 6', 'ATM', 6),
             el: svgEntry('<g><g class="name"><text>Wrong SVG Name</text></g><g class="alternativeMode" mode="Standard"><g class="name"><text>Standard</text></g></g><g class="alternativeMode" mode="Extended Range"><g class="name"><text>Extended Range</text></g></g></g>')
         });
-        const { component, fixture } = createComponent([first, second, modeEntry]);
+        const { component, fixture, unit } = createComponent([first, second, modeEntry]);
+        const setInventoryEntry = unit.setInventoryEntry as jasmine.Spy;
         const group = component.groups().find(candidate => candidate.id === 'ranged')!;
 
         component.drop({ previousIndex: 0, currentIndex: 1 } as CdkDragDrop<any>, group);
@@ -1234,9 +1254,16 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const rangedSortKey = inventoryControlSortKey('ranged');
         expect(first.states.get(rangedSortKey)).toBe('1');
         expect(second.states.get(rangedSortKey)).toBe('0');
+        expect(setInventoryEntry).toHaveBeenCalledWith(first, { phaseChange: false });
+        expect(setInventoryEntry).toHaveBeenCalledWith(second, { phaseChange: false });
+        expect(setInventoryEntry).toHaveBeenCalledWith(modeEntry, { phaseChange: false });
+        setInventoryEntry.calls.reset();
 
         const row = component.groups().find(candidate => candidate.id === 'ranged')!.rows.find(candidate => candidate.id === 'mode')!;
         await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'Extended Range', label: 'ER' });
+        expect(setInventoryEntry).toHaveBeenCalledOnceWith(modeEntry);
+        await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'Extended Range', label: 'ER' });
+        expect(setInventoryEntry).toHaveBeenCalledTimes(1);
         component.selectRange(row, 'short');
         const updatedRow = component.groups().find(candidate => candidate.id === 'ranged')!.rows.find(candidate => candidate.id === 'mode')!;
 
@@ -2927,8 +2954,12 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.ammoState(row).text).toBe('');
         expect(component.ammoState(row).depleted).toBeTrue();
         expect(component.ammoState(row).destroyed).toBeFalse();
+        expect(component.ammoState(row).disabled).toBeFalse();
         fixture.detectChanges();
-        expect((fixture.nativeElement.querySelector('.ammo-cell') as HTMLElement).textContent?.trim()).toBe('NO AMMO');
+        const ammoCell = fixture.nativeElement.querySelector('.ammo-cell') as HTMLElement;
+        expect(ammoCell.textContent?.trim()).toBe('NO AMMO');
+        expect(ammoCell.classList.contains('destroyed-ammo')).toBeFalse();
+        expect(ammoCell.classList.contains('disabled-ammo')).toBeFalse();
         expect(fixture.nativeElement.querySelectorAll('.ammo-stepper-button').length).toBe(0);
     });
 
@@ -2954,10 +2985,51 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.ammoState(row).hasAmmo).toBeFalse();
         expect(component.ammoState(row).text).toBe('');
         expect(component.ammoState(row).depleted).toBeTrue();
-        expect(component.ammoState(row).destroyed).toBeFalse();
+        expect(component.ammoState(row).destroyed).toBeTrue();
+        expect(component.ammoState(row).disabled).toBeFalse();
         fixture.detectChanges();
-        expect((fixture.nativeElement.querySelector('.ammo-cell') as HTMLElement).textContent?.trim()).toBe('NO AMMO');
+        const ammoCell = fixture.nativeElement.querySelector('.ammo-cell') as HTMLElement;
+        expect(ammoCell.textContent?.trim()).toBe('NO AMMO');
+        expect(ammoCell.classList.contains('destroyed-ammo')).toBeTrue();
+        expect(ammoCell.classList.contains('disabled-ammo')).toBeFalse();
         expect(fixture.nativeElement.querySelectorAll('.ammo-stepper-button').length).toBe(0);
+    });
+
+    it('shows disabled ammo separately from destroyed ammo', () => {
+        const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
+        const atm = entry({
+            id: 'atm',
+            equipment: weapon('ATM 6', 'ATM', 6, [1, 2, 3, 4], 0, 4),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><g class="alternativeMode" mode="Standard"><g class="name"><text>Standard</text></g><g class="damage"><text>2/Msl</text></g><text class="range_short">5</text></g></g>')
+        });
+        const disabledBin = entry({
+            id: 'disabled-ammo',
+            equipment: standardAmmo,
+            totalAmmo: 10,
+            consumed: 0,
+            locations: new Set(['LT']),
+        });
+        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
+        const { component, fixture } = createComponent(
+            [atm, disabledBin],
+            equipmentMap,
+            [],
+            new Map([[disabledBin, 'disabled']]),
+        );
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        const [option] = row.ammo.options;
+
+        expect(option).toEqual(jasmine.objectContaining({
+            remaining: 0,
+            destroyed: false,
+            disabled: true,
+        }));
+        expect(component.ammoState(row).destroyed).toBeFalse();
+        expect(component.ammoState(row).disabled).toBeTrue();
+        fixture.detectChanges();
+        const ammoCell = fixture.nativeElement.querySelector('.ammo-cell') as HTMLElement;
+        expect(ammoCell.classList.contains('disabled-ammo')).toBeTrue();
+        expect(ammoCell.classList.contains('destroyed-ammo')).toBeFalse();
     });
 
     it('groups same-location ammo bins', () => {

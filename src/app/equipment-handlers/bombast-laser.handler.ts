@@ -5,6 +5,7 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import type { EquipmentFlag } from '../models/equipment-flags.type';
 import { WeaponEquipment, type WeaponDamage } from '../models/equipment.model';
+import type { CriticalSlot } from '../models/force-serialization';
 import type { WeaponType } from '../models/weapon-types.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
@@ -135,7 +136,8 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
         if (!supportsBombastLaserRules(equipment)) return;
         let changed = equipment.deleteState(BOMBAST_LASER_FIRED_STATE_KEY);
         const state = bombastLaserChargeState(equipment);
-        if (!equipment.owner.isEquipmentOperational(equipment) && state !== null) {
+        if (state !== null
+            && (hasPendingDestruction(equipment) || !equipment.owner.isEquipmentOperational(equipment))) {
             changed = setBombastLaserChargeState(equipment, null) || changed;
         } else if (state === BOMBAST_LASER_CHARGING_STATE) {
             changed = setBombastLaserChargeState(equipment, BOMBAST_LASER_CHARGED_STATE) || changed;
@@ -227,6 +229,17 @@ function validBombastLaserMode(mode: string | undefined): BombastLaserMode | nul
 
 function supportsBombastLaserRules(equipment: MountedEquipment): boolean {
     return equipment.owner.gameRules.supportsBombastLaserRules;
+}
+
+function hasPendingDestruction(equipment: MountedEquipment): boolean {
+    const criticalSlots = currentCriticalSlots(equipment);
+    return criticalSlots.length > 0
+        ? criticalSlots.some(slot => !!slot.destroying && !slot.destroyed)
+        : equipment.isDestroying();
+}
+
+function currentCriticalSlots(equipment: MountedEquipment): CriticalSlot[] {
+    return equipment.critSlots?.flatMap(slot => equipment.owner.findCurrentCriticalSlot(slot) ?? []) ?? [];
 }
 
 function setBombastLaserChargeState(equipment: MountedEquipment, state: BombastLaserChargeState | null): boolean {

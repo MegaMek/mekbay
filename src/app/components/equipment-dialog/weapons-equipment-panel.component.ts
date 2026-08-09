@@ -115,6 +115,7 @@ interface AmmoRowState {
     text: string;
     depleted: boolean;
     destroyed: boolean;
+    disabled: boolean;
     canDecrease: boolean;
     canIncrease: boolean;
 }
@@ -668,7 +669,8 @@ export class WeaponsEquipmentPanelComponent {
         const depleted = row.tracksAmmo
             ? selectedOption?.remaining !== undefined ? selectedOption.remaining <= 0 : row.ammo.remaining <= 0
             : false;
-        const destroyed = hasUsableAmmo ? !!selectedOption?.destroyed : false;
+        const destroyed = !!selectedOption?.destroyed;
+        const disabled = !!selectedOption?.disabled && !destroyed;
         return {
             hasAmmo,
             showDropdown: row.ammo.options.length > 1 && hasUsableAmmo,
@@ -677,6 +679,7 @@ export class WeaponsEquipmentPanelComponent {
             text,
             depleted,
             destroyed,
+            disabled,
             canDecrease: this.canAdjustResolvedAmmo(row, selectedOption, 1, hasUsableAmmo),
             canIncrease: this.canAdjustResolvedAmmo(row, selectedOption, -1, hasUsableAmmo),
         };
@@ -715,7 +718,7 @@ export class WeaponsEquipmentPanelComponent {
 
     private canAdjustResolvedAmmo(row: InventoryControlRow, option: InventoryControlAmmoOption | undefined, delta: number, hasUsableAmmo: boolean): boolean {
         if (this.readOnly() || !row.tracksAmmo || delta === 0) return false;
-        if (!option || option.destroyed) return false;
+        if (!option || option.disabled) return false;
         if (!hasUsableAmmo) return false;
         if (delta > 0) return option.remaining > 0;
         return option.remaining < option.total;
@@ -749,7 +752,7 @@ export class WeaponsEquipmentPanelComponent {
         for (const row of selectedRows) {
             if (!row.tracksAmmo) continue;
             const option = this.selectedAmmo(row);
-            if (!option || option.destroyed || option.remaining <= 0) {
+            if (!option || option.disabled || option.remaining <= 0) {
                 await this.context().commandContext.dialogsService.showError(`${row.display.name} has no available ammo.`, 'No Ammo');
                 return;
             }
@@ -872,7 +875,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     private isUsableAmmoOption(option: InventoryControlAmmoOption): boolean {
-        return !option.destroyed && option.remaining > 0;
+        return !option.disabled && option.remaining > 0;
     }
 
     private heatDissipationState(): HeatDissipationState | null {

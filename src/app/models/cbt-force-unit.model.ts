@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { computed, createEnvironmentInjector, effect, type EffectRef, EnvironmentInjector, type Injector, runInInjectionContext, signal, type Signal, untracked, type WritableSignal } from '@angular/core';
+import { computed, createEnvironmentInjector, effect, type EffectRef, EnvironmentInjector, type Injector, isDevMode, runInInjectionContext, signal, type Signal, untracked, type WritableSignal } from '@angular/core';
 import { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
@@ -292,6 +292,7 @@ export class CBTForceUnit extends ForceUnit {
                 throw new Error(`Unit "${this.unit.name}" loaded but SVG is missing`);
             }
             this.isLoaded.set(true);
+            if (isDevMode()) this.reportUnknownDirectInventoryInstallationLocations();
             this.reconcileRuleChecks();
         } finally {
             // Clear the loading promise when done (success or failure)
@@ -441,6 +442,7 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     setCritSlot(slot: CriticalSlot) {
+        this.turnState().markEquipmentStateChanged();
         const crits = [...this.state.crits()];
         const existingIndex = crits.findIndex(c => c.loc === slot.loc && c.slot === slot.slot);
         if (existingIndex !== -1) {
@@ -462,6 +464,7 @@ export class CBTForceUnit extends ForceUnit {
         if (consolidateImmediately) {
             this.dispatchBeforeEquipmentStateCommit();
             this.state.consolidateCrits(); // Consolidate immediately in case we have pending hits to apply
+            this.inventoryControl.markAmmoSourcesChanged();
         }
         this._rules.evaluateCritSlotHit(slot);
     }
@@ -496,6 +499,7 @@ export class CBTForceUnit extends ForceUnit {
 
     setInventory(inventory: MountedEquipment[], initialization: boolean = false) {
         this.state.inventory.set(MountedEquipment.fromAll(inventory));
+        if (this.isLoaded() && isDevMode()) this.reportUnknownDirectInventoryInstallationLocations();
         this.turnState().reconcileHeatSources();
         if (!initialization) {
             this.turnState().clampMoveDistanceToCurrentModeRange();
@@ -506,7 +510,8 @@ export class CBTForceUnit extends ForceUnit {
         }
     }
 
-    setInventoryEntry(inventoryEntry: MountedEquipment) {
+    setInventoryEntry(inventoryEntry: MountedEquipment, options: { phaseChange?: boolean } = {}) {
+        if (options.phaseChange !== false) this.turnState().markEquipmentStateChanged();
         const inventory = [...this.state.inventory()];
         const existingIndex = inventory.findIndex(item => item.id === inventoryEntry.id);
         if (existingIndex !== -1) {
@@ -678,6 +683,7 @@ export class CBTForceUnit extends ForceUnit {
     setLocations(locations: Record<string, LocationData>, initialization: boolean = false) {
         this.state.locations.set(locations);
         if (!initialization) {
+            this.markEquipmentLocationsChanged();
             this.evaluateDestroyed();
             this.setModified();
         }
@@ -711,6 +717,7 @@ export class CBTForceUnit extends ForceUnit {
             locations[locKey].pendingArmor += hits;
         }
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
+        this.markEquipmentLocationsChanged();
         let hitsForPsr = hits;
         if (this.getUnit().armorType === 'Hardened') {
             hitsForPsr = Math.ceil(hitsForPsr / 2);
@@ -729,6 +736,7 @@ export class CBTForceUnit extends ForceUnit {
         locations[locKey].armor = hits;
         locations[locKey].pendingArmor = undefined;
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
+        this.markEquipmentLocationsChanged();
         this.evaluateDestroyed();
         this.setModified();
     }
@@ -757,6 +765,7 @@ export class CBTForceUnit extends ForceUnit {
             locations[loc].pendingInternal += hits;
         }
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
+        this.markEquipmentLocationsChanged();
         this.state.turnState().addDmgReceived(hits);
         this._rules.evaluateLegDestroyed(loc, hits);
         this.clearNarcFromCommittedPhysicallyDestroyedLocations();
@@ -772,9 +781,14 @@ export class CBTForceUnit extends ForceUnit {
         locations[loc].internal = hits;
         locations[loc].pendingInternal = undefined;
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
+        this.markEquipmentLocationsChanged();
         this.clearNarcFromCommittedPhysicallyDestroyedLocations();
         this.evaluateDestroyed();
         this.setModified();
+    }
+
+    private markEquipmentLocationsChanged(): void {
+        this.inventoryControl.markAmmoSourcesChanged();
     }
 
     getLocationConditions(loc: string): ReadonlyMap<string, ConditionData | undefined> {
@@ -1064,7 +1078,6 @@ export class CBTForceUnit extends ForceUnit {
             if (parentLocations.length > 0) return parentLocations;
         }
 
-        this.reportUnknownDirectInventoryInstallationLocation(entry, componentRef);
         return locations;
     }
 
@@ -1099,12 +1112,22 @@ export class CBTForceUnit extends ForceUnit {
         return this.battleArmorTrooperLocation(normalized) ?? normalized;
     }
 
+    private reportUnknownDirectInventoryInstallationLocations(): void {
+        if (!this.hasDirectInventory()) return;
+        for (const entry of this.getInventory()) {
+            const componentRef = parseInventoryComponentReference(entry.id);
+            const locations = this.getEquipmentInstallationLocations(entry, this.getCurrentCriticalSlots(entry));
+            if (locations.length === 0) {
+                this.reportUnknownDirectInventoryInstallationLocation(entry, componentRef);
+            }
+        }
+    }
+
     private reportUnknownDirectInventoryInstallationLocation(
         entry: MountedEquipment,
         componentRef: ReturnType<typeof parseInventoryComponentReference>,
     ): void {
-        if (!this.isLoaded() || !this.hasDirectInventory()
-            || entry.isIntrinsicPhysicalAttack() || !entry.equipment
+        if (entry.isIntrinsicPhysicalAttack() || !entry.equipment
             || this.unknownEquipmentInstallationLocationIds.has(entry.id)) return;
         this.unknownEquipmentInstallationLocationIds.add(entry.id);
         const componentLabel = componentRef === null ? '' : ` (component ${componentRef.componentIndex})`;
@@ -1469,6 +1492,7 @@ export class CBTForceUnit extends ForceUnit {
     endPhase() {
         this.dispatchBeforeEquipmentStateCommit();
         this.state.endPhase();
+        this.inventoryControl.markAmmoSourcesChanged();
         this.phaseTrigger.update(v => v + 1); // Trigger change detection
     }
 
@@ -1520,6 +1544,7 @@ export class CBTForceUnit extends ForceUnit {
         const notifications = this.injector.get(ToastService);
         this.forEachCurrentInventoryEntry(entry => equipmentRegistry.onEndTurn(entry, notifications));
         this.state.endTurn();
+        this.inventoryControl.markAmmoSourcesChanged();
         this.phaseTrigger.update(v => v + 1); // Trigger change detection
         this.state.resetTurnState();
     }

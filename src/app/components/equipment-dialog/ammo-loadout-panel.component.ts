@@ -6,7 +6,7 @@ import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core
 import type { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
 import type { HandlerCommandContext } from '../../services/equipment-interaction-registry.service';
 import type { AmmoControlEntry, AmmoControlGroup, AmmoControlGroupLocation } from '../../utils/ammo-interaction.util';
-import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, setAmmoEntry, setAmmoGroup } from '../../utils/ammo-interaction.util';
+import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, isAmmoControlEntryUsable, setAmmoEntry, setAmmoGroup } from '../../utils/ammo-interaction.util';
 
 export interface AmmoLoadoutPanelData {
     entries: AmmoControlEntry[];
@@ -30,7 +30,7 @@ export interface AmmoLoadoutPanelData {
     <div class="ammo-control-list" [class.read-only]="readOnly()">
         @for (group of groups(); track group.id) {
             @let remainingAmmoGroup = groupRemaining(group);
-            <div class="ammo-control-row" [class.destroyed-entry]="group.destroyed" [class.empty]="remainingAmmoGroup <= 0">
+            <div class="ammo-control-row" [class.destroyed-entry]="group.status === 'destroyed'" [class.disabled-entry]="group.status === 'disabled'" [class.empty]="remainingAmmoGroup <= 0">
                 <div class="ammo-control-label" [class.expandable]="group.expandable">
                     @if (group.expandable) {
                         <button class="ammo-expand-button" type="button" (click)="toggleGroup(group)">
@@ -40,7 +40,7 @@ export interface AmmoLoadoutPanelData {
                                 @if (!isExpanded(group)) {
                                     <span class="ammo-location-badges">
                                     @for (location of group.locations; track location.loc + ':' + location.state) {
-                                        <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
+                                        <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.disabled]="isLocationBadgeDisabled(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
                                             @if (location.quantity > 1) {
                                                 <span class="quantity">{{ location.quantity + '×' }}</span>
                                             }
@@ -60,7 +60,7 @@ export interface AmmoLoadoutPanelData {
                                 <span class="ammo-name">{{ group.displayName }}</span>
                                 <span class="ammo-location-badges">
                                     @for (location of group.locations; track location.loc + ':' + location.state) {
-                                        <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
+                                        <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.disabled]="isLocationBadgeDisabled(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
                                             @if (location.quantity > 1) {
                                                 <span class="quantity">{{ location.quantity + '×' }}</span>
                                             }
@@ -76,16 +76,16 @@ export interface AmmoLoadoutPanelData {
                         <div class="ammo-bin-list">
                             @for (entry of group.entries; track entry.id) {
                                 @let remainingAmmoBin = remaining(entry);
-                                <div class="ammo-bin" [class.destroyed]="entry.destroyed" [class.empty]="remainingAmmoBin <= 0">
-                                    <button class="ammo-bin-name-wrapper" type="button" (click)="setAmmoBin(entry)" [disabled]="entry.destroyed || readOnly()">
+                                <div class="ammo-bin" [class.destroyed]="entry.status === 'destroyed'" [class.disabled]="entry.status === 'disabled'" [class.empty]="remainingAmmoBin <= 0">
+                                    <button class="ammo-bin-name-wrapper" type="button" (click)="setAmmoBin(entry)" [disabled]="!entryUsable(entry) || readOnly()">
                                         <span class="ammo-bin-name">{{ entry.displayBinName }}</span>
                                         <span class="ammo-location-badges">
-                                            <span class="ammo-location-badge" [class.exposed]="isEntryLocationBadgeExposed(group, entry)" [class.destroyed]="isEntryLocationBadgeDestroyed(entry)">
+                                            <span class="ammo-location-badge" [class.exposed]="isEntryLocationBadgeExposed(group, entry)" [class.disabled]="isEntryLocationBadgeDisabled(entry)" [class.destroyed]="isEntryLocationBadgeDestroyed(entry)">
                                                 {{ entry.locationLabel }}
                                             </span>
                                         </span>
                                     </button>
-                                    @if (!entry.destroyed && !readOnly()) {
+                                    @if (entryUsable(entry) && !readOnly()) {
                                         <div class="ammo-bin-adjustments">
                                             <button class="ammo-bin-adjust bt-button square-small" type="button" (click)="decrementBin(entry)" [disabled]="remaining(entry) <= 0">-1</button>
                                             <button class="ammo-bin-adjust bt-button square-small" type="button" (click)="incrementBin(entry)" [disabled]="remaining(entry) >= entry.totalAmmo">+1</button>
@@ -99,7 +99,7 @@ export interface AmmoLoadoutPanelData {
                         </div>
                     }
                 </div>
-                @if (!readOnly() && !group.destroyed) {
+                @if (!readOnly() && group.status === 'available') {
                     <div class="ammo-control-actions">
                         <button class="bt-button square-small" type="button" (click)="decrement(group)" [disabled]="groupRemaining(group) <= 0">-1</button>
                         <button class="bt-button square-small" type="button" (click)="increment(group)" [disabled]="groupRemaining(group) >= group.totalAmmo">+1</button>
@@ -159,6 +159,12 @@ export interface AmmoLoadoutPanelData {
             color: var(--damage-color);
         }
 
+        .ammo-control-row.disabled-entry .ammo-name,
+        .ammo-bin.disabled,
+        .ammo-control-row.disabled-entry {
+            color: var(--disabled-color);
+        }
+
         .ammo-control-label {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto;
@@ -204,6 +210,11 @@ export interface AmmoLoadoutPanelData {
         .destroyed-entry .chevron,
         .destroyed-entry .no-chevron {
             color: var(--damage-color);
+        }
+
+        .disabled-entry .chevron,
+        .disabled-entry .no-chevron {
+            color: var(--disabled-color);
         }
 
         .chevron.collapsed {
@@ -255,6 +266,10 @@ export interface AmmoLoadoutPanelData {
             background: var(--damage-color);
         }
 
+        .ammo-location-badge.disabled {
+            background: var(--disabled-color);
+        }
+
         .ammo-control-label > .ammo-name-wrapper {
             display: flex;
             align-items: center;
@@ -290,6 +305,13 @@ export interface AmmoLoadoutPanelData {
         .ammo-bin.destroyed > .ammo-count,
         .ammo-bin.destroyed > .ammo-count > .count {
             color: var(--damage-color);
+        }
+
+        .ammo-control-row.disabled-entry > .ammo-control-label > .ammo-count,
+        .ammo-control-row.disabled-entry > .ammo-control-label > .ammo-count > .count,
+        .ammo-bin.disabled > .ammo-count,
+        .ammo-bin.disabled > .ammo-count > .count {
+            color: var(--disabled-color);
         }
 
         .ammo-control-actions {
@@ -382,6 +404,10 @@ export interface AmmoLoadoutPanelData {
             text-decoration-color: var(--damage-color);
         }
 
+        .ammo-bin.disabled .ammo-bin-name {
+            color: var(--disabled-color);
+        }
+
         @container (max-width: 520px) {
             .ammo-control-row {
                 grid-template-columns: 1fr;
@@ -466,13 +492,25 @@ export class AmmoLoadoutPanelComponent {
         return location.state === 'destroyed';
     }
 
+    isLocationBadgeDisabled(location: AmmoControlGroupLocation): boolean {
+        return location.state === 'disabled';
+    }
+
     isEntryLocationBadgeExposed(group: AmmoControlGroup, entry: AmmoControlEntry): boolean {
-        if (entry.destroyed) return false;
+        if (!isAmmoControlEntryUsable(entry)) return false;
         return group.locations.find(location => location.loc === entry.locationLabel)?.state === 'exposed';
     }
 
     isEntryLocationBadgeDestroyed(entry: AmmoControlEntry): boolean {
-        return entry.destroyed;
+        return entry.status === 'destroyed';
+    }
+
+    isEntryLocationBadgeDisabled(entry: AmmoControlEntry): boolean {
+        return entry.status === 'disabled';
+    }
+
+    entryUsable(entry: AmmoControlEntry): boolean {
+        return isAmmoControlEntryUsable(entry);
     }
 
     decrement(group: AmmoControlGroup): void {
@@ -490,14 +528,14 @@ export class AmmoLoadoutPanelComponent {
     }
 
     decrementBin(entry: AmmoControlEntry): void {
-        if (this.readOnly() || entry.destroyed) return;
+        if (this.readOnly() || !isAmmoControlEntryUsable(entry)) return;
         if (changeAmmoEntryRemaining(entry, -1, this.data.context)) {
             this.markInventoryViewChanged();
         }
     }
 
     incrementBin(entry: AmmoControlEntry): void {
-        if (this.readOnly() || entry.destroyed) return;
+        if (this.readOnly() || !isAmmoControlEntryUsable(entry)) return;
         if (changeAmmoEntryRemaining(entry, 1, this.data.context)) {
             this.markInventoryViewChanged();
         }

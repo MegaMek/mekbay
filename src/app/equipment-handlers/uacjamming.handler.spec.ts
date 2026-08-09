@@ -10,25 +10,13 @@ import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../models/
 import { createHandlerCommandContext, createHandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import type { DialogsService } from '../services/dialogs.service';
 import type { ToastService } from '../services/toast.service';
-import { isEquipmentDisabledByFailure } from './disabled-equipment.handler';
+import { createTestEquipmentOwner } from '../testing/unit-test-helpers';
 import { UACJammingHandler } from './uacjamming.handler';
 
 function owner(gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
-    const getEquipmentStatus = (entry: MountedEquipment) => (
-        entry.committedDestroyed()
-            ? 'destroyed'
-            : isEquipmentDisabledByFailure(entry)
-                ? 'disabled'
-                : 'available'
-    );
-    return {
-        setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        gameRules,
-        getEquipmentStatus,
-        isEquipmentOperational: (entry: MountedEquipment) => getEquipmentStatus(entry) === 'available',
-        canPerformEquipmentAction: (entry: MountedEquipment) => getEquipmentStatus(entry) === 'available',
-        canEditEquipmentState: () => true,
-    } as never;
+    const { owner } = createTestEquipmentOwner({ gameRules });
+    spyOn(owner, 'setInventoryEntry').and.callThrough();
+    return owner;
 }
 
 function weapon(ammoType: AmmoType): WeaponEquipment {

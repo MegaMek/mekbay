@@ -24,6 +24,7 @@ import { SvgInteractionService } from './svg-interaction.service';
 import type { ZoomPanServiceInterface } from './zoom-pan.interface';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
+import type { EquipmentAction } from '../../models/cbt-force-unit.model';
 
 type SvgInteractionServicePrivate = {
     addSvgTapHandler(
@@ -64,7 +65,7 @@ function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInve
         getInventory: () => MountedEquipment[];
         getEquipmentStatus: (entry: MountedEquipment) => 'available' | 'disabled' | 'destroyed';
         isEquipmentOperational: (entry: MountedEquipment) => boolean;
-        canPerformEquipmentAction: (entry: MountedEquipment) => boolean;
+        canPerformEquipmentAction: (entry: MountedEquipment, action?: EquipmentAction) => boolean;
         rules: typeof NO_CONDITION_RULES;
     };
     return unit;
@@ -325,6 +326,50 @@ describe('SvgInteractionService', () => {
         expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
     });
 
+    it('does not change an alternative mode when the canonical mode action is unavailable', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit(`
+            <g class="inventoryEntry">
+                <rect class="mainButton inventoryEntryButton"></rect>
+                <g class="alternativeMode" mode="Standard">
+                    <rect class="alternativeModeButton inventoryEntryButton"></rect>
+                </g>
+                <g class="alternativeMode" mode="High Explosive">
+                    <rect class="alternativeModeButton inventoryEntryButton"></rect>
+                </g>
+            </g>
+        `, 'ATM');
+        const canPerform = spyOn(unit, 'canPerformEquipmentAction')
+            .and.callFake((_entry: MountedEquipment, action?: EquipmentAction) => action !== 'change-mode');
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (entry.el!.querySelector('.alternativeMode[mode="High Explosive"] .alternativeModeButton') as SVGElement)
+            .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(entry.states.has(INVENTORY_CONTROL_MODE_STATE)).toBeFalse();
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
+        expect(canPerform).toHaveBeenCalledWith(entry, 'change-mode');
+    });
+
+    it('does not mutate sheet selection, range, or target when the attack action is unavailable', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit();
+        unit.createInventoryControlTarget();
+        const canPerform = spyOn(unit, 'canPerformEquipmentAction')
+            .and.callFake((_entry: MountedEquipment, action?: EquipmentAction) => action === 'change-mode');
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (entry.el!.querySelector('.mainButton') as SVGElement)
+            .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        (entry.el!.querySelector('.shrButton') as SVGElement)
+            .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
+        expect(unit.getInventoryControlEntryRange(entry.id)).toBeUndefined();
+        expect(unit.getInventoryControlEntryTargetId(entry.id)).toBeUndefined();
+        expect(canPerform).toHaveBeenCalledWith(entry, 'fire');
+    });
+
     it('keeps selected alternative mode entries on when switching to another mode button', () => {
         const { svg, entry, unit } = createInventoryInteractionUnit(`
             <g class="inventoryEntry">
@@ -389,6 +434,14 @@ describe('SvgInteractionService', () => {
         unit.getInventory = () => [entry, module];
         service.updateUnit(unit);
         service.setupInteractions(svg);
+        const canPerform = spyOn(unit, 'canPerformEquipmentAction')
+            .and.callFake((_entry: MountedEquipment, action?: EquipmentAction) => action !== 'change-mode');
+
+        (module.el!.querySelector(':scope > .mainButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(entry.states.has(INVENTORY_CONTROL_MODE_STATE)).toBeFalse();
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
+
+        canPerform.and.returnValue(true);
 
         (module.el!.querySelector(':scope > .mainButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         expect(entry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe(RISC_LASER_PULSE_MODE);
@@ -934,6 +987,23 @@ describe('SvgInteractionService', () => {
 
         choices[1].click();
         expect(unit.getInventoryControlEntryTargetId(entry.id)).toBe('B');
+    });
+
+    it('rechecks the attack action before applying a target-picker selection', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit();
+        unit.createInventoryControlTarget();
+        unit.createInventoryControlTarget();
+        const canPerform = spyOn(unit, 'canPerformEquipmentAction').and.returnValue(true);
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (entry.el!.querySelector('.shrButton') as SVGElement)
+            .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        canPerform.and.returnValue(false);
+        (document.body.querySelector('.weapon-target-choice-menu .target-choice:not(.empty-choice)') as HTMLButtonElement).click();
+
+        expect(unit.getInventoryControlEntryTargetId(entry.id)).toBeUndefined();
+        expect(canPerform).toHaveBeenCalledWith(entry, 'fire');
     });
 
     it('uses typed hit modifiers instead of rendered SVG hit text in the target picker fallback', () => {

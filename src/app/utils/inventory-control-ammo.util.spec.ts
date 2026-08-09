@@ -116,6 +116,7 @@ describe('inventory-control ammo selection', () => {
         const owner = {
             getInventory: () => inventory,
             getCritSlots: () => [],
+            getEquipmentStatus: () => 'available' as const,
             isEquipmentOperational: () => true,
         } as unknown as CBTForceUnit;
         const mountedWeapon = new MountedWeapon({ owner, id: 'ac5', name: weapon.name, equipment: weapon });
@@ -198,6 +199,7 @@ describe('inventory-control ammo selection', () => {
             getInventory: () => inventory,
             getCritSlots: () => [],
             getUnit: () => createEmptyUnit({ subtype: 'Battle Armor' }),
+            getEquipmentStatus: () => 'available' as const,
             isEquipmentOperational: () => true,
         } as unknown as CBTForceUnit;
         const mountedWeapon = new MountedWeapon({ owner, id: 'lrm-os', name: weapon.internalName, equipment: weapon });

@@ -29,7 +29,7 @@ import { type ChoicePickerStyle, PickerFactoryService } from '../../services/pic
 import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData, EquipmentDialogTab } from '../equipment-dialog/equipment-dialog.model';
 import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dialog/weapon-target-choice-menu.component';
-import { getInventoryControlGroups, getInventoryControlModeAmmoSummary, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_MODE_STATE, resolveInventoryControlSelectedAmmoOption, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
+import { getInventoryControlGroups, getInventoryControlModeAmmoSummary, getInventoryControlModes, getSelectedInventoryControlMode, inventoryControlEntryAction, INVENTORY_CONTROL_MODE_STATE, resolveInventoryControlSelectedAmmoOption, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
 import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
@@ -1130,21 +1130,13 @@ export class SvgInteractionService {
                 const unit = this.unit();
                 if (!unit) return;
 
-                const clickedMode = this.validInventoryModeForButton(entry, button);
-                const selectedMode = this.selectedInventoryControlMode(entry);
-                const forceSelected = !!clickedMode && clickedMode !== selectedMode;
-                if (clickedMode) {
-                    setInventoryControlMode(entry, clickedMode);
-                }
+                const forceSelected = this.applyInventoryModeFromButton(entry, button);
+                if (forceSelected === null) return;
 
                 const updated = selectInventoryControlEntry(unit, entry, (selectedTargetId, targets) => {
                     this.showInventoryTargetPicker(entry, button, selectedTargetId, targets);
                 }, forceSelected);
                 if (updated) {
-                    this.removePicker();
-                } else if (button.classList.contains('mainButton') && entry.el?.classList.contains('bay')) {
-                    // This is a poorly designed workaround to allow toggling the bay entry selection.
-                    unit.setInventoryControlEntrySelected(entry, forceSelected || !unit.isInventoryControlEntrySelected(entry.id));
                     this.removePicker();
                 }
             };
@@ -1157,13 +1149,9 @@ export class SvgInteractionService {
                     && unit.getUnit().type !== 'Aero'
                     && !unit.allowsExtremeRangeAttacks()) return;
 
-                const clickedMode = this.validInventoryModeForButton(entry, button);
-                const selectedMode = this.selectedInventoryControlMode(entry);
-                const forceSelected = !!clickedMode && clickedMode !== selectedMode;
-
-                if (clickedMode) {
-                    setInventoryControlMode(entry, clickedMode);
-                }
+                const forceSelected = this.applyInventoryModeFromButton(entry, button);
+                if (forceSelected === null
+                    || !entry.owner.canPerformEquipmentAction(entry, inventoryControlEntryAction(entry))) return;
                 const targets = unit.getInventoryControlTargets();
                 if (targets.length === 0) {
                     unit.toggleInventoryControlEntryRange(entry, range, forceSelected);
@@ -1258,15 +1246,30 @@ export class SvgInteractionService {
             ?? getSelectedInventoryControlMode(entry, this.dataService.getEquipmentRegistry(), rules.matchesAmmo);
     }
 
+    /** Apply a clicked alternative mode only when the canonical mode action permits it. */
+    private applyInventoryModeFromButton(entry: MountedEquipment, button: SVGElement): boolean | null {
+        const clickedMode = this.validInventoryModeForButton(entry, button);
+        if (!clickedMode || clickedMode === this.selectedInventoryControlMode(entry)) return false;
+        if (!entry.owner.canPerformEquipmentAction(entry, 'change-mode')) return null;
+        setInventoryControlMode(entry, clickedMode);
+        return true;
+    }
+
     private toggleRiscLaserPulseMode(module: MountedEquipment): void {
         const unit = this.unit();
         const parent = module.parent;
         if (!unit || !parent || !isLaserWithRiscModule(parent)) return;
+        if (unit.readOnly()
+            || unit.getEquipmentStatus(parent) !== 'available'
+            || unit.getEquipmentStatus(module) !== 'available'
+            || !parent.owner.canPerformEquipmentAction(parent, 'change-mode')) return;
         const mode = selectedRiscLaserMode(parent) === RISC_LASER_PULSE_MODE
             ? RISC_LASER_STANDARD_MODE
             : RISC_LASER_PULSE_MODE;
         setInventoryControlMode(parent, mode);
-        unit.setInventoryControlEntrySelected(parent, true);
+        if (parent.owner.canPerformEquipmentAction(parent, inventoryControlEntryAction(parent))) {
+            unit.setInventoryControlEntrySelected(parent, true);
+        }
         this.removePicker();
     }
 
@@ -1307,6 +1310,10 @@ export class SvgInteractionService {
         componentRef.changeDetectorRef.detectChanges();
 
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(targetId => {
+            if (!entry.owner.canPerformEquipmentAction(entry, inventoryControlEntryAction(entry))) {
+                this.overlayManager.closeManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY);
+                return;
+            }
             unit.setInventoryControlEntryTarget(entry, targetId);
             this.overlayManager.closeManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY);
         });

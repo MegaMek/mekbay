@@ -464,6 +464,27 @@ describe('TurnState', () => {
             expect(restored.dirtyPhase()).toBeFalse();
         });
 
+        it('persists equipment phase changes until they are committed', () => {
+            const { turnState } = createTurnStateHarness();
+
+            turnState.markEquipmentStateChanged();
+
+            expect(turnState.dirty()).toBeTrue();
+            expect(turnState.dirtyPhase()).toBeTrue();
+            expect(turnState.serialize()).toEqual({ equipmentStateChanged: true });
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(turnState.serialize());
+
+            expect(restored.dirtyPhase()).toBeTrue();
+
+            restored.commitEquipmentStateChanges();
+
+            expect(restored.dirty()).toBeFalse();
+            expect(restored.dirtyPhase()).toBeFalse();
+            expect(restored.serialize()).toBeUndefined();
+        });
+
         it('preserves applied heat sources without serializing derived source values', () => {
             const { turnState } = createTurnStateHarnessWithDissipation(5);
             turnState.moveMode.set('run');

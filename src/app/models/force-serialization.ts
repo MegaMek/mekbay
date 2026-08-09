@@ -90,6 +90,7 @@ export interface SerializedTurnState {
     psrChecks?: SerializedPSRChecks;
     applyMovePSR?: boolean;
     spotting?: boolean;
+    equipmentStateChanged?: boolean;
 }
 
 export interface SerializedForce {
@@ -450,6 +451,7 @@ export const TURN_STATE_SCHEMA = Sanitizer.schema<SerializedTurnState>()
     .custom('psrChecks', sanitizePSRChecks)
     .custom('applyMovePSR', (value: unknown) => typeof value === 'boolean' ? value : undefined)
     .custom('spotting', (value: unknown) => typeof value === 'boolean' ? value : undefined)
+    .custom('equipmentStateChanged', (value: unknown) => value === true ? true : undefined)
     .build();
 
 export const LOCATION_SCHEMA = Sanitizer.schema<LocationData>()

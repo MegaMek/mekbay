@@ -8,7 +8,6 @@ import type { CriticalSlot } from "../models/force-serialization";
 import { UnitSvgService } from "./unit-svg.service";
 import { AmmoEquipment } from "../models/equipment.model";
 import { MekRules } from "../models/rules/mek-rules";
-import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 import { getCriticalSlotAmmoProfileKey } from "../utils/ammo-interaction.util";
 import { INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, readInventoryControlDisplayData } from "../utils/inventory-control.util";
 
@@ -201,27 +200,9 @@ export class UnitSvgMekService extends UnitSvgService {
                     this.renderMeleeDamage(entry, 'physWeapon', undefined, !!entry.equipment?.flags.has('S_FLAIL'));
                 }
 
-                const actionUnavailable = !entry.owner.canPerformEquipmentAction(entry, entry.isPhysicalWeapon() ? 'physical-attack' : 'fire');
-                entry.el.classList.toggle('disabledInventory', actionUnavailable);
-                const destroyed = this.unit.getEquipmentStatus(entry) === 'destroyed';
-                entry.el.classList.toggle('damagedInventory', destroyed);
-                if (destroyed || actionUnavailable) entry.el.classList.remove('selected');
-
-                // Hit modifier badge
-                this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry));
+                this.renderInventoryEntryState(entry);
         });
         this.renderInventoryControlSelection();
-    }
-
-    protected override resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null) {
-        const stateModifiers = this.mekRules.getEquipmentToHitModifiers(entry);
-        const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
-        return this.unit.gameRules.resolveToHit({
-            subject: entry,
-            stateModifiers,
-            range,
-            adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
-        });
     }
 
     protected override updateTurnState() {

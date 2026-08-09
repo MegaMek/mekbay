@@ -115,6 +115,23 @@ export interface InventoryControlRuntimeAmmoProfileIdentity {
     readonly profileId: string;
 }
 
+export function resolveInventoryControlSelectedAmmoProfileId(
+    profileOptions: readonly InventoryControlRuntimeAmmoProfileIdentity[],
+    selectedProfileId?: string | null,
+    preferredSourceOptionId?: string | null,
+    sourceOptions: readonly Pick<InventoryControlRuntimeAmmoOptionIdentity, 'id' | 'profileId'>[] = [],
+): string | undefined {
+    if (selectedProfileId && profileOptions.some(option => option.profileId === selectedProfileId)) {
+        return selectedProfileId;
+    }
+    const preferredProfileId = preferredSourceOptionId
+        ? sourceOptions.find(option => option.id === preferredSourceOptionId)?.profileId
+        : undefined;
+    return preferredProfileId && profileOptions.some(option => option.profileId === preferredProfileId)
+        ? preferredProfileId
+        : profileOptions[0]?.profileId;
+}
+
 export function reconcileInventoryControlRuntimeAmmoSelection(
     selection: InventoryControlRuntimeAmmoSelection | undefined,
     sourceOptions: readonly InventoryControlRuntimeAmmoOptionIdentity[],
@@ -125,15 +142,13 @@ export function reconcileInventoryControlRuntimeAmmoSelection(
     const preferredSource = selection.preferredSourceOptionId
         ? sourceOptions.find(option => option.id === selection.preferredSourceOptionId)
         : undefined;
-    const persistedProfileId = selection.selectedProfileId
-        && profileOptions.some(option => option.profileId === selection.selectedProfileId)
-        ? selection.selectedProfileId
-        : null;
-    const preferredProfileId = preferredSource
-        && profileOptions.some(option => option.profileId === preferredSource.profileId)
-        ? preferredSource.profileId
-        : null;
-    const selectedProfileId = persistedProfileId ?? preferredProfileId ?? profileOptions[0].profileId;
+    const selectedProfileId = resolveInventoryControlSelectedAmmoProfileId(
+        profileOptions,
+        selection.selectedProfileId,
+        selection.preferredSourceOptionId,
+        sourceOptions,
+    );
+    if (!selectedProfileId) return undefined;
 
     return {
         selectedProfileId,

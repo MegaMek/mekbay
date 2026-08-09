@@ -6,47 +6,37 @@ import { MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { createHandlerQueryContext } from '../services/equipment-interaction-registry.service';
+import { createTestEquipmentOwner } from '../testing/unit-test-helpers';
 import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
 import { RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE, RiscLaserPulseModuleHandler } from './risc-laser-pulse-module.handler';
 
-function owner() {
-    return {
-        setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        getEquipmentStatus: (entry: MountedEquipment) => entry.committedDestroyed() ? 'destroyed' : 'available',
-        isEquipmentOperational: (entry: MountedEquipment) => !entry.committedDestroyed(),
-        canPerformEquipmentAction: (entry: MountedEquipment) => !entry.committedDestroyed(),
-    } as never;
-}
-
-function laser(module: MountedEquipment, states = new Map<string, string>()): MountedEquipment {
+function fixture(moduleDestroyed = false, states = new Map<string, string>()) {
+    const ownerFixture = createTestEquipmentOwner();
+    const { owner } = ownerFixture;
+    const linked = new MountedEquipment({
+        owner,
+        id: 'risc',
+        name: 'RISC Laser Pulse Module',
+        destroyed: moduleDestroyed,
+        equipment: new MiscEquipment({ id: 'risc', name: 'RISC Laser Pulse Module', type: 'misc', flags: ['F_WEAPON_ENHANCEMENT', 'F_RISC_LASER_PULSE_MODULE'] })
+    });
     const entry = new MountedEquipment({
-        owner: owner(),
+        owner,
         id: 'laser',
         name: 'Medium Laser',
         states,
         equipment: new WeaponEquipment({ id: 'laser', name: 'Medium Laser', type: 'weapon', flags: ['F_ENERGY', 'F_LASER'], weapon: { ammoType: 'NA', heat: 3 } }),
-        linkedWith: [module]
+        linkedWith: [linked]
     });
-    module.parent = entry;
-    return entry;
-}
-
-function module(destroyed = false): MountedEquipment {
-    return new MountedEquipment({
-        owner: owner(),
-        id: 'risc',
-        name: 'RISC Laser Pulse Module',
-        destroyed,
-        equipment: new MiscEquipment({ id: 'risc', name: 'RISC Laser Pulse Module', type: 'misc', flags: ['F_WEAPON_ENHANCEMENT', 'F_RISC_LASER_PULSE_MODULE'] })
-    });
+    ownerFixture.inventory.push(entry, linked);
+    return { entry, linked };
 }
 
 describe('RiscLaserPulseModuleHandler', () => {
     const handler = new RiscLaserPulseModuleHandler();
     const context = createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY);
     it('offers STD and PULSE modes from the linked laser row', () => {
-        const linked = module();
-        const entry = laser(linked);
+        const { entry } = fixture();
 
         const choice = handler.getChoices(entry, context)[0];
 
@@ -59,8 +49,7 @@ describe('RiscLaserPulseModuleHandler', () => {
     });
 
     it('adds pulse heat and linked hit modifier only in pulse mode', () => {
-        const linked = module();
-        const entry = laser(linked, new Map([[INVENTORY_CONTROL_MODE_STATE, RISC_LASER_PULSE_MODE]]));
+        const { linked, entry } = fixture(false, new Map([[INVENTORY_CONTROL_MODE_STATE, RISC_LASER_PULSE_MODE]]));
 
         expect(handler.applyInventoryControlHeatEffects(entry, { value: 3, weakened: false }, context))
             .toEqual({ value: 5, weakened: false });
@@ -77,8 +66,7 @@ describe('RiscLaserPulseModuleHandler', () => {
     });
 
     it('falls back to STD and allows aimed shots when the module is unavailable', () => {
-        const linked = module(true);
-        const entry = laser(linked, new Map([[INVENTORY_CONTROL_MODE_STATE, RISC_LASER_PULSE_MODE]]));
+        const { linked, entry } = fixture(true, new Map([[INVENTORY_CONTROL_MODE_STATE, RISC_LASER_PULSE_MODE]]));
 
         expect(handler.getChoices(entry, context)).toEqual([]);
         expect(handler.applyInventoryControlHeatEffects(entry, { value: 3, weakened: false }, context))
@@ -90,8 +78,7 @@ describe('RiscLaserPulseModuleHandler', () => {
     });
 
     it('vetoes aimed shots in pulse mode', () => {
-        const linked = module();
-        const entry = laser(linked, new Map([[INVENTORY_CONTROL_MODE_STATE, RISC_LASER_PULSE_MODE]]));
+        const { entry } = fixture(false, new Map([[INVENTORY_CONTROL_MODE_STATE, RISC_LASER_PULSE_MODE]]));
 
         expect(handler.canPerformAimedShot(entry, context)).toBeFalse();
     });

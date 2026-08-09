@@ -85,7 +85,7 @@ function createEntry(params: {
         originalTotalAmmo: params.totalAmmo ?? 5,
         totalAmmo: params.totalAmmo ?? 5,
         consumed: params.consumed ?? 0,
-        destroyed: false,
+        status: 'available',
     };
 }
 
@@ -121,7 +121,7 @@ function createCritEntry(params: {
         originalTotalAmmo: 5,
         totalAmmo: 5,
         consumed: 0,
-        destroyed: !!params.destroyed,
+        status: params.destroyed ? 'destroyed' : 'available',
     };
 }
 
@@ -307,8 +307,44 @@ describe('ammo interaction direct inventory groups', () => {
         }));
 
         expect(entries.length).toBe(2);
-        expect(entries.every(entry => entry.destroyed)).toBeTrue();
+        expect(entries.every(entry => entry.status === 'destroyed')).toBeTrue();
         expect(entries.every(entry => getAmmoEntryRemaining(entry) === 0)).toBeTrue();
+    });
+
+    it('preserves disabled ammo status without presenting it as destroyed', () => {
+        const weapon = new WeaponEquipment({
+            id: 'CLUltraAC20',
+            name: 'Ultra AC/20',
+            type: 'weapon',
+            weapon: { ammoType: 'AC_ULTRA', rackSize: 20 },
+        });
+        const ammoSlot = {
+            id: `${standardAmmo.internalName}@LT#1`,
+            name: standardAmmo.internalName,
+            loc: 'LT',
+            slot: 1,
+            eq: standardAmmo,
+            totalAmmo: 5,
+            consumed: 0,
+        } as CriticalSlot;
+        const owner = {
+            getInventory: () => ([
+                { id: `${weapon.internalName}@RA#0`, name: weapon.internalName, equipment: weapon, states: new Map() },
+            ]),
+            getCritSlots: () => ([ammoSlot]),
+            svg: () => null,
+            getEquipmentStatus: (source: MountedEquipment | CriticalSlot) => source === ammoSlot ? 'disabled' : 'available',
+            isEquipmentOperational: (source: MountedEquipment | CriticalSlot) => source !== ammoSlot,
+        } as unknown as CBTForceUnit;
+
+        const [entry] = getAmmoControlEntriesForUnitWeapons(owner, createEquipmentCatalog({
+            [weapon.internalName]: weapon,
+            [standardAmmo.internalName]: standardAmmo,
+        }));
+
+        expect(entry.status).toBe('disabled');
+        expect(getAmmoEntryRemaining(entry)).toBe(0);
+        expect(getAmmoControlGroups([entry])[0].status).toBe('disabled');
     });
 
     it('drains grouped bins from the last bin and refills the most recently drained bin', () => {
@@ -373,7 +409,7 @@ describe('ammo interaction direct inventory groups', () => {
         ];
         const group = getAmmoControlGroups(entries)[0];
 
-        expect(group.destroyed).toBeFalse();
+        expect(group.status).toBe('available');
         expect(getAmmoEntryRemaining(entries[0])).toBe(0);
         expect(getAmmoGroupRemaining(group)).toBe(5);
         expect(changeAmmoGroupRemaining(group, -1, context)).toBeTrue();
@@ -400,7 +436,7 @@ describe('ammo interaction direct inventory groups', () => {
 
         const group = getAmmoControlGroups(entries)[0];
 
-        expect(group.destroyed).toBeTrue();
+        expect(group.status).toBe('destroyed');
         expect(group.expandable).toBeTrue();
         expect(getAmmoGroupRemaining(group)).toBe(0);
     });
@@ -486,7 +522,7 @@ describe('intrinsic one-shot ammo mounts', () => {
             originalTotalAmmo: 1,
             totalAmmo: 1,
             consumed: 0,
-            destroyed: false,
+            status: 'available',
         };
 
         setAmmoEntryValue(entry, incendiary, 99, 0);
@@ -518,7 +554,7 @@ describe('intrinsic one-shot ammo mounts', () => {
             originalTotalAmmo: 1,
             totalAmmo: 1,
             consumed: 0,
-            destroyed: false,
+            status: 'available',
         };
         const physicalEntry: AmmoControlEntry = {
             ...intrinsicEntry,

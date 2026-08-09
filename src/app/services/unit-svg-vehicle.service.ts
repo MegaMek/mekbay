@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { MountedEquipment } from "../models/mounted-equipment.model";
 import type { CriticalSlot } from "../models/force-serialization";
 import { VehicleRules } from "../models/rules/vehicle-rules";
-import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 import { committedCriticalHitCount, isRepeatableMotiveHitId, MOTIVE_HIT_PIP_COUNT } from "../models/rules/vehicle-motive-hit.util";
 import { UnitSvgService } from "./unit-svg.service";
 
@@ -132,26 +130,9 @@ export class UnitSvgVehicleService extends UnitSvgService {
                         this.renderChargeDamage(entry, this.vehicleRules.chargeDamage());
                     }
                 }
-                const actionUnavailable = !entry.owner.canPerformEquipmentAction(entry, entry.isPhysicalWeapon() ? 'physical-attack' : 'fire');
-                entry.el.classList.toggle('disabledInventory', actionUnavailable);
-                const destroyed = this.unit.getEquipmentStatus(entry) === 'destroyed';
-                entry.el.classList.toggle('damagedInventory', destroyed);
-                if (destroyed || actionUnavailable) entry.el.classList.remove('selected');
-
-                this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry));
+                this.renderInventoryEntryState(entry);
         });
         this.renderInventoryControlSelection();
-    }
-
-    protected override resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null) {
-        const stateModifiers = this.vehicleRules.getEquipmentToHitModifiers(entry);
-        const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
-        return this.unit.gameRules.resolveToHit({
-            subject: entry,
-            stateModifiers,
-            range,
-            adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
-        });
     }
 
 }

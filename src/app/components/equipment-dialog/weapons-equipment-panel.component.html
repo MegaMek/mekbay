@@ -175,7 +175,7 @@
                                     <div class="actions-cell" [class.empty-row-actions]="!rowHasActions(row)">
                                         @if (row.tracksAmmo) {
                                         @let ammo = ammoState(row);
-                                        <div class="ammo-cell meta-cell" data-label="Ammo" [class.empty-ammo]="ammo.depleted" [class.destroyed-ammo]="ammo.destroyed">
+                                        <div class="ammo-cell meta-cell" data-label="Ammo" [class.empty-ammo]="ammo.depleted" [class.destroyed-ammo]="ammo.destroyed" [class.disabled-ammo]="ammo.disabled">
                                             <span class="grouped-cells">
                                                 @if (ammo.hasAmmo) {
                                                     @if (ammo.showDropdown) {

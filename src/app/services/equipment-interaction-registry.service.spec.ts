@@ -16,7 +16,7 @@ import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../models/rules/unit-type-rules';
-import { createEmptyUnit } from '../testing/unit-test-helpers';
+import { createEmptyUnit, createTestEquipmentOwner } from '../testing/unit-test-helpers';
 import {
     createHandlerCommandContext,
     createHandlerQueryContext,
@@ -349,14 +349,8 @@ describe('EquipmentInteractionRegistryService', () => {
             type: 'ammo',
             ammo: { type: 'LRM', rackSize: 10, shots: 12 },
         });
-        let inventory: MountedEquipment[] = [];
-        const ammoOwner = {
-            readOnly: () => true,
-            getCritSlots: () => [],
-            getInventory: () => inventory,
-            isEquipmentOperational: () => true,
-            canPerformEquipmentAction: () => true,
-        } as never;
+        const ownerFixture = createTestEquipmentOwner({ readOnly: true });
+        const ammoOwner = ownerFixture.owner;
         const weapon = new MountedEquipment({
             owner: ammoOwner,
             id: 'lrm-10',
@@ -373,7 +367,7 @@ describe('EquipmentInteractionRegistryService', () => {
             equipment: ammo,
             totalAmmo: 12,
         });
-        inventory = [weapon, ammoMount];
+        ownerFixture.inventory.push(weapon, ammoMount);
         const equipmentCatalog = new EquipmentRegistry({ [ammo.internalName]: ammo });
         const dialogsService = jasmine.createSpyObj<HandlerDialogsService>(
             'HandlerDialogsService',

@@ -25,7 +25,7 @@ import { LaserInsulatorHandler } from '../equipment-handlers/laser-insulator.han
 import { RISC_LASER_PULSE_MODE, RiscLaserPulseModuleHandler } from '../equipment-handlers/risc-laser-pulse-module.handler';
 import { DialogsService } from '../services/dialogs.service';
 import { ToastService } from '../services/toast.service';
-import { getInventoryControlAmmoProfileId, getInventoryControlAmmoSelectionOptions, getInventoryControlGroups, INVENTORY_CONTROL_MODE_STATE, syncSvgMode } from '../utils/inventory-control.util';
+import { getInventoryControlAmmoProfileId, getInventoryControlAmmoSelectionOptions, getInventoryControlGroups, getInventoryControlModeAmmoSummary, INVENTORY_CONTROL_MODE_STATE, syncSvgMode } from '../utils/inventory-control.util';
 import { AtmHandler } from '../equipment-handlers/atm.handler';
 import { MmlHandler } from '../equipment-handlers/mml.handler';
 import { ATM_EXTENDED_RANGE_PROFILE, ATM_HIGH_EXPLOSIVE_PROFILE, ATM_STANDARD_PROFILE } from './ammo-weapon-profile.model';
@@ -41,6 +41,11 @@ import {
     PPC_CAPACITOR_STATE_KEY,
     PpcCapacitorHandler,
 } from '../equipment-handlers/ppc-capacitor.handler';
+import {
+    BOMBAST_LASER_CHARGE_STATE_KEY,
+    BOMBAST_LASER_CHARGING_STATE,
+    BombastLaserHandler,
+} from '../equipment-handlers/bombast-laser.handler';
 
 function createEquipment(): EquipmentMap {
     const ultraAc20 = new WeaponEquipment({
@@ -2155,6 +2160,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             id: 'run-movement-bonus-test@CT#0',
             name: 'Run Movement Bonus Test',
             equipment: new Equipment({ id: 'run-movement-bonus-test', name: 'Run Movement Bonus Test', type: 'misc', flags: ['F_TEST_ONLY'] }),
+            locations: new Set(['CT']),
         });
         forceUnit.isLoaded.set(true);
         entry.setState('active', 'true');
@@ -2166,6 +2172,60 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.setInventoryEntry(entry);
 
         expect(forceUnit.turnState().moveDistance()).toBe(8);
+    });
+
+    it('keeps the phase dirty after an equipment state change until phase end', () => {
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
+        initialize(forceUnit);
+        const entry = forceUnit.getInventory().find(item => item.equipment instanceof WeaponEquipment)!;
+
+        entry.setState('test-mode', 'charged');
+        forceUnit.setInventoryEntry(entry);
+
+        expect(forceUnit.turnState().dirtyPhase()).toBeTrue();
+        expect(forceUnit.turnState().serialize()?.equipmentStateChanged).toBeTrue();
+
+        const restored = CBTForceUnit.deserialize(
+            forceUnit.serialize(),
+            new TestCBTForce('Restored Equipment State Force', dataService, unitInitializer, injector),
+            dataService,
+            unitInitializer,
+            injector,
+        );
+
+        expect(restored.turnState().dirtyPhase()).toBeTrue();
+
+        forceUnit.endPhase();
+
+        expect(forceUnit.turnState().dirtyPhase()).toBeFalse();
+        expect(forceUnit.turnState().serialize()?.equipmentStateChanged).toBeUndefined();
+    });
+
+    it('keeps the phase dirty after changing ammo stored in a critical slot', () => {
+        const forceUnit = createForceUnit(createMekUnit());
+        initialize(forceUnit);
+        const ammo = equipment['Clan Ultra AC/20 Ammo'] as AmmoEquipment;
+        forceUnit.setCritSlots([{
+            id: `${ammo.internalName}@LT#0`,
+            name: ammo.internalName,
+            loc: 'LT',
+            slot: 0,
+            eq: ammo,
+            totalAmmo: 5,
+            consumed: 0,
+        }], true);
+        const ammoSlot = forceUnit.getCritSlot('LT', 0)!;
+
+        expect(forceUnit.turnState().dirtyPhase()).toBeFalse();
+
+        ammoSlot.consumed = 1;
+        forceUnit.setCritSlot(ammoSlot);
+
+        expect(forceUnit.turnState().dirtyPhase()).toBeTrue();
+
+        forceUnit.endPhase();
+
+        expect(forceUnit.turnState().dirtyPhase()).toBeFalse();
     });
 
     it('splits direct inventory ammo into one entry per bin using q and q2', () => {
@@ -2430,6 +2490,64 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             expect(committedCapacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
         });
     }
+
+    function installChargingBombast(
+        forceUnit: CBTForceUnit,
+        criticalSlots = false,
+    ): { weapon: MountedWeapon; currentSlots: CriticalSlot[] } {
+        const location = criticalSlots ? 'RA' : 'FR';
+        const weaponId = `TestBombastLaser@${location}#0`;
+        const bombast = new WeaponEquipment({
+            id: 'TestBombastLaser',
+            name: 'Test Bombast Laser',
+            type: 'weapon',
+            flags: ['F_BOMBAST_LASER', 'F_DIRECT_FIRE', 'F_ENERGY', 'F_LASER'],
+            weapon: { damage: 12, heat: 12, ranges: [5, 10, 15, 20] },
+        });
+        const currentSlots: CriticalSlot[] = criticalSlots ? [
+            { id: weaponId, name: bombast.name, loc: location, slot: 0, eq: bombast },
+            { id: weaponId, name: bombast.name, loc: location, slot: 1, eq: bombast },
+        ] : [];
+        if (criticalSlots) forceUnit.setCritSlots(currentSlots, true);
+
+        const weapon = new MountedWeapon({
+            owner: forceUnit,
+            id: weaponId,
+            name: bombast.name,
+            equipment: bombast,
+            locations: new Set([location]),
+            critSlots: currentSlots.map(slot => ({ ...slot })),
+            states: new Map([[BOMBAST_LASER_CHARGE_STATE_KEY, BOMBAST_LASER_CHARGING_STATE]]),
+        });
+        forceUnit.setInventory([weapon], true);
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new BombastLaserHandler());
+        return { weapon, currentSlots };
+    }
+
+    it('clears a charging direct-inventory Bombast Laser before end-turn destruction commits', () => {
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
+        initialize(forceUnit);
+        const { weapon } = installChargingBombast(forceUnit);
+        expect(forceUnit.applyEquipmentDamage(weapon)).toBeTrue();
+
+        forceUnit.endTurn();
+
+        const committedWeapon = forceUnit.getInventory().find(entry => entry.id === weapon.id)!;
+        expect(committedWeapon.committedDestroyed()).toBeTrue();
+        expect(committedWeapon.states.has(BOMBAST_LASER_CHARGE_STATE_KEY)).toBeFalse();
+    });
+
+    it('clears a charging Mek Bombast Laser from its current pending critical slot at end turn', () => {
+        const forceUnit = createForceUnit(createMekUnit());
+        const { weapon, currentSlots } = installChargingBombast(forceUnit, true);
+        forceUnit.applyHitToCritSlot(currentSlots[0]);
+
+        forceUnit.endTurn();
+
+        const committedWeapon = forceUnit.getInventory().find(entry => entry.id === weapon.id)!;
+        expect(forceUnit.findCurrentCriticalSlot(currentSlots[0])?.destroyed).toBeTruthy();
+        expect(committedWeapon.states.has(BOMBAST_LASER_CHARGE_STATE_KEY)).toBeFalse();
+    });
 
     it('uses the lowest gunnery skill among crew members', () => {
         const forceUnit = createForceUnit(createEmptyUnit({
@@ -2758,6 +2876,133 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             preferredSourceOptionId: null,
         });
         expect(forceUnit.getInventoryControlSelectedAmmo(weaponEntry)).toBe(precisionAmmo);
+    });
+
+    it('clears a preferred ammo source when pending destruction commits and does not restore it after repair', () => {
+        const vehicle = createVehicleUnit(equipment);
+        vehicle.comp[1].q = 1;
+        vehicle.comp[1].q2 = 5;
+        const forceUnit = createForceUnit(vehicle);
+        initialize(forceUnit);
+        const weapon = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        const ammo = forceUnit.getInventory().find(entry => entry.equipment instanceof AmmoEquipment)!;
+        const [source] = getInventoryControlAmmoSelectionOptions(
+            weapon,
+            forceUnit.getEquipmentRegistry(),
+            (mountedWeapon, candidate, mode) => forceUnit.matchesInventoryControlAmmo(mountedWeapon, candidate, mode),
+        );
+        forceUnit.setInventoryControlEntryAmmoSelection(weapon.id, {
+            selectedProfileId: source.profileId,
+            preferredSourceOptionId: source.id,
+        });
+
+        expect(forceUnit.applyEquipmentDamage(ammo)).toBeTrue();
+        expect(forceUnit.getInventoryControlEntryAmmoSelection(weapon.id)?.preferredSourceOptionId).toBe(source.id);
+
+        forceUnit.endPhase();
+
+        expect(ammo.committedDestroyed()).toBeTrue();
+        expect(forceUnit.getInventoryControlEntryAmmoSelection(weapon.id)).toEqual({
+            selectedProfileId: source.profileId,
+            preferredSourceOptionId: null,
+        });
+        expect(getInventoryControlAmmoSelectionOptions(
+            weapon,
+            forceUnit.getEquipmentRegistry(),
+        )[0].usable).toBeFalse();
+
+        expect(forceUnit.repairEquipment(ammo)).toBeTrue();
+        forceUnit.endPhase();
+
+        expect(ammo.committedDestroyed()).toBeFalse();
+        expect(forceUnit.getInventoryControlEntryAmmoSelection(weapon.id)).toEqual({
+            selectedProfileId: source.profileId,
+            preferredSourceOptionId: null,
+        });
+        expect(getInventoryControlAmmoSelectionOptions(
+            weapon,
+            forceUnit.getEquipmentRegistry(),
+        )[0].usable).toBeTrue();
+    });
+
+    it('represents ammo in a flooded Mek location as disabled rather than destroyed', () => {
+        const forceUnit = createForceUnit(createMekUnit());
+        initialize(forceUnit, createMekDamageSvg());
+        const weaponType = equipment['CLUltraAC20'] as WeaponEquipment;
+        const ammoType = equipment['Clan Ultra AC/20 Ammo'] as AmmoEquipment;
+        const ammoSlot: CriticalSlot = {
+            id: `${ammoType.internalName}@LT#0`,
+            name: ammoType.internalName,
+            originalName: ammoType.internalName,
+            loc: 'LT',
+            slot: 0,
+            eq: ammoType,
+            totalAmmo: 5,
+        };
+        const weapon = new MountedWeapon({
+            owner: forceUnit,
+            id: `${weaponType.internalName}@LA#0`,
+            name: weaponType.internalName,
+            equipment: weaponType,
+            locations: new Set(['LA']),
+        });
+        forceUnit.setCritSlots([ammoSlot], true);
+        forceUnit.setInventory([weapon], true);
+
+        forceUnit.setLocationCondition('LT', 'flooded', true);
+        forceUnit.endPhase();
+
+        const [option] = getInventoryControlModeAmmoSummary(
+            weapon,
+            forceUnit.getEquipmentRegistry(),
+        ).options;
+        expect(forceUnit.getEquipmentStatus(forceUnit.getCritSlot('LT', 0)!)).toBe('disabled');
+        expect(option).toEqual(jasmine.objectContaining({
+            remaining: 0,
+            destroyed: false,
+            disabled: true,
+        }));
+    });
+
+    it('clears a preferred ammo source immediately when its Mek installation location is committed destroyed', () => {
+        const forceUnit = createForceUnit(createMekUnit());
+        initialize(forceUnit, createMekDamageSvg());
+        const weaponType = equipment['CLUltraAC20'] as WeaponEquipment;
+        const ammoType = equipment['Clan Ultra AC/20 Ammo'] as AmmoEquipment;
+        const ammoSlot: CriticalSlot = {
+            id: `${ammoType.internalName}@LT#0`,
+            name: ammoType.internalName,
+            originalName: ammoType.internalName,
+            loc: 'LT',
+            slot: 0,
+            eq: ammoType,
+            totalAmmo: 5,
+        };
+        const weapon = new MountedWeapon({
+            owner: forceUnit,
+            id: `${weaponType.internalName}@LA#0`,
+            name: weaponType.internalName,
+            equipment: weaponType,
+            locations: new Set(['LA']),
+        });
+        forceUnit.setCritSlots([ammoSlot], true);
+        forceUnit.setInventory([weapon], true);
+        const [source] = getInventoryControlAmmoSelectionOptions(
+            weapon,
+            forceUnit.getEquipmentRegistry(),
+        );
+        forceUnit.setInventoryControlEntryAmmoSelection(weapon.id, {
+            selectedProfileId: source.profileId,
+            preferredSourceOptionId: source.id,
+        });
+
+        forceUnit.setInternalHits('LT', forceUnit.getInternalPoints('LT'));
+
+        expect(forceUnit.getEquipmentStatus(forceUnit.getCritSlot('LT', 0)!)).toBe('destroyed');
+        expect(forceUnit.getInventoryControlEntryAmmoSelection(weapon.id)).toEqual({
+            selectedProfileId: source.profileId,
+            preferredSourceOptionId: null,
+        });
     });
 
     it('repairAll restores intrinsic ammo from its runtime mount baseline', () => {
@@ -3464,6 +3709,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         );
         const warning = spyOn(console, 'warn');
         initialize(restored, createKamisoriAInventorySvg());
+        TestBed.tick();
         const capacitor = restored.getInventory().find(entry => entry.id === originalCapacitor.id)!;
 
         expect(capacitor.committedDestroyed()).toBeFalse();
@@ -3536,13 +3782,18 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             name: unknownEquipment.name,
             equipment: unknownEquipment,
         });
-        initialize(forceUnit);
         const warning = spyOn(console, 'warn');
+        initialize(forceUnit);
+        forceUnit.setInventory([entry], true);
+        TestBed.tick();
+
+        expect(warning).toHaveBeenCalledTimes(1);
+        expect(warning).toHaveBeenCalledWith(jasmine.stringContaining(entry.id));
+        warning.calls.reset();
 
         expect(forceUnit.getEquipmentStatus(entry)).toBe('available');
         expect(forceUnit.getEquipmentStatus(entry)).toBe('available');
-        expect(warning).toHaveBeenCalledTimes(1);
-        expect(warning).toHaveBeenCalledWith(jasmine.stringContaining(entry.id));
+        expect(warning).not.toHaveBeenCalled();
 
         entry.setCommittedDestroyed(true);
         expect(forceUnit.getEquipmentStatus(entry)).toBe('destroyed');
@@ -3562,14 +3813,19 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             name: unknownEquipment.name,
             equipment: unknownEquipment,
         });
-        initialize(forceUnit);
         const warning = spyOn(console, 'warn');
+        initialize(forceUnit);
+        forceUnit.setInventory([entry], true);
+        TestBed.tick();
 
-        expect(forceUnit.getEquipmentStatus(entry)).toBe('available');
-        expect(forceUnit.getEquipmentStatus(entry)).toBe('available');
         expect(warning).toHaveBeenCalledTimes(1);
         expect(warning).toHaveBeenCalledWith(jasmine.stringContaining(entry.id));
         expect(warning.calls.mostRecent().args[0]).not.toContain('(component');
+        warning.calls.reset();
+
+        expect(forceUnit.getEquipmentStatus(entry)).toBe('available');
+        expect(forceUnit.getEquipmentStatus(entry)).toBe('available');
+        expect(warning).not.toHaveBeenCalled();
     });
 
     it('applies damage through canonical resolved state and cancels a pending repair', () => {
@@ -4128,7 +4384,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const forceUnit = createForceUnit(createMmlUnit(equipment));
         initialize(forceUnit, createMmlSvg());
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
-        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgVehicleService(forceUnit, unitInitializer));
 
         forceUnit.createInventoryControlTarget();
         forceUnit.updateInventoryControlTarget('A', { distance: 7 });

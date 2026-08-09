@@ -16,6 +16,7 @@ import {
     type HandlerCommandContext,
 } from '../services/equipment-interaction-registry.service';
 import type { ToastService } from '../services/toast.service';
+import { createTestEquipmentOwner } from '../testing/unit-test-helpers';
 import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
 import {
     BOMBAST_LASER_CHARGED_COLOR,
@@ -33,14 +34,9 @@ import {
 } from './bombast-laser.handler';
 
 function owner(gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
-    return {
-        gameRules,
-        readOnly: () => false,
-        setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        canPerformEquipmentAction: (entry: MountedEquipment) => !entry.committedDestroyed(),
-        getEquipmentStatus: (entry: MountedEquipment) => entry.committedDestroyed() ? 'destroyed' : 'available',
-        isEquipmentOperational: (entry: MountedEquipment) => !entry.committedDestroyed(),
-    } as never;
+    const { owner } = createTestEquipmentOwner({ gameRules });
+    spyOn(owner, 'setInventoryEntry').and.callThrough();
+    return owner;
 }
 
 function bombastLaser(
@@ -312,6 +308,20 @@ describe('BombastLaserHandler', () => {
             jasmine.objectContaining({ label: 'Charge Laser', active: false, disabled: false }),
         ]);
         expect(registry.getChoices(entry, queryContext).every(choice => choice.disabled)).toBeTrue();
+        expect(entry.owner.setInventoryEntry).toHaveBeenCalledWith(entry);
+    });
+
+    it('clears a charging laser before pending direct destruction commits', () => {
+        const entry = bombastLaser(CORE_2026_GAME_RULES, new Map([
+            [BOMBAST_LASER_CHARGE_STATE_KEY, BOMBAST_LASER_CHARGING_STATE]
+        ]));
+        entry.setPendingDestroyed(true);
+
+        handler.onEndTurn(entry);
+
+        expect(entry.states.has(BOMBAST_LASER_CHARGE_STATE_KEY)).toBeFalse();
+        expect(entry.committedDestroyed()).toBeFalse();
+        expect(entry.pendingDestroyed()).toBeTrue();
         expect(entry.owner.setInventoryEntry).toHaveBeenCalledWith(entry);
     });
 

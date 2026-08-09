@@ -16,6 +16,7 @@ import {
 } from '../../services/equipment-interaction-registry.service';
 import { AmmoLoadoutPanelComponent, type AmmoLoadoutPanelData } from './ammo-loadout-panel.component';
 import type { AmmoControlEntry } from '../../utils/ammo-interaction.util';
+import type { EquipmentStatus } from '../../models/equipment-status.model';
 
 function createAmmo(id: string): AmmoEquipment {
     return new AmmoEquipment({
@@ -32,6 +33,7 @@ function createCritEntry(params: {
     ammo: AmmoEquipment;
     consumed?: number;
     destroyed?: boolean;
+    status?: EquipmentStatus;
     owner: Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
 }): AmmoControlEntry {
     const owner = params.owner as CBTForceUnit;
@@ -64,7 +66,7 @@ function createCritEntry(params: {
         originalTotalAmmo: 5,
         totalAmmo: 5,
         consumed: params.consumed ?? 0,
-        destroyed: !!params.destroyed,
+        status: params.status ?? (params.destroyed ? 'destroyed' : 'available'),
     };
 }
 
@@ -140,7 +142,7 @@ describe('AmmoLoadoutPanelComponent', () => {
         groups = component.groups();
         expect(groups.length).toBe(2);
         expect(groups.map(group => group.displayName)).toEqual(['Clan Ultra AC/20 Precision Ammo', 'Clan Ultra AC/20 Ammo']);
-        expect(groups.map(group => group.destroyed)).toEqual([false, true]);
+        expect(groups.map(group => group.status)).toEqual(['available', 'destroyed']);
         expect(component.groupRemaining(groups[0])).toBe(5);
         expect(component.groupRemaining(groups[1])).toBe(0);
     });
@@ -167,6 +169,32 @@ describe('AmmoLoadoutPanelComponent', () => {
         const expandButton: HTMLButtonElement | null = fixture.nativeElement.querySelector('.ammo-expand-button');
         expect(expandButton).toBeNull();
         expect(fixture.nativeElement.querySelector('.ammo-bin-list')).toBeNull();
+    });
+
+    it('styles a disabled ammo source separately from a destroyed source', () => {
+        const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
+        const owner = {
+            id: 'unit-1',
+            readOnly: () => false,
+            getUnit: () => ({ techBase: 'Clan' }),
+        } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
+        const data: AmmoLoadoutPanelData = {
+            entries: [createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner, status: 'disabled' })],
+            context: createCommandContext(),
+        };
+
+        TestBed.configureTestingModule({ imports: [AmmoLoadoutPanelComponent] });
+        const fixture = TestBed.createComponent(AmmoLoadoutPanelComponent);
+        fixture.componentRef.setInput('data', data);
+        fixture.detectChanges();
+
+        const row = fixture.nativeElement.querySelector('.ammo-control-row') as HTMLElement;
+        const badge = fixture.nativeElement.querySelector('.ammo-location-badge') as HTMLElement;
+        expect(row.classList.contains('disabled-entry')).toBeTrue();
+        expect(row.classList.contains('destroyed-entry')).toBeFalse();
+        expect(badge.classList.contains('disabled')).toBeTrue();
+        expect(badge.classList.contains('destroyed')).toBeFalse();
+        expect(fixture.nativeElement.querySelector('.ammo-control-actions')).toBeNull();
     });
 
     it('shows location badges beside the group name', () => {

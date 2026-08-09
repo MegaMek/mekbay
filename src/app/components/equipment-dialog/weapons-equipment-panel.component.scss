@@ -643,6 +643,10 @@
     text-decoration-line: line-through;
 }
 
+.ammo-cell.disabled-ammo .ammo-choice-static {
+    color: var(--disabled-color);
+}
+
 .ammo-stepper-button {
     flex: 0 0 24px;
     width: 24px;

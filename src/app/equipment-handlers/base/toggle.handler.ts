@@ -31,8 +31,9 @@ export abstract class ToggleHandler extends EquipmentInteractionHandler {
     
     handleSelection(equipment: MountedEquipment, value: PickerChoice, context: HandlerCommandContext): boolean {
         const newState = value.value === 'enabled' ? 'enabled' : 'disabled';
-        equipment.states?.set(this.stateKey, newState);
-        equipment.owner.setInventoryEntry(equipment);
+        if (equipment.setState(this.stateKey, newState)) {
+            equipment.owner.setInventoryEntry(equipment);
+        }
         context.toastService.showToast(
             `${equipment.equipment?.name||equipment.name} is ${newState === 'enabled' ? this.enabledToastVerb : this.disabledToastVerb}`,
             'info'

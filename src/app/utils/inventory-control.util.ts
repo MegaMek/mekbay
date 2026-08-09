@@ -5,12 +5,12 @@
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import type { WeaponType } from '../models/weapon-types.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
-import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import type { CBTForceUnit, EquipmentAction } from '../models/cbt-force-unit.model';
 import { MountedAmmo, MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { parseInventoryComponentReference } from '../models/inventory-component-reference.model';
 import { type CriticalSlot } from '../models/force-serialization';
 import type { UnitComponent } from '../models/units.model';
-import type { InventoryControlRuntimeAmmoSelection, InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
+import { resolveInventoryControlSelectedAmmoProfileId, type InventoryControlRuntimeAmmoSelection, type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
 import type { ToHitAdjustment, ToHitModifierBreakdownEntry, ToHitResolution } from '../models/rules/game-rules';
 import { FIELD_GUN_LOCATION, InfantryRules } from '../models/rules/infantry-rules';
 import { getBattleArmorTrooperNumber } from '../models/battle-armor-location.model';
@@ -142,7 +142,7 @@ interface AmmoSource {
     locationLabel: string;
     total: number;
     consumed: number;
-    destroyed: boolean;
+    status: EquipmentStatus;
     intrinsicOneShotAmmo: boolean;
 }
 
@@ -192,15 +192,15 @@ export function setInventoryControlSortOrder(rows: InventoryControlRow[]): void 
     const sortKey = inventoryControlSortKey(rows[0].category);
     rows.forEach((row, index) => {
         if (row.entry.setState(sortKey, index.toString())) {
-            row.entry.owner.setInventoryEntry(row.entry);
+            row.entry.owner.setInventoryEntry(row.entry, { phaseChange: false });
         }
     });
 }
 
 export function setInventoryControlMode(entry: MountedEquipment, mode: string): void {
-    entry.setState(INVENTORY_CONTROL_MODE_STATE, mode);
+    const changed = entry.setState(INVENTORY_CONTROL_MODE_STATE, mode);
     syncSvgMode(entry, mode);
-    entry.owner.setInventoryEntry(entry);
+    if (changed) entry.owner.setInventoryEntry(entry);
 }
 
 export function getInventoryControlGroups(
@@ -235,6 +235,12 @@ export function isInventoryControlSelectableEntry(entry: MountedEquipment): bool
     return category === 'ranged' || category === 'physical';
 }
 
+/** The canonical action represented by an inventory-control entry. */
+export function inventoryControlEntryAction(entry: MountedEquipment): EquipmentAction {
+    if (entry.isPhysicalWeapon()) return 'physical-attack';
+    return entry.equipment instanceof WeaponEquipment ? 'fire' : 'change-mode';
+}
+
 export function selectInventoryControlEntry(
     unit: CBTForceUnit,
     entry: MountedEquipment,
@@ -242,7 +248,7 @@ export function selectInventoryControlEntry(
     forceSelected = false
 ): boolean {
     if (!isInventoryControlSelectableEntry(entry)
-        || !entry.owner.canPerformEquipmentAction(entry, entry.isPhysicalWeapon() ? 'physical-attack' : 'fire')) return false;
+        || !entry.owner.canPerformEquipmentAction(entry, inventoryControlEntryAction(entry))) return false;
 
     const targets = unit.getInventoryControlTargets();
     if (targets.length === 0) {
@@ -303,7 +309,7 @@ export function resolveInventoryControlSelectedAmmoType(
         mode,
         false,
     );
-    const profileId = resolveInventoryControlSelectedProfileId(
+    const profileId = resolveInventoryControlSelectedAmmoProfileId(
         candidates.profileOptions,
         selection?.selectedProfileId,
         selection?.preferredSourceOptionId,
@@ -358,7 +364,7 @@ export function getInventoryControlAmmoSelectionCandidates(
             id: source.id,
             profileId: source.profileId,
             ammo: source.ammo,
-            usable: !resolveSourceUsability || (!source.destroyed && source.total > source.consumed),
+            usable: !resolveSourceUsability || (source.status === 'available' && source.total > source.consumed),
         }));
     const compatibleCatalogAmmo = intrinsicAmmo
         ? []
@@ -411,7 +417,7 @@ function getInventoryControlAmmoSummary(
 
 function createAmmoSummary(matchingAmmo: AmmoSource[]): InventoryControlAmmoSummary {
     const groupedAmmo = groupAmmoSources(matchingAmmo);
-    const availableAmmo = groupedAmmo.filter(source => !source.destroyed);
+    const availableAmmo = groupedAmmo.filter(source => source.status === 'available');
 
     const locationSensitiveAmmoNames = getLocationSensitiveAmmoNames(groupedAmmo);
     return {
@@ -423,10 +429,10 @@ function createAmmoSummary(matchingAmmo: AmmoSource[]): InventoryControlAmmoSumm
             profileId: source.profileId,
             label: formatAmmoOptionLabel(source, locationSensitiveAmmoNames.has(source.ammo.shortName)),
             ammo: source.ammo,
-            remaining: source.destroyed ? 0 : Math.max(0, source.total - source.consumed),
+            remaining: source.status === 'available' ? Math.max(0, source.total - source.consumed) : 0,
             total: source.total,
-            destroyed: source.destroyed,
-            disabled: source.destroyed
+            destroyed: source.status === 'destroyed',
+            disabled: source.status !== 'available'
         }))
     };
 }
@@ -457,21 +463,6 @@ export function resolveInventoryControlSelectedAmmoOption(
     return selectedProfile.find(option => !option.destroyed) ?? selectedProfile[0];
 }
 
-function resolveInventoryControlSelectedProfileId(
-    profileOptions: readonly { profileId: string }[],
-    selectedProfileId?: string | null,
-    preferredSourceOptionId?: string | null,
-    sourceOptions: readonly { id: string; profileId: string }[] = [],
-): string | undefined {
-    const preferredSource = preferredSourceOptionId
-        ? sourceOptions.find(option => option.id === preferredSourceOptionId)
-        : undefined;
-    const requestedProfileId = selectedProfileId ?? preferredSource?.profileId;
-    return requestedProfileId && profileOptions.some(option => option.profileId === requestedProfileId)
-        ? requestedProfileId
-        : profileOptions[0]?.profileId;
-}
-
 function createInventoryControlAmmoProfileOptions(
     ammoCandidates: readonly AmmoEquipment[],
 ): InventoryControlAmmoProfileOption[] {
@@ -484,11 +475,11 @@ function createInventoryControlAmmoProfileOptions(
 }
 
 function isUsableInventoryControlAmmoOption(option: InventoryControlAmmoOption): boolean {
-    return !option.destroyed && option.remaining > 0;
+    return !option.disabled && option.remaining > 0;
 }
 
 function groupAmmoSources(sources: AmmoSource[]): AmmoSource[] {
-    type GroupedAmmoSource = AmmoSource & { destroyedCount: number; sourceCount: number };
+    type GroupedAmmoSource = AmmoSource & { availableCount: number; disabledCount: number; sourceCount: number };
     const groups: GroupedAmmoSource[] = [];
     const groupMap = new Map<string, GroupedAmmoSource>();
 
@@ -497,13 +488,14 @@ function groupAmmoSources(sources: AmmoSource[]): AmmoSource[] {
             ? source.id
             : `${source.ammo.internalName}:${source.locationLabel}`;
         const existing = groupMap.get(key);
-        const remaining = source.destroyed ? 0 : Math.max(0, source.total - source.consumed);
+        const remaining = source.status === 'available' ? Math.max(0, source.total - source.consumed) : 0;
         if (!existing) {
             const groupedSource = {
                 ...source,
                 id: key,
                 consumed: source.total - remaining,
-                destroyedCount: source.destroyed ? 1 : 0,
+                availableCount: source.status === 'available' ? 1 : 0,
+                disabledCount: source.status === 'disabled' ? 1 : 0,
                 sourceCount: 1
             };
             groupMap.set(key, groupedSource);
@@ -513,12 +505,15 @@ function groupAmmoSources(sources: AmmoSource[]): AmmoSource[] {
 
         existing.total += source.total;
         existing.consumed = Math.max(0, existing.consumed) + (source.total - remaining);
-        existing.destroyedCount = (existing.destroyedCount ?? 0) + (source.destroyed ? 1 : 0);
+        existing.availableCount += source.status === 'available' ? 1 : 0;
+        existing.disabledCount += source.status === 'disabled' ? 1 : 0;
         existing.sourceCount = (existing.sourceCount ?? 0) + 1;
-        existing.destroyed = existing.destroyedCount === existing.sourceCount;
+        existing.status = existing.availableCount > 0
+            ? 'available'
+            : existing.disabledCount > 0 ? 'disabled' : 'destroyed';
     }
 
-    return groups.map(({ destroyedCount, sourceCount, ...source }) => source);
+    return groups.map(({ availableCount, disabledCount, sourceCount, ...source }) => source);
 }
 
 function getLocationSensitiveAmmoNames(sources: AmmoSource[]): Set<string> {
@@ -536,7 +531,7 @@ function getLocationSensitiveAmmoNames(sources: AmmoSource[]): Set<string> {
 }
 
 function formatAmmoOptionLabel(source: AmmoSource, showLocation: boolean): string {
-    const remaining = source.destroyed ? 0 : Math.max(0, source.total - source.consumed);
+    const remaining = source.status === 'available' ? Math.max(0, source.total - source.consumed) : 0;
     const location = showLocation ? `[${source.locationLabel}] ` : '';
     return `${location}${source.ammo.shortName} (${remaining}/${source.total})`;
 }
@@ -593,7 +588,7 @@ function buildInventoryControlRow(
     const status = entry.owner.getEquipmentStatus(entry);
     const hitModifierBreakdown = unitRules.getEquipmentToHitModifiers(entry);
     const destroyed = options.destroyed ?? status === 'destroyed';
-    const disabled = !entry.owner.canPerformEquipmentAction(entry, entry.isPhysicalWeapon() ? 'physical-attack' : 'fire')
+    const disabled = !entry.owner.canPerformEquipmentAction(entry, inventoryControlEntryAction(entry))
         || status === 'disabled'
         || rules.isSelectable?.(entry) === false;
     const category = getEntryCategory(entry);
@@ -947,7 +942,7 @@ function createCriticalSlotAmmoSource(
         locationLabel: criticalSlot.loc ?? 'Ammo',
         total: criticalSlot.totalAmmo || elementTotal || 0,
         consumed: criticalSlot.consumed ?? 0,
-        destroyed: resolveAvailability && !unit.isEquipmentOperational(criticalSlot),
+        status: resolveAvailability ? unit.getEquipmentStatus(criticalSlot) : 'available',
         intrinsicOneShotAmmo: false,
     };
 }
@@ -974,12 +969,19 @@ function createInventoryAmmoSource(
         locationLabel,
         total,
         consumed: entry.consumed ?? 0,
-        destroyed: resolveAvailability && (!entry.owner.isEquipmentOperational(entry)
-            || (isIntrinsicOneShotAmmoMount(entry)
-                && !!entry.parent
-                && !entry.owner.isEquipmentOperational(entry.parent))),
+        status: resolveInventoryAmmoSourceStatus(entry, resolveAvailability),
         intrinsicOneShotAmmo: isIntrinsicOneShotAmmoMount(entry),
     };
+}
+
+function resolveInventoryAmmoSourceStatus(entry: MountedEquipment, resolveAvailability: boolean): EquipmentStatus {
+    if (!resolveAvailability) return 'available';
+    return combineEquipmentStatuses([
+        entry.owner.getEquipmentStatus(entry),
+        ...(isIntrinsicOneShotAmmoMount(entry) && entry.parent
+            ? [entry.owner.getEquipmentStatus(entry.parent)]
+            : []),
+    ]);
 }
 
 function getInventoryOriginalTotalAmmo(entry: MountedAmmo): number {
@@ -1141,7 +1143,7 @@ export function formatHitModifier(hitModifier: number | 'Vs' | '*' | null): stri
 export function syncSvgMode(
     entry: MountedEquipment,
     mode: string | null,
-    disabled = !entry.owner.canPerformEquipmentAction(entry, entry.isPhysicalWeapon() ? 'physical-attack' : 'fire')
+    disabled = !entry.owner.canPerformEquipmentAction(entry, inventoryControlEntryAction(entry))
 ): void {
     const el = entry.el;
     if (!el) return;

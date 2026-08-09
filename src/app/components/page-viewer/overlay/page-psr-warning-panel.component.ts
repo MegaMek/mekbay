@@ -68,6 +68,7 @@ export class PagePsrWarningPanelComponent {
         if (this.rolledResult() === 'FAILED') return 'failed';
         return 'default';
     });
+    private readonly retainedResolvedRuleChecks = signal<readonly PSRCheck[]>([]);
     private rollingCheck: PSRCheck | null = null;
     readonly locationLabel = getMekLocationLabel;
 
@@ -99,16 +100,26 @@ export class PagePsrWarningPanelComponent {
         const unit = this.unit();
         if (!unit) return;
         if (check.resolution) {
-            unit.resolveRuleCheck(check.resolution.key, check.resolution.token, result);
+            if (unit.resolveRuleCheck(check.resolution.key, check.resolution.token, result)) {
+                this.retainResolvedRuleCheck(check);
+            }
         } else if (check.id) {
             unit.turnState().resolvePSRCheck(check.id, result);
         }
-        if (this.psrChecks().length === 0) this.close();
     }
 
     outcome(check: PSRCheck) {
-        if (!check.id || check.resolution) return undefined;
-        return this.unit()?.turnState().getPSROutcome(check.id);
+        const unit = this.unit();
+        if (!unit) return undefined;
+        if (check.resolution) {
+            const ruleCheck = unit.getRuleCheck(check.resolution.key);
+            if (!ruleCheck || ruleCheck.token !== check.resolution.token || ruleCheck.status === 'pending') {
+                return undefined;
+            }
+            return ruleCheck.status;
+        }
+        if (!check.id) return undefined;
+        return unit.turnState().getPSROutcome(check.id);
     }
 
     isAutomaticFailure(check: PSRCheck): boolean {
@@ -130,9 +141,20 @@ export class PagePsrWarningPanelComponent {
     readonly psrChecks = computed(() => {
         const unit = this.unit();
         if (!unit) return [];
-        return unit.turnState().getPSRChecks()
+        const checks = unit.turnState().getPSRChecks()
             .filter(check => check.fallCheck !== undefined)
-            .sort((left, right) => this.checkDisplayOrder(left) - this.checkDisplayOrder(right));
+        for (const retainedCheck of this.retainedResolvedRuleChecks()) {
+            if (!retainedCheck.resolution) continue;
+            const ruleCheck = unit.getRuleCheck(retainedCheck.resolution.key);
+            if (!ruleCheck
+                || ruleCheck.token !== retainedCheck.resolution.token
+                || ruleCheck.status === 'pending'
+                || checks.some(check => this.sameRuleCheck(check, retainedCheck))) {
+                continue;
+            }
+            checks.push(retainedCheck);
+        }
+        return checks.sort((left, right) => this.checkDisplayOrder(left) - this.checkDisplayOrder(right));
     });
 
     readonly allChecksAutomaticFailure = computed(() => {
@@ -144,5 +166,19 @@ export class PagePsrWarningPanelComponent {
         if (this.isAutomaticFailure(check)) return 2;
         if (this.outcome(check)) return 1;
         return 0;
+    }
+
+    private retainResolvedRuleCheck(check: PSRCheck): void {
+        if (!check.resolution) return;
+        this.retainedResolvedRuleChecks.update(current =>
+            current.some(existing => this.sameRuleCheck(existing, check))
+                ? current
+                : [...current, check]
+        );
+    }
+
+    private sameRuleCheck(left: PSRCheck, right: PSRCheck): boolean {
+        return left.resolution?.key === right.resolution?.key
+            && left.resolution?.token === right.resolution?.token;
     }
 }

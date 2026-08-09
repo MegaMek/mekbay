@@ -25,8 +25,9 @@ export abstract class MultiModeHandler extends EquipmentInteractionHandler {
     }
     
     handleSelection(equipment: MountedEquipment, value: PickerChoice, context: HandlerCommandContext): boolean {
-        equipment.states?.set(this.stateKey, String(value.value));
-        equipment.owner.setInventoryEntry(equipment);
+        if (equipment.setState(this.stateKey, String(value.value))) {
+            equipment.owner.setInventoryEntry(equipment);
+        }
         
         const mode = this.getModes(equipment).find(m => m.value === value.value);
         context.toastService.showToast(

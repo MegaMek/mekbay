@@ -184,9 +184,11 @@ export interface CBTForceUnitTestHarnessOptions {
     c3DegradationSource?: C3DegradationSource;
     allowExtremeRange?: boolean;
     readOnly?: boolean;
+    destroyed?: boolean;
     hasDirectInventory?: boolean;
     resolveEquipmentStatus?: (source: EquipmentStatusSource) => MountedEquipmentStatus;
     resolveEquipmentStatusAtLocation?: (entry: MountedEquipment, location: string) => MountedEquipmentStatus;
+    resolveConfigureNetworkPermission?: (entry: MountedEquipment) => boolean;
     resolveEquipmentActionPermission?: (entry: MountedEquipment, action: EquipmentAction) => boolean;
     getEquipmentToHitModifiers?: (entry: MountedEquipment) => readonly ToHitModifierBreakdownEntry[];
     applyInventoryControlDisplayEffects?: (entry: MountedEquipment, display: InventoryControlDisplayData) => InventoryControlDisplayData;
@@ -297,30 +299,14 @@ export class CBTForceUnitTestHarness {
         const currentCriticalSlots = (entry: MountedEquipment): CriticalSlot[] => (
             entry.critSlots?.flatMap(snapshot => findCurrentCriticalSlot(snapshot) ?? []) ?? []
         );
-        const mountedCriticalStatusContribution = (
-            destroyedCriticalCount: number,
-            equipmentFlags: EquipmentStatusFacts['equipmentFlags'],
-        ): MountedEquipmentStatus => {
-            const threshold = baseUnit.type === 'Mek' && equipmentFlags.has('F_AC') ? 2 : 1;
-            return destroyedCriticalCount >= threshold ? 'destroyed' : 'available';
-        };
-        const mountedCriticalStatus = (
-            entry: MountedEquipment,
-            criticalSlots: readonly CriticalSlot[],
-        ): MountedEquipmentStatus => mountedCriticalStatusContribution(
-            criticalSlots.filter(slot => !!slot.destroyed).length,
-            entry.equipment?.flags ?? new Set(),
-        );
         const resolveEquipmentStatus = (source: EquipmentStatusSource): MountedEquipmentStatus => {
             if (options.resolveEquipmentStatus) return options.resolveEquipmentStatus(source);
             if (!(source instanceof MountedEquipment)) {
                 return findCurrentCriticalSlot(source)?.destroyed ? 'destroyed' : 'available';
             }
             const entryStatus = this.equipmentStatuses.get(source) ?? defaultEquipmentStatus(source);
-            const criticalStatus = mountedCriticalStatus(source, currentCriticalSlots(source));
             return combineEquipmentStatuses([
                 entryStatus,
-                criticalStatus,
                 ...(this.equipmentStatusesAtLocation.get(source)?.values() ?? []),
             ]);
         };
@@ -333,11 +319,7 @@ export class CBTForceUnitTestHarness {
             }
             const entryStatus = this.equipmentStatuses.get(entry) ?? defaultEquipmentStatus(entry);
             const locationStatus = this.equipmentStatusesAtLocation.get(entry)?.get(location) ?? 'available';
-            const criticalStatus = mountedCriticalStatus(
-                entry,
-                currentCriticalSlots(entry).filter(slot => slot.loc === location),
-            );
-            return combineEquipmentStatuses([entryStatus, locationStatus, criticalStatus]);
+            return combineEquipmentStatuses([entryStatus, locationStatus]);
         };
         const resolveEquipmentInstallationLocationStatus = (entry: MountedEquipment): MountedEquipmentStatus => {
             const locations = new Set([
@@ -346,7 +328,7 @@ export class CBTForceUnitTestHarness {
             ]);
             return combineEquipmentStatuses(Array.from(
                 locations,
-                location => resolveEquipmentStatusAtLocation(entry, location),
+                location => this.equipmentStatusesAtLocation.get(entry)?.get(location) ?? 'available',
             ));
         };
         const getEquipmentToHitModifiers = (entry: MountedEquipment) => options.getEquipmentToHitModifiers?.(entry)
@@ -354,10 +336,7 @@ export class CBTForceUnitTestHarness {
             ?? [];
         const rules = {
             getEquipmentStatusContribution: () => 'available' as const,
-            getMountedCriticalStatusContribution: (facts: EquipmentStatusFacts) => mountedCriticalStatusContribution(
-                facts.criticals.filter(critical => critical.status === 'destroyed').length,
-                facts.equipmentFlags,
-            ),
+            getMountedCriticalStatusContribution: (_facts: EquipmentStatusFacts) => 'available' as const,
             getEquipmentStatusContributionAtLocation: () => 'available' as const,
             getCriticalSlotStatusContribution: () => 'available' as const,
             getUnitSystemStatusFacts: () => ({ engineHit: false }),
@@ -380,7 +359,7 @@ export class CBTForceUnitTestHarness {
             getBaseGunnerySkill: () => options.gunnerySkill ?? 4,
             getBasePilotingSkill: () => options.pilotingSkill ?? 5,
             canPerformEquipmentAction: (entry: MountedEquipment, action: EquipmentAction) =>
-                options.resolveEquipmentActionPermission?.(entry, action) ?? action !== 'configure-network',
+                options.resolveEquipmentActionPermission?.(entry, action) ?? true,
             applyInventoryControlDisplayEffects: (entry: MountedEquipment, display: InventoryControlDisplayData) =>
                 options.applyInventoryControlDisplayEffects?.(entry, display) ?? display
         };
@@ -417,6 +396,7 @@ export class CBTForceUnitTestHarness {
                 );
             },
             readOnly: () => options.readOnly ?? false,
+            destroyed: options.destroyed ?? false,
             hasDirectInventory: () => options.hasDirectInventory ?? true,
             setInventory: (inventory: MountedEquipment[]) => {
                 const nextInventory = [...inventory];
@@ -447,8 +427,11 @@ export class CBTForceUnitTestHarness {
                 this.unit.getEquipmentInstallationLocationStatus(entry) === 'destroyed'
                 || (!entry.isRepairing() && resolveEquipmentStatus(entry) === 'destroyed'),
             canPerformEquipmentAction: (entry: MountedEquipment, action: EquipmentAction) => {
-                if (action !== 'configure-network'
-                    && (resolveEquipmentStatus(entry) !== 'available' || conditions.has('shutdown'))) return false;
+                if (resolveEquipmentStatus(entry) !== 'available'
+                    || (options.destroyed ?? false)
+                    || conditions.has('shutdown')) return false;
+                if (action === 'configure-network'
+                    && !(options.resolveConfigureNetworkPermission?.(entry) ?? false)) return false;
                 return rules.canPerformEquipmentAction(entry, action);
             },
             canEditEquipmentState: (entry: MountedEquipment, edit: EquipmentStateEdit) => {
@@ -581,6 +564,101 @@ export class CBTForceUnitTestHarness {
 
 export function createCBTForceUnitTestHarness(options: CBTForceUnitTestHarnessOptions = {}): CBTForceUnitTestHarness {
     return new CBTForceUnitTestHarness(options);
+}
+
+export interface TestEquipmentOwnerOptions {
+    id?: string;
+    unit?: TestUnitOverrides;
+    gameRules?: CBTGameRules;
+    readOnly?: boolean;
+    destroyed?: boolean;
+    conditions?: readonly string[];
+    inventory?: readonly MountedEquipment[];
+    criticalSlots?: readonly CriticalSlot[];
+    equipmentStatuses?: ReadonlyMap<EquipmentStatusSource, MountedEquipmentStatus>;
+    resolveEquipmentStatus?: (source: EquipmentStatusSource) => MountedEquipmentStatus;
+    resolveEquipmentActionPermission?: (entry: MountedEquipment, action: EquipmentAction) => boolean;
+}
+
+export interface TestEquipmentOwnerFixture {
+    readonly owner: CBTForceUnit;
+    readonly inventory: MountedEquipment[];
+    readonly inventoryWrites: MountedEquipment[];
+    readonly criticalSlots: CriticalSlot[];
+    readonly criticalSlotWrites: CriticalSlot[][];
+}
+
+/**
+ * Focused owner for equipment-handler unit tests. Status, operational state, and
+ * action permission deliberately share one production-shaped resolution path.
+ */
+export function createTestEquipmentOwner(options: TestEquipmentOwnerOptions = {}): TestEquipmentOwnerFixture {
+    const inventory = [...(options.inventory ?? [])];
+    const inventoryWrites: MountedEquipment[] = [];
+    const criticalSlots = [...(options.criticalSlots ?? [])];
+    const criticalSlotWrites: CriticalSlot[][] = [];
+    const conditions = new Set(options.conditions ?? []);
+    const unit = createEmptyUnit(options.unit);
+    let owner!: CBTForceUnit;
+
+    const resolveEquipmentStatus = (source: EquipmentStatusSource): MountedEquipmentStatus => {
+        const configured = options.resolveEquipmentStatus?.(source)
+            ?? options.equipmentStatuses?.get(source);
+        if (configured) return configured;
+        if (source instanceof MountedEquipment) return defaultEquipmentStatus(source);
+        return source.destroyed ? 'destroyed' : 'available';
+    };
+
+    owner = {
+        id: options.id ?? 'test-equipment-owner',
+        gameRules: options.gameRules ?? CORE_2026_GAME_RULES,
+        destroyed: options.destroyed ?? false,
+        readOnly: () => options.readOnly ?? false,
+        getUnit: () => unit,
+        getCondition: (condition: string) => conditions.has(condition),
+        getInventory: () => inventory,
+        setInventoryEntry: (entry: MountedEquipment, _options: { phaseChange?: boolean } = {}) => {
+            const existingIndex = inventory.findIndex(candidate => candidate.id === entry.id);
+            if (existingIndex === -1) inventory.push(entry);
+            else inventory[existingIndex] = entry;
+            inventoryWrites.push(entry);
+        },
+        getCritSlots: () => criticalSlots,
+        findCurrentCriticalSlot: (snapshot: CriticalSlot) => {
+            const matches = criticalSlots.filter(candidate => (
+                snapshot.loc && snapshot.slot !== undefined
+                    ? candidate.loc === snapshot.loc && candidate.slot === snapshot.slot
+                    : !!snapshot.id && candidate.id === snapshot.id
+            ));
+            if (matches.length > 1) {
+                throw new Error(`Duplicate critical-slot identity: ${snapshot.loc ?? snapshot.id}:${snapshot.slot ?? ''}`);
+            }
+            return matches[0] ?? null;
+        },
+        setCritSlots: (slots: CriticalSlot[], _initialization = false) => {
+            criticalSlots.splice(0, criticalSlots.length, ...slots);
+            criticalSlotWrites.push([...slots]);
+        },
+        getEquipmentStatus: (source: EquipmentStatusSource) => resolveEquipmentStatus(source),
+        isEquipmentOperational: (source: EquipmentStatusSource) => owner.getEquipmentStatus(source) === 'available',
+        canPerformEquipmentAction: (entry: MountedEquipment, action: EquipmentAction) => {
+            if (!owner.isEquipmentOperational(entry)
+                || owner.destroyed
+                || owner.getCondition('shutdown')) return false;
+            if (action === 'configure-network' && !options.resolveEquipmentActionPermission) return false;
+            return options.resolveEquipmentActionPermission?.(entry, action) ?? true;
+        },
+        canEditEquipmentState: (entry: MountedEquipment, edit: EquipmentStateEdit) => {
+            if (owner.readOnly()) return false;
+            const status = owner.getEquipmentStatus(entry);
+            if (edit === 'enable') return status === 'disabled';
+            if (edit === 'disable') return status === 'available';
+            return false;
+        },
+        matchesInventoryControlAmmo: () => null,
+    } as unknown as CBTForceUnit;
+
+    return { owner, inventory, inventoryWrites, criticalSlots, criticalSlotWrites };
 }
 
 function defaultEquipmentStatus(entry: MountedEquipment): MountedEquipmentStatus {

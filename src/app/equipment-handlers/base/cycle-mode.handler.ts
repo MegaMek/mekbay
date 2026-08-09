@@ -23,8 +23,9 @@ export abstract class CycleModeHandler extends EquipmentInteractionHandler {
     }
     
     handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerCommandContext): boolean {
-        equipment.states?.set(this.stateKey, String(choice.value));
-        equipment.owner.setInventoryEntry(equipment);
+        if (equipment.setState(this.stateKey, String(choice.value))) {
+            equipment.owner.setInventoryEntry(equipment);
+        }
         
         context.toastService.showToast(
             `${equipment.equipment?.name||equipment.name} changed ${this.modeLabel.toLowerCase()}: ${choice.label}`,

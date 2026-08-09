@@ -11,6 +11,7 @@ import {
     createHandlerQueryContext,
 } from '../../services/equipment-interaction-registry.service';
 import type { ToastService } from '../../services/toast.service';
+import { createTestEquipmentOwner } from '../../testing/unit-test-helpers';
 import { MultiModeHandler } from './multi-mode.handler';
 
 class TestMultiModeHandler extends MultiModeHandler {
@@ -30,9 +31,8 @@ class TestMultiModeHandler extends MultiModeHandler {
 
 describe('MultiModeHandler', () => {
     it('persists the selected mode value and round-trips it through the choices', () => {
-        const owner = {
-            setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        } as never;
+        const { owner } = createTestEquipmentOwner();
+        spyOn(owner, 'setInventoryEntry').and.callThrough();
         const equipment = new MountedEquipment({
             owner,
             id: 'test-equipment',

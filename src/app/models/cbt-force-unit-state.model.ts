@@ -149,6 +149,7 @@ export class CBTForceUnitState extends ForceUnitState {
         this.consolidateInventory();
         const turnState = this.turnState();
         turnState.resetPSRChecks();
+        turnState.commitEquipmentStateChanges();
     }
 
     private cleanupEndTurnConditions() {

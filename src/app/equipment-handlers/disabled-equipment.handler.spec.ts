@@ -14,27 +14,13 @@ import {
 } from '../services/equipment-interaction-registry.service';
 import type { DialogsService } from '../services/dialogs.service';
 import type { ToastService } from '../services/toast.service';
+import { createTestEquipmentOwner } from '../testing/unit-test-helpers';
 import { DisabledEquipmentHandler, isEquipmentDisabledByFailure } from './disabled-equipment.handler';
 
 function owner() {
-    const getEquipmentStatus = (entry: MountedEquipment) => (
-        entry.committedDestroyed()
-            ? 'destroyed'
-            : isEquipmentDisabledByFailure(entry)
-                ? 'disabled'
-                : 'available'
-    );
-    return {
-        readOnly: () => false,
-        setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        getEquipmentStatus,
-        isEquipmentOperational: (entry: MountedEquipment) => getEquipmentStatus(entry) === 'available',
-        canPerformEquipmentAction: (entry: MountedEquipment) => getEquipmentStatus(entry) === 'available',
-        canEditEquipmentState: (entry: MountedEquipment, edit: string) => {
-            const status = getEquipmentStatus(entry);
-            return edit === 'enable' ? status === 'disabled' : status === 'available';
-        },
-    } as never;
+    const { owner } = createTestEquipmentOwner();
+    spyOn(owner, 'setInventoryEntry').and.callThrough();
+    return owner;
 }
 
 function entry(flags: EquipmentFlag[], states = new Map<string, string>(), destroyed = false): MountedEquipment {

@@ -30,6 +30,22 @@ describe('CBTInventoryControlRuntime ammo selection reconciliation', () => {
         });
     });
 
+    it('recovers a profile from a valid preferred source when the persisted profile is stale', () => {
+        const fixture = createAmmoFixture();
+        const rightArmSourceId = `${fixture.standard.internalName}:RA`;
+
+        fixture.harness.unit.setInventoryControlEntryAmmoSelection(fixture.weapon.id, {
+            selectedProfileId: 'removed-profile',
+            preferredSourceOptionId: rightArmSourceId,
+        });
+        fixture.harness.runtime.markAmmoSourcesChanged();
+
+        expect(fixture.harness.unit.getInventoryControlEntryAmmoSelection(fixture.weapon.id)).toEqual({
+            selectedProfileId: getInventoryControlAmmoProfileId(fixture.standard),
+            preferredSourceOptionId: rightArmSourceId,
+        });
+    });
+
     it('uses current location-qualified group IDs and keeps equivalent sources as one profile', () => {
         const fixture = createAmmoFixture();
 

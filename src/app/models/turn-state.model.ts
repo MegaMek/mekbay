@@ -56,6 +56,7 @@ export class TurnState {
     private readonly acknowledgedHeatSources = this.modifiedSignal<Record<string, string>>({});
     private readonly heatDissipationConsumed = this.modifiedSignal<number>(0);
     private readonly psrOutcomes = this.modifiedSignal<Record<string, RuleCheckOutcome>>({});
+    private readonly equipmentStateChanged = this.modifiedSignal<boolean>(false);
     airborne = this.modifiedSignal<boolean | null>(null, 'movement');
     moveMode = this.modifiedSignal<MotiveModes | null>(null, 'movement');
     moveDistance = this.modifiedSignal<number | null>(null, 'movement');
@@ -85,6 +86,7 @@ export class TurnState {
             || unconsolidatedCrits
             || unconsolidatedLocations
             || unconsolidatedInventory
+            || this.equipmentStateChanged()
             || this.passiveHeatSourceSignature() !== this.passiveHeatSourceBaseline()
             || Object.keys(this.acknowledgedHeatSources()).length > 0
             || this.heatDissipationConsumed() > 0
@@ -100,7 +102,8 @@ export class TurnState {
             || this.hasPendingPSRChecks()
             || unconsolidatedCrits
             || unconsolidatedLocations
-            || unconsolidatedInventory;
+            || unconsolidatedInventory
+            || this.equipmentStateChanged();
     });
 
     autoFall = computed<boolean>(() => {
@@ -373,6 +376,7 @@ export class TurnState {
         if (psrChecks) turnState.psrChecks = psrChecks;
         if (!this.applyMovePSR()) turnState.applyMovePSR = false;
         if (this.spotting()) turnState.spotting = true;
+        if (this.equipmentStateChanged()) turnState.equipmentStateChanged = true;
 
         return Object.keys(turnState).length > 0 ? turnState : undefined;
     }
@@ -390,7 +394,16 @@ export class TurnState {
             this.psrChecks.set(this.deserializePSRChecks(data?.psrChecks));
             this.applyMovePSR.set(data?.applyMovePSR ?? true);
             this.spotting.set(data?.spotting ?? false);
+            this.equipmentStateChanged.set(data?.equipmentStateChanged ?? false);
         });
+    }
+
+    markEquipmentStateChanged(): void {
+        this.equipmentStateChanged.set(true);
+    }
+
+    commitEquipmentStateChanges(): void {
+        this.equipmentStateChanged.set(false);
     }
 
     private serializePSRChecks(): SerializedPSRChecks | undefined {
