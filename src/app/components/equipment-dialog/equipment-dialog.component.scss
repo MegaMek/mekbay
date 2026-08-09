@@ -43,24 +43,65 @@
     align-items: center;
     flex-direction: row;
     gap: 8px;
-    transform: scale(0.8);
 }
 
-.turn-tracker-title-button {
+@media (max-width: 480px) or (max-height: 480px) {
+    .title-buttons {
+        transform: scale(0.8);
+        transform-origin: top right;
+    }
+}
+
+.equipment-dialog-title-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 40px;
     height: 40px;
+    box-sizing: border-box;
     padding: 0;
     border: 0;
     background: transparent;
-    color: #000;
+    color: var(--text-color-secondary);
     cursor: pointer;
     opacity: 0.85;
-    transition: opacity 0.2s;
+    transition: color 0.2s, opacity 0.2s;
+
+    svg {
+        display: block;
+        width: 36px;
+        height: 36px;
+    }
+
+    &:hover,
+    &:focus-visible {
+        color: #fff;
+        opacity: 1;
+    }
+}
+
+.round-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1pt solid #fff;
+    background: #000;
+    color: #fff;
+    width: 33px;
+    height: 33px;
+
+    svg {
+        width: 22px;
+        height: 22px;
+    }
+}
+
+.turn-tracker-title-button {
+    color: #000;
 
     svg {
         color: #000;
-        width: 100%;
-        height: 100%;
     }
 
     svg .octagon {
@@ -110,40 +151,6 @@
         stroke-width: 0;
         stroke: #000;
     }
-}
-
-.overlay-round-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 37px;
-    height: 37px;
-    padding: 0;
-    border-radius: 50%;
-    border: 1pt solid #fff;
-    background: #000;
-    color: #fff;
-    cursor: pointer;
-    opacity: 0.85;
-    transition: opacity 0.2s;
-    
-    svg {
-        width: 24px;
-        height: 24px;
-    }
-}
-
-:host-context(html.night-mode) .overlay-round-button {
-    border-color: #000;
-    background: #fff;
-    color: #000;
-}
-
-.turn-tracker-title-button:hover,
-.turn-tracker-title-button:focus-visible,
-.target-title-button:hover,
-.target-title-button:focus-visible {
-    opacity: 1;
 }
 
 .equipment-tabs {
@@ -463,7 +470,7 @@ ammo-loadout-panel {
     .equipment-dialog-title-row {
         text-align: left;
         justify-content: start;
-        padding-right: 104px;
+        padding-right: 132px;
         padding-left: 16px;
     }
 
