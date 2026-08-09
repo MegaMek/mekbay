@@ -6,7 +6,7 @@ import type { PickerChoice } from '../components/picker/picker.interface';
 import { WeaponEquipment } from '../models/equipment.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
-import { EquipmentInteractionHandler, type HandlerContext, type ToHitAdjustmentContext } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionHandler, type HandlerCommandContext, type HandlerQueryContext, type ToHitAdjustmentContext } from '../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE, setInventoryControlMode } from '../utils/inventory-control.util';
 import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 
@@ -21,9 +21,9 @@ export class RiscLaserPulseModuleHandler extends EquipmentInteractionHandler {
         return isRiscLaserPulseModule(equipment) || this.linkedRiscLaserPulseModule(equipment) !== null;
     }
 
-    getChoices(equipment: MountedEquipment, _context: HandlerContext): PickerChoice[] {
+    getChoices(equipment: MountedEquipment, context: HandlerQueryContext): PickerChoice[] {
         const module = this.linkedRiscLaserPulseModule(equipment);
-        if (!module || !this.isModuleUsable(equipment, module)) return [];
+        if (!module || !this.isModuleUsable(equipment, module, context)) return [];
 
         return [{
             label: 'Mode',
@@ -33,39 +33,42 @@ export class RiscLaserPulseModuleHandler extends EquipmentInteractionHandler {
                 { label: 'STD', value: RISC_LASER_STANDARD_MODE },
                 { label: 'PULSE', value: RISC_LASER_PULSE_MODE }
             ],
-            disabled: equipment.isUnavailable(),
             keepOpen: true
         }];
     }
 
-    handleSelection(equipment: MountedEquipment, choice: PickerChoice, _context: HandlerContext): boolean {
+    handleSelection(equipment: MountedEquipment, choice: PickerChoice, _context: HandlerCommandContext): boolean {
         setInventoryControlMode(equipment, String(choice.value));
         return true;
     }
 
-    override applyInventoryControlHeatEffects(equipment: MountedEquipment, effect: InventoryControlHeatEffect, _context: HandlerContext): InventoryControlHeatEffect {
+    override applyInventoryControlHeatEffects(equipment: MountedEquipment, effect: InventoryControlHeatEffect, context: HandlerQueryContext): InventoryControlHeatEffect {
         const module = this.linkedRiscLaserPulseModule(equipment);
-        return module && this.isModuleUsable(equipment, module) && this.selectedMode(equipment) === RISC_LASER_PULSE_MODE
+        return module && this.isModuleUsable(equipment, module, context) && this.selectedMode(equipment) === RISC_LASER_PULSE_MODE
             ? { ...effect, value: effect.value + 2 }
             : effect;
     }
 
-    override getToHitAdjustments(equipment: MountedEquipment, context: ToHitAdjustmentContext): readonly ToHitAdjustment[] {
-        const parent = context.parent;
+    override getToHitAdjustments(
+        equipment: MountedEquipment,
+        adjustmentContext: ToHitAdjustmentContext,
+        context: HandlerQueryContext
+    ): readonly ToHitAdjustment[] {
+        const parent = adjustmentContext.parent;
         const label = equipment.equipment?.shortName ?? equipment.name;
         if (!parent) return isRiscLaserPulseModule(equipment) ? [{ kind: 'replace-base', value: -2, label }] : [];
         if (!isRiscLaserPulseModule(equipment) || !this.isLaserWithRiscModule(parent)) return [];
-        const active = this.isModuleUsable(parent, equipment) && this.selectedMode(parent) === RISC_LASER_PULSE_MODE;
+        const active = this.isModuleUsable(parent, equipment, context) && this.selectedMode(parent) === RISC_LASER_PULSE_MODE;
         return [{
             kind: 'add',
-            ...(active && { label }),
+            label: active ? label : `${label} Inactive`,
             modifier: active ? -2 : 0
         }];
     }
 
-    override canPerformAimedShot(equipment: MountedEquipment, _context: HandlerContext): boolean | null {
+    override canPerformAimedShot(equipment: MountedEquipment, context: HandlerQueryContext): boolean | null {
         const module = this.linkedRiscLaserPulseModule(equipment);
-        if (!module || !this.isModuleUsable(equipment, module)) return null;
+        if (!module || !this.isModuleUsable(equipment, module, context)) return null;
         return this.selectedMode(equipment) === RISC_LASER_PULSE_MODE ? false : null;
     }
 
@@ -77,8 +80,12 @@ export class RiscLaserPulseModuleHandler extends EquipmentInteractionHandler {
         return isLaserWithRiscModule(equipment);
     }
 
-    private isModuleUsable(laser: MountedEquipment, module: MountedEquipment): boolean {
-        return !laser.isUnavailable() && !module.isUnavailable();
+    private isModuleUsable(
+        laser: MountedEquipment,
+        module: MountedEquipment,
+        context: HandlerQueryContext
+    ): boolean {
+        return context.getStatus(laser) === 'available' && context.getStatus(module) === 'available';
     }
 
     private selectedMode(equipment: MountedEquipment): string {

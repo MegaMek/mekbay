@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionHandler, type HandlerCommandContext, type HandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { PickerChoice, PickerValue } from '../components/picker/picker.interface';
 import { ECMMode } from '../models/common.model';
@@ -45,7 +45,7 @@ export class ECMHandler extends EquipmentInteractionHandler {
         return modes;
     }
 
-    getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
+    getChoices(equipment: MountedEquipment, _context: HandlerQueryContext): PickerChoice[] {
         const currentState = equipment.states?.get(this.stateKey) || this.getDefaultMode();
         const modes = this.getModes(equipment);
 
@@ -55,15 +55,15 @@ export class ECMHandler extends EquipmentInteractionHandler {
                 value: currentState,
                 displayType: 'dropdown',
                 choices: modes,
-                disabled: equipment.isUnavailable(),
                 keepOpen: true
             }
         ];
     }
 
-    handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): boolean {
-        equipment.states?.set(this.stateKey, String(choice.value));
-        equipment.owner.setInventoryEntry(equipment);
+    handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerCommandContext): boolean {
+        if (equipment.setState(this.stateKey, String(choice.value))) {
+            equipment.owner.setInventoryEntry(equipment);
+        }
         context.toastService.showToast(
             `${equipment.equipment?.name||equipment.name} mode: ${choice.label}`,
             'info'

@@ -77,7 +77,8 @@
                         (cdkDropListDropped)="drop($event, group)">
                         @for (row of group.rows; track row.id) {
                             @let rowTarget = targetState(row);
-                            <div class="weapon-equipment-row" cdkDrag cdkDragLockAxis="y" cdkDragBoundary=".weapon-equipment-section" cdkDragPreviewContainer="parent" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0" [cdkDragDisabled]="!group.sortable || readOnly()" [class.destroying-entry]="rowDestroying(row)" [class.repairing-entry]="rowRepairing(row)" [class.destroyed-entry]="rowCommittedDestroyed(row)" [class.disabled-entry]="!rowEffectivelyDestroyed(row) && row.disabled" (pointerdown)="cacheDragPreviewCellWidths($event)" (cdkDragStarted)="onDragStarted($event)">
+                            @let rowPresentation = rowPresentationState(row);
+                            <div class="weapon-equipment-row" cdkDrag cdkDragLockAxis="y" cdkDragBoundary=".weapon-equipment-section" cdkDragPreviewContainer="parent" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0" [cdkDragDisabled]="!group.sortable || readOnly()" [class.destroying-entry]="rowPresentation === 'destroying'" [class.repairing-entry]="rowPresentation === 'repairing'" [class.destroyed-entry]="rowPresentation === 'destroyed'" [class.disabled-entry]="rowPresentation === 'disabled'" [class.operation-disabled-entry]="rowPresentation === null && row.disabled" (pointerdown)="cacheDragPreviewCellWidths($event)" (cdkDragStarted)="onDragStarted($event)">
                                 <span class="grid-fill grid-fill-left" aria-hidden="true"></span>
                                 <span class="grouped-cells group-identity">
                                     <div class="drag-cell">
@@ -112,7 +113,9 @@
                                     <div class="name-cell">
                                         <span>{{ row.display.name }}</span>
                                         @for (modifier of row.modifiers; track modifier.name) {
-                                            <span class="modifier" [class.destroyed]="modifier.destroyed">{{ modifier.name }}</span>
+                                            <span class="modifier"
+                                                [class.destroyed]="modifier.status === 'destroyed'"
+                                                [class.disabled]="modifier.status === 'disabled'">{{ modifier.name }}{{ modifier.status === 'destroyed' ? ' Destroyed' : modifier.status === 'disabled' ? ' Disabled' : '' }}</span>
                                         }
                                         @if (modeChoice(row); as choice) {
                                             @if ((choice.choices?.length ?? 0) > 1 && !choice.disabled && !readOnly()) {
@@ -172,7 +175,7 @@
                                     <div class="actions-cell" [class.empty-row-actions]="!rowHasActions(row)">
                                         @if (row.tracksAmmo) {
                                         @let ammo = ammoState(row);
-                                        <div class="ammo-cell meta-cell" data-label="Ammo" [class.empty-ammo]="ammo.depleted" [class.destroyed-ammo]="ammo.destroyed">
+                                        <div class="ammo-cell meta-cell" data-label="Ammo" [class.empty-ammo]="ammo.depleted" [class.destroyed-ammo]="ammo.destroyed" [class.disabled-ammo]="ammo.disabled">
                                             <span class="grouped-cells">
                                                 @if (ammo.hasAmmo) {
                                                     @if (ammo.showDropdown) {

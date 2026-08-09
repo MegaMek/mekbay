@@ -5,7 +5,7 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
-import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionHandler, type HandlerCommandContext, type HandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
 import { resolveAmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
 
@@ -17,15 +17,15 @@ export class MmlHandler extends EquipmentInteractionHandler {
         return equipment.equipment instanceof WeaponEquipment && equipment.equipment.ammoType === 'MML';
     }
 
-    getChoices(_equipment: MountedEquipment, _context: HandlerContext): PickerChoice[] {
+    getChoices(_equipment: MountedEquipment, _context: HandlerQueryContext): PickerChoice[] {
         return [];
     }
 
-    handleSelection(_equipment: MountedEquipment, _choice: PickerChoice, _context: HandlerContext): boolean {
+    handleSelection(_equipment: MountedEquipment, _choice: PickerChoice, _context: HandlerCommandContext): boolean {
         return true;
     }
 
-    override matchesInventoryAmmo(equipment: MountedEquipment, ammo: AmmoEquipment, mode: string | null, _context: HandlerContext): boolean | null {
+    override matchesInventoryAmmo(equipment: MountedEquipment, ammo: AmmoEquipment, mode: string | null, _context: HandlerQueryContext): boolean | null {
         if (!(equipment.equipment instanceof WeaponEquipment) || equipment.equipment.ammoType !== 'MML') return null;
         if (ammo.ammoType !== 'MML') return false;
         if (equipment.equipment.rackSize > 0 && ammo.rackSize !== equipment.equipment.rackSize) return false;

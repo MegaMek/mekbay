@@ -24,6 +24,7 @@ import { SvgInteractionService } from './svg-interaction.service';
 import type { ZoomPanServiceInterface } from './zoom-pan.interface';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
+import type { EquipmentAction } from '../../models/cbt-force-unit.model';
 
 type SvgInteractionServicePrivate = {
     addSvgTapHandler(
@@ -46,8 +47,7 @@ const NO_CONDITION_RULES = {
     conditionControls: [],
     crewStateControls: [],
     locationConditionControls: [],
-    computeAllEntryStates: () => new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>(),
-    computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }),
+    getEquipmentToHitModifiers: () => [],
     heatDissipation: () => null,
     getBaseGunnerySkill: () => 4,
     getBasePilotingSkill: () => 5,
@@ -56,16 +56,18 @@ const NO_CONDITION_RULES = {
 function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInventory: () => MountedEquipment[]; rules: typeof NO_CONDITION_RULES } {
     const unit = {
         getInventory: () => [],
-        isEquipmentUnavailable: () => false,
+        getEquipmentStatus: () => 'available',
+        isEquipmentOperational: () => true,
+        canPerformEquipmentAction: () => true,
         rules: NO_CONDITION_RULES,
         ...overrides,
     } as T & {
         getInventory: () => MountedEquipment[];
-        isEquipmentUnavailable: (entry: MountedEquipment) => boolean;
-        isEquipmentActionUnavailable?: (entry: MountedEquipment) => boolean;
+        getEquipmentStatus: (entry: MountedEquipment) => 'available' | 'disabled' | 'destroyed';
+        isEquipmentOperational: (entry: MountedEquipment) => boolean;
+        canPerformEquipmentAction: (entry: MountedEquipment, action?: EquipmentAction) => boolean;
         rules: typeof NO_CONDITION_RULES;
     };
-    unit.isEquipmentActionUnavailable ??= entry => unit.isEquipmentUnavailable(entry);
     return unit;
 }
 
@@ -324,6 +326,50 @@ describe('SvgInteractionService', () => {
         expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
     });
 
+    it('does not change an alternative mode when the canonical mode action is unavailable', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit(`
+            <g class="inventoryEntry">
+                <rect class="mainButton inventoryEntryButton"></rect>
+                <g class="alternativeMode" mode="Standard">
+                    <rect class="alternativeModeButton inventoryEntryButton"></rect>
+                </g>
+                <g class="alternativeMode" mode="High Explosive">
+                    <rect class="alternativeModeButton inventoryEntryButton"></rect>
+                </g>
+            </g>
+        `, 'ATM');
+        const canPerform = spyOn(unit, 'canPerformEquipmentAction')
+            .and.callFake((_entry: MountedEquipment, action?: EquipmentAction) => action !== 'change-mode');
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (entry.el!.querySelector('.alternativeMode[mode="High Explosive"] .alternativeModeButton') as SVGElement)
+            .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(entry.states.has(INVENTORY_CONTROL_MODE_STATE)).toBeFalse();
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
+        expect(canPerform).toHaveBeenCalledWith(entry, 'change-mode');
+    });
+
+    it('does not mutate sheet selection, range, or target when the attack action is unavailable', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit();
+        unit.createInventoryControlTarget();
+        const canPerform = spyOn(unit, 'canPerformEquipmentAction')
+            .and.callFake((_entry: MountedEquipment, action?: EquipmentAction) => action === 'change-mode');
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (entry.el!.querySelector('.mainButton') as SVGElement)
+            .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        (entry.el!.querySelector('.shrButton') as SVGElement)
+            .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
+        expect(unit.getInventoryControlEntryRange(entry.id)).toBeUndefined();
+        expect(unit.getInventoryControlEntryTargetId(entry.id)).toBeUndefined();
+        expect(canPerform).toHaveBeenCalledWith(entry, 'fire');
+    });
+
     it('keeps selected alternative mode entries on when switching to another mode button', () => {
         const { svg, entry, unit } = createInventoryInteractionUnit(`
             <g class="inventoryEntry">
@@ -385,10 +431,17 @@ describe('SvgInteractionService', () => {
         entry.equipment?.flags.add('F_ENERGY');
         entry.equipment?.flags.add('F_LASER');
         entry.linkedWith = [module];
-        module.owner = unit;
         unit.getInventory = () => [entry, module];
         service.updateUnit(unit);
         service.setupInteractions(svg);
+        const canPerform = spyOn(unit, 'canPerformEquipmentAction')
+            .and.callFake((_entry: MountedEquipment, action?: EquipmentAction) => action !== 'change-mode');
+
+        (module.el!.querySelector(':scope > .mainButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(entry.states.has(INVENTORY_CONTROL_MODE_STATE)).toBeFalse();
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
+
+        canPerform.and.returnValue(true);
 
         (module.el!.querySelector(':scope > .mainButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         expect(entry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe(RISC_LASER_PULSE_MODE);
@@ -455,13 +508,7 @@ describe('SvgInteractionService', () => {
         svg.innerHTML = '<g class="critSlot" loc="CT" slot="0" uid="CLActiveProbe@CT#0" hittable="1"><text>Active Probe</text></g>';
         const critSlot = { id: 'CLActiveProbe@CT#0', name: 'CLActiveProbe', loc: 'CT', slot: 0 };
         const equipment = new MiscEquipment({ id: 'CLActiveProbe', name: 'Active Probe', type: 'misc', flags: ['F_BAP'] });
-        const entry = new MountedEquipment({
-            owner: undefined as any,
-            id: 'CLActiveProbe@CT#0',
-            name: 'CLActiveProbe',
-            equipment,
-            critSlots: [critSlot]
-        });
+        let entry!: MountedEquipment;
         const unit = createSvgInteractionUnit({
             id: 'unit-a',
             getUnit: () => ({ type: 'Mek' }),
@@ -469,10 +516,17 @@ describe('SvgInteractionService', () => {
             getCritSlots: () => [critSlot],
             getCritSlot: (loc: string, slot: number) => loc === 'CT' && slot === 0 ? critSlot : null,
             isInternalLocPhysicallyDestroyed: () => false,
-            isEquipmentUnavailable: () => false,
+            getEquipmentStatus: () => 'available' as const,
+            isEquipmentOperational: () => true,
             applyHitToCritSlot: jasmine.createSpy('applyHitToCritSlot')
         });
-        entry.owner = unit as any;
+        entry = new MountedEquipment({
+            owner: unit as any,
+            id: 'CLActiveProbe@CT#0',
+            name: 'CLActiveProbe',
+            equipment,
+            critSlots: [critSlot]
+        });
         const handlerChoice = {
             label: 'Active Probe is OFF',
             value: 'enabled',
@@ -487,9 +541,8 @@ describe('SvgInteractionService', () => {
 
         const pickerConfig = pickerFactory.createChoicePicker.calls.mostRecent().args[0];
         expect(registryGetChoices).toHaveBeenCalledWith(entry, jasmine.objectContaining({
-            toastService: jasmine.any(Object),
-            dialogsService: jasmine.any(Object),
-            dataService: jasmine.any(Object)
+            equipmentCatalog: jasmine.any(EquipmentRegistry),
+            choiceSurface: 'critical'
         }));
         expect(pickerConfig.values.map((choice: { label: string }) => choice.label)).toContain('Active Probe is OFF');
 
@@ -934,6 +987,23 @@ describe('SvgInteractionService', () => {
 
         choices[1].click();
         expect(unit.getInventoryControlEntryTargetId(entry.id)).toBe('B');
+    });
+
+    it('rechecks the attack action before applying a target-picker selection', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit();
+        unit.createInventoryControlTarget();
+        unit.createInventoryControlTarget();
+        const canPerform = spyOn(unit, 'canPerformEquipmentAction').and.returnValue(true);
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (entry.el!.querySelector('.shrButton') as SVGElement)
+            .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        canPerform.and.returnValue(false);
+        (document.body.querySelector('.weapon-target-choice-menu .target-choice:not(.empty-choice)') as HTMLButtonElement).click();
+
+        expect(unit.getInventoryControlEntryTargetId(entry.id)).toBeUndefined();
+        expect(canPerform).toHaveBeenCalledWith(entry, 'fire');
     });
 
     it('uses typed hit modifiers instead of rendered SVG hit text in the target picker fallback', () => {
@@ -1572,16 +1642,7 @@ function createInventoryInteractionUnit(html = `
         flags: weaponType === 'ATM' ? ['F_MISSILE', 'F_ATM'] : weaponType === 'MML' ? ['F_MISSILE', 'F_MML'] : [],
         weapon: { ammoType: weaponType === 'Laser' ? 'NA' : weaponType, rackSize: 6, ranges: [3, 6, 9, 12] }
     });
-    const entry = new MountedEquipment({
-        owner: undefined as any,
-        id: 'laser',
-        name: 'laser',
-        equipment,
-        states: new Map<string, string>(),
-        el: entryEl,
-        destroyed: false,
-        linkedWith: null,
-    });
+    let entry!: MountedEquipment;
     const unit = createSvgInteractionUnit({
         id: 'unit-a',
         getInventory: () => [entry],
@@ -1601,6 +1662,16 @@ function createInventoryInteractionUnit(html = `
         }),
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
     });
+    entry = new MountedEquipment({
+        owner: unit as any,
+        id: 'laser',
+        name: 'laser',
+        equipment,
+        states: new Map<string, string>(),
+        el: entryEl,
+        destroyed: false,
+        linkedWith: null,
+    });
     const runtime = new InventoryControlRuntimeState(() => unit.getInventory());
     Object.assign(unit, {
         getInventoryControlTargets: () => runtime.getTargets(),
@@ -1608,7 +1679,8 @@ function createInventoryInteractionUnit(html = `
         getInventoryControlEntryTargetId: (entryId: string) => runtime.getEntryTargetId(entryId),
         isInventoryControlEntrySelected: (entryId: string) => runtime.isEntrySelected(entryId),
         getInventoryControlEntryRange: (entryId: string) => runtime.getEntryRange(entryId),
-        getInventoryControlEntryAmmoOption: () => undefined,
+        getInventoryControlEntryAmmoSelection: () => undefined,
+        getInventoryControlSelectedAmmo: () => null,
         getInventoryControlRules: () => ({}),
         gameRules: CORE_2026_GAME_RULES,
         allowsExtremeRangeAttacks: () => false,
@@ -1626,6 +1698,5 @@ function createInventoryInteractionUnit(html = `
         updateInventoryControlTarget: (targetId: string, patch: any) => runtime.updateTarget(targetId, patch),
         syncInventoryControlSelectionSvg: () => runtime.syncSelectionSvg()
     });
-    entry.owner = unit as any;
     return { svg, entry, unit };
 }

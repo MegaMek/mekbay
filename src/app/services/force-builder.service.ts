@@ -1746,11 +1746,7 @@ export class ForceBuilderService {
             for (const { force } of this.loadedForces()) {
                 force.c3Network();
                 untracked(() => {
-                    this.equipmentRegistryService.getRegistry().onForceRuntimeChanged(force, {
-                        toastService: this.toastService,
-                        dialogsService: this.dialogsService,
-                        dataService: this.dataService,
-                    });
+                    this.equipmentRegistryService.getRegistry().onForceRuntimeChanged(force, this.toastService);
                 });
             }
         });

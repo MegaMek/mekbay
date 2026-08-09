@@ -5,7 +5,7 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
-import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionHandler, type HandlerCommandContext, type HandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions } from '../utils/inventory-control.util';
 import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-control-physical-damage.util';
 import { getVibrobladeProfile } from '../models/rules/vibroblade-rules';
@@ -45,7 +45,7 @@ export class VibrobladeHandler extends EquipmentInteractionHandler {
         return getVibrobladeProfile(mounted.equipment) !== null;
     }
 
-    override getChoices(mounted: MountedEquipment, _context: HandlerContext): PickerChoice[] {
+    override getChoices(mounted: MountedEquipment, _context: HandlerQueryContext): PickerChoice[] {
         return [{
             label: 'Mode',
             value: getVibrobladeMode(mounted),
@@ -54,12 +54,11 @@ export class VibrobladeHandler extends EquipmentInteractionHandler {
                 { label: VIBROBLADE_ON_MODE, value: VIBROBLADE_ON_MODE },
                 { label: VIBROBLADE_OFF_MODE, value: VIBROBLADE_OFF_MODE },
             ],
-            disabled: mounted.isUnavailable(),
             keepOpen: true,
         }];
     }
 
-    override handleSelection(mounted: MountedEquipment, choice: PickerChoice, _context: HandlerContext): boolean {
+    override handleSelection(mounted: MountedEquipment, choice: PickerChoice, _context: HandlerCommandContext): boolean {
         const mode = choice.value === VIBROBLADE_ON_MODE ? VIBROBLADE_ON_MODE : VIBROBLADE_OFF_MODE;
         if (mounted.setState(VIBROBLADE_MODE_STATE, mode)) {
             mounted.owner.setInventoryEntry(mounted);
@@ -75,7 +74,7 @@ export class VibrobladeHandler extends EquipmentInteractionHandler {
         mounted: MountedEquipment,
         display: InventoryControlDisplayData,
         _options: InventoryControlDisplayEffectOptions,
-        _context: HandlerContext,
+        _context: HandlerQueryContext,
     ): InventoryControlDisplayData {
         const profile = getVibrobladeProfile(mounted.equipment);
         if (!profile) return display;
@@ -92,7 +91,7 @@ export class VibrobladeHandler extends EquipmentInteractionHandler {
     override applyInventoryControlPhysicalDamageEffects(
         mounted: MountedEquipment,
         effect: InventoryControlPhysicalDamageEffect,
-        _context: HandlerContext,
+        _context: HandlerQueryContext,
     ): InventoryControlPhysicalDamageEffect {
         const profile = getVibrobladeProfile(mounted.equipment);
         const baseDamage = getVibrobladeBaseDamage(mounted);

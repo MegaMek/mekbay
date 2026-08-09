@@ -84,17 +84,19 @@ function c3UnitWithComponents(id: string, componentFlags: readonly (readonly str
             && !destroyedComponents().has(index)
             && !actionUnavailableComponents().has(index),
         isC3Jammed: () => jammed(),
-        isEquipmentActionUnavailable: (entry: MountedEquipment) => {
+        canPerformEquipmentAction: (entry: MountedEquipment) => {
             const index = inventory.indexOf(entry);
-            return index >= 0 && actionUnavailableComponents().has(index);
+            return index < 0 || !destroyedComponents().has(index) && !actionUnavailableComponents().has(index);
+        },
+        getEquipmentStatus: (entry: MountedEquipment) => (
+            destroyedComponents().has(inventory.indexOf(entry)) ? 'destroyed' : 'available'
+        ),
+        isEquipmentOperational: (entry: MountedEquipment) => {
+            const index = inventory.indexOf(entry);
+            return index >= 0 && !destroyedComponents().has(index);
         },
         rules: {
             calculateC3Tax: () => 0,
-            computeEntryState: (entry: MountedEquipment) => ({
-                isDamaged: destroyedComponents().has(inventory.indexOf(entry)),
-                isDisabled: false,
-                hitMod: 0,
-            }),
         },
     } as unknown as CBTForceUnit;
     inventory = componentFlags.map((flags, index) => new MountedEquipment({

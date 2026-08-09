@@ -8,13 +8,16 @@ import type { CBTForceUnit } from './cbt-force-unit.model';
 import {
     InventoryControlRuntimeState,
     mergeInventoryControlCalculatorState,
+    reconcileInventoryControlRuntimeAmmoSelection,
     splitInventoryControlCalculatorState,
     type InventoryControlRuntimeRangeKey,
+    type InventoryControlRuntimeAmmoSelection,
     type InventoryControlRuntimeTarget,
     type InventoryControlRuntimeTargetId,
     type InventoryControlUnitTargetState
 } from './inventory-control-runtime-state.model';
 import { calculateTargetTnModifier } from './target-number-calculator.model';
+import { getInventoryControlAmmoSelectionCandidates } from '../utils/inventory-control.util';
 
 export class CBTInventoryControlRuntime extends InventoryControlRuntimeState {
     private readonly unitTargetStates = signal<Map<InventoryControlRuntimeTargetId, InventoryControlUnitTargetState>>(new Map());
@@ -22,7 +25,21 @@ export class CBTInventoryControlRuntime extends InventoryControlRuntimeState {
     constructor(private readonly unit: CBTForceUnit) {
         super(
             () => unit.getInventory(),
-            targetId => unit.getInventoryControlTargetsMap().has(targetId)
+            targetId => unit.getInventoryControlTargetsMap().has(targetId),
+            (entry, selection) => {
+                const candidates = getInventoryControlAmmoSelectionCandidates(
+                    entry,
+                    unit.getEquipmentRegistry(),
+                    (weapon, ammo, mode) => unit.matchesInventoryControlAmmo(weapon, ammo, mode),
+                    undefined,
+                    true,
+                );
+                return reconcileInventoryControlRuntimeAmmoSelection(
+                    selection,
+                    candidates.sourceOptions,
+                    candidates.profileOptions,
+                );
+            },
         );
     }
 
@@ -128,8 +145,9 @@ export class CBTInventoryControlRuntime extends InventoryControlRuntimeState {
         this.markInventoryViewChanged();
     }
 
-    override setEntryAmmoOption(entryId: string, optionId: string): void {
-        super.setEntryAmmoOption(entryId, optionId);
+    override setEntryAmmoSelection(entryId: string, selection: InventoryControlRuntimeAmmoSelection): void {
+        super.setEntryAmmoSelection(entryId, selection);
+        this.reconcileAmmoSelections();
         this.markInventoryViewChanged();
     }
 
@@ -141,6 +159,11 @@ export class CBTInventoryControlRuntime extends InventoryControlRuntimeState {
     override clearSelection(): void {
         super.clearSelection();
         this.markInventoryViewChanged();
+    }
+
+    markAmmoSourcesChanged(): void {
+        this.reconcileAmmoSelections();
+        super.markInventoryViewChanged();
     }
 
 }

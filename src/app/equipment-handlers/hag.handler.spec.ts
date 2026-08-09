@@ -3,19 +3,20 @@
 // Author: Drake
 
 import { MiscEquipment, WeaponEquipment } from '../models/equipment.model';
+import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
 import type { WeaponType } from '../models/weapon-types.model';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
-import type { HandlerContext } from '../services/equipment-interaction-registry.service';
+import { createHandlerCommandContext, createHandlerQueryContext } from '../services/equipment-interaction-registry.service';
+import type { DialogsService } from '../services/dialogs.service';
+import type { ToastService } from '../services/toast.service';
 import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
 import { HAG_FLAK_MODE, HAG_STANDARD_MODE, HagHandler, selectedHagMode } from './hag.handler';
 
 function owner() {
     return {
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        isEquipmentActionUnavailable: jasmine.createSpy('isEquipmentActionUnavailable').and.returnValue(false),
-        rules: {
-            computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 })
-        }
+        isEquipmentOperational: jasmine.createSpy('isEquipmentOperational').and.returnValue(true),
+        canPerformEquipmentAction: jasmine.createSpy('canPerformEquipmentAction').and.returnValue(true),
     } as never;
 }
 
@@ -41,9 +42,12 @@ function hag(mode?: string): MountedWeapon {
     });
 }
 
-function context(): HandlerContext {
-    return {} as HandlerContext;
-}
+const queryContext = createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY);
+const commandContext = createHandlerCommandContext(
+    EMPTY_EQUIPMENT_REGISTRY,
+    jasmine.createSpyObj<ToastService>('ToastService', ['showToast']),
+    jasmine.createSpyObj<DialogsService>('DialogsService', ['createDialog']),
+);
 
 describe('HagHandler', () => {
     const handler = new HagHandler();
@@ -52,7 +56,7 @@ describe('HagHandler', () => {
         const entry = hag('invalid');
 
         expect(selectedHagMode(entry)).toBe(HAG_STANDARD_MODE);
-        expect(handler.getChoices(entry, context())).toEqual([jasmine.objectContaining({
+        expect(handler.getChoices(entry, queryContext)).toEqual([jasmine.objectContaining({
             label: 'Mode',
             value: HAG_STANDARD_MODE,
             displayType: 'dropdown',
@@ -66,7 +70,7 @@ describe('HagHandler', () => {
     it('persists the selected mode through the inventory-control state', () => {
         const entry = hag();
 
-        expect(handler.handleSelection(entry, { label: 'FLAK', value: HAG_FLAK_MODE }, context())).toBeTrue();
+        expect(handler.handleSelection(entry, { label: 'FLAK', value: HAG_FLAK_MODE }, commandContext)).toBeTrue();
 
         expect(entry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe(HAG_FLAK_MODE);
         expect(entry.owner.setInventoryEntry).toHaveBeenCalledWith(entry);
@@ -75,16 +79,16 @@ describe('HagHandler', () => {
     it('keeps DB only in STD and replaces it with F in FLAK', () => {
         const baseTypes = new Set<WeaponType>(['C', 'DB', 'F', 'X']);
 
-        expect(handler.applyInventoryControlWeaponTypes(hag(HAG_STANDARD_MODE), baseTypes, context()))
+        expect(handler.applyInventoryControlWeaponTypes(hag(HAG_STANDARD_MODE), baseTypes, queryContext))
             .toEqual(new Set<WeaponType>(['C', 'DB', 'X']));
-        expect(handler.applyInventoryControlWeaponTypes(hag(HAG_FLAK_MODE), baseTypes, context()))
+        expect(handler.applyInventoryControlWeaponTypes(hag(HAG_FLAK_MODE), baseTypes, queryContext))
             .toEqual(new Set<WeaponType>(['C', 'F', 'X']));
         expect(baseTypes).toEqual(new Set<WeaponType>(['C', 'DB', 'F', 'X']));
     });
 
     it('adds a -1 to-hit adjustment only in FLAK mode', () => {
-        expect(handler.getToHitAdjustments(hag(HAG_STANDARD_MODE), {}, context())).toEqual([]);
-        expect(handler.getToHitAdjustments(hag(HAG_FLAK_MODE), {}, context()))
+        expect(handler.getToHitAdjustments(hag(HAG_STANDARD_MODE), {}, queryContext)).toEqual([]);
+        expect(handler.getToHitAdjustments(hag(HAG_FLAK_MODE), {}, queryContext))
             .toEqual([{
                 kind: 'add', label: 'HAG/20 (FLAK)', modifier: -1
             }]);

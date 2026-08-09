@@ -20,7 +20,7 @@ import { ToastService } from '../../services/toast.service';
 import { LayoutService } from '../../services/layout.service';
 import { DataService } from '../../services/data.service';
 import { AmmoEquipment } from '../../models/equipment.model';
-import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
+import { createHandlerCommandContext, createHandlerQueryContext, EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import type { HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
@@ -29,10 +29,10 @@ import { type ChoicePickerStyle, PickerFactoryService } from '../../services/pic
 import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData, EquipmentDialogTab } from '../equipment-dialog/equipment-dialog.model';
 import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dialog/weapon-target-choice-menu.component';
-import { getInventoryControlGroups, getInventoryControlModeAmmoSummary, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_MODE_STATE, resolveInventoryControlSelectedAmmoOption, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
+import { getInventoryControlGroups, getInventoryControlModeAmmoSummary, getInventoryControlModes, getSelectedInventoryControlMode, inventoryControlEntryAction, INVENTORY_CONTROL_MODE_STATE, resolveInventoryControlSelectedAmmoOption, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
-import { CORE_2026_GAME_RULES, separateHeatFireModifier } from '../../models/rules/game-rules';
+import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
 import { UnitStateDropdownComponent, type UnitStateDropdownChoice } from './unit-state-dropdown.component';
@@ -975,12 +975,9 @@ export class SvgInteractionService {
             const slot = parseInt(svgEl.getAttribute('slot') as string);
             const originalTotalAmmo = parseInt(svgEl.getAttribute('totalAmmo') || '0');
             const equipmentRegistry = this.equipmentRegistryService.getRegistry();
-            const handlerContext = {
-                toastService: this.toastService,
-                dialogsService: this.dialogsService,
-                dataService: this.dataService,
-                choiceSurface: 'critical' as const,
-            };
+            const equipmentCatalog = this.dataService.getEquipmentRegistry();
+            const queryContext = createHandlerQueryContext(equipmentCatalog, 'critical');
+            const commandContext = createHandlerCommandContext(equipmentCatalog, this.toastService, this.dialogsService);
             let labelText = svgEl.textContent || '';
             if (svgEl.classList.contains('ammoSlot')) {
                 // for ammo, we remove the number at the end, example "Ammo (SRM 2) 5" should become "Ammo (SRM 2)"
@@ -1023,9 +1020,9 @@ export class SvgInteractionService {
                     }
                     const inventoryEntry = this.inventoryEntryForCritSlot(unit, critSlot);
                     if (inventoryEntry) {
-                        values.push(...equipmentRegistry.getChoices(inventoryEntry, handlerContext));
+                        values.push(...equipmentRegistry.getChoices(inventoryEntry, queryContext));
                     }
-                    if (!unit.isEquipmentUnavailable(critSlot) && critSlot.eq instanceof AmmoEquipment) {
+                    if (unit.isEquipmentOperational(critSlot) && critSlot.eq instanceof AmmoEquipment) {
                         values.unshift({ label: '+1', value: '+1', keepOpen: true, disabled: ((critSlot.consumed ?? 0) == 0) });
                         values.unshift({ label: '-1', value: '-1', keepOpen: true, disabled: ((critSlot.consumed ?? 0) >= totalAmmo) });
                         values.push({ label: 'Set Ammo', value: 'Set Ammo' });
@@ -1052,9 +1049,9 @@ export class SvgInteractionService {
                         if (!critSlot) return;
                         const inventoryEntry = this.inventoryEntryForCritSlot(unit, critSlot);
                         if (inventoryEntry && choice._handler) {
-                            await equipmentRegistry.handleSelection(inventoryEntry, choice, handlerContext);
+                            await equipmentRegistry.handleSelection(inventoryEntry, choice, commandContext);
                         } else if (choice.value == '+1') {
-                            if (unit.isEquipmentUnavailable(critSlot)) return;
+                            if (!unit.isEquipmentOperational(critSlot)) return;
                             if (critSlot.consumed === undefined) {
                                 return;
                             }
@@ -1063,7 +1060,7 @@ export class SvgInteractionService {
                             unit.setCritSlot(critSlot);
                             showAmmoToast(critSlot, 1);
                         } else if (choice.value == '-1') {
-                            if (unit.isEquipmentUnavailable(critSlot)) return;
+                            if (!unit.isEquipmentOperational(critSlot)) return;
                             if (critSlot.consumed === undefined) {
                                 critSlot.consumed = 0;
                             }
@@ -1076,14 +1073,10 @@ export class SvgInteractionService {
                             unit.setCritSlot(critSlot);
                             this.toastService.showToast(`Emptied ${labelText}`, 'info');
                         } else if (choice.value == 'Set Ammo') {
-                            if (unit.isEquipmentUnavailable(critSlot)) return;
-                            const entry = getAmmoControlEntryForCriticalSlot(unit, critSlot, this.dataService.getEquipmentRegistry());
+                            if (!unit.isEquipmentOperational(critSlot)) return;
+                            const entry = getAmmoControlEntryForCriticalSlot(unit, critSlot, equipmentCatalog);
                             if (!entry) return;
-                            if (await setAmmoEntry(entry, {
-                                toastService: this.toastService,
-                                dialogsService: this.dialogsService,
-                                dataService: this.dataService
-                            })) {
+                            if (await setAmmoEntry(entry, commandContext)) {
                                 totalAmmo = entry.totalAmmo;
                                 labelText = entry.currentAmmo.shortName;
                             }
@@ -1130,28 +1123,20 @@ export class SvgInteractionService {
             const unit = this.unit();
             if (!unit) return;
             const rules = unit?.getInventoryControlRules?.()
-                ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext());
-            syncSvgMode(entry, getSelectedInventoryControlMode(entry, this.dataService.getEquipmentRegistry(), rules));
+                ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext().queryContext);
+            syncSvgMode(entry, getSelectedInventoryControlMode(entry, this.dataService.getEquipmentRegistry(), rules.matchesAmmo));
 
             const selectEntry = (button: SVGElement) => {
                 const unit = this.unit();
                 if (!unit) return;
 
-                const clickedMode = this.validInventoryModeForButton(entry, button);
-                const selectedMode = this.selectedInventoryControlMode(entry);
-                const forceSelected = !!clickedMode && clickedMode !== selectedMode;
-                if (clickedMode) {
-                    setInventoryControlMode(entry, clickedMode);
-                }
+                const forceSelected = this.applyInventoryModeFromButton(entry, button);
+                if (forceSelected === null) return;
 
                 const updated = selectInventoryControlEntry(unit, entry, (selectedTargetId, targets) => {
                     this.showInventoryTargetPicker(entry, button, selectedTargetId, targets);
                 }, forceSelected);
                 if (updated) {
-                    this.removePicker();
-                } else if (button.classList.contains('mainButton') && entry.el?.classList.contains('bay')) {
-                    // This is a poorly designed workaround to allow toggling the bay entry selection.
-                    unit.setInventoryControlEntrySelected(entry, forceSelected || !unit.isInventoryControlEntrySelected(entry.id));
                     this.removePicker();
                 }
             };
@@ -1164,13 +1149,9 @@ export class SvgInteractionService {
                     && unit.getUnit().type !== 'Aero'
                     && !unit.allowsExtremeRangeAttacks()) return;
 
-                const clickedMode = this.validInventoryModeForButton(entry, button);
-                const selectedMode = this.selectedInventoryControlMode(entry);
-                const forceSelected = !!clickedMode && clickedMode !== selectedMode;
-
-                if (clickedMode) {
-                    setInventoryControlMode(entry, clickedMode);
-                }
+                const forceSelected = this.applyInventoryModeFromButton(entry, button);
+                if (forceSelected === null
+                    || !entry.owner.canPerformEquipmentAction(entry, inventoryControlEntryAction(entry))) return;
                 const targets = unit.getInventoryControlTargets();
                 if (targets.length === 0) {
                     unit.toggleInventoryControlEntryRange(entry, range, forceSelected);
@@ -1260,29 +1241,44 @@ export class SvgInteractionService {
     private selectedInventoryControlMode(entry: MountedEquipment): string | null {
         const unit = this.unit();
         const rules = unit?.getInventoryControlRules?.()
-            ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext());
+            ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext().queryContext);
         return entry.states.get(INVENTORY_CONTROL_MODE_STATE)
-            ?? getSelectedInventoryControlMode(entry, this.dataService.getEquipmentRegistry(), rules);
+            ?? getSelectedInventoryControlMode(entry, this.dataService.getEquipmentRegistry(), rules.matchesAmmo);
+    }
+
+    /** Apply a clicked alternative mode only when the canonical mode action permits it. */
+    private applyInventoryModeFromButton(entry: MountedEquipment, button: SVGElement): boolean | null {
+        const clickedMode = this.validInventoryModeForButton(entry, button);
+        if (!clickedMode || clickedMode === this.selectedInventoryControlMode(entry)) return false;
+        if (!entry.owner.canPerformEquipmentAction(entry, 'change-mode')) return null;
+        setInventoryControlMode(entry, clickedMode);
+        return true;
     }
 
     private toggleRiscLaserPulseMode(module: MountedEquipment): void {
         const unit = this.unit();
         const parent = module.parent;
         if (!unit || !parent || !isLaserWithRiscModule(parent)) return;
+        if (unit.readOnly()
+            || unit.getEquipmentStatus(parent) !== 'available'
+            || unit.getEquipmentStatus(module) !== 'available'
+            || !parent.owner.canPerformEquipmentAction(parent, 'change-mode')) return;
         const mode = selectedRiscLaserMode(parent) === RISC_LASER_PULSE_MODE
             ? RISC_LASER_STANDARD_MODE
             : RISC_LASER_PULSE_MODE;
         setInventoryControlMode(parent, mode);
-        unit.setInventoryControlEntrySelected(parent, true);
+        if (parent.owner.canPerformEquipmentAction(parent, inventoryControlEntryAction(parent))) {
+            unit.setInventoryControlEntrySelected(parent, true);
+        }
         this.removePicker();
     }
 
     private equipmentDialogContext(): EquipmentDialogContext {
+        const equipmentCatalog = this.dataService.getEquipmentRegistry();
         return {
-            toastService: this.toastService,
-            dialogsService: this.dialogsService,
-            dataService: this.dataService,
-            registry: this.equipmentRegistryService.getRegistry()
+            registry: this.equipmentRegistryService.getRegistry(),
+            queryContext: createHandlerQueryContext(equipmentCatalog),
+            commandContext: createHandlerCommandContext(equipmentCatalog, this.toastService, this.dialogsService),
         };
     }
 
@@ -1314,6 +1310,10 @@ export class SvgInteractionService {
         componentRef.changeDetectorRef.detectChanges();
 
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(targetId => {
+            if (!entry.owner.canPerformEquipmentAction(entry, inventoryControlEntryAction(entry))) {
+                this.overlayManager.closeManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY);
+                return;
+            }
             unit.setInventoryControlEntryTarget(entry, targetId);
             this.overlayManager.closeManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY);
         });
@@ -1332,11 +1332,13 @@ export class SvgInteractionService {
 
         const gameRules = unit.gameRules ?? CORE_2026_GAME_RULES;
         const rules = unit.getInventoryControlRules?.()
-            ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext());
+            ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext().queryContext);
         const ammoSummary = getInventoryControlModeAmmoSummary(entry, this.dataService.getEquipmentRegistry(), rules);
+        const ammoSelection = unit.getInventoryControlEntryAmmoSelection?.(entry.id);
         const selectedAmmo = resolveInventoryControlSelectedAmmoOption(
             ammoSummary.options,
-            unit.getInventoryControlEntryAmmoOption?.(entry.id)
+            ammoSelection?.selectedProfileId,
+            ammoSelection?.preferredSourceOptionId,
         )?.ammo ?? null;
         const row = getInventoryControlGroups(unit, this.dataService.getEquipmentRegistry(), rules)
             .flatMap(group => group.rows)
@@ -1354,15 +1356,13 @@ export class SvgInteractionService {
             selectedAmmo,
             target: target.c3Distance === undefined ? target : { ...target, c3Distance: undefined }
         });
-        const state = unit.rules.computeEntryState(entry);
+        const stateModifiers = unit.rules.getEquipmentToHitModifiers(entry);
         const hitResolution = gameRules.resolveToHit({
             subject: entry,
-            stateModifier: state.hitMod,
-            stateModifierBreakdown: state.hitModifierBreakdown,
+            stateModifiers,
             range: weaponRangeSelection?.range ?? null,
             adjustments: rules.resolveToHitAdjustments?.(entry, selectedAmmo)
         });
-        const { hitModifier, heatFireModifier } = separateHeatFireModifier(hitResolution);
         const missingMovementModifier = unit.turnState().missingAttackMovementModifier();
         return inventoryTargetNumberText({
             entry,
@@ -1376,8 +1376,7 @@ export class SvgInteractionService {
             pilotingSkill: unit.rules.getBasePilotingSkill(),
             missingMovementModifier,
             attackModifierBreakdown: unit.turnState().getAttackModifierBreakdown(),
-            hitModifier,
-            heatFireModifier,
+            hitResolution,
             c3DegradationSource: c3Resolution.degradationSource,
             gameRules
         });

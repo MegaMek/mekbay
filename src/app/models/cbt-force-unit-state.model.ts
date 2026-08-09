@@ -118,6 +118,11 @@ export class CBTForceUnitState extends ForceUnitState {
         const inventory = this.inventory();
         let updated = false;
         inventory.forEach(item => {
+            if (item.isRepairing()
+                && this.unit.getEquipmentInstallationLocationStatus(item) === 'destroyed') {
+                updated = item.setPendingDestroyed(undefined) || updated;
+                return;
+            }
             updated = item.commitPendingDestroyed() || updated;
         });
         if (updated) {
@@ -144,6 +149,7 @@ export class CBTForceUnitState extends ForceUnitState {
         this.consolidateInventory();
         const turnState = this.turnState();
         turnState.resetPSRChecks();
+        turnState.commitEquipmentStateChanges();
     }
 
     private cleanupEndTurnConditions() {

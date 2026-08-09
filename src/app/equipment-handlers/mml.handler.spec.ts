@@ -4,12 +4,15 @@
 
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
+import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
 import { MountedEquipment } from '../models/mounted-equipment.model';
-import type { HandlerContext } from '../services/equipment-interaction-registry.service';
+import { createHandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import { MmlHandler } from './mml.handler';
 
 function owner() {
-    return { setInventoryEntry: jasmine.createSpy('setInventoryEntry'), rules: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) } } as never;
+    return {
+        setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
+    } as never;
 }
 
 function weapon(): MountedEquipment {
@@ -42,7 +45,7 @@ function ammo(id: string, name: string, flags: EquipmentFlag[] = []): AmmoEquipm
 
 describe('MmlHandler', () => {
     const handler = new MmlHandler();
-    const context = {} as HandlerContext;
+    const context = createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY);
 
     it('does not duplicate SVG-owned mode picker choices', () => {
         expect(handler.getChoices(weapon(), context)).toEqual([]);

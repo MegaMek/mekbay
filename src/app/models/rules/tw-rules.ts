@@ -65,7 +65,7 @@ export class TWMekRules extends MekRules {
         const modifiers: PSRCheck[] = [];
         const destroyedHips = critSlots.filter(slot => slot.loc
             && LEG_LOCATIONS.has(slot.loc)
-            && this.unit.isEquipmentUnavailable(slot)
+            && !this.unit.isEquipmentOperational(slot)
             && !ignoreLeg.has(slot.loc)
             && this.isNamedCrit(slot, 'Hip'));
         for (const hip of destroyedHips) {
@@ -75,7 +75,7 @@ export class TWMekRules extends MekRules {
         }
         const destroyedActuators = critSlots.filter(slot => slot.loc
             && LEG_LOCATIONS.has(slot.loc)
-            && this.unit.isEquipmentUnavailable(slot)
+            && !this.unit.isEquipmentOperational(slot)
             && !ignoreLeg.has(slot.loc)
             && (this.isNamedCrit(slot, 'Leg') || this.isNamedCrit(slot, 'Foot')));
         const destroyedActuatorCounts = new Map<string, number>();
@@ -163,7 +163,7 @@ export class TWMekRules extends MekRules {
     protected override gyroHitPSRCheck(gyroHits: number): PSRCheck | null {
         if (this.hasHeavyDutyGyro()) {
             const previouslyDestroyedGyroCount = this.unit.getCritSlots()
-                .filter(slot => this.unit.isEquipmentUnavailable(slot) && slot.name?.includes('Gyro')).length;
+                .filter(slot => !this.unit.isEquipmentOperational(slot) && slot.name?.includes('Gyro')).length;
             if (previouslyDestroyedGyroCount + gyroHits === 1) {
                 return { pilotCheck: 1, reason: 'Gyro hit' };
             }
@@ -199,7 +199,7 @@ export class TWMekRules extends MekRules {
 
     protected override gyroPSRModifierHitCount(): number {
         return this.unit.getCritSlots()
-            .filter(slot => this.unit.isEquipmentUnavailable(slot) && slot.name?.includes('Gyro')).length;
+            .filter(slot => !this.unit.isEquipmentOperational(slot) && slot.name?.includes('Gyro')).length;
     }
 
     protected override preExistingGyroPSRModifier(destroyedGyroCount: number): PSRCheck | null {
@@ -210,7 +210,7 @@ export class TWMekRules extends MekRules {
         return { pilotCheck: this.gyroHitPSRModifier, reason: 'Gyro damaged' };
     }
 
-    protected override criticalDamageDestructionThreshold(): number {
+    protected override mountedCriticalDamageDestructionThreshold(): number {
         return 1;
     }
 

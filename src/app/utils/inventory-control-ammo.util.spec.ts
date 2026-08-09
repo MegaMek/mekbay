@@ -7,7 +7,7 @@ import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedAmmo, MountedWeapon } from '../models/mounted-equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
-import { getInventoryControlModeAmmoSummary, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from './inventory-control.util';
+import { getInventoryControlAmmoProfileId, getInventoryControlModeAmmoSummary, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from './inventory-control.util';
 
 describe('inventory-control ammo selection', () => {
     it('uses stable source order when no choice is persisted', () => {
@@ -17,6 +17,14 @@ describe('inventory-control ammo selection', () => {
         expect(resolveInventoryControlSelectedAmmoOption([first, second])).toBe(first);
     });
 
+    it('uses the stable first profile when another profile is the only one with remaining shots', () => {
+        const depletedStandard = option('standard:first', 'Standard', 0);
+        const usablePrecision = option('precision:first', 'Precision', 10);
+
+        expect(resolveInventoryControlSelectedAmmoOption([depletedStandard, usablePrecision]))
+            .toBe(depletedStandard);
+    });
+
     it('fails over to a usable bin of the same munition', () => {
         const depleted = option('standard:first', 'Standard', 0);
         const sameMunition = option('standard:second', 'Standard', 2);
@@ -24,7 +32,8 @@ describe('inventory-control ammo selection', () => {
 
         expect(resolveInventoryControlSelectedAmmoOption(
             [depleted, otherMunition, sameMunition],
-            depleted.id
+            depleted.profileId,
+            depleted.id,
         )).toBe(sameMunition);
     });
 
@@ -32,13 +41,123 @@ describe('inventory-control ammo selection', () => {
         const depleted = option('standard:first', 'Standard', 0);
         const otherMunition = option('precision:first', 'Precision', 10);
 
-        expect(resolveInventoryControlSelectedAmmoOption([depleted, otherMunition], depleted.id)).toBe(depleted);
+        expect(resolveInventoryControlSelectedAmmoOption(
+            [depleted, otherMunition],
+            depleted.profileId,
+            depleted.id,
+        )).toBe(depleted);
     });
 
     it('keeps the only option even when destroyed', () => {
         const destroyed = { ...option('standard:first', 'Standard', 0), destroyed: true, disabled: true };
 
-        expect(resolveInventoryControlSelectedAmmoOption([destroyed], destroyed.id)).toBe(destroyed);
+        expect(resolveInventoryControlSelectedAmmoOption(
+            [destroyed],
+            destroyed.profileId,
+            destroyed.id,
+        )).toBe(destroyed);
+    });
+
+    it('keeps the selected profile when its preferred source disappears', () => {
+        const movedSource = option('standard:new-location', 'Standard', 4);
+        const otherMunition = option('precision:first', 'Precision', 10);
+
+        expect(resolveInventoryControlSelectedAmmoOption(
+            [otherMunition, movedSource],
+            movedSource.profileId,
+            'standard:removed-location',
+        )).toBe(movedSource);
+    });
+
+    it('does not substitute another source profile for an authoritative selected profile', () => {
+        const depletedStandard = option('standard:first', 'Standard', 0);
+        const usablePrecision = option('precision:first', 'Precision', 10);
+
+        expect(resolveInventoryControlSelectedAmmoOption(
+            [depletedStandard, usablePrecision],
+            'removed-profile',
+            'removed-source',
+        )).toBeUndefined();
+    });
+
+    it('uses identical profile keys for equivalent ammo regardless of source identity', () => {
+        const first = option('standard:left', 'Standard', 1);
+        const second = option('standard:right', 'Standard', 10);
+
+        expect(getInventoryControlAmmoProfileId(first.ammo!))
+            .toBe(getInventoryControlAmmoProfileId(second.ammo!));
+    });
+
+    it('resolves options from snapshot profile IDs without inspecting ammo definitions', () => {
+        const depleted = option('standard:first', 'Standard', 0);
+        const usable = option('standard:second', 'Standard', 10);
+        const depletedIterationCount = countMunitionIterations(depleted.ammo!);
+        const usableIterationCount = countMunitionIterations(usable.ammo!);
+
+        expect(resolveInventoryControlSelectedAmmoOption(
+            [depleted, usable],
+            depleted.profileId,
+            depleted.id,
+        )).toBe(usable);
+        expect(depletedIterationCount()).toBe(0);
+        expect(usableIterationCount()).toBe(0);
+    });
+
+    it('uses one stable profile for multiple bins sharing an ammo definition', () => {
+        const weapon = new WeaponEquipment({
+            id: 'AC5', name: 'AC/5', type: 'weapon',
+            weapon: { ammoType: 'AC', rackSize: 5, damage: 5 }
+        });
+        const ammo = new AmmoEquipment({
+            id: 'AC5 Ammo', name: 'AC/5 Ammo', type: 'ammo',
+            ammo: { type: 'AC', rackSize: 5, shots: 20, munitionType: ['M_STANDARD'] }
+        });
+        const inventory: Array<MountedWeapon | MountedAmmo> = [];
+        const owner = {
+            getInventory: () => inventory,
+            getCritSlots: () => [],
+            getEquipmentStatus: () => 'available' as const,
+            isEquipmentOperational: () => true,
+        } as unknown as CBTForceUnit;
+        const mountedWeapon = new MountedWeapon({ owner, id: 'ac5', name: weapon.name, equipment: weapon });
+        inventory.push(
+            mountedWeapon,
+            new MountedAmmo({ owner, id: 'ammo:left', name: ammo.name, equipment: ammo, totalAmmo: 20 }),
+            new MountedAmmo({ owner, id: 'ammo:right', name: ammo.name, equipment: ammo, totalAmmo: 20 }),
+        );
+        const summary = getInventoryControlModeAmmoSummary(
+            mountedWeapon,
+            new EquipmentRegistry({ [ammo.internalName]: ammo }),
+            {},
+            null,
+        );
+
+        expect(summary.options[0].profileId).toBe('AC5 Ammo||M_STANDARD');
+    });
+
+    it('sorts and normalizes fields when creating an ammo profile ID', () => {
+        const ammo = new AmmoEquipment({
+            id: 'Standard',
+            name: 'Standard',
+            type: 'ammo',
+            ammo: {
+                type: 'AC',
+                shots: 10,
+                subMunition: ' Artemis ',
+                munitionType: ['M_STANDARD', 'M_CLUSTER']
+            }
+        });
+
+        expect(getInventoryControlAmmoProfileId(ammo)).toBe('Standard|artemis|M_CLUSTER,M_STANDARD');
+    });
+
+    it('handles null and undefined submunition data', () => {
+        for (const subMunition of [null, undefined]) {
+            const ammo = option('standard:missing-submunition', 'Standard', 1).ammo!;
+            (ammo.ammo as { subMunition: string | null | undefined }).subMunition = subMunition;
+
+            expect(getInventoryControlAmmoProfileId(ammo)).toBe('Standard||');
+        }
     });
 
     it('does not synthesize ammo for an unmaterialized one-shot weapon', () => {
@@ -53,7 +172,7 @@ describe('inventory-control ammo selection', () => {
         const owner = {
             getCritSlots: () => [],
             getInventory: () => [],
-            isEquipmentUnavailable: () => false
+            isEquipmentOperational: () => true
         } as unknown as CBTForceUnit;
         const mounted = new MountedWeapon({ owner, id: weapon.id, name: weapon.name, equipment: weapon });
 
@@ -80,7 +199,8 @@ describe('inventory-control ammo selection', () => {
             getInventory: () => inventory,
             getCritSlots: () => [],
             getUnit: () => createEmptyUnit({ subtype: 'Battle Armor' }),
-            isEquipmentUnavailable: () => false,
+            getEquipmentStatus: () => 'available' as const,
+            isEquipmentOperational: () => true,
         } as unknown as CBTForceUnit;
         const mountedWeapon = new MountedWeapon({ owner, id: 'lrm-os', name: weapon.internalName, equipment: weapon });
         const intrinsicAmmo = new MountedAmmo({
@@ -111,18 +231,33 @@ describe('inventory-control ammo selection', () => {
 });
 
 function option(id: string, internalName: string, remaining: number): InventoryControlAmmoOption {
+    const ammo = new AmmoEquipment({
+        id: internalName,
+        name: internalName,
+        type: 'ammo',
+        ammo: { type: 'AC', shots: 10 }
+    });
     return {
         id,
+        profileId: getInventoryControlAmmoProfileId(ammo),
         label: internalName,
-        ammo: new AmmoEquipment({
-            id: internalName,
-            name: internalName,
-            type: 'ammo',
-            ammo: { type: 'AC', shots: 10 }
-        }),
+        ammo,
         remaining,
         total: 10,
         destroyed: false,
         disabled: false
     };
+}
+
+function countMunitionIterations(ammo: AmmoEquipment): () => number {
+    const originalIterator = ammo.munitionType[Symbol.iterator].bind(ammo.munitionType);
+    let count = 0;
+    Object.defineProperty(ammo.munitionType, Symbol.iterator, {
+        configurable: true,
+        value: () => {
+            count++;
+            return originalIterator();
+        }
+    });
+    return () => count;
 }

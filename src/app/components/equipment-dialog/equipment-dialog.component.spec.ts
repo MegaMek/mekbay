@@ -12,6 +12,12 @@ import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { MountedEquipment } from '../../models/mounted-equipment.model';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
+import {
+    createHandlerCommandContext,
+    createHandlerQueryContext,
+    type HandlerDialogsService,
+    type HandlerToastService,
+} from '../../services/equipment-interaction-registry.service';
 import { createCBTForceUnitTestHarness } from '../../testing/unit-test-helpers';
 import { EquipmentDialogComponent } from './equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData } from './equipment-dialog.model';
@@ -86,19 +92,26 @@ function createDialog(data: EquipmentDialogData) {
 }
 
 function createContext(): EquipmentDialogContext {
+    const equipmentCatalog = new EquipmentRegistry({});
+    const toastService = jasmine.createSpyObj<HandlerToastService>(
+        'HandlerToastService',
+        ['showToast', 'toasts'],
+    );
+    toastService.toasts.and.returnValue([]);
+    const dialogsService = jasmine.createSpyObj<HandlerDialogsService>(
+        'HandlerDialogsService',
+        ['createDialog', 'showNoticeHtml', 'showError'],
+    );
     return {
-        toastService: { showToast: jasmine.createSpy('showToast') },
-        dialogsService: { showNoticeHtml: jasmine.createSpy('showNoticeHtml').and.resolveTo(), showError: jasmine.createSpy('showError').and.resolveTo() },
-        dataService: {
-            getEquipmentRegistry: () => new EquipmentRegistry({}),
-        },
         registry: {
             getChoices: () => [],
             handleSelection: () => false,
             afterInventoryControlFire: () => undefined,
             inventoryControlRules: () => ({})
-        }
-    } as unknown as EquipmentDialogContext;
+        },
+        queryContext: createHandlerQueryContext(equipmentCatalog),
+        commandContext: createHandlerCommandContext(equipmentCatalog, toastService, dialogsService),
+    } satisfies EquipmentDialogContext;
 }
 
 describe('EquipmentDialogComponent', () => {

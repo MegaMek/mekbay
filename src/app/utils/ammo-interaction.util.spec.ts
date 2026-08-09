@@ -7,7 +7,11 @@ import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { type CriticalSlot } from '../models/force-serialization';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import type { HandlerContext } from '../services/equipment-interaction-registry.service';
+import {
+    createHandlerCommandContext,
+    type HandlerCommandContext,
+    type HandlerDialogsService,
+} from '../services/equipment-interaction-registry.service';
 import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlEntriesForUnitWeapons, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, isIntrinsicOneShotAmmoMount, materializeIntrinsicOneShotAmmoForInventory, setAmmoEntryValue, type AmmoControlEntry } from './ammo-interaction.util';
 
 function createAmmo(id: string, shortName: string): AmmoEquipment {
@@ -24,7 +28,7 @@ function createEquipmentCatalog(equipment: Record<string, Equipment>): Equipment
     return new EquipmentRegistry(equipment);
 }
 
-function createContext(equipment: Record<string, Equipment>): HandlerContext {
+function createContext(equipment: Record<string, Equipment>): HandlerCommandContext {
     const toasts: Array<{ id: string; message: string; type: 'info' | 'success' | 'error'; data?: Record<string, unknown> }> = [];
     const showToast = jasmine.createSpy('showToast').and.callFake((message: string, type: 'info' | 'success' | 'error', id?: string, data?: Record<string, unknown>) => {
         const toastId = id ?? `toast-${toasts.length + 1}`;
@@ -36,16 +40,18 @@ function createContext(equipment: Record<string, Equipment>): HandlerContext {
         }
         return toastId;
     });
-    return {
-        dataService: {
-            getEquipmentRegistry: () => new EquipmentRegistry(equipment),
-        },
-        toastService: {
+    const dialogsService = jasmine.createSpyObj<HandlerDialogsService>(
+        'HandlerDialogsService',
+        ['createDialog', 'showError', 'showNoticeHtml'],
+    );
+    return createHandlerCommandContext(
+        new EquipmentRegistry(equipment),
+        {
             showToast,
             toasts: () => toasts,
         },
-        dialogsService: {},
-    } as unknown as HandlerContext;
+        dialogsService,
+    );
 }
 
 function createEntry(params: {
@@ -79,7 +85,7 @@ function createEntry(params: {
         originalTotalAmmo: params.totalAmmo ?? 5,
         totalAmmo: params.totalAmmo ?? 5,
         consumed: params.consumed ?? 0,
-        destroyed: false,
+        status: 'available',
     };
 }
 
@@ -89,7 +95,7 @@ function createCritEntry(params: {
     slot: number;
     ammo: AmmoEquipment;
     destroyed?: boolean;
-    owner: Pick<CBTForceUnit, 'id' | 'setCritSlot' | 'getUnit' | 'isEquipmentUnavailable'>;
+    owner: Pick<CBTForceUnit, 'id' | 'setCritSlot' | 'getUnit' | 'getEquipmentStatus' | 'isEquipmentOperational'>;
 }): AmmoControlEntry {
     const source = {
         id: params.id,
@@ -115,24 +121,31 @@ function createCritEntry(params: {
         originalTotalAmmo: 5,
         totalAmmo: 5,
         consumed: 0,
-        destroyed: !!params.destroyed,
+        status: params.destroyed ? 'destroyed' : 'available',
     };
 }
 
-function testEquipmentUnavailable(source: MountedEquipment | CriticalSlot): boolean {
-    if (source instanceof MountedEquipment) return source.committedDestroyed() || !!source.critSlots?.some(slot => !!slot.destroyed);
-    return !!source.destroyed;
+function testEquipmentStatus(source: MountedEquipment | CriticalSlot): 'available' | 'destroyed' {
+    const destroyed = source instanceof MountedEquipment
+        ? source.committedDestroyed() || !!source.critSlots?.some(slot => !!slot.destroyed)
+        : !!source.destroyed;
+    return destroyed ? 'destroyed' : 'available';
+}
+
+function testEquipmentOperational(source: MountedEquipment | CriticalSlot): boolean {
+    return testEquipmentStatus(source) === 'available';
 }
 
 describe('ammo interaction direct inventory groups', () => {
     const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo', 'Ultra AC/20 Ammo');
     const precisionAmmo = createAmmo('Clan Ultra AC/20 Precision Ammo', 'Ultra AC/20 Precision Ammo');
 
-    function createOwner(): Pick<CBTForceUnit, 'id' | 'setInventoryEntry' | 'getUnit' | 'isEquipmentUnavailable'> {
+    function createOwner(): Pick<CBTForceUnit, 'id' | 'setInventoryEntry' | 'getUnit' | 'getEquipmentStatus' | 'isEquipmentOperational'> {
         return {
             id: 'unit-1',
             setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-            isEquipmentUnavailable: testEquipmentUnavailable,
+            getEquipmentStatus: testEquipmentStatus,
+            isEquipmentOperational: testEquipmentOperational,
             getUnit: () => ({
                 techBase: 'Clan',
                 comp: [
@@ -140,7 +153,7 @@ describe('ammo interaction direct inventory groups', () => {
                     { id: standardAmmo.internalName, q: 2, q2: 10, n: 'Ultra AC/20 Ammo', t: 'X', p: 0, l: 'BD' },
                 ],
             }),
-        } as unknown as Pick<CBTForceUnit, 'id' | 'setInventoryEntry' | 'getUnit' | 'isEquipmentUnavailable'>;
+        } as unknown as Pick<CBTForceUnit, 'id' | 'setInventoryEntry' | 'getUnit' | 'getEquipmentStatus' | 'isEquipmentOperational'>;
     }
 
     it('groups direct inventory bins by current ammo type and location', () => {
@@ -188,7 +201,7 @@ describe('ammo interaction direct inventory groups', () => {
                 ]),
             },
             svg: () => null,
-        } as unknown as Pick<CBTForceUnit, 'id' | 'setCritSlot' | 'getUnit' | 'isEquipmentUnavailable'>;
+        } as unknown as Pick<CBTForceUnit, 'id' | 'setCritSlot' | 'getUnit' | 'getEquipmentStatus' | 'isEquipmentOperational'>;
         const entries = [
             createCritEntry({ id: 'ammo-lt-0', loc: 'LT', slot: 0, ammo: standardAmmo, owner }),
             createCritEntry({ id: 'ammo-lt-1', loc: 'LT', slot: 1, ammo: standardAmmo, owner }),
@@ -212,7 +225,7 @@ describe('ammo interaction direct inventory groups', () => {
             setCritSlot: jasmine.createSpy('setCritSlot'),
             getUnit: () => ({ techBase: 'Clan' }),
             svg: () => null,
-        } as unknown as Pick<CBTForceUnit, 'id' | 'setCritSlot' | 'getUnit' | 'isEquipmentUnavailable'>;
+        } as unknown as Pick<CBTForceUnit, 'id' | 'setCritSlot' | 'getUnit' | 'getEquipmentStatus' | 'isEquipmentOperational'>;
         const entries = [
             createCritEntry({ id: 'ammo-lt-5', loc: 'LT', slot: 5, ammo: standardAmmo, owner }),
             createCritEntry({ id: 'ammo-lt-1', loc: 'LT', slot: 1, ammo: standardAmmo, owner }),
@@ -250,7 +263,8 @@ describe('ammo interaction direct inventory groups', () => {
                 { id: 'Clan Gauss Ammo@RA#1', name: gaussAmmo.internalName, loc: 'RA', slot: 1, eq: gaussAmmo, totalAmmo: 8, consumed: 0 },
             ]),
             svg: () => null,
-            isEquipmentUnavailable: testEquipmentUnavailable,
+            getEquipmentStatus: testEquipmentStatus,
+            isEquipmentOperational: testEquipmentOperational,
         } as unknown as CBTForceUnit;
 
         const entries = getAmmoControlEntriesForUnitWeapons(owner, createEquipmentCatalog({
@@ -270,8 +284,8 @@ describe('ammo interaction direct inventory groups', () => {
             type: 'weapon',
             weapon: { ammoType: 'AC_ULTRA', rackSize: 20 }
         });
-        const weaponEntry = { id: 'CLUltraAC20@RA#0', name: weapon.internalName, equipment: weapon, states: new Map() } as unknown as MountedEquipment;
-        const ammoEntry = { id: `${standardAmmo.internalName}@RA#1`, name: standardAmmo.internalName, equipment: standardAmmo, locations: new Set(['RA']), totalAmmo: 5, consumed: 0, states: new Map() } as unknown as MountedEquipment;
+        let weaponEntry!: MountedEquipment;
+        let ammoEntry!: MountedEquipment;
         const owner = {
             getInventory: () => ([weaponEntry, ammoEntry]),
             getCritSlots: () => ([
@@ -279,10 +293,13 @@ describe('ammo interaction direct inventory groups', () => {
             ]),
             getUnit: () => ({ comp: [], techBase: 'Clan' }),
             svg: () => null,
-            isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot) => source === ammoEntry || (source as CriticalSlot).loc === 'LA',
+            getEquipmentStatus: (source: MountedEquipment | CriticalSlot) => source === ammoEntry || (source as CriticalSlot).loc === 'LA'
+                ? 'destroyed'
+                : 'available',
+            isEquipmentOperational: (source: MountedEquipment | CriticalSlot) => source !== ammoEntry && (source as CriticalSlot).loc !== 'LA',
         } as unknown as CBTForceUnit;
-        weaponEntry.owner = owner;
-        ammoEntry.owner = owner;
+        weaponEntry = new MountedEquipment({ owner, id: 'CLUltraAC20@RA#0', name: weapon.internalName, equipment: weapon, states: new Map() });
+        ammoEntry = new MountedEquipment({ owner, id: `${standardAmmo.internalName}@RA#1`, name: standardAmmo.internalName, equipment: standardAmmo, locations: new Set(['RA']), totalAmmo: 5, consumed: 0, states: new Map() });
 
         const entries = getAmmoControlEntriesForUnitWeapons(owner, createEquipmentCatalog({
             [weapon.internalName]: weapon,
@@ -290,8 +307,44 @@ describe('ammo interaction direct inventory groups', () => {
         }));
 
         expect(entries.length).toBe(2);
-        expect(entries.every(entry => entry.destroyed)).toBeTrue();
+        expect(entries.every(entry => entry.status === 'destroyed')).toBeTrue();
         expect(entries.every(entry => getAmmoEntryRemaining(entry) === 0)).toBeTrue();
+    });
+
+    it('preserves disabled ammo status without presenting it as destroyed', () => {
+        const weapon = new WeaponEquipment({
+            id: 'CLUltraAC20',
+            name: 'Ultra AC/20',
+            type: 'weapon',
+            weapon: { ammoType: 'AC_ULTRA', rackSize: 20 },
+        });
+        const ammoSlot = {
+            id: `${standardAmmo.internalName}@LT#1`,
+            name: standardAmmo.internalName,
+            loc: 'LT',
+            slot: 1,
+            eq: standardAmmo,
+            totalAmmo: 5,
+            consumed: 0,
+        } as CriticalSlot;
+        const owner = {
+            getInventory: () => ([
+                { id: `${weapon.internalName}@RA#0`, name: weapon.internalName, equipment: weapon, states: new Map() },
+            ]),
+            getCritSlots: () => ([ammoSlot]),
+            svg: () => null,
+            getEquipmentStatus: (source: MountedEquipment | CriticalSlot) => source === ammoSlot ? 'disabled' : 'available',
+            isEquipmentOperational: (source: MountedEquipment | CriticalSlot) => source !== ammoSlot,
+        } as unknown as CBTForceUnit;
+
+        const [entry] = getAmmoControlEntriesForUnitWeapons(owner, createEquipmentCatalog({
+            [weapon.internalName]: weapon,
+            [standardAmmo.internalName]: standardAmmo,
+        }));
+
+        expect(entry.status).toBe('disabled');
+        expect(getAmmoEntryRemaining(entry)).toBe(0);
+        expect(getAmmoControlGroups([entry])[0].status).toBe('disabled');
     });
 
     it('drains grouped bins from the last bin and refills the most recently drained bin', () => {
@@ -346,8 +399,9 @@ describe('ammo interaction direct inventory groups', () => {
             setCritSlot: jasmine.createSpy('setCritSlot'),
             getUnit: () => ({ techBase: 'Clan' }),
             svg: () => null,
-            isEquipmentUnavailable: testEquipmentUnavailable,
-        } as unknown as Pick<CBTForceUnit, 'id' | 'setCritSlot' | 'getUnit' | 'isEquipmentUnavailable'>;
+            getEquipmentStatus: testEquipmentStatus,
+            isEquipmentOperational: testEquipmentOperational,
+        } as unknown as Pick<CBTForceUnit, 'id' | 'setCritSlot' | 'getUnit' | 'getEquipmentStatus' | 'isEquipmentOperational'>;
         const context = createContext({ [standardAmmo.internalName]: standardAmmo });
         const entries = [
             createCritEntry({ id: 'ammo-lt-0', loc: 'LT', slot: 0, ammo: standardAmmo, destroyed: true, owner }),
@@ -355,7 +409,7 @@ describe('ammo interaction direct inventory groups', () => {
         ];
         const group = getAmmoControlGroups(entries)[0];
 
-        expect(group.destroyed).toBeFalse();
+        expect(group.status).toBe('available');
         expect(getAmmoEntryRemaining(entries[0])).toBe(0);
         expect(getAmmoGroupRemaining(group)).toBe(5);
         expect(changeAmmoGroupRemaining(group, -1, context)).toBeTrue();
@@ -372,8 +426,9 @@ describe('ammo interaction direct inventory groups', () => {
             setCritSlot: jasmine.createSpy('setCritSlot'),
             getUnit: () => ({ techBase: 'Clan' }),
             svg: () => null,
-            isEquipmentUnavailable: testEquipmentUnavailable,
-        } as unknown as Pick<CBTForceUnit, 'id' | 'setCritSlot' | 'getUnit' | 'isEquipmentUnavailable'>;
+            getEquipmentStatus: testEquipmentStatus,
+            isEquipmentOperational: testEquipmentOperational,
+        } as unknown as Pick<CBTForceUnit, 'id' | 'setCritSlot' | 'getUnit' | 'getEquipmentStatus' | 'isEquipmentOperational'>;
         const entries = [
             createCritEntry({ id: 'ammo-lt-0', loc: 'LT', slot: 0, ammo: standardAmmo, destroyed: true, owner }),
             createCritEntry({ id: 'ammo-lt-1', loc: 'LT', slot: 1, ammo: standardAmmo, destroyed: true, owner }),
@@ -381,7 +436,7 @@ describe('ammo interaction direct inventory groups', () => {
 
         const group = getAmmoControlGroups(entries)[0];
 
-        expect(group.destroyed).toBeTrue();
+        expect(group.status).toBe('destroyed');
         expect(group.expandable).toBeTrue();
         expect(getAmmoGroupRemaining(group)).toBe(0);
     });
@@ -407,7 +462,8 @@ describe('intrinsic one-shot ammo mounts', () => {
             getUnit: () => ({ techBase: 'IS', type: 'Battle Armor', comp: [] }),
             getInventory: () => inventory,
             getCritSlots: () => [],
-            isEquipmentUnavailable: () => false,
+            getEquipmentStatus: () => 'available',
+            isEquipmentOperational: () => true,
             setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
             setCritSlot: jasmine.createSpy('setCritSlot'),
         } as unknown as CBTForceUnit;
@@ -466,7 +522,7 @@ describe('intrinsic one-shot ammo mounts', () => {
             originalTotalAmmo: 1,
             totalAmmo: 1,
             consumed: 0,
-            destroyed: false,
+            status: 'available',
         };
 
         setAmmoEntryValue(entry, incendiary, 99, 0);
@@ -498,7 +554,7 @@ describe('intrinsic one-shot ammo mounts', () => {
             originalTotalAmmo: 1,
             totalAmmo: 1,
             consumed: 0,
-            destroyed: false,
+            status: 'available',
         };
         const physicalEntry: AmmoControlEntry = {
             ...intrinsicEntry,

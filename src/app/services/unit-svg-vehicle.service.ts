@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { MountedEquipment } from "../models/mounted-equipment.model";
 import type { CriticalSlot } from "../models/force-serialization";
 import { VehicleRules } from "../models/rules/vehicle-rules";
-import type { MountedEquipmentRuleState } from "../models/rules/unit-type-rules";
-import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 import { committedCriticalHitCount, isRepeatableMotiveHitId, MOTIVE_HIT_PIP_COUNT } from "../models/rules/vehicle-motive-hit.util";
 import { UnitSvgService } from "./unit-svg.service";
 
@@ -15,7 +12,6 @@ const VTOL_ROTOR_CRIT_ID = 'rotor';
 
 export class UnitSvgVehicleService extends UnitSvgService {
     private get vehicleRules(): VehicleRules { return this.unit.rules as VehicleRules; }
-    private currentEntryStates: Map<MountedEquipment, MountedEquipmentRuleState> | null = null;
 
     protected override updateAllDisplays() {
         if (!this.unit.svg()) return;
@@ -127,42 +123,16 @@ export class UnitSvgVehicleService extends UnitSvgService {
             }
         }
 
-        const entryStates = this.vehicleRules.computeAllEntryStates();
-        this.currentEntryStates = entryStates;
-        try {
-            this.unit.getInventory().forEach(entry => {
+        this.unit.getInventory().forEach(entry => {
                 if (!entry.el) return;
                 if (entry.isIntrinsicPhysicalAttack()) {
                     if (entry.name === 'charge') {
                         this.renderChargeDamage(entry, this.vehicleRules.chargeDamage());
                     }
                 }
-                const state = entryStates.get(entry);
-                if (!state) return;
-
-                const actionUnavailable = entry.isActionUnavailable();
-                entry.el.classList.toggle('disabledInventory', actionUnavailable);
-                entry.el.classList.toggle('damagedInventory', state.isDamaged);
-                if (state.isDamaged || actionUnavailable) entry.el.classList.remove('selected');
-
-                this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry));
-            });
-            this.renderInventoryControlSelection();
-        } finally {
-            this.currentEntryStates = null;
-        }
-    }
-
-    protected override resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null) {
-        const state = this.currentEntryStates?.get(entry) ?? this.vehicleRules.computeEntryState(entry);
-        const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
-        return this.unit.gameRules.resolveToHit({
-            subject: entry,
-            stateModifier: state.hitMod,
-            stateModifierBreakdown: state.hitModifierBreakdown,
-            range,
-            adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
+                this.renderInventoryEntryState(entry);
         });
+        this.renderInventoryControlSelection();
     }
 
 }

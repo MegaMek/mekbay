@@ -179,7 +179,7 @@ export class EquipmentDialogComponent {
     ammoPanelData(unit: CBTForceUnit): AmmoLoadoutPanelData {
         return {
             entries: this.ammoEntries(unit),
-            context: this.data.context,
+            context: this.data.context.commandContext,
             readOnly: this.readOnly(unit),
             getEntries: () => this.ammoEntries(unit),
             inventoryControl: unit.inventoryControl
@@ -378,7 +378,7 @@ export class EquipmentDialogComponent {
     }
 
     private ammoEntries(unit: CBTForceUnit) {
-        return getAmmoControlEntriesForUnitWeapons(unit, this.data.context.dataService.getEquipmentRegistry());
+        return getAmmoControlEntriesForUnitWeapons(unit, this.data.context.queryContext.equipmentCatalog);
     }
 
     private closeUnitOverlays(unitId: string): void {

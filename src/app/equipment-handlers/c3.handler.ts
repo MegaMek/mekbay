@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionHandler, type HandlerChoice, type HandlerCommandContext, type HandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { PickerChoice } from '../components/picker/picker.interface';
 import { firstValueFrom } from 'rxjs';
@@ -13,18 +13,19 @@ export class C3Handler extends EquipmentInteractionHandler {
     override readonly flags: EquipmentFlag[] = ['ANY_C3'];
     override readonly priority = 10;
 
-    getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
+    getChoices(equipment: MountedEquipment, _context: HandlerQueryContext): HandlerChoice[] {
         return [
             {
                 label: 'Configure',
                 value: 'c3-network-configuration',
-                disabled: equipment.isUnavailable(),
+                action: 'configure-network',
+                readOnlySafe: _context.isReadOnly(equipment),
                 displayType: 'button'
             }
         ];
     }
 
-    async handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): Promise<boolean> {
+    async handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerCommandContext): Promise<boolean> {
         if (choice.value !== 'c3-network-configuration') return false;
 
         const force = equipment.owner.force;
@@ -33,10 +34,11 @@ export class C3Handler extends EquipmentInteractionHandler {
         const { C3NetworkDialogComponent } = await import('../components/c3-network-dialog/c3-network-dialog.component');
         type C3NetworkDialogData = import('../components/c3-network-dialog/c3-network-dialog.component').C3NetworkDialogData;
         type C3NetworkDialogResult = import('../components/c3-network-dialog/c3-network-dialog.component').C3NetworkDialogResult;
+        const readOnly = equipment.owner.readOnly();
         const ref = context.dialogsService.createDialog<C3NetworkDialogResult>(C3NetworkDialogComponent, {
             data: <C3NetworkDialogData>{
                 force: force,
-                readOnly: equipment.owner.readOnly()
+                readOnly
             },
             width: '100dvw',
             height: '100dvh',
@@ -46,7 +48,7 @@ export class C3Handler extends EquipmentInteractionHandler {
         });
 
         const result = await firstValueFrom(ref.closed);
-        if (result?.updated) {
+        if (!readOnly && result?.updated) {
             force.setNetwork(result.networks);
             context.toastService.showToast('C3 network configuration changed', 'success');
         }
