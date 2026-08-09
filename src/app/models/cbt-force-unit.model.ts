@@ -442,7 +442,6 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     setCritSlot(slot: CriticalSlot) {
-        this.turnState().markEquipmentStateChanged();
         const crits = [...this.state.crits()];
         const existingIndex = crits.findIndex(c => c.loc === slot.loc && c.slot === slot.slot);
         if (existingIndex !== -1) {
@@ -510,8 +509,7 @@ export class CBTForceUnit extends ForceUnit {
         }
     }
 
-    setInventoryEntry(inventoryEntry: MountedEquipment, options: { phaseChange?: boolean } = {}) {
-        if (options.phaseChange !== false) this.turnState().markEquipmentStateChanged();
+    setInventoryEntry(inventoryEntry: MountedEquipment) {
         const inventory = [...this.state.inventory()];
         const existingIndex = inventory.findIndex(item => item.id === inventoryEntry.id);
         if (existingIndex !== -1) {

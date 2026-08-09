@@ -27,6 +27,10 @@ import {
 function setup(destroyed = false, compatible = true) {
     const fixture = createTestEquipmentOwner();
     const { owner } = fixture;
+    const markEquipmentStateChanged = jasmine.createSpy('markEquipmentStateChanged');
+    Object.assign(owner, {
+        turnState: () => ({ markEquipmentStateChanged }),
+    });
     const capacitor = new MountedEquipment({
         owner,
         id: 'capacitor',
@@ -56,7 +60,7 @@ function setup(destroyed = false, compatible = true) {
         linkedWith: [capacitor]
     });
     fixture.inventory.push(weapon, capacitor);
-    return { ...fixture, weapon, capacitor };
+    return { ...fixture, weapon, capacitor, markEquipmentStateChanged };
 }
 
 function setupWithCriticalSlots() {
@@ -196,7 +200,7 @@ describe('PpcCapacitorHandler', () => {
     });
 
     it('charges for one turn, blocks firing, and becomes charged at end turn', () => {
-        const { weapon, capacitor } = setup();
+        const { weapon, capacitor, markEquipmentStateChanged } = setup();
 
         handler.handleSelection(weapon, { value: PPC_CAPACITOR_CHARGING_STATE } as PickerChoice, commandContext);
 
@@ -205,15 +209,34 @@ describe('PpcCapacitorHandler', () => {
         expect(handler.getInventoryHeatSources(weapon, {} as never, queryContext)[0]).toEqual(jasmine.objectContaining({ value: 5 }));
         expect(handler.applyInventoryControlHeatEffects(weapon, { value: 5, weakened: false }, queryContext))
             .toEqual({ value: 5, weakened: false });
+        expect(markEquipmentStateChanged).toHaveBeenCalledTimes(1);
 
         handler.onEndTurn(weapon);
 
         expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe(PPC_CAPACITOR_CHARGED_STATE);
         expect(handler.isInventoryControlSelectable(weapon, queryContext)).toBeNull();
+        expect(markEquipmentStateChanged).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not mark rejected, repeated, or discharge transitions as phase changes', () => {
+        const { weapon, capacitor, markEquipmentStateChanged } = setup();
+
+        capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGING_STATE);
+        handler.handleSelection(weapon, { value: PPC_CAPACITOR_CHARGING_STATE } as PickerChoice, commandContext);
+        expect(markEquipmentStateChanged).not.toHaveBeenCalled();
+
+        handler.handleSelection(weapon, { value: 'discharged' } as PickerChoice, commandContext);
+        expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
+        expect(markEquipmentStateChanged).not.toHaveBeenCalled();
+
+        capacitor.states.set(PPC_CAPACITOR_FIRED_STATE_KEY, '1');
+        handler.handleSelection(weapon, { value: PPC_CAPACITOR_CHARGING_STATE } as PickerChoice, commandContext);
+        expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
+        expect(markEquipmentStateChanged).not.toHaveBeenCalled();
     });
 
     it('discharges and marks the capacitor fired after firing', () => {
-        const { weapon, capacitor, inventoryWrites } = setup();
+        const { weapon, capacitor, inventoryWrites, markEquipmentStateChanged } = setup();
         capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
 
         handler.afterInventoryControlFire(weapon);
@@ -221,6 +244,7 @@ describe('PpcCapacitorHandler', () => {
         expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
         expect(capacitor.states.get(PPC_CAPACITOR_FIRED_STATE_KEY)).toBe('1');
         expect(inventoryWrites).toEqual([capacitor]);
+        expect(markEquipmentStateChanged).not.toHaveBeenCalled();
     });
 
     it('discharges an unavailable capacitor after its linked PPC fires', () => {
@@ -237,7 +261,7 @@ describe('PpcCapacitorHandler', () => {
     for (const state of [PPC_CAPACITOR_CHARGING_STATE, PPC_CAPACITOR_CHARGED_STATE] as const) {
         for (const hitEntry of ['PPC', 'capacitor'] as const) {
             it(`explodes both direct-inventory mounts when a ${state} ${hitEntry} hit is committed`, () => {
-                const { weapon, capacitor } = setup();
+                const { weapon, capacitor, markEquipmentStateChanged } = setup();
                 capacitor.states.set(PPC_CAPACITOR_STATE_KEY, state);
                 (hitEntry === 'PPC' ? weapon : capacitor).setPendingDestroyed(true);
 
@@ -251,6 +275,7 @@ describe('PpcCapacitorHandler', () => {
                 expect(weapon.committedDestroyed()).toBeTrue();
                 expect(capacitor.committedDestroyed()).toBeTrue();
                 expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
+                expect(markEquipmentStateChanged).not.toHaveBeenCalled();
             });
         }
     }

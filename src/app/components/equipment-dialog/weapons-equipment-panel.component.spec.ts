@@ -1254,9 +1254,9 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const rangedSortKey = inventoryControlSortKey('ranged');
         expect(first.states.get(rangedSortKey)).toBe('1');
         expect(second.states.get(rangedSortKey)).toBe('0');
-        expect(setInventoryEntry).toHaveBeenCalledWith(first, { phaseChange: false });
-        expect(setInventoryEntry).toHaveBeenCalledWith(second, { phaseChange: false });
-        expect(setInventoryEntry).toHaveBeenCalledWith(modeEntry, { phaseChange: false });
+        expect(setInventoryEntry).toHaveBeenCalledWith(first);
+        expect(setInventoryEntry).toHaveBeenCalledWith(second);
+        expect(setInventoryEntry).toHaveBeenCalledWith(modeEntry);
         setInventoryEntry.calls.reset();
 
         const row = component.groups().find(candidate => candidate.id === 'ranged')!.rows.find(candidate => candidate.id === 'mode')!;

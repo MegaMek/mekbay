@@ -192,7 +192,7 @@ export function setInventoryControlSortOrder(rows: InventoryControlRow[]): void 
     const sortKey = inventoryControlSortKey(rows[0].category);
     rows.forEach((row, index) => {
         if (row.entry.setState(sortKey, index.toString())) {
-            row.entry.owner.setInventoryEntry(row.entry, { phaseChange: false });
+            row.entry.owner.setInventoryEntry(row.entry);
         }
     });
 }

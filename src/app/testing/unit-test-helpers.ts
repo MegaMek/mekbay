@@ -617,7 +617,7 @@ export function createTestEquipmentOwner(options: TestEquipmentOwnerOptions = {}
         getUnit: () => unit,
         getCondition: (condition: string) => conditions.has(condition),
         getInventory: () => inventory,
-        setInventoryEntry: (entry: MountedEquipment, _options: { phaseChange?: boolean } = {}) => {
+        setInventoryEntry: (entry: MountedEquipment) => {
             const existingIndex = inventory.findIndex(candidate => candidate.id === entry.id);
             if (existingIndex === -1) inventory.push(entry);
             else inventory[existingIndex] = entry;

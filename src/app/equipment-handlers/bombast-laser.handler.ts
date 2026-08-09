@@ -111,6 +111,7 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
             }
             if (setBombastLaserChargeState(equipment, BOMBAST_LASER_CHARGING_STATE)) {
                 equipment.owner.setInventoryEntry(equipment);
+                equipment.owner.turnState().markEquipmentStateChanged();
             }
             context.toastService.showToast('Bombast Laser charging', 'info');
             return true;

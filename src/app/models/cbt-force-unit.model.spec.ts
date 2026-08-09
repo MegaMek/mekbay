@@ -20,7 +20,7 @@ import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { UnitSvgAeroService } from '../services/unit-svg-aero.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { Unit } from './units.model';
-import { EquipmentInteractionHandler, EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
+import { createHandlerCommandContext, createHandlerQueryContext, EquipmentInteractionHandler, EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
 import { LaserInsulatorHandler } from '../equipment-handlers/laser-insulator.handler';
 import { RISC_LASER_PULSE_MODE, RiscLaserPulseModuleHandler } from '../equipment-handlers/risc-laser-pulse-module.handler';
 import { DialogsService } from '../services/dialogs.service';
@@ -2174,7 +2174,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.turnState().moveDistance()).toBe(8);
     });
 
-    it('keeps the phase dirty after an equipment state change until phase end', () => {
+    it('keeps ordinary equipment state persistence outside the phase lifecycle', () => {
         const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
         const entry = forceUnit.getInventory().find(item => item.equipment instanceof WeaponEquipment)!;
@@ -2182,26 +2182,11 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         entry.setState('test-mode', 'charged');
         forceUnit.setInventoryEntry(entry);
 
-        expect(forceUnit.turnState().dirtyPhase()).toBeTrue();
-        expect(forceUnit.turnState().serialize()?.equipmentStateChanged).toBeTrue();
-
-        const restored = CBTForceUnit.deserialize(
-            forceUnit.serialize(),
-            new TestCBTForce('Restored Equipment State Force', dataService, unitInitializer, injector),
-            dataService,
-            unitInitializer,
-            injector,
-        );
-
-        expect(restored.turnState().dirtyPhase()).toBeTrue();
-
-        forceUnit.endPhase();
-
         expect(forceUnit.turnState().dirtyPhase()).toBeFalse();
         expect(forceUnit.turnState().serialize()?.equipmentStateChanged).toBeUndefined();
     });
 
-    it('keeps the phase dirty after changing ammo stored in a critical slot', () => {
+    it('keeps ammo type changes in a critical slot outside the phase lifecycle', () => {
         const forceUnit = createForceUnit(createMekUnit());
         initialize(forceUnit);
         const ammo = equipment['Clan Ultra AC/20 Ammo'] as AmmoEquipment;
@@ -2218,13 +2203,14 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         expect(forceUnit.turnState().dirtyPhase()).toBeFalse();
 
-        ammoSlot.consumed = 1;
+        const precisionAmmo = equipment['Clan Ultra AC/20 Precision Ammo'] as AmmoEquipment;
+        ammoSlot.originalName = ammoSlot.name;
+        ammoSlot.name = precisionAmmo.internalName;
+        ammoSlot.eq = precisionAmmo;
+        ammoSlot.totalAmmo = 4;
         forceUnit.setCritSlot(ammoSlot);
 
-        expect(forceUnit.turnState().dirtyPhase()).toBeTrue();
-
-        forceUnit.endPhase();
-
+        expect(forceUnit.getCritSlot('LT', 0)?.eq).toBe(precisionAmmo);
         expect(forceUnit.turnState().dirtyPhase()).toBeFalse();
     });
 
@@ -2403,6 +2389,46 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new PpcCapacitorHandler());
         return { weapon, capacitor, weaponSlots, capacitorSlots, unrelatedSlot };
     }
+
+    it('keeps a declared PPC capacitor charge dirty through serialization until phase end', async () => {
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
+        initialize(forceUnit);
+        const { weapon, capacitor } = installChargedPpcPair(forceUnit);
+        capacitor.deleteState(PPC_CAPACITOR_STATE_KEY);
+        forceUnit.setInventoryEntry(capacitor);
+        expect(forceUnit.turnState().dirtyPhase()).toBeFalse();
+
+        const registry = TestBed.inject(EquipmentInteractionRegistryService).getRegistry();
+        const equipmentRegistry = dataService.getEquipmentRegistry();
+        const choice = registry.getChoices(weapon, createHandlerQueryContext(equipmentRegistry))
+            .find(candidate => candidate.value === PPC_CAPACITOR_CHARGING_STATE)!;
+        await registry.handleSelection(weapon, choice, createHandlerCommandContext(
+            equipmentRegistry,
+            TestBed.inject(ToastService),
+            TestBed.inject(DialogsService),
+        ));
+
+        expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe(PPC_CAPACITOR_CHARGING_STATE);
+        expect(forceUnit.turnState().dirtyPhase()).toBeTrue();
+        expect(forceUnit.turnState().serialize()?.equipmentStateChanged).toBeTrue();
+
+        const restored = CBTForceUnit.deserialize(
+            forceUnit.serialize(),
+            new TestCBTForce('Restored PPC Charge Force', dataService, unitInitializer, injector),
+            dataService,
+            unitInitializer,
+            injector,
+        );
+        expect(restored.turnState().dirtyPhase()).toBeTrue();
+        expect(restored.getInventory().find(entry => entry.id === capacitor.id)?.states.get(PPC_CAPACITOR_STATE_KEY))
+            .toBe(PPC_CAPACITOR_CHARGING_STATE);
+
+        forceUnit.endPhase();
+
+        expect(forceUnit.turnState().dirtyPhase()).toBeFalse();
+        expect(forceUnit.turnState().serialize()?.equipmentStateChanged).toBeUndefined();
+        expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe(PPC_CAPACITOR_CHARGING_STATE);
+    });
 
     it('commits a charged PPC-capacitor explosion for direct inventory at phase end', () => {
         const forceUnit = createForceUnit(createVehicleUnit(equipment));

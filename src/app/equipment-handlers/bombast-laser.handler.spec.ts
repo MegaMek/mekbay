@@ -35,8 +35,16 @@ import {
 
 function owner(gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
     const { owner } = createTestEquipmentOwner({ gameRules });
+    const markEquipmentStateChanged = jasmine.createSpy('markEquipmentStateChanged');
+    Object.assign(owner, {
+        turnState: () => ({ markEquipmentStateChanged }),
+    });
     spyOn(owner, 'setInventoryEntry').and.callThrough();
     return owner;
+}
+
+function equipmentStateChangeMarker(entry: MountedEquipment): jasmine.Spy {
+    return entry.owner.turnState().markEquipmentStateChanged as jasmine.Spy;
 }
 
 function bombastLaser(
@@ -239,6 +247,52 @@ describe('BombastLaserHandler', () => {
                 selectedText: BOMBAST_LASER_CHARGED_TEXT_COLOR
             }
         }));
+    });
+
+    it('marks the phase dirty exactly once when charging begins', () => {
+        const entry = bombastLaser();
+        const markEquipmentStateChanged = equipmentStateChangeMarker(entry);
+
+        select(handler, entry, BOMBAST_LASER_CHARGING_STATE);
+
+        expect(markEquipmentStateChanged).toHaveBeenCalledTimes(1);
+        expect(entry.owner.setInventoryEntry).toHaveBeenCalledOnceWith(entry);
+    });
+
+    it('does not mark the phase dirty for a repeated or rejected charge request', () => {
+        const charging = bombastLaser(CORE_2026_GAME_RULES, new Map([
+            [BOMBAST_LASER_CHARGE_STATE_KEY, BOMBAST_LASER_CHARGING_STATE]
+        ]));
+        const chargingMarker = equipmentStateChangeMarker(charging);
+
+        select(handler, charging, BOMBAST_LASER_CHARGING_STATE);
+
+        expect(chargingMarker).not.toHaveBeenCalled();
+        expect(charging.owner.setInventoryEntry).not.toHaveBeenCalled();
+
+        const fired = bombastLaser(CORE_2026_GAME_RULES, new Map([
+            [BOMBAST_LASER_FIRED_STATE_KEY, '1']
+        ]));
+        const firedMarker = equipmentStateChangeMarker(fired);
+
+        select(handler, fired, BOMBAST_LASER_CHARGING_STATE);
+
+        expect(firedMarker).not.toHaveBeenCalled();
+        expect(fired.owner.setInventoryEntry).not.toHaveBeenCalled();
+    });
+
+    it('does not explicitly mark mode, discharge, fire, or end-turn state changes', () => {
+        const entry = bombastLaser(CORE_2026_GAME_RULES, new Map([
+            [BOMBAST_LASER_CHARGE_STATE_KEY, BOMBAST_LASER_CHARGED_STATE]
+        ]));
+        const markEquipmentStateChanged = equipmentStateChangeMarker(entry);
+
+        select(handler, entry, BOMBAST_LASER_DAMAGE_16_MODE);
+        select(handler, entry, 'discharged');
+        handler.afterInventoryControlFire(entry);
+        handler.onEndTurn(entry);
+
+        expect(markEquipmentStateChanged).not.toHaveBeenCalled();
     });
 
     it('can begin charged, gains X, and discharges after firing', () => {

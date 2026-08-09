@@ -65,6 +65,7 @@ export class PpcCapacitorHandler extends EquipmentInteractionHandler {
         }
         if (setPpcCapacitorState(capacitor, charging ? PPC_CAPACITOR_CHARGING_STATE : null)) {
             capacitor.owner.setInventoryEntry(capacitor);
+            if (charging) capacitor.owner.turnState().markEquipmentStateChanged();
         }
         context.toastService.showToast(`PPC Capacitor ${charging ? 'charging' : 'discharged'}`, 'info');
         return true;
