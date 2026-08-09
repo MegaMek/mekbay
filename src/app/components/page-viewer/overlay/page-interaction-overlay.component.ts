@@ -22,7 +22,7 @@ import { DialogsService } from '../../../services/dialogs.service';
 import { LoggerService } from '../../../services/logger.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { DataService } from '../../../services/data.service';
-import { EquipmentInteractionRegistryService } from '../../../services/equipment-interaction-registry.service';
+import { createHandlerCommandContext, createHandlerQueryContext, EquipmentInteractionRegistryService } from '../../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../../services/force-builder.service';
 import { ToastService } from '../../../services/toast.service';
 import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
@@ -232,11 +232,11 @@ export class PageInteractionOverlayComponent {
 
         this.closeAllOverlays();
         const unitList = this.pageViewerState.forceUnits().length > 0 ? this.pageViewerState.forceUnits() : [unit];
+        const equipmentCatalog = this.dataService.getEquipmentRegistry();
         const context: EquipmentDialogContext = {
-            toastService: this.toastService,
-            dialogsService: this.dialogsService,
-            dataService: this.dataService,
-            registry: this.equipmentRegistryService.getRegistry()
+            registry: this.equipmentRegistryService.getRegistry(),
+            queryContext: createHandlerQueryContext(equipmentCatalog),
+            commandContext: createHandlerCommandContext(equipmentCatalog, this.toastService, this.dialogsService),
         };
         this.pageViewerState.beginInventoryDialog();
         const ref = this.dialogsService.createDialog<void>(EquipmentDialogComponent, {

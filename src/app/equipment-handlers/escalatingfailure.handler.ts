@@ -6,7 +6,7 @@ import type { PickerChoice } from '../components/picker/picker.interface';
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../models/rules/unit-type-rules';
-import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionHandler, type HandlerChoice, type HandlerCommandContext, type HandlerNotifications, type HandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import { isEquipmentDisabledByFailure } from './disabled-equipment.handler';
 
 export const ESCALATING_FAILURE_HANDLER_ID = 'escalating-failure-handler';
@@ -80,7 +80,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
     }
 
     protected isSequenceButtonClickable(equipment: MountedEquipment, index: number): boolean {
-        return this.canUseHandler(equipment) && !isEquipmentDisabledByFailure(equipment) && !equipment.isUnavailable()
+        return this.canUseHandler(equipment) && !isEquipmentDisabledByFailure(equipment)
             && index >= 0 && index < this.getSequenceLabels(equipment).length
             && index <= this.getSequenceState(equipment);
     }
@@ -109,7 +109,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
         return sequenceChanged || activeChanged;
     }
 
-    getChoices(equipment: MountedEquipment, _context: HandlerContext): PickerChoice[] {
+    getChoices(equipment: MountedEquipment, context: HandlerQueryContext): HandlerChoice[] {
         if (!this.canUseHandler(equipment)) return [];
         const state = this.getSequenceState(equipment);
         const active = this.isActive(equipment);
@@ -125,7 +125,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
             keepOpen: true,
         }));
         const disabled = isEquipmentDisabledByFailure(equipment);
-        const toggleLabel = _context.choiceSurface === 'turn-summary'
+        const toggleLabel = context.choiceSurface === 'turn-summary'
             ? '✖'
             : disabled ? 'Malfunctioning' : 'Operational';
         return [...sequenceChoices, {
@@ -133,14 +133,14 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
             shortLabel: toggleLabel,
             value: ESCALATING_FAILURE_DISABLED_CHOICE_VALUE,
             displayType: 'toggle',
-            disabled: equipment.isDestroyed(),
+            stateEdit: disabled ? 'enable' : 'disable',
             active: disabled,
             colors: disabled ? ESCALATING_FAILURE_FAILURE_CHOICE_COLORS : undefined,
             tooltipType: disabled ? 'error' : undefined,
         }];
     }
 
-    handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): boolean {
+    handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerCommandContext): boolean {
         if (!this.canUseHandler(equipment)) return true;
         if (choice.value === ESCALATING_FAILURE_DISABLED_CHOICE_VALUE) {
             const disabled = isEquipmentDisabledByFailure(equipment);
@@ -171,7 +171,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
         return true;
     }
 
-    override onEndTurn(equipment: MountedEquipment, context: HandlerContext): void {
+    override onEndTurn(equipment: MountedEquipment, notifications: HandlerNotifications): void {
         if (isEquipmentDisabledByFailure(equipment)) return;
         if (this.isActive(equipment)) {
             const changed = this.setActive(equipment, false);
@@ -185,7 +185,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
         const changed = this.setSequenceState(equipment, currentState - 1);
         if (changed) {
             equipment.owner.setInventoryEntry(equipment);
-            context.toastService.showToast(
+            notifications.showToast(
                 `${equipment.owner.getNotificationDisplayName()}: ${equipment.equipment?.name || equipment.name} sequence reduced to ${this.getSequenceState(equipment)}`,
                 'info'
             );

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { CBTForceUnit } from '../cbt-force-unit.model';
+import type { CBTForceUnit, EquipmentAction } from '../cbt-force-unit.model';
 import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
 import { MountedAmmo, MountedEquipment } from '../mounted-equipment.model';
 import { type LocationData } from '../force-serialization';
@@ -18,7 +18,7 @@ function weapon(id: string): WeaponEquipment {
     });
 }
 
-function createHarness(committedTroopDamage = 7): { rules: InfantryRules; entries: MountedEquipment[]; fieldGunComponent: UnitComponent } {
+function createHarness(committedTroopDamage = 7): { unit: CBTForceUnit; rules: InfantryRules; entries: MountedEquipment[]; fieldGunComponent: UnitComponent } {
     const fieldGunComponent = { id: 'Autocannon/2', q: 3, n: 'AC/2', t: 'B', p: 1, l: 'FGUN', r: '8/16/24', m: '4', d: '2', cw: 6 } as UnitComponent;
     const unit = {
         getUnit: () => ({ type: 'Infantry', subtype: 'Mechanized Conventional Infantry', internal: 20, squads: 4, squadSize: 5, comp: [fieldGunComponent] }),
@@ -34,33 +34,30 @@ function createHarness(committedTroopDamage = 7): { rules: InfantryRules; entrie
         equipment: fieldGun,
         locations: new Set(['FGUN'])
     }));
-    return { rules: new InfantryRules(unit), entries, fieldGunComponent };
+    const rules = new InfantryRules(unit);
+    Object.assign(unit, {
+        rules,
+        getEquipmentStatus: (entry: MountedEquipment) => entry.committedDestroyed() ? 'destroyed' : 'available',
+        isEquipmentOperational: (entry: MountedEquipment) => !entry.committedDestroyed(),
+        canPerformEquipmentAction: (entry: MountedEquipment, action: EquipmentAction) =>
+            !entry.committedDestroyed() && rules.canPerformEquipmentAction(entry, action),
+    });
+    return { unit, rules, entries, fieldGunComponent };
 }
 
 describe('InfantryRules', () => {
     it('disables field-gun inventory entries beyond the functional crew count', () => {
-        const { rules, entries, fieldGunComponent } = createHarness();
+        const { unit, rules, entries, fieldGunComponent } = createHarness();
 
         expect(rules.getFieldGunComponent(entries[0])).toBe(fieldGunComponent);
         expect(rules.getFieldGunFunctionalCount(fieldGunComponent)).toBe(2);
-        expect(entries.map(entry => rules.computeEntryState(entry).isDisabled)).toEqual([false, false, true]);
+        expect(entries.map(entry => unit.getEquipmentStatus(entry))).toEqual(['available', 'available', 'available']);
+        expect(entries.map(entry => unit.canPerformEquipmentAction(entry, 'fire'))).toEqual([true, true, false]);
     });
 
-    it('does not mutate derived intrinsic ammo while evaluating Battle Armor destruction', () => {
-        const weaponEntry = new MountedEquipment({
-            owner: null as unknown as CBTForceUnit,
-            id: 'one-shot',
-            name: 'One-shot Weapon',
-            equipment: weapon('one-shot'),
-        });
-        const intrinsicAmmo = new MountedAmmo({
-            owner: null as unknown as CBTForceUnit,
-            id: 'one-shot:intrinsic-one-shot-ammo',
-            name: 'Ammo',
-            equipment: new AmmoEquipment({ id: 'Ammo', name: 'Ammo', type: 'ammo', ammo: { type: 'AC', rackSize: 2 } }),
-            parent: weaponEntry,
-            intrinsicOneShotAmmo: true,
-        });
+    it('does not persist derived Battle Armor destruction into inventory mounts', () => {
+        let weaponEntry!: MountedEquipment;
+        let intrinsicAmmo!: MountedAmmo;
         const unit = {
             getUnit: () => ({ type: 'Infantry', subtype: 'Battle Armor', squadSize: 1 }),
             getInventory: () => [weaponEntry, intrinsicAmmo],
@@ -70,12 +67,24 @@ describe('InfantryRules', () => {
             destroyed: false,
             setDestroyed: jasmine.createSpy('setDestroyed'),
         } as unknown as CBTForceUnit;
-        weaponEntry.owner = unit;
-        intrinsicAmmo.owner = unit;
+        weaponEntry = new MountedEquipment({
+            owner: unit,
+            id: 'one-shot',
+            name: 'One-shot Weapon',
+            equipment: weapon('one-shot'),
+        });
+        intrinsicAmmo = new MountedAmmo({
+            owner: unit,
+            id: 'one-shot:intrinsic-one-shot-ammo',
+            name: 'Ammo',
+            equipment: new AmmoEquipment({ id: 'Ammo', name: 'Ammo', type: 'ammo', ammo: { type: 'AC', rackSize: 2 } }),
+            parent: weaponEntry,
+            intrinsicOneShotAmmo: true,
+        });
 
-        new InfantryRules(unit).evaluateInventoryDestruction();
+        new InfantryRules(unit).evaluateDestroyed();
 
-        expect(weaponEntry.committedDestroyed()).toBeTrue();
+        expect(weaponEntry.committedDestroyed()).toBeFalse();
         expect(intrinsicAmmo.committedDestroyed()).toBeFalse();
     });
 });

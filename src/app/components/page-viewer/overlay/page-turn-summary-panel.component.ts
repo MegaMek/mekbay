@@ -12,7 +12,7 @@ import { HexSliderComponent } from '../../hex-slider/hex-slider.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import type { TooltipLine } from '../../tooltip/tooltip.component';
 import { calculateModifierTotal, type UnitModifierBreakdownEntry, type UnitModifierTotal } from '../../../models/rules/unit-type-rules';
-import { EquipmentInteractionRegistryService, type HandlerChoice, type HandlerContext } from '../../../services/equipment-interaction-registry.service';
+import { createHandlerCommandContext, createHandlerQueryContext, EquipmentInteractionRegistryService, type HandlerChoice, type HandlerCommandContext, type HandlerQueryContext } from '../../../services/equipment-interaction-registry.service';
 import { ToastService } from '../../../services/toast.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { DataService } from '../../../services/data.service';
@@ -51,13 +51,16 @@ export class PageTurnSummaryPanelComponent {
     readonly endTurnForAllButtonVisible = input<boolean>(false);
     readonly endTurnForAllClicked = output<void>();
 
-    private handlerContext(): HandlerContext {
-        return {
-            toastService: this.toastService,
-            dialogsService: this.dialogsService,
-            dataService: this.dataService,
-            choiceSurface: 'turn-summary',
-        };
+    private queryContext(): HandlerQueryContext {
+        return createHandlerQueryContext(this.dataService.getEquipmentRegistry(), 'turn-summary');
+    }
+
+    private commandContext(): HandlerCommandContext {
+        return createHandlerCommandContext(
+            this.dataService.getEquipmentRegistry(),
+            this.toastService,
+            this.dialogsService
+        );
     }
 
     endTurnForAll(event: MouseEvent): void {
@@ -170,8 +173,8 @@ export class PageTurnSummaryPanelComponent {
             .filter(entry => entry.equipment?.flags?.has('F_MASC'))
             .map(entry => {
                 const active = entry.equipment?.flags?.has('F_MASC') ? MascHandler.isActive(entry) : true;
-                const damaged = entry.resolvedDestroyed();
-                const choices = this.equipmentRegistry.getChoices(entry, this.handlerContext());
+                const damaged = entry.owner.isEquipmentResolvedDestroyed(entry);
+                const choices = this.equipmentRegistry.getChoices(entry, this.queryContext());
                 return {
                     entry,
                     label: entry.equipment?.name || entry.name,
@@ -252,7 +255,7 @@ export class PageTurnSummaryPanelComponent {
 
     async handleEquipmentTrackChoice(row: EquipmentTrackControlRow, choice: HandlerChoice): Promise<void> {
         if (choice.disabled) return;
-        await this.equipmentRegistry.handleSelection(row.entry, choice, this.handlerContext());
+        await this.equipmentRegistry.handleSelection(row.entry, choice, this.commandContext());
         this.unit()?.inventoryControl.markInventoryViewChanged();
     }
 

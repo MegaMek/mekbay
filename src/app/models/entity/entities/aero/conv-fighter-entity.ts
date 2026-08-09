@@ -3,7 +3,13 @@
 // Author: Drake
 
 import { signal } from '@angular/core';
-import { AERO_EQUIP_LOCATIONS, AERO_LOCATIONS, EntityType, type TechRatingSource } from '../../types';
+import {
+  AERO_EQUIP_LOCATIONS,
+  AERO_LOCATIONS,
+  EntityType,
+  type EntityFeature,
+  type TechRatingSource,
+} from '../../types';
 import { AeroEntity } from './aero-entity';
 import { getConventionalFighterConstructionTech } from '../../components';
 import type { UnitSubtype } from '../../types';
@@ -12,6 +18,12 @@ import type { UnitSubtype } from '../../types';
 export class ConvFighterEntity extends AeroEntity {
   override readonly entityType: EntityType = 'ConvFighter';
   vstol = signal<boolean>(false);
+
+  protected override computeAeroFeatures(): readonly EntityFeature[] {
+    const features = [...super.computeAeroFeatures()];
+    if (this.vstol()) features.push('VSTOL Equipment');
+    return features;
+  }
 
   override unitSubtype(): UnitSubtype {
     return this.withOmniSubtype('Conventional Fighter');

@@ -6,7 +6,6 @@ import { computed, signal, type Signal } from '@angular/core';
 import { MountedWeapon, type MountedEquipment } from '../mounted-equipment.model';
 import { ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY, type ToHitModifierBreakdownEntry } from './game-rules';
 import { WeaponEquipment } from '../equipment.model';
-import type { WeaponType } from '../weapon-types.model';
 import type { CriticalSlot, RuleCheckOutcome, SerializedC3NetworkGroup } from '../force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
@@ -19,10 +18,16 @@ import {
     TN_SKIDDING_ATTACKER,
     TN_SKIDDING_MODIFIER,
 } from '../target-number-calculator.model';
-import type { CBTForceUnit } from '../cbt-force-unit.model';
+import type { CBTForceUnit, EquipmentAction } from '../cbt-force-unit.model';
 import type { HeatDissipationState } from './heat-management';
 import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
 import { C3TaxCalculator } from '../c3-network.model';
+import type {
+    CriticalSlotStatusFacts,
+    EquipmentStatus,
+    EquipmentStatusFacts,
+    UnitSystemStatusFacts,
+} from '../equipment-status.model';
 
 export interface PSRCheck {
     id?: string;
@@ -64,13 +69,6 @@ export interface UnitHeatSource {
      * TODO: find a solution more elegant...
      */
     replacedByFiringEntryId?: string;
-}
-
-export interface MountedEquipmentRuleState {
-    isDamaged: boolean;
-    isDisabled: boolean;
-    hitMod: number;
-    hitModifierBreakdown?: ToHitModifierBreakdownEntry[];
 }
 
 export interface ChargeDamage {
@@ -290,11 +288,26 @@ export interface UnitTypeRules {
     /** Rule-derived condition keys exposed through ForceUnit.getCondition/getConditions. */
     computedConditions(): readonly string[];
 
-    /** Compute rule-derived availability and hit modifiers for all inventory entries. */
-    computeAllEntryStates(): Map<MountedEquipment, MountedEquipmentRuleState>;
+    /** Unit-type-specific status contribution from status-only facts. */
+    getEquipmentStatusContribution(facts: EquipmentStatusFacts): EquipmentStatus;
 
-    /** Compute rule-derived availability and hit modifiers for a single inventory entry. */
-    computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState;
+    /** Aggregate current critical facts into mount-level status. */
+    getMountedCriticalStatusContribution(facts: EquipmentStatusFacts): EquipmentStatus;
+
+    /** Location-scoped unit-type-specific status contribution. */
+    getEquipmentStatusContributionAtLocation(facts: EquipmentStatusFacts, location: string): EquipmentStatus;
+
+    /** Unit-type-specific critical-slot status contribution. */
+    getCriticalSlotStatusContribution(facts: CriticalSlotStatusFacts): EquipmentStatus;
+
+    /** Status-only system facts exposed to canonical composition. */
+    getUnitSystemStatusFacts(): UnitSystemStatusFacts;
+
+    /** Unit-type-specific permission for an otherwise operational equipment action. */
+    canPerformEquipmentAction(entry: MountedEquipment, action: EquipmentAction): boolean;
+
+    /** Resolve rule-derived to-hit modifiers for one inventory entry. */
+    getEquipmentToHitModifiers(entry: MountedEquipment): readonly ToHitModifierBreakdownEntry[];
 
     /** Required control-roll checks for the current phase. */
     getPSRChecks(turnState: TurnState): PSRCheck[];
@@ -477,67 +490,71 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         return ['abandoned', 'immobile', 'crippled', 'disconnected', 'spotting'];
     }
 
-    computeAllEntryStates(): Map<MountedEquipment, MountedEquipmentRuleState> {
-        const result = new Map<MountedEquipment, MountedEquipmentRuleState>();
-        for (const entry of this.unit.getInventory()) {
-            result.set(entry, this.computeEntryState(entry));
-        }
-        return result;
+    getEquipmentStatusContribution(facts: EquipmentStatusFacts): EquipmentStatus {
+        return 'available';
     }
 
-    computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
-        return this.composeEntryState(entry, {
-            isDamaged: entry.committedDestroyed() || this.entryCriticalSlots(entry).some(slot => !!slot.destroyed),
-            isDisabled: this.isEntryStateDisabled(entry),
-        }, this.getMountedTargetingComputerModifiers(entry));
+    getMountedCriticalStatusContribution(facts: EquipmentStatusFacts): EquipmentStatus {
+        return facts.criticals.some(critical => critical.status === 'destroyed') ? 'destroyed' : 'available';
     }
 
-    protected composeEntryState(
-        entry: MountedEquipment,
-        state: Pick<MountedEquipmentRuleState, 'isDamaged' | 'isDisabled'>,
-        localModifiers: readonly ToHitModifierBreakdownEntry[] = [],
-    ): MountedEquipmentRuleState {
+    getEquipmentStatusContributionAtLocation(facts: EquipmentStatusFacts, _location: string): EquipmentStatus {
+        return this.getEquipmentStatusContribution(facts);
+    }
+
+    getCriticalSlotStatusContribution(_facts: CriticalSlotStatusFacts): EquipmentStatus {
+        return 'available';
+    }
+
+    getUnitSystemStatusFacts(): UnitSystemStatusFacts {
+        return { engineHit: false };
+    }
+
+    canPerformEquipmentAction(_entry: MountedEquipment, _action: EquipmentAction): boolean {
+        return true;
+    }
+
+    getEquipmentToHitModifiers(entry: MountedEquipment): readonly ToHitModifierBreakdownEntry[] {
+        return [
+            ...this.getMountedTargetingComputerModifiers(entry),
+            ...this.getUnitEquipmentToHitModifiers(entry),
+        ];
+    }
+
+    protected getUnitEquipmentToHitModifiers(entry: MountedEquipment): readonly ToHitModifierBreakdownEntry[] {
         const unitModifiers = entry.isPhysicalWeapon()
             ? this.physicalHitModifiers()
             : entry.equipment instanceof WeaponEquipment
                 ? this.rangedHitModifiers()
                 : [];
-        const modifiers = [...localModifiers, ...unitModifiers];
-        return {
-            ...state,
-            hitMod: modifiers.reduce((total, modifier) => total + modifier.modifier, 0),
-            hitModifierBreakdown: modifiers,
-        };
+        return unitModifiers;
     }
 
     protected getMountedTargetingComputerModifiers(entry: MountedEquipment): ToHitModifierBreakdownEntry[] {
+        const targetingComputer = this.getMountedTargetingComputer();
+        if (!targetingComputer) return [];
         if (!this.isTargetingComputerEligible(entry)) return [];
 
-        const targetingComputers = this.unit.getInventory()
-            .filter(candidate => candidate.equipment?.flags.has('F_TARGETING_COMPUTER'));
-        if (targetingComputers.length === 0) return [];
-
-        const functionalTargetingComputer = targetingComputers.find(candidate =>
-            !candidate.committedDestroyed()
-            && !this.isEntryStateDisabled(candidate)
-            && !this.entryCriticalSlots(candidate).some(slot => !!slot.destroyed)
-        );
-        const targetingComputer = functionalTargetingComputer ?? targetingComputers[0];
-        const label = targetingComputer.equipment?.shortName ?? targetingComputer.name;
-        return functionalTargetingComputer
+        const label = targetingComputer.equipment?.name ?? targetingComputer.name;
+        const status = this.unit.getEquipmentStatus(targetingComputer);
+        return status === 'available'
             ? [{ label, modifier: -1 }]
-            : [{ label: `${label} Destroyed`, modifier: 0, weakened: true }];
+            : [{
+                label: `${label} ${status === 'destroyed' ? 'Destroyed' : 'Disabled'}`,
+                modifier: 0,
+                weakened: true,
+            }];
     }
 
-    canMakeTargetingComputerAimedShot(entry: MountedEquipment, targetIsMobile: boolean): boolean {
-        const weapon = entry.parent instanceof MountedWeapon ? entry.parent : entry;
-        return weapon instanceof MountedWeapon
-            && !(targetIsMobile && weapon.equipment.hasFlag('F_PULSE'));
+    private getMountedTargetingComputer(): MountedEquipment | undefined {
+        // There can be at most only 1 targeting computer so, we pick the first!
+        return this.unit.getInventory()
+            .find(candidate => candidate.equipment?.flags.has('F_TARGETING_COMPUTER'));
     }
 
     protected isTargetingComputerEligible(entry: MountedEquipment): boolean {
         if (!(entry instanceof MountedWeapon)) return false;
-        const effectiveTypes = this.getEffectiveWeaponTypes(entry);
+        const effectiveTypes = this.unit.getEffectiveWeaponTypes(entry);
         return entry.equipment.hasFlag('F_DIRECT_FIRE') === true
             && !entry.equipment.hasAnyFlag(['F_TASER', 'F_FLAMER', 'F_MG', 'F_MGA'])
             && (effectiveTypes.has('DB') || effectiveTypes.has('DE') || effectiveTypes.has('P'))
@@ -545,25 +562,12 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
             && (!effectiveTypes.has('C') || entry.equipment.hasFlag('F_HAG'));
     }
 
-    private getEffectiveWeaponTypes(entry: MountedWeapon): ReadonlySet<WeaponType> {
-        const selectedAmmo = this.unit.getInventoryControlSelectedAmmo?.(entry) ?? null;
-        const baseTypes = new Set(entry.getWeaponTypes(selectedAmmo));
-        return this.unit.getInventoryControlRules().applyWeaponTypes?.(entry, baseTypes) ?? baseTypes;
-    }
-
-    protected isEntryStateDisabled(entry: MountedEquipment): boolean {
-        return entry.states.get(ENTRY_DISABLED_STATE_KEY) === ENTRY_DISABLED_STATE_VALUE;
-    }
-
     protected entryCriticalSlots(entry: MountedEquipment): CriticalSlot[] {
-        return entry.critSlots?.map(slot => this.currentCriticalSlot(slot)) ?? [];
+        return entry.critSlots?.flatMap(slot => this.currentCriticalSlot(slot) ?? []) ?? [];
     }
 
-    protected currentCriticalSlot(slot: CriticalSlot): CriticalSlot {
-        return this.unit.getCritSlots().find(candidate => {
-            if (slot.loc && slot.slot !== undefined) return candidate.loc === slot.loc && candidate.slot === slot.slot;
-            return !!slot.id && candidate.id === slot.id;
-        }) ?? slot;
+    protected currentCriticalSlot(slot: CriticalSlot): CriticalSlot | null {
+        return this.unit.findCurrentCriticalSlot(slot);
     }
 
     crewStateDefinition(state: CrewMemberState): CrewStateDefinition | undefined {
@@ -596,7 +600,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     protected isDroneOperatingSystemUnavailable(): boolean {
         const droneOperatingSystem = this.droneOperatingSystem();
-        return droneOperatingSystem !== undefined && this.unit.isEquipmentUnavailable(droneOperatingSystem);
+        return droneOperatingSystem !== undefined && !this.unit.isEquipmentOperational(droneOperatingSystem);
     }
 
     getPSRChecks(_turnState: TurnState): PSRCheck[] {

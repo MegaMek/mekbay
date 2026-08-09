@@ -6,6 +6,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
+import type { PSRCheck } from '../../../models/rules/unit-type-rules';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 import { PagePsrWarningPanelComponent, psrRollOutcome } from './page-psr-warning-panel.component';
 
@@ -91,5 +92,53 @@ describe('PagePsrWarningPanelComponent', () => {
             'Hip hit, Leg Actuators hit (2)',
         ]);
         expect(new Set(Array.from(modifierLocations, location => location.getBoundingClientRect().width)).size).toBe(1);
+    });
+
+    it('retains a resolved rule check long enough to display its outcome', () => {
+        const check: PSRCheck = {
+            fallCheck: 0,
+            reason: 'RISC emergency shutdown',
+            failureOutcome: 'Shutdown',
+            resolution: { key: 'risc-shutdown', token: 'token-1' },
+        };
+        let checks: PSRCheck[] = [check];
+        let status: 'pending' | 'success' | 'failed' = 'pending';
+        const resolveRuleCheck = jasmine.createSpy('resolveRuleCheck').and.callFake(
+            (_key: string, _token: string, result: 'success' | 'failed') => {
+                status = result;
+                checks = [];
+                return true;
+            },
+        );
+        const turnState = {
+            getPSRChecks: () => checks,
+            getPSROutcome: () => undefined,
+            resolvePSRCheck: jasmine.createSpy('resolvePSRCheck'),
+            autoFall: () => false,
+        };
+        const unit = {
+            id: 'unit-1',
+            rules: { controlRollFullLabel: 'Piloting Skill Rolls' },
+            turnState: () => turnState,
+            PSRTargetRoll: () => 8,
+            PSRModifiers: () => ({ modifiers: [] }),
+            resolveRuleCheck,
+            getRuleCheck: () => ({ token: 'token-1', status }),
+        };
+
+        TestBed.configureTestingModule({
+            imports: [PagePsrWarningPanelComponent],
+            providers: [
+                { provide: PageInteractionOverlayComponent, useValue: { unit: signal(unit) } },
+                { provide: OverlayManagerService, useValue: { closeManagedOverlay: jasmine.createSpy('closeManagedOverlay') } },
+            ],
+        });
+        const fixture = TestBed.createComponent(PagePsrWarningPanelComponent);
+
+        fixture.componentInstance.resolve(check, 'success');
+
+        expect(resolveRuleCheck).toHaveBeenCalledOnceWith('risc-shutdown', 'token-1', 'success');
+        expect(fixture.componentInstance.psrChecks()).toEqual([check]);
+        expect(fixture.componentInstance.outcome(check)).toBe('success');
     });
 });

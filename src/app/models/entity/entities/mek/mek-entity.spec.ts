@@ -65,14 +65,37 @@ describe('MekEntity optional systems', () => {
 
 describe('MekEntity features', () => {
 
+  function removeArmActuators(entity: BipedMekEntity): void {
+    entity.hasLowerArmActuator.set({ left: false, right: false });
+    entity.hasHandActuator.set({ left: false, right: false });
+  }
+
+  function addSplitComponent(
+    entity: BipedMekEntity,
+    locations: readonly [string, string],
+  ): void {
+    const component = new WeaponEquipment({
+      id: `split-${locations.join('-')}`,
+      name: 'Split Component',
+      type: 'weapon',
+      weapon: { damage: 5, ranges: [3, 6, 9, 12] },
+    });
+    addTestEquipment(entity, component, {
+      allocation: {
+        kind: 'location',
+        location: locations[1],
+        placements: locations.map((location, slotIndex) => ({ location, slotIndex })),
+      },
+    });
+  }
+
   it('derives Reversible Arms when all lower-arm and hand actuators are absent', () => {
     const entity = new BipedMekEntity();
 
     expect(entity.entityFeatures()).not.toContain('Reversible Arms');
 
-    entity.hasLowerArmActuator.set({ left: false, right: false });
-    entity.hasHandActuator.set({ left: false, right: false });
-    expect(entity.entityFeatures()).toEqual(['Reversible Arms']);
+    removeArmActuators(entity);
+    expect(entity.entityFeatures()).toEqual(jasmine.arrayWithExactContents(['Reversible Arms']));
 
     entity.hasHandActuator.set({ left: true, right: false });
     expect(entity.entityFeatures()).not.toContain('Reversible Arms');
@@ -82,6 +105,45 @@ describe('MekEntity features', () => {
 
     entity.hasLowerArmActuator.set({ left: false, right: true });
     expect(entity.entityFeatures()).not.toContain('Reversible Arms');
+  });
+
+  it('derives the Mek features exported by SVGMassPrinter', () => {
+    const entity = new BipedMekEntity();
+    entity.cockpitType.set('Small');
+    entity.gyroType.set('XL');
+    entity.hasFullHeadEjectionSystem.set(true);
+    entity.hasRiscHeatSinkOverrideKit.set(true);
+    entity.setTonnage(50);
+    entity.setStructureAt('LA', standardStructure(70));
+
+    expect(entity.entityFeatures()).toEqual(jasmine.arrayWithExactContents([
+      'Small Cockpit',
+      'XL Gyro',
+      'Full Head Ejection System',
+      'RISC Heat Sink Override Kit',
+      'FrankenMek',
+    ]));
+  });
+
+  for (const locations of [['LA', 'LT'], ['RA', 'RT']] as const) {
+    it(`does not derive Reversible Arms with a ${locations.join('/')} split component`, () => {
+      const entity = new BipedMekEntity();
+      removeArmActuators(entity);
+
+      expect(entity.entityFeatures()).toContain('Reversible Arms');
+
+      addSplitComponent(entity, locations);
+
+      expect(entity.entityFeatures()).not.toContain('Reversible Arms');
+    });
+  }
+
+  it('allows Reversible Arms when a split component does not occupy an arm', () => {
+    const entity = new BipedMekEntity();
+    removeArmActuators(entity);
+    addSplitComponent(entity, ['LT', 'CT']);
+
+    expect(entity.entityFeatures()).toContain('Reversible Arms');
   });
 
   it('does not add arm-specific features to a Quad Mek', () => {

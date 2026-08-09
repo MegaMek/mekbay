@@ -86,7 +86,7 @@ describe('inventory control OPFOR targets', () => {
         }));
     });
 
-    it('gives immobile precedence and clears incompatible movement state', () => {
+    it('derives immobile stance without discarding movement and jump state', () => {
         const state = deriveOpforTargetCalculatorState(forceUnit({
             conditions: ['immobile', 'prone', 'skidding'],
             distance: 12,
@@ -95,9 +95,9 @@ describe('inventory control OPFOR targets', () => {
 
         expect(state).toEqual(jasmine.objectContaining({
             stance: 'immobile',
-            targetMovementBracket: null,
-            isAirborne: false,
-            skidding: false,
+            targetMovementBracket: '10-17',
+            isAirborne: true,
+            skidding: true,
             interveningWoods: 'light1'
         }));
     });

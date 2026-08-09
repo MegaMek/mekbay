@@ -5,18 +5,18 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
-import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionHandler, type HandlerCommandContext, type HandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 
 export class LaserInsulatorHandler extends EquipmentInteractionHandler {
     readonly id = 'laser-insulator-handler';
     override readonly flags: EquipmentFlag[] = ['F_WEAPON_ENHANCEMENT', 'F_LASER_INSULATOR'];
 
-    getChoices(_equipment: MountedEquipment, _context: HandlerContext): PickerChoice[] {
+    getChoices(_equipment: MountedEquipment, _context: HandlerQueryContext): PickerChoice[] {
         return [];
     }
 
-    handleSelection(_equipment: MountedEquipment, _choice: PickerChoice, _context: HandlerContext): boolean {
+    handleSelection(_equipment: MountedEquipment, _choice: PickerChoice, _context: HandlerCommandContext): boolean {
         return false;
     }
 
@@ -24,10 +24,10 @@ export class LaserInsulatorHandler extends EquipmentInteractionHandler {
         equipment: MountedEquipment,
         parent: MountedEquipment,
         effect: InventoryControlHeatEffect,
-        _context: HandlerContext
+        context: HandlerQueryContext
     ): InventoryControlHeatEffect {
         if (!this.isLaser(parent)) return effect;
-        return equipment.isUnavailable()
+        return context.getStatus(equipment) !== 'available'
             ? { ...effect, weakened: true }
             : { ...effect, value: Math.max(1, effect.value - 1), suffix: '*' };
     }

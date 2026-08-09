@@ -179,6 +179,24 @@
     }
 }
 
+@media (min-width: 480px) and (min-height: 480px) {
+    .top-right-controls {
+        gap: 10px;
+
+        .overlay-round-button,
+        .turn-tracker-button,
+        .check-warning-button {
+            width: 46px;
+            height: 46px;
+        }
+
+        .overlay-round-button svg {
+            width: 30px;
+            height: 30px;
+        }
+    }
+}
+
 @media print {
     :host {
         display: none !important;

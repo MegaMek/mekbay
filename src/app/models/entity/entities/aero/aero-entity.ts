@@ -10,6 +10,7 @@ import {
   type UnitSubtype,
   type MovementCalculationOptions,
   type TechRatingSource,
+  type EntityFeature,
   AeroCockpitType,
   ASF_WEIGHT_LIMITS,
   EntityType,
@@ -46,6 +47,17 @@ export abstract class AeroEntity extends BaseEntity {
   }
 
   abstract override unitSubtype(): UnitSubtype;
+
+  protected computeAeroFeatures(): readonly EntityFeature[] {
+    const features: EntityFeature[] = [];
+    if (this.cockpitType() === 'Small') features.push('Small Cockpit');
+    else if (this.cockpitType() === 'Command Console') features.push('Command Console');
+    return features;
+  }
+
+  protected override computeEntityFeatures(): readonly EntityFeature[] {
+    return [...this.computeAeroFeatures(), ...this.computeTransportFeatures()];
+  }
 
   protected override omniTechAdvancement(): TechRatingSource | null {
     // MegaMek includes the Omni system advancement for Inner Sphere

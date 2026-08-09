@@ -3,8 +3,9 @@
 // Author: Drake
 
 import { computed } from '@angular/core';
-import type { CBTForceUnit } from '../cbt-force-unit.model';
-import type { CrewStateControlDefinition, CrewStateDefinition, UnitConditionControl, MountedEquipmentRuleState, UnitRuleModifier } from './unit-type-rules';
+import type { CBTForceUnit, EquipmentAction } from '../cbt-force-unit.model';
+import type { CrewStateControlDefinition, CrewStateDefinition, UnitConditionControl, UnitRuleModifier } from './unit-type-rules';
+import type { EquipmentStatus, EquipmentStatusFacts, UnitSystemStatusFacts } from '../equipment-status.model';
 import type { ToHitModifierBreakdownEntry } from './game-rules';
 import { crewStateDefinitions, sortPSRModifiers, unitConditionControls, UnitTypeRulesBase } from './unit-type-rules';
 import type { PSRCheck, TurnState } from '../turn-state.model';
@@ -88,7 +89,8 @@ export class VehicleRules extends UnitTypeRulesBase {
         const committed = crits.filter(crit => !!crit.destroyed);
         const hasCrit = (id: string) => committed.some(crit => this.critId(crit) === id);
         const hasDroneOperatingSystem = this.hasDroneOperatingSystem();
-        const hasWorkingSupercharger = inventory.some(entry => this.isSuperchargerEntry(entry) && !this.isEntryDestroyed(entry));
+        const hasWorkingSupercharger = inventory.some(entry => this.isSuperchargerEntry(entry)
+            && this.unit.canPerformEquipmentAction(entry, 'provide-passive-effect'));
         const rotorHits = unitType === 'VTOL'
             ? Math.max(0, this.rotorCommittedCritHits(crits.find(crit => this.critId(crit) === 'rotor')))
             : 0;
@@ -111,7 +113,7 @@ export class VehicleRules extends UnitTypeRulesBase {
             commanderHit: !hasDroneOperatingSystem && hasCrit('commander_hit'),
             copilotHit: !hasDroneOperatingSystem && hasCrit('copilot_hit'),
             driverOrPilotHit: !hasDroneOperatingSystem && (hasCrit('driver_hit') || hasCrit('pilot_hit')),
-            engineHit: committed.some(crit => /^engine_hit_\d+$/.test(this.critId(crit))),
+            engineHit: this.hasCommittedEngineHit(),
             hasWorkingSupercharger,
             sensorHits,
             rotorHits,
@@ -263,35 +265,35 @@ export class VehicleRules extends UnitTypeRulesBase {
 
     override readonly PSRTargetRoll = computed<number>(() => this.unit.pilotingSkill() + this.PSRModifiers().modifier);
 
-    override computeAllEntryStates(): Map<MountedEquipment, MountedEquipmentRuleState> {
-        const result = new Map<MountedEquipment, MountedEquipmentRuleState>();
-        for (const entry of this.unit.getInventory()) {
-            result.set(entry, this.computeEntryState(entry));
-        }
-        return result;
+    override getUnitSystemStatusFacts(): UnitSystemStatusFacts {
+        return {
+            ...super.getUnitSystemStatusFacts(),
+            engineHit: this.hasCommittedEngineHit(),
+        };
     }
 
-    override computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
-        const status = this.systemsStatus();
-        const isDamaged = this.entryCriticalSlots(entry).some(slot => slot.destroyed) || entry.committedDestroyed();
-        let isDisabled = this.isEntryStateDisabled(entry);
-        const hitModifierBreakdown: ToHitModifierBreakdownEntry[] = [];
-        const isPhysical = this.isPhysicalEntry(entry);
+    override getEquipmentStatusContribution(facts: EquipmentStatusFacts): EquipmentStatus {
+        return facts.unitSystemFacts.engineHit && facts.equipmentFlags.has('F_ENERGY')
+            ? 'disabled'
+            : 'available';
+    }
 
-        if (!isPhysical) {
+    override canPerformEquipmentAction(entry: MountedEquipment, action: EquipmentAction): boolean {
+        return action !== 'fire' || entry.isPhysicalWeapon() || this.systemsStatus().sensorHits < 4;
+    }
+
+    override getEquipmentToHitModifiers(entry: MountedEquipment): readonly ToHitModifierBreakdownEntry[] {
+        const status = this.systemsStatus();
+        const hitModifierBreakdown: ToHitModifierBreakdownEntry[] = [];
+
+        if (!this.isPhysicalEntry(entry)) {
             hitModifierBreakdown.push(...this.getMountedTargetingComputerModifiers(entry));
-            if (status.engineHit && entry.equipment?.flags.has('F_ENERGY')) {
-                isDisabled = true;
-            }
-            if (status.sensorHits >= 4 && entry.equipment instanceof WeaponEquipment) {
-                isDisabled = true;
-            }
             const stabilizerModifier = this.stabilizerHitModifier(entry, status);
             if (this.stabilizerHitApplies(entry, status)) {
                 hitModifierBreakdown.push({ label: 'Stabilizer Hit', modifier: stabilizerModifier, weakened: true });
             }
         }
-        return this.composeEntryState(entry, { isDamaged, isDisabled }, hitModifierBreakdown);
+        return [...hitModifierBreakdown, ...this.getUnitEquipmentToHitModifiers(entry)];
     }
 
     private applyMotiveDamage(base: number, motiveHits: MotiveHitTimestamp[]): number {
@@ -332,12 +334,12 @@ export class VehicleRules extends UnitTypeRulesBase {
         return !!flags?.has('F_MASC');
     }
 
-    private isEntryDestroyed(entry: MountedEquipment): boolean {
-        return entry.committedDestroyed() || this.entryCriticalSlots(entry).some(slot => slot.destroyed);
-    }
-
     private rotorCommittedCritHits(crit: CriticalSlot | undefined): number {
         return (crit?.hits ?? 0);
+    }
+
+    private hasCommittedEngineHit(): boolean {
+        return this.unit.getCritSlots().some(crit => !!crit.destroyed && /^engine_hit_\d+$/.test(this.critId(crit)));
     }
 
     private hasCommittedCrit(id: string): boolean {

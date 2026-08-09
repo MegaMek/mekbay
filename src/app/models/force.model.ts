@@ -25,6 +25,7 @@ import { MULFACTION_EXTINCT } from './mulfactions.model';
 import { createMulForceAvailabilityContext, type ForceAvailabilityContext } from '../utils/force-availability.util';
 import { uuidv7 } from '../utils/uuid.util';
 import { C3Network, C3TaxCalculator, type C3TaxUnit } from './c3-network.model';
+import { DialogsService } from '../services/dialogs.service';
 
 
 export const MAX_GROUPS = 50;
@@ -885,6 +886,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             }
 
             const logger = this.injector.get(LoggerService);
+            const dialogs = this.injector.get(DialogsService);
             const parsedGroups: UnitGroup<TUnit>[] = [];
             for (const g of sanitizedData.groups) {
                 const groupUnits: TUnit[] = [];
@@ -893,6 +895,13 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                         groupUnits.push(this.deserializeForceUnit(unitData));
                     } catch (err) {
                         logger.error(`Force.deserialize error on unit "${unitData.unit}": ${err}`);
+                        const errorDetail = err instanceof Error ? err.message : String(err);
+                        void dialogs.showError(
+                            `Unable to load unit "${unitData.unit}". The unit was skipped.\n\n${errorDetail}`,
+                            'Unit Load Error',
+                        ).catch(dialogError => {
+                            logger.error(`Unable to show unit load error dialog: ${dialogError}`);
+                        });
                         continue;
                     }
                 }

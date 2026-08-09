@@ -160,3 +160,54 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
         expect(component.unitType()).toBe('battle-armor');
     });
 });
+
+describe('TnCalculatorDialogComponent movement and stance', () => {
+    it('retains independent movement, jump, and prone state', async () => {
+        const close = jasmine.createSpy('close');
+        const data: TnCalculatorDialogData = {
+            target: {
+                id: 'A',
+                letter: 'A',
+                name: 'Target A',
+                color: '#1565C0',
+                distance: 8,
+                tnModifier: 0,
+                tnCalculator: {
+                    stance: 'prone',
+                    targetMovementBracket: '7-9',
+                    isAirborne: true,
+                    skidding: true
+                }
+            },
+            gameRules: TW_GAME_RULES
+        };
+        await TestBed.configureTestingModule({
+            imports: [TnCalculatorDialogComponent],
+            providers: [
+                { provide: DIALOG_DATA, useValue: data },
+                { provide: DialogRef, useValue: { close } }
+            ]
+        }).compileComponents();
+        const fixture = TestBed.createComponent(TnCalculatorDialogComponent);
+        const component = fixture.componentInstance;
+        fixture.detectChanges();
+
+        expect(component.stance()).toBe('prone');
+        expect(component.targetMovementBracket().id).toBe('7-9');
+        expect(component.isAirborne()).toBeTrue();
+        expect(component.skidding()).toBeTrue();
+        expect(component.totalModifier()).toBe(7);
+
+        component.apply();
+
+        expect(close).toHaveBeenCalledWith(jasmine.objectContaining({
+            patch: jasmine.objectContaining({
+                tnModifier: 7,
+                tnCalculator: jasmine.objectContaining({
+                    stance: 'prone',
+                    targetMovementBracket: '7-9'
+                })
+            })
+        }));
+    });
+});

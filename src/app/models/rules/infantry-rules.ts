@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { CBTForceUnit } from '../cbt-force-unit.model';
+import type { CBTForceUnit, EquipmentAction } from '../cbt-force-unit.model';
 import { WeaponEquipment } from '../equipment.model';
 import type { MountedEquipment } from '../mounted-equipment.model';
 import { parseInventoryComponentReference } from '../inventory-component-reference.model';
@@ -10,7 +10,6 @@ import type { MotiveModes } from '../motiveModes.model';
 import { getTargetUnitTypeModifier } from '../target-number-calculator.model';
 import type { TurnState } from '../turn-state.model';
 import type { UnitComponent } from '../units.model';
-import type { MountedEquipmentRuleState } from './unit-type-rules';
 import { UnitTypeRulesBase, type UnitModifierBreakdownEntry } from './unit-type-rules';
 
 export const FIELD_GUN_LOCATION = 'FGUN';
@@ -21,13 +20,15 @@ export const FIELD_GUN_LOCATION = 'FGUN';
  */
 export class InfantryRules extends UnitTypeRulesBase {
 
+    override canPerformEquipmentAction(entry: MountedEquipment, action: EquipmentAction): boolean {
+        return action !== 'fire' || !this.isInfantryFieldGunEntryDisabled(entry);
+    }
+
     constructor(unit: CBTForceUnit) {
         super(unit);
     }
 
     evaluateDestroyed(): void {
-        this.evaluateInventoryDestruction();
-
         let allDestroyed = true;
 
         // Unit destroyed when all troop armor+internal locations are committed-destroyed.
@@ -51,32 +52,6 @@ export class InfantryRules extends UnitTypeRulesBase {
         }
     }
 
-    /** Mark inventory entries as destroyed when the T1 armor location is gone. */
-    evaluateInventoryDestruction(): void {
-        const squadSize = this.unit.getUnit().squadSize ?? 1;
-        let allSquadsDestroyed = true;
-        for (let i = 1; i <= squadSize; i++) {
-            if (!this.unit.isArmorLocCommittedDestroyed(`T${i}`)) {
-                allSquadsDestroyed = false;
-                break;
-            }
-        }
-        const t1Destroyed = this.unit.isArmorLocDestroyed('T1');
-        for (const entry of this.unit.getInventory()) {
-            // These mounts are derived runtime ammo records. Their parent weapon
-            // owns availability and is evaluated separately by ammo controls.
-            if (entry.intrinsicOneShotAmmo) continue;
-            if (!entry.equipment) continue;
-            entry.setCommittedDestroyed(allSquadsDestroyed);
-            if (allSquadsDestroyed) continue;
-            
-            // TODO: not working, locations is empty for Infantry!!!! FIX ME!
-            if (entry.locations?.has('SSW')) { 
-                entry.setCommittedDestroyed(t1Destroyed);
-            }
-        }
-    }
-
     protected override getTargetUnitTypeModifierBreakdown(_turnState: TurnState): UnitModifierBreakdownEntry[] {
         const baseUnit = this.unit.getUnit();
         if (baseUnit.subtype !== 'Battle Armor') return [];
@@ -86,14 +61,6 @@ export class InfantryRules extends UnitTypeRulesBase {
     override getMinDistanceForMoveMode(moveMode: MotiveModes): number | null {
         if (moveMode === 'jump') return 1;
         return null;
-    }
-
-    override computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
-        const state = super.computeEntryState(entry);
-        return {
-            ...state,
-            isDisabled: state.isDisabled || this.isInfantryFieldGunEntryDisabled(entry)
-        };
     }
 
     isInfantryFieldGunEntryDisabled(entry: MountedEquipment): boolean {

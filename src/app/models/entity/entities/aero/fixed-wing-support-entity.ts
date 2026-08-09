@@ -4,7 +4,13 @@
 
 import { computed } from '@angular/core';
 import { SupportVehicleData, type SupportVehicle } from '../support-vehicle';
-import { AERO_LOCATIONS, EntityType, FIXED_WING_EQUIP_LOCATIONS, WeightClass } from '../../types';
+import {
+  AERO_LOCATIONS,
+  EntityType,
+  FIXED_WING_EQUIP_LOCATIONS,
+  type EntityFeature,
+  WeightClass,
+} from '../../types';
 import { AeroEntity } from './aero-entity';
 import type { UnitSubtype } from '../../types';
 import type { TechRatingSource } from '../../types';
@@ -30,6 +36,22 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
   readonly barRating = this.supportVehicle.barRating;
   readonly structuralTechRating = this.supportVehicle.structuralTechRating;
   readonly engineTechRating = this.supportVehicle.engineTechRating;
+
+  protected override computeAeroFeatures(): readonly EntityFeature[] {
+    const features = [...super.computeAeroFeatures()];
+    if (this.equipment().some(mount => mount.equipment?.hasFlag('F_VSTOL_CHASSIS'))) {
+      features.push('VSTOL Equipment');
+    }
+    return features;
+  }
+
+  protected override computeEntityFeatures(): readonly EntityFeature[] {
+    return [
+      ...this.computeAeroFeatures(),
+      ...this.computeChassisModificationFeatures(),
+      ...this.computeTransportFeatures(),
+    ];
+  }
   
   /** Maximum bomb payload, derived from external hardpoints and Internal Bomb Bay cargo space. */
   readonly maxBombPoints = computed(() => {

@@ -3,4 +3,25 @@
 // Author: Drake
 
 /** Canonical, export-ready features derived from entity construction state. */
-export type EntityFeature = 'Reversible Arms';
+export type EntityFeature =
+	| 'Small Cockpit'
+	| 'Command Console'
+	| 'Torso-Mounted Cockpit'
+	| 'Dual Cockpit'
+	| 'Interface Cockpit'
+	| 'Virtual Reality Piloting Pod'
+	| 'Superheavy Command Console'
+	| 'Small Command Console'
+	| 'XL Gyro'
+	| 'Compact Gyro'
+	| 'Heavy Duty Gyro'
+	| 'Superheavy Gyro'
+	| 'Full Head Ejection System'
+	| 'RISC Heat Sink Override Kit'
+	| 'FrankenMek'
+	| 'VSTOL Equipment'
+	| 'LF Battery'
+	| 'Infantry Compartment'
+	| `Chassis Mod: ${string}`
+	| `Bay: ${string}`
+	| 'Reversible Arms';

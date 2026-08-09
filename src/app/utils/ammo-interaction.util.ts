@@ -9,10 +9,11 @@ import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { getMountedOneShotConsumed, MountedAmmo, MountedEquipment } from '../models/mounted-equipment.model';
 import { type CriticalSlot, type LocationData } from '../models/force-serialization';
-import type { HandlerContext } from '../services/equipment-interaction-registry.service';
+import type { HandlerCommandContext } from '../services/equipment-interaction-registry.service';
 import type { CBTGameRules } from '../models/rules/game-rules';
 import type { Unit } from '../models/units.model';
 import { normalizeBattleArmorTrooperLocation } from '../models/battle-armor-location.model';
+import { combineEquipmentStatuses, type EquipmentStatus } from '../models/equipment-status.model';
 
 export const INTRINSIC_ONE_SHOT_AMMO_STATE = 'intrinsic_one_shot_ammo';
 
@@ -29,13 +30,13 @@ export interface AmmoControlEntry {
     originalTotalAmmo: number;
     totalAmmo: number;
     consumed: number;
-    destroyed: boolean;
+    status: EquipmentStatus;
 }
 
 export interface AmmoControlGroupLocation {
     loc: string;
     quantity: number;
-    state: 'normal' | 'exposed' | 'destroyed';
+    state: 'normal' | 'exposed' | 'disabled' | 'destroyed';
 }
 
 export interface AmmoControlGroup {
@@ -45,7 +46,7 @@ export interface AmmoControlGroup {
     locations: AmmoControlGroupLocation[];
     totalAmmo: number;
     consumed: number;
-    destroyed: boolean;
+    status: EquipmentStatus;
     expandable: boolean;
 }
 
@@ -116,7 +117,7 @@ export function getAmmoControlEntryForCriticalSlot(unit: CBTForceUnit, criticalS
         originalTotalAmmo: getOriginalTotalAmmo(unit, criticalSlot),
         totalAmmo,
         consumed: criticalSlot.consumed ?? 0,
-        destroyed: unit.isEquipmentUnavailable(criticalSlot)
+        status: unit.getEquipmentStatus(criticalSlot)
     };
 }
 
@@ -141,10 +142,7 @@ function createInventoryAmmoControlEntry(unit: CBTForceUnit, inventoryEntry: Mou
     const totalAmmo = inventoryEntry.totalAmmo ?? originalTotalAmmo;
     const consumed = inventoryEntry.consumed ?? 0;
     const locationLabel = Array.from(inventoryEntry.locations ?? []).join('/') || 'Ammo';
-    const destroyed = unit.isEquipmentUnavailable(inventoryEntry)
-        || (isIntrinsicOneShotAmmoMount(inventoryEntry)
-            && !!inventoryEntry.parent
-            && unit.isEquipmentUnavailable(inventoryEntry.parent));
+    const status = getInventoryAmmoControlStatus(unit, inventoryEntry);
     return {
         id: `inventory:${inventoryEntry.id}`,
         owner: unit,
@@ -158,8 +156,17 @@ function createInventoryAmmoControlEntry(unit: CBTForceUnit, inventoryEntry: Mou
         originalTotalAmmo,
         totalAmmo,
         consumed,
-        destroyed
+        status
     };
+}
+
+function getInventoryAmmoControlStatus(unit: CBTForceUnit, entry: MountedEquipment): EquipmentStatus {
+    return combineEquipmentStatuses([
+        unit.getEquipmentStatus(entry),
+        ...(isIntrinsicOneShotAmmoMount(entry) && entry.parent
+            ? [unit.getEquipmentStatus(entry.parent)]
+            : []),
+    ]);
 }
 
 function ammoMatchesWeapon(weapon: WeaponEquipment, ammo: AmmoEquipment): boolean {
@@ -347,9 +354,8 @@ function compareAmmoControlEntryOrder(a: AmmoControlEntry, b: AmmoControlEntry):
     return a.id.localeCompare(b.id);
 }
 
-export function getAmmoControlEntriesForWeapon(equipment: MountedEquipment, context: HandlerContext): AmmoControlEntry[] {
+export function getAmmoControlEntriesForWeapon(equipment: MountedEquipment, equipmentCatalog: EquipmentRegistry): AmmoControlEntry[] {
     if (!(equipment.equipment instanceof WeaponEquipment)) return [];
-    const equipmentCatalog = context.dataService.getEquipmentRegistry();
     const intrinsicAmmo = getIntrinsicOneShotAmmoMount(equipment);
     if (equipment.equipment.oneShotCount) {
         const intrinsicAmmoEntry = intrinsicAmmo
@@ -404,8 +410,12 @@ export function getAmmoControlEntriesForUnitWeapons(unit: CBTForceUnit, equipmen
 }
 
 export function getAmmoEntryRemaining(entry: AmmoControlEntry): number {
-    if (entry.destroyed) return 0;
+    if (!isAmmoControlEntryUsable(entry)) return 0;
     return Math.max(0, entry.totalAmmo - entry.consumed);
+}
+
+export function isAmmoControlEntryUsable(entry: AmmoControlEntry): boolean {
+    return entry.status === 'available';
 }
 
 export function getAmmoControlGroups(entries: AmmoControlEntry[]): AmmoControlGroup[] {
@@ -440,7 +450,7 @@ function createAmmoControlGroup(entries: AmmoControlEntry[]): AmmoControlGroup {
         displayName: firstEntry.displayName,
         totalAmmo: 0,
         consumed: 0,
-        destroyed: false,
+        status: 'available',
         expandable: false,
         locations: [],
     };
@@ -465,7 +475,8 @@ function isAmmoLocationExposed(entry: AmmoControlEntry, loc: string): boolean {
 }
 
 function getAmmoEntryLocationState(entry: AmmoControlEntry): AmmoControlGroupLocation['state'] {
-    if (entry.destroyed) return 'destroyed';
+    if (entry.status === 'destroyed') return 'destroyed';
+    if (entry.status === 'disabled') return 'disabled';
     return isAmmoLocationExposed(entry, entry.locationLabel) ? 'exposed' : 'normal';
 }
 
@@ -494,13 +505,16 @@ function syncGroupTotals(group: AmmoControlGroup): void {
     group.locations = getAmmoControlGroupLocations(group.entries);
     group.totalAmmo = group.entries.reduce((total, entry) => total + entry.totalAmmo, 0);
     group.consumed = group.entries.reduce((total, entry) => total + entry.consumed, 0);
-    group.destroyed = group.entries.every(entry => entry.destroyed);
+    group.status = group.entries.some(entry => entry.status === 'available')
+        ? 'available'
+        : group.entries.some(entry => entry.status === 'disabled') ? 'disabled' : 'destroyed';
     group.expandable = group.entries.length > 1;
 }
 
 function sortAmmoControlGroups(groups: AmmoControlGroup[]): AmmoControlGroup[] {
     return groups.sort((a, b) => {
-        if (a.destroyed !== b.destroyed) return a.destroyed ? 1 : -1;
+        const statusOrder: Record<EquipmentStatus, number> = { available: 0, disabled: 1, destroyed: 2 };
+        if (a.status !== b.status) return statusOrder[a.status] - statusOrder[b.status];
         const nameCompare = a.displayName.localeCompare(b.displayName);
         if (nameCompare !== 0) return nameCompare;
         return a.id.localeCompare(b.id);
@@ -519,10 +533,7 @@ function syncEntryFromSource(entry: AmmoControlEntry, equipmentCatalog: Equipmen
         entry.originalTotalAmmo = getInventoryOriginalTotalAmmo(source);
         entry.totalAmmo = source.totalAmmo ?? entry.originalTotalAmmo;
         entry.consumed = source.consumed ?? 0;
-        entry.destroyed = entry.owner.isEquipmentUnavailable(source)
-            || (isIntrinsicOneShotAmmoMount(source)
-                && !!source.parent
-                && entry.owner.isEquipmentUnavailable(source.parent));
+        entry.status = getInventoryAmmoControlStatus(entry.owner, source);
         return;
     }
 
@@ -535,10 +546,10 @@ function syncEntryFromSource(entry: AmmoControlEntry, equipmentCatalog: Equipmen
     entry.originalTotalAmmo = getOriginalTotalAmmo(entry.owner, entry.source as CriticalSlot);
     entry.totalAmmo = getCriticalSlotTotalAmmo(entry.owner, entry.source as CriticalSlot);
     entry.consumed = (entry.source as CriticalSlot).consumed ?? 0;
-    entry.destroyed = entry.owner.isEquipmentUnavailable(entry.source as CriticalSlot);
+    entry.status = entry.owner.getEquipmentStatus(entry.source as CriticalSlot);
 }
 
-function showAmmoToast(entry: AmmoControlEntry, deltaRemaining: number, context: HandlerContext): void {
+function showAmmoToast(entry: AmmoControlEntry, deltaRemaining: number, context: HandlerCommandContext): void {
     const toastId = `ammo-control-${entry.owner.id}-${entry.id}`;
     const existingDelta = readAmmoToastDelta(context, toastId, deltaRemaining);
     const accumulatedDelta = existingDelta + deltaRemaining;
@@ -551,26 +562,26 @@ function showAmmoToast(entry: AmmoControlEntry, deltaRemaining: number, context:
     );
 }
 
-function readAmmoToastDelta(context: HandlerContext, toastId: string, deltaRemaining: number): number {
+function readAmmoToastDelta(context: HandlerCommandContext, toastId: string, deltaRemaining: number): number {
     const existingToast = context.toastService.toasts().find(toast => toast.id === toastId);
     const delta = existingToast?.data?.['ammoDeltaRemaining'];
     return typeof delta === 'number' && Math.sign(delta) === Math.sign(deltaRemaining) ? delta : 0;
 }
 
-export function changeAmmoEntryRemaining(entry: AmmoControlEntry, deltaRemaining: number, context: HandlerContext): boolean {
-    if (entry.destroyed) return false;
+export function changeAmmoEntryRemaining(entry: AmmoControlEntry, deltaRemaining: number, context: HandlerCommandContext): boolean {
+    if (!isAmmoControlEntryUsable(entry)) return false;
     const currentRemaining = getAmmoEntryRemaining(entry);
     const nextRemaining = clamp(currentRemaining + deltaRemaining, 0, entry.totalAmmo);
     const appliedDelta = nextRemaining - currentRemaining;
     if (appliedDelta === 0) return false;
 
     setAmmoEntryValue(entry, entry.currentAmmo, entry.totalAmmo, nextRemaining);
-    syncEntryFromSource(entry, context.dataService.getEquipmentRegistry());
+    syncEntryFromSource(entry, context.equipmentCatalog);
     showAmmoToast(entry, appliedDelta, context);
     return true;
 }
 
-export function changeAmmoEntriesRemaining(entries: AmmoControlEntry[], deltaRemaining: number, context: HandlerContext): boolean {
+export function changeAmmoEntriesRemaining(entries: AmmoControlEntry[], deltaRemaining: number, context: HandlerCommandContext): boolean {
     if (deltaRemaining === 0) return false;
     const sortedEntries = [...entries].sort(compareAmmoControlEntryOrder);
     const reversedEntries = [...sortedEntries].reverse();
@@ -579,11 +590,11 @@ export function changeAmmoEntriesRemaining(entries: AmmoControlEntry[], deltaRem
 
     while (remainingAdjustment > 0) {
         const target = deltaRemaining < 0
-            ? reversedEntries.find(entry => !entry.destroyed && getAmmoEntryRemaining(entry) > 0)
+            ? reversedEntries.find(entry => isAmmoControlEntryUsable(entry) && getAmmoEntryRemaining(entry) > 0)
             : reversedEntries.find(entry => {
                 const remaining = getAmmoEntryRemaining(entry);
-                return !entry.destroyed && remaining > 0 && remaining < entry.totalAmmo;
-            }) ?? sortedEntries.find(entry => !entry.destroyed && getAmmoEntryRemaining(entry) < entry.totalAmmo);
+                return isAmmoControlEntryUsable(entry) && remaining > 0 && remaining < entry.totalAmmo;
+            }) ?? sortedEntries.find(entry => isAmmoControlEntryUsable(entry) && getAmmoEntryRemaining(entry) < entry.totalAmmo);
         if (!target || !changeAmmoEntryRemaining(target, deltaRemaining < 0 ? -1 : 1, context)) break;
         changed = true;
         remainingAdjustment -= 1;
@@ -596,7 +607,7 @@ export function getAmmoGroupRemaining(group: AmmoControlGroup): number {
     return group.entries.reduce((total, entry) => total + getAmmoEntryRemaining(entry), 0);
 }
 
-export function changeAmmoGroupRemaining(group: AmmoControlGroup, deltaRemaining: number, context: HandlerContext): boolean {
+export function changeAmmoGroupRemaining(group: AmmoControlGroup, deltaRemaining: number, context: HandlerCommandContext): boolean {
     const changed = changeAmmoEntriesRemaining(group.entries, deltaRemaining, context);
 
     if (changed) syncGroupTotals(group);
@@ -626,10 +637,10 @@ function getTotalAmmoForAmmoType(
     return Math.floor((originalAmmo.getEffectiveKgPerShot(gameRules, equipmentRegistry) * originalTotalAmmo) / selectedKgPerShot);
 }
 
-export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerContext): Promise<boolean> {
-    if (entry.destroyed) return false;
+export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerCommandContext): Promise<boolean> {
+    if (!isAmmoControlEntryUsable(entry)) return false;
 
-    const equipmentRegistry = context.dataService.getEquipmentRegistry();
+    const equipmentRegistry = context.equipmentCatalog;
     const unitBlueprint = entry.owner.getUnit();
     const inventory = entry.owner.getInventory();
     const compatibleAmmo = getCompatibleCatalogAmmo(entry.originalAmmo, equipmentRegistry, unitBlueprint, inventory);
@@ -672,15 +683,16 @@ export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerCont
     return true;
 }
 
-export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerContext): Promise<boolean> {
+export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCommandContext): Promise<boolean> {
     if (group.entries.length === 1) return setAmmoEntry(group.entries[0], context);
-    if (group.destroyed) return false;
+    const editableEntries = group.entries.filter(isAmmoControlEntryUsable);
+    if (editableEntries.length === 0) return false;
 
-    const firstEntry = group.entries[0];
-    const equipmentRegistry = context.dataService.getEquipmentRegistry();
+    const firstEntry = editableEntries[0];
+    const equipmentRegistry = context.equipmentCatalog;
     const unitBlueprint = firstEntry.owner.getUnit();
     const inventory = firstEntry.owner.getInventory();
-    const originalTotalAmmo = group.entries.reduce((total, entry) => total + entry.originalTotalAmmo, 0);
+    const originalTotalAmmo = editableEntries.reduce((total, entry) => total + entry.originalTotalAmmo, 0);
     const previousRemaining = getAmmoGroupRemaining(group);
     const compatibleAmmo = getCompatibleCatalogAmmo(firstEntry.originalAmmo, equipmentRegistry, unitBlueprint, inventory);
 
@@ -691,7 +703,7 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
             originalTotalAmmo,
             ammoOptions: compatibleAmmo,
             quantity: previousRemaining,
-            maxQuantity: group.totalAmmo,
+            maxQuantity: editableEntries.reduce((total, entry) => total + entry.totalAmmo, 0),
             unitType: unitBlueprint.type,
             era: firstEntry.owner.force.era(),
             inventory,
@@ -713,7 +725,7 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
         getTotalAmmoForAmmoType(firstEntry.originalAmmo, originalTotalAmmo, selectedAmmo, firstEntry.owner.gameRules, equipmentRegistry),
     );
 
-    for (const entry of group.entries.sort(compareAmmoControlEntryOrder)) {
+    for (const entry of editableEntries.sort(compareAmmoControlEntryOrder)) {
         const newTotalAmmo = isIntrinsicOneShotAmmoMount(entry.source as MountedEquipment)
             ? entry.totalAmmo
             : getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo, entry.owner.gameRules, equipmentRegistry);

@@ -6,7 +6,7 @@ import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { WeaponEquipment, type AmmoEquipment } from '../models/equipment.model';
 import { resolveAmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
 import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
-import { CORE_2026_GAME_RULES, SKILL_BREAKDOWN_PRIORITY, validatedToHitModifierBreakdown, type C3DegradationSource, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry } from '../models/rules/game-rules';
+import { CORE_2026_GAME_RULES, separateHeatFireModifier, SKILL_BREAKDOWN_PRIORITY, type C3DegradationSource, type CBTGameRules, type ToHitResolution } from '../models/rules/game-rules';
 import { modifierTooltipLines, orderHitTargetTooltipLines } from './hit-target-tooltip.util';
 import type { UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
 import type { InventoryControlDisplayData, InventoryControlGroupId, InventoryRangeKey } from './inventory-control.util';
@@ -48,9 +48,7 @@ export interface InventoryTargetNumberInput {
     pilotingSkill: number;
     missingMovementModifier?: boolean;
     attackModifierBreakdown: readonly UnitModifierBreakdownEntry[];
-    hitModifier: HitModifier;
-    hitModifierBreakdown?: readonly ToHitModifierBreakdownEntry[];
-    heatFireModifier?: number;
+    hitResolution: ToHitResolution;
     c3DegradationSource?: C3DegradationSource;
     gameRules?: CBTGameRules;
 }
@@ -176,10 +174,11 @@ export function inventoryTargetNumberState(
 ): InventoryTargetNumberState {
     if (!rangeSelection) return { text: '', breakdown: null, rangeSelection };
     if (rangeSelection.outOfRange) return { text: 'X', breakdown: null, rangeSelection };
-    if (input.hitModifier === 'Vs' || input.hitModifier === '*') {
-        return { text: input.hitModifier, breakdown: null, rangeSelection };
+    const { hitModifier } = separateHeatFireModifier(input.hitResolution);
+    if (hitModifier === 'Vs' || hitModifier === '*') {
+        return { text: hitModifier, breakdown: null, rangeSelection };
     }
-    if (input.hitModifier === null) return { text: '', breakdown: null, rangeSelection };
+    if (hitModifier === null) return { text: '', breakdown: null, rangeSelection };
     const breakdown = inventoryTargetNumberBreakdown(input, rangeSelection);
     if (input.missingMovementModifier) return { text: 'M?', breakdown, rangeSelection };
     return { text: breakdown === null ? '' : breakdown.total.toString(), breakdown, rangeSelection };
@@ -196,7 +195,8 @@ export function inventoryTargetNumberBreakdown(
     const target = input.target;
     if (!target) return null;
     if (!rangeSelection) return null;
-    if (typeof input.hitModifier !== 'number') return null;
+    const { hitModifier, hitModifierBreakdown, heatFireModifier: separatedHeatFireModifier } = separateHeatFireModifier(input.hitResolution);
+    if (typeof hitModifier !== 'number') return null;
     if (input.missingMovementModifier) {
         return {
             total: 0,
@@ -222,7 +222,7 @@ export function inventoryTargetNumberBreakdown(
         ? 0
         : gameRules.resolveToHit({ subject: input.selectedAmmo, range: rangeSelection.range }).value;
     const numericAmmoToHitModifier = typeof ammoToHitModifier === 'number' ? ammoToHitModifier : 0;
-    const heatFireModifier = physical ? 0 : input.heatFireModifier ?? 0;
+    const heatFireModifier = physical ? 0 : separatedHeatFireModifier;
     const terms: TooltipLine[] = [
         { label: skillLabel, value: skill.toString(), priority: SKILL_BREAKDOWN_PRIORITY }
     ];
@@ -252,7 +252,6 @@ export function inventoryTargetNumberBreakdown(
     if (minimumRangeModifier !== 0) {
         terms.push({ label: 'Minimum Range', value: formatInventoryTargetSignedModifier(minimumRangeModifier), weakened: true });
     }
-    const hitModifierBreakdown = validatedToHitModifierBreakdown(input.hitModifier, input.hitModifierBreakdown);
     terms.push(...modifierTooltipLines(hitModifierBreakdown, entry => formatInventoryTargetSignedModifier(entry.modifier)));
     if (numericAmmoToHitModifier !== 0 && input.selectedAmmo) {
         terms.push({ label: `Ammo (${input.selectedAmmo.shortName})`, value: formatInventoryTargetSignedModifier(numericAmmoToHitModifier) });
@@ -267,7 +266,8 @@ export function inventoryTargetNumberBreakdown(
     }
 
     const attackModifier = input.attackModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
-    const total = skill + attackModifier + target.tnModifier + rangeModifier + c3ModifierValue + minimumRangeModifier + input.hitModifier + numericAmmoToHitModifier + heatFireModifier;
+    const equipmentHitModifier = hitModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
+    const total = skill + attackModifier + target.tnModifier + rangeModifier + c3ModifierValue + minimumRangeModifier + equipmentHitModifier + numericAmmoToHitModifier + heatFireModifier;
     return {
         total,
         lines: [

@@ -20,7 +20,7 @@ function createRulesHarness(crewStates: CrewMemberState[] = ['healthy'], crewHit
             isCrippled: () => (crewHits[index] ?? 0) >= CRIPPLED_CREW_HIT_THRESHOLD,
         })),
         getUnit: () => baseUnit,
-        isEquipmentUnavailable: () => true,
+        isEquipmentOperational: () => false,
         isLoaded: () => true,
         locations: { internal: new Map() },
         destroyed: false,

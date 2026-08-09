@@ -4,15 +4,17 @@
 
 import type { PickerChoice } from '../components/picker/picker.interface';
 import type { Equipment } from '../models/equipment.model';
+import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
 import { MountedEquipment } from '../models/mounted-equipment.model';
-import type { HandlerContext } from '../services/equipment-interaction-registry.service';
+import { createHandlerCommandContext, createHandlerQueryContext } from '../services/equipment-interaction-registry.service';
+import type { DialogsService } from '../services/dialogs.service';
+import type { ToastService } from '../services/toast.service';
+import { createTestEquipmentOwner } from '../testing/unit-test-helpers';
 import { StealthHandler } from './stealth.handler';
 
 function equipment(flag: 'F_STEALTH' | 'F_CHAMELEON_SHIELD' | 'F_ECM'): MountedEquipment {
-    const owner = {
-        setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        rules: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) },
-    } as never;
+    const { owner } = createTestEquipmentOwner();
+    spyOn(owner, 'setInventoryEntry').and.callThrough();
     return new MountedEquipment({
         owner,
         id: flag,
@@ -24,9 +26,12 @@ function equipment(flag: 'F_STEALTH' | 'F_CHAMELEON_SHIELD' | 'F_ECM'): MountedE
 
 describe('StealthHandler', () => {
     const handler = new StealthHandler();
-    const context = {
-        toastService: { showToast: jasmine.createSpy('showToast') },
-    } as never as HandlerContext;
+    const queryContext = createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY);
+    const commandContext = createHandlerCommandContext(
+        EMPTY_EQUIPMENT_REGISTRY,
+        jasmine.createSpyObj<ToastService>('ToastService', ['showToast']),
+        jasmine.createSpyObj<DialogsService>('DialogsService', ['createDialog']),
+    );
 
     it('applies to ordinary stealth and Chameleon LPS only', () => {
         expect(handler.applicableTo(equipment('F_STEALTH'))).toBeTrue();
@@ -37,11 +42,11 @@ describe('StealthHandler', () => {
     it('uses the same persisted toggle state for Chameleon LPS', () => {
         const chameleon = equipment('F_CHAMELEON_SHIELD');
 
-        handler.handleSelection(chameleon, { value: 'enabled' } as PickerChoice, context);
+        handler.handleSelection(chameleon, { value: 'enabled' } as PickerChoice, commandContext);
 
         expect(chameleon.states.get('state')).toBe('enabled');
         expect(chameleon.owner.setInventoryEntry).toHaveBeenCalledWith(chameleon);
-        expect(handler.getChoices(chameleon, context)[0]).toEqual(jasmine.objectContaining({
+        expect(handler.getChoices(chameleon, queryContext)[0]).toEqual(jasmine.objectContaining({
             active: true,
             value: 'disabled',
         }));

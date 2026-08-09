@@ -158,7 +158,7 @@ export class CBTPrintUtil {
             const defaultMode = getSelectedInventoryControlMode(
                 entry,
                 EMPTY_EQUIPMENT_REGISTRY,
-                printUnit.getInventoryControlRules()
+                printUnit.getInventoryControlRules().matchesAmmo
             );
             syncSvgMode(entry, defaultMode, false);
         }

@@ -72,6 +72,24 @@ function jumpJetTonnage(unitTonnage: number): number {
   return 2;
 }
 
+const MEK_COCKPIT_FEATURES: Readonly<Partial<Record<CockpitType, EntityFeature>>> = {
+  Small: 'Small Cockpit',
+  'Command Console': 'Command Console',
+  'Torso-Mounted': 'Torso-Mounted Cockpit',
+  Dual: 'Dual Cockpit',
+  Interface: 'Interface Cockpit',
+  'Virtual Reality Piloting Pod': 'Virtual Reality Piloting Pod',
+  'Superheavy Command Console': 'Superheavy Command Console',
+  'Small Command Console': 'Small Command Console',
+};
+
+const MEK_GYRO_FEATURES: Readonly<Partial<Record<GyroType, EntityFeature>>> = {
+  XL: 'XL Gyro',
+  Compact: 'Compact Gyro',
+  'Heavy Duty': 'Heavy Duty Gyro',
+  Superheavy: 'Superheavy Gyro',
+};
+
 export abstract class MekEntity extends BaseEntity {
   override componentLocationOrder(): readonly string[] {
     if (this.chassisConfig === 'Quad') return ['HD', 'CT', 'RT', 'LT', 'FRL', 'FLL', 'RRL', 'RLL'];
@@ -434,6 +452,22 @@ export abstract class MekEntity extends BaseEntity {
       omniPodMounted: false,
       armored: false,
     });
+  }
+
+  protected computeMekFeatures(): readonly EntityFeature[] {
+    const features: EntityFeature[] = [];
+    const cockpitFeature = MEK_COCKPIT_FEATURES[this.cockpitType()];
+    if (cockpitFeature) features.push(cockpitFeature);
+    const gyroFeature = MEK_GYRO_FEATURES[this.gyroType()];
+    if (gyroFeature) features.push(gyroFeature);
+    if (this.hasFullHeadEjectionSystem()) features.push('Full Head Ejection System');
+    if (this.hasRiscHeatSinkOverrideKit()) features.push('RISC Heat Sink Override Kit');
+    if (this.hasHybridStructure()) features.push('FrankenMek');
+    return features;
+  }
+
+  protected override computeEntityFeatures(): readonly EntityFeature[] {
+    return [...this.computeMekFeatures(), ...this.computeTransportFeatures()];
   }
 
   protected override computeIntrinsicWeapons(): readonly IntrinsicWeapon[] {
@@ -1007,11 +1041,21 @@ export abstract class MekWithArmsEntity extends MekEntity {
   hasLowerArmActuator = signal<{ left: boolean; right: boolean }>({ left: true, right: true });
   hasHandActuator = signal<{ left: boolean; right: boolean }>({ left: true, right: true });
 
-  protected override computeEntityFeatures(): readonly EntityFeature[] {
-    const features = [...super.computeEntityFeatures()];
+  protected override computeMekFeatures(): readonly EntityFeature[] {
+    const features = [...super.computeMekFeatures()];
     const lowerArms = this.hasLowerArmActuator();
     const hands = this.hasHandActuator();
-    if (!hands.left && !hands.right && !lowerArms.left && !lowerArms.right) {
+    const hasArmTorsoSplit = this.equipment().some(mount => {
+      if (mount.equipment?.type !== 'weapon' || !mount.isSplitAcrossLocations) {
+        return false;
+      }
+      const locations = new Set(mount.getOccupiedLocations());
+      return (locations.has('LA') && locations.has('LT'))
+        || (locations.has('RA') && locations.has('RT'));
+    });
+    if (!hasArmTorsoSplit
+      && !hands.left && !hands.right
+      && !lowerArms.left && !lowerArms.right) {
       features.push('Reversible Arms');
     }
     return features;

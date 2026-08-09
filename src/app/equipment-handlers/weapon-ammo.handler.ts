@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import { createHandlerQueryContext, EquipmentInteractionHandler, type HandlerChoice, type HandlerCommandContext, type HandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { PickerChoice } from '../components/picker/picker.interface';
 import { WeaponEquipment } from '../models/equipment.model';
 import { EquipmentDialogComponent } from '../components/equipment-dialog/equipment-dialog.component';
 import type { EquipmentDialogData } from '../components/equipment-dialog/equipment-dialog.model';
-import { changeAmmoEntryRemaining, getAmmoControlEntriesForWeapon, getAmmoEntryRemaining, setAmmoEntry } from '../utils/ammo-interaction.util';
+import { changeAmmoEntryRemaining, getAmmoControlEntriesForWeapon, getAmmoEntryRemaining, isAmmoControlEntryUsable, setAmmoEntry } from '../utils/ammo-interaction.util';
 
 export class WeaponAmmoHandler extends EquipmentInteractionHandler {
     readonly id = 'weapon-ammo-handler';
@@ -19,17 +19,17 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
             && equipment.equipment.ammoType !== 'NA';
     };
 
-    getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
-        const entries = getAmmoControlEntriesForWeapon(equipment, context);
+    getChoices(equipment: MountedEquipment, context: HandlerQueryContext): HandlerChoice[] {
+        const entries = getAmmoControlEntriesForWeapon(equipment, context.equipmentCatalog);
         if (entries.length === 0) return [];
 
-        if (entries.length === 1 && !equipment.owner.readOnly()) {
+        if (entries.length === 1 && !context.isReadOnly(equipment)) {
             const entry = entries[0];
             const remaining = getAmmoEntryRemaining(entry);
             return [
-                { label: '-1', value: 'weapon-ammo-decrement', keepOpen: true, disabled: entry.destroyed || remaining <= 0 },
-                { label: '+1', value: 'weapon-ammo-increment', keepOpen: true, disabled: entry.destroyed || remaining >= entry.totalAmmo },
-                { label: 'Set Ammo', value: 'weapon-ammo-set', disabled: entry.destroyed }
+                { label: '-1', value: 'weapon-ammo-decrement', keepOpen: true, disabled: !isAmmoControlEntryUsable(entry) || remaining <= 0 },
+                { label: '+1', value: 'weapon-ammo-increment', keepOpen: true, disabled: !isAmmoControlEntryUsable(entry) || remaining >= entry.totalAmmo },
+                { label: 'Set Ammo', value: 'weapon-ammo-set', disabled: !isAmmoControlEntryUsable(entry) }
             ];
         }
 
@@ -37,13 +37,15 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
             {
                 label: 'Ammo',
                 value: 'weapon-ammo-dialog',
-                displayType: 'button'
+                displayType: 'button',
+                readOnlySafe: context.isReadOnly(equipment),
             }
         ];
     }
 
-    async handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): Promise<boolean> {
-        const entries = getAmmoControlEntriesForWeapon(equipment, context);
+    async handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerCommandContext): Promise<boolean> {
+        const equipmentCatalog = context.equipmentCatalog;
+        const entries = getAmmoControlEntriesForWeapon(equipment, equipmentCatalog);
         if (entries.length === 0) return false;
 
         if (choice.value === 'weapon-ammo-dialog') {
@@ -52,14 +54,14 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
                     unit: equipment.owner,
                     readOnly: equipment.owner.readOnly(),
                     context: {
-                        ...context,
                         registry: {
                             getChoices: () => [],
                             handleSelection: () => false,
                             afterInventoryControlFire: () => undefined,
-                            canPerformAimedShot: () => true,
                             inventoryControlRules: () => ({})
-                        }
+                        },
+                        queryContext: createHandlerQueryContext(equipmentCatalog),
+                        commandContext: context,
                     },
                     initialTab: 'ammo'
                 } as EquipmentDialogData,

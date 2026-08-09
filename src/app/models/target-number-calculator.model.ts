@@ -171,7 +171,7 @@ export function calculateTargetTnModifier(
     let total = 0;
 
     total += getTargetUnitTypeModifier(input.unitType);
-    if (!staticTarget && stance === 'normal') {
+    if (!staticTarget) {
         total += getTargetAirborneModifier(input.isAirborne);
         total += getTargetMovementBracketModifier(input.targetMovementBracket);
         total += gameRules.supportsSkidding && input.skidding ? TN_SKIDDING_MODIFIER : 0;

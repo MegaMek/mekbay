@@ -2,17 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { computed, signal, type Signal, type WritableSignal } from '@angular/core';
+import { signal, type WritableSignal } from '@angular/core';
 
 import type { CBTForceUnit } from './cbt-force-unit.model';
 import { AmmoEquipment, MiscEquipment, WeaponEquipment, type Equipment } from './equipment.model';
 import { WEAPON_TYPES, type WeaponType } from './weapon-types.model';
 import type { CriticalSlot } from './force-serialization';
-import type { MountedEquipmentRuleState } from './rules/unit-type-rules';
 import { isPhysicalWeaponEquipment } from './entity/utils/physical-weapon';
 
 export interface MountedEquipmentInit {
-    owner: CBTForceUnit;
+    readonly owner: CBTForceUnit;
     id: string;
     name: string;
     locations?: Set<string>;
@@ -63,7 +62,6 @@ export class MountedEquipment {
     readonly originalTotalAmmo?: number;
     consumed?: number;
     intrinsicOneShotAmmo?: boolean;
-    readonly ruleState: Signal<MountedEquipmentRuleState>;
 
     get linkedWith(): readonly MountedEquipment[] | null | undefined {
         return this.linkedEquipment;
@@ -203,7 +201,6 @@ export class MountedEquipment {
         this.originalTotalAmmo = data.originalTotalAmmo ?? data.totalAmmo;
         this.consumed = data.consumed;
         this.intrinsicOneShotAmmo = data.intrinsicOneShotAmmo;
-        this.ruleState = computed(() => this.owner.rules.computeEntryState(this));
     }
 
     static from(entry: MountedEquipment | MountedEquipmentInit): MountedEquipment {
@@ -255,33 +252,6 @@ export class MountedEquipment {
         };
     }
 
-    isDestroyed(): boolean {
-        return this.ruleState().isDamaged;
-    }
-
-    isDisabled(): boolean {
-        return this.ruleState().isDisabled;
-    }
-
-    isUnavailable(): boolean {
-        const state = this.ruleState();
-        return state.isDamaged || state.isDisabled;
-    }
-
-    /** Whether this mount is structurally unavailable or temporarily unable to act. */
-    isActionUnavailable(): boolean {
-        return this.isUnavailable() || this.owner.isEquipmentActionUnavailable(this);
-    }
-
-    resolvedDestroyed(ruleDamaged: boolean = this.isDestroyed()): boolean {
-        if (this.isRepairing()) return false;
-        return this.isDestroying() || ruleDamaged;
-    }
-
-    resolvedCommittedDestroyed(ruleDamaged: boolean = this.isDestroyed()): boolean {
-        return !this.isRepairing() && ruleDamaged;
-    }
-
     committedDestroyedState(): boolean | undefined {
         return this.destroyedState();
     }
@@ -292,10 +262,6 @@ export class MountedEquipment {
 
     committedDestroyed(): boolean {
         return !!this.committedDestroyedState();
-    }
-
-    effectiveDestroyed(): boolean {
-        return this.pendingDestroyed() ?? this.committedDestroyed();
     }
 
     hasPendingDestroyedChange(): boolean {

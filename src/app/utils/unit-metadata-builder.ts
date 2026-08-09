@@ -3,17 +3,11 @@
 // Author: Drake
 
 import { BaseEntity } from '../models/entity/base-entity';
-import { AeroEntity } from '../models/entity/entities/aero/aero-entity';
-import { ConvFighterEntity } from '../models/entity/entities/aero/conv-fighter-entity';
-import { FixedWingSupportEntity } from '../models/entity/entities/aero/fixed-wing-support-entity';
 import { InfantryBaseEntity } from '../models/entity/entities/infantry/infantry-base-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
 import { JumpShipEntity } from '../models/entity/entities/largecraft/jumpship-entity';
-import { MekEntity } from '../models/entity/entities/mek/mek-entity';
-import { VehicleEntity } from '../models/entity/entities/vehicle/vehicle-entity';
 import { Unit } from '../models/units.model';
 import { EntityType, MoveType } from '../models/entity/types';
-import { getBayTransporterType, isQuartersBay } from '../models/entity/bays/bay-definitions';
 import { buildUnitCargoMetadata } from './unit-cargo-metadata-builder';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
 import { EquipmentFlag } from '../models/equipment-flags.type';
@@ -160,64 +154,12 @@ export class UnitMetadataBuilder {
   private buildFeatures(entity: BaseEntity): string[] {
     const features: string[] = [...entity.entityFeatures()];
 
-    if (entity instanceof AeroEntity) {
-      if (entity.cockpitType() === 'Small') features.push('Small Cockpit');
-      else if (entity.cockpitType() === 'Command Console') features.push('Command Console');
-      if (entity instanceof ConvFighterEntity && entity.vstol()) features.push('VSTOL Equipment');
-      if (entity instanceof FixedWingSupportEntity && entity.equipment().some(mount =>
-        mount.equipment?.hasFlag('F_VSTOL_CHASSIS'))) {
-        features.push('VSTOL Equipment');
-      }
-      if (entity instanceof JumpShipEntity && entity.lithiumFusion()) features.push('LF Battery');
-    }
-
-    if (entity instanceof MekEntity) {
-      const featuredCockpits = new Set([
-        'Small',
-        'Command Console',
-        'Torso-Mounted',
-        'Dual',
-        'Interface',
-        'Virtual Reality Piloting Pod',
-        'Superheavy Command Console',
-        'Small Command Console',
-      ]);
-      if (featuredCockpits.has(entity.cockpitType())) {
-        features.push(entity.mountedCockpit().fullName);
-      }
-      if (entity.gyroType() !== 'Standard' && entity.gyroType() !== 'None') {
-        features.push(entity.mountedGyro().fullName);
-      }
-      if (entity.hasFullHeadEjectionSystem()) features.push('Full Head Ejection System');
-      if (entity.hasRiscHeatSinkOverrideKit()) features.push('RISC Heat Sink Override Kit');
-      if (entity.hasHybridStructure()) features.push('FrankenMek');
-    }
-
-    if (entity.isSupportVehicle() || entity instanceof VehicleEntity) {
-      const chassisMods = new Set<string>();
-      for (const mount of entity.equipment()) {
-        if (mount.equipment?.hasFlag('F_CHASSIS_MODIFICATION')) {
-          chassisMods.add(`Chassis Mod: ${mount.equipment.shortName}`);
-        }
-      }
-      features.push(...chassisMods);
-    }
-
     const hasEquipmentFlag = (flag: EquipmentFlag): boolean => entity.equipment().some(
       mount => mount.equipment?.hasFlag(flag),
     );
     if (hasEquipmentFlag('F_ADVANCED_FIRE_CONTROL')) features.push('Advanced Fire Control');
     else if (hasEquipmentFlag('F_BASIC_FIRE_CONTROL')) features.push('Basic Fire Control');
 
-    const transportTypes = new Set<string>();
-    for (const transporter of entity.transporters()) {
-      if (transporter.kind === 'troop-space') {
-        transportTypes.add('Infantry Compartment');
-      } else if (transporter.kind === 'bay' && !isQuartersBay(transporter)) {
-        transportTypes.add(`Bay: ${getBayTransporterType(transporter.configuration)}`);
-      }
-    }
-    features.push(...transportTypes);
     return features;
   }
 

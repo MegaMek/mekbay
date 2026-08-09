@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { CBTForceUnit } from '../cbt-force-unit.model';
+import type { CBTForceUnit, EquipmentAction } from '../cbt-force-unit.model';
 import type { CrewMemberState } from '../crew-member.model';
 import { MountedEquipment, MountedWeapon } from '../mounted-equipment.model';
 import { type CriticalSlot } from '../force-serialization';
@@ -16,6 +16,9 @@ import { MascHandler, MASC_ACTIVE_STATE_KEY } from '../../equipment-handlers/mas
 import { TWVehicleRules } from './tw-rules';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './game-rules';
 import { EquipmentFlag } from '../equipment-flags.type';
+import { combineEquipmentStatuses, type EquipmentStatus, type EquipmentStatusFacts } from '../equipment-status.model';
+import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from './unit-type-rules';
+import { createHandlerQueryContext } from '../../services/equipment-interaction-registry.service';
 
 const mascHandler = new MascHandler();
 
@@ -99,14 +102,51 @@ function createRulesHarness(options: {
         getSkill: (skill: 'gunnery' | 'piloting') => skill === 'gunnery' ? options.gunnery ?? 4 : 5,
     }));
     let rules: VehicleRules;
+    const findCurrentCriticalSlot = (slot: CriticalSlot): CriticalSlot | null => (options.crits ?? []).find(candidate =>
+        slot.loc && slot.slot !== undefined
+            ? candidate.loc === slot.loc && candidate.slot === slot.slot
+            : !!slot.id && candidate.id === slot.id
+    ) ?? null;
+    const getEquipmentStatus = (source: MountedEquipment | CriticalSlot): EquipmentStatus => {
+        if (!(source instanceof MountedEquipment)) return source.destroyed ? 'destroyed' : 'available';
+
+        const criticals = source.critSlots?.flatMap(slot => findCurrentCriticalSlot(slot) ?? []) ?? [];
+        const mountState: EquipmentStatus = source.committedDestroyed()
+            ? 'destroyed'
+            : source.states.get(ENTRY_DISABLED_STATE_KEY) === ENTRY_DISABLED_STATE_VALUE
+                ? 'disabled'
+                : 'available';
+        const facts: EquipmentStatusFacts = {
+            equipment: source.equipment ?? null,
+            equipmentId: source.equipment?.id ?? source.id,
+            equipmentFlags: source.equipment?.flags ?? new Set(),
+            mountState,
+            criticals: criticals.map(slot => ({
+                id: slot.id ?? `${slot.loc ?? ''}:${slot.slot ?? ''}`,
+                location: slot.loc ?? null,
+                slot: slot.slot ?? null,
+                status: slot.destroyed ? 'destroyed' : 'available',
+                committedHits: slot.hits ?? (slot.destroyed ? 1 : 0),
+                armored: slot.armored === true,
+            })),
+            locationStates: new Map(),
+            unitSystemFacts: rules.getUnitSystemStatusFacts(),
+        };
+        return combineEquipmentStatuses([
+            facts.mountState,
+            rules.getMountedCriticalStatusContribution(facts),
+            rules.getEquipmentStatusContribution(facts),
+        ]);
+    };
     const unit = {
         gameRules: options.rulesId === 'tw' ? TW_GAME_RULES : CORE_2026_GAME_RULES,
         getCritSlots: () => options.crits ?? [],
+        findCurrentCriticalSlot,
         getInventory: () => options.inventory ?? [],
         getEquipmentRegistry: () => new EquipmentRegistry(Object.fromEntries((options.inventory ?? [])
             .flatMap(entry => entry.equipment ? [[entry.equipment.internalName, entry.equipment]] : []))),
         getInventoryControlSelectedAmmo: () => options.selectedAmmo ?? null,
-        getInventoryControlRules: () => ({}),
+        getEffectiveWeaponTypes: (entry: MountedWeapon) => new Set(entry.getWeaponTypes(options.selectedAmmo ?? null)),
         getUnit: () => baseUnit,
         getCondition: (state: string) => {
             if (state === 'shutdown') return options.shutdown ?? false;
@@ -115,9 +155,16 @@ function createRulesHarness(options: {
         },
         getCrewMembers: () => crewMembers,
         getCrewMember: (id: number) => crewMembers[id],
-        isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot) => source instanceof MountedEquipment ? source.committedDestroyed() : !!source.destroyed,
+        getEquipmentStatus,
+        isEquipmentOperational: (source: MountedEquipment | CriticalSlot) => unit.getEquipmentStatus(source) === 'available',
+        canPerformEquipmentAction: (entry: MountedEquipment, action: EquipmentAction) =>
+            unit.isEquipmentOperational(entry) && rules.canPerformEquipmentAction(entry, action),
         getRunMovementMultiplierBonus: (turnState: TurnState) => (options.inventory ?? [])
-            .reduce((total, entry) => total + mascHandler.getRunMovementMultiplierBonus(entry, turnState), 0),
+            .reduce((total, entry) => total + mascHandler.getRunMovementMultiplierBonus(
+                entry,
+                turnState,
+                createHandlerQueryContext(unit.getEquipmentRegistry()),
+            ), 0),
         pilotingSkill: () => 5,
         gunnerySkill: () => options.gunnery ?? 4,
         turnState: () => ({
@@ -131,7 +178,9 @@ function createRulesHarness(options: {
         setDestroyed: jasmine.createSpy('setDestroyed'),
     } as unknown as CBTForceUnit;
 
-    options.inventory?.forEach(entry => entry.owner = unit);
+    options.inventory?.forEach(inventoryEntry => {
+        (inventoryEntry as { owner: CBTForceUnit }).owner = unit;
+    });
     rules = options.rulesId === 'tw' ? new TWVehicleRules(unit) : new VehicleRules(unit);
     return rules;
 }
@@ -156,7 +205,8 @@ describe('VehicleRules', () => {
         const targetingComputer = entry({ equipment: equipment('TargetingComputer', ['F_TARGETING_COMPUTER']) });
         const activeRules = createRulesHarness({ inventory: [directFire, targetingComputer] });
 
-        expect(activeRules.computeEntryState(directFire)).toEqual(jasmine.objectContaining({ hitMod: -1 }));
+        const activeModifiers = activeRules.getEquipmentToHitModifiers(directFire);
+        expect(activeModifiers.reduce((total, modifier) => total + modifier.modifier, 0)).toBe(-1);
 
         const destroyedDirectFire = new MountedWeapon({
             owner: undefined as unknown as CBTForceUnit,
@@ -170,10 +220,10 @@ describe('VehicleRules', () => {
         });
         const destroyedRules = createRulesHarness({ inventory: [destroyedDirectFire, destroyedTargetingComputer] });
 
-        expect(destroyedRules.computeEntryState(destroyedDirectFire)).toEqual(jasmine.objectContaining({
-            hitMod: 0,
-            hitModifierBreakdown: [{ label: 'DestroyedTargetingComputer Destroyed', modifier: 0, weakened: true }],
-        }));
+        const destroyedModifiers = destroyedRules.getEquipmentToHitModifiers(destroyedDirectFire);
+        expect(destroyedModifiers.reduce((total, modifier) => total + modifier.modifier, 0)).toBe(0);
+        expect(destroyedModifiers)
+            .toEqual([{ label: 'DestroyedTargetingComputer Destroyed', modifier: 0, weakened: true }]);
     });
 
     it('does not apply a targeting computer when selected ammo creates a cluster flak attack', () => {
@@ -203,7 +253,8 @@ describe('VehicleRules', () => {
             selectedAmmo: flechetteAmmo
         });
 
-        expect(rules.computeEntryState(mountedAutocannon)).toEqual(jasmine.objectContaining({ hitMod: 0 }));
+        const modifiers = rules.getEquipmentToHitModifiers(mountedAutocannon);
+        expect(modifiers.reduce((total, modifier) => total + modifier.modifier, 0)).toBe(0);
     });
 
     it('excludes cluster and flak weapons from targeting computers except non-flak HAGs', () => {
@@ -240,30 +291,12 @@ describe('VehicleRules', () => {
         });
         const rules = createRulesHarness({ inventory: [clusterWeapon, flakWeapon, hag, targetingComputer] });
 
-        expect(rules.computeEntryState(clusterWeapon)).toEqual(jasmine.objectContaining({ hitMod: 0 }));
-        expect(rules.computeEntryState(flakWeapon)).toEqual(jasmine.objectContaining({ hitMod: 0 }));
-        expect(rules.computeEntryState(hag)).toEqual(jasmine.objectContaining({ hitMod: -1 }));
-    });
-
-    it('does not allow pulse weapons to make aimed shots against mobile targets', () => {
-        const pulseWeapon = new MountedWeapon({
-            owner: undefined as unknown as CBTForceUnit,
-            id: 'PulseWeapon',
-            name: 'PulseWeapon',
-            equipment: weapon('PulseWeapon', ['F_DIRECT_FIRE', 'F_ENERGY', 'F_PULSE']),
-        });
-        const standardWeapon = new MountedWeapon({
-            owner: undefined as unknown as CBTForceUnit,
-            id: 'StandardWeapon',
-            name: 'StandardWeapon',
-            equipment: weapon('StandardWeapon', ['F_DIRECT_FIRE', 'F_ENERGY']),
-        });
-        const rules = createRulesHarness();
-
-        expect(rules.canMakeTargetingComputerAimedShot(pulseWeapon, true)).toBeFalse();
-        expect(rules.canMakeTargetingComputerAimedShot(pulseWeapon, false)).toBeTrue();
-        expect(rules.canMakeTargetingComputerAimedShot(standardWeapon, true)).toBeTrue();
-        expect(rules.canMakeTargetingComputerAimedShot(entry(), false)).toBeFalse();
+        const clusterModifiers = rules.getEquipmentToHitModifiers(clusterWeapon);
+        const flakModifiers = rules.getEquipmentToHitModifiers(flakWeapon);
+        const hagModifiers = rules.getEquipmentToHitModifiers(hag);
+        expect(clusterModifiers.reduce((total, modifier) => total + modifier.modifier, 0)).toBe(0);
+        expect(flakModifiers.reduce((total, modifier) => total + modifier.modifier, 0)).toBe(0);
+        expect(hagModifiers.reduce((total, modifier) => total + modifier.modifier, 0)).toBe(-1);
     });
 
     it('applies ordered motive movement damage by timestamp', () => {
@@ -318,16 +351,34 @@ describe('VehicleRules', () => {
         expect(rules.getMaxDistanceForMoveMode('run')).toBe(16);
     });
 
+    it('does not let a canonically disabled Supercharger provide passive movement', () => {
+        const disabledSupercharger = entry({ equipment: equipment('Supercharger', ['F_MASC', 'S_SUPERCHARGER']) });
+        disabledSupercharger.setState(ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE);
+        const rules = createRulesHarness({
+            inventory: [disabledSupercharger],
+            walk: 8,
+        });
+
+        expect(disabledSupercharger.owner.getEquipmentStatus(disabledSupercharger)).toBe('disabled');
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({
+            run: 12,
+            maxRun: 12,
+            moveImpaired: false,
+        }));
+    });
+
     it('ignores destroyed vehicle boost equipment when calculating max run MP', () => {
+        const destroyedSuperchargerCrit = crit('Supercharger', 10);
         const destroyedSupercharger = entry({
             equipment: equipment('Supercharger', ['F_MASC', 'S_SUPERCHARGER']),
-            critSlots: [crit('Supercharger', 10)],
+            critSlots: [destroyedSuperchargerCrit],
         });
         const destroyedJetBooster = entry({
             equipment: equipment('ISVTOLJetBooster', ['F_MASC', 'F_JET_BOOSTER']),
             destroyed: true,
         });
         const rules = createRulesHarness({
+            crits: [destroyedSuperchargerCrit],
             inventory: [destroyedSupercharger, destroyedJetBooster],
             walk: 8,
         });
@@ -384,7 +435,7 @@ describe('VehicleRules', () => {
         expect(rules.getEffectiveMaxDistanceForMoveMode('run', turnState(true))).toBe(16);
     });
 
-    it('keeps active destroyed VTOL Jet Booster effective run MP for the current turn', () => {
+    it('does not let an active destroyed VTOL Jet Booster provide effective run MP', () => {
         const jetBooster = entry({
             equipment: equipment('ISVTOLJetBooster', ['F_MASC', 'F_JET_BOOSTER']),
             destroyed: true,
@@ -397,7 +448,7 @@ describe('VehicleRules', () => {
         });
 
         expect(rules.getMaxDistanceForMoveMode('run')).toBe(12);
-        expect(rules.getEffectiveMaxDistanceForMoveMode('run', turnState(true))).toBe(16);
+        expect(rules.getEffectiveMaxDistanceForMoveMode('run', turnState(true))).toBe(12);
     });
 
     it('disables run movement after a flight stabilizer hit', () => {
@@ -547,16 +598,14 @@ describe('VehicleRules', () => {
             { label: 'Sensor hits', modifier: 3, weakened: true },
         ];
         expect(rules.getBaseGunnerySkill()).toBe(4);
-        const weaponState = rules.computeEntryState(weaponEntry);
-        expect(weaponState.hitMod).toBe(6);
-        expect(weaponState.hitModifierBreakdown).toEqual(expectedRangedModifiers);
-        expect(rules.getBaseGunnerySkill() + weaponState.hitMod).toBe(10);
-        expect(rules.computeEntryState(physicalEntry)).toEqual(jasmine.objectContaining({
-            hitMod: 1,
-            hitModifierBreakdown: [
-                { label: 'Commander hit', modifier: 1, weakened: true },
-            ],
-        }));
+        const weaponModifiers = rules.getEquipmentToHitModifiers(weaponEntry);
+        const weaponModifierTotal = weaponModifiers.reduce((total, modifier) => total + modifier.modifier, 0);
+        expect(weaponModifierTotal).toBe(6);
+        expect(weaponModifiers).toEqual(expectedRangedModifiers);
+        expect(rules.getBaseGunnerySkill() + weaponModifierTotal).toBe(10);
+        expect(rules.getEquipmentToHitModifiers(physicalEntry)).toEqual([
+            { label: 'Commander hit', modifier: 1, weakened: true },
+        ]);
     });
 
     it('makes drone vehicles Immobile after a commander hit disconnects them', () => {
@@ -579,14 +628,12 @@ describe('VehicleRules', () => {
         expect(rules.hasComputedCondition('disconnected')).toBeTrue();
         expect(rules.hasComputedCondition('immobile')).toBeTrue();
         expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, moveImpaired: true }));
-        expect(rules.computeEntryState(weaponEntry)).toEqual(jasmine.objectContaining({
-            hitMod: 0,
-            hitModifierBreakdown: [],
-        }));
-        expect(rules.computeEntryState(physicalEntry)).toEqual(jasmine.objectContaining({
-            hitMod: 0,
-            hitModifierBreakdown: [],
-        }));
+    const weaponModifiers = rules.getEquipmentToHitModifiers(weaponEntry);
+    const physicalModifiers = rules.getEquipmentToHitModifiers(physicalEntry);
+    expect(weaponModifiers.reduce((total, modifier) => total + modifier.modifier, 0)).toBe(0);
+    expect(weaponModifiers).toEqual([]);
+    expect(physicalModifiers.reduce((total, modifier) => total + modifier.modifier, 0)).toBe(0);
+    expect(physicalModifiers).toEqual([]);
         expect(rules.PSRModifiers().modifier).toBe(0);
     });
 
@@ -614,8 +661,8 @@ describe('VehicleRules', () => {
             inventory: [energyEntry, ballisticEntry],
         });
 
-        expect(rules.computeEntryState(energyEntry).isDisabled).toBeTrue();
-        expect(rules.computeEntryState(ballisticEntry).isDisabled).toBeFalse();
+        expect(energyEntry.owner.getEquipmentStatus(energyEntry)).toBe('disabled');
+        expect(ballisticEntry.owner.getEquipmentStatus(ballisticEntry)).toBe('available');
     });
 
     it('disables non-physical weapons at Sensor hits level four', () => {
@@ -626,8 +673,10 @@ describe('VehicleRules', () => {
             inventory: [weaponEntry, chargeEntry],
         });
 
-        expect(rules.computeEntryState(weaponEntry).isDisabled).toBeTrue();
-        expect(rules.computeEntryState(chargeEntry).isDisabled).toBeFalse();
+        expect(weaponEntry.owner.getEquipmentStatus(weaponEntry)).toBe('available');
+        expect(chargeEntry.owner.getEquipmentStatus(chargeEntry)).toBe('available');
+        expect(weaponEntry.owner.canPerformEquipmentAction(weaponEntry, 'fire')).toBeFalse();
+        expect(chargeEntry.owner.canPerformEquipmentAction(chargeEntry, 'physical-attack')).toBeTrue();
     });
 
     it('calculates charge damage for core2026 vehicles and preserves TW sheet damage', () => {
@@ -658,9 +707,12 @@ describe('VehicleRules', () => {
             moveMode: 'run',
         });
 
-        expect(rules.computeEntryState(frontWeapon).hitMod).toBe(2);
-        expect(rules.computeEntryState(rearWeapon).hitMod).toBe(0);
-        expect(rules.computeEntryState(frontRightWeapon).hitMod).toBe(2);
+        const frontModifiers = rules.getEquipmentToHitModifiers(frontWeapon);
+        const rearModifiers = rules.getEquipmentToHitModifiers(rearWeapon);
+        const frontRightModifiers = rules.getEquipmentToHitModifiers(frontRightWeapon);
+        expect(frontModifiers.reduce((total, modifier) => total + modifier.modifier, 0)).toBe(2);
+        expect(rearModifiers.reduce((total, modifier) => total + modifier.modifier, 0)).toBe(0);
+        expect(frontRightModifiers.reduce((total, modifier) => total + modifier.modifier, 0)).toBe(2);
     });
 
     it('reports stabilizer-affected weapons before movement mode is selected', () => {
@@ -672,11 +724,13 @@ describe('VehicleRules', () => {
             moveMode: null,
         });
 
-        expect(rules.computeEntryState(frontRightWeapon).hitMod).toBe(0);
-        expect(rules.computeEntryState(frontRightWeapon).hitModifierBreakdown).toContain(jasmine.objectContaining({
+        const frontRightModifiers = rules.getEquipmentToHitModifiers(frontRightWeapon);
+        const rearModifiers = rules.getEquipmentToHitModifiers(rearWeapon);
+        expect(frontRightModifiers.reduce((total, modifier) => total + modifier.modifier, 0)).toBe(0);
+        expect(frontRightModifiers).toContain(jasmine.objectContaining({
             label: 'Stabilizer Hit', modifier: 0, weakened: true,
         }));
-        expect(rules.computeEntryState(rearWeapon).hitModifierBreakdown).not.toContain(jasmine.objectContaining({
+        expect(rearModifiers).not.toContain(jasmine.objectContaining({
             label: 'Stabilizer Hit',
         }));
     });
