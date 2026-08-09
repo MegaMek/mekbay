@@ -205,6 +205,7 @@ export interface CBTForceUnitTestTurnState {
     heatDissipationBalance(): number;
     effectiveHeatDissipation(): number;
     addFiredHeat(amount: number): void;
+    markEquipmentStateChanged(): void;
 }
 
 export class CBTForceUnitTestHarness {
@@ -281,7 +282,8 @@ export class CBTForceUnitTestHarness {
             effectiveHeatDissipation: () => Math.max(0, heatDissipationBalance()),
             addFiredHeat: (amount: number) => {
                 if (Number.isFinite(amount) && amount > 0) firedHeat += amount;
-            }
+            },
+            markEquipmentStateChanged: () => {},
         };
 
         const findCurrentCriticalSlot = (snapshot: CriticalSlot): CriticalSlot | null => {
