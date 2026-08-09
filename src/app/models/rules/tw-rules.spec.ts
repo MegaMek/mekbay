@@ -26,11 +26,17 @@ let injector: Injector;
 let optionsService: OptionsService;
 
 function legActuatorCrit(id: string, name: string, loc: string, destroyed = true): CriticalSlot {
+    const slotByActuator = new Map([
+        ['hip', 0],
+        ['upper-leg', 1],
+        ['lower-leg', 2],
+        ['foot', 3],
+    ]);
     return {
         id,
         name,
         loc,
-        slot: 0,
+        slot: slotByActuator.get(id) ?? 0,
         destroyed: destroyed ? 1 : undefined,
     };
 }

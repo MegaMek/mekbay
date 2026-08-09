@@ -12,7 +12,7 @@ function createHarness(heat: number, physical = false): { rules: AeroRules; entr
         getHeat: () => ({ current: heat }),
         getInventory: () => [],
         getCritSlots: () => [],
-        isEquipmentUnavailable: () => false,
+        isEquipmentOperational: () => true,
     } as unknown as CBTForceUnit;
     const entry = {
         committedDestroyed: () => false,
@@ -27,37 +27,33 @@ function createHarness(heat: number, physical = false): { rules: AeroRules; entr
 describe('AeroRules', () => {
     it('does not apply a fire modifier below the first heat threshold', () => {
         const { rules, entry } = createHarness(7);
-        const state = rules.getEquipmentToHit(entry);
+        const modifiers = rules.getEquipmentToHitModifiers(entry);
 
-        expect(state.modifier).toBe(0);
-        expect(state.modifiers).toEqual([]);
+        expect(modifiers).toEqual([]);
     });
 
     it('includes heat as a named weakened entry-state modifier', () => {
         const { rules, entry } = createHarness(8);
-        const state = rules.getEquipmentToHit(entry);
+        const modifiers = rules.getEquipmentToHitModifiers(entry);
 
-        expect(state.modifier).toBe(1);
-        expect(state.modifiers).toEqual([
+        expect(modifiers).toEqual([
             { label: 'Heat - Fire Modifier', modifier: 1, weakened: true, kind: 'heat' }
         ]);
     });
 
     it('uses the cumulative modifier at higher heat thresholds', () => {
         const { rules, entry } = createHarness(24);
-        const state = rules.getEquipmentToHit(entry);
+        const modifiers = rules.getEquipmentToHitModifiers(entry);
 
-        expect(state.modifier).toBe(4);
-        expect(state.modifiers).toEqual([
+        expect(modifiers).toEqual([
             { label: 'Heat - Fire Modifier', modifier: 4, weakened: true, kind: 'heat' }
         ]);
     });
 
     it('does not apply heat fire modifiers to physical attacks', () => {
         const { rules, entry } = createHarness(24, true);
-        const state = rules.getEquipmentToHit(entry);
+        const modifiers = rules.getEquipmentToHitModifiers(entry);
 
-        expect(state.modifier).toBe(0);
-        expect(state.modifiers).toEqual([]);
+        expect(modifiers).toEqual([]);
     });
 });

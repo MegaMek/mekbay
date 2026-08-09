@@ -8,7 +8,7 @@ import {
     ENTRY_DISABLED_STATE_KEY,
     ENTRY_DISABLED_STATE_VALUE,
 } from '../models/rules/unit-type-rules';
-import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionHandler, type HandlerChoice, type HandlerCommandContext, type HandlerQueryContext } from '../services/equipment-interaction-registry.service';
 
 const DISABLEABLE_EQUIPMENT_FLAGS = ['F_RADICAL_HEATSINK'] as const;
 
@@ -26,20 +26,20 @@ export abstract class DisabledStateToggleHandler extends EquipmentInteractionHan
 
     override readonly priority = 10;
 
-    getChoices(equipment: MountedEquipment, _context: HandlerContext): PickerChoice[] {
+    getChoices(equipment: MountedEquipment, _context: HandlerQueryContext): HandlerChoice[] {
         const disabled = isEquipmentDisabledByFailure(equipment);
         return [{
             label: disabled ? this.disabledLabel : this.enabledLabel,
             shortLabel: disabled ? this.disabledShortLabel : this.enabledShortLabel,
             value: disabled ? 'false' : ENTRY_DISABLED_STATE_VALUE,
+            stateEdit: disabled ? 'enable' : 'disable',
             displayType: 'toggle',
-            disabled: equipment.isDestroyed(),
             active: disabled,
             tooltipType: disabled ? 'error' : undefined
         }];
     }
 
-    handleSelection(equipment: MountedEquipment, _choice: PickerChoice, context: HandlerContext): boolean {
+    handleSelection(equipment: MountedEquipment, _choice: PickerChoice, context: HandlerCommandContext): boolean {
         const disabled = isEquipmentDisabledByFailure(equipment);
         const changed = disabled
             ? equipment.deleteState(ENTRY_DISABLED_STATE_KEY)

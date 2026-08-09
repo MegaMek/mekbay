@@ -5,7 +5,6 @@
 import type { MountedEquipment } from "../models/mounted-equipment.model";
 import type { CriticalSlot } from "../models/force-serialization";
 import { VehicleRules } from "../models/rules/vehicle-rules";
-import type { MountedEquipmentToHit } from "../models/rules/unit-type-rules";
 import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 import { committedCriticalHitCount, isRepeatableMotiveHitId, MOTIVE_HIT_PIP_COUNT } from "../models/rules/vehicle-motive-hit.util";
 import { UnitSvgService } from "./unit-svg.service";
@@ -15,7 +14,6 @@ const VTOL_ROTOR_CRIT_ID = 'rotor';
 
 export class UnitSvgVehicleService extends UnitSvgService {
     private get vehicleRules(): VehicleRules { return this.unit.rules as VehicleRules; }
-    private currentEquipmentToHits: Map<MountedEquipment, MountedEquipmentToHit> | null = null;
 
     protected override updateAllDisplays() {
         if (!this.unit.svg()) return;
@@ -127,40 +125,30 @@ export class UnitSvgVehicleService extends UnitSvgService {
             }
         }
 
-        const equipmentToHits = this.vehicleRules.getEquipmentToHits();
-        this.currentEquipmentToHits = equipmentToHits;
-        try {
-            this.unit.getInventory().forEach(entry => {
+        this.unit.getInventory().forEach(entry => {
                 if (!entry.el) return;
                 if (entry.isIntrinsicPhysicalAttack()) {
                     if (entry.name === 'charge') {
                         this.renderChargeDamage(entry, this.vehicleRules.chargeDamage());
                     }
                 }
-                const toHit = equipmentToHits.get(entry);
-                if (!toHit) return;
-
-                const actionUnavailable = entry.isActionUnavailable();
+                const actionUnavailable = !entry.owner.canPerformEquipmentAction(entry, entry.isPhysicalWeapon() ? 'physical-attack' : 'fire');
                 entry.el.classList.toggle('disabledInventory', actionUnavailable);
-                const destroyed = this.vehicleRules.getEquipmentStatus(entry) === 'destroyed';
+                const destroyed = this.unit.getEquipmentStatus(entry) === 'destroyed';
                 entry.el.classList.toggle('damagedInventory', destroyed);
                 if (destroyed || actionUnavailable) entry.el.classList.remove('selected');
 
                 this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry));
-            });
-            this.renderInventoryControlSelection();
-        } finally {
-            this.currentEquipmentToHits = null;
-        }
+        });
+        this.renderInventoryControlSelection();
     }
 
     protected override resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null) {
-        const toHit = this.currentEquipmentToHits?.get(entry) ?? this.vehicleRules.getEquipmentToHit(entry);
+        const stateModifiers = this.vehicleRules.getEquipmentToHitModifiers(entry);
         const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
         return this.unit.gameRules.resolveToHit({
             subject: entry,
-            stateModifier: toHit.modifier,
-            stateModifierBreakdown: toHit.modifiers,
+            stateModifiers,
             range,
             adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
         });

@@ -24,7 +24,6 @@ import { SvgInteractionService } from './svg-interaction.service';
 import type { ZoomPanServiceInterface } from './zoom-pan.interface';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
-import { createTestEquipmentRules } from '../../testing/unit-test-helpers';
 
 type SvgInteractionServicePrivate = {
     addSvgTapHandler(
@@ -47,7 +46,7 @@ const NO_CONDITION_RULES = {
     conditionControls: [],
     crewStateControls: [],
     locationConditionControls: [],
-    ...createTestEquipmentRules(),
+    getEquipmentToHitModifiers: () => [],
     heatDissipation: () => null,
     getBaseGunnerySkill: () => 4,
     getBasePilotingSkill: () => 5,
@@ -56,16 +55,18 @@ const NO_CONDITION_RULES = {
 function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInventory: () => MountedEquipment[]; rules: typeof NO_CONDITION_RULES } {
     const unit = {
         getInventory: () => [],
-        isEquipmentUnavailable: () => false,
+        getEquipmentStatus: () => 'available',
+        isEquipmentOperational: () => true,
+        canPerformEquipmentAction: () => true,
         rules: NO_CONDITION_RULES,
         ...overrides,
     } as T & {
         getInventory: () => MountedEquipment[];
-        isEquipmentUnavailable: (entry: MountedEquipment) => boolean;
-        isEquipmentActionUnavailable?: (entry: MountedEquipment) => boolean;
+        getEquipmentStatus: (entry: MountedEquipment) => 'available' | 'disabled' | 'destroyed';
+        isEquipmentOperational: (entry: MountedEquipment) => boolean;
+        canPerformEquipmentAction: (entry: MountedEquipment) => boolean;
         rules: typeof NO_CONDITION_RULES;
     };
-    unit.isEquipmentActionUnavailable ??= entry => unit.isEquipmentUnavailable(entry);
     return unit;
 }
 
@@ -385,7 +386,6 @@ describe('SvgInteractionService', () => {
         entry.equipment?.flags.add('F_ENERGY');
         entry.equipment?.flags.add('F_LASER');
         entry.linkedWith = [module];
-        module.owner = unit;
         unit.getInventory = () => [entry, module];
         service.updateUnit(unit);
         service.setupInteractions(svg);
@@ -455,13 +455,7 @@ describe('SvgInteractionService', () => {
         svg.innerHTML = '<g class="critSlot" loc="CT" slot="0" uid="CLActiveProbe@CT#0" hittable="1"><text>Active Probe</text></g>';
         const critSlot = { id: 'CLActiveProbe@CT#0', name: 'CLActiveProbe', loc: 'CT', slot: 0 };
         const equipment = new MiscEquipment({ id: 'CLActiveProbe', name: 'Active Probe', type: 'misc', flags: ['F_BAP'] });
-        const entry = new MountedEquipment({
-            owner: undefined as any,
-            id: 'CLActiveProbe@CT#0',
-            name: 'CLActiveProbe',
-            equipment,
-            critSlots: [critSlot]
-        });
+        let entry!: MountedEquipment;
         const unit = createSvgInteractionUnit({
             id: 'unit-a',
             getUnit: () => ({ type: 'Mek' }),
@@ -469,10 +463,17 @@ describe('SvgInteractionService', () => {
             getCritSlots: () => [critSlot],
             getCritSlot: (loc: string, slot: number) => loc === 'CT' && slot === 0 ? critSlot : null,
             isInternalLocPhysicallyDestroyed: () => false,
-            isEquipmentUnavailable: () => false,
+            getEquipmentStatus: () => 'available' as const,
+            isEquipmentOperational: () => true,
             applyHitToCritSlot: jasmine.createSpy('applyHitToCritSlot')
         });
-        entry.owner = unit as any;
+        entry = new MountedEquipment({
+            owner: unit as any,
+            id: 'CLActiveProbe@CT#0',
+            name: 'CLActiveProbe',
+            equipment,
+            critSlots: [critSlot]
+        });
         const handlerChoice = {
             label: 'Active Probe is OFF',
             value: 'enabled',
@@ -487,9 +488,8 @@ describe('SvgInteractionService', () => {
 
         const pickerConfig = pickerFactory.createChoicePicker.calls.mostRecent().args[0];
         expect(registryGetChoices).toHaveBeenCalledWith(entry, jasmine.objectContaining({
-            toastService: jasmine.any(Object),
-            dialogsService: jasmine.any(Object),
-            dataService: jasmine.any(Object)
+            equipmentCatalog: jasmine.any(EquipmentRegistry),
+            choiceSurface: 'critical'
         }));
         expect(pickerConfig.values.map((choice: { label: string }) => choice.label)).toContain('Active Probe is OFF');
 
@@ -1572,16 +1572,7 @@ function createInventoryInteractionUnit(html = `
         flags: weaponType === 'ATM' ? ['F_MISSILE', 'F_ATM'] : weaponType === 'MML' ? ['F_MISSILE', 'F_MML'] : [],
         weapon: { ammoType: weaponType === 'Laser' ? 'NA' : weaponType, rackSize: 6, ranges: [3, 6, 9, 12] }
     });
-    const entry = new MountedEquipment({
-        owner: undefined as any,
-        id: 'laser',
-        name: 'laser',
-        equipment,
-        states: new Map<string, string>(),
-        el: entryEl,
-        destroyed: false,
-        linkedWith: null,
-    });
+    let entry!: MountedEquipment;
     const unit = createSvgInteractionUnit({
         id: 'unit-a',
         getInventory: () => [entry],
@@ -1601,6 +1592,16 @@ function createInventoryInteractionUnit(html = `
         }),
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
     });
+    entry = new MountedEquipment({
+        owner: unit as any,
+        id: 'laser',
+        name: 'laser',
+        equipment,
+        states: new Map<string, string>(),
+        el: entryEl,
+        destroyed: false,
+        linkedWith: null,
+    });
     const runtime = new InventoryControlRuntimeState(() => unit.getInventory());
     Object.assign(unit, {
         getInventoryControlTargets: () => runtime.getTargets(),
@@ -1608,7 +1609,8 @@ function createInventoryInteractionUnit(html = `
         getInventoryControlEntryTargetId: (entryId: string) => runtime.getEntryTargetId(entryId),
         isInventoryControlEntrySelected: (entryId: string) => runtime.isEntrySelected(entryId),
         getInventoryControlEntryRange: (entryId: string) => runtime.getEntryRange(entryId),
-        getInventoryControlEntryAmmoOption: () => undefined,
+        getInventoryControlEntryAmmoSelection: () => undefined,
+        getInventoryControlSelectedAmmo: () => null,
         getInventoryControlRules: () => ({}),
         gameRules: CORE_2026_GAME_RULES,
         allowsExtremeRangeAttacks: () => false,
@@ -1626,6 +1628,5 @@ function createInventoryInteractionUnit(html = `
         updateInventoryControlTarget: (targetId: string, patch: any) => runtime.updateTarget(targetId, patch),
         syncInventoryControlSelectionSvg: () => runtime.syncSelectionSvg()
     });
-    entry.owner = unit as any;
     return { svg, entry, unit };
 }

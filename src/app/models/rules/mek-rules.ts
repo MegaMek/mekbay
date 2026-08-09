@@ -3,11 +3,12 @@
 // Author: Drake
 
 import { computed } from '@angular/core';
-import type { CBTForceUnit } from '../cbt-force-unit.model';
+import type { CBTForceUnit, EquipmentAction } from '../cbt-force-unit.model';
 import type { CrewMember, SkillType } from '../crew-member.model';
 import type { MountedEquipment } from '../mounted-equipment.model';
 import type { CriticalSlot, RuleCheckOutcome } from '../force-serialization';
-import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, sortPSRModifiers, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type ChargeDamage, type LocationConditionControl, type PSRCheck, type MountedEquipmentStatus, type MountedEquipmentToHit, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitRuleModifier } from './unit-type-rules';
+import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, sortPSRModifiers, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type ChargeDamage, type LocationConditionControl, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitRuleModifier } from './unit-type-rules';
+import type { EquipmentStatus, EquipmentStatusFacts } from '../equipment-status.model';
 import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
 import type { MotiveModes } from '../motiveModes.model';
@@ -24,7 +25,6 @@ import {
 
 export { LEG_LOCATIONS } from '../entity/types';
 import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
-import { WeaponEquipment } from '../equipment.model';
 import type { ToHitModifierBreakdownEntry } from './game-rules';
 import { uuidv7 } from '../../utils/uuid.util';
 
@@ -262,7 +262,7 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     private isCritUnavailable(slot: CriticalSlot): boolean {
-        return this.unit.isEquipmentUnavailable(slot);
+        return !this.unit.isEquipmentOperational(slot);
     }
 
     private isCritStructurallyDestroyed(slot: CriticalSlot): boolean {
@@ -884,8 +884,6 @@ export class MekRules extends UnitTypeRulesBase {
         const cockpitLoc = critSlots.find(slot => this.isNamedCrit(slot, "Cockpit"))?.loc ?? 'HD';
         const destroyedSensorsCountInHD = critSlots.filter(slot => slot.loc === 'HD' && this.isNamedCrit(slot, 'Sensor') && this.isCritUnavailable(slot)).length;
         const destroyedSensorsCount = critSlots.filter(slot => this.isNamedCrit(slot, 'Sensor') && this.isCritUnavailable(slot)).length;
-        const hasTargetingComputer = critSlots.some(slot => this.isNamedCrit(slot, 'Targeting Computer'));
-        const destroyedTargetingComputers = critSlots.filter(slot => this.isNamedCrit(slot, 'Targeting Computer') && this.isCritUnavailable(slot)).length;
 
         const internalLocations = new Set<string>(this.unit.locations?.internal?.keys() || []);
 
@@ -1005,8 +1003,6 @@ export class MekRules extends UnitTypeRulesBase {
             cockpitLoc,
             destroyedSensorsCountInHD,
             destroyedSensorsCount,
-            hasTargetingComputer,
-            destroyedTargetingComputers,
             destroyedLegAES,
             hasLegAES,
             hasFunctionalLegAES,
@@ -1757,10 +1753,10 @@ export class MekRules extends UnitTypeRulesBase {
         location?: string,
         ignoreMyomer = false,
     ): { damage: number; text: string; weakened: boolean } {
-        const effect = this.unit.getInventoryControlRules().applyPhysicalDamageEffects?.(entry, {
+        const effect = this.unit.getEffectivePhysicalDamageEffect(entry, {
             baseDamage,
             ignoreMyomer,
-        }) ?? { baseDamage, ignoreMyomer };
+        });
         const { damage, maxDamage } = this.computeMeleeDamage(
             effect.baseDamage,
             attackType,
@@ -1823,74 +1819,46 @@ export class MekRules extends UnitTypeRulesBase {
         };
     });
 
-    // ── Per-Entry Inventory State ─────────────────────────────────────────────
-
-    /** Compute to-hit state for all inventory entries in one reactive pass. */
-    private readonly equipmentToHits = computed<Map<MountedEquipment, MountedEquipmentToHit>>(() => {
-        const entries = this.unit.getInventory();
-        const result = new Map<MountedEquipment, MountedEquipmentToHit>();
-        for (const entry of entries) {
-            result.set(entry, this.getEquipmentToHit(entry));
-        }
-        return result;
-    });
-
-    override getEquipmentToHits(): Map<MountedEquipment, MountedEquipmentToHit> {
-        return this.equipmentToHits();
-    }
-
-    private isEntryDestroyedByCriticalDamage(entry: MountedEquipment): boolean {
-        const destroyedCritSlots = this.entryCriticalSlots(entry).filter(slot => this.isCritStructurallyDestroyed(slot)).length;
-        return destroyedCritSlots >= this.criticalDamageDestructionThreshold(entry);
-    }
-
-    protected criticalDamageDestructionThreshold(entry: MountedEquipment): number {
-        const equipment = entry.equipment;
-        const isAutocannon = equipment instanceof WeaponEquipment && equipment.hasFlag('F_AC');
-        return isAutocannon ? 2 : 1;
-    }
-
-    /** Resolve operational status without modifier-producing equipment interactions. */
-    override getEquipmentStatus(entry: MountedEquipment): MountedEquipmentStatus {
-        const physicallyDestroyed = this.entryInPhysicallyDestroyedLocation(entry);
-        const functionallyDestroyed = this.entryInFunctionallyDestroyedLocation(entry);
-        if (entry.committedDestroyed() || physicallyDestroyed || this.isEntryDestroyedByCriticalDamage(entry)) {
-            return 'destroyed';
-        }
-        let disabled = functionallyDestroyed || this.isEntryStateDisabled(entry);
+    override canPerformEquipmentAction(entry: MountedEquipment, action: EquipmentAction): boolean {
+        if (action === 'fire') return this.fireControl()?.canFire ?? true;
+        if (action !== 'physical-attack') return true;
 
         const physical = this.physicalCombat();
-        const fire = this.fireControl();
-        if (!physical || !fire) return disabled ? 'disabled' : 'available';
-
+        if (!physical) return true;
         if (entry.isIntrinsicPhysicalAttack()) {
             switch (entry.name.toLowerCase()) {
-                case 'punch':
-                    const loc = Array.from(entry.locations!)[0] as ArmLocation;
-                    if (loc in physical.canPunch && !physical.canPunch[loc]) disabled = true;
-                    break;
+                case 'punch': {
+                    const loc = Array.from(entry.locations ?? [])[0] as ArmLocation | undefined;
+                    return loc === undefined || !(loc in physical.canPunch) || physical.canPunch[loc] === true;
+                }
                 case 'club':
-                    if (!physical.canClub) disabled = true;
-                    break;
+                    return physical.canClub === true;
                 case 'push':
-                    if (!physical.canPush) disabled = true;
-                    break;
+                    return physical.canPush;
                 case 'kick [talons]':
                 case 'kick':
-                    if (!physical.canKick) disabled = true;
-                    break;
+                    return physical.canKick;
+                default:
+                    return true;
             }
-        } else if (entry.isPhysicalWeapon()) {
-            entry.locations?.forEach(loc => {
-                if ((loc in physical.canPhysWeapon) && !physical.canPhysWeapon[loc as ArmLocation]) disabled = true;
-            });
-        } else if (!fire.canFire) {
-            disabled = true;
         }
-        return disabled ? 'disabled' : 'available';
+        if (!entry.isPhysicalWeapon()) return true;
+        return Array.from(entry.locations ?? []).every(location =>
+            !(location in physical.canPhysWeapon) || physical.canPhysWeapon[location as ArmLocation] === true
+        );
     }
 
-    protected override getEquipmentToHitModifiers(entry: MountedEquipment): readonly ToHitModifierBreakdownEntry[] {
+    override getMountedCriticalStatusContribution(facts: EquipmentStatusFacts): EquipmentStatus {
+        const destroyedCriticalCount = facts.criticals.filter(critical => critical.status === 'destroyed').length;
+        const threshold = this.mountedCriticalDamageDestructionThreshold(facts);
+        return destroyedCriticalCount >= threshold ? 'destroyed' : 'available';
+    }
+
+    protected mountedCriticalDamageDestructionThreshold(facts: EquipmentStatusFacts): number {
+        return facts.equipmentFlags.has('F_AC') ? 2 : 1;
+    }
+
+    override getEquipmentToHitModifiers(entry: MountedEquipment): readonly ToHitModifierBreakdownEntry[] {
         const hitModifierBreakdown: ToHitModifierBreakdownEntry[] = [];
         const physical = this.physicalCombat();
         const fire = this.fireControl();
@@ -1985,13 +1953,7 @@ export class MekRules extends UnitTypeRulesBase {
                 }
             });
             const tarcompWeapon = entry.parent ?? entry;
-            if (systemsStatus.hasTargetingComputer && this.isTargetingComputerEligible(tarcompWeapon)) {
-                if (systemsStatus.destroyedTargetingComputers === 0) {
-                    hitModifierBreakdown.push({ label: 'Targeting Computer', modifier: -1 });
-                } else {
-                    hitModifierBreakdown.push({ label: 'Targeting Computer Destroyed', modifier: 0, weakened: true });
-                }
-            }
+            hitModifierBreakdown.push(...this.getMountedTargetingComputerModifiers(tarcompWeapon));
         }
         return [...hitModifierBreakdown, ...this.getUnitEquipmentToHitModifiers(entry)];
     }

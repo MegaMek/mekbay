@@ -90,13 +90,11 @@ export class UnitSvgInfantryService extends UnitSvgService {
     protected override updateInventory() {
         const svg = this.unit.svg();
         if (!svg) return;
-        // Delegate state computation to the rules layer (handles pending damage too)
-        this.infantryRules.evaluateInventoryDestruction();
         super.updateInventory();
         this.updateFieldGunDisplay();
         this.unit.getInventory().forEach(entry => {
             if (!entry.el?.getAttribute('SSW')) return;
-            if (entry.isDestroyed()) {
+            if (this.unit.getEquipmentStatus(entry) === 'destroyed') {
                 entry.el.classList.add('damagedInventory');
                 entry.el.classList.remove('interactive');
                 entry.el.classList.remove('selected');

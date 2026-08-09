@@ -4,13 +4,25 @@
 
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
-import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
-import { createTestEquipmentRules } from '../testing/unit-test-helpers';
+import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry, type ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryTargetNumberInput } from './inventory-target-number.util';
 import { inventoryTargetNumberBreakdown, inventoryTargetNumberState, inventoryTargetRangeSelection } from './inventory-target-number.util';
 
+function toHitResolution(
+    value: HitModifier = 0,
+    modifierBreakdown: readonly ToHitModifierBreakdownEntry[] = []
+): ToHitResolution {
+    return {
+        profile: typeof value === 'number' ? [value] : [],
+        value,
+        changed: false,
+        weakened: modifierBreakdown.some(entry => entry.weakened === true),
+        modifierBreakdown,
+    };
+}
+
 function artilleryInput(distance: number, gameRules: CBTGameRules = CORE_2026_GAME_RULES): InventoryTargetNumberInput {
-    const owner = { rules: createTestEquipmentRules() } as never;
+    const owner = {} as never;
     const equipment = new WeaponEquipment({
         id: 'ArrowIV',
         name: 'Arrow IV',
@@ -34,7 +46,7 @@ function artilleryInput(distance: number, gameRules: CBTGameRules = CORE_2026_GA
         gunnerySkill: 4,
         pilotingSkill: 5,
         attackModifierBreakdown: [],
-        hitModifier: 0,
+        hitResolution: toHitResolution(),
         gameRules,
     };
 }
@@ -47,7 +59,6 @@ function aeroInput(
 ): InventoryTargetNumberInput {
     const owner = {
         getUnit: () => ({ type: 'Aero' }),
-        rules: createTestEquipmentRules()
     } as never;
     const equipment = new WeaponEquipment({
         id: 'AeroWeapon',
@@ -71,12 +82,12 @@ function aeroInput(
         gunnerySkill: 4,
         pilotingSkill: 5,
         attackModifierBreakdown: [],
-        hitModifier: 0,
+        hitResolution: toHitResolution(),
     };
 }
 
 function c3LaserInput(actualDistance: number, c3Distance: number, allowExtremeRange = false): InventoryTargetNumberInput {
-    const owner = { rules: createTestEquipmentRules() } as never;
+    const owner = {} as never;
     const equipment = new WeaponEquipment({
         id: 'ERLargeLaser',
         name: 'ER Large Laser',
@@ -93,7 +104,7 @@ function c3LaserInput(actualDistance: number, c3Distance: number, allowExtremeRa
         gunnerySkill: 4,
         pilotingSkill: 5,
         attackModifierBreakdown: [],
-        hitModifier: 0,
+        hitResolution: toHitResolution(),
         c3DegradationSource: 'unit',
         allowExtremeRange,
         gameRules: CORE_2026_GAME_RULES,
@@ -338,24 +349,23 @@ describe('inventory target number rules profiles', () => {
     });
 
     it('preserves typed nonnumeric hit outcomes', () => {
-        expect(inventoryTargetNumberState({ ...artilleryInput(8), hitModifier: 'Vs' }).text).toBe('Vs');
-        expect(inventoryTargetNumberState({ ...artilleryInput(8), hitModifier: '*' }).text).toBe('*');
-        expect(inventoryTargetNumberState({ ...artilleryInput(8), hitModifier: null }).text).toBe('');
+        expect(inventoryTargetNumberState({ ...artilleryInput(8), hitResolution: toHitResolution('Vs') }).text).toBe('Vs');
+        expect(inventoryTargetNumberState({ ...artilleryInput(8), hitResolution: toHitResolution('*') }).text).toBe('*');
+        expect(inventoryTargetNumberState({ ...artilleryInput(8), hitResolution: toHitResolution(null) }).text).toBe('');
     });
 
     it('keeps targets beyond long range out of range before resolving hit state', () => {
-        expect(inventoryTargetNumberState({ ...artilleryInput(31), hitModifier: 'Vs' }).text).toBe('X');
+        expect(inventoryTargetNumberState({ ...artilleryInput(31), hitResolution: toHitResolution('Vs') }).text).toBe('X');
     });
 
     it('renders identified hit modifiers as separate lines', () => {
         const state = inventoryTargetNumberState({
             ...artilleryInput(8),
             selectedAmmo: null,
-            hitModifier: -2,
-            hitModifierBreakdown: [
+            hitResolution: toHitResolution(-2, [
                 { label: 'ER Medium Laser', modifier: -1 },
                 { label: 'Targeting Computer', modifier: -1 }
-            ]
+            ])
         });
 
         expect(state.breakdown?.total).toBe(2);
@@ -368,8 +378,7 @@ describe('inventory target number rules profiles', () => {
         const state = inventoryTargetNumberState({
             ...artilleryInput(8),
             selectedAmmo: null,
-            hitModifier: 0,
-            hitModifierBreakdown: [{ label: 'Targeting Computer Destroyed', modifier: 0, weakened: true }]
+            hitResolution: toHitResolution(0, [{ label: 'Targeting Computer Destroyed', modifier: 0, weakened: true }])
         });
 
         expect(state.breakdown?.total).toBe(4);
@@ -378,28 +387,27 @@ describe('inventory target number rules profiles', () => {
         }));
     });
 
-    it('falls back to the generic label when source totals are incomplete', () => {
+    it('keeps the structured breakdown authoritative instead of synthesizing a generic label', () => {
         const state = inventoryTargetNumberState({
             ...artilleryInput(8),
             selectedAmmo: null,
-            hitModifier: 2,
-            hitModifierBreakdown: [{ label: 'Incomplete', modifier: 1 }]
+            hitResolution: toHitResolution(2, [{ label: 'Damaged Fire Control', modifier: 1, weakened: true }])
         });
 
-        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({ label: 'Hit Modifier', value: '+2' }));
-        expect(state.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'Incomplete' }));
+        expect(state.breakdown?.total).toBe(5);
+        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({ label: 'Damaged Fire Control', value: '+1' }));
+        expect(state.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'Hit Modifier' }));
     });
 
     it('orders regular terms before weakened terms and heat last', () => {
         const state = inventoryTargetNumberState({
             ...artilleryInput(8),
             selectedAmmo: null,
-            hitModifier: 0,
-            hitModifierBreakdown: [
+            hitResolution: toHitResolution(2, [
                 { label: 'Damaged Fire Control', modifier: 1, weakened: true },
-                { label: 'Targeting Computer', modifier: -1 }
-            ],
-            heatFireModifier: 2
+                { label: 'Targeting Computer', modifier: -1 },
+                { label: 'Heat - Fire Modifier', modifier: 2, weakened: true, kind: 'heat' }
+            ])
         });
 
         expect(state.breakdown?.lines.map(line => line.label ?? (line.isBreak ? 'BREAK' : ''))).toEqual([

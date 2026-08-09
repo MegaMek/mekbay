@@ -96,8 +96,51 @@ export interface InventoryControlRuntimeSnapshot {
 export interface InventoryControlRuntimeEntryState {
     selected: boolean;
     range?: InventoryControlRuntimeRangeKey;
-    ammoOption?: string;
+    ammoSelection?: InventoryControlRuntimeAmmoSelection;
     targetId?: InventoryControlRuntimeTargetId;
+}
+
+export interface InventoryControlRuntimeAmmoSelection {
+    readonly selectedProfileId: string | null;
+    readonly preferredSourceOptionId: string | null;
+}
+
+export interface InventoryControlRuntimeAmmoOptionIdentity {
+    readonly id: string;
+    readonly profileId: string;
+    readonly usable: boolean;
+}
+
+export interface InventoryControlRuntimeAmmoProfileIdentity {
+    readonly profileId: string;
+}
+
+export function reconcileInventoryControlRuntimeAmmoSelection(
+    selection: InventoryControlRuntimeAmmoSelection | undefined,
+    sourceOptions: readonly InventoryControlRuntimeAmmoOptionIdentity[],
+    profileOptions: readonly InventoryControlRuntimeAmmoProfileIdentity[],
+): InventoryControlRuntimeAmmoSelection | undefined {
+    if (!selection || profileOptions.length === 0) return undefined;
+
+    const preferredSource = selection.preferredSourceOptionId
+        ? sourceOptions.find(option => option.id === selection.preferredSourceOptionId)
+        : undefined;
+    const persistedProfileId = selection.selectedProfileId
+        && profileOptions.some(option => option.profileId === selection.selectedProfileId)
+        ? selection.selectedProfileId
+        : null;
+    const preferredProfileId = preferredSource
+        && profileOptions.some(option => option.profileId === preferredSource.profileId)
+        ? preferredSource.profileId
+        : null;
+    const selectedProfileId = persistedProfileId ?? preferredProfileId ?? profileOptions[0].profileId;
+
+    return {
+        selectedProfileId,
+        preferredSourceOptionId: preferredSource?.profileId === selectedProfileId && preferredSource.usable
+            ? preferredSource.id
+            : null,
+    };
 }
 
 export function getInventoryControlTargetLetter(index: number): string {
@@ -127,7 +170,11 @@ export class InventoryControlRuntimeState {
 
     constructor(
         private readonly getInventory: () => MountedEquipment[],
-        private readonly isTargetValid: (targetId: InventoryControlRuntimeTargetId) => boolean = targetId => this.targetsMap().has(targetId)
+        private readonly isTargetValid: (targetId: InventoryControlRuntimeTargetId) => boolean = targetId => this.targetsMap().has(targetId),
+        private readonly reconcileAmmoSelection: (
+            entry: MountedEquipment,
+            selection: InventoryControlRuntimeAmmoSelection,
+        ) => InventoryControlRuntimeAmmoSelection | undefined = (_entry, selection) => selection,
     ) {}
 
     getSnapshot(): InventoryControlRuntimeSnapshot {
@@ -150,7 +197,7 @@ export class InventoryControlRuntimeState {
 
     getEntryState(entryId: string): InventoryControlRuntimeEntryState | undefined {
         const entryState = this.entryStatesState().get(entryId);
-        return entryState ? { ...entryState } : undefined;
+        return entryState ? this.cloneEntryState(entryState) : undefined;
     }
 
     getEntryTargetId(entryId: string): InventoryControlRuntimeTargetId | undefined {
@@ -165,8 +212,9 @@ export class InventoryControlRuntimeState {
         return this.entryStatesState().get(entryId)?.range;
     }
 
-    getEntryAmmoOption(entryId: string): string | undefined {
-        return this.entryStatesState().get(entryId)?.ammoOption;
+    getEntryAmmoSelection(entryId: string): InventoryControlRuntimeAmmoSelection | undefined {
+        const selection = this.entryStatesState().get(entryId)?.ammoSelection;
+        return selection ? { ...selection } : undefined;
     }
 
     setEntrySelected(entry: MountedEquipment, selected: boolean): void {
@@ -197,9 +245,9 @@ export class InventoryControlRuntimeState {
         this.setEntryRange(entry, !forceSelected && selected ? null : range);
     }
 
-    setEntryAmmoOption(entryId: string, optionId: string): void {
+    setEntryAmmoSelection(entryId: string, selection: InventoryControlRuntimeAmmoSelection): void {
         this.updateEntryState(entryId, entryState => {
-            entryState.ammoOption = optionId;
+            entryState.ammoSelection = { ...selection };
         });
     }
 
@@ -327,6 +375,25 @@ export class InventoryControlRuntimeState {
                 }
             }
         });
+        this.reconcileAmmoSelections();
+    }
+
+    reconcileAmmoSelections(): void {
+        const entriesById = new Map(this.getInventory().map(entry => [entry.id, entry]));
+        this.updateEntryStates(entryStates => {
+            for (const [entryId, entryState] of entryStates) {
+                if (!entryState.ammoSelection) continue;
+                const entry = entriesById.get(entryId);
+                const selection = entry
+                    ? this.reconcileAmmoSelection(entry, entryState.ammoSelection)
+                    : undefined;
+                if (selection) {
+                    entryState.ammoSelection = { ...selection };
+                } else {
+                    delete entryState.ammoSelection;
+                }
+            }
+        });
     }
 
     markInventoryViewChanged(): void {
@@ -378,12 +445,22 @@ export class InventoryControlRuntimeState {
         if (entryState.targetId) {
             delete entryState.range;
         }
-        if (!entryState.selected && entryState.ammoOption === undefined) return null;
-        return { ...entryState };
+        if (!entryState.selected && entryState.ammoSelection === undefined) return null;
+        return this.cloneEntryState(entryState);
     }
 
     private cloneEntryStates(entryStates: Map<string, InventoryControlRuntimeEntryState>): Map<string, InventoryControlRuntimeEntryState> {
-        return new Map(Array.from(entryStates, ([entryId, entryState]) => [entryId, { ...entryState }]));
+        return new Map(Array.from(entryStates, ([entryId, entryState]) => [
+            entryId,
+            this.cloneEntryState(entryState),
+        ]));
+    }
+
+    private cloneEntryState(entryState: InventoryControlRuntimeEntryState): InventoryControlRuntimeEntryState {
+        return {
+            ...entryState,
+            ...(entryState.ammoSelection && { ammoSelection: { ...entryState.ammoSelection } }),
+        };
     }
 
     private cloneTarget(target: InventoryControlRuntimeTarget): InventoryControlRuntimeTarget {

@@ -17,7 +17,7 @@ import {
 } from '../models/c3-emergency-master.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { Force } from '../models/force.model';
-import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionHandler, type HandlerCommandContext, type HandlerNotifications, type HandlerQueryContext } from '../services/equipment-interaction-registry.service';
 
 export const C3_EMERGENCY_MASTER_HANDLER_ID = 'c3-emergency-master-handler';
 export const C3EM_TOGGLE_CHOICE_VALUE = 'c3em-emergency';
@@ -51,10 +51,9 @@ export class C3EmergencyMasterHandler extends EquipmentInteractionHandler {
         return equipment.owner.force.c3Network().emergencyMasterStatus(equipment);
     }
 
-    getChoices(equipment: MountedEquipment, _context: HandlerContext): PickerChoice[] {
+    getChoices(equipment: MountedEquipment, _context: HandlerQueryContext): PickerChoice[] {
         const turns = C3EmergencyMasterHandler.operatingTurns(equipment);
         const status = C3EmergencyMasterHandler.status(equipment);
-        const unavailable = equipment.owner.readOnly() || equipment.isUnavailable();
         const track = TRACK_LABELS.map((label, index): PickerChoice => {
             const sequenceValue = index + 1;
             const friedChoice = sequenceValue === C3EM_FRIED_SEQUENCE_VALUE;
@@ -64,7 +63,6 @@ export class C3EmergencyMasterHandler extends EquipmentInteractionHandler {
                 shortLabel: label,
                 value: sequenceValue,
                 displayType: 'toggle',
-                disabled: unavailable,
                 active: friedChoice ? current : !isC3EmergencyMasterFried(equipment) && sequenceValue <= turns,
                 selectionTone: current && (friedChoice || status === 'active') ? 'selected' : 'muted',
                 colors: friedChoice ? FRIED_COLORS : TRACK_COLORS,
@@ -76,7 +74,7 @@ export class C3EmergencyMasterHandler extends EquipmentInteractionHandler {
             shortLabel: 'EMERGENCY',
             value: C3EM_TOGGLE_CHOICE_VALUE,
             displayType: 'toggle',
-            disabled: unavailable || isC3EmergencyMasterFried(equipment),
+            disabled: isC3EmergencyMasterFried(equipment),
             active: status === 'active' || status === 'standby',
             selectionTone: 'selected',
             colors: EMERGENCY_COLORS,
@@ -84,8 +82,7 @@ export class C3EmergencyMasterHandler extends EquipmentInteractionHandler {
         }];
     }
 
-    handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): boolean {
-        if (equipment.owner.readOnly() || equipment.isUnavailable()) return true;
+    handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerCommandContext): boolean {
         if (choice.value === C3EM_TOGGLE_CHOICE_VALUE && isC3EmergencyMasterFried(equipment)) return true;
         const status = C3EmergencyMasterHandler.status(equipment);
         let changed: boolean;
@@ -115,7 +112,7 @@ export class C3EmergencyMasterHandler extends EquipmentInteractionHandler {
         return true;
     }
 
-    override onEndTurn(equipment: MountedEquipment, context: HandlerContext): void {
+    override onEndTurn(equipment: MountedEquipment, notifications: HandlerNotifications): void {
         if (C3EmergencyMasterHandler.status(equipment) !== 'active') return;
         const nextTurns = C3EmergencyMasterHandler.operatingTurns(equipment) + 1;
         if (!this.setOperatingTurns(equipment, nextTurns)) return;
@@ -123,13 +120,13 @@ export class C3EmergencyMasterHandler extends EquipmentInteractionHandler {
             equipment.setState(C3EM_MODE_STATE_KEY, 'off');
         }
         equipment.owner.setInventoryEntry(equipment);
-        context.toastService.showToast(
+        notifications.showToast(
             `${equipment.owner.getNotificationDisplayName()}: ${equipment.equipment?.name || equipment.name} ${this.statusLabel(equipment)}`,
             nextTurns === C3EM_FRIED_SEQUENCE_VALUE ? 'error' : 'info'
         );
     }
 
-    override onForceRuntimeChanged(force: Force, context: HandlerContext): void {
+    override onForceRuntimeChanged(force: Force, notifications: HandlerNotifications): void {
         const network = force.c3Network();
         const equipmentByKey = new Map<string, MountedEquipment>();
         const statuses = force.units().flatMap(unit => {
@@ -156,7 +153,7 @@ export class C3EmergencyMasterHandler extends EquipmentInteractionHandler {
                 equipment.owner.setInventoryEntry(equipment);
             }
             if (!activatedKeys.has(key)) continue;
-            context.toastService.showToast(
+            notifications.showToast(
                 `${equipment.owner.getNotificationDisplayName()}: ${equipment.equipment?.name || equipment.name} EMERGENCY active`,
                 'info',
                 `c3em-activation-${force.instanceId() ?? force.name}-${key}`

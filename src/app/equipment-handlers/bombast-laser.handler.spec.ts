@@ -4,11 +4,18 @@
 
 import type { PickerChoice } from '../components/picker/picker.interface';
 import { MiscEquipment, WeaponEquipment, type WeaponDamage } from '../models/equipment.model';
+import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
 import type { WeaponType } from '../models/weapon-types.model';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
-import { createTestEquipmentRules } from '../testing/unit-test-helpers';
-import { EquipmentInteractionRegistry, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import type { DialogsService } from '../services/dialogs.service';
+import {
+    createHandlerCommandContext,
+    createHandlerQueryContext,
+    EquipmentInteractionRegistry,
+    type HandlerCommandContext,
+} from '../services/equipment-interaction-registry.service';
+import type { ToastService } from '../services/toast.service';
 import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
 import {
     BOMBAST_LASER_CHARGED_COLOR,
@@ -28,13 +35,11 @@ import {
 function owner(gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
     return {
         gameRules,
+        readOnly: () => false,
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        isEquipmentActionUnavailable: jasmine.createSpy('isEquipmentActionUnavailable').and.returnValue(false),
-        rules: createTestEquipmentRules({
-            getEquipmentStatus: (entry: MountedEquipment) => (
-                entry.committedDestroyed() ? 'destroyed' : 'available'
-            )
-        })
+        canPerformEquipmentAction: (entry: MountedEquipment) => !entry.committedDestroyed(),
+        getEquipmentStatus: (entry: MountedEquipment) => entry.committedDestroyed() ? 'destroyed' : 'available',
+        isEquipmentOperational: (entry: MountedEquipment) => !entry.committedDestroyed(),
     } as never;
 }
 
@@ -60,24 +65,37 @@ function bombastLaser(
     });
 }
 
-function context(): HandlerContext {
+const queryContext = createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY);
+
+function commandContext(toastService = jasmine.createSpyObj<ToastService>('ToastService', ['showToast'])): HandlerCommandContext {
+    return createHandlerCommandContext(
+        EMPTY_EQUIPMENT_REGISTRY,
+        toastService,
+        jasmine.createSpyObj<DialogsService>('DialogsService', ['createDialog']),
+    );
+}
+
+function contexts() {
+    const toastService = jasmine.createSpyObj<ToastService>('ToastService', ['showToast']);
     return {
-        toastService: { showToast: jasmine.createSpy('showToast') }
-    } as unknown as HandlerContext;
+        query: queryContext,
+        command: commandContext(toastService),
+        toastService,
+    };
 }
 
 const damageContext = {} as never;
 const baseDamage: WeaponDamage = { values: [12], maximum: 12 };
 
-function select(handler: BombastLaserHandler, entry: MountedEquipment, value: string, handlerContext = context()): void {
-    handler.handleSelection(entry, { value } as PickerChoice, handlerContext);
+function select(handler: BombastLaserHandler, entry: MountedEquipment, value: string, context = commandContext()): void {
+    handler.handleSelection(entry, { value } as PickerChoice, context);
 }
 
 describe('BombastLaserHandler', () => {
     const handler = new BombastLaserHandler();
 
     it('offers the three Core damage levels and a charge control', () => {
-        const choices = handler.getChoices(bombastLaser(), context());
+        const choices = handler.getChoices(bombastLaser(), queryContext);
 
         expect(choices[0]).toEqual(jasmine.objectContaining({
             label: 'Mode',
@@ -130,9 +148,9 @@ describe('BombastLaserHandler', () => {
 
         for (const profile of profiles) {
             const entry = bombastLaser(CORE_2026_GAME_RULES, new Map([[INVENTORY_CONTROL_MODE_STATE, profile.mode]]));
-            expect(handler.applyInventoryControlDamageEffects(entry, baseDamage, damageContext, context()))
+            expect(handler.applyInventoryControlDamageEffects(entry, baseDamage, damageContext, queryContext))
                 .toEqual({ values: [profile.damage], maximum: profile.damage });
-            expect(handler.applyInventoryControlHeatEffects(entry, { value: 12, weakened: false }, context()))
+            expect(handler.applyInventoryControlHeatEffects(entry, { value: 12, weakened: false }, queryContext))
                 .toEqual({ value: profile.heat, weakened: false });
         }
         expect(baseDamage).toEqual({ values: [12], maximum: 12 });
@@ -144,7 +162,7 @@ describe('BombastLaserHandler', () => {
         ]));
         const rangedDamage: WeaponDamage = { values: [12, 10, 8], maximum: 12 };
 
-        expect(handler.applyInventoryControlDamageEffects(entry, rangedDamage, damageContext, context())).toEqual({
+        expect(handler.applyInventoryControlDamageEffects(entry, rangedDamage, damageContext, queryContext)).toEqual({
             values: [8, 8, 8],
             maximum: 8
         });
@@ -161,11 +179,11 @@ describe('BombastLaserHandler', () => {
 
         expect(handler.getToHitAdjustments(bombastLaser(CORE_2026_GAME_RULES, new Map([
             [INVENTORY_CONTROL_MODE_STATE, BOMBAST_LASER_DAMAGE_8_MODE]
-        ])), {}, context())).toEqual([]);
-        expect(handler.getToHitAdjustments(damage12, {}, context())).toEqual([{
+        ])), {}, queryContext)).toEqual([]);
+        expect(handler.getToHitAdjustments(damage12, {}, queryContext)).toEqual([{
             kind: 'replace-base', value: 1, label: 'Bombast (Damage 12)'
         }]);
-        expect(handler.getToHitAdjustments(damage16, {}, context())).toEqual([{
+        expect(handler.getToHitAdjustments(damage16, {}, queryContext)).toEqual([{
             kind: 'replace-base', value: 2, label: 'Bombast (Damage 16)'
         }]);
     });
@@ -178,7 +196,7 @@ describe('BombastLaserHandler', () => {
             const entry = bombastLaser(CORE_2026_GAME_RULES, new Map([[INVENTORY_CONTROL_MODE_STATE, mode]]));
             const resolution = CORE_2026_GAME_RULES.resolveToHit({
                 subject: entry,
-                adjustments: handler.getToHitAdjustments(entry, {}, context())
+                adjustments: handler.getToHitAdjustments(entry, {}, queryContext)
             });
 
             expect(resolution.value).toBe(expected);
@@ -197,25 +215,25 @@ describe('BombastLaserHandler', () => {
                 [BOMBAST_LASER_CHARGE_STATE_KEY, BOMBAST_LASER_CHARGED_STATE]
             ]));
 
-            expect(handler.getToHitAdjustments(entry, {}, context())).toEqual([]);
+            expect(handler.getToHitAdjustments(entry, {}, queryContext)).toEqual([]);
         }
     });
 
     it('charges for one turn, blocks firing, and becomes charged at end turn', () => {
         const entry = bombastLaser();
-        const handlerContext = context();
+        const testContexts = contexts();
 
-        select(handler, entry, BOMBAST_LASER_CHARGING_STATE, handlerContext);
+        select(handler, entry, BOMBAST_LASER_CHARGING_STATE, testContexts.command);
 
         expect(entry.states.get(BOMBAST_LASER_CHARGE_STATE_KEY)).toBe(BOMBAST_LASER_CHARGING_STATE);
-        expect(handler.isInventoryControlSelectable(entry, handlerContext)).toBeFalse();
-        expect(handlerContext.toastService.showToast).toHaveBeenCalledWith('Bombast Laser charging', 'info');
+        expect(handler.isInventoryControlSelectable(entry, testContexts.query)).toBeFalse();
+        expect(testContexts.toastService.showToast).toHaveBeenCalledWith('Bombast Laser charging', 'info');
 
-        handler.onEndTurn(entry, handlerContext);
+        handler.onEndTurn(entry);
 
         expect(entry.states.get(BOMBAST_LASER_CHARGE_STATE_KEY)).toBe(BOMBAST_LASER_CHARGED_STATE);
-        expect(handler.isInventoryControlSelectable(entry, handlerContext)).toBeNull();
-        expect(handler.getChoices(entry, handlerContext)[1]).toEqual(jasmine.objectContaining({
+        expect(handler.isInventoryControlSelectable(entry, testContexts.query)).toBeNull();
+        expect(handler.getChoices(entry, testContexts.query)[1]).toEqual(jasmine.objectContaining({
             label: 'Laser Charged!',
             shortLabel: 'Charged!',
             value: 'discharged',
@@ -233,35 +251,35 @@ describe('BombastLaserHandler', () => {
         ]));
         const types = new Set<WeaponType>(['DE', 'V']);
 
-        expect(handler.applyInventoryControlWeaponTypes(entry, types, context()))
+        expect(handler.applyInventoryControlWeaponTypes(entry, types, queryContext))
             .toEqual(new Set<WeaponType>(['DE', 'V', 'X']));
         expect(types).toEqual(new Set<WeaponType>(['DE', 'V']));
 
-        handler.afterInventoryControlFire(entry, context());
+        handler.afterInventoryControlFire(entry);
 
         expect(entry.states.has(BOMBAST_LASER_CHARGE_STATE_KEY)).toBeFalse();
         expect(entry.states.get(BOMBAST_LASER_FIRED_STATE_KEY)).toBe('1');
-        expect(handler.applyInventoryControlWeaponTypes(entry, types, context())).toBe(types);
+        expect(handler.applyInventoryControlWeaponTypes(entry, types, queryContext)).toBe(types);
         expect(entry.owner.setInventoryEntry).toHaveBeenCalledWith(entry);
     });
 
     it('rejects charging after firing until the turn ends', () => {
         const entry = bombastLaser();
-        const handlerContext = context();
-        handler.afterInventoryControlFire(entry, handlerContext);
+        const testContexts = contexts();
+        handler.afterInventoryControlFire(entry);
 
-        select(handler, entry, BOMBAST_LASER_CHARGING_STATE, handlerContext);
+        select(handler, entry, BOMBAST_LASER_CHARGING_STATE, testContexts.command);
 
         expect(entry.states.has(BOMBAST_LASER_CHARGE_STATE_KEY)).toBeFalse();
-        expect(handlerContext.toastService.showToast).toHaveBeenCalledWith(
+        expect(testContexts.toastService.showToast).toHaveBeenCalledWith(
             'A fired Bombast Laser cannot charge this turn.',
             'error'
         );
 
-        handler.onEndTurn(entry, handlerContext);
+        handler.onEndTurn(entry);
         expect(entry.states.has(BOMBAST_LASER_FIRED_STATE_KEY)).toBeFalse();
 
-        select(handler, entry, BOMBAST_LASER_CHARGING_STATE, handlerContext);
+        select(handler, entry, BOMBAST_LASER_CHARGING_STATE, testContexts.command);
         expect(entry.states.get(BOMBAST_LASER_CHARGE_STATE_KEY)).toBe(BOMBAST_LASER_CHARGING_STATE);
     });
 
@@ -269,23 +287,32 @@ describe('BombastLaserHandler', () => {
         const entry = bombastLaser(CORE_2026_GAME_RULES, new Map([
             [BOMBAST_LASER_CHARGE_STATE_KEY, BOMBAST_LASER_CHARGED_STATE]
         ]));
-        const handlerContext = context();
+        const testContexts = contexts();
 
-        select(handler, entry, 'discharged', handlerContext);
+        select(handler, entry, 'discharged', testContexts.command);
 
         expect(entry.states.has(BOMBAST_LASER_CHARGE_STATE_KEY)).toBeFalse();
-        expect(handlerContext.toastService.showToast).toHaveBeenCalledWith('Bombast Laser discharged', 'info');
+        expect(testContexts.toastService.showToast).toHaveBeenCalledWith('Bombast Laser discharged', 'info');
     });
 
-    it('does not finish charging while unavailable', () => {
+    it('clears an unavailable laser charge instead of progressing it', () => {
         const entry = bombastLaser(CORE_2026_GAME_RULES, new Map([
             [BOMBAST_LASER_CHARGE_STATE_KEY, BOMBAST_LASER_CHARGING_STATE]
         ]), true);
+        const registry = new EquipmentInteractionRegistry();
+        registry.register(handler);
 
-        handler.onEndTurn(entry, context());
+        expect(handler.isInventoryControlSelectable(entry, queryContext)).toBeNull();
 
-        expect(entry.states.get(BOMBAST_LASER_CHARGE_STATE_KEY)).toBe(BOMBAST_LASER_CHARGING_STATE);
-        expect(handler.getChoices(entry, context()).every(choice => choice.disabled)).toBeTrue();
+        handler.onEndTurn(entry);
+
+        expect(entry.states.has(BOMBAST_LASER_CHARGE_STATE_KEY)).toBeFalse();
+        expect(handler.getChoices(entry, queryContext)).toEqual([
+            jasmine.objectContaining({ label: 'Mode', value: BOMBAST_LASER_DAMAGE_12_MODE }),
+            jasmine.objectContaining({ label: 'Charge Laser', active: false, disabled: false }),
+        ]);
+        expect(registry.getChoices(entry, queryContext).every(choice => choice.disabled)).toBeTrue();
+        expect(entry.owner.setInventoryEntry).toHaveBeenCalledWith(entry);
     });
 
     it('does not register any Bombast interaction under Total Warfare', () => {
@@ -300,15 +327,15 @@ describe('BombastLaserHandler', () => {
 
         expect(handler.applicableTo(entry)).toBeFalse();
         expect(registry.getHandlers(entry)).toEqual([]);
-        expect(registry.getChoices(entry, context())).toEqual([]);
-        expect(registry.applyInventoryControlDamageEffects(entry, baseDamage, damageContext, context())).toBe(baseDamage);
-        expect(registry.applyInventoryControlHeatEffects(entry, heat, context())).toBe(heat);
-        expect(registry.applyWeaponTypes(entry, types, context())).toBe(types);
-        expect(registry.getToHitAdjustments(entry, context())).toEqual([]);
-        expect(registry.isInventoryControlSelectable(entry, context())).toBeTrue();
+        expect(registry.getChoices(entry, queryContext)).toEqual([]);
+        expect(registry.applyInventoryControlDamageEffects(entry, baseDamage, damageContext, queryContext)).toBe(baseDamage);
+        expect(registry.applyInventoryControlHeatEffects(entry, heat, queryContext)).toBe(heat);
+        expect(registry.applyWeaponTypes(entry, types, queryContext)).toBe(types);
+        expect(registry.getToHitAdjustments(entry, queryContext)).toEqual([]);
+        expect(registry.isInventoryControlSelectable(entry, queryContext)).toBeTrue();
 
-        registry.afterInventoryControlFire(entry, context());
-        registry.onEndTurn(entry, context());
+        registry.afterInventoryControlFire(entry);
+        registry.onEndTurn(entry, jasmine.createSpyObj<ToastService>('ToastService', ['showToast']));
         expect(entry.states.get(BOMBAST_LASER_CHARGE_STATE_KEY)).toBe(BOMBAST_LASER_CHARGED_STATE);
         expect(entry.owner.setInventoryEntry).not.toHaveBeenCalled();
     });

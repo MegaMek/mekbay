@@ -164,12 +164,12 @@ export class UnitBlockComponent {
         if (forceUnit instanceof CBTForceUnit) {
             const tagMounts = forceUnit.getMountedEquipmentByFlag('F_TAG');
             if (tagMounts.length === 0) return undefined;
-            const tag = tagMounts.find(mount => !mount.isActionUnavailable()) ?? tagMounts[0];
+            const tag = tagMounts.find(mount => mount.owner.canPerformEquipmentAction(mount, 'activate')) ?? tagMounts[0];
             const names = [tag.name, tag.equipment?.name, tag.equipment?.shortName, tag.equipment?.sortingName]
                 .filter((name): name is string => !!name);
             return {
                 label: names.some(name => /\blight\b/i.test(name)) ? 'LTAG' : 'TAG',
-                unavailable: tagMounts.every(mount => mount.isActionUnavailable()),
+                unavailable: tagMounts.every(mount => !mount.owner.canPerformEquipmentAction(mount, 'activate')),
             };
         }
         return undefined;
@@ -185,10 +185,10 @@ export class UnitBlockComponent {
         if (forceUnit instanceof CBTForceUnit) {
             const ecms = forceUnit.getMountedEquipmentByFlag('F_ECM');
             if (ecms.length === 0) return null;
-            const mount = ecms.find(candidate => !candidate.isActionUnavailable()) ?? ecms[0];
+            const mount = ecms.find(candidate => candidate.owner.canPerformEquipmentAction(candidate, 'activate')) ?? ecms[0];
             return {
                 mode: mount.states.get('ecm_mode') as ECMMode || ECMMode.ECM,
-                unavailable: ecms.every(candidate => candidate.isActionUnavailable()),
+                unavailable: ecms.every(candidate => !candidate.owner.canPerformEquipmentAction(candidate, 'activate')),
             };
         }
         return null;

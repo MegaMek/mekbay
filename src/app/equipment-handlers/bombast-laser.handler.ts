@@ -10,7 +10,8 @@ import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
 import {
     EquipmentInteractionHandler,
-    type HandlerContext,
+    type HandlerCommandContext,
+    type HandlerQueryContext,
     type ToHitAdjustmentContext
 } from '../services/equipment-interaction-registry.service';
 import type { InventoryControlDamageContext } from '../utils/inventory-control-damage.util';
@@ -58,7 +59,7 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
             && equipment.equipment instanceof WeaponEquipment;
     }
 
-    override getChoices(equipment: MountedEquipment, _context: HandlerContext): PickerChoice[] {
+    override getChoices(equipment: MountedEquipment, _context: HandlerQueryContext): PickerChoice[] {
         if (!supportsBombastLaserRules(equipment)) return [];
 
         const chargeState = bombastLaserChargeState(equipment);
@@ -73,7 +74,6 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
                     { label: '12 DMG', value: BOMBAST_LASER_DAMAGE_12_MODE },
                     { label: '16 DMG', value: BOMBAST_LASER_DAMAGE_16_MODE }
                 ],
-                disabled: equipment.isUnavailable(),
                 keepOpen: true
             },
             {
@@ -85,7 +85,7 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
                     : chargeState === BOMBAST_LASER_CHARGING_STATE ? 'Charging' : 'Charge',
                 value: active ? 'discharged' : BOMBAST_LASER_CHARGING_STATE,
                 active,
-                disabled: equipment.isUnavailable() || equipment.states.has(BOMBAST_LASER_FIRED_STATE_KEY),
+                disabled: equipment.states.has(BOMBAST_LASER_FIRED_STATE_KEY),
                 colors: active
                     ? { selected: BOMBAST_LASER_CHARGED_COLOR, selectedText: BOMBAST_LASER_CHARGED_TEXT_COLOR }
                     : undefined,
@@ -94,7 +94,7 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
         ];
     }
 
-    override handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): boolean {
+    override handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerCommandContext): boolean {
         if (!supportsBombastLaserRules(equipment)) return true;
 
         const mode = validBombastLaserMode(String(choice.value));
@@ -124,24 +124,28 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
         return true;
     }
 
-    override afterInventoryControlFire(equipment: MountedEquipment, _context: HandlerContext): void {
+    override afterInventoryControlFire(equipment: MountedEquipment): void {
         if (!supportsBombastLaserRules(equipment)) return;
         const discharged = setBombastLaserChargeState(equipment, null);
         const markedFired = equipment.setState(BOMBAST_LASER_FIRED_STATE_KEY, '1');
         if (discharged || markedFired) equipment.owner.setInventoryEntry(equipment);
     }
 
-    override onEndTurn(equipment: MountedEquipment, _context: HandlerContext): void {
+    override onEndTurn(equipment: MountedEquipment): void {
         if (!supportsBombastLaserRules(equipment)) return;
         let changed = equipment.deleteState(BOMBAST_LASER_FIRED_STATE_KEY);
-        if (!equipment.isUnavailable() && bombastLaserChargeState(equipment) === BOMBAST_LASER_CHARGING_STATE) {
+        const state = bombastLaserChargeState(equipment);
+        if (!equipment.owner.isEquipmentOperational(equipment) && state !== null) {
+            changed = setBombastLaserChargeState(equipment, null) || changed;
+        } else if (state === BOMBAST_LASER_CHARGING_STATE) {
             changed = setBombastLaserChargeState(equipment, BOMBAST_LASER_CHARGED_STATE) || changed;
         }
         if (changed) equipment.owner.setInventoryEntry(equipment);
     }
 
-    override isInventoryControlSelectable(equipment: MountedEquipment, _context: HandlerContext): boolean | null {
+    override isInventoryControlSelectable(equipment: MountedEquipment, context: HandlerQueryContext): boolean | null {
         return supportsBombastLaserRules(equipment)
+            && context.getStatus(equipment) === 'available'
             && bombastLaserChargeState(equipment) === BOMBAST_LASER_CHARGING_STATE
             ? false
             : null;
@@ -151,7 +155,7 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
         equipment: MountedEquipment,
         damage: WeaponDamage,
         _damageContext: InventoryControlDamageContext,
-        _context: HandlerContext
+        _context: HandlerQueryContext
     ): WeaponDamage {
         if (!supportsBombastLaserRules(equipment)) return damage;
         const selectedDamage = selectedBombastLaserProfile(equipment).damage;
@@ -161,7 +165,7 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
     override applyInventoryControlHeatEffects(
         equipment: MountedEquipment,
         effect: InventoryControlHeatEffect,
-        _context: HandlerContext
+        _context: HandlerQueryContext
     ): InventoryControlHeatEffect {
         return supportsBombastLaserRules(equipment)
             ? { ...effect, value: selectedBombastLaserProfile(equipment).heat }
@@ -171,7 +175,7 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
     override applyInventoryControlWeaponTypes(
         equipment: MountedEquipment,
         types: ReadonlySet<WeaponType>,
-        _context: HandlerContext
+        _context: HandlerQueryContext
     ): ReadonlySet<WeaponType> {
         return supportsBombastLaserRules(equipment)
             && bombastLaserChargeState(equipment) === BOMBAST_LASER_CHARGED_STATE
@@ -182,7 +186,7 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
     override getToHitAdjustments(
         equipment: MountedEquipment,
         _adjustmentContext: ToHitAdjustmentContext,
-        _context: HandlerContext
+        _context: HandlerQueryContext
     ): readonly ToHitAdjustment[] {
         if (!supportsBombastLaserRules(equipment)
             || bombastLaserChargeState(equipment) === BOMBAST_LASER_CHARGED_STATE) return [];

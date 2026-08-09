@@ -3,25 +3,37 @@
 // Author: Drake
 
 import { EquipmentFlag } from '../models/equipment-flags.type';
+import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
 import type { Equipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { ENTRY_DISABLED_STATE_KEY } from '../models/rules/unit-type-rules';
-import { createTestEquipmentRules } from '../testing/unit-test-helpers';
-import type { HandlerContext } from '../services/equipment-interaction-registry.service';
+import {
+    createHandlerCommandContext,
+    createHandlerQueryContext,
+    EquipmentInteractionRegistry,
+} from '../services/equipment-interaction-registry.service';
+import type { DialogsService } from '../services/dialogs.service';
+import type { ToastService } from '../services/toast.service';
 import { DisabledEquipmentHandler, isEquipmentDisabledByFailure } from './disabled-equipment.handler';
 
 function owner() {
+    const getEquipmentStatus = (entry: MountedEquipment) => (
+        entry.committedDestroyed()
+            ? 'destroyed'
+            : isEquipmentDisabledByFailure(entry)
+                ? 'disabled'
+                : 'available'
+    );
     return {
+        readOnly: () => false,
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        rules: createTestEquipmentRules({
-            getEquipmentStatus: (entry: MountedEquipment) => (
-                entry.committedDestroyed()
-                    ? 'destroyed'
-                    : isEquipmentDisabledByFailure(entry)
-                        ? 'disabled'
-                        : 'available'
-            ),
-        })
+        getEquipmentStatus,
+        isEquipmentOperational: (entry: MountedEquipment) => getEquipmentStatus(entry) === 'available',
+        canPerformEquipmentAction: (entry: MountedEquipment) => getEquipmentStatus(entry) === 'available',
+        canEditEquipmentState: (entry: MountedEquipment, edit: string) => {
+            const status = getEquipmentStatus(entry);
+            return edit === 'enable' ? status === 'disabled' : status === 'available';
+        },
     } as never;
 }
 
@@ -38,13 +50,12 @@ function entry(flags: EquipmentFlag[], states = new Map<string, string>(), destr
 
 describe('DisabledEquipmentHandler', () => {
     const handler = new DisabledEquipmentHandler();
-    const context = {
-        toastService: { showToast: jasmine.createSpy('showToast') }
-    } as never as HandlerContext;
-
-    beforeEach(() => {
-        context.toastService.showToast = jasmine.createSpy('showToast');
-    });
+    const queryContext = createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY);
+    const commandContext = createHandlerCommandContext(
+        EMPTY_EQUIPMENT_REGISTRY,
+        jasmine.createSpyObj<ToastService>('ToastService', ['showToast']),
+        jasmine.createSpyObj<DialogsService>('DialogsService', ['createDialog']),
+    );
 
     it('applies to equipment with any disableable failure flag', () => {
         expect(handler.applicableTo(entry(['F_RADICAL_HEATSINK']))).toBeTrue();
@@ -61,21 +72,31 @@ describe('DisabledEquipmentHandler', () => {
     it('toggles disabled state and persists the inventory entry', () => {
         const mounted = entry(['F_RADICAL_HEATSINK']);
 
-        handler.handleSelection(mounted, handler.getChoices(mounted, context)[0], context);
+        handler.handleSelection(mounted, handler.getChoices(mounted, queryContext)[0], commandContext);
 
         expect(mounted.states.get(ENTRY_DISABLED_STATE_KEY)).toBe('true');
         expect(mounted.owner.setInventoryEntry).toHaveBeenCalledWith(mounted);
-        expect(mounted.owner.rules.getEquipmentStatus(mounted)).toBe('disabled');
+        expect(mounted.owner.getEquipmentStatus(mounted)).toBe('disabled');
 
-        handler.handleSelection(mounted, handler.getChoices(mounted, context)[0], context);
+        handler.handleSelection(mounted, handler.getChoices(mounted, queryContext)[0], commandContext);
 
         expect(mounted.states.has(ENTRY_DISABLED_STATE_KEY)).toBeFalse();
-        expect(mounted.owner.rules.getEquipmentStatus(mounted)).toBe('available');
+        expect(mounted.owner.getEquipmentStatus(mounted)).toBe('available');
     });
 
     it('keeps the toggle available while the entry is disabled by this handler', () => {
         const mounted = entry(['F_RADICAL_HEATSINK'], new Map([[ENTRY_DISABLED_STATE_KEY, 'true']]));
+        const registry = new EquipmentInteractionRegistry();
+        registry.register(handler);
 
-        expect(handler.getChoices(mounted, context)[0]).toEqual(jasmine.objectContaining({ active: true, disabled: false }));
+        expect(handler.getChoices(mounted, queryContext)[0]).toEqual(jasmine.objectContaining({
+            active: true,
+            stateEdit: 'enable',
+        }));
+        expect(registry.getChoices(mounted, queryContext)[0]).toEqual(jasmine.objectContaining({
+            active: true,
+            stateEdit: 'enable',
+            disabled: false,
+        }));
     });
 });

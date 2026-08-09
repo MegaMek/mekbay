@@ -3,20 +3,18 @@
 // Author: Drake
 
 import { MiscEquipment, WeaponEquipment } from '../models/equipment.model';
+import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
 import { MountedEquipment } from '../models/mounted-equipment.model';
-import { createTestEquipmentRules } from '../testing/unit-test-helpers';
-import type { HandlerContext } from '../services/equipment-interaction-registry.service';
+import { createHandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
 import { RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE, RiscLaserPulseModuleHandler } from './risc-laser-pulse-module.handler';
 
 function owner() {
     return {
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        rules: createTestEquipmentRules({
-            getEquipmentStatus: (entry: MountedEquipment) => (
-                entry.committedDestroyed() ? 'destroyed' : 'available'
-            ),
-        }),
+        getEquipmentStatus: (entry: MountedEquipment) => entry.committedDestroyed() ? 'destroyed' : 'available',
+        isEquipmentOperational: (entry: MountedEquipment) => !entry.committedDestroyed(),
+        canPerformEquipmentAction: (entry: MountedEquipment) => !entry.committedDestroyed(),
     } as never;
 }
 
@@ -45,7 +43,7 @@ function module(destroyed = false): MountedEquipment {
 
 describe('RiscLaserPulseModuleHandler', () => {
     const handler = new RiscLaserPulseModuleHandler();
-    const context = {} as HandlerContext;
+    const context = createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY);
     it('offers STD and PULSE modes from the linked laser row', () => {
         const linked = module();
         const entry = laser(linked);
@@ -66,14 +64,16 @@ describe('RiscLaserPulseModuleHandler', () => {
 
         expect(handler.applyInventoryControlHeatEffects(entry, { value: 3, weakened: false }, context))
             .toEqual({ value: 5, weakened: false });
-        expect(handler.getToHitAdjustments(linked, { parent: entry })).toEqual([{
+        expect(handler.getToHitAdjustments(linked, { parent: entry }, context)).toEqual([{
             kind: 'add', label: 'RISC Laser Pulse Module', modifier: -2
         }]);
 
         entry.states.set(INVENTORY_CONTROL_MODE_STATE, RISC_LASER_STANDARD_MODE);
         expect(handler.applyInventoryControlHeatEffects(entry, { value: 3, weakened: false }, context))
             .toEqual({ value: 3, weakened: false });
-        expect(handler.getToHitAdjustments(linked, { parent: entry })).toEqual([{ kind: 'add', modifier: 0 }]);
+        expect(handler.getToHitAdjustments(linked, { parent: entry }, context)).toEqual([{
+            kind: 'add', label: 'RISC Laser Pulse Module Inactive', modifier: 0
+        }]);
     });
 
     it('falls back to STD and allows aimed shots when the module is unavailable', () => {
@@ -83,7 +83,9 @@ describe('RiscLaserPulseModuleHandler', () => {
         expect(handler.getChoices(entry, context)).toEqual([]);
         expect(handler.applyInventoryControlHeatEffects(entry, { value: 3, weakened: false }, context))
             .toEqual({ value: 3, weakened: false });
-        expect(handler.getToHitAdjustments(linked, { parent: entry })).toEqual([{ kind: 'add', modifier: 0 }]);
+        expect(handler.getToHitAdjustments(linked, { parent: entry }, context)).toEqual([{
+            kind: 'add', label: 'RISC Laser Pulse Module Inactive', modifier: 0
+        }]);
         expect(handler.canPerformAimedShot(entry, context)).toBeNull();
     });
 

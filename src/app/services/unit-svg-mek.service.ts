@@ -10,14 +10,12 @@ import { AmmoEquipment } from "../models/equipment.model";
 import { MekRules } from "../models/rules/mek-rules";
 import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 import { getCriticalSlotAmmoProfileKey } from "../utils/ammo-interaction.util";
-import type { MountedEquipmentToHit } from "../models/rules/unit-type-rules";
 import { INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, readInventoryControlDisplayData } from "../utils/inventory-control.util";
 
 
 export class UnitSvgMekService extends UnitSvgService {
     // Mek-specific SVG handling logic goes here
     private get mekRules(): MekRules { return this.unit.rules as MekRules; }
-    private currentEquipmentToHits: Map<MountedEquipment, MountedEquipmentToHit> | null = null;
 
     protected override updateAllDisplays() {
         if (!this.unit.svg()) return;
@@ -86,7 +84,7 @@ export class UnitSvgMekService extends UnitSvgService {
                     }
 
                     const key = getCriticalSlotAmmoProfileKey(criticalSlot) ?? (text.startsWith("Ammo ") ? text.substring(5) : text);
-                    ammoProfile.set(key, (ammoProfile.get(key) ?? 0) + (this.unit.isEquipmentUnavailable(criticalSlot) ? 0 : remainingAmmo));
+                    ammoProfile.set(key, (ammoProfile.get(key) ?? 0) + (this.unit.isEquipmentOperational(criticalSlot) ? remainingAmmo : 0));
                 }
             }
 
@@ -179,14 +177,8 @@ export class UnitSvgMekService extends UnitSvgService {
         }
 
         // Inventory entries — state from rules, rendering here
-        const equipmentToHits = this.mekRules.getEquipmentToHits();
-        this.currentEquipmentToHits = equipmentToHits;
-        try {
-            this.unit.getInventory().forEach(entry => {
+        this.unit.getInventory().forEach(entry => {
                 if (!entry.el || !entry.locations) return;
-
-                const toHit = equipmentToHits.get(entry);
-                if (!toHit) return;
 
                 // Physical / melee damage display (reads base values from DOM, computes via rules)
                 if (entry.isIntrinsicPhysicalAttack()) {
@@ -209,28 +201,24 @@ export class UnitSvgMekService extends UnitSvgService {
                     this.renderMeleeDamage(entry, 'physWeapon', undefined, !!entry.equipment?.flags.has('S_FLAIL'));
                 }
 
-                const actionUnavailable = entry.isActionUnavailable();
+                const actionUnavailable = !entry.owner.canPerformEquipmentAction(entry, entry.isPhysicalWeapon() ? 'physical-attack' : 'fire');
                 entry.el.classList.toggle('disabledInventory', actionUnavailable);
-                const destroyed = this.mekRules.getEquipmentStatus(entry) === 'destroyed';
+                const destroyed = this.unit.getEquipmentStatus(entry) === 'destroyed';
                 entry.el.classList.toggle('damagedInventory', destroyed);
                 if (destroyed || actionUnavailable) entry.el.classList.remove('selected');
 
                 // Hit modifier badge
                 this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry));
-            });
-            this.renderInventoryControlSelection();
-        } finally {
-            this.currentEquipmentToHits = null;
-        }
+        });
+        this.renderInventoryControlSelection();
     }
 
     protected override resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null) {
-        const toHit = this.currentEquipmentToHits?.get(entry) ?? this.mekRules.getEquipmentToHit(entry);
+        const stateModifiers = this.mekRules.getEquipmentToHitModifiers(entry);
         const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
         return this.unit.gameRules.resolveToHit({
             subject: entry,
-            stateModifier: toHit.modifier,
-            stateModifierBreakdown: toHit.modifiers,
+            stateModifiers,
             range,
             adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
         });
@@ -308,7 +296,7 @@ export class UnitSvgMekService extends UnitSvgService {
         const { weakened } = this.mekRules.resolveMeleeDamageDisplay(entry, baseDamage, attackType, loc, ignoreMyomer);
         const display = this.unit.applyInventoryControlDisplayEffects(entry, readInventoryControlDisplayData(entry), {
             selectedRange: null,
-            additionalHitModifier: 0,
+            hitModifierBreakdown: this.mekRules.getEquipmentToHitModifiers(entry),
             selectedAmmo: null,
         });
         this.renderInventoryDamageText(damageEl, display.damage);

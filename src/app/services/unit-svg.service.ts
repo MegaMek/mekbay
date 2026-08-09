@@ -17,11 +17,11 @@ import { formatGunneryDisplay, formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../utils/inventory-target-number.util';
-import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, readInventoryControlDisplayData, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
+import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, readInventoryControlDisplayData, syncSvgMode, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
 import { inventoryControlDamageRange, resolveInventoryControlDamageText } from '../utils/inventory-control-damage.util';
 import { formatInventoryControlHeat, resolveHeatSummarySources, resolveInventoryControlHeatEffect, resolveSelectedWeaponPreviewHeatSources } from '../utils/inventory-control-heat.util';
 import { calculateHeatProjection, type HeatProjection } from '../models/turn-state.model';
-import { separateHeatFireModifier, type ToHitResolution } from '../models/rules/game-rules';
+import type { ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import { isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, selectedRiscLaserMode } from '../equipment-handlers/risc-laser-pulse-module.handler';
 
@@ -1117,7 +1117,7 @@ export class UnitSvgService {
             const totalAmmo = entry.totalAmmo ?? this.getInventoryOriginalTotalAmmo(entry);
             const remainingAmmo = totalAmmo - (entry.consumed ?? 0);
             const key = `(${formatAmmoName(currentAmmo)})`;
-            ammoProfile.set(key, (ammoProfile.get(key) ?? 0) + (this.unit.isEquipmentUnavailable(entry) ? 0 : remainingAmmo));
+            ammoProfile.set(key, (ammoProfile.get(key) ?? 0) + (this.unit.isEquipmentOperational(entry) ? remainingAmmo : 0));
         });
 
         this.renderAmmoProfile(ammoProfile);
@@ -1252,12 +1252,11 @@ export class UnitSvgService {
     }
 
     protected resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): ToHitResolution {
-        const toHit = this.unit.rules.getEquipmentToHit(entry);
+        const stateModifiers = this.unit.rules.getEquipmentToHitModifiers(entry);
         const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
         return this.unit.gameRules.resolveToHit({
             subject: entry,
-            stateModifier: toHit.modifier,
-            stateModifierBreakdown: toHit.modifiers,
+            stateModifiers,
             range,
             adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
         });
@@ -1269,7 +1268,6 @@ export class UnitSvgService {
         if (!row) return null;
         const hitModifierRange = this.inventoryControlRangeForTarget(entry, target, false);
         const hitResolution = this.resolveInventoryControlToHit(entry, hitModifierRange);
-        const { hitModifier, heatFireModifier } = separateHeatFireModifier(hitResolution);
         const c3Resolution = this.unit.resolveC3Targeting(target);
         const text = inventoryTargetNumberText({
             entry,
@@ -1283,8 +1281,7 @@ export class UnitSvgService {
             pilotingSkill: this.unit.rules.getBasePilotingSkill(),
             missingMovementModifier,
             attackModifierBreakdown: this.unit.turnState().getAttackModifierBreakdown(),
-            hitModifier,
-            heatFireModifier,
+            hitResolution,
             c3DegradationSource: c3Resolution.degradationSource,
             gameRules: this.unit.gameRules
         });
@@ -1336,7 +1333,7 @@ export class UnitSvgService {
             this.renderInventoryControlSelectionColor(entry, target);
             this.renderInventoryControlHeatEntry(entry, weaponRuleRange);
             this.renderInventoryControlRangeDamageEntry(entry, weaponRuleRange);
-            if (!entry.isDestroyed()) {
+            if (this.unit.getEquipmentStatus(entry) !== 'destroyed') {
                 this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry, weaponRuleRange));
             }
             entry.el.classList.toggle('selected', selected);
@@ -1404,7 +1401,7 @@ export class UnitSvgService {
         } else {
             const display = this.unit.applyInventoryControlDisplayEffects(entry, readInventoryControlDisplayData(entry), {
                 selectedRange,
-                additionalHitModifier: 0,
+                hitModifierBreakdown: this.unit.rules.getEquipmentToHitModifiers(entry),
                 selectedAmmo: null,
             });
             text.textContent = display.heat;
@@ -1584,7 +1581,7 @@ export class UnitSvgService {
         const hitModText = entry.el.querySelector(`:scope > .hitMod-text`);
         if (!hitModRect || !hitModText) return;
 
-        if (hitModifier === null || entry.isDestroyed()) {
+        if (hitModifier === null || this.unit.getEquipmentStatus(entry) === 'destroyed') {
             hitModRect.setAttribute('display', 'none');
             hitModText.setAttribute('display', 'none');
             entry.el.classList.remove('weakenedHitMod');
@@ -1614,8 +1611,13 @@ export class UnitSvgService {
         if (!svg) return;
         this.unit.getInventory().forEach(entry => {
             if (!entry.el) return;
-            const status = this.unit.rules.getEquipmentStatus(entry);
-            const actionUnavailable = entry.isActionUnavailable();
+            const status = this.unit.getEquipmentStatus(entry);
+            const actionUnavailable = !entry.owner.canPerformEquipmentAction(entry, entry.isPhysicalWeapon() ? 'physical-attack' : 'fire');
+            syncSvgMode(
+                entry,
+                getSelectedInventoryControlMode(entry, this.unit.getEquipmentRegistry(), this.unit.getInventoryControlRules().matchesAmmo),
+                actionUnavailable,
+            );
             if (entry.isIntrinsicPhysicalAttack()) {
                 if (entry.name === 'charge') {
                     this.renderChargeDamage(entry, this.unit.rules.chargeDamage());

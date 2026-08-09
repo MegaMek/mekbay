@@ -5,7 +5,7 @@
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { TurnState } from '../models/turn-state.model';
-import { isEquipmentDisabledByFailure } from './disabled-equipment.handler';
+import type { HandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import { EscalatingFailureHandler } from './escalatingfailure.handler';
 
 export const MASC_SEQUENCE_STATE_KEY = 'masc';
@@ -47,7 +47,15 @@ export class MascHandler extends EscalatingFailureHandler {
         return MascHandler.isActive(equipment);
     }
 
-    override getRunMovementMultiplierBonus(equipment: MountedEquipment, turnState: TurnState): number {
-        return this.isActive(equipment) && !isEquipmentDisabledByFailure(equipment) && canUseMascMovementBonus(equipment, turnState) ? 0.5 : 0;
+    override getRunMovementMultiplierBonus(
+        equipment: MountedEquipment,
+        turnState: TurnState,
+        context: HandlerQueryContext
+    ): number {
+        return this.isActive(equipment)
+            && context.canProvidePassiveEffect(equipment)
+            && canUseMascMovementBonus(equipment, turnState)
+            ? 0.5
+            : 0;
     }
 }

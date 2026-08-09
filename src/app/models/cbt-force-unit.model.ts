@@ -6,7 +6,7 @@ import { computed, createEnvironmentInjector, effect, type EffectRef, Environmen
 import { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
-import { MountedAmmo, MountedEquipment } from './mounted-equipment.model';
+import { MountedAmmo, MountedEquipment, MountedWeapon } from './mounted-equipment.model';
 import { type CriticalSlot, type HeatProfile, type LocationData, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, TURN_STATE_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type RuleCheckOutcome, type SerializedCrewMember, type SerializedRuleCheck, committedConditionData, conditionsForSerialization, conditionsHasActive, conditionsHasCommittedActive, conditionsMapFromSerialization, normalizeConditionData, normalizeConditionKey } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
 import type { ConditionData } from './force-unit-state.model';
@@ -19,21 +19,22 @@ import { UnitSvgAeroService } from '../services/unit-svg-aero.service';
 import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
 import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
-import { AmmoEquipment, WeaponEquipment } from './equipment.model';
+import { AmmoEquipment } from './equipment.model';
 import type { AmmoEquipment as AmmoEquipmentType } from './equipment.model';
 import type { EquipmentFlag } from './equipment-flags.type';
+import type { WeaponType } from './weapon-types.model';
 import { C3Capabilities, type C3Component, C3NetworkType, C3Role } from './c3-network.model';
 import { isC3DisruptingStealthActive } from './stealth-equipment.model';
 import { getMotiveModesOptionsByUnit, type MotiveModeOption } from './motiveModes.model';
 import type { TurnState } from './turn-state.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import type { UnitTypeRules } from './rules/unit-type-rules';
-import { type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
+import { type InventoryControlRuntimeAmmoSelection, type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
 import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
 import { getMekLocationParent } from './entity/types';
-import { EquipmentInteractionRegistry, EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
+import { createHandlerQueryContext, EquipmentInteractionRegistry, EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
 import type { UnitHeatSource } from './rules/unit-type-rules';
-import { getInventoryControlModeAmmoSummary, resolveInventoryControlSelectedAmmoOption, type InventoryControlDisplayData, type InventoryControlDisplayEffectOptions, type InventoryControlRules } from '../utils/inventory-control.util';
+import { resolveInventoryControlSelectedAmmoType, type InventoryControlDisplayData, type InventoryControlDisplayEffectOptions, type InventoryControlRules } from '../utils/inventory-control.util';
 import { ToastService } from '../services/toast.service';
 import { DialogsService } from '../services/dialogs.service';
 import { getBattleArmorTrooperNumber, normalizeBattleArmorTrooperLocation } from './battle-armor-location.model';
@@ -41,6 +42,25 @@ import { CBTGameRulesService } from '../services/cbt-game-rules.service';
 import type { C3DegradationSource, C3TargetingResolution, CBTGameRules } from './rules/game-rules';
 import { OptionsService } from '../services/options.service';
 import { resolveSelectedInventoryWeaponHeat } from '../utils/inventory-control-heat.util';
+import { parseInventoryComponentReference } from './inventory-component-reference.model';
+import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-control-physical-damage.util';
+import {
+    combineEquipmentStatuses,
+    type CriticalSlotStatusFacts,
+    type EquipmentStatus,
+    type EquipmentStatusFacts,
+} from './equipment-status.model';
+import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from './rules/unit-type-rules';
+
+export type EquipmentStatusSource = MountedEquipment | CriticalSlot;
+export type EquipmentAction =
+    | 'fire'
+    | 'physical-attack'
+    | 'activate'
+    | 'change-mode'
+    | 'provide-passive-effect'
+    | 'configure-network';
+export type EquipmentStateEdit = 'enable' | 'disable' | 'repair' | 'apply-damage';
 
 export class CBTForceUnit extends ForceUnit {
     override get force(): CBTForce { return super.force as CBTForce; }
@@ -50,6 +70,7 @@ export class CBTForceUnit extends ForceUnit {
     private _svgService: UnitSvgService | null = null;
     private svgServiceInjector: EnvironmentInjector | null = null;
     private optionalRulesEffect: EffectRef | null = null;
+    private readonly unknownEquipmentInstallationLocationIds = new Set<string>();
     private _rules!: UnitTypeRules;
     readonly gameRules: CBTGameRules;
     viewState: ViewportTransform;
@@ -133,18 +154,26 @@ export class CBTForceUnit extends ForceUnit {
 
     getEquipmentHeatSources(turnState: TurnState): UnitHeatSource[] {
         if (this.getCondition('shutdown')) return [];
-        return this.getEquipmentInteractionRegistry().getInventoryHeatSources(this.getInventory(), turnState);
+        return this.getEquipmentInteractionRegistry().getInventoryHeatSources(
+            this.getInventory(),
+            turnState,
+            this.getHandlerQueryContext(),
+        );
     }
 
     getRunMovementMultiplierBonus(turnState: TurnState): number {
         if (this.getCondition('shutdown')) return 0;
-        return this.getEquipmentInteractionRegistry().getRunMovementMultiplierBonus(this.getInventory(), turnState);
+        return this.getEquipmentInteractionRegistry().getRunMovementMultiplierBonus(
+            this.getInventory(),
+            turnState,
+            this.getHandlerQueryContext(),
+        );
     }
 
     getInventoryControlRules(): InventoryControlRules {
         const equipmentRules = this.injector.get(EquipmentInteractionRegistryService)
             .getRegistry()
-            .inventoryControlRules(this.getHandlerContext());
+            .inventoryControlRules(this.getHandlerQueryContext());
         return {
             ...equipmentRules,
             applyDisplayEffects: (entry, display, options) => {
@@ -154,31 +183,50 @@ export class CBTForceUnit extends ForceUnit {
         };
     }
 
-    getInventoryControlSelectedAmmo(entry: MountedEquipment, mode?: string | null): AmmoEquipmentType | null {
-        if (!(entry.equipment instanceof WeaponEquipment) || entry.equipment.ammoType === 'NA') return null;
-        const intrinsicAmmo = entry.linkedWith?.find(linked => linked instanceof MountedAmmo && linked.intrinsicOneShotAmmo);
-        if (intrinsicAmmo) {
-            // Rule evaluation needs only the selected profile. Going through the
-            // ammo summary also evaluates the source's availability, which checks
-            // this parent weapon's rule state and causes a reactive self-cycle.
-            const selectedAmmo = intrinsicAmmo.ammo
-                ? this.dataService.findEquipment(intrinsicAmmo.ammo)
-                : intrinsicAmmo.equipment;
-            return selectedAmmo instanceof AmmoEquipment ? selectedAmmo : null;
-        }
-        const summary = getInventoryControlModeAmmoSummary(entry, this.getEquipmentRegistry(), this.getInventoryControlRules(), mode);
-        return resolveInventoryControlSelectedAmmoOption(
-            summary.options,
-            this.getInventoryControlEntryAmmoOption(entry.id)
-        )?.ammo ?? null;
+    /** Canonical status/profile-aware weapon types for domain rule evaluation. */
+    getEffectiveWeaponTypes(entry: MountedWeapon): ReadonlySet<WeaponType> {
+        const baseTypes = new Set(entry.getWeaponTypes(this.getInventoryControlSelectedAmmo(entry)));
+        return this.getEquipmentInteractionRegistry().applyWeaponTypes(
+            entry,
+            baseTypes,
+            this.getHandlerQueryContext(),
+        );
     }
 
-    private getHandlerContext() {
-        return {
-            toastService: this.injector.get(ToastService),
-            dialogsService: this.injector.get(DialogsService),
-            dataService: this.injector.get(DataService)
-        };
+    /** Canonical equipment-aware physical damage inputs for domain rule evaluation. */
+    getEffectivePhysicalDamageEffect(
+        entry: MountedEquipment,
+        effect: InventoryControlPhysicalDamageEffect
+    ): InventoryControlPhysicalDamageEffect {
+        return this.getEquipmentInteractionRegistry().applyInventoryControlPhysicalDamageEffects(
+            entry,
+            effect,
+            this.getHandlerQueryContext(),
+        );
+    }
+
+    getInventoryControlSelectedAmmo(entry: MountedEquipment, mode?: string | null): AmmoEquipmentType | null {
+        const selection = this.getInventoryControlEntryAmmoSelection(entry.id);
+        return resolveInventoryControlSelectedAmmoType(
+            entry,
+            this.getEquipmentRegistry(),
+            (weapon, ammo, selectedMode) => this.matchesInventoryControlAmmo(weapon, ammo, selectedMode),
+            selection,
+            mode,
+        );
+    }
+
+    matchesInventoryControlAmmo(entry: MountedEquipment, ammo: AmmoEquipmentType, mode: string | null): boolean | null {
+        return this.getEquipmentInteractionRegistry().matchesInventoryAmmo(
+            entry,
+            ammo,
+            mode,
+            this.getHandlerQueryContext(),
+        );
+    }
+
+    private getHandlerQueryContext() {
+        return createHandlerQueryContext(this.getEquipmentRegistry());
     }
 
     applyInventoryControlDisplayEffects(
@@ -212,7 +260,7 @@ export class CBTForceUnit extends ForceUnit {
     writeCrits(crits: CriticalSlot[]): void {
         this.state.crits.set(crits);
         this.turnState().reconcileHeatSources();
-        this.inventoryControl.markInventoryViewChanged();
+        this.inventoryControl.markAmmoSourcesChanged();
     }
 
     override destroy() {
@@ -369,7 +417,7 @@ export class CBTForceUnit extends ForceUnit {
         if (initialization) {
             this.turnState().capturePassiveHeatSourceBaseline();
         }
-        this.inventoryControl.markInventoryViewChanged();
+        this.inventoryControl.markAmmoSourcesChanged();
         if (!initialization) {
             this.evaluateDestroyed();
             this.setModified();
@@ -410,11 +458,9 @@ export class CBTForceUnit extends ForceUnit {
         if (slot.destroyed && !destroying) {
             slot.destroyed = undefined; // Reset destroyed immediately
         }
-        if (consolidateImmediately) {
-            slot.destroyed = slot.destroying;
-        }
         this.setCritSlot(slot);
         if (consolidateImmediately) {
+            this.dispatchBeforeEquipmentStateCommit();
             this.state.consolidateCrits(); // Consolidate immediately in case we have pending hits to apply
         }
         this._rules.evaluateCritSlotHit(slot);
@@ -445,7 +491,7 @@ export class CBTForceUnit extends ForceUnit {
 
     getOperationalMountedEquipmentByFlag(flag: EquipmentFlag): MountedEquipment[] {
         return this.getMountedEquipmentByFlag(flag)
-            .filter(entry => !this.isEquipmentUnavailable(entry));
+            .filter(entry => this.isEquipmentOperational(entry));
     }
 
     setInventory(inventory: MountedEquipment[], initialization: boolean = false) {
@@ -454,7 +500,7 @@ export class CBTForceUnit extends ForceUnit {
         if (!initialization) {
             this.turnState().clampMoveDistanceToCurrentModeRange();
         }
-        this.inventoryControl.markInventoryViewChanged();
+        this.inventoryControl.markAmmoSourcesChanged();
         if (!initialization) {
             this.setModified();
         }
@@ -507,8 +553,8 @@ export class CBTForceUnit extends ForceUnit {
         return this.inventoryControlRuntime.getEntryRange(entryId);
     }
 
-    getInventoryControlEntryAmmoOption(entryId: string): string | undefined {
-        return this.inventoryControlRuntime.getEntryAmmoOption(entryId);
+    getInventoryControlEntryAmmoSelection(entryId: string): InventoryControlRuntimeAmmoSelection | undefined {
+        return this.inventoryControlRuntime.getEntryAmmoSelection(entryId);
     }
 
     setInventoryControlEntrySelected(entry: MountedEquipment, selected: boolean): void {
@@ -523,8 +569,8 @@ export class CBTForceUnit extends ForceUnit {
         this.inventoryControlRuntime.toggleEntryRange(entry, range, forceSelected);
     }
 
-    setInventoryControlEntryAmmoOption(entryId: string, optionId: string): void {
-        this.inventoryControlRuntime.setEntryAmmoOption(entryId, optionId);
+    setInventoryControlEntryAmmoSelection(entryId: string, selection: InventoryControlRuntimeAmmoSelection): void {
+        this.inventoryControlRuntime.setEntryAmmoSelection(entryId, selection);
     }
 
     setInventoryControlEntryTarget(entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null): void {
@@ -560,11 +606,11 @@ export class CBTForceUnit extends ForceUnit {
     isC3ComponentOperational(componentIndex: number, component?: C3Component): boolean {
         if (this.destroyed || this.getCondition('shutdown') || this.hasActiveC3DisruptingStealth()) return false;
         const mount = component?.mount ?? new C3Capabilities(this).component(componentIndex)?.mount;
-        return !!mount && !this.isEquipmentUnavailable(mount);
+        return !!mount && this.isEquipmentOperational(mount);
     }
 
     private hasActiveC3DisruptingStealth(): boolean {
-        return this.getInventory().some(equipment => !this.isEquipmentUnavailable(equipment)
+        return this.getInventory().some(equipment => this.isEquipmentOperational(equipment)
             && isC3DisruptingStealthActive(equipment));
     }
 
@@ -852,20 +898,254 @@ export class CBTForceUnit extends ForceUnit {
         return hits >= this.getInternalPoints(loc);
     }
 
-    isEquipmentUnavailable(source: MountedEquipment | CriticalSlot, loc?: string): boolean {
-        if (source instanceof MountedEquipment) {
-            if (source.isUnavailable()) return true;
-            return loc ? this.isEquipmentLocationUnavailable(loc) : Array.from(source.locations ?? []).some(loc => this.isEquipmentLocationUnavailable(loc));
-        }
-        return !!source.destroyed || this.isEquipmentLocationUnavailable(source.loc);
+    getEquipmentStatus(source: EquipmentStatusSource): EquipmentStatus {
+        if (!(source instanceof MountedEquipment)) return this.getCriticalSlotStatus(source);
+
+        const facts = this.buildCurrentEquipmentStatusFacts(source);
+        return combineEquipmentStatuses([
+            facts.mountState,
+            ...facts.locationStates.values(),
+            this.rules.getMountedCriticalStatusContribution(facts),
+            this.rules.getEquipmentStatusContribution(facts),
+        ]);
     }
 
-    /** Whether equipment is temporarily unusable for an action, without implying damage. */
-    isEquipmentActionUnavailable(source: MountedEquipment | CriticalSlot, loc?: string): boolean {
-        return this.destroyed
-            || this.getCondition('shutdown')
-            || (source instanceof MountedEquipment && this.isPhysicalActionUnavailable(source))
-            || this.isEquipmentUnavailable(source, loc);
+    getEquipmentInstallationLocationStatus(entry: MountedEquipment): EquipmentStatus {
+        const criticalSlots = this.getCurrentCriticalSlots(entry);
+        const locations = this.getEquipmentInstallationLocations(entry, criticalSlots);
+        return combineEquipmentStatuses(locations.map(location => this.getEquipmentLocationStatus(location)));
+    }
+
+    getEquipmentStatusAtLocation(entry: MountedEquipment, location: string): EquipmentStatus {
+        const criticalSlots = this.getCurrentCriticalSlots(entry)
+            .filter(slot => slot.loc === location);
+        const facts = this.buildEquipmentStatusFacts(entry, criticalSlots, [location]);
+        return combineEquipmentStatuses([
+            facts.mountState,
+            ...facts.locationStates.values(),
+            this.rules.getMountedCriticalStatusContribution(facts),
+            this.rules.getEquipmentStatusContributionAtLocation(facts, location),
+        ]);
+    }
+
+    getEquipmentLocationStatus(location: string): EquipmentStatus {
+        if (!location) return 'available';
+        const battleArmorLoc = this.battleArmorTrooperLocation(location);
+        if (battleArmorLoc) {
+            return this.isArmorLocCommittedDestroyed(battleArmorLoc, false) ? 'destroyed' : 'available';
+        }
+        if (this.isInternalLocCommittedPhysicallyDestroyed(location)) return 'destroyed';
+        if (this.isInternalLocCommittedDestroyed(location)) return 'disabled';
+        return 'available';
+    }
+
+    isEquipmentOperational(source: EquipmentStatusSource): boolean {
+        return this.getEquipmentStatus(source) === 'available';
+    }
+
+    isEquipmentOperationalAtLocation(entry: MountedEquipment, location: string): boolean {
+        return this.getEquipmentStatusAtLocation(entry, location) === 'available';
+    }
+
+    isEquipmentResolvedDestroyed(entry: MountedEquipment): boolean {
+        if (this.getEquipmentInstallationLocationStatus(entry) === 'destroyed') return true;
+        if (entry.isRepairing()) return false;
+        return entry.isDestroying() || this.getEquipmentStatus(entry) === 'destroyed';
+    }
+
+    isEquipmentResolvedCommittedDestroyed(entry: MountedEquipment): boolean {
+        return this.getEquipmentInstallationLocationStatus(entry) === 'destroyed'
+            || (!entry.isRepairing() && this.getEquipmentStatus(entry) === 'destroyed');
+    }
+
+    canPerformEquipmentAction(entry: MountedEquipment, action: EquipmentAction): boolean {
+        if (action === 'configure-network') {
+            const component = new C3Capabilities(this).components.find(candidate => candidate.mount === entry);
+            if (!component || !this.isC3ComponentOperational(component.index, component)) return false;
+        } else if (!this.isEquipmentOperational(entry) || this.destroyed || this.getCondition('shutdown')) {
+            return false;
+        }
+        if (action === 'physical-attack' && this.isPhysicalActionUnavailable(entry)) return false;
+        return this.rules.canPerformEquipmentAction(entry, action);
+    }
+
+    canEditEquipmentState(entry: MountedEquipment, edit: EquipmentStateEdit): boolean {
+        if (this.readOnly()) return false;
+        const status = this.getEquipmentStatus(entry);
+        switch (edit) {
+            case 'enable':
+                return status === 'disabled';
+            case 'disable':
+                return status === 'available';
+            case 'repair':
+                return this.getEquipmentInstallationLocationStatus(entry) !== 'destroyed'
+                    && (entry.isDestroying() || (entry.committedDestroyed() && !entry.isRepairing()));
+            case 'apply-damage':
+                return !this.isEquipmentResolvedDestroyed(entry);
+        }
+    }
+
+    applyEquipmentDamage(entry: MountedEquipment): boolean {
+        if (!this.canEditEquipmentState(entry, 'apply-damage')) return false;
+        if (!entry.setPendingDestroyed(true)) return false;
+        this.setInventoryEntry(entry);
+        return true;
+    }
+
+    repairEquipment(entry: MountedEquipment): boolean {
+        if (!this.canEditEquipmentState(entry, 'repair')) return false;
+        if (!entry.setPendingDestroyed(false)) return false;
+        this.setInventoryEntry(entry);
+        return true;
+    }
+
+    findCurrentCriticalSlot(slot: CriticalSlot): CriticalSlot | null {
+        const matches = this.getCritSlots().filter(candidate => {
+            if (slot.loc && slot.slot !== undefined) return candidate.loc === slot.loc && candidate.slot === slot.slot;
+            return !!slot.id && candidate.id === slot.id;
+        });
+        if (matches.length > 1) {
+            throw new Error(`Duplicate critical-slot identity: ${slot.loc ?? slot.id}:${slot.slot ?? ''}`);
+        }
+        return matches[0] ?? null;
+    }
+
+    private getCriticalSlotStatus(snapshot: CriticalSlot): EquipmentStatus {
+        const slot = this.findCurrentCriticalSlot(snapshot);
+        if (!slot) return 'available';
+        const locationState = this.getEquipmentLocationStatus(slot.loc ?? '');
+        const slotState: EquipmentStatus = slot.destroyed ? 'destroyed' : 'available';
+        const facts: CriticalSlotStatusFacts = {
+            equipment: slot.eq ?? null,
+            equipmentId: slot.id ?? slot.name ?? '',
+            slotState,
+            locationState,
+            unitSystemFacts: this.rules.getUnitSystemStatusFacts(),
+        };
+        return combineEquipmentStatuses([
+            slotState,
+            locationState,
+            this.rules.getCriticalSlotStatusContribution(facts),
+        ]);
+    }
+
+    private getCurrentCriticalSlots(entry: MountedEquipment): CriticalSlot[] {
+        return entry.critSlots?.flatMap(slot => this.findCurrentCriticalSlot(slot) ?? []) ?? [];
+    }
+
+    private getEquipmentInstallationLocations(entry: MountedEquipment, criticalSlots: readonly CriticalSlot[]): string[] {
+        const componentRef = parseInventoryComponentReference(entry.id);
+        const referenceLocation = componentRef && this.isKnownEquipmentInstallationLocation(componentRef.location)
+            ? componentRef.location
+            : undefined;
+        const indexedComponent = componentRef === null ? undefined : this.getUnit().comp[componentRef.componentIndex];
+        const componentLocation = referenceLocation === undefined
+            && indexedComponent
+            && this.isInventoryComponentForEntry(indexedComponent, entry)
+            ? indexedComponent.l
+            : undefined;
+        const rawLocations = [
+            ...criticalSlots.flatMap(slot => slot.loc ? [slot.loc] : []),
+            ...(entry.locations ?? []),
+            ...(referenceLocation ? [referenceLocation] : []),
+            ...(componentLocation ? [componentLocation] : []),
+        ];
+        const locations = [...new Set(rawLocations
+            .flatMap(location => location.split('/'))
+            .map(location => this.normalizeEquipmentInstallationLocation(location))
+            .filter((location): location is string => location !== null))];
+        if (locations.length > 0) return locations;
+
+        if (entry.parent) {
+            const parentLocations = this.getEquipmentInstallationLocations(
+                entry.parent,
+                this.getCurrentCriticalSlots(entry.parent),
+            );
+            if (parentLocations.length > 0) return parentLocations;
+        }
+
+        this.reportUnknownDirectInventoryInstallationLocation(entry, componentRef);
+        return locations;
+    }
+
+    private isInventoryComponentForEntry(component: Unit['comp'][number], entry: MountedEquipment): boolean {
+        return component.eq === entry.equipment
+            || component.id === entry.equipment?.internalName
+            || component.id === entry.name
+            || component.n === entry.name;
+    }
+
+    private isKnownEquipmentInstallationLocation(location: string): boolean {
+        const normalizedLocations = location.split('/')
+            .map(candidate => this.normalizeEquipmentInstallationLocation(candidate))
+            .filter((candidate): candidate is string => candidate !== null);
+        if (normalizedLocations.length === 0) return false;
+
+        const metadataLocations = new Set(this.getUnit().comp
+            .flatMap(component => component.l?.split('/') ?? [])
+            .map(candidate => this.normalizeEquipmentInstallationLocation(candidate))
+            .filter((candidate): candidate is string => candidate !== null));
+        const structuralLocations = new Set([
+            ...(this.locations?.internal.keys() ?? []),
+            ...Array.from(this.locations?.armor.values() ?? []).map(candidate => candidate.loc),
+        ]);
+        return normalizedLocations.every(candidate =>
+            metadataLocations.has(candidate) || structuralLocations.has(candidate));
+    }
+
+    private normalizeEquipmentInstallationLocation(location: string): string | null {
+        const normalized = location.trim();
+        if (!normalized || normalized === '—') return null;
+        return this.battleArmorTrooperLocation(normalized) ?? normalized;
+    }
+
+    private reportUnknownDirectInventoryInstallationLocation(
+        entry: MountedEquipment,
+        componentRef: ReturnType<typeof parseInventoryComponentReference>,
+    ): void {
+        if (!this.isLoaded() || !this.hasDirectInventory()
+            || entry.isIntrinsicPhysicalAttack() || !entry.equipment
+            || this.unknownEquipmentInstallationLocationIds.has(entry.id)) return;
+        this.unknownEquipmentInstallationLocationIds.add(entry.id);
+        const componentLabel = componentRef === null ? '' : ` (component ${componentRef.componentIndex})`;
+        console.warn(
+            `Unable to resolve installation location for direct inventory equipment "${entry.id}"`
+            + `${componentLabel} on ${this.getUnit().name}.`
+        );
+    }
+
+    private buildEquipmentStatusFacts(
+        entry: MountedEquipment,
+        criticalSlots: readonly CriticalSlot[],
+        locations: readonly string[],
+    ): EquipmentStatusFacts {
+        const mountState: EquipmentStatus = entry.committedDestroyed()
+            ? 'destroyed'
+            : entry.states.get(ENTRY_DISABLED_STATE_KEY) === ENTRY_DISABLED_STATE_VALUE
+                ? 'disabled'
+                : 'available';
+        return {
+            equipment: entry.equipment ?? null,
+            equipmentId: entry.equipment?.id ?? entry.id,
+            equipmentFlags: entry.equipment?.flags ?? new Set(),
+            mountState,
+            criticals: criticalSlots.map(slot => ({
+                id: slot.id ?? `${slot.loc ?? ''}:${slot.slot ?? ''}`,
+                location: slot.loc ?? null,
+                slot: slot.slot ?? null,
+                status: slot.destroyed ? 'destroyed' : 'available',
+                committedHits: slot.hits ?? (slot.destroyed ? 1 : 0),
+                armored: slot.armored === true,
+            })),
+            locationStates: new Map(locations.map(location => [location, this.getEquipmentLocationStatus(location)])),
+            unitSystemFacts: this.rules.getUnitSystemStatusFacts(),
+        };
+    }
+
+    private buildCurrentEquipmentStatusFacts(entry: MountedEquipment): EquipmentStatusFacts {
+        const criticalSlots = this.getCurrentCriticalSlots(entry);
+        const locations = this.getEquipmentInstallationLocations(entry, criticalSlots);
+        return this.buildEquipmentStatusFacts(entry, criticalSlots, locations);
     }
 
     private isPhysicalActionUnavailable(entry: MountedEquipment): boolean {
@@ -885,15 +1165,9 @@ export class CBTForceUnit extends ForceUnit {
             && (attack === 'charge' || attack === 'airmek ram' || attack === 'airmech ram');
     }
 
-    private isEquipmentLocationUnavailable(loc: string | undefined): boolean {
-        if (!loc) return false;
-        const battleArmorLoc = this.battleArmorTrooperLocation(loc);
-        if (battleArmorLoc) return this.isArmorLocCommittedDestroyed(battleArmorLoc, false);
-        return this.isInternalLocCommittedDestroyed(loc);
-    }
-
     private battleArmorTrooperLocation(loc: string): string | null {
         if (this.getUnit().subtype !== 'Battle Armor') return null;
+        if (loc.trim().toUpperCase() === 'SSW') return 'T1';
         return getBattleArmorTrooperNumber(loc) === null
             ? null
             : normalizeBattleArmorTrooperLocation(loc);
@@ -1161,6 +1435,7 @@ export class CBTForceUnit extends ForceUnit {
             return item;
         });
         this.state.inventory.set([...inventory]);
+        this.inventoryControl.markAmmoSourcesChanged();
         this.state.resetTurnState();
         this.evaluateDestroyed();
         this.setModified();
@@ -1192,8 +1467,24 @@ export class CBTForceUnit extends ForceUnit {
     PSRTargetRoll = computed(() => this._rules.PSRTargetRoll());
 
     endPhase() {
+        this.dispatchBeforeEquipmentStateCommit();
         this.state.endPhase();
         this.phaseTrigger.update(v => v + 1); // Trigger change detection
+    }
+
+    private dispatchBeforeEquipmentStateCommit(): void {
+        const equipmentRegistry = this.injector.get(EquipmentInteractionRegistryService).getRegistry();
+        this.forEachCurrentInventoryEntry(entry =>
+            equipmentRegistry.beforeEquipmentStateCommit(entry));
+    }
+
+    private forEachCurrentInventoryEntry(callback: (entry: MountedEquipment) => void): void {
+        // A lifecycle hook may rebuild the inventory, so reacquire each mount by stable ID.
+        const inventoryIds = this.getInventory().map(entry => entry.id);
+        for (const id of inventoryIds) {
+            const entry = this.getInventory().find(candidate => candidate.id === id);
+            if (entry) callback(entry);
+        }
     }
 
     applyHeat() {
@@ -1224,9 +1515,10 @@ export class CBTForceUnit extends ForceUnit {
                 optionEl.classList.remove('selected');
             });
         });
+        this.dispatchBeforeEquipmentStateCommit();
         const equipmentRegistry = this.injector.get(EquipmentInteractionRegistryService).getRegistry();
-        const handlerContext = this.getHandlerContext();
-        this.getInventory().forEach(entry => equipmentRegistry.onEndTurn(entry, handlerContext));
+        const notifications = this.injector.get(ToastService);
+        this.forEachCurrentInventoryEntry(entry => equipmentRegistry.onEndTurn(entry, notifications));
         this.state.endTurn();
         this.phaseTrigger.update(v => v + 1); // Trigger change detection
         this.state.resetTurnState();

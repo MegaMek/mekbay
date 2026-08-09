@@ -15,6 +15,7 @@ import { CBTGameRulesService } from '../services/cbt-game-rules.service';
 import { CORE_2026_GAME_RULES } from '../models/rules/game-rules';
 import { MekRules } from '../models/rules/mek-rules';
 import { EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
+import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
 
 const equipmentInteractionRegistryService = new EquipmentInteractionRegistryService();
 
@@ -116,6 +117,7 @@ async function getSerializedMulEntity(unit: Unit, crewSlots: number): Promise<El
 function createFakeDataService(units: Unit[]) {
     return {
         getUnits: () => units,
+        getEquipmentRegistry: () => EMPTY_EQUIPMENT_REGISTRY,
     } as any;
 }
 

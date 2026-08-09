@@ -585,7 +585,10 @@ describe('equipment damage types', () => {
             ammo: { type: 'SNIPER_CANNON', munitionType: ['M_FLAK'] }
         });
         const owner = {
-            getInventoryControlEntryAmmoOption: () => `${flak.internalName}:Front`,
+            getInventoryControlEntryAmmoSelection: () => ({
+                selectedProfileId: `${flak.internalName}||M_FLAK`,
+                preferredSourceOptionId: `${flak.internalName}:Front`,
+            }),
             getEquipmentRegistry: () => new EquipmentRegistry({ [flak.internalName]: flak })
         } as unknown as CBTForceUnit;
         const mounted = new MountedWeapon({ owner, id: weapon.id, name: weapon.name, equipment: weapon });

@@ -4,7 +4,6 @@
 
 import { AmmoEquipment, MiscEquipment, WeaponEquipment } from './equipment.model';
 import { getMountedOneShotConsumed, MountedAmmo, MountedEquipment, MountedWeapon } from './mounted-equipment.model';
-import { createTestEquipmentRules } from '../testing/unit-test-helpers';
 
 describe('MountedAmmo capacity baseline', () => {
     const ammoEquipment = new AmmoEquipment({
@@ -147,34 +146,6 @@ describe('MountedEquipment physical classification', () => {
         });
         expect(physicalEntry).not.toBeInstanceOf(MountedWeapon);
         expect(physicalEntry.isPhysicalWeapon()).toBeTrue();
-    });
-});
-
-describe('MountedEquipment action availability', () => {
-    it('delegates action availability to its owning unit', () => {
-        const owner = jasmine.createSpyObj('CBTForceUnit', ['isEquipmentActionUnavailable']);
-        owner.rules = createTestEquipmentRules();
-        const entry = new MountedEquipment({ owner, id: 'laser', name: 'Laser' });
-        owner.isEquipmentActionUnavailable.and.returnValue(false);
-
-        expect(entry.isActionUnavailable()).toBeFalse();
-        expect(owner.isEquipmentActionUnavailable).toHaveBeenCalledOnceWith(entry);
-
-        owner.isEquipmentActionUnavailable.calls.reset();
-        owner.isEquipmentActionUnavailable.and.returnValue(true);
-
-        expect(entry.isActionUnavailable()).toBeTrue();
-        expect(owner.isEquipmentActionUnavailable).toHaveBeenCalledOnceWith(entry);
-    });
-
-    it('is action-unavailable when structurally unavailable without consulting its owner', () => {
-        const owner = jasmine.createSpyObj('CBTForceUnit', ['isEquipmentActionUnavailable']);
-        owner.rules = createTestEquipmentRules({ getEquipmentStatus: () => 'destroyed' });
-        const entry = new MountedEquipment({ owner, id: 'laser', name: 'Laser' });
-
-        expect(entry.isUnavailable()).toBeTrue();
-        expect(entry.isActionUnavailable()).toBeTrue();
-        expect(owner.isEquipmentActionUnavailable).not.toHaveBeenCalled();
     });
 });
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionHandler, type HandlerCommandContext, type HandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import type { PickerChoice } from '../components/picker/picker.interface';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import {
@@ -23,14 +23,14 @@ export class InventoryModeHandler extends EquipmentInteractionHandler {
         return getInventoryControlModes(equipment).length > 0;
     }
 
-    getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
+    getChoices(equipment: MountedEquipment, context: HandlerQueryContext): PickerChoice[] {
         const choices = getInventoryControlModeChoices(equipment);
         if (choices.length === 0) return [];
 
         const currentMode = getSelectedInventoryControlMode(
             equipment,
-            context.dataService.getEquipmentRegistry(),
-            equipment.owner.getInventoryControlRules?.() ?? {}
+            context.equipmentCatalog,
+            context.matchesAmmo
         ) ?? choices[0].value;
         return [
             {
@@ -38,13 +38,12 @@ export class InventoryModeHandler extends EquipmentInteractionHandler {
                 value: currentMode,
                 displayType: 'dropdown',
                 choices,
-                disabled: equipment.isUnavailable(),
                 keepOpen: true
             }
         ];
     }
 
-    handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): boolean {
+    handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerCommandContext): boolean {
         setInventoryControlMode(equipment, String(choice.value));
         return true;
     }

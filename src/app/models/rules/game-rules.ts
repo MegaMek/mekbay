@@ -22,15 +22,14 @@ export interface ToHitModifierBreakdownEntry {
 }
 
 export type ToHitAdjustment =
-    | { readonly kind: 'replace-base'; readonly value: number | readonly number[]; readonly label?: string }
-    | { readonly kind: 'add'; readonly modifier: number; readonly label?: string; readonly weakened?: boolean }
+    | { readonly kind: 'replace-base'; readonly value: number | readonly number[]; readonly label: string }
+    | { readonly kind: 'add'; readonly modifier: number; readonly label: string; readonly weakened?: boolean }
     | { readonly kind: 'unsupported' };
 
 export interface ToHitRequest {
     subject: Equipment | MountedEquipment;
     range?: RangeBrackets | null;
-    stateModifier?: number;
-    stateModifierBreakdown?: readonly ToHitModifierBreakdownEntry[];
+    stateModifiers?: readonly ToHitModifierBreakdownEntry[];
     adjustments?: readonly ToHitAdjustment[];
 }
 
@@ -92,15 +91,6 @@ const TO_HIT_MODIFIER_RANGE_INDEX: Record<RangeBrackets, number> = {
 };
 const BASE_HIT_MODIFIER_LABEL = 'Base Hit Modifier';
 
-export function validatedToHitModifierBreakdown(
-    modifier: number,
-    breakdown: readonly ToHitModifierBreakdownEntry[] | undefined,
-    fallbackLabel = 'Hit Modifier'
-): ToHitModifierBreakdownEntry[] {
-    if (breakdown?.reduce((total, entry) => total + entry.modifier, 0) === modifier) return [...breakdown];
-    return modifier === 0 ? [] : [{ label: fallbackLabel, modifier }];
-}
-
 export function separateHeatFireModifier(resolution: ToHitResolution): ToHitHeatSeparation {
     const heatFireModifier = resolution.modifierBreakdown.reduce(
         (total, entry) => total + (entry.kind === 'heat' ? entry.modifier : 0),
@@ -139,13 +129,12 @@ export abstract class CBTGameRules {
         const replacement = adjustments.find(adjustment => adjustment.kind === 'replace-base');
         const hasBaseReplacement = replacement !== undefined;
         if (unsupported || (entry && !this.supportsToHit(entry) && !hasBaseReplacement)) return emptyToHitResolution();
-        const stateModifier = request.stateModifier ?? 0;
-        const stateBreakdown = validatedToHitModifierBreakdown(stateModifier, request.stateModifierBreakdown);
+        const stateBreakdown = [...(request.stateModifiers ?? [])];
         const adjustmentBreakdowns = adjustments
             .filter((adjustment): adjustment is Extract<ToHitAdjustment, { readonly kind: 'add' }> => adjustment.kind === 'add')
             .filter(adjustment => adjustment.modifier !== 0 || adjustment.weakened !== undefined)
             .map(({ label, modifier, weakened }) => ({
-                label: label ?? 'Hit Modifier',
+                label,
                 modifier,
                 ...(weakened !== undefined && { weakened })
             }));
@@ -226,7 +215,7 @@ export abstract class CBTGameRules {
         adjustmentBreakdowns: readonly ToHitModifierBreakdownEntry[],
         rulesProfile: readonly number[] = baseProfile
     ): ToHitResolution {
-        const stateModifier = request.stateModifier ?? 0;
+        const stateModifier = stateBreakdown.reduce((total, entry) => total + entry.modifier, 0);
         const adjustmentModifier = adjustments.reduce(
             (total, adjustment) => total + (adjustment.kind === 'add' ? adjustment.modifier : 0),
             0
@@ -375,7 +364,7 @@ export class TWGameRules extends CBTGameRules {
     private calculateGuidedAmmoBV(unit: CBTForceUnit): number {
         if (!unit.isLoaded()) return 0;
         const launchers = unit.getInventory().filter(entry =>
-            entry.equipment instanceof WeaponEquipment && !unit.isEquipmentUnavailable(entry));
+            entry.equipment instanceof WeaponEquipment && unit.isEquipmentOperational(entry));
         if (launchers.length === 0) return 0;
 
         if (unit.getUnit().type === 'Mek') {
@@ -383,7 +372,7 @@ export class TWGameRules extends CBTGameRules {
                 const ammo = crit.eq;
                 if (!(ammo instanceof AmmoEquipment)
                     || !isTagGuidedAmmo(ammo)
-                    || unit.isEquipmentUnavailable(crit)
+                    || !unit.isEquipmentOperational(crit)
                     || !hasUsableAmmo(crit.totalAmmo, crit.consumed)
                     || !hasCompatibleLauncher(ammo, launchers)
                     || !ammo.hasFixedBV()) return total;
@@ -395,7 +384,7 @@ export class TWGameRules extends CBTGameRules {
             const ammo = resolveMountedAmmo(unit, mount);
             if (!(ammo instanceof AmmoEquipment)
                 || !isTagGuidedAmmo(ammo)
-                || unit.isEquipmentUnavailable(mount)
+                || !unit.isEquipmentOperational(mount)
                 || !hasUsableAmmo(mount.totalAmmo, mount.consumed)
                 || !hasCompatibleLauncher(ammo, launchers)
                 || !ammo.hasFixedBV()) return total;

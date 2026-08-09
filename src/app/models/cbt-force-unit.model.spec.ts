@@ -20,12 +20,12 @@ import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { UnitSvgAeroService } from '../services/unit-svg-aero.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { Unit } from './units.model';
-import { EquipmentInteractionHandler, EquipmentInteractionRegistryService, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionHandler, EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
 import { LaserInsulatorHandler } from '../equipment-handlers/laser-insulator.handler';
 import { RISC_LASER_PULSE_MODE, RiscLaserPulseModuleHandler } from '../equipment-handlers/risc-laser-pulse-module.handler';
 import { DialogsService } from '../services/dialogs.service';
 import { ToastService } from '../services/toast.service';
-import { getInventoryControlGroups, INVENTORY_CONTROL_MODE_STATE, syncSvgMode } from '../utils/inventory-control.util';
+import { getInventoryControlAmmoProfileId, getInventoryControlAmmoSelectionOptions, getInventoryControlGroups, INVENTORY_CONTROL_MODE_STATE, syncSvgMode } from '../utils/inventory-control.util';
 import { AtmHandler } from '../equipment-handlers/atm.handler';
 import { MmlHandler } from '../equipment-handlers/mml.handler';
 import { ATM_EXTENDED_RANGE_PROFILE, ATM_HIGH_EXPLOSIVE_PROFILE, ATM_STANDARD_PROFILE } from './ammo-weapon-profile.model';
@@ -34,8 +34,13 @@ import { EquipmentFlag } from './equipment-flags.type';
 import { EquipmentRegistry } from './equipment-lookup';
 import { OptionsService } from '../services/options.service';
 import { formatPilotingDisplay } from './rules/unit-type-rules';
-import { createTestEquipmentState } from '../testing/unit-test-helpers';
 import { registerAllHandlers } from '../equipment-handlers';
+import {
+    PPC_CAPACITOR_CHARGING_STATE,
+    PPC_CAPACITOR_CHARGED_STATE,
+    PPC_CAPACITOR_STATE_KEY,
+    PpcCapacitorHandler,
+} from '../equipment-handlers/ppc-capacitor.handler';
 
 function createEquipment(): EquipmentMap {
     const ultraAc20 = new WeaponEquipment({
@@ -316,6 +321,19 @@ function createVehicleSvg(): SVGSVGElement {
                 <text class="targetTn-text" display="none"></text>
             </g>
             <g id="ammoProfile"><text>Ammo: (Ultra AC/20) 30</text></g>
+        </svg>
+    `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+}
+
+function createKamisoriAInventorySvg(): SVGSVGElement {
+    return new DOMParser().parseFromString(`
+        <svg xmlns="http://www.w3.org/2000/svg">
+            <circle class="pip armor" loc="TU"></circle>
+            <circle class="pip structure" loc="TU"></circle>
+            <g class="inventoryEntry" id="Light PPC@TU#0" hitMod="0">
+                <text class="location">TU</text>
+                <g class="inventoryEntry linked" id="PPC Capacitor@TU#1"></g>
+            </g>
         </svg>
     `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
 }
@@ -623,8 +641,7 @@ class ExposedUnitSvgService extends UnitSvgService {
         const baseValue = typeof baseResolution.value === 'number' ? baseResolution.value : 0;
         const resolution = this.unit.gameRules.resolveToHit({
             subject: entry,
-            stateModifier: hitModifier - baseValue,
-            stateModifierBreakdown: [{
+            stateModifiers: [{
                 label: 'Test modifier',
                 modifier: hitModifier - baseValue,
                 ...(forceWeakened && { weakened: true }),
@@ -692,6 +709,11 @@ class EndTurnTestHandler extends EquipmentInteractionHandler {
     readonly id = 'end-turn-test-handler';
     override readonly flags: EquipmentFlag[] = ['F_TEST_ONLY'];
     calls = 0;
+    readonly receivedCurrentEntries: boolean[] = [];
+
+    constructor(private readonly rebuildInventory = false) {
+        super();
+    }
 
     override applicableTo(equipment: MountedEquipment): boolean {
         return equipment.equipment?.id === 'end-turn-test';
@@ -705,8 +727,12 @@ class EndTurnTestHandler extends EquipmentInteractionHandler {
         return false;
     }
 
-    override onEndTurn(_equipment: MountedEquipment, _context: HandlerContext): void {
+    override onEndTurn(equipment: MountedEquipment): void {
         this.calls++;
+        this.receivedCurrentEntries.push(
+            equipment.owner.getInventory().find(candidate => candidate.id === equipment.id) === equipment
+        );
+        if (this.rebuildInventory) equipment.owner.setInventoryEntry(equipment);
     }
 }
 
@@ -911,9 +937,13 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         });
         weaponEntry.linkedWith = [ammoEntry];
         forceUnit.setInventory([weaponEntry, ammoEntry], true);
+        const availabilitySpy = spyOn(forceUnit, 'isEquipmentOperational')
+            .and.throwError('selected profile must not inspect source availability');
 
         expect(forceUnit.getInventoryControlSelectedAmmo(weaponEntry)).toBe(intrinsicAmmo);
-        expect(() => weaponEntry.owner.rules.getEquipmentToHit(weaponEntry)).not.toThrow();
+        expect(availabilitySpy).not.toHaveBeenCalled();
+        availabilitySpy.and.callThrough();
+        expect(() => weaponEntry.owner.rules.getEquipmentToHitModifiers(weaponEntry)).not.toThrow();
     });
 
     it('clones virtual inventory rows from a computed without writing signals', () => {
@@ -1016,6 +1046,31 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.endTurn();
 
         expect(handler.calls).toBe(1);
+    });
+
+    it('reacquires each current mount when an end-turn hook rebuilds inventory', () => {
+        const handler = new EndTurnTestHandler(true);
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(handler);
+        const forceUnit = createForceUnit();
+        const testWeapon = new WeaponEquipment({
+            id: 'end-turn-test',
+            name: 'End Turn Test',
+            type: 'weapon',
+            flags: ['F_TEST_ONLY'],
+            weapon: { damage: 1 },
+        });
+        forceUnit.setInventory(['A', 'B'].map(id => new MountedWeapon({
+            owner: forceUnit,
+            id: `end-turn-test@${id}#0`,
+            name: 'End Turn Test',
+            equipment: testWeapon,
+            intrinsicPhysicalAttack: true,
+        })), true);
+
+        forceUnit.endTurn();
+
+        expect(handler.calls).toBe(2);
+        expect(handler.receivedCurrentEntries).toEqual([true, true]);
     });
 
     it('applies heat, clears registered sources, and starts the next turn without a no-op resolution', () => {
@@ -2221,6 +2276,161 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(weaponEntry.pendingDestroyed()).toBeUndefined();
     });
 
+    function installChargedPpcPair(
+        forceUnit: CBTForceUnit,
+        criticalSlots = false,
+    ): {
+        weapon: MountedWeapon;
+        capacitor: MountedMisc;
+        weaponSlots: CriticalSlot[];
+        capacitorSlots: CriticalSlot[];
+        unrelatedSlot: CriticalSlot | null;
+    } {
+        const location = criticalSlots ? 'RA' : 'FR';
+        const weaponId = `TestPPC@${location}#0`;
+        const capacitorId = `TestPPCCapacitor@${location}#1`;
+        const ppc = new WeaponEquipment({
+            id: 'TestPPC',
+            name: 'Test PPC',
+            type: 'weapon',
+            flags: ['F_PPC', 'F_DIRECT_FIRE', 'F_ENERGY', 'F_PPC_CAPACITOR_COMPATIBLE'],
+            weapon: { damage: 10, heat: 10, ranges: [6, 12, 18, 24] },
+        });
+        const capacitorEquipment = new MiscEquipment({
+            id: 'TestPPCCapacitor',
+            name: 'Test PPC Capacitor',
+            type: 'misc',
+            flags: ['F_WEAPON_ENHANCEMENT', 'F_PPC_CAPACITOR'],
+        });
+        const weaponSlots: CriticalSlot[] = criticalSlots ? [
+            { id: weaponId, name: ppc.name, loc: location, slot: 0, eq: ppc },
+            { id: weaponId, name: ppc.name, loc: location, slot: 1, eq: ppc },
+        ] : [];
+        const capacitorSlots: CriticalSlot[] = criticalSlots ? [
+            { id: capacitorId, name: capacitorEquipment.name, loc: location, slot: 2, eq: capacitorEquipment },
+            { id: capacitorId, name: capacitorEquipment.name, loc: location, slot: 3, eq: capacitorEquipment },
+        ] : [];
+        const unrelatedSlot: CriticalSlot | null = criticalSlots
+            ? { id: 'Unrelated@LA#2', name: 'Unrelated', loc: 'LA', slot: 0 }
+            : null;
+        if (criticalSlots) {
+            forceUnit.setCritSlots([
+                ...weaponSlots,
+                ...capacitorSlots,
+                unrelatedSlot!,
+            ], true);
+        }
+
+        const capacitor = new MountedMisc({
+            owner: forceUnit,
+            id: capacitorId,
+            name: capacitorEquipment.name,
+            equipment: capacitorEquipment,
+            locations: new Set([location]),
+            critSlots: capacitorSlots,
+            states: new Map([[PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE]]),
+        });
+        const weapon = new MountedWeapon({
+            owner: forceUnit,
+            id: weaponId,
+            name: ppc.name,
+            equipment: ppc,
+            locations: new Set([location]),
+            critSlots: weaponSlots,
+        });
+        weapon.setLinkedEquipment([capacitor]);
+        forceUnit.setInventory([weapon, capacitor], true);
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new PpcCapacitorHandler());
+        return { weapon, capacitor, weaponSlots, capacitorSlots, unrelatedSlot };
+    }
+
+    it('commits a charged PPC-capacitor explosion for direct inventory at phase end', () => {
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
+        initialize(forceUnit);
+        const { weapon, capacitor } = installChargedPpcPair(forceUnit);
+        expect(forceUnit.applyEquipmentDamage(weapon)).toBeTrue();
+
+        forceUnit.endPhase();
+
+        const committedWeapon = forceUnit.getInventory().find(entry => entry.id === weapon.id)!;
+        const committedCapacitor = forceUnit.getInventory().find(entry => entry.id === capacitor.id)!;
+        expect(committedWeapon.committedDestroyed()).toBeTrue();
+        expect(committedCapacitor.committedDestroyed()).toBeTrue();
+        expect(committedWeapon.pendingDestroyed()).toBeUndefined();
+        expect(committedCapacitor.pendingDestroyed()).toBeUndefined();
+        expect(committedCapacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
+    });
+
+    it('commits a charging PPC-capacitor explosion before end-turn state advancement', () => {
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
+        initialize(forceUnit);
+        const { weapon, capacitor } = installChargedPpcPair(forceUnit);
+        capacitor.setState(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGING_STATE);
+        forceUnit.setInventoryEntry(capacitor);
+        expect(forceUnit.applyEquipmentDamage(weapon)).toBeTrue();
+
+        forceUnit.endTurn();
+
+        const committedWeapon = forceUnit.getInventory().find(entry => entry.id === weapon.id)!;
+        const committedCapacitor = forceUnit.getInventory().find(entry => entry.id === capacitor.id)!;
+        expect(committedWeapon.committedDestroyed()).toBeTrue();
+        expect(committedCapacitor.committedDestroyed()).toBeTrue();
+        expect(committedCapacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
+    });
+
+    for (const consolidateImmediately of [false, true]) {
+        it(`commits a charged PPC-capacitor explosion across every Mek slot${consolidateImmediately ? ' immediately' : ' at phase end'}`, () => {
+            const forceUnit = createForceUnit(createMekUnit());
+            const { weaponSlots, capacitorSlots, unrelatedSlot } = installChargedPpcPair(forceUnit, true);
+            const triggerSlot = consolidateImmediately ? weaponSlots[0] : capacitorSlots[0];
+
+            forceUnit.applyHitToCritSlot(triggerSlot, 1, consolidateImmediately);
+            if (!consolidateImmediately) forceUnit.endPhase();
+
+            const committedSlots = [...weaponSlots, ...capacitorSlots]
+                .map(slot => forceUnit.findCurrentCriticalSlot(slot)!);
+            const committedWeapon = forceUnit.getInventory().find(entry => entry.id === 'TestPPC@RA#0')!;
+            const committedCapacitor = forceUnit.getInventory().find(entry => entry.id === 'TestPPCCapacitor@RA#1')!;
+            expect(committedSlots.every(slot => !!slot.destroyed)).toBeTrue();
+            expect(committedSlots.every(slot =>
+                (slot.hits ?? 0) >= (slot.armored ? 2 : 1))).toBeTrue();
+            expect(forceUnit.findCurrentCriticalSlot(unrelatedSlot!)?.destroyed).toBeUndefined();
+            expect(forceUnit.findCurrentCriticalSlot(unrelatedSlot!)?.hits).toBeUndefined();
+            expect(committedCapacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
+            expect(committedWeapon.linkedWith).toContain(committedCapacitor);
+            expect(committedCapacitor.parent).toBe(committedWeapon);
+        });
+    }
+
+    for (const capacitorState of [PPC_CAPACITOR_CHARGED_STATE, PPC_CAPACITOR_CHARGING_STATE] as const) {
+        it(`does not explode but clears a ${capacitorState} capacitor when its Mek location is destroyed`, () => {
+            const forceUnit = createForceUnit(createMekUnit());
+            forceUnit.locations = {
+                armor: new Map(),
+                internal: new Map([['RA', { loc: 'RA', points: 1 }]]),
+            };
+            forceUnit.setLocations({ RA: { internal: 0 } }, true);
+            const { capacitor, weaponSlots, capacitorSlots } = installChargedPpcPair(forceUnit, true);
+            forceUnit.isLoaded.set(true);
+            capacitor.setState(PPC_CAPACITOR_STATE_KEY, capacitorState);
+            forceUnit.setInventoryEntry(capacitor);
+
+            forceUnit.addInternalHits('RA', 1);
+
+            expect([...weaponSlots, ...capacitorSlots].every(slot => !!slot.destroying)).toBeTrue();
+            expect([...weaponSlots, ...capacitorSlots].every(slot => (slot.hits ?? 0) === 0)).toBeTrue();
+
+            forceUnit.endTurn();
+
+            const committedSlots = [...weaponSlots, ...capacitorSlots]
+                .map(slot => forceUnit.findCurrentCriticalSlot(slot)!);
+            const committedCapacitor = forceUnit.getInventory().find(entry => entry.id === capacitor.id)!;
+            expect(committedSlots.every(slot => !!slot.destroyed)).toBeTrue();
+            expect(committedSlots.every(slot => (slot.hits ?? 0) === 0)).toBeTrue();
+            expect(committedCapacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
+        });
+    }
+
     it('uses the lowest gunnery skill among crew members', () => {
         const forceUnit = createForceUnit(createEmptyUnit({
             name: 'BMTest_MEK-1',
@@ -2518,6 +2728,20 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.setInventoryEntry(ammoEntries[0]);
         ammoEntries[1].consumed = 5;
         forceUnit.setInventoryEntry(ammoEntries[1]);
+        const weaponEntry = forceUnit.getInventory()
+            .find(entry => entry.equipment instanceof WeaponEquipment)!;
+        const precisionAmmo = equipment['Clan Ultra AC/20 Precision Ammo'] as AmmoEquipment;
+        const precisionProfileId = getInventoryControlAmmoProfileId(precisionAmmo);
+        const precisionOption = getInventoryControlAmmoSelectionOptions(
+            weaponEntry,
+            forceUnit.getEquipmentRegistry(),
+            (weapon, ammo, mode) => forceUnit.matchesInventoryControlAmmo(weapon, ammo, mode),
+        ).find(option => option.profileId === precisionProfileId);
+        expect(precisionOption).toBeDefined();
+        forceUnit.setInventoryControlEntryAmmoSelection(weaponEntry.id, {
+            selectedProfileId: precisionProfileId,
+            preferredSourceOptionId: precisionOption!.id,
+        });
 
         expect(ammoEntries.map(entry => entry.originalTotalAmmo)).toEqual([13, 12]);
         forceUnit.getUnit().comp = [];
@@ -2529,6 +2753,11 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(repairedAmmoEntries.map(entry => entry.ammo)).toEqual([undefined, undefined]);
         expect(repairedAmmoEntries.map(entry => entry.totalAmmo)).toEqual([13, 12]);
         expect(repairedAmmoEntries.map(entry => entry.consumed)).toEqual([0, 0]);
+        expect(forceUnit.getInventoryControlEntryAmmoSelection(weaponEntry.id)).toEqual({
+            selectedProfileId: precisionProfileId,
+            preferredSourceOptionId: null,
+        });
+        expect(forceUnit.getInventoryControlSelectedAmmo(weaponEntry)).toBe(precisionAmmo);
     });
 
     it('repairAll restores intrinsic ammo from its runtime mount baseline', () => {
@@ -2950,8 +3179,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.setCondition('shutdown', true);
         TestBed.tick();
 
-        expect(forceUnit.isEquipmentUnavailable(entry)).toBeFalse();
-        expect(entry.isActionUnavailable()).toBeTrue();
+        expect(forceUnit.isEquipmentOperational(entry)).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(entry, 'fire')).toBeFalse();
         expect(entry.el!.classList.contains('disabledInventory')).toBeTrue();
         expect(entry.el!.classList.contains('damagedInventory')).toBeFalse();
         expect(entry.el!.classList.contains('selected')).toBeFalse();
@@ -2978,32 +3207,32 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const talonDfa = intrinsicAttack('DFA [Talons]');
 
         forceUnit.turnState().moveMode.set(null); // unknown case!
-        expect(charge.isActionUnavailable()).toBeFalse();
-        expect(airMekRam.isActionUnavailable()).toBeFalse();
-        expect(airMechRam.isActionUnavailable()).toBeFalse();
-        expect(deathFromAbove.isActionUnavailable()).toBeFalse();
-        expect(talonDfa.isActionUnavailable()).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(charge, 'physical-attack')).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(airMekRam, 'physical-attack')).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(airMechRam, 'physical-attack')).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(deathFromAbove, 'physical-attack')).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(talonDfa, 'physical-attack')).toBeTrue();
 
         forceUnit.turnState().moveMode.set('stationary');
-        expect(charge.isActionUnavailable()).toBeTrue();
-        expect(airMekRam.isActionUnavailable()).toBeTrue();
-        expect(airMechRam.isActionUnavailable()).toBeTrue();
-        expect(deathFromAbove.isActionUnavailable()).toBeTrue();
-        expect(talonDfa.isActionUnavailable()).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(charge, 'physical-attack')).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(airMekRam, 'physical-attack')).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(airMechRam, 'physical-attack')).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(deathFromAbove, 'physical-attack')).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(talonDfa, 'physical-attack')).toBeFalse();
 
         forceUnit.turnState().moveMode.set('run');
-        expect(charge.isActionUnavailable()).toBeFalse();
-        expect(airMekRam.isActionUnavailable()).toBeFalse();
-        expect(airMechRam.isActionUnavailable()).toBeFalse();
-        expect(deathFromAbove.isActionUnavailable()).toBeTrue();
-        expect(talonDfa.isActionUnavailable()).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(charge, 'physical-attack')).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(airMekRam, 'physical-attack')).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(airMechRam, 'physical-attack')).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(deathFromAbove, 'physical-attack')).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(talonDfa, 'physical-attack')).toBeFalse();
 
         forceUnit.turnState().moveMode.set('jump');
-        expect(charge.isActionUnavailable()).toBeTrue();
-        expect(airMekRam.isActionUnavailable()).toBeFalse();
-        expect(airMechRam.isActionUnavailable()).toBeFalse();
-        expect(deathFromAbove.isActionUnavailable()).toBeFalse();
-        expect(talonDfa.isActionUnavailable()).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(charge, 'physical-attack')).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(airMekRam, 'physical-attack')).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(airMechRam, 'physical-attack')).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(deathFromAbove, 'physical-attack')).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(talonDfa, 'physical-attack')).toBeTrue();
     });
 
     it('preserves action-unavailable SVG state when interactions synchronize modes', () => {
@@ -3024,14 +3253,14 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         syncSvgMode(charge, null);
 
-        expect(charge.isDisabled()).toBeFalse();
-        expect(charge.isActionUnavailable()).toBeTrue();
+        expect(forceUnit.isEquipmentOperational(charge)).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(charge, 'physical-attack')).toBeFalse();
         expect(el.classList.contains('disabledInventory')).toBeTrue();
 
         forceUnit.turnState().moveMode.set(null);
         syncSvgMode(charge, null);
 
-        expect(charge.isActionUnavailable()).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(charge, 'physical-attack')).toBeTrue();
         expect(el.classList.contains('disabledInventory')).toBeFalse();
     });
 
@@ -3047,12 +3276,14 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             owner: forceUnit,
             id: 'hatchet@RA#0',
             name: 'Hatchet',
+            locations: new Set(['RA']),
             equipment: new Equipment({ id: 'hatchet', name: 'Hatchet', type: 'misc', flags: ['F_CLUB'] }),
         });
         const rangedWeapon = new MountedEquipment({
             owner: forceUnit,
             id: 'VariableDamageLaser@RA#0',
             name: 'Variable Damage Laser',
+            locations: new Set(['RA']),
             equipment: equipment['VariableDamageLaser'],
         });
         forceUnit.turnState().moveMode.set('walk');
@@ -3061,16 +3292,312 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         expect(intrinsicPunch.isPhysicalWeapon()).toBeTrue();
         expect(hatchet.isPhysicalWeapon()).toBeTrue();
-        expect(intrinsicPunch.isActionUnavailable()).toBeTrue();
-        expect(hatchet.isActionUnavailable()).toBeTrue();
-        expect(rangedWeapon.isActionUnavailable()).toBeFalse();
-        expect(forceUnit.isEquipmentUnavailable(intrinsicPunch)).toBeFalse();
-        expect(forceUnit.isEquipmentUnavailable(hatchet)).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(intrinsicPunch, 'physical-attack')).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(hatchet, 'physical-attack')).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(rangedWeapon, 'fire')).toBeTrue();
+        expect(forceUnit.isEquipmentOperational(intrinsicPunch)).toBeTrue();
+        expect(forceUnit.isEquipmentOperational(hatchet)).toBeTrue();
 
         forceUnit.setCondition('prone', false);
 
-        expect(intrinsicPunch.isActionUnavailable()).toBeFalse();
-        expect(hatchet.isActionUnavailable()).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(intrinsicPunch, 'physical-attack')).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(hatchet, 'physical-attack')).toBeTrue();
+    });
+
+    it('unions current critical and mount installation locations for whole-mount status', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.locations = {
+            armor: new Map([
+                ['RA', { loc: 'RA', rear: false, points: 1 }],
+                ['LL', { loc: 'LL', rear: false, points: 1 }],
+            ]),
+            internal: new Map([
+                ['RA', { loc: 'RA', points: 1 }],
+                ['LL', { loc: 'LL', points: 1 }],
+            ]),
+        };
+        forceUnit.setLocations({ LL: { internal: 1 } }, true);
+        const critical: CriticalSlot = {
+            id: 'split-installation',
+            name: 'Variable Damage Laser',
+            loc: 'RA',
+            slot: 0,
+            eq: equipment['VariableDamageLaser'],
+        };
+        forceUnit.writeCrits([critical]);
+        const entry = new MountedWeapon({
+            owner: forceUnit,
+            id: 'split-installation',
+            name: 'Variable Damage Laser',
+            equipment: equipment['VariableDamageLaser'] as WeaponEquipment,
+            critSlots: [critical],
+            locations: new Set(['LL']),
+        });
+        forceUnit.setInventory([entry], true);
+
+        expect(forceUnit.getEquipmentStatusAtLocation(entry, 'RA')).toBe('available');
+        expect(forceUnit.getEquipmentStatusAtLocation(entry, 'LL')).toBe('destroyed');
+        expect(forceUnit.getEquipmentInstallationLocationStatus(entry)).toBe('destroyed');
+        expect(forceUnit.getEquipmentStatus(entry)).toBe('destroyed');
+
+        entry.setCommittedDestroyed(true);
+        expect(forceUnit.canEditEquipmentState(entry, 'repair')).toBeFalse();
+        expect(forceUnit.repairEquipment(entry)).toBeFalse();
+
+        entry.setPendingDestroyed(false);
+        expect(entry.isRepairing()).toBeTrue();
+        expect(forceUnit.isEquipmentResolvedDestroyed(entry)).toBeTrue();
+        expect(forceUnit.isEquipmentResolvedCommittedDestroyed(entry)).toBeTrue();
+
+        forceUnit.endPhase();
+        expect(entry.isRepairing()).toBeFalse();
+        expect(entry.committedDestroyed()).toBeTrue();
+        expect(entry.pendingDestroyed()).toBeUndefined();
+    });
+
+    it('cancels a pending repair when its installation location is destroyed before end-phase commit', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.locations = {
+            armor: new Map([['RA', { loc: 'RA', rear: false, points: 1 }]]),
+            internal: new Map([['RA', { loc: 'RA', points: 1 }]]),
+        };
+        const entry = new MountedWeapon({
+            owner: forceUnit,
+            id: 'repairing-location-loss',
+            name: 'Variable Damage Laser',
+            equipment: equipment['VariableDamageLaser'] as WeaponEquipment,
+            locations: new Set(['RA']),
+            destroyed: true,
+        });
+        forceUnit.setInventory([entry], true);
+
+        expect(forceUnit.getEquipmentInstallationLocationStatus(entry)).toBe('available');
+        expect(forceUnit.repairEquipment(entry)).toBeTrue();
+        expect(entry.isRepairing()).toBeTrue();
+
+        forceUnit.addInternalHits('RA', 1);
+
+        expect(forceUnit.getEquipmentInstallationLocationStatus(entry)).toBe('available');
+        expect(forceUnit.isInternalLocStructurallyDestroyed('RA')).toBeTrue();
+
+        forceUnit.endPhase();
+
+        expect(forceUnit.getEquipmentInstallationLocationStatus(entry)).toBe('destroyed');
+        expect(entry.isRepairing()).toBeFalse();
+        expect(entry.committedDestroyed()).toBeTrue();
+        expect(entry.pendingDestroyed()).toBeUndefined();
+    });
+
+    it('does not offer mount repair for destruction derived only from critical facts', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.locations = {
+            armor: new Map([['RA', { loc: 'RA', rear: false, points: 1 }]]),
+            internal: new Map([['RA', { loc: 'RA', points: 1 }]]),
+        };
+        const critical: CriticalSlot = {
+            id: 'critical-only-destruction',
+            name: 'Variable Damage Laser',
+            loc: 'RA',
+            slot: 0,
+            destroyed: 1,
+            eq: equipment['VariableDamageLaser'],
+        };
+        forceUnit.writeCrits([critical]);
+        const entry = new MountedWeapon({
+            owner: forceUnit,
+            id: critical.id!,
+            name: critical.name!,
+            equipment: equipment['VariableDamageLaser'] as WeaponEquipment,
+            critSlots: [critical],
+            locations: new Set(['RA']),
+        });
+
+        expect(forceUnit.getEquipmentStatus(entry)).toBe('destroyed');
+        expect(entry.committedDestroyed()).toBeFalse();
+        expect(forceUnit.canEditEquipmentState(entry, 'repair')).toBeFalse();
+        expect(forceUnit.repairEquipment(entry)).toBeFalse();
+        expect(entry.pendingDestroyed()).toBeUndefined();
+    });
+
+    it('restores the Kamisori A turret capacitor location from its direct-inventory ID', () => {
+        const lightPpc = new WeaponEquipment({
+            id: 'Light PPC',
+            name: 'Light PPC',
+            type: 'weapon',
+            weapon: { ammoType: 'NA', damage: 5, ranges: [6, 12, 18, 24] },
+        });
+        const capacitorEquipment = new MiscEquipment({
+            id: 'PPC Capacitor',
+            name: 'PPC Capacitor',
+            type: 'misc',
+        });
+        equipment[lightPpc.internalName] = lightPpc;
+        equipment[capacitorEquipment.internalName] = capacitorEquipment;
+        const unit = createEmptyUnit({
+            name: 'CVKamisoriLightTank_A',
+            chassis: 'Kamisori Light Tank',
+            model: 'A',
+            type: 'Tank',
+            subtype: 'Combat Vehicle Omni',
+            comp: [
+                { id: 'Standard', q: 1, q2: 0, n: 'Standard Structure', t: 'S', p: -1, l: '', c: '1', os: 0 },
+                { id: 'IS Heavy Ferro-Fibrous', q: 1, q2: 0, n: 'Heavy Ferro-Fibrous Armor', t: 'S', p: -1, l: '', c: '3', os: 0 },
+                { id: lightPpc.internalName, q: 1, q2: 0, n: lightPpc.name, t: 'E', p: 5, l: 'TU', c: '1', os: 0, eq: lightPpc },
+                { id: capacitorEquipment.internalName, q: 1, q2: 0, n: capacitorEquipment.name, t: 'C', p: 5, l: 'TU', c: '0', os: 0, eq: capacitorEquipment },
+                { id: 'ISTargeting Computer', q: 1, q2: 0, n: 'Targeting Computer', t: 'C', p: 0, l: 'BD', c: '1', os: 0 },
+            ],
+        });
+        const original = createForceUnit(unit);
+        initialize(original, createKamisoriAInventorySvg());
+        const originalCapacitor = original.getInventory().find(entry => entry.id === 'PPC Capacitor@TU#1')!;
+
+        expect(originalCapacitor.parent?.id).toBe('Light PPC@TU#0');
+        expect(original.getEquipmentInstallationLocationStatus(originalCapacitor)).toBe('available');
+        original.setLocations({ TU: { internal: 1 } }, true);
+
+        const restored = CBTForceUnit.deserialize(
+            original.serialize(),
+            new TestCBTForce('Restored Kamisori Force', dataService, unitInitializer, injector),
+            dataService,
+            unitInitializer,
+            injector,
+        );
+        const warning = spyOn(console, 'warn');
+        initialize(restored, createKamisoriAInventorySvg());
+        const capacitor = restored.getInventory().find(entry => entry.id === originalCapacitor.id)!;
+
+        expect(capacitor.committedDestroyed()).toBeFalse();
+        expect(restored.getEquipmentLocationStatus('TU')).toBe('destroyed');
+        expect(restored.getEquipmentInstallationLocationStatus(capacitor)).toBe('destroyed');
+        expect(restored.getEquipmentStatus(capacitor)).toBe('destroyed');
+        expect(restored.canEditEquipmentState(capacitor, 'repair')).toBeFalse();
+        expect(restored.repairEquipment(capacitor)).toBeFalse();
+        expect(warning.calls.allArgs().some(args => String(args[0]).includes(capacitor.id))).toBeFalse();
+    });
+
+    it('maps a direct-inventory Battle Armor squad-support weapon to T1', () => {
+        const supportWeapon = new WeaponEquipment({
+            id: 'ISBASquadSupportLaser',
+            name: 'BA Squad Support Laser',
+            type: 'weapon',
+            flags: ['F_BA_WEAPON', 'F_ENERGY'],
+            weapon: { ammoType: 'NA', damage: 1 },
+        });
+        const forceUnit = createForceUnit(createEmptyUnit({
+            name: 'BA SSW Test',
+            type: 'Infantry',
+            subtype: 'Battle Armor',
+            squadSize: 2,
+            comp: [{
+                id: supportWeapon.internalName,
+                n: supportWeapon.name,
+                t: 'E',
+                q: 1,
+                p: 0,
+                l: 'SSW',
+                eq: supportWeapon,
+            }],
+        }));
+        forceUnit.locations = {
+            armor: new Map([
+                ['T1', { loc: 'T1', rear: false, points: 1 }],
+                ['T2', { loc: 'T2', rear: false, points: 1 }],
+            ]),
+            internal: new Map([
+                ['T1', { loc: 'T1', points: 1 }],
+                ['T2', { loc: 'T2', points: 1 }],
+            ]),
+        };
+        forceUnit.setLocations({ T1: { armor: 1 } }, true);
+        const entry = new MountedWeapon({
+            owner: forceUnit,
+            id: `${supportWeapon.internalName}@SSW#0`,
+            name: supportWeapon.name,
+            equipment: supportWeapon,
+            locations: new Set(),
+        });
+
+        expect(forceUnit.getEquipmentLocationStatus('SSW')).toBe('destroyed');
+        expect(forceUnit.getEquipmentStatus(entry)).toBe('destroyed');
+        expect(forceUnit.canPerformEquipmentAction(entry, 'fire')).toBeFalse();
+    });
+
+    it('preserves mount-global status and reports an unresolved direct-inventory installation once', () => {
+        const unknownEquipment = new Equipment({ id: 'UnknownInstallation', name: 'Unknown Installation', type: 'misc' });
+        const forceUnit = createForceUnit(createEmptyUnit({
+            name: 'Unknown Installation Test',
+            type: 'Tank',
+            subtype: 'Combat Vehicle',
+            comp: [{ id: unknownEquipment.internalName, n: unknownEquipment.name, t: 'X', q: 1, p: 0, l: '—', eq: unknownEquipment }],
+        }));
+        const entry = new MountedEquipment({
+            owner: forceUnit,
+            id: `${unknownEquipment.internalName}@Unknown#0`,
+            name: unknownEquipment.name,
+            equipment: unknownEquipment,
+        });
+        initialize(forceUnit);
+        const warning = spyOn(console, 'warn');
+
+        expect(forceUnit.getEquipmentStatus(entry)).toBe('available');
+        expect(forceUnit.getEquipmentStatus(entry)).toBe('available');
+        expect(warning).toHaveBeenCalledTimes(1);
+        expect(warning).toHaveBeenCalledWith(jasmine.stringContaining(entry.id));
+
+        entry.setCommittedDestroyed(true);
+        expect(forceUnit.getEquipmentStatus(entry)).toBe('destroyed');
+    });
+
+    it('reports an unresolved loaded direct-inventory entry with a nonstandard ID once', () => {
+        const unknownEquipment = new Equipment({ id: 'MalformedInstallation', name: 'Malformed Installation', type: 'misc' });
+        const forceUnit = createForceUnit(createEmptyUnit({
+            name: 'Malformed Installation Test',
+            type: 'Tank',
+            subtype: 'Combat Vehicle',
+            comp: [{ id: unknownEquipment.internalName, n: unknownEquipment.name, t: 'X', q: 1, p: 0, l: '—', eq: unknownEquipment }],
+        }));
+        const entry = new MountedEquipment({
+            owner: forceUnit,
+            id: 'nonstandard-direct-inventory-id',
+            name: unknownEquipment.name,
+            equipment: unknownEquipment,
+        });
+        initialize(forceUnit);
+        const warning = spyOn(console, 'warn');
+
+        expect(forceUnit.getEquipmentStatus(entry)).toBe('available');
+        expect(forceUnit.getEquipmentStatus(entry)).toBe('available');
+        expect(warning).toHaveBeenCalledTimes(1);
+        expect(warning).toHaveBeenCalledWith(jasmine.stringContaining(entry.id));
+        expect(warning.calls.mostRecent().args[0]).not.toContain('(component');
+    });
+
+    it('applies damage through canonical resolved state and cancels a pending repair', () => {
+        const forceUnit = createForceUnit();
+        const entry = new MountedWeapon({
+            owner: forceUnit,
+            id: 'state-edit-laser',
+            name: 'Variable Damage Laser',
+            equipment: equipment['VariableDamageLaser'] as WeaponEquipment,
+        });
+        forceUnit.setInventory([entry], true);
+
+        expect(forceUnit.applyEquipmentDamage(entry)).toBeTrue();
+        expect(entry.isDestroying()).toBeTrue();
+        expect(forceUnit.applyEquipmentDamage(entry)).toBeFalse();
+        expect(forceUnit.repairEquipment(entry)).toBeTrue();
+        expect(entry.hasPendingDestroyedChange()).toBeFalse();
+
+        entry.setCommittedDestroyed(true);
+        entry.setPendingDestroyed(false);
+        expect(entry.isRepairing()).toBeTrue();
+        expect(forceUnit.canEditEquipmentState(entry, 'apply-damage')).toBeTrue();
+
+        expect(forceUnit.applyEquipmentDamage(entry)).toBeTrue();
+        expect(entry.isRepairing()).toBeFalse();
+        expect(entry.committedDestroyed()).toBeTrue();
+        expect(entry.hasPendingDestroyedChange()).toBeFalse();
+        expect(forceUnit.canEditEquipmentState(entry, 'apply-damage')).toBeFalse();
     });
 
     it('wraps inventory damage across available SVG rows and clears stale rows', () => {
@@ -3230,10 +3757,11 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const module = laser.linkedWith![0];
         const laserHitText = laser.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
         const moduleHitText = module.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
-        spyOn(forceUnit.rules, 'getEquipmentToHits').and.returnValue(new Map([
-            [laser, createTestEquipmentState('available', []).toHit],
-            [module, createTestEquipmentState('available', [{ label: 'RISC Laser Pulse Module', modifier: 1 }]).toHit],
-        ]));
+        const toHitModifiers = new Map([
+            [laser, []],
+            [module, [{ label: 'RISC Laser Pulse Module', modifier: 1 }]],
+        ]);
+        spyOn(forceUnit.rules, 'getEquipmentToHitModifiers').and.callFake(entry => toHitModifiers.get(entry) ?? []);
         const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgVehicleService(forceUnit, unitInitializer));
 
         svgService.refreshInventory();
@@ -3481,7 +4009,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshCrew();
 
         expect(forceUnit.turnState().getAttackModifierBreakdown()).not.toContain(jasmine.objectContaining({ label: 'Prone' }));
-        expect(forceUnit.rules.getEquipmentToHit(ranged).modifiers)
+        expect(forceUnit.rules.getEquipmentToHitModifiers(ranged))
             .toContain(jasmine.objectContaining({ label: 'Prone', modifier: 2 }));
         expect(svg.getElementById('gunnerySkill0')?.textContent).toBe('4');
     });
@@ -3782,6 +4310,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
                 weapon: { ammoType: 'NA', ranges: [1, 2, 3, 4] },
             }),
             el: entryElement,
+            locations: new Set(['FR']),
         });
 
         svgService.renderHitModifier(createEntry(0), 0);
@@ -3911,7 +4440,17 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
         forceUnit.createInventoryControlTarget();
         forceUnit.setInventoryControlEntryTarget(weaponEntry, 'A');
-        forceUnit.setInventoryControlEntryAmmoOption(weaponEntry.id, 'ammo-option');
+        const [ammoOption] = getInventoryControlAmmoSelectionOptions(
+            weaponEntry,
+            forceUnit.getEquipmentRegistry(),
+            (weapon, ammo, mode) => forceUnit.matchesInventoryControlAmmo(weapon, ammo, mode),
+        );
+        expect(ammoOption).toBeDefined();
+        const ammoSelection = {
+            selectedProfileId: ammoOption.profileId,
+            preferredSourceOptionId: ammoOption.id,
+        };
+        forceUnit.setInventoryControlEntryAmmoSelection(weaponEntry.id, ammoSelection);
 
         forceUnit.update({
             id: forceUnit.id,
@@ -3928,7 +4467,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         } as CBTSerializedUnit);
 
         expect(forceUnit.getInventoryControlEntryTargetId(weaponEntry.id)).toBe('A');
-        expect(forceUnit.getInventoryControlSnapshot().entryStates.get(weaponEntry.id)?.ammoOption).toBe('ammo-option');
+        expect(forceUnit.getInventoryControlSnapshot().entryStates.get(weaponEntry.id)?.ammoSelection)
+            .toEqual(ammoSelection);
 
         forceUnit.setInventory([]);
         forceUnit.update({

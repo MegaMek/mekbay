@@ -8,7 +8,7 @@ import { WeaponEquipment } from '../models/equipment.model';
 import type { WeaponType } from '../models/weapon-types.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
-import { EquipmentInteractionHandler, type HandlerContext, type ToHitAdjustmentContext } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionHandler, type HandlerCommandContext, type HandlerQueryContext, type ToHitAdjustmentContext } from '../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE, setInventoryControlMode } from '../utils/inventory-control.util';
 
 export const HAG_STANDARD_MODE = 'Standard';
@@ -23,7 +23,7 @@ export class HagHandler extends EquipmentInteractionHandler {
         return equipment.equipment instanceof WeaponEquipment;
     }
 
-    override getChoices(equipment: MountedEquipment, _context: HandlerContext): PickerChoice[] {
+    override getChoices(equipment: MountedEquipment, _context: HandlerQueryContext): PickerChoice[] {
         return [{
             label: 'Mode',
             value: selectedHagMode(equipment),
@@ -32,12 +32,11 @@ export class HagHandler extends EquipmentInteractionHandler {
                 { label: 'STD', value: HAG_STANDARD_MODE },
                 { label: 'FLAK', value: HAG_FLAK_MODE }
             ],
-            disabled: equipment.isUnavailable(),
             keepOpen: true
         }];
     }
 
-    override handleSelection(equipment: MountedEquipment, choice: PickerChoice, _context: HandlerContext): boolean {
+    override handleSelection(equipment: MountedEquipment, choice: PickerChoice, _context: HandlerCommandContext): boolean {
         setInventoryControlMode(equipment, String(choice.value));
         return true;
     }
@@ -45,7 +44,7 @@ export class HagHandler extends EquipmentInteractionHandler {
     override applyInventoryControlWeaponTypes(
         equipment: MountedEquipment,
         types: ReadonlySet<WeaponType>,
-        _context: HandlerContext
+        _context: HandlerQueryContext
     ): ReadonlySet<WeaponType> {
         const effectiveTypes = new Set(types);
         if (selectedHagMode(equipment) === HAG_FLAK_MODE) {
@@ -60,7 +59,7 @@ export class HagHandler extends EquipmentInteractionHandler {
     override getToHitAdjustments(
         equipment: MountedEquipment,
         _adjustmentContext: ToHitAdjustmentContext,
-        _context: HandlerContext
+        _context: HandlerQueryContext
     ): readonly ToHitAdjustment[] {
         return selectedHagMode(equipment) === HAG_FLAK_MODE
             ? [{

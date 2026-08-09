@@ -3,19 +3,20 @@
 // Author: Drake
 
 export interface InventoryComponentReference {
+    location: string;
     componentIndex: number;
     binIndex: number | null;
 }
 
 /** Parses the stable `equipment@location#component[.bin]` inventory ID suffix. */
 export function parseInventoryComponentReference(id: string): InventoryComponentReference | null {
-    const suffix = id.split('#').pop();
-    if (!suffix) return null;
+    const match = id.match(/@([^#]+)#(\d+)(?:\.(\d+))?$/);
+    if (!match) return null;
 
-    const [componentIndexText, binIndexText] = suffix.split('.');
-    const componentIndex = Number(componentIndexText);
-    const binIndex = binIndexText === undefined ? null : Number(binIndexText);
-    if (!Number.isInteger(componentIndex) || componentIndex < 0) return null;
-    if (binIndex !== null && (!Number.isInteger(binIndex) || binIndex < 0)) return null;
-    return { componentIndex, binIndex };
+    const location = match[1].trim();
+    const componentIndex = Number(match[2]);
+    const binIndex = match[3] === undefined ? null : Number(match[3]);
+    if (!location || !Number.isSafeInteger(componentIndex)) return null;
+    if (binIndex !== null && !Number.isSafeInteger(binIndex)) return null;
+    return { location, componentIndex, binIndex };
 }

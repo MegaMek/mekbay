@@ -6,21 +6,14 @@ import { EquipmentFlag } from '../equipment-flags.type';
 import { EquipmentRegistry } from '../equipment-lookup';
 import { AmmoEquipment, MiscEquipment, WeaponEquipment, type Equipment } from '../equipment.model';
 import { MountedEquipment } from '../mounted-equipment.model';
-import { createTestEquipmentRules } from '../../testing/unit-test-helpers';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, separateHeatFireModifier } from './game-rules';
 
 let entryId = 0;
 
 function owner() {
     return {
-        rules: {
-            ...createTestEquipmentRules({
-                getEquipmentStatus: (candidate: MountedEquipment) => (
-                    candidate.committedDestroyed() ? 'destroyed' : 'available'
-                ),
-            }),
-            heatDissipation: () => null
-        }
+        getEquipmentStatus: (candidate: MountedEquipment) => candidate.committedDestroyed() ? 'destroyed' : 'available',
+        isEquipmentOperational: (candidate: MountedEquipment) => !candidate.committedDestroyed(),
     } as never;
 }
 
@@ -78,8 +71,19 @@ function tagBvContext(options: {
     }));
     for (const index of options.unavailableTagIndexes ?? []) unavailable.add(tagMounts[index]);
 
-    const launcher = new MountedEquipment({
-        owner: null!,
+    let launcher!: MountedEquipment;
+    let ammo!: MountedEquipment;
+    const ammoUnit = {
+        isLoaded: () => options.loaded !== false,
+        getUnit: () => ({ type: options.unitType ?? 'Tank' }),
+        getInventory: () => options.unitType === 'Mek' ? [launcher] : [launcher, ammo],
+        getCritSlots: () => options.unitType === 'Mek' ? [{
+            id: 'ammo-crit', eq: ammo.equipment, totalAmmo: ammo.totalAmmo, consumed: ammo.consumed,
+        }] : [],
+        isEquipmentOperational: (entry: MountedEquipment) => !unavailable.has(entry),
+    } as unknown as import('../cbt-force-unit.model').CBTForceUnit;
+    launcher = new MountedEquipment({
+        owner: ammoUnit,
         id: 'launcher',
         name: 'LRM Launcher',
         equipment: new WeaponEquipment({
@@ -88,8 +92,8 @@ function tagBvContext(options: {
         }),
         states: new Map(),
     });
-    const ammo = new MountedEquipment({
-        owner: null!,
+    ammo = new MountedEquipment({
+        owner: ammoUnit,
         id: 'ammo',
         name: 'Semi-Guided LRM 20 Ammo',
         equipment: new AmmoEquipment({
@@ -106,17 +110,6 @@ function tagBvContext(options: {
         consumed: options.ammoAvailable === false ? 6 : 0,
         states: new Map(),
     });
-    const ammoUnit = {
-        isLoaded: () => options.loaded !== false,
-        getUnit: () => ({ type: options.unitType ?? 'Tank' }),
-        getInventory: () => options.unitType === 'Mek' ? [launcher] : [launcher, ammo],
-        getCritSlots: () => options.unitType === 'Mek' ? [{
-            id: 'ammo-crit', eq: ammo.equipment, totalAmmo: ammo.totalAmmo, consumed: ammo.consumed,
-        }] : [],
-        isEquipmentUnavailable: (entry: MountedEquipment) => unavailable.has(entry),
-    } as unknown as import('../cbt-force-unit.model').CBTForceUnit;
-    launcher.owner = ammoUnit;
-    ammo.owner = ammoUnit;
     if (options.ammoAvailable === false) unavailable.add(ammo);
     if (options.launcherAvailable === false) unavailable.add(launcher);
 
@@ -159,8 +152,18 @@ function vehicleTagBvContext(options: {
         [baseAmmo.id]: baseAmmo,
         [selectedAmmo.id]: selectedAmmo,
     });
-    const launcher = new MountedEquipment({
-        owner: null!,
+    let launcher!: MountedEquipment;
+    let ammo!: MountedEquipment;
+    const ammoUnit = {
+        isLoaded: () => true,
+        getUnit: () => ({ type: 'Tank' }),
+        getInventory: () => [launcher, ammo],
+        getCritSlots: () => [],
+        getEquipmentRegistry: () => registry,
+        isEquipmentOperational: (entry: MountedEquipment) => !unavailable.has(entry),
+    } as unknown as import('../cbt-force-unit.model').CBTForceUnit;
+    launcher = new MountedEquipment({
+        owner: ammoUnit,
         id: 'launcher',
         name: 'LRM 20',
         equipment: new WeaponEquipment({
@@ -171,8 +174,8 @@ function vehicleTagBvContext(options: {
         }),
         states: new Map(),
     });
-    const ammo = new MountedEquipment({
-        owner: null!,
+    ammo = new MountedEquipment({
+        owner: ammoUnit,
         id: 'ammo',
         name: baseAmmo.id,
         equipment: baseAmmo,
@@ -180,16 +183,6 @@ function vehicleTagBvContext(options: {
         totalAmmo: 6,
         states: new Map(),
     });
-    const ammoUnit = {
-        isLoaded: () => true,
-        getUnit: () => ({ type: 'Tank' }),
-        getInventory: () => [launcher, ammo],
-        getCritSlots: () => [],
-        getEquipmentRegistry: () => registry,
-        isEquipmentUnavailable: (entry: MountedEquipment) => unavailable.has(entry),
-    } as unknown as import('../cbt-force-unit.model').CBTForceUnit;
-    launcher.owner = ammoUnit;
-    ammo.owner = ammoUnit;
 
     const tagUnit = {
         getOperationalMountedEquipmentByFlag: () => tagMounts.filter(mount => !unavailable.has(mount)),
@@ -393,7 +386,7 @@ describe('game rules', () => {
 
         const resolution = CORE_2026_GAME_RULES.resolveToHit({
             subject: weapon,
-            adjustments: [{ kind: 'replace-base', value: 0 }]
+            adjustments: [{ kind: 'replace-base', value: 0, label: 'Explicit Zero Override' }]
         });
 
         expect(resolution.value).toBe(0);
@@ -405,9 +398,9 @@ describe('game rules', () => {
         const resolution = CORE_2026_GAME_RULES.resolveToHit({
             subject: mountedWeapon(-2),
             adjustments: [
-                { kind: 'replace-base', value: 0 },
-                { kind: 'replace-base', value: 4 },
-                { kind: 'add', modifier: 1 }
+                { kind: 'replace-base', value: 0, label: 'First Base Override' },
+                { kind: 'replace-base', value: 4, label: 'Second Base Override' },
+                { kind: 'add', modifier: 1, label: 'Positive Adjustment' }
             ]
         });
 
@@ -453,14 +446,14 @@ describe('game rules', () => {
 
         expect(CORE_2026_GAME_RULES.resolveToHit({
             subject: launcher,
-            adjustments: [{ kind: 'add', modifier: 1 }]
+            adjustments: [{ kind: 'add', label: 'Linked equipment', modifier: 1 }]
         }).value).toBe(0);
     });
 
     it('reports changed and weakened metadata without a second resolution', () => {
         const resolution = CORE_2026_GAME_RULES.resolveToHit({
             subject: mountedWeapon(-2),
-            stateModifier: 1,
+            stateModifiers: [{ label: 'Hit Modifier', modifier: 1 }],
             adjustments: [{
                 kind: 'add',
                 label: 'Lost bonus',
@@ -482,8 +475,7 @@ describe('game rules', () => {
     it('marks a canceled adverse state modifier as weakened', () => {
         const resolution = CORE_2026_GAME_RULES.resolveToHit({
             subject: mountedWeapon(0),
-            stateModifier: 0,
-            stateModifierBreakdown: [
+            stateModifiers: [
                 { label: 'Targeting Computer', modifier: -1 },
                 { label: 'Heat - Fire Modifier', modifier: 1, weakened: true, kind: 'heat' }
             ]
@@ -498,24 +490,24 @@ describe('game rules', () => {
         ]);
     });
 
-    it('does not trust adverse provenance whose total differs from the state modifier', () => {
+    it('derives adverse state totals from their provenance', () => {
         const resolution = CORE_2026_GAME_RULES.resolveToHit({
             subject: mountedWeapon(0),
-            stateModifier: 0,
-            stateModifierBreakdown: [{ label: 'Heat - Fire Modifier', modifier: 1, weakened: true, kind: 'heat' }]
+            stateModifiers: [{ label: 'Heat - Fire Modifier', modifier: 1, weakened: true, kind: 'heat' }]
         });
 
-        expect(resolution.value).toBe(0);
-        expect(resolution.weakened).toBeFalse();
-        expect(resolution.modifierBreakdown).toEqual([]);
+        expect(resolution.value).toBe(1);
+        expect(resolution.weakened).toBeTrue();
+        expect(resolution.modifierBreakdown).toEqual([
+            { label: 'Heat - Fire Modifier', modifier: 1, weakened: true, kind: 'heat' }
+        ]);
     });
 
     it('preserves named state and equipment adjustment sources', () => {
         const resolution = CORE_2026_GAME_RULES.resolveToHit({
             subject: mountedWeapon(0),
             range: 'medium',
-            stateModifier: -1,
-            stateModifierBreakdown: [{ label: 'Targeting Computer', modifier: -1 }],
+            stateModifiers: [{ label: 'Targeting Computer', modifier: -1 }],
             adjustments: [{
                 kind: 'add', label: 'Apollo MRM FCS', modifier: -1
             }]
@@ -528,17 +520,16 @@ describe('game rules', () => {
         ]);
     });
 
-    it('uses a named replacement source and rejects an invalid source total', () => {
+    it('uses named replacement and state sources', () => {
         const resolution = CORE_2026_GAME_RULES.resolveToHit({
             subject: mountedWeapon(1),
-            stateModifier: 2,
-            stateModifierBreakdown: [{ label: 'Wrong', modifier: 1 }],
+            stateModifiers: [{ label: 'State Modifier', modifier: 2 }],
             adjustments: [{ kind: 'replace-base', value: -2, label: 'Vibroblade' }]
         });
 
         expect(resolution.modifierBreakdown).toEqual([
             { label: 'Vibroblade', modifier: -2 },
-            { label: 'Hit Modifier', modifier: 2 }
+            { label: 'State Modifier', modifier: 2 }
         ]);
     });
 
@@ -569,7 +560,7 @@ describe('game rules', () => {
         expect(CORE_2026_GAME_RULES.resolveToHit({ subject: weapon }).value).toBeNull();
         expect(CORE_2026_GAME_RULES.resolveToHit({
             subject: weapon,
-            adjustments: [{ kind: 'replace-base', value: -2 }]
+            adjustments: [{ kind: 'replace-base', value: -2, label: 'No-Range Override' }]
         }).value).toBe(-2);
         expect(CORE_2026_GAME_RULES.resolveToHit({
             subject: mountedWeapon(-2),

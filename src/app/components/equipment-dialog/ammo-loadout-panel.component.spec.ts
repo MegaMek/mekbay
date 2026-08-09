@@ -6,8 +6,14 @@ import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment } from '../../models/equipment.model';
 import { EquipmentRegistry } from '../../models/equipment-lookup';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { MountedEquipment } from '../../models/mounted-equipment.model';
 import type { CriticalSlot } from '../../models/force-serialization';
-import type { HandlerContext } from '../../services/equipment-interaction-registry.service';
+import {
+    createHandlerCommandContext,
+    type HandlerCommandContext,
+    type HandlerDialogsService,
+    type HandlerToastService,
+} from '../../services/equipment-interaction-registry.service';
 import { AmmoLoadoutPanelComponent, type AmmoLoadoutPanelData } from './ammo-loadout-panel.component';
 import type { AmmoControlEntry } from '../../utils/ammo-interaction.util';
 
@@ -29,8 +35,11 @@ function createCritEntry(params: {
     owner: Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
 }): AmmoControlEntry {
     const owner = params.owner as CBTForceUnit;
-    const isEquipmentUnavailable: CBTForceUnit['isEquipmentUnavailable'] = (source: CriticalSlot) => !!source.destroyed;
-    owner.isEquipmentUnavailable ??= isEquipmentUnavailable;
+    owner.getEquipmentStatus ??= source => source instanceof MountedEquipment && source.committedDestroyed()
+        || !(source instanceof MountedEquipment) && !!source.destroyed
+        ? 'destroyed'
+        : 'available';
+    owner.isEquipmentOperational ??= source => owner.getEquipmentStatus(source) === 'available';
     const source = {
         id: `${params.ammo.internalName}@${params.loc}#${params.slot}`,
         name: params.ammo.internalName,
@@ -76,6 +85,17 @@ function createToastServiceMock() {
     };
 }
 
+function createCommandContext(
+    equipmentCatalog = new EquipmentRegistry({}),
+    toastService: HandlerToastService = createToastServiceMock(),
+): HandlerCommandContext {
+    const dialogsService = jasmine.createSpyObj<HandlerDialogsService>(
+        'HandlerDialogsService',
+        ['createDialog', 'showError', 'showNoticeHtml'],
+    );
+    return createHandlerCommandContext(equipmentCatalog, toastService, dialogsService);
+}
+
 describe('AmmoLoadoutPanelComponent', () => {
     function configurePanel(data: AmmoLoadoutPanelData): AmmoLoadoutPanelComponent {
         TestBed.configureTestingModule({
@@ -103,7 +123,7 @@ describe('AmmoLoadoutPanelComponent', () => {
         const data: AmmoLoadoutPanelData = {
             entries: liveEntries,
             getEntries: () => liveEntries,
-            context: {} as HandlerContext,
+            context: createCommandContext(),
         };
         const component = configurePanel(data);
 
@@ -134,7 +154,7 @@ describe('AmmoLoadoutPanelComponent', () => {
         } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
         const data: AmmoLoadoutPanelData = {
             entries: [createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner })],
-            context: {} as HandlerContext,
+            context: createCommandContext(),
         };
 
         TestBed.configureTestingModule({
@@ -174,7 +194,7 @@ describe('AmmoLoadoutPanelComponent', () => {
                 createCritEntry({ loc: 'RT', slot: 2, ammo: standardAmmo, owner }),
                 createCritEntry({ loc: 'CT', slot: 3, ammo: standardAmmo, destroyed: true, owner }),
             ],
-            context: {} as HandlerContext,
+            context: createCommandContext(),
         };
 
         TestBed.configureTestingModule({
@@ -216,7 +236,7 @@ describe('AmmoLoadoutPanelComponent', () => {
                 createCritEntry({ loc: 'RT', slot: 1, ammo: standardAmmo, owner }),
                 createCritEntry({ loc: 'RT', slot: 2, ammo: standardAmmo, destroyed: true, owner }),
             ],
-            context: {} as HandlerContext,
+            context: createCommandContext(),
         };
 
         TestBed.configureTestingModule({
@@ -252,12 +272,10 @@ describe('AmmoLoadoutPanelComponent', () => {
         const destroyedEntry = createCritEntry({ loc: 'LT', slot: 1, ammo: standardAmmo, owner, destroyed: true });
         const data: AmmoLoadoutPanelData = {
             entries: [activeEntry, destroyedEntry],
-            context: {
-                dataService: {
-                    getEquipmentRegistry: () => new EquipmentRegistry({ [standardAmmo.internalName]: standardAmmo }),
-                },
-                toastService: createToastServiceMock(),
-            } as unknown as HandlerContext,
+            context: createCommandContext(
+                new EquipmentRegistry({ [standardAmmo.internalName]: standardAmmo }),
+                createToastServiceMock(),
+            ),
         };
 
         TestBed.configureTestingModule({
@@ -294,7 +312,7 @@ describe('AmmoLoadoutPanelComponent', () => {
         const data: AmmoLoadoutPanelData = {
             entries: [changedEntry, remainingEntry],
             getEntries: () => [changedEntry, remainingEntry],
-            context: {} as HandlerContext,
+            context: createCommandContext(),
         };
         const component = configurePanel(data);
         const group = component.groups()[0];

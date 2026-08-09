@@ -4,15 +4,14 @@
 
 import { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
+import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
 import { MountedEquipment } from '../models/mounted-equipment.model';
-import { createTestEquipmentRules } from '../testing/unit-test-helpers';
-import type { HandlerContext } from '../services/equipment-interaction-registry.service';
+import { createHandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import { AtmHandler } from './atm.handler';
 
 function owner() {
     return {
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        rules: createTestEquipmentRules(),
     } as never;
 }
 
@@ -47,7 +46,7 @@ function ammo(id: string, munitionType: AmmoMunitionFlag): AmmoEquipment {
 
 describe('AtmHandler', () => {
     const handler = new AtmHandler();
-    const context = {} as HandlerContext;
+    const context = createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY);
 
     it('does not duplicate SVG-owned mode picker choices', () => {
         expect(handler.getChoices(weapon(), context)).toEqual([]);

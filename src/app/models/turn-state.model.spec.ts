@@ -17,6 +17,8 @@ import { PpcCapacitorHandler, PPC_CAPACITOR_STATE_KEY } from '../equipment-handl
 import { TWAeroRules, TWInfantryRules, TWMekRules } from './rules/tw-rules';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
 import { EquipmentFlag } from './equipment-flags.type';
+import { EMPTY_EQUIPMENT_REGISTRY } from './equipment-lookup';
+import { createHandlerQueryContext } from '../services/equipment-interaction-registry.service';
 
 interface TurnStateHarnessOptions {
     critSlots?: CriticalSlot[];
@@ -96,12 +98,24 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         getInventory: () => inventory(),
         getHeat: () => heat(),
         getEquipmentHeatSources: () => inventory().flatMap(entry => heatSourceHandlers
-            .flatMap(handler => handler.getInventoryHeatSources?.(entry, turnState) ?? [])),
+            .flatMap(handler => handler.getInventoryHeatSources?.(
+                entry,
+                turnState,
+                createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY),
+            ) ?? [])),
         getRunMovementMultiplierBonus: () => 0,
         usesForcedWithdrawal: () => true,
         isInternalLocCommittedDestroyed: (loc: string) => committedDestroyedLegs.has(loc),
         isInternalLocDestroyed: (loc: string) => currentDestroyedLegs.has(loc) || committedDestroyedLegs.has(loc),
-        isEquipmentUnavailable: (slot: CriticalSlot) => !!slot.destroyed || (slot.loc ? committedDestroyedLegs.has(slot.loc) : false),
+        getEquipmentStatus: (source: MountedEquipment | CriticalSlot) => {
+            if (source instanceof MountedEquipment) return source.committedDestroyed() ? 'destroyed' : 'available';
+            return source.destroyed || (source.loc ? committedDestroyedLegs.has(source.loc) : false)
+                ? 'destroyed'
+                : 'available';
+        },
+        isEquipmentOperational: (source: MountedEquipment | CriticalSlot) => source instanceof MountedEquipment
+            ? !source.committedDestroyed()
+            : !source.destroyed && !(source.loc && committedDestroyedLegs.has(source.loc)),
         getRuleCheck: (key: string) => ruleChecks.get(key),
         setRuleCheck: (key: string, check: { token: string; trigger: string; status: 'pending' | 'success' | 'failed' } | undefined) => {
             if (check) ruleChecks.set(key, check);

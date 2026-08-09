@@ -211,6 +211,10 @@
     color: var(--text-color-secondary);
 }
 
+.weapon-equipment-row.operation-disabled-entry {
+    color: var(--text-color-secondary);
+}
+
 .weapon-equipment-row.disabled-entry .name-cell > span:first-child {
     text-decoration-line: line-through;
 }
@@ -234,6 +238,10 @@
 .modifier.destroyed {
     color: var(--damage-color);
     text-decoration-line: line-through;
+}
+
+.modifier.disabled {
+    color: var(--text-color-secondary);
 }
 
 .drag-cell,

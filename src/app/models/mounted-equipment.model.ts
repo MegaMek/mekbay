@@ -11,7 +11,7 @@ import type { CriticalSlot } from './force-serialization';
 import { isPhysicalWeaponEquipment } from './entity/utils/physical-weapon';
 
 export interface MountedEquipmentInit {
-    owner: CBTForceUnit;
+    readonly owner: CBTForceUnit;
     id: string;
     name: string;
     locations?: Set<string>;
@@ -252,32 +252,6 @@ export class MountedEquipment {
         };
     }
 
-    isDestroyed(): boolean {
-        return this.owner.rules.getEquipmentStatus(this) === 'destroyed';
-    }
-
-    isDisabled(): boolean {
-        return this.owner.rules.getEquipmentStatus(this) === 'disabled';
-    }
-
-    isUnavailable(): boolean {
-        return this.owner.rules.getEquipmentStatus(this) !== 'available';
-    }
-
-    /** Whether this mount is structurally unavailable or temporarily unable to act. */
-    isActionUnavailable(): boolean {
-        return this.isUnavailable() || this.owner.isEquipmentActionUnavailable(this);
-    }
-
-    resolvedDestroyed(ruleDamaged: boolean = this.isDestroyed()): boolean {
-        if (this.isRepairing()) return false;
-        return this.isDestroying() || ruleDamaged;
-    }
-
-    resolvedCommittedDestroyed(ruleDamaged: boolean = this.isDestroyed()): boolean {
-        return !this.isRepairing() && ruleDamaged;
-    }
-
     committedDestroyedState(): boolean | undefined {
         return this.destroyedState();
     }
@@ -288,10 +262,6 @@ export class MountedEquipment {
 
     committedDestroyed(): boolean {
         return !!this.committedDestroyedState();
-    }
-
-    effectiveDestroyed(): boolean {
-        return this.pendingDestroyed() ?? this.committedDestroyed();
     }
 
     hasPendingDestroyedChange(): boolean {

@@ -6,7 +6,7 @@ import type { PickerChoice } from '../components/picker/picker.interface';
 import type { WeaponType } from '../models/weapon-types.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
-import { EquipmentInteractionHandler, type HandlerContext, type ToHitAdjustmentContext } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionHandler, type HandlerCommandContext, type HandlerQueryContext, type ToHitAdjustmentContext } from '../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
 
 export const APOLLO_STANDARD_MODE = 'Standard';
@@ -20,23 +20,23 @@ export class ApolloHandler extends EquipmentInteractionHandler {
         return isApollo(equipment) || isMrmWithApollo(equipment);
     }
 
-    getChoices(equipment: MountedEquipment, _context: HandlerContext): PickerChoice[] {
+    getChoices(equipment: MountedEquipment, context: HandlerQueryContext): PickerChoice[] {
         if (!equipment.owner.gameRules.supportsApolloSaturationMode || !isMrmWithApollo(equipment)) return [];
         const apollo = linkedApollo(equipment);
         return [{
             label: 'Mode',
-            value: selectedApolloMode(equipment),
+            value: selectedApolloMode(equipment, context),
             displayType: 'dropdown',
             choices: [
                 { label: 'STD', value: APOLLO_STANDARD_MODE },
                 { label: 'SAT', value: APOLLO_SATURATION_MODE }
             ],
-            disabled: equipment.isUnavailable() || apollo?.isUnavailable() === true,
+            disabled: apollo != null && context.getStatus(apollo) !== 'available',
             keepOpen: true
         }];
     }
 
-    handleSelection(equipment: MountedEquipment, choice: PickerChoice, _context: HandlerContext): boolean {
+    handleSelection(equipment: MountedEquipment, choice: PickerChoice, _context: HandlerCommandContext): boolean {
         if (isMrmWithApollo(equipment)) {
             if (equipment.setState(APOLLO_MODE_STATE, String(choice.value))) {
                 equipment.owner.setInventoryEntry(equipment);
@@ -45,14 +45,23 @@ export class ApolloHandler extends EquipmentInteractionHandler {
         return false;
     }
 
-    override getToHitAdjustments(equipment: MountedEquipment, context: ToHitAdjustmentContext): readonly ToHitAdjustment[] {
-        const parent = context.parent;
+    override getToHitAdjustments(
+        equipment: MountedEquipment,
+        adjustmentContext: ToHitAdjustmentContext,
+        context: HandlerQueryContext
+    ): readonly ToHitAdjustment[] {
+        const parent = adjustmentContext.parent;
         if (!parent || equipment.owner.gameRules.supportsApolloSaturationMode || !isApollo(equipment) || !isMrmWeapon(parent)) return [];
-        const weakened = equipment.isUnavailable();
+        const status = context.getStatus(equipment);
+        const weakened = status !== 'available';
         const label = equipment.equipment?.shortName ?? equipment.name;
         return [{
             kind: 'add',
-            label: weakened ? `${label} Destroyed` : label,
+            label: status === 'destroyed'
+                ? `${label} Destroyed`
+                : status === 'disabled'
+                    ? `${label} Disabled`
+                    : label,
             modifier: weakened ? 0 : -1,
             weakened
         }];
@@ -62,13 +71,13 @@ export class ApolloHandler extends EquipmentInteractionHandler {
         equipment: MountedEquipment,
         parent: MountedEquipment,
         types: ReadonlySet<WeaponType>,
-        _context: HandlerContext
+        context: HandlerQueryContext
     ): ReadonlySet<WeaponType> {
         if (!equipment.owner.gameRules.supportsApolloSaturationMode
             || !isApollo(equipment)
             || !isMrmWithApollo(parent)
-            || equipment.isUnavailable()
-            || selectedApolloMode(parent) !== APOLLO_SATURATION_MODE) {
+            || context.getStatus(equipment) !== 'available'
+            || selectedApolloMode(parent, context) !== APOLLO_SATURATION_MODE) {
             return types;
         }
         return new Set([...types, 'AE']);
@@ -92,8 +101,9 @@ export function linkedApollo(equipment: MountedEquipment): MountedEquipment | nu
     return equipment.linkedWith?.find(isApollo) ?? null;
 }
 
-export function selectedApolloMode(equipment: MountedEquipment): string {
-    if (linkedApollo(equipment)?.isUnavailable()) return APOLLO_STANDARD_MODE;
+export function selectedApolloMode(equipment: MountedEquipment, context: HandlerQueryContext): string {
+    const apollo = linkedApollo(equipment);
+    if (apollo && context.getStatus(apollo) !== 'available') return APOLLO_STANDARD_MODE;
 
     const mode = equipment.states.get(APOLLO_MODE_STATE) ?? equipment.states.get(INVENTORY_CONTROL_MODE_STATE);
     return mode === APOLLO_SATURATION_MODE

@@ -9,7 +9,11 @@ import { MountedEquipment } from './mounted-equipment.model';
 import type { SerializedC3NetworkGroup } from './force-serialization';
 import type { InventoryControlRuntimeTarget } from './inventory-control-runtime-state.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
-import { createTestEquipmentRules } from '../testing/unit-test-helpers';
+import { UnitTypeRulesBase } from './rules/unit-type-rules';
+
+class C3BadgeRules extends UnitTypeRulesBase {
+    override evaluateDestroyed(): void { }
+}
 
 const TARGET: InventoryControlRuntimeTarget = {
     id: 'A',
@@ -39,6 +43,7 @@ function c3BadgeUnit(
     unavailable: Set<string>,
 ): CBTForceUnit {
     const unit = Object.create(CBTForceUnit.prototype) as CBTForceUnit;
+    const rules = new C3BadgeRules(unit);
     const inventory = mounts.map(mount => new MountedEquipment({
         owner: unit,
         id: mount.id,
@@ -51,13 +56,17 @@ function c3BadgeUnit(
         destroyed: { value: false, configurable: true },
         shutdown: { value: false, writable: true, configurable: true },
         getUnit: { value: () => ({ comp: [] }), configurable: true },
-        rules: {
-            value: createTestEquipmentRules(),
+        getInventory: { value: () => inventory, configurable: true },
+        getEquipmentStatus: {
+            value: (entry: MountedEquipment) => unavailable.has(entry.id) ? 'destroyed' : 'available',
             configurable: true,
         },
-        getInventory: { value: () => inventory, configurable: true },
-        isEquipmentUnavailable: {
-            value: (entry: MountedEquipment) => unavailable.has(entry.id),
+        isEquipmentOperational: {
+            value: (entry: MountedEquipment) => !unavailable.has(entry.id),
+            configurable: true,
+        },
+        rules: {
+            value: rules,
             configurable: true,
         },
         getCondition: { value: () => false, configurable: true },
@@ -83,13 +92,7 @@ function unitContext(options: {
     operationalPins?: Record<number, boolean>;
 }) {
     let context: CBTForceUnit;
-    const slaveMount = new MountedEquipment({
-        owner: null!,
-        id: 'slave',
-        name: 'C3 Slave',
-        equipment: { flags: new Set([C3_FLAGS.C3S]) } as Equipment,
-        states: new Map(),
-    });
+    let slaveMount!: MountedEquipment;
     const master = {
         id: 'master',
         getCondition: (condition: string) => condition === 'jammed' && options.masterJammed === true,
@@ -131,7 +134,13 @@ function unitContext(options: {
             : { ...target, c3Distance: undefined }
     };
     context = unit as unknown as CBTForceUnit;
-    slaveMount.owner = context;
+    slaveMount = new MountedEquipment({
+        owner: context,
+        id: 'slave',
+        name: 'C3 Slave',
+        equipment: { flags: new Set([C3_FLAGS.C3S]) } as Equipment,
+        states: new Map(),
+    });
     return context;
 }
 
@@ -150,10 +159,10 @@ describe('CBTForceUnit C3 targeting resolution', () => {
             configurable: true,
         });
 
-        expect(CBTForceUnit.prototype.isEquipmentUnavailable.call(unit, unit.getInventory()[0])).toBeFalse();
-        expect(CBTForceUnit.prototype.isEquipmentUnavailable.call(unit, unit.getInventory()[1])).toBeFalse();
-        expect(CBTForceUnit.prototype.isEquipmentActionUnavailable.call(unit, unit.getInventory()[0])).toBeTrue();
-        expect(CBTForceUnit.prototype.isEquipmentActionUnavailable.call(unit, unit.getInventory()[1])).toBeTrue();
+        expect(unit.isEquipmentOperational(unit.getInventory()[0])).toBeTrue();
+        expect(unit.isEquipmentOperational(unit.getInventory()[1])).toBeTrue();
+        expect(CBTForceUnit.prototype.canPerformEquipmentAction.call(unit, unit.getInventory()[0], 'configure-network')).toBeFalse();
+        expect(CBTForceUnit.prototype.canPerformEquipmentAction.call(unit, unit.getInventory()[1], 'configure-network')).toBeFalse();
         expect(unit.isC3ComponentOperational(0)).toBeFalse();
         expect(unit.isC3ComponentOperational(1)).toBeFalse();
     });
@@ -172,6 +181,23 @@ describe('CBTForceUnit C3 targeting resolution', () => {
 
         expect(stealthUnit.isC3ComponentOperational(0)).toBeFalse();
         expect(chameleonUnit.isC3ComponentOperational(0)).toBeTrue();
+    });
+
+    it('uses C3 endpoint availability as the configure-network action authority', () => {
+        const unit = c3BadgeUnit('stealth-unit', [
+            { id: 'c3', flag: C3_FLAGS.C3M },
+            { id: 'stealth', flag: 'F_STEALTH' },
+        ], new Set());
+        const [c3, stealth] = unit.getInventory();
+
+        expect(unit.canPerformEquipmentAction(c3, 'configure-network')).toBeTrue();
+        expect(unit.canPerformEquipmentAction(stealth, 'configure-network')).toBeFalse();
+
+        stealth.states.set('state', 'enabled');
+
+        expect(unit.isEquipmentOperational(c3)).toBeTrue();
+        expect(unit.isC3ComponentOperational(0)).toBeFalse();
+        expect(unit.canPerformEquipmentAction(c3, 'configure-network')).toBeFalse();
     });
 
     it('does not disconnect C3 for an unavailable stealth system with stale active state', () => {
@@ -193,7 +219,7 @@ describe('CBTForceUnit C3 targeting resolution', () => {
         ] as unknown as MountedEquipment[];
         const context = {
             getInventory: () => inventory,
-            isEquipmentUnavailable: (entry: MountedEquipment) => unavailable.has(entry.id),
+            isEquipmentOperational: (entry: MountedEquipment) => !unavailable.has(entry.id),
             getMountedEquipmentByFlag: CBTForceUnit.prototype.getMountedEquipmentByFlag,
         } as unknown as CBTForceUnit;
 
@@ -395,7 +421,7 @@ describe('CBTForceUnit C3 targeting resolution', () => {
             destroyed: false,
             getUnit: () => ({ comp: [] }),
             getInventory: () => masterMounts,
-            isEquipmentUnavailable: () => false,
+            isEquipmentOperational: () => true,
             isC3ComponentOperational: CBTForceUnit.prototype.isC3ComponentOperational,
             getCondition: () => false,
         } as unknown as CBTForceUnit;
@@ -412,7 +438,7 @@ describe('CBTForceUnit C3 targeting resolution', () => {
             destroyed: false,
             getUnit: () => ({ comp: [] }),
             getInventory: () => mounts,
-            isEquipmentUnavailable: (entry: MountedEquipment) => unavailable.has(entry.id),
+            isEquipmentOperational: (entry: MountedEquipment) => !unavailable.has(entry.id),
             isC3ComponentOperational: CBTForceUnit.prototype.isC3ComponentOperational,
             getC3NetworkRuntimeState: CBTForceUnit.prototype.getC3NetworkRuntimeState,
             getCondition: () => false,

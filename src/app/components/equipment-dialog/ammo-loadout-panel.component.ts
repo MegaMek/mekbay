@@ -4,13 +4,13 @@
 
 import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
 import type { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
-import type { HandlerContext } from '../../services/equipment-interaction-registry.service';
+import type { HandlerCommandContext } from '../../services/equipment-interaction-registry.service';
 import type { AmmoControlEntry, AmmoControlGroup, AmmoControlGroupLocation } from '../../utils/ammo-interaction.util';
 import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, setAmmoEntry, setAmmoGroup } from '../../utils/ammo-interaction.util';
 
 export interface AmmoLoadoutPanelData {
     entries: AmmoControlEntry[];
-    context: HandlerContext;
+    context: HandlerCommandContext;
     readOnly?: boolean;
     getEntries?: () => AmmoControlEntry[];
     inventoryControl?: CBTInventoryControlRuntime;

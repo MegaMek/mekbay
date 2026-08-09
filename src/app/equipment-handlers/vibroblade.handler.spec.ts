@@ -3,11 +3,17 @@
 // Author: Drake
 
 import { Equipment, type EquipmentRawData } from '../models/equipment.model';
+import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { createTestEquipmentRules } from '../testing/unit-test-helpers';
-import type { HandlerContext } from '../services/equipment-interaction-registry.service';
-import type { InventoryControlDisplayData } from '../utils/inventory-control.util';
+import {
+    createHandlerCommandContext,
+    createHandlerQueryContext,
+    EquipmentInteractionRegistry,
+} from '../services/equipment-interaction-registry.service';
+import type { DialogsService } from '../services/dialogs.service';
+import type { ToastService } from '../services/toast.service';
+import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions } from '../utils/inventory-control.util';
 import { getVibrobladeBaseDamage, VIBROBLADE_MODE_STATE, VIBROBLADE_OFF_MODE, VIBROBLADE_ON_MODE, VibrobladeHandler } from './vibroblade.handler';
 
 const DISPLAY: InventoryControlDisplayData = {
@@ -24,13 +30,12 @@ const DISPLAY: InventoryControlDisplayData = {
 
 function setup(size: 'SMALL' | 'MEDIUM' | 'LARGE' = 'SMALL', destroyed = false, tons = 50) {
     const owner = {
+        readOnly: () => false,
         getUnit: () => ({ tons }),
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        rules: createTestEquipmentRules({
-            getEquipmentStatus: (entry: MountedEquipment) => (
-                entry.committedDestroyed() ? 'destroyed' : 'available'
-            ),
-        }),
+        getEquipmentStatus: (entry: MountedEquipment) => entry.committedDestroyed() ? 'destroyed' : 'available',
+        isEquipmentOperational: (entry: MountedEquipment) => !entry.committedDestroyed(),
+        canPerformEquipmentAction: (entry: MountedEquipment) => !entry.committedDestroyed(),
     } as unknown as CBTForceUnit;
     const equipment = new Equipment({
         id: `${size}Vibroblade`,
@@ -49,10 +54,21 @@ function setup(size: 'SMALL' | 'MEDIUM' | 'LARGE' = 'SMALL', destroyed = false, 
     return { owner, entry };
 }
 
-const context = {} as HandlerContext;
+const queryContext = createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY);
+const commandContext = createHandlerCommandContext(
+    EMPTY_EQUIPMENT_REGISTRY,
+    jasmine.createSpyObj<ToastService>('ToastService', ['showToast']),
+    jasmine.createSpyObj<DialogsService>('DialogsService', ['createDialog']),
+);
+const displayOptions: InventoryControlDisplayEffectOptions = {
+    selectedRange: null,
+    hitModifierBreakdown: [],
+};
 
 describe('VibrobladeHandler', () => {
     const handler = new VibrobladeHandler();
+    const registry = new EquipmentInteractionRegistry();
+    registry.register(handler);
 
     it('applies only to clubs with a vibroblade size flag', () => {
         const vibroblade = setup().entry;
@@ -71,23 +87,29 @@ describe('VibrobladeHandler', () => {
     it('defaults to OFF and persists ON/OFF selections', () => {
         const { owner, entry } = setup();
 
-        expect(handler.getChoices(entry, context)[0]).toEqual(jasmine.objectContaining({
+        expect(handler.getChoices(entry, queryContext)[0]).toEqual(jasmine.objectContaining({
             label: 'Mode',
             value: VIBROBLADE_OFF_MODE,
-            disabled: false,
         }));
+        expect(registry.getChoices(entry, queryContext)[0].disabled).toBeFalse();
 
-        expect(handler.handleSelection(entry, { value: VIBROBLADE_ON_MODE } as never, context)).toBeFalse();
+        expect(handler.handleSelection(entry, { value: VIBROBLADE_ON_MODE } as never, commandContext)).toBeFalse();
         expect(entry.states.get(VIBROBLADE_MODE_STATE)).toBe(VIBROBLADE_ON_MODE);
         expect(owner.setInventoryEntry).toHaveBeenCalledWith(entry);
 
-        handler.handleSelection(entry, { value: VIBROBLADE_OFF_MODE } as never, context);
+        handler.handleSelection(entry, { value: VIBROBLADE_OFF_MODE } as never, commandContext);
         expect(entry.states.get(VIBROBLADE_MODE_STATE)).toBe(VIBROBLADE_OFF_MODE);
         expect(owner.setInventoryEntry).toHaveBeenCalledTimes(2);
     });
 
     it('disables mode selection when the vibroblade is unavailable', () => {
-        expect(handler.getChoices(setup('SMALL', true).entry, context)[0].disabled).toBeTrue();
+        const { entry } = setup('SMALL', true);
+
+        expect(handler.getChoices(entry, queryContext)[0]).toEqual(jasmine.objectContaining({
+            label: 'Mode',
+            value: VIBROBLADE_OFF_MODE,
+        }));
+        expect(registry.getChoices(entry, queryContext)[0].disabled).toBeTrue();
     });
 
     it('applies the -2 vibroblade target-number modifier in both modes', () => {
@@ -103,7 +125,7 @@ describe('VibrobladeHandler', () => {
             const { entry } = setup(size);
             entry.states.set(VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE);
 
-            const display = handler.applyInventoryControlDisplayEffects(entry, DISPLAY, {} as never, context);
+            const display = handler.applyInventoryControlDisplayEffects(entry, DISPLAY, displayOptions, queryContext);
             expect(display.heat).withContext(size).toBe(`${heat}`);
             expect(display.damage).withContext(size).toBe(`${damage}`);
             expect(handler.getInventoryControlHeatEffect(entry)).withContext(size).toEqual({
@@ -138,13 +160,13 @@ describe('VibrobladeHandler', () => {
         const { entry } = setup('MEDIUM', false, 40);
         const baseEffect = { baseDamage: 10, ignoreMyomer: false };
 
-        expect(handler.applyInventoryControlPhysicalDamageEffects(entry, baseEffect, context)).toEqual({
+        expect(handler.applyInventoryControlPhysicalDamageEffects(entry, baseEffect, queryContext)).toEqual({
             baseDamage: 5,
             ignoreMyomer: false,
         });
 
         entry.states.set(VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE);
-        expect(handler.applyInventoryControlPhysicalDamageEffects(entry, baseEffect, context)).toEqual({
+        expect(handler.applyInventoryControlPhysicalDamageEffects(entry, baseEffect, queryContext)).toEqual({
             baseDamage: 10,
             ignoreMyomer: true,
         });
@@ -152,7 +174,12 @@ describe('VibrobladeHandler', () => {
 
     it('shows potential heat but emits no heat source while OFF', () => {
         const off = setup().entry;
-        const display = handler.applyInventoryControlDisplayEffects(off, { ...DISPLAY, heat: '3', damage: '6 [12]' }, {} as never, context);
+        const display = handler.applyInventoryControlDisplayEffects(
+            off,
+            { ...DISPLAY, heat: '3', damage: '6 [12]' },
+            displayOptions,
+            queryContext,
+        );
         expect(display.heat).toBe('[3]');
         expect(display.damage).toBe('6 [7]');
         expect(handler.getInventoryControlHeatEffect(off)).toBeNull();
