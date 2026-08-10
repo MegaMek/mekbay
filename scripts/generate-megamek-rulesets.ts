@@ -3,7 +3,6 @@
 // Author: Drake
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 import { XMLParser } from 'fast-xml-parser';
@@ -703,9 +702,9 @@ function formatJsonValue(value: unknown, indentLevel = 0): string | undefined {
         const currentIndent = ' '.repeat(indentLevel * JSON_INDENT);
         const nextIndent = ' '.repeat((indentLevel + 1) * JSON_INDENT);
         const renderedItems = value.map((entry) => `${nextIndent}${formatJsonValue(entry, indentLevel + 1) ?? 'null'}`);
-        return `[` + os.EOL
-            + renderedItems.join(`,${os.EOL}`)
-            + os.EOL
+        return `[\n`
+            + renderedItems.join(',\n')
+            + '\n'
             + `${currentIndent}]`;
     }
 
@@ -723,9 +722,9 @@ function formatJsonValue(value: unknown, indentLevel = 0): string | undefined {
         const renderedEntries = entries.map(
             ([key, renderedValue]) => `${nextIndent}${JSON.stringify(key)}: ${renderedValue}`,
         );
-        return `{` + os.EOL
-            + renderedEntries.join(`,${os.EOL}`)
-            + os.EOL
+        return `{\n`
+            + renderedEntries.join(',\n')
+            + '\n'
             + `${currentIndent}}`;
     }
 
@@ -737,7 +736,7 @@ function writeJsonFile(filePath: string, data: unknown): void {
     const contents = BEAUTIFY_OUTPUT
         ? formatJsonValue(data) ?? ''
         : JSON.stringify(data);
-    writeFileWithContentTimestamp(filePath, contents + os.EOL, 'utf8');
+    writeFileWithContentTimestamp(filePath, `${contents}\n`, 'utf8');
 }
 
 function run(): void {

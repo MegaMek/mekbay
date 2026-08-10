@@ -3,7 +3,6 @@
 // Author: Drake
 
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 
 const {
@@ -201,7 +200,7 @@ async function collectTitlesForCategories(categories: readonly string[]): Promis
 
 function writeJsonFile(filePath: string, data: unknown): void {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    writeFileWithContentTimestamp(filePath, `${JSON.stringify(data)}${os.EOL}`, 'utf8');
+    writeFileWithContentTimestamp(filePath, `${JSON.stringify(data)}\n`, 'utf8');
 }
 
 async function run(): Promise<void> {
