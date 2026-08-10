@@ -119,7 +119,9 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'anti-mech-lance',
         name: 'Anti-\'Mech',
         description: 'All infantry units for urban and anti-mech warfare',
-        effectDescription: 'Distracting Swarm: units in this formation swarming an enemy unit cause a +1 To-Hit modifier to any weapon attacks made by the enemy unit.',
+        effectDescription: (gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+            ? 'Enemy Units in base-to-base contact with an Anti-\'Mech Lance suffer a -1 To-Hit Modifier penalty to any weapon attacks made by that enemy Unit.'
+            : 'Distracting Swarm: units in this formation swarming an enemy unit cause a +1 To-Hit modifier to any weapon attacks made by the enemy unit.',
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 61 }, { book: Rulebook.FMK, page: 87 }],
         requirements: (gameSystem) => {
@@ -908,7 +910,9 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'horde',
         name: 'Horde',
         description: 'Mass light unit swarm tactics',
-        effectDescription: 'Swarm: When any unit in this formation is targeted by an enemy attack, that unit\'s player may switch the target to any other unit in this formation that is still a legal target (within line of sight) and at the same range or less from the attacker. This ability can only be used by units which spent Running, Jumping, or Flank movement points that turn.',
+        effectDescription: (gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+            ? 'Swarm: When any Unit in this Formation is targeted, the targeted Unit\'s player may switch the target to any other Unit in this Formation that is a legal target (within line of sight) and at the same range (or less) from the attacker.'
+            : 'Swarm: When any unit in this formation is targeted by an enemy attack, that unit\'s player may switch the target to any other unit in this formation that is still a legal target (within line of sight) and at the same range or less from the attacker. This ability can only be used by units which spent Running, Jumping, or Flank movement points that turn.',
         minUnits: 5,
         maxUnits: 10,
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.FMK, page: 87 }],
