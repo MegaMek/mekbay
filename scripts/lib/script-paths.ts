@@ -1,11 +1,23 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
 
-function normalizeCandidates(candidates) {
+export interface LoadOptionalEnvFileOptions {
+  readonly logPrefix?: string;
+  readonly env?: NodeJS.ProcessEnv;
+}
+
+export interface ResolveMmDataRootOptions {
+  readonly override?: string;
+  readonly includeMegaMekData?: boolean;
+  readonly allowMissing?: boolean;
+  readonly label?: string;
+}
+
+function normalizeCandidates(candidates: readonly string[]): string[] {
   return candidates.filter((candidate) => typeof candidate === 'string' && candidate.length > 0);
 }
 
-function stripWrappedQuotes(value) {
+function stripWrappedQuotes(value: string): string {
   if (
     (value.startsWith('"') && value.endsWith('"'))
     || (value.startsWith("'") && value.endsWith("'"))
@@ -16,7 +28,10 @@ function stripWrappedQuotes(value) {
   return value;
 }
 
-function loadOptionalEnvFile(projectRoot, options = {}) {
+export function loadOptionalEnvFile(
+  projectRoot: string,
+  options: LoadOptionalEnvFileOptions = {},
+): string | undefined {
   const { logPrefix = 'Scripts', env = process.env } = options;
   const envPath = path.join(projectRoot, '.env');
 
@@ -55,7 +70,7 @@ function loadOptionalEnvFile(projectRoot, options = {}) {
   }
 }
 
-function resolveFirstExistingPath(projectRoot, candidates) {
+function resolveFirstExistingPath(projectRoot: string, candidates: readonly string[]): string | undefined {
   for (const candidate of normalizeCandidates(candidates)) {
     const resolved = path.resolve(projectRoot, candidate);
     if (fs.existsSync(resolved)) {
@@ -66,7 +81,11 @@ function resolveFirstExistingPath(projectRoot, candidates) {
   return undefined;
 }
 
-function resolveExistingPath(projectRoot, label, candidates) {
+export function resolveExistingPath(
+  projectRoot: string,
+  label: string,
+  candidates: readonly string[],
+): string {
   const normalizedCandidates = normalizeCandidates(candidates);
   const resolved = resolveFirstExistingPath(projectRoot, normalizedCandidates);
 
@@ -77,7 +96,7 @@ function resolveExistingPath(projectRoot, label, candidates) {
   throw new Error(`Could not resolve ${label}. Tried: ${normalizedCandidates.join(', ')}`);
 }
 
-function getMmDataRootCandidates(options = {}) {
+function getMmDataRootCandidates(options: ResolveMmDataRootOptions = {}): string[] {
   const { override = process.env.MM_DATA_PATH, includeMegaMekData = false } = options;
 
   return [
@@ -88,19 +107,18 @@ function getMmDataRootCandidates(options = {}) {
   ];
 }
 
-function resolveMmDataRoot(projectRoot, options = {}) {
+export function resolveMmDataRoot(
+  projectRoot: string,
+  options: ResolveMmDataRootOptions = {},
+): string {
   const { allowMissing = false, label = 'MM_DATA_PATH' } = options;
   const candidates = getMmDataRootCandidates(options);
 
   if (allowMissing) {
-    return resolveFirstExistingPath(projectRoot, candidates) || path.resolve(projectRoot, normalizeCandidates(candidates)[0]);
+    return resolveFirstExistingPath(projectRoot, candidates)
+      ?? path.resolve(projectRoot, normalizeCandidates(candidates)[0] ?? candidates[0]!);
   }
 
   return resolveExistingPath(projectRoot, label, candidates);
 }
 
-module.exports = {
-  loadOptionalEnvFile,
-  resolveExistingPath,
-  resolveMmDataRoot,
-};
