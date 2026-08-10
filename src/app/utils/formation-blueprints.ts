@@ -118,8 +118,10 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'anti-mech-lance',
         name: 'Anti-\'Mech',
-        description: 'All infantry units for urban and anti-mech warfare',
-        effectDescription: 'Distracting Swarm: units in this formation swarming an enemy unit cause a +1 To-Hit modifier to any weapon attacks made by the enemy unit.',
+        description: 'Infantry trained to disrupt and damage enemy BattleMechs while supporting allied forces.',
+        effectDescription: (gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+            ? 'Enemy Units in base-to-base contact with an Anti-\'Mech Lance suffer a -1 To-Hit Modifier penalty to any weapon attacks made by that enemy Unit.'
+            : 'Distracting Swarm: units in this formation swarming an enemy unit cause a +1 To-Hit modifier to any weapon attacks made by the enemy unit.',
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 61 }, { book: Rulebook.FMK, page: 87 }],
         requirements: (gameSystem) => {
@@ -139,7 +141,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'assault-lance',
         name: 'Assault',
-        description: 'Heavy firepower and armor powerhouse formation',
+        description: 'A slow, heavily armored powerhouse that uses massive firepower and brute force to break through enemy lines.',
         effectDescription: 'At the beginning of play, choose either Demoralizer or Multi-Tasker SPA. Each turn, designate up to half the units (rounded down) to receive the chosen ability for that turn. Destroyed or withdrawn units do not count.',
         effectGroups: [{
             abilityIds: ['demoralizer', 'multi_tasker'],
@@ -166,7 +168,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'anvil-lance',
         name: 'Anvil',
-        description: 'Marik heavy formation for holding enemy advance',
+        description: 'A tough Marik formation that holds the enemy\'s attention and stops its advance while Hammer units maneuver.',
         effectDescription: 'At the beginning of each turn, up to two units in this formation may receive the Cluster Hitter or Sandblaster SPA. The player may assign the same SPA to both units, or one Sandblaster and the other Cluster Hitter.',
         effectGroups: [{
             abilityIds: ['cluster_hitter', 'sandblaster'],
@@ -196,7 +198,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'fast-assault-lance',
         parent: 'assault-lance',
         name: 'Fast Assault',
-        description: 'Mobile assault formation with speed advantage',
+        description: 'A mobile assault variant built to close faster and keep pressure on the enemy.',
         effectDescription: 'In addition to the Assault Lance bonus, up to 2 units per Fast Assault Lance may receive the Stand Aside SPA per turn. These may stack with the Demoralizer or Multi-Tasker abilities.',
         inheritParentEffects: true,
         effectGroups: [{
@@ -222,7 +224,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'hunter-lance',
         name: 'Hunter',
-        description: 'Ambush specialists for heavy terrain',
+        description: 'Ambush specialists that prefer heavy woods or urban terrain, where they can strike and destroy enemy forces.',
         effectDescription: 'At the beginning of each turn, 50 percent of the units in the formation may be granted the Combat Intuition SPA.',
         effectGroups: [{
             abilityIds: ['combat_intuition'],
@@ -245,7 +247,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'battle-lance',
         name: 'Battle',
-        description: 'Line troops with balanced firepower and armor',
+        description: 'Line troops that hold the center or support an assault, relying on armor, mass, and sustained firepower to close with the enemy.',
         effectDescription: 'The formation receives a Lucky SPA as a level equal to the number of units in the formation at setup plus 2. Useable by any unit in the formation. May stack with individual Lucky SPA (max 4 rerolls per unit per scenario).',
         effectGroups: [{
             abilityIds: ['lucky'],
@@ -269,7 +271,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'light-battle-lance',
         name: 'Light Battle',
-        description: 'Fast light formation for reconnaissance and skirmishing',
+        description: 'A light Battle variant for fast reconnaissance and skirmishing, relying on speed and coordinated fire rather than mass.',
         effectDescription: 'The formation receives a Lucky SPA as a level equal to the number of units in the formation at setup plus 2. Useable by any unit in the formation. May stack with individual Lucky SPA (max 4 rerolls per unit per scenario).',
         effectGroups: [{
             abilityIds: ['lucky'],
@@ -292,7 +294,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'medium-battle-lance',
         name: 'Medium Battle',
-        description: 'Medium weight balanced formation',
+        description: 'A balanced Battle variant that combines medium-unit mobility with enough armor and firepower for the line.',
         effectDescription: 'The formation receives a Lucky SPA as a level equal to the number of units in the formation at setup plus 2. Useable by any unit in the formation. May stack with individual Lucky SPA (max 4 rerolls per unit per scenario).',
         effectGroups: [{
             abilityIds: ['lucky'],
@@ -315,7 +317,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'heavy-battle-lance',
         name: 'Heavy Battle',
-        description: 'Heavy weight powerhouse formation',
+        description: 'A heavy Battle variant that brings durable line-fighting power to heavily armored units.',
         effectDescription: 'The formation receives a Lucky SPA as a level equal to the number of units in the formation at setup plus 2. Useable by any unit in the formation. May stack with individual Lucky SPA (max 4 rerolls per unit per scenario).',
         effectGroups: [{
             abilityIds: ['lucky'],
@@ -339,7 +341,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'rifle-lance',
         name: 'Rifle',
-        description: 'Davion autocannon specialists',
+        description: 'Davion autocannon specialists trained to coordinate accurate long-range fire.',
         effectDescription: 'At the beginning of each turn, up to two units in this formation may receive either the Sandblaster or Weapon Specialist SPA. The player may assign the same SPA to both units, or one Weapon Specialist and the other Sandblaster.',
         effectGroups: [{
             abilityIds: ['sandblaster', 'weapon_specialist'],
@@ -369,7 +371,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
         parent: 'battle-lance',
         name: 'Berserker/Close Combat',
         nameAliases: ['Berserker', 'Close Combat'],
-        description: 'Close combat specialists for physical attacks',
+        description: 'Close-combat specialists made famous by Rasalhague Regulars and the KungsArmé, trained to smash the enemy with BattleMech strength.',
         effectDescription: 'Two units in this formation receive the Swordsman or Zweihander SPA. The same ability must be assigned to both units.',
         effectGroups: [{
             abilityIds: ['swordsman', 'zweihander'],
@@ -393,7 +395,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'command-lance',
         name: 'Command',
-        description: 'Diverse formation built around force commander',
+        description: 'A command-centered formation with diverse capabilities intended to support and protect its leader.',
         effectDescription: 'Prior to the beginning of play, two of the non-commander units in this formation receive one of the following Special Pilot Abilities for free (each unit may receive a different SPA): Antagonizer, Combat Intuition, Blood Stalker, Eagle\'s Eyes, Marksman, or Multi-Tasker. In addition, the commander\'s unit receives the Tactical Genius SPA. If the commander already has the Tactical Genius SPA, instead add a +1 modifier to the force\'s Initiative roll results, including any rerolls made as a result of the Tactical Genius SPA.',
         effectGroups: [
             {
@@ -422,7 +424,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'order-lance',
         name: 'Order',
-        description: 'Kurita synchronized formation of identical units',
+        description: 'Highly organized Kurita units trained to operate as a synchronized whole.',
         effectDescription: 'Designate one unit as the formation\'s commander; that unit receives the Tactical Genius, Antagonizer, or Sniper SPA. All units in the formation receive the Iron Will or Speed Demon SPA; the entire formation must select the same ability.',
         effectGroups: [
             {
@@ -451,7 +453,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'vehicle-command-lance',
         name: 'Vehicle Command',
-        description: 'Formation of command vehicle units',
+        description: 'A vehicle command variant built around a designated commander and one matched pair of vehicles with a qualifying combat role.',
         effectDescription: 'Prior to the beginning of play, two of the non-commander units in this formation receive one of the following Special Pilot Abilities for free (each unit may receive a different SPA): Antagonizer, Combat Intuition, Blood Stalker, Eagle\'s Eyes, Marksman, or Multi-Tasker. In addition, the commander\'s unit receives the Tactical Genius SPA. If the commander already has the Tactical Genius SPA, instead add a +1 modifier to the force\'s Initiative roll results, including any rerolls made as a result of the Tactical Genius SPA.',
         effectGroups: [
             {
@@ -479,7 +481,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'fire-lance',
         name: 'Fire',
-        description: 'Long-range firepower specialists',
+        description: 'Long-range firepower specialists that stay clear of the enemy while raining down destructive attacks.',
         effectDescription: 'At the beginning of each turn, up to two units in this formation may receive the Sniper SPA, which will affect their weapon attacks during that turn.',
         effectGroups: [{
             abilityIds: ['sniper'],
@@ -502,7 +504,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'anti-air-lance',
         parent: 'fire-lance',
         name: 'Anti-Air',
-        description: 'Air defense specialists',
+        description: 'A Fire Lance variant specializing in engaging airborne threats with dedicated anti-air capabilities.',
         effectDescription: 'At the beginning of each turn, up to two units in this formation may receive the Anti-Aircraft Specialist Special Command Ability. This will affect the weapon attacks made by the designated units during that turn.',
         effectGroups: [{
             commandAbilityIds: ['anti_aircraft_specialists'],
@@ -528,7 +530,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'artillery-fire-lance',
         name: 'Artillery Fire',
-        description: 'Artillery support specialists',
+        description: 'A Fire Lance variant built to coordinate artillery attacks from a protected distance.',
         effectDescription: 'At the beginning of each turn, up to two units in this formation may receive the Oblique Artilleryman Special Pilot Ability, which will affect their artillery weapon attacks made during that turn.',
         effectGroups: [{
             abilityIds: ['oblique_artilleryman'],
@@ -552,7 +554,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'direct-fire-lance',
         name: 'Direct Fire',
-        description: 'Direct fire heavy weapons',
+        description: 'Heavy direct-fire specialists that concentrate powerful attacks on priority targets.',
         effectDescription: 'At the beginning of each turn, up to two units in this formation may receive the Weapon Specialist SPA. This ability will affect the weapon attacks made by the designated units during that turn.',
         effectGroups: [{
             abilityIds: ['weapon_specialist'],
@@ -578,7 +580,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'fire-support-lance',
         name: 'Fire Support',
-        description: 'Indirect fire specialists',
+        description: 'Indirect-fire specialists that coordinate artillery support for the rest of the force.',
         effectDescription: 'At the beginning of each turn, up to two units in this formation may receive the Oblique Attacker Special Pilot Ability, which will affect their indirect weapon attacks during that turn.',
         effectGroups: [{
             abilityIds: ['oblique_attacker'],
@@ -603,7 +605,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'light-fire-lance',
         name: 'Light Fire',
-        description: 'Light units with coordinated long-range fire',
+        description: 'Light units trained to combine their fire so they can threaten targets too large for any one unit.',
         effectDescription: 'Coordinated Fire Support: If a unit in this formation hits a target with at least one of its weapons, other units in this formation making weapon attacks against the same target receive a -1 modifier to their attack rolls. This bonus is cumulative per attacking unit, up to a -3 To-Hit modifier.',
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 64 }, { book: Rulebook.FMD, page: 82 }],
@@ -620,7 +622,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'pursuit-lance',
         name: 'Pursuit',
-        description: 'Fast scout hunters with firepower',
+        description: 'Fast, hard-hitting scout hunters that can chase reconnaissance units or conduct reconnaissance in force.',
         effectDescription: bloodStalkerFormationEffectDescription('Pursuit Lance'),
         effectGroups: [{
             abilityIds: ['blood_stalker'],
@@ -644,7 +646,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'probe-lance',
         name: 'Probe',
-        description: 'Mobile reconnaissance force',
+        description: 'A lighter Pursuit variant for aggressive reconnaissance, using mobility and coordinated fire to probe enemy positions.',
         effectDescription: bloodStalkerFormationEffectDescription('Probe Lance'),
         effectGroups: [{
             abilityIds: ['blood_stalker'],
@@ -667,7 +669,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'sweep-lance',
         name: 'Sweep',
-        description: 'Fast medium-range sweeping force',
+        description: 'A mobile Pursuit variant focused on close-range sweeping attacks against exposed enemy formations.',
         effectDescription: bloodStalkerFormationEffectDescription('Sweep Lance'),
         effectGroups: [{
             abilityIds: ['blood_stalker'],
@@ -692,7 +694,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'recon-lance',
         name: 'Recon',
-        description: 'Fast reconnaissance specialists',
+        description: 'Extremely fast scouts that rush ahead to identify objectives, evade fire, and harass or flank opponents.',
         effectDescription: 'At the beginning of play, choose either Eagle\'s Eyes or Maneuvering Ace SPA and apply it to up to three units in this formation. The chosen ability cannot be switched between units or changed during the scenario. In addition, all units in this formation receive the Forward Observer SPA.',
         effectGroups: [
             {
@@ -722,7 +724,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'heavy-recon-lance',
         name: 'Heavy Recon',
-        description: 'Armored reconnaissance formation',
+        description: 'An armored reconnaissance variant that keeps the scouting role while adding heavier units.',
         effectDescription: 'At the beginning of play, choose either Eagle\'s Eyes or Maneuvering Ace SPA and apply it to up to two units in this formation. The chosen ability cannot be switched between units or changed during the scenario. In addition, all units in this formation receive the Forward Observer SPA.',
         effectGroups: [
             {
@@ -753,7 +755,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'light-recon-lance',
         name: 'Light Recon',
-        description: 'Ultra-fast light scouts optimized for deep reconnaissance',
+        description: 'Ultra-mobile light scouts built for deep reconnaissance, spotting, and rapid maneuver.',
         effectDescription: 'At the beginning of play, choose either Eagle\'s Eyes or Maneuvering Ace SPA and apply it to all units in this formation. This choice is permanent for the scenario. Additionally, all units receive the Forward Observer SPA.',
         effectGroups: [
             {
@@ -785,7 +787,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'security-lance',
         name: 'Security',
-        description: 'Installation defense specialists',
+        description: 'Independent defenders for installations and other vital sites, combining terrain expertise with the speed to pursue raiders.',
         effectDescription: 'If acting as the Defender in a scenario, at the beginning of play 75% of the units are assigned Environmental Specialist or Terrain Master SPA of their choice; the same variation must be chosen for each unit. If not acting as the Defender, 75% are assigned the Speed Demon SPA at the beginning of play.',
         effectGroups: [{
             abilityIds: ['speed_demon', 'environmental_specialist', 'terrain_master_drag_racer', 'terrain_master_forest_ranger', 'terrain_master_frogman', 'terrain_master_mountaineer', 'terrain_master_nightwalker', 'terrain_master_sea_monster', 'terrain_master_swamp_beast'],
@@ -808,7 +810,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'striker-lance',
         name: 'Striker/Cavalry',
         nameAliases: ['Striker', 'Cavalry'],
-        description: 'Fast mobile firepower',
+        description: 'Fast-moving units that bring firepower to the fight, survive the engagement, then withdraw or hold until the main force arrives.',
         effectDescription: '75% of the units (round normally) receive the Speed Demon SPA.',
         effectGroups: [{
             abilityIds: ['speed_demon'],
@@ -833,7 +835,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'hammer-lance',
         name: 'Hammer',
-        description: 'Marik fast flanking force',
+        description: 'Fast Marik flanking units trained to strike the enemy\'s flank or rear while an Anvil formation holds its attention.',
         effectDescription: 'At the beginning of each turn, up to two Hammer Lance units may receive either the Jumping Jack or Speed Demon SPA. The player may assign the same SPA to both units, or one may receive Jumping Jack and the other Speed Demon.',
         effectGroups: [{
             abilityIds: ['jumping_jack', 'speed_demon'],
@@ -859,7 +861,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'light-striker-lance',
         name: 'Light Striker/Cavalry',
         nameAliases: ['Light Striker', 'Light Cavalry'],
-        description: 'Fast light mobile force',
+        description: 'A light cavalry variant for swift flanking attacks and harassment.',
         effectDescription: '75% of the units (round normally) receive the Speed Demon SPA.',
         effectGroups: [{
             abilityIds: ['speed_demon'],
@@ -883,7 +885,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'heavy-striker-lance',
         name: 'Heavy Striker/Cavalry',
         nameAliases: ['Heavy Striker', 'Heavy Cavalry'],
-        description: 'Heavy fast-moving formation',
+        description: 'A heavier cavalry variant combining speed with armor and long-range firepower.',
         effectDescription: '75% of the units (round normally) receive the Speed Demon SPA.',
         effectGroups: [{
             abilityIds: ['speed_demon'],
@@ -907,8 +909,10 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'horde',
         name: 'Horde',
-        description: 'Mass light unit swarm tactics',
-        effectDescription: 'Swarm: When any unit in this formation is targeted by an enemy attack, that unit\'s player may switch the target to any other unit in this formation that is still a legal target (within line of sight) and at the same range or less from the attacker. This ability can only be used by units which spent Running, Jumping, or Flank movement points that turn.',
+        description: 'Light "bug" BattleMechs that swarm and overwhelm larger opponents through numbers.',
+        effectDescription: (gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+            ? 'Swarm: When any Unit in this Formation is targeted, the targeted Unit\'s player may switch the target to any other Unit in this Formation that is a legal target (within line of sight) and at the same range (or less) from the attacker.'
+            : 'Swarm: When any unit in this formation is targeted by an enemy attack, that unit\'s player may switch the target to any other unit in this formation that is still a legal target (within line of sight) and at the same range or less from the attacker. This ability can only be used by units which spent Running, Jumping, or Flank movement points that turn.',
         minUnits: 5,
         maxUnits: 10,
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.FMK, page: 87 }],
@@ -927,7 +931,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'ranger-lance',
         name: 'Ranger',
-        description: 'Terrain warfare specialists',
+        description: 'Terrain specialists trained to fight in heavy cover or ground that slows other forces.',
         effectDescription: 'At the beginning of play, 75% of the units in this formation receive one Terrain Master SPA. The same Terrain Master variation must be assigned to these units.',
         effectGroups: [{
             abilityIds: ['terrain_master_drag_racer', 'terrain_master_forest_ranger', 'terrain_master_frogman', 'terrain_master_mountaineer', 'terrain_master_nightwalker', 'terrain_master_sea_monster', 'terrain_master_swamp_beast'],
@@ -947,7 +951,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'support-lance',
         name: 'Support',
-        description: 'Multi-role formation backing other units',
+        description: 'A multi-role formation that does not excel at one mission, instead reinforcing other formations.',
         minUnits: 3,
         effectDescription: 'Before play, designate one other formation to support. Half the units (round down) receive the same SPAs as the supported formation. SPA count may not exceed the supported formation\'s count.',
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 121 }],
@@ -962,7 +966,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'urban-lance',
         name: 'Urban Combat',
-        description: 'City fighting specialists',
+        description: 'Short-range, intensive fighters built for city combat, using jump movement to attack around buildings.',
         effectDescription: 'At the beginning of each turn, up to 75% of the units may receive the Street Fighter (if \'Mech or ProtoMech) or Urban Guerrilla (if infantry) SPAs. Vehicles receive the equivalent of 1-point of Luck and a one-time use of the Marksman SPA.',
         effectGroups: [{
             abilityIds: ['street_fighter', 'urban_guerrilla', 'lucky', 'marksman'],
@@ -987,7 +991,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'phalanx-star',
         name: 'Phalanx',
-        description: 'Second-Line combined arms defensive formation.',
+        description: 'A Clan combined-arms defensive Star that mixes BattleMechs or vehicles with Elementals and other ground units.',
         effectDescription: 'The formation receives a Float Like a Butterfly SPA. Useable by any unit in the formation. (max 6 rerolls per scenario).',
         effectGroups: [{
             abilityIds: ['float_like_a_butterfly'],
@@ -1007,7 +1011,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'rogue-star',
         name: 'Rogue',
-        description: 'Swift strike formation.',
+        description: 'A swift Clan strike formation built for sudden attacks and rapid pressure.',
         effectDescription: 'At the beginning of each turn, up to two units in this formation may receive the Combat Intuition SPA.',
         effectGroups: [{
             abilityIds: ['combat_intuition'],
@@ -1030,7 +1034,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'strategic-command-star',
         name: 'Strategic Command',
-        description: 'Combined arms command star.',
+        description: 'A Clan combined-arms command formation that coordinates aerospace and ground units around a skilled leader.',
         effectDescription: 'Clan only. Prior to the beginning of play, two of the non-commander units in this formation receive one of the following Special Pilot Abilities for free (each unit may receive a different SPA): Antagonizer, Combat Intuition, Blood Stalker, Eagle\'s Eyes, Marksman, or Multi-Tasker. In addition, the commander\'s unit receives the Tactical Genius SPA. If the commander already has the Tactical Genius SPA, instead add a +1 modifier to the force\'s Initiative roll results, including any rerolls made as a result of the Tactical Genius SPA. Aerospace units cannot be designated force commander. Counts as Command Star.',
         effectGroups: [
             {
@@ -1066,7 +1070,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'interceptor-squadron',
         name: 'Interceptor',
-        description: 'Interceptor specialists',
+        description: 'Fast aerospace combat groups that strike approaching threats before they reach the main force, trading armor and firepower for speed.',
         effectDescription: 'Any units with Move (Thrust) of 9 or less receive the Speed Demon SPA. In addition, up to 2 fighters may also receive the Range Master (Long) SPA.',
         effectGroups: [
             {
@@ -1094,7 +1098,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'aerospace-superiority-squadron',
         name: 'Aerospace Superiority',
-        description: 'Air superiority specialists',
+        description: 'An air-superiority formation balancing speed, firepower, and armor to defeat opposing aerospace units.',
         effectDescription: 'Prior to the start of the scenario, select up to 50% of the units and assign up to 2 of the following SPAs (in any combination): Blood Stalker, Ride the Wash, Hot Dog.',
         effectGroups: [{
             abilityIds: ['blood_stalker', 'ride_the_wash', 'hot_dog'],
@@ -1115,7 +1119,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'fire-support-squadron',
         name: 'Fire Support',
-        description: 'Fire support specialists',
+        description: 'Long-range aerospace formations optimized for ground attack that can also back up interceptors and strike fighters.',
         effectDescription: 'Prior to the start of the scenario, choose 2 pairs of fighters and assign one SPA each pair: Golden Goose, Ground Hugger, Hot Dog, or Shaky Stick. The two pairs may not receive the same SPA.',
         effectGroups: [{
             abilityIds: ['golden_goose', 'ground_hugger', 'hot_dog', 'shaky_stick'],
@@ -1135,7 +1139,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'strike-squadron',
         name: 'Strike',
-        description: 'Strike specialists',
+        description: 'Aerospace formations for close air support and air-to-ground attacks, balancing potent firepower with reliable armor.',
         effectDescription: 'Up to 50% of the units may receive the Speed Demon SPA. The remaining fighters receive the Golden Goose SPA.',
         effectGroups: [
             {
@@ -1161,7 +1165,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'electronic-warfare-squadron',
         name: 'Electronic Warfare',
-        description: 'Electronic warfare specialists',
+        description: 'Aerospace support formations that disrupt enemy communications while countering hostile electronic warfare.',
         effectDescription: 'This squadron receives the Communications Disruption Special Command Ability, enabling it to disrupt the communications of one randomly-determined enemy lance or squadron on a 1D6 roll of 6 (persists one turn).',
         effectGroups: [{
             commandAbilityIds: ['communications_disruption'],
@@ -1183,7 +1187,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
     {
         id: 'transport-squadron',
         name: 'Transport',
-        description: 'Transport specialists',
+        description: 'Cargo and troop-moving aerospace formations escorted by fighters, avoiding air battles when possible.',
         effectDescription: 'Choose one SPA to apply to all Transport-role units: Dust-Off, Ride the Wash, or Wind Walker.',
         effectGroups: [{
             abilityIds: ['dust_off', 'ride_the_wash', 'wind_walker'],
