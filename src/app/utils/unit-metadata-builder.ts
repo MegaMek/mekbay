@@ -10,10 +10,13 @@ import { Unit } from '../models/units.model';
 import { EntityType, MoveType } from '../models/entity/types';
 import { buildUnitCargoMetadata } from './unit-cargo-metadata-builder';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
-import { EquipmentFlag } from '../models/equipment-flags.type';
 import { convertEntityToAlphaStrike } from '../models/entity/utils/alpha-strike/alpha-strike-converter';
 import { alphaStrikeUnitType } from '../models/entity/utils/alpha-strike/foundation/unit-classification';
 import type { UnitIconResolver } from './unit-sprite-resolver';
+import {
+  armorTypeDisplayName,
+  equipmentFireControlFeature,
+} from './unit-summary-display-facts';
 
 /**
  * Builds a `Partial<Unit>` metadata object from a parsed entity.
@@ -39,6 +42,7 @@ export class UnitMetadataBuilder {
     const alphaStrikeUnitStats = convertEntityToAlphaStrike(entity);
     return {
       // ── Phase 0: Identity ──────────────────────────────────────────
+      uuid: entity.uuid(),
       name: this.buildName(entity),
       icon: this.resolveIcon(entity),
       chassis: entity.fullChassis(),
@@ -154,11 +158,10 @@ export class UnitMetadataBuilder {
   private buildFeatures(entity: BaseEntity): string[] {
     const features: string[] = [...entity.entityFeatures()];
 
-    const hasEquipmentFlag = (flag: EquipmentFlag): boolean => entity.equipment().some(
+    const fireControl = equipmentFireControlFeature(flag => entity.equipment().some(
       mount => mount.equipment?.hasFlag(flag),
-    );
-    if (hasEquipmentFlag('F_ADVANCED_FIRE_CONTROL')) features.push('Advanced Fire Control');
-    else if (hasEquipmentFlag('F_BASIC_FIRE_CONTROL')) features.push('Basic Fire Control');
+    ));
+    if (fireControl) features.push(fireControl);
 
     return features;
   }
@@ -269,9 +272,9 @@ export class UnitMetadataBuilder {
       return entity.armorDivisor() !== 1 ? 'Custom' : '';
     }
 
-    if (entity.hasPatchworkArmor()) return ARMOR_TYPE_DISPLAY_NAME['PATCHWORK'] ?? 'Patchwork';
+    if (entity.hasPatchworkArmor()) return armorTypeDisplayName('PATCHWORK', 'Patchwork');
     const armorType = entity.uniformArmor()?.type ?? 'STANDARD';
-    return ARMOR_TYPE_DISPLAY_NAME[armorType] ?? armorType;
+    return armorTypeDisplayName(armorType, armorType);
   }
 }
 
@@ -282,62 +285,3 @@ export class UnitMetadataBuilder {
 const ENGINELESS_EXPORT_TYPES: ReadonlySet<EntityType> = new Set([
   'SmallCraft', 'DropShip', 'JumpShip', 'WarShip', 'SpaceStation',
 ]);
-
-/**
- * Map internal ArmorType codes to display names used in units.json.
- * These match the names from Java's `EquipmentType.getArmorTypeName()`.
- */
-const ARMOR_TYPE_DISPLAY_NAME: Partial<Record<string, string>> = {
-  'STANDARD': 'Standard Armor',
-  'FERRO_FIBROUS': 'Ferro-Fibrous',
-  'REACTIVE': 'Reactive',
-  'REFLECTIVE': 'Reflective',
-  'HARDENED': 'Hardened',
-  'LIGHT_FERRO': 'Light Ferro-Fibrous',
-  'HEAVY_FERRO': 'Heavy Ferro-Fibrous',
-  'PATCHWORK': 'Patchwork',
-  'STEALTH': 'Stealth',
-  'FERRO_FIBROUS_PROTO': 'Ferro-Fibrous Prototype',
-  'COMMERCIAL': 'Commercial, BAR: 5',
-  'INDUSTRIAL': 'Industrial',
-  'HEAVY_INDUSTRIAL': 'Heavy Industrial',
-  'FERRO_LAMELLOR': 'Ferro-Lamellor',
-  'PRIMITIVE': 'Primitive',
-  'EDP': 'Electric Discharge ProtoMech',
-  'ANTI_PENETRATIVE_ABLATION': 'Anti-Penetrative Ablation',
-  'HEAT_DISSIPATING': 'Heat-Dissipating',
-  'IMPACT_RESISTANT': 'Impact-Resistant',
-  'BALLISTIC_REINFORCED': 'Ballistic-Reinforced',
-  'ALUM': 'Ferro-Aluminum',
-  'HEAVY_ALUM': 'Heavy Ferro-Aluminum',
-  'LIGHT_ALUM': 'Light Ferro-Aluminum',
-  'FERRO_ALUM_PROTO': 'Prototype Ferro-Aluminum',
-  'STEALTH_VEHICLE': 'Vehicular Stealth',
-  'LC_FERRO_CARBIDE': 'Ferro-Carbide',
-  'LC_LAMELLOR_FERRO_CARBIDE': 'Lamellor Ferro-Carbide',
-  'LC_FERRO_IMP': 'Improved Ferro-Aluminum',
-  'AEROSPACE': 'Standard Aerospace',
-  'STANDARD_PROTOMEK': 'Standard ProtoMech',
-  'PRIMITIVE_FIGHTER': 'Primitive Fighter',
-  'PRIMITIVE_AERO': 'Primitive Aerospace',
-  'BA_STANDARD': 'BA Standard (Basic)',
-  'BA_STANDARD_PROTOTYPE': 'BA Standard (Prototype)',
-  'BA_STANDARD_ADVANCED': 'BA Advanced',
-  'BA_STEALTH_BASIC': 'BA Stealth (Basic)',
-  'BA_STEALTH': 'BA Stealth (Standard)',
-  'BA_STEALTH_IMP': 'BA Stealth (Improved)',
-  'BA_STEALTH_PROTOTYPE': 'BA Stealth (Prototype)',
-  'BA_FIRE_RESIST': 'BA Fire Resistant',
-  'BA_MIMETIC': 'BA Mimetic',
-  'BA_REFLECTIVE': 'BA Laser Reflective (Reflec/Glazed)',
-  'BA_REACTIVE': 'BA Reactive (Blazer)',
-  'SV_BAR_2': 'BAR: 2',
-  'SV_BAR_3': 'BAR: 3',
-  'SV_BAR_4': 'BAR: 4',
-  'SV_BAR_5': 'BAR: 5',
-  'SV_BAR_6': 'BAR: 6',
-  'SV_BAR_7': 'BAR: 7',
-  'SV_BAR_8': 'BAR: 8',
-  'SV_BAR_9': 'BAR: 9',
-  'SV_BAR_10': 'BAR: 10',
-};

@@ -88,6 +88,7 @@ interface FieldIssue {
  */
 const CHECKED_FIELDS: FieldCheck[] = [
   // ── Phase 0: Identity ──────────────────────────────────────────────
+  { field: 'uuid',          compare: 'exact', parity: 'verified' },
   { field: 'chassis',       compare: 'exact', parity: 'verified' },
   { field: 'model',         compare: 'exact', parity: 'verified' },
   { field: 'year',          compare: 'exact', parity: 'verified' },
@@ -299,7 +300,7 @@ type PlainObject = Record<string, unknown>;
 const OPTIONAL_FIELDS = new Set(['capital', 'cargo', 'diss', 'fluff']);
 const BOOLEAN_FIELDS = new Set(['canAntiMech', 'canon', 'mixed']);
 const STRING_FIELDS = new Set([
-  'armorType', 'c3', 'chassis', 'icon', 'level', 'model', 'moveType', 'name',
+  'uuid', 'armorType', 'c3', 'chassis', 'icon', 'level', 'model', 'moveType', 'name',
   'role', 'subtype', 'techBase', 'techRating', 'type', 'unitFile', 'weightClass',
 ]);
 const NULLABLE_STRING_FIELDS = new Set(['engine', 'engineHSType', 'structureType']);
