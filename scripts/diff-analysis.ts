@@ -1,10 +1,13 @@
-const fs = require('fs');
-const path = require('path');
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import fs from 'node:fs';
+import path from 'node:path';
 
 const origDir = 'C:/Projects/megamek/svgexport/unitfiles';
 const ourDir = 'C:/Projects/megamek/svgexport/mbunitfiles';
 
-function strip(t) {
+function strip(t: string): string {
   return t.split(/\r?\n/)
     .filter(l => !l.trimStart().startsWith('#'))
     .map(l => l.trimEnd())
@@ -13,9 +16,9 @@ function strip(t) {
     .trim();
 }
 
-const dr = new Map();
+const dr = new Map<string, number>();
 
-function walk(d) {
+function walk(d: string): void {
   for (const e of fs.readdirSync(d, { withFileTypes: true })) {
     const f = path.join(d, e.name);
     if (e.isDirectory()) { walk(f); continue; }
