@@ -8,11 +8,11 @@ const {
     loadOptionalEnvFile,
     resolveExistingPath,
     resolveMmDataRoot,
-} = require('./lib/script-paths.js') as typeof import('./lib/script-paths.js');
+} = require('./lib/script-paths') as typeof import('./lib/script-paths');
 
 const {
     writeFileWithContentTimestamp,
-} = require('./lib/deterministic-output.js') as typeof import('./lib/deterministic-output');
+} = require('./lib/deterministic-output') as typeof import('./lib/deterministic-output');
 
 interface DateRange {
     start?: number;
@@ -655,13 +655,14 @@ export class RatGeneratorTableBuilder {
         }
 
         const modelKey = RatGeneratorTableBuilder.buildModelKey(chassis, model);
-        return this.unitSummaryByKey.get(modelKey)
+        const result = this.unitSummaryByKey.get(modelKey)
             ?? this.unitSummaryByNormalizedKey.get(RatGeneratorTableBuilder.normalizeLookupKey(modelKey))
             ?? this.findClosestUnitSummaryByModelAndChassis(chassis, model)
             ?? (model
-                ? this.unitSummaryByNormalizedModel.get(RatGeneratorTableBuilder.normalizeLookupKey(model)) ?? undefined
+                ? this.unitSummaryByNormalizedModel.get(RatGeneratorTableBuilder.normalizeLookupKey(model))
                 : undefined)
-            ?? this.unitSummaryByNormalizedChassis.get(RatGeneratorTableBuilder.normalizeLookupKey(chassis)) ?? undefined;
+            ?? this.unitSummaryByNormalizedChassis.get(RatGeneratorTableBuilder.normalizeLookupKey(chassis));
+        return result ?? undefined;
     }
 
     private findClosestUnitSummaryByModelAndChassis(chassis: string, model: string): UnitSummaryRecord | undefined {

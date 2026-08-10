@@ -19,7 +19,7 @@ import { parseCsv, parseCsvRows, requireCsvColumnCount, requireCsvHeader } from 
 import { isUuidV7, parseMegaMekUnitFileMetadata } from './lib/megamek-unit-file-metadata';
 import { listUnitFilesRecursive, normalizeRelativePath } from './lib/unit-file-discovery';
 
-const { resolveMmDataRoot } = require('./lib/script-paths.js') as typeof import('./lib/script-paths.js');
+const { resolveMmDataRoot } = require('./lib/script-paths') as typeof import('./lib/script-paths');
 
 const appRoot = path.resolve(__dirname, '..');
 const mmDataRoot = resolveMmDataRoot(appRoot);
