@@ -1,2 +1,5 @@
 *.json
 *.csv
+/units/
+/core-unit-manifests/
+/core-units.*.zip
