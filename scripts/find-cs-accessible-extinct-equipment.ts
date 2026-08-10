@@ -21,13 +21,39 @@
  *   - Reintroduction/prototype/production/common: actual = parsed - 5 (earlier)
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
 
 const APPROXIMATE_MARGIN = 5;
 const YEAR = 2900;
 
-function parseDate(raw, isExtinction = false) {
+interface AdvancementDates {
+  readonly prototype?: unknown;
+  readonly production?: unknown;
+  readonly common?: unknown;
+  readonly extinct?: unknown;
+  readonly reintroduced?: unknown;
+}
+
+interface EquipmentRecord {
+  readonly name?: string;
+  readonly tech?: {
+    readonly base?: string;
+    readonly advancement?: { readonly is?: AdvancementDates };
+    readonly availability?: Readonly<Record<string, string>>;
+  };
+}
+
+interface ExtinctEquipmentResult {
+  readonly id: string;
+  readonly name: string;
+  readonly base?: string;
+  readonly extinctDate: number;
+  readonly reintroDate: number;
+  readonly swAvailability?: string;
+}
+
+function parseDate(raw: unknown, isExtinction = false): number {
   if (raw == null) return -1;
   const str = String(raw);
   const approximate = str.startsWith('~');
@@ -38,7 +64,7 @@ function parseDate(raw, isExtinction = false) {
   return isExtinction ? value + APPROXIMATE_MARGIN : value - APPROXIMATE_MARGIN;
 }
 
-function getIntroDate(adv) {
+function getIntroDate(adv: AdvancementDates | undefined): number {
   // Introduction date is the earliest of prototype, production, common
   const proto = parseDate(adv?.prototype);
   const prod = parseDate(adv?.production);
@@ -47,7 +73,7 @@ function getIntroDate(adv) {
   return candidates.length > 0 ? Math.min(...candidates) : -1;
 }
 
-function isExtinctIS(adv, year) {
+function isExtinctIS(adv: AdvancementDates, year: number): boolean {
   const extinctDate = parseDate(adv?.extinct, true);
   const reintroDate = parseDate(adv?.reintroduced);
   if (extinctDate === -1) return false;
@@ -56,7 +82,7 @@ function isExtinctIS(adv, year) {
   return year < reintroDate; // still extinct if reintro hasn't happened yet
 }
 
-function getTechEra(year) {
+function getTechEra(year: number): string {
   if (year < 2780) return 'sl';
   if (year < 3050) return 'sw';
   if (year < 3130) return 'clan';
@@ -64,10 +90,12 @@ function getTechEra(year) {
 }
 
 const jsonPath = path.join(__dirname, 'fixtures', 'equipment2.json');
-const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8')) as {
+  readonly equipment: Record<string, EquipmentRecord>;
+};
 const equipment = data.equipment;
 
-const results = [];
+const results: ExtinctEquipmentResult[] = [];
 
 for (const [id, equip] of Object.entries(equipment)) {
   const tech = equip.tech;
@@ -102,10 +130,10 @@ for (const [id, equip] of Object.entries(equipment)) {
   const extinctDate = parseDate(isAdv.extinct, true);
   results.push({
     id,
-    name: equip.name,
+    name: equip.name ?? id,
     base: tech.base,
     extinctDate,
-    reintroDate: reintroDate === -1 ? 'none' : reintroDate,
+    reintroDate,
     swAvailability: availability,
   });
 }
