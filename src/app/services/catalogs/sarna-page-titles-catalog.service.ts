@@ -205,6 +205,7 @@ export class SarnaPageTitlesCatalogService extends CatalogBaseService<SarnaPageT
         if (!chassis) return undefined;
 
         const lookupType = SARNA_PAGE_TITLE_LOOKUP_TYPE_BY_UNIT_TYPE[unit.type];
+        if (!lookupType) return undefined;
         const normalizedChassis = normalizeText(chassis);
         const exactTitle = this.exactTitleByType.get(lookupType)?.get(normalizedChassis);
         if (exactTitle) return exactTitle;
