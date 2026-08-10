@@ -31,15 +31,15 @@
  * affiliated with Microsoft.
  */
 
-const fs = require('fs');
-const path = require('path');
-const yaml = require('js-yaml');
-const { spawnSync } = require('child_process');
-const { writeFileWithContentTimestamp } = require('./lib/deterministic-output.js');
-const { loadOptionalEnvFile, resolveMmDataRoot } = require('./lib/script-paths.js');
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import yaml from 'js-yaml';
+import { writeFileWithContentTimestamp } from './lib/deterministic-output';
+import { finalizeGeneratedAssetContentTimestamps } from './lib/generated-asset-inventory';
+import { loadOptionalEnvFile, resolveMmDataRoot } from './lib/script-paths';
 
 const root = path.resolve(__dirname, '..');
-const tsxCli = path.join(root, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 
 loadOptionalEnvFile(root, { logPrefix: 'Assets' });
 
@@ -52,20 +52,45 @@ const megaMekRulesetsScript = path.join(__dirname, 'generate-megamek-rulesets.ts
 const sarnaPageTitlesScript = path.join(__dirname, 'generate-sarna-page-titles.ts');
 const ratGeneratorCsvScript = path.join(__dirname, 'ratgenerator_build_table.ts');
 const forceNameWordsScript = path.join(__dirname, 'generate-force-name-words.ts');
+const coreUnitAssetsScript = path.join(__dirname, 'generate-core-unit-assets.ts');
 
 console.log(`[Assets] Using MM data from: ${mmDataRoot}`);
 console.log(`[Assets] Using sourcebooks from: ${sourcebooksDir}`);
 
-function runTypeScriptScript(scriptPath) {
+interface SourcebookRecord {
+  readonly id?: unknown;
+  readonly sku?: unknown;
+  readonly abbrev: string;
+  readonly title?: unknown;
+  readonly image?: unknown;
+  readonly url?: unknown;
+  readonly mul_url?: unknown;
+  readonly canon?: unknown;
+}
+
+interface GeneratedSourcebook {
+  readonly id: unknown;
+  readonly sku: unknown;
+  readonly abbrev: string;
+  readonly title: unknown;
+  readonly image: unknown;
+  readonly url: unknown;
+  readonly mul_url: unknown;
+  readonly canon: boolean;
+}
+
+function isSourcebookRecord(value: unknown): value is SourcebookRecord {
+  return value !== null
+    && typeof value === 'object'
+    && typeof (value as Record<string, unknown>)['abbrev'] === 'string';
+}
+
+function runTypeScriptScript(scriptPath: string): void {
   if (!fs.existsSync(scriptPath)) {
     throw new Error(`TypeScript script not found: ${scriptPath}`);
   }
 
-  if (!fs.existsSync(tsxCli)) {
-    throw new Error(`tsx CLI not found: ${tsxCli}`);
-  }
-
-  const result = spawnSync(process.execPath, [tsxCli, scriptPath], {
+  const result = spawnSync(process.execPath, ['--import', 'tsx', scriptPath], {
     cwd: root,
     stdio: 'inherit',
     env: process.env
@@ -82,15 +107,15 @@ function runTypeScriptScript(scriptPath) {
   }
 }
 
-function generateSourcebooks() {
+function generateSourcebooks(): void {
   if (!fs.existsSync(sourcebooksDir)) {
     console.log(`[Assets] Sourcebooks directory not found: ${sourcebooksDir}`);
     console.log(`[Assets] Please check MM_DATA_PATH in .env or environment variables.`);
     return;
   }
 
-  const files = fs.readdirSync(sourcebooksDir).filter(f => f.endsWith('.yaml'));
-  const sourcebooks = [];
+  const files = fs.readdirSync(sourcebooksDir).filter(f => f.endsWith('.yaml')).sort();
+  const sourcebooks: GeneratedSourcebook[] = [];
 
   for (const file of files) {
     try {
@@ -98,7 +123,7 @@ function generateSourcebooks() {
       const content = fs.readFileSync(filePath, 'utf8');
       const data = yaml.load(content);
 
-      if (data && data.abbrev) {
+      if (isSourcebookRecord(data)) {
         sourcebooks.push({
           id: data.id,
           sku: data.sku || '',
@@ -111,7 +136,8 @@ function generateSourcebooks() {
         });
       }
     } catch (e) {
-      console.warn(`[Assets] Failed to parse ${file}: ${e.message}`);
+      const message = e instanceof Error ? e.message : String(e);
+      console.warn(`[Assets] Failed to parse ${file}: ${message}`);
     }
   }
 
@@ -127,15 +153,15 @@ function generateSourcebooks() {
 
 // function runCompressAssets() {
 //   return new Promise((resolve, reject) => {
-//     const compressScript = path.join(__dirname, 'compress-assets.js');
+//     const compressScript = path.join(__dirname, 'compress-assets.ts');
     
 //     if (!fs.existsSync(compressScript)) {
-//       console.log('[Assets] compress-assets.js not found, skipping compression.');
+//       console.log('[Assets] compress-assets.ts not found, skipping compression.');
 //       resolve();
 //       return;
 //     }
 
-//     console.log('[Assets] Running compress-assets.js...');
+//     console.log('[Assets] Running compress-assets.ts...');
 //     const child = spawn('node', [compressScript], { 
 //       stdio: 'inherit',
 //       cwd: root
@@ -145,7 +171,7 @@ function generateSourcebooks() {
 //       if (code === 0) {
 //         resolve();
 //       } else {
-//         reject(new Error(`compress-assets.js exited with code ${code}`));
+//         reject(new Error(`compress-assets.ts exited with code ${code}`));
 //       }
 //     });
 
@@ -155,14 +181,17 @@ function generateSourcebooks() {
 //   });
 // }
 
-async function main() {
+async function main(): Promise<void> {
   try {
     runTypeScriptScript(forceNameWordsScript);
     runTypeScriptScript(megaMekAvailabilityScript);
     runTypeScriptScript(megaMekRulesetsScript);
     runTypeScriptScript(sarnaPageTitlesScript);
+    runTypeScriptScript(coreUnitAssetsScript);
     // runTypeScriptScript(ratGeneratorCsvScript);
     generateSourcebooks();
+    const verifiedAssets = finalizeGeneratedAssetContentTimestamps(path.join(root, 'public', 'assets'));
+    console.log(`[Assets] Verified content-derived timestamps for ${verifiedAssets.length} generated files.`);
     // await runCompressAssets();
     console.log('[Assets] All asset generation complete.');
   } catch (err) {

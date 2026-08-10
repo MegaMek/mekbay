@@ -31,12 +31,16 @@
  * affiliated with Microsoft.
  */
 
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
-const { setFileContentTimestamp, writeFileWithContentTimestamp } = require('./lib/deterministic-output.js');
-const { loadOptionalEnvFile, resolveMmDataRoot } = require('./lib/script-paths.js');
-const { loadMeksetAssignments } = require('./lib/mekset-assignments.js');
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import sharp from 'sharp';
+import {
+  setFileContentTimestamp,
+  writeFileWithContentTimestamp,
+} from './lib/deterministic-output';
+import { loadMeksetAssignments } from './lib/mekset-assignments';
+import { loadOptionalEnvFile, resolveMmDataRoot } from './lib/script-paths';
 
 const root = path.resolve(__dirname, '..');
 
@@ -58,27 +62,46 @@ const PADDING = 0;
 const SPRITE_CACHE_VERSION = '1';
 const SPRITE_HASH_LENGTH = 16;
 
-function getFileHash(filePath) {
+interface CollectedImage {
+  readonly path: string;
+  readonly fullPath: string;
+}
+
+interface SpritePosition {
+  readonly type: string;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
+interface SpriteTypeInfo {
+  readonly width: number;
+  readonly height: number;
+  readonly hash: string;
+}
+
+function getFileHash(filePath: string): string {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
-function getSpriteHash(filePath) {
+function getSpriteHash(filePath: string): string {
   return getFileHash(filePath).slice(0, SPRITE_HASH_LENGTH);
 }
 
-function buildSpriteTempFileName(unitType) {
+function buildSpriteTempFileName(unitType: string): string {
   return `${unitType}.${SPRITE_CACHE_VERSION}.tmp.webp`;
 }
 
-function buildSpriteFileName(unitType, spriteHash) {
+function buildSpriteFileName(unitType: string, spriteHash: string): string {
   return `${unitType}.${SPRITE_CACHE_VERSION}.${spriteHash}.webp`;
 }
 
-function buildSpriteUrl(unitType, spriteHash) {
+function buildSpriteUrl(unitType: string, spriteHash: string): string {
   return `sprites/${buildSpriteFileName(unitType, spriteHash)}`;
 }
 
-function cleanGeneratedSpriteFiles() {
+function cleanGeneratedSpriteFiles(): number {
   if (!fs.existsSync(outputDir)) return 0;
 
   let removed = 0;
@@ -98,7 +121,7 @@ function cleanGeneratedSpriteFiles() {
  * Calculate optimal columns for a roughly square sprite sheet.
  * Takes into account the icon aspect ratio to balance width/height.
  */
-function calculateOptimalColumns(iconCount) {
+function calculateOptimalColumns(iconCount: number): number {
   if (iconCount <= 1) return 1;
   
   // For a square-ish sprite: cols * ICON_WIDTH ≈ rows * ICON_HEIGHT
@@ -118,8 +141,8 @@ console.log(`[SpriteMap] Icon size: ${ICON_WIDTH}x${ICON_HEIGHT} (scale: ${ICON_
 /**
  * Collect images grouped by unit type (top-level subfolder)
  */
-function collectImagesByType(dir) {
-  const imagesByType = new Map();
+function collectImagesByType(dir: string): Map<string, CollectedImage[]> {
+  const imagesByType = new Map<string, CollectedImage[]>();
   
   if (!fs.existsSync(dir)) return imagesByType;
   
@@ -130,7 +153,7 @@ function collectImagesByType(dir) {
 
   for (const unitType of topLevelDirs) {
     const typeDir = path.join(dir, unitType);
-    const images = [];
+    const images: CollectedImage[] = [];
     collectImagesRecursive(typeDir, dir, images);
     if (images.length > 0) {
       imagesByType.set(unitType, images);
@@ -140,7 +163,11 @@ function collectImagesByType(dir) {
   return imagesByType;
 }
 
-function collectImagesRecursive(dir, rootDir, images) {
+function collectImagesRecursive(
+  dir: string,
+  rootDir: string,
+  images: CollectedImage[],
+): void {
   const files = fs.readdirSync(dir).sort();
   
   for (const file of files) {
@@ -163,7 +190,12 @@ function collectImagesRecursive(dir, rootDir, images) {
 /**
  * Generate sprite sheet for a single unit type
  */
-async function generateSpriteForType(sharp, unitType, images, spriteData) {
+async function generateSpriteForType(
+  sharpImpl: typeof sharp,
+  unitType: string,
+  images: readonly CollectedImage[],
+  spriteData: Record<string, SpritePosition>,
+): Promise<SpriteTypeInfo> {
   const cols = calculateOptimalColumns(images.length);
   const rows = Math.ceil(images.length / cols);
   const spriteWidth = cols * (ICON_WIDTH + PADDING) - PADDING;
@@ -171,17 +203,17 @@ async function generateSpriteForType(sharp, unitType, images, spriteData) {
 
   console.log(`[SpriteMap] Creating ${unitType} sprite: ${spriteWidth}x${spriteHeight} (${images.length} icons, ${cols}x${rows} grid)`);
 
-  const compositeOps = [];
+  const compositeOps: sharp.OverlayOptions[] = [];
 
   for (let i = 0; i < images.length; i++) {
-    const img = images[i];
+    const img = images[i]!;
     const col = i % cols;
     const row = Math.floor(i / cols);
     const x = col * (ICON_WIDTH + PADDING);
     const y = row * (ICON_HEIGHT + PADDING);
 
     try {
-      const resizedBuffer = await sharp(img.fullPath)
+      const resizedBuffer = await sharpImpl(img.fullPath)
         .resize(ICON_WIDTH, ICON_HEIGHT, {
           fit: 'contain',
           background: { r: 0, g: 0, b: 0, alpha: 0 }
@@ -205,14 +237,15 @@ async function generateSpriteForType(sharp, unitType, images, spriteData) {
       };
 
     } catch (err) {
-      console.warn(`[SpriteMap] Failed to process ${img.path}: ${err.message}`);
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[SpriteMap] Failed to process ${img.path}: ${message}`);
     }
   }
 
   // Create the sprite sheet for this type
   const spriteTempPath = path.join(outputDir, buildSpriteTempFileName(unitType));
   
-  await sharp({
+  await sharpImpl({
     create: {
       width: spriteWidth,
       height: spriteHeight,
@@ -238,7 +271,7 @@ async function generateSpriteForType(sharp, unitType, images, spriteData) {
   return { width: spriteWidth, height: spriteHeight, hash: spriteHash };
 }
 
-async function generateSprites() {
+async function generateSprites(): Promise<void> {
   if (!fs.existsSync(unitIconsDir)) {
     console.log(`[SpriteMap] Source directory not found: ${unitIconsDir}`);
     console.log(`[SpriteMap] Please check MM_DATA_PATH in .env or environment variables.`);
@@ -264,7 +297,7 @@ async function generateSprites() {
   }
 
   let totalImages = 0;
-  const availableIcons = new Set();
+  const availableIcons = new Set<string>();
   for (const images of imagesByType.values()) {
     totalImages += images.length;
     for (const image of images) {
@@ -278,12 +311,11 @@ async function generateSprites() {
     console.warn(`[SpriteMap] Ignored ${assignments.missingIcons.length} mekset assignments whose images are unavailable.`);
   }
 
-  const sharp = require('sharp');
   // Limit sharp concurrency to avoid memory issues
   sharp.concurrency(2);
 
-  const spriteData = {};
-  const spriteTypes = {};
+  const spriteData: Record<string, SpritePosition> = {};
+  const spriteTypes: Record<string, SpriteTypeInfo> = {};
 
   // Process each unit type
   for (const [unitType, images] of imagesByType) {
@@ -296,7 +328,7 @@ async function generateSprites() {
   const manifest = {
     types: Object.fromEntries(
       [...imagesByType.keys()].map(type => {
-        const { width, height, hash } = spriteTypes[type];
+        const { width, height, hash } = spriteTypes[type]!;
         return [type, {
           url: buildSpriteUrl(type, hash),
           width,

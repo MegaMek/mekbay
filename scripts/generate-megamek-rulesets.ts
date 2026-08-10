@@ -10,11 +10,11 @@ import { XMLParser } from 'fast-xml-parser';
 const {
     loadOptionalEnvFile,
     resolveMmDataRoot,
-} = require('./lib/script-paths.js') as typeof import('./lib/script-paths.js');
+} = require('./lib/script-paths') as typeof import('./lib/script-paths');
 
 const {
     writeFileWithContentTimestamp,
-} = require('./lib/deterministic-output.js') as typeof import('./lib/deterministic-output');
+} = require('./lib/deterministic-output') as typeof import('./lib/deterministic-output');
 
 type JsonObject = Record<string, unknown>;
 

@@ -7,7 +7,7 @@ import * as path from 'path';
 
 const {
     writeFileWithContentTimestamp,
-} = require('./lib/deterministic-output.js') as typeof import('./lib/deterministic-output');
+} = require('./lib/deterministic-output') as typeof import('./lib/deterministic-output');
 
 const APP_ROOT = path.resolve(__dirname, '..');
 const OUTPUT_PATH = path.join(APP_ROOT, 'public', 'assets', 'sarna-page-titles.json');
