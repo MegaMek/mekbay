@@ -660,10 +660,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                                 name: node?.unit.getUnit().chassis || 'Unknown',
                                 role: 'sub-master', canRemove: !this.data.readOnly, isSelfConnection,
                                 memberStr, node, network: childNet, networkVm: childVm ?? undefined,
-                                brokenLink: runtimeGraph.childLinkBroken(network.id, {
-                                    unitId: parsed.unitId,
-                                    compIndex: parsed.compIndex,
-                                }),
+                                brokenLink: !runtimeGraph.stateForNetwork(parsed.unitId, childNet.id).linked,
                                 ...getUnitBvData(node)
                             });
                             if (childVm) subNetworks.push(childVm);
