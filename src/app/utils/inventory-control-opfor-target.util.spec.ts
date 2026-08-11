@@ -78,7 +78,6 @@ describe('inventory control OPFOR targets', () => {
         }));
 
         expect(state).toEqual(jasmine.objectContaining({
-            stance: 'normal',
             targetMovementBracket: '7-9',
             isAirborne: true,
             skidding: true,
@@ -94,7 +93,8 @@ describe('inventory control OPFOR targets', () => {
         }), { interveningWoods: 'light1' });
 
         expect(state).toEqual(jasmine.objectContaining({
-            stance: 'immobile',
+            prone: true,
+            immobile: true,
             targetMovementBracket: '10-17',
             isAirborne: true,
             skidding: true,

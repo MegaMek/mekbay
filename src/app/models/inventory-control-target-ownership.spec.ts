@@ -13,7 +13,7 @@ describe('inventory control target ownership', () => {
             isAirborne: true,
             targetMovementBracket: '7-9',
             skidding: true,
-            stance: 'prone',
+            prone: true,
             targetHexCover: 'heavy',
             largeTarget: true
         });
@@ -22,7 +22,7 @@ describe('inventory control target ownership', () => {
             isAirborne: true,
             targetMovementBracket: '7-9',
             skidding: true,
-            stance: 'prone',
+            prone: true,
             targetHexCover: 'heavy',
             largeTarget: true
         });
@@ -55,13 +55,13 @@ describe('inventory control target ownership', () => {
     });
 
     it('merges shared state with local state without mutating either source', () => {
-        const shared = { stance: 'immobile' as const, targetHexCover: 'light' as const };
+        const shared = { immobile: true, targetHexCover: 'light' as const };
         const local = { partialCover: true, indirectFire: true };
 
         const merged = mergeInventoryControlCalculatorState(shared, local)!;
         merged.partialCover = false;
 
-        expect(shared).toEqual({ stance: 'immobile', targetHexCover: 'light' });
+        expect(shared).toEqual({ immobile: true, targetHexCover: 'light' });
         expect(local).toEqual({ partialCover: true, indirectFire: true });
     });
 

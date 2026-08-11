@@ -56,6 +56,7 @@ export class CBTInventoryControlRuntime extends InventoryControlRuntimeState {
             ...(sharedTarget.unitType !== undefined && { unitType: sharedTarget.unitType }),
             distance: local.distance,
             tnModifier: local.manualTnModifier ?? local.tnModifier,
+            ...(local.manualTnModifier !== undefined && { manualTnModifier: local.manualTnModifier }),
             ...(local.c3Distance !== undefined && { c3Distance: local.c3Distance }),
             ...(local.useC3 !== undefined && { useC3: local.useC3 }),
             ...(calculator && { tnCalculator: calculator })

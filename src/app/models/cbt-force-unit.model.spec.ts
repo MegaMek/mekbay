@@ -3144,7 +3144,6 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             tnModifier: 8,
             tnCalculator: {
                 targetMovementBracket: '7-9',
-                stance: 'normal',
                 isAirborne: true,
                 targetHexCover: 'light',
                 partialCover: true,
@@ -3162,7 +3161,6 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(secondTarget.unitType).toBe('mek-biped');
         expect(secondTarget.tnCalculator).toEqual(jasmine.objectContaining({
             targetMovementBracket: '7-9',
-            stance: 'normal',
             isAirborne: true,
             targetHexCover: 'light'
         }));
@@ -3214,12 +3212,12 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     it('returns calculator state copies that cannot mutate runtime targets', () => {
         const forceUnit = createForceUnit(createVehicleUnit(equipment));
         const target = forceUnit.createInventoryControlTarget()!;
-        forceUnit.updateInventoryControlTarget(target.id, { tnCalculator: { stance: 'prone' } });
+        forceUnit.updateInventoryControlTarget(target.id, { tnCalculator: { prone: true, immobile: false } });
 
         const readTarget = forceUnit.getInventoryControlTarget(target.id)!;
-        readTarget.tnCalculator!.stance = 'immobile';
+        readTarget.tnCalculator!.immobile = true;
 
-        expect(forceUnit.getInventoryControlTarget(target.id)?.tnCalculator?.stance).toBe('prone');
+        expect(forceUnit.getInventoryControlTarget(target.id)?.tnCalculator?.immobile).toBeFalse();
     });
 
     it('merges partial shared calculator patches without deleting other shared fields', () => {
@@ -3228,17 +3226,16 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.updateInventoryControlTarget(target.id, {
             tnCalculator: {
                 targetMovementBracket: '7-9',
-                targetHexCover: 'heavy',
-                stance: 'normal'
+                targetHexCover: 'heavy'
             }
         });
 
-        forceUnit.updateInventoryControlTarget(target.id, { tnCalculator: { stance: 'prone' } });
+        forceUnit.updateInventoryControlTarget(target.id, { tnCalculator: { prone: true } });
 
         expect(forceUnit.getInventoryControlTarget(target.id)?.tnCalculator).toEqual(jasmine.objectContaining({
             targetMovementBracket: '7-9',
             targetHexCover: 'heavy',
-            stance: 'prone'
+            prone: true
         }));
     });
 
@@ -3255,7 +3252,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     it('recalculates range-sensitive local TN when distance changes', () => {
         const forceUnit = createForceUnit(createVehicleUnit(equipment));
         const target = forceUnit.createInventoryControlTarget()!;
-        forceUnit.updateInventoryControlTarget(target.id, { tnCalculator: { stance: 'prone' } });
+        forceUnit.updateInventoryControlTarget(target.id, { tnCalculator: { prone: true } });
 
         expect(forceUnit.getInventoryControlTarget(target.id)?.tnModifier).toBe(-2);
 
@@ -3277,7 +3274,9 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         });
 
         expect(firstUnit.getInventoryControlTarget(target.id)?.tnModifier).toBe(9);
+        expect(firstUnit.getInventoryControlTarget(target.id)?.manualTnModifier).toBe(9);
         expect(secondUnit.getInventoryControlTarget(target.id)?.tnModifier).toBe(4);
+        expect(secondUnit.getInventoryControlTarget(target.id)?.manualTnModifier).toBeUndefined();
     });
 
     it('deletes a force target and its weapon assignments from every unit', () => {

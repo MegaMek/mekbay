@@ -73,7 +73,6 @@ export const TN_TARGET_MOVEMENT_BRACKETS: readonly TnTargetMovementBracket[] = [
     { id: '25+', label: '25+', min: 25, max: null, modifier: 6 },
 ] as const;
 
-export type TnTargetStance = 'normal' | 'prone' | 'immobile';
 export type TnInterveningWoods = 'none' | 'light1' | 'light2';
 export type TnTargetHexCover = 'none' | 'light' | 'heavy';
 export type TnAttackDirection = 'front' | 'left' | 'rear' | 'right';
@@ -83,7 +82,8 @@ export interface TnTargetNumberCalculatorState {
     isAirborne?: boolean;
     targetMovementBracket?: TnTargetMovementBracketId | null;
     skidding?: boolean;
-    stance?: TnTargetStance;
+    prone?: boolean;
+    immobile?: boolean;
     interveningWoods?: TnInterveningWoods;
     targetHexCover?: TnTargetHexCover;
     partialCover?: boolean;
@@ -131,10 +131,8 @@ export function getTargetAirborneModifier(isAirborne: boolean | null | undefined
     return isAirborne ? TN_AIRBORNE_MOVE_TYPE_MODIFIER : 0;
 }
 
-export function getTargetStanceModifier(stance: TnTargetStance | null | undefined, range: number): number {
-    if (stance === 'prone') return range <= ADJACENT_RANGE ? TN_PRONE_ADJACENT : TN_PRONE;
-    if (stance === 'immobile') return TN_IMMOBILE;
-    return 0;
+export function getTargetProneModifier(range: number): number {
+    return range <= ADJACENT_RANGE ? TN_PRONE_ADJACENT : TN_PRONE;
 }
 
 export function getInterveningWoodsModifier(woods: TnInterveningWoods | null | undefined): number {
@@ -166,7 +164,8 @@ export function calculateTargetTnModifier(
 ): number {
     const range = Math.max(0, input.range ?? 0);
     const staticTarget = isStaticTargetType(input.unitType);
-    const stance = input.stance ?? (staticTarget ? 'immobile' : 'normal');
+    const prone = input.prone ?? false;
+    const immobile = input.immobile ?? (staticTarget && input.prone === undefined);
     const terrainTarget = isTerrainTargetType(input.unitType);
     let total = 0;
 
@@ -176,10 +175,11 @@ export function calculateTargetTnModifier(
         total += getTargetMovementBracketModifier(input.targetMovementBracket);
         total += gameRules.supportsSkidding && input.skidding ? TN_SKIDDING_MODIFIER : 0;
     }
-    if (!staticTarget || stance === 'immobile') total += getTargetStanceModifier(stance, range);
+    total += !staticTarget && prone ? getTargetProneModifier(range) : 0;
+    total += immobile ? TN_IMMOBILE : 0;
     total += getInterveningWoodsModifier(input.interveningWoods);
     if (!terrainTarget) total += getTargetHexCoverModifier(input.targetHexCover);
-    total += !staticTarget && input.partialCover && range > ADJACENT_RANGE && stance !== 'prone' ? TN_PARTIAL_COVER_MODIFIER : 0;
+    total += !staticTarget && input.partialCover && range > ADJACENT_RANGE && !prone ? TN_PARTIAL_COVER_MODIFIER : 0;
     total += input.secondaryTarget ? TN_SECONDARY_TARGET_MODIFIER : 0;
     total += gameRules.supportsSecondaryTargetSideBack && !input.secondaryTarget && input.secondaryTargetSideBack
         ? TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER : 0;

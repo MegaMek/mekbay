@@ -38,6 +38,8 @@ export interface InventoryControlRuntimeTarget {
     c3Distance?: number;
     useC3?: boolean;
     tnModifier: number;
+    /** Present only on resolved targets when this unit has a manual override. */
+    manualTnModifier?: number;
     tnCalculator?: TnTargetNumberCalculatorState;
 }
 
@@ -55,7 +57,8 @@ const SHARED_TARGET_CALCULATOR_KEYS = [
     'isAirborne',
     'targetMovementBracket',
     'skidding',
-    'stance',
+    'prone',
+    'immobile',
     'targetHexCover',
     'largeTarget'
 ] as const satisfies readonly (keyof TnTargetNumberCalculatorState)[];

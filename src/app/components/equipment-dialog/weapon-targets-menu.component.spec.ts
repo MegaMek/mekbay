@@ -102,6 +102,111 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         ]);
     });
 
+    it('renders calculator modifier pills (no distance or C3 values)', () => {
+        const target = {
+            ...TARGET,
+            unitType: 'battle-armor' as const,
+            tnCalculator: {
+                isAirborne: true,
+                targetMovementBracket: '7-9' as const,
+                skidding: true,
+                interveningWoods: 'light1' as const,
+                targetHexCover: 'heavy' as const,
+                partialCover: true,
+                secondaryTarget: true,
+                indirectFire: true,
+                spotterMoveMode: 'run' as const,
+                spotterDeclaredAttacks: true,
+            },
+        };
+        fixture.componentRef.setInput('targets', [target]);
+        fixture.detectChanges();
+
+        const pillContainer = fixture.nativeElement.querySelector('.target-modifier-pills:not(.target-modifier-pills-fallback)') as HTMLElement;
+        const pills = [...pillContainer.querySelectorAll('.target-modifier-pill')].map(pill => ({
+            label: pill.querySelector('.modifier-label')?.textContent?.trim(),
+            modifier: pill.querySelector('.modifier-badge')?.textContent?.trim(),
+        }));
+
+        expect(pills).toEqual([
+            { label: 'Battle Armor', modifier: '+1' },
+            { label: 'Airborne', modifier: '+1' },
+            { label: 'Moved 7-9', modifier: '+3' },
+            { label: 'Skidding', modifier: '+2' },
+            { label: 'LoS', modifier: '+1' },
+            { label: 'Heavy Wood', modifier: '+2' },
+            { label: 'Partial Cover', modifier: '+1' },
+            { label: 'Secondary', modifier: '+1' },
+            { label: 'Indirect', modifier: '+1' },
+            { label: 'Spotter', modifier: '+3' },
+        ]);
+        expect(pillContainer.querySelectorAll('.target-modifier-pill .modifier-badge').length).toBe(pills.length);
+        expect(fixture.nativeElement.querySelector('.target-number-field').textContent).toContain('Distance');
+        expect(pillContainer.textContent).not.toContain('Distance');
+        expect(pillContainer.textContent).not.toContain('C3');
+    });
+
+    it('renders separate prone and immobile pills', () => {
+        const target = {
+            ...TARGET,
+            tnCalculator: {
+                prone: true,
+                immobile: true,
+            },
+        };
+        fixture.componentRef.setInput('targets', [target]);
+        fixture.componentRef.setInput('showC3Distance', false);
+        fixture.detectChanges();
+
+        expect([...fixture.nativeElement.querySelectorAll('.target-modifier-pill')].map(pill => pill.textContent?.trim())).toEqual([
+            'Prone+1',
+            'Immobile-4',
+        ]);
+    });
+
+    it('uses the effective spotting modifier for indirect-fire pills', () => {
+        const target = {
+            ...TARGET,
+            tnCalculator: {
+                indirectFire: true,
+                spotterMoveMode: 'run' as const,
+                spotterDeclaredAttacks: true,
+            },
+        };
+        fixture.componentRef.setInput('targets', [target]);
+        fixture.componentRef.setInput('indirectFireBaseModifier', 0);
+        fixture.detectChanges();
+
+        const pillContainer = fixture.nativeElement.querySelector('.target-modifier-pills:not(.target-modifier-pills-fallback)') as HTMLElement;
+        const pills = [...pillContainer.querySelectorAll('.target-modifier-pill')].map(pill => ({
+            label: pill.querySelector('.modifier-label')?.textContent?.trim(),
+            modifier: pill.querySelector('.modifier-badge')?.textContent?.trim(),
+        }));
+
+        expect(pills).toEqual([
+            { label: 'Spotter', modifier: '+3' },
+        ]);
+    });
+
+    it('mirrors the calculator stance rules for static targets', () => {
+        const buildingTarget = {
+            ...TARGET,
+            unitType: 'building' as const,
+            tnCalculator: { indirectFire: true },
+        };
+        const terrainTarget = {
+            ...TARGET,
+            unitType: 'terrain' as const,
+            tnCalculator: { prone: true },
+        };
+
+        expect(component.targetModifierPills(buildingTarget)).toEqual([
+            { label: 'Immobile', modifier: -4 },
+            { label: 'Indirect', modifier: 1 },
+        ]);
+        expect(component.targetModifierPills(terrainTarget)).toEqual([]);
+    });
+
     it('does not emit mutations while read-only', () => {
         fixture.componentRef.setInput('readOnly', true);
         fixture.detectChanges();

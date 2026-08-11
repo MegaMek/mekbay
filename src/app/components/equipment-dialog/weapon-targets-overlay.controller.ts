@@ -133,6 +133,7 @@ export class WeaponTargetsOverlayController {
         this.targetsCompRef.setInput('readOnly', options.readOnly ? options.readOnly() : options.unit.readOnly());
         this.targetsCompRef.setInput('unassignedMovement', options.unit.turnState().missingAttackMovementModifier());
         this.targetsCompRef.setInput('showC3Distance', this.showC3Distance(options.unit));
+        this.targetsCompRef.setInput('indirectFireBaseModifier', options.unit.rules.getSpottingModifier());
         this.targetsCompRef.setInput('opforAvailable', this.forceBuilderService().isInventoryControlOpforAvailable(options.unit.force));
         this.targetsCompRef.setInput('opforEnabled', options.unit.force.inventoryControlOpforEnabled());
         const c3Degraded = options.unit.c3DegradationSource() !== 'none';

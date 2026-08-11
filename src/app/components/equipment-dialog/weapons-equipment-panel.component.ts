@@ -647,7 +647,7 @@ export class WeaponsEquipmentPanelComponent {
     private targetForTargetNumber(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): InventoryControlRuntimeTarget | null {
         if (!target) return null;
         const ignoreImmobileModifier = row.damageTypes.includes('AE')
-            && target.tnCalculator?.stance === 'immobile';
+            && target.tnCalculator?.immobile === true;
         if (!ignoreImmobileModifier) return target;
         return {
             ...target,
