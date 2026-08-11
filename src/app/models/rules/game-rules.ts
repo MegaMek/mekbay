@@ -90,6 +90,7 @@ const TO_HIT_MODIFIER_RANGE_INDEX: Record<RangeBrackets, number> = {
     extreme: 2,
 };
 const BASE_HIT_MODIFIER_LABEL = 'Base Hit Modifier';
+const HOMING_ARTILLERY_TAG_BV_PER_LAUNCHER = 50;
 
 export function separateHeatFireModifier(resolution: ToHitResolution): ToHitHeatSeparation {
     const heatFireModifier = resolution.modifierBreakdown.reduce(
@@ -180,8 +181,15 @@ export abstract class CBTGameRules {
             : 1000 / shots;
     }
 
-    calculateTagBVCost(_unit: CBTForceUnit): number {
-        return 0;
+    calculateTagBVCost(unit: CBTForceUnit): number {
+        const tagCount = unit.getOperationalMountedEquipmentByFlag('F_TAG').length;
+        if (tagCount === 0) return 0;
+
+        const launcherCount = unit.force.units().reduce(
+            (total, forceUnit) => total + countHomingAmmoLaunchers(forceUnit),
+            0,
+        );
+        return HOMING_ARTILLERY_TAG_BV_PER_LAUNCHER * launcherCount * tagCount;
     }
 
     protected abstract readonly physicalBaseHitModifiers: Readonly<Record<string, number | 'Vs'>>;
@@ -412,6 +420,37 @@ function sameProfile(left: readonly number[], right: readonly number[]): boolean
 
 function emptyToHitResolution(): ToHitResolution {
     return { profile: [], value: null, changed: false, weakened: false, modifierBreakdown: [] };
+}
+
+function countHomingAmmoLaunchers(unit: CBTForceUnit): number {
+    if (!unit.isLoaded()) return 0;
+
+    const potentialLauncers = unit.getInventory().filter(entry =>
+        entry.equipment instanceof WeaponEquipment
+        && entry.equipment.hasFlag('F_ARTILLERY')
+        && unit.isEquipmentOperational(entry));
+    if (potentialLauncers.length === 0) return 0;
+
+    const ammoSources = unit.getUnit().type === 'Mek'
+        ? unit.getCritSlots().map(crit => ({
+            ammo: crit.eq,
+            source: crit,
+            totalAmmo: crit.totalAmmo,
+            consumed: crit.consumed,
+        }))
+        : unit.getInventory().map(mount => ({
+            ammo: resolveMountedAmmo(unit, mount),
+            source: mount,
+            totalAmmo: mount.totalAmmo,
+            consumed: mount.consumed,
+        }));
+
+    return potentialLauncers.filter(launcher => ammoSources.some(({ ammo, source, totalAmmo, consumed }) =>
+        ammo instanceof AmmoEquipment
+        && ammo.hasMunitionType('M_HOMING')
+        && unit.isEquipmentOperational(source)
+        && hasUsableAmmo(totalAmmo, consumed)
+        && hasCompatibleLauncher(ammo, [launcher]))).length;
 }
 
 function isTagGuidedAmmo(ammo: AmmoEquipment): boolean {

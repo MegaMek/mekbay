@@ -199,6 +199,73 @@ function vehicleTagBvContext(options: {
     return { tagUnit, tagMounts, unavailable };
 }
 
+function coreTagBvContext(options: {
+    tagCount?: number;
+    launcherCount?: number;
+    ammoType?: 'ARROW_IV' | 'LONG_TOM';
+    homingAmmo?: boolean;
+    ammoAvailable?: boolean;
+    loaded?: boolean;
+    unitType?: 'Mek' | 'Tank';
+} = {}) {
+    const unavailable = new Set<MountedEquipment>();
+    let launchers: MountedEquipment[] = [];
+    let ammo!: MountedEquipment;
+    const ammoType = options.ammoType ?? 'ARROW_IV';
+    const ammoUnit = {
+        isLoaded: () => options.loaded !== false,
+        getUnit: () => ({ type: options.unitType ?? 'Tank' }),
+        getInventory: () => options.unitType === 'Mek' ? launchers : [...launchers, ammo],
+        getCritSlots: () => options.unitType === 'Mek' ? [{
+            id: 'ammo-crit', eq: ammo.equipment, totalAmmo: ammo.totalAmmo, consumed: ammo.consumed,
+        }] : [],
+        isEquipmentOperational: (entry: MountedEquipment) => !unavailable.has(entry),
+    } as unknown as import('../cbt-force-unit.model').CBTForceUnit;
+    launchers = Array.from({ length: options.launcherCount ?? 1 }, (_, index) => new MountedEquipment({
+        owner: ammoUnit,
+        id: `arrow-${index}`,
+        name: 'Arrow IV',
+        equipment: new WeaponEquipment({
+            id: `ARROW_IV_${index}`,
+            name: 'Arrow IV',
+            type: 'weapon',
+            flags: ['F_ARTILLERY'],
+            weapon: { ammoType, rackSize: 10 },
+        }),
+        states: new Map(),
+    }));
+    ammo = new MountedEquipment({
+        owner: ammoUnit,
+        id: 'ammo',
+        name: 'Arrow IV Homing Ammo',
+        equipment: new AmmoEquipment({
+            id: 'ARROW_IV_HOMING',
+            name: 'Arrow IV Homing Ammo',
+            type: 'ammo',
+            ammo: {
+                type: ammoType, rackSize: 10, shots: 1,
+                munitionType: options.homingAmmo === false ? [] : ['M_HOMING'],
+            },
+        }),
+        totalAmmo: 1,
+        consumed: options.ammoAvailable === false ? 1 : 0,
+        states: new Map(),
+    });
+    const tagUnit = {
+        getOperationalMountedEquipmentByFlag: () => tagMounts.filter(mount => !unavailable.has(mount)),
+        force: { units: () => [ammoUnit] },
+    } as unknown as import('../cbt-force-unit.model').CBTForceUnit;
+    const tagMounts = Array.from({ length: options.tagCount ?? 1 }, (_, index) => new MountedEquipment({
+        owner: tagUnit,
+        id: `tag-${index}`,
+        name: 'TAG',
+        equipment: { flags: new Set(['F_TAG']) } as Equipment,
+        states: new Map(),
+    }));
+
+    return { tagUnit, launchers, ammo, tagMounts, unavailable };
+}
+
 describe('game rules', () => {
     describe('C3 degradation', () => {
         const target = {
@@ -357,6 +424,33 @@ describe('game rules', () => {
             const { tagUnit } = tagBvContext({ tagCount: 1, unavailableTagIndexes: [0] });
 
             expect(TW_GAME_RULES.calculateTagBVCost(tagUnit)).toBe(0);
+        });
+    });
+
+    describe('Core 2026 TAG BV', () => {
+        it('charges 50 BV per Arrow IV launcher for each operational TAG instance', () => {
+            const { tagUnit } = coreTagBvContext({ tagCount: 2, launcherCount: 3 });
+
+            expect(CORE_2026_GAME_RULES.calculateTagBVCost(tagUnit)).toBe(300);
+        });
+
+        it('recognizes homing ammunition without restricting the artillery type', () => {
+            const { tagUnit } = coreTagBvContext({ ammoType: 'LONG_TOM' });
+
+            expect(CORE_2026_GAME_RULES.calculateTagBVCost(tagUnit)).toBe(50);
+        });
+
+        it('counts Arrow IV launchers with homing ammo in Mek critical slots', () => {
+            const { tagUnit } = coreTagBvContext({ unitType: 'Mek' });
+
+            expect(CORE_2026_GAME_RULES.calculateTagBVCost(tagUnit)).toBe(50);
+        });
+
+        it('requires loaded, usable homing Arrow IV ammo', () => {
+            expect(CORE_2026_GAME_RULES.calculateTagBVCost(coreTagBvContext({ homingAmmo: false }).tagUnit)).toBe(0);
+            expect(CORE_2026_GAME_RULES.calculateTagBVCost(coreTagBvContext({ ammoAvailable: false }).tagUnit)).toBe(0);
+            expect(CORE_2026_GAME_RULES.calculateTagBVCost(coreTagBvContext({ loaded: false }).tagUnit)).toBe(0);
+            expect(CORE_2026_GAME_RULES.calculateTagBVCost(tagBvContext().tagUnit)).toBe(0);
         });
     });
 
