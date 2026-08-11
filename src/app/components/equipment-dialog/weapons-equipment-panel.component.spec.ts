@@ -1327,7 +1327,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(row.display.hit).toBe('-4');
 
         unit.createInventoryControlTarget();
-        unit.updateInventoryControlTarget('A', { distance: 1, tnCalculator: { stance: 'immobile' } });
+        unit.updateInventoryControlTarget('A', { distance: 1, tnCalculator: { immobile: true } });
         unit.setInventoryControlEntryTarget(row.entry, 'A');
         unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();
@@ -1761,7 +1761,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.updateInventoryControlTarget('A', {
             unitType: 'terrain',
             tnModifier: -4,
-            tnCalculator: { stance: 'immobile' }
+            tnCalculator: { immobile: true }
         });
         unit.setInventoryControlEntryTarget(row.entry, 'A');
 

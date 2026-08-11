@@ -59,7 +59,7 @@ const DEFAULT_OPTIONS: Options = {
         lastSkills: {
             gunnery: { min: 4, max: 4 },
             piloting: { min: 5, max: 5 },
-            maxDelta: 1,
+            maxDelta: 2,
         },
         failureSearchWindowMs: 300,
         preventDuplicateChassis: false,
@@ -70,7 +70,7 @@ const DEFAULT_OPTIONS: Options = {
         gunnery: { min: 2, max: 4 },
         piloting: { min: 3, max: 5 },
         skill: { min: 2, max: 5 },
-        maxDelta: 1,
+        maxDelta: 2,
     },
 };
 

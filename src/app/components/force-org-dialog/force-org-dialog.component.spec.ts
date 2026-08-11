@@ -59,6 +59,12 @@ describe('ForceOrgDialogComponent', () => {
 
     beforeEach(async () => {
         nextPlacementId = 0;
+        dataServiceStub.listForces.calls.reset();
+        dataServiceStub.listForces.and.resolveTo([]);
+        dataServiceStub.getLoadForceEntriesByIds.calls.reset();
+        dataServiceStub.getLoadForceEntriesByIds.and.resolveTo([]);
+        dataServiceStub.getOrganization.calls.reset();
+        dataServiceStub.getOrganization.and.resolveTo(null);
         dialogRefStub = {
             close: jasmine.createSpy('close'),
             backdropClick: new Subject<MouseEvent>(),

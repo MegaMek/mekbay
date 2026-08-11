@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { GameSystem } from '../models/common.model';
+import { GameSystem, Rulebook } from '../models/common.model';
 import type { Faction } from '../models/factions.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
@@ -375,5 +375,47 @@ describe('FormationRequirementEngine', () => {
         expect(LanceTypeIdentifierUtil.isValid(definition('horde'), validUnits, GameSystem.ALPHA_STRIKE)).toBeTrue();
         expect(LanceTypeIdentifierUtil.isValid(definition('horde'), tooManyUnits, GameSystem.ALPHA_STRIKE)).toBeFalse();
         expect(LanceTypeIdentifierUtil.isValid(definition('horde'), highDamageUnits, GameSystem.ALPHA_STRIKE)).toBeFalse();
+    });
+
+    it('validates Swarm VTOL and size constraints and exposes Coordinated Fire', () => {
+        const validUnits = Array.from({ length: 4 }, (_, index) => createForceUnit(createUnit(index + 1, `Swarm-${index}`, {
+            type: 'VTOL',
+            subtype: 'Combat Vehicle',
+            weightClass: 'Medium',
+            as: { TP: 'CV', SZ: 2 },
+        })));
+        const tooFewUnits = validUnits.slice(0, 3);
+        const mixedUnitType = [
+            ...validUnits.slice(0, 3),
+            createForceUnit(createUnit(10, 'Ground Unit', { as: { TP: 'CV', SZ: 2 } })),
+        ];
+        const heavyVtol = [
+            ...validUnits.slice(0, 3),
+            createForceUnit(createUnit(11, 'Heavy VTOL', {
+                type: 'VTOL',
+                subtype: 'Combat Vehicle',
+                weightClass: 'Heavy',
+                as: { TP: 'CV', SZ: 3 },
+            })),
+        ];
+        const swarm = definition('swarm');
+
+        expect(LanceTypeIdentifierUtil.isValid(swarm, validUnits, GameSystem.ALPHA_STRIKE)).toBeTrue();
+        expect(LanceTypeIdentifierUtil.isValid(swarm, validUnits, GameSystem.CLASSIC)).toBeTrue();
+        expect(LanceTypeIdentifierUtil.isValid(swarm, tooFewUnits, GameSystem.ALPHA_STRIKE)).toBeFalse();
+        expect(LanceTypeIdentifierUtil.isValid(swarm, tooFewUnits, GameSystem.CLASSIC)).toBeFalse();
+        expect(LanceTypeIdentifierUtil.isValid(swarm, mixedUnitType, GameSystem.ALPHA_STRIKE)).toBeFalse();
+        expect(LanceTypeIdentifierUtil.isValid(swarm, heavyVtol, GameSystem.ALPHA_STRIKE)).toBeFalse();
+        expect(swarm.effectDescription).toContain('standard weapon attack');
+        const swarmEffectGroup = swarm.effectGroups?.[0];
+        expect(swarmEffectGroup?.distribution).toBe('formation-wide');
+        if (swarmEffectGroup?.distribution === 'formation-wide') {
+            expect(swarmEffectGroup.formationWideAbilities[0]).toEqual(jasmine.objectContaining({
+                id: 'coordinated_fire',
+                name: 'Coordinated Fire',
+                summary: jasmine.arrayContaining(['The formation may make a standard weapon attack against a target within Short Range and Line of Sight of all members as if it were a single Unit.']),
+                rulesRef: [{ book: Rulebook.FMMERC, page: 52 }],
+            }));
+        }
     });
 });

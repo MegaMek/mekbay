@@ -22,7 +22,6 @@ import {
     type TnInterveningWoods,
     type TnTargetHexCover,
     type TnTargetNumberCalculatorState,
-    type TnTargetStance,
     type TnTargetUnitType,
     type TnSpotterMoveMode,
 } from '../../models/target-number-calculator.model';
@@ -129,8 +128,8 @@ export interface TnCalculatorDialogResult {
                             }
                         </div>
                         <div class="button-row" role="group" aria-label="Target stance">
-                            <button type="button" class="bt-button move-button" [class.selected]="stance() === 'prone'" [attr.aria-pressed]="stance() === 'prone'" [disabled]="staticTarget() || targetStateReadOnly" (click)="selectStance('prone')"><span>{{ proneLabel() }}</span><span class="modifier-badge">{{ proneModifierLabel() }}</span></button>
-                            <button type="button" class="bt-button move-button" [class.selected]="stance() === 'immobile'" [attr.aria-pressed]="stance() === 'immobile'" [disabled]="staticTarget() || targetStateReadOnly" (click)="selectStance('immobile')"><span>Immobile</span><span class="modifier-badge">-4</span></button>
+                            <button type="button" class="bt-button move-button" [class.selected]="prone()" [attr.aria-pressed]="prone()" [disabled]="staticTarget() || targetStateReadOnly" (click)="toggleProne()"><span>{{ proneLabel() }}</span><span class="modifier-badge">{{ proneModifierLabel() }}</span></button>
+                            <button type="button" class="bt-button move-button" [class.selected]="immobile()" [attr.aria-pressed]="immobile()" [disabled]="staticTarget() || targetStateReadOnly" (click)="toggleImmobile()"><span>Immobile</span><span class="modifier-badge">-4</span></button>
                         </div>
                     </section>
 
@@ -819,7 +818,8 @@ export class TnCalculatorDialogComponent {
     readonly isAirborne = signal<boolean>(this.initialCalculator?.isAirborne ?? false);
     readonly targetMovementBracketIndex = signal<number>(this.indexFromStoredMovementBracket());
     readonly skidding = signal<boolean>(this.initialCalculator?.skidding ?? false);
-    readonly stance = signal<TnTargetStance>(this.initialCalculator?.stance ?? 'normal');
+    readonly prone = signal<boolean>(this.initialCalculator?.prone ?? false);
+    readonly immobile = signal<boolean>(this.initialCalculator?.immobile ?? false);
     readonly interveningWoods = signal<TnInterveningWoods>(this.normalizeInterveningWoods(this.initialCalculator?.interveningWoods as TnInterveningWoods | 'heavy1' | null | undefined));
     readonly targetHexCover = signal<TnTargetHexCover>(this.initialCalculator?.targetHexCover ?? 'none');
     readonly range = signal<number>(Math.max(0, this.data.target.distance ?? 1));
@@ -838,7 +838,7 @@ export class TnCalculatorDialogComponent {
 
     readonly staticTarget = computed(() => isStaticTargetType(this.unitType()));
     readonly terrainTarget = computed(() => isTerrainTargetType(this.unitType()));
-    readonly partialCoverDisabled = computed(() => this.staticTarget() || this.range() <= ADJACENT_RANGE);
+    readonly partialCoverDisabled = computed(() => this.staticTarget() || this.prone() || this.range() <= ADJACENT_RANGE);
     readonly proneLabel = computed(() => this.range() <= ADJACENT_RANGE ? 'Prone (Adjacent)' : 'Prone');
     readonly proneModifierLabel = computed(() => this.range() <= ADJACENT_RANGE ? '-2' : '+1');
     readonly targetMovementBracket = computed(() => this.movementBrackets[this.targetMovementBracketIndex()] ?? this.movementBrackets[0]);
@@ -857,7 +857,8 @@ export class TnCalculatorDialogComponent {
         isAirborne: this.isAirborne(),
         targetMovementBracket: !this.staticTarget() ? this.targetMovementBracket().id : null,
         skidding: this.skidding(),
-        stance: this.stance(),
+        prone: this.prone(),
+        immobile: this.immobile(),
         interveningWoods: this.interveningWoods(),
         targetHexCover: this.targetHexCover(),
         partialCover: this.partialCover(),
@@ -930,13 +931,16 @@ export class TnCalculatorDialogComponent {
         this.skidding.set(!this.skidding());
     }
 
-    selectStance(stance: TnTargetStance): void {
+    toggleProne(): void {
         if (this.staticTarget() || this.targetStateReadOnly) return;
-        const next = this.stance() === stance ? 'normal' : stance;
-        this.stance.set(next);
-        if (next === 'prone') {
-            this.partialCover.set(false);
-        }
+        const next = !this.prone();
+        this.prone.set(next);
+        if (next) this.partialCover.set(false);
+    }
+
+    toggleImmobile(): void {
+        if (this.staticTarget() || this.targetStateReadOnly) return;
+        this.immobile.update(value => !value);
     }
 
     selectInterveningWoods(woods: TnInterveningWoods): void {
@@ -955,8 +959,8 @@ export class TnCalculatorDialogComponent {
         }
         const next = !this.partialCover();
         this.partialCover.set(next);
-        if (next && this.stance() === 'prone') {
-            this.stance.set('normal');
+        if (next && this.prone()) {
+            this.prone.set(false);
         }
     }
 
@@ -1020,7 +1024,8 @@ export class TnCalculatorDialogComponent {
             isAirborne: this.staticTarget() ? false : this.isAirborne(),
             targetMovementBracket: !this.staticTarget() ? this.targetMovementBracket().id : null,
             skidding: this.staticTarget() ? false : this.skidding(),
-            stance: this.staticTarget() ? 'immobile' : this.stance(),
+            prone: this.prone(),
+            immobile: this.immobile(),
             interveningWoods: this.interveningWoods(),
             targetHexCover: this.terrainTarget() ? 'none' : this.targetHexCover(),
             partialCover: this.partialCover() && !this.partialCoverDisabled(),
@@ -1066,7 +1071,8 @@ export class TnCalculatorDialogComponent {
         this.targetMovementBracketIndex.set(0);
         this.clearAirborne();
         this.skidding.set(false);
-        this.stance.set('immobile');
+        this.prone.set(false);
+        this.immobile.set(true);
         this.partialCover.set(false);
         if (this.terrainTarget()) this.targetHexCover.set('none');
     }

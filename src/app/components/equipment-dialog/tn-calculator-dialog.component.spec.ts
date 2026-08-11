@@ -173,7 +173,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
                 distance: 8,
                 tnModifier: 0,
                 tnCalculator: {
-                    stance: 'prone',
+                    prone: true,
                     targetMovementBracket: '7-9',
                     isAirborne: true,
                     skidding: true
@@ -192,7 +192,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
         const component = fixture.componentInstance;
         fixture.detectChanges();
 
-        expect(component.stance()).toBe('prone');
+        expect(component.prone()).toBeTrue();
         expect(component.targetMovementBracket().id).toBe('7-9');
         expect(component.isAirborne()).toBeTrue();
         expect(component.skidding()).toBeTrue();
@@ -204,10 +204,41 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
             patch: jasmine.objectContaining({
                 tnModifier: 7,
                 tnCalculator: jasmine.objectContaining({
-                    stance: 'prone',
+                    prone: true,
                     targetMovementBracket: '7-9'
                 })
             })
         }));
+    });
+
+    it('shows both linked-target stance flags', async () => {
+        const data: TnCalculatorDialogData = {
+            target: {
+                id: 'opfor:enemy-1',
+                letter: 'A',
+                name: 'Enemy',
+                color: '#1565C0',
+                distance: 8,
+                tnModifier: 0,
+                tnCalculator: { prone: true, immobile: true }
+            },
+            gameRules: TW_GAME_RULES,
+            targetStateReadOnly: true
+        };
+        await TestBed.configureTestingModule({
+            imports: [TnCalculatorDialogComponent],
+            providers: [
+                { provide: DIALOG_DATA, useValue: data },
+                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } }
+            ]
+        }).compileComponents();
+        const fixture = TestBed.createComponent(TnCalculatorDialogComponent);
+        const component = fixture.componentInstance;
+        fixture.detectChanges();
+
+        expect(component.prone()).toBeTrue();
+        expect(component.immobile()).toBeTrue();
+        expect(fixture.nativeElement.querySelectorAll('[aria-label="Target stance"] .selected').length).toBe(2);
+        expect((fixture.nativeElement.querySelector('.partial-cover') as HTMLButtonElement).disabled).toBeTrue();
     });
 });

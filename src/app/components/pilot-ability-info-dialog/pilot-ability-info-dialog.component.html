@@ -6,7 +6,9 @@
             }
             {{ abilityName() }}
         </span>
-        @if (isCommand()) {
+        @if (isFormationWide()) {
+        <span class="ability-detail-cost">Formation-wide Ability</span>
+        } @else if (isCommand()) {
         <span class="ability-detail-cost">Command Ability</span>
         } @else if (abilityCost() !== null) {
         <span class="ability-detail-cost">Cost: {{ abilityCost() }}</span>

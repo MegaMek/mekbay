@@ -5,16 +5,60 @@
 import type { GameSystem, Rulebook, RulesReference } from '../models/common.model';
 import type { ForceUnit } from '../models/force-unit.model';
 
+export interface FormationWideAbility {
+    readonly id: string;
+    readonly name: string;
+    readonly summary: string[];
+    readonly rulesRef?: RulesReference[];
+}
+
+export type FormationSharedPoolLevel =
+    | {
+        readonly kind: 'fixed';
+        readonly value: number;
+    }
+    | {
+        readonly kind: 'unit-count-plus';
+        readonly offset: number;
+    };
+
+export interface FormationSharedPool {
+    /** Ability level granted by the pool, when the source rules define one. */
+    readonly level?: FormationSharedPoolLevel;
+    /** Total uses available to the whole formation during one scenario. */
+    readonly totalUsesPerScenario?: number;
+    /** Maximum uses one unit may receive from the pool during one scenario. */
+    readonly maxUsesPerUnitPerScenario?: number;
+    /** Whether a unit may combine this pool with its individually purchased ability. */
+    readonly stacksWithIndividualAbility?: boolean;
+}
+
 /**
- * Describes how a group of SPAs is distributed to units in a formation.
- * Each formation may have one or more effect groups, each describing a set of
- * abilities and the rules governing who receives them.
+ * Shared metadata for formation effect groups.
  */
-export interface FormationEffectGroup {
+interface FormationEffectGroupBase {
     /** SPA ids from PILOT_ABILITIES that may be granted by this effect. */
     abilityIds?: string[];
     /** SCA ids from COMMAND_ABILITIES whose effects are applied by this group. */
     commandAbilityIds?: string[];
+    /** Whether assignments rotate per turn (`true`) or are fixed at setup (`false`/omitted). */
+    perTurn?: boolean;
+    /** Number of units or pairs for `fixed` / `fixed-pairs` distributions. */
+    count?: number;
+    /** Human-readable condition for `conditional` distribution. */
+    condition?: string;
+    /** Role name for `role-filtered` distribution. */
+    roleFilter?: string;
+    /** Maximum abilities from this group a single unit can receive (default 1). */
+    maxPerUnit?: number;
+    /** Whether the formation commander is excluded from this effect group's recipients. */
+    excludeCommander?: boolean;
+}
+
+/**
+ * Describes how assignable SPAs and SCAs are distributed to units in a formation.
+ */
+export interface FormationAssignmentEffectGroup extends FormationEffectGroupBase {
     /**
      * How abilities are selected from the list:
      * - `choose-one`: One ability is chosen for all recipients (e.g. Recon Lance picks one SPA for everyone).
@@ -33,26 +77,30 @@ export interface FormationEffectGroup {
      * - `fixed-pairs`:       A fixed number of identical pairs (see `count`).
      * - `conditional`:       Units matching a specific condition (see `condition`).
      * - `remainder`:         Units not covered by another effect group.
-     * - `shared-pool`:       A shared resource pool for the formation (e.g. Lucky).
      * - `role-filtered`:     All units matching a specific role (see `roleFilter`).
      * - `commander`:         The designated commander unit only.
      */
     distribution: 'all' | 'half-round-down' | 'half-round-up' | 'percent-75'
         | 'up-to-50-percent' | 'fixed' | 'fixed-pairs' | 'conditional'
-        | 'remainder' | 'shared-pool' | 'role-filtered' | 'commander';
-    /** Whether assignments rotate per turn (`true`) or are fixed at start of play (`false`/omitted). */
-    perTurn?: boolean;
-    /** Number of units or pairs for `fixed` / `fixed-pairs` distributions. */
-    count?: number;
-    /** Human-readable condition for `conditional` distribution. */
-    condition?: string;
-    /** Role name for `role-filtered` distribution. */
-    roleFilter?: string;
-    /** Maximum abilities from this group a single unit can receive (default 1). */
-    maxPerUnit?: number;
-    /** Whether the formation commander is excluded from this effect group's recipients. */
-    excludeCommander?: boolean;
+        | 'remainder' | 'role-filtered' | 'commander';
 }
+
+/** Describes a formation-level resource pool that is not assigned to units. */
+export interface FormationSharedPoolEffectGroup extends FormationEffectGroupBase {
+    selection: 'all';
+    distribution: 'shared-pool';
+    sharedPool: FormationSharedPool;
+}
+
+/**
+ * Describes a formation-wide ability that is not assigned to individual units.
+ */
+export interface FormationWideEffectGroup extends FormationEffectGroupBase {
+    formationWideAbilities: FormationWideAbility[];
+    distribution: 'formation-wide';
+}
+
+export type FormationEffectGroup = FormationAssignmentEffectGroup | FormationSharedPoolEffectGroup | FormationWideEffectGroup;
 
 export type FormationGameSystemText = string | ((gameSystem: GameSystem) => string);
 

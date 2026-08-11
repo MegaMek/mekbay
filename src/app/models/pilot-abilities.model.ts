@@ -41,6 +41,10 @@ export interface PilotAbility {
     id: string;
     name: string;
     cost: number;
+    /** Shared family identifier for abilities that have purchasable levels. */
+    levelGroup?: string;
+    /** Effective level represented by this ability variant. */
+    level?: number;
     /** Classic BattleTech rules version */
     cbt?: PilotAbilityRuleDetails;
     /** Alpha Strike rules version */
@@ -420,6 +424,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "float_like_a_butterfly",
         name: "Float Like a Butterfly",
         cost: 1,
+        levelGroup: "float_like_a_butterfly",
+        level: 1,
         as: {
             rulesRef: [{ book: Rulebook.ASCE, page: 96 }, { book: Rulebook.EA, page: 117 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
@@ -433,6 +439,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "float_like_a_butterfly2",
         name: "Float Like a Butterfly",
         cost: 2,
+        levelGroup: "float_like_a_butterfly",
+        level: 2,
         as: {
             rulesRef: [{ book: Rulebook.ASCE, page: 96 }, { book: Rulebook.EA, page: 117 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
@@ -446,6 +454,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "float_like_a_butterfly3",
         name: "Float Like a Butterfly",
         cost: 3,
+        levelGroup: "float_like_a_butterfly",
+        level: 3,
         as: {
             rulesRef: [{ book: Rulebook.ASCE, page: 96 }, { book: Rulebook.EA, page: 117 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
@@ -459,6 +469,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "float_like_a_butterfly4",
         name: "Float Like a Butterfly",
         cost: 4,
+        levelGroup: "float_like_a_butterfly",
+        level: 4,
         as: {
             rulesRef: [{ book: Rulebook.ASCE, page: 96 }, { book: Rulebook.EA, page: 117 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
@@ -841,6 +853,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "lucky",
         name: "Lucky",
         cost: 1,
+        levelGroup: "lucky",
+        level: 1,
         cbt: {
             rulesRef: [{ book: Rulebook.CO, page: 77 }],
             summary: ["May reroll 1 failed Attack Roll or Piloting Skill Roll per scenario. The second result stands even if worse. Cannot be used for critical hits, hull breaches, Initiative, or Morale rolls."],
@@ -864,6 +878,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "lucky2",
         name: "Lucky",
         cost: 2,
+        levelGroup: "lucky",
+        level: 2,
         cbt: {
             rulesRef: [{ book: Rulebook.CO, page: 77 }],
             summary: ["May reroll 2 failed Attack Rolls or Piloting Skill Rolls per scenario. The second result stands even if worse. Cannot be used for critical hits, hull breaches, Initiative, or Morale rolls."],
@@ -887,6 +903,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "lucky3",
         name: "Lucky",
         cost: 3,
+        levelGroup: "lucky",
+        level: 3,
         cbt: {
             rulesRef: [{ book: Rulebook.CO, page: 77 }],
             summary: ["May reroll 3 failed Attack Rolls or Piloting Skill Rolls per scenario. The second result stands even if worse. Cannot be used for critical hits, hull breaches, Initiative, or Morale rolls."],
@@ -910,6 +928,8 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         id: "lucky4",
         name: "Lucky",
         cost: 4,
+        levelGroup: "lucky",
+        level: 4,
         cbt: {
             rulesRef: [{ book: Rulebook.CO, page: 77 }],
             summary: ["May reroll 4 failed Attack Rolls or Piloting Skill Rolls per scenario. The second result stands even if worse. Cannot be used for critical hits, hull breaches, Initiative, or Morale rolls."],

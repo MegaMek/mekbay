@@ -105,10 +105,16 @@ function shallowRecordsEqual(
 ): boolean {
     if (current === next) return true;
     if (!current || !next) return false;
-    const currentEntries = Object.entries(current);
+    const currentRecord = current as Record<string, unknown>;
     const nextRecord = next as Record<string, unknown>;
-    return currentEntries.length === Object.keys(next).length
-        && currentEntries.every(([key, value]) => value === nextRecord[key]);
+    const keys = new Set([...Object.keys(currentRecord), ...Object.keys(nextRecord)]);
+    return [...keys].every(key => {
+        const currentValue = currentRecord[key];
+        const nextValue = nextRecord[key];
+        return currentValue === nextValue
+            || (currentValue === undefined && nextValue === false)
+            || (currentValue === false && nextValue === undefined);
+    });
 }
 
 
@@ -1334,6 +1340,10 @@ export class ForceBuilderService {
                     } finally {
                         newForceUnit.disabledSaving = false;
                     }
+                    void newForceUnit.load().catch((error: unknown) => {
+                        const detail = error instanceof Error ? error.message : String(error);
+                        this.logger.error(`Failed to initialize converted unit "${unitName}": ${detail}`);
+                    });
                 }
 
                 this.assignFormationIfNeeded(newGroup); // we re-evaluate all formations after conversion since unit changes may affect validity
@@ -1408,6 +1418,10 @@ export class ForceBuilderService {
         } finally {
             newUnit.disabledSaving = false;
         }
+        void newUnit.load().catch((error: unknown) => {
+            const detail = error instanceof Error ? error.message : String(error);
+            this.logger.error(`Failed to initialize converted unit "${unitName}": ${detail}`);
+        });
         return newUnit;
     }
 

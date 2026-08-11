@@ -13,6 +13,7 @@ import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
 import type { FormationTypeDefinition } from './formation-type.model';
 import type { GroupSizeResult } from './org/org-types';
 import { MULFACTION_MERCENARY, type FactionAffinity } from '../models/mulfactions.model';
+import { PILOT_ABILITIES } from '../models/pilot-abilities.model';
 
 function createUnit(
     id: number,
@@ -160,7 +161,65 @@ describe('FormationAbilityAssignmentUtil', () => {
         const preview = FormationAbilityAssignmentUtil.previewGroupFormationAssignments(group);
 
         expect(preview.effectPreviews.map((effect) => effect.descriptor.sourceFormationId)).toEqual(['anti-air-lance']);
-        expect(preview.unsupportedEffects).toEqual([]);
+    });
+
+    it('exposes computed Lucky shared-pool levels for every Battle variant', () => {
+        const formationIds = [
+            'battle-lance',
+            'light-battle-lance',
+            'medium-battle-lance',
+            'heavy-battle-lance',
+        ];
+
+        for (const formationId of formationIds) {
+            const units = Array.from({ length: 3 }, (_, index) =>
+                createASForceUnit(`unit-${index + 1}`, createUnit(index + 1, `${formationId}-${index}`, 'Mek', 'BattleMek', 'BM')),
+            );
+            const group = createGroup(
+                units,
+                getFormation(formationId),
+                [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getUnit()) })],
+                createFaction('Mercenary', 'Mercenary'),
+            );
+
+            const preview = FormationAbilityAssignmentUtil.previewGroupFormationAssignments(group);
+            expect(preview.sharedPoolPreviews).toEqual([
+                jasmine.objectContaining({
+                    formationUnitCount: 3,
+                    resolvedLevel: 5,
+                    totalUsesPerScenario: null,
+                    maxUsesPerUnitPerScenario: 4,
+                    stacksWithIndividualAbility: true,
+                }),
+            ]);
+            expect(preview.assignmentsByUnitId.get('unit-1')).toEqual([]);
+        }
+    });
+
+    it('exposes the Phalanx six-use Float Like a Butterfly pool and leveled ability metadata', () => {
+        const units = Array.from({ length: 5 }, (_, index) =>
+            createASForceUnit(`unit-${index + 1}`, createUnit(index + 1, `Phalanx-${index}`, 'Mek', 'BattleMek', 'BM')),
+        );
+        const group = createGroup(
+            units,
+            getFormation('phalanx-star'),
+            [createResolvedGroup({ name: 'Star', type: 'Star', tier: 1, units: units.map((unit) => unit.getUnit()) })],
+            createFaction('Clan', 'Mercenary'),
+        );
+
+        const preview = FormationAbilityAssignmentUtil.previewGroupFormationAssignments(group);
+        expect(preview.sharedPoolPreviews).toEqual([
+            jasmine.objectContaining({
+                formationUnitCount: 5,
+                resolvedLevel: null,
+                totalUsesPerScenario: 6,
+                maxUsesPerUnitPerScenario: null,
+                stacksWithIndividualAbility: false,
+            }),
+        ]);
+
+        expect(PILOT_ABILITIES.filter((ability) => ability.levelGroup === 'lucky').map((ability) => ability.level)).toEqual([1, 2, 3, 4]);
+        expect(PILOT_ABILITIES.filter((ability) => ability.levelGroup === 'float_like_a_butterfly').map((ability) => ability.level)).toEqual([1, 2, 3, 4]);
     });
 
     it('supports fixed command ability assignments with the same recipient limits as pilot abilities', () => {
@@ -361,7 +420,7 @@ describe('FormationAbilityAssignmentUtil', () => {
         expect(preview.assignmentsByUnitId.get('unit-3')).toEqual(['maneuvering_ace', 'forward_observer']);
     });
 
-    it('auto-assigns all-unit command abilities through the formation preview', () => {
+    it('keeps formation-wide Communications Disruption out of unit assignments', () => {
         const formation = getFormation('electronic-warfare-squadron');
         const units = [
             createASForceUnit('unit-1', createUnit(1, 'Sholagar', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['ECM'] } })),
@@ -380,10 +439,20 @@ describe('FormationAbilityAssignmentUtil', () => {
 
         const preview = FormationAbilityAssignmentUtil.previewGroupFormationAssignments(group);
 
-        expect(preview.unsupportedEffects).toEqual([]);
+        expect(preview.effectPreviews).toEqual([]);
+        expect(preview.formationWideAbilities).toEqual([
+            jasmine.objectContaining({
+                sourceFormationId: 'electronic-warfare-squadron',
+                ability: jasmine.objectContaining({
+                    id: 'communications_disruption',
+                    name: 'Communications Disruption',
+                }),
+            }),
+        ]);
         for (const unit of units) {
-            expect(preview.assignmentsByUnitId.get(unit.id)).toEqual(['communications_disruption']);
+            expect(preview.assignmentsByUnitId.get(unit.id)).toEqual([]);
         }
+        expect(formation.effectGroups?.[0]?.distribution).toBe('formation-wide');
     });
 
     it('clears unit formation abilities when the group has no active formation', () => {

@@ -33,6 +33,16 @@ interface ConnectionLineTestApi {
     degraded: boolean;
 }
 
+interface SidebarNetworkTestApi {
+    members: readonly SidebarMemberTestApi[];
+}
+
+interface SidebarMemberTestApi {
+    id: string;
+    brokenLink: boolean;
+    networkVm?: SidebarNetworkTestApi;
+}
+
 interface C3NetworkDialogTestApi {
     nodes: WritableSignal<C3Node[]>;
     networks: WritableSignal<SerializedC3NetworkGroup[]>;
@@ -42,6 +52,7 @@ interface C3NetworkDialogTestApi {
     getPinRoleLabel(node: C3Node, compIndex: number): string;
     removeNetwork(network: SerializedC3NetworkGroup): void;
     connectionLines: Signal<ConnectionLineTestApi[]>;
+    sidebarNetworks: Signal<readonly SidebarNetworkTestApi[]>;
     nodeRuntimeStatuses: Signal<Map<string, readonly ('OFFLINE' | 'JAMMED' | 'DEGRADED')[]>>;
     emergencySidebarNetworks: Signal<readonly {
         displayName: string;
@@ -282,7 +293,7 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
         expect(model.parentNetworkForEndpoint('naginata', 1)?.masterCompIndex).toBe(0);
     });
 
-    it('auto-configures at most twelve participating C3 components', async () => {
+    it('auto-configures all C3 units below the twelve-unit limit', async () => {
         const command = c3UnitWithComponents('command', [
             [C3_FLAGS.C3M], [C3_FLAGS.C3M], [C3_FLAGS.C3M], [C3_FLAGS.C3M],
         ]);
@@ -318,10 +329,11 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
         const model = new C3Network(component.networks());
         const root = model.topLevelNetworks.find(network => network.type === C3NetworkType.C3);
         expect(root).toBeDefined();
-        expect(model.treeEndpointKeys(root!.id).size).toBe(12);
+        expect(model.treeUnitIds(root!.id).size).toBe(10);
+        expect(model.treeEndpointKeys(root!.id).size).toBe(13);
         const connectedSlaves = slaves.filter(slave => model.isUnitSlaveConnected(slave.unit.id));
-        expect(connectedSlaves.length).toBe(8);
-        expect(slaves.filter(slave => !model.isUnitConnected(slave.unit.id)).length).toBe(1);
+        expect(connectedSlaves.length).toBe(9);
+        expect(slaves.filter(slave => !model.isUnitConnected(slave.unit.id)).length).toBe(0);
     });
 
     it('keeps configured arrows and adds the effective C3EM takeover arrow', async () => {
@@ -362,6 +374,42 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
         expect(emergencyVm.networkTax).toBeUndefined();
         expect(emergencyVm.members.map(member => member.id)).toEqual(['emergency', 'leaf']);
         expect(emergencyVm.members.every(member => !member.canRemove)).toBeTrue();
+    });
+
+    it('marks only effectively disconnected sidebar entries when the grand master shuts down', async () => {
+        const { component } = await createComponent();
+        const grandMaster = c3Unit('grand-master', [C3_FLAGS.C3M]);
+        const subordinateMaster = c3Unit('subordinate-master', [C3_FLAGS.C3M]);
+        const directLeaf = c3Unit('direct-leaf', [C3_FLAGS.C3S]);
+        const childLeaf = c3Unit('child-leaf', [C3_FLAGS.C3S]);
+        grandMaster.actionUnavailableComponents.set(new Set([0]));
+
+        component.nodes.set([
+            node(grandMaster, 0, 0),
+            node(subordinateMaster, 200, 0),
+            node(directLeaf, 400, 0),
+            node(childLeaf, 600, 0),
+        ]);
+        component.networks.set([
+            {
+                id: 'parent', type: C3NetworkType.C3, color: '#7B1FA2',
+                masterId: 'grand-master', masterCompIndex: 0,
+                members: ['subordinate-master:0', 'direct-leaf'],
+            },
+            {
+                id: 'child', type: C3NetworkType.C3, color: '#E65100',
+                masterId: 'subordinate-master', masterCompIndex: 0,
+                members: ['child-leaf'],
+            },
+        ]);
+
+        const root = component.sidebarNetworks()[0]!;
+        expect(root.members.find(member => member.id === 'grand-master')?.brokenLink).toBeTrue();
+        expect(root.members.find(member => member.id === 'direct-leaf')?.brokenLink).toBeTrue();
+
+        const subordinate = root.members.find(member => member.id === 'subordinate-master');
+        expect(subordinate?.brokenLink).toBeFalse();
+        expect(subordinate?.networkVm?.members.every(member => !member.brokenLink)).toBeTrue();
     });
 
     it('marks a jammed master and only its direct slave leaf as degraded', async () => {

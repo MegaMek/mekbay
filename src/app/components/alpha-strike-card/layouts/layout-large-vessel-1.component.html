@@ -146,11 +146,11 @@
                 <img class="fluff-image" [src]="imageUrl()" alt="Unit image" (error)="onImageError()" />
             </div>
             }
-            @let abilities = pilotAbilities();
-            @if (abilities.length > 0) {
+            @let cardAbilities = abilities();
+            @if (cardAbilities.length > 0) {
             <div class="pilot-abilities">
-                @for (ability of abilities; track formatPilotAbility(ability)) {
-                <div class="pilot-ability" (click)="onPilotAbilityClick(ability)">{{ formatPilotAbility(ability) }}</div>
+                @for (ability of cardAbilities; track formatAbility(ability)) {
+                <div class="pilot-ability" (click)="onAbilityClick(ability)">{{ formatAbility(ability) }}</div>
                 }
             </div>
             }

@@ -2,10 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { calculateTargetTnModifier } from './target-number-calculator.model';
+import { calculateTargetTnModifier, getTargetProneModifier } from './target-number-calculator.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
 
 describe('target number calculator rules profiles', () => {
+    it('applies prone modifiers correctly at adjacent and non-adjacent ranges', () => {
+        expect(getTargetProneModifier(1)).toBe(-2);
+        expect(getTargetProneModifier(2)).toBe(1);
+    });
+
     it('uses Large Target and ignores removed modifiers in core2026', () => {
         expect(calculateTargetTnModifier({
             range: 5,
@@ -31,7 +36,7 @@ describe('target number calculator rules profiles', () => {
             isAirborne: true,
             targetMovementBracket: '10-17',
             skidding: true,
-            stance: 'immobile',
+            immobile: true,
             targetHexCover: 'heavy',
             partialCover: true,
             interveningWoods: 'light1',
@@ -44,7 +49,7 @@ describe('target number calculator rules profiles', () => {
             range: 5,
             isAirborne: true,
             targetMovementBracket: '10-17',
-            stance: 'immobile',
+            immobile: true,
             targetHexCover: 'heavy',
         }, CORE_2026_GAME_RULES)).toBe(-2);
     });
@@ -59,13 +64,23 @@ describe('target number calculator rules profiles', () => {
             unitType: 'mek-biped',
             range: 5,
             targetMovementBracket: '7-9',
-            stance: 'prone'
+            prone: true
         })).toBe(4);
         expect(calculateTargetTnModifier({
             unitType: 'mek-biped',
             range: 5,
             targetMovementBracket: '7-9',
-            stance: 'immobile'
+            immobile: true
         })).toBe(-1);
+    });
+
+    it('stacks prone and immobile modifiers for non-static targets', () => {
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 5,
+            targetMovementBracket: '7-9',
+            prone: true,
+            immobile: true,
+        })).toBe(0);
     });
 });

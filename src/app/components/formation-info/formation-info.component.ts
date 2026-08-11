@@ -3,12 +3,12 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { formationInheritsParentEffects, resolveFormationGameSystemText, type FormationTypeDefinition, type FormationEffectGroup } from '../../utils/formation-type.model';
+import { formationInheritsParentEffects, resolveFormationGameSystemText, type FormationTypeDefinition, type FormationEffectGroup, type FormationWideAbility } from '../../utils/formation-type.model';
 import { getFormationDefinition } from '../../utils/formation-blueprints';
 import { type PilotAbility, PILOT_ABILITIES, getAbilityDetails, formatSummaryMovement } from '../../models/pilot-abilities.model';
 import { type CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import { GameSystem, formatRulesReference, type RulesReference } from '../../models/common.model';
-import { getInheritedFormationEffectGroups } from '../../utils/formation-ability-assignment.util';
+import { getInheritedFormationEffectGroups, resolveFormationSharedPoolLevel } from '../../utils/formation-ability-assignment.util';
 import { OptionsService } from '../../services/options.service';
 
 /*
@@ -21,6 +21,7 @@ import { OptionsService } from '../../services/options.service';
 export interface ResolvedAbility {
     pilotAbility?: PilotAbility;
     commandAbility?: CommandAbility;
+    formationWideAbility?: FormationWideAbility;
     name: string;
     summary: string[];
     rulesRef: RulesReference[];
@@ -116,8 +117,10 @@ export interface ResolvedEffectGroup {
                         @let groupIdx = $index;
                         <div class="effect-group">
                             <div class="effect-group-meta">
-                                <span class="meta-item selection">{{ eg.selectionLabel }}</span>
-                                <span class="meta-separator">·</span>
+                                @if (eg.selectionLabel) {
+                                    <span class="meta-item selection">{{ eg.selectionLabel }}</span>
+                                    <span class="meta-separator">·</span>
+                                }
                                 <span class="meta-item distribution">{{ eg.distributionLabel }}</span>
                                 @if (eg.group.perTurn) {
                                     <span class="meta-separator">·</span>
@@ -494,7 +497,7 @@ export class FormationInfoComponent {
             const abilities: ResolvedAbility[] = [];
 
             // Resolve pilot abilities
-            if (group.abilityIds) {
+            if (group.distribution !== 'formation-wide' && group.abilityIds) {
                 for (const id of group.abilityIds) {
                     const pilot = PILOT_ABILITIES.find(a => a.id === id);
                     if (pilot) {
@@ -511,7 +514,7 @@ export class FormationInfoComponent {
             }
 
             // Resolve command abilities
-            if (group.commandAbilityIds) {
+            if (group.distribution !== 'formation-wide' && group.commandAbilityIds) {
                 for (const id of group.commandAbilityIds) {
                     const cmd = COMMAND_ABILITIES.find(a => a.id === id);
                     if (cmd) {
@@ -525,27 +528,43 @@ export class FormationInfoComponent {
                 }
             }
 
+            if (group.distribution === 'formation-wide') {
+                for (const formationWideAbility of group.formationWideAbilities) {
+                    abilities.push({
+                        formationWideAbility,
+                        name: formationWideAbility.name,
+                        summary: formatSummaryMovement(formationWideAbility.summary, this.optionsService.options().ASUseHex),
+                        rulesRef: formationWideAbility.rulesRef ?? [],
+                    });
+                }
+            }
+
             return {
                 group,
                 abilities,
-                selectionLabel: this.getSelectionLabel(group.selection),
+                selectionLabel: this.getSelectionLabel(group),
                 distributionLabel: this.getDistributionLabel(group),
             };
         });
     });
 
-    private getSelectionLabel(selection: FormationEffectGroup['selection']): string {
-        switch (selection) {
+    private getSelectionLabel(group: FormationEffectGroup): string {
+        if (group.distribution === 'formation-wide') {
+            return '';
+        }
+
+        switch (group.selection) {
             case 'choose-one': return 'Choose one ability for all';
             case 'choose-each': return 'Each recipient chooses';
             case 'all': return 'All listed abilities';
-            default: return selection;
+            default: return '';
         }
     }
 
     private getDistributionLabel(group: FormationEffectGroup): string {
         const n = this.unitCount();
         switch (group.distribution) {
+            case 'formation-wide': return 'Formation-wide';
             case 'all': return 'All units';
             case 'half-round-down': {
                 const count = n != null ? Math.floor(n / 2) : undefined;
@@ -567,10 +586,25 @@ export class FormationInfoComponent {
             case 'fixed-pairs': return `${group.count ?? '?'} identical pairs`;
             case 'conditional': return group.condition ?? 'Conditional';
             case 'remainder': return 'Remaining units';
-            case 'shared-pool': return 'Shared pool';
+            case 'shared-pool': {
+                const details: string[] = [];
+                const resolvedLevel = this.unitCount() === undefined
+                    ? null
+                    : resolveFormationSharedPoolLevel(group, this.unitCount() ?? 0);
+                if (resolvedLevel !== null) {
+                    details.push(`level ${resolvedLevel}`);
+                }
+                if (group.sharedPool.totalUsesPerScenario !== undefined) {
+                    details.push(`${group.sharedPool.totalUsesPerScenario} uses/scenario`);
+                }
+                if (group.sharedPool.maxUsesPerUnitPerScenario !== undefined) {
+                    details.push(`up to ${group.sharedPool.maxUsesPerUnitPerScenario}/unit`);
+                }
+                return details.length > 0 ? `Shared pool (${details.join('; ')})` : 'Shared pool';
+            }
             case 'role-filtered': return `${group.roleFilter ?? 'Matching'} role units`;
             case 'commander': return 'Commander only';
-            default: return group.distribution;
+            default: return 'Unknown distribution';
         }
     }
 }

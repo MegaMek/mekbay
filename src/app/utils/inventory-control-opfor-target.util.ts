@@ -41,8 +41,7 @@ export function deriveOpforTargetCalculatorState(
     current: TnTargetNumberCalculatorState = {}
 ): TnTargetNumberCalculatorState {
     const immobile = unit.getCondition('immobile');
-    const prone = !immobile && unit.getCondition('prone');
-    const stance = immobile ? 'immobile' : prone ? 'prone' : 'normal';
+    const prone = unit.getCondition('prone');
     const moveDistance = unit.turnState().moveDistance();
     const isAirborne = unit.turnState().moveMode() === 'jump' || unit.turnState().airborne() === true;
     const targetMovementBracket = moveDistance !== null
@@ -54,7 +53,8 @@ export function deriveOpforTargetCalculatorState(
         isAirborne,
         targetMovementBracket,
         skidding: unit.getCondition('skidding'),
-        stance,
+        prone,
+        immobile,
         largeTarget: isLargeInventoryTarget(unit.getUnit())
     };
 }

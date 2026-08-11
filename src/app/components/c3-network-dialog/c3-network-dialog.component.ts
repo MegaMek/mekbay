@@ -660,10 +660,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                                 name: node?.unit.getUnit().chassis || 'Unknown',
                                 role: 'sub-master', canRemove: !this.data.readOnly, isSelfConnection,
                                 memberStr, node, network: childNet, networkVm: childVm ?? undefined,
-                                brokenLink: runtimeGraph.childLinkBroken(network.id, {
-                                    unitId: parsed.unitId,
-                                    compIndex: parsed.compIndex,
-                                }),
+                                brokenLink: !runtimeGraph.stateForNetwork(parsed.unitId, childNet.id).linked,
                                 ...getUnitBvData(node)
                             });
                             if (childVm) subNetworks.push(childVm);
@@ -688,7 +685,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             if (network.peerIds) {
                 displayName = `${c3NetworkTypeName(network.type as C3NetworkType)} (${network.peerIds.length} peers)`;
             } else if (network.masterId) {
-                const memberCount = topology.treeEndpointKeys(network.id).size;
+                const memberCount = topology.treeUnitIds(network.id).size;
                 displayName = `${c3NetworkTypeName(network.type as C3NetworkType)} (${memberCount} ${memberCount > 1 ? 'members' : 'member'})`;
             }
 

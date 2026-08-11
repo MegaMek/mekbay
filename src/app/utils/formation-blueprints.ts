@@ -253,6 +253,11 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
             abilityIds: ['lucky'],
             selection: 'all',
             distribution: 'shared-pool',
+            sharedPool: {
+                level: { kind: 'unit-count-plus', offset: 2 },
+                maxUsesPerUnitPerScenario: 4,
+                stacksWithIndividualAbility: true,
+            },
         }],
         idealRole: 'Brawler',
         minUnits: 3,
@@ -277,6 +282,11 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
             abilityIds: ['lucky'],
             selection: 'all',
             distribution: 'shared-pool',
+            sharedPool: {
+                level: { kind: 'unit-count-plus', offset: 2 },
+                maxUsesPerUnitPerScenario: 4,
+                stacksWithIndividualAbility: true,
+            },
         }],
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 62 }, { book: Rulebook.ASCE, page: 118 }],
@@ -300,6 +310,11 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
             abilityIds: ['lucky'],
             selection: 'all',
             distribution: 'shared-pool',
+            sharedPool: {
+                level: { kind: 'unit-count-plus', offset: 2 },
+                maxUsesPerUnitPerScenario: 4,
+                stacksWithIndividualAbility: true,
+            },
         }],
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 62 }, { book: Rulebook.ASCE, page: 118 }],
@@ -323,6 +338,11 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
             abilityIds: ['lucky'],
             selection: 'all',
             distribution: 'shared-pool',
+            sharedPool: {
+                level: { kind: 'unit-count-plus', offset: 2 },
+                maxUsesPerUnitPerScenario: 4,
+                stacksWithIndividualAbility: true,
+            },
         }],
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 63 }, { book: Rulebook.ASCE, page: 118 }],
@@ -924,6 +944,31 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
         },
     },
 
+    {
+        id: 'swarm',
+        name: 'Swarm',
+        description: 'A formation composed exclusively of small VTOL units.',
+        effectDescription: 'Coordinated Fire: The formation may make a standard weapon attack against a target within Short Range and Line of Sight of all members as if it were a single Unit. The targeted player chooses one attacking unit from which to calculate the to-hit modifiers. Make one to-hit roll for the formation. If the attack hits, add 1 damage point to one of the attacks; all other attacks use their standard damage.',
+        effectGroups: [{
+            formationWideAbilities: [{
+                id: 'coordinated_fire',
+                name: 'Coordinated Fire',
+                summary: [
+                    'The formation may make a standard weapon attack against a target within Short Range and Line of Sight of all members as if it were a single Unit.',
+                    'The targeted player chooses one attacking unit from which to calculate the to-hit modifiers. Make one to-hit roll for the formation; it hits or misses as one.',
+                    'If the attack hits, add 1 damage point to one of the attacks. All other attacks use their standard damage.',
+                ],
+                rulesRef: [{ book: Rulebook.FMMERC, page: 52 }],
+            }],
+            distribution: 'formation-wide',
+        }],
+        minUnits: 4,
+        rulesRef: [{ book: Rulebook.FMMERC, page: 52 }],
+        requirements: (gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+            ? 'VTOL Company. All units must be VTOLs. No Size 3+ units.'
+            : 'VTOL Company. All units must be VTOLs. No heavy or assault units.',
+    },
+
     //
     // RANGER LANCE
     // Bonus: 75% receive one Terrain Master SPA (same variation for all).
@@ -997,6 +1042,9 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
             abilityIds: ['float_like_a_butterfly'],
             selection: 'all',
             distribution: 'shared-pool',
+            sharedPool: {
+                totalUsesPerScenario: 6,
+            },
         }],
         exclusiveFaction: CLAN_EXCLUSIVE_FACTIONS,
         minUnits: 3,
@@ -1168,9 +1216,16 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
         description: 'Aerospace support formations that disrupt enemy communications while countering hostile electronic warfare.',
         effectDescription: 'This squadron receives the Communications Disruption Special Command Ability, enabling it to disrupt the communications of one randomly-determined enemy lance or squadron on a 1D6 roll of 6 (persists one turn).',
         effectGroups: [{
-            commandAbilityIds: ['communications_disruption'],
-            selection: 'all',
-            distribution: 'all',
+            formationWideAbilities: [{
+                id: 'communications_disruption',
+                name: 'Communications Disruption',
+                summary: [
+                    'Each turn roll 1D6; on a 6, one random enemy lance/Star/Level II reduces Move by [[4]] (min [[1]]) for the turn.',
+                    'Aerospace elements reduce base Thrust by 1 instead. Requires a 2:1 Battlefield Intelligence ratio if BI rules are in play.',
+                ],
+                rulesRef: [{ book: Rulebook.CO, page: 84 }, { book: Rulebook.ASCE, page: 103 }],
+            }],
+            distribution: 'formation-wide',
         }],
         minUnits: 6,
         rulesRef: [{ book: Rulebook.CO, page: 67 }, { book: Rulebook.ASCE, page: 122 }],
@@ -1297,6 +1352,7 @@ export const FORMATION_BLUEPRINTS: Readonly<Record<string, FormationRequirementB
     'light-striker-lance': { id: 'light-striker-lance', constraints: [all('light-striker-move', 'All light striker movement threshold', 'recon-move'), countMax('light-striker-no-heavy', 'No heavy/Size 3+ units', 'heavy-size', 0), countMin('light-striker-long-damage', '2 long damage units', 'long-damage-positive', 2), countMin('light-striker-role-count', '2 Striker/Skirmisher units', 'striker-or-skirmisher-role', 2)] },
     'heavy-striker-lance': { id: 'heavy-striker-lance', constraints: [all('heavy-striker-move', 'All heavy striker movement threshold', 'heavy-recon-move'), countMin('heavy-striker-heavy-count', '3 heavy/Size 3+ units', 'heavy-size', 3), countMax('heavy-striker-no-light', 'No light/Size 1 units', 'light-size', 0), countMin('heavy-striker-long-damage', '1 strong long damage unit', 'long-damage-strong', 1), countMin('heavy-striker-role-count', '2 Striker/Skirmisher units', 'striker-or-skirmisher-role', 2)] },
     horde: { id: 'horde', constraints: [all('horde-all-light', 'All light/Size 1 units', 'light-size'), all('horde-low-damage', 'All low medium-range damage units', 'low-medium-damage')] },
+    swarm: { id: 'swarm', constraints: [all('swarm-all-vtol', 'All VTOL units', 'vtol-unit'), countMax('swarm-no-heavy', 'No heavy/Size 3+ units', 'heavy-size', 0)] },
     'ranger-lance': { id: 'ranger-lance', constraints: [all('ranger-no-assault', 'No assault/Size 4+ units', 'ranger-size')] },
     'support-lance': { id: 'support-lance', constraints: [] },
     'urban-lance': { id: 'urban-lance', constraints: [percent('urban-jump-infantry', '50% jump or infantry units', 'jump-or-infantry', 0.5), percent('urban-slow', '50% slow urban units', 'slow-urban-move', 0.5)] },

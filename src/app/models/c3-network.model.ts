@@ -166,7 +166,7 @@ export const C3_NETWORK_LIMITS: Record<C3NetworkType, number> = {
     [C3NetworkType.NOVA]: 3
 };
 
-/** Maximum participating endpoints in a hierarchical C3 network. */
+/** Maximum participating units in a hierarchical C3 network. */
 export const C3_MAX_NETWORK_TOTAL = 12;
 /** Maximum network depth (master -> sub-master -> slaves). */
 export const C3_MAX_NETWORK_DEPTH = 2;
