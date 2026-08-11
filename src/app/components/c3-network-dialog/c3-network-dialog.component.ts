@@ -688,7 +688,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             if (network.peerIds) {
                 displayName = `${c3NetworkTypeName(network.type as C3NetworkType)} (${network.peerIds.length} peers)`;
             } else if (network.masterId) {
-                const memberCount = topology.treeEndpointKeys(network.id).size;
+                const memberCount = topology.treeUnitIds(network.id).size;
                 displayName = `${c3NetworkTypeName(network.type as C3NetworkType)} (${memberCount} ${memberCount > 1 ? 'members' : 'member'})`;
             }
 

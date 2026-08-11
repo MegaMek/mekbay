@@ -316,7 +316,7 @@ describe('C3NetworkEditor', () => {
         const centerNode = node(center);
         const outerMasters = ['left-master', 'right-master'].map(id => node(c3Unit(id, C3_FLAGS.C3M)));
         const centerSlaves = Array.from({ length: 3 }, (_, index) => node(c3Unit(`center-slave-${index}`, C3_FLAGS.C3S)));
-        const outerSlaves = [3, 2].map((count, side) => Array.from(
+        const outerSlaves = [3, 3].map((count, side) => Array.from(
             { length: count }, (_, index) => node(c3Unit(`outer-${side}-slave-${index}`, C3_FLAGS.C3S)),
         ));
         let networks: SerializedC3NetworkGroup[] = [];
@@ -332,7 +332,8 @@ describe('C3NetworkEditor', () => {
         expect(new Set(model.masterNetwork('center', 0)?.members))
             .toEqual(new Set(['center:1', 'left-master:0', 'right-master:0']));
         expect(model.masterNetwork('center', 1)?.members).toEqual(centerSlaves.map(slave => slave.unit.id));
-        expect(model.treeEndpointKeys(model.masterNetwork('center', 0)!.id).size).toBe(12);
+        expect(model.treeUnitIds(model.masterNetwork('center', 0)!.id).size).toBe(12);
+        expect(model.treeEndpointKeys(model.masterNetwork('center', 0)!.id).size).toBe(13);
     });
 
     it('supports canonical configuration 3: three internal masters serve two slave branches and one master branch', () => {
@@ -385,6 +386,36 @@ describe('C3NetworkEditor', () => {
                 .toEqual(slaves[childPin - 1].map(slave => slave.unit.id));
         }
         expect(model.treeEndpointKeys(model.masterNetwork('center', 0)!.id).size).toBe(12);
+    });
+
+    it('rejects a thirteenth unit in canonical configuration 1', () => {
+        const grandMaster = node(c3Unit('config1-grand-master', C3_FLAGS.C3M));
+        const masters = ['left', 'center', 'right'].map(id => node(c3Unit(`config1-${id}-master`, C3_FLAGS.C3M)));
+        const slaves = [3, 3, 2].map((count, branch) => Array.from(
+            { length: count }, (_, index) => node(c3Unit(`config1-branch-${branch}-slave-${index}`, C3_FLAGS.C3S)),
+        ));
+        let networks: SerializedC3NetworkGroup[] = [];
+
+        for (const master of masters) networks = connectPins(networks, grandMaster, 0, master, 0);
+        for (let branch = 0; branch < masters.length; branch++) {
+            for (const slave of slaves[branch]) networks = connectPins(networks, masters[branch], 0, slave, 0);
+        }
+
+        const model = new C3Network(networks);
+        expect(model.treeUnitIds(model.masterNetwork(grandMaster.unit.id, 0)!.id).size)
+            .toBe(C3_MAX_NETWORK_TOTAL);
+
+        const overflow = node(c3Unit('config1-overflow-slave', C3_FLAGS.C3S));
+        const expected = {
+            valid: false,
+            reason: `Would exceed ${C3_MAX_NETWORK_TOTAL}-unit C3 limit`,
+        };
+        expect(C3NetworkEditor.canConnect(masters[2], 0, overflow, 0, networks)).toEqual(expected);
+        expect(C3NetworkEditor.connect(context(networks), masters[2], 0, overflow, 0)).toEqual({
+            networks,
+            success: false,
+            message: expected.reason,
+        });
     });
 
     it('prevents a unit with C3i and C3 Slave components from joining both networks', () => {
@@ -602,7 +633,7 @@ describe('C3NetworkEditor', () => {
         expect(C3NetworkEditor.clean(cleaned, unitMap([first, second, sunder]))).toEqual(cleaned);
     });
 
-    it('supports three Atlas master pins plus a Commando master and eight slave units', () => {
+    it('allows a ninth slave when the twelve-unit limit is not reached', () => {
         const atlas = c3Unit('atlas', C3_FLAGS.C3M);
         addC3Endpoint(atlas, C3_FLAGS.C3M);
         addC3Endpoint(atlas, C3_FLAGS.C3M);
@@ -621,11 +652,13 @@ describe('C3NetworkEditor', () => {
         const model = new C3Network(networks);
         expect(new Set(model.masterNetwork('atlas', 0)?.members)).toEqual(new Set(['atlas:1', 'atlas:2', 'commando:0']));
         expect(model.treeEndpointKeys(model.masterNetwork('atlas', 0)!.id).size).toBe(12);
-        expect(C3NetworkEditor.canConnect(atlasNode, 2, locusts[8], 0, networks)).toEqual({
-            valid: false,
-            reason: `Would exceed ${C3_MAX_NETWORK_TOTAL}-member C3 limit`,
-        });
-        expect(C3NetworkEditor.connect(context(networks), atlasNode, 2, locusts[8], 0).networks).toEqual(networks);
+        expect(model.treeUnitIds(model.masterNetwork('atlas', 0)!.id).size).toBe(10);
+        expect(C3NetworkEditor.canConnect(atlasNode, 2, locusts[8], 0, networks)).toEqual({ valid: true });
+        const expanded = C3NetworkEditor.connect(context(networks), atlasNode, 2, locusts[8], 0);
+        expect(expanded.success).toBeTrue();
+        expect(new C3Network(expanded.networks).treeUnitIds(
+            new C3Network(expanded.networks).masterNetwork('atlas', 0)!.id,
+        ).size).toBe(11);
         expect(C3NetworkEditor.clean(networks, unitMap([
             atlas, commando.unit, ...locusts.map(entry => entry.unit),
         ]))).toEqual(networks);
@@ -704,7 +737,7 @@ describe('C3NetworkEditor', () => {
         });
     });
 
-    it('allows the total-member limit exactly and rejects the next component', () => {
+    it('allows the total-unit limit exactly and rejects the next unit', () => {
         const target = node(c3Unit('target', C3_FLAGS.C3M));
         const added = node(c3Unit('added', C3_FLAGS.C3S));
         const networks = (lastMembers: string[]): SerializedC3NetworkGroup[] => [
@@ -715,11 +748,11 @@ describe('C3NetworkEditor', () => {
         ];
 
         expect(C3NetworkEditor.canConnect(target, 0, added, 0, networks(['r1', 'r2'])).valid)
-            .withContext(`adding the ${C3_MAX_NETWORK_TOTAL}th member`)
+            .withContext(`adding the ${C3_MAX_NETWORK_TOTAL}th unit`)
             .toBeTrue();
         expect(C3NetworkEditor.canConnect(target, 0, added, 0, networks(['r1', 'r2', 'r3']))).toEqual({
             valid: false,
-            reason: `Would exceed ${C3_MAX_NETWORK_TOTAL}-member C3 limit`,
+            reason: `Would exceed ${C3_MAX_NETWORK_TOTAL}-unit C3 limit`,
         });
     });
 

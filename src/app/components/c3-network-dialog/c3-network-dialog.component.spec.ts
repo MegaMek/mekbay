@@ -282,7 +282,7 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
         expect(model.parentNetworkForEndpoint('naginata', 1)?.masterCompIndex).toBe(0);
     });
 
-    it('auto-configures at most twelve participating C3 components', async () => {
+    it('auto-configures all C3 units below the twelve-unit limit', async () => {
         const command = c3UnitWithComponents('command', [
             [C3_FLAGS.C3M], [C3_FLAGS.C3M], [C3_FLAGS.C3M], [C3_FLAGS.C3M],
         ]);
@@ -318,10 +318,11 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
         const model = new C3Network(component.networks());
         const root = model.topLevelNetworks.find(network => network.type === C3NetworkType.C3);
         expect(root).toBeDefined();
-        expect(model.treeEndpointKeys(root!.id).size).toBe(12);
+        expect(model.treeUnitIds(root!.id).size).toBe(10);
+        expect(model.treeEndpointKeys(root!.id).size).toBe(13);
         const connectedSlaves = slaves.filter(slave => model.isUnitSlaveConnected(slave.unit.id));
-        expect(connectedSlaves.length).toBe(8);
-        expect(slaves.filter(slave => !model.isUnitConnected(slave.unit.id)).length).toBe(1);
+        expect(connectedSlaves.length).toBe(9);
+        expect(slaves.filter(slave => !model.isUnitConnected(slave.unit.id)).length).toBe(0);
     });
 
     it('keeps configured arrows and adds the effective C3EM takeover arrow', async () => {
