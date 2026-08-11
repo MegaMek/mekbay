@@ -246,6 +246,37 @@ describe('ForceBuilderService formation filter integration', () => {
     });
 });
 
+describe('ForceBuilderService unit conversion', () => {
+    it('starts loading a converted unit immediately', () => {
+        const service = Object.create(ForceBuilderService.prototype) as any;
+        const sourceData = createUnit();
+        const convertedUnit = {
+            disabledSaving: false,
+            load: jasmine.createSpy('load').and.resolveTo(),
+        } as unknown as ForceUnit;
+        const sourceForce = { gameSystem: GameSystem.ALPHA_STRIKE } as Force;
+        const targetForce = {
+            gameSystem: GameSystem.CLASSIC,
+            createCompatibleUnit: jasmine.createSpy('createCompatibleUnit').and.returnValue(convertedUnit),
+        } as unknown as Force;
+
+        service.dataService = {
+            getUnitByName: jasmine.createSpy('getUnitByName').and.returnValue(sourceData),
+        };
+        service.transferPilotDataCrossSystem = jasmine.createSpy('transferPilotDataCrossSystem');
+        service.logger = { error: jasmine.createSpy('error') };
+
+        const result = service.convertUnitForForce(
+            { getUnit: () => sourceData } as ForceUnit,
+            sourceForce,
+            targetForce,
+        );
+
+        expect(result).toBe(convertedUnit);
+        expect(convertedUnit.load).toHaveBeenCalledTimes(1);
+    });
+});
+
 describe('ForceBuilderService remote force updates', () => {
     function createUpdateHarness(currentData: SerializedForce) {
         const service = Object.create(ForceBuilderService.prototype) as any;

@@ -1334,6 +1334,10 @@ export class ForceBuilderService {
                     } finally {
                         newForceUnit.disabledSaving = false;
                     }
+                    void newForceUnit.load().catch((error: unknown) => {
+                        const detail = error instanceof Error ? error.message : String(error);
+                        this.logger.error(`Failed to initialize converted unit "${unitName}": ${detail}`);
+                    });
                 }
 
                 this.assignFormationIfNeeded(newGroup); // we re-evaluate all formations after conversion since unit changes may affect validity
@@ -1408,6 +1412,10 @@ export class ForceBuilderService {
         } finally {
             newUnit.disabledSaving = false;
         }
+        void newUnit.load().catch((error: unknown) => {
+            const detail = error instanceof Error ? error.message : String(error);
+            this.logger.error(`Failed to initialize converted unit "${unitName}": ${detail}`);
+        });
         return newUnit;
     }
 
