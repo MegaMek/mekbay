@@ -23,7 +23,8 @@ import {
     FormationAbilityAssignmentUtil,
     type FormationAssignmentPreview,
     type FormationEffectPreview,
-    type UnsupportedFormationEffectDescriptor,
+    type FormationSharedPoolPreview,
+    type FormationWideAbilityDescriptor,
 } from '../../utils/formation-ability-assignment.util';
 import { OptionsService } from '../../services/options.service';
 import { PilotNameGeneratorService } from '../../services/pilot-name-generator.service';
@@ -163,6 +164,15 @@ export class EditASPilotDialogComponent {
         return [...(this.formationPreview()?.effectPreviews ?? [])];
     });
 
+    formationWideAbilities = computed<FormationWideAbilityDescriptor[]>(() => {
+        const preview = this.formationPreview();
+        if (!preview || !preview.eligibleUnitIds.includes(this.data.unitId)) {
+            return [];
+        }
+
+        return [...preview.formationWideAbilities];
+    });
+
     formationEffectCards = computed<FormationEffectCardView[]>(() => {
         const cards = new Map<string, FormationEffectCardView>();
 
@@ -195,8 +205,8 @@ export class EditASPilotDialogComponent {
         return [...cards.values()];
     });
 
-    unsupportedFormationEffects = computed<UnsupportedFormationEffectDescriptor[]>(() => {
-        return [...(this.formationPreview()?.unsupportedEffects ?? [])];
+    formationSharedPoolPreviews = computed<FormationSharedPoolPreview[]>(() => {
+        return [...(this.formationPreview()?.sharedPoolPreviews ?? [])];
     });
 
     hasResettableFormationAssignments = computed<boolean>(() => {
@@ -984,8 +994,31 @@ export class EditASPilotDialogComponent {
         }
     }
 
-    getUnsupportedFormationEffectNotice(effect: UnsupportedFormationEffectDescriptor): string {
-        return `${effect.sourceFormationName}: shared-pool formation abilities are tracked at the formation level and are not assigned per unit here.`;
+    getFormationSharedPoolNotice(pool: FormationSharedPoolPreview): string {
+        const abilityNames = pool.descriptor.abilityIds
+            .map((abilityId) => this.getFormationAbilityDisplayInfo(abilityId)?.name ?? abilityId)
+            .join(', ');
+        const details: string[] = [];
+
+        if (pool.resolvedLevel !== null) {
+            details.push(`level ${pool.resolvedLevel}`);
+        }
+        if (pool.totalUsesPerScenario !== null) {
+            details.push(`${pool.totalUsesPerScenario} total uses per scenario`);
+        }
+        if (pool.stacksWithIndividualAbility) {
+            details.push('stacks with an individual ability');
+        }
+        if (pool.maxUsesPerUnitPerScenario !== null) {
+            details.push(`up to ${pool.maxUsesPerUnitPerScenario} uses per unit per scenario`);
+        }
+
+        const detailText = details.length > 0 ? ` (${details.join('; ')})` : '';
+        return `${abilityNames} is a shared formation pool ability${detailText}. It is not assigned to individual units.`;
+    }
+
+    getFormationWideAbilitySummary(ability: FormationWideAbilityDescriptor): string[] {
+        return formatSummaryMovement(ability.ability.summary, this.optionsService.options().ASUseHex);
     }
 
     async setFormationCommanderSelected(value: boolean): Promise<void> {

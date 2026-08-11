@@ -78,6 +78,7 @@ export type FormationPredicateId =
     | 'sweep-move'
     | 'transport-role'
     | 'transport-squadron-unit'
+    | 'vtol-unit'
     | 'very-fast-move';
 
 export type FormationFactKey = 'asSize' | 'cbtWeightClass' | 'chassis';

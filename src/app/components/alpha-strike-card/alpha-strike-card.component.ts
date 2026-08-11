@@ -14,7 +14,7 @@ import { InputDialogComponent, type InputDialogData } from '../input-dialog/inpu
 import { PilotAbilityInfoDialogComponent, type PilotAbilityInfoDialogData } from '../pilot-ability-info-dialog/pilot-ability-info-dialog.component';
 import { type CardConfig, type CardLayoutDesign, type CriticalHitsVariant, getLayoutForUnitType } from './card-layout.config';
 import type { SpecialAbilityState } from '../../models/as-special-ability-state.model';
-import type { SpecialAbilityClickEvent } from './layouts/layout-base.component';
+import type { CardAbility, SpecialAbilityClickEvent } from './layouts/layout-base.component';
 import { CriticalHitRollDialogComponent, type CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
 import { MotiveDamageRollDialogComponent, type MotiveDamageRollDialogData } from './motive-damage-roll-dialog/motive-damage-roll-dialog.component';
 import { AsLayoutStandardComponent, AsLayoutLargeVessel1Component, AsLayoutLargeVessel2Component } from './layouts';
@@ -343,28 +343,41 @@ export class AlphaStrikeCardComponent {
         }
     }
 
-    onPilotAbilityClick(selection: AbilitySelection): void {
-        let isCustom = typeof selection !== 'string';
+    onAbilityClick(selection: CardAbility): void {
+        if (selection.kind === 'formation-wide') {
+            this.dialogs.createDialog<void>(PilotAbilityInfoDialogComponent, {
+                data: {
+                    gameSystem: GameSystem.ALPHA_STRIKE,
+                    ability: selection.descriptor.ability,
+                    isCustom: false,
+                    isFormationWide: true,
+                } as PilotAbilityInfoDialogData
+            });
+            return;
+        }
+
+        const pilotSelection = selection.selection;
+        let isCustom = typeof pilotSelection !== 'string';
         let isCommand = false;
         let ability: PilotAbilityInfoDialogData['ability'];
         
-        if (typeof selection === 'string') {
-            const pilotAbility = PILOT_ABILITIES.find((entry) => entry.id === selection);
+        if (typeof pilotSelection === 'string') {
+            const pilotAbility = PILOT_ABILITIES.find((entry) => entry.id === pilotSelection);
             if (pilotAbility) {
                 ability = pilotAbility;
             } else {
-                const commandAbility = COMMAND_ABILITIES.find((entry) => entry.id === selection);
+                const commandAbility = COMMAND_ABILITIES.find((entry) => entry.id === pilotSelection);
                 if (commandAbility) {
                     ability = commandAbility;
                     isCommand = true;
                     isCustom = false;
                 } else {
-                    ability = { name: selection, cost: 0, summary: '' } as ASCustomPilotAbility;
+                    ability = { name: pilotSelection, cost: 0, summary: '' } as ASCustomPilotAbility;
                     isCustom = true;
                 }
             }
         } else {
-            ability = selection;
+            ability = pilotSelection;
         }
         
         this.dialogs.createDialog<void>(PilotAbilityInfoDialogComponent, {

@@ -160,6 +160,7 @@ export const FORMATION_PREDICATES: Readonly<Record<FormationPredicateId, Formati
         ? TRANSPORT_AS_TYPES.has(facts.asType ?? '')
         : facts.unit.type === 'Aero',
     'very-fast-move': (facts, gameSystem) => asOrCbt(gameSystem, facts.asAnyGroundOrJumpMove >= 12, facts.cbtWalk >= 6),
+    'vtol-unit': (facts) => facts.unit.type === 'VTOL',
 };
 
 export function evaluateFormationPredicate(

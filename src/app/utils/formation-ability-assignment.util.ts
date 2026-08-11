@@ -6,7 +6,7 @@ import type { ASForceUnit } from '../models/as-force-unit.model';
 import type { UnitGroup } from '../models/force.model';
 import { getFormationDefinition } from './formation-blueprints';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
-import { formationInheritsParentEffects, type FormationEffectGroup, type FormationTypeDefinition } from './formation-type.model';
+import { formationInheritsParentEffects, type FormationAssignmentEffectGroup, type FormationEffectGroup, type FormationSharedPoolEffectGroup, type FormationTypeDefinition, type FormationWideAbility } from './formation-type.model';
 
 export interface FormationAssignmentPreviewOptions {
     readonly abilityOverrides?: ReadonlyMap<string, readonly string[]>;
@@ -22,17 +22,34 @@ export interface FormationEffectDescriptor {
     readonly sourceFormationId: string;
     readonly sourceFormationName: string;
     readonly sourceFormationDescription: string;
-    readonly group: FormationEffectGroup;
+    readonly group: FormationAssignmentEffectGroup;
     /** Formation-granted ability ids from either PILOT_ABILITIES or COMMAND_ABILITIES. */
     readonly abilityIds: readonly string[];
 }
 
-export interface UnsupportedFormationEffectDescriptor {
+export interface FormationSharedPoolDescriptor {
     readonly key: string;
     readonly sourceFormationId: string;
     readonly sourceFormationName: string;
-    readonly group: FormationEffectGroup;
-    readonly reason: 'shared-pool';
+    readonly group: FormationSharedPoolEffectGroup;
+    /** Formation-granted ability ids from either PILOT_ABILITIES or COMMAND_ABILITIES. */
+    readonly abilityIds: readonly string[];
+}
+
+export interface FormationWideAbilityDescriptor {
+    readonly key: string;
+    readonly sourceFormationId: string;
+    readonly sourceFormationName: string;
+    readonly ability: FormationWideAbility;
+}
+
+export interface FormationSharedPoolPreview {
+    readonly descriptor: FormationSharedPoolDescriptor;
+    readonly formationUnitCount: number;
+    readonly resolvedLevel: number | null;
+    readonly totalUsesPerScenario: number | null;
+    readonly maxUsesPerUnitPerScenario: number | null;
+    readonly stacksWithIndividualAbility: boolean;
 }
 
 export interface FormationEffectPreview {
@@ -54,7 +71,8 @@ export interface FormationAssignmentPreview {
     readonly eligibleUnitIds: readonly string[];
     readonly assignmentsByUnitId: ReadonlyMap<string, readonly string[]>;
     readonly effectPreviews: readonly FormationEffectPreview[];
-    readonly unsupportedEffects: readonly UnsupportedFormationEffectDescriptor[];
+    readonly sharedPoolPreviews: readonly FormationSharedPoolPreview[];
+    readonly formationWideAbilities: readonly FormationWideAbilityDescriptor[];
 }
 
 interface MutableFormationEffectPreview {
@@ -75,11 +93,28 @@ function uniqueAbilityIds(abilityIds: readonly string[] | undefined): string[] {
     return [...new Set(abilityIds.filter((abilityId) => typeof abilityId === 'string' && abilityId.length > 0))];
 }
 
-function getEffectAbilityIds(group: FormationEffectGroup): string[] {
+function getEffectAbilityIds(group: FormationAssignmentEffectGroup | FormationSharedPoolEffectGroup): string[] {
     return uniqueAbilityIds([
         ...(group.abilityIds ?? []),
         ...(group.commandAbilityIds ?? []),
     ]);
+}
+
+export function resolveFormationSharedPoolLevel(
+    group: FormationSharedPoolEffectGroup,
+    formationUnitCount: number,
+): number | null {
+    const level = group.sharedPool.level;
+    if (!level) {
+        return null;
+    }
+
+    switch (level.kind) {
+        case 'fixed':
+            return Math.max(0, level.value);
+        case 'unit-count-plus':
+            return Math.max(0, formationUnitCount + level.offset);
+    }
 }
 
 function getParentFormationDefinition(definition: FormationTypeDefinition): FormationTypeDefinition | null {
@@ -165,29 +200,45 @@ function hasAutomaticRecipients(group: FormationEffectGroup): boolean {
 
 function getSupportedEffectDescriptors(definition: FormationTypeDefinition | null): {
     supported: FormationEffectDescriptor[];
-    unsupported: UnsupportedFormationEffectDescriptor[];
+    sharedPools: FormationSharedPoolDescriptor[];
+    formationWideAbilities: FormationWideAbilityDescriptor[];
 } {
     if (!definition) {
-        return { supported: [], unsupported: [] };
+        return { supported: [], sharedPools: [], formationWideAbilities: [] };
     }
 
     const supported: FormationEffectDescriptor[] = [];
-    const unsupported: UnsupportedFormationEffectDescriptor[] = [];
+    const sharedPools: FormationSharedPoolDescriptor[] = [];
+    const formationWideAbilities: FormationWideAbilityDescriptor[] = [];
 
     for (const sourceDefinition of getFormationEffectChain(definition)) {
         const effectGroups = sourceDefinition.effectGroups ?? [];
         effectGroups.forEach((group, index) => {
+            if (group.distribution === 'formation-wide') {
+                group.formationWideAbilities.forEach((ability) => {
+                    formationWideAbilities.push({
+                        key: `${sourceDefinition.id}:${index}:${ability.id}`,
+                        sourceFormationId: sourceDefinition.id,
+                        sourceFormationName: sourceDefinition.name,
+                        ability,
+                    });
+                });
+                return;
+            }
+
             const key = `${sourceDefinition.id}:${index}`;
             const abilityIds = getEffectAbilityIds(group);
 
-            if (group.distribution === 'shared-pool' && abilityIds.length > 0) {
-                unsupported.push({
-                    key,
-                    sourceFormationId: sourceDefinition.id,
-                    sourceFormationName: sourceDefinition.name,
-                    group,
-                    reason: 'shared-pool',
-                });
+            if (group.distribution === 'shared-pool') {
+                if (abilityIds.length > 0) {
+                    sharedPools.push({
+                        key,
+                        sourceFormationId: sourceDefinition.id,
+                        sourceFormationName: sourceDefinition.name,
+                        group,
+                        abilityIds,
+                    });
+                }
                 return;
             }
 
@@ -206,7 +257,7 @@ function getSupportedEffectDescriptors(definition: FormationTypeDefinition | nul
         });
     }
 
-    return { supported, unsupported };
+    return { supported, sharedPools, formationWideAbilities };
 }
 
 function getConditionalCandidate(unit: ASForceUnit, group: FormationEffectGroup): boolean {
@@ -422,7 +473,8 @@ export class FormationAbilityAssignmentUtil {
         options?: FormationAssignmentPreviewOptions,
     ): FormationAssignmentPreview {
         const formation = group.activeFormation();
-        const { supported, unsupported } = getSupportedEffectDescriptors(formation);
+        const { supported, sharedPools, formationWideAbilities } = getSupportedEffectDescriptors(formation);
+        const formationUnitCount = group.units().length;
         const filterContext = LanceTypeIdentifierUtil.getRequirementsFilterContextForGroup(group);
         const baseEligibleUnits = (filterContext.filteredUnits as ASForceUnit[] | undefined) ?? group.units();
         const requestedAssignments = getRequestedAssignments(group, options);
@@ -500,6 +552,15 @@ export class FormationAbilityAssignmentUtil {
             frozenAssignments.set(unitId, [...abilityIds]);
         });
 
+        const sharedPoolPreviews = sharedPools.map((descriptor) => ({
+            descriptor,
+            formationUnitCount,
+            resolvedLevel: resolveFormationSharedPoolLevel(descriptor.group, formationUnitCount),
+            totalUsesPerScenario: descriptor.group.sharedPool.totalUsesPerScenario ?? null,
+            maxUsesPerUnitPerScenario: descriptor.group.sharedPool.maxUsesPerUnitPerScenario ?? null,
+            stacksWithIndividualAbility: descriptor.group.sharedPool.stacksWithIndividualAbility === true,
+        }));
+
         return {
             formation,
             commanderUnitId,
@@ -509,7 +570,8 @@ export class FormationAbilityAssignmentUtil {
             eligibleUnitIds: baseEligibleUnits.map((unit) => unit.id),
             assignmentsByUnitId: frozenAssignments,
             effectPreviews: previews.map(freezeEffectPreview),
-            unsupportedEffects: unsupported,
+            sharedPoolPreviews,
+            formationWideAbilities
         };
     }
 
