@@ -104,6 +104,14 @@ describe('UACFiringModeHandler', () => {
         expect(formatInventoryControlHeat(adjustedHeat.displayValue ?? adjustedHeat.value, adjustedHeat.suffix, mounted.equipment.getRapidFireCount())).toBe('1/s');
     });
 
+    it('scales ammo consumption by the selected shot count', () => {
+        const mounted = entry('AC_ROTARY', ['Single', '2-shot', '3-shot'], new Map([[INVENTORY_CONTROL_MODE_STATE, '3-shot']]));
+
+        expect(handler.applyInventoryControlAmmoConsumption(mounted, 1, queryContext)).toBe(3);
+        expect(handler.applyInventoryControlAmmoConsumption(mounted, 2, queryContext)).toBe(6);
+        expect(handler.applyInventoryControlAmmoConsumption(entry('AC_ROTARY'), 1, queryContext)).toBe(1);
+    });
+
     it('keeps the first mode on the existing per-shot display', () => {
         const mounted = entry('AC_ROTARY');
         const damage: WeaponDamage = { values: [5], maximum: 30, unit: 'shot' };

@@ -61,6 +61,14 @@ export class UACFiringModeHandler extends EquipmentInteractionHandler {
             : effect;
     }
 
+    override applyInventoryControlAmmoConsumption(
+        equipment: MountedEquipment,
+        count: number,
+        _context: HandlerQueryContext,
+    ): number {
+        return count * selectedUacFiringModeShotCount(equipment);
+    }
+
     override applyInventoryControlDisplayEffects(
         equipment: MountedEquipment,
         display: InventoryControlDisplayData,
