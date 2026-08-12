@@ -756,12 +756,17 @@ export class WeaponsEquipmentPanelComponent {
                 await this.context().commandContext.dialogsService.showError(`${row.display.name} has no available ammo.`, 'No Ammo');
                 return;
             }
+            const ammoCount = this.context().registry.applyInventoryControlAmmoConsumption?.(
+                row.entry,
+                1,
+                this.context().queryContext,
+            ) ?? 1;
             const requestKey = option.id;
             const request = requests.get(requestKey);
             if (request) {
-                request.count += 1;
+                request.count += ammoCount;
             } else {
-                requests.set(requestKey, { row, option, count: 1 });
+                requests.set(requestKey, { row, option, count: ammoCount });
             }
         }
 

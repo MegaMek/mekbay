@@ -34,6 +34,7 @@ import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../../mode
 import { ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY, CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules, type C3DegradationSource, type ToHitModifierBreakdownEntry, SKILL_BREAKDOWN_PRIORITY } from '../../models/rules/game-rules';
 import { createCBTForceUnitTestHarness, type TestUnitOverrides } from '../../testing/unit-test-helpers';
 import { getVibrobladeMode, VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../../equipment-handlers/vibroblade.handler';
+import { UACFiringModeHandler } from '../../equipment-handlers/uac-firing-mode.handler';
 import { EquipmentFlag } from '../../models/equipment-flags.type';
 import { EquipmentRegistry } from '../../models/equipment-lookup';
 import { AmmoMunitionFlag } from '../../models/ammo-munition-flags.type';
@@ -2746,6 +2747,90 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(dialogsService.showError).toHaveBeenCalledWith('ATM 6 Standard (1/5) does not have enough ammo for the selected weapons.', 'Not Enough Ammo');
         expect(ammoBin.consumed).toBe(4);
         expect(unit.setHeat).not.toHaveBeenCalled();
+    });
+
+    it('consumes the selected UAC shot count from a shared ammo bin', async () => {
+        const rotaryAmmo = new AmmoEquipment({
+            id: 'Rotary AC/5 Ammo',
+            name: 'Rotary AC/5 Ammo',
+            shortName: 'Rotary AC/5 Ammo',
+            type: 'ammo',
+            ammo: { type: 'AC_ROTARY', rackSize: 5, shots: 10 }
+        });
+        const rotary = entry({
+            id: 'rotary',
+            equipment: new WeaponEquipment({
+                id: 'Rotary AC/5',
+                name: 'Rotary AC/5',
+                type: 'weapon',
+                flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+                modes: ['Single', '2-shot', '3-shot'],
+                weapon: { ammoType: 'AC_ROTARY', rackSize: 5, ranges: [1, 2, 3, 4], heat: 1 }
+            }),
+            states: new Map([[INVENTORY_CONTROL_MODE_STATE, '3-shot']]),
+            el: svgEntry('<g><g class="name"><text>Rotary AC/5</text></g><text class="heat">1</text><text class="range_short">1</text></g>')
+        });
+        const ammoBin = entry({ id: 'rotary-ammo', equipment: rotaryAmmo, totalAmmo: 5, consumed: 0, locations: new Set(['LT']) });
+        const { component, dialogsService, turnState } = createComponent(
+            [rotary, ammoBin],
+            { [rotaryAmmo.internalName]: rotaryAmmo },
+            [],
+            new Map(),
+            { handlers: [new UACFiringModeHandler()], heatDissipation: 3 }
+        );
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(ammoBin.consumed).toBe(3);
+        expect(turnState.addFiredHeat).toHaveBeenCalledWith(3);
+        expect(dialogsService.showNoticeHtml).toHaveBeenCalledWith(
+            'Ammo consumed:<ul><li>3 ammo from Rotary AC/5 Ammo (2/5)</li></ul><p>Heat Projection: +3<br></p>',
+            'Weapons Fired'
+        );
+    });
+
+    it('blocks a UAC firing mode when its full shot count is unavailable', async () => {
+        const rotaryAmmo = new AmmoEquipment({
+            id: 'Rotary AC/5 Ammo',
+            name: 'Rotary AC/5 Ammo',
+            shortName: 'Rotary AC/5 Ammo',
+            type: 'ammo',
+            ammo: { type: 'AC_ROTARY', rackSize: 5, shots: 10 }
+        });
+        const rotary = entry({
+            id: 'rotary',
+            equipment: new WeaponEquipment({
+                id: 'Rotary AC/5',
+                name: 'Rotary AC/5',
+                type: 'weapon',
+                flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+                modes: ['Single', '2-shot', '3-shot'],
+                weapon: { ammoType: 'AC_ROTARY', rackSize: 5, ranges: [1, 2, 3, 4], heat: 1 }
+            }),
+            states: new Map([[INVENTORY_CONTROL_MODE_STATE, '3-shot']]),
+            el: svgEntry('<g><g class="name"><text>Rotary AC/5</text></g><text class="heat">1</text><text class="range_short">1</text></g>')
+        });
+        const ammoBin = entry({ id: 'rotary-ammo', equipment: rotaryAmmo, totalAmmo: 2, consumed: 0, locations: new Set(['LT']) });
+        const { component, dialogsService, turnState } = createComponent(
+            [rotary, ammoBin],
+            { [rotaryAmmo.internalName]: rotaryAmmo },
+            [],
+            new Map(),
+            { handlers: [new UACFiringModeHandler()], heatDissipation: 3 }
+        );
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(dialogsService.showError).toHaveBeenCalledWith(
+            'Rotary AC/5 Ammo (2/2) does not have enough ammo for the selected weapons.',
+            'Not Enough Ammo'
+        );
+        expect(ammoBin.consumed).toBe(0);
+        expect(turnState.addFiredHeat).not.toHaveBeenCalled();
     });
 
     it('hides the action column when no group has ammo or controls', () => {

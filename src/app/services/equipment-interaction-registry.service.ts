@@ -183,6 +183,9 @@ export abstract class EquipmentInteractionHandler {
     /** Applies equipment-state modifiers to typed weapon firing heat. */
     applyInventoryControlHeatEffects?(equipment: MountedEquipment, effect: InventoryControlHeatEffect, context: HandlerQueryContext): InventoryControlHeatEffect;
 
+    /** Applies equipment-specific multipliers to the number of ammo rounds consumed when firing. */
+    applyInventoryControlAmmoConsumption?(equipment: MountedEquipment, count: number, context: HandlerQueryContext): number;
+
     /** Supplies typed selectable heat for physical or miscellaneous equipment. */
     getInventoryControlHeatEffect?(equipment: MountedEquipment, context: HandlerQueryContext): InventoryControlHeatEffect | null;
 
@@ -468,6 +471,14 @@ export class EquipmentInteractionRegistry {
             }
         }
         return nextEffect;
+    }
+
+    applyInventoryControlAmmoConsumption(equipment: MountedEquipment, count: number, context: HandlerQueryContext): number {
+        let nextCount = count;
+        for (const handler of this.getHandlers(equipment)) {
+            nextCount = handler.applyInventoryControlAmmoConsumption?.(equipment, nextCount, context) ?? nextCount;
+        }
+        return nextCount;
     }
 
     getInventoryControlHeatEffect(equipment: MountedEquipment, context: HandlerQueryContext): InventoryControlHeatEffect | null {

@@ -14,6 +14,7 @@ export interface EquipmentDialogRegistry {
     getChoices(entry: MountedEquipment, context: HandlerQueryContext): HandlerChoice[];
     handleSelection(entry: MountedEquipment, choice: HandlerChoice, context: HandlerCommandContext): boolean | Promise<boolean>;
     afterInventoryControlFire(entry: MountedEquipment): void | Promise<void>;
+    applyInventoryControlAmmoConsumption?(entry: MountedEquipment, count: number, context: HandlerQueryContext): number;
     inventoryControlRules(context: HandlerQueryContext): InventoryControlRules;
 }
 
