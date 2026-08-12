@@ -3,6 +3,7 @@
 // Author: Drake
 
 import type { CBTForceUnit } from '../cbt-force-unit.model';
+import type { AmmoMunitionFlag } from '../ammo-munition-flags.type';
 import { AmmoEquipment, Equipment, WeaponEquipment, type RangeBrackets } from '../equipment.model';
 import type { EquipmentRegistry } from '../equipment-lookup';
 import type { InventoryControlRuntimeTarget } from '../inventory-control-runtime-state.model';
@@ -92,6 +93,12 @@ const TO_HIT_MODIFIER_RANGE_INDEX: Record<RangeBrackets, number> = {
 const BASE_HIT_MODIFIER_LABEL = 'Base Hit Modifier';
 const HOMING_ARTILLERY_TAG_BV_PER_LAUNCHER = 50;
 
+interface AmmoMunitionRule {
+    readonly munitionType: AmmoMunitionFlag;
+    readonly shotsMultiplier: number;
+    readonly baseAmmoBvMultiplier?: number;
+}
+
 export function separateHeatFireModifier(resolution: ToHitResolution): ToHitHeatSeparation {
     const heatFireModifier = resolution.modifierBreakdown.reduce(
         (total, entry) => total + (entry.kind === 'heat' ? entry.modifier : 0),
@@ -118,6 +125,7 @@ export abstract class CBTGameRules {
     abstract readonly supportsApolloSaturationMode: boolean;
     abstract readonly supportsBombastLaserRules: boolean;
     abstract readonly physicalLocationRows: readonly PhysicalLocationRow[];
+    protected readonly ammoMunitionRules: readonly AmmoMunitionRule[] = [];
 
     abstract resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution;
     abstract resolveC3TargetingModifier(degradationSource: C3DegradationSource, rangeBracketImprovement: number): ToHitModifierBreakdownEntry | null;
@@ -170,7 +178,22 @@ export abstract class CBTGameRules {
     }
 
     getAmmoShots(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number {
-        return ammo.shots;
+        const rule = this.getAmmoMunitionRule(ammo);
+        if (!rule) return ammo.shots;
+
+        const baseShots = equipmentRegistry?.getBaseAmmo(ammo)?.shots;
+        return baseShots === undefined ? ammo.shots : Math.floor(baseShots * rule.shotsMultiplier);
+    }
+
+    getAmmoBV(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number | "variable" {
+        const rule = this.getAmmoMunitionRule(ammo);
+        if (rule?.baseAmmoBvMultiplier === undefined) return ammo.bv;
+
+        const baseAmmo = equipmentRegistry?.getBaseAmmo(ammo);
+        if (!baseAmmo) return ammo.bv;
+        return typeof baseAmmo.bv === 'number'
+            ? baseAmmo.bv * rule.baseAmmoBvMultiplier
+            : baseAmmo.bv;
     }
 
     getAmmoKgPerShot(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number {
@@ -193,6 +216,10 @@ export abstract class CBTGameRules {
     }
 
     protected abstract readonly physicalBaseHitModifiers: Readonly<Record<string, number | 'Vs'>>;
+
+    private getAmmoMunitionRule(ammo: AmmoEquipment): AmmoMunitionRule | undefined {
+        return this.ammoMunitionRules.find(({ munitionType }) => ammo.hasMunitionType(munitionType));
+    }
 
     protected getRulesProfile(equipment: Equipment): number[] {
         return normalizeToHitProfile(equipment.toHitModifier);
@@ -281,6 +308,11 @@ export class GameRules extends CBTGameRules {
     readonly supportsApolloSaturationMode = true;
     readonly supportsBombastLaserRules = true;
     readonly physicalLocationRows = CORE_2026_PHYSICAL_LOCATION_ROWS;
+    protected override readonly ammoMunitionRules: readonly AmmoMunitionRule[] = [
+        { munitionType: 'M_PRECISION', shotsMultiplier: 0.6 },
+        { munitionType: 'M_ARMOR_PIERCING', shotsMultiplier: 0.8 },
+        { munitionType: 'M_AX_HEAD', shotsMultiplier: 1, baseAmmoBvMultiplier: 1 },
+    ];
 
     override resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
         return { target, degradationSource };
@@ -305,17 +337,6 @@ export class GameRules extends CBTGameRules {
             : modifiers;
     }
 
-    override getAmmoShots(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number {
-        const multiplier = ammo.hasMunitionType('M_PRECISION')
-            ? 0.6
-            : ammo.hasMunitionType('M_ARMOR_PIERCING')
-                ? 0.8
-                : null;
-        if (multiplier === null) return ammo.shots;
-
-        const baseShots = equipmentRegistry?.getBaseAmmo(ammo)?.shots;
-        return baseShots === undefined ? ammo.shots : Math.floor(baseShots * multiplier);
-    }
 }
 
 export class TWGameRules extends CBTGameRules {
@@ -342,6 +363,11 @@ export class TWGameRules extends CBTGameRules {
     readonly supportsApolloSaturationMode = false;
     readonly supportsBombastLaserRules = false;
     readonly physicalLocationRows = TW_PHYSICAL_LOCATION_ROWS;
+    protected override readonly ammoMunitionRules: readonly AmmoMunitionRule[] = [
+        { munitionType: 'M_PRECISION', shotsMultiplier: 0.5 },
+        { munitionType: 'M_ARMOR_PIERCING', shotsMultiplier: 0.5 },
+        { munitionType: 'M_AX_HEAD', shotsMultiplier: 0.5, baseAmmoBvMultiplier: 2 },
+    ];
 
     override resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
         return {

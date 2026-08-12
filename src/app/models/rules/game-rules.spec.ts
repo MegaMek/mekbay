@@ -330,7 +330,7 @@ describe('game rules', () => {
         expect(TW_GAME_RULES.resolveToHit({ subject: mrm }).value).toBe(1);
     });
 
-    it('calculates Core 2026 special ammo from its base ammo without changing TW values', () => {
+    it('calculates special ammo shots according to each ruleset', () => {
         const baseAmmo = new AmmoEquipment({
             id: 'AC5Ammo', name: 'AC/5 Ammo', type: 'ammo',
             ammo: { type: 'AC', shots: 10 }
@@ -343,20 +343,51 @@ describe('game rules', () => {
             id: 'ArmorPiercingAC5', name: 'Armor-Piercing AC/5', type: 'ammo',
             ammo: { type: 'AC', shots: 20, kgPerShot: 50, baseAmmo: baseAmmo.id, munitionType: ['M_ARMOR_PIERCING'] }
         });
+        const axHeadAmmo = new AmmoEquipment({
+            id: 'AxHeadAC5', name: 'AX HEAD AC/5 Ammo', type: 'ammo',
+            ammo: { type: 'AC', shots: 20, baseAmmo: baseAmmo.id, munitionType: ['M_AX_HEAD'] }
+        });
         const registry = new EquipmentRegistry({
             [baseAmmo.id]: baseAmmo,
             [precisionAmmo.id]: precisionAmmo,
             [armorPiercingAmmo.id]: armorPiercingAmmo,
+            [axHeadAmmo.id]: axHeadAmmo,
         });
 
         expect(precisionAmmo.getShots(CORE_2026_GAME_RULES, registry)).toBe(6);
         expect(armorPiercingAmmo.getShots(CORE_2026_GAME_RULES, registry)).toBe(8);
+        expect(axHeadAmmo.getShots(CORE_2026_GAME_RULES, registry)).toBe(10);
         expect(precisionAmmo.getShots(CORE_2026_GAME_RULES)).toBe(20);
-        expect(precisionAmmo.getShots(TW_GAME_RULES, registry)).toBe(20);
+        expect(precisionAmmo.getShots(TW_GAME_RULES, registry)).toBe(5);
+        expect(armorPiercingAmmo.getShots(TW_GAME_RULES, registry)).toBe(5);
+        expect(axHeadAmmo.getShots(TW_GAME_RULES, registry)).toBe(5);
         expect(precisionAmmo.getEffectiveKgPerShot(CORE_2026_GAME_RULES, registry)).toBe(1000 / 6);
-        expect(precisionAmmo.getEffectiveKgPerShot(TW_GAME_RULES, registry)).toBe(50);
+        expect(precisionAmmo.getEffectiveKgPerShot(TW_GAME_RULES, registry)).toBe(1000 / 5);
         expect(armorPiercingAmmo.getEffectiveKgPerShot(CORE_2026_GAME_RULES, registry)).toBe(1000 / 8);
-        expect(armorPiercingAmmo.getEffectiveKgPerShot(TW_GAME_RULES, registry)).toBe(50);
+        expect(armorPiercingAmmo.getEffectiveKgPerShot(TW_GAME_RULES, registry)).toBe(200);
+    });
+
+    it('resolves M_AX_HEAD BV from base ammo according to each ruleset', () => {
+        const baseAmmo = new AmmoEquipment({
+            id: 'AC2Ammo', name: 'AC/2 Ammo', type: 'ammo',
+            stats: { bv: 12 },
+            ammo: { type: 'AC', shots: 45 },
+        });
+        const axHeadAmmo = new AmmoEquipment({
+            id: 'AxHeadAC2', name: 'AX HEAD AC/2 Ammo', type: 'ammo',
+            stats: { bv: 99 }, // some ridiculous value we ignore because we calculate it
+            ammo: {
+                type: 'AC', shots: 1, baseAmmo: baseAmmo.id,
+                munitionType: ['M_AX_HEAD'],
+            },
+        });
+        const registry = new EquipmentRegistry({
+            [baseAmmo.id]: baseAmmo,
+            [axHeadAmmo.id]: axHeadAmmo,
+        });
+
+        expect(CORE_2026_GAME_RULES.getAmmoBV(axHeadAmmo, registry)).toBe(12);
+        expect(TW_GAME_RULES.getAmmoBV(axHeadAmmo, registry)).toBe(24);
     });
 
     describe('Total Warfare TAG BV', () => {
