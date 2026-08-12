@@ -30,6 +30,7 @@ import { AtmHandler } from '../equipment-handlers/atm.handler';
 import { MmlHandler } from '../equipment-handlers/mml.handler';
 import { ATM_EXTENDED_RANGE_PROFILE, ATM_HIGH_EXPLOSIVE_PROFILE, ATM_STANDARD_PROFILE } from './ammo-weapon-profile.model';
 import { VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../equipment-handlers/vibroblade.handler';
+import { UACFiringModeHandler } from '../equipment-handlers/uac-firing-mode.handler';
 import { EquipmentFlag } from './equipment-flags.type';
 import { EquipmentRegistry } from './equipment-lookup';
 import { OptionsService } from '../services/options.service';
@@ -3412,6 +3413,61 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('9/7/5 [V]');
         expect(hitModText.textContent).toBe('-4');
+    });
+
+    it('renders the selected UAC firing mode after the SVG inventory name', () => {
+        const rotary = new WeaponEquipment({
+            id: 'CLRotaryAC5',
+            name: 'Rotary AC/5',
+            type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+            modes: ['Single', '2-shot', '3-shot'],
+            weapon: { ammoType: 'AC_ROTARY', heat: 1, damage: 5, ranges: [4, 8, 12, 16] },
+        });
+        equipment[rotary.internalName] = rotary;
+        const forceUnit = createForceUnit(createEmptyUnit({
+            ...createMekUnit(),
+            comp: [{
+                id: 'CLRotaryAC5@LT#2',
+                q: 1,
+                q2: 0,
+                n: 'Rotary AC/5',
+                t: 'B',
+                p: 1,
+                l: 'LT',
+                r: '4/8/12',
+                m: '0',
+                d: '5/Sht',
+                md: '30.0',
+                c: '1',
+                os: 0,
+                eq: rotary,
+            }],
+        }));
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <g class="inventoryEntry" id="CLRotaryAC5@LT#2" hitMod="0">
+                    <g class="name"><text>Rotary AC/5</text></g>
+                    <text class="heat">1</text>
+                    <g class="damage"><text>5/Sht</text></g>
+                    <text class="range_short">4</text>
+                    <text class="range_medium">8</text>
+                    <text class="range_long">12</text>
+                </g>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        initialize(forceUnit, svg);
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new UACFiringModeHandler());
+
+        const entry = forceUnit.getInventory()[0];
+        entry.setState(INVENTORY_CONTROL_MODE_STATE, '3-shot');
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshInventory();
+
+        expect(entry.el?.querySelector(':scope > .name > text')?.textContent).toBe('Rotary AC/5 (3-shot)');
+        expect(entry.el?.querySelector(':scope > .heat')?.textContent).toBe('1/s');
+        expect(entry.el?.querySelector(':scope > .damage > text')?.textContent).toBe('5/Sht [DB,R6,S]');
     });
 
     it('reactively disables intact SVG equipment while shutdown without marking it damaged', () => {

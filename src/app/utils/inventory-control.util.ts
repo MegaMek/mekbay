@@ -156,6 +156,7 @@ export interface InventoryControlDisplayEffectOptions {
     selectedRange: InventoryControlRuntimeRangeKey | null;
     hitModifierBreakdown: readonly ToHitModifierBreakdownEntry[];
     selectedAmmo?: AmmoEquipment | null;
+    showModeName?: boolean;
 }
 
 export type InventoryControlDisplayEffectApplier = (
@@ -640,7 +641,13 @@ function buildInventoryControlRow(
     const resolvedDisplay = {
         ...display,
         ...(entry.equipment instanceof WeaponEquipment && { damage: damageResolution?.text ?? '—' }),
-        ...(heatResolution !== null && { heat: formatInventoryControlHeat(heatResolution.value, heatResolution.suffix, rapidFireCount) })
+        ...(heatResolution !== null && {
+            heat: formatInventoryControlHeat(
+                heatResolution.displayValue ?? heatResolution.value,
+                heatResolution.suffix,
+                rapidFireCount
+            )
+        })
     };
     const adjustedDisplay = applyInventoryControlDisplayEffects(entry, resolvedDisplay, {
         selectedRange,

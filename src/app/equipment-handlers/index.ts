@@ -7,6 +7,7 @@ import { ECMHandler } from './ecm.handler';
 import { BAPHandler } from './bap.handler';
 import { StealthHandler } from './stealth.handler';
 import { UACJammingHandler } from './uacjamming.handler';
+import { UACFiringModeHandler } from './uac-firing-mode.handler';
 import { C3Handler } from './c3.handler';
 import { InventoryModeHandler } from './inventory-mode.handler';
 import { PpcCapacitorHandler } from './ppc-capacitor.handler';
@@ -48,6 +49,7 @@ export function registerAllHandlers(registryService: EquipmentInteractionRegistr
     registry.register(new DisabledEquipmentHandler());
     registry.register(new PpcCapacitorHandler());
     registry.register(new BombastLaserHandler());
+    registry.register(new UACFiringModeHandler());
     registry.register(new UACJammingHandler());
     registry.register(new C3Handler());
     // registry.register(new WeaponAmmoHandler()); // TODO: is a bit annoying
