@@ -173,6 +173,10 @@ export abstract class CBTGameRules {
         return ammo.shots;
     }
 
+    getAmmoBV(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number | "variable" {
+        return ammo.bv;
+    }
+
     getAmmoKgPerShot(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number {
         const shots = this.getAmmoShots(ammo, equipmentRegistry);
         if (shots <= 0) return 0;
@@ -316,6 +320,11 @@ export class GameRules extends CBTGameRules {
         const baseShots = equipmentRegistry?.getBaseAmmo(ammo)?.shots;
         return baseShots === undefined ? ammo.shots : Math.floor(baseShots * multiplier);
     }
+
+    override getAmmoBV(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number | "variable" {
+        if (!ammo.hasMunitionType('M_AX_HEAD')) return ammo.bv;
+        return equipmentRegistry?.getBaseAmmo(ammo)?.bv ?? ammo.bv;
+    }
 }
 
 export class TWGameRules extends CBTGameRules {
@@ -354,6 +363,13 @@ export class TWGameRules extends CBTGameRules {
 
     override resolveC3TargetingModifier(_degradationSource: C3DegradationSource, _rangeBracketImprovement: number): ToHitModifierBreakdownEntry | null {
         return null;
+    }
+
+    override getAmmoBV(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number | "variable" {
+        if (!ammo.hasMunitionType('M_AX_HEAD')) return ammo.bv;
+        const baseAmmo = equipmentRegistry?.getBaseAmmo(ammo);
+        if (!baseAmmo) return ammo.bv;
+        return typeof baseAmmo.bv === 'number' ? baseAmmo.bv * 2 : baseAmmo.bv;
     }
 
     /* TARGET ACQUISITION GEAR (TAG)

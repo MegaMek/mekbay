@@ -359,6 +359,29 @@ describe('game rules', () => {
         expect(armorPiercingAmmo.getEffectiveKgPerShot(TW_GAME_RULES, registry)).toBe(50);
     });
 
+    it('resolves M_AX_HEAD BV from base ammo according to each ruleset', () => {
+        const baseAmmo = new AmmoEquipment({
+            id: 'AC2Ammo', name: 'AC/2 Ammo', type: 'ammo',
+            stats: { bv: 12 },
+            ammo: { type: 'AC', shots: 45 },
+        });
+        const axHeadAmmo = new AmmoEquipment({
+            id: 'AxHeadAC2', name: 'AX HEAD AC/2 Ammo', type: 'ammo',
+            stats: { bv: 99 }, // some ridiculous value we ignore because we calculate it
+            ammo: {
+                type: 'AC', shots: 1, baseAmmo: baseAmmo.id,
+                munitionType: ['M_AX_HEAD'],
+            },
+        });
+        const registry = new EquipmentRegistry({
+            [baseAmmo.id]: baseAmmo,
+            [axHeadAmmo.id]: axHeadAmmo,
+        });
+
+        expect(CORE_2026_GAME_RULES.getAmmoBV(axHeadAmmo, registry)).toBe(12);
+        expect(TW_GAME_RULES.getAmmoBV(axHeadAmmo, registry)).toBe(24);
+    });
+
     describe('Total Warfare TAG BV', () => {
         it('multiplies compatible guided-ammo BV by operational mounted TAG count', () => {
             const { tagUnit } = tagBvContext({ tagCount: 2 });

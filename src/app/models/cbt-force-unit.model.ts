@@ -1316,6 +1316,7 @@ export class CBTForceUnit extends ForceUnit {
 
     public customAmmoBvVariation = computed<number>(() => {
         if (!this.isLoaded()) return 0; // Ensure unit is loaded so that inventory and crits are available
+        const equipmentRegistry = this.getEquipmentRegistry();
         let bvVariation = 0;
         if (this.getUnit().type === 'Mek') {
             const crits = this.getCritSlots();
@@ -1323,10 +1324,12 @@ export class CBTForceUnit extends ForceUnit {
                 if (crit.eq instanceof AmmoEquipment && crit.originalName && crit.originalName !== crit.name) {
                     const originalAmmo = this.dataService.findEquipment(crit.originalName) as AmmoEquipment | undefined;
                     if (originalAmmo) {
-                        if (!originalAmmo.hasFixedBV() || !crit.eq.hasFixedBV()) {
+                        const originalBv = this.gameRules.getAmmoBV(originalAmmo, equipmentRegistry);
+                        const customBv = this.gameRules.getAmmoBV(crit.eq, equipmentRegistry);
+                        if (typeof originalBv !== 'number' || typeof customBv !== 'number') {
                             continue; // Skip variable BV. TODO: need to be handle when we have BaseEntity
                         }
-                        bvVariation += crit.eq.bv - originalAmmo.bv;
+                        bvVariation += customBv - originalBv;
                     }
                 }
             }
@@ -1336,10 +1339,12 @@ export class CBTForceUnit extends ForceUnit {
                 if (item.equipment instanceof AmmoEquipment && item.ammo && item.ammo !== item.name) {
                     const customAmmo = this.dataService.findEquipment(item.ammo) as AmmoEquipment | undefined;
                     if (customAmmo) {
-                        if (!item.equipment.hasFixedBV() || !customAmmo.hasFixedBV()) {
+                        const originalBv = this.gameRules.getAmmoBV(item.equipment, equipmentRegistry);
+                        const customBv = this.gameRules.getAmmoBV(customAmmo, equipmentRegistry);
+                        if (typeof originalBv !== 'number' || typeof customBv !== 'number') {
                             continue; // Skip variable BV. TODO: need to be handle when we have BaseEntity
                         }
-                        bvVariation += customAmmo.bv - item.equipment.bv;
+                        bvVariation += customBv - originalBv;
                     }
                 }
             }
