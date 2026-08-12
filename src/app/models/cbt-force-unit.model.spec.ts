@@ -303,7 +303,7 @@ function createVehicleUnit(equipment: EquipmentMap): Unit {
         heat: -1,
         dissipation: -1,
         comp: [
-            { id: 'CLUltraAC20', q: 1, q2: 0, n: 'Ultra AC/20', t: 'B', p: 1, l: 'FR', r: '4/8/12', m: '0', d: '20/Shot', md: '40.0', c: '1', os: 0, eq: equipment['CLUltraAC20'] },
+            { id: 'CLUltraAC20', q: 1, q2: 0, n: 'Ultra AC/20', t: 'B', p: 1, l: 'FR', r: '4/8/12', m: '0', d: '20/Sht', md: '40.0', c: '1', os: 0, eq: equipment['CLUltraAC20'] },
             { id: 'Clan Ultra AC/20 Ammo', q: 6, q2: 30, n: 'Ultra AC/20 Ammo', t: 'X', p: 0, l: 'BD', c: '0', os: 0, eq: equipment['Clan Ultra AC/20 Ammo'] },
         ],
         sheets: ['vehicle/test.svg'],
