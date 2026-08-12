@@ -59,6 +59,7 @@ export interface SkillPreviewEntry {
 
         .skill-option {
             padding: 8px 6px;
+            min-width: max-content;
             cursor: pointer;
             display: grid;
             grid-template-columns: 1.5em auto 3em;

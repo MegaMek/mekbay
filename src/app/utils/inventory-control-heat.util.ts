@@ -11,6 +11,7 @@ export interface InventoryControlHeatEffect {
     readonly value: number;
     readonly weakened: boolean;
     readonly suffix?: '*';
+    readonly displayValue?: number;
 }
 
 export interface InventoryControlHeatRules {

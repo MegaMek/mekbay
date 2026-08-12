@@ -19,7 +19,7 @@ describe('formatWeaponDamage', () => {
 
     it('formats missile, shot, and artillery units', () => {
         expect(formatWeaponDamage({ values: [2], maximum: 12, unit: 'missile' })).toBe('2/Msl');
-        expect(formatWeaponDamage({ values: [5], maximum: 10, unit: 'shot' })).toBe('5/Shot');
+        expect(formatWeaponDamage({ values: [5], maximum: 10, unit: 'shot' })).toBe('5/Sht');
         expect(formatWeaponDamage(
             { values: [5], maximum: 10, unit: 'shot' },
             { shotSuffix: '/Sht' },

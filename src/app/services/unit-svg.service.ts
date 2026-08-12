@@ -1397,7 +1397,11 @@ export class UnitSvgService {
             const rapidFireCount = entry.equipment instanceof WeaponEquipment
                 ? entry.equipment.getRapidFireCount()
                 : 0;
-            text.textContent = formatInventoryControlHeat(heatResolution.value, heatResolution.suffix, rapidFireCount);
+            text.textContent = formatInventoryControlHeat(
+                heatResolution.displayValue ?? heatResolution.value,
+                heatResolution.suffix,
+                rapidFireCount
+            );
         } else {
             const display = this.unit.applyInventoryControlDisplayEffects(entry, readInventoryControlDisplayData(entry), {
                 selectedRange,
@@ -1635,10 +1639,24 @@ export class UnitSvgService {
         const destroyed = status === 'destroyed';
         entry.el.classList.toggle('damagedInventory', destroyed);
         if (destroyed || actionUnavailable) entry.el.classList.remove('selected');
+        this.renderInventoryControlNameEntry(entry);
         this.renderHitModEntry(entry, destroyed
             ? { profile: [], value: null, changed: false, weakened: false, modifierBreakdown: [] }
             : this.resolveInventoryControlToHit(entry));
         this.renderInventoryControlHeatEntry(entry, null);
+    }
+
+    private renderInventoryControlNameEntry(entry: MountedEquipment): void {
+        const text = inventoryControlDirectText(entry.el, '.name');
+        if (!text) return;
+
+        const display = this.unit.applyInventoryControlDisplayEffects(entry, readInventoryControlDisplayData(entry), {
+            selectedRange: null,
+            hitModifierBreakdown: this.unit.rules.getEquipmentToHitModifiers(entry),
+            selectedAmmo: null,
+            showModeName: true,
+        });
+        text.textContent = display.name;
     }
 
     protected renderChargeDamage(entry: MountedEquipment, chargeDamage: ChargeDamage): void {

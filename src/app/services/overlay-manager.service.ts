@@ -44,6 +44,7 @@ type ManagedEntry = {
 };
 // Movement threshold (px) to consider a pointer interaction a "click"
 const CLICK_MOVE_THRESHOLD = 10;
+const OVERLAY_VIEWPORT_MARGIN = 4;
 
 @Injectable({ providedIn: 'root' })
 export class OverlayManagerService {
@@ -148,7 +149,7 @@ export class OverlayManagerService {
                     { originX: 'start', originY: 'top',    overlayX: 'start', overlayY: 'bottom',offsetY: -4 }
                 ])
                 .withPush(true)
-                .withViewportMargin(4);
+                .withViewportMargin(OVERLAY_VIEWPORT_MARGIN);
         } else {
             positionStrategy = this.overlay.position()
                 .global()
@@ -208,6 +209,10 @@ export class OverlayManagerService {
         entry.triggerElement = el ?? undefined;
         entry.matchTriggerWidth = opts?.matchTriggerWidth ?? false;
         entry.anchorActiveSelector = opts?.anchorActiveSelector;
+
+        if (entry.matchTriggerWidth) {
+            overlayRef.overlayElement.style.flexShrink = '0';
+        }
         
         // Apply initial width if matchTriggerWidth is enabled
         if (entry.matchTriggerWidth && el) {
@@ -417,14 +422,15 @@ export class OverlayManagerService {
                     continue;
                 }
 
+                if (entry.matchTriggerWidth) {
+                    this.updateOverlayWidth(entry);
+                }
+
                 // For anchored-active overlays, recompute position from scratch
                 if (entry.anchorActiveSelector && entry.triggerElement) {
                     this.updateAnchoredPosition(entry);
                 } else {
                     entry.overlayRef.updatePosition();
-                }
-                if (entry.matchTriggerWidth) {
-                    this.updateOverlayWidth(entry);
                 }
             } catch { /* ignore */ }
         }
@@ -436,11 +442,25 @@ export class OverlayManagerService {
         }
     }
 
-    /** Update overlay width to match trigger element width */
+    /** Keep the trigger width as the minimum while allowing wider content. */
     private updateOverlayWidth(entry: ManagedEntry) {
-        if (!entry.triggerElement) return;
-        const width = entry.triggerElement.getBoundingClientRect().width;
-        entry.overlayRef.updateSize({ width: `${width}px` });
+        const pane = entry.overlayRef.overlayElement;
+        if (!entry.triggerElement || !pane) return;
+        const triggerWidth = entry.triggerElement.getBoundingClientRect().width;
+        const maxWidth = Math.max(0, window.innerWidth - OVERLAY_VIEWPORT_MARGIN * 2);
+        const minWidth = Math.min(triggerWidth, maxWidth);
+        const scrollContainer = pane.querySelector<HTMLElement>('[data-scroll-container]');
+        const measuredWidth = Math.max(pane.scrollWidth, scrollContainer?.scrollWidth ?? 0);
+        const currentWidth = Math.max(pane.clientWidth, scrollContainer?.clientWidth ?? 0);
+        const contentWidth = measuredWidth > currentWidth + 1 ? measuredWidth + 1 : measuredWidth;
+
+        const width = Math.min(maxWidth, Math.max(minWidth, contentWidth));
+
+        entry.overlayRef.updateSize({
+            width: `${width}px`,
+            minWidth: `${minWidth}px`,
+            maxWidth: `${maxWidth}px`,
+        });
     }
 
     /**
@@ -521,7 +541,12 @@ export class OverlayManagerService {
         // Update the cached global position strategy (avoids allocating a new one per frame)
         const strategy = entry.anchorPositionStrategy;
         if (!strategy) return;
-        strategy.left(`${triggerRect.left}px`).top(`${top}px`);
+        const paneWidth = pane.getBoundingClientRect().width;
+        const centeredLeft = triggerRect.left + (triggerRect.width - paneWidth) / 2;
+        const minLeft = OVERLAY_VIEWPORT_MARGIN;
+        const maxLeft = Math.max(minLeft, window.innerWidth - OVERLAY_VIEWPORT_MARGIN - paneWidth);
+        const left = Math.max(minLeft, Math.min(centeredLeft, maxLeft));
+        strategy.left(`${left}px`).top(`${top}px`);
         entry.overlayRef.updatePosition();
 
         pane.style.maxHeight = `${maxPanelH}px`;

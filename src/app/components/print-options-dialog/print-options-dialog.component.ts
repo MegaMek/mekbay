@@ -43,7 +43,7 @@ export interface PrintOptionsDialogData {
 
                 <div class="option-col">
                     <div class="option-row">
-                        <label for="cleanPrint">Fresh units:</label>
+                        <label for="cleanPrint">Units condition:</label>
                         <select id="cleanPrint" class="bt-select option-select" [value]="printOptions().clean"
                             (change)="onBooleanChange('clean', $event)">
                             <option value="false">Keep current state</option>
