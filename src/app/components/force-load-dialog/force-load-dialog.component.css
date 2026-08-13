@@ -233,6 +233,16 @@
     font-weight: 600;
 }
 
+.force-unit-count {
+    color: var(--text-color-secondary);
+    font-size: 0.8em;
+
+    &::before {
+        content: '·';
+        margin-right: 4px;
+    }
+}
+
 .save-state-icon {
     width: 16px;
     height: 16px;

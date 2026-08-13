@@ -1333,6 +1333,10 @@ export class ForceLoadDialogComponent {
         return formationName;
     }
 
+    getForceUnitCount(force: LoadForceEntry): number {
+        return force.groups.reduce((sum, group) => sum + group.units.length, 0);
+    }
+
     private matchesGameTypeFilter(item: { type?: GameSystem }, typeFilter: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE): boolean {
         const itemType = item.type || GameSystem.CLASSIC;
         return typeFilter === 'all' || itemType === typeFilter;
