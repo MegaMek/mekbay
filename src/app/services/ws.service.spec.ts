@@ -257,6 +257,46 @@ describe('WsService', () => {
 
         expect(connectSpy).toHaveBeenCalled();
     });
+
+    it('does not globally report an error owned by a pending request', async () => {
+        const service = TestBed.inject(WsService);
+        const socket = createSocketMock();
+        const globalErrorHandler = jasmine.createSpy('globalErrorHandler');
+        (service as any).ws = socket;
+        service.setGlobalErrorHandler(globalErrorHandler);
+
+        const responsePromise = service.sendAndWaitForResponse(
+            { action: 'joinLobby' },
+            { suppressGlobalError: true },
+        );
+        const request = sentMessages(socket)[0];
+        const event = {
+            data: JSON.stringify({
+                action: 'error',
+                requestId: request.requestId,
+                message: 'Lobby not found',
+            }),
+        } as MessageEvent;
+
+        (service as any).handleMessage(event);
+        const requestHandler = socket.addEventListener.calls.mostRecent().args[1] as (event: MessageEvent) => void;
+        requestHandler(event);
+
+        expect((await responsePromise).message).toBe('Lobby not found');
+        expect(globalErrorHandler).not.toHaveBeenCalled();
+    });
+
+    it('continues to globally report unsolicited server errors', () => {
+        const service = TestBed.inject(WsService);
+        const globalErrorHandler = jasmine.createSpy('globalErrorHandler');
+        service.setGlobalErrorHandler(globalErrorHandler);
+
+        (service as any).handleMessage({
+            data: JSON.stringify({ action: 'error', message: 'Server error' }),
+        } as MessageEvent);
+
+        expect(globalErrorHandler).toHaveBeenCalledOnceWith('Server error');
+    });
 });
 
 function createSocketMock(): WebSocket & {

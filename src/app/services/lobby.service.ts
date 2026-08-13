@@ -201,7 +201,9 @@ export class LobbyService {
         if (!this.wsService.wsConnected()) {
             throw new Error('The server is not connected.');
         }
-        const response = await this.wsService.sendAndWaitForResponse(payload);
+        const response = await this.wsService.sendAndWaitForResponse(payload, {
+            suppressGlobalError: true,
+        });
         if (!response) throw new Error('The server did not respond.');
         if (response.action === 'error') throw new Error(response.message || 'Lobby request failed.');
         return response;

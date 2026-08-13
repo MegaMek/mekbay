@@ -102,7 +102,10 @@ describe('LobbyService', () => {
         await service.createLobby();
         await settleEffects();
 
-        expect(wsService.sendAndWaitForResponse).toHaveBeenCalledWith({ action: 'createLobby' });
+        expect(wsService.sendAndWaitForResponse).toHaveBeenCalledWith(
+            { action: 'createLobby' },
+            { suppressGlobalError: true },
+        );
         expect(JSON.stringify(wsService.sendAndWaitForResponse.calls.allArgs())).not.toContain('uuid');
         expect(service.state()?.code).toBe('a1b2');
     });
@@ -133,7 +136,10 @@ describe('LobbyService', () => {
 
         await service.joinLobby(' A1B2 ');
 
-        expect(wsService.sendAndWaitForResponse).toHaveBeenCalledWith({ action: 'joinLobby', code: 'a1b2' });
+        expect(wsService.sendAndWaitForResponse).toHaveBeenCalledWith(
+            { action: 'joinLobby', code: 'a1b2' },
+            { suppressGlobalError: true },
+        );
         expect(service.state()?.code).toBe('a1b2');
     });
 
