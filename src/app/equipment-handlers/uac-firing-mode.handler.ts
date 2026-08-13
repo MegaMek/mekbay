@@ -22,10 +22,7 @@ export class UACFiringModeHandler extends EquipmentInteractionHandler {
     override applicableTo = (equipment: MountedEquipment): boolean => {
         if (equipment.equipment instanceof WeaponEquipment) {
             const ammoType = equipment.equipment.ammoType;
-            if (ammoType === 'AC_ROTARY') return true;
-            if (equipment.owner?.gameRules.usesUacJamming) {
-                return ammoType === 'AC_ULTRA' || ammoType === 'AC_ULTRA_THB';
-            }
+            return ammoType === 'AC_ROTARY' || ammoType === 'AC_ULTRA' || ammoType === 'AC_ULTRA_THB';
         }
         return false;
     };
