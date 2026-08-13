@@ -1837,7 +1837,7 @@ export class ForceBuilderService {
             const params = this.queryParameters();
             const selectedUnit = this.selectedUnit();
             
-            const sel = selectedUnit?.force?.instanceId ? selectedUnit?.id : null;
+            const sel = selectedUnit?.force?.instanceId() ? selectedUnit?.id : null;
             if (!this.urlStateInitialized()) {
                 return;
             }
