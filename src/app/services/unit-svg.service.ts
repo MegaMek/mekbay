@@ -24,6 +24,7 @@ import { calculateHeatProjection, type HeatProjection } from '../models/turn-sta
 import type { ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import { isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, selectedRiscLaserMode } from '../equipment-handlers/risc-laser-pulse-module.handler';
+import { getSvgTextLines, measureSvgTextCanvas, writeSvgTextLines } from '../utils/svg-text.util';
 
 const INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY = '--inventory-control-selection-color';
 const HEAT_PROJECTION_ORIGINAL_OVERFLOW_STROKE = 'data-heat-projection-original-stroke';
@@ -125,6 +126,9 @@ export class UnitSvgService {
                 RsPolyfillUtil.addMissingClasses(this.unit, svg);
                 this.unitInitializer.initializeUnitIfNeeded(this.unit, svg);
                 RsPolyfillUtil.syncConditionButtons(this.unit, svg);
+                if (document.fonts?.ready) {
+                    await document.fonts.ready.catch(() => undefined);
+                }
 
                 this.unit.svg.set(svg);
                 this.updateArmorDisplay(true);
@@ -1237,7 +1241,7 @@ export class UnitSvgService {
         return truncated.length > 0 ? `${truncated}...` : '...';
     }
 
-    private svgTextWidth(line: SVGTextElement, text?: string): number {
+    private svgTextWidth(line: SVGTextContentElement, text?: string): number {
         if (text !== undefined) line.textContent = text;
         try {
             const computedWidth = line.getComputedTextLength();
@@ -1485,19 +1489,18 @@ export class UnitSvgService {
     /** Writes damage across the template's available rows without leaving stale text. */
     protected renderInventoryDamageText(damageText: Element, damage: string): void {
         const damageContainer = damageText.parentElement;
-        const lines = damageContainer
-            ? Array.from(damageContainer.querySelectorAll<SVGTextElement>(':scope > text'))
-            : damageText instanceof SVGTextElement ? [damageText] : [];
+        const lines = getSvgTextLines(damageContainer ?? damageText);
         if (lines.length === 0) return;
 
         const lineWidth = this.inventoryDamageLineWidth(damageContainer, lines[0]);
-        const wrappedLines = this.wrapInventoryDamageText(lines[0], damage, lineWidth, lines.length);
-        lines.forEach((line, index) => {
-            line.textContent = wrappedLines[index] ?? '';
+        writeSvgTextLines(damageContainer ?? damageText, damage, {
+            maxWidth: lineWidth,
+            allowFinalLineOverflow: true,
+            measure: (line, text) => this.svgTextWidth(line, text),
         });
     }
 
-    private inventoryDamageLineWidth(damageContainer: Element | null, damageText: SVGTextElement): number | null {
+    private inventoryDamageLineWidth(damageContainer: Element | null, damageText: SVGTextContentElement): number | null {
         const row = damageContainer?.parentElement;
         const rangeMinText = row?.querySelector<SVGTextElement>(':scope > .range_min');
         const damageX = Number.parseFloat(damageText.getAttribute('x') ?? '');
@@ -1506,48 +1509,6 @@ export class UnitSvgService {
 
         const width = rangeMinX - damageX - 1;
         return width > 0 ? width : null;
-    }
-
-    private wrapInventoryDamageText(
-        line: SVGTextElement,
-        damage: string,
-        width: number | null,
-        lineCount: number
-    ): string[] {
-        if (!damage || width === null || lineCount === 1) return [damage];
-
-        const lines: string[] = [];
-        let remaining = damage.trim();
-        while (remaining && lines.length < lineCount) {
-            if (this.ammoProfileTextFits(line, width, remaining)) {
-                lines.push(remaining);
-                remaining = '';
-                break;
-            }
-
-            const lineText = this.inventoryDamageLineBreak(line, width, remaining);
-            lines.push(lineText);
-            remaining = remaining.slice(lineText.length).trimStart();
-        }
-
-        if (remaining) {
-            lines[lines.length - 1] += remaining;
-        }
-        return lines;
-    }
-
-    private inventoryDamageLineBreak(line: SVGTextElement, width: number, text: string): string {
-        let end = 0;
-        for (let index = 1; index <= text.length; index++) {
-            if (!this.ammoProfileTextFits(line, width, text.slice(0, index))) break;
-            end = index;
-        }
-        if (end === 0) return text[0];
-
-        // Damage-type tags (for example, "[C5,H,M,OS,S]") are one semantic value.
-        // Do not split them at commas when an inventory interaction re-renders the row.
-        const breakIndex = text.lastIndexOf(' ', end - 1);
-        return text.slice(0, breakIndex > 0 ? breakIndex : end).trimEnd();
     }
 
     private inventoryControlSelectedRange(
@@ -1647,8 +1608,9 @@ export class UnitSvgService {
     }
 
     private renderInventoryControlNameEntry(entry: MountedEquipment): void {
-        const text = inventoryControlDirectText(entry.el, '.name');
-        if (!text) return;
+        const name = entry.el?.querySelector<SVGElement>(':scope > .name');
+        const lines = getSvgTextLines(name);
+        if (lines.length === 0) return;
 
         const display = this.unit.applyInventoryControlDisplayEffects(entry, readInventoryControlDisplayData(entry), {
             selectedRange: null,
@@ -1656,7 +1618,43 @@ export class UnitSvgService {
             selectedAmmo: null,
             showModeName: true,
         });
-        text.textContent = display.name;
+        writeSvgTextLines(name, display.name, {
+            maxWidth: this.inventoryNameLineWidth(entry.el, lines[0]),
+            measure: measureSvgTextCanvas,
+        });
+    }
+
+    private inventoryNameLineWidth(entry: SVGElement | undefined, line: SVGTextContentElement): number | null {
+        if (!entry) return null;
+        const nameX = this.svgTextCoordinate(line, 'x');
+        if (!Number.isFinite(nameX)) return null;
+
+        const nameBoundaryAnchors = ['.location', '.heat', '.damage', '.range_min', '.range_short', '.range_medium', '.range_long', '.range_extreme']
+            .map(selector => Number.parseFloat(inventoryControlDirectText(entry, selector)?.getAttribute('x') ?? ''))
+            .filter(x => Number.isFinite(x) && x > nameX)
+            .sort((left, right) => left - right);
+        const firstColumnX = nameBoundaryAnchors[0];
+        let nameRightEdge: number;
+        if (firstColumnX !== undefined) {
+            const secondColumnX = nameBoundaryAnchors[1];
+            const columnGap = secondColumnX === undefined ? 0 : secondColumnX - firstColumnX;
+            nameRightEdge = firstColumnX - Math.max(0, columnGap) / 2;
+        } else {
+            const button = entry.querySelector<SVGRectElement>(':scope > .mainButton');
+            const buttonX = Number.parseFloat(button?.getAttribute('x') ?? '');
+            const buttonWidth = Number.parseFloat(button?.getAttribute('width') ?? '');
+            if (!Number.isFinite(buttonX) || !Number.isFinite(buttonWidth)) return null;
+            nameRightEdge = buttonX + buttonWidth;
+        }
+
+        const width = nameRightEdge - nameX - 1;
+        return width > 0 ? width : null;
+    }
+
+    private svgTextCoordinate(line: SVGTextContentElement, attribute: string): number {
+        const value = Number.parseFloat(line.getAttribute(attribute) ?? '');
+        if (Number.isFinite(value)) return value;
+        return Number.parseFloat(line.parentElement?.getAttribute(attribute) ?? '');
     }
 
     protected renderChargeDamage(entry: MountedEquipment, chargeDamage: ChargeDamage): void {

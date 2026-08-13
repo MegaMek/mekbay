@@ -186,7 +186,46 @@
     </ng-template>
     <ng-template #operationsPopupMenu>
         <div class="popup-menu glass framed-borders has-shadow" cdkMenu>
-
+            @if (lobbyService.hasLobby()) {
+            <button class="menu-item" cdkMenuItem (click)="showLobbyDialog()">
+                <span class="icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M1.5 6.5C1.5 3.462 3.962 1 7 1s5.5 2.462 5.5 5.5S10.038 12 7 12 1.5 9.538 1.5 6.5Zm13 0c0 1.5-.441 2.898-1.2 4.07A5.5 5.5 0 1 0 13.3 2.43a7.466 7.466 0 0 1 1.2 4.07ZM0 18a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v4a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1v-4Zm16 0v5h7a1 1 0 0 0 1-1v-4a4 4 0 0 0-4-4h-5.528A5.98 5.98 0 0 1 16 18Z" />
+                    </svg>
+                </span> Manage Lobby</button>
+            @if ((operationFriendlySlots().length + operationEnemySlots().length) > 1) {
+            <button class="menu-item" cdkMenuItem [cdkMenuTriggerFor]="forcesSubmenu">
+                <span class="icon">
+                    <svg width="16px" height="16px" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13Zm8 0c-.29 0-.62.02-.97.05C16.19 13.89 17 15.02 17 16.5V19h6v-2.5c0-2.33-4.67-3.5-7-3.5Z" />
+                    </svg>
+                </span>
+                Forces
+            </button>
+            }
+            <hr class="divider" />
+            <button class="menu-item" cdkMenuItem (click)="lobbyService.confirmAndLeave()">
+                <span class="icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M5 2h9v2H5v16h9v2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm12.6 5.6L22 12l-4.4 4.4-1.4-1.4 2-2H9v-2h9.2l-2-2 1.4-1.4Z" />
+                    </svg>
+                </span> Leave Lobby</button>
+            } @else {
+            @if (lobbyService.canCreateOrJoin() && !forceBuilderService.hasOperation()) {
+            <button class="menu-item" cdkMenuItem (click)="createLobby()">
+                <span class="icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M1.5 6.5C1.5 3.462 3.962 1 7 1s5.5 2.462 5.5 5.5S10.038 12 7 12 1.5 9.538 1.5 6.5Zm13 0c0 1.5-.441 2.898-1.2 4.07A5.5 5.5 0 1 0 13.3 2.43a7.466 7.466 0 0 1 1.2 4.07ZM0 18a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v4a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1v-4Zm16 0v5h7a1 1 0 0 0 1-1v-4a4 4 0 0 0-4-4h-5.528A5.98 5.98 0 0 1 16 18Z" />
+                    </svg>
+                </span> Create Lobby</button>
+            <button class="menu-item" cdkMenuItem (click)="joinLobby()">
+                <span class="icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M13 5 20 12l-7 7-1.4-1.4 4.6-4.6H4v-2h12.2l-4.6-4.6L13 5Z" />
+                    </svg>
+                </span> Join Lobby</button>
+            <hr class="divider" />
+            }
             @if (forceBuilderService.hasOperation() && (operationFriendlySlots().length + operationEnemySlots().length)
             > 1) {
             <button class="menu-item" cdkMenuItem [cdkMenuTriggerFor]="forcesSubmenu">
@@ -241,6 +280,7 @@
                         <path
                             d="M17.1716 8.17157L15.7574 9.58579L17.1716 11H9V13H17.1716L15.7574 14.4142L17.1716 15.8284L21 12L17.1716 8.17157Z" />
                     </svg></span> Exit Operation</button>
+            }
             }
         </div>
     </ng-template>

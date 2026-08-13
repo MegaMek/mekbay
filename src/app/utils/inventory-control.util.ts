@@ -780,7 +780,7 @@ function readTypedEquipmentDisplayData(entry: MountedEquipment, hit: string): In
         ? STANDARD_AEROSPACE_RANGE_LIMITS
         : weapon?.ranges;
     return {
-        name: equipment?.name ?? entry.name,
+        name: equipment?.shortName || equipment?.name || entry.name,
         location: normalizeCell(Array.from(entry.locations ?? []).join('/')),
         heat: weapon ? formatInventoryControlHeat(weapon.heat) : '—',
         damage: weapon ? '—' : physicalDamage,
