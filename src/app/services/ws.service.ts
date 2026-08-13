@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { effect, inject, Injectable, signal } from '@angular/core';
+import { DestroyRef, effect, inject, Injectable, signal } from '@angular/core';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import type { SerializedForce } from '../models/force-serialization';
@@ -28,6 +28,7 @@ interface ForceSubscription {
 })
 export class WsService {
     private logger = inject(LoggerService);
+    private readonly destroyRef = inject(DestroyRef);
     private ws: WebSocket | null = null;
     private readonly wsUrl = 'wss://mekbay.com/ws';
     private wsReady?: Promise<void>;
@@ -44,6 +45,7 @@ export class WsService {
     private readonly baseReconnectDelay = 1000;
     private readonly maxReconnectDelay = 15000;
     private readonly connectionTimeout = 3000;
+    private readonly resumeProbeTimeout = 2000;
     private readonly connectionStatusHideDelay = 3500;
     private connectionStatusHideTimeoutId: number | null = null;
     private connectionStatusHasFailed = false;
@@ -53,6 +55,16 @@ export class WsService {
     private userStateService = inject(UserStateService);
     private globalErrorHandler: ((message: string) => void) | null = null;
     private lastRegisteredUuid = '';
+    private resumeProbeInFlight = false;
+    private lastResumeProbeAt = 0;
+
+    private readonly onlineHandler = () => this.handleNetworkOnline();
+    private readonly offlineHandler = () => this.handleNetworkOffline();
+    private readonly focusHandler = () => this.handlePageResume();
+    private readonly pageShowHandler = () => this.handlePageResume();
+    private readonly visibilityHandler = () => {
+        if (document.visibilityState === 'visible') this.handlePageResume();
+    };
 
     private getCurrentUuid(): string {
         return this.userStateService.uuid().trim();
@@ -108,12 +120,18 @@ export class WsService {
      * Setup network status monitoring
      */
     private setupNetworkMonitoring(): void {
-        window.addEventListener('online', () => {
-            this.handleNetworkOnline();
-        });
+        window.addEventListener('online', this.onlineHandler);
+        window.addEventListener('offline', this.offlineHandler);
+        window.addEventListener('focus', this.focusHandler);
+        window.addEventListener('pageshow', this.pageShowHandler);
+        document.addEventListener('visibilitychange', this.visibilityHandler);
 
-        window.addEventListener('offline', () => {
-            this.handleNetworkOffline();
+        this.destroyRef.onDestroy(() => {
+            window.removeEventListener('online', this.onlineHandler);
+            window.removeEventListener('offline', this.offlineHandler);
+            window.removeEventListener('focus', this.focusHandler);
+            window.removeEventListener('pageshow', this.pageShowHandler);
+            document.removeEventListener('visibilitychange', this.visibilityHandler);
         });
     }
 
@@ -122,11 +140,7 @@ export class WsService {
      */
     private handleNetworkOnline(): void {
         this.shouldReconnect = true;
-        this.reconnectAttempt = 0; // Reset backoff when network returns
-        if (!this.wsConnected() && !this.isConnecting && this.getCurrentUuid()) {
-            this.clearReconnectTimer();
-            this.scheduleReconnect();
-        }
+        this.recoverConnection(true);
     }
 
     /**
@@ -136,6 +150,47 @@ export class WsService {
         this.wsConnected.set(false);
         this.clearReconnectTimer();
         this.showDisconnectedBadge();
+    }
+
+    private handlePageResume(): void {
+        if (document.visibilityState === 'hidden') return;
+        this.recoverConnection(true);
+    }
+
+    private recoverConnection(probeOpenSocket = false): void {
+        if (!this.shouldReconnect || !navigator.onLine || !this.getCurrentUuid()) return;
+
+        const socket = this.ws;
+        if (socket?.readyState === WebSocket.OPEN && this.wsConnected()) {
+            if (probeOpenSocket) void this.probeConnection(socket);
+            return;
+        }
+        if (this.isConnecting || socket?.readyState === WebSocket.CONNECTING) return;
+
+        this.reconnectAttempt = 0;
+        this.clearReconnectTimer();
+        this.connect();
+    }
+
+    private async probeConnection(socket: WebSocket): Promise<void> {
+        const now = Date.now();
+        if (this.resumeProbeInFlight || now - this.lastResumeProbeAt < 1000) return;
+
+        this.resumeProbeInFlight = true;
+        this.lastResumeProbeAt = now;
+        try {
+            const response = await this.sendAndWaitForResponse({ action: 'ping' }, this.resumeProbeTimeout);
+            if (this.ws !== socket || response?.action === 'pong') return;
+
+            this.logger.warn('WebSocket health check failed after page resume; reconnecting.');
+            this.wsConnected.set(false);
+            this.showDisconnectedBadge();
+            this.closeWebSocket(false);
+            this.reconnectAttempt = 0;
+            this.connect();
+        } finally {
+            this.resumeProbeInFlight = false;
+        }
     }
 
     /**
@@ -237,6 +292,9 @@ export class WsService {
         this.isConnecting = false;
         this.wsConnected.set(false);
         this.showDisconnectedBadge();
+        if (this.shouldReconnect && navigator.onLine && this.getCurrentUuid()) {
+            this.scheduleReconnect();
+        }
     }
 
     /**

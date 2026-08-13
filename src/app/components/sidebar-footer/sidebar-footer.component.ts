@@ -23,6 +23,7 @@ import { AddExternalForceDialogComponent } from '../add-external-force-dialog/ad
 import { getFactionImg } from '../../models/factions.model';
 import { GameSystem } from '../../models/common.model';
 import { AppUpdateService } from '../../services/app-update.service';
+import { LobbyService } from '../../services/lobby.service';
 
 /*
  * Sidebar footer component
@@ -44,6 +45,7 @@ export class SidebarFooterComponent {
     dialogsService = inject(DialogsService);
     dataService = inject(DataService);
     appUpdateService = inject(AppUpdateService);
+    lobbyService = inject(LobbyService);
     compactModeService = inject(CompactModeService);
     menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
 
@@ -334,6 +336,37 @@ export class SidebarFooterComponent {
 
     loadOperation(): void {
         this.forceBuilderService.showLoadForceDialog({ initialTab: 'Operations' });
+    }
+
+    async createLobby(): Promise<void> {
+        try {
+            await this.lobbyService.createLobby();
+            await this.showLobbyDialog();
+        } catch (error) {
+            this.toastService.showToast(error instanceof Error ? error.message : 'Could not create the lobby.', 'error');
+        }
+    }
+
+    async joinLobby(): Promise<void> {
+        const code = await this.dialogsService.prompt(
+            'Enter the 4-character lobby code.',
+            'Join Lobby',
+            '',
+            'Codes use lowercase letters and numbers.',
+        );
+        if (!code) return;
+        try {
+            await this.lobbyService.joinLobby(code);
+            await this.showLobbyDialog();
+        } catch (error) {
+            this.toastService.showToast(error instanceof Error ? error.message : 'Could not join the lobby.', 'error');
+        }
+    }
+
+    async showLobbyDialog(): Promise<void> {
+        if (!this.lobbyService.hasLobby()) return;
+        const { LobbyDialogComponent } = await import('../lobby-dialog/lobby-dialog.component');
+        this.dialogsService.createDialog(LobbyDialogComponent);
     }
 
     async requestRepairAll(): Promise<void> {

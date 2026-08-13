@@ -213,20 +213,67 @@ describe('WsService', () => {
             'live',
         ]);
     });
+
+    it('probes an apparently open socket when the page resumes', async () => {
+        const service = TestBed.inject(WsService);
+        uuid.set('user-1');
+        const socket = createSocketMock();
+        (service as any).ws = socket;
+        service.wsConnected.set(true);
+        const probeSpy = spyOn(service, 'sendAndWaitForResponse').and.resolveTo({ action: 'pong' });
+
+        (service as any).recoverConnection(true);
+        await Promise.resolve();
+
+        expect(probeSpy).toHaveBeenCalledWith({ action: 'ping' }, 2000);
+        expect(socket.close).not.toHaveBeenCalled();
+    });
+
+    it('replaces an unresponsive socket when the page resumes', async () => {
+        const service = TestBed.inject(WsService);
+        uuid.set('user-1');
+        const socket = createSocketMock();
+        (service as any).ws = socket;
+        service.wsConnected.set(true);
+        spyOn(service, 'sendAndWaitForResponse').and.resolveTo(null);
+        const connectSpy = spyOn<any>(service, 'connect');
+
+        (service as any).recoverConnection(true);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(socket.close).toHaveBeenCalled();
+        expect(connectSpy).toHaveBeenCalled();
+        expect(service.wsConnected()).toBeFalse();
+    });
+
+    it('reconnects immediately on resume when the socket is already closed', () => {
+        const service = TestBed.inject(WsService);
+        uuid.set('user-1');
+        (service as any).ws = { ...createSocketMock(), readyState: WebSocket.CLOSED };
+        const connectSpy = spyOn<any>(service, 'connect');
+
+        (service as any).recoverConnection(true);
+
+        expect(connectSpy).toHaveBeenCalled();
+    });
 });
 
 function createSocketMock(): WebSocket & {
     send: jasmine.Spy;
+    close: jasmine.Spy;
     addEventListener: jasmine.Spy;
     removeEventListener: jasmine.Spy;
 } {
     return {
         readyState: WebSocket.OPEN,
         send: jasmine.createSpy('send'),
+        close: jasmine.createSpy('close'),
         addEventListener: jasmine.createSpy('addEventListener'),
         removeEventListener: jasmine.createSpy('removeEventListener'),
     } as unknown as WebSocket & {
         send: jasmine.Spy;
+        close: jasmine.Spy;
         addEventListener: jasmine.Spy;
         removeEventListener: jasmine.Spy;
     };

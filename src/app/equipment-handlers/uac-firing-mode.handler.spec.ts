@@ -60,8 +60,8 @@ describe('UACFiringModeHandler', () => {
 
     it('matches the rotary and ultra autocannon entries', () => {
         expect(handler.applicableTo(entry('AC_ROTARY'))).toBeTrue();
-        expect(handler.applicableTo(entry('AC_ULTRA'))).toBeFalse();
-        expect(handler.applicableTo(entry('AC_ULTRA_THB'))).toBeFalse();
+        expect(handler.applicableTo(entry('AC_ULTRA'))).toBeTrue();
+        expect(handler.applicableTo(entry('AC_ULTRA_THB'))).toBeTrue();
         expect(handler.applicableTo(entry('AC_ULTRA', ['Single', '2-shot'], new Map(), TW_GAME_RULES))).toBeTrue();
     });
 
