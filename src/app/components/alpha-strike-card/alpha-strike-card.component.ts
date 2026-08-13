@@ -707,7 +707,8 @@ export class AlphaStrikeCardComponent {
                 inputType: 'number',
                 minimumValue: - (isArmor ? state.armor() + state.pendingArmor() : state.internal() + state.pendingInternal()),
                 maximumValue: isArmor ? unit.getUnit().as.Arm : unit.getUnit().as.Str,
-                defaultValue: 0
+                defaultValue: 0,
+                centerInput: true,
             } as InputDialogData
         });
         

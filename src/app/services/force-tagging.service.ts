@@ -191,7 +191,8 @@ export class ForceTaggingService {
                     title: 'Add New Tag to Force',
                     inputType: 'text',
                     defaultValue: '',
-                    placeholder: 'Enter tag...',
+                    placeholder: 'Enter tag...',            
+                    centerInput: true,
                 } as InputDialogData
             });
 

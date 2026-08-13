@@ -1616,7 +1616,8 @@ export class SvgInteractionService {
                         message: 'Heat',
                         inputType: 'number',
                         defaultValue: currentHeat.next ?? currentHeat.current,
-                        placeholder: 'Heat value'
+                        placeholder: 'Heat value',            
+                        centerInput: true,
                     } as InputDialogData
                 });
                 const newHeatValue = await firstValueFrom(ref.closed);
