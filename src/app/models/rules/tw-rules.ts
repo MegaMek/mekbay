@@ -8,7 +8,7 @@ import { InfantryRules } from './infantry-rules';
 import { MekRules, type MekLegDamageState, type MekLegMovementResult } from './mek-rules';
 import { ProtoMekRules } from './protomek-rules';
 import { VehicleRules } from './vehicle-rules';
-import type { ChargeDamage, PSRCheck } from './unit-type-rules';
+import type { ChargeDamage, PSRCheck, UnitHeatSource } from './unit-type-rules';
 import type { CriticalSlot, SerializedC3NetworkGroup } from '../force-serialization';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import { C3TaxCalculator } from '../c3-network.model';
@@ -25,6 +25,13 @@ function calculateTWC3Tax(
 }
 
 export class TWMekRules extends MekRules {
+    override heatSources(turnState: TurnState): UnitHeatSource[] {
+        return super.heatSources(turnState).map(source => source.id === 'movement'
+            ? { ...source, value: source.value + (turnState.standAttempts() ?? 0) }
+            : source
+        );
+    }
+
     protected override getLegActuatorPSRChecks(
         turnState: TurnState,
         movementCheck: PSRCheck | null,

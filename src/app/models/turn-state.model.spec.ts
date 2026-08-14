@@ -335,6 +335,24 @@ describe('TurnState', () => {
     });
 
     describe('serialization', () => {
+        it('keeps stand attempts undefined by default and round-trips an explicit zero', () => {
+            const { turnState } = createTurnStateHarness();
+
+            expect(turnState.standAttempts()).toBeUndefined();
+            expect(turnState.serialize()).toBeUndefined();
+
+            turnState.resetStandAttempts();
+
+            expect(turnState.dirty()).toBeTrue();
+            expect(turnState.serialize()).toEqual({ standAttempts: 0 });
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(turnState.serialize());
+
+            expect(restored.standAttempts()).toBe(0);
+            expect(restored.serialize()).toEqual({ standAttempts: 0 });
+        });
+
         it('round-trips resolved PSR outcomes', () => {
             const { turnState } = createTurnStateHarness();
             turnState.addDmgReceived(20);
@@ -530,6 +548,60 @@ describe('TurnState', () => {
         });
     });
 
+    describe('standing up', () => {
+        it('records outcomes and removes prone only after success', () => {
+            const { turnState } = createTurnStateHarness({ prone: true });
+
+            expect(turnState.resolveStandAttempt('failed')).toBeTrue();
+            expect(turnState.standAttempts()).toBe(1);
+            expect(turnState.unitState.unit.setCondition).not.toHaveBeenCalled();
+
+            expect(turnState.resolveStandAttempt('success')).toBeTrue();
+            expect(turnState.standAttempts()).toBe(2);
+            expect(turnState.unitState.unit.setCondition).toHaveBeenCalledOnceWith('prone', false);
+        });
+
+        it('disables standing for stationary movement and too many destroyed legs', () => {
+            const stationary = createTurnStateHarness({ prone: true });
+            stationary.turnState.moveMode.set('stationary');
+            expect(stationary.turnState.canStandUp()).toBeFalse();
+
+            expect(createTurnStateHarness({
+                prone: true,
+                currentDestroyedLegs: ['LL', 'RL'],
+            }).turnState.canStandUp()).toBeFalse();
+
+            expect(createTurnStateHarness({
+                prone: true,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                currentDestroyedLegs: ['FLL', 'FRL'],
+            }).turnState.canStandUp()).toBeTrue();
+
+            expect(createTurnStateHarness({
+                prone: true,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                currentDestroyedLegs: ['FLL', 'FRL', 'RLL'],
+            }).turnState.canStandUp()).toBeFalse();
+        });
+
+        it('lets only an intact quad stand without a PSR', () => {
+            const quad = createTurnStateHarness({
+                prone: true,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+            });
+            const damagedQuad = createTurnStateHarness({
+                prone: true,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                currentDestroyedLegs: ['FLL'],
+            });
+            const biped = createTurnStateHarness({ prone: true });
+
+            expect(quad.turnState.canStandWithoutPSR()).toBeTrue();
+            expect(damagedQuad.turnState.canStandWithoutPSR()).toBeFalse();
+            expect(biped.turnState.canStandWithoutPSR()).toBeFalse();
+        });
+    });
+
     describe('getPSRChecks', () => {
         it('includes movement PSR checks when applyMovePSR is enabled', () => {
             const { turnState } = createTurnStateHarness({
@@ -679,6 +751,19 @@ describe('TurnState', () => {
             turnState.moveMode.set('jump');
             turnState.moveDistance.set(5);
             expect(getMovementHeat(turnState)).toBe(5);
+        });
+
+        it('adds stand attempts to movement heat only under TW rules', () => {
+            const core = createTurnStateHarness();
+            core.turnState.moveMode.set('run');
+            core.turnState.standAttempts.set(3);
+
+            const tw = createTurnStateHarness({ rulesId: 'tw' });
+            tw.turnState.moveMode.set('run');
+            tw.turnState.standAttempts.set(3);
+
+            expect(getMovementHeat(core.turnState)).toBe(2);
+            expect(getMovementHeat(tw.turnState)).toBe(5);
         });
 
         it('uses reduced jump heat for working improved jump jets', () => {

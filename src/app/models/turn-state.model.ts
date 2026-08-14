@@ -60,6 +60,7 @@ export class TurnState {
     airborne = this.modifiedSignal<boolean | null>(null, 'movement');
     moveMode = this.modifiedSignal<MotiveModes | null>(null, 'movement');
     moveDistance = this.modifiedSignal<number | null>(null, 'movement');
+    standAttempts = this.modifiedSignal<number | undefined>(undefined);
     dmgReceived = this.modifiedSignal<number>(0);
     weaponsHeat = this.modifiedSignal<number>(0);
     private psrChecks = this.modifiedSignal<PSRChecks>({});
@@ -71,6 +72,7 @@ export class TurnState {
         const airborne = this.airborne();
         const moveMode = this.moveMode();
         const moveDistance = this.moveDistance();
+        const standAttempts = this.standAttempts();
         const dmgReceived = this.dmgReceived();
         const weaponsHeat = this.weaponsHeat();
         const unconsolidatedCrits = this.unitState.hasUnconsolidatedCrits();
@@ -79,6 +81,7 @@ export class TurnState {
         return airborne !== null
             || moveMode !== null
             || moveDistance !== null
+            || standAttempts !== undefined
             || dmgReceived != 0
             || weaponsHeat > 0
             || this.spotting()
@@ -137,6 +140,32 @@ export class TurnState {
             }
         }
         return config === 'Quad' ? damagedLegsCount < 2 : damagedLegsCount < 1;
+    });
+
+    private readonly standingLegState = computed(() => {
+        const unit = this.unitState.unit;
+        const internalLocations = unit.locations?.internal;
+        const config = inferMekConfigFromLocations(internalLocations?.keys() ?? []);
+        const legs = getMekLegLocations(config);
+        const destroyedLegs = legs.filter(loc =>
+            internalLocations?.has(loc) && unit.isInternalLocDestroyed(loc)
+        ).length;
+        return { config, legs, destroyedLegs, internalLocations };
+    });
+
+    canStandUp = computed<boolean>(() => {
+        if (!this.unitState.hasCondition('prone') || this.moveMode() === 'stationary') return false;
+        const { config, destroyedLegs } = this.standingLegState();
+        return destroyedLegs < (config === 'Quad' ? 3 : 2);
+    });
+
+    canStandWithoutPSR = computed<boolean>(() => {
+        if (!this.canStandUp()) return false;
+        const unit = this.unitState.unit;
+        const { config, legs, internalLocations } = this.standingLegState();
+        return config === 'Quad' && legs.every(loc =>
+            internalLocations?.has(loc) && !unit.isInternalLocDestroyed(loc)
+        );
     });
 
     getSpottingModifier = computed<number>(() => {
@@ -204,6 +233,19 @@ export class TurnState {
         }));
         if (outcome === 'failed') this.unitState.unit.setCondition('prone', true);
         return true;
+    }
+
+    resolveStandAttempt(outcome: RuleCheckOutcome): boolean {
+        if (!this.canStandUp()) return false;
+        this.standAttempts.update(current => (current ?? 0) + 1);
+        if (this.unitState.unit.gameRules.id === 'tw') this.invalidateHeatSource('movement');
+        if (outcome === 'success') this.unitState.unit.setCondition('prone', false);
+        return true;
+    }
+
+    resetStandAttempts(): void {
+        this.standAttempts.set(0);
+        if (this.unitState.unit.gameRules.id === 'tw') this.invalidateHeatSource('movement');
     }
 
     private psrCheckBaseId(check: PSRCheck): string {
@@ -357,11 +399,13 @@ export class TurnState {
         const airborne = this.airborne();
         const moveMode = this.moveMode();
         const moveDistance = this.moveDistance();
+        const standAttempts = this.standAttempts();
         const psrChecks = this.serializePSRChecks();
 
         if (airborne === true) turnState.airborne = true;
         if (moveMode !== null) turnState.moveMode = moveMode;
         if (moveDistance !== null) turnState.moveDistance = moveDistance;
+        if (standAttempts !== undefined) turnState.standAttempts = standAttempts;
         if (this.dmgReceived() > 0) turnState.dmgReceived = this.dmgReceived();
         if (this.weaponsHeat() > 0) turnState.weaponsHeat = this.weaponsHeat();
         if (Object.keys(this.acknowledgedHeatSources()).length > 0) {
@@ -386,6 +430,7 @@ export class TurnState {
             this.airborne.set(data?.airborne ?? null);
             this.moveMode.set(data?.moveMode ?? null);
             this.moveDistance.set(data?.moveDistance ?? null);
+            this.standAttempts.set(data?.standAttempts);
             this.dmgReceived.set(data?.dmgReceived ?? 0);
             this.weaponsHeat.set(data?.weaponsHeat ?? 0);
             this.acknowledgedHeatSources.set({ ...(data?.acknowledgedHeatSources ?? {}) });

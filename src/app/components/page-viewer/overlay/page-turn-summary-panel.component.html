@@ -10,12 +10,19 @@
                     aria-pressed="{{ airborne() === true }}" (click)="setAirborne(true)">Airborne</button>
             </div>
             }
+            @if (prone()) {
+            <div class="row grid">
+                <button type="button" class="bt-button move-button" [disabled]="!canStandUp()"
+                    (click)="standUp($event)">STAND UP</button>
+            </div>
+            }
             @if (canSwitchAirborneMode() === false || airborne() !== null) {
             <div class="row">
                 @for (moveMode of moveModes(); track moveMode.mode) {
                 @let mode = moveMode.mode;
                 <button type="button" class="bt-button move-button" [class.selected]="currentMoveMode() === mode"
-                    [class.danger]="moveMode.psr" aria-pressed="{{ currentMoveMode() === mode }}" (click)="selectMove(mode)">
+                    [class.danger]="moveMode.psr" [disabled]="isMoveModeDisabled(mode)"
+                    aria-pressed="{{ currentMoveMode() === mode }}" (click)="selectMove(mode)">
                     @if (mode === 'stationary') {
                     <svg width="16px" height="16px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
                         <path d="M32 2C15.432 2 2 15.432 2 32c-.001 16.568 13.432 30 30 30s30.001-13.432 30-30c.001-16.568-13.432-30-30-30zM9 38V26h46v12H9z" fill="currentColor"></path>

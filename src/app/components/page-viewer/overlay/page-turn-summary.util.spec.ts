@@ -2,7 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { composeTurnSummaryHeatRows, countActionablePsrChecks, displayPsrModifiers } from './page-turn-summary.util';
+import { composeTurnSummaryHeatRows, countActionablePsrChecks, displayPsrModifiers, isMoveModeDisabledWhileProne } from './page-turn-summary.util';
+
+describe('isMoveModeDisabledWhileProne', () => {
+    it('disables only jump while prone without changing its selected state', () => {
+        expect(isMoveModeDisabledWhileProne('jump', true)).toBeTrue();
+        expect(isMoveModeDisabledWhileProne('jump', false)).toBeFalse();
+        expect(isMoveModeDisabledWhileProne('run', true)).toBeFalse();
+    });
+});
 
 describe('countActionablePsrChecks', () => {
     const fallCheck = { failureOutcome: 'Fall' };

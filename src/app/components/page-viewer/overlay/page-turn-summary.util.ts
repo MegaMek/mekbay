@@ -4,6 +4,7 @@
 
 import type { PSRCheck, UnitHeatSource } from '../../../models/rules/unit-type-rules';
 import type { SelectedInventoryWeaponHeat } from '../../../utils/inventory-control-heat.util';
+import type { MotiveModes } from '../../../models/motiveModes.model';
 
 export interface TurnSummaryHeatRow {
     readonly id: string;
@@ -48,4 +49,11 @@ export function countActionablePsrChecks(
     autoFall: boolean
 ): number {
     return autoFall ? checks.filter(check => check.failureOutcome !== 'Fall').length : checks.length;
+}
+
+export function isMoveModeDisabledWhileProne(
+    mode: MotiveModes,
+    prone: boolean,
+): boolean {
+    return mode === 'jump' && prone;
 }

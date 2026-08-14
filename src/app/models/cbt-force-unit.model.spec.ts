@@ -1054,6 +1054,15 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(handler.calls).toBe(1);
     });
 
+    it('resets stand attempts when ending the turn', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.turnState().standAttempts.set(3);
+
+        forceUnit.endTurn();
+
+        expect(forceUnit.turnState().standAttempts()).toBeUndefined();
+    });
+
     it('reacquires each current mount when an end-turn hook rebuilds inventory', () => {
         const handler = new EndTurnTestHandler(true);
         TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(handler);

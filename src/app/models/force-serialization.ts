@@ -82,6 +82,7 @@ export interface SerializedTurnState {
     airborne?: boolean;
     moveMode?: MotiveModes;
     moveDistance?: number;
+    standAttempts?: number;
     dmgReceived?: number;
     weaponsHeat?: number;
     acknowledgedHeatSources?: Record<string, string>;
@@ -437,6 +438,7 @@ export const TURN_STATE_SCHEMA = Sanitizer.schema<SerializedTurnState>()
     .custom('airborne', (value: unknown) => typeof value === 'boolean' ? value : undefined)
     .custom('moveMode', (value: unknown) => MOTIVE_MODE_VALUES.includes(value as MotiveModes) ? value as MotiveModes : undefined)
     .custom('moveDistance', sanitizeOptionalNonNegativeNumber)
+    .custom('standAttempts', sanitizeOptionalNonNegativeNumber)
     .custom('dmgReceived', sanitizeOptionalNonNegativeNumber)
     .custom('weaponsHeat', sanitizeOptionalNonNegativeNumber)
     .custom('acknowledgedHeatSources', sanitizeStringRecord)

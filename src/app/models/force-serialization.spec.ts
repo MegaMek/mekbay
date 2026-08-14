@@ -78,6 +78,7 @@ describe('heat state sanitization', () => {
 
         expect(Sanitizer.sanitize({
             moveDistance: 'invalid',
+            standAttempts: Number.NaN,
             dmgReceived: Number.NaN,
             weaponsHeat: Number.POSITIVE_INFINITY,
             heatDissipationConsumed: Number.POSITIVE_INFINITY,
@@ -99,6 +100,15 @@ describe('heat state sanitization', () => {
         });
         expect(Sanitizer.sanitize({ heatDissipationConsumed: -2 }, TURN_STATE_SCHEMA)).toEqual({
             heatDissipationConsumed: 0,
+        });
+    });
+
+    it('preserves zero stand attempts and clamps negative values', () => {
+        expect(Sanitizer.sanitize({ standAttempts: 0 }, TURN_STATE_SCHEMA)).toEqual({
+            standAttempts: 0,
+        });
+        expect(Sanitizer.sanitize({ standAttempts: -2 }, TURN_STATE_SCHEMA)).toEqual({
+            standAttempts: 0,
         });
     });
 

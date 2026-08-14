@@ -19,8 +19,9 @@ import { DataService } from '../../../services/data.service';
 import type { MountedEquipment } from '../../../models/mounted-equipment.model';
 import { MascHandler } from '../../../equipment-handlers/masc.handler';
 import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
-import { composeTurnSummaryHeatRows, displayPsrModifiers } from './page-turn-summary.util';
+import { composeTurnSummaryHeatRows, displayPsrModifiers, isMoveModeDisabledWhileProne } from './page-turn-summary.util';
 import { orderedModifierTooltipLines } from '../../../utils/hit-target-tooltip.util';
+import { toggleStandingUpOverlay } from './page-standing-up-panel.component';
 
 interface EquipmentTrackControlRow {
     entry: MountedEquipment;
@@ -115,6 +116,25 @@ export class PageTurnSummaryPanelComponent {
         if (!unit) return null;
         return unit.turnState().moveMode();
     });
+
+    readonly prone = computed(() => this.unit()?.getCondition('prone') ?? false);
+
+    readonly canStandUp = computed(() => this.unit()?.turnState().canStandUp() ?? false);
+
+    isMoveModeDisabled(mode: MotiveModes): boolean {
+        return isMoveModeDisabledWhileProne(mode, this.prone());
+    }
+
+    standUp(event: MouseEvent): void {
+        event.stopPropagation();
+        const unit = this.unit();
+        if (!unit || !unit.turnState().canStandUp()) return;
+        if (unit.turnState().canStandWithoutPSR()) {
+            unit.turnState().resolveStandAttempt('success');
+            return;
+        }
+        toggleStandingUpOverlay(this.parent, this.overlayManager, this.injector, this.overlay);
+    }
 
     moveModeModifierLabel(mode: MotiveModes): string | null {
         const unit = this.unit();
@@ -233,7 +253,7 @@ export class PageTurnSummaryPanelComponent {
 
     selectMove(mode: MotiveModes): void {
         const unit = this.unit();
-        if (!unit) return;
+        if (!unit || this.isMoveModeDisabled(mode)) return;
         const turnState = unit.turnState();
         const current = turnState.moveMode();
         if (current === mode) {
