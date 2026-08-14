@@ -44,6 +44,7 @@ export function deriveOpforTargetCalculatorState(
     const prone = unit.getCondition('prone');
     const moveDistance = unit.turnState().moveDistance();
     const isAirborne = unit.turnState().moveMode() === 'jump' || unit.turnState().airborne() === true;
+    const cover = unit.turnState().cover() ?? 0;
     const targetMovementBracket = moveDistance !== null
         ? getTargetMovementBracketForDistance(moveDistance)?.id ?? null
         : null;
@@ -55,6 +56,8 @@ export function deriveOpforTargetCalculatorState(
         skidding: unit.getCondition('skidding'),
         prone,
         immobile,
+        targetHexCover: cover === 1 ? 'light' : cover === 2 ? 'heavy' : 'none',
+        waterPartialCover: cover === 3,
         largeTarget: isLargeInventoryTarget(unit.getUnit())
     };
 }

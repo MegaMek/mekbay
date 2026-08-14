@@ -353,6 +353,26 @@ describe('TurnState', () => {
             expect(restored.serialize()).toEqual({ standAttempts: 0 });
         });
 
+        it('omits no cover and round-trips active cover', () => {
+            const { turnState } = createTurnStateHarness();
+
+            turnState.cover.set(0);
+            expect(turnState.dirty()).toBeFalse();
+            expect(turnState.serialize()).toBeUndefined();
+
+            turnState.setCover(3);
+            expect(turnState.dirty()).toBeTrue();
+            expect(turnState.serialize()).toEqual({ cover: 3 });
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(turnState.serialize());
+            expect(restored.cover()).toBe(3);
+
+            restored.setCover(0);
+            expect(restored.cover()).toBeUndefined();
+            expect(restored.serialize()).toBeUndefined();
+        });
+
         it('round-trips resolved PSR outcomes', () => {
             const { turnState } = createTurnStateHarness();
             turnState.addDmgReceived(20);

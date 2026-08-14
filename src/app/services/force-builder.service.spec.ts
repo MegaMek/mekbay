@@ -590,7 +590,7 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
         };
     }
 
-    function createEnemyUnit(id: string, name: string, definition: Partial<Unit> = {}): CBTForceUnit {
+    function createEnemyUnit(id: string, name: string, definition: Partial<Unit> = {}, cover = 0): CBTForceUnit {
         return {
             id,
             getDisplayName: () => name,
@@ -606,7 +606,8 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
             turnState: () => ({
                 moveMode: signal(null),
                 moveDistance: signal<number | null>(0),
-                airborne: signal<boolean | null>(false)
+                airborne: signal<boolean | null>(false),
+                cover: signal<number | undefined>(cover || undefined)
             })
         } as unknown as CBTForceUnit;
     }
@@ -771,7 +772,9 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
                 largeTarget: imported.tnCalculator?.largeTarget,
                 skidding: imported.tnCalculator?.skidding,
                 targetMovementBracket: imported.tnCalculator?.targetMovementBracket,
-                isAirborne: imported.tnCalculator?.isAirborne
+                isAirborne: imported.tnCalculator?.isAirborne,
+                targetHexCover: imported.tnCalculator?.targetHexCover,
+                waterPartialCover: imported.tnCalculator?.waterPartialCover
             },
             unitType: imported.unitType,
             readOnly: imported.readOnly,
@@ -785,6 +788,20 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
         (harness.service as any).syncOpforInventoryTargets(harness.force, [enemy]);
 
         expect(harness.force.replaceInventoryControlTargets).toHaveBeenCalledTimes(1);
+    });
+
+    it('synchronizes unit cover into linked target state', () => {
+        const harness = createOpforHarness();
+
+        (harness.service as any).syncOpforInventoryTargets(
+            harness.force,
+            [createEnemyUnit('enemy-1', 'Submerged Atlas', {}, 3)]
+        );
+
+        expect(harness.targets()[0].tnCalculator).toEqual(jasmine.objectContaining({
+            targetHexCover: 'none',
+            waterPartialCover: true,
+        }));
     });
 
     it('does not rewrite targets after adding a manual target beside existing OPFOR', () => {

@@ -162,6 +162,20 @@ export class PageTurnSummaryPanelComponent {
         return unit.turnState().spotting();
     });
 
+    readonly cover = computed(() => this.unit()?.turnState().cover() ?? 0);
+
+    readonly coverModifierLabel = computed(() => {
+        switch (this.cover()) {
+            case 1:
+            case 3:
+                return '+1';
+            case 2:
+                return '+2';
+            default:
+                return null;
+        }
+    });
+
     readonly spottingModifierLabel = computed(() => {
         const unit = this.unit();
         if (!unit) return null;
@@ -271,6 +285,10 @@ export class PageTurnSummaryPanelComponent {
         if (!unit) return;
         const turnState = unit.turnState();
         turnState.spotting.set(!turnState.spotting());
+    }
+
+    selectCover(cover: number): void {
+        this.unit()?.turnState().setCover(cover);
     }
 
     async handleEquipmentTrackChoice(row: EquipmentTrackControlRow, choice: HandlerChoice): Promise<void> {

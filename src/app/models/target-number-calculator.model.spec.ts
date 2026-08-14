@@ -11,6 +11,19 @@ describe('target number calculator rules profiles', () => {
         expect(getTargetProneModifier(2)).toBe(1);
     });
 
+    it('applies water partial cover at adjacent range', () => {
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 1,
+            waterPartialCover: true,
+        })).toBe(1);
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 1,
+            partialCover: true,
+        })).toBe(0);
+    });
+
     it('uses Large Target and ignores removed modifiers in core2026', () => {
         expect(calculateTargetTnModifier({
             range: 5,

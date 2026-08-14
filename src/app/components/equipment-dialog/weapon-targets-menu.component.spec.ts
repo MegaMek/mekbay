@@ -146,6 +146,15 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         expect(pillContainer.textContent).not.toContain('C3');
     });
 
+    it('shows water partial cover at adjacent range', () => {
+        expect(component.targetModifierPills({
+            ...TARGET,
+            unitType: 'mek-biped',
+            distance: 1,
+            tnCalculator: { waterPartialCover: true },
+        })).toEqual([{ label: 'Partial Cover (water)', modifier: 1 }]);
+    });
+
     it('renders separate prone and immobile pills', () => {
         const target = {
             ...TARGET,

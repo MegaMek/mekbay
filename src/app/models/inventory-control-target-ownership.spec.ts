@@ -15,6 +15,7 @@ describe('inventory control target ownership', () => {
             skidding: true,
             prone: true,
             targetHexCover: 'heavy',
+            waterPartialCover: true,
             largeTarget: true
         });
 
@@ -24,6 +25,7 @@ describe('inventory control target ownership', () => {
             skidding: true,
             prone: true,
             targetHexCover: 'heavy',
+            waterPartialCover: true,
             largeTarget: true
         });
         expect(result.local).toBeUndefined();

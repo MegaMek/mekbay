@@ -49,12 +49,12 @@ describe('SvgViewerLiteComponent', () => {
     let logger: jasmine.SpyObj<Pick<LoggerService, 'error'>>;
     let originalResizeObserver: typeof ResizeObserver | undefined;
     let triggerResize: (() => void) | null;
-    const options = signal({ recordSheetCenterPanelContent: 'clusterTable' });
+    const options = signal({ printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
 
     beforeEach(() => {
         sheetService = jasmine.createSpyObj<Pick<SheetService, 'getSheet'>>('SheetService', ['getSheet']);
         logger = jasmine.createSpyObj<Pick<LoggerService, 'error'>>('LoggerService', ['error']);
-        options.set({ recordSheetCenterPanelContent: 'clusterTable' });
+        options.set({ printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
         triggerResize = null;
         originalResizeObserver = window.ResizeObserver;
         window.ResizeObserver = class implements ResizeObserver {

@@ -254,6 +254,7 @@ export class ForceBuilderService {
                 unit.turnState().moveMode();
                 unit.turnState().moveDistance();
                 unit.turnState().airborne();
+                unit.turnState().cover();
             }
 
             for (const force of cbtForces) {

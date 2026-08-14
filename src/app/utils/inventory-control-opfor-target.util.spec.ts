@@ -31,15 +31,17 @@ function forceUnit(options: {
     distance?: number | null;
     airborne?: boolean | null;
     moveMode?: MotiveModes | null;
+    cover?: number;
 } = {}): CBTForceUnit {
     const conditions = new Set(options.conditions ?? []);
     const moveDistance = signal<number | null>(options.distance ?? null);
     const airborne = signal<boolean | null>(options.airborne ?? null);
     const moveMode = signal<MotiveModes | null>(options.moveMode ?? null);
+    const cover = signal<number | undefined>(options.cover);
     return {
         getUnit: () => unit(options.definition),
         getCondition: (condition: string) => conditions.has(condition),
-        turnState: () => ({ moveDistance, airborne, moveMode })
+        turnState: () => ({ moveDistance, airborne, moveMode, cover })
     } as unknown as CBTForceUnit;
 }
 
@@ -115,5 +117,21 @@ describe('inventory control OPFOR targets', () => {
 
     it('preserves unknown movement instead of treating it as zero', () => {
         expect(deriveOpforTargetCalculatorState(forceUnit()).targetMovementBracket).toBeNull();
+    });
+
+    it('maps unit cover and derives water partial cover separately', () => {
+        expect(deriveOpforTargetCalculatorState(forceUnit()).targetHexCover).toBe('none');
+        expect(deriveOpforTargetCalculatorState(forceUnit({ cover: 1 }))).toEqual(jasmine.objectContaining({
+            targetHexCover: 'light',
+            waterPartialCover: false,
+        }));
+        expect(deriveOpforTargetCalculatorState(forceUnit({ cover: 2 }))).toEqual(jasmine.objectContaining({
+            targetHexCover: 'heavy',
+            waterPartialCover: false,
+        }));
+        expect(deriveOpforTargetCalculatorState(forceUnit({ cover: 3 }))).toEqual(jasmine.objectContaining({
+            targetHexCover: 'none',
+            waterPartialCover: true,
+        }));
     });
 });

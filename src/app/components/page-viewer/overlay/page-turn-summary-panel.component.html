@@ -93,7 +93,22 @@
     <div class="group">
         <div class="summary-entry">
             <div class="row has-tooltip" [tooltip]="defenseTargetModifierTooltip()">
-                <span class="caption">Defense Movement Modifier:</span><span class="modifier important totalDefense">{{ getTotalTargetModifierAsDefender() }}</span>
+                <span class="caption">Defense Movement Modifier:</span><span class="modifier important defense">{{ getTotalTargetModifierAsDefender() }}</span>
+            </div>
+            <div class="choice-line">
+                <span class="choice-label"><span>Cover</span>@if (coverModifierLabel(); as modifierLabel) {<span class="modifier-badge defense">{{ modifierLabel }}</span>}</span>
+                <div class="icon-choice-row" role="group" aria-label="Unit cover">
+                    <button type="button" class="bt-button icon-choice none-choice" aria-label="No cover" [class.selected]="cover() === 0" [attr.aria-pressed]="cover() === 0" (click)="selectCover(0)">X</button>
+                    <button type="button" class="bt-button icon-choice" aria-label="Light cover" [class.selected]="cover() === 1" [attr.aria-pressed]="cover() === 1" (click)="selectCover(1)">
+                        <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
+                    </button>
+                    <button type="button" class="bt-button icon-choice double-tree" aria-label="Heavy cover" [class.selected]="cover() === 2" [attr.aria-pressed]="cover() === 2" (click)="selectCover(2)">
+                        <svg viewBox="0 0 724 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/><path transform="translate(212 0)" d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
+                    </button>
+                    <button type="button" class="bt-button icon-choice water-choice" aria-label="Half underwater" [class.selected]="cover() === 3" [attr.aria-pressed]="cover() === 3" (click)="selectCover(3)">
+                        <svg class="water-cover-icon" viewBox="0 0 24 20" aria-hidden="true"><circle cx="12" cy="4" r="2.5"/><path d="M7 12.5 9 8h6l2 4.5M2 15c2.5-2 4.5 2 7 0s4.5 2 7 0 4.5 2 6 0M2 19c2.5-2 4.5 2 7 0s4.5 2 7 0 4.5 2 6 0"/></svg>
+                    </button>
+                </div>
             </div>
         </div>
     </div>

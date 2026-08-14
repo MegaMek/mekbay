@@ -61,6 +61,7 @@ export class TurnState {
     moveMode = this.modifiedSignal<MotiveModes | null>(null, 'movement');
     moveDistance = this.modifiedSignal<number | null>(null, 'movement');
     standAttempts = this.modifiedSignal<number | undefined>(undefined);
+    cover = this.modifiedSignal<number | undefined>(undefined);
     dmgReceived = this.modifiedSignal<number>(0);
     weaponsHeat = this.modifiedSignal<number>(0);
     private psrChecks = this.modifiedSignal<PSRChecks>({});
@@ -73,6 +74,7 @@ export class TurnState {
         const moveMode = this.moveMode();
         const moveDistance = this.moveDistance();
         const standAttempts = this.standAttempts();
+        const cover = this.cover();
         const dmgReceived = this.dmgReceived();
         const weaponsHeat = this.weaponsHeat();
         const unconsolidatedCrits = this.unitState.hasUnconsolidatedCrits();
@@ -82,6 +84,7 @@ export class TurnState {
             || moveMode !== null
             || moveDistance !== null
             || standAttempts !== undefined
+            || this.isValidCover(cover)
             || dmgReceived != 0
             || weaponsHeat > 0
             || this.spotting()
@@ -248,6 +251,10 @@ export class TurnState {
         if (this.unitState.unit.gameRules.id === 'tw') this.invalidateHeatSource('movement');
     }
 
+    setCover(cover: number): void {
+        this.cover.set(this.isValidCover(cover) ? cover : undefined);
+    }
+
     private psrCheckBaseId(check: PSRCheck): string {
         return [
             check.reason.replace(/\d+(?:\.\d+)?/g, '#'),
@@ -400,12 +407,14 @@ export class TurnState {
         const moveMode = this.moveMode();
         const moveDistance = this.moveDistance();
         const standAttempts = this.standAttempts();
+        const cover = this.cover();
         const psrChecks = this.serializePSRChecks();
 
         if (airborne === true) turnState.airborne = true;
         if (moveMode !== null) turnState.moveMode = moveMode;
         if (moveDistance !== null) turnState.moveDistance = moveDistance;
         if (standAttempts !== undefined) turnState.standAttempts = standAttempts;
+        if (this.isValidCover(cover)) turnState.cover = cover;
         if (this.dmgReceived() > 0) turnState.dmgReceived = this.dmgReceived();
         if (this.weaponsHeat() > 0) turnState.weaponsHeat = this.weaponsHeat();
         if (Object.keys(this.acknowledgedHeatSources()).length > 0) {
@@ -431,6 +440,7 @@ export class TurnState {
             this.moveMode.set(data?.moveMode ?? null);
             this.moveDistance.set(data?.moveDistance ?? null);
             this.standAttempts.set(data?.standAttempts);
+            this.cover.set(this.isValidCover(data?.cover) ? data?.cover : undefined);
             this.dmgReceived.set(data?.dmgReceived ?? 0);
             this.weaponsHeat.set(data?.weaponsHeat ?? 0);
             this.acknowledgedHeatSources.set({ ...(data?.acknowledgedHeatSources ?? {}) });
@@ -506,6 +516,10 @@ export class TurnState {
 
     addDmgReceived(amount: number) {
         this.dmgReceived.update((value)=> { return value + amount });
+    }
+
+    private isValidCover(cover: number | undefined): cover is number {
+        return cover === 1 || cover === 2 || cover === 3;
     }
 
     addFiredHeat(amount: number) {

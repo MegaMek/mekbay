@@ -823,8 +823,12 @@ export class WeaponTargetsMenuComponent {
             }
         }
 
-        if (calculator.partialCover && !staticTarget && target.distance > ADJACENT_RANGE && !prone) {
-            addModifier('Partial Cover', TN_PARTIAL_COVER_MODIFIER);
+        if (!staticTarget && !prone) {
+            if (calculator.waterPartialCover) {
+                addModifier('Partial Cover (water)', TN_PARTIAL_COVER_MODIFIER);
+            } else if (calculator.partialCover && target.distance > ADJACENT_RANGE) {
+                addModifier('Partial Cover', TN_PARTIAL_COVER_MODIFIER);
+            }
         }
 
         if (calculator.secondaryTarget) {

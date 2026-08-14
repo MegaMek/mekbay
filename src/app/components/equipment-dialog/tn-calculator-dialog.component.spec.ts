@@ -137,21 +137,47 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
         expect(movementButtons[0].getAttribute('aria-pressed')).toBe('true');
     });
 
-    it('allows shared defender cover and local woods to be edited for linked targets', () => {
+    it('locks synchronized defender cover while leaving local LOS choices editable', () => {
         const coverGroup = fixture.nativeElement.querySelector('[aria-label="Target hex cover"]');
         const coverRow = coverGroup.closest('.choice-line');
         const coverButtons = [...coverGroup.querySelectorAll('button')] as HTMLButtonElement[];
         const woodsButtons = [...fixture.nativeElement.querySelectorAll('[aria-label="Intervening woods"] button')] as HTMLButtonElement[];
 
-        expect(coverRow.classList).not.toContain('derived-target-state');
-        expect(coverButtons.every(button => !button.disabled)).toBeTrue();
+        expect(coverRow.classList).toContain('derived-target-state');
+        expect(coverButtons.every(button => button.disabled)).toBeTrue();
         expect(woodsButtons.every(button => !button.disabled)).toBeTrue();
 
-        coverButtons[1].click();
-        fixture.detectChanges();
+        component.selectTargetHexCover('light');
 
-        expect(component.targetHexCover()).toBe('light');
-        expect(coverButtons[1].getAttribute('aria-pressed')).toBe('true');
+        expect(component.targetHexCover()).toBe('none');
+
+        component.setRangeValue(2);
+        fixture.detectChanges();
+        const partialCover = fixture.nativeElement.querySelector('.partial-cover') as HTMLButtonElement;
+        expect(partialCover.disabled).toBeFalse();
+
+        partialCover.click();
+        expect(component.partialCover()).toBeTrue();
+    });
+
+    it('shows linked water cover as locked partial cover at adjacent range', () => {
+        component.waterPartialCover.set(true);
+        fixture.detectChanges();
+        const coverButtons = [...fixture.nativeElement.querySelectorAll('[aria-label="Target hex cover"] button')] as HTMLButtonElement[];
+        const coverLabel = fixture.nativeElement.querySelector('[aria-label="Target hex cover"]')
+            .closest('.choice-line').querySelector('.choice-label') as HTMLElement;
+        const partialCover = fixture.nativeElement.querySelector('.partial-cover') as HTMLButtonElement;
+
+        expect(coverButtons[0].classList).not.toContain('selected');
+        expect(coverButtons[3].classList).toContain('selected');
+        expect(getComputedStyle(coverButtons[3]).backgroundColor).toBe('rgb(21, 101, 192)');
+        expect(coverLabel.querySelector('.modifier-badge')).toBeNull();
+        expect(partialCover.classList).toContain('selected');
+        expect(getComputedStyle(partialCover).backgroundColor).toBe('rgb(21, 101, 192)');
+        expect(partialCover.disabled).toBeTrue();
+        expect(partialCover.textContent).toContain('Partial Cover (water)');
+        expect(component.targetHexCover()).toBe('none');
+        expect(component.totalModifier()).toBe(2);
     });
 
     it('rejects programmatic target-type changes while read-only', () => {
@@ -162,6 +188,52 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
 });
 
 describe('TnCalculatorDialogComponent movement and stance', () => {
+    it('maps the water cover choice to adjacent partial cover', async () => {
+        const close = jasmine.createSpy('close');
+        const data: TnCalculatorDialogData = {
+            target: {
+                id: 'A',
+                letter: 'A',
+                name: 'Target A',
+                color: '#1565C0',
+                unitType: 'mek-biped',
+                distance: 1,
+                tnModifier: 0,
+            },
+            gameRules: TW_GAME_RULES,
+        };
+        await TestBed.configureTestingModule({
+            imports: [TnCalculatorDialogComponent],
+            providers: [
+                { provide: DIALOG_DATA, useValue: data },
+                { provide: DialogRef, useValue: { close } },
+            ],
+        }).compileComponents();
+        const fixture = TestBed.createComponent(TnCalculatorDialogComponent);
+        const component = fixture.componentInstance;
+
+        component.selectTargetHexCover('water');
+        fixture.detectChanges();
+
+        expect(component.targetHexCover()).toBe('none');
+        expect(component.waterPartialCover()).toBeTrue();
+        expect(component.partialCoverSelected()).toBeTrue();
+        expect(component.totalModifier()).toBe(1);
+        expect((fixture.nativeElement.querySelector('.partial-cover') as HTMLElement).textContent).toContain('Partial Cover (water)');
+
+        component.apply();
+        expect(close).toHaveBeenCalledWith(jasmine.objectContaining({
+            patch: jasmine.objectContaining({
+                tnModifier: 1,
+                tnCalculator: jasmine.objectContaining({
+                    targetHexCover: 'none',
+                    partialCover: false,
+                    waterPartialCover: true,
+                }),
+            }),
+        }));
+    });
+
     it('retains independent movement, jump, and prone state', async () => {
         const close = jasmine.createSpy('close');
         const data: TnCalculatorDialogData = {

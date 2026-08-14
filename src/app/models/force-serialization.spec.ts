@@ -79,6 +79,7 @@ describe('heat state sanitization', () => {
         expect(Sanitizer.sanitize({
             moveDistance: 'invalid',
             standAttempts: Number.NaN,
+            cover: Number.NaN,
             dmgReceived: Number.NaN,
             weaponsHeat: Number.POSITIVE_INFINITY,
             heatDissipationConsumed: Number.POSITIVE_INFINITY,
@@ -110,6 +111,14 @@ describe('heat state sanitization', () => {
         expect(Sanitizer.sanitize({ standAttempts: -2 }, TURN_STATE_SCHEMA)).toEqual({
             standAttempts: 0,
         });
+    });
+
+    it('keeps only active cover values', () => {
+        expect(Sanitizer.sanitize({ cover: 0 }, TURN_STATE_SCHEMA)).toEqual({});
+        expect(Sanitizer.sanitize({ cover: 1 }, TURN_STATE_SCHEMA)).toEqual({ cover: 1 });
+        expect(Sanitizer.sanitize({ cover: '3' }, TURN_STATE_SCHEMA)).toEqual({ cover: 3 });
+        expect(Sanitizer.sanitize({ cover: 4 }, TURN_STATE_SCHEMA)).toEqual({});
+        expect(Sanitizer.sanitize({ cover: 1.5 }, TURN_STATE_SCHEMA)).toEqual({});
     });
 
     it('normalizes PSR locations and rejects non-positive or fractional hit counts', () => {

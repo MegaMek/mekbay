@@ -60,6 +60,7 @@ const SHARED_TARGET_CALCULATOR_KEYS = [
     'prone',
     'immobile',
     'targetHexCover',
+    'waterPartialCover',
     'largeTarget'
 ] as const satisfies readonly (keyof TnTargetNumberCalculatorState)[];
 

@@ -87,6 +87,7 @@ export interface TnTargetNumberCalculatorState {
     interveningWoods?: TnInterveningWoods;
     targetHexCover?: TnTargetHexCover;
     partialCover?: boolean;
+    waterPartialCover?: boolean;
     attackDirection?: TnAttackDirection;
     indirectFire?: boolean;
     secondaryTarget?: boolean;
@@ -179,7 +180,11 @@ export function calculateTargetTnModifier(
     total += immobile ? TN_IMMOBILE : 0;
     total += getInterveningWoodsModifier(input.interveningWoods);
     if (!terrainTarget) total += getTargetHexCoverModifier(input.targetHexCover);
-    total += !staticTarget && input.partialCover && range > ADJACENT_RANGE && !prone ? TN_PARTIAL_COVER_MODIFIER : 0;
+    total += !staticTarget
+        && !prone
+        && (input.waterPartialCover || (input.partialCover && range > ADJACENT_RANGE))
+        ? TN_PARTIAL_COVER_MODIFIER
+        : 0;
     total += input.secondaryTarget ? TN_SECONDARY_TARGET_MODIFIER : 0;
     total += gameRules.supportsSecondaryTargetSideBack && !input.secondaryTarget && input.secondaryTargetSideBack
         ? TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER : 0;

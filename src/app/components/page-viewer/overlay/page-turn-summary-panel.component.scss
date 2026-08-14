@@ -78,7 +78,7 @@
         padding: 1px 4px;
     }
 
-    &.totalDefense {
+    &.defense {
         border-color: var(--primary-focus-color-highlight);
         background-color: #227;
     }
@@ -100,6 +100,38 @@
     line-height: 1;
     box-sizing: border-box;
     transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
+
+    &.defense {
+        border-color: var(--primary-focus-color-highlight);
+        background-color: #227;
+    }
+}
+
+.choice-line {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 2px 0;
+}
+
+.choice-label {
+    flex: 0 0 68px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2px;
+    color: var(--text-color-secondary);
+    font-size: 0.78rem;
+    font-weight: 500;
+}
+
+.icon-choice-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 4px;
 }
 
 @media print {
@@ -196,6 +228,45 @@
         gap: 4px;
         min-height: 30px;
         flex-grow: 1;
+    }
+
+    .icon-choice {
+        inline-size: 100%;
+        block-size: 28px;
+        min-width: 0;
+        padding: 3px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .water-choice.selected {
+        border-color: #64b5f6;
+        background-color: #1565c0;
+        background-image: none;
+        color: #fff;
+    }
+
+    .none-choice {
+        font-size: 0.9rem;
+    }
+
+    .icon-choice svg {
+        inline-size: 17px;
+        block-size: 17px;
+        fill: currentColor;
+    }
+
+    .double-tree svg {
+        inline-size: 23px;
+    }
+
+    .icon-choice svg.water-cover-icon {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
     }
 
     .masc-control-row {
