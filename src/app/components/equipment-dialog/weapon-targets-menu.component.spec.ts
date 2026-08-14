@@ -146,6 +146,17 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         expect(pillContainer.textContent).not.toContain('C3');
     });
 
+    it('hides calculator modifier pills for manual TN overrides', () => {
+        expect(component.targetModifierPills({
+            ...TARGET,
+            manualTnModifier: 3,
+            tnCalculator: {
+                prone: true,
+                partialCover: true,
+            },
+        })).toEqual([]);
+    });
+
     it('shows water partial cover at adjacent range', () => {
         expect(component.targetModifierPills({
             ...TARGET,

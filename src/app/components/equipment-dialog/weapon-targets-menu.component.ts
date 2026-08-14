@@ -762,6 +762,8 @@ export class WeaponTargetsMenuComponent {
     }
 
     targetModifierPills(target: InventoryControlRuntimeTarget): TargetModifierPill[] {
+        if (this.isTnModifierManual(target)) return [];
+
         const calculator = target.tnCalculator;
         if (!calculator) return [];
 
