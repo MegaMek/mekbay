@@ -102,6 +102,7 @@ export class WsService {
         this.registerMessageHandler('userState', (msg) => {
             const snapshot = {
                 publicId: msg.publicId ?? null,
+                displayName: typeof msg.displayName === 'string' ? msg.displayName : null,
                 hasOAuth: msg.hasOAuth,
                 oauthProviderCount: msg.oauthProviderCount,
                 oauthProviders: Array.isArray(msg.oauthProviders) ? msg.oauthProviders : undefined,

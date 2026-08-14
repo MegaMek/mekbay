@@ -70,6 +70,24 @@ describe('WsService', () => {
         expect(getPhase(service)).toBe('hidden');
     });
 
+    it('applies the display name returned in registration user state', () => {
+        const service = TestBed.inject(WsService);
+
+        (service as any).handleMessage({
+            data: JSON.stringify({
+                action: 'userState',
+                publicId: 'public-1',
+                displayName: 'Specter',
+                hasOAuth: false,
+                oauthProviderCount: 0,
+            }),
+        } as MessageEvent);
+
+        expect(userStateService.applyServerState).toHaveBeenCalledWith(
+            jasmine.objectContaining({ publicId: 'public-1', displayName: 'Specter' }),
+        );
+    });
+
     it('shows back online after reconnecting and keeps future failures visible', () => {
         const service = TestBed.inject(WsService);
         const scheduledCallbacks: Array<() => void> = [];

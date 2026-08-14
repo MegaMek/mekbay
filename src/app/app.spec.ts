@@ -23,6 +23,7 @@ import { SavedSearchesService } from './services/saved-searches.service';
 import { LoggerService } from './services/logger.service';
 import { GameSystem } from './models/common.model';
 import { AppUpdateService } from './services/app-update.service';
+import { LobbyService } from './services/lobby.service';
 
 describe('App', () => {
   const reloadHashStorageKey = 'mekbay:sw-update-reload-hash';
@@ -48,6 +49,7 @@ describe('App', () => {
   let urlServiceMock: any;
   let savedSearchesServiceMock: any;
   let loggerServiceMock: any;
+  let lobbyServiceMock: any;
 
   beforeEach(async () => {
     versionUpdates = new Subject();
@@ -132,6 +134,12 @@ describe('App', () => {
       error: jasmine.createSpy('error'),
       handleError: jasmine.createSpy('handleError'),
     };
+    lobbyServiceMock = {
+      hasLobby: jasmine.createSpy('hasLobby').and.returnValue(false),
+      promptAndJoin: jasmine.createSpy('promptAndJoin').and.resolveTo(undefined),
+      showLobbyDialog: jasmine.createSpy('showLobbyDialog').and.resolveTo(undefined),
+      confirmAndLeave: jasmine.createSpy('confirmAndLeave').and.resolveTo(false),
+    };
 
     await TestBed.configureTestingModule({
       imports: [App],
@@ -155,6 +163,7 @@ describe('App', () => {
         { provide: UrlService, useValue: urlServiceMock },
         { provide: SavedSearchesService, useValue: savedSearchesServiceMock },
         { provide: LoggerService, useValue: loggerServiceMock },
+        { provide: LobbyService, useValue: lobbyServiceMock },
       ]
     }).compileComponents();
   });
@@ -171,6 +180,19 @@ describe('App', () => {
     fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
     expect(app).toBeTruthy();
+  });
+
+  it('delegates join, manage, and leave lobby actions', () => {
+    fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+
+    app.joinLobby();
+    app.manageLobby();
+    app.leaveLobby();
+
+    expect(lobbyServiceMock.promptAndJoin).toHaveBeenCalled();
+    expect(lobbyServiceMock.showLobbyDialog).toHaveBeenCalled();
+    expect(lobbyServiceMock.confirmAndLeave).toHaveBeenCalled();
   });
 
   it('does not check for service worker updates immediately after full app startup', () => {

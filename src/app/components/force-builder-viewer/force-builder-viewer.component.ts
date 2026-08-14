@@ -22,6 +22,7 @@ import { getFormationDefinition } from '../../utils/formation-blueprints';
 import { formationInheritsParentEffects } from '../../utils/formation-type.model';
 import { DataService } from '../../services/data.service';
 import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
+import { LobbyService } from '../../services/lobby.service';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
@@ -45,6 +46,7 @@ export class ForceBuilderViewerComponent {
     protected optionsService = inject(OptionsService);
     private injector = inject(Injector);
     private dataService = inject(DataService);
+    protected lobbyService = inject(LobbyService);
     private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
 

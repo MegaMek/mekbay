@@ -36,6 +36,7 @@ import { AccountAuthService } from './services/account-auth.service';
 import { AccountProtectionService } from './services/account-protection.service';
 import { AppUpdateService } from './services/app-update.service';
 import { LoadingSpinnerComponent } from './components/loading-spinner/loading-spinner.component';
+import { LobbyService } from './services/lobby.service';
 
 import { GameSystem } from './models/common.model';
 import { Router, RouterOutlet } from '@angular/router';
@@ -77,6 +78,7 @@ export class App {
     forceBuilderService = inject(ForceBuilderService);
     protected layoutService = inject(LayoutService);
     protected appUpdateService = inject(AppUpdateService);
+    protected lobbyService = inject(LobbyService);
     private wsService = inject(WsService);
     private dialogService = inject(DialogsService);
     private toastService = inject(ToastService);
@@ -581,6 +583,18 @@ export class App {
 
     showForceGeneratorDialog(): void {
         void this.forceBuilderService.showForceGeneratorDialog();
+    }
+
+    joinLobby(): void {
+        void this.lobbyService.promptAndJoin();
+    }
+
+    manageLobby(): void {
+        void this.lobbyService.showLobbyDialog();
+    }
+
+    leaveLobby(): void {
+        void this.lobbyService.confirmAndLeave();
     }
 
     openHomeActionsPanel(): void {

@@ -29,6 +29,7 @@ import type { AvailableAuthProvider, LinkedOAuthProvider, OAuthProvider } from '
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { naturalCompare } from '../../utils/sort.util';
 import { AppUpdateService } from '../../services/app-update.service';
+import { DisplayNameService } from '../../services/display-name.service';
 
 type OptionsSectionId = 'General' | 'Search' | 'Account' | 'Tags' | 'Classic BattleTech' | 'Alpha Strike' | 'Advanced' | 'Logs';
 
@@ -118,6 +119,7 @@ export class OptionsDialogComponent {
     toastService = inject(ToastService);
     accountAuthService = inject(AccountAuthService);
     appUpdateService = inject(AppUpdateService);
+    displayNameService = inject(DisplayNameService);
     destroyRef = inject(DestroyRef);
     isIOS = isIOS();
     modalClass = 'wide options-dialog-modal';
@@ -140,7 +142,12 @@ export class OptionsDialogComponent {
     subscriptionInput = viewChild<ElementRef<HTMLInputElement>>('subscriptionInput');
     userUuid = computed(() => this.userStateService.uuid() || '');
     userPublicId = computed(() => this.userStateService.publicId() || 'Not registered');
+    userDisplayName = computed(() => this.userStateService.displayName() || '');
     showUserUuid = signal(false);
+    displayNameError = signal('');
+    displayNameSaving = signal(false);
+    displayNameGenerating = signal(false);
+    private displayNameSaveVersion = 0;
     subscribedTags = computed(() => {
         this.publicTagsService.version(); // depend on version for reactivity
         return this.publicTagsService.getSubscribedTags();
@@ -634,6 +641,47 @@ export class OptionsDialogComponent {
             event.stopPropagation();
             this.userUuidError = '';
             this.resetUserUuidInput();
+        }
+    }
+
+    async queueDisplayNameSave(input: HTMLInputElement): Promise<void> {
+        const version = ++this.displayNameSaveVersion;
+        this.displayNameSaving.set(true);
+        this.displayNameError.set('');
+        try {
+            const savedName = await this.displayNameService.save(input.value);
+            if (version === this.displayNameSaveVersion) input.value = savedName;
+        } catch (error) {
+            if (version === this.displayNameSaveVersion) {
+                this.displayNameError.set(error instanceof Error ? error.message : 'Could not save the display name.');
+            }
+        } finally {
+            if (version === this.displayNameSaveVersion) this.displayNameSaving.set(false);
+        }
+    }
+
+    onDisplayNameKeydown(event: KeyboardEvent, input: HTMLInputElement): void {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            input.value = this.userDisplayName();
+            this.displayNameError.set('');
+            void this.queueDisplayNameSave(input);
+        } else if (event.key === 'Enter') {
+            event.preventDefault();
+            input.blur();
+            void this.queueDisplayNameSave(input);
+        }
+    }
+
+    async fillRandomDisplayName(input: HTMLInputElement): Promise<void> {
+        if (this.displayNameGenerating()) return;
+        this.displayNameGenerating.set(true);
+        try {
+            input.value = await this.displayNameService.generate();
+            this.displayNameError.set('');
+            await this.queueDisplayNameSave(input);
+        } finally {
+            this.displayNameGenerating.set(false);
         }
     }
 

@@ -215,6 +215,7 @@ export interface SavedSearchSyncState {
 export interface UserData {
     uuid: string;
     publicId?: string;
+    displayName?: string;
     hasOAuth?: boolean;
     oauthProviderCount?: number;
     oauthProviders?: LinkedOAuthProvider[];

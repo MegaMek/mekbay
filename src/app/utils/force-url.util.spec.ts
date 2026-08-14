@@ -7,7 +7,7 @@ import type { Force } from '../models/force.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { Unit } from '../models/units.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
-import { parseForceFromUrl } from './force-url.util';
+import { buildMultiForceQueryParams, parseForceFromUrl } from './force-url.util';
 
 type WritableArraySignal<T> = (() => T[]) & { set: (next: T[]) => void };
 
@@ -95,5 +95,19 @@ describe('force URL parsing', () => {
         expect(groups[1]?.name.set).toHaveBeenCalledWith('Alpha');
         expect(groups[1]?.units().map(unit => unit.getUnit().name)).toEqual(['BMAtlas_AS7D', 'BMLocust_LCT1V']);
         expect(logger.warn).not.toHaveBeenCalled();
+    });
+});
+
+describe('force URL serialization', () => {
+    it('omits session-only lobby forces', () => {
+        const persistedForce = { instanceId: () => 'persisted-force' } as unknown as Force;
+        const lobbyForce = { instanceId: () => 'lobby-force' } as unknown as Force;
+
+        const params = buildMultiForceQueryParams([
+            { force: persistedForce, alignment: 'friendly', changeSub: null },
+            { force: lobbyForce, alignment: 'enemy', changeSub: null, persistInUrl: false },
+        ]);
+
+        expect(params.instance).toBe('persisted-force');
     });
 });

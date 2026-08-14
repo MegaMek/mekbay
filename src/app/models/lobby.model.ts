@@ -6,6 +6,7 @@ import type { ForceAlignment } from './force-slot.model';
 
 export interface LobbyParticipant {
     publicId: string;
+    displayName: string;
     self: boolean;
     host: boolean;
     connected: boolean;

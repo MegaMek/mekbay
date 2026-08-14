@@ -1563,7 +1563,7 @@ export class ForceLoadDialogComponent {
     }
 
     private async onLoadForce(force: Force): Promise<void> {
-        if (this.forceBuilderService.loadedForces().length > 0) {
+        if (this.forceBuilderService.hasUserLoadedForces()) {
             const ref = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
                 disableClose: true,
                 data: <ConfirmDialogData<string>>{
@@ -1597,7 +1597,7 @@ export class ForceLoadDialogComponent {
             return;
         }
         // If forces are already loaded, ask the user whether to replace or append
-        if (this.forceBuilderService.loadedForces().length > 0) {
+        if (this.forceBuilderService.hasUserLoadedForces()) {
             const ref = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
                 disableClose: true,
                 data: <ConfirmDialogData<string>>{

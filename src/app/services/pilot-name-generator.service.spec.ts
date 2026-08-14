@@ -69,6 +69,22 @@ describe('PilotNameGeneratorService', () => {
         expect(await service.generate({ factionId: 404, includeCallsign: false })).toMatch(/^(John|Jane) Smith$/);
     });
 
+    it('generates a callsign within the requested display-name limit', async () => {
+        const catalogService = {
+            initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
+            getCatalog: jasmine.createSpy('getCatalog').and.returnValue({
+                ...catalog,
+                callsigns: [
+                    { value: 'FarTooLongForLobby', weight: 100 },
+                    { value: 'Ace', weight: 1 },
+                ],
+            }),
+        };
+        configure(catalogService);
+
+        await expectAsync(TestBed.inject(PilotNameGeneratorService).generateCallsign(16)).toBeResolvedTo('Ace');
+    });
+
     it('propagates catalog initialization failures', async () => {
         const catalogService = {
             initialize: jasmine.createSpy('initialize').and.rejectWith(new Error('offline')),

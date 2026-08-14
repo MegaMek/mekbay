@@ -930,3 +930,18 @@ hr {
   border-top: 1px solid var(--border-color);
   opacity: 0.7;
 }
+
+.account-display-name-field {
+  width: min(36rem, 100%);
+}
+
+.account-display-name-field .field-input {
+  padding-right: 36px;
+}
+
+.account-display-name-field .random-button {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
