@@ -105,7 +105,7 @@ export class SvgViewerLiteComponent {
         });
         effect(() => {
             if (!this.svgsAttached()) return;
-            const centerContent = this.optionsService.options().recordSheetCenterPanelContent;
+            const centerContent = this.optionsService.options().printAllOptions.recordSheetCenterPanelContent;
             const u = this.unit();
             const fluffImage = u?.fluff?.img;
             if (!fluffImage) return; // no fluff image to inject

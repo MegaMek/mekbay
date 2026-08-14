@@ -3,6 +3,7 @@
 // Author: Drake
 
 import type { GameSystem } from "./common.model";
+import type { PrintAllOptions } from "./print-options.model";
 
 
 export type AvailabilitySource = 'mul' | 'megamek';
@@ -57,7 +58,7 @@ export interface Options {
     availabilitySource: AvailabilitySource;
     megaMekAvailabilityFiltersUseAllScopedOptions: boolean;
     forceViewerBVPVDisplay: ForceViewerBVPVDisplay;
-    recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
+    printAllOptions: PrintAllOptions;
     recordSheetDoubleTapZoomReset: RecordSheetDoubleTapZoomResetMode;
     lastCanvasState?: {
         brushSize: number;
@@ -69,8 +70,6 @@ export interface Options {
     CBTOptionalRules: CBTOptionalRules;
     CBTRules: 'tw' | `core2026`;
     ASUseHex: boolean;
-    ASPrintPageBreakOnGroups: boolean;
-    ASPrintCardSize: 'standard' | 'enlarged';
     c3NetworkConnectionsAboveNodes: boolean;
     automaticallyConvertFiltersToSemantic: boolean;
     allowMultipleActiveSheets: boolean;
@@ -81,8 +80,6 @@ export interface Options {
     ASUseAutomations: boolean;
     ASVehiclesCriticalHitTable: 'default' | 'scouringSands';
     ASUnifiedDamagePicker: boolean;
-    printRosterSummary: boolean;
-    printMargin: 'none' | 'browserDefined';
     performanceMode: boolean;
     enableForceSyncConflictDialog: boolean;
 

@@ -37,6 +37,83 @@ describe('ASPrintUtil', () => {
         expect(fixedStyles).toContain('size: landscape;');
         expect(flexStyles).toContain('size: landscape;');
     });
+
+    it('adds the dedicated rules-reference page only when the roster summary is enabled', async () => {
+        const createContainer = async () => {
+            const overlay = document.createElement('div');
+            overlay.id = 'as-multipage-container';
+            overlay.appendChild(document.createElement('style'));
+            const cardPage = document.createElement('div');
+            cardPage.className = 'as-print-page';
+            overlay.appendChild(cardPage);
+            document.body.appendChild(overlay);
+            document.body.classList.add('as-multipage-container-active');
+            return { overlay, cardComponentRefs: [] };
+        };
+        spyOn<any>(ASPrintUtil, 'createFixedPrintContainer').and.callFake(createContainer);
+        spyOn<any>(ASPrintUtil, 'createFlexPrintContainer').and.callFake(createContainer);
+        const rosterPage = document.createElement('div');
+        rosterPage.className = 'as-roster-summary';
+        spyOn<any>(ASPrintUtil, 'createRosterSummaryPage').and.resolveTo(rosterPage);
+
+        const unit = {
+            id: 'u1',
+            alias: () => undefined,
+            manualPilotAbilities: () => [],
+            formationAbilities: () => [],
+            getUnit: () => ({
+                name: 'Atlas AS7-D',
+                chassis: 'Atlas',
+                model: 'AS7-D',
+                as: { TP: 'BM', specials: [] },
+            }),
+        };
+        const group = {
+            units: () => [unit],
+            activeFormation: () => null,
+            groupDisplayName: () => 'First Lance',
+            formationDisplayName: () => null,
+            hasValidFormation: () => true,
+        };
+        const optionsService = { options: () => ({ ASUseHex: false }) };
+        const injector = {
+            get: () => ({
+                parseAbility: (text: string) => ({ originalText: text, ability: null }),
+            }),
+        };
+        const force = { name: 'Example Force' };
+
+        const withSummary = await printWithSummarySetting(true);
+        expect(withSummary.querySelector('.as-roster-summary')).not.toBeNull();
+        expect(withSummary.querySelector('.as-rules-reference')).not.toBeNull();
+        window.dispatchEvent(new Event('click'));
+
+        const withoutSummary = await printWithSummarySetting(false);
+        expect(withoutSummary.querySelector('.as-roster-summary')).toBeNull();
+        expect(withoutSummary.querySelector('.as-rules-reference')).toBeNull();
+        window.dispatchEvent(new Event('click'));
+
+        async function printWithSummarySetting(printRosterSummary: boolean): Promise<HTMLElement> {
+            await ASPrintUtil.multipagePrint(
+                {} as never,
+                injector as never,
+                optionsService as never,
+                [group] as never,
+                {
+                    clean: true,
+                    printPilotData: true,
+                    printRosterSummary,
+                    recordSheetCenterPanelContent: 'clusterTable',
+                    ASPrintPageBreakOnGroups: false,
+                    ASPrintCardSize: 'standard',
+                    printMargin: 'none',
+                },
+                false,
+                force as never,
+            );
+            return document.getElementById('as-multipage-container')!;
+        }
+    });
 });
 
 function getPrintLayout(cardSize: PrintAllOptions['ASPrintCardSize']): TestPrintLayout {

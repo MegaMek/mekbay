@@ -401,7 +401,10 @@ export class OptionsDialogComponent {
 
     onRecordSheetCenterPanelContentChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'fluffImage' | 'clusterTable';
-        this.optionsService.setOption('recordSheetCenterPanelContent', value);
+        this.optionsService.setOption('printAllOptions', {
+            ...this.optionsService.options().printAllOptions,
+            recordSheetCenterPanelContent: value,
+        });
     }
 
     onRecordSheetDoubleTapZoomResetChange(event: Event) {
@@ -525,16 +528,6 @@ export class OptionsDialogComponent {
     onASUseHexChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.optionsService.setOption('ASUseHex', value);
-    }
-
-    onASPrintPageBreakOnGroupsChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value === 'true';
-        this.optionsService.setOption('ASPrintPageBreakOnGroups', value);
-    }
-
-    onprintRosterSummaryChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value === 'true';
-        this.optionsService.setOption('printRosterSummary', value);
     }
 
     onASUnifiedDamagePickerChange(event: Event) {

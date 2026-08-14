@@ -71,21 +71,6 @@
                         <option value="both">Adjusted and before skill</option>
                     </select>
                 </div>
-                <div class="option-section-title">Printing</div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="printRosterSummary">Include roster summary:</label>
-                        <select id="printRosterSummary" class="bt-select"
-                            [value]="optionsService.options().printRosterSummary"
-                            (change)="onprintRosterSummaryChange($event)">
-                            <option value="false">No (default)</option>
-                            <option value="true">Yes</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Include a summary of the roster in the print output.</p>
-                    </div>
-                </div>
             </div>
             }
             @case ('Search') {
@@ -510,7 +495,7 @@
                 <div class="option-row">
                     <label for="recordSheetCenterPanelContent">Center panel:</label>
                     <select id="recordSheetCenterPanelContent" class="bt-select"
-                        [value]="optionsService.options().recordSheetCenterPanelContent"
+                        [value]="optionsService.options().printAllOptions.recordSheetCenterPanelContent"
                         (change)="onRecordSheetCenterPanelContentChange($event)">
                         <option value="clusterTable">Hit location and cluster table (default)</option>
                         <option value="fluffImage">Artwork</option>
@@ -607,16 +592,6 @@
                         <p>When enabled: damage is automatically assigned in the order armor->structure.</p>
                         <p>When disabled: damage must be assigned manually to either armor or structure.</p>
                     </div>
-                </div>
-                <div class="option-section-title">Printing</div>
-                <div class="option-row">
-                    <label for="ASPrintPageBreakOnGroups">Split groups in pages:</label>
-                    <select id="ASPrintPageBreakOnGroups" class="bt-select"
-                        [value]="optionsService.options().ASPrintPageBreakOnGroups"
-                        (change)="onASPrintPageBreakOnGroupsChange($event)">
-                        <option value="true">Yes (default)</option>
-                        <option value="false">No</option>
-                    </select>
                 </div>
                 <div class="option-section-title">Rules</div>
                 <div class="option-col">

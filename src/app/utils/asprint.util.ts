@@ -14,6 +14,8 @@ import { formatMovement, formatMovementWithAlternate } from './as-common.util';
 import { isIOS } from './platform.util';
 import type { PrintAllOptions } from '../models/print-options.model';
 import { createPrintRosterLogoMarkup, createPrintRosterQrMarkup, getPrintRosterBrandingStyles } from './print-roster-branding.util';
+import { AsAbilityLookupService } from '../services/as-ability-lookup.service';
+import { createASPrintRulesReferencePage, getASPrintRulesReferenceStyles } from './as-print-reference.util';
 
 /**
  * Represents a single card to render (handles multi-card units)
@@ -111,15 +113,24 @@ export class ASPrintUtil {
             ? await this.createFixedPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups, printOptions.printMargin, cardSize)
             : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups, printOptions.printMargin, cardSize);
 
-        // Insert roster summary page first if enabled
+        // Insert the roster and rules-reference pages before the cards when summary printing is enabled.
         const printRosterSummary = printOptions.printRosterSummary;
         if (printRosterSummary && force) {
-            const rosterPage = await this.createRosterSummaryPage(groups, force, optionsService.options().ASUseHex);
+            const useHex = optionsService.options().ASUseHex;
+            const rosterPage = await this.createRosterSummaryPage(groups, force, useHex);
+            const rulesReferencePage = createASPrintRulesReferencePage(
+                groups,
+                injector.get(AsAbilityLookupService),
+                useHex,
+                force.name,
+            );
             const firstContentNode = Array.from(overlay.children).find(child => !(child instanceof HTMLStyleElement));
             if (firstContentNode) {
                 overlay.insertBefore(rosterPage, firstContentNode);
+                overlay.insertBefore(rulesReferencePage, firstContentNode);
             } else {
                 overlay.appendChild(rosterPage);
+                overlay.appendChild(rulesReferencePage);
             }
         }
 
@@ -575,6 +586,7 @@ export class ASPrintUtil {
             }
 
             ${this.getRosterSummaryStyles()}
+            ${getASPrintRulesReferenceStyles()}
             ${getPrintRosterBrandingStyles()}
 
             @media print {
@@ -600,6 +612,11 @@ export class ASPrintUtil {
                 }
 
                 .as-roster-summary {
+                    page-break-after: always;
+                    break-after: page;
+                }
+
+                .as-rules-reference {
                     page-break-after: always;
                     break-after: page;
                 }
@@ -703,6 +720,7 @@ export class ASPrintUtil {
             }
 
             ${this.getRosterSummaryStyles()}
+            ${getASPrintRulesReferenceStyles()}
             ${getPrintRosterBrandingStyles()}
 
             @media print {
@@ -721,6 +739,11 @@ export class ASPrintUtil {
                 }
 
                 .as-roster-summary {
+                    page-break-after: always;
+                    break-after: page;
+                }
+
+                .as-rules-reference {
                     page-break-after: always;
                     break-after: page;
                 }

@@ -5,6 +5,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
+import type { PrintAllOptions } from '../../models/print-options.model';
 import { OptionsService } from '../../services/options.service';
 import { PrintOptionsDialogComponent } from './print-options-dialog.component';
 
@@ -65,7 +66,10 @@ describe('PrintOptionsDialogComponent', () => {
         await fixture.whenStable();
 
         expect(dialogRef.close).toHaveBeenCalledWith(jasmine.objectContaining({ ASPrintCardSize: 'enlarged' }));
-        expect(optionsService.setOption).toHaveBeenCalledWith('ASPrintCardSize', 'enlarged');
+        expect(optionsService.setOption).toHaveBeenCalledWith(
+            'printAllOptions',
+            jasmine.objectContaining({ ASPrintCardSize: 'enlarged' }),
+        );
     });
 
     it('restores the last Alpha Strike card size from the saved options', () => {
@@ -86,17 +90,21 @@ describe('PrintOptionsDialogComponent', () => {
 
 function createComponent(
     gameSystem: GameSystem,
-    optionOverrides: Partial<ReturnType<OptionsService['options']>> = {}
+    optionOverrides: Partial<PrintAllOptions> = {},
 ) {
     const dialogRef = { close: jasmine.createSpy('close') };
     const optionsService = {
         options: () => ({
-            printRosterSummary: false,
-            recordSheetCenterPanelContent: 'clusterTable',
-            ASPrintPageBreakOnGroups: true,
-            ASPrintCardSize: 'standard',
-            printMargin: 'browserDefined',
-            ...optionOverrides,
+            printAllOptions: {
+                clean: false,
+                printPilotData: true,
+                printRosterSummary: false,
+                recordSheetCenterPanelContent: 'clusterTable',
+                ASPrintPageBreakOnGroups: true,
+                ASPrintCardSize: 'standard',
+                printMargin: 'browserDefined',
+                ...optionOverrides,
+            },
         }),
         setOption: jasmine.createSpy('setOption').and.resolveTo()
     };

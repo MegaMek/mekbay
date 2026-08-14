@@ -200,13 +200,7 @@ export class PrintOptionsDialogComponent {
     private optionsService = inject(OptionsService);
 
     protected readonly printOptions = signal<PrintAllOptions>({
-        clean: false,
-        printPilotData: true,
-        printRosterSummary: this.optionsService.options().printRosterSummary,
-        recordSheetCenterPanelContent: this.optionsService.options().recordSheetCenterPanelContent,
-        ASPrintPageBreakOnGroups: this.optionsService.options().ASPrintPageBreakOnGroups,
-        ASPrintCardSize: this.optionsService.options().ASPrintCardSize,
-        printMargin: this.optionsService.options().printMargin,
+        ...this.optionsService.options().printAllOptions,
     });
 
     protected readonly isClassic = computed(() => this.data.gameSystem === GameSystem.CLASSIC);
@@ -238,10 +232,7 @@ export class PrintOptionsDialogComponent {
 
     protected async onPrint(): Promise<void> {
         const printOptions = this.printOptions();
-        if (this.isAlphaStrike()) {
-            await this.optionsService.setOption('ASPrintCardSize', printOptions.ASPrintCardSize);
-        }
-        await this.optionsService.setOption('printMargin', printOptions.printMargin);
+        await this.optionsService.setOption('printAllOptions', printOptions);
         this.dialogRef.close(printOptions);
     }
 }

@@ -5,6 +5,7 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { DbService } from './db.service';
 import type { CBTOptionalRules, ColorScheme, ForceBudgetOptimizerLastSkills, ForceGeneratorOptions, Options } from '../models/options.model';
+import type { PrintAllOptions } from '../models/print-options.model';
 import { GameSystem } from '../models/common.model';
 
 
@@ -22,8 +23,15 @@ const DEFAULT_OPTIONS: Options = {
     showFilteredComponents: false,
     unitSearchViewMode: 'list',
     forceOverviewViewMode: 'compact',
-    printRosterSummary: false,
-    printMargin: 'browserDefined',
+    printAllOptions: {
+        clean: false,
+        printPilotData: true,
+        printRosterSummary: false,
+        recordSheetCenterPanelContent: 'clusterTable',
+        ASPrintPageBreakOnGroups: true,
+        ASPrintCardSize: 'standard',
+        printMargin: 'browserDefined',
+    },
     performanceMode: false,
     enableForceSyncConflictDialog: false,
     unitServers: [],
@@ -32,7 +40,6 @@ const DEFAULT_OPTIONS: Options = {
     colorScheme: 'default',
     pickerStyle: 'default',
     swipeToNextSheet: 'horizontal',
-    recordSheetCenterPanelContent: 'clusterTable',
     recordSheetDoubleTapZoomReset: 'contextual',
     syncZoomBetweenSheets: true,
     trackPhaseAndTurn: true,
@@ -46,8 +53,6 @@ const DEFAULT_OPTIONS: Options = {
 
     // Alpha Strike
     ASUseHex: false,
-    ASPrintPageBreakOnGroups: true,
-    ASPrintCardSize: 'standard',
     ASUseAutomations: true,
     ASVehiclesCriticalHitTable: 'default',
     ASUnifiedDamagePicker: true,
@@ -75,10 +80,16 @@ const DEFAULT_OPTIONS: Options = {
     },
 };
 
-type LegacyOptions = Partial<Options> & {
+type LegacyOptions = Partial<Omit<Options, 'printAllOptions'>> & {
     themeColor?: 'normal' | 'night';
     sheetsColor?: 'normal' | 'night';
     ASCardStyle?: 'colored' | 'monochrome';
+    printAllOptions?: Partial<PrintAllOptions>;
+    printRosterSummary?: boolean;
+    recordSheetCenterPanelContent?: PrintAllOptions['recordSheetCenterPanelContent'];
+    ASPrintPageBreakOnGroups?: boolean;
+    ASPrintCardSize?: PrintAllOptions['ASPrintCardSize'];
+    printMargin?: PrintAllOptions['printMargin'];
 };
 
 function resolveColorScheme(saved: LegacyOptions | null | undefined): ColorScheme {
@@ -96,6 +107,24 @@ function resolveColorScheme(saved: LegacyOptions | null | undefined): ColorSchem
     }
 
     return saved?.ASCardStyle === 'colored' ? 'night' : DEFAULT_OPTIONS.colorScheme;
+}
+
+function resolvePrintAllOptions(saved: LegacyOptions | null | undefined): PrintAllOptions {
+    const defaults = DEFAULT_OPTIONS.printAllOptions;
+    const printOptions = saved?.printAllOptions;
+    return {
+        clean: printOptions?.clean ?? defaults.clean,
+        printPilotData: printOptions?.printPilotData ?? defaults.printPilotData,
+        printRosterSummary: printOptions?.printRosterSummary ?? saved?.printRosterSummary ?? defaults.printRosterSummary,
+        recordSheetCenterPanelContent: printOptions?.recordSheetCenterPanelContent
+            ?? saved?.recordSheetCenterPanelContent
+            ?? defaults.recordSheetCenterPanelContent,
+        ASPrintPageBreakOnGroups: printOptions?.ASPrintPageBreakOnGroups
+            ?? saved?.ASPrintPageBreakOnGroups
+            ?? defaults.ASPrintPageBreakOnGroups,
+        ASPrintCardSize: printOptions?.ASPrintCardSize ?? saved?.ASPrintCardSize ?? defaults.ASPrintCardSize,
+        printMargin: printOptions?.printMargin ?? saved?.printMargin ?? defaults.printMargin,
+    };
 }
 
 function resolveForceBudgetOptimizerLastSkills(saved: Options | null | undefined): ForceBudgetOptimizerLastSkills {
@@ -178,15 +207,13 @@ export class OptionsService {
         availabilitySource: DEFAULT_OPTIONS.availabilitySource,
         forceViewerBVPVDisplay: DEFAULT_OPTIONS.forceViewerBVPVDisplay,
         megaMekAvailabilityFiltersUseAllScopedOptions: DEFAULT_OPTIONS.megaMekAvailabilityFiltersUseAllScopedOptions,
-        recordSheetCenterPanelContent: DEFAULT_OPTIONS.recordSheetCenterPanelContent,
+        printAllOptions: { ...DEFAULT_OPTIONS.printAllOptions },
         recordSheetDoubleTapZoomReset: DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
         trackPhaseAndTurn: DEFAULT_OPTIONS.trackPhaseAndTurn,
         cbtAutomations: DEFAULT_OPTIONS.cbtAutomations,
         CBTOptionalRules: { ...DEFAULT_OPTIONS.CBTOptionalRules },
         CBTRules: DEFAULT_OPTIONS.CBTRules,
         ASUseHex: DEFAULT_OPTIONS.ASUseHex,
-        ASPrintPageBreakOnGroups: DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
-        ASPrintCardSize: DEFAULT_OPTIONS.ASPrintCardSize,
         c3NetworkConnectionsAboveNodes: DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
         automaticallyConvertFiltersToSemantic: DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
         allowMultipleActiveSheets: DEFAULT_OPTIONS.allowMultipleActiveSheets,
@@ -197,8 +224,6 @@ export class OptionsService {
         ASVehiclesCriticalHitTable: DEFAULT_OPTIONS.ASVehiclesCriticalHitTable,
         ASUseAutomations: DEFAULT_OPTIONS.ASUseAutomations,
         ASUnifiedDamagePicker: DEFAULT_OPTIONS.ASUnifiedDamagePicker,
-        printRosterSummary: DEFAULT_OPTIONS.printRosterSummary,
-        printMargin: DEFAULT_OPTIONS.printMargin,
         performanceMode: DEFAULT_OPTIONS.performanceMode,
         enableForceSyncConflictDialog: DEFAULT_OPTIONS.enableForceSyncConflictDialog,
         unitServers: DEFAULT_OPTIONS.unitServers,
@@ -223,7 +248,7 @@ export class OptionsService {
             availabilitySource: saved?.availabilitySource ?? DEFAULT_OPTIONS.availabilitySource,
             forceViewerBVPVDisplay: saved?.forceViewerBVPVDisplay ?? DEFAULT_OPTIONS.forceViewerBVPVDisplay,
             megaMekAvailabilityFiltersUseAllScopedOptions: saved?.megaMekAvailabilityFiltersUseAllScopedOptions ?? DEFAULT_OPTIONS.megaMekAvailabilityFiltersUseAllScopedOptions,
-            recordSheetCenterPanelContent: saved?.recordSheetCenterPanelContent ?? DEFAULT_OPTIONS.recordSheetCenterPanelContent,
+            printAllOptions: resolvePrintAllOptions(saved),
             recordSheetDoubleTapZoomReset: saved?.recordSheetDoubleTapZoomReset ?? DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
             lastCanvasState: saved?.lastCanvasState,
             sidebarLipPosition: saved?.sidebarLipPosition,
@@ -232,8 +257,6 @@ export class OptionsService {
             CBTOptionalRules: resolveCBTOptionalRules(saved),
             CBTRules: saved?.CBTRules ?? DEFAULT_OPTIONS.CBTRules,
             ASUseHex: saved?.ASUseHex ?? DEFAULT_OPTIONS.ASUseHex,
-            ASPrintPageBreakOnGroups: saved?.ASPrintPageBreakOnGroups ?? DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
-            ASPrintCardSize: saved?.ASPrintCardSize ?? DEFAULT_OPTIONS.ASPrintCardSize,
             c3NetworkConnectionsAboveNodes: saved?.c3NetworkConnectionsAboveNodes ?? DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
             automaticallyConvertFiltersToSemantic: saved?.automaticallyConvertFiltersToSemantic ?? DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
             allowMultipleActiveSheets: saved?.allowMultipleActiveSheets ?? DEFAULT_OPTIONS.allowMultipleActiveSheets,
@@ -244,8 +267,6 @@ export class OptionsService {
             ASVehiclesCriticalHitTable: saved?.ASVehiclesCriticalHitTable ?? DEFAULT_OPTIONS.ASVehiclesCriticalHitTable,
             ASUseAutomations: saved?.ASUseAutomations ?? DEFAULT_OPTIONS.ASUseAutomations,
             ASUnifiedDamagePicker: saved?.ASUnifiedDamagePicker ?? DEFAULT_OPTIONS.ASUnifiedDamagePicker,
-            printRosterSummary: saved?.printRosterSummary ?? DEFAULT_OPTIONS.printRosterSummary,
-            printMargin: saved?.printMargin ?? DEFAULT_OPTIONS.printMargin,
             performanceMode: saved?.performanceMode ?? DEFAULT_OPTIONS.performanceMode,
             enableForceSyncConflictDialog: saved?.enableForceSyncConflictDialog ?? DEFAULT_OPTIONS.enableForceSyncConflictDialog,
             unitServers: saved?.unitServers ?? DEFAULT_OPTIONS.unitServers,
