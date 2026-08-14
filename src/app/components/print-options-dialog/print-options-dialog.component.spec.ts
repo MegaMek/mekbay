@@ -39,16 +39,64 @@ describe('PrintOptionsDialogComponent', () => {
 
         expect(fixture.nativeElement.querySelector('#printPilotData')).toBeNull();
     });
+
+    it('defaults Alpha Strike card printing to the standard eight-card layout', () => {
+        const { fixture } = createComponent(GameSystem.ALPHA_STRIKE);
+        fixture.detectChanges();
+
+        const select = fixture.nativeElement.querySelector('#ASPrintCardSize') as HTMLSelectElement;
+        expect(select).not.toBeNull();
+        expect(select.value).toBe('standard');
+        expect(Array.from(select.options).map(option => option.text)).toEqual([
+            'Standard (8 per page)',
+            'Enlarged (4 per page)'
+        ]);
+    });
+
+    it('returns the enlarged Alpha Strike card size with the print options', async () => {
+        const { fixture, dialogRef, optionsService } = createComponent(GameSystem.ALPHA_STRIKE);
+        fixture.detectChanges();
+        const select = fixture.nativeElement.querySelector('#ASPrintCardSize') as HTMLSelectElement;
+
+        select.value = 'enlarged';
+        select.dispatchEvent(new Event('change'));
+        fixture.detectChanges();
+        (fixture.nativeElement.querySelector('.bt-button.primary') as HTMLButtonElement).click();
+        await fixture.whenStable();
+
+        expect(dialogRef.close).toHaveBeenCalledWith(jasmine.objectContaining({ ASPrintCardSize: 'enlarged' }));
+        expect(optionsService.setOption).toHaveBeenCalledWith('ASPrintCardSize', 'enlarged');
+    });
+
+    it('restores the last Alpha Strike card size from the saved options', () => {
+        const { fixture } = createComponent(GameSystem.ALPHA_STRIKE, { ASPrintCardSize: 'enlarged' });
+        fixture.detectChanges();
+
+        const select = fixture.nativeElement.querySelector('#ASPrintCardSize') as HTMLSelectElement;
+        expect(select.value).toBe('enlarged');
+    });
+
+    it('does not show the Alpha Strike card-size option for Classic printing', () => {
+        const { fixture } = createComponent(GameSystem.CLASSIC);
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelector('#ASPrintCardSize')).toBeNull();
+    });
 });
 
-function createComponent(gameSystem: GameSystem) {
+function createComponent(
+    gameSystem: GameSystem,
+    optionOverrides: Partial<ReturnType<OptionsService['options']>> = {}
+) {
     const dialogRef = { close: jasmine.createSpy('close') };
     const optionsService = {
         options: () => ({
             printRosterSummary: false,
             recordSheetCenterPanelContent: 'clusterTable',
             ASPrintPageBreakOnGroups: true,
-            printMargin: 'browserDefined'
+            ASPrintCardSize: 'standard',
+            printMargin: 'browserDefined',
+            ...optionOverrides,
         }),
         setOption: jasmine.createSpy('setOption').and.resolveTo()
     };

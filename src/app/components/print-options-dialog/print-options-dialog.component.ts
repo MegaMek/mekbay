@@ -81,6 +81,18 @@ export interface PrintOptionsDialogData {
                 @if (isAlphaStrike()) {
                 <div class="option-col">
                     <div class="option-row">
+                        <label for="ASPrintCardSize">Card size:</label>
+                        <select id="ASPrintCardSize" class="bt-select option-select"
+                            [value]="printOptions().ASPrintCardSize"
+                            (change)="onASPrintCardSizeChange($event)">
+                            <option value="standard">Standard (8 per page)</option>
+                            <option value="enlarged">Enlarged (4 per page)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="option-col">
+                    <div class="option-row">
                         <label for="ASPrintPageBreakOnGroups">Group page breaks:</label>
                         <select id="ASPrintPageBreakOnGroups" class="bt-select option-select"
                             [value]="printOptions().ASPrintPageBreakOnGroups"
@@ -193,6 +205,7 @@ export class PrintOptionsDialogComponent {
         printRosterSummary: this.optionsService.options().printRosterSummary,
         recordSheetCenterPanelContent: this.optionsService.options().recordSheetCenterPanelContent,
         ASPrintPageBreakOnGroups: this.optionsService.options().ASPrintPageBreakOnGroups,
+        ASPrintCardSize: this.optionsService.options().ASPrintCardSize,
         printMargin: this.optionsService.options().printMargin,
     });
 
@@ -209,6 +222,11 @@ export class PrintOptionsDialogComponent {
         this.printOptions.update(current => ({ ...current, recordSheetCenterPanelContent: value }));
     }
 
+    protected onASPrintCardSizeChange(event: Event): void {
+        const value = (event.target as HTMLSelectElement).value as PrintAllOptions['ASPrintCardSize'];
+        this.printOptions.update(current => ({ ...current, ASPrintCardSize: value }));
+    }
+
     protected onPrintMarginChange(event: Event): void {
         const value = (event.target as HTMLSelectElement).value as PrintAllOptions['printMargin'];
         this.printOptions.update(current => ({ ...current, printMargin: value }));
@@ -219,7 +237,11 @@ export class PrintOptionsDialogComponent {
     }
 
     protected async onPrint(): Promise<void> {
-        await this.optionsService.setOption('printMargin', this.printOptions().printMargin);
-        this.dialogRef.close(this.printOptions());
+        const printOptions = this.printOptions();
+        if (this.isAlphaStrike()) {
+            await this.optionsService.setOption('ASPrintCardSize', printOptions.ASPrintCardSize);
+        }
+        await this.optionsService.setOption('printMargin', printOptions.printMargin);
+        this.dialogRef.close(printOptions);
     }
 }

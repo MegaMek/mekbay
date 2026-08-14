@@ -30,21 +30,40 @@ interface RosterCell {
     renderAsHtml?: boolean;
 }
 
-// Card dimensions in inches (88mm x 63mm)
-const CARD_WIDTH_IN = 3.46;
-const CARD_HEIGHT_IN = 2.48;
+interface ASPrintLayout {
+    cardScale: number;
+    columnsPerPage: number;
+    rowsPerPage: number;
+    pageSize: 'auto' | 'landscape';
+}
+
+// Standard Alpha Strike card dimensions in millimeters.
+const CARD_WIDTH_MM = 88;
+const CARD_HEIGHT_MM = 63;
 // Page dimensions (Letter size with margins)
 const PAGE_WIDTH_IN = 8.0;  // 8.5 - 0.5 margins
 const PAGE_HEIGHT_IN = 10.5; // 11 - 0.5 margins
-// Calculate cards per page
-const COLS_PER_PAGE = Math.floor(PAGE_WIDTH_IN / CARD_WIDTH_IN);
-const ROWS_PER_PAGE = Math.floor(PAGE_HEIGHT_IN / CARD_HEIGHT_IN);
-const CARDS_PER_PAGE = COLS_PER_PAGE * ROWS_PER_PAGE;
+
+const AS_PRINT_LAYOUTS = {
+    standard: {
+        cardScale: 1,
+        columnsPerPage: 2,
+        rowsPerPage: 4,
+        pageSize: 'auto',
+    },
+    enlarged: {
+        // Halving the cards per page doubles each card's printed area.
+        cardScale: Math.SQRT2,
+        columnsPerPage: 2,
+        rowsPerPage: 2,
+        pageSize: 'landscape',
+    },
+} satisfies Record<PrintAllOptions['ASPrintCardSize'], ASPrintLayout>;
 
 
 export class ASPrintUtil {
     /**
-     * Prints Alpha Strike cards in a 2-column, 4-row grid layout per page.
+     * Prints Alpha Strike cards using the selected per-page card layout.
      * 
      * @param appRef - Angular ApplicationRef for dynamic component creation
      * @param injector - Angular Injector for dependency injection
@@ -84,12 +103,13 @@ export class ASPrintUtil {
         // Expand units into individual cards (multi-card units become multiple entries)
         const cardRenderItems = this.expandToCardItems(groups);
         const pageBreakOnGroups = printOptions.ASPrintPageBreakOnGroups;
+        const cardSize = printOptions.ASPrintCardSize ?? 'standard';
         
         // Create print container - use different layouts for iOS vs other platforms
         const useFixedLayout = isIOS();
         const { overlay, cardComponentRefs } = useFixedLayout
-            ? await this.createFixedPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups, printOptions.printMargin)
-            : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups, printOptions.printMargin);
+            ? await this.createFixedPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups, printOptions.printMargin, cardSize)
+            : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups, printOptions.printMargin, cardSize);
 
         // Insert roster summary page first if enabled
         const printRosterSummary = printOptions.printRosterSummary;
@@ -182,11 +202,14 @@ export class ASPrintUtil {
         cardItems: CardRenderItem[],
         pageBreakOnGroups: boolean,
         groups: UnitGroup<ASForceUnit>[],
-        printMargin: PrintAllOptions['printMargin']
+        printMargin: PrintAllOptions['printMargin'],
+        cardSize: PrintAllOptions['ASPrintCardSize']
     ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
         const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
         const useHex = optionsService.options().ASUseHex;
         const cardStyle = optionsService.options().colorScheme;
+        const layout = this.getPrintLayout(cardSize);
+        const cardsPerPage = layout.columnsPerPage * layout.rowsPerPage;
         
         // Create overlay container
         const overlay = document.createElement('div');
@@ -194,7 +217,7 @@ export class ASPrintUtil {
         
         // Add print styles
         const style = document.createElement('style');
-        style.textContent = this.getFixedPrintStyles(printMargin);
+        style.textContent = this.getFixedPrintStyles(printMargin, cardSize);
         overlay.appendChild(style);
         
         // Group cards by groupIndex if pageBreakOnGroups is enabled
@@ -205,7 +228,7 @@ export class ASPrintUtil {
             for (let g = 0; g < groupedCards.length; g++) {
                 const groupCards = groupedCards[g];
                 isLastGroup = g === groupedCards.length - 1;
-                const totalPagesInGroup = Math.ceil(groupCards.length / CARDS_PER_PAGE);
+                const totalPagesInGroup = Math.ceil(groupCards.length / cardsPerPage);
                 
                 for (let pageIndex = 0; pageIndex < totalPagesInGroup; pageIndex++) {
                     const pageDiv = document.createElement('div');
@@ -225,8 +248,8 @@ export class ASPrintUtil {
                         }
                     }
                     
-                    const startIndex = pageIndex * CARDS_PER_PAGE;
-                    const endIndex = Math.min(startIndex + CARDS_PER_PAGE, groupCards.length);
+                    const startIndex = pageIndex * cardsPerPage;
+                    const endIndex = Math.min(startIndex + cardsPerPage, groupCards.length);
                     
                     for (let i = startIndex; i < endIndex; i++) {
                         const item = groupCards[i];
@@ -238,7 +261,7 @@ export class ASPrintUtil {
             }
         } else {
             // Simple pagination
-            const totalPages = Math.ceil(cardItems.length / CARDS_PER_PAGE);
+            const totalPages = Math.ceil(cardItems.length / cardsPerPage);
             
             for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
                 const pageDiv = document.createElement('div');
@@ -247,8 +270,8 @@ export class ASPrintUtil {
                     pageDiv.classList.add('last-page');
                 }
                 
-                const startIndex = pageIndex * CARDS_PER_PAGE;
-                const endIndex = Math.min(startIndex + CARDS_PER_PAGE, cardItems.length);
+                const startIndex = pageIndex * cardsPerPage;
+                const endIndex = Math.min(startIndex + cardsPerPage, cardItems.length);
                 
                 for (let i = startIndex; i < endIndex; i++) {
                     const item = cardItems[i];
@@ -280,7 +303,8 @@ export class ASPrintUtil {
         cardItems: CardRenderItem[],
         pageBreakOnGroups: boolean,
         groups: UnitGroup<ASForceUnit>[],
-        printMargin: PrintAllOptions['printMargin']
+        printMargin: PrintAllOptions['printMargin'],
+        cardSize: PrintAllOptions['ASPrintCardSize']
     ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
         const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
         const useHex = optionsService.options().ASUseHex;
@@ -292,7 +316,7 @@ export class ASPrintUtil {
         
         // Add print styles
         const style = document.createElement('style');
-        style.textContent = this.getFlexPrintStyles(printMargin);
+        style.textContent = this.getFlexPrintStyles(printMargin, cardSize);
         overlay.appendChild(style);
         
         if (pageBreakOnGroups) {
@@ -445,15 +469,25 @@ export class ASPrintUtil {
         componentRefs.push(componentRef);
     }
 
+    private static getPrintLayout(cardSize: PrintAllOptions['ASPrintCardSize']): ASPrintLayout {
+        return AS_PRINT_LAYOUTS[cardSize];
+    }
+
     /**
      * Returns the CSS styles for fixed grid printing (iOS).
-     * Card size: 88mm x 63mm (standard Alpha Strike card dimensions)
+     * Standard card size: 88mm x 63mm.
      */
-    private static getFixedPrintStyles(printMargin: PrintAllOptions['printMargin']): string {
-        const cardWidthIn = `${CARD_WIDTH_IN}in`;
-        const cardHeightIn = `${CARD_HEIGHT_IN}in`;
-        const pageWidthIn = `${PAGE_WIDTH_IN}in`;
-        const pageHeightIn = `${PAGE_HEIGHT_IN}in`;
+    private static getFixedPrintStyles(
+        printMargin: PrintAllOptions['printMargin'],
+        cardSize: PrintAllOptions['ASPrintCardSize']
+    ): string {
+        const layout = this.getPrintLayout(cardSize);
+        const cardWidthMm = `${CARD_WIDTH_MM * layout.cardScale}mm`;
+        const cardHeightMm = `${CARD_HEIGHT_MM * layout.cardScale}mm`;
+        const cardFontSizeMm = `${CARD_WIDTH_MM * layout.cardScale / 100}mm`;
+        const justifyContent = cardSize === 'enlarged' ? 'center' : 'flex-start';
+        const pageWidthIn = `${layout.pageSize === 'landscape' ? PAGE_HEIGHT_IN : PAGE_WIDTH_IN}in`;
+        const pageHeightIn = `${layout.pageSize === 'landscape' ? PAGE_WIDTH_IN : PAGE_HEIGHT_IN}in`;
         
         return `
             @media screen {
@@ -472,8 +506,8 @@ export class ASPrintUtil {
                 flex-wrap: wrap;
                 -webkit-align-content: flex-start;
                 align-content: flex-start;
-                -webkit-justify-content: flex-start;
-                justify-content: flex-start;
+                -webkit-justify-content: ${justifyContent};
+                justify-content: ${justifyContent};
                 gap: 0.01in;
                 background: white;
                 box-sizing: border-box;
@@ -481,10 +515,10 @@ export class ASPrintUtil {
             }
 
             .as-card-cell {
-                -webkit-flex: 0 0 ${cardWidthIn};
-                flex: 0 0 ${cardWidthIn};
-                width: ${cardWidthIn};
-                height: ${cardHeightIn};
+                -webkit-flex: 0 0 ${cardWidthMm};
+                flex: 0 0 ${cardWidthMm};
+                width: ${cardWidthMm};
+                height: ${cardHeightMm};
                 display: -webkit-flex;
                 display: flex;
                 -webkit-justify-content: center;
@@ -497,8 +531,13 @@ export class ASPrintUtil {
 
             .as-card-cell > alpha-strike-card {
                 display: block;
-                width: 88mm;
-                height: 63mm;
+                width: ${cardWidthMm};
+                height: ${cardHeightMm};
+            }
+
+            .as-card-cell > alpha-strike-card > .card-container {
+                width: ${cardWidthMm};
+                font-size: ${cardFontSizeMm};
             }
 
             .as-group-header {
@@ -566,7 +605,7 @@ export class ASPrintUtil {
                 }
 
                 @page {
-                    size: auto;
+                    size: ${layout.pageSize};
                     margin: ${printMargin === 'none' ? '0in' : '0.25in'} !important;
                 }
             }
@@ -577,9 +616,15 @@ export class ASPrintUtil {
      * Returns the CSS styles for flexible printing (non-iOS platforms).
      * Uses flexbox with auto-wrapping for portrait/landscape support.
      */
-    private static getFlexPrintStyles(printMargin: PrintAllOptions['printMargin']): string {
-        const cardWidthIn = `${CARD_WIDTH_IN}in`;
-        const cardHeightIn = `${CARD_HEIGHT_IN}in`;
+    private static getFlexPrintStyles(
+        printMargin: PrintAllOptions['printMargin'],
+        cardSize: PrintAllOptions['ASPrintCardSize']
+    ): string {
+        const layout = this.getPrintLayout(cardSize);
+        const cardWidthMm = `${CARD_WIDTH_MM * layout.cardScale}mm`;
+        const cardHeightMm = `${CARD_HEIGHT_MM * layout.cardScale}mm`;
+        const cardFontSizeMm = `${CARD_WIDTH_MM * layout.cardScale / 100}mm`;
+        const justifyContent = cardSize === 'enlarged' ? 'center' : 'flex-start';
         
         return `            
             @media screen {
@@ -593,10 +638,34 @@ export class ASPrintUtil {
                 display: flex;
                 flex-wrap: wrap;
                 align-content: flex-start;
-                justify-content: flex-start;
+                justify-content: ${justifyContent};
                 gap: 0.01in;
                 background: white;
                 padding: 0;
+            }
+
+            .as-card-cell {
+                flex: 0 0 ${cardWidthMm};
+                width: ${cardWidthMm};
+                height: ${cardHeightMm};
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                overflow: hidden;
+                box-sizing: border-box;
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+
+            .as-card-cell > alpha-strike-card {
+                display: block;
+                width: ${cardWidthMm};
+                height: ${cardHeightMm};
+            }
+
+            .as-card-cell > alpha-strike-card > .card-container {
+                width: ${cardWidthMm};
+                font-size: ${cardFontSizeMm};
             }
 
             .as-group-header {
@@ -657,7 +726,7 @@ export class ASPrintUtil {
                 }
 
                 @page {
-                    size: auto;
+                    size: ${layout.pageSize};
                     margin: ${printMargin === 'none' ? '0' : '0.25in'} !important;
                 }
 

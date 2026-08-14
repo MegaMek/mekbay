@@ -70,6 +70,7 @@ export interface Options {
     CBTRules: 'tw' | `core2026`;
     ASUseHex: boolean;
     ASPrintPageBreakOnGroups: boolean;
+    ASPrintCardSize: 'standard' | 'enlarged';
     c3NetworkConnectionsAboveNodes: boolean;
     automaticallyConvertFiltersToSemantic: boolean;
     allowMultipleActiveSheets: boolean;

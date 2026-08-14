@@ -47,6 +47,7 @@ const DEFAULT_OPTIONS: Options = {
     // Alpha Strike
     ASUseHex: false,
     ASPrintPageBreakOnGroups: true,
+    ASPrintCardSize: 'standard',
     ASUseAutomations: true,
     ASVehiclesCriticalHitTable: 'default',
     ASUnifiedDamagePicker: true,
@@ -185,6 +186,7 @@ export class OptionsService {
         CBTRules: DEFAULT_OPTIONS.CBTRules,
         ASUseHex: DEFAULT_OPTIONS.ASUseHex,
         ASPrintPageBreakOnGroups: DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
+        ASPrintCardSize: DEFAULT_OPTIONS.ASPrintCardSize,
         c3NetworkConnectionsAboveNodes: DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
         automaticallyConvertFiltersToSemantic: DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
         allowMultipleActiveSheets: DEFAULT_OPTIONS.allowMultipleActiveSheets,
@@ -231,6 +233,7 @@ export class OptionsService {
             CBTRules: saved?.CBTRules ?? DEFAULT_OPTIONS.CBTRules,
             ASUseHex: saved?.ASUseHex ?? DEFAULT_OPTIONS.ASUseHex,
             ASPrintPageBreakOnGroups: saved?.ASPrintPageBreakOnGroups ?? DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
+            ASPrintCardSize: saved?.ASPrintCardSize ?? DEFAULT_OPTIONS.ASPrintCardSize,
             c3NetworkConnectionsAboveNodes: saved?.c3NetworkConnectionsAboveNodes ?? DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
             automaticallyConvertFiltersToSemantic: saved?.automaticallyConvertFiltersToSemantic ?? DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
             allowMultipleActiveSheets: saved?.allowMultipleActiveSheets ?? DEFAULT_OPTIONS.allowMultipleActiveSheets,

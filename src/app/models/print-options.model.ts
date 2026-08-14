@@ -9,5 +9,6 @@ export interface PrintAllOptions {
     printRosterSummary: boolean;
     recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
     ASPrintPageBreakOnGroups: boolean;
+    ASPrintCardSize: 'standard' | 'enlarged';
     printMargin: 'none' | 'browserDefined';
 }

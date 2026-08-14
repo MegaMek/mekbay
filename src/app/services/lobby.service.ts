@@ -56,10 +56,13 @@ export class LobbyService {
             this.applyState(state);
             this.lobbyStateKnown.set(true);
         });
-        const unregisterClosed = this.wsService.registerMessageHandler('lobbyClosed', () => {
+        const unregisterClosed = this.wsService.registerMessageHandler('lobbyClosed', msg => {
             this.invalidateRestore();
             this.lobbyStateKnown.set(true);
-            void this.clearLobby('The lobby was closed.');
+            const message = msg.reason === 'inactivity'
+                ? 'Operation lobby closed due to inactivity'
+                : 'The lobby was closed.';
+            void this.clearLobby(message);
         });
         const unregisterKicked = this.wsService.registerMessageHandler('lobbyKicked', () => {
             this.invalidateRestore();

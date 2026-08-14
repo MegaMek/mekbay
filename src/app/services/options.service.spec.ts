@@ -52,6 +52,22 @@ describe('OptionsService theme migration', () => {
         expect(service.options().enableForceSyncConflictDialog).toBeTrue();
     });
 
+    it('uses the standard Alpha Strike print card size by default', async () => {
+        savedOptions = null;
+
+        const service = await createService();
+
+        expect(service.options().ASPrintCardSize).toBe('standard');
+    });
+
+    it('restores the last Alpha Strike print card size', async () => {
+        savedOptions = { ASPrintCardSize: 'enlarged' };
+
+        const service = await createService();
+
+        expect(service.options().ASPrintCardSize).toBe('enlarged');
+    });
+
     it('restores a disabled CBT automations preference', async () => {
         savedOptions = { cbtAutomations: false };
 

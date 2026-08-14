@@ -525,6 +525,28 @@ describe('LobbyService', () => {
         expect(service.state()).toBeNull();
     });
 
+    it('shows the inactivity toast when the server closes an idle operation lobby', async () => {
+        const service = TestBed.inject(LobbyService);
+        handlers.get('lobbyState')?.({
+            action: 'lobbyState',
+            code: 'room',
+            locked: false,
+            isHost: true,
+            participants: [
+                { publicId: 'self', self: true, host: true, connected: true, alignment: 'friendly', instanceIds: [] },
+            ],
+        });
+
+        handlers.get('lobbyClosed')?.({ action: 'lobbyClosed', reason: 'inactivity' });
+        await settleEffects();
+
+        expect(service.state()).toBeNull();
+        expect(toastService.showToast).toHaveBeenCalledWith(
+            'Operation lobby closed due to inactivity',
+            'info',
+        );
+    });
+
     it('publishes at most eight locally loaded forces per participant', async () => {
         forceBuilderService.loadedForces.set(Array.from({ length: 9 }, (_, index) => ({
             force: createForce(`force-${index}`, true),
