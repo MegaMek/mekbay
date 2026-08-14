@@ -10,10 +10,10 @@
                     aria-pressed="{{ airborne() === true }}" (click)="setAirborne(true)">Airborne</button>
             </div>
             }
-            @if (prone()) {
+            @if (prone() && canStandUp()) {
             <div class="row grid">
                 <button type="button" class="bt-button move-button" [disabled]="!canStandUp()"
-                    (click)="standUp($event)">STAND UP</button>
+                    (click)="standUp($event)">STAND UP!</button>
             </div>
             }
             @if (canSwitchAirborneMode() === false || airborne() !== null) {
