@@ -5,12 +5,13 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
+import { DialogsService } from '../../../services/dialogs.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 import { PageStandingUpPanelComponent } from './page-standing-up-panel.component';
 
 describe('PageStandingUpPanelComponent', () => {
-    it('applies careful standing, resolves rolls, and resets the attempt count', () => {
+    it('applies careful standing, resolves rolls, and resets the attempt count', async () => {
         const attempts = signal<number | undefined>(undefined);
         const resolveStandAttempt = jasmine.createSpy('resolveStandAttempt').and.callFake(() => {
             attempts.update(current => (current ?? 0) + 1);
@@ -32,6 +33,7 @@ describe('PageStandingUpPanelComponent', () => {
         TestBed.configureTestingModule({
             imports: [PageStandingUpPanelComponent],
             providers: [
+                { provide: DialogsService, useValue: { requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(true) } },
                 { provide: PageInteractionOverlayComponent, useValue: { unit: signal(unit) } },
                 { provide: OverlayManagerService, useValue: { closeManagedOverlay: jasmine.createSpy('closeManagedOverlay') } },
             ],
@@ -65,7 +67,7 @@ describe('PageStandingUpPanelComponent', () => {
         expect(component.rolledResult()).toBe('SUCCESS');
         expect(component.attempts()).toBe(1);
 
-        component.resetAttempts();
+        await component.resetAttempts();
 
         expect(resetStandAttempts).toHaveBeenCalledTimes(1);
         expect(component.attempts()).toBe(0);

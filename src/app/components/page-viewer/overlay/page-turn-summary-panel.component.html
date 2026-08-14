@@ -13,7 +13,7 @@
             @if (prone() && canStandUp()) {
             <div class="row grid">
                 <button type="button" class="bt-button move-button" [disabled]="!canStandUp()"
-                    (click)="standUp($event)">STAND UP!</button>
+                    (click)="standUp($event)">Stand up</button>
             </div>
             }
             @if (canSwitchAirborneMode() === false || airborne() !== null) {
