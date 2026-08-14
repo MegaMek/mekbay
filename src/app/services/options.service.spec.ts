@@ -5,6 +5,7 @@
 import { TestBed } from '@angular/core/testing';
 import { DbService } from './db.service';
 import { OptionsService } from './options.service';
+import type { PrintAllOptions } from '../models/print-options.model';
 
 describe('OptionsService theme migration', () => {
     let savedOptions: unknown;
@@ -52,20 +53,62 @@ describe('OptionsService theme migration', () => {
         expect(service.options().enableForceSyncConflictDialog).toBeTrue();
     });
 
-    it('uses the standard Alpha Strike print card size by default', async () => {
+    it('uses the default print options', async () => {
         savedOptions = null;
 
         const service = await createService();
 
-        expect(service.options().printAllOptions.ASPrintCardSize).toBe('standard');
+        expect(service.options().printAllOptions).toEqual({
+            clean: false,
+            printPilotData: true,
+            printRosterSummary: false,
+            recordSheetCenterPanelContent: 'clusterTable',
+            ASPrintPageBreakOnGroups: true,
+            ASPrintCardSize: 'standard',
+            printMargin: 'browserDefined',
+        });
     });
 
-    it('restores the last Alpha Strike print card size', async () => {
-        savedOptions = { ASPrintCardSize: 'enlarged' };
+    it('restores nested print options', async () => {
+        savedOptions = {
+            printAllOptions: {
+                clean: true,
+                printPilotData: false,
+                printRosterSummary: true,
+                recordSheetCenterPanelContent: 'fluffImage',
+                ASPrintPageBreakOnGroups: false,
+                ASPrintCardSize: 'enlarged',
+                printMargin: 'none',
+            },
+        };
 
         const service = await createService();
 
-        expect(service.options().printAllOptions.ASPrintCardSize).toBe('enlarged');
+        expect(service.options().printAllOptions).toEqual(
+            (savedOptions as { printAllOptions: PrintAllOptions }).printAllOptions
+        );
+    });
+
+    it('migrates legacy root print options into the nested object', async () => {
+        savedOptions = {
+            printRosterSummary: true,
+            recordSheetCenterPanelContent: 'fluffImage',
+            ASPrintPageBreakOnGroups: false,
+            ASPrintCardSize: 'enlarged',
+            printMargin: 'none',
+        };
+
+        const service = await createService();
+
+        expect(service.options().printAllOptions).toEqual({
+            clean: false,
+            printPilotData: true,
+            printRosterSummary: true,
+            recordSheetCenterPanelContent: 'fluffImage',
+            ASPrintPageBreakOnGroups: false,
+            ASPrintCardSize: 'enlarged',
+            printMargin: 'none',
+        });
     });
 
     it('restores a disabled CBT automations preference', async () => {

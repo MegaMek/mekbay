@@ -66,14 +66,15 @@ describe('PrintOptionsDialogComponent', () => {
         await fixture.whenStable();
 
         expect(dialogRef.close).toHaveBeenCalledWith(jasmine.objectContaining({ ASPrintCardSize: 'enlarged' }));
-        expect(optionsService.setOption).toHaveBeenCalledWith(
-            'printAllOptions',
-            jasmine.objectContaining({ ASPrintCardSize: 'enlarged' }),
-        );
+        expect(optionsService.setOption).toHaveBeenCalledWith('printAllOptions', jasmine.objectContaining({
+            ASPrintCardSize: 'enlarged',
+        }));
     });
 
     it('restores the last Alpha Strike card size from the saved options', () => {
-        const { fixture } = createComponent(GameSystem.ALPHA_STRIKE, { ASPrintCardSize: 'enlarged' });
+        const { fixture } = createComponent(GameSystem.ALPHA_STRIKE, {
+            printAllOptions: { ASPrintCardSize: 'enlarged' },
+        });
         fixture.detectChanges();
 
         const select = fixture.nativeElement.querySelector('#ASPrintCardSize') as HTMLSelectElement;
@@ -86,11 +87,33 @@ describe('PrintOptionsDialogComponent', () => {
 
         expect(fixture.nativeElement.querySelector('#ASPrintCardSize')).toBeNull();
     });
+
+    it('saves the complete print options object in one update', async () => {
+        const { fixture, dialogRef, optionsService } = createComponent(GameSystem.ALPHA_STRIKE);
+        fixture.detectChanges();
+
+        (fixture.nativeElement.querySelector('.bt-button.primary') as HTMLButtonElement).click();
+        await fixture.whenStable();
+
+        const expected: PrintAllOptions = {
+            clean: false,
+            printPilotData: true,
+            printRosterSummary: false,
+            recordSheetCenterPanelContent: 'clusterTable',
+            ASPrintPageBreakOnGroups: true,
+            ASPrintCardSize: 'standard',
+            printMargin: 'browserDefined',
+        };
+
+        expect(optionsService.setOption).toHaveBeenCalledTimes(1);
+        expect(optionsService.setOption).toHaveBeenCalledWith('printAllOptions', expected);
+        expect(dialogRef.close).toHaveBeenCalledWith(expected);
+    });
 });
 
 function createComponent(
     gameSystem: GameSystem,
-    optionOverrides: Partial<PrintAllOptions> = {},
+    optionOverrides: { printAllOptions?: Partial<PrintAllOptions> } = {},
 ) {
     const dialogRef = { close: jasmine.createSpy('close') };
     const optionsService = {
@@ -103,7 +126,7 @@ function createComponent(
                 ASPrintPageBreakOnGroups: true,
                 ASPrintCardSize: 'standard',
                 printMargin: 'browserDefined',
-                ...optionOverrides,
+                ...optionOverrides.printAllOptions,
             },
         }),
         setOption: jasmine.createSpy('setOption').and.resolveTo()
