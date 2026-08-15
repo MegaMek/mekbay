@@ -14,6 +14,8 @@ export interface TooltipLine {
     priority?: number;
     weakened?: boolean;
     kind?: 'heat';
+    nested?: boolean;
+    ignored?: boolean;
 }
 
 export type TooltipType = 'info' | 'success' | 'error';
@@ -35,7 +37,7 @@ export type TooltipContent = string | TooltipLine[];
                     @if (line.isBreak) {
                         <hr class="divisor" />
                     } @else {
-                        <div class="tooltip-row" [class.plain]="!line.label" [class.header]="!!line.isHeader" [class.weakened]="!!line.weakened">
+                        <div class="tooltip-row" [class.plain]="!line.label" [class.header]="!!line.isHeader" [class.weakened]="!!line.weakened" [class.nested]="!!line.nested" [class.ignored]="!!line.ignored">
                             @if (line.iconSrc) {
                                 <img class="tooltip-icon" [src]="line.iconSrc" [alt]="line.iconAlt ?? ''" />
                             }
@@ -101,6 +103,20 @@ export type TooltipContent = string | TooltipLine[];
         }
         .tooltip-row.weakened {
             color: #f00;
+        }
+        .tooltip-row.nested {
+            color: var(--text-color-secondary);
+            padding-inline-start: 12px;
+            font-size: 0.85em;
+        }
+        .tooltip-row.nested .label::before {
+            content: '– ';
+        }
+        .tooltip-row.ignored .label,
+        .tooltip-row.ignored .value {
+            text-decoration-line: line-through;
+            text-decoration-color: red;
+            font-style: italic;
         }
         .tooltip-row .value {
             flex: 1 1 auto;

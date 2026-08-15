@@ -4,6 +4,8 @@
 
 import { computed, type Signal } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
+import { MiscEquipment, type Equipment } from '../equipment.model';
+import { getMekLegLocations, inferMekConfigFromLocations } from '../entity/types';
 
 /**
  * 
@@ -61,6 +63,8 @@ export interface HeatDissipationState {
     heatsinksOff: number;
     /** Effective dissipation after damage & turned-off HS. */
     totalDissipation: number;
+    /** Additional dissipation provided by operational heatsinks submerged in water. */
+    underwaterBonus?: number;
     /** Effective dissipation including partial-wing cooling when applicable. */
     totalDissipationWithWings?: number;
 }
@@ -74,6 +78,11 @@ interface HeatsinkProfile {
     engineDissipationPer: number;
     hittable: HSEntry[];
     totalPips: number;
+}
+
+function heatSinkDissipation(equipment: Equipment): number {
+    if (!(equipment instanceof MiscEquipment) || !equipment.isHeatSink) return 0;
+    return equipment.hasAnyFlag(['F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE', 'F_LASER_HEAT_SINK']) ? 2 : 1;
 }
 
 // ── HeatManagement ───────────────────────────────────────────────────────────
@@ -104,9 +113,8 @@ export class HeatManagement {
         let totalPips = engineHSCount;
         for (const comp of unit.comp) {
             if (!comp.eq) continue;
-            const isSingle = comp.eq.hasFlag('F_HEAT_SINK');
-            const isDouble = comp.eq.hasFlag('F_DOUBLE_HEAT_SINK');
-            if (!isSingle && !isDouble) continue;
+            const dissipation = heatSinkDissipation(comp.eq);
+            if (dissipation === 0) continue;
             totalPips += comp.q;
             if (comp.p < 0) {
                 // Engine-mounted: each quantity is one heatsink group
@@ -114,7 +122,7 @@ export class HeatManagement {
             } else {
                 // Hittable (outside engine): each quantity is one heatsink group
                 for (let i = 0; i < comp.q; i++) {
-                    hittable.push({ id: comp.id, dissipation: isDouble ? 2 : 1 });
+                    hittable.push({ id: comp.id, dissipation });
                 }
             }
         }
@@ -134,27 +142,50 @@ export class HeatManagement {
 
         const critSlots = this.unit.getCritSlots();
         const heatsinksOff = this.unit.getHeat().heatsinksOff || 0;
+        const mountedById = new Map(this.unit.getInventory().map(entry => [entry.id, entry]));
 
-        // Count destroyed heatsinks
-        const destroyedHSIds = new Set<string>();
-        let damagedCount = 0;
-        let dissipationLost = 0;
+        const criticalHeatsinks = new Map<string, { dissipation: number; locations: Set<string>; unavailable: boolean }>();
         for (const slot of critSlots) {
-            if (!slot.id || !slot.destroyed || !slot.eq) continue;
-            if (destroyedHSIds.has(slot.id)) continue; // already counted this slot's destruction
-            const isSingle = slot.eq.hasFlag('F_HEAT_SINK');
-            const isDouble = slot.eq.hasFlag('F_DOUBLE_HEAT_SINK');
-            if (!isSingle && !isDouble) continue; // not a heatsink crit!
-            destroyedHSIds.add(slot.id);
-            damagedCount++;
-            dissipationLost += isDouble ? 2 : 1;
+            if (!slot.id || !slot.eq) continue;
+            const dissipation = heatSinkDissipation(slot.eq);
+            if (dissipation === 0) continue;
+            const state = criticalHeatsinks.get(slot.id) ?? { dissipation, locations: new Set<string>(), unavailable: false };
+            if (slot.loc) state.locations.add(slot.loc);
+            state.unavailable ||= !this.unit.isEquipmentOperational(mountedById.get(slot.id) ?? slot);
+            criticalHeatsinks.set(slot.id, state);
         }
 
+        const unavailableHeatsinks = Array.from(criticalHeatsinks.values()).filter(state => state.unavailable);
+        const damagedCount = unavailableHeatsinks.length;
+        const dissipationLost = unavailableHeatsinks.reduce((total, state) => total + state.dissipation, 0);
         const engineDissipation = profile.engineHSCount * profile.engineDissipationPer;
         const hittableDissipation = profile.hittable.reduce((sum, hs) => sum + hs.dissipation, 0);
-        let totalDissipation = engineDissipation + hittableDissipation - dissipationLost;
-        totalDissipation -= heatsinksOff * profile.engineDissipationPer;
-        totalDissipation = Math.max(0, totalDissipation);
+        const baseDissipation = Math.max(
+            0,
+            engineDissipation + hittableDissipation - dissipationLost
+                - heatsinksOff * profile.engineDissipationPer,
+        );
+
+        let underwaterBonus = 0;
+        const submerged = this.unit.turnState().submerged();
+        const partiallyUnderwater = this.unit.turnState().partiallyUnderwater();
+        if (this.unit.getUnit().type === 'Mek' && (submerged || partiallyUnderwater)) {
+            if (submerged) {
+                // Once the torso is underwater, engine-mounted sinks are submerged too.
+                underwaterBonus = Math.min(6, baseDissipation);
+            } else {
+                const legLocations = new Set<string>(getMekLegLocations(inferMekConfigFromLocations(this.unit.locations?.internal.keys() ?? [])));
+                const functioningHeatsinkCount = Math.max(0, profile.totalPips - damagedCount - heatsinksOff);
+                const underwaterHeatsinks = Array.from(criticalHeatsinks.values())
+                    .filter(state => !state.unavailable && Array.from(state.locations).some(loc => legLocations.has(loc)))
+                    .sort((left, right) => right.dissipation - left.dissipation);
+                underwaterBonus = Math.min(6, underwaterHeatsinks
+                    .slice(0, Math.min(underwaterHeatsinks.length, functioningHeatsinkCount))
+                    .reduce((total, state) => total + state.dissipation, 0));
+            }
+        }
+
+        const totalDissipation = baseDissipation + underwaterBonus;
 
         return {
             totalPips: profile.totalPips,
@@ -162,6 +193,7 @@ export class HeatManagement {
             damagedCount,
             heatsinksOff,
             totalDissipation,
+            ...(underwaterBonus > 0 ? { underwaterBonus } : {}),
         };
     });
 }

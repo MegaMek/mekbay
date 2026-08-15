@@ -4,7 +4,8 @@
 
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { getTargetMovementBracketForDistance, type TnTargetNumberCalculatorState, type TnTargetUnitType } from '../models/target-number-calculator.model';
-import type { Unit } from '../models/units.model';
+import { isUnitBuildingLevel, isUnitWaterDepth } from '../models/unit-cover.model';
+import { getUnitHeight, type Unit } from '../models/units.model';
 
 export const OPFOR_INVENTORY_TARGET_ID_PREFIX = 'opfor:';
 
@@ -33,7 +34,7 @@ export function resolveInventoryTargetUnitType(unit: Unit): TnTargetUnitType {
 }
 
 export function isLargeInventoryTarget(unit: Unit): boolean {
-    return unit.type === 'Mek' && unit.tons > 100;
+    return getUnitHeight(unit) === 3;
 }
 
 export function deriveOpforTargetCalculatorState(
@@ -44,7 +45,8 @@ export function deriveOpforTargetCalculatorState(
     const prone = unit.getCondition('prone');
     const moveDistance = unit.turnState().moveDistance();
     const isAirborne = unit.turnState().moveMode() === 'jump' || unit.turnState().airborne() === true;
-    const cover = unit.turnState().cover() ?? 0;
+    const cover = unit.turnState().cover();
+    const narcWaterLayers = unit.getActiveNarcWaterLayers();
     const targetMovementBracket = moveDistance !== null
         ? getTargetMovementBracketForDistance(moveDistance)?.id ?? null
         : null;
@@ -56,8 +58,12 @@ export function deriveOpforTargetCalculatorState(
         skidding: unit.getCondition('skidding'),
         prone,
         immobile,
-        targetHexCover: cover === 1 ? 'light' : cover === 2 ? 'heavy' : 'none',
-        waterPartialCover: cover === 3,
-        largeTarget: isLargeInventoryTarget(unit.getUnit())
+        targetHexCover: cover === 'light' || cover === 'heavy' ? cover : 'none',
+        waterDepth: isUnitWaterDepth(cover) ? cover : undefined,
+        buildingCover: isUnitBuildingLevel(cover) ? cover : undefined,
+        largeTarget: unit.gameRules.supportsLargeTarget && isLargeInventoryTarget(unit.getUnit()),
+        narcAboveWater: narcWaterLayers.aboveWater,
+        narcUnderwater: narcWaterLayers.underwater,
+        tagged: unit.getCondition('tagged')
     };
 }

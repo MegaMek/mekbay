@@ -22,6 +22,7 @@ import type { Force } from '../models/force.model';
 import type { EquipmentAction, EquipmentStateEdit } from '../models/cbt-force-unit.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { EquipmentStatus } from '../models/equipment-status.model';
+import type { InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 
 export interface HandlerQueryContext {
     readonly equipmentCatalog: EquipmentRegistry;
@@ -92,6 +93,7 @@ export interface HandlerChoice extends PickerChoice {
 export interface ToHitAdjustmentContext {
     parent?: MountedEquipment;
     selectedAmmo?: AmmoEquipment | null;
+    target?: InventoryControlRuntimeTarget | null;
 }
 
 /**
@@ -500,13 +502,18 @@ export class EquipmentInteractionRegistry {
     getToHitAdjustments(
         equipment: MountedEquipment,
         context: HandlerQueryContext,
-        selectedAmmo?: AmmoEquipment | null
+        selectedAmmo?: AmmoEquipment | null,
+        target?: InventoryControlRuntimeTarget | null
     ): ToHitAdjustment[] {
+        const adjustmentContext: ToHitAdjustmentContext = {
+            selectedAmmo,
+            ...(target !== undefined && { target })
+        };
         const adjustments = this.getHandlers(equipment)
-            .flatMap(handler => handler.getToHitAdjustments?.(equipment, { selectedAmmo }, context) ?? []);
+            .flatMap(handler => handler.getToHitAdjustments?.(equipment, adjustmentContext, context) ?? []);
         for (const linked of equipment.linkedWith ?? []) {
             for (const handler of this.getHandlers(linked)) {
-                adjustments.push(...(handler.getToHitAdjustments?.(linked, { parent: equipment, selectedAmmo }, context) ?? []));
+                adjustments.push(...(handler.getToHitAdjustments?.(linked, { ...adjustmentContext, parent: equipment }, context) ?? []));
             }
         }
         return adjustments;
@@ -531,7 +538,7 @@ export class EquipmentInteractionRegistry {
             applyHeatEffects: (equipment, heat) => this.applyInventoryControlHeatEffects(equipment, heat, context),
             applyWeaponTypes: (equipment, types) => this.applyWeaponTypes(equipment, types, context),
             matchesAmmo: (equipment, ammo, mode) => this.matchesInventoryAmmo(equipment, ammo, mode, context),
-            resolveToHitAdjustments: (equipment, selectedAmmo) => this.getToHitAdjustments(equipment, context, selectedAmmo),
+            resolveToHitAdjustments: (equipment, selectedAmmo, target) => this.getToHitAdjustments(equipment, context, selectedAmmo, target),
             isSelectable: equipment => this.isInventoryControlSelectable(equipment, context)
         };
     }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, computed, inject, Injector, input, output } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, computed, inject, Injector, input, output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
@@ -22,6 +22,8 @@ import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
 import { composeTurnSummaryHeatRows, displayPsrModifiers, isMoveModeDisabledWhileProne } from './page-turn-summary.util';
 import { orderedModifierTooltipLines } from '../../../utils/hit-target-tooltip.util';
 import { toggleStandingUpOverlay } from './page-standing-up-panel.component';
+import { isUnitBuildingLevel, isUnitWaterDepth, type UnitCover } from '../../../models/unit-cover.model';
+import { CoverLevelPickerComponent } from '../../cover-level-picker/cover-level-picker.component';
 
 interface EquipmentTrackControlRow {
     entry: MountedEquipment;
@@ -33,7 +35,7 @@ interface EquipmentTrackControlRow {
 
 @Component({
     selector: 'page-turn-summary-panel',
-    imports: [CommonModule, HexSliderComponent, TooltipDirective],
+    imports: [CommonModule, HexSliderComponent, TooltipDirective, CoverLevelPickerComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './page-turn-summary-panel.component.html',
     styleUrl: './page-turn-summary-panel.component.scss'
@@ -51,6 +53,11 @@ export class PageTurnSummaryPanelComponent {
     readonly force = this.parent.force;
     readonly endTurnForAllButtonVisible = input<boolean>(false);
     readonly endTurnForAllClicked = output<void>();
+    readonly renderReady = signal(false);
+
+    constructor() {
+        afterNextRender(() => this.renderReady.set(true));
+    }
 
     private queryContext(): HandlerQueryContext {
         return createHandlerQueryContext(this.dataService.getEquipmentRegistry(), 'turn-summary');
@@ -162,18 +169,21 @@ export class PageTurnSummaryPanelComponent {
         return unit.turnState().spotting();
     });
 
-    readonly cover = computed(() => this.unit()?.turnState().cover() ?? 0);
+    readonly cover = computed(() => this.unit()?.turnState().cover());
+    readonly waterDepth = computed(() => {
+        const cover = this.cover();
+        return isUnitWaterDepth(cover) ? cover : '';
+    });
+    readonly buildingLevel = computed(() => {
+        const cover = this.cover();
+        return isUnitBuildingLevel(cover) ? cover : '';
+    });
 
     readonly coverModifierLabel = computed(() => {
-        switch (this.cover()) {
-            case 1:
-            case 3:
-                return '+1';
-            case 2:
-                return '+2';
-            default:
-                return null;
-        }
+        if (this.cover() === 'light' || this.unit()?.turnState().partiallyUnderwater()) return '+1';
+        if (this.cover() === 'heavy') return '+2';
+        const buildingModifier = this.unit()?.turnState().buildingCoverState().modifier ?? 0;
+        return buildingModifier === 0 ? null : `+${buildingModifier}`;
     });
 
     readonly spottingModifierLabel = computed(() => {
@@ -191,7 +201,11 @@ export class PageTurnSummaryPanelComponent {
     readonly heatRows = computed(() => {
         const unit = this.unit();
         if (!unit) return [];
-        return composeTurnSummaryHeatRows(unit.turnState().heatSources(), unit.selectedInventoryWeaponHeat());
+        return composeTurnSummaryHeatRows(
+            unit.turnState().heatSources(),
+            unit.selectedInventoryWeaponHeat(),
+            unit.rules.heatDissipation()?.underwaterBonus ?? 0,
+        );
     });
 
     readonly psrModifiers = computed(() => {
@@ -287,8 +301,20 @@ export class PageTurnSummaryPanelComponent {
         turnState.spotting.set(!turnState.spotting());
     }
 
-    selectCover(cover: number): void {
-        this.unit()?.turnState().setCover(cover);
+    selectCover(cover: UnitCover): void {
+        const turnState = this.unit()?.turnState();
+        if (!turnState) return;
+        turnState.setCover(turnState.cover() === cover ? undefined : cover);
+    }
+
+    selectWaterDepth(value: string): void {
+        if (!isUnitWaterDepth(value)) return;
+        this.selectCover(value);
+    }
+
+    selectBuildingLevel(value: string): void {
+        if (!isUnitBuildingLevel(value)) return;
+        this.selectCover(value);
     }
 
     async handleEquipmentTrackChoice(row: EquipmentTrackControlRow, choice: HandlerChoice): Promise<void> {

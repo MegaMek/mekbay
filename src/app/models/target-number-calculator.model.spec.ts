@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { calculateTargetTnModifier, getTargetProneModifier } from './target-number-calculator.model';
+import { calculateTargetTnModifier, calculateTargetTnModifierBreakdown, getTargetProneModifier, resolveTnTargetWaterState } from './target-number-calculator.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
 
 describe('target number calculator rules profiles', () => {
@@ -15,13 +15,147 @@ describe('target number calculator rules profiles', () => {
         expect(calculateTargetTnModifier({
             unitType: 'mek-biped',
             range: 1,
-            waterPartialCover: true,
+            waterDepth: 'underwater-depth-1',
         })).toBe(1);
         expect(calculateTargetTnModifier({
             unitType: 'mek-biped',
             range: 1,
             partialCover: true,
         })).toBe(0);
+    });
+
+    it('excludes ordinary partial cover from indirect fire but retains water cover', () => {
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 5,
+            indirectFire: true,
+            partialCover: true,
+        })).toBe(1);
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 5,
+            indirectFire: true,
+            waterDepth: 'underwater-depth-1',
+        })).toBe(2);
+    });
+
+    it('applies water partial cover only at the unit-specific partial depth', () => {
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 5,
+            waterDepth: 'underwater-depth-2',
+        }, TW_GAME_RULES)).toBe(0);
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 5,
+            largeTarget: true,
+            waterDepth: 'underwater-depth-1',
+        }, TW_GAME_RULES)).toBe(0);
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 5,
+            largeTarget: true,
+            waterDepth: 'underwater-depth-2',
+        }, TW_GAME_RULES)).toBe(1);
+    });
+
+    it('resolves non-Mek water state from target height', () => {
+        expect(resolveTnTargetWaterState({
+            unitType: 'vehicle',
+            waterDepth: 'underwater-depth-1',
+        })).toEqual({ partiallyUnderwater: false, submerged: true });
+        expect(calculateTargetTnModifier({
+            unitType: 'vehicle',
+            range: 5,
+            waterDepth: 'underwater-depth-1',
+        }, CORE_2026_GAME_RULES)).toBe(0);
+    });
+
+    it('applies building cover by target height and posture', () => {
+        expect(calculateTargetTnModifier({
+            unitType: 'vehicle',
+            range: 5,
+            buildingCover: 'building-1',
+        }, TW_GAME_RULES)).toBe(2);
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 5,
+            buildingCover: 'building-1',
+        }, TW_GAME_RULES)).toBe(1);
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 5,
+            buildingCover: 'building-2',
+        }, TW_GAME_RULES)).toBe(2);
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 5,
+            prone: true,
+            buildingCover: 'building-2',
+        }, TW_GAME_RULES)).toBe(3);
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 5,
+            largeTarget: true,
+            buildingCover: 'building-1',
+        }, TW_GAME_RULES)).toBe(0);
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 5,
+            largeTarget: true,
+            buildingCover: 'building-2',
+        }, TW_GAME_RULES)).toBe(1);
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 5,
+            prone: true,
+            largeTarget: true,
+            buildingCover: 'building-1',
+        }, TW_GAME_RULES)).toBe(2);
+        expect(calculateTargetTnModifier({
+            unitType: 'mek-biped',
+            range: 5,
+            prone: true,
+            largeTarget: true,
+            buildingCover: 'building-2',
+        }, TW_GAME_RULES)).toBe(3);
+    });
+
+    it('retains building partial cover for adjacent and indirect attacks', () => {
+        const input = {
+            unitType: 'mek-biped' as const,
+            range: 1,
+            indirectFire: true,
+            buildingCover: 'building-1' as const,
+        };
+        expect(calculateTargetTnModifier(input, TW_GAME_RULES)).toBe(2);
+        expect(calculateTargetTnModifierBreakdown(input, TW_GAME_RULES)).toContain(jasmine.objectContaining({
+            label: 'Partial Cover (building)',
+            modifier: 1,
+            partialCoverSource: 'building',
+        }));
+    });
+
+    it('identifies partial-cover rules independently of their display labels', () => {
+        const waterCover = calculateTargetTnModifierBreakdown({
+            unitType: 'mek-biped',
+            waterDepth: 'underwater-depth-1',
+        });
+        const manualCover = calculateTargetTnModifierBreakdown({
+            unitType: 'mek-biped',
+            range: 2,
+            partialCover: true,
+        });
+
+        expect(waterCover).toContain(jasmine.objectContaining({
+            label: 'Partial Cover (water)',
+            partialCoverSource: 'water',
+        }));
+        expect(manualCover).toContain(jasmine.objectContaining({
+            label: 'Partial Cover',
+            partialCoverSource: 'manual',
+            guidanceAdjustment: 'partial-cover',
+        }));
     });
 
     it('uses Large Target and ignores removed modifiers in core2026', () => {

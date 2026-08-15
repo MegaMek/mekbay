@@ -5,13 +5,18 @@
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { WeaponEquipment, type AmmoEquipment } from '../models/equipment.model';
 import { resolveAmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
-import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
+import { getEffectiveInventoryControlCalculatorState, inventoryControlEntryAllowsTarget, inventoryControlTargetUsesIndirectFire, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import { CORE_2026_GAME_RULES, separateHeatFireModifier, SKILL_BREAKDOWN_PRIORITY, type C3DegradationSource, type CBTGameRules, type ToHitResolution } from '../models/rules/game-rules';
 import { modifierTooltipLines, orderHitTargetTooltipLines } from './hit-target-tooltip.util';
 import type { UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
 import type { InventoryControlDisplayData, InventoryControlGroupId, InventoryRangeKey } from './inventory-control.util';
 import type { TooltipLine } from '../components/tooltip/tooltip.component';
 import { aerospaceRangeBracket, aerospaceRangeLimits, effectiveAerospaceMaximumBracket, isRangeBracketWithinMaximum } from './aerospace-range.util';
+import { calculateTargetTnModifierBreakdown, type TnTargetModifierBreakdownEntry } from '../models/target-number-calculator.model';
+
+type EffectiveTargetModifierBreakdownEntry = TnTargetModifierBreakdownEntry & {
+    ignored?: true;
+};
 
 export interface InventoryTargetRangeSelection {
     range: InventoryControlRuntimeRangeKey;
@@ -51,6 +56,7 @@ export interface InventoryTargetNumberInput {
     hitResolution: ToHitResolution;
     c3DegradationSource?: C3DegradationSource;
     gameRules?: CBTGameRules;
+    indirectFireBaseModifier?: number;
 }
 
 export type InventoryTargetDisplay = Pick<InventoryControlDisplayData, InventoryRangeKey | 'min'>;
@@ -62,11 +68,140 @@ export function inventoryTargetCategory(entry: MountedEquipment): InventoryContr
 }
 
 export function inventoryTargetAllowsC3(target: InventoryControlRuntimeTarget): boolean {
-    return target.tnCalculator?.indirectFire !== true;
+    return !inventoryControlTargetUsesIndirectFire(target);
 }
 
 export function inventoryTargetUsesC3(target: InventoryControlRuntimeTarget): boolean {
     return target.useC3 === true && inventoryTargetAllowsC3(target);
+}
+
+export function inventoryTargetEffectiveTnModifier(
+    target: InventoryControlRuntimeTarget,
+    entry: MountedEquipment,
+    selectedAmmo?: AmmoEquipment | null,
+    gameRules: CBTGameRules = CORE_2026_GAME_RULES,
+    indirectFireBaseModifier = 1,
+): number {
+    const calculator = getEffectiveInventoryControlCalculatorState(target);
+    if (!calculator) return target.tnModifier;
+
+    const rawBreakdown = targetCalculatorBreakdown(target, gameRules, indirectFireBaseModifier);
+    const effectiveBreakdown = effectiveTargetCalculatorBreakdown(
+        target,
+        entry,
+        selectedAmmo,
+        gameRules,
+        indirectFireBaseModifier,
+    );
+    return target.tnModifier
+        + sumTargetModifiers(effectiveBreakdown)
+        - sumTargetModifiers(rawBreakdown);
+}
+
+function targetGuidance(
+    calculator: NonNullable<ReturnType<typeof getEffectiveInventoryControlCalculatorState>>,
+    entry: MountedEquipment,
+    selectedAmmo: AmmoEquipment,
+): { narc: boolean; semiGuided: boolean } {
+    const narc = selectedAmmo.hasMunitionType('M_NARC_CAPABLE')
+        && (entry.owner.isEquipmentSubmerged(entry)
+            ? calculator.narcUnderwater === true
+            : calculator.narcAboveWater === true);
+    return {
+        narc,
+        semiGuided: calculator.tagged === true && selectedAmmo.hasMunitionType('M_SEMIGUIDED'),
+    };
+}
+
+function targetCalculatorBreakdown(
+    target: InventoryControlRuntimeTarget,
+    gameRules: CBTGameRules,
+    indirectFireBaseModifier: number,
+): TnTargetModifierBreakdownEntry[] {
+    const calculator = getEffectiveInventoryControlCalculatorState(target);
+    if (!calculator) return [];
+    return calculateTargetTnModifierBreakdown({
+        ...calculator,
+        unitType: target.unitType,
+        range: target.distance,
+        indirectFireBaseModifier,
+    }, gameRules);
+}
+
+function effectiveTargetCalculatorBreakdown(
+    target: InventoryControlRuntimeTarget,
+    entry: MountedEquipment,
+    selectedAmmo: AmmoEquipment | null | undefined,
+    gameRules: CBTGameRules,
+    indirectFireBaseModifier: number,
+): EffectiveTargetModifierBreakdownEntry[] {
+    const calculator = getEffectiveInventoryControlCalculatorState(target);
+    let breakdown = targetCalculatorBreakdown(target, gameRules, indirectFireBaseModifier)
+        .map(modifier => markTargetModifierIgnored(
+            modifier,
+            modifier.partialCoverSource === 'water' && !waterPartialCoverApplies(entry),
+        ));
+    if (!calculator || !selectedAmmo) return breakdown;
+
+    const guidance = targetGuidance(calculator, entry, selectedAmmo);
+    if (calculator.indirectFire && (guidance.narc || guidance.semiGuided)) {
+        breakdown = breakdown.map(modifier => markTargetModifierIgnored(
+            modifier,
+            (guidance.narc && modifier.ignoredByNarcGuidance === true)
+            || (guidance.semiGuided && modifier.ignoredBySemiGuidedGuidance === true),
+        ));
+    }
+    if (guidance.semiGuided && !calculator.indirectFire && gameRules.semiGuidedIgnoresCover) {
+        breakdown = breakdown.map(modifier => markTargetModifierIgnored(
+            modifier,
+            modifier.guidanceAdjustment === 'partial-cover',
+        ));
+    }
+
+    const guidanceModifiers: EffectiveTargetModifierBreakdownEntry[] = [];
+    if (guidance.semiGuided) {
+        const adjustment = (['movement', 'terrain'] as const).reduce((total, source) => {
+            const modifierValue = breakdown
+                .filter(modifier => modifier.ignored !== true && modifier.guidanceAdjustment === source)
+                .reduce((sum, modifier) => sum + modifier.modifier, 0);
+            return total + gameRules.getSemiGuidedAdjustment(modifierValue, source);
+        }, 0);
+        const indirectFireAdjustment = calculator.indirectFire
+            && gameRules.semiGuidedIgnoresIndirectFireModifier
+            ? indirectFireBaseModifier
+            : 0;
+        const semiGuidedModifier = -(adjustment + indirectFireAdjustment);
+        if (semiGuidedModifier !== 0) {
+            guidanceModifiers.push({ label: 'Semi-Guided', modifier: semiGuidedModifier });
+        }
+    }
+    if (guidance.narc && !calculator.indirectFire && gameRules.narcHomingTargetModifier !== 0) {
+        guidanceModifiers.push({ label: 'NARC', modifier: gameRules.narcHomingTargetModifier });
+    }
+    return [...breakdown, ...guidanceModifiers];
+}
+
+function markTargetModifierIgnored(
+    modifier: EffectiveTargetModifierBreakdownEntry,
+    ignored: boolean,
+): EffectiveTargetModifierBreakdownEntry {
+    return ignored && modifier.ignored !== true
+        ? { ...modifier, ignored: true }
+        : modifier;
+}
+
+function waterPartialCoverApplies(entry: MountedEquipment): boolean {
+    if (entry.owner.turnState().submerged()) return false;
+    if (!entry.isPhysicalWeapon()) return true;
+    if (!entry.isIntrinsicPhysicalAttack()) return true; // Any carried physical weapon
+    return entry.name.toLowerCase() === 'club';
+}
+
+function sumTargetModifiers(breakdown: readonly EffectiveTargetModifierBreakdownEntry[]): number {
+    return breakdown.reduce(
+        (total, modifier) => modifier.ignored === true ? total : total + modifier.modifier,
+        0,
+    );
 }
 
 export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberInput, 'entry' | 'category' | 'display' | 'extremeRange' | 'allowExtremeRange' | 'target' | 'selectedAmmo'>): InventoryTargetRangeSelection | null {
@@ -172,6 +307,9 @@ export function inventoryTargetNumberState(
     input: InventoryTargetNumberInput,
     rangeSelection: InventoryTargetRangeSelection | null = inventoryTargetRangeSelection(input)
 ): InventoryTargetNumberState {
+    if (input.target && !inventoryControlEntryAllowsTarget(input.entry, input.target)) {
+        return { text: 'X', breakdown: null, rangeSelection };
+    }
     if (!rangeSelection) return { text: '', breakdown: null, rangeSelection };
     if (rangeSelection.outOfRange) return { text: 'X', breakdown: null, rangeSelection };
     const { hitModifier } = separateHeatFireModifier(input.hitResolution);
@@ -223,14 +361,36 @@ export function inventoryTargetNumberBreakdown(
         : gameRules.resolveToHit({ subject: input.selectedAmmo, range: rangeSelection.range }).value;
     const numericAmmoToHitModifier = typeof ammoToHitModifier === 'number' ? ammoToHitModifier : 0;
     const heatFireModifier = physical ? 0 : separatedHeatFireModifier;
+    const targetModifier = inventoryTargetEffectiveTnModifier(
+        target,
+        input.entry,
+        input.selectedAmmo,
+        gameRules,
+        input.indirectFireBaseModifier,
+    );
     const terms: TooltipLine[] = [
         { label: skillLabel, value: skill.toString(), priority: SKILL_BREAKDOWN_PRIORITY }
     ];
 
     terms.push(...modifierTooltipLines(input.attackModifierBreakdown, entry => formatInventoryTargetSignedModifier(entry.modifier)));
 
-    if (target.tnModifier !== 0) {
-        terms.push({ label: `Target (${target.letter})`, value: formatInventoryTargetSignedModifier(target.tnModifier) });
+    const calculator = getEffectiveInventoryControlCalculatorState(target);
+    if (calculator) {
+        terms.push({ label: `Target ${target.letter}`, value: formatInventoryTargetSignedModifier(targetModifier), isHeader: true });
+        terms.push(...effectiveTargetCalculatorBreakdown(
+            target,
+            input.entry,
+            input.selectedAmmo,
+            gameRules,
+            input.indirectFireBaseModifier ?? 1,
+        ).map(entry => ({
+            label: entry.label,
+            value: formatInventoryTargetSignedModifier(entry.modifier),
+            nested: true,
+            ...(entry.ignored && { ignored: true }),
+        })));
+    } else if (targetModifier !== 0) {
+        terms.push({ label: `Target (${target.letter})`, value: formatInventoryTargetSignedModifier(targetModifier) });
     }
 
     if (!physical) {
@@ -267,7 +427,7 @@ export function inventoryTargetNumberBreakdown(
 
     const attackModifier = input.attackModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
     const equipmentHitModifier = hitModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
-    const total = skill + attackModifier + target.tnModifier + rangeModifier + c3ModifierValue + minimumRangeModifier + equipmentHitModifier + numericAmmoToHitModifier + heatFireModifier;
+    const total = skill + attackModifier + targetModifier + rangeModifier + c3ModifierValue + minimumRangeModifier + equipmentHitModifier + numericAmmoToHitModifier + heatFireModifier;
     return {
         total,
         lines: [

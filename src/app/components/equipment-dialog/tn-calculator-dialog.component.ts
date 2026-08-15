@@ -8,6 +8,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { HexSliderComponent } from '../hex-slider/hex-slider.component';
 import { MultilineDropdownComponent, type MultilineDropdownOption } from '../multiline-dropdown/multiline-dropdown.component';
+import { CoverLevelPickerComponent } from '../cover-level-picker/cover-level-picker.component';
 import {
     calculateTargetTnModifier,
     getIndirectFireModifier,
@@ -15,6 +16,8 @@ import {
     getTargetUnitTypeModifier,
     isStaticTargetType,
     isTerrainTargetType,
+    resolveTnTargetBuildingCoverState,
+    resolveTnTargetWaterState,
     TN_TARGET_MOVEMENT_BRACKETS,
     TN_TARGET_UNIT_TYPE_OPTIONS,
     ADJACENT_RANGE,
@@ -27,10 +30,16 @@ import {
 } from '../../models/target-number-calculator.model';
 import { getUnitConditionDefinition } from '../../models/rules/unit-type-rules';
 import type { CBTGameRules } from '../../models/rules/game-rules';
+import {
+    isUnitBuildingLevel,
+    isUnitWaterDepth,
+    unitBuildingLevelNumber,
+    unitWaterDepthNumber,
+    type UnitBuildingLevel,
+    type UnitWaterDepth,
+} from '../../models/unit-cover.model';
 
 const JAMMED_CONDITION_COLOR = getUnitConditionDefinition('jammed')?.color ?? '#ff6be6';
-type TnTargetCoverChoice = TnTargetHexCover | 'water';
-
 export interface TnCalculatorDialogData {
     target: InventoryControlRuntimeTarget;
     gameRules: CBTGameRules;
@@ -38,6 +47,7 @@ export interface TnCalculatorDialogData {
     showC3Distance?: boolean;
     c3Degraded?: boolean;
     indirectFireBaseModifier?: number;
+    indirectFireAvailable?: boolean;
 }
 
 export interface TnCalculatorDialogResult {
@@ -48,7 +58,7 @@ export interface TnCalculatorDialogResult {
 @Component({
     selector: 'tn-calculator-dialog',
     standalone: true,
-    imports: [CommonModule, HexSliderComponent, MultilineDropdownComponent],
+    imports: [CommonModule, HexSliderComponent, MultilineDropdownComponent, CoverLevelPickerComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         class: 'tn-calculator-host',
@@ -77,30 +87,32 @@ export interface TnCalculatorDialogResult {
                                 </button>
                             }
                         </div>
-                        <div class="button-row">
-                            <button type="button" class="bt-button move-button" [class.selected]="indirectFire()" [attr.aria-pressed]="indirectFire()" (click)="toggleIndirectFire()">
-                                <span>Indirect Fire</span>@if (indirectFireModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }
-                            </button>
-                        </div>
-                        @if (indirectFire()) {
-                            <div class="spotter-section framed-borders muted-frame">
-                            <div class="section-title secondary">Spotter</div>
-                            <div class="button-row spotter-move-row">
-                                <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'stationary'" [attr.aria-pressed]="spotterMoveMode() === 'stationary'" (click)="selectSpotterMove('stationary')">
-                                    <svg width="16px" height="16px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
-                                        <path d="M32 2C15.432 2 2 15.432 2 32c-.001 16.568 13.432 30 30 30s30.001-13.432 30-30c.001-16.568-13.432-30-30-30zM9 38V26h46v12H9z" fill="currentColor"></path>
-                                    </svg>
-                                </button>
-                                <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'walk'" [attr.aria-pressed]="spotterMoveMode() === 'walk'" (click)="selectSpotterMove('walk')"><span>Walk</span><span class="modifier-badge">+1</span></button>
-                                <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'run'" [attr.aria-pressed]="spotterMoveMode() === 'run'" (click)="selectSpotterMove('run')"><span>Run</span><span class="modifier-badge">+2</span></button>
-                                <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'jump'" [attr.aria-pressed]="spotterMoveMode() === 'jump'" (click)="selectSpotterMove('jump')"><span>Jump</span><span class="modifier-badge">+3</span></button>
-                            </div>
+                        @if (indirectFireAvailable) {
                             <div class="button-row">
-                                <button type="button" class="bt-button move-button" [class.selected]="spotterDeclaredAttacks()" [attr.aria-pressed]="spotterDeclaredAttacks()" (click)="toggleSpotterDeclaredAttacks()">
-                                    <span>Declared Attacks</span><span class="modifier-badge">+1</span>
+                                <button type="button" class="bt-button move-button" [class.selected]="indirectFire()" [attr.aria-pressed]="indirectFire()" (click)="toggleIndirectFire()">
+                                    <span>Indirect Fire</span>@if (indirectFireModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }
                                 </button>
                             </div>
-                        </div>
+                            @if (indirectFire()) {
+                                <div class="spotter-section framed-borders muted-frame">
+                                    <div class="section-title secondary">Spotter</div>
+                                    <div class="button-row spotter-move-row">
+                                        <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'stationary'" [attr.aria-pressed]="spotterMoveMode() === 'stationary'" (click)="selectSpotterMove('stationary')">
+                                            <svg width="16px" height="16px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+                                                <path d="M32 2C15.432 2 2 15.432 2 32c-.001 16.568 13.432 30 30 30s30.001-13.432 30-30c.001-16.568-13.432-30-30-30zM9 38V26h46v12H9z" fill="currentColor"></path>
+                                            </svg>
+                                        </button>
+                                        <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'walk'" [attr.aria-pressed]="spotterMoveMode() === 'walk'" (click)="selectSpotterMove('walk')"><span>Walk</span><span class="modifier-badge">+1</span></button>
+                                        <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'run'" [attr.aria-pressed]="spotterMoveMode() === 'run'" (click)="selectSpotterMove('run')"><span>Run</span><span class="modifier-badge">+2</span></button>
+                                        <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'jump'" [attr.aria-pressed]="spotterMoveMode() === 'jump'" (click)="selectSpotterMove('jump')"><span>Jump</span><span class="modifier-badge">+3</span></button>
+                                    </div>
+                                    <div class="button-row">
+                                        <button type="button" class="bt-button move-button" [class.selected]="spotterDeclaredAttacks()" [attr.aria-pressed]="spotterDeclaredAttacks()" (click)="toggleSpotterDeclaredAttacks()">
+                                            <span>Declared Attacks</span><span class="modifier-badge">+1</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            }
                         }
                     </section>
 
@@ -197,17 +209,25 @@ export interface TnCalculatorDialogResult {
                         <div class="section-title">Other</div>
                         <div class="choice-line" [class.derived-target-state]="targetStateReadOnly">
                             <span class="choice-label"><span>Cover</span>@if (targetHexCoverModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }</span>
-                            <div class="icon-choice-row" role="group" aria-label="Target hex cover">
-                                <button type="button" class="bt-button icon-choice none-choice" [class.selected]="!waterPartialCover() && targetHexCover() === 'none'" [attr.aria-pressed]="!waterPartialCover() && targetHexCover() === 'none'" [disabled]="terrainTarget() || targetStateReadOnly" (click)="selectTargetHexCover('none')">X</button>
-                                <button type="button" class="bt-button icon-choice" [class.selected]="targetHexCover() === 'light'" [attr.aria-pressed]="targetHexCover() === 'light'" [disabled]="terrainTarget() || targetStateReadOnly" (click)="selectTargetHexCover('light')">
+                            <div class="icon-choice-row cover-choice-row" role="group" aria-label="Target hex cover">
+                                <button type="button" class="bt-button icon-choice" aria-label="Light cover" [class.selected]="targetHexCover() === 'light'" [attr.aria-pressed]="targetHexCover() === 'light'" [disabled]="terrainTarget() || targetStateReadOnly" (click)="selectTargetHexCover('light')">
                                     <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
                                 </button>
-                                <button type="button" class="bt-button icon-choice double-tree" [class.selected]="targetHexCover() === 'heavy'" [attr.aria-pressed]="targetHexCover() === 'heavy'" [disabled]="terrainTarget() || targetStateReadOnly" (click)="selectTargetHexCover('heavy')">
+                                <button type="button" class="bt-button icon-choice double-tree" aria-label="Heavy cover" [class.selected]="targetHexCover() === 'heavy'" [attr.aria-pressed]="targetHexCover() === 'heavy'" [disabled]="terrainTarget() || targetStateReadOnly" (click)="selectTargetHexCover('heavy')">
                                         <svg viewBox="0 0 724 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/><path transform="translate(212 0)" d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
                                 </button>
-                                <button type="button" class="bt-button icon-choice water-choice" [class.selected]="waterPartialCover()" [attr.aria-pressed]="waterPartialCover()" [disabled]="staticTarget() || targetStateReadOnly" (click)="selectTargetHexCover('water')">
-                                    <svg class="water-cover-icon" viewBox="0 0 24 20" aria-hidden="true"><circle cx="12" cy="4" r="2.5"/><path d="M7 12.5 9 8h6l2 4.5M2 15c2.5-2 4.5 2 7 0s4.5 2 7 0 4.5 2 6 0M2 19c2.5-2 4.5 2 7 0s4.5 2 7 0 4.5 2 6 0"/></svg>
-                                </button>
+                                <cover-level-picker
+                                    kind="water"
+                                    [value]="waterDepthValue()"
+                                    [disabled]="targetStateReadOnly"
+                                    (valueChange)="selectWaterDepth($event)"
+                                />
+                                <cover-level-picker
+                                    kind="building"
+                                    [value]="buildingCoverValue()"
+                                    [disabled]="staticTarget() || targetStateReadOnly"
+                                    (valueChange)="selectBuildingLevel($event)"
+                                />
                             </div>
                             <span class="choice-caption"><span>{{ targetHexCoverCaption() }}</span></span>
                         </div>
@@ -218,12 +238,11 @@ export interface TnCalculatorDialogResult {
                             }
                             <div class="choice-line">
                                 <span class="choice-label"><span>Intervening</span>@if (woodsModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }</span>
-                                <div class="icon-choice-row" role="group" aria-label="Intervening woods">
-                                    <button type="button" class="bt-button icon-choice none-choice" [class.selected]="interveningWoods() === 'none'" [attr.aria-pressed]="interveningWoods() === 'none'" (click)="selectInterveningWoods('none')">X</button>
-                                    <button type="button" class="bt-button icon-choice" [class.selected]="interveningWoods() === 'light1'" [attr.aria-pressed]="interveningWoods() === 'light1'" (click)="selectInterveningWoods('light1')">
+                                <div class="icon-choice-row interleaving-choice-row" role="group" aria-label="Intervening woods">
+                                    <button type="button" class="bt-button icon-choice" aria-label="1 light wood" [class.selected]="interveningWoods() === 'light1'" [attr.aria-pressed]="interveningWoods() === 'light1'" (click)="selectInterveningWoods('light1')">
                                         <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
                                     </button>
-                                    <button type="button" class="bt-button icon-choice double-tree" [class.selected]="interveningWoods() === 'light2'" [attr.aria-pressed]="interveningWoods() === 'light2'" (click)="selectInterveningWoods('light2')">
+                                    <button type="button" class="bt-button icon-choice double-tree" aria-label="2 light woods or 1 heavy wood" [class.selected]="interveningWoods() === 'light2'" [attr.aria-pressed]="interveningWoods() === 'light2'" (click)="selectInterveningWoods('light2')">
                                         <svg viewBox="0 0 724 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/><path transform="translate(212 0)" d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
                                     </button>
                                 </div>
@@ -236,8 +255,8 @@ export interface TnCalculatorDialogResult {
                                     }
                                 </span>
                             </div>
-                            <div class="button-row" [class.derived-target-state]="waterPartialCover()">
-                            <button type="button" class="bt-button move-button partial-cover" [class.selected]="partialCoverSelected()" [class.water-choice]="waterPartialCover()" [attr.aria-pressed]="partialCoverSelected()" [disabled]="partialCoverDisabled()" (click)="togglePartialCover()"><span>{{ partialCoverLabel() }}</span><span class="modifier-badge">+1</span></button>
+                            <div class="button-row" [class.derived-target-state]="waterPartialCover() || buildingPartialCover()">
+                            <button type="button" class="bt-button move-button partial-cover" [class.selected]="partialCoverSelected()" [class.water-choice]="waterPartialCover()" [class.building-choice]="buildingPartialCover()" [attr.aria-pressed]="partialCoverSelected()" [disabled]="partialCoverDisabled()" (click)="togglePartialCover()"><span>{{ partialCoverLabel() }}</span><span class="modifier-badge">+1</span></button>
                             </div>
                         </div>
 
@@ -589,7 +608,7 @@ export interface TnCalculatorDialogResult {
 
         .field-row label,
         .choice-label {
-            flex: 0 0 96px;
+            flex: 0 0 94px;
             color: var(--text-color-secondary);
             font-size: 0.8rem;
             font-weight: 500;
@@ -635,6 +654,21 @@ export interface TnCalculatorDialogResult {
             gap: 4px;
         }
 
+        .cover-choice-row {
+            display: grid;
+            grid-template-columns: repeat(4, 40px);
+        }
+
+        .interleaving-choice-row {
+            display: grid;
+            grid-template-columns: repeat(2, 40px);
+        }
+
+        .cover-choice-row > .icon-choice,
+        .interleaving-choice-row > .icon-choice {
+            inline-size: 100%;
+        }
+
         .toggle-button,
         .segment-button {
             border: 1px solid var(--border-color);
@@ -665,22 +699,10 @@ export interface TnCalculatorDialogResult {
             gap: 0;
         }
 
-        .none-choice {
-            font-size: 1rem;
-        }
-
         .icon-choice svg {
             inline-size: 20px;
             block-size: 20px;
             fill: currentColor;
-        }
-
-        .icon-choice svg.water-cover-icon {
-            fill: none;
-            stroke: currentColor;
-            stroke-width: 2;
-            stroke-linecap: round;
-            stroke-linejoin: round;
         }
 
         .water-choice.selected,
@@ -692,6 +714,17 @@ export interface TnCalculatorDialogResult {
             border-color: #64b5f6;
             background: #1565c0;
             color: #fff;
+        }
+
+        .building-choice.selected,
+        .building-choice.selected:hover,
+        .building-choice.selected:active,
+        .derived-target-state .building-choice.selected,
+        .derived-target-state .building-choice.selected:hover,
+        .derived-target-state .building-choice.selected:active {
+            border-color: #fff;
+            background: #d1d1d1;
+            color: #000;
         }
 
         .double-tree svg {
@@ -821,6 +854,8 @@ export class TnCalculatorDialogComponent {
     private readonly initialUnitType = this.data.target.unitType ?? 'mek-biped';
 
     readonly target = this.data.target;
+    readonly indirectFireAvailable = this.data.indirectFireAvailable ?? true;
+    private readonly initialIndirectFire = this.initialCalculator?.indirectFire ?? false;
     readonly targetStateReadOnly = this.data.targetStateReadOnly ?? false;
     readonly gameRules = signal(this.data.gameRules);
     readonly showC3Distance = signal<boolean>(this.data.showC3Distance ?? false);
@@ -836,7 +871,6 @@ export class TnCalculatorDialogComponent {
     readonly movementTicks = this.movementBrackets.map((_bracket, index) => index);
     readonly movementTickLabels = this.movementBrackets.map(bracket => bracket.label);
     readonly rangeTicks = Array.from({ length: this.RANGE_MAX - this.RANGE_MIN + 1 }, (_value, index) => index + this.RANGE_MIN);
-
     readonly unitType = signal<TnTargetUnitType>(this.initialUnitType);
     readonly isAirborne = signal<boolean>(this.initialCalculator?.isAirborne ?? false);
     readonly targetMovementBracketIndex = signal<number>(this.indexFromStoredMovementBracket());
@@ -845,16 +879,23 @@ export class TnCalculatorDialogComponent {
     readonly immobile = signal<boolean>(this.initialCalculator?.immobile ?? false);
     readonly interveningWoods = signal<TnInterveningWoods>(this.normalizeInterveningWoods(this.initialCalculator?.interveningWoods as TnInterveningWoods | 'heavy1' | null | undefined));
     readonly targetHexCover = signal<TnTargetHexCover>(this.initialCalculator?.targetHexCover ?? 'none');
-    readonly waterPartialCover = signal<boolean>(this.initialCalculator?.waterPartialCover ?? false);
+    readonly waterDepth = signal<UnitWaterDepth | undefined>(this.initialCalculator?.waterDepth);
+    readonly buildingCover = signal<UnitBuildingLevel | undefined>(this.initialCalculator?.buildingCover);
     readonly range = signal<number>(Math.max(0, this.data.target.distance ?? 1));
     readonly c3Distance = signal<number>(Math.max(0, this.data.target.c3Distance ?? this.data.target.distance ?? 1));
-    readonly useC3 = signal<boolean>((this.data.target.useC3 ?? false) && !(this.initialCalculator?.indirectFire ?? false));
-    readonly partialCover = signal<boolean>((this.initialCalculator?.partialCover ?? false) && this.range() > ADJACENT_RANGE);
+    readonly useC3 = signal<boolean>((this.data.target.useC3 ?? false) && !this.initialIndirectFire);
+    readonly partialCover = signal<boolean>((this.initialCalculator?.partialCover ?? false)
+        && !this.initialIndirectFire
+        && this.initialCalculator?.waterDepth === undefined
+        && this.initialCalculator?.buildingCover === undefined
+        && this.range() > ADJACENT_RANGE);
     readonly attackDirection = signal<TnAttackDirection>(this.initialCalculator?.attackDirection ?? 'front');
-    readonly indirectFire = signal<boolean>(this.initialCalculator?.indirectFire ?? false);
+    readonly indirectFire = signal<boolean>(this.initialIndirectFire);
     readonly secondaryTarget = signal<boolean>(this.initialCalculator?.secondaryTarget ?? false);
     readonly secondaryTargetSideBack = signal<boolean>((this.initialCalculator?.secondaryTargetSideBack ?? false) && !(this.initialCalculator?.secondaryTarget ?? false));
-    readonly largeTarget = signal<boolean>(this.initialCalculator?.largeTarget ?? false);
+    readonly largeTarget = signal<boolean>(
+        this.data.gameRules.supportsLargeTarget && (this.initialCalculator?.largeTarget ?? false),
+    );
     readonly spotterMoveMode = signal<TnSpotterMoveMode>(this.initialCalculator?.spotterMoveMode ?? 'stationary');
     readonly spotterDeclaredAttacks = signal<boolean>(this.initialCalculator?.spotterDeclaredAttacks ?? false);
     readonly renderReady = signal(false);
@@ -862,10 +903,30 @@ export class TnCalculatorDialogComponent {
 
     readonly staticTarget = computed(() => isStaticTargetType(this.unitType()));
     readonly terrainTarget = computed(() => isTerrainTargetType(this.unitType()));
-    readonly partialCoverUnavailable = computed(() => this.staticTarget() || this.prone() || this.range() <= ADJACENT_RANGE);
-    readonly partialCoverDisabled = computed(() => this.waterPartialCover() || this.partialCoverUnavailable());
-    readonly partialCoverSelected = computed(() => this.waterPartialCover() || this.partialCover());
-    readonly partialCoverLabel = computed(() => this.waterPartialCover() ? 'Partial Cover (water)' : 'Partial Cover');
+    readonly waterDepthValue = computed(() => this.waterDepth() ?? '');
+    readonly buildingCoverValue = computed(() => this.buildingCover() ?? '');
+    readonly targetWaterState = computed(() => resolveTnTargetWaterState({
+        unitType: this.unitType(),
+        waterDepth: this.waterDepth(),
+        largeTarget: this.largeTarget(),
+        prone: this.prone(),
+    }));
+    readonly waterPartialCover = computed(() => this.targetWaterState().partiallyUnderwater);
+    readonly targetBuildingCoverState = computed(() => resolveTnTargetBuildingCoverState({
+        unitType: this.unitType(),
+        buildingCover: this.buildingCover(),
+        largeTarget: this.largeTarget(),
+        prone: this.prone(),
+    }));
+    readonly buildingPartialCover = computed(() => this.targetBuildingCoverState().effect === 'partial');
+    readonly partialCoverUnavailable = computed(() => this.staticTarget() || this.prone() || this.indirectFire() || this.range() <= ADJACENT_RANGE);
+    readonly partialCoverDisabled = computed(() => this.waterDepth() !== undefined || this.buildingCover() !== undefined || this.partialCoverUnavailable());
+    readonly partialCoverSelected = computed(() => this.waterPartialCover() || this.buildingPartialCover() || this.partialCover());
+    readonly partialCoverLabel = computed(() => this.waterPartialCover()
+        ? 'Partial Cover (water)'
+        : this.buildingPartialCover()
+            ? 'Partial Cover (building)'
+            : 'Partial Cover');
     readonly proneLabel = computed(() => this.range() <= ADJACENT_RANGE ? 'Prone (Adjacent)' : 'Prone');
     readonly proneModifierLabel = computed(() => this.range() <= ADJACENT_RANGE ? '-2' : '+1');
     readonly targetMovementBracket = computed(() => this.movementBrackets[this.targetMovementBracketIndex()] ?? this.movementBrackets[0]);
@@ -889,7 +950,8 @@ export class TnCalculatorDialogComponent {
         interveningWoods: this.interveningWoods(),
         targetHexCover: this.targetHexCover(),
         partialCover: this.partialCover(),
-        waterPartialCover: this.waterPartialCover(),
+        waterDepth: this.waterDepth(),
+        buildingCover: this.buildingCover(),
         attackDirection: this.attackDirection(),
         indirectFire: this.indirectFire(),
         secondaryTarget: this.secondaryTarget(),
@@ -915,7 +977,10 @@ export class TnCalculatorDialogComponent {
         }
     });
     readonly targetHexCoverCaption = computed(() => {
-        if (this.waterPartialCover()) return 'Half underwater';
+        const waterDepth = this.waterDepth();
+        if (waterDepth) return `Water depth ${unitWaterDepthNumber(waterDepth)}`;
+        const buildingCover = this.buildingCover();
+        if (buildingCover) return `Building level ${unitBuildingLevelNumber(buildingCover)}`;
         switch (this.targetHexCover()) {
             case 'light': return 'Light Wood';
             case 'heavy': return 'Heavy Wood';
@@ -923,7 +988,10 @@ export class TnCalculatorDialogComponent {
         }
     });
     readonly targetHexCoverModifierLabel = computed(() => {
-        if (this.waterPartialCover()) return null;
+        if (this.waterDepth()) return null;
+        if (this.buildingCover()) {
+            return this.targetBuildingCoverState().modifier === 2 ? '+2' : null;
+        }
         switch (this.targetHexCover()) {
             case 'light': return '+1';
             case 'heavy': return '+2';
@@ -974,17 +1042,34 @@ export class TnCalculatorDialogComponent {
     }
 
     selectInterveningWoods(woods: TnInterveningWoods): void {
-        this.interveningWoods.set(woods);
+        this.interveningWoods.update(current => current === woods ? 'none' : woods);
     }
 
-    selectTargetHexCover(cover: TnTargetCoverChoice): void {
-        if (this.terrainTarget() || this.targetStateReadOnly || (cover === 'water' && this.staticTarget())) return;
-        this.waterPartialCover.set(cover === 'water');
-        this.targetHexCover.set(cover === 'water' ? 'none' : cover);
+    selectTargetHexCover(cover: TnTargetHexCover): void {
+        if (this.terrainTarget() || this.targetStateReadOnly) return;
+        this.waterDepth.set(undefined);
+        this.buildingCover.set(undefined);
+        this.targetHexCover.update(current => current === cover ? 'none' : cover);
+    }
+
+    selectWaterDepth(value: string): void {
+        if (!isUnitWaterDepth(value) || this.targetStateReadOnly) return;
+        this.waterDepth.update(current => current === value ? undefined : value);
+        this.buildingCover.set(undefined);
+        this.targetHexCover.set('none');
+        this.partialCover.set(false);
+    }
+
+    selectBuildingLevel(value: string): void {
+        if (!isUnitBuildingLevel(value) || this.staticTarget() || this.targetStateReadOnly) return;
+        this.buildingCover.update(current => current === value ? undefined : value);
+        this.waterDepth.set(undefined);
+        this.targetHexCover.set('none');
+        this.partialCover.set(false);
     }
 
     togglePartialCover(): void {
-        if (this.waterPartialCover()) return;
+        if (this.waterDepth() || this.buildingCover()) return;
         if (this.partialCoverUnavailable()) {
             this.partialCover.set(false);
             return;
@@ -997,10 +1082,12 @@ export class TnCalculatorDialogComponent {
     }
 
     toggleIndirectFire(): void {
+        if (!this.indirectFireAvailable) return;
         const next = !this.indirectFire();
         this.indirectFire.set(next);
         if (next) {
             this.useC3.set(false);
+            this.partialCover.set(false);
         }
         if (!next) {
             this.spotterMoveMode.set('stationary');
@@ -1025,7 +1112,7 @@ export class TnCalculatorDialogComponent {
     }
 
     toggleLargeTarget(): void {
-        if (this.targetStateReadOnly) return;
+        if (this.targetStateReadOnly || !this.gameRules().supportsLargeTarget) return;
         this.largeTarget.set(!this.largeTarget());
     }
 
@@ -1060,8 +1147,9 @@ export class TnCalculatorDialogComponent {
             immobile: this.immobile(),
             interveningWoods: this.interveningWoods(),
             targetHexCover: this.terrainTarget() ? 'none' : this.targetHexCover(),
-            partialCover: this.partialCover() && !this.partialCoverUnavailable(),
-            waterPartialCover: this.waterPartialCover(),
+            partialCover: this.partialCover() && !this.partialCoverDisabled(),
+            waterDepth: this.waterDepth(),
+            buildingCover: this.buildingCover(),
             attackDirection: this.attackDirection(),
             indirectFire: this.indirectFire(),
             secondaryTarget: this.secondaryTarget(),
@@ -1107,7 +1195,8 @@ export class TnCalculatorDialogComponent {
         this.prone.set(false);
         this.immobile.set(true);
         this.partialCover.set(false);
-        this.waterPartialCover.set(false);
+        this.waterDepth.set(undefined);
+        this.buildingCover.set(undefined);
         if (this.terrainTarget()) this.targetHexCover.set('none');
     }
 

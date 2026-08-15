@@ -116,8 +116,14 @@ describe('heat state sanitization', () => {
     it('keeps only active cover values', () => {
         expect(Sanitizer.sanitize({ cover: 0 }, TURN_STATE_SCHEMA)).toEqual({});
         expect(Sanitizer.sanitize({ cover: 1 }, TURN_STATE_SCHEMA)).toEqual({ cover: 1 });
-        expect(Sanitizer.sanitize({ cover: '3' }, TURN_STATE_SCHEMA)).toEqual({ cover: 3 });
-        expect(Sanitizer.sanitize({ cover: 4 }, TURN_STATE_SCHEMA)).toEqual({});
+        expect(Sanitizer.sanitize({ cover: 3 }, TURN_STATE_SCHEMA)).toEqual({ cover: 3 });
+        expect(Sanitizer.sanitize({ cover: 4 }, TURN_STATE_SCHEMA)).toEqual({ cover: 4 });
+        expect(Sanitizer.sanitize({ cover: 5 }, TURN_STATE_SCHEMA)).toEqual({ cover: 5 });
+        expect(Sanitizer.sanitize({ cover: 6 }, TURN_STATE_SCHEMA)).toEqual({ cover: 6 });
+        expect(Sanitizer.sanitize({ cover: 7 }, TURN_STATE_SCHEMA)).toEqual({ cover: 7 });
+        expect(Sanitizer.sanitize({ cover: 8 }, TURN_STATE_SCHEMA)).toEqual({ cover: 8 });
+        expect(Sanitizer.sanitize({ cover: 9 }, TURN_STATE_SCHEMA)).toEqual({});
+        expect(Sanitizer.sanitize({ cover: '3' }, TURN_STATE_SCHEMA)).toEqual({});
         expect(Sanitizer.sanitize({ cover: 1.5 }, TURN_STATE_SCHEMA)).toEqual({});
     });
 

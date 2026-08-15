@@ -5,6 +5,7 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { ColorPickerButtonComponent } from '../color-picker-button/color-picker-button.component';
 import {
+    getEffectiveInventoryControlCalculatorState,
     INVENTORY_CONTROL_TARGET_COLORS,
     INVENTORY_CONTROL_TARGET_MAX_COUNT,
     type InventoryControlRuntimeTarget,
@@ -24,6 +25,8 @@ import {
     getTargetUnitTypeModifier,
     isStaticTargetType,
     isTerrainTargetType,
+    resolveTnTargetBuildingCoverState,
+    resolveTnTargetWaterState,
     TN_IMMOBILE,
     TN_PARTIAL_COVER_MODIFIER,
     TN_LARGE_TARGET_MODIFIER,
@@ -33,14 +36,26 @@ import {
     TN_TARGET_MOVEMENT_BRACKETS,
     TN_TARGET_UNIT_TYPE_OPTIONS,
 } from '../../models/target-number-calculator.model';
+import { unitBuildingLevelNumber, unitWaterDepthNumber } from '../../models/unit-cover.model';
 import { inventoryTargetAllowsC3, inventoryTargetUsesC3 } from '../../utils/inventory-target-number.util';
 
 const JAMMED_CONDITION_COLOR = getUnitConditionDefinition('jammed')?.color ?? '#ff6be6';
 
 interface TargetModifierPill {
     label: string;
-    modifier: number;
+    modifier?: number;
+    invalid?: boolean;
 }
+
+export interface NarcCapableWeaponLayers {
+    aboveWater: boolean;
+    underwater: boolean;
+}
+
+const NO_NARC_CAPABLE_WEAPON_LAYERS: NarcCapableWeaponLayers = {
+    aboveWater: false,
+    underwater: false,
+};
 
 export interface WeaponTargetUpdateRequest {
     targetId: InventoryControlRuntimeTargetId;
@@ -136,9 +151,11 @@ export interface WeaponTargetCalculatorRequest {
                                                 @if (modifierPills.length > 0) {
                                                     <div class="target-modifier-pills" aria-label="Assigned target modifiers">
                                                         @for (pill of modifierPills; track $index) {
-                                                            <span class="target-modifier-pill">
+                                                            <span class="target-modifier-pill" [class.invalid-guidance]="pill.invalid" [attr.aria-label]="pill.invalid ? pill.label + ' guidance unavailable' : null" [attr.title]="pill.invalid ? pill.label + ' guidance is unavailable across this water layer' : null">
                                                                 <span class="modifier-label">{{ pill.label }}</span>
-                                                                <span class="modifier-badge">{{ formatModifier(pill.modifier) }}</span>
+                                                                @if (pill.modifier !== undefined) {
+                                                                    <span class="modifier-badge">{{ formatModifier(pill.modifier) }}</span>
+                                                                }
                                                             </span>
                                                         }
                                                     </div>
@@ -170,9 +187,11 @@ export interface WeaponTargetCalculatorRequest {
                                     @if (modifierPills.length > 0) {
                                         <div class="target-modifier-pills target-modifier-pills-fallback" aria-label="Assigned target modifiers">
                                             @for (pill of modifierPills; track $index) {
-                                                <span class="target-modifier-pill">
+                                                <span class="target-modifier-pill" [class.invalid-guidance]="pill.invalid" [attr.aria-label]="pill.invalid ? pill.label + ' guidance unavailable' : null" [attr.title]="pill.invalid ? pill.label + ' guidance is unavailable across this water layer' : null">
                                                     <span class="modifier-label">{{ pill.label }}</span>
-                                                    <span class="modifier-badge">{{ formatModifier(pill.modifier) }}</span>
+                                                    @if (pill.modifier !== undefined) {
+                                                        <span class="modifier-badge">{{ formatModifier(pill.modifier) }}</span>
+                                                    }
                                                 </span>
                                             }
                                         </div>
@@ -311,7 +330,7 @@ export interface WeaponTargetCalculatorRequest {
             gap: 4px;
             min-height: 24px;
             max-width: 100%;
-            padding: 0 2px 0 6px;
+            padding: 0 6px;
             border: 1px solid var(--border-color);
             background: rgba(0, 0, 0, 0.35);
             color: var(--text-color-secondary);
@@ -326,10 +345,18 @@ export interface WeaponTargetCalculatorRequest {
             text-overflow: ellipsis;
         }
 
+        .target-modifier-pill.invalid-guidance .modifier-label {
+            color: var(--danger, red);
+            text-decoration-line: line-through;
+            text-decoration-color: red;
+            text-decoration-thickness: 2px;
+        }
+
         .target-modifier-pill .modifier-badge {
             flex: 0 0 18px;
             inline-size: 18px;
             block-size: 18px;
+            margin-right: -4px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -637,6 +664,8 @@ export class WeaponTargetsMenuComponent {
     readonly c3Degraded = input(false);
     readonly c3DegradationLabel = input<C3DegradationLabel>('DEGRADED');
     readonly indirectFireBaseModifier = input(1);
+    readonly hasSemiGuidedMissiles = input(false);
+    readonly narcCapableWeaponLayers = input<NarcCapableWeaponLayers>(NO_NARC_CAPABLE_WEAPON_LAYERS);
     readonly opforAvailable = input(false);
     readonly opforEnabled = input(false);
     readonly readOnly = input(false);
@@ -762,18 +791,19 @@ export class WeaponTargetsMenuComponent {
     }
 
     targetModifierPills(target: InventoryControlRuntimeTarget): TargetModifierPill[] {
-        if (this.isTnModifierManual(target)) return [];
+        const guidancePills = this.targetGuidancePills(target);
+        const calculator = getEffectiveInventoryControlCalculatorState(target);
+        if (!calculator) return guidancePills;
 
-        const calculator = target.tnCalculator;
-        if (!calculator) return [];
-
-        const pills: TargetModifierPill[] = [];
+        const pills: TargetModifierPill[] = [...guidancePills];
         const addModifier = (label: string, modifier: number): void => {
             if (modifier !== 0) pills.push({ label, modifier });
         };
         const staticTarget = isStaticTargetType(target.unitType);
         const prone = calculator.prone ?? false;
         const immobile = calculator.immobile ?? (staticTarget && calculator.prone === undefined);
+        const waterState = resolveTnTargetWaterState({ ...calculator, unitType: target.unitType });
+        const buildingCoverState = resolveTnTargetBuildingCoverState({ ...calculator, unitType: target.unitType });
 
         const typeModifier = getTargetUnitTypeModifier(target.unitType);
         if (typeModifier != 0) {
@@ -814,7 +844,7 @@ export class WeaponTargetsMenuComponent {
                 break;
         }
 
-        if (!isTerrainTargetType(target.unitType)) {
+        if (!isTerrainTargetType(target.unitType) && !calculator.waterDepth && !calculator.buildingCover) {
             switch (calculator.targetHexCover) {
                 case 'light':
                     addModifier('Light Wood', getTargetHexCoverModifier('light'));
@@ -825,12 +855,16 @@ export class WeaponTargetsMenuComponent {
             }
         }
 
-        if (!staticTarget && !prone) {
-            if (calculator.waterPartialCover) {
-                addModifier('Partial Cover (water)', TN_PARTIAL_COVER_MODIFIER);
-            } else if (calculator.partialCover && target.distance > ADJACENT_RANGE) {
-                addModifier('Partial Cover', TN_PARTIAL_COVER_MODIFIER);
-            }
+        if (!staticTarget && calculator.waterDepth) {
+            addModifier(`Depth ${unitWaterDepthNumber(calculator.waterDepth)}`,
+                waterState.partiallyUnderwater ? TN_PARTIAL_COVER_MODIFIER : 0);
+        }
+        if (!staticTarget && calculator.buildingCover) {
+            addModifier(`Building lv${unitBuildingLevelNumber(calculator.buildingCover)}`, buildingCoverState.modifier);
+        }
+        if (!staticTarget && !prone && !calculator.waterDepth && !calculator.buildingCover
+            && !calculator.indirectFire && calculator.partialCover && target.distance > ADJACENT_RANGE) {
+            addModifier('Partial Cover', TN_PARTIAL_COVER_MODIFIER);
         }
 
         if (calculator.secondaryTarget) {
@@ -853,6 +887,28 @@ export class WeaponTargetsMenuComponent {
             );
         }
 
+        return pills;
+    }
+
+    private targetGuidancePills(target: InventoryControlRuntimeTarget): TargetModifierPill[] {
+        const calculator = target.tnCalculator;
+        if (!calculator) return [];
+
+        const pills: TargetModifierPill[] = [];
+        if (calculator.tagged === true && this.hasSemiGuidedMissiles()) {
+            pills.push({ label: 'Tagged' });
+        }
+
+        const narcWeaponLayers = this.narcCapableWeaponLayers();
+        const hasNarcCapableWeapon = narcWeaponLayers.aboveWater || narcWeaponLayers.underwater;
+        const hasNarcPod = calculator.narcAboveWater === true || calculator.narcUnderwater === true;
+        if (hasNarcCapableWeapon && hasNarcPod) {
+            // Keep this aligned with targetGuidance() in inventory-target-number.util.ts:
+            // NARC only affects a weapon in the pod's water layer.
+            const valid = (narcWeaponLayers.aboveWater && calculator.narcAboveWater === true)
+                || (narcWeaponLayers.underwater && calculator.narcUnderwater === true);
+            pills.push({ label: 'NARC', ...(valid ? {} : { invalid: true }) });
+        }
         return pills;
     }
 

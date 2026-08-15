@@ -10,7 +10,7 @@ import { MountedAmmo, MountedEquipment, MountedWeapon } from '../models/mounted-
 import { parseInventoryComponentReference } from '../models/inventory-component-reference.model';
 import { type CriticalSlot } from '../models/force-serialization';
 import type { UnitComponent } from '../models/units.model';
-import { resolveInventoryControlSelectedAmmoProfileId, type InventoryControlRuntimeAmmoSelection, type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
+import { inventoryControlEntryAllowsTarget, resolveInventoryControlSelectedAmmoProfileId, type InventoryControlRuntimeAmmoSelection, type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
 import type { ToHitAdjustment, ToHitModifierBreakdownEntry, ToHitResolution } from '../models/rules/game-rules';
 import { FIELD_GUN_LOCATION, InfantryRules } from '../models/rules/infantry-rules';
 import { getBattleArmorTrooperNumber } from '../models/battle-armor-location.model';
@@ -168,7 +168,7 @@ export type InventoryControlDisplayEffectApplier = (
 export interface InventoryControlRules extends InventoryControlDamageRules, InventoryControlHeatRules {
     applyDisplayEffects?: InventoryControlDisplayEffectApplier;
     matchesAmmo?: (entry: MountedEquipment, ammo: AmmoEquipment, mode: string | null) => boolean | null;
-    resolveToHitAdjustments?: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => readonly ToHitAdjustment[];
+    resolveToHitAdjustments?: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null, target?: InventoryControlRuntimeTarget | null) => readonly ToHitAdjustment[];
     isSelectable?: (entry: MountedEquipment) => boolean;
     applyPhysicalDamageEffects?: (
         entry: MountedEquipment,
@@ -258,9 +258,15 @@ export function selectInventoryControlEntry(
     }
 
     if (targets.length === 1) {
-        const targetId = targets[0].id;
+        const target = targets[0];
+        const targetId = target.id;
         const selectedTargetId = unit.getInventoryControlEntryTargetId(entry.id);
-        unit.setInventoryControlEntryTarget(entry, !forceSelected && selectedTargetId === targetId ? null : targetId);
+        const nextTargetId = !forceSelected && selectedTargetId === targetId ? null : targetId;
+        if (nextTargetId && !inventoryControlEntryAllowsTarget(entry, target)) {
+            chooseTarget?.(selectedTargetId ?? null, targets);
+            return false;
+        }
+        unit.setInventoryControlEntryTarget(entry, nextTargetId);
         return true;
     }
 

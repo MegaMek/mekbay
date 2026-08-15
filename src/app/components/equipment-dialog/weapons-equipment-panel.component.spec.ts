@@ -1750,13 +1750,113 @@ describe('WeaponsEquipmentPanelComponent', () => {
         fixture.destroy();
     });
 
+    it('shows indirect targets as disabled X choices for direct-fire weapons', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [3, 6, 9, 12]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
+        const { component, fixture, unit } = createComponent([laser]);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('B', { distance: 4, tnCalculator: { indirectFire: true } });
+        fixture.detectChanges();
+
+        (fixture.nativeElement.querySelector('.weapon-equipment-row .target-selector') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice')) as HTMLButtonElement[];
+
+        expect(choices[2].disabled).toBeTrue();
+        expect(choices[2].querySelector('.target-choice-tn')?.textContent?.trim()).toBe('X');
+        expect(choices[2].title).toBe('Requires an indirect-fire weapon');
+        choices[2].click();
+        expect(unit.getInventoryControlEntryTargetId(row.id)).toBeUndefined();
+
+        unit.setInventoryControlEntryTarget(row.entry, 'B');
+        expect(component.targetState(row)).toEqual(jasmine.objectContaining({
+            invalidTarget: true,
+            invalidTargetReason: 'type',
+            targetNumberText: 'X',
+        }));
+        fixture.destroy();
+    });
+
+    it('shows submerged targets as disabled X choices for above-water weapons', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
+        const { component, fixture, unit } = createComponent([laser]);
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', {
+            unitType: 'mek-biped',
+            tnCalculator: { waterDepth: 'underwater-depth-2' },
+        });
+        fixture.detectChanges();
+
+        (fixture.nativeElement.querySelector('.weapon-equipment-row .target-selector') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice')) as HTMLButtonElement[];
+
+        expect(choices[1].disabled).toBeTrue();
+        expect(choices[1].querySelector('.target-choice-tn')?.textContent?.trim()).toBe('X');
+        expect(choices[1].title).toBe('Weapon and target are in different water layers');
+        expect(component.targetState(component.groups().find(group => group.id === 'ranged')!.rows[0]).targetNumberText).not.toBe('X');
+        fixture.destroy();
+    });
+
+    it('allows an indirect-fire weapon to select an indirect target', () => {
+        const indirectEquipment = new WeaponEquipment({
+            id: 'lrm',
+            name: 'LRM',
+            type: 'weapon',
+            flags: ['F_INDIRECT_FIRE'],
+            weapon: { ammoType: 'NA', ranges: [7, 14, 21, 28] },
+        });
+        const lrm = entry({ id: 'lrm', equipment: indirectEquipment, el: svgEntry('<g><g class="name"><text>LRM</text></g><text class="range_short">7</text><text class="range_medium">14</text><text class="range_long">21</text></g>') });
+        const { component, fixture, unit } = createComponent([lrm]);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('B', { distance: 4, tnCalculator: { indirectFire: true } });
+        fixture.detectChanges();
+
+        (fixture.nativeElement.querySelector('.weapon-equipment-row .target-selector') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice')) as HTMLButtonElement[];
+
+        expect(choices[2].disabled).toBeFalse();
+        choices[2].click();
+        expect(unit.getInventoryControlEntryTargetId(row.id)).toBe('B');
+        fixture.destroy();
+    });
+
+    it('disables an indirect target for ranged select all when any included weapon is direct-fire only', () => {
+        const direct = entry({ id: 'direct', equipment: weapon('direct'), el: svgEntry('<g><g class="name"><text>Direct</text></g></g>') });
+        const indirectEquipment = weapon('indirect');
+        indirectEquipment.flags.add('F_INDIRECT_FIRE');
+        const indirect = entry({ id: 'indirect', equipment: indirectEquipment, el: svgEntry('<g><g class="name"><text>Indirect</text></g></g>') });
+        const { component, fixture, unit } = createComponent([direct, indirect]);
+        unit.createInventoryControlTarget();
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('B', { tnCalculator: { indirectFire: true } });
+        fixture.detectChanges();
+        const rangedSection = (Array.from(fixture.nativeElement.querySelectorAll('.weapon-equipment-section')) as HTMLElement[])
+            .find(section => section.querySelector('.section-title-text')?.textContent?.trim() === 'Ranged Weapons')!;
+
+        (rangedSection.querySelector('.select-header .target-selector') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice')) as HTMLButtonElement[];
+
+        expect(choices[2].disabled).toBeTrue();
+        expect(choices[2].querySelector('.target-choice-tn')?.textContent?.trim()).toBe('X');
+        choices[2].click();
+        expect(unit.getInventoryControlEntryTargetId(direct.id)).toBeUndefined();
+        expect(unit.getInventoryControlEntryTargetId(indirect.id)).toBeUndefined();
+        fixture.destroy();
+    });
+
     it('ignores an Immobile static target modifier for AE damage weapons', () => {
         const aeWeapon = entry({
             id: 'ae-weapon',
             equipment: new WeaponEquipment({ id: 'ae-weapon', name: 'Area Effect Weapon', type: 'weapon', flags: ['F_ARTILLERY'], weapon: { ranges: [3, 6, 9, 12] } }),
             el: svgEntry('<g><g class="name"><text>Area Effect Weapon</text></g><g class="damage"><text>5 [AE]</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>')
         });
-        const { component, unit } = createComponent([aeWeapon], {}, [], new Map(), { attackMovementCanAffectTargetNumbers: false });
+        const { component, unit, unitHarness } = createComponent([aeWeapon], {}, [], new Map(), { attackMovementCanAffectTargetNumbers: false });
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', {
@@ -1767,6 +1867,14 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.setInventoryControlEntryTarget(row.entry, 'A');
 
         expect(component.targetState(row).targetNumberText).toBe('4');
+
+        unitHarness.runtime.replaceTargets([{
+            ...unit.getInventoryControlTarget('A')!,
+            tnModifier: -4,
+            manualTnModifier: -4
+        }]);
+
+        expect(component.targetState(row).targetNumberText).toBe('0');
     });
 
     it('uses the target selector for ranged select all when targets exist', () => {
@@ -2134,6 +2242,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         const launcherEquipment = weapon('LRM 15', 'MML', 15, [7, 14, 21, 28]);
         launcherEquipment.flags.add('F_ARTEMIS_COMPATIBLE');
+        launcherEquipment.flags.add('F_INDIRECT_FIRE');
         const launcher = entry({
             id: 'launcher',
             equipment: launcherEquipment,
@@ -2158,6 +2267,14 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         expect(row.display.hit).toBe('-1');
+
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 5, tnCalculator: { indirectFire: true } });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        const indirectState = component.targetState(row);
+
+        expect(indirectState.hitText).toBe('+0');
+        expect(indirectState.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'ArtemisV' }));
     });
 
     it('uses piloting skill for physical target numbers', () => {

@@ -29,7 +29,7 @@ interface MultilineDropdownPointerHoverEvent {
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
-        '[style.font-size]': 'fontSize() || null'
+        '[style.font-size]': 'fontSize() || null',
     },
     template: `
         <div
@@ -235,9 +235,12 @@ class MultilineDropdownPanelComponent {
             height: 100%;
             gap: 4px;
             text-align: left;
+            cursor: pointer;
+        }
+
+        .multiline-dropdown-trigger {
             background: transparent;
             border: 0;
-            cursor: pointer;
             color: inherit;
             font-weight: inherit;
         }
@@ -437,7 +440,7 @@ export class MultilineDropdownComponent implements OnDestroy {
                 closeOnOutsideClick: true,
                 panelClass: 'multiline-dropdown-overlay',
                 matchTriggerWidth: true,
-                anchorActiveSelector: '.multiline-dropdown-option.active'
+                anchorActiveSelector: '.multiline-dropdown-option.keyboard-active'
             }
         );
 

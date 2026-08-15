@@ -8,6 +8,7 @@ import { getMekLegLocations, inferMekConfigFromLocations } from "./entity/types"
 import type { CBTForceUnitState } from "./cbt-force-unit-state.model";
 import type { RuleCheckOutcome, SerializedPSRChecks, SerializedTurnState } from "./force-serialization";
 import { calculateModifierTotal, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitModifierTotal } from "./rules/unit-type-rules";
+import { deserializeUnitCover, isUnitBuildingLevel, isUnitWaterDepth, resolveUnitBuildingCoverState, resolveUnitWaterState, serializeUnitCover, type UnitCover } from "./unit-cover.model";
 
 export type { PSRCheck } from "./rules/unit-type-rules";
 
@@ -61,7 +62,23 @@ export class TurnState {
     moveMode = this.modifiedSignal<MotiveModes | null>(null, 'movement');
     moveDistance = this.modifiedSignal<number | null>(null, 'movement');
     standAttempts = this.modifiedSignal<number | undefined>(undefined);
-    cover = this.modifiedSignal<number | undefined>(undefined);
+    cover = this.modifiedSignal<UnitCover | undefined>(undefined);
+    private readonly waterState = computed(() => {
+        const cover = this.cover();
+        return resolveUnitWaterState(
+            isUnitWaterDepth(cover) ? cover : undefined,
+            this.unitState.unit.getHeight(),
+        );
+    });
+    readonly partiallyUnderwater = computed(() => this.waterState().partiallyUnderwater);
+    readonly submerged = computed(() => this.waterState().submerged);
+    readonly buildingCoverState = computed(() => {
+        const cover = this.cover();
+        return resolveUnitBuildingCoverState(
+            isUnitBuildingLevel(cover) ? cover : undefined,
+            this.unitState.unit.getHeight(),
+        );
+    });
     dmgReceived = this.modifiedSignal<number>(0);
     weaponsHeat = this.modifiedSignal<number>(0);
     private psrChecks = this.modifiedSignal<PSRChecks>({});
@@ -84,7 +101,7 @@ export class TurnState {
             || moveMode !== null
             || moveDistance !== null
             || standAttempts !== undefined
-            || this.isValidCover(cover)
+            || cover !== undefined
             || dmgReceived != 0
             || weaponsHeat > 0
             || this.spotting()
@@ -251,8 +268,10 @@ export class TurnState {
         if (this.unitState.unit.gameRules.id === 'tw') this.invalidateHeatSource('movement');
     }
 
-    setCover(cover: number): void {
-        this.cover.set(this.isValidCover(cover) ? cover : undefined);
+    setCover(cover: UnitCover | undefined): void {
+        this.cover.set(cover);
+        this.unitState.unit.applyUnderwaterBreachAndFlooding?.();
+        this.unitState.unit.force?.units?.().forEach(unit => unit.inventoryControl.markInventoryViewChanged());
     }
 
     private psrCheckBaseId(check: PSRCheck): string {
@@ -414,7 +433,7 @@ export class TurnState {
         if (moveMode !== null) turnState.moveMode = moveMode;
         if (moveDistance !== null) turnState.moveDistance = moveDistance;
         if (standAttempts !== undefined) turnState.standAttempts = standAttempts;
-        if (this.isValidCover(cover)) turnState.cover = cover;
+        if (cover !== undefined) turnState.cover = serializeUnitCover(cover);
         if (this.dmgReceived() > 0) turnState.dmgReceived = this.dmgReceived();
         if (this.weaponsHeat() > 0) turnState.weaponsHeat = this.weaponsHeat();
         if (Object.keys(this.acknowledgedHeatSources()).length > 0) {
@@ -440,7 +459,7 @@ export class TurnState {
             this.moveMode.set(data?.moveMode ?? null);
             this.moveDistance.set(data?.moveDistance ?? null);
             this.standAttempts.set(data?.standAttempts);
-            this.cover.set(this.isValidCover(data?.cover) ? data?.cover : undefined);
+            this.cover.set(deserializeUnitCover(data?.cover));
             this.dmgReceived.set(data?.dmgReceived ?? 0);
             this.weaponsHeat.set(data?.weaponsHeat ?? 0);
             this.acknowledgedHeatSources.set({ ...(data?.acknowledgedHeatSources ?? {}) });
@@ -516,10 +535,6 @@ export class TurnState {
 
     addDmgReceived(amount: number) {
         this.dmgReceived.update((value)=> { return value + amount });
-    }
-
-    private isValidCover(cover: number | undefined): cover is number {
-        return cover === 1 || cover === 2 || cover === 3;
     }
 
     addFiredHeat(amount: number) {

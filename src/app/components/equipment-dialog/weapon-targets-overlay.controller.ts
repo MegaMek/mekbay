@@ -8,8 +8,10 @@ import { type Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { WeaponEquipment } from '../../models/equipment.model';
 import type { OverlayManagerService } from '../../services/overlay-manager.service';
-import { WeaponTargetsMenuComponent, type WeaponTargetCalculatorRequest, type WeaponTargetUpdateRequest } from './weapon-targets-menu.component';
+import { getInventoryControlAmmoSelectionOptions } from '../../utils/inventory-control.util';
+import { WeaponTargetsMenuComponent, type NarcCapableWeaponLayers, type WeaponTargetCalculatorRequest, type WeaponTargetUpdateRequest } from './weapon-targets-menu.component';
 import { TnCalculatorDialogComponent, type TnCalculatorDialogData, type TnCalculatorDialogResult } from './tn-calculator-dialog.component';
 import { ForceBuilderService } from '../../services/force-builder.service';
 
@@ -134,6 +136,9 @@ export class WeaponTargetsOverlayController {
         this.targetsCompRef.setInput('unassignedMovement', options.unit.turnState().missingAttackMovementModifier());
         this.targetsCompRef.setInput('showC3Distance', this.showC3Distance(options.unit));
         this.targetsCompRef.setInput('indirectFireBaseModifier', options.unit.rules.getSpottingModifier());
+        const guidanceCapabilities = this.guidanceCapabilities(options.unit);
+        this.targetsCompRef.setInput('hasSemiGuidedMissiles', guidanceCapabilities.hasSemiGuidedMissiles);
+        this.targetsCompRef.setInput('narcCapableWeaponLayers', guidanceCapabilities.narcCapableWeaponLayers);
         this.targetsCompRef.setInput('opforAvailable', this.forceBuilderService().isInventoryControlOpforAvailable(options.unit.force));
         this.targetsCompRef.setInput('opforEnabled', options.unit.force.inventoryControlOpforEnabled());
         const c3Degraded = options.unit.c3DegradationSource() !== 'none';
@@ -165,9 +170,19 @@ export class WeaponTargetsOverlayController {
                 this.syncAfterTargetUpdate(options);
             }
         };
+        const dialogData: TnCalculatorDialogData = {
+            target,
+            gameRules: options.unit.gameRules,
+            targetStateReadOnly: target.readOnly === true,
+            showC3Distance: this.showC3Distance(options.unit),
+            c3Degraded: options.unit.c3DegradationSource() !== 'none',
+            indirectFireBaseModifier: options.unit.rules.getSpottingModifier(),
+            indirectFireAvailable: options.unit.getInventory()
+                .some(entry => entry.equipment?.hasFlag('F_INDIRECT_FIRE') === true),
+        };
         const portal = new ComponentPortal(TnCalculatorDialogComponent, null, Injector.create({
             providers: [
-                { provide: DIALOG_DATA, useValue: { target, gameRules: options.unit.gameRules, targetStateReadOnly: target.readOnly === true, showC3Distance: this.showC3Distance(options.unit), c3Degraded: options.unit.c3DegradationSource() !== 'none', indirectFireBaseModifier: options.unit.rules.getSpottingModifier() } satisfies TnCalculatorDialogData },
+                { provide: DIALOG_DATA, useValue: dialogData },
                 { provide: DialogRef, useValue: { close: closeWithResult } },
             ],
             parent: this.deps.injector,
@@ -210,6 +225,38 @@ export class WeaponTargetsOverlayController {
 
     private showC3Distance(unit: CBTForceUnit): boolean {
         return unit.hasLinkedC3Network();
+    }
+
+    private guidanceCapabilities(unit: CBTForceUnit): {
+        hasSemiGuidedMissiles: boolean;
+        narcCapableWeaponLayers: NarcCapableWeaponLayers;
+    } {
+        let hasSemiGuidedMissiles = false;
+        const narcCapableWeaponLayers: NarcCapableWeaponLayers = {
+            aboveWater: false,
+            underwater: false,
+        };
+        const equipmentCatalog = unit.getEquipmentRegistry();
+
+        for (const entry of unit.getInventory()) {
+            if (!(entry.equipment instanceof WeaponEquipment) || !unit.isEquipmentOperational(entry)) continue;
+
+            const ammoOptions = getInventoryControlAmmoSelectionOptions(
+                entry,
+                equipmentCatalog,
+                (weapon, ammo, mode) => unit.matchesInventoryControlAmmo(weapon, ammo, mode),
+            );
+            for (const option of ammoOptions) {
+                if (!option.usable) continue;
+                if (option.ammo.hasMunitionType('M_SEMIGUIDED')) hasSemiGuidedMissiles = true;
+                if (option.ammo.hasMunitionType('M_NARC_CAPABLE')) {
+                    if (unit.isEquipmentSubmerged(entry)) narcCapableWeaponLayers.underwater = true;
+                    else narcCapableWeaponLayers.aboveWater = true;
+                }
+            }
+        }
+
+        return { hasSemiGuidedMissiles, narcCapableWeaponLayers };
     }
 
     private destroyTargetsSyncEffect(): void {

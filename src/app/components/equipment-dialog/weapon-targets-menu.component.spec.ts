@@ -89,6 +89,19 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         expect(emitted).not.toHaveBeenCalled();
     });
 
+    it('does not let manually overridden indirect-fire state block C3 controls', () => {
+        const target = {
+            ...TARGET,
+            manualTnModifier: 4,
+            tnCalculator: { indirectFire: true }
+        };
+        fixture.componentRef.setInput('targets', [target]);
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelector('.use-c3-toggle input').disabled).toBeFalse();
+        expect(component.c3Enabled(target)).toBeTrue();
+    });
+
     it('marks direct TN edits as manual overrides', () => {
         const emitted = jasmine.createSpy('updateRequest');
         component.updateRequest.subscribe(emitted);
@@ -135,7 +148,6 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
             { label: 'Skidding', modifier: '+2' },
             { label: 'LoS', modifier: '+1' },
             { label: 'Heavy Wood', modifier: '+2' },
-            { label: 'Partial Cover', modifier: '+1' },
             { label: 'Secondary', modifier: '+1' },
             { label: 'Indirect', modifier: '+1' },
             { label: 'Spotter', modifier: '+3' },
@@ -157,13 +169,98 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         })).toEqual([]);
     });
 
+    it('renders Tagged without a modifier badge when semi-guided missiles are available', () => {
+        const target = {
+            ...TARGET,
+            tnCalculator: { tagged: true },
+        };
+        fixture.componentRef.setInput('hasSemiGuidedMissiles', true);
+        fixture.componentRef.setInput('targets', [target]);
+        fixture.detectChanges();
+
+        expect(component.targetModifierPills(target)).toEqual([{ label: 'Tagged' }]);
+        const pill = fixture.nativeElement.querySelector(
+            '.target-modifier-pills:not(.target-modifier-pills-fallback) .target-modifier-pill',
+        ) as HTMLElement;
+        expect(pill.querySelector('.modifier-label')?.textContent?.trim()).toBe('Tagged');
+        expect(pill.querySelector('.modifier-badge')).toBeNull();
+
+        fixture.componentRef.setInput('hasSemiGuidedMissiles', false);
+        fixture.detectChanges();
+        expect(component.targetModifierPills(target)).toEqual([]);
+    });
+
+    it('renders NARC normally when a capable weapon and pod share a water layer', () => {
+        fixture.componentRef.setInput('narcCapableWeaponLayers', { aboveWater: true, underwater: false });
+        fixture.detectChanges();
+
+        expect(component.targetModifierPills({
+            ...TARGET,
+            tnCalculator: { narcAboveWater: true },
+        })).toEqual([{ label: 'NARC' }]);
+        expect(component.targetModifierPills({
+            ...TARGET,
+            tnCalculator: { narcUnderwater: true },
+        })).toEqual([{ label: 'NARC', invalid: true }]);
+    });
+
+    it('renders an invalid NARC pill with a red strike-through for a water-layer mismatch', () => {
+        const target = {
+            ...TARGET,
+            tnCalculator: { narcUnderwater: true },
+        };
+        fixture.componentRef.setInput('narcCapableWeaponLayers', { aboveWater: true, underwater: false });
+        fixture.componentRef.setInput('targets', [target]);
+        fixture.detectChanges();
+
+        const pill = fixture.nativeElement.querySelector(
+            '.target-modifier-pills:not(.target-modifier-pills-fallback) .target-modifier-pill',
+        ) as HTMLElement;
+        const label = pill.querySelector('.modifier-label') as HTMLElement;
+        expect(pill.classList).toContain('invalid-guidance');
+        expect(pill.getAttribute('aria-label')).toBe('NARC guidance unavailable');
+        expect(getComputedStyle(label).textDecorationLine).toContain('line-through');
+        expect(getComputedStyle(label).textDecorationColor).toBe('rgb(255, 0, 0)');
+    });
+
     it('shows water partial cover at adjacent range', () => {
         expect(component.targetModifierPills({
             ...TARGET,
             unitType: 'mek-biped',
             distance: 1,
-            tnCalculator: { waterPartialCover: true },
-        })).toEqual([{ label: 'Partial Cover (water)', modifier: 1 }]);
+            tnCalculator: { waterDepth: 'underwater-depth-1' },
+        })).toEqual([{ label: 'Depth 1', modifier: 1 }]);
+    });
+
+    it('shows effective building levels and filters levels with no effect', () => {
+        expect(component.targetModifierPills({
+            ...TARGET,
+            unitType: 'mek-biped',
+            distance: 1,
+            tnCalculator: { buildingCover: 'building-1', indirectFire: true },
+        })).toContain(jasmine.objectContaining({ label: 'Building lv1', modifier: 1 }));
+        expect(component.targetModifierPills({
+            ...TARGET,
+            unitType: 'vehicle',
+            tnCalculator: { buildingCover: 'building-2' },
+        })).toEqual([{ label: 'Building lv2', modifier: 2 }]);
+        expect(component.targetModifierPills({
+            ...TARGET,
+            unitType: 'mek-biped',
+            tnCalculator: { buildingCover: 'building-2' },
+        })).toEqual([{ label: 'Building lv2', modifier: 2 }]);
+
+        const superheavyPills = component.targetModifierPills({
+            ...TARGET,
+            unitType: 'mek-biped',
+            tnCalculator: { buildingCover: 'building-1', largeTarget: true },
+        });
+        expect(superheavyPills.some(pill => pill.label === 'Building lv1')).toBeFalse();
+        expect(component.targetModifierPills({
+            ...TARGET,
+            unitType: 'mek-biped',
+            tnCalculator: { buildingCover: 'building-2', largeTarget: true },
+        })).toContain(jasmine.objectContaining({ label: 'Building lv2', modifier: 1 }));
     });
 
     it('renders separate prone and immobile pills', () => {

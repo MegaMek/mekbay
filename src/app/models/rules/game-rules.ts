@@ -50,6 +50,7 @@ export interface ToHitHeatSeparation {
 
 export type C3DegradationSource = 'none' | 'unit' | 'network-member';
 export type C3DegradationLabel = 'DEGRADED' | 'JAMMED';
+export type SemiGuidedAdjustmentSource = 'movement' | 'terrain';
 
 export interface C3TargetingResolution {
     readonly target: InventoryControlRuntimeTarget;
@@ -124,11 +125,15 @@ export abstract class CBTGameRules {
     abstract readonly artilleryFlatRangeModifier: number | null;
     abstract readonly supportsApolloSaturationMode: boolean;
     abstract readonly supportsBombastLaserRules: boolean;
+    abstract readonly narcHomingTargetModifier: number;
+    abstract readonly semiGuidedIgnoresCover: boolean;
+    abstract readonly semiGuidedIgnoresIndirectFireModifier: boolean;
     abstract readonly physicalLocationRows: readonly PhysicalLocationRow[];
     protected readonly ammoMunitionRules: readonly AmmoMunitionRule[] = [];
 
     abstract resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution;
     abstract resolveC3TargetingModifier(degradationSource: C3DegradationSource, rangeBracketImprovement: number): ToHitModifierBreakdownEntry | null;
+    abstract getSemiGuidedAdjustment(modifierValue: number, source: SemiGuidedAdjustmentSource): number;
 
     resolveToHit(request: ToHitRequest): ToHitResolution {
         const entry = request.subject instanceof MountedEquipment ? request.subject : null;
@@ -307,6 +312,9 @@ export class GameRules extends CBTGameRules {
     readonly artilleryFlatRangeModifier = 4;
     readonly supportsApolloSaturationMode = true;
     readonly supportsBombastLaserRules = true;
+    readonly narcHomingTargetModifier = -1;
+    readonly semiGuidedIgnoresCover = true;
+    readonly semiGuidedIgnoresIndirectFireModifier = false;
     readonly physicalLocationRows = CORE_2026_PHYSICAL_LOCATION_ROWS;
     protected override readonly ammoMunitionRules: readonly AmmoMunitionRule[] = [
         { munitionType: 'M_PRECISION', shotsMultiplier: 0.6 },
@@ -322,6 +330,10 @@ export class GameRules extends CBTGameRules {
         return degradationSource !== 'none' && rangeBracketImprovement > 0
             ? { label: 'ECM', modifier: rangeBracketImprovement, weakened: true }
             : null;
+    }
+
+    override getSemiGuidedAdjustment(modifierValue: number, source: SemiGuidedAdjustmentSource): number {
+        return source === 'terrain' ? Math.min(2, Math.max(0, modifierValue)) : 0;
     }
 
     protected override getRulesProfile(equipment: Equipment): number[] {
@@ -362,6 +374,9 @@ export class TWGameRules extends CBTGameRules {
     readonly artilleryFlatRangeModifier = null;
     readonly supportsApolloSaturationMode = false;
     readonly supportsBombastLaserRules = false;
+    readonly narcHomingTargetModifier = 0;
+    readonly semiGuidedIgnoresCover = false;
+    readonly semiGuidedIgnoresIndirectFireModifier = true;
     readonly physicalLocationRows = TW_PHYSICAL_LOCATION_ROWS;
     protected override readonly ammoMunitionRules: readonly AmmoMunitionRule[] = [
         { munitionType: 'M_PRECISION', shotsMultiplier: 0.5 },
@@ -380,6 +395,10 @@ export class TWGameRules extends CBTGameRules {
 
     override resolveC3TargetingModifier(_degradationSource: C3DegradationSource, _rangeBracketImprovement: number): ToHitModifierBreakdownEntry | null {
         return null;
+    }
+
+    override getSemiGuidedAdjustment(modifierValue: number, source: SemiGuidedAdjustmentSource): number {
+        return source === 'movement' ? Math.max(0, modifierValue) : 0;
     }
 
     /* TARGET ACQUISITION GEAR (TAG)

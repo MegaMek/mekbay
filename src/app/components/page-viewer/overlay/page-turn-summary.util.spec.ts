@@ -80,4 +80,21 @@ describe('composeTurnSummaryHeatRows', () => {
             { id: 'engine', label: 'Engine', value: 5 },
         ]);
     });
+
+    it('adds extra underwater dissipation as a blue negative source', () => {
+        expect(composeTurnSummaryHeatRows(
+            [{ id: 'movement', label: 'Movement', value: 2 }],
+            { hasSelection: false, value: 0, entryIds: new Set() },
+            3,
+        )).toEqual([
+            { id: 'movement', label: 'Movement', value: 2 },
+            { id: 'underwater-dissipation', label: 'Water', value: -3, underwater: true },
+        ]);
+    });
+
+    it('does not add an underwater source without a positive bonus', () => {
+        const selection = { hasSelection: false, value: 0, entryIds: new Set<string>() };
+        expect(composeTurnSummaryHeatRows([], selection, 0)).toEqual([]);
+        expect(composeTurnSummaryHeatRows([], selection, -1)).toEqual([]);
+    });
 });

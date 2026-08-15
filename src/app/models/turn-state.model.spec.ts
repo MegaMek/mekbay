@@ -12,13 +12,14 @@ import { MekRules } from './rules/mek-rules';
 import type { UnitTypeRules } from './rules/unit-type-rules';
 import type { Unit } from './units.model';
 import { calculateHeatProjection, TurnState } from './turn-state.model';
-import { Equipment } from './equipment.model';
+import { Equipment, MiscEquipment } from './equipment.model';
 import { PpcCapacitorHandler, PPC_CAPACITOR_STATE_KEY } from '../equipment-handlers/ppc-capacitor.handler';
 import { TWAeroRules, TWInfantryRules, TWMekRules } from './rules/tw-rules';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
 import { EquipmentFlag } from './equipment-flags.type';
 import { EMPTY_EQUIPMENT_REGISTRY } from './equipment-lookup';
 import { createHandlerQueryContext } from '../services/equipment-interaction-registry.service';
+import { getUnitHeight } from './units.model';
 
 interface TurnStateHarnessOptions {
     critSlots?: CriticalSlot[];
@@ -124,6 +125,10 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         },
         setCondition,
         getUnit: () => ({ type: 'Mek', comp: [], ...options.unit } as Unit),
+        getHeight: () => getUnitHeight(
+            { type: 'Mek', tons: 0, ...options.unit } as Pick<Unit, 'type' | 'tons'>,
+            options.prone ?? false,
+        ),
         turnState: () => turnState,
     };
 
@@ -166,7 +171,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
 }
 
 function createTurnStateHarnessWithDissipation(dissipation: number): TurnStateHarness {
-    const heatSink = new Equipment({
+    const heatSink = new MiscEquipment({
         id: 'test-heat-sink',
         name: 'Test Heat Sink',
         type: 'misc',
@@ -356,19 +361,30 @@ describe('TurnState', () => {
         it('omits no cover and round-trips active cover', () => {
             const { turnState } = createTurnStateHarness();
 
-            turnState.cover.set(0);
+            turnState.setCover(undefined);
             expect(turnState.dirty()).toBeFalse();
             expect(turnState.serialize()).toBeUndefined();
 
-            turnState.setCover(3);
+            turnState.setCover('underwater-depth-1');
             expect(turnState.dirty()).toBeTrue();
             expect(turnState.serialize()).toEqual({ cover: 3 });
 
             const { turnState: restored } = createTurnStateHarness();
             restored.update(turnState.serialize());
-            expect(restored.cover()).toBe(3);
+            expect(restored.cover()).toBe('underwater-depth-1');
 
-            restored.setCover(0);
+            restored.setCover('underwater-depth-2');
+            expect(restored.serialize()).toEqual({ cover: 4 });
+            restored.setCover('underwater-depth-3');
+            expect(restored.serialize()).toEqual({ cover: 5 });
+            restored.setCover('building-1');
+            expect(restored.serialize()).toEqual({ cover: 6 });
+            restored.setCover('building-2');
+            expect(restored.serialize()).toEqual({ cover: 7 });
+            restored.setCover('building-3');
+            expect(restored.serialize()).toEqual({ cover: 8 });
+
+            restored.setCover(undefined);
             expect(restored.cover()).toBeUndefined();
             expect(restored.serialize()).toBeUndefined();
         });

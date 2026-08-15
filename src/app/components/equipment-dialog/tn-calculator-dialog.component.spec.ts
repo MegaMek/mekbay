@@ -67,6 +67,52 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         }));
     });
 
+    it('clears and disables ordinary partial cover for indirect fire', () => {
+        component.togglePartialCover();
+        expect(component.partialCover()).toBeTrue();
+
+        component.toggleIndirectFire();
+        fixture.detectChanges();
+
+        expect(component.partialCover()).toBeFalse();
+        expect((fixture.nativeElement.querySelector('.partial-cover') as HTMLButtonElement).disabled).toBeTrue();
+
+        component.togglePartialCover();
+        expect(component.partialCover()).toBeFalse();
+    });
+
+    it('retains water partial cover for indirect fire', () => {
+        component.selectWaterDepth('underwater-depth-1');
+        component.toggleIndirectFire();
+        fixture.detectChanges();
+
+        expect(component.waterPartialCover()).toBeTrue();
+        expect(component.partialCoverSelected()).toBeTrue();
+        expect(component.totalModifier()).toBe(2);
+        expect((fixture.nativeElement.querySelector('.partial-cover') as HTMLButtonElement).textContent).toContain('Partial Cover (water)');
+    });
+
+    it('toggles selected cover and intervening woods without explicit none buttons', () => {
+        const coverGroup = fixture.nativeElement.querySelector('[aria-label="Target hex cover"]') as HTMLElement;
+        const coverButtons = coverGroup.querySelectorAll<HTMLButtonElement>(':scope > button');
+        const woodsGroup = fixture.nativeElement.querySelector('[aria-label="Intervening woods"]') as HTMLElement;
+        const woodsButtons = woodsGroup.querySelectorAll<HTMLButtonElement>(':scope > button');
+
+        expect(coverButtons.length).toBe(2);
+        expect(woodsButtons.length).toBe(2);
+        expect(fixture.nativeElement.querySelector('.none-choice')).toBeNull();
+
+        coverButtons[0].click();
+        expect(component.targetHexCover()).toBe('light');
+        coverButtons[0].click();
+        expect(component.targetHexCover()).toBe('none');
+
+        woodsButtons[0].click();
+        expect(component.interveningWoods()).toBe('light1');
+        woodsButtons[0].click();
+        expect(component.interveningWoods()).toBe('none');
+    });
+
     it('allows the C3 distance to change while degraded', () => {
         component.setC3DistanceValue(5);
 
@@ -78,6 +124,32 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         fixture.detectChanges();
 
         expect(fixture.nativeElement.querySelector('.c3-distance-control').classList).not.toContain('c3-degraded');
+    });
+});
+
+describe('TnCalculatorDialogComponent indirect-fire availability', () => {
+    it('hides indirect controls without discarding existing state when the unit has no capable weapon', async () => {
+        const data: TnCalculatorDialogData = {
+            ...DATA,
+            target: {
+                ...DATA.target,
+                tnCalculator: { indirectFire: true, spotterMoveMode: 'run' },
+            },
+            indirectFireAvailable: false,
+        };
+        await TestBed.configureTestingModule({
+            imports: [TnCalculatorDialogComponent],
+            providers: [
+                { provide: DIALOG_DATA, useValue: data },
+                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
+            ],
+        }).compileComponents();
+        const fixture = TestBed.createComponent(TnCalculatorDialogComponent);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.indirectFire()).toBeTrue();
+        expect(fixture.nativeElement.textContent).not.toContain('Indirect Fire');
+        expect(fixture.nativeElement.querySelector('.spotter-section')).toBeNull();
     });
 });
 
@@ -160,24 +232,14 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
         expect(component.partialCover()).toBeTrue();
     });
 
-    it('shows linked water cover as locked partial cover at adjacent range', () => {
-        component.waterPartialCover.set(true);
-        fixture.detectChanges();
-        const coverButtons = [...fixture.nativeElement.querySelectorAll('[aria-label="Target hex cover"] button')] as HTMLButtonElement[];
-        const coverLabel = fixture.nativeElement.querySelector('[aria-label="Target hex cover"]')
-            .closest('.choice-line').querySelector('.choice-label') as HTMLElement;
-        const partialCover = fixture.nativeElement.querySelector('.partial-cover') as HTMLButtonElement;
+    it('exposes but locks the water control for a read-only non-Mek target', () => {
+        const picker = fixture.nativeElement.querySelector('cover-level-picker[data-kind="water"]');
 
-        expect(coverButtons[0].classList).not.toContain('selected');
-        expect(coverButtons[3].classList).toContain('selected');
-        expect(getComputedStyle(coverButtons[3]).backgroundColor).toBe('rgb(21, 101, 192)');
-        expect(coverLabel.querySelector('.modifier-badge')).toBeNull();
-        expect(partialCover.classList).toContain('selected');
-        expect(getComputedStyle(partialCover).backgroundColor).toBe('rgb(21, 101, 192)');
-        expect(partialCover.disabled).toBeTrue();
-        expect(partialCover.textContent).toContain('Partial Cover (water)');
-        expect(component.targetHexCover()).toBe('none');
-        expect(component.totalModifier()).toBe(2);
+        expect(picker).not.toBeNull();
+        expect((picker.querySelector('.cover-trigger') as HTMLButtonElement).disabled).toBeTrue();
+
+        component.selectWaterDepth('underwater-depth-1');
+        expect(component.waterDepth()).toBeUndefined();
     });
 
     it('rejects programmatic target-type changes while read-only', () => {
@@ -188,6 +250,44 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
 });
 
 describe('TnCalculatorDialogComponent movement and stance', () => {
+    it('stores water depth for an editable non-Mek using shared height geometry', async () => {
+        const close = jasmine.createSpy('close');
+        const data: TnCalculatorDialogData = {
+            target: {
+                id: 'A', letter: 'A', name: 'Non-Mek target', color: '#1565C0',
+                unitType: 'battle-armor', distance: 1, tnModifier: 1,
+                tnCalculator: { waterDepth: 'underwater-depth-2' },
+            },
+            gameRules: CORE_2026_GAME_RULES,
+        };
+        await TestBed.configureTestingModule({
+            imports: [TnCalculatorDialogComponent],
+            providers: [
+                { provide: DIALOG_DATA, useValue: data },
+                { provide: DialogRef, useValue: { close } },
+            ],
+        }).compileComponents();
+        const fixture = TestBed.createComponent(TnCalculatorDialogComponent);
+        const component = fixture.componentInstance;
+
+        expect(component.waterDepth()).toBe('underwater-depth-2');
+
+        component.selectWaterDepth('underwater-depth-1');
+        fixture.detectChanges();
+
+        expect(component.waterDepth()).toBe('underwater-depth-1');
+        expect(component.waterPartialCover()).toBeFalse();
+        expect(component.targetWaterState().submerged).toBeTrue();
+        expect(component.totalModifier()).toBe(1);
+
+        component.apply();
+        expect(close).toHaveBeenCalledWith(jasmine.objectContaining({
+            patch: jasmine.objectContaining({
+                tnCalculator: jasmine.objectContaining({ waterDepth: 'underwater-depth-1' }),
+            }),
+        }));
+    });
+
     it('maps the water cover choice to adjacent partial cover', async () => {
         const close = jasmine.createSpy('close');
         const data: TnCalculatorDialogData = {
@@ -212,7 +312,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
         const fixture = TestBed.createComponent(TnCalculatorDialogComponent);
         const component = fixture.componentInstance;
 
-        component.selectTargetHexCover('water');
+        component.selectWaterDepth('underwater-depth-1');
         fixture.detectChanges();
 
         expect(component.targetHexCover()).toBe('none');
@@ -220,6 +320,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
         expect(component.partialCoverSelected()).toBeTrue();
         expect(component.totalModifier()).toBe(1);
         expect((fixture.nativeElement.querySelector('.partial-cover') as HTMLElement).textContent).toContain('Partial Cover (water)');
+        expect(fixture.nativeElement.querySelector('cover-level-picker[data-kind="water"] cover-level-indicator span')?.textContent?.trim()).toBe('1');
 
         component.apply();
         expect(close).toHaveBeenCalledWith(jasmine.objectContaining({
@@ -228,10 +329,92 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
                 tnCalculator: jasmine.objectContaining({
                     targetHexCover: 'none',
                     partialCover: false,
-                    waterPartialCover: true,
+                    waterDepth: 'underwater-depth-1',
                 }),
             }),
         }));
+    });
+
+    it('maps building cover to derived partial cover at adjacent range and for indirect fire', async () => {
+        const close = jasmine.createSpy('close');
+        const data: TnCalculatorDialogData = {
+            target: {
+                id: 'A', letter: 'A', name: 'Target A', color: '#1565C0',
+                unitType: 'mek-biped', distance: 1, tnModifier: 0,
+            },
+            gameRules: TW_GAME_RULES,
+        };
+        await TestBed.configureTestingModule({
+            imports: [TnCalculatorDialogComponent],
+            providers: [
+                { provide: DIALOG_DATA, useValue: data },
+                { provide: DialogRef, useValue: { close } },
+            ],
+        }).compileComponents();
+        const fixture = TestBed.createComponent(TnCalculatorDialogComponent);
+        const component = fixture.componentInstance;
+
+        component.selectBuildingLevel('building-1');
+        fixture.detectChanges();
+
+        const partialCover = fixture.nativeElement.querySelector('.partial-cover') as HTMLButtonElement;
+        const buildingTrigger = fixture.nativeElement.querySelector('button[aria-label="Building level"]') as HTMLButtonElement;
+        const coverRow = fixture.nativeElement.querySelector('[aria-label="Target hex cover"]') as HTMLElement;
+        const coverButtons = [
+            ...coverRow.querySelectorAll<HTMLButtonElement>(':scope > button'),
+            ...coverRow.querySelectorAll<HTMLButtonElement>(':scope > cover-level-picker .cover-trigger'),
+        ];
+        expect(component.targetHexCover()).toBe('none');
+        expect(component.buildingPartialCover()).toBeTrue();
+        expect(component.partialCoverSelected()).toBeTrue();
+        expect(coverButtons.map(button => getComputedStyle(button).width)).toEqual(Array(4).fill('40px'));
+        expect(partialCover.disabled).toBeTrue();
+        expect(partialCover.textContent).toContain('Partial Cover (building)');
+        expect(getComputedStyle(partialCover).backgroundColor).toBe('rgb(209, 209, 209)');
+        expect(getComputedStyle(buildingTrigger).backgroundColor).toBe('rgb(209, 209, 209)');
+        expect(component.totalModifier()).toBe(1);
+
+        component.toggleIndirectFire();
+        expect(component.totalModifier()).toBe(2);
+
+        component.apply();
+        expect(close).toHaveBeenCalledWith(jasmine.objectContaining({
+            patch: jasmine.objectContaining({
+                tnModifier: 2,
+                tnCalculator: jasmine.objectContaining({
+                    targetHexCover: 'none',
+                    partialCover: false,
+                    buildingCover: 'building-1',
+                }),
+            }),
+        }));
+    });
+
+    it('uses the superheavy depth offset for water partial cover', async () => {
+        const data: TnCalculatorDialogData = {
+            target: {
+                id: 'A', letter: 'A', name: 'Target A', color: '#1565C0',
+                unitType: 'mek-biped', distance: 5, tnModifier: 0,
+            },
+            gameRules: CORE_2026_GAME_RULES,
+        };
+        await TestBed.configureTestingModule({
+            imports: [TnCalculatorDialogComponent],
+            providers: [
+                { provide: DIALOG_DATA, useValue: data },
+                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
+            ],
+        }).compileComponents();
+        const fixture = TestBed.createComponent(TnCalculatorDialogComponent);
+        const component = fixture.componentInstance;
+
+        component.selectWaterDepth('underwater-depth-2');
+        expect(component.targetWaterState()).toEqual({ partiallyUnderwater: false, submerged: true });
+        expect(component.totalModifier()).toBe(0);
+
+        component.toggleLargeTarget();
+        expect(component.targetWaterState()).toEqual({ partiallyUnderwater: true, submerged: false });
+        expect(component.totalModifier()).toBe(0);
     });
 
     it('retains independent movement, jump, and prone state', async () => {

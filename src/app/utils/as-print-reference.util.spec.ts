@@ -100,7 +100,6 @@ describe('Alpha Strike print rules reference', () => {
                 description: 'Heavy line formation.',
                 effectDescription: 'Assign one ability each turn.',
                 rulesReferences: [],
-                valid: true,
                 applications: [{
                     abilityNames: ['Marksman'],
                     application: 'One recipient each turn.',

@@ -68,6 +68,7 @@ export class CBTForceUnitState extends ForceUnitState {
             };
         }
         this.locations.set(updated);
+        this.unit.applyUnderwaterBreachAndFlooding(true);
         this.unit.clearNarcFromCommittedPhysicallyDestroyedLocations();
         this.unit.evaluateDestroyed();
         this.unit.setModified();

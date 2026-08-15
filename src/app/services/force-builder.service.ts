@@ -251,6 +251,8 @@ export class ForceBuilderService {
                 unit.getCondition('immobile');
                 unit.getCondition('prone');
                 unit.getCondition('skidding');
+                unit.getCondition('tagged');
+                unit.getActiveNarcWaterLayers();
                 unit.turnState().moveMode();
                 unit.turnState().moveDistance();
                 unit.turnState().airborne();

@@ -4,11 +4,13 @@
 
 import { computed, signal } from '@angular/core';
 import type { MountedEquipment } from './mounted-equipment.model';
-import type { TnTargetNumberCalculatorState, TnTargetUnitType } from './target-number-calculator.model';
+import { resolveTnTargetWaterState, type TnTargetNumberCalculatorState, type TnTargetUnitType } from './target-number-calculator.model';
 
 export type InventoryControlRuntimeRangeKey = 'short' | 'medium' | 'long' | 'extreme';
 
 export const INVENTORY_CONTROL_TARGET_MAX_COUNT = 12;
+export const INVENTORY_CONTROL_INDIRECT_FIRE_TARGET_REASON = 'Requires an indirect-fire weapon';
+export const INVENTORY_CONTROL_WATER_LAYER_TARGET_REASON = 'Weapon and target are in different water layers';
 export const INVENTORY_CONTROL_TARGET_COLORS = [
     '#c0f7ff',
     '#ffebca',
@@ -43,6 +45,45 @@ export interface InventoryControlRuntimeTarget {
     tnCalculator?: TnTargetNumberCalculatorState;
 }
 
+/** Calculator-derived modes are inactive while the target TN is manually overridden. */
+export function getEffectiveInventoryControlCalculatorState(
+    target: Pick<InventoryControlRuntimeTarget, 'manualTnModifier' | 'tnCalculator'>
+): TnTargetNumberCalculatorState | undefined {
+    return target.manualTnModifier === undefined ? target.tnCalculator : undefined;
+}
+
+export function inventoryControlTargetUsesIndirectFire(
+    target: Pick<InventoryControlRuntimeTarget, 'manualTnModifier' | 'tnCalculator'>
+): boolean {
+    return getEffectiveInventoryControlCalculatorState(target)?.indirectFire === true;
+}
+
+export function inventoryControlEntryAllowsTarget(
+    entry: MountedEquipment,
+    target: Pick<InventoryControlRuntimeTarget, 'manualTnModifier' | 'tnCalculator' | 'unitType'>
+): boolean {
+    return inventoryControlEntryTargetDisabledReason(entry, target) === null;
+}
+
+export function inventoryControlEntryTargetDisabledReason(
+    entry: MountedEquipment,
+    target: Pick<InventoryControlRuntimeTarget, 'manualTnModifier' | 'tnCalculator' | 'unitType'>
+): string | null {
+    const calculator = getEffectiveInventoryControlCalculatorState(target);
+    if (!calculator) return null;
+    if (calculator.indirectFire && entry.equipment?.hasFlag('F_INDIRECT_FIRE') !== true) {
+        return INVENTORY_CONTROL_INDIRECT_FIRE_TARGET_REASON;
+    }
+
+    const targetWaterState = resolveTnTargetWaterState({ ...calculator, unitType: target.unitType });
+    const weaponUnderwater = entry.owner.isEquipmentSubmerged?.(entry) ?? false;
+    if ((targetWaterState.submerged && !weaponUnderwater)
+        || (weaponUnderwater && !targetWaterState.partiallyUnderwater && !targetWaterState.submerged)) {
+        return INVENTORY_CONTROL_WATER_LAYER_TARGET_REASON;
+    }
+    return null;
+}
+
 /** Target data whose value depends on the attacking unit and its line of sight. */
 export interface InventoryControlUnitTargetState {
     distance: number;
@@ -60,8 +101,12 @@ const SHARED_TARGET_CALCULATOR_KEYS = [
     'prone',
     'immobile',
     'targetHexCover',
-    'waterPartialCover',
-    'largeTarget'
+    'waterDepth',
+    'buildingCover',
+    'largeTarget',
+    'narcAboveWater',
+    'narcUnderwater',
+    'tagged'
 ] as const satisfies readonly (keyof TnTargetNumberCalculatorState)[];
 
 const SHARED_TARGET_CALCULATOR_KEY_SET = new Set<keyof TnTargetNumberCalculatorState>(SHARED_TARGET_CALCULATOR_KEYS);
@@ -75,7 +120,6 @@ export function splitInventoryControlCalculatorState(state: TnTargetNumberCalcul
     const local: TnTargetNumberCalculatorState = {};
     for (const key of Object.keys(state) as (keyof TnTargetNumberCalculatorState)[]) {
         const value = state[key];
-        if (value === undefined) continue;
         Object.assign(SHARED_TARGET_CALCULATOR_KEY_SET.has(key) ? shared : local, { [key]: value });
     }
     return {

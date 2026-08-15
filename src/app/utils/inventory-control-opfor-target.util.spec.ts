@@ -6,6 +6,8 @@ import { signal } from '@angular/core';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { MotiveModes } from '../models/motiveModes.model';
 import type { Unit } from '../models/units.model';
+import type { UnitCover } from '../models/unit-cover.model';
+import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
 import {
     deriveOpforTargetCalculatorState,
     getOpforInventoryTargetId,
@@ -31,17 +33,27 @@ function forceUnit(options: {
     distance?: number | null;
     airborne?: boolean | null;
     moveMode?: MotiveModes | null;
-    cover?: number;
+    cover?: UnitCover;
+    narcWaterLayers?: { aboveWater: boolean; underwater: boolean };
+    gameRules?: CBTGameRules;
 } = {}): CBTForceUnit {
     const conditions = new Set(options.conditions ?? []);
     const moveDistance = signal<number | null>(options.distance ?? null);
     const airborne = signal<boolean | null>(options.airborne ?? null);
     const moveMode = signal<MotiveModes | null>(options.moveMode ?? null);
-    const cover = signal<number | undefined>(options.cover);
+    const cover = signal<UnitCover | undefined>(options.cover);
     return {
+        gameRules: options.gameRules ?? CORE_2026_GAME_RULES,
         getUnit: () => unit(options.definition),
         getCondition: (condition: string) => conditions.has(condition),
-        turnState: () => ({ moveDistance, airborne, moveMode, cover })
+        getActiveNarcWaterLayers: () => options.narcWaterLayers ?? { aboveWater: false, underwater: false },
+        turnState: () => ({
+            moveDistance,
+            airborne,
+            moveMode,
+            cover,
+            isDepth1: () => cover() === 'underwater-depth-1',
+        })
     } as unknown as CBTForceUnit;
 }
 
@@ -119,19 +131,55 @@ describe('inventory control OPFOR targets', () => {
         expect(deriveOpforTargetCalculatorState(forceUnit()).targetMovementBracket).toBeNull();
     });
 
-    it('maps unit cover and derives water partial cover separately', () => {
+    it('maps unit cover and preserves special cover levels', () => {
         expect(deriveOpforTargetCalculatorState(forceUnit()).targetHexCover).toBe('none');
-        expect(deriveOpforTargetCalculatorState(forceUnit({ cover: 1 }))).toEqual(jasmine.objectContaining({
+        expect(deriveOpforTargetCalculatorState(forceUnit({ cover: 'light' }))).toEqual(jasmine.objectContaining({
             targetHexCover: 'light',
-            waterPartialCover: false,
+            waterDepth: undefined,
         }));
-        expect(deriveOpforTargetCalculatorState(forceUnit({ cover: 2 }))).toEqual(jasmine.objectContaining({
+        expect(deriveOpforTargetCalculatorState(forceUnit({ cover: 'heavy' }))).toEqual(jasmine.objectContaining({
             targetHexCover: 'heavy',
-            waterPartialCover: false,
+            waterDepth: undefined,
         }));
-        expect(deriveOpforTargetCalculatorState(forceUnit({ cover: 3 }))).toEqual(jasmine.objectContaining({
+        expect(deriveOpforTargetCalculatorState(forceUnit({ cover: 'underwater-depth-1' }))).toEqual(jasmine.objectContaining({
             targetHexCover: 'none',
-            waterPartialCover: true,
+            waterDepth: 'underwater-depth-1',
+        }));
+        expect(deriveOpforTargetCalculatorState(forceUnit({ cover: 'underwater-depth-3' }))).toEqual(jasmine.objectContaining({
+            targetHexCover: 'none',
+            waterDepth: 'underwater-depth-3',
+        }));
+        expect(deriveOpforTargetCalculatorState(forceUnit({ cover: 'building-1' }))).toEqual(jasmine.objectContaining({
+            targetHexCover: 'none',
+            waterDepth: undefined,
+            buildingCover: 'building-1',
+        }));
+        expect(deriveOpforTargetCalculatorState(forceUnit({ cover: 'building-2' }))).toEqual(jasmine.objectContaining({
+            targetHexCover: 'none',
+            waterDepth: undefined,
+            buildingCover: 'building-2',
+        }));
+    });
+
+    it('derives superheavy large-target state only under Core rules', () => {
+        expect(deriveOpforTargetCalculatorState(forceUnit({
+            definition: { tons: 120 },
+            gameRules: CORE_2026_GAME_RULES,
+        })).largeTarget).toBeTrue();
+        expect(deriveOpforTargetCalculatorState(forceUnit({
+            definition: { tons: 120 },
+            gameRules: TW_GAME_RULES,
+        })).largeTarget).toBeFalse();
+    });
+
+    it('derives NARC and TAG guidance state', () => {
+        expect(deriveOpforTargetCalculatorState(forceUnit({
+            narcWaterLayers: { aboveWater: true, underwater: true },
+            conditions: ['tagged'],
+        }))).toEqual(jasmine.objectContaining({
+            narcAboveWater: true,
+            narcUnderwater: true,
+            tagged: true,
         }));
     });
 });

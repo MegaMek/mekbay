@@ -1255,14 +1255,18 @@ export class UnitSvgService {
         return (line.textContent?.length ?? 0) * fontSize * 0.7;
     }
 
-    protected resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): ToHitResolution {
+    protected resolveInventoryControlToHit(
+        entry: MountedEquipment,
+        range?: InventoryControlRuntimeRangeKey | null,
+        target?: InventoryControlRuntimeTarget | null
+    ): ToHitResolution {
         const stateModifiers = this.unit.rules.getEquipmentToHitModifiers(entry);
         const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
         return this.unit.gameRules.resolveToHit({
             subject: entry,
             stateModifiers,
             range,
-            adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
+            adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo, target)
         });
     }
 
@@ -1271,7 +1275,7 @@ export class UnitSvgService {
         const row = this.inventoryControlRow(entry);
         if (!row) return null;
         const hitModifierRange = this.inventoryControlRangeForTarget(entry, target, false);
-        const hitResolution = this.resolveInventoryControlToHit(entry, hitModifierRange);
+        const hitResolution = this.resolveInventoryControlToHit(entry, hitModifierRange, target);
         const c3Resolution = this.unit.resolveC3Targeting(target);
         const text = inventoryTargetNumberText({
             entry,
@@ -1287,7 +1291,8 @@ export class UnitSvgService {
             attackModifierBreakdown: this.unit.turnState().getAttackModifierBreakdown(),
             hitResolution,
             c3DegradationSource: c3Resolution.degradationSource,
-            gameRules: this.unit.gameRules
+            gameRules: this.unit.gameRules,
+            indirectFireBaseModifier: this.unit.rules.getSpottingModifier?.() ?? 1,
         });
         return text || null;
     }
@@ -1338,7 +1343,7 @@ export class UnitSvgService {
             this.renderInventoryControlHeatEntry(entry, weaponRuleRange);
             this.renderInventoryControlRangeDamageEntry(entry, weaponRuleRange);
             if (this.unit.getEquipmentStatus(entry) !== 'destroyed') {
-                this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry, weaponRuleRange));
+                this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry, weaponRuleRange, target));
             }
             entry.el.classList.toggle('selected', selected);
             entry.el.classList.toggle('selected-alternative-mode', selected && hasSelectedMode);

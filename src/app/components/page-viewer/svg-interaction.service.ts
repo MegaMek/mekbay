@@ -30,7 +30,7 @@ import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.c
 import type { EquipmentDialogContext, EquipmentDialogData, EquipmentDialogTab } from '../equipment-dialog/equipment-dialog.model';
 import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dialog/weapon-target-choice-menu.component';
 import { getInventoryControlGroups, getInventoryControlModeAmmoSummary, getInventoryControlModes, getSelectedInventoryControlMode, inventoryControlEntryAction, INVENTORY_CONTROL_MODE_STATE, resolveInventoryControlSelectedAmmoOption, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
-import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+import { inventoryControlEntryAllowsTarget, inventoryControlEntryTargetDisabledReason, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
 import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
@@ -1156,9 +1156,15 @@ export class SvgInteractionService {
                 if (targets.length === 0) {
                     unit.toggleInventoryControlEntryRange(entry, range, forceSelected);
                 } else if (targets.length === 1) {
-                    const targetId = targets[0].id;
+                    const target = targets[0];
+                    const targetId = target.id;
                     const selectedTargetId = unit.getInventoryControlEntryTargetId(entry.id);
-                    unit.setInventoryControlEntryTarget(entry, !forceSelected && selectedTargetId === targetId ? null : targetId);
+                    const nextTargetId = !forceSelected && selectedTargetId === targetId ? null : targetId;
+                    if (nextTargetId && !inventoryControlEntryAllowsTarget(entry, target)) {
+                        this.showInventoryTargetPicker(entry, button, selectedTargetId ?? null, targets);
+                        return;
+                    }
+                    unit.setInventoryControlEntryTarget(entry, nextTargetId);
                 } else {
                     this.showInventoryTargetPicker(entry, button, unit.getInventoryControlEntryTargetId(entry.id) ?? null, targets);
                 }
@@ -1307,6 +1313,9 @@ export class SvgInteractionService {
         componentRef.setInput('targets', targets);
         componentRef.setInput('selectedTargetId', selectedTargetId);
         componentRef.setInput('targetNumberTexts', this.inventoryTargetNumberTexts(entry, targets));
+        componentRef.setInput('disabledTargetReasons', Object.fromEntries(targets
+            .map(target => [target.id, inventoryControlEntryTargetDisabledReason(entry, target)] as const)
+            .filter((entry): entry is readonly [InventoryControlRuntimeTargetId, string] => entry[1] !== null)));
         componentRef.changeDetectorRef.detectChanges();
 
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(targetId => {
@@ -1314,6 +1323,8 @@ export class SvgInteractionService {
                 this.overlayManager.closeManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY);
                 return;
             }
+            const target = targetId ? targets.find(candidate => candidate.id === targetId) : null;
+            if (target && !inventoryControlEntryAllowsTarget(entry, target)) return;
             unit.setInventoryControlEntryTarget(entry, targetId);
             this.overlayManager.closeManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY);
         });
@@ -1361,7 +1372,7 @@ export class SvgInteractionService {
             subject: entry,
             stateModifiers,
             range: weaponRangeSelection?.range ?? null,
-            adjustments: rules.resolveToHitAdjustments?.(entry, selectedAmmo)
+            adjustments: rules.resolveToHitAdjustments?.(entry, selectedAmmo, target)
         });
         const missingMovementModifier = unit.turnState().missingAttackMovementModifier();
         return inventoryTargetNumberText({

@@ -15,6 +15,8 @@ import { TooltipDirective } from './tooltip.directive';
             <span class="parent-label">Parent</span>
             <button class="child" type="button" [tooltip]="'Child tooltip'" tooltipType="error" [tooltipDelay]="0">Child</button>
             <button class="weakened" type="button" [tooltip]="[{ label: 'Apollo Destroyed', value: '+0', weakened: true }]" [tooltipDelay]="0">Weakened</button>
+            <button class="nested-line" type="button" [tooltip]="[{ label: 'Target A', value: '+1' }, { label: 'Moved 3-4', value: '+1', nested: true }]" [tooltipDelay]="0">Nested</button>
+            <button class="ignored-line" type="button" [tooltip]="[{ label: 'Spotter Moved (Run)', value: '+2', nested: true, ignored: true }]" [tooltipDelay]="0">Ignored</button>
         </div>
         <label class="mode-label">
             <input class="mode-radio" type="radio">
@@ -102,6 +104,32 @@ describe('TooltipDirective', () => {
         expect(row?.classList.contains('weakened')).toBeTrue();
         expect(row?.textContent).toContain('Apollo Destroyed');
         expect(row?.textContent).toContain('+0');
+    });
+
+    it('indents nested breakdown lines', async () => {
+        const fixture = TestBed.createComponent(TestHostComponent);
+        fixture.detectChanges();
+
+        dispatchPointerOver(fixture.nativeElement.querySelector('.nested-line') as HTMLElement);
+        await flushTooltipTasks(fixture);
+
+        const row = overlayContainerElement.querySelector('.tooltip-row.nested');
+        expect(row?.textContent).toContain('Moved 3-4');
+        expect(row?.textContent).toContain('+1');
+    });
+
+    it('strikes through ignored breakdown lines', async () => {
+        const fixture = TestBed.createComponent(TestHostComponent);
+        fixture.detectChanges();
+
+        dispatchPointerOver(fixture.nativeElement.querySelector('.ignored-line') as HTMLElement);
+        await flushTooltipTasks(fixture);
+
+        const row = overlayContainerElement.querySelector('.tooltip-row.nested.ignored');
+        const label = row?.querySelector('.label');
+        expect(row?.textContent).toContain('Spotter Moved (Run)');
+        expect(row?.textContent).toContain('+2');
+        expect(getComputedStyle(label!).textDecorationLine).toContain('line-through');
     });
 
     it('triggers from tooltip label text but not its adjacent radio input', async () => {

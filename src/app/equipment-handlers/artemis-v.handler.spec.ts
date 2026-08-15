@@ -49,6 +49,30 @@ describe('ArtemisVHandler', () => {
         }]);
     });
 
+    it('ignores the Artemis V bonus for an indirect-fire target', () => {
+        expect(handler.getToHitAdjustments(
+            entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']),
+            {
+                parent: entry(['F_ARTEMIS_COMPATIBLE']),
+                selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']),
+                target: { id: 'A', letter: 'A', name: 'Target', color: '#000', distance: 5, tnModifier: 1, tnCalculator: { indirectFire: true } },
+            },
+            queryContext
+        )).toEqual([]);
+    });
+
+    it('keeps the Artemis V bonus when indirect calculator state is manually overridden', () => {
+        expect(handler.getToHitAdjustments(
+            entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']),
+            {
+                parent: entry(['F_ARTEMIS_COMPATIBLE']),
+                selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']),
+                target: { id: 'A', letter: 'A', name: 'Target', color: '#000', distance: 5, tnModifier: 2, manualTnModifier: 2, tnCalculator: { indirectFire: true } },
+            },
+            queryContext
+        )).toEqual([jasmine.objectContaining({ modifier: -1, weakened: false })]);
+    });
+
     it('no Artemis V hit modifier bonus when selected ammo is not Artemis V-capable', () => {
         expect(handler.getToHitAdjustments(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), { parent: entry(['F_ARTEMIS_COMPATIBLE']), selectedAmmo: ammo(['M_ARTEMIS_CAPABLE']) }, queryContext)).toEqual([{
             kind: 'add', label: 'Incompatible Ammo (Test Ammo)', modifier: 0, weakened: true

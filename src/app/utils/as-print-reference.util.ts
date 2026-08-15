@@ -34,7 +34,6 @@ export interface ASPrintFormationReference {
     description: string;
     effectDescription: string | null;
     rulesReferences: string[];
-    valid: boolean;
     applications: ASPrintFormationApplication[];
 }
 
@@ -158,7 +157,6 @@ export function collectASPrintRulesReferenceData(
                     ? formatPrintMovementText(effectDescription, useHex)
                     : null,
                 rulesReferences: (formation.rulesRef ?? []).map(formatRulesReference),
-                valid: group.hasValidFormation(),
                 applications,
             });
         }
@@ -216,9 +214,6 @@ export function renderASPrintRulesReferencePage(
         const title = appendTextElement(card, 'h3', 'as-reference-entry-title', formation.formationName);
         if (formation.groupName !== formation.formationName) {
             appendTextElement(title, 'span', 'as-reference-context-label', formation.groupName);
-        }
-        if (!formation.valid) {
-            appendTextElement(title, 'span', 'as-reference-warning', 'Invalid formation');
         }
 
         appendTextElement(card, 'p', 'as-reference-description', formation.description);
@@ -375,13 +370,6 @@ export function getASPrintRulesReferenceStyles(): string {
             font-size: 7pt;
             font-weight: 400;
             color: #000;
-        }
-
-        .as-reference-warning {
-            margin-left: auto;
-            color: #000;
-            font-size: 7pt;
-            font-weight: 700;
         }
 
         .as-reference-description {
