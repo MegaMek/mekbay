@@ -3451,7 +3451,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
                 indirectFire: true,
                 secondaryTarget: true,
                 spotterMoveMode: 'jump',
-                spotterDeclaredAttacks: true
+                spotterDeclaredAttacks: true,
+                customModifier: 2,
             }
         });
 
@@ -3473,6 +3474,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(secondTarget.tnCalculator?.secondaryTarget).toBeUndefined();
         expect(secondTarget.tnCalculator?.spotterMoveMode).toBeUndefined();
         expect(secondTarget.tnCalculator?.spotterDeclaredAttacks).toBeUndefined();
+        expect(secondTarget.tnCalculator?.customModifier).toBeUndefined();
 
         expect(firstTarget.distance).toBe(3);
         expect(firstTarget.c3Distance).toBe(2);
@@ -3484,7 +3486,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             indirectFire: true,
             secondaryTarget: true,
             spotterMoveMode: 'jump',
-            spotterDeclaredAttacks: true
+            spotterDeclaredAttacks: true,
+            customModifier: 2,
         }));
 
         secondUnit.updateInventoryControlTarget(target!.id, {
@@ -3496,6 +3499,26 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(firstUnit.getInventoryControlTarget(target!.id)?.tnModifier).toBe(8);
         expect(secondUnit.getInventoryControlTarget(target!.id)?.distance).toBe(12);
         expect(secondUnit.getInventoryControlTarget(target!.id)?.tnModifier).toBe(2);
+    });
+
+    it('keeps custom target modifiers per attacking unit and clears them independently', () => {
+        const force = new TestCBTForce('Test Force', dataService, unitInitializer, injector);
+        const firstUnit = force.addUnit(createVehicleUnit(equipment));
+        const secondUnit = force.addUnit(createVehicleUnit(equipment));
+        const target = firstUnit.createInventoryControlTarget()!;
+
+        firstUnit.updateInventoryControlTarget(target.id, { tnCalculator: { customModifier: 2 } });
+
+        expect(firstUnit.getInventoryControlTarget(target.id)?.tnModifier).toBe(2);
+        expect(firstUnit.getInventoryControlTarget(target.id)?.tnCalculator?.customModifier).toBe(2);
+        expect(secondUnit.getInventoryControlTarget(target.id)?.tnModifier).toBe(0);
+        expect(secondUnit.getInventoryControlTarget(target.id)?.tnCalculator?.customModifier).toBeUndefined();
+        expect(force.getInventoryControlTarget(target.id)?.tnCalculator?.customModifier).toBeUndefined();
+
+        firstUnit.updateInventoryControlTarget(target.id, { tnCalculator: { customModifier: undefined } });
+
+        expect(firstUnit.getInventoryControlTarget(target.id)?.tnModifier).toBe(0);
+        expect(firstUnit.getInventoryControlTarget(target.id)?.tnCalculator?.customModifier).toBeUndefined();
     });
 
     it('allocates target letters once for the entire force', () => {
