@@ -585,6 +585,19 @@ describe('TurnState', () => {
     });
 
     describe('standing up', () => {
+        it('adjusts stand attempts without allowing a negative count', () => {
+            const { turnState } = createTurnStateHarness();
+
+            turnState.adjustStandAttempts(2);
+            expect(turnState.standAttempts()).toBe(2);
+
+            turnState.adjustStandAttempts(-1);
+            expect(turnState.standAttempts()).toBe(1);
+
+            turnState.adjustStandAttempts(-2);
+            expect(turnState.standAttempts()).toBe(0);
+        });
+
         it('records outcomes and removes prone only after success', () => {
             const { turnState } = createTurnStateHarness({ prone: true });
 

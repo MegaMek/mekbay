@@ -257,10 +257,18 @@ export class TurnState {
 
     resolveStandAttempt(outcome: RuleCheckOutcome): boolean {
         if (!this.canStandUp()) return false;
-        this.standAttempts.update(current => (current ?? 0) + 1);
-        if (this.unitState.unit.gameRules.id === 'tw') this.invalidateHeatSource('movement');
+        this.adjustStandAttempts(1);
         if (outcome === 'success') this.unitState.unit.setCondition('prone', false);
         return true;
+    }
+
+    adjustStandAttempts(delta: number): void {
+        if (!Number.isFinite(delta)) return;
+        const current = this.standAttempts() ?? 0;
+        const next = Math.max(0, current + Math.trunc(delta));
+        if (next === current) return;
+        this.standAttempts.set(next);
+        if (this.unitState.unit.gameRules.id === 'tw') this.invalidateHeatSource('movement');
     }
 
     resetStandAttempts(): void {
