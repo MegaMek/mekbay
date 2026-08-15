@@ -2371,6 +2371,58 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(rangeCells.every(cell => cell.style.getPropertyValue('--range-selection-color') === '')).toBeTrue();
     });
 
+    it('allows a selected disabled row to be deselected individually but not selected again', () => {
+        const disabled = entry({ id: 'disabled', equipment: weapon('disabled'), el: svgEntry('<g><g class="name"><text>Disabled</text></g></g>') });
+        const equipmentStatuses = new Map<MountedEquipment, EquipmentStatus>([
+            [disabled, 'disabled']
+        ]);
+        const { component, fixture, unit } = createComponent([disabled], {}, [], equipmentStatuses);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        unit.setInventoryControlEntrySelected(row.entry, true);
+        fixture.detectChanges();
+
+        let checkbox = fixture.nativeElement.querySelector('.weapon-equipment-row .select-cell .bt-checkbox') as HTMLInputElement;
+        expect(checkbox.checked).toBeTrue();
+        expect(checkbox.disabled).toBeFalse();
+
+        checkbox.click();
+        fixture.detectChanges();
+
+        checkbox = fixture.nativeElement.querySelector('.weapon-equipment-row .select-cell .bt-checkbox') as HTMLInputElement;
+        expect(component.isSelected(row)).toBeFalse();
+        expect(checkbox.checked).toBeFalse();
+        expect(checkbox.disabled).toBeTrue();
+
+        checkbox.click();
+        fixture.detectChanges();
+
+        expect(component.isSelected(row)).toBeFalse();
+    });
+
+    it('deselects disabled ranged weapons from the group checkbox when no active rows remain', () => {
+        const disabled = entry({ id: 'disabled', equipment: weapon('disabled'), el: svgEntry('<g><g class="name"><text>Disabled</text></g></g>') });
+        const equipmentStatuses = new Map<MountedEquipment, EquipmentStatus>([
+            [disabled, 'disabled']
+        ]);
+        const { component, fixture, unit } = createComponent([disabled], {}, [], equipmentStatuses);
+        const group = component.groups().find(candidate => candidate.id === 'ranged')!;
+        const row = group.rows[0];
+
+        unit.setInventoryControlEntrySelected(row.entry, true);
+        fixture.detectChanges();
+
+        let checkbox = fixture.nativeElement.querySelector('.ranged-select-all') as HTMLInputElement;
+        expect(checkbox.checked).toBeTrue();
+
+        checkbox.click();
+        fixture.detectChanges();
+
+        checkbox = fixture.nativeElement.querySelector('.ranged-select-all') as HTMLInputElement;
+        expect(component.isSelected(row)).toBeFalse();
+        expect(checkbox.checked).toBeFalse();
+    });
+
     it('toggles all ranged weapons from the ranged group header checkbox', () => {
         const first = entry({ id: 'first', equipment: weapon('first'), el: svgEntry('<g><g class="name"><text>First</text></g></g>') });
         const second = entry({ id: 'second', equipment: weapon('second'), el: svgEntry('<g><g class="name"><text>Second</text></g></g>') });

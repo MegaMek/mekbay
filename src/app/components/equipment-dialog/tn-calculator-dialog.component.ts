@@ -232,6 +232,12 @@ export interface TnCalculatorDialogResult {
                             <span class="choice-caption"><span>{{ targetHexCoverCaption() }}</span></span>
                         </div>
                         
+                        <ng-template #partialCoverControl>
+                            <div class="button-row partial-cover-row" [class.derived-target-state]="waterPartialCover() || buildingPartialCover()">
+                                <button type="button" class="bt-button move-button partial-cover" [class.selected]="partialCoverSelected()" [class.water-choice]="waterPartialCover()" [class.building-choice]="buildingPartialCover()" [attr.aria-pressed]="partialCoverSelected()" [disabled]="partialCoverDisabled()" (click)="togglePartialCover()"><span>{{ partialCoverLabel() }}</span><span class="modifier-badge">+1</span></button>
+                            </div>
+                        </ng-template>
+
                         <div class="terrain-group" [class.framed-borders]="indirectFire()" [class.muted-frame]="indirectFire()">
                             @if (indirectFire()) {
                             <div class="section-title secondary">From the Spotter Line of Sight</div>
@@ -255,10 +261,13 @@ export interface TnCalculatorDialogResult {
                                     }
                                 </span>
                             </div>
-                            <div class="button-row" [class.derived-target-state]="waterPartialCover() || buildingPartialCover()">
-                            <button type="button" class="bt-button move-button partial-cover" [class.selected]="partialCoverSelected()" [class.water-choice]="waterPartialCover()" [class.building-choice]="buildingPartialCover()" [attr.aria-pressed]="partialCoverSelected()" [disabled]="partialCoverDisabled()" (click)="togglePartialCover()"><span>{{ partialCoverLabel() }}</span><span class="modifier-badge">+1</span></button>
-                            </div>
+                            @if (!indirectFire() || gameRules().indirectFireUsesSpotterPartialCover) {
+                                <ng-container [ngTemplateOutlet]="partialCoverControl"></ng-container>
+                            }
                         </div>
+                        @if (indirectFire() && !gameRules().indirectFireUsesSpotterPartialCover) {
+                            <ng-container [ngTemplateOutlet]="partialCoverControl"></ng-container>
+                        }
 
                     </section>
                 </div>
@@ -885,10 +894,11 @@ export class TnCalculatorDialogComponent {
     readonly c3Distance = signal<number>(Math.max(0, this.data.target.c3Distance ?? this.data.target.distance ?? 1));
     readonly useC3 = signal<boolean>((this.data.target.useC3 ?? false) && !this.initialIndirectFire);
     readonly partialCover = signal<boolean>((this.initialCalculator?.partialCover ?? false)
-        && !this.initialIndirectFire
         && this.initialCalculator?.waterDepth === undefined
         && this.initialCalculator?.buildingCover === undefined
-        && this.range() > ADJACENT_RANGE);
+        && (this.initialIndirectFire
+            ? this.data.gameRules.indirectFireUsesSpotterPartialCover
+            : this.range() > ADJACENT_RANGE));
     readonly attackDirection = signal<TnAttackDirection>(this.initialCalculator?.attackDirection ?? 'front');
     readonly indirectFire = signal<boolean>(this.initialIndirectFire);
     readonly secondaryTarget = signal<boolean>(this.initialCalculator?.secondaryTarget ?? false);
@@ -919,7 +929,10 @@ export class TnCalculatorDialogComponent {
         prone: this.prone(),
     }));
     readonly buildingPartialCover = computed(() => this.targetBuildingCoverState().effect === 'partial');
-    readonly partialCoverUnavailable = computed(() => this.staticTarget() || this.prone() || this.indirectFire() || this.range() <= ADJACENT_RANGE);
+    readonly partialCoverUnavailable = computed(() => this.staticTarget()
+        || this.prone()
+        || (this.indirectFire() && !this.gameRules().indirectFireUsesSpotterPartialCover)
+        || (!this.indirectFire() && this.range() <= ADJACENT_RANGE));
     readonly partialCoverDisabled = computed(() => this.waterDepth() !== undefined || this.buildingCover() !== undefined || this.partialCoverUnavailable());
     readonly partialCoverSelected = computed(() => this.waterPartialCover() || this.buildingPartialCover() || this.partialCover());
     readonly partialCoverLabel = computed(() => this.waterPartialCover()
@@ -1087,7 +1100,9 @@ export class TnCalculatorDialogComponent {
         this.indirectFire.set(next);
         if (next) {
             this.useC3.set(false);
-            this.partialCover.set(false);
+            if (!this.gameRules().indirectFireUsesSpotterPartialCover) {
+                this.partialCover.set(false);
+            }
         }
         if (!next) {
             this.spotterMoveMode.set('stationary');
@@ -1177,7 +1192,8 @@ export class TnCalculatorDialogComponent {
     setRangeValue(value: number): void {
         const next = this.alignToStep(value, this.RANGE_MIN, this.RANGE_MAX);
         this.range.set(next);
-        if (next <= ADJACENT_RANGE) {
+        if (next <= ADJACENT_RANGE
+            && !(this.indirectFire() && this.gameRules().indirectFireUsesSpotterPartialCover)) {
             this.partialCover.set(false);
         }
     }

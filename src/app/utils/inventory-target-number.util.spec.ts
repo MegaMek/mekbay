@@ -451,6 +451,33 @@ describe('inventory target number rules profiles', () => {
         }
     });
 
+    it('retains target-hex terrain for Core NARC indirect fire and ignores it for TW', () => {
+        const input = guidedIndirectInput('M_NARC_CAPABLE');
+        input.target = {
+            ...input.target!,
+            tnModifier: 8,
+            tnCalculator: {
+                ...input.target!.tnCalculator,
+                targetHexCover: 'heavy',
+                narcAboveWater: true,
+            },
+        };
+
+        expect(inventoryTargetEffectiveTnModifier(
+            input.target!, input.entry, input.selectedAmmo, CORE_2026_GAME_RULES,
+        )).toBe(3);
+        expect(inventoryTargetEffectiveTnModifier(
+            input.target!, input.entry, input.selectedAmmo, TW_GAME_RULES,
+        )).toBe(1);
+
+        input.gameRules = TW_GAME_RULES;
+        expect(inventoryTargetNumberBreakdown(input)?.lines).toContain(jasmine.objectContaining({
+            label: 'Heavy Cover',
+            nested: true,
+            ignored: true,
+        }));
+    });
+
     it('uses the profile-specific NARC homing modifier for direct and indirect attacks', () => {
         const direct = guidedIndirectInput('M_NARC_CAPABLE');
         direct.target = {

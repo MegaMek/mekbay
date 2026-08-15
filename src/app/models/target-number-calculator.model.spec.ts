@@ -24,13 +24,23 @@ describe('target number calculator rules profiles', () => {
         })).toBe(0);
     });
 
-    it('excludes ordinary partial cover from indirect fire but retains water cover', () => {
-        expect(calculateTargetTnModifier({
+    it('uses profile-specific ordinary partial cover for indirect fire while retaining water cover', () => {
+        const ordinaryPartialCover = {
             unitType: 'mek-biped',
             range: 5,
             indirectFire: true,
             partialCover: true,
-        })).toBe(1);
+        } as const;
+        expect(calculateTargetTnModifier(ordinaryPartialCover, CORE_2026_GAME_RULES)).toBe(1);
+        expect(calculateTargetTnModifier(ordinaryPartialCover, TW_GAME_RULES)).toBe(2);
+        expect(calculateTargetTnModifier({
+            ...ordinaryPartialCover,
+            range: 1,
+        }, CORE_2026_GAME_RULES)).toBe(1);
+        expect(calculateTargetTnModifier({
+            ...ordinaryPartialCover,
+            range: 1,
+        }, TW_GAME_RULES)).toBe(2);
         expect(calculateTargetTnModifier({
             unitType: 'mek-biped',
             range: 5,

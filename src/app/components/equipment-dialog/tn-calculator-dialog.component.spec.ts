@@ -67,18 +67,43 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         }));
     });
 
-    it('clears and disables ordinary partial cover for indirect fire', () => {
+    it('clears and disables ordinary partial cover outside the spotter-LOS group for Core indirect fire', () => {
         component.togglePartialCover();
         expect(component.partialCover()).toBeTrue();
 
         component.toggleIndirectFire();
         fixture.detectChanges();
 
+        const partialCover = fixture.nativeElement.querySelector('.partial-cover') as HTMLButtonElement;
+        const terrainGroup = fixture.nativeElement.querySelector('.terrain-group') as HTMLElement;
         expect(component.partialCover()).toBeFalse();
-        expect((fixture.nativeElement.querySelector('.partial-cover') as HTMLButtonElement).disabled).toBeTrue();
+        expect(partialCover.disabled).toBeTrue();
+        expect(terrainGroup.contains(partialCover)).toBeFalse();
 
         component.togglePartialCover();
         expect(component.partialCover()).toBeFalse();
+    });
+
+    it('allows spotter-LOS partial cover at adjacent attacker range for TW indirect fire', () => {
+        component.gameRules.set(TW_GAME_RULES);
+        component.toggleIndirectFire();
+        component.togglePartialCover();
+        component.setRangeValue(1);
+        fixture.detectChanges();
+
+        const partialCover = fixture.nativeElement.querySelector('.partial-cover') as HTMLButtonElement;
+        const terrainGroup = fixture.nativeElement.querySelector('.terrain-group') as HTMLElement;
+        expect(component.partialCover()).toBeTrue();
+        expect(partialCover.disabled).toBeFalse();
+        expect(terrainGroup.contains(partialCover)).toBeTrue();
+
+        component.togglePartialCover();
+        expect(component.partialCover()).toBeFalse();
+        component.togglePartialCover();
+        fixture.detectChanges();
+
+        expect(component.partialCover()).toBeTrue();
+        expect(component.totalModifier()).toBe(2);
     });
 
     it('retains water partial cover for indirect fire', () => {

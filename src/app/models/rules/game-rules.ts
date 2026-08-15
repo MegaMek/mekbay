@@ -132,6 +132,8 @@ export abstract class CBTGameRules {
     abstract readonly supportsApolloSaturationMode: boolean;
     abstract readonly supportsBombastLaserRules: boolean;
     abstract readonly narcHomingTargetModifier: number;
+    abstract readonly narcIndirectFireIgnoresAllTerrain: boolean;
+    abstract readonly indirectFireUsesSpotterPartialCover: boolean;
     abstract readonly semiGuidedIgnoresCover: boolean;
     abstract readonly semiGuidedIgnoresIndirectFireModifier: boolean;
     abstract readonly physicalLocationRows: readonly PhysicalLocationRow[];
@@ -336,6 +338,8 @@ export class GameRules extends CBTGameRules {
     readonly supportsApolloSaturationMode = true;
     readonly supportsBombastLaserRules = true;
     readonly narcHomingTargetModifier = -1;
+    readonly narcIndirectFireIgnoresAllTerrain = false;
+    readonly indirectFireUsesSpotterPartialCover = false;
     readonly semiGuidedIgnoresCover = true;
     readonly semiGuidedIgnoresIndirectFireModifier = false;
     readonly physicalLocationRows = CORE_2026_PHYSICAL_LOCATION_ROWS;
@@ -403,6 +407,8 @@ export class TWGameRules extends CBTGameRules {
     readonly supportsBombastLaserRules = false;
     readonly narcHomingTargetModifier = 0; 
     // TODO: inarc should get a -1 modifier in TW Rules but we need to implement inarc pods... BLEARGH! 
+    readonly narcIndirectFireIgnoresAllTerrain = true;
+    readonly indirectFireUsesSpotterPartialCover = true;
     readonly semiGuidedIgnoresCover = false;
     readonly semiGuidedIgnoresIndirectFireModifier = true;
     readonly physicalLocationRows = TW_PHYSICAL_LOCATION_ROWS;

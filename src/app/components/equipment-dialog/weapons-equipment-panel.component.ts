@@ -403,18 +403,23 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     toggleSelected(row: InventoryControlRow): void {
+        if (this.isSelected(row)) {
+            this.unit().setInventoryControlEntrySelected(row.entry, false);
+            return;
+        }
         if (row.disabled || row.destroyed) return;
         selectInventoryControlEntry(this.unit(), row.entry);
     }
 
     groupAllSelectableRowsSelected(group: InventoryControlGroup): boolean {
         const rows = this.groupActiveSelectableRows(group);
-        return rows.length > 0 && rows.every(row => this.isSelected(row));
+        if (rows.length > 0) return rows.every(row => this.isSelected(row));
+        return this.groupSelectableRows(group).some(row => this.isSelected(row));
     }
 
     groupSomeSelectableRowsSelected(group: InventoryControlGroup): boolean {
-        const rows = this.groupActiveSelectableRows(group);
-        return rows.some(row => this.isSelected(row)) && !rows.every(row => this.isSelected(row));
+        const rows = this.groupSelectableRows(group);
+        return rows.some(row => this.isSelected(row)) && !this.groupAllSelectableRowsSelected(group);
     }
 
     toggleGroupSelectableRows(group: InventoryControlGroup): void {

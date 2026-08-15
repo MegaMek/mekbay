@@ -258,16 +258,26 @@ export function calculateTargetTnModifierBreakdown(
         const coverModifier = getTargetHexCoverModifier(input.targetHexCover);
         add(input.targetHexCover === 'heavy' ? 'Heavy Cover' : 'Light Cover', coverModifier, {
             guidanceAdjustment: 'terrain',
+            ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
             ignoredBySemiGuidedGuidance: true,
         });
     }
     add('Heavy Cover (building)', !staticTarget && buildingCoverState.effect === 'heavy'
         ? buildingCoverState.modifier
-        : 0);
+        : 0, {
+            ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
+        });
     const specialPartialCover = waterState.partiallyUnderwater || buildingCoverState.effect === 'partial';
+    const ordinaryPartialCoverAllowed = input.indirectFire
+        ? gameRules.indirectFireUsesSpotterPartialCover
+        : range > ADJACENT_RANGE;
+    const ordinaryPartialCover = !input.waterDepth
+        && !input.buildingCover
+        && !prone
+        && input.partialCover
+        && ordinaryPartialCoverAllowed;
     const partialCoverModifier = !staticTarget
-        && (specialPartialCover || (!input.waterDepth && !input.buildingCover
-            && !prone && !input.indirectFire && input.partialCover && range > ADJACENT_RANGE))
+        && (specialPartialCover || ordinaryPartialCover)
         ? TN_PARTIAL_COVER_MODIFIER
         : 0;
     const partialCoverSource = waterState.partiallyUnderwater
@@ -282,6 +292,7 @@ export function calculateTargetTnModifierBreakdown(
     }[partialCoverSource];
     add(partialCoverLabel, partialCoverModifier, {
         partialCoverSource,
+        ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
         ...(partialCoverSource === 'manual' && { guidanceAdjustment: 'partial-cover' }),
     });
     add('Secondary Target', input.secondaryTarget ? TN_SECONDARY_TARGET_MODIFIER : 0);
