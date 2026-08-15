@@ -14,6 +14,9 @@ export const INVENTORY_CONTROL_TARGET_MAX_COUNT = 12;
 export const INVENTORY_CONTROL_INDIRECT_FIRE_TARGET_REASON = 'Requires an indirect-fire weapon';
 export const INVENTORY_CONTROL_INDIRECT_FIRE_AMMO_TARGET_REASON = 'Selected ammunition cannot fire indirectly at this target';
 export const INVENTORY_CONTROL_WATER_LAYER_TARGET_REASON = 'Weapon and target are in different water layers';
+export const INVENTORY_CONTROL_TAG_INFANTRY_TARGET_REASON = 'TAG cannot designate infantry';
+export const INVENTORY_CONTROL_NARC_INFANTRY_TARGET_REASON = 'NARC beacons cannot target infantry';
+export const INVENTORY_CONTROL_NARC_BUILDING_TARGET_REASON = 'NARC beacons cannot be fired into buildings';
 export const INVENTORY_CONTROL_TARGET_COLORS = [
     '#c0f7ff',
     '#ffebca',
@@ -76,6 +79,19 @@ export function inventoryControlEntryTargetDisabledReason(
     selectedAmmo: AmmoEquipment | null = entry.owner.getInventoryControlSelectedAmmo(entry),
     gameRules: CBTGameRules = entry.owner.gameRules,
 ): string | null {
+    if (entry.equipment?.hasFlag('F_TAG') === true && !gameRules.allowsTagDesignation(target.unitType)) {
+        return INVENTORY_CONTROL_TAG_INFANTRY_TARGET_REASON;
+    }
+
+    if (entry.equipment?.hasFlag('F_NARC') === true) {
+        const narcRestriction = gameRules.getNarcBeaconAttackRestriction({
+            targetInsideBuilding: target.tnCalculator?.buildingCover !== undefined,
+            targetIsInfantry: target.unitType === 'infantry' || target.unitType === 'battle-armor',
+        });
+        if (narcRestriction === 'infantry') return INVENTORY_CONTROL_NARC_INFANTRY_TARGET_REASON;
+        if (narcRestriction === 'building') return INVENTORY_CONTROL_NARC_BUILDING_TARGET_REASON;
+    }
+
     const calculator = getEffectiveInventoryControlCalculatorState(target);
     if (!calculator) return null;
     if (calculator.indirectFire && entry.equipment?.hasFlag('F_INDIRECT_FIRE') !== true) {
@@ -119,7 +135,8 @@ const SHARED_TARGET_CALCULATOR_KEYS = [
     'largeTarget',
     'narcAboveWater',
     'narcUnderwater',
-    'tagged'
+    'tagged',
+    'ecmShielded'
 ] as const satisfies readonly (keyof TnTargetNumberCalculatorState)[];
 
 const SHARED_TARGET_CALCULATOR_KEY_SET = new Set<keyof TnTargetNumberCalculatorState>(SHARED_TARGET_CALCULATOR_KEYS);

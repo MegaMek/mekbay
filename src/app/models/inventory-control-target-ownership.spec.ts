@@ -20,6 +20,7 @@ describe('inventory control target ownership', () => {
             largeTarget: true,
             narcAboveWater: true,
             narcUnderwater: false,
+            ecmShielded: true,
         });
 
         expect(result.shared).toEqual({
@@ -33,6 +34,7 @@ describe('inventory control target ownership', () => {
             largeTarget: true,
             narcAboveWater: true,
             narcUnderwater: false,
+            ecmShielded: true,
         });
         expect(result.local).toBeUndefined();
     });

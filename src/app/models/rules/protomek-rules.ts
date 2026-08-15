@@ -12,7 +12,7 @@ import { computed } from '@angular/core';
  *
  * ProtoMek game rules.
  */
-export const PROTOMEK_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['swarmed', 'tagged', 'skidding', 'jammed']);
+export const PROTOMEK_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['swarmed', 'tagged', 'ecm-shielded', 'skidding', 'jammed']);
 export const PROTOMEK_CREW_STATE_CONTROLS: readonly CrewStateControlDefinition[] = crewStateDefinitions(['unconscious']) as readonly CrewStateControlDefinition[];
 export const PROTOMEK_CREW_STATE_DISPLAYS: readonly CrewStateDefinition[] = crewStateDefinitions(['unconscious', 'dead']);
 

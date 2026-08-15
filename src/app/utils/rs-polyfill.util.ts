@@ -4,7 +4,7 @@
 
 import { getUnitServerHost, heatLevels } from "../models/common.model";
 import type { CBTForceUnit } from "../models/cbt-force-unit.model";
-import { getUnitConditionDefinition, UNIT_CONDITION_DEFINITIONS } from "../models/rules/unit-type-rules";
+import { getUnitConditionDefinition, NARC_CONDITION_COLOR, UNIT_CONDITION_DEFINITIONS } from "../models/rules/unit-type-rules";
 import type { Unit, UnitType } from "../models/units.model";
 
 interface InventoryRangeButtonColumn {
@@ -1737,7 +1737,7 @@ export class RsPolyfillUtil {
             narcRect.setAttribute('width', '40');
             narcRect.setAttribute('height', '8');
             narcRect.setAttribute('fill', '#fff');
-            narcRect.setAttribute('stroke', '#f00');
+            narcRect.setAttribute('stroke', NARC_CONDITION_COLOR);
             narcRect.setAttribute('stroke-width', '0.9');
             narcRect.setAttribute('class', 'no-autocolor');
 
@@ -1748,7 +1748,7 @@ export class RsPolyfillUtil {
             narcText.setAttribute('font-family', 'Roboto, sans-serif');
             narcText.setAttribute('font-size', '6.5');
             narcText.setAttribute('font-weight', 'bold');
-            narcText.setAttribute('fill', '#f00');
+            narcText.setAttribute('fill', NARC_CONDITION_COLOR);
             narcText.setAttribute('class', 'no-autocolor');
             narcText.textContent = 'NARC: 0';
 

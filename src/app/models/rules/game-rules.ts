@@ -9,6 +9,7 @@ import type { EquipmentRegistry } from '../equipment-lookup';
 import type { InventoryControlRuntimeTarget } from '../inventory-control-runtime-state.model';
 import { MountedEquipment } from '../mounted-equipment.model';
 import { resolveAmmoWeaponProfile } from '../ammo-weapon-profile.model';
+import type { TnTargetUnitType } from '../target-number-calculator.model';
 
 export type HitModifier = number | 'Vs' | '*' | null;
 
@@ -106,6 +107,13 @@ export interface IndirectFireContext {
     readonly targetHasUnderwaterLayer: boolean;
 }
 
+export type NarcBeaconAttackRestriction = 'infantry' | 'building';
+
+export interface NarcBeaconAttackContext {
+    readonly targetInsideBuilding: boolean;
+    readonly targetIsInfantry: boolean;
+}
+
 export function separateHeatFireModifier(resolution: ToHitResolution): ToHitHeatSeparation {
     const heatFireModifier = resolution.modifierBreakdown.reduce(
         (total, entry) => total + (entry.kind === 'heat' ? entry.modifier : 0),
@@ -142,6 +150,8 @@ export abstract class CBTGameRules {
     abstract resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution;
     abstract resolveC3TargetingModifier(degradationSource: C3DegradationSource, rangeBracketImprovement: number): ToHitModifierBreakdownEntry | null;
     abstract getSemiGuidedAdjustment(modifierValue: number, source: SemiGuidedAdjustmentSource): number;
+    abstract getNarcBeaconAttackRestriction(context: NarcBeaconAttackContext): NarcBeaconAttackRestriction | null;
+    abstract allowsTagDesignation(targetType: TnTargetUnitType | undefined): boolean;
     protected abstract canFireTorpedoesIndirectly(context: IndirectFireContext): boolean;
 
     canFireIndirectly(
@@ -363,6 +373,14 @@ export class GameRules extends CBTGameRules {
         return source === 'terrain' ? Math.min(2, Math.max(0, modifierValue)) : 0;
     }
 
+    override getNarcBeaconAttackRestriction(_context: NarcBeaconAttackContext): NarcBeaconAttackRestriction | null {
+        return null;
+    }
+
+    override allowsTagDesignation(_targetType: TnTargetUnitType | undefined): boolean {
+        return true;
+    }
+
     protected override canFireTorpedoesIndirectly(_context: IndirectFireContext): boolean {
         return false;
     }
@@ -438,6 +456,16 @@ export class TWGameRules extends CBTGameRules {
 
     override getSemiGuidedAdjustment(modifierValue: number, source: SemiGuidedAdjustmentSource): number {
         return source === 'movement' ? Math.max(0, modifierValue) : 0;
+    }
+
+    override getNarcBeaconAttackRestriction(context: NarcBeaconAttackContext): NarcBeaconAttackRestriction | null {
+        if (context.targetIsInfantry) return 'infantry';
+        if (context.targetInsideBuilding) return 'building';
+        return null;
+    }
+
+    override allowsTagDesignation(targetType: TnTargetUnitType | undefined): boolean {
+        return targetType !== 'infantry' && targetType !== 'battle-armor';
     }
 
     /* TARGET ACQUISITION GEAR (TAG)

@@ -117,6 +117,59 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         expect((fixture.nativeElement.querySelector('.partial-cover') as HTMLButtonElement).textContent).toContain('Partial Cover (water)');
     });
 
+    it('always exposes manual guidance-state controls and saves their values', () => {
+        const guidanceState = fixture.nativeElement.querySelector('.guidance-state-group') as HTMLElement;
+        const tagged = guidanceState.querySelector('.tagged-state') as HTMLButtonElement;
+        const narc = guidanceState.querySelector('.narc-above-water-state') as HTMLButtonElement;
+        const ecmShielded = guidanceState.querySelector('.ecm-shielded-state') as HTMLButtonElement;
+
+        expect(guidanceState).not.toBeNull();
+        expect(tagged.textContent?.trim()).toBe('TAGGED');
+        expect(narc.textContent?.trim()).toBe('NARC');
+        expect(ecmShielded.textContent?.trim()).toBe('ECM SHIELDED');
+
+        tagged.click();
+        narc.click();
+        ecmShielded.click();
+        component.apply();
+
+        const result = close.calls.mostRecent().args[0] as TnCalculatorDialogResult;
+        expect(result.patch.tnCalculator).toEqual(jasmine.objectContaining({
+            tagged: true,
+            narcAboveWater: true,
+            narcUnderwater: false,
+            ecmShielded: true,
+        }));
+    });
+
+    it('clears and disables TAGGED for infantry under Total Warfare rules', () => {
+        component.gameRules.set(TW_GAME_RULES);
+        component.toggleTagged();
+        expect(component.tagged()).toBeTrue();
+
+        component.selectUnitType('infantry');
+        fixture.detectChanges();
+
+        const tagged = fixture.nativeElement.querySelector('.tagged-state') as HTMLButtonElement;
+        expect(component.tagged()).toBeFalse();
+        expect(tagged.disabled).toBeTrue();
+
+        component.toggleTagged();
+        component.apply();
+        const result = close.calls.mostRecent().args[0] as TnCalculatorDialogResult;
+        expect(result.patch.tnCalculator?.tagged).toBeFalse();
+    });
+
+    it('offers separate NARC water layers for a partially submerged manual target', () => {
+        component.selectWaterDepth('underwater-depth-1');
+        fixture.detectChanges();
+
+        const aboveWater = fixture.nativeElement.querySelector('.narc-above-water-state') as HTMLButtonElement;
+        const underwater = fixture.nativeElement.querySelector('.narc-underwater-state') as HTMLButtonElement;
+        expect(aboveWater.textContent?.trim()).toBe('NARC (ABOVE WATER)');
+        expect(underwater.textContent?.trim()).toBe('NARC (UNDERWATER)');
+    });
+
     it('toggles selected cover and intervening woods without explicit none buttons', () => {
         const coverGroup = fixture.nativeElement.querySelector('[aria-label="Target hex cover"]') as HTMLElement;
         const coverButtons = coverGroup.querySelectorAll<HTMLButtonElement>(':scope > button');
@@ -271,6 +324,10 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
         component.selectUnitType('mek-biped');
 
         expect(component.unitType()).toBe('battle-armor');
+    });
+
+    it('does not expose manual guidance-state controls for synchronized OPFOR targets', () => {
+        expect(fixture.nativeElement.querySelector('.guidance-state-group')).toBeNull();
     });
 });
 

@@ -80,6 +80,7 @@ export interface ChargeDamage {
 
 export const ENTRY_DISABLED_STATE_KEY = 'disabled';
 export const ENTRY_DISABLED_STATE_VALUE = 'true';
+export const NARC_CONDITION_COLOR = '#f00';
 
 export interface LocationConditionControl {
     key: string;
@@ -176,6 +177,7 @@ export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = [
     { key: 'crippled', label: 'CRIPPLED', color: '#b70000' },
     { key: 'swarmed', label: 'SWARMED', color: '#46b48e', placement: 'menu' },
     { key: 'tagged', label: 'TAGGED', color: '#3385d7', placement: 'menu' },
+    { key: 'ecm-shielded', label: 'ECM SHIELDED', color: '#008f7a', placement: 'menu' },
     { key: 'skidding', label: 'SKIDDING', color: '#bfb300', placement: 'menu' },
     { key: 'jammed', label: 'JAMMED', color: '#ff6be6', placement: 'menu' },
     { key: 'spotting', label: 'SPOTTING', color: '#471fad' },

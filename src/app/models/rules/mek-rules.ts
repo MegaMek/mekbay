@@ -7,7 +7,7 @@ import type { CBTForceUnit, EquipmentAction } from '../cbt-force-unit.model';
 import type { CrewMember, SkillType } from '../crew-member.model';
 import type { MountedEquipment } from '../mounted-equipment.model';
 import type { CriticalSlot, RuleCheckOutcome } from '../force-serialization';
-import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, sortPSRModifiers, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type ChargeDamage, type LocationConditionControl, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitRuleModifier } from './unit-type-rules';
+import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, NARC_CONDITION_COLOR, sortPSRModifiers, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type ChargeDamage, type LocationConditionControl, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitRuleModifier } from './unit-type-rules';
 import type { EquipmentStatus, EquipmentStatusFacts } from '../equipment-status.model';
 import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
@@ -50,13 +50,13 @@ interface MekArmStatus {
 
 const TORSO_CRIPPLE_CHECK_KEY = 'core.torso-crippling';
 
-export const MEK_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['shutdown', 'prone', 'swarmed', 'tagged', 'skidding', 'jammed']);
+export const MEK_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['shutdown', 'prone', 'swarmed', 'tagged', 'ecm-shielded', 'skidding', 'jammed']);
 export const MEK_CREW_STATE_CONTROLS: readonly CrewStateControlDefinition[] = crewStateDefinitions(['unconscious', 'ejected']) as readonly CrewStateControlDefinition[];
 export const MEK_CREW_STATE_DISPLAYS: readonly CrewStateDefinition[] = crewStateDefinitions(['unconscious', 'ejected', 'dead']);
 export const MEK_LOCATION_CONDITION_CONTROLS: readonly LocationConditionControl[] = [
     { key: 'flooded', label: 'Flooded', color: '#66f' },
     { key: 'blown-off', label: 'Blown Off', color: '#808080' },
-    { key: 'narc', label: 'NARC', color: '#f00', counted: true },
+    { key: 'narc', label: 'NARC', color: NARC_CONDITION_COLOR, counted: true },
 ];
 
 export interface MekLegDamageState {

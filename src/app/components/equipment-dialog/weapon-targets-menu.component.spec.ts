@@ -4,6 +4,8 @@
 
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { InventoryControlRuntimeTarget } from '../../models/inventory-control-runtime-state.model';
+import { TW_GAME_RULES } from '../../models/rules/game-rules';
+import { getUnitConditionDefinition, NARC_CONDITION_COLOR } from '../../models/rules/unit-type-rules';
 import { WeaponTargetsMenuComponent } from './weapon-targets-menu.component';
 
 const TARGET: InventoryControlRuntimeTarget = {
@@ -145,7 +147,6 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
             { label: 'Battle Armor', modifier: '+1' },
             { label: 'Airborne', modifier: '+1' },
             { label: 'Moved 7-9', modifier: '+3' },
-            { label: 'Skidding', modifier: '+2' },
             { label: 'LoS', modifier: '+1' },
             { label: 'Heavy Wood', modifier: '+2' },
             { label: 'Secondary', modifier: '+1' },
@@ -178,30 +179,68 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         fixture.componentRef.setInput('targets', [target]);
         fixture.detectChanges();
 
-        expect(component.targetModifierPills(target)).toEqual([{ label: 'Tagged' }]);
+        const taggedColor = getUnitConditionDefinition('tagged').color;
+        expect(component.targetModifierPills(target)).toEqual([{
+            label: 'Tagged',
+            accentColor: taggedColor,
+        }]);
         const pill = fixture.nativeElement.querySelector(
             '.target-modifier-pills:not(.target-modifier-pills-fallback) .target-modifier-pill',
         ) as HTMLElement;
         expect(pill.querySelector('.modifier-label')?.textContent?.trim()).toBe('Tagged');
         expect(pill.querySelector('.modifier-badge')).toBeNull();
+        expect(pill.classList).toContain('guidance-pill');
+        expect(pill.style.getPropertyValue('--target-pill-accent')).toBe(taggedColor);
+        expect(getComputedStyle(pill).borderTopColor).toBe('rgb(51, 133, 215)');
 
         fixture.componentRef.setInput('hasSemiGuidedMissiles', false);
         fixture.detectChanges();
         expect(component.targetModifierPills(target)).toEqual([]);
     });
 
-    it('renders NARC normally when a capable weapon and pod share a water layer', () => {
-        fixture.componentRef.setInput('narcCapableWeaponLayers', { aboveWater: true, underwater: false });
+    it('does not render stale TAG guidance for a TW infantry target', () => {
+        fixture.componentRef.setInput('gameRules', TW_GAME_RULES);
+        fixture.componentRef.setInput('hasSemiGuidedMissiles', true);
         fixture.detectChanges();
 
         expect(component.targetModifierPills({
             ...TARGET,
+            unitType: 'infantry',
+            tnCalculator: { tagged: true },
+        })).toEqual([]);
+    });
+
+    it('renders NARC normally when a capable weapon and pod share a water layer', () => {
+        fixture.componentRef.setInput('narcCapableWeaponLayers', { aboveWater: true, underwater: false });
+        fixture.detectChanges();
+
+        const activeTarget = {
+            ...TARGET,
             tnCalculator: { narcAboveWater: true },
-        })).toEqual([{ label: 'NARC' }]);
+        };
+        fixture.componentRef.setInput('targets', [activeTarget]);
+        fixture.detectChanges();
+
+        expect(component.targetModifierPills(activeTarget)).toEqual([{
+            label: 'NARC',
+            accentColor: NARC_CONDITION_COLOR,
+        }]);
+        const activePill = fixture.nativeElement.querySelector(
+            '.target-modifier-pills:not(.target-modifier-pills-fallback) .target-modifier-pill',
+        ) as HTMLElement;
+        expect(activePill.classList).toContain('guidance-pill');
+        expect(activePill.style.getPropertyValue('--target-pill-accent')).toBe(NARC_CONDITION_COLOR);
+        expect(getComputedStyle(activePill).borderTopColor).toBe('rgb(255, 0, 0)');
+
         expect(component.targetModifierPills({
             ...TARGET,
             tnCalculator: { narcUnderwater: true },
-        })).toEqual([{ label: 'NARC', invalid: true }]);
+        })).toEqual([{
+            label: 'NARC',
+            accentColor: NARC_CONDITION_COLOR,
+            invalid: true,
+            invalidReason: 'NARC guidance is unavailable across this water layer',
+        }]);
     });
 
     it('renders an invalid NARC pill with a red strike-through for a water-layer mismatch', () => {
@@ -219,8 +258,31 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         const label = pill.querySelector('.modifier-label') as HTMLElement;
         expect(pill.classList).toContain('invalid-guidance');
         expect(pill.getAttribute('aria-label')).toBe('NARC guidance unavailable');
+        expect(pill.title).toBe('NARC guidance is unavailable across this water layer');
         expect(getComputedStyle(label).textDecorationLine).toContain('line-through');
         expect(getComputedStyle(label).textDecorationColor).toBe('rgb(255, 0, 0)');
+    });
+
+    it('renders NARC as unavailable when ECM shields the attached pod', () => {
+        const target = {
+            ...TARGET,
+            tnCalculator: { narcAboveWater: true, ecmShielded: true },
+        };
+        fixture.componentRef.setInput('narcCapableWeaponLayers', { aboveWater: true, underwater: false });
+        fixture.componentRef.setInput('targets', [target]);
+        fixture.detectChanges();
+
+        expect(component.targetModifierPills(target)).toEqual([{
+            label: 'NARC',
+            accentColor: NARC_CONDITION_COLOR,
+            invalid: true,
+            invalidReason: 'NARC guidance is suppressed by ECM',
+        }]);
+        const pill = fixture.nativeElement.querySelector(
+            '.target-modifier-pills:not(.target-modifier-pills-fallback) .target-modifier-pill',
+        ) as HTMLElement;
+        expect(pill.classList).toContain('invalid-guidance');
+        expect(pill.title).toBe('NARC guidance is suppressed by ECM');
     });
 
     it('shows water partial cover at adjacent range', () => {
@@ -230,6 +292,21 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
             distance: 1,
             tnCalculator: { waterDepth: 'underwater-depth-1' },
         })).toEqual([{ label: 'Depth 1', modifier: 1 }]);
+    });
+
+    it('shows spotter-LOS partial cover for TW indirect fire', () => {
+        fixture.componentRef.setInput('gameRules', TW_GAME_RULES);
+        fixture.detectChanges();
+
+        expect(component.targetModifierPills({
+            ...TARGET,
+            unitType: 'mek-biped',
+            distance: 1,
+            tnCalculator: { indirectFire: true, partialCover: true },
+        })).toEqual([
+            { label: 'Partial Cover', modifier: 1 },
+            { label: 'Indirect', modifier: 1 },
+        ]);
     });
 
     it('shows effective building levels and filters levels with no effect', () => {

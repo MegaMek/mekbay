@@ -109,6 +109,7 @@ export interface TnTargetNumberCalculatorState {
     narcAboveWater?: boolean;
     narcUnderwater?: boolean;
     tagged?: boolean;
+    ecmShielded?: boolean;
 }
 
 export interface TnTargetNumberCalculationInput extends TnTargetNumberCalculatorState {
@@ -265,7 +266,9 @@ export function calculateTargetTnModifierBreakdown(
     add('Heavy Cover (building)', !staticTarget && buildingCoverState.effect === 'heavy'
         ? buildingCoverState.modifier
         : 0, {
+            guidanceAdjustment: 'terrain',
             ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
+            ignoredBySemiGuidedGuidance: true,
         });
     const specialPartialCover = waterState.partiallyUnderwater || buildingCoverState.effect === 'partial';
     const ordinaryPartialCoverAllowed = input.indirectFire
@@ -292,8 +295,9 @@ export function calculateTargetTnModifierBreakdown(
     }[partialCoverSource];
     add(partialCoverLabel, partialCoverModifier, {
         partialCoverSource,
+        guidanceAdjustment: partialCoverSource === 'manual' ? 'partial-cover' : 'terrain',
         ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
-        ...(partialCoverSource === 'manual' && { guidanceAdjustment: 'partial-cover' }),
+        ignoredBySemiGuidedGuidance: true,
     });
     add('Secondary Target', input.secondaryTarget ? TN_SECONDARY_TARGET_MODIFIER : 0);
     add('Secondary Target (side/back)', gameRules.supportsSecondaryTargetSideBack && !input.secondaryTarget && input.secondaryTargetSideBack

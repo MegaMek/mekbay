@@ -1597,6 +1597,7 @@ export class CBTForceUnit extends ForceUnit {
     }
     
     public endTurn() {
+        const endsForceTurn = !this.force.units().some(unit => unit !== this && unit.turnState().dirty());
         if (this.useAutomations() && (this.getHeat().next !== undefined || this.turnState().hasPendingHeatResolution())) {
             this.applyHeat();
         }
@@ -1614,6 +1615,7 @@ export class CBTForceUnit extends ForceUnit {
         const notifications = this.injector.get(ToastService);
         this.forEachCurrentInventoryEntry(entry => equipmentRegistry.onEndTurn(entry, notifications));
         this.state.endTurn();
+        if (endsForceTurn) this.force.clearExpiredManualTargetTags(this);
         this.inventoryControl.markAmmoSourcesChanged();
         this.phaseTrigger.update(v => v + 1); // Trigger change detection
         this.state.resetTurnState();

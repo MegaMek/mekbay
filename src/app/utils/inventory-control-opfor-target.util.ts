@@ -64,6 +64,7 @@ export function deriveOpforTargetCalculatorState(
         largeTarget: unit.gameRules.supportsLargeTarget && isLargeInventoryTarget(unit.getUnit()),
         narcAboveWater: narcWaterLayers.aboveWater,
         narcUnderwater: narcWaterLayers.underwater,
-        tagged: unit.getCondition('tagged')
+        tagged: unit.getCondition('tagged'),
+        ecmShielded: unit.getCondition('ecm-shielded')
     };
 }

@@ -12,11 +12,87 @@ import type { UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules
 import type { InventoryControlDisplayData, InventoryControlGroupId, InventoryRangeKey } from './inventory-control.util';
 import type { TooltipLine } from '../components/tooltip/tooltip.component';
 import { aerospaceRangeBracket, aerospaceRangeLimits, effectiveAerospaceMaximumBracket, isRangeBracketWithinMaximum } from './aerospace-range.util';
-import { calculateTargetTnModifierBreakdown, TN_INDIRECT_FIRE_MODIFIER, type TnTargetModifierBreakdownEntry } from '../models/target-number-calculator.model';
+import {
+    calculateTargetTnModifierBreakdown,
+    TN_INDIRECT_FIRE_MODIFIER,
+    type TnTargetModifierBreakdownEntry,
+    type TnTargetNumberCalculatorState,
+    type TnTargetUnitType,
+} from '../models/target-number-calculator.model';
 
 type EffectiveTargetModifierBreakdownEntry = TnTargetModifierBreakdownEntry & {
     ignored?: true;
 };
+
+export interface TargetGuidanceCapabilities {
+    readonly semiGuided: boolean;
+    readonly narcCapableAboveWater: boolean;
+    readonly narcCapableUnderwater: boolean;
+}
+
+export type NarcGuidanceUnavailableReason = 'ecm-shielded' | 'water-layer';
+
+export interface TargetGuidanceResolution {
+    readonly semiGuided: boolean;
+    readonly narc: boolean;
+    readonly narcRelevant: boolean;
+    readonly narcUnavailableReason: NarcGuidanceUnavailableReason | null;
+}
+
+interface WeaponTargetGuidanceResolution extends TargetGuidanceResolution {
+    readonly noSpotter: boolean;
+}
+
+export function resolveTargetGuidance(
+    calculator: TnTargetNumberCalculatorState | undefined,
+    unitType: TnTargetUnitType | undefined,
+    capabilities: TargetGuidanceCapabilities,
+    gameRules: CBTGameRules = CORE_2026_GAME_RULES,
+): TargetGuidanceResolution {
+    const narcRelevant = calculator !== undefined
+        && (calculator.narcAboveWater === true || calculator.narcUnderwater === true)
+        && (capabilities.narcCapableAboveWater || capabilities.narcCapableUnderwater);
+    const sameWaterLayer = calculator !== undefined
+        && ((calculator.narcAboveWater === true && capabilities.narcCapableAboveWater)
+            || (calculator.narcUnderwater === true && capabilities.narcCapableUnderwater));
+    const narcUnavailableReason: NarcGuidanceUnavailableReason | null = !narcRelevant
+        ? null
+        : calculator.ecmShielded === true
+            ? 'ecm-shielded'
+            : !sameWaterLayer
+                ? 'water-layer'
+                : null;
+
+    const narc = narcRelevant && narcUnavailableReason === null;
+    return {
+        semiGuided: calculator?.tagged === true
+            && capabilities.semiGuided
+            && gameRules.allowsTagDesignation(unitType),
+        narc,
+        narcRelevant,
+        narcUnavailableReason,
+    };
+}
+
+function resolveWeaponTargetGuidance(
+    calculator: TnTargetNumberCalculatorState | undefined,
+    unitType: TnTargetUnitType | undefined,
+    entry: MountedEquipment,
+    selectedAmmo: AmmoEquipment | null | undefined,
+    gameRules: CBTGameRules,
+): WeaponTargetGuidanceResolution {
+    const narcCapable = selectedAmmo?.hasMunitionType('M_NARC_CAPABLE') === true;
+    const weaponUnderwater = narcCapable && entry.owner.isEquipmentSubmerged(entry);
+    const guidance = resolveTargetGuidance(calculator, unitType, {
+        semiGuided: selectedAmmo?.hasMunitionType('M_SEMIGUIDED') === true,
+        narcCapableAboveWater: narcCapable && !weaponUnderwater,
+        narcCapableUnderwater: narcCapable && weaponUnderwater,
+    }, gameRules);
+    return {
+        ...guidance,
+        noSpotter: guidance.narc && calculator?.indirectFire === true,
+    };
+}
 
 export interface InventoryTargetRangeSelection {
     range: InventoryControlRuntimeRangeKey;
@@ -95,21 +171,6 @@ export function inventoryTargetEffectiveTnModifier(
         - sumTargetModifiers(rawBreakdown);
 }
 
-function targetGuidance(
-    calculator: NonNullable<ReturnType<typeof getEffectiveInventoryControlCalculatorState>>,
-    entry: MountedEquipment,
-    selectedAmmo: AmmoEquipment,
-): { narc: boolean; semiGuided: boolean } {
-    const narc = selectedAmmo.hasMunitionType('M_NARC_CAPABLE')
-        && (entry.owner.isEquipmentSubmerged(entry)
-            ? calculator.narcUnderwater === true
-            : calculator.narcAboveWater === true);
-    return {
-        narc,
-        semiGuided: calculator.tagged === true && selectedAmmo.hasMunitionType('M_SEMIGUIDED'),
-    };
-}
-
 function targetCalculatorBreakdown(
     target: InventoryControlRuntimeTarget,
     gameRules: CBTGameRules,
@@ -137,8 +198,14 @@ function effectiveTargetCalculatorBreakdown(
         ));
     if (!calculator || !selectedAmmo) return breakdown;
 
-    const guidance = targetGuidance(calculator, entry, selectedAmmo);
-    if (calculator.indirectFire && (guidance.narc || guidance.semiGuided)) {
+    const guidance = resolveWeaponTargetGuidance(
+        calculator,
+        target.unitType,
+        entry,
+        selectedAmmo,
+        gameRules,
+    );
+    if (guidance.noSpotter || (calculator.indirectFire && guidance.semiGuided)) {
         breakdown = breakdown.map(modifier => markTargetModifierIgnored(
             modifier,
             (guidance.narc && modifier.ignoredByNarcGuidance === true)
@@ -373,6 +440,13 @@ export function inventoryTargetNumberBreakdown(
     terms.push(...modifierTooltipLines(input.attackModifierBreakdown, entry => formatInventoryTargetSignedModifier(entry.modifier)));
 
     const calculator = getEffectiveInventoryControlCalculatorState(target);
+    const guidance = resolveWeaponTargetGuidance(
+        calculator,
+        target.unitType,
+        input.entry,
+        input.selectedAmmo,
+        gameRules,
+    );
     if (calculator) {
         terms.push({ label: `Target ${target.letter}`, value: formatInventoryTargetSignedModifier(targetModifier), isHeader: true });
         terms.push(...effectiveTargetCalculatorBreakdown(
@@ -388,6 +462,9 @@ export function inventoryTargetNumberBreakdown(
         })));
     } else if (targetModifier !== 0) {
         terms.push({ label: `Target (${target.letter})`, value: formatInventoryTargetSignedModifier(targetModifier) });
+    }
+    if (guidance.noSpotter) {
+        terms.push({ label: 'Spotter', value: 'Not required (NARC)' });
     }
 
     if (!physical) {

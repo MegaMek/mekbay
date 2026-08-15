@@ -172,14 +172,15 @@ describe('inventory control OPFOR targets', () => {
         })).largeTarget).toBeFalse();
     });
 
-    it('derives NARC and TAG guidance state', () => {
+    it('derives NARC, TAG, and ECM guidance state', () => {
         expect(deriveOpforTargetCalculatorState(forceUnit({
             narcWaterLayers: { aboveWater: true, underwater: true },
-            conditions: ['tagged'],
+            conditions: ['tagged', 'ecm-shielded'],
         }))).toEqual(jasmine.objectContaining({
             narcAboveWater: true,
             narcUnderwater: true,
             tagged: true,
+            ecmShielded: true,
         }));
     });
 });

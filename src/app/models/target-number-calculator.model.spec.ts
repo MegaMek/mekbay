@@ -168,11 +168,36 @@ describe('target number calculator rules profiles', () => {
         expect(waterCover).toContain(jasmine.objectContaining({
             label: 'Partial Cover (water)',
             partialCoverSource: 'water',
+            guidanceAdjustment: 'terrain',
+            ignoredBySemiGuidedGuidance: true,
         }));
         expect(manualCover).toContain(jasmine.objectContaining({
             label: 'Partial Cover',
             partialCoverSource: 'manual',
             guidanceAdjustment: 'partial-cover',
+            ignoredBySemiGuidedGuidance: true,
+        }));
+    });
+
+    it('marks building terrain and partial cover for semi-guided adjustment', () => {
+        const fullBuildingCover = calculateTargetTnModifierBreakdown({
+            unitType: 'mek-biped',
+            buildingCover: 'building-2',
+        });
+        const partialBuildingCover = calculateTargetTnModifierBreakdown({
+            unitType: 'mek-biped',
+            buildingCover: 'building-1',
+        });
+
+        expect(fullBuildingCover).toContain(jasmine.objectContaining({
+            label: 'Heavy Cover (building)',
+            guidanceAdjustment: 'terrain',
+            ignoredBySemiGuidedGuidance: true,
+        }));
+        expect(partialBuildingCover).toContain(jasmine.objectContaining({
+            label: 'Partial Cover (building)',
+            guidanceAdjustment: 'terrain',
+            ignoredBySemiGuidedGuidance: true,
         }));
     });
 

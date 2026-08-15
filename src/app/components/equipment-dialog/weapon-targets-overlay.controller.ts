@@ -135,6 +135,7 @@ export class WeaponTargetsOverlayController {
         this.targetsCompRef.setInput('readOnly', options.readOnly ? options.readOnly() : options.unit.readOnly());
         this.targetsCompRef.setInput('unassignedMovement', options.unit.turnState().missingAttackMovementModifier());
         this.targetsCompRef.setInput('showC3Distance', this.showC3Distance(options.unit));
+        this.targetsCompRef.setInput('gameRules', options.unit.gameRules);
         const guidanceCapabilities = this.guidanceCapabilities(options.unit);
         this.targetsCompRef.setInput('hasSemiGuidedMissiles', guidanceCapabilities.hasSemiGuidedMissiles);
         this.targetsCompRef.setInput('narcCapableWeaponLayers', guidanceCapabilities.narcCapableWeaponLayers);

@@ -5,7 +5,11 @@
 import { ChangeDetectionStrategy, Component, afterNextRender, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+import {
+    INVENTORY_CONTROL_TAG_INFANTRY_TARGET_REASON,
+    type InventoryControlRuntimeTarget,
+    type InventoryControlRuntimeTargetId,
+} from '../../models/inventory-control-runtime-state.model';
 import { HexSliderComponent } from '../hex-slider/hex-slider.component';
 import { MultilineDropdownComponent, type MultilineDropdownOption } from '../multiline-dropdown/multiline-dropdown.component';
 import { CoverLevelPickerComponent } from '../cover-level-picker/cover-level-picker.component';
@@ -268,6 +272,22 @@ export interface TnCalculatorDialogResult {
                             <ng-container [ngTemplateOutlet]="partialCoverControl"></ng-container>
                         }
 
+                        @if (!targetStateReadOnly) {
+                            <div class="guidance-state-group framed-borders muted-frame">
+                                <div class="section-title secondary">Guidance State</div>
+                                <div class="button-row guidance-state-row" role="group" aria-label="Target guidance state">
+                                    <button type="button" class="bt-button move-button tagged-state" [class.selected]="tagged()" [attr.aria-pressed]="tagged()" [disabled]="taggedUnavailable()" [attr.title]="taggedUnavailable() ? taggedUnavailableReason : null" (click)="toggleTagged()">TAGGED</button>
+                                    @if (aboveWaterNarcAvailable()) {
+                                        <button type="button" class="bt-button move-button narc-above-water-state" [class.selected]="narcAboveWater()" [attr.aria-pressed]="narcAboveWater()" (click)="toggleNarcAboveWater()">{{ narcAboveWaterLabel() }}</button>
+                                    }
+                                    @if (underwaterNarcAvailable()) {
+                                        <button type="button" class="bt-button move-button narc-underwater-state" [class.selected]="narcUnderwater()" [attr.aria-pressed]="narcUnderwater()" (click)="toggleNarcUnderwater()">{{ narcUnderwaterLabel() }}</button>
+                                    }
+                                    <button type="button" class="bt-button move-button ecm-shielded-state" [class.selected]="ecmShielded()" [attr.aria-pressed]="ecmShielded()" title="Suppress NARC guidance while the attached pod is inside an enemy ECM bubble" (click)="toggleEcmShielded()">ECM SHIELDED</button>
+                                </div>
+                            </div>
+                        }
+
                     </section>
                 </div>
 
@@ -432,6 +452,23 @@ export interface TnCalculatorDialogResult {
             gap: 4px;
             padding: 8px;
             background-color: rgba(0, 0, 0, 0.2);
+        }
+
+        .guidance-state-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 8px;
+            margin-top: 8px;
+            background-color: rgba(0, 0, 0, 0.2);
+        }
+
+        .guidance-state-row {
+            flex-wrap: wrap;
+        }
+
+        .guidance-state-row .bt-button {
+            flex-basis: calc(50% - 2px);
         }
 
         .tn-slider {
@@ -817,11 +854,11 @@ export interface TnCalculatorDialogResult {
                 order: 3;
             }
 
-            .other-section {
+            .distance-section {
                 order: 4;
             }
 
-            .distance-section {
+            .other-section {
                 order: 5;
             }
 
@@ -852,6 +889,7 @@ export interface TnCalculatorDialogResult {
 })
 export class TnCalculatorDialogComponent {
     readonly jammedConditionColor = JAMMED_CONDITION_COLOR;
+    readonly taggedUnavailableReason = INVENTORY_CONTROL_TAG_INFANTRY_TARGET_REASON;
     readonly MOVEMENT_MIN = 0;
     readonly MOVEMENT_MAX = TN_TARGET_MOVEMENT_BRACKETS.length - 1;
     readonly RANGE_MIN = 0;
@@ -906,8 +944,16 @@ export class TnCalculatorDialogComponent {
     );
     readonly spotterMoveMode = signal<TnSpotterMoveMode>(this.initialCalculator?.spotterMoveMode ?? 'stationary');
     readonly spotterDeclaredAttacks = signal<boolean>(this.initialCalculator?.spotterDeclaredAttacks ?? false);
+    readonly narcAboveWater = signal<boolean>(this.initialCalculator?.narcAboveWater ?? false);
+    readonly narcUnderwater = signal<boolean>(this.initialCalculator?.narcUnderwater ?? false);
+    readonly tagged = signal<boolean>(
+        (this.initialCalculator?.tagged ?? false)
+        && this.data.gameRules.allowsTagDesignation(this.initialUnitType),
+    );
+    readonly ecmShielded = signal<boolean>(this.initialCalculator?.ecmShielded ?? false);
     readonly renderReady = signal(false);
     readonly unitTypeSelectedHasModifier = computed(() => this.unitTypeDropdownOptions().some(option => option.value === this.unitType() && !!option.modifierLabel));
+    readonly taggedUnavailable = computed(() => !this.gameRules().allowsTagDesignation(this.unitType()));
 
     readonly staticTarget = computed(() => isStaticTargetType(this.unitType()));
     readonly terrainTarget = computed(() => isTerrainTargetType(this.unitType()));
@@ -920,6 +966,10 @@ export class TnCalculatorDialogComponent {
         prone: this.prone(),
     }));
     readonly waterPartialCover = computed(() => this.targetWaterState().partiallyUnderwater);
+    readonly aboveWaterNarcAvailable = computed(() => !this.targetWaterState().submerged);
+    readonly underwaterNarcAvailable = computed(() => this.targetWaterState().partiallyUnderwater || this.targetWaterState().submerged);
+    readonly narcAboveWaterLabel = computed(() => this.underwaterNarcAvailable() ? 'NARC (ABOVE WATER)' : 'NARC');
+    readonly narcUnderwaterLabel = computed(() => this.aboveWaterNarcAvailable() ? 'NARC (UNDERWATER)' : 'NARC');
     readonly targetBuildingCoverState = computed(() => resolveTnTargetBuildingCoverState({
         unitType: this.unitType(),
         buildingCover: this.buildingCover(),
@@ -1017,6 +1067,7 @@ export class TnCalculatorDialogComponent {
     selectUnitType(value: string): void {
         if (this.targetStateReadOnly) return;
         this.unitType.set(value as TnTargetUnitType);
+        if (this.taggedUnavailable()) this.tagged.set(false);
         this.clearStaticTargetModifiers();
     }
 
@@ -1136,6 +1187,26 @@ export class TnCalculatorDialogComponent {
         this.spotterDeclaredAttacks.set(!this.spotterDeclaredAttacks());
     }
 
+    toggleTagged(): void {
+        if (this.targetStateReadOnly || this.taggedUnavailable()) return;
+        this.tagged.update(value => !value);
+    }
+
+    toggleNarcAboveWater(): void {
+        if (this.targetStateReadOnly || !this.aboveWaterNarcAvailable()) return;
+        this.narcAboveWater.update(value => !value);
+    }
+
+    toggleNarcUnderwater(): void {
+        if (this.targetStateReadOnly || !this.underwaterNarcAvailable()) return;
+        this.narcUnderwater.update(value => !value);
+    }
+
+    toggleEcmShielded(): void {
+        if (this.targetStateReadOnly) return;
+        this.ecmShielded.update(value => !value);
+    }
+
     onRangeInput(event: Event): void {
         const el = event.target as HTMLInputElement;
         this.setRangeValue(Number(el.value || 0));
@@ -1169,6 +1240,10 @@ export class TnCalculatorDialogComponent {
             largeTarget: this.largeTarget(),
             spotterMoveMode: this.indirectFire() ? this.spotterMoveMode() : 'stationary',
             spotterDeclaredAttacks: this.indirectFire() && this.spotterDeclaredAttacks(),
+            narcAboveWater: this.aboveWaterNarcAvailable() && this.narcAboveWater(),
+            narcUnderwater: this.underwaterNarcAvailable() && this.narcUnderwater(),
+            tagged: !this.taggedUnavailable() && this.tagged(),
+            ecmShielded: this.ecmShielded(),
         };
         this.dialogRef.close({
             targetId: this.target.id,

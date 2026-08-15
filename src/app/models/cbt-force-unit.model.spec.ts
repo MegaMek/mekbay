@@ -2941,6 +2941,36 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(restored.getCondition('skidding')).toBeFalse();
     });
 
+    it('waits for the last dirty unit before clearing TAGGED from force-shared manual targets', () => {
+        const forceUnit = createForceUnit();
+        const force = forceUnit.force as TestCBTForce;
+        const otherUnit = new CBTForceUnit(
+            createMekUnit(), force, dataService, unitInitializer, injector,
+        );
+        force.setUnits([forceUnit, otherUnit]);
+        forceUnit.turnState().moveMode.set('walk');
+        otherUnit.turnState().moveMode.set('walk');
+        force.inventoryControlTargets.replaceTargets([
+            {
+                id: 'A', letter: 'A', name: 'Manual target', color: '#000', source: 'manual',
+                unitType: 'mek-biped', distance: 1, tnModifier: 0, tnCalculator: { tagged: true },
+            },
+            {
+                id: 'opfor:enemy', letter: 'B', name: 'OPFOR target', color: '#f00', source: 'opfor',
+                unitType: 'mek-biped', distance: 1, tnModifier: 0, tnCalculator: { tagged: true },
+            },
+        ]);
+
+        forceUnit.endTurn();
+
+        expect(force.getInventoryControlTarget('A')?.tnCalculator?.tagged).toBeTrue();
+
+        otherUnit.endTurn();
+
+        expect(force.getInventoryControlTarget('A')?.tnCalculator?.tagged).toBeFalse();
+        expect(force.getInventoryControlTarget('opfor:enemy')?.tnCalculator?.tagged).toBeTrue();
+    });
+
     it('serializes and restores turn state data', () => {
         const forceUnit = createForceUnit();
         forceUnit.turnState().airborne.set(true);
