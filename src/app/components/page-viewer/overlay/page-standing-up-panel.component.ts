@@ -5,7 +5,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Injector, signal, viewChild } from '@angular/core';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { DialogsService } from '../../../services/dialogs.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
@@ -55,7 +54,6 @@ export function toggleStandingUpOverlay(
 })
 export class PageStandingUpPanelComponent {
     private readonly parent = inject(PageInteractionOverlayComponent);
-    private readonly dialogsService = inject(DialogsService);
     private readonly overlayManager = inject(OverlayManagerService);
     readonly diceRoller = viewChild<DiceRollerComponent>('roller');
     readonly unit = this.parent.unit;
@@ -114,15 +112,8 @@ export class PageStandingUpPanelComponent {
         if (unit.turnState().resolveStandAttempt(outcome)) this.lastOutcome.set(outcome);
     }
 
-    async resetAttempts(): Promise<void> {
-        const confirmed = await this.dialogsService.requestConfirmation(
-            'Are you sure you want to reset the stand attempts?',
-            'Reset Stand Attempts',
-            'warning'
-        );
-        if (!confirmed) return;
-
-        this.unit()?.turnState().resetStandAttempts();
+    adjustAttempts(delta: number): void {
+        this.unit()?.turnState().adjustStandAttempts(delta);
         if (this.lastOutcome() !== 'success') this.lastOutcome.set(null);
         this.rolledResult.set(null);
     }

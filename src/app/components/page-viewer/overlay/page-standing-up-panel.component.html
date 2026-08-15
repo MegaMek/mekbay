@@ -7,15 +7,13 @@
     <div class="body">
         <div class="attempts">
             <span>Attempts</span>
-            <strong>{{ attempts() }}</strong>
-            <button type="button" class="reset-attempts" [disabled]="attempts() === 0"
-                aria-label="Reset stand attempts" title="Reset stand attempts" (click)="resetAttempts()">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-                    <path d="M3 3v5h5"></path>
-                </svg>
-            </button>
+            <div class="attempts-stepper">
+                <button type="button" class="bt-button square-small" [disabled]="attempts() === 0"
+                    aria-label="Decrease stand attempts" title="Decrease stand attempts" (click)="adjustAttempts(-1)">-</button>
+                <strong>{{ attempts() }}</strong>
+                <button type="button" class="bt-button square-small"
+                    aria-label="Increase stand attempts" title="Increase stand attempts" (click)="adjustAttempts(1)">+</button>
+            </div>
         </div>
         <div class="psr-list">
             <div class="psr-item" [class.resolved]="lastOutcome() === 'success'"

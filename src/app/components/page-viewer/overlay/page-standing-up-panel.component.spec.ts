@@ -5,23 +5,24 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
-import { DialogsService } from '../../../services/dialogs.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 import { PageStandingUpPanelComponent } from './page-standing-up-panel.component';
 
 describe('PageStandingUpPanelComponent', () => {
-    it('applies careful standing, resolves rolls, and resets the attempt count', async () => {
+    it('applies careful standing, resolves rolls, and adjusts the attempt count', () => {
         const attempts = signal<number | undefined>(undefined);
         const resolveStandAttempt = jasmine.createSpy('resolveStandAttempt').and.callFake(() => {
             attempts.update(current => (current ?? 0) + 1);
             return true;
         });
-        const resetStandAttempts = jasmine.createSpy('resetStandAttempts').and.callFake(() => attempts.set(0));
+        const adjustStandAttempts = jasmine.createSpy('adjustStandAttempts').and.callFake((delta: number) => {
+            attempts.update(current => Math.max(0, (current ?? 0) + delta));
+        });
         const turnState = {
             standAttempts: attempts,
             resolveStandAttempt,
-            resetStandAttempts,
+            adjustStandAttempts,
         };
         const unit = {
             id: 'unit-1',
@@ -33,7 +34,6 @@ describe('PageStandingUpPanelComponent', () => {
         TestBed.configureTestingModule({
             imports: [PageStandingUpPanelComponent],
             providers: [
-                { provide: DialogsService, useValue: { requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(true) } },
                 { provide: PageInteractionOverlayComponent, useValue: { unit: signal(unit) } },
                 { provide: OverlayManagerService, useValue: { closeManagedOverlay: jasmine.createSpy('closeManagedOverlay') } },
             ],
@@ -67,10 +67,21 @@ describe('PageStandingUpPanelComponent', () => {
         expect(component.rolledResult()).toBe('SUCCESS');
         expect(component.attempts()).toBe(1);
 
-        await component.resetAttempts();
+        fixture.detectChanges();
+        const adjustmentButtons = Array.from(fixture.nativeElement.querySelectorAll('.attempts-stepper button')) as HTMLButtonElement[];
+        expect(adjustmentButtons.map(button => button.textContent?.trim())).toEqual(['-', '+']);
 
-        expect(resetStandAttempts).toHaveBeenCalledTimes(1);
+        adjustmentButtons[0].click();
+        fixture.detectChanges();
+
+        expect(adjustStandAttempts).toHaveBeenCalledOnceWith(-1);
         expect(component.attempts()).toBe(0);
         expect(component.lastOutcome()).toBe('success');
+        expect(adjustmentButtons[0].disabled).toBeTrue();
+
+        adjustmentButtons[1].click();
+
+        expect(adjustStandAttempts).toHaveBeenCalledWith(1);
+        expect(component.attempts()).toBe(1);
     });
 });
