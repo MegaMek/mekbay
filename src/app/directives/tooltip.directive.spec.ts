@@ -115,46 +115,56 @@ describe('TooltipDirective', () => {
         expect(getTooltipTexts()).toEqual([]);
     });
 
-    it('shows a tooltip while touch is held', async () => {
-        const fixture = TestBed.createComponent(TestHostComponent);
-        fixture.detectChanges();
+    it('shows a tooltip while touch is held', () => {
+        jasmine.clock().install();
+        try {
+            const fixture = TestBed.createComponent(TestHostComponent);
+            fixture.detectChanges();
 
-        const child = fixture.nativeElement.querySelector('.child') as HTMLElement;
-        dispatchTouchPointer(child, 'pointerdown');
-        await new Promise<void>((resolve) => setTimeout(resolve, 275));
+            const child = fixture.nativeElement.querySelector('.child') as HTMLElement;
+            dispatchTouchPointer(child, 'pointerdown');
+            jasmine.clock().tick(300);
 
-        expect(getTooltipTexts()).toEqual(['Child tooltip']);
-        expect(overlayContainerElement.querySelector('.tooltip-lock-progress')).toBeNull();
+            expect(getTooltipTexts()).toEqual(['Child tooltip']);
+            expect(overlayContainerElement.querySelector('.tooltip-lock-progress')).toBeNull();
+        } finally {
+            jasmine.clock().uninstall();
+        }
     });
 
-    it('locks a mouse tooltip after its progress bar completes', async () => {
-        const fixture = TestBed.createComponent(TestHostComponent);
-        fixture.detectChanges();
+    it('locks a mouse tooltip after its progress bar completes', () => {
+        jasmine.clock().install();
+        try {
+            const fixture = TestBed.createComponent(TestHostComponent);
+            fixture.detectChanges();
 
-        const element = fixture.nativeElement as HTMLElement;
-        const child = element.querySelector('.child') as HTMLElement;
-        const outside = element.querySelector('.mode-radio') as HTMLElement;
+            const element = fixture.nativeElement as HTMLElement;
+            const child = element.querySelector('.child') as HTMLElement;
+            const outside = element.querySelector('.mode-radio') as HTMLElement;
 
-        dispatchPointerOver(child);
-        await flushTooltipTasks(fixture);
+            dispatchPointerOver(child);
+            jasmine.clock().tick(0);
 
-        const progress = overlayContainerElement.querySelector('.tooltip-lock-progress') as HTMLElement | null;
-        expect(progress).not.toBeNull();
-        expect(getComputedStyle(progress!).height).toBe('2px');
-        expect(getComputedStyle(progress!).animationDuration).toBe('0.5s');
+            const progress = overlayContainerElement.querySelector('.tooltip-lock-progress') as HTMLElement | null;
+            expect(progress).not.toBeNull();
+            expect(getComputedStyle(progress!).height).toBe('2px');
+            expect(getComputedStyle(progress!).animationDuration).toBe('2s');
 
-        dispatchPointerOut(child);
-        expect(getTooltipTexts()).toEqual([]);
+            dispatchPointerOut(child);
+            expect(getTooltipTexts()).toEqual([]);
 
-        dispatchPointerOver(child);
-        await flushTooltipTasks(fixture);
-        await new Promise<void>((resolve) => setTimeout(resolve, 525));
+            dispatchPointerOver(child);
+            jasmine.clock().tick(0);
+            jasmine.clock().tick(2000);
 
-        dispatchPointerOut(child);
-        expect(getTooltipTexts()).toEqual(['Child tooltip']);
+            dispatchPointerOut(child);
+            expect(getTooltipTexts()).toEqual(['Child tooltip']);
 
-        outside.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
-        expect(getTooltipTexts()).toEqual([]);
+            outside.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+            expect(getTooltipTexts()).toEqual([]);
+        } finally {
+            jasmine.clock().uninstall();
+        }
     });
 
     it('applies the error frame class when tooltipType is error', async () => {
