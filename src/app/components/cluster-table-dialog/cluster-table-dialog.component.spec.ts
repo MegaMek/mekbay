@@ -316,6 +316,29 @@ describe('ClusterTableDialogComponent', () => {
         expect(fixture.nativeElement.querySelector('[data-table-key="mek-physical-locations"]')).not.toBeNull();
     });
 
+    it('attributes rolls from a merged table to their source table', () => {
+        const fixture = createFixture(clusterWeaponUnit());
+        const component = fixture.componentInstance;
+        const table = component.displayedTables().find(candidate => candidate.key.includes('+'))!;
+        const roller = fixture.debugElement
+            .queryAll(node => node.componentInstance instanceof DiceRollerComponent)
+            .map(node => node.componentInstance as DiceRollerComponent)
+            .find(candidate => candidate.diceCount() === 2)!;
+        spyOn(roller, 'roll');
+
+        component.rollTableColumn(table, table.columns.find(column => column.key === 'frontRear')!);
+        component.onRollFinished({ results: [3, 4], sum: 7 }, 2);
+        component.rollTableColumn(table, table.columns.find(column => column.key === 'rack-5')!);
+        component.onRollFinished({ results: [3, 4], sum: 7 }, 2);
+        fixture.detectChanges();
+
+        expect(component.rollHistory().map(entry => entry.table)).toEqual(['Biped', 'Cluster']);
+        const headerLabels = [...fixture.nativeElement.querySelectorAll('.combined-table .roll-header-button')]
+            .map(button => button.getAttribute('aria-label'));
+        expect(headerLabels).toContain('Roll F/R on Biped');
+        expect(headerLabels).toContain('Roll 5 on Cluster');
+    });
+
     it('shows separate hit-location and unit cluster tables when merging is disabled', () => {
         const fixture = createFixture(clusterWeaponUnit());
         fixture.componentInstance.useCombinedTable.set(false);

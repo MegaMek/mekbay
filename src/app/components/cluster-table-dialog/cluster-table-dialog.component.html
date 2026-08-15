@@ -83,7 +83,7 @@
                                     type="button"
                                     class="bt-button tiny table-roll-button roll-header-button"
                                     [class.selected]="rolledResult()?.tableKey === table.key && rolledResult()?.columnKey === column.key"
-                                    [attr.aria-label]="'Roll ' + column.label + ' on ' + (table.shortTitle ?? table.title)"
+                                    [attr.aria-label]="'Roll ' + column.label + ' on ' + rollSourceLabel(table, column)"
                                     [attr.title]="'Roll ' + column.label"
                                 >{{ column.label }}</button>
                                 } @else {
@@ -110,7 +110,7 @@
                                     type="button"
                                     class="bt-button tiny table-roll-button roll-header-button"
                                     [class.selected]="rolledResult()?.tableKey === table.key && rolledResult()?.columnKey === column.key"
-                                    [attr.aria-label]="'Roll ' + column.label + ' on ' + (table.shortTitle ?? table.title)"
+                                    [attr.aria-label]="'Roll ' + column.label + ' on ' + rollSourceLabel(table, column)"
                                     [attr.title]="'Roll ' + column.label"
                                 >{{ column.label }}</button>
                                 } @else {

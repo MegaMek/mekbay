@@ -36,10 +36,16 @@ export interface ReferenceTableDice {
     readonly sides: 6;
 }
 
+export interface ReferenceTableRollSource {
+    readonly tableKey: string;
+    readonly tableLabel: string;
+}
+
 export interface ReferenceTableColumn {
     readonly key: string;
     readonly label: string;
     readonly rollable?: boolean;
+    readonly rollSource?: ReferenceTableRollSource;
 }
 
 export interface ReferenceTableHeaderGroup {
@@ -72,6 +78,7 @@ export interface ReferenceTableDefinition {
     readonly key: string;
     readonly title: string;
     readonly shortTitle?: string;
+    readonly layout?: 'compact';
     readonly dice?: ReferenceTableDice;
     readonly rollLabel?: string;
     readonly columns: readonly ReferenceTableColumn[];
@@ -97,6 +104,7 @@ export interface ResolvedReferenceTableRoll {
     readonly rowKey: string;
     readonly rowLabel: string;
     readonly value: string;
+    readonly source: ReferenceTableRollSource;
 }
 
 export const FULL_CLUSTER_SIZES: readonly number[] = [
@@ -376,6 +384,17 @@ export function resolveReferenceTableRoll(
         rowKey: row.key,
         rowLabel: row.roll.label,
         value: referenceTableCellText(cell),
+        source: referenceTableRollSource(table, column),
+    };
+}
+
+export function referenceTableRollSource(
+    table: ReferenceTableDefinition,
+    column: ReferenceTableColumn,
+): ReferenceTableRollSource {
+    return column.rollSource ?? {
+        tableKey: table.key,
+        tableLabel: table.shortTitle ?? table.title,
     };
 }
 
@@ -533,7 +552,10 @@ function combineRollTables(
         shortTitle: `${left.shortTitle ?? left.title} + ${right.shortTitle ?? right.title}`,
         dice: left.dice,
         rollLabel: left.rollLabel,
-        columns: [...left.columns, ...right.columns],
+        columns: [left, right].flatMap(sourceTable => sourceTable.columns.map(column => ({
+            ...column,
+            rollSource: referenceTableRollSource(sourceTable, column),
+        }))),
         rows: left.rows.map(row => ({
             ...row,
             cells: { ...row.cells, ...rightRows.get(row.key)?.cells },
@@ -655,7 +677,7 @@ function createMotiveModifierTable(): ReferenceTableDefinition {
 
 function createBattleArmorTables(): readonly ReferenceTableDefinition[] {
     return [
-        infoTable(
+        compactTable(infoTable(
             'battle-armor-leg-attacks',
             'LEG ATTACKS TABLE',
             [
@@ -663,8 +685,8 @@ function createBattleArmorTables(): readonly ReferenceTableDefinition[] {
                 { key: 'modifier', label: 'BASE TO-HIT MODIFIER' },
             ],
             [['4–6', '0'], ['3', '+2'], ['2', '+5'], ['1', '+7']],
-        ),
-        infoTable(
+        )),
+        compactTable(infoTable(
             'battle-armor-swarm-attacks',
             'SWARM ATTACKS TABLE',
             [
@@ -672,23 +694,23 @@ function createBattleArmorTables(): readonly ReferenceTableDefinition[] {
                 { key: 'modifier', label: 'BASE TO-HIT MODIFIER' },
             ],
             [['4–6', '+2'], ['1–3', '+5']],
-        ),
+        )),
         createSwarmModifierTable(),
-        infoTable(
+        compactTable(infoTable(
             'battle-armor-swarm-equipment',
             'SWARM ATTACK EQUIPMENT MODIFIERS',
             [{ key: 'equipment', label: 'BATTLE ARMOR EQUIPMENT' }, { key: 'modifier', label: 'MODIFIER' }],
             [['Claws with magnets', '−1']],
-        ),
-        infoTable(
+        )),
+        compactTable(infoTable(
             'battle-armor-swarm-situations',
             'SWARM ATTACK SITUATION MODIFIERS',
             [{ key: 'situation', label: 'SITUATION' }, { key: 'modifier', label: 'MODIFIER' }],
             [["'Mech prone", '−2'], ["'Mech or vehicle immobile", '−4'], ['Vehicle', '−2']],
             ['* Modifiers are cumulative.'],
-        ),
+        )),
         createSwarmLocationTable(),
-        infoTable(
+        compactTable(infoTable(
             'battle-armor-transport-positions',
             'TRANSPORT POSITIONS TABLE',
             [
@@ -704,8 +726,8 @@ function createBattleArmorTables(): readonly ReferenceTableDefinition[] {
                 ['5', 'Center Torso (rear)', 'Rear'],
                 ['6', 'Center Torso', 'Rear'],
             ],
-        ),
-        infoTable(
+        )),
+        compactTable(infoTable(
             'battle-armor-large-support-positions',
             'LARGE SUPPORT VEHICLE TRANSPORT POSITIONS',
             [
@@ -721,7 +743,7 @@ function createBattleArmorTables(): readonly ReferenceTableDefinition[] {
                 ['6', 'Rear (Unit 1/Unit 2)'],
             ],
             ['* Unit 1 and Unit 2 represent two battle armor units.'],
-        ),
+        )),
     ];
 }
 
@@ -734,18 +756,24 @@ function createSwarmModifierTable(): ReferenceTableDefinition {
         ['2', '+1', '+2', '+3', '+4', '+5', '+6'],
         ['1', '+2', '+3', '+4', '+5', '+6', '+7'],
     ];
-    return infoTable(
-        'battle-armor-swarm-modifiers',
-        'SWARM ATTACK MODIFIERS TABLE',
-        [
-            { key: 'attacking', label: 'ATTACKING ENEMY BA ACTIVE' },
-            ...Array.from({ length: 6 }, (_, index): ReferenceTableColumn => ({
-                key: `friendly-${index + 1}`,
-                label: `FRIENDLY ${index + 1}`,
-            })),
+    return {
+        ...infoTable(
+            'battle-armor-swarm-modifiers',
+            'SWARM ATTACK MODIFIERS TABLE',
+            [
+                { key: 'attacking', label: 'ACTIVE' },
+                ...Array.from({ length: 6 }, (_, index): ReferenceTableColumn => ({
+                    key: `friendly-${index + 1}`,
+                    label: String(index + 1),
+                })),
+            ],
+            values,
+        ),
+        headerGroups: [
+            { label: 'ATTACKING BA', span: 1 },
+            { label: 'FRIENDLY', span: 6 },
         ],
-        values,
-    );
+    };
 }
 
 function createSwarmLocationTable(): ReferenceTableDefinition {
@@ -762,18 +790,18 @@ function createSwarmLocationTable(): ReferenceTableDefinition {
 
 function createConventionalInfantryTables(): readonly ReferenceTableDefinition[] {
     return [
-        infoTable(
+        compactTable(infoTable(
             'conventional-burst-fire-vehicles',
-            "BURST-FIRE DAMAGE — 'MECHS, PROTOMECHS & VEHICLES",
+            "BURST-FIRE DAMAGE\n'MECHS, PROTOMECHS & VEHICLES",
             [{ key: 'weapon', label: 'WEAPON' }, { key: 'damage', label: 'DAMAGE VS. CONVENTIONAL INFANTRY' }],
             CONVENTIONAL_BURST_FIRE_ROWS,
-        ),
-        infoTable(
+        )),
+        compactTable(infoTable(
             'conventional-burst-fire-ba',
-            'BURST-FIRE DAMAGE — BATTLE ARMOR',
+            'BURST-FIRE DAMAGE\nBATTLE ARMOR',
             [{ key: 'weapon', label: 'WEAPON' }, { key: 'damage', label: 'DAMAGE VS. CONVENTIONAL INFANTRY' }],
             BATTLE_ARMOR_BURST_FIRE_ROWS,
-        ),
+        )),
         infoTable(
             'conventional-non-infantry-weapons',
             'NON-INFANTRY WEAPON AGAINST INFANTRY',
@@ -786,6 +814,10 @@ function createConventionalInfantryTables(): readonly ReferenceTableDefinition[]
             ],
         ),
     ];
+}
+
+function compactTable(table: ReferenceTableDefinition): ReferenceTableDefinition {
+    return { ...table, layout: 'compact' };
 }
 
 function rollTableFromRows(

@@ -27,6 +27,7 @@ import {
     REFERENCE_TABLE_GROUPS,
     referenceTableCellRowSpan,
     referenceTableCellText,
+    referenceTableRollSource,
     referenceTableGroupForOption,
     resolveReferenceTableRoll,
     type ReferenceTableCellValue,
@@ -197,10 +198,14 @@ export class ClusterTableDialogComponent {
             dice: `${dice.count}d${dice.sides}`,
             faces: [...event.results],
             roll: result.roll,
-            table: selection.table.shortTitle ?? selection.table.title,
+            table: result.source.tableLabel,
             column: selection.column.label,
             result: result.value,
         });
+    }
+
+    rollSourceLabel(table: ReferenceTableDefinition, column: ReferenceTableColumn): string {
+        return referenceTableRollSource(table, column).tableLabel;
     }
 
     tableColumnKey(table: ReferenceTableDefinition, column: ReferenceTableColumn): string {

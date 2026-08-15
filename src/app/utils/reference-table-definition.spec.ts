@@ -82,6 +82,14 @@ describe('reference-table-definition', () => {
         expect(resolveReferenceTableRoll(location, 'frontRear', 7)?.value).toBe('CT');
         expect(resolveReferenceTableRoll(physical, 'kickFrontRear', 4)?.value).toBe('LL');
         expect(resolveReferenceTableRoll(combined, 'rack-5', 7)?.value).toBe('3');
+        expect(resolveReferenceTableRoll(combined, 'frontRear', 7)?.source).toEqual({
+            tableKey: 'mek-biped-locations',
+            tableLabel: 'Biped',
+        });
+        expect(resolveReferenceTableRoll(combined, 'rack-5', 7)?.source).toEqual({
+            tableKey: 'cluster-unit',
+            tableLabel: 'Cluster',
+        });
         expect(combined.shortTitle).toBe('Biped + Cluster');
         expect(combined.columns.map(column => column.label)).toEqual(['LS', 'F/R', 'RS', '5']);
     });
@@ -150,6 +158,23 @@ describe('reference-table-definition', () => {
         expect(rollable.map(candidate => candidate.key)).toEqual(['battle-armor-swarm-locations']);
         expect(resolveReferenceTableRoll(swarm, 'quad', 3)?.value).toBe('Front Right Torso');
         expect(view.tables.find(candidate => candidate.key === 'battle-armor-leg-attacks')?.dice).toBeUndefined();
+    });
+
+    it('marks only naturally narrow infantry tables as compact', () => {
+        const battleArmor = buildReferenceTableView('infantry-battle-armor', context);
+        const conventional = buildReferenceTableView('infantry-conventional', context);
+
+        expect(battleArmor.tables.filter(candidate => candidate.layout === 'compact').map(candidate => candidate.key))
+            .toEqual([
+                'battle-armor-leg-attacks',
+                'battle-armor-swarm-attacks',
+                'battle-armor-swarm-equipment',
+                'battle-armor-swarm-situations',
+                'battle-armor-transport-positions',
+                'battle-armor-large-support-positions',
+            ]);
+        expect(conventional.tables.filter(candidate => candidate.layout === 'compact').map(candidate => candidate.key))
+            .toEqual(['conventional-burst-fire-vehicles', 'conventional-burst-fire-ba']);
     });
 
     it('keeps conventional infantry damage references informational', () => {
