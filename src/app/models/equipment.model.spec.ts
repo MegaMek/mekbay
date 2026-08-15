@@ -323,7 +323,7 @@ describe('equipment model', () => {
 
     it('identifies physical shields from club and shield-size semantics', () => {
         const shield = new MiscEquipment({
-            id: 'shield', name: 'Shield', type: 'misc', flags: ['F_CLUB', 'S_SHIELD_MEDIUM'],
+            id: 'shield', name: 'Shield', type: 'misc', flags: ['F_SHIELD', 'S_SHIELD_MEDIUM'],
         });
         const club = new MiscEquipment({
             id: 'club', name: 'Club', type: 'misc', flags: ['F_CLUB'],

@@ -333,7 +333,7 @@ describe('Alpha Strike core specials', () => {
       const entity = new TankEntity();
       addTestEquipment(entity, new WeaponEquipment({
         id: `custom-${shieldFlag}`, name: 'Custom Shield Weapon', type: 'weapon',
-        flags: ['F_CLUB', shieldFlag], weapon: { ammoType: 'NA' },
+        flags: ['F_SHIELD', shieldFlag], weapon: { ammoType: 'NA' },
       }));
       expect(alphaStrikeCoreSpecials(entity, { type: 'CV', hasStandardDamage: true }))
         .withContext(shieldFlag)

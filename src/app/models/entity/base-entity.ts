@@ -787,7 +787,7 @@ export abstract class BaseEntity implements EntityTechnology {
 
   /** Usable UMU movement; large shields prevent mounted UMUs from functioning. */
   readonly umuMP = computed(() => this.equipment().some(
-    mount => mount.equipment?.hasFlag('S_SHIELD_LARGE'),
+    mount => mount.equipment?.hasFlag('F_SHIELD') && mount.equipment?.hasFlag('S_SHIELD_LARGE'),
   ) ? 0 : this.installedUmuMP());
 
   /** Whether this construction uses the heat scale. */
