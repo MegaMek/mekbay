@@ -216,6 +216,9 @@ export class ForceOverviewDialogComponent {
     /** Whether the primer tab is active */
     readonly isPrimerTab = computed(() => this.effectiveActiveTab() === 'primer');
 
+    /** Whether the units tab is active */
+    readonly isUnitsTab = computed(() => this.effectiveActiveTab() === 'units');
+
     /** Current primer note */
     readonly primerNote = computed(() => this.data.force.note ?? '');
 

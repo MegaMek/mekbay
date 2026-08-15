@@ -323,7 +323,7 @@
 </div>
 
 <div class="dialog-footer">
-    @if (!isSummaryTab()) {
+    @if (isUnitsTab()) {
         <div class="sort-controls">
             <select class="bt-input sort-select"
                 (change)="setSortOrder($any($event.target).value)">
@@ -378,7 +378,7 @@
                 </svg>
             }
         </button>
+        <div class="spanner"></div>
     }
-    <div class="spanner"></div>
     <button class="modal-btn bt-button" (click)="close()">DISMISS</button>
 </div>
