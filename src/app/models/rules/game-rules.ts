@@ -139,6 +139,7 @@ export abstract class CBTGameRules {
     abstract readonly artilleryFlatRangeModifier: number | null;
     abstract readonly supportsApolloSaturationMode: boolean;
     abstract readonly supportsBombastLaserRules: boolean;
+    abstract readonly supportsFlamerModes: boolean;
     abstract readonly narcHomingTargetModifier: number;
     abstract readonly narcIndirectFireIgnoresAllTerrain: boolean;
     abstract readonly indirectFireUsesSpotterPartialCover: boolean;
@@ -347,6 +348,7 @@ export class GameRules extends CBTGameRules {
     readonly artilleryFlatRangeModifier = 4;
     readonly supportsApolloSaturationMode = true;
     readonly supportsBombastLaserRules = true;
+    readonly supportsFlamerModes = false;
     readonly narcHomingTargetModifier = -1;
     readonly narcIndirectFireIgnoresAllTerrain = false;
     readonly indirectFireUsesSpotterPartialCover = false;
@@ -384,20 +386,6 @@ export class GameRules extends CBTGameRules {
     protected override canFireTorpedoesIndirectly(_context: IndirectFireContext): boolean {
         return false;
     }
-
-    protected override getRulesProfile(equipment: Equipment): number[] {
-        // Claw and Lance has 0 hitmod instead of 1
-        if (equipment.flags.has('S_CLAW') || equipment.flags.has('S_LANCE')) {
-            return [0];
-        }
-
-        const modifiers = super.getRulesProfile(equipment);
-        // MRM doesn't have the +1 but 0
-        return equipment instanceof WeaponEquipment && equipment.hasFlag('F_MRM')
-            ? modifiers.map(modifier => modifier - 1)
-            : modifiers;
-    }
-
 }
 
 export class TWGameRules extends CBTGameRules {
@@ -423,6 +411,7 @@ export class TWGameRules extends CBTGameRules {
     readonly artilleryFlatRangeModifier = null;
     readonly supportsApolloSaturationMode = false;
     readonly supportsBombastLaserRules = false;
+    readonly supportsFlamerModes = true;
     readonly narcHomingTargetModifier = 0; 
     // TODO: inarc should get a -1 modifier in TW Rules but we need to implement inarc pods... BLEARGH! 
     readonly narcIndirectFireIgnoresAllTerrain = true;
@@ -510,6 +499,19 @@ export class TWGameRules extends CBTGameRules {
                 || !ammo.hasFixedBV()) return total;
             return total + ammo.bv;
         }, 0);
+    }
+
+    protected override getRulesProfile(equipment: Equipment): number[] {
+        // Claw and Lance has 1 hitmod instead of 0 of core 2026
+        if (equipment.flags.has('S_CLAW') || equipment.flags.has('S_LANCE')) {
+            return [1];
+        }
+
+        const modifiers = super.getRulesProfile(equipment);
+        // MRM have +1 instead of 0 of core
+        return equipment instanceof WeaponEquipment && equipment.hasFlag('F_MRM')
+            ? modifiers.map(modifier => modifier + 1)
+            : modifiers;
     }
 }
 

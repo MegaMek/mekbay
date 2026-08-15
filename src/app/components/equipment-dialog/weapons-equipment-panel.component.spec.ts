@@ -841,7 +841,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         const mrm = entry({
             id: 'MRM 10@RT#0',
-            equipment: weapon('MRM 10', 'MRM', 10, [3, 8, 15, 22], 1),
+            equipment: weapon('MRM 10', 'MRM', 10, [3, 8, 15, 22]),
             linkedWith: [apollo],
             el: svgEntry('<g><g class="name"><text>MRM 10</text></g><text class="location">RT</text><text class="heat">4</text><g class="damage"><text>1/Msl [C,M]</text></g><text class="range_short">3</text><text class="range_medium">8</text><text class="range_long">15</text></g>')
         });
@@ -897,7 +897,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         const mrm = entry({
             id: 'MRM 40@TU#0',
-            equipment: weapon('MRM 40', 'MRM', 40, [3, 8, 15, 22], 1),
+            equipment: weapon('MRM 40', 'MRM', 40, [3, 8, 15, 22]),
             linkedWith: [apollo],
             el: svgEntry('<g><g class="name"><text>MRM 40</text></g><text class="location">TU</text><g class="damage"><text>1/Msl [C,M,S]</text></g><text class="range_short">3</text><text class="range_medium">8</text><text class="range_long">15</text></g>')
         });
@@ -941,7 +941,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         const mrm = entry({
             id: 'MRM 10@RT#0',
-            equipment: weapon('MRM 10', 'MRM', 10, [3, 8, 15, 22], 1),
+            equipment: weapon('MRM 10', 'MRM', 10, [3, 8, 15, 22]),
             linkedWith: [apollo],
             el: svgEntry('<g><g class="name"><text>MRM 10</text></g><text class="location">RT</text><text class="heat">4</text><g class="damage"><text>1/Msl [C,M]</text></g><text class="range_short">3</text><text class="range_medium">8</text><text class="range_long">15</text></g>')
         });

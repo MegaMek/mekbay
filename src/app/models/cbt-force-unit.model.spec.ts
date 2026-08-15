@@ -3386,7 +3386,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(serialized.state.inventory).toBeUndefined();
     });
 
-    it('reuses deleted target letters and caps targets at twelve', () => {
+    it('reuses deleted target letters and caps targets', () => {
         const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
 

@@ -370,7 +370,7 @@ describe('game rules', () => {
         });
     });
 
-    it('reduces Core 2026 MRM hit modifiers without changing TW values', () => {
+    it('keeps Core 2026 MRM hit modifiers and adds one under TW', () => {
         const mrm = new WeaponEquipment({
             id: 'MRM10', name: 'MRM 10', type: 'weapon',
             stats: { toHitModifier: [-1, 0, 1] },
@@ -378,15 +378,15 @@ describe('game rules', () => {
             weapon: { ammoType: 'MRM' }
         });
 
-        expect(CORE_2026_GAME_RULES.resolveToHit({ subject: mrm }).profile).toEqual([-2, -1, 0]);
-        expect(CORE_2026_GAME_RULES.resolveToHit({ subject: mrm, range: 'medium' }).value).toBe(-1);
-        expect(TW_GAME_RULES.resolveToHit({ subject: mrm }).profile).toEqual([-1, 0, 1]);
+        expect(CORE_2026_GAME_RULES.resolveToHit({ subject: mrm }).profile).toEqual([-1, 0, 1]);
+        expect(CORE_2026_GAME_RULES.resolveToHit({ subject: mrm, range: 'medium' }).value).toBe(0);
+        expect(TW_GAME_RULES.resolveToHit({ subject: mrm }).profile).toEqual([0, 1, 2]);
     });
 
-    it('resolves the catalog MRM +1 modifier as zero in Core 2026 and one in TW', () => {
+    it('resolves the Core catalog MRM modifier as zero in Core 2026 and one in TW', () => {
         const mrm = new WeaponEquipment({
             id: 'MRM10', name: 'MRM 10', type: 'weapon',
-            stats: { toHitModifier: 1 },
+            stats: { toHitModifier: 0 },
             flags: ['F_MRM'],
             weapon: { ammoType: 'MRM' }
         });
@@ -550,14 +550,14 @@ describe('game rules', () => {
         });
     });
 
-    it('sets Core 2026 claw and lance hit modifiers to zero without changing TW values', () => {
+    it('keeps Core 2026 claw and lance hit modifiers at zero and adds one under TW', () => {
         const claw = new WeaponEquipment({
             id: 'BattleClaw', name: 'Battle Claw', type: 'weapon',
-            flags: ['S_CLAW'], stats: { toHitModifier: -2 }
+            flags: ['S_CLAW'], stats: { toHitModifier: 0 }
         });
 
         expect(CORE_2026_GAME_RULES.resolveToHit({ subject: claw }).profile).toEqual([0]);
-        expect(TW_GAME_RULES.resolveToHit({ subject: claw }).profile).toEqual([-2]);
+        expect(TW_GAME_RULES.resolveToHit({ subject: claw }).profile).toEqual([1]);
     });
 
     it('resolves scalar and range-specific mounted weapon hit modifiers', () => {

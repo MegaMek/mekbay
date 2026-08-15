@@ -25,7 +25,7 @@ import { combineEquipmentStatuses, type EquipmentStatus } from '../models/equipm
 import { formatInventoryControlHeat, resolveInventoryControlHeatEffect, type InventoryControlHeatRules } from './inventory-control-heat.util';
 import type { InventoryControlPhysicalDamageEffect } from './inventory-control-physical-damage.util';
 import { ATM_AMMO_PROFILES, MML_AMMO_PROFILES, resolveAmmoWeaponProfile, type AmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
-import { AEROSPACE_RANGE_BRACKETS, STANDARD_AEROSPACE_RANGE_LIMITS, aerospaceAttackValues, aerospaceMaximumDistance, effectiveAerospaceMaximumBracket, isRangeBracketWithinMaximum } from './aerospace-range.util';
+import { AEROSPACE_RANGE_BRACKETS, STANDARD_AEROSPACE_RANGE_LIMITS, aerospaceAttackValues, aerospaceMaximumDistance, effectiveAerospaceMaximumBracket, isRangeBracketWithinMaximum, type AerospaceAttackValues } from './aerospace-range.util';
 
 export const INVENTORY_CONTROL_MODE_STATE = 'inventory_control_mode';
 export const INVENTORY_CONTROL_SORT_STATE = 'inventory_control_sort';
@@ -167,6 +167,10 @@ export type InventoryControlDisplayEffectApplier = (
 
 export interface InventoryControlRules extends InventoryControlDamageRules, InventoryControlHeatRules {
     applyDisplayEffects?: InventoryControlDisplayEffectApplier;
+    applyAerospaceAttackValueEffects?: (
+        entry: MountedEquipment,
+        values: AerospaceAttackValues
+    ) => AerospaceAttackValues;
     matchesAmmo?: (entry: MountedEquipment, ammo: AmmoEquipment, mode: string | null) => boolean | null;
     resolveToHitAdjustments?: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null, target?: InventoryControlRuntimeTarget | null) => readonly ToHitAdjustment[];
     isSelectable?: (entry: MountedEquipment) => boolean;
@@ -672,7 +676,7 @@ function buildInventoryControlRow(
         originalIndex,
         base,
         display: adjustedDisplay,
-        rangePresentation: resolveInventoryControlRangePresentation(entry, adjustedDisplay, selectedAmmoProfile),
+        rangePresentation: resolveInventoryControlRangePresentation(entry, adjustedDisplay, selectedAmmoProfile, rules),
         damage: damageResolution?.damage ?? null,
         damageTypes: [...(damageResolution?.damageTypes ?? [])],
         firingHeat,
@@ -806,7 +810,8 @@ function readTypedEquipmentDisplayData(entry: MountedEquipment, hit: string): In
 export function resolveInventoryControlRangePresentation(
     entry: MountedEquipment,
     display: InventoryControlDisplayData,
-    ammoProfile: AmmoWeaponProfile | null = null
+    ammoProfile: AmmoWeaponProfile | null = null,
+    rules: InventoryControlRules = {}
 ): InventoryControlRangePresentation {
     if (entry.owner.getUnit().type !== 'Aero') {
         return {
@@ -823,7 +828,8 @@ export function resolveInventoryControlRangePresentation(
     const equipment = entry.equipment;
     if (equipment instanceof WeaponEquipment) {
         const maximumBracket = effectiveAerospaceMaximumBracket(equipment, ammoProfile);
-        const attackValues = aerospaceAttackValues(equipment, ammoProfile);
+        const baseAttackValues = aerospaceAttackValues(equipment, ammoProfile);
+        const attackValues = rules.applyAerospaceAttackValueEffects?.(entry, baseAttackValues) ?? baseAttackValues;
         const value = (index: number): string => isRangeBracketWithinMaximum(AEROSPACE_RANGE_BRACKETS[index], maximumBracket)
             ? attackValues[index].toString()
             : '—';

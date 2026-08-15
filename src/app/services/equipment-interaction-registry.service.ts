@@ -17,6 +17,7 @@ import type { UnitHeatSource } from '../models/rules/unit-type-rules';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
 import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-control-physical-damage.util';
+import type { AerospaceAttackValues } from '../utils/aerospace-range.util';
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { Force } from '../models/force.model';
 import type { EquipmentAction, EquipmentStateEdit } from '../models/cbt-force-unit.model';
@@ -164,6 +165,13 @@ export abstract class EquipmentInteractionHandler {
         options: InventoryControlDisplayEffectOptions,
         context: HandlerQueryContext
     ): InventoryControlDisplayData;
+
+    /** Applies equipment mode/state to an aerospace weapon's attack values. */
+    applyInventoryControlAerospaceAttackValueEffects?(
+        equipment: MountedEquipment,
+        values: AerospaceAttackValues,
+        context: HandlerQueryContext
+    ): AerospaceAttackValues;
 
     /**
      * Applies equipment-state modifiers to a weapon's unformatted damage value.
@@ -420,6 +428,19 @@ export class EquipmentInteractionRegistry {
         return nextDisplay;
     }
 
+    applyInventoryControlAerospaceAttackValueEffects(
+        equipment: MountedEquipment,
+        values: AerospaceAttackValues,
+        context: HandlerQueryContext
+    ): AerospaceAttackValues {
+        let nextValues = values;
+        for (const handler of this.getHandlers(equipment)) {
+            nextValues = handler.applyInventoryControlAerospaceAttackValueEffects?.(equipment, nextValues, context)
+                ?? nextValues;
+        }
+        return nextValues;
+    }
+
     applyWeaponTypes(
         equipment: MountedEquipment,
         types: ReadonlySet<WeaponType>,
@@ -532,6 +553,8 @@ export class EquipmentInteractionRegistry {
     inventoryControlRules(context: HandlerQueryContext): InventoryControlRules {
         return {
             applyDisplayEffects: (equipment, display, options) => this.applyInventoryControlDisplayEffects(equipment, display, options, context),
+            applyAerospaceAttackValueEffects: (equipment, values) =>
+                this.applyInventoryControlAerospaceAttackValueEffects(equipment, values, context),
             applyDamageEffects: (equipment, damage, options) => this.applyInventoryControlDamageEffects(equipment, damage, options, context),
             applyPhysicalDamageEffects: (equipment, effect) => this.applyInventoryControlPhysicalDamageEffects(equipment, effect, context),
             resolveHeatEffect: equipment => this.getInventoryControlHeatEffect(equipment, context),

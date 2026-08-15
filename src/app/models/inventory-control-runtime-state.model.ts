@@ -10,13 +10,15 @@ import { resolveTnTargetWaterState, type TnTargetNumberCalculatorState, type TnT
 
 export type InventoryControlRuntimeRangeKey = 'short' | 'medium' | 'long' | 'extreme';
 
-export const INVENTORY_CONTROL_TARGET_MAX_COUNT = 12;
+export const INVENTORY_CONTROL_TARGET_MAX_COUNT = 20;
 export const INVENTORY_CONTROL_INDIRECT_FIRE_TARGET_REASON = 'Requires an indirect-fire weapon';
 export const INVENTORY_CONTROL_INDIRECT_FIRE_AMMO_TARGET_REASON = 'Selected ammunition cannot fire indirectly at this target';
 export const INVENTORY_CONTROL_WATER_LAYER_TARGET_REASON = 'Weapon and target are in different water layers';
 export const INVENTORY_CONTROL_TAG_INFANTRY_TARGET_REASON = 'TAG cannot designate infantry';
 export const INVENTORY_CONTROL_NARC_INFANTRY_TARGET_REASON = 'NARC beacons cannot target infantry';
 export const INVENTORY_CONTROL_NARC_BUILDING_TARGET_REASON = 'NARC beacons cannot be fired into buildings';
+export const INVENTORY_CONTROL_BOMBAST_SECONDARY_TARGET_REASON = 'Bombast Lasers cannot fire at secondary targets';
+export const INVENTORY_CONTROL_THUNDER_TERRAIN_TARGET_REASON = 'Thunder missiles can only target terrain';
 export const INVENTORY_CONTROL_TARGET_COLORS = [
     '#c0f7ff',
     '#ffebca',
@@ -79,6 +81,10 @@ export function inventoryControlEntryTargetDisabledReason(
     selectedAmmo: AmmoEquipment | null = entry.owner.getInventoryControlSelectedAmmo(entry),
     gameRules: CBTGameRules = entry.owner.gameRules,
 ): string | null {
+    if (selectedAmmo?.hasMunitionType('M_THUNDER') === true && target.unitType !== 'terrain') {
+        return INVENTORY_CONTROL_THUNDER_TERRAIN_TARGET_REASON;
+    }
+
     if (entry.equipment?.hasFlag('F_TAG') === true && !gameRules.allowsTagDesignation(target.unitType)) {
         return INVENTORY_CONTROL_TAG_INFANTRY_TARGET_REASON;
     }
@@ -90,6 +96,13 @@ export function inventoryControlEntryTargetDisabledReason(
         });
         if (narcRestriction === 'infantry') return INVENTORY_CONTROL_NARC_INFANTRY_TARGET_REASON;
         if (narcRestriction === 'building') return INVENTORY_CONTROL_NARC_BUILDING_TARGET_REASON;
+    }
+
+    if (entry.equipment?.hasFlag('F_BOMBAST_LASER') === true
+        && gameRules.id === 'tw'
+        && (target.tnCalculator?.secondaryTarget === true
+            || target.tnCalculator?.secondaryTargetSideBack === true)) {
+        return INVENTORY_CONTROL_BOMBAST_SECONDARY_TARGET_REASON;
     }
 
     const calculator = getEffectiveInventoryControlCalculatorState(target);
