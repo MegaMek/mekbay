@@ -300,7 +300,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
   protected override offensiveEquipmentModifier(mount: EntityMountedEquipment): number {
     const equipment = mount.equipment;
     return equipment instanceof MiscEquipment
-      && equipment.hasAnyFlag(['F_CLUB', 'F_HAND_WEAPON'])
+      && equipment.hasAnyFlag(['F_SHIELD', 'F_CLUB', 'F_HAND_WEAPON'])
       && ['LA', 'RA'].includes(mount.location) && this.hasAesAt(mount.location) ? 1.25 : 1;
   }
 

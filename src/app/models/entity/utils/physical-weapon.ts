@@ -12,7 +12,7 @@ export type EntityMountedPhysicalWeapon = EntityMountedEquipment & {
 
 /** Physical equipment exported as an independently mounted attack capability. */
 export function isPhysicalWeaponEquipment(equipment?: Equipment): boolean {
-  return !!equipment && equipment.hasAnyFlag(['F_CLUB', 'F_HAND_WEAPON', 'F_TALON']);
+  return !!equipment && equipment.hasAnyFlag(['F_SHIELD', 'F_CLUB', 'F_HAND_WEAPON', 'F_TALON']);
 }
 
 export function isEntityMountedPhysicalWeapon(

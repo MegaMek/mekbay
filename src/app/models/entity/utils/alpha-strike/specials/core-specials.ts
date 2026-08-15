@@ -162,7 +162,7 @@ function addCommonEquipmentSpecials(
 ): void {
   if (equipment.hasFlag('F_ADVANCED_FIRE_CONTROL')) specials.add('AFC');
   if (equipment.hasFlag('F_BASIC_FIRE_CONTROL')) specials.add('BFC');
-  if (equipment.hasAnyFlag(['F_HAND_WEAPON', 'F_TALON', 'F_CLUB', 'F_SPIKES', 'F_PROTOMEK_MELEE'])) specials.add('MEL');
+  if (equipment.hasAnyFlag(['F_SHIELD', 'F_HAND_WEAPON', 'F_TALON', 'F_CLUB', 'F_SPIKES', 'F_PROTOMEK_MELEE'])) specials.add('MEL');
   if (equipment.hasFlag('F_SHIELD')) {
     specials.add('SHLD');
   }
