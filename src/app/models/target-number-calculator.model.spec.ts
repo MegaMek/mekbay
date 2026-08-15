@@ -19,6 +19,20 @@ describe('target number calculator rules profiles', () => {
         })).toBe(2);
     });
 
+    it('adds a finite custom modifier to the total and breakdown', () => {
+        expect(calculateTargetTnModifier({
+            targetMovementBracket: '3-4',
+            customModifier: -2,
+        })).toBe(-1);
+        expect(calculateTargetTnModifierBreakdown({ customModifier: 3 })).toEqual([{
+            label: 'Custom',
+            modifier: 3,
+        }]);
+        expect(calculateTargetTnModifier({ customModifier: Number.NaN })).toBe(0);
+        expect(calculateTargetTnModifier({ customModifier: 10 })).toBe(9);
+        expect(calculateTargetTnModifier({ customModifier: -10 })).toBe(-9);
+    });
+
     it('applies water partial cover at adjacent range', () => {
         expect(calculateTargetTnModifier({
             unitType: 'mek-biped',

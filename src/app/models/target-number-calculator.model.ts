@@ -25,6 +25,8 @@ export const TN_PRONE_ADJACENT = -2;
 export const TN_PRONE = 1;
 export const TN_IMMOBILE = -4;
 export const TN_INDIRECT_FIRE_MODIFIER = 1;
+export const TN_CUSTOM_MODIFIER_MIN = -9;
+export const TN_CUSTOM_MODIFIER_MAX = 9;
 
 export const TN_PRONE_ATTACKER = 2;
 export const TN_SKIDDING_ATTACKER = 1;
@@ -110,6 +112,8 @@ export interface TnTargetNumberCalculatorState {
     narcUnderwater?: boolean;
     tagged?: boolean;
     ecmShielded?: boolean;
+    /** Attacker-local delta for rules not represented by the calculator controls. */
+    customModifier?: number;
 }
 
 export interface TnTargetNumberCalculationInput extends TnTargetNumberCalculatorState {
@@ -218,6 +222,11 @@ export function calculateTargetTnModifier(
         .reduce((total, entry) => total + entry.modifier, 0);
 }
 
+export function normalizeTargetCustomModifier(value: number | null | undefined): number {
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(TN_CUSTOM_MODIFIER_MIN, Math.min(TN_CUSTOM_MODIFIER_MAX, Math.round(value!)));
+}
+
 export function calculateTargetTnModifierBreakdown(
     input: TnTargetNumberCalculationInput,
     gameRules: CBTGameRules = CORE_2026_GAME_RULES
@@ -303,6 +312,7 @@ export function calculateTargetTnModifierBreakdown(
     add('Secondary Target (side/back)', gameRules.supportsSecondaryTargetSideBack && !input.secondaryTarget && input.secondaryTargetSideBack
         ? TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER : 0);
     add('Large Target', gameRules.supportsLargeTarget && input.largeTarget ? TN_LARGE_TARGET_MODIFIER : 0);
+    add('Custom', normalizeTargetCustomModifier(input.customModifier));
 
     if (input.indirectFire) {
         add('Indirect Fire', TN_INDIRECT_FIRE_MODIFIER, {}, true);

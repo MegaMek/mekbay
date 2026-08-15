@@ -210,6 +210,38 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         })).toEqual([]);
     });
 
+    it('renders a removable yellow Custom pill and clears only its calculator value', () => {
+        const target = {
+            ...TARGET,
+            tnModifier: -2,
+            tnCalculator: { customModifier: -2 },
+        };
+        fixture.componentRef.setInput('targets', [target]);
+        const emitted = jasmine.createSpy('updateRequest');
+        component.updateRequest.subscribe(emitted);
+        fixture.detectChanges();
+
+        expect(component.targetModifierPills(target)).toEqual([{
+            label: 'Custom',
+            modifier: -2,
+            custom: true,
+        }]);
+        const pill = fixture.nativeElement.querySelector(
+            '.target-modifier-pills:not(.target-modifier-pills-fallback) .custom-pill',
+        ) as HTMLElement;
+        const remove = pill.querySelector('.custom-pill-remove') as HTMLButtonElement;
+        expect(pill).not.toBeNull();
+        expect(getComputedStyle(pill).borderTopColor).toBe('rgb(234, 174, 63)');
+        expect(remove.textContent?.trim()).toBe('×');
+
+        remove.click();
+
+        expect(emitted).toHaveBeenCalledWith({
+            targetId: 'A',
+            patch: { tnCalculator: { customModifier: undefined } },
+        });
+    });
+
     it('renders NARC normally when a capable weapon and pod share a water layer', () => {
         fixture.componentRef.setInput('narcCapableWeaponLayers', { aboveWater: true, underwater: false });
         fixture.detectChanges();

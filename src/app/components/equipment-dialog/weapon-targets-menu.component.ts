@@ -35,6 +35,7 @@ interface TargetModifierPill {
     accentColor?: string;
     invalid?: boolean;
     invalidReason?: string;
+    custom?: boolean;
 }
 
 export interface NarcCapableWeaponLayers {
@@ -141,10 +142,13 @@ export interface WeaponTargetCalculatorRequest {
                                                 @if (modifierPills.length > 0) {
                                                     <div class="target-modifier-pills" aria-label="Assigned target modifiers">
                                                         @for (pill of modifierPills; track $index) {
-                                                            <span class="target-modifier-pill" [class.guidance-pill]="pill.accentColor !== undefined" [class.invalid-guidance]="pill.invalid" [style.--target-pill-accent]="pill.accentColor ?? null" [attr.aria-label]="pill.invalid ? pill.label + ' guidance unavailable' : null" [attr.title]="pill.invalid ? pill.invalidReason : null">
+                                                            <span class="target-modifier-pill" [class.guidance-pill]="pill.accentColor !== undefined" [class.invalid-guidance]="pill.invalid" [class.custom-pill]="pill.custom" [style.--target-pill-accent]="pill.accentColor ?? null" [attr.aria-label]="pill.invalid ? pill.label + ' guidance unavailable' : null" [attr.title]="pill.invalid ? pill.invalidReason : null">
                                                                 <span class="modifier-label">{{ pill.label }}</span>
                                                                 @if (pill.modifier !== undefined) {
                                                                     <span class="modifier-badge">{{ formatModifier(pill.modifier) }}</span>
+                                                                }
+                                                                @if (pill.custom) {
+                                                                    <button class="custom-pill-remove" type="button" [disabled]="readOnly()" aria-label="Remove custom TN modifier" title="Remove custom TN modifier" (click)="removeCustomModifier(target.id)">×</button>
                                                                 }
                                                             </span>
                                                         }
@@ -177,10 +181,13 @@ export interface WeaponTargetCalculatorRequest {
                                     @if (modifierPills.length > 0) {
                                         <div class="target-modifier-pills target-modifier-pills-fallback" aria-label="Assigned target modifiers">
                                             @for (pill of modifierPills; track $index) {
-                                                <span class="target-modifier-pill" [class.guidance-pill]="pill.accentColor !== undefined" [class.invalid-guidance]="pill.invalid" [style.--target-pill-accent]="pill.accentColor ?? null" [attr.aria-label]="pill.invalid ? pill.label + ' guidance unavailable' : null" [attr.title]="pill.invalid ? pill.invalidReason : null">
+                                                <span class="target-modifier-pill" [class.guidance-pill]="pill.accentColor !== undefined" [class.invalid-guidance]="pill.invalid" [class.custom-pill]="pill.custom" [style.--target-pill-accent]="pill.accentColor ?? null" [attr.aria-label]="pill.invalid ? pill.label + ' guidance unavailable' : null" [attr.title]="pill.invalid ? pill.invalidReason : null">
                                                     <span class="modifier-label">{{ pill.label }}</span>
                                                     @if (pill.modifier !== undefined) {
                                                         <span class="modifier-badge">{{ formatModifier(pill.modifier) }}</span>
+                                                    }
+                                                    @if (pill.custom) {
+                                                        <button class="custom-pill-remove" type="button" [disabled]="readOnly()" aria-label="Remove custom TN modifier" title="Remove custom TN modifier" (click)="removeCustomModifier(target.id)">×</button>
                                                     }
                                                 </span>
                                             }
@@ -349,6 +356,13 @@ export interface WeaponTargetCalculatorRequest {
             font-weight: 400;
         }
 
+        .target-modifier-pill.custom-pill {
+            border-color: var(--bt-yellow, #EAAE3F);
+            background: color-mix(in srgb, var(--bt-yellow, #EAAE3F) 24%, #141414);
+            color: var(--bt-yellow, #EAAE3F);
+            font-weight: 700;
+        }
+
         .target-modifier-pill.invalid-guidance .modifier-label {
             color: var(--danger, red);
             text-decoration-line: line-through;
@@ -372,6 +386,33 @@ export interface WeaponTargetCalculatorRequest {
             font-variant-numeric: tabular-nums;
             line-height: 1;
             box-sizing: border-box;
+        }
+
+        .custom-pill-remove {
+            inline-size: 18px;
+            block-size: 18px;
+            margin: 0 -4px 0 0;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: inherit;
+            font: inherit;
+            font-size: 1rem;
+            font-weight: 800;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .custom-pill-remove:hover:not(:disabled),
+        .custom-pill-remove:focus-visible {
+            background: var(--bt-yellow, #EAAE3F);
+            color: #000;
+            outline: none;
+        }
+
+        .custom-pill-remove:disabled {
+            cursor: not-allowed;
+            opacity: 0.45;
         }
 
         .target-main-row,
@@ -738,6 +779,11 @@ export class WeaponTargetsMenuComponent {
         this.updateRequest.emit({ targetId, patch: { tnModifier: this.parseNumber(value, 0, false) }, manualTnOverride: true });
     }
 
+    removeCustomModifier(targetId: InventoryControlRuntimeTargetId): void {
+        if (this.readOnly()) return;
+        this.updateRequest.emit({ targetId, patch: { tnCalculator: { customModifier: undefined } } });
+    }
+
     stepDistance(target: InventoryControlRuntimeTarget, delta: number): void {
         if (this.readOnly()) return;
         this.updateRequest.emit({ targetId: target.id, patch: { distance: Math.max(0, target.distance + delta) } });
@@ -847,7 +893,11 @@ export class WeaponTargetsMenuComponent {
                 spotterModifier += entry.modifier;
                 continue;
             }
-            pills.push({ label: this.targetModifierPillLabel(entry, calculator), modifier: entry.modifier });
+            pills.push({
+                label: this.targetModifierPillLabel(entry, calculator),
+                modifier: entry.modifier,
+                ...(entry.label === 'Custom' && { custom: true }),
+            });
         }
         if (spotterModifier !== 0) pills.push({ label: 'Spotter', modifier: spotterModifier });
         return pills;

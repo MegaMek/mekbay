@@ -67,6 +67,90 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         }));
     });
 
+    it('adds and saves a custom per-unit TN modifier', () => {
+        component.setCustomModifierValue(2);
+        fixture.detectChanges();
+
+        const value = fixture.nativeElement.querySelector('#tnCustomModifier') as HTMLOutputElement;
+        expect(value.textContent?.trim()).toBe('+2');
+        expect(fixture.nativeElement.querySelector('#tnCustomModifier[type="number"]')).toBeNull();
+
+        component.setCustomModifierValue('-2');
+        fixture.detectChanges();
+
+        const output = fixture.nativeElement.querySelector('#tnCustomModifier') as HTMLOutputElement;
+        const footer = fixture.nativeElement.querySelector('.tn-actions') as HTMLElement;
+        const summary = footer.querySelector('.tn-summary') as HTMLElement;
+        const custom = summary.querySelector('.custom-modifier-row') as HTMLElement;
+        const total = summary.querySelector('.total-box') as HTMLElement;
+        expect(output.textContent?.trim()).toBe('-2');
+        expect(summary.contains(output)).toBeTrue();
+        expect(fixture.nativeElement.querySelector('.other-section')?.contains(output)).toBeFalse();
+        expect(getComputedStyle(custom).flexGrow).toBe('1');
+        expect(getComputedStyle(total).flexGrow).toBe('1');
+        expect(getComputedStyle(output).width).toBe('36px');
+        expect(output.classList).toContain('selected');
+        expect(getComputedStyle(output).borderTopColor).toBe('rgb(255, 255, 255)');
+        expect(getComputedStyle(output).backgroundColor).toBe('rgb(234, 174, 63)');
+        expect([...footer.children].map(child => child.classList.contains('tn-summary')
+            ? 'summary'
+            : child.textContent?.trim())).toEqual(['summary', 'APPLY', '', 'CANCEL']);
+        expect(component.totalModifier()).toBe(-2);
+
+        component.apply();
+        expect(close).toHaveBeenCalledWith(jasmine.objectContaining({
+            targetId: 'A',
+            patch: jasmine.objectContaining({
+                tnModifier: -2,
+                tnCalculator: jasmine.objectContaining({ customModifier: -2 }),
+            }),
+        }));
+    });
+
+    it('resets editable calculator values to neutral defaults', () => {
+        component.selectUnitType('vehicle');
+        component.setTargetMovementBracketIndex(3);
+        component.toggleAirborne();
+        component.toggleProne();
+        component.selectInterveningWoods('light2');
+        component.toggleIndirectFire();
+        component.toggleSecondaryTarget();
+        component.setCustomModifierValue(4);
+        component.setRangeValue(12);
+
+        component.reset();
+        fixture.detectChanges();
+
+        expect(component.unitType()).toBe('mek-biped');
+        expect(component.targetMovementBracketIndex()).toBe(0);
+        expect(component.isAirborne()).toBeFalse();
+        expect(component.prone()).toBeFalse();
+        expect(component.interveningWoods()).toBe('none');
+        expect(component.indirectFire()).toBeFalse();
+        expect(component.secondaryTarget()).toBeFalse();
+        expect(component.customModifier()).toBe(0);
+        expect(component.range()).toBe(1);
+        expect(component.totalModifier()).toBe(0);
+        expect((fixture.nativeElement.querySelector('#tnCustomModifier') as HTMLOutputElement).classList).not.toContain('selected');
+    });
+
+    it('clamps the custom modifier to one signed digit', () => {
+        component.setCustomModifierValue(10);
+        fixture.detectChanges();
+
+        const buttons = fixture.nativeElement.querySelectorAll('.custom-modifier-control button') as NodeListOf<HTMLButtonElement>;
+        expect(component.customModifier()).toBe(9);
+        expect((fixture.nativeElement.querySelector('#tnCustomModifier') as HTMLOutputElement).textContent?.trim()).toBe('+9');
+        expect(buttons[1].disabled).toBeTrue();
+
+        component.stepCustomModifier(-20);
+        fixture.detectChanges();
+
+        expect(component.customModifier()).toBe(-9);
+        expect((fixture.nativeElement.querySelector('#tnCustomModifier') as HTMLOutputElement).textContent?.trim()).toBe('-9');
+        expect(buttons[0].disabled).toBeTrue();
+    });
+
     it('clears and disables ordinary partial cover outside the spotter-LOS group for Core indirect fire', () => {
         component.togglePartialCover();
         expect(component.partialCover()).toBeTrue();
@@ -328,6 +412,29 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
 
     it('does not expose manual guidance-state controls for synchronized OPFOR targets', () => {
         expect(fixture.nativeElement.querySelector('.guidance-state-group')).toBeNull();
+    });
+
+    it('resets local choices without clearing synchronized target facts', () => {
+        component.isAirborne.set(true);
+        component.targetMovementBracketIndex.set(3);
+        component.prone.set(true);
+        component.narcAboveWater.set(true);
+        component.selectInterveningWoods('light2');
+        component.toggleIndirectFire();
+        component.setCustomModifierValue(3);
+        component.setRangeValue(12);
+
+        component.reset();
+
+        expect(component.unitType()).toBe('battle-armor');
+        expect(component.isAirborne()).toBeTrue();
+        expect(component.targetMovementBracketIndex()).toBe(3);
+        expect(component.prone()).toBeTrue();
+        expect(component.narcAboveWater()).toBeTrue();
+        expect(component.interveningWoods()).toBe('none');
+        expect(component.indirectFire()).toBeFalse();
+        expect(component.customModifier()).toBe(0);
+        expect(component.range()).toBe(1);
     });
 });
 

@@ -20,10 +20,13 @@ import {
     getTargetUnitTypeModifier,
     isStaticTargetType,
     isTerrainTargetType,
+    normalizeTargetCustomModifier,
     resolveTnTargetBuildingCoverState,
     resolveTnTargetWaterState,
     TN_TARGET_MOVEMENT_BRACKETS,
     TN_TARGET_UNIT_TYPE_OPTIONS,
+    TN_CUSTOM_MODIFIER_MIN,
+    TN_CUSTOM_MODIFIER_MAX,
     ADJACENT_RANGE,
     type TnAttackDirection,
     type TnInterveningWoods,
@@ -82,7 +85,7 @@ export interface TnCalculatorDialogResult {
                             </button>
                             @if (gameRules().supportsSecondaryTargetSideBack) {
                                 <button type="button" class="bt-button move-button" [class.selected]="secondaryTargetSideBack()" [attr.aria-pressed]="secondaryTargetSideBack()" (click)="toggleSecondaryTargetSideBack()">
-                                    <span>Secondary (Side/Back)</span><span class="modifier-badge">+2</span>
+                                    <span>Secondary (S/B)</span><span class="modifier-badge">+2</span>
                                 </button>
                             } @else if (gameRules().supportsLargeTarget) {
                                 <button type="button" class="bt-button move-button" [class.selected]="largeTarget()" [attr.aria-pressed]="largeTarget()" [disabled]="targetStateReadOnly" (click)="toggleLargeTarget()">
@@ -294,8 +297,24 @@ export interface TnCalculatorDialogResult {
             </div>
         </div>
         <div class="tn-actions">
-            <div class="total-box">TN Modifier: <span class="modifier">{{ signedTotal() }}</span></div>
+            <div class="tn-summary">
+                <div class="field-row custom-modifier-row">
+                    <label for="tnCustomModifier">Custom Modifier</label>
+                    <div class="custom-modifier-control">
+                        <button class="bt-button square" type="button" [disabled]="customModifier() <= CUSTOM_MODIFIER_MIN" aria-label="Decrease custom modifier" title="Decrease custom modifier" (click)="stepCustomModifier(-1)">-</button>
+                        <output id="tnCustomModifier" class="bt-input custom-modifier-value" [class.selected]="customModifier() !== 0" aria-live="polite">{{ customModifierLabel() }}</output>
+                        <button class="bt-button square" type="button" [disabled]="customModifier() >= CUSTOM_MODIFIER_MAX" aria-label="Increase custom modifier" title="Increase custom modifier" (click)="stepCustomModifier(1)">+</button>
+                    </div>
+                </div>
+                <div class="total-box">TN Modifier: <span class="modifier">{{ signedTotal() }}</span></div>
+            </div>
             <button class="bt-button primary" type="button" (click)="apply()">APPLY</button>
+            <button class="bt-button square-small reset-calculator-button" type="button" aria-label="Reset calculator" title="Reset calculator" (click)="reset()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                    <path d="M3 3v5h5"></path>
+                </svg>
+            </button>
             <button class="bt-button" type="button" (click)="close()">CANCEL</button>
         </div>
     </div>
@@ -659,6 +678,49 @@ export interface TnCalculatorDialogResult {
             font-weight: 500;
         }
 
+        .custom-modifier-row {
+            justify-content: center;
+        }
+
+        .custom-modifier-control {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .custom-modifier-value {
+            inline-size: 36px;
+            block-size: 30px;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .custom-modifier-value.selected {
+            border: 2px solid #fff;
+            background-color: var(--bt-yellow, #EAAE3F);
+            background-image: none;
+            color: #000;
+            font-weight: 700;
+        }
+
+        .custom-modifier-control .bt-button.square {
+            inline-size: 28px;
+            block-size: 30px;
+            min-inline-size: 28px;
+            padding: 0;
+        }
+
+        .tn-summary .custom-modifier-row label {
+            flex: 1 1 0;
+            min-width: 0;
+            justify-content: flex-end;
+            text-align: right;
+        }
+
         .field-row label {
             display: inline-flex;
             align-items: center;
@@ -800,6 +862,7 @@ export interface TnCalculatorDialogResult {
 
         .tn-actions {
             display: flex;
+            flex-wrap: wrap;
             align-items: center;
             justify-content: flex-end;
             gap: 6px;
@@ -809,6 +872,22 @@ export interface TnCalculatorDialogResult {
             .bt-button {
                 width: 170px;
             }
+
+            .reset-calculator-button {
+                width: 32px;
+                min-width: 32px;
+                padding: 0;
+            }
+        }
+
+        .tn-summary {
+            display: flex;
+            flex: 1 1 0;
+            min-width: 0;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-right: auto;
         }
 
         .total-box {
@@ -866,9 +945,23 @@ export interface TnCalculatorDialogResult {
                 content: none;
             }
 
+            .tn-summary {
+                flex: 0 0 100%;
+                width: 100%;
+                flex-direction: row-reverse;
+                justify-content: space-between;
+                gap: 6px;
+            }
+
             .total-box {
                 font-size: 0.9em;
-                width: 220px;
+                width: auto;
+            }
+
+            .tn-actions > .bt-button:not(.reset-calculator-button) {
+                flex: 1 1 0;
+                width: auto;
+                min-width: 0;
             }
         }
 
@@ -894,6 +987,8 @@ export class TnCalculatorDialogComponent {
     readonly MOVEMENT_MAX = TN_TARGET_MOVEMENT_BRACKETS.length - 1;
     readonly RANGE_MIN = 0;
     readonly RANGE_MAX = 25;
+    readonly CUSTOM_MODIFIER_MIN = TN_CUSTOM_MODIFIER_MIN;
+    readonly CUSTOM_MODIFIER_MAX = TN_CUSTOM_MODIFIER_MAX;
     private readonly dialogRef = inject(DialogRef<TnCalculatorDialogResult | null>);
     private readonly data = inject<TnCalculatorDialogData>(DIALOG_DATA);
     private readonly initialCalculator = this.data.target.tnCalculator;
@@ -951,6 +1046,10 @@ export class TnCalculatorDialogComponent {
         && this.data.gameRules.allowsTagDesignation(this.initialUnitType),
     );
     readonly ecmShielded = signal<boolean>(this.initialCalculator?.ecmShielded ?? false);
+    readonly customModifier = signal<number>(this.normalizeCustomModifier(this.initialCalculator?.customModifier));
+    readonly customModifierLabel = computed(() => this.customModifier() > 0
+        ? `+${this.customModifier()}`
+        : `${this.customModifier()}`);
     readonly renderReady = signal(false);
     readonly unitTypeSelectedHasModifier = computed(() => this.unitTypeDropdownOptions().some(option => option.value === this.unitType() && !!option.modifierLabel));
     readonly taggedUnavailable = computed(() => !this.gameRules().allowsTagDesignation(this.unitType()));
@@ -1020,6 +1119,7 @@ export class TnCalculatorDialogComponent {
         largeTarget: this.largeTarget(),
         spotterMoveMode: this.spotterMoveMode(),
         spotterDeclaredAttacks: this.spotterDeclaredAttacks(),
+        customModifier: this.customModifier(),
     }, this.gameRules()));
     readonly signedTotal = computed(() => this.totalModifier() >= 0 ? `+${this.totalModifier()}` : `${this.totalModifier()}`);
     readonly woodsCaption = computed(() => {
@@ -1207,6 +1307,14 @@ export class TnCalculatorDialogComponent {
         this.ecmShielded.update(value => !value);
     }
 
+    setCustomModifierValue(value: string | number): void {
+        this.customModifier.set(this.normalizeCustomModifier(value));
+    }
+
+    stepCustomModifier(delta: number): void {
+        this.customModifier.update(value => this.normalizeCustomModifier(value + delta));
+    }
+
     onRangeInput(event: Event): void {
         const el = event.target as HTMLInputElement;
         this.setRangeValue(Number(el.value || 0));
@@ -1244,6 +1352,7 @@ export class TnCalculatorDialogComponent {
             narcUnderwater: this.underwaterNarcAvailable() && this.narcUnderwater(),
             tagged: !this.taggedUnavailable() && this.tagged(),
             ecmShielded: this.ecmShielded(),
+            customModifier: this.customModifier() || undefined,
         };
         this.dialogRef.close({
             targetId: this.target.id,
@@ -1259,6 +1368,38 @@ export class TnCalculatorDialogComponent {
 
     close(): void {
         this.dialogRef.close(null);
+    }
+
+    reset(): void {
+        this.range.set(1);
+        this.c3Distance.set(1);
+        this.useC3.set(false);
+        this.interveningWoods.set('none');
+        this.partialCover.set(false);
+        this.attackDirection.set('front');
+        this.indirectFire.set(false);
+        this.secondaryTarget.set(false);
+        this.secondaryTargetSideBack.set(false);
+        this.spotterMoveMode.set('stationary');
+        this.spotterDeclaredAttacks.set(false);
+        this.customModifier.set(0);
+
+        if (this.targetStateReadOnly) return;
+
+        this.unitType.set('mek-biped');
+        this.targetMovementBracketIndex.set(0);
+        this.isAirborne.set(false);
+        this.skidding.set(false);
+        this.prone.set(false);
+        this.immobile.set(false);
+        this.targetHexCover.set('none');
+        this.waterDepth.set(undefined);
+        this.buildingCover.set(undefined);
+        this.largeTarget.set(false);
+        this.narcAboveWater.set(false);
+        this.narcUnderwater.set(false);
+        this.tagged.set(false);
+        this.ecmShielded.set(false);
     }
 
     setRangeValue(value: number): void {
@@ -1304,6 +1445,11 @@ export class TnCalculatorDialogComponent {
     private alignToStep(value: number, min: number, max: number): number {
         const stepped = Math.round(value / 1);
         return Math.max(min, Math.min(max, Number.isFinite(stepped) ? stepped : min));
+    }
+
+    private normalizeCustomModifier(value: string | number | null | undefined): number {
+        const numeric = Number(value ?? 0);
+        return normalizeTargetCustomModifier(numeric);
     }
 
     private formatNonZeroModifier(value: number): string | null {

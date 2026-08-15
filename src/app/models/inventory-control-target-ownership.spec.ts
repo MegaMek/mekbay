@@ -48,7 +48,8 @@ describe('inventory control target ownership', () => {
             secondaryTarget: true,
             secondaryTargetSideBack: false,
             spotterMoveMode: 'jump',
-            spotterDeclaredAttacks: true
+            spotterDeclaredAttacks: true,
+            customModifier: -2,
         });
 
         expect(result.shared).toBeUndefined();
@@ -60,7 +61,8 @@ describe('inventory control target ownership', () => {
             secondaryTarget: true,
             secondaryTargetSideBack: false,
             spotterMoveMode: 'jump',
-            spotterDeclaredAttacks: true
+            spotterDeclaredAttacks: true,
+            customModifier: -2,
         });
     });
 
