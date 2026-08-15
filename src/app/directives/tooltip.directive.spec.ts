@@ -40,6 +40,20 @@ function dispatchPointerOver(target: HTMLElement, relatedTarget: EventTarget | n
     }));
 }
 
+function dispatchPointerOut(target: HTMLElement, pointerType: 'mouse' | 'touch' = 'mouse'): void {
+    target.dispatchEvent(new PointerEvent('pointerout', {
+        bubbles: true,
+        pointerType,
+    }));
+}
+
+function dispatchTouchPointer(target: HTMLElement, type: 'pointerdown' | 'pointerup'): void {
+    target.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        pointerType: 'touch',
+    }));
+}
+
 describe('TooltipDirective', () => {
     let overlayContainer: OverlayContainer;
     let overlayContainerElement: HTMLElement;
@@ -75,6 +89,72 @@ describe('TooltipDirective', () => {
         await flushTooltipTasks(fixture);
 
         expect(getTooltipTexts()).toEqual(['Child tooltip']);
+    });
+
+    it('shows a tooltip on touch tap and dismisses it on an outside tap', async () => {
+        const fixture = TestBed.createComponent(TestHostComponent);
+        fixture.detectChanges();
+
+        const element = fixture.nativeElement as HTMLElement;
+        const child = element.querySelector('.child') as HTMLElement;
+        const outside = element.querySelector('.mode-radio') as HTMLElement;
+
+        dispatchTouchPointer(child, 'pointerdown');
+        dispatchTouchPointer(child, 'pointerup');
+        dispatchPointerOut(child, 'touch');
+        await flushTooltipTasks(fixture);
+
+        expect(getTooltipTexts()).toEqual(['Child tooltip']);
+        expect(overlayContainerElement.querySelector('.tooltip-lock-progress')).toBeNull();
+
+        const tooltip = overlayContainerElement.querySelector('.tooltip-content') as HTMLElement;
+        dispatchTouchPointer(tooltip, 'pointerdown');
+        expect(getTooltipTexts()).toEqual(['Child tooltip']);
+
+        dispatchTouchPointer(outside, 'pointerdown');
+        expect(getTooltipTexts()).toEqual([]);
+    });
+
+    it('shows a tooltip while touch is held', async () => {
+        const fixture = TestBed.createComponent(TestHostComponent);
+        fixture.detectChanges();
+
+        const child = fixture.nativeElement.querySelector('.child') as HTMLElement;
+        dispatchTouchPointer(child, 'pointerdown');
+        await new Promise<void>((resolve) => setTimeout(resolve, 275));
+
+        expect(getTooltipTexts()).toEqual(['Child tooltip']);
+        expect(overlayContainerElement.querySelector('.tooltip-lock-progress')).toBeNull();
+    });
+
+    it('locks a mouse tooltip after its progress bar completes', async () => {
+        const fixture = TestBed.createComponent(TestHostComponent);
+        fixture.detectChanges();
+
+        const element = fixture.nativeElement as HTMLElement;
+        const child = element.querySelector('.child') as HTMLElement;
+        const outside = element.querySelector('.mode-radio') as HTMLElement;
+
+        dispatchPointerOver(child);
+        await flushTooltipTasks(fixture);
+
+        const progress = overlayContainerElement.querySelector('.tooltip-lock-progress') as HTMLElement | null;
+        expect(progress).not.toBeNull();
+        expect(getComputedStyle(progress!).height).toBe('2px');
+        expect(getComputedStyle(progress!).animationDuration).toBe('0.5s');
+
+        dispatchPointerOut(child);
+        expect(getTooltipTexts()).toEqual([]);
+
+        dispatchPointerOver(child);
+        await flushTooltipTasks(fixture);
+        await new Promise<void>((resolve) => setTimeout(resolve, 525));
+
+        dispatchPointerOut(child);
+        expect(getTooltipTexts()).toEqual(['Child tooltip']);
+
+        outside.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+        expect(getTooltipTexts()).toEqual([]);
     });
 
     it('applies the error frame class when tooltipType is error', async () => {

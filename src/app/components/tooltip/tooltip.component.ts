@@ -52,11 +52,15 @@ export type TooltipContent = string | TooltipLine[];
                 }
             }
         </div>
+        @if (lockProgressDuration > 0) {
+            <div class="tooltip-lock-progress" [style.animation-duration.ms]="lockProgressDuration" aria-hidden="true"></div>
+        }
     `,
     styles: [`
         :host {
             display: block;
-            pointer-events: none;
+            position: relative;
+            pointer-events: auto;
             background-color: var(--background-color-menu);
             max-width: min(400px, calc(100vw - 24px));
             max-height: calc(100dvh - 24px);
@@ -133,11 +137,28 @@ export type TooltipContent = string | TooltipLine[];
             object-fit: contain;
             flex: 0 0 auto;
         }
+        .tooltip-lock-progress {
+            position: absolute;
+            inset-inline: 2px;
+            bottom: 2px;
+            height: 2px;
+            background-color: var(--accent-color);
+            pointer-events: none;
+            transform: scaleX(0);
+            transform-origin: left;
+            animation-name: tooltip-lock-progress;
+            animation-timing-function: linear;
+            animation-fill-mode: forwards;
+        }
+        @keyframes tooltip-lock-progress {
+            to { transform: scaleX(1); }
+        }
     `]
 })
 export class TooltipComponent {
     content: TooltipContent = '';
     type: TooltipType = 'info';
+    lockProgressDuration = 0;
 
     get htmlContent(): string {
         return typeof this.content === 'string' ? this.content : '';
