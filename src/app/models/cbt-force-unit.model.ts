@@ -51,6 +51,7 @@ import {
     type EquipmentStatusFacts,
 } from './equipment-status.model';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from './rules/unit-type-rules';
+import type { HeatDissipationState } from './rules/heat-management';
 
 export type EquipmentStatusSource = MountedEquipment | CriticalSlot;
 export type EquipmentAction =
@@ -170,6 +171,14 @@ export class CBTForceUnit extends ForceUnit {
         return this.getEquipmentInteractionRegistry().getRunMovementMultiplierBonus(
             this.getInventory(),
             turnState,
+            this.getHandlerQueryContext(),
+        );
+    }
+
+    getEquipmentHeatDissipationBonus(dissipation: HeatDissipationState): number {
+        return this.getEquipmentInteractionRegistry().getHeatDissipationBonus(
+            this.getInventory(),
+            dissipation,
             this.getHandlerQueryContext(),
         );
     }

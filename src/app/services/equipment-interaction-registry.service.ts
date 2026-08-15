@@ -24,6 +24,7 @@ import type { EquipmentAction, EquipmentStateEdit } from '../models/cbt-force-un
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { EquipmentStatus } from '../models/equipment-status.model';
 import type { InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
+import type { HeatDissipationState } from '../models/rules/heat-management';
 
 export interface HandlerQueryContext {
     readonly equipmentCatalog: EquipmentRegistry;
@@ -89,6 +90,8 @@ export interface HandlerChoice extends PickerChoice {
     stateEdit?: EquipmentStateEdit;
     /** Non-mutating navigation that remains useful on a read-only unit. */
     readOnlySafe?: boolean;
+    /** Numeric 2D6 target for an escalating-failure step; 0 means no check and 13 means automatic failure. */
+    failureTarget?: number;
 }
 
 export interface ToHitAdjustmentContext {
@@ -262,6 +265,13 @@ export abstract class EquipmentInteractionHandler {
     getRunMovementMultiplierBonus?(
         equipment: MountedEquipment,
         turnState: TurnState,
+        context: HandlerQueryContext
+    ): number;
+
+    /** Adds equipment-state bonuses to the unit's current heat-dissipation capacity. */
+    getHeatDissipationBonus?(
+        equipment: MountedEquipment,
+        dissipation: HeatDissipationState,
         context: HandlerQueryContext
     ): number;
 
@@ -582,6 +592,16 @@ export class EquipmentInteractionRegistry {
     ): number {
         return inventory.reduce((total, equipment) => total + this.getHandlers(equipment)
             .reduce((equipmentTotal, handler) => equipmentTotal + (handler.getRunMovementMultiplierBonus?.(equipment, turnState, context) ?? 0), 0), 0);
+    }
+
+    getHeatDissipationBonus(
+        inventory: readonly MountedEquipment[],
+        dissipation: HeatDissipationState,
+        context: HandlerQueryContext
+    ): number {
+        return inventory.reduce((total, equipment) => total + this.getHandlers(equipment)
+            .reduce((equipmentTotal, handler) => equipmentTotal
+                + (handler.getHeatDissipationBonus?.(equipment, dissipation, context) ?? 0), 0), 0);
     }
 }
 

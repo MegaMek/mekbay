@@ -1447,6 +1447,8 @@ export class MekRules extends UnitTypeRulesBase {
             totalDissipation = Math.max(0, totalDissipation);
         }
 
+        totalDissipation += this.unit.getEquipmentHeatDissipationBonus?.(base) ?? 0;
+
         // Partial wing heat bonus
         const partialWingBonus = this.systemsStatus().hasPartialWings
             ? Math.max(0, 3 - this.systemsStatus().destroyedPartialWingsCount)

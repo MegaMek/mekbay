@@ -54,6 +54,11 @@ export type C3DegradationSource = 'none' | 'unit' | 'network-member';
 export type C3DegradationLabel = 'DEGRADED' | 'JAMMED';
 export type SemiGuidedAdjustmentSource = 'movement' | 'terrain';
 
+/** No failure roll is made for this tracked use. */
+export const ESCALATING_FAILURE_NO_CHECK_TARGET = 0;
+/** First impossible 2D6 target; represents automatic failure. */
+export const ESCALATING_FAILURE_AUTO_FAIL_TARGET = 13;
+
 export interface C3TargetingResolution {
     readonly target: InventoryControlRuntimeTarget;
     readonly degradationSource: C3DegradationSource;
@@ -131,7 +136,11 @@ export function separateHeatFireModifier(resolution: ToHitResolution): ToHitHeat
 export abstract class CBTGameRules {
     abstract readonly id: 'core2026' | 'tw';
     abstract readonly c3DegradationLabel: C3DegradationLabel;
-    abstract readonly escalatingFailureLabels: readonly string[];
+    abstract readonly escalatingFailureTargets: readonly number[];
+    abstract readonly radicalHeatSinkFailureTargets: readonly number[];
+    abstract readonly blueShieldFailureTargets: readonly number[];
+    abstract readonly emergencyCoolantSystemFailureTargets: readonly number[];
+    abstract readonly viralJammerFailureTargets: readonly number[];
     abstract readonly usesUacJamming: boolean;
     abstract readonly supportsSkidding: boolean;
     abstract readonly supportsSecondaryTargetSideBack: boolean;
@@ -340,7 +349,19 @@ export class GameRules extends CBTGameRules {
         'dfa [talons]': 'Vs',
         'airmech ram': 'Vs',
     } as const;
-    readonly escalatingFailureLabels = ['3+', '5+', '7+', '10+', '11+'] as const;
+    readonly escalatingFailureTargets = [3, 5, 7, 10, 11] as const;
+    readonly radicalHeatSinkFailureTargets = this.escalatingFailureTargets;
+    // Blue Shield's first five uses are safe; Core starts escalating-failure checks on use six.
+    readonly blueShieldFailureTargets = [
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ...this.escalatingFailureTargets,
+    ] as const;
+    readonly emergencyCoolantSystemFailureTargets = this.escalatingFailureTargets;
+    readonly viralJammerFailureTargets = this.escalatingFailureTargets;
     readonly usesUacJamming = false;
     readonly supportsSkidding = false;
     readonly supportsSecondaryTargetSideBack = false;
@@ -403,7 +424,22 @@ export class TWGameRules extends CBTGameRules {
         'dfa [talons]': 'Vs',
         'airmech ram': 'Vs',
     } as const;
-    readonly escalatingFailureLabels = ['3+', '5+', '7+', '11+', '!!'] as const;
+    readonly escalatingFailureTargets = [3, 5, 7, 11, ESCALATING_FAILURE_AUTO_FAIL_TARGET] as const;
+    readonly radicalHeatSinkFailureTargets = [3, 5, 7, 10, 11, ESCALATING_FAILURE_AUTO_FAIL_TARGET] as const;
+    // TO:AUE: six safe cumulative uses, then the avoid number rises by one until automatic failure.
+    readonly blueShieldFailureTargets = [
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        3, 4, 5, 6, 7, 8, 9, 10, 11, 12, ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+    ] as const;
+    readonly emergencyCoolantSystemFailureTargets = [3, 5, 7, 10, ESCALATING_FAILURE_AUTO_FAIL_TARGET] as const;
+    readonly viralJammerFailureTargets = [
+        4, 5, 6, 7, 8, 9, 10, 11, 12, ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+    ] as const;
     readonly usesUacJamming = true;
     readonly supportsSkidding = true;
     readonly supportsSecondaryTargetSideBack = true;

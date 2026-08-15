@@ -10,8 +10,6 @@ import {
 } from '../models/rules/unit-type-rules';
 import { EquipmentInteractionHandler, type HandlerChoice, type HandlerCommandContext, type HandlerQueryContext } from '../services/equipment-interaction-registry.service';
 
-const DISABLEABLE_EQUIPMENT_FLAGS = ['F_RADICAL_HEATSINK'] as const;
-
 export function isEquipmentDisabledByFailure(equipment: MountedEquipment): boolean {
     return equipment.states.get(ENTRY_DISABLED_STATE_KEY) === ENTRY_DISABLED_STATE_VALUE;
 }
@@ -52,14 +50,5 @@ export abstract class DisabledStateToggleHandler extends EquipmentInteractionHan
             disabled ? 'info' : 'error'
         );
         return true;
-    }
-}
-
-export class DisabledEquipmentHandler extends DisabledStateToggleHandler {
-    readonly id = 'disabled-equipment-handler';
-
-    override applicableTo(equipment: MountedEquipment): boolean {
-        const flags = equipment.equipment?.flags;
-        return !!flags && DISABLEABLE_EQUIPMENT_FLAGS.some(flag => flags.has(flag));
     }
 }

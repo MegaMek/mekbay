@@ -6,6 +6,7 @@ import type { PickerChoice } from '../components/picker/picker.interface';
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../models/rules/unit-type-rules';
+import { ESCALATING_FAILURE_AUTO_FAIL_TARGET, ESCALATING_FAILURE_NO_CHECK_TARGET } from '../models/rules/game-rules';
 import { EquipmentInteractionHandler, type HandlerChoice, type HandlerCommandContext, type HandlerNotifications, type HandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import { isEquipmentDisabledByFailure } from './disabled-equipment.handler';
 
@@ -13,7 +14,6 @@ export const ESCALATING_FAILURE_HANDLER_ID = 'escalating-failure-handler';
 export const ESCALATING_FAILURE_STATE_KEY = 'escalatingFailure';
 export const ESCALATING_FAILURE_ACTIVE_STATE_KEY = 'escalatingFailureActive';
 const ESCALATING_FAILURE_DISABLED_CHOICE_VALUE = 'escalating-failure-disabled';
-export const DEFAULT_ESCALATING_FAILURE_SEQUENCE_LABELS = ['3+', '5+', '7+', '10+', '11+'] as const;
 const ESCALATING_FAILURE_CHOICE_COLORS = {
     selected: 'var(--bt-yellow)',
     selectedText: '#000',
@@ -38,25 +38,27 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
     static getSequenceState(equipment: MountedEquipment): number {
         const rawState = Number(equipment.states.get(this.sequenceStateKey) ?? 0);
         if (!Number.isFinite(rawState)) return 0;
-        return Math.max(0, Math.min(this.getSequenceLabels(equipment).length, Math.trunc(rawState)));
+        return Math.max(0, Math.min(this.getSequenceTargets(equipment).length, Math.trunc(rawState)));
     }
 
     static setSequenceState(equipment: MountedEquipment, state: number): boolean {
-        const nextState = Math.max(0, Math.min(this.getSequenceLabels(equipment).length, Math.trunc(state)));
+        const nextState = Math.max(0, Math.min(this.getSequenceTargets(equipment).length, Math.trunc(state)));
         return nextState === 0
             ? equipment.deleteState(this.sequenceStateKey)
             : equipment.setState(this.sequenceStateKey, String(nextState));
     }
 
-    protected static getSequenceLabels(equipment: MountedEquipment): readonly string[] {
-        return equipment.owner?.gameRules.escalatingFailureLabels ?? DEFAULT_ESCALATING_FAILURE_SEQUENCE_LABELS;
+    protected static getSequenceTargets(equipment: MountedEquipment): readonly number[] {
+        return equipment.owner.gameRules.escalatingFailureTargets;
     }
 
     protected readonly sequenceStateKey: string = ESCALATING_FAILURE_STATE_KEY;
     protected readonly activeStateKey: string = ESCALATING_FAILURE_ACTIVE_STATE_KEY;
+    protected readonly recoversWhenUnused: boolean = true;
 
-    protected getSequenceLabels(equipment: MountedEquipment): readonly string[] {
-        return EscalatingFailureHandler.getSequenceLabels(equipment);
+    protected getSequenceTargets(equipment: MountedEquipment): readonly number[] {
+        const handlerType = this.constructor as typeof EscalatingFailureHandler;
+        return handlerType.getSequenceTargets(equipment);
     }
 
     protected canUseHandler(_equipment: MountedEquipment): boolean {
@@ -66,7 +68,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
     protected getSequenceState(equipment: MountedEquipment): number {
         const rawState = Number(equipment.states.get(this.sequenceStateKey) ?? 0);
         if (!Number.isFinite(rawState)) return 0;
-        return Math.max(0, Math.min(this.getSequenceLabels(equipment).length, Math.trunc(rawState)));
+        return Math.max(0, Math.min(this.getSequenceTargets(equipment).length, Math.trunc(rawState)));
     }
 
     protected isActive(equipment: MountedEquipment): boolean {
@@ -81,12 +83,12 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
 
     protected isSequenceButtonClickable(equipment: MountedEquipment, index: number): boolean {
         return this.canUseHandler(equipment) && !isEquipmentDisabledByFailure(equipment)
-            && index >= 0 && index < this.getSequenceLabels(equipment).length
+            && index >= 0 && index < this.getSequenceTargets(equipment).length
             && index <= this.getSequenceState(equipment);
     }
 
     protected setSequenceState(equipment: MountedEquipment, state: number): boolean {
-        const nextState = Math.max(0, Math.min(this.getSequenceLabels(equipment).length, Math.trunc(state)));
+        const nextState = Math.max(0, Math.min(this.getSequenceTargets(equipment).length, Math.trunc(state)));
         return nextState === 0
             ? equipment.deleteState(this.sequenceStateKey)
             : equipment.setState(this.sequenceStateKey, String(nextState));
@@ -100,6 +102,12 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
             return this.setSequenceState(equipment, index + 1);
         }
         if (index === currentState - 1) {
+            // The last failure target repeats on every later use. Re-selecting it
+            // at the end of the sequence therefore marks another use rather than
+            // stepping the tracker backward.
+            if (!this.isActive(equipment) && currentState === this.getSequenceTargets(equipment).length) {
+                return this.setActive(equipment, true);
+            }
             return this.isActive(equipment)
                 ? this.setActive(equipment, false)
                 : this.setSequenceState(equipment, index);
@@ -113,17 +121,27 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
         if (!this.canUseHandler(equipment)) return [];
         const state = this.getSequenceState(equipment);
         const active = this.isActive(equipment);
-        const sequenceChoices: PickerChoice[] = this.getSequenceLabels(equipment).map((label, index) => ({
-            label,
-            shortLabel: label,
-            value: index,
-            displayType: 'toggle',
-            disabled: !this.isSequenceButtonClickable(equipment, index),
-            active: index < state,
-            selectionTone: index === state - 1 && active ? 'selected' : 'muted',
-            colors: label === '!!' ? ESCALATING_FAILURE_FAILURE_CHOICE_COLORS : ESCALATING_FAILURE_CHOICE_COLORS,
-            keepOpen: true,
-        }));
+        const sequenceChoices: HandlerChoice[] = this.getSequenceTargets(equipment).map((failureTarget, index) => {
+            const label = failureTarget === ESCALATING_FAILURE_NO_CHECK_TARGET
+                ? String(index + 1)
+                : failureTarget >= ESCALATING_FAILURE_AUTO_FAIL_TARGET
+                    ? '!!'
+                    : `${failureTarget}+`;
+            return {
+                label,
+                shortLabel: label,
+                value: index,
+                failureTarget,
+                displayType: 'toggle',
+                disabled: !this.isSequenceButtonClickable(equipment, index),
+                active: index < state,
+                selectionTone: index === state - 1 && active ? 'selected' : 'muted',
+                colors: failureTarget >= ESCALATING_FAILURE_AUTO_FAIL_TARGET
+                    ? ESCALATING_FAILURE_FAILURE_CHOICE_COLORS
+                    : ESCALATING_FAILURE_CHOICE_COLORS,
+                keepOpen: true,
+            };
+        });
         const disabled = isEquipmentDisabledByFailure(equipment);
         const toggleLabel = context.choiceSurface === 'turn-summary'
             ? '✖'
@@ -180,6 +198,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
             }
             return;
         }
+        if (!this.recoversWhenUnused) return;
 
         const currentState = this.getSequenceState(equipment);
         const changed = this.setSequenceState(equipment, currentState - 1);

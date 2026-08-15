@@ -17,7 +17,7 @@ import { ToastService } from '../../../services/toast.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { DataService } from '../../../services/data.service';
 import type { MountedEquipment } from '../../../models/mounted-equipment.model';
-import { MascHandler } from '../../../equipment-handlers/masc.handler';
+import { EscalatingFailureHandler } from '../../../equipment-handlers/escalatingfailure.handler';
 import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
 import { composeTurnSummaryHeatRows, displayPsrModifiers, isMoveModeDisabledWhileProne } from './page-turn-summary.util';
 import { orderedModifierTooltipLines } from '../../../utils/hit-target-tooltip.util';
@@ -29,8 +29,31 @@ interface EquipmentTrackControlRow {
     entry: MountedEquipment;
     label: string;
     damaged: boolean;
+    active: boolean;
     sequenceChoices: HandlerChoice[];
     statusChoice?: HandlerChoice;
+}
+
+const MAX_VISIBLE_FAILURE_STEPS = 5;
+
+function visibleFailureSteps(choices: HandlerChoice[]): HandlerChoice[] {
+    if (choices.length <= MAX_VISIBLE_FAILURE_STEPS) return choices;
+    const selectedIndex = choices.findIndex(choice => choice.active && choice.selectionTone !== 'muted');
+    const nextIndex = choices.findIndex(choice => !choice.disabled && !choice.active);
+    const lastActiveIndex = choices.reduce(
+        (lastIndex, choice, index) => choice.active ? index : lastIndex,
+        -1,
+    );
+    const focusIndex = selectedIndex >= 0
+        ? selectedIndex
+        : nextIndex >= 0
+            ? nextIndex
+            : Math.max(0, lastActiveIndex);
+    const start = Math.max(0, Math.min(
+        focusIndex - Math.floor(MAX_VISIBLE_FAILURE_STEPS / 2),
+        choices.length - MAX_VISIBLE_FAILURE_STEPS,
+    ));
+    return choices.slice(start, start + MAX_VISIBLE_FAILURE_STEPS);
 }
 
 @Component({
@@ -218,18 +241,19 @@ export class PageTurnSummaryPanelComponent {
         const unit = this.unit();
         if (!unit) return [];
         return unit.getInventory()
-            .filter(entry => entry.equipment?.flags?.has('F_MASC'))
             .map(entry => {
-                const active = entry.equipment?.flags?.has('F_MASC') ? MascHandler.isActive(entry) : true;
                 const damaged = entry.owner.isEquipmentResolvedDestroyed(entry);
                 const choices = this.equipmentRegistry.getChoices(entry, this.queryContext());
+                const escalatingChoices = choices.filter(choice => choice._handler instanceof EscalatingFailureHandler);
+                const allSequenceChoices = escalatingChoices.filter(choice => choice.failureTarget !== undefined);
+                const active = allSequenceChoices.some(choice => choice.active && choice.selectionTone !== 'muted');
                 return {
                     entry,
                     label: entry.equipment?.name || entry.name,
                     damaged,
                     active,
-                    sequenceChoices: choices.filter(choice => typeof choice.value === 'number'),
-                    statusChoice: choices.find(choice => typeof choice.value !== 'number'),
+                    sequenceChoices: visibleFailureSteps(allSequenceChoices),
+                    statusChoice: escalatingChoices.find(choice => choice.failureTarget === undefined),
                 };
             })
             .filter(row => !row.damaged || row.active)

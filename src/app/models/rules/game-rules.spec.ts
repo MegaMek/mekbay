@@ -6,7 +6,13 @@ import { EquipmentFlag } from '../equipment-flags.type';
 import { EquipmentRegistry } from '../equipment-lookup';
 import { AmmoEquipment, MiscEquipment, WeaponEquipment, type Equipment } from '../equipment.model';
 import { MountedEquipment } from '../mounted-equipment.model';
-import { CORE_2026_GAME_RULES, TW_GAME_RULES, separateHeatFireModifier } from './game-rules';
+import {
+    CORE_2026_GAME_RULES,
+    ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+    ESCALATING_FAILURE_NO_CHECK_TARGET,
+    TW_GAME_RULES,
+    separateHeatFireModifier,
+} from './game-rules';
 
 let entryId = 0;
 
@@ -267,6 +273,46 @@ function coreTagBvContext(options: {
 }
 
 describe('game rules', () => {
+    describe('escalating failure targets', () => {
+        it('uses the standardized numeric Core sequence for every checked component', () => {
+            const standard = [3, 5, 7, 10, 11] as const;
+
+            expect(CORE_2026_GAME_RULES.escalatingFailureTargets).toEqual(standard);
+            expect(CORE_2026_GAME_RULES.radicalHeatSinkFailureTargets).toEqual(standard);
+            expect(CORE_2026_GAME_RULES.emergencyCoolantSystemFailureTargets).toEqual(standard);
+            expect(CORE_2026_GAME_RULES.viralJammerFailureTargets).toEqual(standard);
+            expect(CORE_2026_GAME_RULES.blueShieldFailureTargets).toEqual([
+                ESCALATING_FAILURE_NO_CHECK_TARGET,
+                ESCALATING_FAILURE_NO_CHECK_TARGET,
+                ESCALATING_FAILURE_NO_CHECK_TARGET,
+                ESCALATING_FAILURE_NO_CHECK_TARGET,
+                ESCALATING_FAILURE_NO_CHECK_TARGET,
+                ...standard,
+            ]);
+        });
+
+        it('preserves numeric legacy TW component sequences', () => {
+            expect(TW_GAME_RULES.escalatingFailureTargets).toEqual([
+                3, 5, 7, 11, ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+            ]);
+            expect(TW_GAME_RULES.radicalHeatSinkFailureTargets).toEqual([
+                3, 5, 7, 10, 11, ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+            ]);
+            expect(TW_GAME_RULES.blueShieldFailureTargets).toEqual([
+                0, 0, 0, 0, 0, 0,
+                3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+            ]);
+            expect(TW_GAME_RULES.emergencyCoolantSystemFailureTargets).toEqual([
+                3, 5, 7, 10, ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+            ]);
+            expect(TW_GAME_RULES.viralJammerFailureTargets).toEqual([
+                4, 5, 6, 7, 8, 9, 10, 11, 12,
+                ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+            ]);
+        });
+    });
+
     describe('C3 degradation', () => {
         const target = {
             id: 'A', letter: 'A', name: 'Target', color: '#000',

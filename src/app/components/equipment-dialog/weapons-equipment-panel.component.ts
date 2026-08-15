@@ -33,11 +33,9 @@ import {
     type InventoryControlGroup,
     type InventoryControlRow,
     type InventoryRangeDisplayKey,
-    type InventoryRangeKey
 } from '../../utils/inventory-control.util';
 import { inventoryControlDamageRange, resolveInventoryControlDamageText } from '../../utils/inventory-control-damage.util';
-import { MASC_HANDLER_ID } from '../../equipment-handlers/masc.handler';
-import { ESCALATING_FAILURE_HANDLER_ID } from '../../equipment-handlers/escalatingfailure.handler';
+import { EscalatingFailureHandler } from '../../equipment-handlers/escalatingfailure.handler';
 import { TN_IMMOBILE } from '../../models/target-number-calculator.model';
 import { orderedModifierTooltipLines } from '../../utils/hit-target-tooltip.util';
 import { STANDARD_AEROSPACE_RANGE_LIMITS, aerospaceRangeCaptions } from '../../utils/aerospace-range.util';
@@ -1085,8 +1083,8 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     isEscalatingFailureSequenceChoice(choice: HandlerChoice): boolean {
-        return (choice._handler?.id === ESCALATING_FAILURE_HANDLER_ID 
-                || choice._handler?.id === MASC_HANDLER_ID ) && typeof choice.value === 'number';
+        return choice._handler instanceof EscalatingFailureHandler
+            && choice.failureTarget !== undefined;
     }
 
     modeChoice(row: InventoryControlRow): HandlerChoice | undefined {
