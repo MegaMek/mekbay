@@ -281,7 +281,7 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         ]);
     });
 
-    it('uses the effective spotting modifier for indirect-fire pills', () => {
+    it('always includes the base indirect-fire modifier', () => {
         const target = {
             ...TARGET,
             tnCalculator: {
@@ -291,7 +291,6 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
             },
         };
         fixture.componentRef.setInput('targets', [target]);
-        fixture.componentRef.setInput('indirectFireBaseModifier', 0);
         fixture.detectChanges();
 
         const pillContainer = fixture.nativeElement.querySelector('.target-modifier-pills:not(.target-modifier-pills-fallback)') as HTMLElement;
@@ -301,6 +300,7 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         }));
 
         expect(pills).toEqual([
+            { label: 'Indirect', modifier: '+1' },
             { label: 'Spotter', modifier: '+3' },
         ]);
     });

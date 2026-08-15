@@ -46,7 +46,6 @@ export interface TnCalculatorDialogData {
     targetStateReadOnly?: boolean;
     showC3Distance?: boolean;
     c3Degraded?: boolean;
-    indirectFireBaseModifier?: number;
     indirectFireAvailable?: boolean;
 }
 
@@ -869,7 +868,6 @@ export class TnCalculatorDialogComponent {
     readonly gameRules = signal(this.data.gameRules);
     readonly showC3Distance = signal<boolean>(this.data.showC3Distance ?? false);
     readonly c3Degraded = signal<boolean>(this.data.c3Degraded ?? false);
-    readonly indirectFireBaseModifier = this.data.indirectFireBaseModifier ?? 1;
     readonly unitTypeOptions = TN_TARGET_UNIT_TYPE_OPTIONS;
     readonly unitTypeDropdownOptions = computed<MultilineDropdownOption[]>(() => this.unitTypeOptions.map(option => ({
         value: option.value,
@@ -950,8 +948,8 @@ export class TnCalculatorDialogComponent {
     readonly c3BlockedByIndirectFire = computed(() => this.indirectFire());
     readonly c3Enabled = computed(() => this.showC3Distance() && this.useC3() && !this.c3BlockedByIndirectFire());
     readonly c3DistanceLabel = computed(() => this.c3Enabled() ? `${this.c3Distance()}` : '');
-    readonly indirectFireModifier = computed(() => getIndirectFireModifier(this.indirectFire(), this.spotterMoveMode(), this.spotterDeclaredAttacks(), this.indirectFireBaseModifier));
-    readonly indirectFireModifierLabel = computed(() => this.formatModifier(getIndirectFireModifier(true, this.spotterMoveMode(), this.spotterDeclaredAttacks(), this.indirectFireBaseModifier)));
+    readonly indirectFireModifier = computed(() => getIndirectFireModifier(this.indirectFire(), this.spotterMoveMode(), this.spotterDeclaredAttacks()));
+    readonly indirectFireModifierLabel = computed(() => this.formatModifier(getIndirectFireModifier(true, this.spotterMoveMode(), this.spotterDeclaredAttacks())));
     readonly totalModifier = computed(() => calculateTargetTnModifier({
         unitType: this.unitType(),
         range: this.range(),
@@ -972,7 +970,6 @@ export class TnCalculatorDialogComponent {
         largeTarget: this.largeTarget(),
         spotterMoveMode: this.spotterMoveMode(),
         spotterDeclaredAttacks: this.spotterDeclaredAttacks(),
-        indirectFireBaseModifier: this.indirectFireBaseModifier,
     }, this.gameRules()));
     readonly signedTotal = computed(() => this.totalModifier() >= 0 ? `+${this.totalModifier()}` : `${this.totalModifier()}`);
     readonly woodsCaption = computed(() => {

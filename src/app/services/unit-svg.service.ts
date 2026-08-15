@@ -1292,7 +1292,6 @@ export class UnitSvgService {
             hitResolution,
             c3DegradationSource: c3Resolution.degradationSource,
             gameRules: this.unit.gameRules,
-            indirectFireBaseModifier: this.unit.rules.getSpottingModifier?.() ?? 1,
         });
         return text || null;
     }

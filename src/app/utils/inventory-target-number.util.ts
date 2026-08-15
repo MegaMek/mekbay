@@ -12,7 +12,7 @@ import type { UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules
 import type { InventoryControlDisplayData, InventoryControlGroupId, InventoryRangeKey } from './inventory-control.util';
 import type { TooltipLine } from '../components/tooltip/tooltip.component';
 import { aerospaceRangeBracket, aerospaceRangeLimits, effectiveAerospaceMaximumBracket, isRangeBracketWithinMaximum } from './aerospace-range.util';
-import { calculateTargetTnModifierBreakdown, type TnTargetModifierBreakdownEntry } from '../models/target-number-calculator.model';
+import { calculateTargetTnModifierBreakdown, TN_INDIRECT_FIRE_MODIFIER, type TnTargetModifierBreakdownEntry } from '../models/target-number-calculator.model';
 
 type EffectiveTargetModifierBreakdownEntry = TnTargetModifierBreakdownEntry & {
     ignored?: true;
@@ -56,7 +56,6 @@ export interface InventoryTargetNumberInput {
     hitResolution: ToHitResolution;
     c3DegradationSource?: C3DegradationSource;
     gameRules?: CBTGameRules;
-    indirectFireBaseModifier?: number;
 }
 
 export type InventoryTargetDisplay = Pick<InventoryControlDisplayData, InventoryRangeKey | 'min'>;
@@ -80,18 +79,16 @@ export function inventoryTargetEffectiveTnModifier(
     entry: MountedEquipment,
     selectedAmmo?: AmmoEquipment | null,
     gameRules: CBTGameRules = CORE_2026_GAME_RULES,
-    indirectFireBaseModifier = 1,
 ): number {
     const calculator = getEffectiveInventoryControlCalculatorState(target);
     if (!calculator) return target.tnModifier;
 
-    const rawBreakdown = targetCalculatorBreakdown(target, gameRules, indirectFireBaseModifier);
+    const rawBreakdown = targetCalculatorBreakdown(target, gameRules);
     const effectiveBreakdown = effectiveTargetCalculatorBreakdown(
         target,
         entry,
         selectedAmmo,
         gameRules,
-        indirectFireBaseModifier,
     );
     return target.tnModifier
         + sumTargetModifiers(effectiveBreakdown)
@@ -116,7 +113,6 @@ function targetGuidance(
 function targetCalculatorBreakdown(
     target: InventoryControlRuntimeTarget,
     gameRules: CBTGameRules,
-    indirectFireBaseModifier: number,
 ): TnTargetModifierBreakdownEntry[] {
     const calculator = getEffectiveInventoryControlCalculatorState(target);
     if (!calculator) return [];
@@ -124,7 +120,6 @@ function targetCalculatorBreakdown(
         ...calculator,
         unitType: target.unitType,
         range: target.distance,
-        indirectFireBaseModifier,
     }, gameRules);
 }
 
@@ -133,10 +128,9 @@ function effectiveTargetCalculatorBreakdown(
     entry: MountedEquipment,
     selectedAmmo: AmmoEquipment | null | undefined,
     gameRules: CBTGameRules,
-    indirectFireBaseModifier: number,
 ): EffectiveTargetModifierBreakdownEntry[] {
     const calculator = getEffectiveInventoryControlCalculatorState(target);
-    let breakdown = targetCalculatorBreakdown(target, gameRules, indirectFireBaseModifier)
+    let breakdown = targetCalculatorBreakdown(target, gameRules)
         .map(modifier => markTargetModifierIgnored(
             modifier,
             modifier.partialCoverSource === 'water' && !waterPartialCoverApplies(entry),
@@ -168,7 +162,7 @@ function effectiveTargetCalculatorBreakdown(
         }, 0);
         const indirectFireAdjustment = calculator.indirectFire
             && gameRules.semiGuidedIgnoresIndirectFireModifier
-            ? indirectFireBaseModifier
+            ? TN_INDIRECT_FIRE_MODIFIER
             : 0;
         const semiGuidedModifier = -(adjustment + indirectFireAdjustment);
         if (semiGuidedModifier !== 0) {
@@ -371,7 +365,6 @@ export function inventoryTargetNumberBreakdown(
         input.entry,
         input.selectedAmmo,
         gameRules,
-        input.indirectFireBaseModifier,
     );
     const terms: TooltipLine[] = [
         { label: skillLabel, value: skill.toString(), priority: SKILL_BREAKDOWN_PRIORITY }
@@ -387,7 +380,6 @@ export function inventoryTargetNumberBreakdown(
             input.entry,
             input.selectedAmmo,
             gameRules,
-            input.indirectFireBaseModifier ?? 1,
         ).map(entry => ({
             label: entry.label,
             value: formatInventoryTargetSignedModifier(entry.modifier),

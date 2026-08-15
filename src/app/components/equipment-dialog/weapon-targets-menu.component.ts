@@ -663,7 +663,6 @@ export class WeaponTargetsMenuComponent {
     readonly showC3Distance = input(false);
     readonly c3Degraded = input(false);
     readonly c3DegradationLabel = input<C3DegradationLabel>('DEGRADED');
-    readonly indirectFireBaseModifier = input(1);
     readonly hasSemiGuidedMissiles = input(false);
     readonly narcCapableWeaponLayers = input<NarcCapableWeaponLayers>(NO_NARC_CAPABLE_WEAPON_LAYERS);
     readonly opforAvailable = input(false);
@@ -879,11 +878,11 @@ export class WeaponTargetsMenuComponent {
 
         if (calculator.indirectFire) {
             const spotterMoveMode = calculator.spotterMoveMode ?? 'stationary';
-            const baseModifier = getIndirectFireModifier(true, 'stationary', false, this.indirectFireBaseModifier());
+            const baseModifier = getIndirectFireModifier(true, 'stationary', false);
             addModifier('Indirect', baseModifier);
             addModifier(
                 'Spotter',
-                getIndirectFireModifier(true, spotterMoveMode, calculator.spotterDeclaredAttacks, this.indirectFireBaseModifier()) - baseModifier,
+                getIndirectFireModifier(true, spotterMoveMode, calculator.spotterDeclaredAttacks) - baseModifier,
             );
         }
 

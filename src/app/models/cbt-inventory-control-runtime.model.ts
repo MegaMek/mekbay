@@ -132,7 +132,6 @@ export class CBTInventoryControlRuntime extends InventoryControlRuntimeState {
             ...calculator,
             unitType: sharedTarget.unitType,
             range: local.distance,
-            indirectFireBaseModifier: this.unit.rules.getSpottingModifier()
         }, this.unit.gameRules);
     }
 

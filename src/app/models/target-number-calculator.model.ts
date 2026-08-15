@@ -24,6 +24,7 @@ export const TN_LARGE_TARGET_MODIFIER = -1;
 export const TN_PRONE_ADJACENT = -2;
 export const TN_PRONE = 1;
 export const TN_IMMOBILE = -4;
+export const TN_INDIRECT_FIRE_MODIFIER = 1;
 
 export const TN_PRONE_ATTACKER = 2;
 export const TN_SKIDDING_ATTACKER = 1;
@@ -113,7 +114,6 @@ export interface TnTargetNumberCalculatorState {
 export interface TnTargetNumberCalculationInput extends TnTargetNumberCalculatorState {
     unitType?: TnTargetUnitType;
     range?: number;
-    indirectFireBaseModifier?: number;
 }
 
 export interface TnTargetModifierBreakdownEntry {
@@ -202,9 +202,9 @@ export function getTargetHexCoverModifier(cover: TnTargetHexCover | null | undef
     }
 }
 
-export function getIndirectFireModifier(indirectFire: boolean | null | undefined, spotterMoveMode: TnSpotterMoveMode | null | undefined, spotterDeclaredAttacks: boolean | null | undefined, baseModifier = 1): number {
+export function getIndirectFireModifier(indirectFire: boolean | null | undefined, spotterMoveMode: TnSpotterMoveMode | null | undefined, spotterDeclaredAttacks: boolean | null | undefined): number {
     if (!indirectFire) return 0;
-    return baseModifier
+    return TN_INDIRECT_FIRE_MODIFIER
         + getDefaultAttackerMovementModifier(spotterMoveMode ?? 'stationary')
         + (spotterDeclaredAttacks ? 1 : 0);
 }
@@ -301,7 +301,7 @@ export function calculateTargetTnModifierBreakdown(
     add('Large Target', gameRules.supportsLargeTarget && input.largeTarget ? TN_LARGE_TARGET_MODIFIER : 0);
 
     if (input.indirectFire) {
-        add('Indirect Fire', input.indirectFireBaseModifier ?? 1, {}, true);
+        add('Indirect Fire', TN_INDIRECT_FIRE_MODIFIER, {}, true);
         const spotterMovementModifier = getDefaultAttackerMovementModifier(input.spotterMoveMode ?? 'stationary');
         const spotterMoveLabel = input.spotterMoveMode
             ? `Spotter Moved (${input.spotterMoveMode[0].toUpperCase()}${input.spotterMoveMode.slice(1)})`

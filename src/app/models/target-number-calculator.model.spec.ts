@@ -11,6 +11,14 @@ describe('target number calculator rules profiles', () => {
         expect(getTargetProneModifier(2)).toBe(1);
     });
 
+    it('always applies the base indirect-fire modifier and leaves spotter attacks manual', () => {
+        expect(calculateTargetTnModifier({ indirectFire: true })).toBe(1);
+        expect(calculateTargetTnModifier({
+            indirectFire: true,
+            spotterDeclaredAttacks: true,
+        })).toBe(2);
+    });
+
     it('applies water partial cover at adjacent range', () => {
         expect(calculateTargetTnModifier({
             unitType: 'mek-biped',

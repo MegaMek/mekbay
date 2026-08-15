@@ -614,7 +614,6 @@ export class WeaponsEquipmentPanelComponent {
             hitResolution,
             c3DegradationSource,
             gameRules: this.unit().gameRules,
-            indirectFireBaseModifier: this.unit().rules.getSpottingModifier?.() ?? 1,
         };
     }
 

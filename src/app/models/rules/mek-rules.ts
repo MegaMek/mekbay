@@ -1255,10 +1255,6 @@ export class MekRules extends UnitTypeRulesBase {
         return this.canUseCommandConsole() ? 0 : 1;
     }
 
-    override getIndirectFireModifier(): number {
-        return this.canUseCommandConsole() ? 0 : 1;
-    }
-
     override getBaseGunnerySkill(): number {
         const gunnerCrewId = this.isTripodMek() ? 1 : 0;
         return this.getTargetNumberCrewSkill('gunnery', gunnerCrewId) ?? super.getBaseGunnerySkill();

@@ -348,9 +348,6 @@ export interface UnitTypeRules {
     /** Unit-type-specific attack modifier for spotting. */
     getSpottingModifier(): number;
 
-    /** Unit-type-specific attack modifier for indirect fire. */
-    getIndirectFireModifier(): number;
-
     /** Unit-type-specific gunnery skill for runtime target-number calculations. */
     getBaseGunnerySkill(): number;
 
@@ -656,10 +653,6 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     getSpottingModifier(): number {
-        return 1;
-    }
-
-    getIndirectFireModifier(): number {
         return 1;
     }
 
