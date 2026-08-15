@@ -18,15 +18,16 @@
 
     <!-- overlay -->
     @if (overlayVisible()) {
-    <div class="dice-overlay" [class.can-close]="canCloseOverlay()" (click)="onOverlayBackgroundClick()">
+    <div class="dice-overlay" [class.can-close]="canCloseOverlay()" [class.can-finish]="isRolling()"
+        (click)="onOverlayBackgroundClick()">
         <div class="dice-overlay-inner">
             @if (reserveOverlayResultSpace() || overlayResult()) {
             <div class="overlay-result" [class.pending]="!rollFinished() || !overlayResult()"
                 [class.compact]="compactOverlayResult()"
                 [class.success]="overlayResultTone() === 'success'"
-                [class.failed]="overlayResultTone() === 'failed'">
-                {{ rollFinished() ? overlayResult() : '' }}
-            </div>
+                [class.failed]="overlayResultTone() === 'failed'"
+                [mbAutoFitText]="rollFinished() ? overlayResult() : ''"
+                [mbAutoFitTextMinCharacters]="1">{{ rollFinished() ? overlayResult() : '' }}</div>
             }
             <div class="overlay-dice-row">
                 @for (value of diceResults(); let i = $index; track i) {
@@ -42,8 +43,10 @@
             @if (rollFinished() && !overlayResult()) {
             <div class="overlay-sum">{{ diceSum() }}</div>
             }
-            @if ((reserveOverlayResultSpace() || rollFinished()) && overlayCloseHint()) {
-            <div class="overlay-hint" [class.pending]="!rollFinished()">{{ overlayCloseHint() }}</div>
+            @if (isRolling() && overlayRollingHint()) {
+            <div class="overlay-hint">{{ overlayRollingHint() }}</div>
+            } @else if (rollFinished() && overlayCloseHint()) {
+            <div class="overlay-hint">{{ overlayCloseHint() }}</div>
             }
         </div>
     </div>

@@ -40,6 +40,7 @@ import { getAmmoControlEntryForCriticalSlot, setAmmoEntry } from '../../utils/am
 import { MEK_TORSO_LOCATIONS } from '../../models/entity/types';
 import { isLaserWithRiscModule, isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE, selectedRiscLaserMode } from '../../equipment-handlers/risc-laser-pulse-module.handler';
 import { ClusterTableDialogComponent } from '../cluster-table-dialog/cluster-table-dialog.component';
+import { hasUnitDefaultReferenceTables } from '../../utils/reference-table-definition';
 import { clusterTableForUnit } from '../../utils/record-sheet-reference-table';
 import { isCenterPanelTarget, isPointInCenterPanel, resolveCenterPanelCursorElements } from '../../utils/record-sheet-center-panel.util';
 
@@ -255,7 +256,7 @@ export class SvgInteractionService {
         const unitData = typeof unit.getUnit === 'function' ? unit.getUnit() : null;
         if (!unitData || !Array.isArray(unitData.comp)) return;
         const table = clusterTableForUnit(unitData);
-        if (table.clusterSizes.length === 0 && !table.hitLocationTable) return;
+        if (table.clusterSizes.length === 0 && !hasUnitDefaultReferenceTables(unitData)) return;
         const cursorElements = resolveCenterPanelCursorElements(svg);
         const previousCursors = cursorElements.map(element => element.style.cursor);
         cursorElements.forEach(element => element.style.cursor = 'pointer');
@@ -281,8 +282,6 @@ export class SvgInteractionService {
                     unit: unitData,
                     gameRules: currentUnit.gameRules,
                 },
-                width: 'min(920px, 96vw)',
-                maxHeight: '92vh',
             });
             this.centerPanelDialogRef = dialogRef;
             dialogRef.closed.subscribe(() => {

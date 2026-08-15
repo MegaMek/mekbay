@@ -1,170 +1,236 @@
-<div class="cluster-dialog glass framed-borders has-shadow">
+<div class="cluster-dialog glass framed-borders has-shadow" [class.history-open]="historyOpen()">
     <header class="dialog-header">
-        <div>
-            <h2>Reference Tables</h2>
-        </div>
+        <h2>Reference Tables</h2>
         <button type="button" class="close-button" aria-label="Close" (click)="close()">×</button>
     </header>
 
+    <nav #tableSelector class="table-selector" aria-label="Reference table type" (keydown.escape)="closeTableGroupMenu()">
+        <div class="table-selector-bar">
+            @for (group of tableGroups; track group.id) {
+            <div class="table-group-control">
+                <button
+                    type="button"
+                    class="table-group-button"
+                    [attr.data-table-group]="group.id"
+                    [class.selected]="selectedGroupId() === group.id"
+                    [attr.aria-pressed]="selectedGroupId() === group.id"
+                    [attr.aria-expanded]="group.options.length > 1 ? expandedGroupId() === group.id : null"
+                    [attr.aria-controls]="group.options.length > 1 ? 'table-subtypes-' + group.id : null"
+                    (click)="activateTableGroup(group)"
+                >
+                    <span>{{ tableGroupButtonLabel(group) }}</span>
+                    @if (group.options.length > 1) {
+                    <span class="selector-chevron" [class.expanded]="expandedGroupId() === group.id" aria-hidden="true"></span>
+                    }
+                </button>
+
+                @if (expandedGroupId() === group.id) {
+                <div class="table-subtype-menu" [id]="'table-subtypes-' + group.id">
+                    @for (option of group.options; track option.id) {
+                    <button
+                        type="button"
+                        class="table-subtype-button"
+                        [attr.data-table-option]="option.id"
+                        [class.selected]="selectedOptionId() === option.id"
+                        [attr.aria-pressed]="selectedOptionId() === option.id"
+                        (click)="selectTableOption(option.id)"
+                    >{{ option.label }}</button>
+                    }
+                </div>
+                }
+            </div>
+            }
+        </div>
+    </nav>
+
     <div #dialogContent class="dialog-content" [class.layout-pending]="!layoutResolved()">
-        @if (useCombinedTable()) {
-        <section class="table-section">
-            <h3>HIT LOCATIONS &amp; CLUSTER TABLE</h3>
+        @for (table of displayedTables(); track table.key) {
+        <section
+            class="table-section"
+            [class.compact-table-section]="table.layout === 'compact'"
+            [attr.data-table-section]="table.key"
+        >
+            <h3>{{ table.title }}</h3>
             <div class="table-scroll">
-                <table #combinedTable class="combined-table">
-                    <thead><tr>
-                        <th class="roll-column" scope="col">2d6 roll</th>
-                        <th scope="col" (click)="rollLocationColumn('leftSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('leftSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('leftSide'))"><button type="button" class="table-roll-button">LS</button></th>
-                        <th scope="col" (click)="rollLocationColumn('frontRear')" (pointerenter)="setHoveredColumn($event, locationColumnKey('frontRear'))" (pointerleave)="clearHoveredColumn(locationColumnKey('frontRear'))"><button type="button" class="table-roll-button">F/R</button></th>
-                        <th scope="col" (click)="rollLocationColumn('rightSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('rightSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('rightSide'))"><button type="button" class="table-roll-button">RS</button></th>
-                        @for (size of clusterSizes; track size) {
-                        <th scope="col" (click)="rollClusterColumn(size)" (pointerenter)="setHoveredColumn($event, clusterColumnKey(size))" (pointerleave)="clearHoveredColumn(clusterColumnKey(size))"><button type="button" class="table-roll-button cluster">{{ size }}</button></th>
+                <table
+                    #referenceTable
+                    class="reference-table"
+                    [class.rollable-table]="table.dice"
+                    [class.combined-table]="table.key === tableView().combinedTable?.key"
+                    [attr.data-table-key]="table.key"
+                >
+                    <thead>
+                        @if (table.headerGroups?.length) {
+                        <tr>
+                            @if (table.dice) {
+                            <th class="roll-column" scope="col" rowspan="2">{{ table.rollLabel }}</th>
+                            }
+                            @for (group of table.headerGroups; track $index) {
+                            <th class="header-group" scope="colgroup" [attr.colspan]="group.span">{{ group.label }}</th>
+                            }
+                        </tr>
+                        <tr>
+                            @for (column of table.columns; track column.key) {
+                            <th
+                                scope="col"
+                                [class.rollable-column]="column.rollable"
+                                (click)="rollTableColumn(table, column)"
+                                (pointerenter)="setHoveredColumn($event, table, column)"
+                                (pointerleave)="clearHoveredColumn(table, column)"
+                            >
+                                @if (column.rollable) {
+                                <button
+                                    type="button"
+                                    class="bt-button tiny table-roll-button roll-header-button"
+                                    [class.selected]="rolledResult()?.tableKey === table.key && rolledResult()?.columnKey === column.key"
+                                    [attr.aria-label]="'Roll ' + column.label + ' on ' + (table.shortTitle ?? table.title)"
+                                    [attr.title]="'Roll ' + column.label"
+                                >{{ column.label }}</button>
+                                } @else {
+                                <span class="table-header-label">{{ column.label }}</span>
+                                }
+                            </th>
+                            }
+                        </tr>
+                        } @else {
+                        <tr>
+                            @if (table.dice) {
+                            <th class="roll-column" scope="col">{{ table.rollLabel }}</th>
+                            }
+                            @for (column of table.columns; track column.key) {
+                            <th
+                                scope="col"
+                                [class.rollable-column]="column.rollable"
+                                (click)="rollTableColumn(table, column)"
+                                (pointerenter)="setHoveredColumn($event, table, column)"
+                                (pointerleave)="clearHoveredColumn(table, column)"
+                            >
+                                @if (column.rollable) {
+                                <button
+                                    type="button"
+                                    class="bt-button tiny table-roll-button roll-header-button"
+                                    [class.selected]="rolledResult()?.tableKey === table.key && rolledResult()?.columnKey === column.key"
+                                    [attr.aria-label]="'Roll ' + column.label + ' on ' + (table.shortTitle ?? table.title)"
+                                    [attr.title]="'Roll ' + column.label"
+                                >{{ column.label }}</button>
+                                } @else {
+                                <span class="table-header-label">{{ column.label }}</span>
+                                }
+                            </th>
+                            }
+                        </tr>
                         }
-                    </tr></thead>
+                    </thead>
                     <tbody>
-                        @for (row of locationRows; track row.roll; let rowIndex = $index) {
-                        <tr [class.rolled-row-highlight]="isLocationRollHighlighted(rowIndex + 2) || isClusterRollHighlighted(rowIndex + 2)">
-                            <td>{{ row.roll }}</td>
-                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('leftSide')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'leftSide')" (click)="rollLocationColumn('leftSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('leftSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('leftSide'))"><button type="button" class="table-roll-button" tabindex="-1">{{ row.leftSide }}</button></td>
-                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('frontRear')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'frontRear')" (click)="rollLocationColumn('frontRear')" (pointerenter)="setHoveredColumn($event, locationColumnKey('frontRear'))" (pointerleave)="clearHoveredColumn(locationColumnKey('frontRear'))"><button type="button" class="table-roll-button" tabindex="-1">{{ row.frontRear }}</button></td>
-                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('rightSide')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'rightSide')" (click)="rollLocationColumn('rightSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('rightSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('rightSide'))"><button type="button" class="table-roll-button" tabindex="-1">{{ row.rightSide }}</button></td>
-                            @for (size of clusterSizes; track size; let clusterIndex = $index) {
-                            <td [class.column-hovered]="hoveredColumnKey() === clusterColumnKey(size)" [class.rolled-highlight]="isClusterCellHighlighted(rowIndex + 2, size)" (click)="rollClusterColumn(size)" (pointerenter)="setHoveredColumn($event, clusterColumnKey(size))" (pointerleave)="clearHoveredColumn(clusterColumnKey(size))"><button type="button" class="table-roll-button cluster" tabindex="-1">{{ clusterRows[rowIndex][clusterIndex + 1] }}</button></td>
+                        @for (row of table.rows; track row.key) {
+                        <tr [class.rolled-row-highlight]="isRowHighlighted(table, row)">
+                            @if (table.dice) {
+                            <td class="roll-column">{{ row.roll?.label }}</td>
+                            }
+                            @for (column of table.columns; track column.key) {
+                            @let cell = row.cells[column.key];
+                            @if (!isCellContinuation(cell)) {
+                            <td
+                                [attr.rowspan]="cellRowSpan(cell)"
+                                [class.column-hovered]="hoveredColumnKey() === tableColumnKey(table, column)"
+                                [class.rolled-highlight]="isCellHighlighted(table, row, column)"
+                                [class.rollable-cell]="column.rollable"
+                                (click)="rollTableColumn(table, column)"
+                                (pointerenter)="setHoveredColumn($event, table, column)"
+                                (pointerleave)="clearHoveredColumn(table, column)"
+                            >
+                                @if (column.rollable) {
+                                <button type="button" class="table-roll-button" tabindex="-1">{{ cellText(cell) }}</button>
+                                } @else {
+                                {{ cellText(cell) }}
+                                }
+                            </td>
+                            }
                             }
                         </tr>
                         }
                     </tbody>
                 </table>
             </div>
-            <div class="note">* A result of 2 may inflict a critical hit.</div>
-            @for (note of hitLocationNotes; track note.id) {<div class="note">{{ note.text }}</div>}
-            @for (note of clusterNotes; track note.id) {<div class="note">{{ note.text }}</div>}
-        </section>
-        } @else {
-        @if (locationRows.length) {
-        <section class="table-section">
-            <h3>HIT LOCATIONS</h3>
-            <div class="table-scroll">
-                <table class="hit-location-table">
-                    <thead>
-                        <tr>
-                            <th class="roll-column">2d6 roll</th>
-                            <th (click)="rollLocationColumn('leftSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('leftSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('leftSide'))"><button type="button" class="table-roll-button">LS</button></th>
-                            <th (click)="rollLocationColumn('frontRear')" (pointerenter)="setHoveredColumn($event, locationColumnKey('frontRear'))" (pointerleave)="clearHoveredColumn(locationColumnKey('frontRear'))"><button type="button" class="table-roll-button">F/R</button></th>
-                            <th (click)="rollLocationColumn('rightSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('rightSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('rightSide'))"><button type="button" class="table-roll-button">RS</button></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @for (row of locationRows; track row.roll; let rowIndex = $index) {
-                        <tr [class.rolled-row-highlight]="isLocationRollHighlighted(rowIndex + 2)">
-                            <td>{{ row.roll }}</td>
-                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('leftSide')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'leftSide')" (click)="rollLocationColumn('leftSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('leftSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('leftSide'))"><button type="button" class="table-roll-button" tabindex="-1">{{ row.leftSide }}</button></td>
-                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('frontRear')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'frontRear')" (click)="rollLocationColumn('frontRear')" (pointerenter)="setHoveredColumn($event, locationColumnKey('frontRear'))" (pointerleave)="clearHoveredColumn(locationColumnKey('frontRear'))"><button type="button" class="table-roll-button" tabindex="-1">{{ row.frontRear }}</button></td>
-                            <td [class.column-hovered]="hoveredColumnKey() === locationColumnKey('rightSide')" [class.rolled-highlight]="isLocationCellHighlighted(rowIndex + 2, 'rightSide')" (click)="rollLocationColumn('rightSide')" (pointerenter)="setHoveredColumn($event, locationColumnKey('rightSide'))" (pointerleave)="clearHoveredColumn(locationColumnKey('rightSide'))"><button type="button" class="table-roll-button" tabindex="-1">{{ row.rightSide }}</button></td>
-                        </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-            <div class="note">* A result of 2 may inflict a critical hit.</div>
-            @for (note of hitLocationNotes; track note.id) {
-            <div class="note">{{ note.text }}</div>
+            @for (note of table.notes ?? []; track $index) {
+            <div class="note">{{ note }}</div>
             }
         </section>
         }
 
-        @if (clusterSizes.length) {
-        <section class="table-section">
-            <h3>CLUSTER TABLE</h3>
-            <div class="table-scroll">
-                <table class="cluster-hit-table">
-                    <thead>
-                        <tr>
-                            <th class="roll-column">2d6 roll</th>@for (size of clusterSizes; track size) {<th (click)="rollClusterColumn(size)" (pointerenter)="setHoveredColumn($event, clusterColumnKey(size))" (pointerleave)="clearHoveredColumn(clusterColumnKey(size))"><button type="button" class="table-roll-button cluster">{{ size }}</button></th>}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @for (row of clusterRows; track row[0]; let rowIndex = $index) {
-                        <tr [class.rolled-row-highlight]="isClusterRollHighlighted(rowIndex + 2)">@for (value of row; track $index; let columnIndex = $index) {
-                            @if (columnIndex === 0) {
-                            <td>{{ value }}</td>
-                            } @else {
-                            <td [class.column-hovered]="hoveredColumnKey() === clusterColumnKey(clusterSizes[columnIndex - 1])" [class.rolled-highlight]="isClusterCellHighlighted(rowIndex + 2, clusterSizes[columnIndex - 1])" (click)="rollClusterColumn(clusterSizes[columnIndex - 1])" (pointerenter)="setHoveredColumn($event, clusterColumnKey(clusterSizes[columnIndex - 1]))" (pointerleave)="clearHoveredColumn(clusterColumnKey(clusterSizes[columnIndex - 1]))"><button type="button" class="table-roll-button cluster" tabindex="-1">{{ value }}</button></td>
-                            }
-                        }</tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-            @for (note of clusterNotes; track note.id) {
-            <div class="note">{{ note.text }}</div>
-            }
-        </section>
+        @if (hasRollableTable()) {
+        <p class="roll-instructions">Click a highlighted column to roll.</p>
         }
-        }
-
-        @if (physicalRows.length) {
-        <section class="table-section physical-table-section">
-            <h3>PUNCH &amp; KICK LOCATION TABLE</h3>
-            <div class="table-scroll">
-                <table class="physical-location-table">
-                    <thead>
-                        <tr>
-                            <th class="roll-column" scope="col" rowspan="2">1d6 roll</th>
-                            <th scope="colgroup" colspan="3">PUNCH</th>
-                            <th scope="colgroup" colspan="3">KICK</th>
-                        </tr>
-                        <tr>
-                            @for (column of physicalColumns; track column.key) {
-                            <th scope="col" (click)="rollPhysicalColumn(column.key)" (pointerenter)="setHoveredColumn($event, physicalColumnKey(column.key))" (pointerleave)="clearHoveredColumn(physicalColumnKey(column.key))"><button type="button" class="table-roll-button">{{ column.label }}</button></th>
-                            }
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @for (row of physicalRows; track row.roll) {
-                        <tr [class.rolled-row-highlight]="isPhysicalRollHighlighted(row.roll)">
-                            <td>{{ row.roll }}</td>
-                            @for (column of physicalColumns; track column.key) {
-                            @if (!column.key.startsWith('kick') || (row.roll - 1) % 3 === 0) {
-                            <td [attr.rowspan]="column.key.startsWith('kick') ? 3 : null" [class.column-hovered]="hoveredColumnKey() === physicalColumnKey(column.key)" [class.rolled-row-highlight]="column.key.startsWith('kick') && isPhysicalKickGroupHighlighted(row.roll)" [class.rolled-highlight]="isPhysicalCellHighlighted(row.roll, column.key)" (click)="rollPhysicalColumn(column.key)" (pointerenter)="setHoveredColumn($event, physicalColumnKey(column.key))" (pointerleave)="clearHoveredColumn(physicalColumnKey(column.key))"><button type="button" class="table-roll-button" tabindex="-1">{{ row[column.key] }}</button></td>
-                            }
-                            }
-                        </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </section>
-        }
-
-        <p class="roll-instructions">Click a column to roll.</p>
     </div>
 
+    @if (historyOpen()) {
+    <section class="roll-history-panel" aria-label="Roll history">
+        <header>
+            <h3>ROLL HISTORY</h3>
+            <div class="roll-counter">
+                <span>#{{ rollCount() }}</span>
+                <button type="button" class="bt-button square-small reset-history-button" (click)="resetHistory()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                        <path d="M3 3v5h5"></path>
+                    </svg>
+                </button>
+            </div>
+        </header>
+        <div #rollHistoryList class="roll-history-list" aria-live="polite">
+            @if (rollHistory().length === 0) {
+            <p class="empty-history">No rolls yet.</p>
+            } @else {
+            @for (entry of rollHistory(); track entry.id) {
+            <article class="history-entry">
+                <span class="history-index">#{{ entry.id }}</span>
+                <span class="history-source">{{ entry.table }} · {{ entry.column }}</span>
+                <strong class="history-result">{{ entry.result }}</strong>
+                <small class="history-roll">
+                    {{ entry.dice }}
+                    @if (entry.faces.length) { [{{ entry.faces.join(' + ') }}] }
+                    = {{ entry.roll }}
+                </small>
+            </article>
+            }
+            }
+        </div>
+    </section>
+    }
+
     <dice-roller
-        #roller
+        #twoDiceRoller
         [diceCount]="2"
         [diceSides]="6"
         [showInline]="false"
         [showOverlay]="true"
         [reserveOverlayResultSpace]="true"
-        [overlayResult]="rolledResult()?.column?.table !== 'physical' ? rolledResult()?.value ?? null : null"
+        [overlayResult]="overlayResultFor(2)"
         overlayCloseHint="Click to return to the table"
-        (finished)="onRollFinished($event)"
+        (finished)="onRollFinished($event, 2)"
     />
 
     <dice-roller
-        #physicalRoller
+        #oneDieRoller
         [diceCount]="1"
         [diceSides]="6"
         [showInline]="false"
         [showOverlay]="true"
         [reserveOverlayResultSpace]="true"
-        [overlayResult]="rolledResult()?.column?.table === 'physical' ? rolledResult()?.value ?? null : null"
+        [overlayResult]="overlayResultFor(1)"
         overlayCloseHint="Click to return to the table"
-        (finished)="onRollFinished($event)"
+        (finished)="onRollFinished($event, 1)"
     />
 
     <footer class="dialog-buttons">
         <button type="button" class="bt-button" (click)="close()">DISMISS</button>
+        <button
+            type="button"
+            class="bt-button history-button"
+            [class.active]="historyOpen()"
+            [attr.aria-expanded]="historyOpen()"
+            [attr.aria-label]="historyOpen() ? 'Hide roll history' : 'Show roll history'"
+            (click)="toggleHistory()"
+        >#{{ rollCount() }}</button>
     </footer>
 </div>

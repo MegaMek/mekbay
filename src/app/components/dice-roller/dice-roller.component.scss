@@ -57,38 +57,50 @@
 .dice-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.45);
+    background: rgba(0,0,0,0.7);
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: clamp(.5rem, 2vmin, 1rem);
+    box-sizing: border-box;
+    overflow: auto;
+    overscroll-behavior: contain;
     z-index: 9999;
 
-    &.can-close {
+    &.can-close,
+    &.can-finish {
         cursor: pointer;
     }
 }
 
 .dice-overlay-inner {
     background: transparent;
-    padding: 1rem;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    margin: auto;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1rem;
+    gap: clamp(.5rem, 2vmin, 1rem);
 }
 
 .overlay-result {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     min-height: 1em;
     color: var(--bt-yellow);
-    font-size: 7rem;
+    font-size: clamp(2.5rem, 40vmin, 7rem);
     font-weight: 800;
     line-height: 1;
     text-align: center;
     text-shadow: 0 3px 12px #000;
+    overflow-wrap: anywhere;
 
     &.compact {
         height: 1em;
-        font-size: clamp(2.5rem, 12vw, 4rem);
+        font-size: clamp(2.5rem, 12vmin, 4rem);
         white-space: nowrap;
     }
 
@@ -158,11 +170,6 @@
 
 .overlay-hint {
     min-height: 1em;
-    color: #fff;
+    color: var(--text-color-secondary);
     font-size: .85rem;
-    opacity: .75;
-
-    &.pending {
-        visibility: hidden;
-    }
 }
