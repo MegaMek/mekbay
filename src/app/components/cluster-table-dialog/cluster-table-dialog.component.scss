@@ -7,7 +7,7 @@
 }
 
 .cluster-dialog.history-open {
-    height: min(900px, 92vh);
+    height: 92vh;
 }
 
 .dialog-header {
@@ -331,7 +331,8 @@ td.rolled-highlight {
 
 .roll-history-panel {
     display: flex;
-    flex: 0 0 50%;
+    flex: 0 0 auto;
+    max-height: 40%;
     flex-direction: column;
     min-height: 0;
     border-top: 1px solid var(--border-color);
@@ -367,6 +368,7 @@ td.rolled-highlight {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: .2rem .65rem;
 }
 
@@ -389,6 +391,10 @@ td.rolled-highlight {
 
     strong {
         color: var(--bt-yellow);
+    }
+
+    &:last-of-type {
+        border-bottom: none;
     }
 
 }
