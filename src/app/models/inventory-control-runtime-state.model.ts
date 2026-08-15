@@ -4,12 +4,15 @@
 
 import { computed, signal } from '@angular/core';
 import type { MountedEquipment } from './mounted-equipment.model';
+import type { AmmoEquipment } from './equipment.model';
+import type { CBTGameRules } from './rules/game-rules';
 import { resolveTnTargetWaterState, type TnTargetNumberCalculatorState, type TnTargetUnitType } from './target-number-calculator.model';
 
 export type InventoryControlRuntimeRangeKey = 'short' | 'medium' | 'long' | 'extreme';
 
 export const INVENTORY_CONTROL_TARGET_MAX_COUNT = 12;
 export const INVENTORY_CONTROL_INDIRECT_FIRE_TARGET_REASON = 'Requires an indirect-fire weapon';
+export const INVENTORY_CONTROL_INDIRECT_FIRE_AMMO_TARGET_REASON = 'Selected ammunition cannot fire indirectly at this target';
 export const INVENTORY_CONTROL_WATER_LAYER_TARGET_REASON = 'Weapon and target are in different water layers';
 export const INVENTORY_CONTROL_TARGET_COLORS = [
     '#c0f7ff',
@@ -60,14 +63,18 @@ export function inventoryControlTargetUsesIndirectFire(
 
 export function inventoryControlEntryAllowsTarget(
     entry: MountedEquipment,
-    target: Pick<InventoryControlRuntimeTarget, 'manualTnModifier' | 'tnCalculator' | 'unitType'>
+    target: Pick<InventoryControlRuntimeTarget, 'manualTnModifier' | 'tnCalculator' | 'unitType'>,
+    selectedAmmo: AmmoEquipment | null = entry.owner.getInventoryControlSelectedAmmo(entry),
+    gameRules: CBTGameRules = entry.owner.gameRules,
 ): boolean {
-    return inventoryControlEntryTargetDisabledReason(entry, target) === null;
+    return inventoryControlEntryTargetDisabledReason(entry, target, selectedAmmo, gameRules) === null;
 }
 
 export function inventoryControlEntryTargetDisabledReason(
     entry: MountedEquipment,
-    target: Pick<InventoryControlRuntimeTarget, 'manualTnModifier' | 'tnCalculator' | 'unitType'>
+    target: Pick<InventoryControlRuntimeTarget, 'manualTnModifier' | 'tnCalculator' | 'unitType'>,
+    selectedAmmo: AmmoEquipment | null = entry.owner.getInventoryControlSelectedAmmo(entry),
+    gameRules: CBTGameRules = entry.owner.gameRules,
 ): string | null {
     const calculator = getEffectiveInventoryControlCalculatorState(target);
     if (!calculator) return null;
@@ -80,6 +87,12 @@ export function inventoryControlEntryTargetDisabledReason(
     if ((targetWaterState.submerged && !weaponUnderwater)
         || (weaponUnderwater && !targetWaterState.partiallyUnderwater && !targetWaterState.submerged)) {
         return INVENTORY_CONTROL_WATER_LAYER_TARGET_REASON;
+    }
+    if (calculator.indirectFire && !gameRules.canFireIndirectly(entry, selectedAmmo, {
+        weaponUnderwater,
+        targetHasUnderwaterLayer: calculator.waterDepth !== undefined,
+    })) {
+        return INVENTORY_CONTROL_INDIRECT_FIRE_AMMO_TARGET_REASON;
     }
     return null;
 }

@@ -305,6 +305,71 @@ describe('game rules', () => {
         });
     });
 
+    describe('indirect-fire ammunition legality', () => {
+        const dryContext = { weaponUnderwater: false, targetHasUnderwaterLayer: false } as const;
+        const underwaterContext = { weaponUnderwater: true, targetHasUnderwaterLayer: true } as const;
+        const launcher = (ammoType: 'LRM' | 'MML', indirect = true) => new MountedEquipment({
+            owner: owner(),
+            id: `indirect-${entryId++}`,
+            name: 'Launcher',
+            equipment: new WeaponEquipment({
+                id: `Launcher-${entryId++}`,
+                name: 'Launcher',
+                type: 'weapon',
+                flags: indirect ? ['F_INDIRECT_FIRE'] : [],
+                weapon: { ammoType, rackSize: ammoType === 'MML' ? 9 : 10 },
+            }),
+        });
+        const ammunition = (
+            id: string,
+            ammoType: 'LRM' | 'MML',
+            flags: EquipmentFlag[] = [],
+            torpedo = false,
+        ) => new AmmoEquipment({
+            id,
+            name: id,
+            shortName: id,
+            type: 'ammo',
+            flags,
+            ammo: {
+                type: ammoType,
+                rackSize: ammoType === 'MML' ? 9 : 10,
+                shots: 12,
+                munitionType: torpedo ? ['M_TORPEDO'] : [],
+            },
+        });
+
+        it('requires an indirect launcher and the LRM profile for MML ammunition', () => {
+            const standardLrm = ammunition('LRM Ammo', 'LRM');
+            const mmlLrm = ammunition('MML LRM Ammo', 'MML', ['F_MML_LRM']);
+            const mmlSrm = ammunition('MML SRM Ammo', 'MML', ['F_MML_SRM']);
+
+            expect(CORE_2026_GAME_RULES.canFireIndirectly(launcher('LRM', false), standardLrm, dryContext)).toBeFalse();
+            expect(CORE_2026_GAME_RULES.canFireIndirectly(launcher('LRM'), standardLrm, dryContext)).toBeTrue();
+            expect(CORE_2026_GAME_RULES.canFireIndirectly(launcher('MML'), mmlLrm, dryContext)).toBeTrue();
+            expect(CORE_2026_GAME_RULES.canFireIndirectly(launcher('MML'), mmlSrm, dryContext)).toBeFalse();
+            expect(TW_GAME_RULES.canFireIndirectly(launcher('MML'), mmlLrm, dryContext)).toBeTrue();
+            expect(TW_GAME_RULES.canFireIndirectly(launcher('MML'), mmlSrm, dryContext)).toBeFalse();
+        });
+
+        it('forbids Core torpedo indirect fire and requires both TW endpoints underwater', () => {
+            const lrm = launcher('LRM');
+            const torpedo = ammunition('LRM Torpedo Ammo', 'LRM', [], true);
+
+            expect(CORE_2026_GAME_RULES.canFireIndirectly(lrm, torpedo, underwaterContext)).toBeFalse();
+            expect(TW_GAME_RULES.canFireIndirectly(lrm, torpedo, dryContext)).toBeFalse();
+            expect(TW_GAME_RULES.canFireIndirectly(lrm, torpedo, {
+                weaponUnderwater: true,
+                targetHasUnderwaterLayer: false,
+            })).toBeFalse();
+            expect(TW_GAME_RULES.canFireIndirectly(lrm, torpedo, {
+                weaponUnderwater: false,
+                targetHasUnderwaterLayer: true,
+            })).toBeFalse();
+            expect(TW_GAME_RULES.canFireIndirectly(lrm, torpedo, underwaterContext)).toBeTrue();
+        });
+    });
+
     it('reduces Core 2026 MRM hit modifiers without changing TW values', () => {
         const mrm = new WeaponEquipment({
             id: 'MRM10', name: 'MRM 10', type: 'weapon',

@@ -4757,7 +4757,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(linkedCritGroup.classList.contains('locationDestroyed')).toBeTrue();
     });
 
-    it('reports active NARC locations by water layer and ignores destroyed locations', () => {
+    it('keeps NARC active through pending location destruction and removes it when committed', () => {
         const forceUnit = createForceUnit();
         initialize(forceUnit, createMekDamageSvg());
         forceUnit.locations!.armor.set('LL', { loc: 'LL', rear: false, points: 1 });
@@ -4776,9 +4776,15 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         forceUnit.setCondition('prone', false);
         forceUnit.addInternalHits('LL', forceUnit.getInternalPoints('LL'));
+        expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: true, underwater: true });
+
+        forceUnit.endPhase();
         expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: true, underwater: false });
 
         forceUnit.setLocationCondition('LA', 'blown-off', true);
+        expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: true, underwater: false });
+
+        forceUnit.endPhase();
         expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: false, underwater: false });
     });
 

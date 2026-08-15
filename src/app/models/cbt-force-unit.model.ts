@@ -845,7 +845,7 @@ export class CBTForceUnit extends ForceUnit {
         let aboveWater = false;
         let underwater = false;
         for (const loc of Object.keys(this.state.locations())) {
-            if (!this.getLocationCondition(loc, 'narc') || this.isInternalLocPhysicallyDestroyed(loc)) continue;
+            if (!this.getLocationCondition(loc, 'narc') || this.isInternalLocCommittedPhysicallyDestroyed(loc)) continue;
             if (this.isLocationSubmerged(loc)) underwater = true;
             else aboveWater = true;
         }

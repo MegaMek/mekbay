@@ -1825,6 +1825,55 @@ describe('WeaponsEquipmentPanelComponent', () => {
         fixture.destroy();
     });
 
+    it('blocks firing when an MML with an indirect target is switched from LRM to SRM ammo', async () => {
+        const mml = entry({
+            id: 'mml',
+            equipment: weapon('MML 5', 'MML', 5, [6, 7, 14, 21], 0, 3),
+            el: svgEntry(`
+                <g>
+                    <g class="name"><text>MML 5</text></g>
+                    <text class="heat">3</text>
+                    <g class="alternativeMode selected" mode="LRM"><g class="name"><text>LRM</text></g><text class="range_short">7</text><text class="range_medium">14</text><text class="range_long">21</text></g>
+                    <g class="alternativeMode" mode="SRM"><g class="name"><text>SRM</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>
+                </g>
+            `),
+        });
+        mml.equipment!.flags.add('F_INDIRECT_FIRE');
+        const lrmAmmo = ammo('MML 5 LRM Ammo', 'MML', 5, ['M_STANDARD'], ['F_MML_LRM']);
+        const srmAmmo = ammo('MML 5 SRM Ammo', 'MML', 5, ['M_STANDARD'], ['F_MML_SRM']);
+        const lrmBin = entry({ id: 'lrm-ammo', equipment: lrmAmmo, totalAmmo: 10, consumed: 0, locations: new Set(['RT']) });
+        const srmBin = entry({ id: 'srm-ammo', equipment: srmAmmo, totalAmmo: 10, consumed: 0, locations: new Set(['RT']) });
+        const { component, unit, dialogsService, turnState } = createComponent(
+            [mml, lrmBin, srmBin],
+            { [lrmAmmo.internalName]: lrmAmmo, [srmAmmo.internalName]: srmAmmo },
+        );
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 8, tnCalculator: { indirectFire: true } });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+
+        expect(component.targetState(row).invalidTarget).toBeFalse();
+
+        await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'SRM', label: 'SRM' });
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(component.targetState(row)).toEqual(jasmine.objectContaining({
+            invalidTarget: true,
+            invalidTargetReason: 'type',
+            targetNumberText: 'X',
+        }));
+
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(dialogsService.showError).toHaveBeenCalledWith(
+            'MML 5 cannot fire at its selected target.',
+            'Invalid Target'
+        );
+        expect(lrmBin.consumed).toBe(0);
+        expect(srmBin.consumed).toBe(0);
+        expect(turnState.addFiredHeat).not.toHaveBeenCalled();
+    });
+
     it('disables an indirect target for ranged select all when any included weapon is direct-fire only', () => {
         const direct = entry({ id: 'direct', equipment: weapon('direct'), el: svgEntry('<g><g class="name"><text>Direct</text></g></g>') });
         const indirectEquipment = weapon('indirect');

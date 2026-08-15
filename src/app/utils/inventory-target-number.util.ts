@@ -307,7 +307,12 @@ export function inventoryTargetNumberState(
     input: InventoryTargetNumberInput,
     rangeSelection: InventoryTargetRangeSelection | null = inventoryTargetRangeSelection(input)
 ): InventoryTargetNumberState {
-    if (input.target && !inventoryControlEntryAllowsTarget(input.entry, input.target)) {
+    if (input.target && !inventoryControlEntryAllowsTarget(
+        input.entry,
+        input.target,
+        input.selectedAmmo ?? null,
+        input.gameRules ?? CORE_2026_GAME_RULES,
+    )) {
         return { text: 'X', breakdown: null, rangeSelection };
     }
     if (!rangeSelection) return { text: '', breakdown: null, rangeSelection };

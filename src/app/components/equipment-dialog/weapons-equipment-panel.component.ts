@@ -565,7 +565,12 @@ export class WeaponsEquipmentPanelComponent {
         const reasons: Record<InventoryControlRuntimeTargetId, string> = {};
         for (const target of this.targets()) {
             const reason = rows
-                .map(row => inventoryControlEntryTargetDisabledReason(row.entry, target))
+                .map(row => inventoryControlEntryTargetDisabledReason(
+                    row.entry,
+                    target,
+                    this.resolvedSelectedAmmoOption(row)?.ammo ?? null,
+                    this.unit().gameRules,
+                ))
                 .find((value): value is string => value !== null);
             if (reason) reasons[target.id] = reason;
         }
@@ -573,7 +578,12 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     private canTarget(row: InventoryControlRow, target: InventoryControlRuntimeTarget): boolean {
-        return inventoryControlEntryAllowsTarget(row.entry, target);
+        return inventoryControlEntryAllowsTarget(
+            row.entry,
+            target,
+            this.resolvedSelectedAmmoOption(row)?.ammo ?? null,
+            this.unit().gameRules,
+        );
     }
 
     private targetNumberTextForTarget(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): string {
@@ -781,6 +791,14 @@ export class WeaponsEquipmentPanelComponent {
         const unavailableRow = selectedRows.find(row => row.disabled || row.destroyed);
         if (unavailableRow) {
             await this.context().commandContext.dialogsService.showError(`${unavailableRow.display.name} cannot be fired.`, 'Weapon Unavailable');
+            return;
+        }
+        const invalidTargetRow = selectedRows.find(row => this.targetState(row).invalidTarget);
+        if (invalidTargetRow) {
+            await this.context().commandContext.dialogsService.showError(
+                `${invalidTargetRow.display.name} cannot fire at its selected target.`,
+                'Invalid Target'
+            );
             return;
         }
 

@@ -4,10 +4,11 @@
 
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { AmmoMunitionFlag } from '../ammo-munition-flags.type';
-import { AmmoEquipment, Equipment, WeaponEquipment, type RangeBrackets } from '../equipment.model';
+import { AmmoEquipment, Equipment, isTorpedoAmmo, WeaponEquipment, type RangeBrackets } from '../equipment.model';
 import type { EquipmentRegistry } from '../equipment-lookup';
 import type { InventoryControlRuntimeTarget } from '../inventory-control-runtime-state.model';
 import { MountedEquipment } from '../mounted-equipment.model';
+import { resolveAmmoWeaponProfile } from '../ammo-weapon-profile.model';
 
 export type HitModifier = number | 'Vs' | '*' | null;
 
@@ -100,6 +101,11 @@ interface AmmoMunitionRule {
     readonly baseAmmoBvMultiplier?: number;
 }
 
+export interface IndirectFireContext {
+    readonly weaponUnderwater: boolean;
+    readonly targetHasUnderwaterLayer: boolean;
+}
+
 export function separateHeatFireModifier(resolution: ToHitResolution): ToHitHeatSeparation {
     const heatFireModifier = resolution.modifierBreakdown.reduce(
         (total, entry) => total + (entry.kind === 'heat' ? entry.modifier : 0),
@@ -134,6 +140,23 @@ export abstract class CBTGameRules {
     abstract resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution;
     abstract resolveC3TargetingModifier(degradationSource: C3DegradationSource, rangeBracketImprovement: number): ToHitModifierBreakdownEntry | null;
     abstract getSemiGuidedAdjustment(modifierValue: number, source: SemiGuidedAdjustmentSource): number;
+    protected abstract canFireTorpedoesIndirectly(context: IndirectFireContext): boolean;
+
+    canFireIndirectly(
+        entry: MountedEquipment,
+        selectedAmmo: AmmoEquipment | null,
+        context: IndirectFireContext
+    ): boolean {
+        const weapon = entry.equipment;
+        if (!(weapon instanceof WeaponEquipment) || !weapon.hasFlag('F_INDIRECT_FIRE')) return false;
+
+        // An MML launcher has indirect capability only while using its LRM profile.
+        if (weapon.ammoType === 'MML' && resolveAmmoWeaponProfile(selectedAmmo)?.id !== 'mml-lrm') {
+            return false;
+        }
+
+        return !isTorpedoAmmo(selectedAmmo) || this.canFireTorpedoesIndirectly(context);
+    }
 
     resolveToHit(request: ToHitRequest): ToHitResolution {
         const entry = request.subject instanceof MountedEquipment ? request.subject : null;
@@ -336,6 +359,10 @@ export class GameRules extends CBTGameRules {
         return source === 'terrain' ? Math.min(2, Math.max(0, modifierValue)) : 0;
     }
 
+    protected override canFireTorpedoesIndirectly(_context: IndirectFireContext): boolean {
+        return false;
+    }
+
     protected override getRulesProfile(equipment: Equipment): number[] {
         // Claw and Lance has 0 hitmod instead of 1
         if (equipment.flags.has('S_CLAW') || equipment.flags.has('S_LANCE')) {
@@ -395,6 +422,11 @@ export class TWGameRules extends CBTGameRules {
 
     override resolveC3TargetingModifier(_degradationSource: C3DegradationSource, _rangeBracketImprovement: number): ToHitModifierBreakdownEntry | null {
         return null;
+    }
+
+    protected override canFireTorpedoesIndirectly(context: IndirectFireContext): boolean {
+        // Without a map/body identifier, all recorded water belongs to one virtual body.
+        return context.weaponUnderwater && context.targetHasUnderwaterLayer;
     }
 
     override getSemiGuidedAdjustment(modifierValue: number, source: SemiGuidedAdjustmentSource): number {

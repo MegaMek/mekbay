@@ -278,6 +278,63 @@ describe('inventory target number rules profiles', () => {
         expect(inventoryTargetNumberState(input).text).toBe('X');
     });
 
+    it('allows only the selected MML LRM ammunition profile to fire indirectly', () => {
+        const input = guidedIndirectInput('M_NARC_CAPABLE');
+        input.entry.equipment = new WeaponEquipment({
+            id: 'MML9',
+            name: 'MML 9',
+            type: 'weapon',
+            flags: ['F_INDIRECT_FIRE', 'F_MML'],
+            weapon: { ammoType: 'MML', rackSize: 9, ranges: [0, 0, 0, 0] },
+        });
+        input.selectedAmmo = new AmmoEquipment({
+            id: 'MML9SRMAmmo',
+            name: 'MML 9 SRM Ammo',
+            type: 'ammo',
+            flags: ['F_MML_SRM'],
+            ammo: { type: 'MML', rackSize: 9, shots: 11 },
+        });
+
+        expect(inventoryTargetNumberState(input).text).toBe('X');
+
+        input.selectedAmmo = new AmmoEquipment({
+            id: 'MML9LRMAmmo',
+            name: 'MML 9 LRM Ammo',
+            type: 'ammo',
+            flags: ['F_MML_LRM'],
+            ammo: { type: 'MML', rackSize: 9, shots: 8 },
+        });
+
+        expect(inventoryTargetNumberState(input).text).not.toBe('X');
+    });
+
+    it('forbids Core torpedo indirect fire and permits TW fire only with both endpoints underwater', () => {
+        const input = guidedIndirectInput('M_NARC_CAPABLE', true);
+        input.selectedAmmo = new AmmoEquipment({
+            id: 'LRT20Ammo',
+            name: 'LRT 20 Ammo',
+            type: 'ammo',
+            ammo: { type: 'LRM_TORPEDO', rackSize: 20, shots: 6 },
+        });
+        input.target = {
+            ...input.target!,
+            unitType: 'mek-biped',
+            tnCalculator: {
+                ...input.target!.tnCalculator,
+                waterDepth: 'underwater-depth-1',
+            },
+        };
+        input.gameRules = CORE_2026_GAME_RULES;
+
+        expect(inventoryTargetNumberState(input).text).toBe('X');
+
+        input.gameRules = TW_GAME_RULES;
+        expect(inventoryTargetNumberState(input).text).not.toBe('X');
+
+        input.entry.owner.isEquipmentSubmerged = () => false;
+        expect(inventoryTargetNumberState(input).text).toBe('X');
+    });
+
     it('does not apply indirect target restrictions through a manual TN override', () => {
         const input = c3LaserInput(5, 5);
         input.target = {
