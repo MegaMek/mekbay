@@ -401,7 +401,8 @@ export class TWGameRules extends CBTGameRules {
     readonly artilleryFlatRangeModifier = null;
     readonly supportsApolloSaturationMode = false;
     readonly supportsBombastLaserRules = false;
-    readonly narcHomingTargetModifier = 0;
+    readonly narcHomingTargetModifier = 0; 
+    // TODO: inarc should get a -1 modifier in TW Rules but we need to implement inarc pods... BLEARGH! 
     readonly semiGuidedIgnoresCover = false;
     readonly semiGuidedIgnoresIndirectFireModifier = true;
     readonly physicalLocationRows = TW_PHYSICAL_LOCATION_ROWS;
