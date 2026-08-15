@@ -58,35 +58,23 @@ describe('EquipmentCatalogService', () => {
         });
     }
 
-    it('does not load equipment with playtest in its display name, regardless of case', () => {
+    it('load equipment', () => {
         hydrate({
-            StandardAmmo: createAmmo('StandardAmmo', 'Standard AC/5 Ammo'),
-            ExperimentalAmmo: createAmmo('ExperimentalAmmo', 'Precision PlAyTeSt AC/5 Ammo'),
-        });
-
-        const registry = service.getEquipmentRegistry();
-        expect(registry.size).toBe(1);
-        expect(registry.findEquipment('StandardAmmo')).toBeDefined();
-        expect(registry.findEquipment('ExperimentalAmmo')).toBeNull();
-    });
-
-    it('does not load equipment identified as playtest by its catalog key or canonical id', () => {
-        hydrate({
-            'Playtest Catalog Key': createAmmo('CleanId', 'Clean Name'),
-            CleanCatalogKey: createAmmo('Precision Playtest Ammo', 'Another Clean Name'),
+            'Catalog Key': createAmmo('CleanId', 'Clean Name'),
+            CleanCatalogKey: createAmmo('Precision Ammo', 'Another Clean Name'),
             ProductionAmmo: createAmmo('ProductionAmmo', 'Production Ammo'),
         });
 
         const registry = service.getEquipmentRegistry();
         expect(registry.size).toBe(1);
         expect(registry.findEquipment('CleanId')).toBeNull();
-        expect(registry.findEquipment('Precision Playtest Ammo')).toBeNull();
+        expect(registry.findEquipment('Precision Ammo')).toBeNull();
         expect(registry.findEquipment('ProductionAmmo')).toBeDefined();
     });
 
-    it('skips malformed playtest records without attempting to hydrate them', () => {
+    it('skips malformed records without attempting to hydrate them', () => {
         hydrate({
-            BrokenPlaytestAmmo: {
+            BrokenAmmo: {
                 id: 'BrokenPlaytestAmmo',
                 name: 'Broken Playtest Ammo',
                 type: 'invalid-equipment-type',

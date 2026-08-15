@@ -11,13 +11,6 @@ import { DbService } from '../db.service';
 import { LoggerService } from '../logger.service';
 import { CatalogBaseService } from './catalog-base.service';
 
-const PLAYTEST_NAME = 'playtest';
-
-function isPlaytestEquipment(internalName: string, equipment: RawEquipmentData['equipment'][string]): boolean {
-    return [internalName, equipment?.id, equipment?.name]
-        .some(name => typeof name === 'string' && name.toLocaleLowerCase().includes(PLAYTEST_NAME));
-}
-
 @Injectable({
     providedIn: 'root'
 })
@@ -55,10 +48,6 @@ export class EquipmentCatalogService extends CatalogBaseService<RawEquipmentData
         const normalizedEquipment: EquipmentMap = {};
 
         for (const [internalName, cachedEquipment] of Object.entries(data.equipment ?? {})) {
-            if (isPlaytestEquipment(internalName, cachedEquipment)) {
-                continue;
-            }
-
             try {
                 normalizedEquipment[internalName] = createEquipment(cachedEquipment);
             } catch (error) {
