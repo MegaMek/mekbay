@@ -332,9 +332,9 @@ describe('equipment model', () => {
             id: 'malformed-shield', name: 'Malformed Shield', type: 'misc', flags: ['S_SHIELD_MEDIUM'],
         });
 
-        expect(shield.isShield).toBeTrue();
-        expect(club.isShield).toBeFalse();
-        expect(malformed.isShield).toBeFalse();
+        expect(shield.hasFlag('F_SHIELD')).toBeTrue();
+        expect(club.hasFlag('F_SHIELD')).toBeFalse();
+        expect(malformed.hasFlag('F_SHIELD')).toBeFalse();
     });
 
     it('identifies bomb ammo and bomb weapons without misclassifying carriers or ordinary ordnance', () => {

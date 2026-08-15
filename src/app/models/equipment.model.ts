@@ -960,8 +960,6 @@ export class MiscEquipment extends Equipment {
     get baseDamageAbsorptionRate(): number { return this.misc.baseDamageAbsorptionRate; }
     get baseDamageCapacity(): number { return this.misc.baseDamageCapacity; }
     get industrial(): boolean { return this.misc.industrial; }
-    /** Whether this is a physical shield, equivalent to MegaMek's MiscType.isShield(). */
-    get isShield(): boolean { return this.hasFlag('F_SHIELD'); }
     /** Heat generated while operating, equivalent to MegaMek's MiscType.getHeat(). */
     get operatingHeat(): number {
         if (this.hasAnyFlag(['F_NULL_SIG', 'F_VOID_SIG'])) return 10;
