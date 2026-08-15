@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, computed, effect, type DestroyRef, type ElementRef, inject, signal, TemplateRef, untracked, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, type ElementRef, inject, signal, type TemplateRef, untracked, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DragDropModule, type CdkDragDrop, type CdkDragMove } from '@angular/cdk/drag-drop';
 import type { Force, UnitGroup } from '../../models/force.model';
 import type { ForceUnit } from '../../models/force-unit.model';
-import { ASForceUnit } from '../../models/as-force-unit.model';
 import type { Unit } from '../../models/units.model';
-import { GameService } from '../../services/game.service';
+import { GameSystem } from '../../models/common.model';
 import { LayoutService } from '../../services/layout.service';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -32,12 +31,19 @@ import { getFormationDefinition } from '../../utils/formation-blueprints';
 import { formationInheritsParentEffects } from '../../utils/formation-type.model';
 import { TaggingService } from '../../services/tagging.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
-import { formatMovement } from '../../utils/as-common.util';
 import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableSortEvent } from '../data-table/data-table.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { FORCE_NOTE_MAX_LENGTH } from '../../models/force-serialization';
 import { naturalCompare } from '../../utils/sort.util';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import {
+    buildUnitDataTableColumns,
+    formatAlphaStrikeUnitMovement,
+    formatClassicUnitMovement,
+    formatUnitDataTableSortSlotValue,
+    getUnitDataTableSortSlotHeader,
+    isUnitDataTableSortActive,
+} from '../../utils/unit-data-table.util';
 
 export interface ForceOverviewDialogData {
     force: Force;
@@ -100,7 +106,6 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
 export class ForceOverviewDialogComponent {
     private dialogRef = inject<DialogRef<void>>(DialogRef);
     protected data = inject<ForceOverviewDialogData>(DIALOG_DATA);
-    protected gameService = inject(GameService);
     protected layoutService = inject(LayoutService);
     private dataService = inject(DataService);
     private dialogsService = inject(DialogsService);
@@ -119,6 +124,7 @@ export class ForceOverviewDialogComponent {
     private readonly tableIconCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableIconCell');
     private readonly tableNameCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableNameCell');
     private readonly tableYearCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableYearCell');
+    private readonly tableValueCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableValueCell');
     private readonly tableSkillCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableSkillCell');
     private readonly tableMovementCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableMovementCell');
     private readonly tableSpecialsCell = viewChild<TemplateRef<DataTableCellContext<ForceTableRow>>>('tableSpecialsCell');
@@ -182,7 +188,7 @@ export class ForceOverviewDialogComponent {
     });
 
     /** Get the current game system for filtering sort options */
-    gameSystem = computed(() => this.gameService.currentGameSystem());
+    readonly gameSystem = computed(() => this.data.force.gameSystem);
 
     /** Force faction for header display */
     readonly forceFaction = computed(() => this.data.force.faction());
@@ -205,10 +211,10 @@ export class ForceOverviewDialogComponent {
     readonly hoveredRadarUnit = computed(() => this.hoveredPreviewUnit()?.unit ?? null);
 
     /** Whether this is an Alpha Strike force */
-    isAlphaStrike = computed(() => this.gameService.isAlphaStrike());
+    readonly isAlphaStrike = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE);
 
     /** Whether table mode is active */
-    readonly isTableMode = computed(() => this.viewMode() === 'table' && this.isAlphaStrike());
+    readonly isTableMode = computed(() => this.viewMode() === 'table');
 
     /** Whether the summary tab is active */
     readonly isSummaryTab = computed(() => this.effectiveActiveTab() === 'summary');
@@ -230,10 +236,6 @@ export class ForceOverviewDialogComponent {
 
     readonly nextViewMode = computed<'compact' | 'expanded' | 'table'>(() => {
         const current = this.viewMode();
-        if (!this.isAlphaStrike()) {
-            return current === 'compact' ? 'expanded' : 'compact';
-        }
-
         if (current === 'compact') return 'expanded';
         if (current === 'expanded') return 'table';
         return 'compact';
@@ -250,13 +252,9 @@ export class ForceOverviewDialogComponent {
     constructor() {
         effect(() => {
             const savedViewMode = this.optionsService.options().forceOverviewViewMode;
-            const normalizedViewMode = this.normalizeViewMode(savedViewMode);
             untracked(() => {
-                if (this.viewMode() !== normalizedViewMode) {
-                    this.viewMode.set(normalizedViewMode);
-                }
-                if (savedViewMode !== normalizedViewMode) {
-                    void this.optionsService.setOption('forceOverviewViewMode', normalizedViewMode);
+                if (this.viewMode() !== savedViewMode) {
+                    this.viewMode.set(savedViewMode);
                 }
             });
         });
@@ -265,14 +263,6 @@ export class ForceOverviewDialogComponent {
     /** Whether to use hex movement */
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
 
-    /** Keys always visible in the AS table row */
-    private readonly AS_TABLE_VISIBLE_KEYS = ['name', 'year', 'as.PV', 'as.TP', 'role', 'as.SZ', 'as._mv', 'as.TMM', 'as.damage', 'as.Arm', 'as.Str', 'as.OV'];
-
-    /** Keys that are grouped together in the UI display */
-    private readonly SORT_KEY_GROUPS: Record<string, string[]> = {
-        'as.damage': ['as.dmg.dmgS', 'as.dmg.dmgM', 'as.dmg.dmgL', 'as.dmg.dmgE']
-    };
-
     /** Total BV/PV of the force using the selected display mode. */
     totalBv = computed(() => this.displayedBvPv(this.data.force.units()));
 
@@ -280,6 +270,14 @@ export class ForceOverviewDialogComponent {
         return formatBvPv(
             units.reduce((total, unit) => total + unit.getBv(), 0),
             units.reduce((total, unit) => total + unit.getPreSkillBv(), 0),
+            this.optionsService.options().forceViewerBVPVDisplay,
+        );
+    }
+
+    displayedUnitBvPv(unit: ForceUnit): string {
+        return formatBvPv(
+            unit.getBv(),
+            unit.getPreSkillBv(),
             this.optionsService.options().forceViewerBVPVDisplay,
         );
     }
@@ -299,20 +297,12 @@ export class ForceOverviewDialogComponent {
     /** Whether force has max groups */
     hasMaxGroups = computed(() => this.data.force.hasMaxGroups());
 
-    /** For AS table view: returns the sort slot header label if the current sort is not already visible in the table columns */
-    readonly asTableSortSlotHeader = computed((): string | null => {
-        const sortKey = this.selectedSort();
-        if (!sortKey || !this.isAlphaStrike()) return null;
-        
-        // Check if already visible in table
-        if (this.AS_TABLE_VISIBLE_KEYS.includes(sortKey)) return null;
-        for (const [groupKey, members] of Object.entries(this.SORT_KEY_GROUPS)) {
-            if (this.AS_TABLE_VISIBLE_KEYS.includes(groupKey) && members.includes(sortKey)) return null;
-        }
-        
-        const opt = this.SORT_OPTIONS.find(o => o.key === sortKey);
-        return opt?.slotLabel ?? opt?.label ?? null;
-    });
+    /** Label for a selected sort that is not represented by a standard table column. */
+    readonly tableSortSlotHeader = computed(() => getUnitDataTableSortSlotHeader(
+        this.gameSystem(),
+        this.selectedSort(),
+        this.SORT_OPTIONS,
+    ));
 
     readonly forceTableRows = computed<readonly ForceTableRow[]>(() => {
         const rows: ForceTableRow[] = [];
@@ -329,174 +319,45 @@ export class ForceOverviewDialogComponent {
         const iconCell = this.tableIconCell();
         const nameCell = this.tableNameCell();
         const yearCell = this.tableYearCell();
+        const valueCell = this.tableValueCell();
         const skillCell = this.tableSkillCell();
         const movementCell = this.tableMovementCell();
         const specialsCell = this.tableSpecialsCell();
 
-        if (!iconCell || !nameCell || !yearCell || !skillCell || !movementCell || !specialsCell) {
+        if (!iconCell || !nameCell || !yearCell || !valueCell || !skillCell || !movementCell) {
+            return [];
+        }
+        if (this.isAlphaStrike() && !specialsCell) {
             return [];
         }
 
-        const columns: DataTableColumn<ForceTableRow>[] = [
-            {
-                id: 'icon',
-                header: '',
-                track: 40,
-                cellTemplate: iconCell,
-                align: 'center',
-            },
-            {
-                id: 'name',
-                header: 'Name',
-                track: { minPx: 320, flex: 1.35 },
-                cellTemplate: nameCell,
-                sortKey: 'name',
-                sortActive: this.isSortActive('name'),
-            },
-            {
-                id: 'year',
-                header: 'Year',
-                track: 72,
-                cellTemplate: yearCell,
-                sortKey: 'year',
-                sortActive: this.isSortActive('year'),
-                cellClass: this.tableCellClass('as-td-year', this.isSortActive('year')),
-                align: 'center',
-            },
-            {
-                id: 'type',
-                header: 'Type',
-                track: 50,
-                value: row => row.kind === 'unit' ? row.vm.unit.as.TP : '',
-                sortKey: 'as.TP',
-                sortActive: this.isSortActive('as.TP'),
-                cellClass: this.tableCellClass('as-td-type', this.isSortActive('as.TP')),
-                align: 'center',
-            },
-            {
-                id: 'role',
-                header: 'Role',
-                track: 130,
-                value: row => row.kind === 'unit' && row.vm.unit.role !== 'None' ? row.vm.unit.role : '',
-                sortKey: 'role',
-                sortActive: this.isSortActive('role'),
-                cellClass: this.tableCellClass('as-td-role', this.isSortActive('role')),
-            },
-            {
-                id: 'pv',
-                header: 'PV',
-                track: 45,
-                value: row => row.kind === 'unit'
-                    ? formatBvPv(
-                        row.vm.forceUnit.getBv(),
-                        row.vm.forceUnit.getPreSkillBv(),
-                        this.optionsService.options().forceViewerBVPVDisplay,
-                    )
-                    : '',
-                sortKey: 'as.PV',
-                sortActive: this.isSortActive('as.PV'),
-                cellClass: this.tableCellClass('as-td-pv is-bold', this.isSortActive('as.PV')),
-                align: 'right',
-            },
-            {
-                id: 'skill',
-                header: 'Skill',
-                track: 40,
-                cellTemplate: skillCell,
-                align: 'center',
-            },
-            {
-                id: 'sz',
-                header: 'SZ',
-                track: 30,
-                value: row => row.kind === 'unit' ? row.vm.unit.as.SZ : '',
-                sortKey: 'as.SZ',
-                sortActive: this.isSortActive('as.SZ'),
-                cellClass: this.tableCellClass('as-td-sz', this.isSortActive('as.SZ')),
-                align: 'center',
-            },
-            {
-                id: 'mv',
-                header: 'MV',
-                track: 65,
-                cellTemplate: movementCell,
-                sortKey: 'as._mv',
-                sortActive: this.isSortActive('as._mv'),
-                cellClass: this.tableCellClass('as-td-mv', this.isSortActive('as._mv')),
-                align: 'center',
-            },
-            {
-                id: 'tmm',
-                header: 'TMM',
-                track: 40,
-                value: row => row.kind === 'unit' ? row.vm.unit.as.TMM : '',
-                sortKey: 'as.TMM',
-                sortActive: this.isSortActive('as.TMM'),
-                cellClass: this.tableCellClass('as-td-tmm', this.isSortActive('as.TMM')),
-                align: 'center',
-            },
-            {
-                id: 'damage',
-                header: 'S/M/L',
-                track: 60,
-                value: row => row.kind === 'unit' && !row.vm.unit.as.usesArcs ? `${row.vm.unit.as.dmg.dmgS}/${row.vm.unit.as.dmg.dmgM}/${row.vm.unit.as.dmg.dmgL}` : '',
-                sortKey: 'as.dmg._dmgS',
-                sortGroupKey: 'as.damage',
-                sortActive: this.isSortActive('as.damage'),
-                cellClass: this.tableCellClass('as-td-dmg', this.isSortActive('as.damage')),
-                align: 'center',
-            },
-            {
-                id: 'arm',
-                header: 'A',
-                track: 40,
-                value: row => row.kind === 'unit' ? row.vm.unit.as.Arm : '',
-                sortKey: 'as.Arm',
-                sortActive: this.isSortActive('as.Arm'),
-                cellClass: this.tableCellClass('as-td-arm', this.isSortActive('as.Arm')),
-                align: 'center',
-            },
-            {
-                id: 'str',
-                header: 'S',
-                track: 40,
-                value: row => row.kind === 'unit' ? row.vm.unit.as.Str : '',
-                sortKey: 'as.Str',
-                sortActive: this.isSortActive('as.Str'),
-                cellClass: this.tableCellClass('as-td-str', this.isSortActive('as.Str')),
-                align: 'center',
-            },
-            {
-                id: 'ov',
-                header: 'OV',
-                track: 30,
-                value: row => row.kind === 'unit' && row.vm.unit.as.usesOV ? row.vm.unit.as.OV : '',
-                sortKey: 'as.OV',
-                sortActive: this.isSortActive('as.OV'),
-                cellClass: this.tableCellClass('as-td-ov', this.isSortActive('as.OV')),
-                align: 'center',
-            },
-        ];
+        const skillColumn: DataTableColumn<ForceTableRow> = {
+            id: 'skill',
+            header: this.isAlphaStrike() ? 'Skill' : 'G/P',
+            track: this.isAlphaStrike() ? 40 : 56,
+            cellTemplate: skillCell,
+            align: 'center',
+        };
 
-        if (this.asTableSortSlotHeader()) {
-            columns.push({
-                id: 'sort-slot',
-                header: this.asTableSortSlotHeader() ?? '',
-                track: 80,
-                value: row => row.kind === 'unit' ? this.getAsTableSortSlot(row.vm) ?? '' : '',
-                cellClass: 'as-td-sort-slot sort-slot',
-                align: 'center',
-            });
-        }
-
-        columns.push({
-            id: 'specials',
-            header: 'Special',
-            track: { minPx: 220, flex: 1 },
-            cellTemplate: specialsCell,
+        const sortSlotHeader = this.tableSortSlotHeader();
+        return buildUnitDataTableColumns({
+            gameSystem: this.gameSystem(),
+            getUnit: row => row.kind === 'unit' ? row.vm.unit : null,
+            isSortActive: keyOrGroup => this.isSortActive(keyOrGroup),
+            templates: {
+                icon: iconCell,
+                name: nameCell,
+                year: yearCell,
+                value: valueCell,
+                movement: movementCell,
+                specials: specialsCell,
+            },
+            afterValueColumns: [skillColumn],
+            sortSlot: sortSlotHeader ? {
+                header: sortSlotHeader,
+                value: row => row.kind === 'unit' ? this.getTableSortSlot(row.vm.unit) ?? '' : '',
+            } : null,
         });
-
-        return columns;
     });
 
     /** Whether drag-drop is allowed (compact mode + default sort + not read-only) */
@@ -970,7 +831,7 @@ export class ForceOverviewDialogComponent {
         }
     }
 
-    // --- AS Table View Helpers ---
+    // --- Unit Table View Helpers ---
 
     /** Handle header click: toggle direction if already active, otherwise activate with asc */
     onHeaderSort(sortKey: string, groupKey?: string): void {
@@ -985,55 +846,25 @@ export class ForceOverviewDialogComponent {
 
     /** Check if the current sort key matches any of the provided keys or groups */
     isSortActive(...keysOrGroups: string[]): boolean {
-        const currentSort = this.selectedSort();
-        if (!currentSort) return false;
-        
-        for (const keyOrGroup of keysOrGroups) {
-            if (currentSort === keyOrGroup) return true;
-            const groupMembers = this.SORT_KEY_GROUPS[keyOrGroup];
-            if (groupMembers?.includes(currentSort)) return true;
-        }
-        return false;
+        return isUnitDataTableSortActive(this.selectedSort(), ...keysOrGroups);
     }
 
-    /** Get the sort slot value for AS table row view */
-    getAsTableSortSlot(vm: ForceUnitViewModel): string | null {
+    getTableSortSlot(unit: Unit): string | null {
         const sortKey = this.selectedSort();
-        if (!sortKey || !this.isAlphaStrike()) return null;
-        
-        // Check if already visible in table
-        if (this.AS_TABLE_VISIBLE_KEYS.includes(sortKey)) return null;
-        for (const [groupKey, members] of Object.entries(this.SORT_KEY_GROUPS)) {
-            if (this.AS_TABLE_VISIBLE_KEYS.includes(groupKey) && members.includes(sortKey)) return null;
+        if (!sortKey || !this.tableSortSlotHeader()) {
+            return null;
         }
-        
-        const val = this.getNestedProperty(vm.unit, sortKey);
-        if (val == null) return null;
-        return typeof val === 'number' ? String(val) : String(val);
+
+        return formatUnitDataTableSortSlotValue(unit, sortKey);
     }
 
     /** Format movement value for Alpha Strike table view */
     formatASMovement(unit: Unit): string {
-        const mvm = unit.as.MVm;
-        if (!mvm) return unit.as.MV ?? '';
-
-        const entries = Object.entries(mvm)
-            .filter(([, value]) => typeof value === 'number' && value > 0) as Array<[string, number]>;
-
-        if (entries.length === 0) return unit.as.MV ?? '';
-
-        return entries
-            .sort((a, b) => {
-                if (a[0] === '') return -1;
-                if (b[0] === '') return 1;
-                return 0;
-            })            
-            .map(([mode, inches]) => formatMovement(inches, mode, this.useHex()))
-            .join('/');
+        return formatAlphaStrikeUnitMovement(unit, this.useHex());
     }
 
-    private tableCellClass(base: string, active: boolean): string {
-        return active ? `${base} sort-slot` : base;
+    formatClassicMovement(unit: Unit): string {
+        return formatClassicUnitMovement(unit);
     }
 
     private clampText(value: string, maxLength: number): string {
@@ -1052,25 +883,12 @@ export class ForceOverviewDialogComponent {
         });
     }
 
-    /** Get pilot skill for AS table display */
-    getPilotSkill(vm: ForceUnitViewModel): number {
-        const fu = vm.forceUnit;
-        if (fu instanceof ASForceUnit) {
-            return fu.pilotSkill();
-        }
-        return 4; // Default
-    }
-
-    private normalizeViewMode(viewMode: 'expanded' | 'compact' | 'table'): 'expanded' | 'compact' | 'table' {
-        if (!this.isAlphaStrike() && viewMode === 'table') {
-            return 'compact';
-        }
-        return viewMode;
+    getPilotStats(vm: ForceUnitViewModel): string | number {
+        return vm.forceUnit.getPilotStats();
     }
 
     private setViewMode(viewMode: 'expanded' | 'compact' | 'table') {
-        const normalizedViewMode = this.normalizeViewMode(viewMode);
-        this.viewMode.set(normalizedViewMode);
-        void this.optionsService.setOption('forceOverviewViewMode', normalizedViewMode);
+        this.viewMode.set(viewMode);
+        void this.optionsService.setOption('forceOverviewViewMode', viewMode);
     }
 }

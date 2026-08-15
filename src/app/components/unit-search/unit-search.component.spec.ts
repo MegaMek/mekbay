@@ -299,7 +299,6 @@ describe('UnitSearchComponent card virtualization', () => {
                             <ng-template #tableNameCell let-unit>{{ unit.name }}</ng-template>
                             <ng-template #tableYearCell let-unit>{{ unit.year }}</ng-template>
                             <ng-template #tableBvCell let-unit>{{ unit.bv }}</ng-template>
-                            <ng-template #tableTonsCell let-unit>{{ unit.tons }}</ng-template>
                             <ng-template #tableClassicMovementCell let-unit>{{ unit.walk }}</ng-template>
                             <ng-template #tableTagsCell let-unit>{{ unit.name }}</ng-template>
                         </div>
