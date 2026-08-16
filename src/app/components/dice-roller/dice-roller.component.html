@@ -4,14 +4,15 @@
         @for (value of diceResults(); let i = $index; let last = $last; track i) {
         <div class="die" [class.large]="!small()" tabindex="0" (click)="onDieClick()" [class.interactive]="rollOnDieClick()" [class.rolling]="isRolling()">
             <span>{{ value === null ? '?' : value }}</span>
-        </div>@if (!last) {<span class="plus-sign"> + </span>}
+        </div>@if (!last && showSum()) {<span class="plus-sign"> + </span>}
         }
-        @if (modifier() !== 0) {
-        <span class="operator"> {{ modifier() > 0 ? '+' : '−' }} </span>
-        <span class="modifier-value" [class.large]="!small()">{{ modifier() > 0 ? modifier() : -modifier() }}</span>
+        @if (showSum() && modifier() !== 0) {
+        <span class="modifier-value" [class.large]="!small()">
+            {{ modifier() > 0 ? '+' + modifier() : '−' + -modifier() }}
+        </span>
         }
-        @if (rollFinished()) {
-        <div class="sum" [class.large]="!small()"> = {{ diceSum() }}</div>
+        @if (showSum() && rollFinished()) {
+        <div class="sum" [class.large]="!small()"> = <span class="value">{{ diceSum() }}</span></div>
         }
     </div>
     }
@@ -35,12 +36,13 @@
                     <span>{{ value === null ? '?' : value }}</span>
                 </div>
                 }
-                @if (modifier() !== 0) {
-                <span class="operator large"> {{ modifier() > 0 ? '+' : '−' }} </span>
-                <span class="modifier-value large">{{ modifier() > 0 ? modifier() : -modifier() }}</span>
+                @if (showSum() && modifier() !== 0) {
+                <span class="modifier-value large">
+                    {{ modifier() > 0 ? '+' + modifier() : '−' + -modifier() }}
+                </span>
                 }
             </div>
-            @if (rollFinished() && !overlayResult()) {
+            @if (showSum() && rollFinished() && !overlayResult()) {
             <div class="overlay-sum">{{ diceSum() }}</div>
             }
             @if (isRolling() && overlayRollingHint()) {

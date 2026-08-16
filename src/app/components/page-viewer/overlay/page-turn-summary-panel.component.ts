@@ -249,7 +249,7 @@ export class PageTurnSummaryPanelComponent {
                 const active = allSequenceChoices.some(choice => choice.active && choice.selectionTone !== 'muted');
                 return {
                     entry,
-                    label: entry.equipment?.name || entry.name,
+                    label: entry.getDisplayName(),
                     damaged,
                     active,
                     sequenceChoices: visibleFailureSteps(allSequenceChoices),

@@ -9,10 +9,12 @@ import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
 import {
     EquipmentInteractionHandler,
+    setEffectiveWeaponType,
     type HandlerCommandContext,
     type HandlerQueryContext,
     type ToHitAdjustmentContext,
 } from '../services/equipment-interaction-registry.service';
+import type { WeaponType } from '../models/weapon-types.model';
 import type { AerospaceAttackValues } from '../utils/aerospace-range.util';
 import type { InventoryControlDamageContext } from '../utils/inventory-control-damage.util';
 import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
@@ -115,6 +117,14 @@ export class TwBombastLaserHandler extends EquipmentInteractionHandler {
         return { ...effect, value: selectedTwBombastLaserProfile(equipment).damage };
     }
 
+    override applyInventoryControlWeaponTypes(
+        _equipment: MountedEquipment,
+        types: ReadonlySet<WeaponType>,
+        _context: HandlerQueryContext,
+    ): ReadonlySet<WeaponType> {
+        return setEffectiveWeaponType(types, 'X', false);
+    }
+
     override getToHitAdjustments(
         equipment: MountedEquipment,
         _adjustmentContext: ToHitAdjustmentContext,
@@ -129,7 +139,7 @@ export class TwBombastLaserHandler extends EquipmentInteractionHandler {
             : [{
                 kind: 'replace-base',
                 value: modifier,
-                label: `${equipment.equipment?.shortName ?? equipment.name} (${mode})`,
+                label: `${equipment.getDisplayName()} (${mode})`,
             }];
     }
 }

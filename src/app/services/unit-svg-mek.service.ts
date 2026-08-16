@@ -196,6 +196,8 @@ export class UnitSvgMekService extends UnitSvgService {
                             this.renderMeleeDamage(entry, 'kick');
                             break;
                     }
+                } else if (entry.equipment?.hasFlag('F_SHIELD')) {
+                    this.renderShieldDamage(entry);
                 } else if (entry.isPhysicalWeapon()) {
                     this.renderMeleeDamage(entry, 'physWeapon', undefined, !!entry.equipment?.flags.has('S_FLAIL'));
                 }
@@ -273,13 +275,41 @@ export class UnitSvgMekService extends UnitSvgService {
             damageEl.setAttribute(INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, originalText);
         }
         if (!originalText) return;
-        const baseDamage = parseInt(originalText);
-        const { weakened } = this.mekRules.resolveMeleeDamageDisplay(entry, baseDamage, attackType, loc, ignoreMyomer);
-        const display = this.unit.applyInventoryControlDisplayEffects(entry, readInventoryControlDisplayData(entry), {
-            selectedRange: null,
-            hitModifierBreakdown: this.mekRules.getEquipmentToHitModifiers(entry),
-            selectedAmmo: null,
-        });
+        const resolved = this.mekRules.resolveInventoryMeleeDamageDisplay(
+            entry,
+            originalText,
+            attackType,
+            loc,
+            ignoreMyomer,
+        );
+        if (!resolved) return;
+        this.renderRulesAdjustedDamage(entry, damageEl, resolved.weakened, originalText);
+    }
+
+    /** Render rules-specific shield damage without applying physical-weapon or TSM modifiers. */
+    private renderShieldDamage(entry: MountedEquipment) {
+        const damageEl = entry.el!.querySelector(`:scope > .damage > text`);
+        if (!damageEl) return;
+        const shieldDisplay = this.mekRules.resolveShieldDamageDisplay(entry);
+        this.renderRulesAdjustedDamage(entry, damageEl, shieldDisplay.weakened);
+    }
+
+    private renderRulesAdjustedDamage(
+        entry: MountedEquipment,
+        damageEl: Element,
+        weakened: boolean,
+        baseDamage?: string,
+    ): void {
+        const sourceDisplay = readInventoryControlDisplayData(entry);
+        const display = this.unit.applyInventoryControlDisplayEffects(
+            entry,
+            baseDamage === undefined ? sourceDisplay : { ...sourceDisplay, damage: baseDamage },
+            {
+                selectedRange: null,
+                hitModifierBreakdown: this.mekRules.getEquipmentToHitModifiers(entry),
+                selectedAmmo: null,
+            },
+        );
         this.renderInventoryDamageText(damageEl, display.damage);
         damageEl.classList.toggle('damaged', weakened);
     }

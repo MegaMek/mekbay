@@ -5,6 +5,8 @@
 /** Canonical, export-ready features derived from entity construction state. */
 export type EntityFeature =
 	| 'Small Cockpit'
+	| 'Primitive Cockpit'
+	| 'Primitive Industrial Cockpit'
 	| 'Command Console'
 	| 'Torso-Mounted Cockpit'
 	| 'Dual Cockpit'

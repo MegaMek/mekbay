@@ -32,7 +32,13 @@ import type { UnitTypeRules } from './rules/unit-type-rules';
 import { type InventoryControlRuntimeAmmoSelection, type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
 import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
 import { getMekLegLocations, getMekLocationParent, inferMekConfigFromLocations, MEK_REAR_ARMOR_LOCATIONS } from './entity/types';
-import { createHandlerQueryContext, EquipmentInteractionRegistry, EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
+import {
+    createHandlerQueryContext,
+    EquipmentInteractionRegistry,
+    EquipmentInteractionRegistryService,
+    type CriticalDelayedExplosionContext,
+    type CriticalDelayedExplosionHandling,
+} from '../services/equipment-interaction-registry.service';
 import type { UnitHeatSource } from './rules/unit-type-rules';
 import { resolveInventoryControlSelectedAmmoType, type InventoryControlDisplayData, type InventoryControlDisplayEffectOptions, type InventoryControlRules } from '../utils/inventory-control.util';
 import { ToastService } from '../services/toast.service';
@@ -208,6 +214,17 @@ export class CBTForceUnit extends ForceUnit {
         return this.getEquipmentInteractionRegistry().applyWeaponTypes(
             entry,
             baseTypes,
+            this.getHandlerQueryContext(),
+        );
+    }
+
+    getCriticalDelayedExplosion(
+        hitEntry: MountedEquipment,
+        context: CriticalDelayedExplosionContext,
+    ): CriticalDelayedExplosionHandling | null {
+        return this.getEquipmentInteractionRegistry().getCriticalDelayedExplosion(
+            hitEntry,
+            context,
             this.getHandlerQueryContext(),
         );
     }
@@ -834,6 +851,9 @@ export class CBTForceUnit extends ForceUnit {
             conditions.delete(normalizedCondition);
         }
         this.writeLocationConditions(loc, conditions);
+        if (normalizedCondition === 'blown-off') {
+            this._rules.evaluateLegDestroyed(loc, active ? 1 : -1);
+        }
     }
 
     setLocationConditionValue(loc: string, condition: string, value: number | undefined): void {

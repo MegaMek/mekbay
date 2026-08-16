@@ -7,6 +7,7 @@ import type { EquipmentFlag } from '../../equipment-flags.type';
 import {
   isPhysicalWeaponEquipment,
   resolvePhysicalWeaponDamage,
+  resolveShieldProfile,
 } from './physical-weapon';
 
 function misc(flags: readonly EquipmentFlag[]): MiscEquipment {
@@ -19,6 +20,7 @@ describe('physical weapon utilities', () => {
       expect(isPhysicalWeaponEquipment(misc(['F_CLUB']))).toBeTrue();
       expect(isPhysicalWeaponEquipment(misc(['F_HAND_WEAPON']))).toBeTrue();
       expect(isPhysicalWeaponEquipment(misc(['F_TALON']))).toBeTrue();
+      expect(isPhysicalWeaponEquipment(misc(['F_SHIELD']))).toBeTrue();
     });
 
     it('classifies physical flags independently of equipment subclass', () => {
@@ -34,6 +36,27 @@ describe('physical weapon utilities', () => {
   });
 
   describe('resolvePhysicalWeaponDamage', () => {
+    it('uses shield absorption values instead of the generic club tonnage formula', () => {
+      const cases: readonly [EquipmentFlag[], number, number][] = [
+        [['F_SHIELD', 'S_SHIELD_SMALL'], 1, 3],
+        [['F_SHIELD', 'S_SHIELD_MEDIUM'], 2, 5],
+        [['F_SHIELD', 'S_SHIELD_LARGE'], 3, 7],
+      ];
+
+      for (const [flags, bashBonus, damageAbsorption] of cases) {
+        const equipment = misc(flags);
+        expect(resolveShieldProfile(equipment)).withContext(flags.join(', ')).toEqual(jasmine.objectContaining({
+          bashBonus,
+          damageAbsorption,
+        }));
+        expect(resolvePhysicalWeaponDamage(equipment, 75)).withContext(flags.join(', '))
+          .toEqual({ kind: 'fixed', value: damageAbsorption });
+      }
+
+      expect(resolvePhysicalWeaponDamage(misc(['F_SHIELD']), 75))
+        .toEqual({ kind: 'fixed', value: 0 });
+    });
+
     it('resolves fixed subtype damage formulas', () => {
       const cases: readonly [string[], number][] = [
         [['F_HAND_WEAPON', 'S_CLAW'], 8],

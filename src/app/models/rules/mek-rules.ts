@@ -22,6 +22,8 @@ import {
     MEK_TORSO_LOCATIONS,
     QUAD_LEG_LOCATIONS,
 } from '../entity/types';
+import { resolveShieldProfile, type ShieldProfile } from '../entity/utils/physical-weapon';
+import type { Equipment } from '../equipment.model';
 
 export { LEG_LOCATIONS } from '../entity/types';
 import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
@@ -78,10 +80,13 @@ export interface MekLegMovementResult {
  */
 export class MekRules extends UnitTypeRulesBase {
     static readonly ENGINE_DESTRUCTION_HITS = 3;
+    override readonly standingUpPSRModifier: number = -1;
     protected get gyroHitPSRModifier(): number { return 2; }
     protected get hipPSRModifier(): number { return 1; }
     protected get lowerArmFireModifier(): number { return 0; }
     protected get footHitsCausePSR(): boolean { return false; }
+    protected get shieldBashPunchBonusEnabled(): boolean { return true; }
+    protected get standaloneShieldDamageEnabled(): boolean { return false; }
 
 
     protected override supportsDroneOperatingSystem(): boolean {
@@ -137,11 +142,12 @@ export class MekRules extends UnitTypeRulesBase {
         const unit = this.unit.getUnit();
         const movement = this.computeBaseMovementProfile();
         if (!movement) return false;
+        const canUseJumpingMovement = !this.unit.getCondition('prone');
         const availableModes = [
             unit.walk > 0 ? movement.walk : null,
             unit.run > 0 ? this.baseRunValue(movement) : null,
-            unit.jump > 0 ? movement.jump : null,
-            unit.umu > 0 ? movement.UMU : null,
+            unit.jump > 0 && canUseJumpingMovement ? movement.jump : null,
+            unit.umu > 0 && canUseJumpingMovement ? movement.UMU : null,
         ].filter((value): value is number => value !== null);
         return availableModes.length > 0 && availableModes.every(value => value <= 0);
     });
@@ -320,15 +326,9 @@ export class MekRules extends UnitTypeRulesBase {
 
     override readonly autoFall = computed<boolean>(() => {
         const psr = this.unit.turnState().getPSRCheckState();
-        const legDestroyedAutoFall = (psr.legsDestroyed?.size || 0) > 0
-            && this.destroyedLegCausesAutoFall();
-        return legDestroyedAutoFall
+        return (psr.legsDestroyed?.size ?? 0) > 0
             || psr.gyroDestroyed === true;
     });
-
-    protected destroyedLegCausesAutoFall(): boolean {
-        return !this.isQuadrupedMek();
-    }
 
     override getPSRChecks(turnState: TurnState): PSRCheck[] {
         const checks: PSRCheck[] = [];
@@ -643,12 +643,8 @@ export class MekRules extends UnitTypeRulesBase {
                 psr.legsDestroyed = new Set<string>();
             }
             if (hits > 0) {
-                const destroyedLegsCount = Array.from(this.unit.locations?.internal?.keys() ?? [])
-                    .filter(loc => LEG_LOCATIONS.has(loc) && this.unit.isInternalLocDestroyed(loc)).length;
-                if (this.destroyedLegRequiresImmediatePSR(destroyedLegsCount)) {
-                    psr.legsDestroyed.add(location);
-                    isPsrRelevant = true;
-                }
+                psr.legsDestroyed.add(location);
+                isPsrRelevant = true;
             }
         } else {
             if (psr.legsDestroyed && psr.legsDestroyed.has(location) && hits < 0) {
@@ -659,10 +655,6 @@ export class MekRules extends UnitTypeRulesBase {
         if (isPsrRelevant) {
             turnState.setPSRCheckState(psr);
         }
-    }
-
-    protected destroyedLegRequiresImmediatePSR(destroyedLegsCount: number): boolean {
-        return !this.isQuadrupedMek() || destroyedLegsCount >= 2;
     }
 
     override evaluateCritSlotHit(crit: CriticalSlot): void {
@@ -1231,6 +1223,10 @@ export class MekRules extends UnitTypeRulesBase {
         return null;
     }
 
+    override isMotiveModeAvailable(moveMode: MotiveModes): boolean {
+        return moveMode !== 'run' || this.computeBaseMovementProfile()?.runDisabled !== true;
+    }
+
     override getEffectiveMaxDistanceForMoveMode(moveMode: MotiveModes, turnState: TurnState): number | null {
         if (moveMode !== 'run') return this.getMaxDistanceForMoveMode(moveMode);
         const movement = this.movementState();
@@ -1715,6 +1711,9 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     override applyInventoryControlDisplayEffects(entry: MountedEquipment, display: InventoryControlDisplayData): InventoryControlDisplayData {
+        if (entry.equipment?.hasFlag('F_SHIELD')) {
+            return { ...display, damage: this.resolveShieldDamageDisplay(entry).text };
+        }
         const chargeDisplay = super.applyInventoryControlDisplayEffects(entry, display);
         if (chargeDisplay !== display) return chargeDisplay;
 
@@ -1739,15 +1738,43 @@ export class MekRules extends UnitTypeRulesBase {
             attackType = 'physWeapon';
             ignoreMyomer = !!entry.equipment?.flags.has('S_FLAIL');
         }
-        const baseDamage = Number.parseInt(display.damage, 10);
-        if (!attackType || !Number.isFinite(baseDamage)) return display;
-        return { ...display, damage: this.resolveMeleeDamageDisplay(entry, baseDamage, attackType, location, ignoreMyomer).text };
+        if (!attackType) return display;
+        const resolved = this.resolveInventoryMeleeDamageDisplay(
+            entry,
+            display.damage,
+            attackType,
+            location,
+            ignoreMyomer,
+        );
+        return resolved ? { ...display, damage: resolved.text } : display;
+    }
+
+    resolveInventoryMeleeDamageDisplay(
+        entry: MountedEquipment,
+        displayedDamage: string,
+        attackType: 'punch' | 'kick' | 'club' | 'physWeapon',
+        location?: string,
+        ignoreMyomer = false,
+    ): { damage: number; text: string; weakened: boolean } | undefined {
+        const resolvedAttackType = attackType === 'physWeapon' && entry.equipment?.hasFlag('S_CLAW')
+            ? 'claw'
+            : attackType;
+        const resolvedLocation = resolvedAttackType === 'claw'
+            ? location ?? Array.from(entry.locations ?? [])[0]
+            : location;
+        // Punches are derived from unit facts so a Core-generated sheet cannot bake in a shield bonus that is then
+        // applied again, and changing to TW can remove that bonus without regenerating the SVG.
+        const baseDamage = resolvedAttackType === 'punch'
+            ? this.basePunchDamage()
+            : Number.parseInt(displayedDamage, 10);
+        if (!Number.isFinite(baseDamage)) return undefined;
+        return this.resolveMeleeDamageDisplay(entry, baseDamage, resolvedAttackType, resolvedLocation, ignoreMyomer);
     }
 
     resolveMeleeDamageDisplay(
         entry: MountedEquipment,
         baseDamage: number,
-        attackType: 'punch' | 'kick' | 'club' | 'physWeapon',
+        attackType: 'punch' | 'kick' | 'club' | 'physWeapon' | 'claw',
         location?: string,
         ignoreMyomer = false,
     ): { damage: number; text: string; weakened: boolean } {
@@ -1755,6 +1782,9 @@ export class MekRules extends UnitTypeRulesBase {
             baseDamage,
             ignoreMyomer,
         });
+        const designBaselineDamage = attackType === 'punch'
+            ? this.getPunchDesignBaselineDamage(effect.baseDamage, location)
+            : effect.baseDamage;
         const { damage, maxDamage } = this.computeMeleeDamage(
             effect.baseDamage,
             attackType,
@@ -1764,7 +1794,27 @@ export class MekRules extends UnitTypeRulesBase {
         return {
             damage,
             text: damage === maxDamage ? `${damage}` : `${damage} [${maxDamage}]`,
-            weakened: damage < effect.baseDamage,
+            weakened: damage < designBaselineDamage,
+        };
+    }
+
+    resolveShieldDamageDisplay(entry: MountedEquipment): { damage: number | null; text: string; weakened: boolean } {
+        const profile = resolveShieldProfile(entry.equipment);
+        if (!profile) {
+            return { damage: null, text: '—', weakened: false };
+        }
+        const location = this.shieldArmLocation(entry);
+        if (!this.standaloneShieldDamageEnabled) {
+            const damage = location ? this.getShieldBashDamageBonus(location) : 0;
+            return damage > 0
+                ? { damage, text: `+${damage}`, weakened: false }
+                : { damage: null, text: '—', weakened: false };
+        }
+        const damage = this.currentShieldDamageAbsorption(entry, location, profile);
+        return {
+            damage,
+            text: `${damage}`,
+            weakened: damage < profile.damageAbsorption,
         };
     }
 
@@ -1820,6 +1870,7 @@ export class MekRules extends UnitTypeRulesBase {
     override canPerformEquipmentAction(entry: MountedEquipment, action: EquipmentAction): boolean {
         if (action === 'fire') return this.fireControl()?.canFire ?? true;
         if (action !== 'physical-attack') return true;
+        if (entry.equipment?.hasFlag('F_SHIELD') && !this.standaloneShieldDamageEnabled) return false;
 
         const physical = this.physicalCombat();
         if (!physical) return true;
@@ -1846,14 +1897,33 @@ export class MekRules extends UnitTypeRulesBase {
         );
     }
 
-    override getMountedCriticalStatusContribution(facts: EquipmentStatusFacts): EquipmentStatus {
-        const destroyedCriticalCount = facts.criticals.filter(critical => critical.status === 'destroyed').length;
-        const threshold = this.mountedCriticalDamageDestructionThreshold(facts);
-        return destroyedCriticalCount >= threshold ? 'destroyed' : 'available';
+    override hasIndependentInventoryControlAction(entry: MountedEquipment): boolean {
+        return !entry.equipment?.hasFlag('F_SHIELD') || this.standaloneShieldDamageEnabled;
     }
 
-    protected mountedCriticalDamageDestructionThreshold(facts: EquipmentStatusFacts): number {
-        return facts.equipmentFlags.has('F_AC') ? 2 : 1;
+    override getMountedCriticalStatusContribution(facts: EquipmentStatusFacts): EquipmentStatus {
+        const destroyedCriticalCount = facts.criticals.filter(critical => critical.status === 'destroyed').length;
+        if (facts.equipmentFlags.has('F_SHIELD')) {
+            const profile = resolveShieldProfile(facts.equipment ?? undefined);
+            if (!profile) return destroyedCriticalCount > 0 ? 'destroyed' : 'available';
+            const location = facts.criticals
+                .map(critical => critical.location)
+                .find((candidate): candidate is ArmLocation => candidate === 'LA' || candidate === 'RA')
+                ?? Array.from(facts.locationStates.keys())
+                    .find((candidate): candidate is ArmLocation => candidate === 'LA' || candidate === 'RA');
+            const { absorption, capacity } = this.shieldDamageState(profile, destroyedCriticalCount, location);
+            return absorption > 0 && capacity > 0 ? 'available' : 'destroyed';
+        }
+        const threshold = this.mountedCriticalDamageDestructionThreshold(facts.equipment);
+        const singleCritical = facts.criticals.length === 1 ? facts.criticals[0] : null;
+        const criticalDamage = threshold > 1 && singleCritical
+            ? Math.max(0, singleCritical.committedHits - (singleCritical.armored ? 1 : 0))
+            : destroyedCriticalCount;
+        return criticalDamage >= threshold ? 'destroyed' : 'available';
+    }
+
+    override mountedCriticalDamageDestructionThreshold(equipment: Equipment | null): number {
+        return equipment?.hasFlag('F_AC') ? 2 : 1;
     }
 
     override getEquipmentToHitModifiers(entry: MountedEquipment): readonly ToHitModifierBreakdownEntry[] {
@@ -2068,23 +2138,31 @@ export class MekRules extends UnitTypeRulesBase {
 
     /**
      * Compute melee damage after actuator losses and TSM modifiers.
-     * @param baseDamage   - original damage value from the record sheet
+     * @param baseDamage   - unmodified base damage for the attack
      * @param attackType   - which melee attack (determines which actuators matter)
-     * @param loc          - arm location (for punch/physWeapon)
+     * @param loc          - arm location (for punch/claw)
      * @param ignoreMyomer - true for weapons immune to TSM bonus (e.g. flails)
      */
     computeMeleeDamage(
         baseDamage: number,
-        attackType: 'punch' | 'kick' | 'club' | 'physWeapon',
+        attackType: 'punch' | 'kick' | 'club' | 'physWeapon' | 'claw',
         loc?: string,
         ignoreMyomer?: boolean
     ): { damage: number; maxDamage: number } {
         const ss = this.systemsStatus();
         let damage = baseDamage;
 
-        // Actuator damage halving
         if (attackType === 'punch' && loc) {
-            for (let i = 0; i < ss.destroyedArmActuatorsCount[loc as ArmLocation]; i++) {
+            damage += this.getShieldBashDamageBonus(loc);
+        }
+
+        // Punch and claw damage are halved for each destroyed upper/lower arm actuator. A lower-arm actuator absent by
+        // design is also applied to fact-derived punch damage, but not to claw damage.
+        if ((attackType === 'punch' || attackType === 'claw') && loc) {
+            const armStatus = ss.locationModifiers[loc];
+            const unavailableActuators = ss.destroyedArmActuatorsCount[loc as ArmLocation]
+                + (attackType === 'punch' && armStatus?.missingLowerArm ? 1 : 0);
+            for (let i = 0; i < unavailableActuators; i++) {
                 damage = Math.floor(damage * 0.5);
                 if (damage < 1) damage = 1;
             }
@@ -2103,6 +2181,75 @@ export class MekRules extends UnitTypeRulesBase {
         }
 
         return { damage, maxDamage };
+    }
+
+    private basePunchDamage(): number {
+        const baseDamage = Math.ceil(this.unit.getUnit().tons / 10);
+        return this.unit.getUnit().subtype === 'Land-Air BattleMek' ? baseDamage / 2 : baseDamage;
+    }
+
+    private getPunchDesignBaselineDamage(baseDamage: number, loc?: string): number {
+        if (!loc || !this.systemsStatus().locationModifiers[loc]?.missingLowerArm) return baseDamage;
+        return Math.max(Math.floor(baseDamage * 0.5), 1);
+    }
+
+    private getShieldBashDamageBonus(loc: string): number {
+        if (!this.shieldBashPunchBonusEnabled || (loc !== 'LA' && loc !== 'RA')) return 0;
+        for (const entry of this.unit.getMountedEquipmentByFlag('F_SHIELD')) {
+            const profile = resolveShieldProfile(entry.equipment);
+            if (!profile || !this.shieldMountsAt(entry, loc)) continue;
+            // Equipment status is committed-only and already owns mount, location, critical, and shield-capacity
+            // destruction. In particular, a pending hit must not remove the bonus before damage is committed.
+            if (this.unit.getEquipmentStatus(entry) === 'destroyed') continue;
+            return profile.bashBonus;
+        }
+        return 0;
+    }
+
+    private currentShieldDamageAbsorption(
+        entry: MountedEquipment,
+        loc: ArmLocation | undefined,
+        profile: ShieldProfile,
+    ): number {
+        return this.shieldDamageState(
+            profile,
+            this.shieldCriticalSlots(entry, loc).filter(slot => !!slot.destroyed).length,
+            loc,
+        ).absorption;
+    }
+
+    private shieldDamageState(
+        profile: ShieldProfile,
+        destroyedCriticalCount: number,
+        loc: ArmLocation | undefined,
+    ): { absorption: number; capacity: number } {
+        let actuatorPenalty = 0;
+        if (loc) {
+            const armStatus = this.systemsStatus().locationModifiers[loc];
+            if (armStatus?.destroyedShoulder) actuatorPenalty += 2;
+            if (armStatus?.destroyedUpperArms) actuatorPenalty++;
+            if (armStatus?.destroyedLowerArms) actuatorPenalty++;
+            if (armStatus?.destroyedHand) actuatorPenalty++;
+        }
+        return {
+            absorption: Math.max(0, profile.damageAbsorption - destroyedCriticalCount - actuatorPenalty),
+            capacity: Math.max(0, profile.damageCapacity - (destroyedCriticalCount * 5) - actuatorPenalty),
+        };
+    }
+
+    private shieldCriticalSlots(entry: MountedEquipment, loc?: string): CriticalSlot[] {
+        return this.entryCriticalSlots(entry).filter(slot => !loc || slot.loc === loc);
+    }
+
+    private shieldArmLocation(entry: MountedEquipment): ArmLocation | undefined {
+        return Array.from(entry.locations ?? []).find((loc): loc is ArmLocation => loc === 'LA' || loc === 'RA')
+            ?? this.entryCriticalSlots(entry)
+                .map(slot => slot.loc)
+                .find((loc): loc is ArmLocation => loc === 'LA' || loc === 'RA');
+    }
+
+    private shieldMountsAt(entry: MountedEquipment, loc: ArmLocation): boolean {
+        return entry.locations?.has(loc) === true || this.entryCriticalSlots(entry).some(slot => slot.loc === loc);
     }
 
     protected isNamedCrit(slot: CriticalSlot, name: string): boolean {

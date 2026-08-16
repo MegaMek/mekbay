@@ -321,7 +321,7 @@ describe('equipment model', () => {
         expect(internalWeapon.isInternalRepresentation).toBeTrue();
     });
 
-    it('identifies physical shields from club and shield-size semantics', () => {
+    it('identifies shields independently of club and shield-size flags', () => {
         const shield = new MiscEquipment({
             id: 'shield', name: 'Shield', type: 'misc', flags: ['F_SHIELD', 'S_SHIELD_MEDIUM'],
         });
@@ -373,6 +373,24 @@ function weapon(
     });
 }
 describe('equipment damage types', () => {
+
+    it('keeps optional AC, PPC, and pod explosions out of base weapon types', () => {
+        const intrinsic = new WeaponEquipment({
+            id: 'IntrinsicExplosive', name: 'Intrinsic Explosive', type: 'weapon',
+            stats: { explosive: true },
+        });
+        expect(intrinsic.getWeaponTypes()).toContain('X');
+
+        for (const flag of ['F_AC', 'F_PPC', 'F_B_POD', 'F_M_POD'] as const) {
+            const conditional = new WeaponEquipment({
+                id: flag, name: flag, type: 'weapon', flags: [flag],
+                stats: { explosive: true },
+            });
+            expect(conditional.getWeaponTypes())
+                .withContext(flag)
+                .not.toContain('X');
+        }
+    });
 
     it('derives weapon types from flags and weapon data', () => {
         const weapon = new WeaponEquipment({

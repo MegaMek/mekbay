@@ -7,6 +7,7 @@ import { WeaponEquipment, type WeaponDamage } from '../models/equipment.model';
 import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
 import { MountedWeapon } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
+import type { WeaponType } from '../models/weapon-types.model';
 import type { DialogsService } from '../services/dialogs.service';
 import {
     createHandlerCommandContext,
@@ -116,7 +117,7 @@ describe('TwBombastLaserHandler', () => {
             expect(handler.getToHitAdjustments(entry, {}, queryContext)).toEqual(modifier === 0 ? [] : [{
                 kind: 'replace-base',
                 value: modifier,
-                label: `Bombast (${mode})`,
+                label: `Bombast Laser (${mode})`,
             }]);
         }
     });
@@ -131,7 +132,7 @@ describe('TwBombastLaserHandler', () => {
         expect(handler.getToHitAdjustments(entry, {}, queryContext)).toEqual([{
             kind: 'replace-base',
             value: 3,
-            label: 'Bombast (Damage 7)',
+            label: 'Bombast Laser [DE,V] (Damage 7)',
         }]);
         expect(handler.applyInventoryControlAerospaceAttackValueEffects(entry, [12, 12, 0, 0], queryContext))
             .toEqual([7, 7, 0, 0]);
@@ -165,5 +166,13 @@ describe('TwBombastLaserHandler', () => {
         expect(handler.applicableTo(coreEntry)).toBeFalse();
         expect(handler.applicableTo(twEntry)).toBeTrue();
         expect(handler.flags).toEqual(['F_BOMBAST_LASER']);
+    });
+
+    it('suppresses explosive X under TW rules', () => {
+        expect(handler.applyInventoryControlWeaponTypes(
+            bombastLaser(),
+            new Set<WeaponType>(['DE', 'V', 'X']),
+            queryContext,
+        )).toEqual(new Set<WeaponType>(['DE', 'V']));
     });
 });

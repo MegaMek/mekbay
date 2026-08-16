@@ -4,7 +4,7 @@
 
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { AmmoMunitionFlag } from '../ammo-munition-flags.type';
-import { AmmoEquipment, Equipment, isTorpedoAmmo, WeaponEquipment, type RangeBrackets } from '../equipment.model';
+import { AmmoEquipment, Equipment, isTorpedoAmmo, MiscEquipment, WeaponEquipment, type RangeBrackets } from '../equipment.model';
 import type { EquipmentRegistry } from '../equipment-lookup';
 import type { InventoryControlRuntimeTarget } from '../inventory-control-runtime-state.model';
 import { MountedEquipment } from '../mounted-equipment.model';
@@ -53,6 +53,45 @@ export interface ToHitHeatSeparation {
 export type C3DegradationSource = 'none' | 'unit' | 'network-member';
 export type C3DegradationLabel = 'DEGRADED' | 'JAMMED';
 export type SemiGuidedAdjustmentSource = 'movement' | 'terrain';
+
+export type MekExplosionProtection = 'none' | 'case' | 'case-ii';
+
+export interface MekImmediateCriticalExplosionContext {
+    readonly hitEntry: MountedEquipment | null;
+    readonly hitEquipment: Equipment | null;
+    readonly remainingAmmoDamage: number;
+    readonly remainingAmmoShots: number;
+    readonly mountedCriticalSlots: number;
+    readonly previousComponentCriticalHits: number;
+    readonly explosiveWeapon: boolean;
+    readonly parentOperational: boolean;
+    readonly hasUsableAmmo: boolean;
+}
+
+export interface MekImmediateCriticalExplosion {
+    readonly equipment: string;
+    readonly rawDamage: number;
+    readonly pilotHits: number;
+    readonly automaticCriticalEntry?: MountedEquipment;
+}
+
+export interface MekExplosionDamageContext {
+    readonly damage: number;
+    readonly protection: MekExplosionProtection;
+    readonly remainingInternal: number;
+    readonly remainingArmor: number;
+    readonly originalArmor: number;
+    readonly torso: boolean;
+    /** Core's standard 20-point cap was exceeded before damage transferred here. */
+    readonly armorBlowoutPending?: boolean;
+}
+
+export interface MekExplosionDamageResolution {
+    readonly internalDamage: number;
+    readonly armorDamage: number;
+    readonly armorRear: boolean;
+    readonly stopsTransfer: boolean;
+}
 
 /** No failure roll is made for this tracked use. */
 export const ESCALATING_FAILURE_NO_CHECK_TARGET = 0;
@@ -162,7 +201,94 @@ export abstract class CBTGameRules {
     abstract getSemiGuidedAdjustment(modifierValue: number, source: SemiGuidedAdjustmentSource): number;
     abstract getNarcBeaconAttackRestriction(context: NarcBeaconAttackContext): NarcBeaconAttackRestriction | null;
     abstract allowsTagDesignation(targetType: TnTargetUnitType | undefined): boolean;
+    abstract getExplosiveWeaponDamage(weapon: WeaponEquipment, mountedCriticalSlots: number): number;
+    abstract resolveMekExplosionDamage(context: MekExplosionDamageContext): MekExplosionDamageResolution;
+    abstract getMekExplosionProtectionNote(protection: MekExplosionProtection): string | null;
     protected abstract canFireTorpedoesIndirectly(context: IndirectFireContext): boolean;
+
+    /** Resolves immediate Mek explosion effects after handler-owned delayed cases are excluded. */
+    getMekImmediateCriticalExplosion(
+        context: MekImmediateCriticalExplosionContext,
+    ): MekImmediateCriticalExplosion | null {
+        const equipment = context.hitEquipment;
+        if (!equipment) return null;
+
+        if (equipment instanceof AmmoEquipment) {
+            const rawDamage = equipment.ammoType === 'COOLANT_POD'
+                ? (context.remainingAmmoShots > 0 ? this.coolantPodExplosionDamage : 0)
+                : equipment.isExplosive() ? context.remainingAmmoDamage : 0;
+            return rawDamage > 0
+                ? this.immediateMekExplosion(equipment.name, rawDamage)
+                : null;
+        }
+
+        const hitEntry = context.hitEntry;
+        if (!hitEntry) return null;
+
+        if (equipment instanceof WeaponEquipment) {
+            if (!context.explosiveWeapon || context.previousComponentCriticalHits > 0) return null;
+            if (equipment.hasFlag('F_HVAC') && !context.hasUsableAmmo) return null;
+            return this.immediateMekExplosion(
+                hitEntry.getDisplayName(),
+                this.getExplosiveWeaponDamage(equipment, context.mountedCriticalSlots),
+            );
+        }
+
+        if (!(equipment instanceof MiscEquipment)
+            || !equipment.isExplosive()
+            || context.previousComponentCriticalHits > 0) return null;
+
+        if (equipment.hasFlag('F_BLUE_SHIELD')) {
+            const active = hitEntry.states.get('blueShieldUsedThisTurn') === 'true';
+            return active ? this.immediateMekExplosion(hitEntry.getDisplayName(), 5) : null;
+        }
+
+        if (equipment.hasFlag('F_RISC_LASER_PULSE_MODULE')) {
+            const laser = hitEntry.parent;
+            return laser && context.parentOperational
+                ? {
+                    ...this.immediateMekExplosion(hitEntry.getDisplayName(), 2),
+                    automaticCriticalEntry: laser,
+                }
+                : null;
+        }
+
+        if (equipment.hasAllFlags(['F_JUMP_JET', 'S_IMPROVED', 'S_PROTOTYPE'])) {
+            return this.immediateMekExplosion(hitEntry.getDisplayName(), 10);
+        }
+
+        if (equipment.hasFlag('F_FUEL')) {
+            return this.immediateMekExplosion(hitEntry.getDisplayName(), 20);
+        }
+
+        if (equipment.hasFlag('F_EMERGENCY_COOLANT_SYSTEM')) {
+            return this.immediateMekExplosion(hitEntry.getDisplayName(), 5);
+        }
+
+        return this.immediateMekExplosion(
+            hitEntry.getDisplayName(),
+            context.mountedCriticalSlots * 2,
+        );
+    }
+
+    getMekInternalExplosionPilotHits(): number {
+        return this.id === 'core2026' ? 1 : 2;
+    }
+
+    private get coolantPodExplosionDamage(): number {
+        return this.id === 'core2026' ? 2 : 10;
+    }
+
+    private immediateMekExplosion(
+        equipment: string,
+        rawDamage: number,
+    ): MekImmediateCriticalExplosion {
+        return {
+            equipment,
+            rawDamage: Math.max(0, rawDamage),
+            pilotHits: this.getMekInternalExplosionPilotHits(),
+        };
+    }
 
     canFireIndirectly(
         entry: MountedEquipment,
@@ -280,10 +406,12 @@ export abstract class CBTGameRules {
         if (entry.isPhysicalWeapon()) return true;
         if (!equipment) return false;
         if (!(equipment instanceof WeaponEquipment)
+            && !equipment.flags.has('F_SHIELD')
             && !equipment.flags.has('F_CLUB')
             && !equipment.flags.has('F_HAND_WEAPON')) return false;
         if (equipment instanceof WeaponEquipment
             && equipment.hasNoRange()
+            && !equipment.flags.has('F_SHIELD')
             && !equipment.flags.has('F_CLUB')
             && !equipment.flags.has('F_HAND_WEAPON')
             && equipment.weapon.ammoType !== 'MML'
@@ -404,8 +532,58 @@ export class GameRules extends CBTGameRules {
         return true;
     }
 
+    override getExplosiveWeaponDamage(_weapon: WeaponEquipment, mountedCriticalSlots: number): number {
+        return Math.max(0, mountedCriticalSlots) * 2;
+    }
+
+    override resolveMekExplosionDamage(context: MekExplosionDamageContext): MekExplosionDamageResolution {
+        const damage = Math.max(0, context.damage);
+        const cap = context.protection === 'case-ii' ? 1 : context.protection === 'case' ? 10 : 20;
+        const internalDamage = Math.min(damage, cap);
+        let armorDamage = 0;
+
+        if (context.protection === 'none') {
+            const armorBlowoutPending = context.armorBlowoutPending || damage > cap;
+            if (armorBlowoutPending && context.remainingInternal > internalDamage) {
+                armorDamage = context.remainingArmor;
+            }
+        } else if (damage > cap && context.remainingInternal > internalDamage) {
+            armorDamage = Math.min(context.remainingArmor, 10, damage - cap);
+        }
+
+        return {
+            internalDamage,
+            armorDamage,
+            armorRear: context.torso,
+            stopsTransfer: context.protection !== 'none',
+        };
+    }
+
+    override getMekExplosionProtectionNote(protection: MekExplosionProtection): string | null {
+        if (protection === 'case') {
+            return 'Caps internal damage at 10; if the location survives, up to 10 excess damage vents through its armor. Damage never transfers.';
+        }
+        if (protection === 'case-ii') {
+            return 'Caps internal damage at 1; if the location survives, up to 10 excess damage vents through its armor. Damage never transfers, and the resulting critical-hit check is −1.';
+        }
+        return null;
+    }
+
     protected override canFireTorpedoesIndirectly(_context: IndirectFireContext): boolean {
         return false;
+    }
+
+    protected override getRulesProfile(equipment: Equipment): number[] {
+        // Claws have a 0 hit modifier instead of TW's +1.
+        if (equipment.flags.has('S_CLAW')) {
+            return [0];
+        }
+        // MRM have 0 instead of +1 of TW
+        if (equipment instanceof WeaponEquipment && equipment.hasFlag('F_MRM')) {
+            return [0];
+        }
+
+        return super.getRulesProfile(equipment);
     }
 }
 
@@ -493,6 +671,41 @@ export class TWGameRules extends CBTGameRules {
         return targetType !== 'infantry' && targetType !== 'battle-armor';
     }
 
+    override getExplosiveWeaponDamage(weapon: WeaponEquipment, _mountedCriticalSlots: number): number {
+        return Math.max(0, weapon.weapon.explosionDamage);
+    }
+
+    override resolveMekExplosionDamage(context: MekExplosionDamageContext): MekExplosionDamageResolution {
+        const damage = Math.max(0, context.damage);
+        if (context.protection !== 'case-ii') {
+            return {
+                internalDamage: damage,
+                armorDamage: 0,
+                armorRear: context.torso,
+                stopsTransfer: context.protection === 'case',
+            };
+        }
+
+        const ventedDamage = Math.max(0, damage - 1);
+        const armorCap = context.torso ? context.remainingArmor : Math.ceil(context.originalArmor / 2);
+        return {
+            internalDamage: damage > 0 && context.remainingInternal > 0 ? 1 : 0,
+            armorDamage: Math.min(context.remainingArmor, armorCap, ventedDamage),
+            armorRear: context.torso,
+            stopsTransfer: true,
+        };
+    }
+
+    override getMekExplosionProtectionNote(protection: MekExplosionProtection): string | null {
+        if (protection === 'case') {
+            return 'Takes full explosion damage in this location, but prevents any excess from transferring.';
+        }
+        if (protection === 'case-ii') {
+            return 'Applies 1 internal damage and vents the remainder through rear armor, or up to half the original armor in a limb or head. Damage never transfers; each resulting critical hit is ignored on 8+.';
+        }
+        return null;
+    }
+
     /* TARGET ACQUISITION GEAR (TAG)
     Any unit in the battle force equipped with TAG, Light TAG or a C3 Master Computer (flag F_TAG)
     adds BV equal to the BV of each ton of semi-guided (flag M_SEMIGUIDED or M_HOMING) LRM ammunition 
@@ -538,16 +751,17 @@ export class TWGameRules extends CBTGameRules {
     }
 
     protected override getRulesProfile(equipment: Equipment): number[] {
-        // Claw and Lance has 1 hitmod instead of 0 of core 2026
-        if (equipment.flags.has('S_CLAW') || equipment.flags.has('S_LANCE')) {
+        // Claws have a +1 hit modifier instead of Core 2026's 0.
+        if (equipment.flags.has('S_CLAW')) {
             return [1];
         }
 
-        const modifiers = super.getRulesProfile(equipment);
         // MRM have +1 instead of 0 of core
-        return equipment instanceof WeaponEquipment && equipment.hasFlag('F_MRM')
-            ? modifiers.map(modifier => modifier + 1)
-            : modifiers;
+        if (equipment instanceof WeaponEquipment && equipment.hasFlag('F_MRM')) {
+            return [1];
+        }
+
+        return super.getRulesProfile(equipment);
     }
 }
 

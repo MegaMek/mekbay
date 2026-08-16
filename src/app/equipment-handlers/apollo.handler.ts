@@ -54,7 +54,7 @@ export class ApolloHandler extends EquipmentInteractionHandler {
         if (!parent || equipment.owner.gameRules.supportsApolloSaturationMode || !isApollo(equipment) || !isMrmWeapon(parent)) return [];
         const status = context.getStatus(equipment);
         const weakened = status !== 'available';
-        const label = equipment.equipment?.shortName ?? equipment.name;
+        const label = equipment.getDisplayName();
         return [{
             kind: 'add',
             label: status === 'destroyed'

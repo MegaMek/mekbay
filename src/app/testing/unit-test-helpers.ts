@@ -192,6 +192,7 @@ export interface CBTForceUnitTestHarnessOptions {
     resolveEquipmentStatusAtLocation?: (entry: MountedEquipment, location: string) => MountedEquipmentStatus;
     resolveConfigureNetworkPermission?: (entry: MountedEquipment) => boolean;
     resolveEquipmentActionPermission?: (entry: MountedEquipment, action: EquipmentAction) => boolean;
+    hasIndependentInventoryControlAction?: (entry: MountedEquipment) => boolean;
     getEquipmentToHitModifiers?: (entry: MountedEquipment) => readonly ToHitModifierBreakdownEntry[];
     applyInventoryControlDisplayEffects?: (entry: MountedEquipment, display: InventoryControlDisplayData) => InventoryControlDisplayData;
 }
@@ -364,6 +365,8 @@ export class CBTForceUnitTestHarness {
             getBasePilotingSkill: () => options.pilotingSkill ?? 5,
             canPerformEquipmentAction: (entry: MountedEquipment, action: EquipmentAction) =>
                 options.resolveEquipmentActionPermission?.(entry, action) ?? true,
+            hasIndependentInventoryControlAction: (entry: MountedEquipment) =>
+                options.hasIndependentInventoryControlAction?.(entry) ?? true,
             applyInventoryControlDisplayEffects: (entry: MountedEquipment, display: InventoryControlDisplayData) =>
                 options.applyInventoryControlDisplayEffects?.(entry, display) ?? display
         };

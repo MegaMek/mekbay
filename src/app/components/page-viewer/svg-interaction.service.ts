@@ -29,7 +29,7 @@ import { type ChoicePickerStyle, PickerFactoryService } from '../../services/pic
 import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData, EquipmentDialogTab } from '../equipment-dialog/equipment-dialog.model';
 import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dialog/weapon-target-choice-menu.component';
-import { getInventoryControlGroups, getInventoryControlModeAmmoSummary, getInventoryControlModes, getSelectedInventoryControlMode, inventoryControlEntryAction, INVENTORY_CONTROL_MODE_STATE, resolveInventoryControlSelectedAmmoOption, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
+import { getInventoryControlGroups, getInventoryControlModeAmmoSummary, getInventoryControlModes, getSelectedInventoryControlMode, inventoryControlEntryAction, INVENTORY_CONTROL_MODE_STATE, isInventoryControlSelectableEntry, resolveInventoryControlSelectedAmmoOption, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
 import { inventoryControlEntryAllowsTarget, inventoryControlEntryTargetDisabledReason, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
 import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
@@ -37,12 +37,16 @@ import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
 import { UnitStateDropdownComponent, type UnitStateDropdownChoice } from './unit-state-dropdown.component';
 import { getAmmoControlEntryForCriticalSlot, setAmmoEntry } from '../../utils/ammo-interaction.util';
-import { MEK_TORSO_LOCATIONS } from '../../models/entity/types';
+import { getMekLocationLabel, MEK_TORSO_LOCATIONS } from '../../models/entity/types';
 import { isLaserWithRiscModule, isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE, selectedRiscLaserMode } from '../../equipment-handlers/risc-laser-pulse-module.handler';
 import { ClusterTableDialogComponent } from '../cluster-table-dialog/cluster-table-dialog.component';
 import { hasUnitDefaultReferenceTables } from '../../utils/reference-table-definition';
 import { clusterTableForUnit } from '../../utils/record-sheet-reference-table';
 import { isCenterPanelTarget, isPointInCenterPanel, resolveCenterPanelCursorElements } from '../../utils/record-sheet-center-panel.util';
+import { MekCriticalChanceDialogComponent, type MekCriticalChanceDialogData } from './mek-critical-chance-dialog.component';
+import { MekCriticalRollDialogComponent, type MekCriticalRollDialogData } from './mek-critical-roll-dialog.component';
+import { applyMekBlowOff, canApplyMekCriticalHitToSlot, mekCriticalChanceCanBlowOff, mekCriticalChanceModifiers, type MekCriticalChanceResult } from '../../utils/mek-critical-hit.util';
+import { uidTranslations } from '../../models/common.model';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 type HeatMarkerData = { el: SVGElement | null, heat: number; baselineHeat: number };
@@ -73,6 +77,9 @@ const SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY = 'svg-inventory-target-choice';
 const SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-conditions-dropdown';
 const SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY = 'svg-crew-state-dropdown';
 const SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-location-conditions-dropdown';
+const CRITICAL_CHANCE_ACTION = 'critical-chance';
+const CRITICAL_ROLL_ACTION = 'critical-roll';
+const EQUIPMENT_HOVER_SECONDARY_CLASS = 'equipment-hover-secondary';
 const ARMOR_OVERFLOW_CHOICE_COLORS = {
     normal: '#8B0000',
     normalText: '#fff',
@@ -233,6 +240,7 @@ export class SvgInteractionService {
         this.setupConditionsInteractions(svg, signal);
         this.setupLocationConditionInteractions(svg, signal);
         this.setupInventoryInteractions(svg, signal);
+        this.setupMekEquipmentHoverInteractions(svg, signal);
         this.setupAmmoProfileInteractions(svg, signal);
         this.setupCenterPanelInteraction(svg, signal);
     }
@@ -245,8 +253,92 @@ export class SvgInteractionService {
         this.markEditOnlyControls(svg);
         this.interactionAbortController = new AbortController();
         const signal = this.interactionAbortController.signal;
+        this.setupMekEquipmentHoverInteractions(svg, signal);
         this.setupAmmoProfileInteractions(svg, signal);
         this.setupCenterPanelInteraction(svg, signal);
+    }
+
+    /** Cross-highlights every slot in a Mek critical entry and its inventory mount, when present. */
+    private setupMekEquipmentHoverInteractions(svg: SVGSVGElement, signal: AbortSignal): void {
+        const unit = this.unit();
+        if (!unit || typeof unit.getUnit !== 'function' || unit.getUnit().type !== 'Mek') return;
+
+        const criticalSlotElements = Array.from(svg.querySelectorAll<SVGElement>('.critSlot'));
+        const linksByElement = new Map<SVGElement, {
+            inventoryElement: SVGElement | null;
+            criticalSlotElements: readonly SVGElement[];
+        }>();
+
+        const criticalSlotGroups = new Map<string, SVGElement[]>();
+        criticalSlotElements.forEach(criticalSlotElement => {
+            const uid = criticalSlotElement.getAttribute('uid');
+            if (!uid) return;
+            const location = criticalSlotElement.getAttribute('loc') ?? '';
+            const isLocationScopedSystem = criticalSlotElement.getAttribute('type') === 'sys'
+                && !uidTranslations[uid];
+            const groupKey = isLocationScopedSystem ? `${uid}@${location}` : uid;
+            const matchingSlots = criticalSlotGroups.get(groupKey) ?? [];
+            matchingSlots.push(criticalSlotElement);
+            criticalSlotGroups.set(groupKey, matchingSlots);
+        });
+        criticalSlotGroups.forEach(matchingSlots => {
+            const link = { inventoryElement: null, criticalSlotElements: matchingSlots };
+            matchingSlots.forEach(criticalSlotElement => linksByElement.set(criticalSlotElement, link));
+        });
+
+        unit.getInventory().forEach(entry => {
+            const inventoryElement = entry.el;
+            if (!inventoryElement || !svg.contains(inventoryElement)) return;
+
+            const linkedCriticalSlots = criticalSlotElements.filter(criticalSlotElement => {
+                if (criticalSlotElement.getAttribute('uid') === entry.id) return true;
+
+                const loc = criticalSlotElement.getAttribute('loc');
+                const slot = Number.parseInt(criticalSlotElement.getAttribute('slot') ?? '', 10);
+                if (!loc || !Number.isFinite(slot)) return false;
+                return entry.critSlots?.some(entrySlot => entrySlot.loc === loc && entrySlot.slot === slot) ?? false;
+            });
+            if (linkedCriticalSlots.length === 0) return;
+
+            const link = { inventoryElement, criticalSlotElements: linkedCriticalSlots };
+            linksByElement.set(inventoryElement, link);
+            linkedCriticalSlots.forEach(criticalSlotElement => linksByElement.set(criticalSlotElement, link));
+        });
+
+        if (linksByElement.size === 0) return;
+
+        let activeSource: SVGElement | null = null;
+        let highlightedElements: SVGElement[] = [];
+
+        const clearHighlight = () => {
+            highlightedElements.forEach(element => element.classList.remove(EQUIPMENT_HOVER_SECONDARY_CLASS));
+            highlightedElements = [];
+        };
+        const hoverSource = (target: EventTarget | null): SVGElement | null => {
+            if (!(target instanceof Element)) return null;
+            const source = target.closest<SVGElement>('.inventoryEntry, .critSlot');
+            return source && svg.contains(source) && linksByElement.has(source) ? source : null;
+        };
+        const updateHighlight = (source: SVGElement | null) => {
+            if (source === activeSource) return;
+            clearHighlight();
+            activeSource = source;
+            if (!source) return;
+
+            const link = linksByElement.get(source);
+            if (!link) return;
+            const linkedElements = [...(link.inventoryElement ? [link.inventoryElement] : []), ...link.criticalSlotElements]
+                .filter(element => element !== source);
+            linkedElements.forEach(element => element.classList.add(EQUIPMENT_HOVER_SECONDARY_CLASS));
+            highlightedElements = linkedElements;
+        };
+
+        svg.addEventListener('pointerover', event => updateHighlight(hoverSource(event.target)), { signal });
+        svg.addEventListener('pointerout', event => updateHighlight(hoverSource(event.relatedTarget)), { signal });
+        signal.addEventListener('abort', () => {
+            clearHighlight();
+            activeSource = null;
+        }, { once: true });
     }
 
     /** Opens the native reference table when the generated center panel is tapped. */
@@ -1011,7 +1103,7 @@ export class SvgInteractionService {
                     const critSlot = unit.getCritSlot(loc, slot);
                     if (!critSlot) return [];
                     let values: PickerChoice[] = [];
-                    if (!critSlot.destroying) {
+                    if (canApplyMekCriticalHitToSlot(unit, critSlot)) {
                         values.push({ label: 'Critical Hit', value: 'Hit' });
                     }
                     if ((critSlot.hits ?? 0) > 0) {
@@ -1080,6 +1172,7 @@ export class SvgInteractionService {
                                 labelText = entry.currentAmmo.shortName;
                             }
                         } else if (choice.value == 'Hit') {
+                            if (!canApplyMekCriticalHitToSlot(unit, critSlot)) return;
                             unit.applyHitToCritSlot(critSlot, 1, this.consolidateImmediately);
                             this.toastService.showToast(`Critical Hit on ${labelText}`, 'error');
                         } else if (choice.value == 'Repair') {
@@ -1184,6 +1277,7 @@ export class SvgInteractionService {
                 el.addEventListener('click', toggleRiscMode, { passive: false, signal });
                 return;
             }
+            if (!isInventoryControlSelectableEntry(entry)) return;
             this.inventoryDialogButtons(el).forEach(button => {
                 button.classList.add('interactive');
                 button.style.cursor = 'pointer';
@@ -1532,6 +1626,15 @@ export class SvgInteractionService {
         updateChoices();
 
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            if (state === CRITICAL_CHANCE_ACTION || state === CRITICAL_ROLL_ACTION) {
+                this.overlayManager.closeManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+                if (state === CRITICAL_CHANCE_ACTION) {
+                    this.openMekCriticalChanceDialog(unit, loc);
+                } else {
+                    this.openMekCriticalRollDialog(unit, loc);
+                }
+                return;
+            }
             const control = unit.rules.locationConditionControls.find(candidate => candidate.key === state);
             if (control?.counted) {
                 const value = unit.getLocationConditionValue(loc, state) ?? 0;
@@ -1562,7 +1665,7 @@ export class SvgInteractionService {
     }
 
     private locationConditionDropdownChoices(unit: CBTForceUnit, loc: string): UnitStateDropdownChoice[] {
-        return unit.rules.locationConditionControls
+        const conditions = unit.rules.locationConditionControls
             .filter(state => state.key !== 'blown-off' || !MEK_TORSO_LOCATIONS.has(loc))
             .map(state => {
             const value = unit.getLocationConditionValue(loc, state.key) ?? 0;
@@ -1574,6 +1677,46 @@ export class SvgInteractionService {
                 counted: state.counted,
                 value: state.counted ? value : undefined,
             };
+        });
+        return [
+            ...conditions,
+            { key: 'critical-actions-break', label: '', color: '', active: false, isBreak: true },
+            { key: CRITICAL_CHANCE_ACTION, label: 'Critical Chance', color: '#444', active: false, action: true },
+            { key: CRITICAL_ROLL_ACTION, label: 'Critical Roll', color: '#444', active: false, action: true },
+        ];
+    }
+
+    private openMekCriticalChanceDialog(unit: CBTForceUnit, location: string): void {
+        const ref = this.dialogsService.createDialog<MekCriticalChanceResult | undefined>(MekCriticalChanceDialogComponent, {
+            data: {
+                locationLabel: getMekLocationLabel(location) ?? location,
+                canBlowOff: mekCriticalChanceCanBlowOff(location),
+                modifiers: mekCriticalChanceModifiers(unit, location),
+            } as MekCriticalChanceDialogData,
+        });
+        ref.closed.subscribe(result => {
+            if (!result || result.kind === 'none') return;
+            if (result.kind === 'blown-off') {
+                const blowOff = applyMekBlowOff(unit, location, this.consolidateImmediately);
+                if (blowOff.kind === 'absorbed') {
+                    this.toastService.showToast(`Armored ${blowOff.equipment} absorbs the blow-off result`, 'info');
+                } else {
+                    this.toastService.showToast(`${getMekLocationLabel(location) ?? location} blown off`, 'error');
+                }
+                return;
+            }
+            this.openMekCriticalRollDialog(unit, location, result.count);
+        });
+    }
+
+    private openMekCriticalRollDialog(unit: CBTForceUnit, location: string, requiredHits?: number): void {
+        this.dialogsService.createDialog<void>(MekCriticalRollDialogComponent, {
+            data: {
+                unit,
+                location,
+                requiredHits,
+                consolidateImmediately: this.consolidateImmediately,
+            } as MekCriticalRollDialogData,
         });
     }
 

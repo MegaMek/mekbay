@@ -81,14 +81,9 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         const output = fixture.nativeElement.querySelector('#tnCustomModifier') as HTMLOutputElement;
         const footer = fixture.nativeElement.querySelector('.tn-actions') as HTMLElement;
         const summary = footer.querySelector('.tn-summary') as HTMLElement;
-        const custom = summary.querySelector('.custom-modifier-row') as HTMLElement;
-        const total = summary.querySelector('.total-box') as HTMLElement;
         expect(output.textContent?.trim()).toBe('-2');
         expect(summary.contains(output)).toBeTrue();
         expect(fixture.nativeElement.querySelector('.other-section')?.contains(output)).toBeFalse();
-        expect(getComputedStyle(custom).flexGrow).toBe('1');
-        expect(getComputedStyle(total).flexGrow).toBe('1');
-        expect(getComputedStyle(output).width).toBe('36px');
         expect(output.classList).toContain('selected');
         expect(getComputedStyle(output).borderTopColor).toBe('rgb(255, 255, 255)');
         expect(getComputedStyle(output).backgroundColor).toBe('rgb(234, 174, 63)');

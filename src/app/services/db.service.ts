@@ -83,6 +83,7 @@ export interface StoredSheet {
     key: string;
     timestamp: number; // Timestamp of when the sheet was saved
     etag: string; // ETag for the sheet content for cache validation
+    fingerprintVersion?: number; // Cache policy fingerprintVersion; absent on legacy records
     content: Blob; // The compressed XML content of the sheet
     size: number; // Size of the blob in bytes
 }
@@ -1203,12 +1204,16 @@ export class DbService {
     }
 
     /**
-     * Get sheet metadata (timestamp, etag) without decompressing content.
+     * Get sheet metadata without decompressing content.
      */
-    public async getSheetMeta(key: string): Promise<{ timestamp: number; etag: string } | null> {
+    public async getSheetMeta(key: string): Promise<{ timestamp: number; etag: string; fingerprintVersion?: number } | null> {
         const storedData = await this.getDataFromStore<StoredSheet>(key, SHEETS_STORE);
         if (!storedData) return null;
-        return { timestamp: storedData.timestamp, etag: storedData.etag };
+        return {
+            timestamp: storedData.timestamp,
+            etag: storedData.etag,
+            ...(storedData.fingerprintVersion === undefined ? {} : { fingerprintVersion: storedData.fingerprintVersion }),
+        };
     }
 
     /**
@@ -1232,10 +1237,13 @@ export class DbService {
     /**
      * Update the timestamp of a cached sheet (to mark it as recently validated).
      */
-    public async touchSheet(key: string): Promise<void> {
+    public async touchSheet(key: string, fingerprintVersion?: number): Promise<void> {
         const storedData = await this.getDataFromStore<StoredSheet>(key, SHEETS_STORE);
         if (!storedData) return;
         storedData.timestamp = Date.now();
+        if (fingerprintVersion !== undefined) {
+            storedData.fingerprintVersion = fingerprintVersion;
+        }
         try {
             await this.saveDataToStore(storedData, key, SHEETS_STORE);
         } catch {
@@ -1243,7 +1251,7 @@ export class DbService {
         }
     }
 
-    public async saveSheet(key: string, sheet: SVGSVGElement, etag: string): Promise<void> {
+    public async saveSheet(key: string, sheet: SVGSVGElement, etag: string, fingerprintVersion?: number): Promise<void> {
         // Skip saving if blob storage is unavailable
         if (this.blobStorageUnavailable) return;
         
@@ -1255,6 +1263,7 @@ export class DbService {
             key: key,
             timestamp: Date.now(),
             etag: etag,
+            ...(fingerprintVersion === undefined ? {} : { fingerprintVersion }),
             content: compressedBlob,
             size: compressedBlob.size,
         };

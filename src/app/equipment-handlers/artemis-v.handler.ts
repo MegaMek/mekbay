@@ -36,7 +36,7 @@ export class ArtemisVHandler extends EquipmentInteractionHandler {
         const unitJammed = equipment.owner.getCondition('jammed');
         const incompatibleAmmo = selectedAmmo !== undefined && !selectedAmmo?.hasMunitionType('M_ARTEMIS_V_CAPABLE');
         const weakened = unavailable || unitJammed || incompatibleAmmo;
-        const label = equipment.equipment?.shortName ?? equipment.name;
+        const label = equipment.getDisplayName();
         const unavailableLabel = status === 'destroyed'
             ? `${label} Destroyed`
             : status === 'disabled'

@@ -4,13 +4,19 @@
     }
 
     &:not(.small) .dice-row {
-        gap: 1rem;
+        gap: clamp(4px, 2vw, 12px);
     }
 }
 
 .dice-row {
     display: flex;
     align-items: center;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+}
+
+.dice-row > * {
+    flex: 0 0 auto;
 }
 
 .die {
@@ -34,14 +40,19 @@
 }
 
 .sum.large {
-    font-size: 32px;
+    font-size: clamp(24px, 7vw, 32px);
     font-weight: bold;
     color: #fff;
+    white-space: nowrap;
+
+    .value {
+        font-size: 1.4em;
+    }
 }
 
 .plus-sign {
     .dice-roller-root:not(.small) & {
-        font-size: 24px;
+        font-size: clamp(20px, 6vw, 24px);
         font-weight: bold;
         color: #fff;
     }
@@ -105,7 +116,7 @@
     }
 
     &.success {
-        color: #7dcc80;
+        color: var(--success);
     }
 
     &.failed {
@@ -119,16 +130,18 @@
 
 .overlay-dice-row {
     display: flex;
-    gap: 1rem;
+    gap: clamp(4px, 2vw, 12px);
     align-items: center;
     justify-content: center;
+    flex-wrap: nowrap;
+    white-space: nowrap;
 }
 
 /* big die in overlay */
 .die.large {
-    width: 64px;
-    height: 64px;
-    font-size: 28px;
+    width: clamp(48px, 15vw, 64px);
+    height: clamp(48px, 15vw, 64px);
+    font-size: clamp(24px, 7vw, 28px);
     border-radius: 6px;
     border-width: 2px;
     background: #fff;
@@ -138,26 +151,12 @@
     justify-content: center;
 }
 
-.operator {
-    .dice-roller-root:not(.small) & {
-        font-size: 24px;
-        font-weight: bold;
-        color: #fff;
-    }
-
-    &.large {
-        font-size: 32px;
-        font-weight: bold;
-        color: #fff;
-    }
-}
-
 .modifier-value {
     font-weight: bold;
     color: #fff;
 
     &.large {
-        font-size: 32px;
+        font-size: clamp(24px, 7vw, 32px);
     }
 }
 

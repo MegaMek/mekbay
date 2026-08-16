@@ -223,7 +223,6 @@
     />
 
     <footer class="dialog-buttons">
-        <button type="button" class="bt-button" (click)="close()">DISMISS</button>
         <button
             type="button"
             class="bt-button history-button"
@@ -232,5 +231,6 @@
             [attr.aria-label]="historyOpen() ? 'Hide roll history' : 'Show roll history'"
             (click)="toggleHistory()"
         >#{{ rollCount() }}</button>
+        <button type="button" class="bt-button" (click)="close()">DISMISS</button>
     </footer>
 </div>

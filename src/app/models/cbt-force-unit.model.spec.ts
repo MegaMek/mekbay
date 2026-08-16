@@ -47,6 +47,7 @@ import {
     BOMBAST_LASER_CHARGING_STATE,
     BombastLaserHandler,
 } from '../equipment-handlers/bombast-laser.handler';
+import { applyMekCriticalRoll } from '../utils/mek-critical-hit.util';
 
 function createEquipment(): EquipmentMap {
     const ultraAc20 = new WeaponEquipment({
@@ -2700,7 +2701,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe(PPC_CAPACITOR_CHARGING_STATE);
     });
 
-    it('commits a charged PPC-capacitor explosion for direct inventory at phase end', () => {
+    it('does not infer a charged PPC-capacitor explosion from manual inventory destruction', () => {
         const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
         const { weapon, capacitor } = installChargedPpcPair(forceUnit);
@@ -2711,13 +2712,13 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const committedWeapon = forceUnit.getInventory().find(entry => entry.id === weapon.id)!;
         const committedCapacitor = forceUnit.getInventory().find(entry => entry.id === capacitor.id)!;
         expect(committedWeapon.committedDestroyed()).toBeTrue();
-        expect(committedCapacitor.committedDestroyed()).toBeTrue();
+        expect(committedCapacitor.committedDestroyed()).toBeFalse();
         expect(committedWeapon.pendingDestroyed()).toBeUndefined();
         expect(committedCapacitor.pendingDestroyed()).toBeUndefined();
-        expect(committedCapacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
+        expect(committedCapacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe(PPC_CAPACITOR_CHARGED_STATE);
     });
 
-    it('commits a charging PPC-capacitor explosion before end-turn state advancement', () => {
+    it('does not explode a charging PPC-capacitor from manual inventory destruction', () => {
         const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
         const { weapon, capacitor } = installChargedPpcPair(forceUnit);
@@ -2730,7 +2731,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const committedWeapon = forceUnit.getInventory().find(entry => entry.id === weapon.id)!;
         const committedCapacitor = forceUnit.getInventory().find(entry => entry.id === capacitor.id)!;
         expect(committedWeapon.committedDestroyed()).toBeTrue();
-        expect(committedCapacitor.committedDestroyed()).toBeTrue();
+        expect(committedCapacitor.committedDestroyed()).toBeFalse();
         expect(committedCapacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
     });
 
@@ -2740,7 +2741,13 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             const { weaponSlots, capacitorSlots, unrelatedSlot } = installChargedPpcPair(forceUnit, true);
             const triggerSlot = consolidateImmediately ? weaponSlots[0] : capacitorSlots[0];
 
-            forceUnit.applyHitToCritSlot(triggerSlot, 1, consolidateImmediately);
+            const result = applyMekCriticalRoll(
+                forceUnit,
+                'RA',
+                [1, (triggerSlot.slot ?? 0) + 1],
+                consolidateImmediately,
+            );
+            expect(result?.applied).toBeTrue();
             if (!consolidateImmediately) forceUnit.endPhase();
 
             const committedSlots = [...weaponSlots, ...capacitorSlots]
@@ -3764,7 +3771,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(hitModText.textContent).toBe('-4');
     });
 
-    it('renders the selected UAC firing mode after the SVG inventory name', () => {
+    it('calculates rear-mounted inventory names before appending the selected UAC firing mode', () => {
         const rotary = new WeaponEquipment({
             id: 'CLRotaryAC5',
             name: 'Rotary AC/5',
@@ -3777,13 +3784,14 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const forceUnit = createForceUnit(createEmptyUnit({
             ...createMekUnit(),
             comp: [{
-                id: 'CLRotaryAC5@LT#2',
+                id: 'CLRotaryAC5',
                 q: 1,
                 q2: 0,
                 n: 'Rotary AC/5',
                 t: 'B',
                 p: 1,
                 l: 'LT',
+                rear: true,
                 r: '4/8/12',
                 m: '0',
                 d: '5/Sht',
@@ -3795,8 +3803,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         }));
         const svg = new DOMParser().parseFromString(`
             <svg xmlns="http://www.w3.org/2000/svg">
-                <g class="inventoryEntry" id="CLRotaryAC5@LT#2" hitMod="0">
-                    <g class="name"><text>Rotary AC/5</text></g>
+                <g class="inventoryEntry" id="CLRotaryAC5@LT#2" hitMod="0" rearMounted="1">
+                    <g class="name"><text>Stale SVG Name</text></g>
                     <text class="heat">1</text>
                     <g class="damage"><text>5/Sht</text></g>
                     <text class="range_short">4</text>
@@ -3814,9 +3822,12 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         svgService.refreshInventory();
 
-        expect(entry.el?.querySelector(':scope > .name > text')?.textContent).toBe('Rotary AC/5 (3-shot)');
+        expect(entry.el?.querySelector(':scope > .name > text')?.textContent).toBe('Rotary AC/5 (R) (3-shot)');
         expect(entry.el?.querySelector(':scope > .heat')?.textContent).toBe('1/s');
         expect(entry.el?.querySelector(':scope > .damage > text')?.textContent).toBe('5/Sht [DB,R6,S]');
+
+        svgService.refreshInventory();
+        expect(entry.el?.querySelector(':scope > .name > text')?.textContent).toBe('Rotary AC/5 (R) (3-shot)');
     });
 
     it('reactively disables intact SVG equipment while shutdown without marking it damaged', () => {
@@ -4832,10 +4843,11 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: true, underwater: true });
 
         forceUnit.endPhase();
-        expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: true, underwater: false });
+        expect(forceUnit.getCondition('prone')).toBeTrue();
+        expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: false, underwater: true });
 
         forceUnit.setLocationCondition('LA', 'blown-off', true);
-        expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: true, underwater: false });
+        expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: false, underwater: true });
 
         forceUnit.endPhase();
         expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: false, underwater: false });

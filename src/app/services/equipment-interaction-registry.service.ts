@@ -4,7 +4,7 @@
 
 import { Injectable } from '@angular/core';
 import type { PickerChoice, PickerValue } from '../components/picker/picker.interface';
-import type { MountedEquipment } from '../models/mounted-equipment.model';
+import type { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import type { Toast, ToastService } from './toast.service';
 import type { DialogsService } from './dialogs.service';
 import type { AmmoEquipment } from '../models/equipment.model';
@@ -33,6 +33,38 @@ export interface HandlerQueryContext {
     readonly canProvidePassiveEffect: (equipment: MountedEquipment) => boolean;
     readonly isReadOnly: (equipment: MountedEquipment) => boolean;
     readonly choiceSurface?: 'critical' | 'inventory' | 'turn-summary';
+}
+
+export interface CriticalDelayedExplosionContext {
+    readonly mountedCriticalSlots: (entry: MountedEquipment) => number;
+    readonly componentCriticalHits: (entry: MountedEquipment) => number;
+    readonly effectiveMaximumWeaponDamage: (entry: MountedWeapon) => number;
+}
+
+/** A component explosion which its handler can cancel before phase-end damage commits. */
+export interface CriticalDelayedExplosion {
+    readonly source: MountedEquipment;
+    readonly equipment: string;
+    readonly rawDamage: number;
+    readonly destroyEntries?: readonly MountedEquipment[];
+}
+
+/** Presence means the handler owns explosion eligibility for this critical hit. */
+export interface CriticalDelayedExplosionHandling {
+    readonly explosion: CriticalDelayedExplosion | null;
+}
+
+/** Returns the original set when no change is needed. */
+export function setEffectiveWeaponType(
+    types: ReadonlySet<WeaponType>,
+    type: WeaponType,
+    enabled: boolean,
+): ReadonlySet<WeaponType> {
+    if (types.has(type) === enabled) return types;
+    const nextTypes = new Set(types);
+    if (enabled) nextTypes.add(type);
+    else nextTypes.delete(type);
+    return nextTypes;
 }
 
 export function createHandlerQueryContext(
@@ -150,6 +182,13 @@ export abstract class EquipmentInteractionHandler {
      * Hook called immediately before pending equipment and critical-slot damage is committed.
      */
     beforeEquipmentStateCommit?(equipment: MountedEquipment): void;
+
+    /** Declares a rules/state-specific Mek explosion that this handler owns through phase end. */
+    getCriticalDelayedExplosion?(
+        hitEntry: MountedEquipment,
+        explosionContext: CriticalDelayedExplosionContext,
+        context: HandlerQueryContext,
+    ): CriticalDelayedExplosionHandling | null;
 
     /**
      * Hook called when the owning unit ends its turn.
@@ -406,6 +445,22 @@ export class EquipmentInteractionRegistry {
         for (const handler of this.getHandlers(equipment)) {
             handler.beforeEquipmentStateCommit?.(equipment);
         }
+    }
+
+    getCriticalDelayedExplosion(
+        hitEntry: MountedEquipment,
+        explosionContext: CriticalDelayedExplosionContext,
+        context: HandlerQueryContext,
+    ): CriticalDelayedExplosionHandling | null {
+        for (const handler of this.handlers.values()) {
+            const explosion = handler.getCriticalDelayedExplosion?.(
+                hitEntry,
+                explosionContext,
+                context,
+            );
+            if (explosion) return explosion;
+        }
+        return null;
     }
 
     onEndTurn(equipment: MountedEquipment, notifications: HandlerNotifications): void {

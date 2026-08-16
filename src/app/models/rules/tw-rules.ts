@@ -14,6 +14,7 @@ import type { CBTForceUnit } from '../cbt-force-unit.model';
 import { C3TaxCalculator } from '../c3-network.model';
 import { getMekLimbLocations, inferMekConfigFromLocations, LEG_LOCATIONS, MEK_SIDE_TORSO_LOCATIONS, MEK_TORSO_LOCATIONS } from '../entity/types';
 import type { TurnState } from '../turn-state.model';
+import type { Equipment } from '../equipment.model';
 
 function calculateTWC3Tax(
     unit: CBTForceUnit,
@@ -25,6 +26,14 @@ function calculateTWC3Tax(
 }
 
 export class TWMekRules extends MekRules {
+    override readonly standingUpPSRModifier: number = 0;
+    protected override get shieldBashPunchBonusEnabled(): boolean { return false; }
+    protected override get standaloneShieldDamageEnabled(): boolean { return true; }
+
+    override mountedCriticalDamageDestructionThreshold(_equipment: Equipment | null): number {
+        return 1;
+    }
+
     override heatSources(turnState: TurnState): UnitHeatSource[] {
         return super.heatSources(turnState).map(source => source.id === 'movement'
             ? { ...source, value: source.value + (turnState.standAttempts() ?? 0) }
@@ -217,10 +226,6 @@ export class TWMekRules extends MekRules {
         return { pilotCheck: this.gyroHitPSRModifier, reason: 'Gyro damaged' };
     }
 
-    protected override mountedCriticalDamageDestructionThreshold(): number {
-        return 1;
-    }
-
     protected override readonly immobile = computed<boolean>(() => {
         if (!this.unit.isLoaded()) return false;
         if (this.unit.getCondition('shutdown')) return true;
@@ -228,10 +233,6 @@ export class TWMekRules extends MekRules {
         if (!this.hasDroneOperatingSystem() && !this.hasFunctionalCrew()) return true;
         return false;
     });
-
-    protected override destroyedLegCausesAutoFall(): boolean {
-        return true;
-    }
 
     protected override destroyedLegPSR(_isQuadruped: boolean): { fallCheck: number; pilotCheck: number } {
         return { fallCheck: 100, pilotCheck: 5 };
@@ -243,10 +244,6 @@ export class TWMekRules extends MekRules {
 
     protected override runningWithDestroyedLegRequiresCheck(): boolean {
         return false;
-    }
-
-    protected override destroyedLegRequiresImmediatePSR(_destroyedLegsCount: number): boolean {
-        return true;
     }
 
     protected override applyLegDamageToMovement(

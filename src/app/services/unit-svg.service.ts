@@ -17,7 +17,7 @@ import { formatGunneryDisplay, formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../utils/inventory-target-number.util';
-import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, inventoryControlEntryAction, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, readInventoryControlDisplayData, syncSvgMode, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
+import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, isInventoryControlEntryActionUnavailable, isInventoryControlSelectableEntry, readInventoryControlDisplayData, syncSvgMode, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
 import { inventoryControlDamageRange, resolveInventoryControlDamageText } from '../utils/inventory-control-damage.util';
 import { formatInventoryControlHeat, resolveHeatSummarySources, resolveInventoryControlHeatEffect, resolveSelectedWeaponPreviewHeatSources } from '../utils/inventory-control-heat.util';
 import { calculateHeatProjection, type HeatProjection } from '../models/turn-state.model';
@@ -1330,7 +1330,7 @@ export class UnitSvgService {
         for (const entry of this.unit.getInventory()) {
             if (!entry.el) continue;
             const entryState = entryStates.get(entry.id);
-            const selected = entryState?.selected ?? false;
+            const selected = isInventoryControlSelectableEntry(entry) && (entryState?.selected ?? false);
             const targetId = entryState?.targetId;
             const target = targetId ? targets.get(targetId) : undefined;
             const targetNumberText = selected && target ? this.inventoryTargetNumberText(entry, target) : null;
@@ -1594,7 +1594,7 @@ export class UnitSvgService {
     protected renderInventoryEntryState(entry: MountedEquipment): void {
         if (!entry.el) return;
         const status = this.unit.getEquipmentStatus(entry);
-        const actionUnavailable = !entry.owner.canPerformEquipmentAction(entry, inventoryControlEntryAction(entry));
+        const actionUnavailable = isInventoryControlEntryActionUnavailable(entry);
         syncSvgMode(
             entry,
             getSelectedInventoryControlMode(entry, this.unit.getEquipmentRegistry(), this.unit.getInventoryControlRules().matchesAmmo),

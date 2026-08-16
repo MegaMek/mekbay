@@ -185,10 +185,10 @@ describe('BombastLaserHandler', () => {
             [INVENTORY_CONTROL_MODE_STATE, BOMBAST_LASER_DAMAGE_8_MODE]
         ])), {}, queryContext)).toEqual([]);
         expect(handler.getToHitAdjustments(damage12, {}, queryContext)).toEqual([{
-            kind: 'replace-base', value: 1, label: 'Bombast (Damage 12)'
+            kind: 'replace-base', value: 1, label: 'Bombast Laser (Damage 12)'
         }]);
         expect(handler.getToHitAdjustments(damage16, {}, queryContext)).toEqual([{
-            kind: 'replace-base', value: 2, label: 'Bombast (Damage 16)'
+            kind: 'replace-base', value: 2, label: 'Bombast Laser (Damage 16)'
         }]);
     });
 
@@ -206,7 +206,7 @@ describe('BombastLaserHandler', () => {
             expect(resolution.value).toBe(expected);
             expect(resolution.weakened).toBeFalse();
             expect(resolution.modifierBreakdown).toEqual([{
-                label: `Bombast (${mode})`,
+                label: `Bombast Laser (${mode})`,
                 modifier: expected
             }]);
         }
@@ -305,6 +305,12 @@ describe('BombastLaserHandler', () => {
             .toEqual(new Set<WeaponType>(['DE', 'V', 'X']));
         expect(types).toEqual(new Set<WeaponType>(['DE', 'V']));
 
+        expect(handler.applyInventoryControlWeaponTypes(
+            bombastLaser(),
+            new Set<WeaponType>(['DE', 'V', 'X']),
+            queryContext,
+        )).toEqual(new Set<WeaponType>(['DE', 'V']));
+
         handler.afterInventoryControlFire(entry);
 
         expect(entry.states.has(BOMBAST_LASER_CHARGE_STATE_KEY)).toBeFalse();
@@ -343,6 +349,45 @@ describe('BombastLaserHandler', () => {
 
         expect(entry.states.has(BOMBAST_LASER_CHARGE_STATE_KEY)).toBeFalse();
         expect(testContexts.toastService.showToast).toHaveBeenCalledWith('Bombast Laser discharged', 'info');
+    });
+
+    it('owns only Core Bombast delayed explosions and requires a fresh charged component', () => {
+        const context = {
+            mountedCriticalSlots: (_entry: MountedEquipment) => 6,
+            componentCriticalHits: (_entry: MountedEquipment) => 0,
+            effectiveMaximumWeaponDamage: (_entry: MountedWeapon) => 12,
+        };
+        const charged = bombastLaser(CORE_2026_GAME_RULES, new Map([
+            [BOMBAST_LASER_CHARGE_STATE_KEY, BOMBAST_LASER_CHARGED_STATE],
+        ]));
+
+        expect(handler.getCriticalDelayedExplosion(charged, context, queryContext)).toEqual({
+            explosion: {
+                source: charged,
+                equipment: 'Bombast Laser',
+                rawDamage: 12,
+            },
+        });
+        expect(handler.getCriticalDelayedExplosion(bombastLaser(), context, queryContext))
+            .toEqual({ explosion: null });
+        expect(handler.getCriticalDelayedExplosion(charged, {
+            ...context,
+            componentCriticalHits: (_entry: MountedEquipment) => 1,
+        }, queryContext)).toEqual({ explosion: null });
+        expect(handler.getCriticalDelayedExplosion(bombastLaser(TW_GAME_RULES), context, queryContext))
+            .toBeNull();
+    });
+
+    it('does not infer an explosion from manually applied destruction', () => {
+        const entry = bombastLaser(CORE_2026_GAME_RULES, new Map([
+            [BOMBAST_LASER_CHARGE_STATE_KEY, BOMBAST_LASER_CHARGED_STATE]
+        ]));
+        entry.setPendingDestroyed(true);
+
+        handler.beforeEquipmentStateCommit(entry);
+
+        expect(entry.pendingDestroyed()).toBeTrue();
+        expect(entry.states.get(BOMBAST_LASER_CHARGE_STATE_KEY)).toBe(BOMBAST_LASER_CHARGED_STATE);
     });
 
     it('clears an unavailable laser charge instead of progressing it', () => {

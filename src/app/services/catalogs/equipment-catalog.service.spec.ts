@@ -58,31 +58,30 @@ describe('EquipmentCatalogService', () => {
         });
     }
 
-    it('load equipment', () => {
+    it('loads equipment', () => {
         hydrate({
-            'Catalog Key': createAmmo('CleanId', 'Clean Name'),
-            CleanCatalogKey: createAmmo('Precision Ammo', 'Another Clean Name'),
+            CleanId: createAmmo('CleanId', 'Clean Name'),
+            'Precision Ammo': createAmmo('Precision Ammo', 'Another Clean Name'),
             ProductionAmmo: createAmmo('ProductionAmmo', 'Production Ammo'),
         });
 
         const registry = service.getEquipmentRegistry();
-        expect(registry.size).toBe(1);
-        expect(registry.findEquipment('CleanId')).toBeNull();
-        expect(registry.findEquipment('Precision Ammo')).toBeNull();
+        expect(registry.size).toBe(3);
+        expect(registry.findEquipment('CleanId')).toBeDefined();
+        expect(registry.findEquipment('Precision Ammo')).toBeDefined();
         expect(registry.findEquipment('ProductionAmmo')).toBeDefined();
     });
 
-    it('skips malformed records without attempting to hydrate them', () => {
+    it('skips records that fail to hydrate', () => {
         hydrate({
-            BrokenAmmo: {
-                id: 'BrokenPlaytestAmmo',
-                name: 'Broken Playtest Ammo',
-                type: 'invalid-equipment-type',
-            } as unknown as EquipmentRawData,
+            BrokenEquipment: null as unknown as EquipmentRawData,
             StandardAmmo: createAmmo('StandardAmmo'),
         });
 
         expect(service.getEquipmentRegistry().size).toBe(1);
-        expect(logger.error).not.toHaveBeenCalled();
+        expect(service.getEquipmentRegistry().findEquipment('StandardAmmo')).toBeDefined();
+        expect(logger.error).toHaveBeenCalledOnceWith(jasmine.stringContaining(
+            'Failed to hydrate cached equipment BrokenEquipment',
+        ));
     });
 });

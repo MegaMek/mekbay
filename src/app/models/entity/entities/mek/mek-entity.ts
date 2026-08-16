@@ -74,6 +74,8 @@ function jumpJetTonnage(unitTonnage: number): number {
 
 const MEK_COCKPIT_FEATURES: Readonly<Partial<Record<CockpitType, EntityFeature>>> = {
   Small: 'Small Cockpit',
+  Primitive: 'Primitive Cockpit',
+  'Primitive Industrial': 'Primitive Industrial Cockpit',
   'Command Console': 'Command Console',
   'Torso-Mounted': 'Torso-Mounted Cockpit',
   Dual: 'Dual Cockpit',
@@ -575,10 +577,8 @@ export abstract class MekEntity extends BaseEntity {
     const shieldPenalty = this.chassisConfig === 'Quad' || this.chassisConfig === 'QuadVee'
       ? 0
       : equipment.filter(mount =>
-        mount.equipment?.hasFlag('F_SHIELD') && (
-          mount.equipment?.hasFlag('S_SHIELD_LARGE')
-          || mount.equipment?.hasFlag('S_SHIELD_MEDIUM')
-        )
+        mount.equipment?.hasFlag('S_SHIELD_LARGE')
+        || mount.equipment?.hasFlag('S_SHIELD_MEDIUM')
       ).length;
     const modularArmorPenalty = equipment.some(
       mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'),
@@ -658,7 +658,7 @@ export abstract class MekEntity extends BaseEntity {
     const equipment = this.equipment();
     const partialWingBonus = this.partialWingJumpBonus(equipment);
     const mediumShieldPenalty = equipment.filter(mount =>
-      mount.equipment?.hasFlag('F_SHIELD') && mount.equipment?.hasFlag('S_SHIELD_MEDIUM')
+      mount.equipment?.hasFlag('S_SHIELD_MEDIUM')
     ).length;
     const modularArmorPenalty = !options.ignoreModularArmor && equipment.some(mount =>
       mount.equipment?.hasFlag('F_MODULAR_ARMOR')
@@ -681,7 +681,7 @@ export abstract class MekEntity extends BaseEntity {
   }
 
   private hasLargeShield(): boolean {
-    return this.equipment().some(mount => mount.equipment?.hasFlag('F_SHIELD') && mount.equipment?.hasFlag('S_SHIELD_LARGE'));
+    return this.equipment().some(mount => mount.equipment?.hasFlag('S_SHIELD_LARGE'));
   }
 
   private hasMPReducingHardenedArmor(): boolean {

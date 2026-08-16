@@ -5,7 +5,7 @@
 import { computed, signal, type Signal } from '@angular/core';
 import { MountedWeapon, type MountedEquipment } from '../mounted-equipment.model';
 import { ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY, type ToHitModifierBreakdownEntry } from './game-rules';
-import { WeaponEquipment } from '../equipment.model';
+import { WeaponEquipment, type Equipment } from '../equipment.model';
 import type { CriticalSlot, RuleCheckOutcome, SerializedC3NetworkGroup } from '../force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
@@ -248,6 +248,9 @@ export interface UnitTypeRules {
     /** PSR target roll number (piloting skill + modifiers). Non-Mek types return 0. */
     readonly PSRTargetRoll: Signal<number>;
 
+    /** Modifier applied specifically when this unit attempts to stand up. */
+    readonly standingUpPSRModifier: number;
+
     /** Whether current phase damage causes automatic falling or equivalent unit-type failure. */
     readonly autoFall: Signal<boolean>;
 
@@ -296,6 +299,9 @@ export interface UnitTypeRules {
     /** Aggregate current critical facts into mount-level status. */
     getMountedCriticalStatusContribution(facts: EquipmentStatusFacts): EquipmentStatus;
 
+    /** Number of damaging critical hits required to destroy a mounted component. */
+    mountedCriticalDamageDestructionThreshold(equipment: Equipment | null): number;
+
     /** Location-scoped unit-type-specific status contribution. */
     getEquipmentStatusContributionAtLocation(facts: EquipmentStatusFacts, location: string): EquipmentStatus;
 
@@ -307,6 +313,9 @@ export interface UnitTypeRules {
 
     /** Unit-type-specific permission for an otherwise operational equipment action. */
     canPerformEquipmentAction(entry: MountedEquipment, action: EquipmentAction): boolean;
+
+    /** Whether an inventory entry represents an independent action that can be selected and performed. */
+    hasIndependentInventoryControlAction(entry: MountedEquipment): boolean;
 
     /** Resolve rule-derived to-hit modifiers for one inventory entry. */
     getEquipmentToHitModifiers(entry: MountedEquipment): readonly ToHitModifierBreakdownEntry[];
@@ -374,6 +383,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     readonly controlRollFullLabel: string;
     readonly PSRModifiers: Signal<{ modifier: number; modifiers: PSRCheck[] }> = signal({ modifier: 0, modifiers: [] });
     readonly PSRTargetRoll: Signal<number> = signal(0);
+    readonly standingUpPSRModifier: number = 0;
     protected readonly ruleModifiers: Signal<UnitRuleModifier[]> = computed(() => [
         ...this.buildRuleModifiers(),
         ...this.buildTurnStateRuleModifiers(this.unit.turnState?.()),
@@ -497,6 +507,10 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         return facts.criticals.some(critical => critical.status === 'destroyed') ? 'destroyed' : 'available';
     }
 
+    mountedCriticalDamageDestructionThreshold(_equipment: Equipment | null): number {
+        return 1;
+    }
+
     getEquipmentStatusContributionAtLocation(facts: EquipmentStatusFacts, _location: string): EquipmentStatus {
         return this.getEquipmentStatusContribution(facts);
     }
@@ -510,6 +524,10 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     canPerformEquipmentAction(_entry: MountedEquipment, _action: EquipmentAction): boolean {
+        return true;
+    }
+
+    hasIndependentInventoryControlAction(_entry: MountedEquipment): boolean {
         return true;
     }
 
@@ -534,7 +552,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         if (!targetingComputer) return [];
         if (!this.isTargetingComputerEligible(entry)) return [];
 
-        const label = targetingComputer.equipment?.name ?? targetingComputer.name;
+        const label = targetingComputer.getDisplayName();
         const status = this.unit.getEquipmentStatus(targetingComputer);
         return status === 'available'
             ? [{ label, modifier: -1 }]

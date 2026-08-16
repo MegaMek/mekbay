@@ -6,8 +6,9 @@ import { TestBed } from '@angular/core/testing';
 import { DbService } from './db.service';
 import { OptionsService } from './options.service';
 import type { PrintAllOptions } from '../models/print-options.model';
+import { GameSystem } from '../models/common.model';
 
-describe('OptionsService theme migration', () => {
+describe('OptionsService', () => {
     let savedOptions: unknown;
     let dbService: { getOptions: jasmine.Spy; saveOptions: jasmine.Spy };
 
@@ -66,6 +67,157 @@ describe('OptionsService theme migration', () => {
             ASPrintPageBreakOnGroups: true,
             ASPrintCardSize: 'standard',
             printMargin: 'browserDefined',
+        });
+    });
+
+    it('falls back to defaults for invalid saved primitive options', async () => {
+        savedOptions = {
+            colorScheme: 'sepia',
+            pickerStyle: 'grid',
+            canvasInput: 'mouse',
+            swipeToNextSheet: 'diagonal',
+            syncZoomBetweenSheets: 'true',
+            unitDisplayName: 'model',
+            gameSystem: 'classic',
+            availabilitySource: 'other',
+            forceViewerBVPVDisplay: 'adjusted-only',
+            megaMekAvailabilityFiltersUseAllScopedOptions: 1,
+            recordSheetDoubleTapZoomReset: 'always',
+            trackPhaseAndTurn: 'true',
+            cbtAutomations: 1,
+            CBTRules: 'basic',
+            ASUseHex: 'false',
+            c3NetworkConnectionsAboveNodes: 0,
+            automaticallyConvertFiltersToSemantic: 'false',
+            allowMultipleActiveSheets: 1,
+            unitSearchExpandedViewLayout: 'list-panel-filters',
+            showFilteredComponents: 'false',
+            unitSearchViewMode: 'tiles',
+            forceOverviewViewMode: 'cards',
+            ASVehiclesCriticalHitTable: 'alternate',
+            ASUseAutomations: 'true',
+            ASUnifiedDamagePicker: 1,
+            performanceMode: 'false',
+            enableForceSyncConflictDialog: 1,
+        };
+
+        const service = await createService();
+
+        expect(service.options()).toEqual(jasmine.objectContaining({
+            colorScheme: 'default',
+            pickerStyle: 'default',
+            canvasInput: 'all',
+            swipeToNextSheet: 'horizontal',
+            syncZoomBetweenSheets: true,
+            unitDisplayName: 'both',
+            gameSystem: GameSystem.CLASSIC,
+            availabilitySource: 'mul',
+            forceViewerBVPVDisplay: 'adjusted',
+            megaMekAvailabilityFiltersUseAllScopedOptions: true,
+            recordSheetDoubleTapZoomReset: 'contextual',
+            trackPhaseAndTurn: true,
+            cbtAutomations: false,
+            CBTRules: 'tw',
+            ASUseHex: false,
+            c3NetworkConnectionsAboveNodes: false,
+            automaticallyConvertFiltersToSemantic: false,
+            allowMultipleActiveSheets: false,
+            unitSearchExpandedViewLayout: 'panel-list-filters',
+            showFilteredComponents: false,
+            unitSearchViewMode: 'list',
+            forceOverviewViewMode: 'compact',
+            ASVehiclesCriticalHitTable: 'default',
+            ASUseAutomations: true,
+            ASUnifiedDamagePicker: true,
+            performanceMode: false,
+            enableForceSyncConflictDialog: false,
+        }));
+    });
+
+    it('falls back per field for invalid saved structured options', async () => {
+        savedOptions = {
+            printAllOptions: {
+                clean: true,
+                printPilotData: 'yes',
+                printRosterSummary: 1,
+                recordSheetCenterPanelContent: 'diagram',
+                ASPrintPageBreakOnGroups: 'false',
+                ASPrintCardSize: 'large',
+                printMargin: 'auto',
+            },
+            CBTOptionalRules: {
+                forcedWithdrawal: 'true',
+                extremeRange: 1,
+            },
+            lastCanvasState: {
+                brushSize: 4,
+                eraserSize: Number.POSITIVE_INFINITY,
+            },
+            sidebarLipPosition: 100,
+            unitServers: ['not a URL'],
+            forceGenerator: {
+                lastBudget: {
+                    classic: { min: 9000, max: Number.NaN },
+                    alphaStrike: { min: 'low', max: 'high' },
+                },
+                lastUnitCount: { min: 'four', max: null },
+                lastSkills: {
+                    gunnery: { min: [], max: {} },
+                    piloting: { min: Number.NaN, max: Number.POSITIVE_INFINITY },
+                    maxDelta: 'two',
+                },
+                failureSearchWindowMs: Number.NaN,
+                preventDuplicateChassis: 'false',
+                useTaggedQuantities: 1,
+                useUnitTagsAsChassisTags: null,
+            },
+            forceBudgetOptimizerLastSkills: {
+                gunnery: { min: 'two', max: Number.NaN },
+                piloting: { min: null, max: Number.POSITIVE_INFINITY },
+                skill: { min: [], max: {} },
+                maxDelta: 'two',
+            },
+        };
+
+        const service = await createService();
+
+        expect(service.options().printAllOptions).toEqual({
+            clean: true,
+            printPilotData: true,
+            printRosterSummary: false,
+            recordSheetCenterPanelContent: 'clusterTable',
+            ASPrintPageBreakOnGroups: true,
+            ASPrintCardSize: 'standard',
+            printMargin: 'browserDefined',
+        });
+        expect(service.options().CBTOptionalRules).toEqual({
+            forcedWithdrawal: true,
+            extremeRange: false,
+        });
+        expect(service.options().lastCanvasState).toBeUndefined();
+        expect(service.options().sidebarLipPosition).toBeUndefined();
+        expect(service.options().unitServers).toEqual([]);
+        expect(service.options().forceGenerator).toEqual({
+            lastBudget: {
+                classic: { min: 9000, max: 8000 },
+                alphaStrike: { min: 290, max: 300 },
+            },
+            lastUnitCount: { min: 4, max: 8 },
+            lastSkills: {
+                gunnery: { min: 4, max: 4 },
+                piloting: { min: 5, max: 5 },
+                maxDelta: 2,
+            },
+            failureSearchWindowMs: 300,
+            preventDuplicateChassis: false,
+            useTaggedQuantities: false,
+            useUnitTagsAsChassisTags: false,
+        });
+        expect(service.options().forceBudgetOptimizerLastSkills).toEqual({
+            gunnery: { min: 2, max: 4 },
+            piloting: { min: 3, max: 5 },
+            skill: { min: 2, max: 5 },
+            maxDelta: 2,
         });
     });
 

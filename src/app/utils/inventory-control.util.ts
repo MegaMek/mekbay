@@ -237,13 +237,28 @@ export function getInventoryControlGroups(
 
 export function isInventoryControlSelectableEntry(entry: MountedEquipment): boolean {
     const category = getEntryCategory(entry);
-    return category === 'ranged' || category === 'physical';
+    return (category === 'ranged' || category === 'physical')
+        && inventoryControlEntryHasIndependentAction(entry);
 }
 
 /** The canonical action represented by an inventory-control entry. */
 export function inventoryControlEntryAction(entry: MountedEquipment): EquipmentAction {
     if (entry.isPhysicalWeapon()) return 'physical-attack';
     return entry.equipment instanceof WeaponEquipment ? 'fire' : 'change-mode';
+}
+
+/** Whether this entry represents an action of its own rather than passive equipment. */
+export function inventoryControlEntryHasIndependentAction(entry: MountedEquipment): boolean {
+    const rules = entry.owner.rules as {
+        hasIndependentInventoryControlAction?: (candidate: MountedEquipment) => boolean;
+    } | undefined;
+    return rules?.hasIndependentInventoryControlAction?.(entry) ?? true;
+}
+
+/** Action-level unavailability, excluding passive entries that have no independent action. */
+export function isInventoryControlEntryActionUnavailable(entry: MountedEquipment): boolean {
+    return inventoryControlEntryHasIndependentAction(entry)
+        && !entry.owner.canPerformEquipmentAction(entry, inventoryControlEntryAction(entry));
 }
 
 export function selectInventoryControlEntry(
@@ -253,6 +268,7 @@ export function selectInventoryControlEntry(
     forceSelected = false
 ): boolean {
     if (!isInventoryControlSelectableEntry(entry)
+        || unit.getInventoryControlRules?.().isSelectable?.(entry) === false
         || !entry.owner.canPerformEquipmentAction(entry, inventoryControlEntryAction(entry))) return false;
 
     const targets = unit.getInventoryControlTargets();
@@ -281,8 +297,10 @@ export function selectInventoryControlEntry(
 }
 
 export function getInventoryControlModes(entry: MountedEquipment): InventoryControlMode[] {
-    const base = readTypedEquipmentDisplayData(entry, '');
     if (entry.isPhysicalWeapon() || !(entry.equipment instanceof WeaponEquipment)) return [];
+    // Mode profiles replace the name with their own display name. Avoid resolving the
+    // mounted display name here: it may itself depend on the selected/effective mode.
+    const base = readTypedEquipmentDisplayData(entry, '', '');
     if (entry.equipment.ammoType === 'MML') {
         return MML_AMMO_PROFILES.map(profile => createAmmoProfileMode(base, profile));
     }
@@ -599,9 +617,9 @@ function buildInventoryControlRow(
     const status = entry.owner.getEquipmentStatus(entry);
     const hitModifierBreakdown = unitRules.getEquipmentToHitModifiers(entry);
     const destroyed = options.destroyed ?? status === 'destroyed';
-    const disabled = !entry.owner.canPerformEquipmentAction(entry, inventoryControlEntryAction(entry))
+    const disabled = isInventoryControlEntryActionUnavailable(entry)
         || status === 'disabled'
-        || rules.isSelectable?.(entry) === false;
+        || (isInventoryControlSelectableEntry(entry) && rules.isSelectable?.(entry) === false);
     const category = getEntryCategory(entry);
     const { modes, modifiers } = readInventoryControlModesAndModifiers(entry);
     const selectedMode = getSelectedMode(entry, modes, ammoSources, rules.matchesAmmo, options.locationLock);
@@ -779,7 +797,11 @@ function readEntryDisplayData(el: SVGElement, hit: string): InventoryControlDisp
     };
 }
 
-function readTypedEquipmentDisplayData(entry: MountedEquipment, hit: string): InventoryControlDisplayData {
+function readTypedEquipmentDisplayData(
+    entry: MountedEquipment,
+    hit: string,
+    displayName: string = entry.getDisplayName()
+): InventoryControlDisplayData {
     const equipment = entry.equipment;
     const physical = entry.isPhysicalWeapon();
     const weapon = !physical && equipment instanceof WeaponEquipment ? equipment : null;
@@ -790,7 +812,7 @@ function readTypedEquipmentDisplayData(entry: MountedEquipment, hit: string): In
         ? STANDARD_AEROSPACE_RANGE_LIMITS
         : weapon?.ranges;
     return {
-        name: equipment?.shortName || equipment?.name || entry.name,
+        name: displayName,
         location: normalizeCell(Array.from(entry.locations ?? []).join('/')),
         heat: weapon ? formatInventoryControlHeat(weapon.heat) : '—',
         damage: weapon ? '—' : physicalDamage,
@@ -905,7 +927,7 @@ function readLinkedWeaponEnhancementModifiers(entry: MountedEquipment): Inventor
 }
 
 function readLinkedModifierName(entry: MountedEquipment): string {
-    return entry.equipment?.shortName || entry.equipment?.name || entry.name;
+    return entry.getDisplayName();
 }
 
 function isLinkedWeaponEnhancement(entry: MountedEquipment): boolean {
@@ -1162,7 +1184,7 @@ export function formatHitModifier(hitModifier: number | 'Vs' | '*' | null): stri
 export function syncSvgMode(
     entry: MountedEquipment,
     mode: string | null,
-    disabled = !entry.owner.canPerformEquipmentAction(entry, inventoryControlEntryAction(entry))
+    disabled = isInventoryControlEntryActionUnavailable(entry)
 ): void {
     const el = entry.el;
     if (!el) return;
@@ -1175,8 +1197,9 @@ export function syncSvgMode(
         optionEl.classList.toggle('selected', active);
         hasSelectedMode ||= active;
     });
-    el.classList.toggle('selected', selected);
-    el.classList.toggle('selected-alternative-mode', selected && hasSelectedMode);
+    const selectable = isInventoryControlSelectableEntry(entry);
+    el.classList.toggle('selected', selectable && selected);
+    el.classList.toggle('selected-alternative-mode', selectable && selected && hasSelectedMode);
     el.classList.toggle('disabledInventory', disabled);
-    if (disabled) el.classList.remove('selected');
+    if (disabled || !selectable) el.classList.remove('selected');
 }

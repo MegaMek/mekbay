@@ -12,6 +12,8 @@ import { REMOTE_HOST } from '../models/common.model';
 import { uuidv7 } from '../utils/uuid.util';
 
 const SHEET_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+// Increment to revalidate every stored sheet before its normal cache age expires.
+const SHEET_CACHE_FINGERPRINT_VERSION = 1;
 
 /**
  * 
@@ -38,7 +40,9 @@ export class SheetService {
         // Fast path: fresh cache hit — no network, no deduplication needed.
         const meta = await this.dbService.getSheetMeta(cacheKey);
         const now = Date.now();
-        const isFresh = meta && (now - meta.timestamp) < SHEET_CACHE_MAX_AGE_MS;
+        const isFresh = meta
+            && meta.fingerprintVersion === SHEET_CACHE_FINGERPRINT_VERSION
+            && (now - meta.timestamp) < SHEET_CACHE_MAX_AGE_MS;
 
         if (isFresh) {
             const sheet = await this.dbService.getSheet(cacheKey);
@@ -82,7 +86,7 @@ export class SheetService {
         sheetFileName: string,
         serverHost: string,
         cacheKey: string,
-        meta: { etag: string; timestamp: number } | null,
+        meta: { etag: string; timestamp: number; fingerprintVersion?: number } | null,
     ): Promise<SVGSVGElement> {
         // Cache is stale or missing - check remote ETag
         const remoteEtag = await this.getRemoteETag(`${serverHost}/sheets/${sheetFileName}`);
@@ -93,7 +97,7 @@ export class SheetService {
             if (sheet) {
                 if (remoteEtag) {
                     // ETag matched, refresh timestamp so we don't check again for SHEET_CACHE_MAX_AGE_MS
-                    this.dbService.touchSheet(cacheKey);
+                    await this.dbService.touchSheet(cacheKey, SHEET_CACHE_FINGERPRINT_VERSION);
                 }
                 this.logger.info(`Sheet ${cacheKey} loaded from cache (validated).`);
                 return sheet;
@@ -151,7 +155,7 @@ export class SheetService {
             }
 
             RsPolyfillUtil.fixSvg(svgElement);
-            await this.dbService.saveSheet(cacheKey, svgElement, etag);
+            await this.dbService.saveSheet(cacheKey, svgElement, etag, SHEET_CACHE_FINGERPRINT_VERSION);
             this.logger.info(`Sheet ${cacheKey} fetched and cached.`);
             return svgElement;
         } catch (err) {

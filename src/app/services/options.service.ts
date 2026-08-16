@@ -4,9 +4,9 @@
 
 import { inject, Injectable, signal } from '@angular/core';
 import { DbService } from './db.service';
-import type { CBTOptionalRules, ColorScheme, ForceBudgetOptimizerLastSkills, ForceGeneratorOptions, Options } from '../models/options.model';
-import type { PrintAllOptions } from '../models/print-options.model';
-import { GameSystem } from '../models/common.model';
+import { OPTION_VALUES, type CBTOptionalRules, type ColorScheme, type ForceBudgetOptimizerLastSkills, type ForceGeneratorOptions, type Options } from '../models/options.model';
+import { PRINT_OPTION_VALUES, type PrintAllOptions } from '../models/print-options.model';
+import { GameSystem, normalizeUnitServerUrl } from '../models/common.model';
 
 
 
@@ -92,18 +92,29 @@ type LegacyOptions = Partial<Omit<Options, 'printAllOptions'>> & {
     printMargin?: PrintAllOptions['printMargin'];
 };
 
+function resolveSavedValue<T extends string | number | boolean>(
+    saved: unknown,
+    fallback: T,
+    validValues?: readonly T[],
+): T {
+    const validType = typeof saved === typeof fallback;
+    const validNumber = typeof saved !== 'number' || Number.isFinite(saved);
+    const validValue = !validValues || validValues.includes(saved as T);
+    return validType && validNumber && validValue ? saved as T : fallback;
+}
+
 function resolveColorScheme(saved: LegacyOptions | null | undefined): ColorScheme {
-    if (saved?.colorScheme) {
-        return saved.colorScheme;
+    if (saved?.colorScheme != null) {
+        return resolveSavedValue(saved.colorScheme, DEFAULT_OPTIONS.colorScheme, OPTION_VALUES.colorScheme);
     }
 
-    if (saved?.themeColor) {
-        return saved.themeColor === 'night' ? 'night' : 'default';
+    if (saved?.themeColor != null) {
+        return saved.themeColor === 'night' ? 'night' : DEFAULT_OPTIONS.colorScheme;
     }
 
     // Existing settings may contain both former options. Prefer the global sheet theme.
-    if (saved?.sheetsColor) {
-        return saved.sheetsColor === 'night' ? 'night' : 'default';
+    if (saved?.sheetsColor != null) {
+        return saved.sheetsColor === 'night' ? 'night' : DEFAULT_OPTIONS.colorScheme;
     }
 
     return saved?.ASCardStyle === 'colored' ? 'night' : DEFAULT_OPTIONS.colorScheme;
@@ -113,17 +124,31 @@ function resolvePrintAllOptions(saved: LegacyOptions | null | undefined): PrintA
     const defaults = DEFAULT_OPTIONS.printAllOptions;
     const printOptions = saved?.printAllOptions;
     return {
-        clean: printOptions?.clean ?? defaults.clean,
-        printPilotData: printOptions?.printPilotData ?? defaults.printPilotData,
-        printRosterSummary: printOptions?.printRosterSummary ?? saved?.printRosterSummary ?? defaults.printRosterSummary,
-        recordSheetCenterPanelContent: printOptions?.recordSheetCenterPanelContent
-            ?? saved?.recordSheetCenterPanelContent
-            ?? defaults.recordSheetCenterPanelContent,
-        ASPrintPageBreakOnGroups: printOptions?.ASPrintPageBreakOnGroups
-            ?? saved?.ASPrintPageBreakOnGroups
-            ?? defaults.ASPrintPageBreakOnGroups,
-        ASPrintCardSize: printOptions?.ASPrintCardSize ?? saved?.ASPrintCardSize ?? defaults.ASPrintCardSize,
-        printMargin: printOptions?.printMargin ?? saved?.printMargin ?? defaults.printMargin,
+        clean: resolveSavedValue(printOptions?.clean, defaults.clean),
+        printPilotData: resolveSavedValue(printOptions?.printPilotData, defaults.printPilotData),
+        printRosterSummary: resolveSavedValue(
+            printOptions?.printRosterSummary ?? saved?.printRosterSummary,
+            defaults.printRosterSummary,
+        ),
+        recordSheetCenterPanelContent: resolveSavedValue(
+            printOptions?.recordSheetCenterPanelContent ?? saved?.recordSheetCenterPanelContent,
+            defaults.recordSheetCenterPanelContent,
+            PRINT_OPTION_VALUES.recordSheetCenterPanelContent,
+        ),
+        ASPrintPageBreakOnGroups: resolveSavedValue(
+            printOptions?.ASPrintPageBreakOnGroups ?? saved?.ASPrintPageBreakOnGroups,
+            defaults.ASPrintPageBreakOnGroups,
+        ),
+        ASPrintCardSize: resolveSavedValue(
+            printOptions?.ASPrintCardSize ?? saved?.ASPrintCardSize,
+            defaults.ASPrintCardSize,
+            PRINT_OPTION_VALUES.ASPrintCardSize,
+        ),
+        printMargin: resolveSavedValue(
+            printOptions?.printMargin ?? saved?.printMargin,
+            defaults.printMargin,
+            PRINT_OPTION_VALUES.printMargin,
+        ),
     };
 }
 
@@ -132,18 +157,18 @@ function resolveForceBudgetOptimizerLastSkills(saved: Options | null | undefined
     const skills = saved?.forceBudgetOptimizerLastSkills;
     return {
         gunnery: {
-            min: skills?.gunnery?.min ?? defaults.gunnery.min,
-            max: skills?.gunnery?.max ?? defaults.gunnery.max,
+            min: resolveSavedValue(skills?.gunnery?.min, defaults.gunnery.min),
+            max: resolveSavedValue(skills?.gunnery?.max, defaults.gunnery.max),
         },
         piloting: {
-            min: skills?.piloting?.min ?? defaults.piloting.min,
-            max: skills?.piloting?.max ?? defaults.piloting.max,
+            min: resolveSavedValue(skills?.piloting?.min, defaults.piloting.min),
+            max: resolveSavedValue(skills?.piloting?.max, defaults.piloting.max),
         },
         skill: {
-            min: skills?.skill?.min ?? defaults.skill.min,
-            max: skills?.skill?.max ?? defaults.skill.max,
+            min: resolveSavedValue(skills?.skill?.min, defaults.skill.min),
+            max: resolveSavedValue(skills?.skill?.max, defaults.skill.max),
         },
-        maxDelta: skills?.maxDelta ?? defaults.maxDelta,
+        maxDelta: resolveSavedValue(skills?.maxDelta, defaults.maxDelta),
     };
 }
 
@@ -153,42 +178,68 @@ function resolveForceGeneratorOptions(saved: Options | null | undefined): ForceG
     return {
         lastBudget: {
             classic: {
-                min: forceGenerator?.lastBudget?.classic?.min ?? defaults.lastBudget.classic.min,
-                max: forceGenerator?.lastBudget?.classic?.max ?? defaults.lastBudget.classic.max,
+                min: resolveSavedValue(forceGenerator?.lastBudget?.classic?.min, defaults.lastBudget.classic.min),
+                max: resolveSavedValue(forceGenerator?.lastBudget?.classic?.max, defaults.lastBudget.classic.max),
             },
             alphaStrike: {
-                min: forceGenerator?.lastBudget?.alphaStrike?.min ?? defaults.lastBudget.alphaStrike.min,
-                max: forceGenerator?.lastBudget?.alphaStrike?.max ?? defaults.lastBudget.alphaStrike.max,
+                min: resolveSavedValue(forceGenerator?.lastBudget?.alphaStrike?.min, defaults.lastBudget.alphaStrike.min),
+                max: resolveSavedValue(forceGenerator?.lastBudget?.alphaStrike?.max, defaults.lastBudget.alphaStrike.max),
             },
         },
         lastUnitCount: {
-            min: forceGenerator?.lastUnitCount?.min ?? defaults.lastUnitCount.min,
-            max: forceGenerator?.lastUnitCount?.max ?? defaults.lastUnitCount.max,
+            min: resolveSavedValue(forceGenerator?.lastUnitCount?.min, defaults.lastUnitCount.min),
+            max: resolveSavedValue(forceGenerator?.lastUnitCount?.max, defaults.lastUnitCount.max),
         },
         lastSkills: {
             gunnery: {
-                min: forceGenerator?.lastSkills?.gunnery?.min ?? defaults.lastSkills.gunnery.min,
-                max: forceGenerator?.lastSkills?.gunnery?.max ?? defaults.lastSkills.gunnery.max,
+                min: resolveSavedValue(forceGenerator?.lastSkills?.gunnery?.min, defaults.lastSkills.gunnery.min),
+                max: resolveSavedValue(forceGenerator?.lastSkills?.gunnery?.max, defaults.lastSkills.gunnery.max),
             },
             piloting: {
-                min: forceGenerator?.lastSkills?.piloting?.min ?? defaults.lastSkills.piloting.min,
-                max: forceGenerator?.lastSkills?.piloting?.max ?? defaults.lastSkills.piloting.max,
+                min: resolveSavedValue(forceGenerator?.lastSkills?.piloting?.min, defaults.lastSkills.piloting.min),
+                max: resolveSavedValue(forceGenerator?.lastSkills?.piloting?.max, defaults.lastSkills.piloting.max),
             },
-            maxDelta: forceGenerator?.lastSkills?.maxDelta ?? defaults.lastSkills.maxDelta,
+            maxDelta: resolveSavedValue(forceGenerator?.lastSkills?.maxDelta, defaults.lastSkills.maxDelta),
         },
-        failureSearchWindowMs: forceGenerator?.failureSearchWindowMs ?? defaults.failureSearchWindowMs,
-        preventDuplicateChassis: forceGenerator?.preventDuplicateChassis ?? defaults.preventDuplicateChassis,
-        useTaggedQuantities: forceGenerator?.useTaggedQuantities ?? defaults.useTaggedQuantities,
-        useUnitTagsAsChassisTags: forceGenerator?.useUnitTagsAsChassisTags ?? defaults.useUnitTagsAsChassisTags,
+        failureSearchWindowMs: resolveSavedValue(forceGenerator?.failureSearchWindowMs, defaults.failureSearchWindowMs),
+        preventDuplicateChassis: resolveSavedValue(forceGenerator?.preventDuplicateChassis, defaults.preventDuplicateChassis),
+        useTaggedQuantities: resolveSavedValue(forceGenerator?.useTaggedQuantities, defaults.useTaggedQuantities),
+        useUnitTagsAsChassisTags: resolveSavedValue(forceGenerator?.useUnitTagsAsChassisTags, defaults.useUnitTagsAsChassisTags),
     };
 }
 
 function resolveCBTOptionalRules(saved: Options | null | undefined): CBTOptionalRules {
     const defaults = DEFAULT_OPTIONS.CBTOptionalRules;
     return {
-        forcedWithdrawal: saved?.CBTOptionalRules?.forcedWithdrawal ?? defaults.forcedWithdrawal,
-        extremeRange: saved?.CBTOptionalRules?.extremeRange ?? defaults.extremeRange,
+        forcedWithdrawal: resolveSavedValue(saved?.CBTOptionalRules?.forcedWithdrawal, defaults.forcedWithdrawal),
+        extremeRange: resolveSavedValue(saved?.CBTOptionalRules?.extremeRange, defaults.extremeRange),
     };
+}
+
+function resolveLastCanvasState(saved: unknown): Options['lastCanvasState'] {
+    if (!saved || typeof saved !== 'object') {
+        return undefined;
+    }
+
+    const state = saved as Record<string, unknown>;
+    if (typeof state['brushSize'] !== 'number' || !Number.isFinite(state['brushSize'])
+        || typeof state['eraserSize'] !== 'number' || !Number.isFinite(state['eraserSize'])) {
+        return undefined;
+    }
+
+    return {
+        brushSize: state['brushSize'],
+        eraserSize: state['eraserSize'],
+    };
+}
+
+function resolveUnitServers(saved: unknown): string[] {
+    if (!Array.isArray(saved)) {
+        return [...DEFAULT_OPTIONS.unitServers];
+    }
+
+    const normalized = saved.map(server => typeof server === 'string' ? normalizeUnitServerUrl(server) : '');
+    return normalized.every(Boolean) ? normalized : [...DEFAULT_OPTIONS.unitServers];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -239,37 +290,37 @@ export class OptionsService {
         const saved = await this.dbService.getOptions();
         this.options.set({
             colorScheme: resolveColorScheme(saved),
-            pickerStyle: saved?.pickerStyle ?? DEFAULT_OPTIONS.pickerStyle,
-            canvasInput: saved?.canvasInput ?? DEFAULT_OPTIONS.canvasInput,
-            swipeToNextSheet: saved?.swipeToNextSheet ?? DEFAULT_OPTIONS.swipeToNextSheet,
-            syncZoomBetweenSheets: saved?.syncZoomBetweenSheets ?? DEFAULT_OPTIONS.syncZoomBetweenSheets,
-            unitDisplayName: saved?.unitDisplayName ?? DEFAULT_OPTIONS.unitDisplayName,
-            gameSystem: saved?.gameSystem ?? DEFAULT_OPTIONS.gameSystem,
-            availabilitySource: saved?.availabilitySource ?? DEFAULT_OPTIONS.availabilitySource,
-            forceViewerBVPVDisplay: saved?.forceViewerBVPVDisplay ?? DEFAULT_OPTIONS.forceViewerBVPVDisplay,
-            megaMekAvailabilityFiltersUseAllScopedOptions: saved?.megaMekAvailabilityFiltersUseAllScopedOptions ?? DEFAULT_OPTIONS.megaMekAvailabilityFiltersUseAllScopedOptions,
+            pickerStyle: resolveSavedValue(saved?.pickerStyle, DEFAULT_OPTIONS.pickerStyle, OPTION_VALUES.pickerStyle),
+            canvasInput: resolveSavedValue(saved?.canvasInput, DEFAULT_OPTIONS.canvasInput, OPTION_VALUES.canvasInput),
+            swipeToNextSheet: resolveSavedValue(saved?.swipeToNextSheet, DEFAULT_OPTIONS.swipeToNextSheet, OPTION_VALUES.swipeToNextSheet),
+            syncZoomBetweenSheets: resolveSavedValue(saved?.syncZoomBetweenSheets, DEFAULT_OPTIONS.syncZoomBetweenSheets),
+            unitDisplayName: resolveSavedValue(saved?.unitDisplayName, DEFAULT_OPTIONS.unitDisplayName, OPTION_VALUES.unitDisplayName),
+            gameSystem: resolveSavedValue(saved?.gameSystem, DEFAULT_OPTIONS.gameSystem, OPTION_VALUES.gameSystem),
+            availabilitySource: resolveSavedValue(saved?.availabilitySource, DEFAULT_OPTIONS.availabilitySource, OPTION_VALUES.availabilitySource),
+            forceViewerBVPVDisplay: resolveSavedValue(saved?.forceViewerBVPVDisplay, DEFAULT_OPTIONS.forceViewerBVPVDisplay, OPTION_VALUES.forceViewerBVPVDisplay),
+            megaMekAvailabilityFiltersUseAllScopedOptions: resolveSavedValue(saved?.megaMekAvailabilityFiltersUseAllScopedOptions, DEFAULT_OPTIONS.megaMekAvailabilityFiltersUseAllScopedOptions),
             printAllOptions: resolvePrintAllOptions(saved),
-            recordSheetDoubleTapZoomReset: saved?.recordSheetDoubleTapZoomReset ?? DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
-            lastCanvasState: saved?.lastCanvasState,
-            sidebarLipPosition: saved?.sidebarLipPosition,
-            trackPhaseAndTurn: saved?.trackPhaseAndTurn ?? DEFAULT_OPTIONS.trackPhaseAndTurn,
-            cbtAutomations: saved?.cbtAutomations ?? DEFAULT_OPTIONS.cbtAutomations,
+            recordSheetDoubleTapZoomReset: resolveSavedValue(saved?.recordSheetDoubleTapZoomReset, DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset, OPTION_VALUES.recordSheetDoubleTapZoomReset),
+            lastCanvasState: resolveLastCanvasState(saved?.lastCanvasState),
+            sidebarLipPosition: typeof saved?.sidebarLipPosition === 'string' ? saved.sidebarLipPosition : undefined,
+            trackPhaseAndTurn: resolveSavedValue(saved?.trackPhaseAndTurn, DEFAULT_OPTIONS.trackPhaseAndTurn),
+            cbtAutomations: resolveSavedValue(saved?.cbtAutomations, DEFAULT_OPTIONS.cbtAutomations),
             CBTOptionalRules: resolveCBTOptionalRules(saved),
-            CBTRules: saved?.CBTRules ?? DEFAULT_OPTIONS.CBTRules,
-            ASUseHex: saved?.ASUseHex ?? DEFAULT_OPTIONS.ASUseHex,
-            c3NetworkConnectionsAboveNodes: saved?.c3NetworkConnectionsAboveNodes ?? DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
-            automaticallyConvertFiltersToSemantic: saved?.automaticallyConvertFiltersToSemantic ?? DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
-            allowMultipleActiveSheets: saved?.allowMultipleActiveSheets ?? DEFAULT_OPTIONS.allowMultipleActiveSheets,
-            unitSearchExpandedViewLayout: saved?.unitSearchExpandedViewLayout ?? DEFAULT_OPTIONS.unitSearchExpandedViewLayout,
-            showFilteredComponents: saved?.showFilteredComponents ?? DEFAULT_OPTIONS.showFilteredComponents,
-            unitSearchViewMode: saved?.unitSearchViewMode ?? DEFAULT_OPTIONS.unitSearchViewMode,
-            forceOverviewViewMode: saved?.forceOverviewViewMode ?? DEFAULT_OPTIONS.forceOverviewViewMode,
-            ASVehiclesCriticalHitTable: saved?.ASVehiclesCriticalHitTable ?? DEFAULT_OPTIONS.ASVehiclesCriticalHitTable,
-            ASUseAutomations: saved?.ASUseAutomations ?? DEFAULT_OPTIONS.ASUseAutomations,
-            ASUnifiedDamagePicker: saved?.ASUnifiedDamagePicker ?? DEFAULT_OPTIONS.ASUnifiedDamagePicker,
-            performanceMode: saved?.performanceMode ?? DEFAULT_OPTIONS.performanceMode,
-            enableForceSyncConflictDialog: saved?.enableForceSyncConflictDialog ?? DEFAULT_OPTIONS.enableForceSyncConflictDialog,
-            unitServers: saved?.unitServers ?? DEFAULT_OPTIONS.unitServers,
+            CBTRules: resolveSavedValue(saved?.CBTRules, DEFAULT_OPTIONS.CBTRules, OPTION_VALUES.CBTRules),
+            ASUseHex: resolveSavedValue(saved?.ASUseHex, DEFAULT_OPTIONS.ASUseHex),
+            c3NetworkConnectionsAboveNodes: resolveSavedValue(saved?.c3NetworkConnectionsAboveNodes, DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes),
+            automaticallyConvertFiltersToSemantic: resolveSavedValue(saved?.automaticallyConvertFiltersToSemantic, DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic),
+            allowMultipleActiveSheets: resolveSavedValue(saved?.allowMultipleActiveSheets, DEFAULT_OPTIONS.allowMultipleActiveSheets),
+            unitSearchExpandedViewLayout: resolveSavedValue(saved?.unitSearchExpandedViewLayout, DEFAULT_OPTIONS.unitSearchExpandedViewLayout, OPTION_VALUES.unitSearchExpandedViewLayout),
+            showFilteredComponents: resolveSavedValue(saved?.showFilteredComponents, DEFAULT_OPTIONS.showFilteredComponents),
+            unitSearchViewMode: resolveSavedValue(saved?.unitSearchViewMode, DEFAULT_OPTIONS.unitSearchViewMode, OPTION_VALUES.unitSearchViewMode),
+            forceOverviewViewMode: resolveSavedValue(saved?.forceOverviewViewMode, DEFAULT_OPTIONS.forceOverviewViewMode, OPTION_VALUES.forceOverviewViewMode),
+            ASVehiclesCriticalHitTable: resolveSavedValue(saved?.ASVehiclesCriticalHitTable, DEFAULT_OPTIONS.ASVehiclesCriticalHitTable, OPTION_VALUES.ASVehiclesCriticalHitTable),
+            ASUseAutomations: resolveSavedValue(saved?.ASUseAutomations, DEFAULT_OPTIONS.ASUseAutomations),
+            ASUnifiedDamagePicker: resolveSavedValue(saved?.ASUnifiedDamagePicker, DEFAULT_OPTIONS.ASUnifiedDamagePicker),
+            performanceMode: resolveSavedValue(saved?.performanceMode, DEFAULT_OPTIONS.performanceMode),
+            enableForceSyncConflictDialog: resolveSavedValue(saved?.enableForceSyncConflictDialog, DEFAULT_OPTIONS.enableForceSyncConflictDialog),
+            unitServers: resolveUnitServers(saved?.unitServers),
             forceGenerator: resolveForceGeneratorOptions(saved),
             forceBudgetOptimizerLastSkills: resolveForceBudgetOptimizerLastSkills(saved),
         });

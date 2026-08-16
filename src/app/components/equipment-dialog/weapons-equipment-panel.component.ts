@@ -206,7 +206,7 @@ export class WeaponsEquipmentPanelComponent {
         const entryStates = this.inventoryControl().entryStates();
         return this.groups()
             .flatMap(group => group.rows)
-            .filter(row => entryStates.get(row.id)?.selected ?? false);
+            .filter(row => this.isSelectable(row) && (entryStates.get(row.id)?.selected ?? false));
     });
     readonly selectedHeatTotal = computed(() => this.selectedRows()
         .reduce((total, row) => total + this.heatValue(row), 0));

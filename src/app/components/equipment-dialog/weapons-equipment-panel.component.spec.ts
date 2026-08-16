@@ -8,6 +8,7 @@ import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, WeaponEquipment, MiscEquipment, type AmmoType, type EquipmentMap } from '../../models/equipment.model';
 import { INVENTORY_CONTROL_TARGET_COLORS } from '../../models/inventory-control-runtime-state.model';
 import type { UnitModifierBreakdownEntry } from '../../models/rules/unit-type-rules';
+import type { EquipmentAction } from '../../models/cbt-force-unit.model';
 import type { EquipmentStatus } from '../../models/equipment-status.model';
 import { MountedAmmo, MountedEquipment } from '../../models/mounted-equipment.model';
 import { type CriticalSlot } from '../../models/force-serialization';
@@ -133,6 +134,8 @@ interface CreateComponentOptions {
     handlers?: EquipmentInteractionHandler[];
     equipmentStatusesAtLocation?: ReadonlyMap<MountedEquipment, ReadonlyMap<string, EquipmentStatus>>;
     applyUnitDisplayEffects?: (entry: MountedEquipment, display: InventoryControlDisplayData) => InventoryControlDisplayData;
+    resolveEquipmentActionPermission?: (entry: MountedEquipment, action: EquipmentAction) => boolean;
+    hasIndependentInventoryControlAction?: (entry: MountedEquipment) => boolean;
 }
 
 function createComponent(
@@ -196,7 +199,9 @@ function createComponent(
         gameRules: options.gameRules,
         readOnly: options.readOnly,
         hasDirectInventory: options.hasDirectInventory,
-        applyInventoryControlDisplayEffects: options.applyUnitDisplayEffects
+        applyInventoryControlDisplayEffects: options.applyUnitDisplayEffects,
+        resolveEquipmentActionPermission: options.resolveEquipmentActionPermission,
+        hasIndependentInventoryControlAction: options.hasIndependentInventoryControlAction,
     });
     const unit = unitHarness.unit;
     spyOn(unit, 'setHeat').and.callThrough();
@@ -602,6 +607,64 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.rowPresentationState(row)).toBeNull();
         expect(renderedRow.classList.contains('operation-disabled-entry')).toBeTrue();
         expect(renderedRow.classList.contains('disabled-entry')).toBeFalse();
+    });
+
+    it('shows a Core shield as passive without a checkbox or disabled presentation', () => {
+        const shield = entry({
+            id: 'core-shield',
+            equipment: misc('Medium Shield', ['F_SHIELD', 'S_SHIELD_MEDIUM']),
+            locations: new Set(['LA']),
+            el: svgEntry('<g><g class="name"><text>Medium Shield</text></g></g>'),
+        });
+        const { component, fixture, unit } = createComponent([shield], {}, [], new Map(), {
+            gameRules: CORE_2026_GAME_RULES,
+            resolveEquipmentActionPermission: (entry, action) => entry !== shield || action !== 'physical-attack',
+            hasIndependentInventoryControlAction: entry => entry !== shield,
+        });
+        const row = component.groups().find(group => group.id === 'physical')!.rows[0];
+        const renderedRow = fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement;
+
+        expect(unit.getEquipmentStatus(shield)).toBe('available');
+        expect(unit.canPerformEquipmentAction(shield, 'physical-attack')).toBeFalse();
+        expect(component.isSelectable(row)).toBeFalse();
+        expect(row.disabled).toBeFalse();
+        expect(renderedRow.querySelector('.select-cell input[type="checkbox"]')).toBeNull();
+        expect(renderedRow.classList.contains('operation-disabled-entry')).toBeFalse();
+        expect(renderedRow.classList.contains('disabled-entry')).toBeFalse();
+    });
+
+    it('keeps a TW shield selectable with its own damage profile and FIRED action', async () => {
+        const shield = entry({
+            id: 'tw-shield',
+            equipment: misc('Medium Shield', ['F_SHIELD', 'S_SHIELD_MEDIUM']),
+            locations: new Set(['LA']),
+            el: svgEntry('<g><g class="name"><text>Medium Shield</text></g></g>'),
+        });
+        const { component, fixture, dialogsService } = createComponent([shield], {}, [], new Map(), {
+            gameRules: TW_GAME_RULES,
+            hasIndependentInventoryControlAction: () => true,
+            applyUnitDisplayEffects: (entry, display) => entry === shield
+                ? { ...display, damage: '5' }
+                : display,
+        });
+        const row = component.groups().find(group => group.id === 'physical')!.rows[0];
+        const renderedRow = fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement;
+        const checkbox = renderedRow.querySelector('.select-cell input[type="checkbox"]') as HTMLInputElement;
+
+        expect(component.isSelectable(row)).toBeTrue();
+        expect(row.disabled).toBeFalse();
+        expect(row.display.damage).toBe('5');
+        expect(checkbox).not.toBeNull();
+        expect(checkbox.disabled).toBeFalse();
+        expect(renderedRow.classList.contains('operation-disabled-entry')).toBeFalse();
+        expect(renderedRow.classList.contains('disabled-entry')).toBeFalse();
+
+        component.toggleSelected(row);
+        expect(component.isSelected(row)).toBeTrue();
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(dialogsService.showNoticeHtml).toHaveBeenCalledWith(jasmine.any(String), 'Weapons Fired');
+        expect(dialogsService.showError).not.toHaveBeenCalled();
     });
 
     it('marks disabled inventory-only rows without mutating attached SVG', () => {

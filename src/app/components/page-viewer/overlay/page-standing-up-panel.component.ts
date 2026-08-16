@@ -65,10 +65,11 @@ export class PageStandingUpPanelComponent {
         if (this.rolledResult() === 'FAILED') return 'failed';
         return 'default';
     });
+    readonly standingModifier = computed(() => this.unit()?.rules.standingUpPSRModifier ?? 0);
 
     readonly targetRoll = computed(() => {
         const target = this.unit()?.PSRTargetRoll() ?? 0;
-        return target - (this.carefulStand() ? 2 : 0);
+        return target + this.standingModifier() - (this.carefulStand() ? 2 : 0);
     });
 
     readonly attempts = computed(() => this.unit()?.turnState().standAttempts() ?? 0);
@@ -78,6 +79,9 @@ export class PageStandingUpPanelComponent {
         if (!unit) return [];
         return [
             ...displayPsrModifiers(unit.PSRModifiers().modifiers),
+            ...(this.standingModifier() !== 0
+                ? [{ pilotCheck: this.standingModifier(), reason: 'Standing up', loc: undefined }]
+                : []),
             ...(this.carefulStand() ? [{ pilotCheck: -2, reason: 'Careful stand', loc: undefined }] : []),
         ];
     });

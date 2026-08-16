@@ -26,6 +26,7 @@ describe('PageStandingUpPanelComponent', () => {
         };
         const unit = {
             id: 'unit-1',
+            rules: { standingUpPSRModifier: -1 },
             turnState: () => turnState,
             PSRTargetRoll: () => 8,
             PSRModifiers: () => ({ modifiers: [{ pilotCheck: 1, reason: 'Gyro damaged' }] }),
@@ -48,13 +49,14 @@ describe('PageStandingUpPanelComponent', () => {
 
         expect((fixture.nativeElement.querySelector('.careful-stand .modifier-badge') as HTMLElement).textContent?.trim()).toBe('-2');
         expect((fixture.nativeElement.querySelector('.careful-stand') as HTMLElement).textContent).not.toContain('(-2 PSR)');
-        expect(component.targetRoll()).toBe(8);
+        expect(component.targetRoll()).toBe(7);
         expect(component.attempts()).toBe(0);
 
         component.carefulStand.set(true);
-        expect(component.targetRoll()).toBe(6);
+        expect(component.targetRoll()).toBe(5);
         expect(component.modifiersList()).toEqual([
             jasmine.objectContaining({ pilotCheck: 1, reason: 'Gyro damaged' }),
+            jasmine.objectContaining({ pilotCheck: -1, reason: 'Standing up' }),
             jasmine.objectContaining({ pilotCheck: -2, reason: 'Careful stand' }),
         ]);
 
@@ -83,5 +85,27 @@ describe('PageStandingUpPanelComponent', () => {
 
         expect(adjustStandAttempts).toHaveBeenCalledWith(1);
         expect(component.attempts()).toBe(1);
+    });
+
+    it('does not apply the Core standing modifier under TW rules', () => {
+        const unit = {
+            id: 'unit-1',
+            rules: { standingUpPSRModifier: 0 },
+            turnState: () => ({ standAttempts: signal<number | undefined>(undefined) }),
+            PSRTargetRoll: () => 8,
+            PSRModifiers: () => ({ modifiers: [] }),
+        };
+
+        TestBed.configureTestingModule({
+            imports: [PageStandingUpPanelComponent],
+            providers: [
+                { provide: PageInteractionOverlayComponent, useValue: { unit: signal(unit) } },
+                { provide: OverlayManagerService, useValue: { closeManagedOverlay: jasmine.createSpy('closeManagedOverlay') } },
+            ],
+        });
+        const component = TestBed.createComponent(PageStandingUpPanelComponent).componentInstance;
+
+        expect(component.targetRoll()).toBe(8);
+        expect(component.modifiersList()).toEqual([]);
     });
 });

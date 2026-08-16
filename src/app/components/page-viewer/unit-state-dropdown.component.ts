@@ -18,6 +18,7 @@ export interface UnitStateDropdownChoice {
     color: string;
     active: boolean;
     counted?: boolean;
+    action?: boolean;
     isBreak?: boolean;
     value?: number;
 }
@@ -64,6 +65,17 @@ export interface UnitStateDropdownChoice {
                             data-unit-state-action="incremented"
                             (click)="incremented.emit(choice.key)">+</button>
                     </div>
+                } @else if (choice.action) {
+                    <button
+                        class="unit-state-dropdown-item action"
+                        type="button"
+                        cdkMenuItem
+                        [class.drag-hover]="isHovered(choice, 'selected')"
+                        [attr.data-unit-state-key]="choice.key"
+                        data-unit-state-action="selected"
+                        (click)="selected.emit(choice.key)">
+                        <span class="state-label">{{ choice.label }}</span>
+                    </button>
                 } @else {
                     <button
                         class="unit-state-dropdown-item"
@@ -124,6 +136,10 @@ export interface UnitStateDropdownChoice {
             padding: 4px 6px;
             background: transparent;
             cursor: default;
+        }
+
+        .unit-state-dropdown-item.action {
+            grid-template-columns: 1fr;
         }
 
         .unit-state-dropdown-break {

@@ -9,8 +9,8 @@ import type { WeaponType } from '../models/weapon-types.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
 import { EquipmentInteractionHandler, type HandlerCommandContext, type HandlerQueryContext, type ToHitAdjustmentContext } from '../services/equipment-interaction-registry.service';
-import { INVENTORY_CONTROL_MODE_STATE, setInventoryControlMode } from '../utils/inventory-control.util';
 
+export const HAG_MODE_STATE_KEY = 'hag_mode';
 export const HAG_STANDARD_MODE = 'Standard';
 export const HAG_FLAK_MODE = 'Flak';
 
@@ -37,7 +37,9 @@ export class HagHandler extends EquipmentInteractionHandler {
     }
 
     override handleSelection(equipment: MountedEquipment, choice: PickerChoice, _context: HandlerCommandContext): boolean {
-        setInventoryControlMode(equipment, String(choice.value));
+        if (equipment.setState(HAG_MODE_STATE_KEY, String(choice.value))) {
+            equipment.owner.setInventoryEntry(equipment);
+        }
         return true;
     }
 
@@ -64,7 +66,7 @@ export class HagHandler extends EquipmentInteractionHandler {
         return selectedHagMode(equipment) === HAG_FLAK_MODE
             ? [{
                 kind: 'add',
-                label: `${equipment.equipment?.shortName ?? equipment.name} (FLAK)`,
+                label: `${equipment.getDisplayName()} (FLAK)`,
                 modifier: -1
             }]
             : [];
@@ -72,7 +74,7 @@ export class HagHandler extends EquipmentInteractionHandler {
 }
 
 export function selectedHagMode(equipment: MountedEquipment): string {
-    return equipment.states.get(INVENTORY_CONTROL_MODE_STATE) === HAG_FLAK_MODE
+    return equipment.states.get(HAG_MODE_STATE_KEY) === HAG_FLAK_MODE
         ? HAG_FLAK_MODE
         : HAG_STANDARD_MODE;
 }

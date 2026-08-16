@@ -44,6 +44,39 @@ describe('DiceRollerComponent', () => {
         fixture.destroy();
     });
 
+    it('renders only a non-zero signed modifier without editing controls', () => {
+        const fixture = TestBed.createComponent(DiceRollerComponent);
+        fixture.componentRef.setInput('modifier', 0);
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('.modifier-value')).toBeNull();
+        expect(fixture.nativeElement.querySelector('button')).toBeNull();
+
+        fixture.componentRef.setInput('modifier', 2);
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('.modifier-value')?.textContent.trim()).toBe('+2');
+
+        fixture.componentRef.setInput('modifier', -2);
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('.modifier-value')?.textContent.trim()).toBe('−2');
+        fixture.destroy();
+    });
+
+    it('recomputes a completed roll when its modifier changes', () => {
+        const fixture = TestBed.createComponent(DiceRollerComponent);
+        fixture.componentRef.setInput('rollDurationMs', 0);
+        fixture.detectChanges();
+
+        fixture.componentInstance.roll([3, 4]);
+        jasmine.clock().tick(0);
+        expect(fixture.componentInstance.diceSum()).toBe(7);
+
+        fixture.componentRef.setInput('modifier', 2);
+        fixture.detectChanges();
+        expect(fixture.componentInstance.diceResults()).toEqual([3, 4]);
+        expect(fixture.componentInstance.diceSum()).toBe(9);
+        fixture.destroy();
+    });
+
     it('finishes an overlay roll on tap, keeps the result open, and emits when it closes', () => {
         spyOn(Math, 'random').and.returnValue(0);
         const fixture = TestBed.createComponent(DiceRollerComponent);
@@ -121,6 +154,41 @@ describe('DiceRollerComponent', () => {
         jasmine.clock().tick(100);
         fixture.componentInstance.onOverlayBackgroundClick();
         expect(fixture.componentInstance.overlayVisible()).toBeFalse();
+        fixture.destroy();
+    });
+
+    it('animates before settling on requested final faces', () => {
+        spyOn(Math, 'random').and.returnValue(0);
+        const fixture = TestBed.createComponent(DiceRollerComponent);
+        fixture.componentRef.setInput('rollDurationMs', 100);
+        fixture.componentRef.setInput('animationIntervalMs', 25);
+        fixture.detectChanges();
+        const finished = jasmine.createSpy('finished');
+        fixture.componentInstance.finished.subscribe(finished);
+
+        fixture.componentInstance.roll([5, 2]);
+        jasmine.clock().tick(25);
+        expect(fixture.componentInstance.diceResults()).toEqual([1, 1]);
+
+        jasmine.clock().tick(75);
+        expect(fixture.componentInstance.diceResults()).toEqual([5, 2]);
+        expect(finished).toHaveBeenCalledOnceWith({ results: [5, 2], sum: 7 });
+        fixture.destroy();
+    });
+
+    it('can present dice as separate values without sum notation', () => {
+        const fixture = TestBed.createComponent(DiceRollerComponent);
+        fixture.componentRef.setInput('showSum', false);
+        fixture.componentRef.setInput('rollDurationMs', 0);
+        fixture.detectChanges();
+
+        fixture.componentInstance.roll([2, 6]);
+        jasmine.clock().tick(0);
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelectorAll('.die')).toHaveSize(2);
+        expect(fixture.nativeElement.querySelector('.plus-sign')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.sum')).toBeNull();
         fixture.destroy();
     });
 

@@ -328,7 +328,7 @@ describe('Alpha Strike core specials', () => {
       .toEqual(jasmine.arrayContaining(['RBT', 'SDCS']));
   });
 
-  it('adds SHLD only when club and shield flags coexist, regardless of equipment class', () => {
+  it('adds SHLD only when dedicated shield and size flags coexist, regardless of equipment class', () => {
     for (const shieldFlag of ['S_SHIELD_SMALL', 'S_SHIELD_MEDIUM', 'S_SHIELD_LARGE'] as const) {
       const entity = new TankEntity();
       addTestEquipment(entity, new WeaponEquipment({

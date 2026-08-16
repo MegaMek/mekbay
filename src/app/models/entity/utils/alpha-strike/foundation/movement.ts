@@ -51,8 +51,7 @@ export function alphaStrikeMovement(entity: BaseEntity): AlphaStrikeMovement {
   if (entity instanceof MekEntity && entity.locationOrder.some(location =>
     entity.locationIsLeg(location) && entity.armorAt(location).type === 'HARDENED')) walk--;
   if (equipment.some(mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'))) walk--;
-  if (equipment.some(mount => mount.equipment?.hasFlag('F_SHIELD')
-    && mount.equipment.hasAnyFlag(['S_SHIELD_LARGE', 'S_SHIELD_MEDIUM']))) walk--;
+  if (equipment.some(mount => mount.equipment?.hasAnyFlag(['S_SHIELD_LARGE', 'S_SHIELD_MEDIUM']))) walk--;
 
   const baseMove = Math.max(0, Math.round(walk) * 2);
   const jumpMove = entity.computeJumpMP({

@@ -170,7 +170,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
 
             equipment.owner.setInventoryEntry(equipment);
             context.toastService.showToast(
-                `${equipment.equipment?.name || equipment.name} ${disabled ? 'is operational' : 'has failed'}`,
+                `${equipment.getDisplayName()} ${disabled ? 'is operational' : 'has failed'}`,
                 disabled ? 'info' : 'error'
             );
             return true;
@@ -183,7 +183,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
         equipment.owner.setInventoryEntry(equipment);
         const state = this.getSequenceState(equipment);
         context.toastService.showToast(
-            `${equipment.equipment?.name || equipment.name} ${state === 0 ? 'reset' : `sequence ${state}`}`,
+            `${equipment.getDisplayName()} ${state === 0 ? 'reset' : `sequence ${state}`}`,
             'info'
         );
         return true;
@@ -205,7 +205,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
         if (changed) {
             equipment.owner.setInventoryEntry(equipment);
             notifications.showToast(
-                `${equipment.owner.getNotificationDisplayName()}: ${equipment.equipment?.name || equipment.name} sequence reduced to ${this.getSequenceState(equipment)}`,
+                `${equipment.owner.getNotificationDisplayName()}: ${equipment.getDisplayName()} sequence reduced to ${this.getSequenceState(equipment)}`,
                 'info'
             );
         }

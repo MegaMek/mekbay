@@ -40,7 +40,8 @@
     // --primary-focus-color: rgb(154, 154, 255);
     // --primary-focus-color-highlight: rgb(174, 174, 255);
 
-    --highlight-color: #8885;
+    --highlight-color: #8886;
+    --equipment-hover-secondary-color: #8883;
 
     --disabled-color: #888;
     --damage-color: #F00;
@@ -1832,6 +1833,12 @@ hr.divider {
                 pointer-events: none;
             }
 
+            &.equipment-hover-secondary>.critSlot-bg-rect {
+                fill: var(--equipment-hover-secondary-color);
+                stroke: var(--equipment-hover-secondary-color);
+                stroke-width: 0.35px;
+            }
+
             .critSlot-bg-rect {
                 &:hover {
                     fill: var(--highlight-color);
@@ -2088,6 +2095,10 @@ hr.divider {
         }
 
         .inventoryEntry {
+            &.equipment-hover-secondary>.inventoryEntryButton {
+                fill: var(--equipment-hover-secondary-color);
+            }
+
             &:hover>.inventoryEntryButton {
                 fill: var(--highlight-color);
             }

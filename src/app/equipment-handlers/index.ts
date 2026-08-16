@@ -5,6 +5,7 @@
 import type { EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
 import { ECMHandler } from './ecm.handler';
 import { BAPHandler } from './bap.handler';
+import { GaussPowerHandler } from './gauss-power.handler';
 import { StealthHandler } from './stealth.handler';
 import { UACJammingHandler } from './uacjamming.handler';
 import { UACFiringModeHandler } from './uac-firing-mode.handler';
@@ -39,6 +40,7 @@ export function registerAllHandlers(registryService: EquipmentInteractionRegistr
     // Register all handlers
     registry.register(new ECMHandler());
     registry.register(new BAPHandler());
+    registry.register(new GaussPowerHandler());
     registry.register(new StealthHandler());
     registry.register(new InventoryModeHandler());
     registry.register(new MmlHandler());

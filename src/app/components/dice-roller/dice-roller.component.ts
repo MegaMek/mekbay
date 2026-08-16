@@ -16,9 +16,11 @@ import { AutoFitTextDirective } from '../../directives/auto-fit-text.directive';
 export class DiceRollerComponent {
     private endTimer: ReturnType<typeof setTimeout> | null = null;
     private activeDiceCount = 0;
+    private finalResults: number[] | null = null;
     diceCount = input<number>(2);
     diceSides = input<number>(6);
     modifier = input<number>(0);
+    showSum = input<boolean>(true);
     /** Use small dice instead of large (default) */
     small = input<boolean>(false);
     rollOnDieClick = input<boolean>(false);
@@ -26,7 +28,6 @@ export class DiceRollerComponent {
     animationIntervalMs = input<number>(50);
     freezeOnRollEnd = input<number>(0);
     rolled = signal<boolean>(false);
-    diceSum = signal<number>(0);
     showOverlay = input<boolean>(false);
     showInline = input<boolean>(true);
     overlayResult = input<string | null>(null);
@@ -42,6 +43,10 @@ export class DiceRollerComponent {
 
     // runtime state
     diceResults = signal<(number | null)[]>([]);
+    diceSum = computed(() => this.diceResults().reduce<number>(
+        (sum, value) => sum + (value ?? 0),
+        this.modifier(),
+    ));
     isRolling = signal(false);
     overlayVisible = signal(false);
     canCloseOverlay = signal(false);
@@ -68,18 +73,19 @@ export class DiceRollerComponent {
         });
     }
 
-    public roll() {
+    public roll(finalResults?: readonly number[]) {
         if (this.isRolling()) {
             return;
         }
 
+        const diceCount = Math.max(0, Math.floor(this.diceCount()));
+        this.finalResults = finalResults ? this.validateFinalResults(finalResults, diceCount) : null;
         this.rolled.set(false);
         this.isRolling.set(true);
         this.overlayVisible.set(this.showOverlay());
         this.canCloseOverlay.set(false);
         this.clearTimers();
 
-        const diceCount = Math.max(0, Math.floor(this.diceCount()));
         const animationIntervalMs = Math.max(1, this.animationIntervalMs());
         this.activeDiceCount = diceCount;
 
@@ -123,9 +129,9 @@ export class DiceRollerComponent {
         this.clearRollTimers();
         this.isRolling.set(false);
 
-        const results = this.rollFaces(this.activeDiceCount);
+        const results = this.finalResults ?? this.rollFaces(this.activeDiceCount);
+        this.finalResults = null;
         this.diceResults.set(results);
-        this.diceSum.set(results.reduce((sum, value) => sum + value, this.modifier()));
 
         const freezeOnRollEnd = Math.max(0, this.freezeOnRollEnd());
         this.canCloseOverlay.set(freezeOnRollEnd === 0);
@@ -149,6 +155,15 @@ export class DiceRollerComponent {
 
     private rollFaces(diceCount: number): number[] {
         return Array.from({ length: diceCount }, () => this.randomFace());
+    }
+
+    private validateFinalResults(results: readonly number[], diceCount: number): number[] {
+        const sides = Math.max(1, Math.floor(this.diceSides()));
+        if (results.length !== diceCount
+            || results.some(value => !Number.isInteger(value) || value < 1 || value > sides)) {
+            throw new RangeError(`Final dice results must contain ${diceCount} values between 1 and ${sides}.`);
+        }
+        return [...results];
     }
 
     private clearRollTimers() {
