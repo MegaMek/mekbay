@@ -325,18 +325,17 @@ export class GameRules extends CBTGameRules {
     }
 
     protected override getRulesProfile(equipment: Equipment): number[] {
-        // Claw and Lance has 0 hitmod instead of 1
-        if (equipment.flags.has('S_CLAW') || equipment.flags.has('S_LANCE')) {
+        // Claws have a 0 hit modifier instead of TW's +1.
+        if (equipment.flags.has('S_CLAW')) {
+            return [0];
+        }
+        // MRM have 0 instead of +1 of TW
+        if (equipment instanceof WeaponEquipment && equipment.hasFlag('F_MRM')) {
             return [0];
         }
 
-        const modifiers = super.getRulesProfile(equipment);
-        // MRM doesn't have the +1 but 0
-        return equipment instanceof WeaponEquipment && equipment.hasFlag('F_MRM')
-            ? modifiers.map(modifier => modifier - 1)
-            : modifiers;
+        return super.getRulesProfile(equipment);
     }
-
 }
 
 export class TWGameRules extends CBTGameRules {
@@ -424,6 +423,20 @@ export class TWGameRules extends CBTGameRules {
                 || !ammo.hasFixedBV()) return total;
             return total + ammo.bv;
         }, 0);
+    }    
+    
+    protected override getRulesProfile(equipment: Equipment): number[] {
+        // Claws have a +1 hit modifier instead of Core 2026's 0.
+        if (equipment.flags.has('S_CLAW')) {
+            return [1];
+        }
+
+        // MRM have +1 instead of 0 of core
+        if (equipment instanceof WeaponEquipment && equipment.hasFlag('F_MRM')) {
+            return [1];
+        }
+
+        return super.getRulesProfile(equipment);
     }
 }
 
