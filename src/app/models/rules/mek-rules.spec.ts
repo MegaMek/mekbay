@@ -921,6 +921,22 @@ describe('MekRules', () => {
             .toBe(2);
     });
 
+    it('rounds odd Land-Air BattleMek punch damage up after halving it', () => {
+        const forceUnit = createForceUnitHarness({
+            tons: 45,
+            subtype: 'Land-Air BattleMek',
+            critSlots: armCritSlots('LA'),
+            internalLocations: ['LA', 'RA', 'LL', 'RL'],
+        });
+
+        expect((forceUnit.rules as MekRules).resolveInventoryMeleeDamageDisplay(
+            punchEntry(forceUnit),
+            '5',
+            'punch',
+            'LA',
+        )).toEqual({ damage: 3, text: '3', weakened: false });
+    });
+
     it('adds the Core shield bash bonus before the TSM punch multiplier', () => {
         const { forceUnit, shield } = createShieldHarness('core2026');
         const rules = forceUnit.rules as MekRules;
@@ -1241,7 +1257,7 @@ describe('MekRules', () => {
         expect((structurallyDestroyed.rules as MekRules).physicalCombat()?.chargeDamage).toEqual(jasmine.objectContaining({ bonusDamage: 0, maxBonusDamage: 2 }));
     });
 
-    it('calculates core2026 charge damage from tonnage and movement-distance TMM', () => {
+    it('calculates charge damage using the selected ruleset', () => {
         const forceUnit = createForceUnitHarness();
         forceUnit.getUnit().tons = 45;
         forceUnit.turnState().moveDistance.set(5);
@@ -1283,8 +1299,31 @@ describe('MekRules', () => {
             long: '—',
         }).damage).toBe('36');
 
-        const twForceUnit = createForceUnitHarness({ rulesId: 'tw' });
-        expect((twForceUnit.rules as MekRules).physicalCombat()?.chargeDamage.damage).toBeNull();
+        const twForceUnit = createForceUnitHarness({ rulesId: 'tw', tons: 45, run: 8 });
+        twForceUnit.turnState().moveDistance.set(5);
+        const twCharge = new MountedEquipment({
+            owner: twForceUnit,
+            id: 'Charge',
+            name: 'charge',
+            intrinsicPhysicalAttack: true,
+        });
+        expect((twForceUnit.rules as MekRules).physicalCombat()?.chargeDamage).toEqual({
+            damage: 18,
+            maxDamage: 32,
+            bonusDamage: 0,
+            maxBonusDamage: 0,
+        });
+        expect(twForceUnit.rules.applyInventoryControlDisplayEffects(twCharge, {
+            name: 'Charge',
+            location: '—',
+            heat: '—',
+            damage: 'Wrong SVG value',
+            hit: 'Vs',
+            min: '—',
+            short: '—',
+            medium: '—',
+            long: '—',
+        }).damage).toBe('18 [32]');
     });
 
     it('applies TSM to capped inactive vibroblade damage but not fixed active damage', () => {

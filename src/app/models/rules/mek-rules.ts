@@ -2185,7 +2185,7 @@ export class MekRules extends UnitTypeRulesBase {
 
     private basePunchDamage(): number {
         const baseDamage = Math.ceil(this.unit.getUnit().tons / 10);
-        return this.unit.getUnit().subtype === 'Land-Air BattleMek' ? baseDamage / 2 : baseDamage;
+        return this.unit.getUnit().subtype === 'Land-Air BattleMek' ? Math.ceil(baseDamage / 2) : baseDamage;
     }
 
     private getPunchDesignBaselineDamage(baseDamage: number, loc?: string): number {

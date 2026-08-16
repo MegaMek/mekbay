@@ -25,6 +25,22 @@ function calculateTWC3Tax(
     return calculator.totalWar(unit);
 }
 
+function calculateTWChargeDamage(
+    unit: CBTForceUnit,
+    bonusDamage = 0,
+    maxBonusDamage = bonusDamage,
+): ChargeDamage {
+    const damagePerHex = unit.getUnit().tons / 10;
+    const movedHexes = Math.max(1, unit.turnState().moveDistance() ?? 0);
+    const maxMovedHexes = Math.max(1, unit.getUnit().run);
+    return {
+        damage: Math.ceil(damagePerHex * (movedHexes - 1)) + bonusDamage,
+        maxDamage: Math.ceil(damagePerHex * (maxMovedHexes - 1)) + maxBonusDamage,
+        bonusDamage,
+        maxBonusDamage,
+    };
+}
+
 export class TWMekRules extends MekRules {
     override readonly standingUpPSRModifier: number = 0;
     protected override get shieldBashPunchBonusEnabled(): boolean { return false; }
@@ -289,12 +305,7 @@ export class TWMekRules extends MekRules {
     }
 
     protected override computeChargeDamage(bonusDamage = 0, maxBonusDamage = bonusDamage): ChargeDamage {
-        return {
-            damage: null,
-            maxDamage: null,
-            bonusDamage,
-            maxBonusDamage,
-        };
+        return calculateTWChargeDamage(this.unit, bonusDamage, maxBonusDamage);
     }
 }
 
@@ -322,6 +333,6 @@ export class TWVehicleRules extends VehicleRules {
     }
 
     protected override computeChargeDamage(bonusDamage = 0, maxBonusDamage = bonusDamage): ChargeDamage {
-        return { damage: null, maxDamage: null, bonusDamage, maxBonusDamage };
+        return calculateTWChargeDamage(this.unit, bonusDamage, maxBonusDamage);
     }
 }
