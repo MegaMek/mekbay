@@ -27,7 +27,6 @@ export interface MekCriticalChanceDialogData {
             <div class="header">Critical Chance · {{ data.locationLabel }}</div>
             <div class="body">
                 <div class="critical-dialog-body">
-                    <p>Roll 2D6 to determine the critical-hit result.</p>
                     <div class="roll-details critical-roll-details" aria-label="Critical chance modifiers">
                         <div class="roll-details-label">Modifiers</div>
                         <div class="modifiers critical-modifiers">
@@ -113,24 +112,38 @@ export interface MekCriticalChanceDialogData {
                         [modifier]="modifierTotal()"
                         (finished)="onFinished($event)"
                     />
-                    @if (result(); as currentResult) {
-                        <div class="critical-result" [class.no-critical]="currentResult.kind == 'none'" aria-live="polite">{{ resultLabel(currentResult) }}</div>
-                    } @else {
-                        <div class="critical-table-hint">2–7: No Critical | 8–9: 1 | 10–11: 2 | 12: {{ data.canBlowOff ? 'blow off' : '3' }}</div>
-                    }
+                    <div class="critical-result-slot">
+                        <div
+                            class="critical-result"
+                            [class.no-critical]="result()?.kind === 'none'"
+                            [class.result-slot-hidden]="!result()"
+                            aria-live="polite"
+                        >
+                            @if (result(); as currentResult) {
+                                {{ resultLabel(currentResult) }}
+                            } @else {
+                                No critical hits.
+                            }
+                        </div>
+                        <div class="critical-table-hint" [class.result-slot-hidden]="result()">
+                            2–7: No Critical | 8–9: 1 | 10–11: 2 | 12: {{ data.canBlowOff ? 'blow off' : '3' }}
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="actions">
+            <div class="actions critical-chance-actions">
                 <button class="bt-button" type="button" [disabled]="roller.isRolling()" (click)="roll()">
-                    {{ result() ? 'AGAIN' : 'ROLL 2D6' }}
+                    {{ result() ? 'ROLL AGAIN' : 'ROLL 2D6' }}
                 </button>
-                @if (result(); as currentResult) {
-                    @if (currentResult.kind !== 'none') {
-                        <button class="bt-button primary" type="button" [disabled]="roller.isRolling()" (click)="continueWith(currentResult)">
-                            {{ continueLabel(currentResult) }}
-                        </button>
-                    }
-                }
+                <button
+                    class="bt-button primary critical-action"
+                    type="button"
+                    [disabled]="!canContinue()"
+                    [class.action-unavailable]="!canContinue()"
+                    (click)="continueWithCurrentResult()"
+                >
+                    {{ result() ? continueLabel(result()!) : '' }}
+                </button>
                 <button class="bt-button" type="button" (click)="close()">DISMISS</button>
             </div>
         </div>
@@ -147,6 +160,10 @@ export class MekCriticalChanceDialogComponent {
     readonly result = signal<MekCriticalChanceResult | null>(null);
     readonly modifiers = this.data.modifiers ?? [];
     readonly isRolling = computed(() => this.roller()?.isRolling() ?? false);
+    readonly canContinue = computed(() => {
+        const result = this.result();
+        return !this.isRolling() && result !== null && result.kind !== 'none';
+    });
     private readonly optionalModifiers = signal(new Set(
         this.modifiers.filter(modifier => modifier.optional && modifier.enabled !== false)
             .map(modifier => modifier.label),
@@ -217,9 +234,15 @@ export class MekCriticalChanceDialogComponent {
     }
 
     continueLabel(result: MekCriticalChanceResult): string {
-        if (result.kind === 'none') return 'DONE';
-        if (result.kind === 'blown-off') return 'APPLY';
-        return `${result.count} CRITICAL${result.count === 1 ? '' : 'S'}`;
+        if (result.kind === 'none') return '';
+        if (result.kind === 'blown-off') return 'APPLY BLOWN-OFF';
+        return `APPLY ${result.count} CRITICAL${result.count === 1 ? '' : 'S'}`;
+    }
+
+    continueWithCurrentResult(): void {
+        const result = this.result();
+        if (!result || result.kind === 'none') return;
+        this.continueWith(result);
     }
 
     continueWith(result: MekCriticalChanceResult): void {

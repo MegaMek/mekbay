@@ -97,7 +97,7 @@ export interface MekCriticalRollDialogResult {
                 <button
                     class="bt-button primary"
                     type="button"
-                    [disabled]="complete() || roller.isRolling()"
+                    [disabled]="roller.isRolling()"
                     (click)="roll()">
                     {{ rollButtonLabel() }}
                 </button>
@@ -136,9 +136,13 @@ export class MekCriticalRollDialogComponent {
     readonly explosionProtectionNote = this.data.unit.gameRules.getMekExplosionProtectionNote(this.explosionProtection);
 
     roll(): void {
-        if (this.complete()) return;
+        if (this.complete()) {
+            this.close();
+            return;
+        }
         if (!this.hasRollableSlot()) {
             this.discarded.set(true);
+            this.close();
             return;
         }
         this.outcome.set(null);

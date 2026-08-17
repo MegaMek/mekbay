@@ -28,6 +28,22 @@
     font-size: 0.85em;
 }
 
+.critical-result-slot {
+    align-self: stretch;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    place-items: center;
+}
+
+.critical-result-slot > * {
+    grid-area: 1 / 1;
+    min-width: 0;
+}
+
+.result-slot-hidden {
+    visibility: hidden;
+}
+
 .critical-roll-details {
     align-self: stretch;
     margin: 0;
@@ -169,4 +185,18 @@
     flex: 1 1 0;
     width: auto;
     min-width: 0;
+}
+
+.critical-chance-actions {
+    flex-wrap: wrap;
+}
+
+.critical-chance-actions .critical-action {
+    order: -1;
+    flex: 0 0 100%;
+    width: 100%;
+}
+
+.critical-chance-actions .critical-action.action-unavailable {
+    visibility: hidden;
 }

@@ -59,7 +59,7 @@ describe('MekCriticalRollDialogComponent', () => {
                 { provide: DialogRef, useValue: dialogRef },
                 {
                     provide: DIALOG_DATA,
-                    useValue: { unit, location: 'LT', consolidateImmediately: true },
+                    useValue: { unit, location: 'LT', requiredHits: 1, consolidateImmediately: true },
                 },
             ],
         }).compileComponents();
@@ -102,7 +102,7 @@ describe('MekCriticalRollDialogComponent', () => {
         expect(roll).toHaveBeenCalledTimes(1);
     });
 
-    it('finishes a manual roll after explicitly discarding when no valid slot remains', () => {
+    it('discards remaining criticals and dismisses when no valid slot remains', () => {
         criticalSlots[0].destroyed = 1;
         slotsVersion.update(version => version + 1);
         fixture.detectChanges();
@@ -110,14 +110,38 @@ describe('MekCriticalRollDialogComponent', () => {
         expect(fixture.componentInstance.rollButtonLabel()).toBe('DISCARD REMAINING');
         expect(fixture.componentInstance.complete()).toBeFalse();
 
-        fixture.componentInstance.roll();
+        const primaryButton = fixture.nativeElement.querySelector('.bt-button.primary') as HTMLButtonElement;
+        expect(primaryButton.disabled).toBeFalse();
+        primaryButton.click();
         fixture.detectChanges();
 
         expect(fixture.componentInstance.discarded()).toBeTrue();
         expect(fixture.componentInstance.complete()).toBeTrue();
         expect(fixture.componentInstance.rollButtonLabel()).toBe('CRITICALS DISCARDED');
+        expect(dialogRef.close).toHaveBeenCalledOnceWith({ completed: true });
+    });
 
-        fixture.componentInstance.close();
+    it('uses completed primary-button states as dismiss actions', () => {
+        const primaryButton = fixture.nativeElement.querySelector('.bt-button.primary') as HTMLButtonElement;
+
+        fixture.componentInstance.appliedHits.set(1);
+        fixture.detectChanges();
+
+        expect(primaryButton.textContent).toContain('CRITICALS APPLIED');
+        expect(primaryButton.disabled).toBeFalse();
+        primaryButton.click();
+
+        expect(dialogRef.close).toHaveBeenCalledOnceWith({ completed: true });
+
+        dialogRef.close.calls.reset();
+        fixture.componentInstance.appliedHits.set(0);
+        fixture.componentInstance.discarded.set(true);
+        fixture.detectChanges();
+
+        expect(primaryButton.textContent).toContain('CRITICALS DISCARDED');
+        expect(primaryButton.disabled).toBeFalse();
+        primaryButton.click();
+
         expect(dialogRef.close).toHaveBeenCalledOnceWith({ completed: true });
     });
 });
