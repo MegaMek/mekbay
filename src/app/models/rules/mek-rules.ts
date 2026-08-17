@@ -852,8 +852,16 @@ export class MekRules extends UnitTypeRulesBase {
         return slot.loc ? this.unit.isInternalLocCommittedDestroyed(slot.loc) : false;
     }
 
-    private hasTorsoMountedCockpit(): boolean {
+    protected hasTorsoMountedCockpit(): boolean {
         return this.unit.getCritSlots().some(slot => !!slot.loc && MEK_TORSO_LOCATIONS.has(slot.loc) && this.isNamedCrit(slot, 'Cockpit'));
+    }
+
+    override hasDamagedLifeSupport(): boolean {
+        return this.unit.getCritSlots().some(slot =>
+            this.isNamedCrit(slot, 'Life Support')
+            && (!!slot.destroyed
+                || !!slot.destroying
+                || (slot.loc ? this.unit.isInternalLocDestroyed(slot.loc) : false)));
     }
 
     // ── Systems Status ───────────────────────────────────────────────────────
@@ -1260,6 +1268,12 @@ export class MekRules extends UnitTypeRulesBase {
         return this.getTargetNumberCrewSkill('piloting', 0) ?? super.getBasePilotingSkill();
     }
 
+    override getActivePilotCrewId(): number | null {
+        return this.getActiveCrewMember(0)?.getId()
+            ?? this.getFirstActiveAlternateCrewMember(0)?.getId()
+            ?? null;
+    }
+
     protected override buildRuleModifiers(): UnitRuleModifier[] {
         const modifiers: UnitRuleModifier[] = [];
         if (this.isTripodMek()) {
@@ -1414,6 +1428,23 @@ export class MekRules extends UnitTypeRulesBase {
         { heat: 28, ammoExp: 8 },
         { heat: 30, shutdown: 100 }, // always fails
     ];
+    override readonly heatScale = MekRules.HEAT_SCALE;
+
+    override heatLifeSupportPilotHits(heat: number): number {
+        if (!this.hasDamagedLifeSupport() || heat <= 0) return 0;
+
+        if (this.hasTorsoMountedCockpit()) return heat >= 15 ? 2 : 1;
+        if (heat >= 20) return 2;
+        return heat >= 10 ? 1 : 0;
+    }
+
+    override headHitPilotHits(): number {
+        return this.hasTorsoMountedCockpit() ? 0 : 1;
+    }
+
+    override submergedLifeSupportPilotHits(): number {
+        return this.hasDamagedLifeSupport() && this.unit.turnState().submerged() ? 1 : 0;
+    }
 
     /** Compute heat-based move/fire modifiers from current heat level. */
     static getHeatEffects(heat: number): { moveModifier: number; fireModifier: number } {

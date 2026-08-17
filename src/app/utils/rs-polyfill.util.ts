@@ -38,6 +38,9 @@ export class RsPolyfillUtil {
     private static readonly CREW_STATE_BANNER_WIDTH = 64;
     private static readonly CREW_STATE_BANNER_HEIGHT = 10;
     private static readonly CREW_STATE_BANNER_FONT_SIZE = 8;
+    private static readonly WARRIOR_DATA_SINGLE = 'warriorDataSingle';
+    private static readonly WARRIOR_DATA_DUAL = 'warriorDataDual';
+    private static readonly WARRIOR_DATA_TRIPLE = 'warriorDataTriple';
     
     
     private static readonly CRITICAL_LOCATION_IDS = [
@@ -92,6 +95,7 @@ export class RsPolyfillUtil {
             this.addCriticalLocs(svg);
         }
         this.addConditionsButtons(forceUnit, svg);
+        this.addLifeSupportPilotDamageWarning(unit, svg);
         this.addMotiveHitPips(svg);
         this.addVtolRotorHitsCounter(unit, svg);
         this.addHeatLevels(svg);
@@ -317,6 +321,103 @@ export class RsPolyfillUtil {
         });
 
         unitDataPanelEl.appendChild(buttonWrapper);
+    }
+
+    private static addLifeSupportPilotDamageWarning(unit: Unit, svg: SVGSVGElement): void {
+        if (unit.type !== 'Mek' || svg.getElementById('lifeSupportPilotDamageWarning')) return;
+
+        const warriorData = [
+            this.WARRIOR_DATA_SINGLE,
+            this.WARRIOR_DATA_DUAL,
+            this.WARRIOR_DATA_TRIPLE,
+        ].map(id => svg.getElementById(id) as SVGGraphicsElement | null).find(element => !!element);
+        if (!warriorData) return;
+
+        const coords = warriorData.getBBox();
+        const warningWidth = 42;
+        const warningHeight = 15;
+        const warningX = coords.x + coords.width - warningWidth - 6;
+        const warningY = coords.y - 0.5;
+        const warning = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        warning.setAttribute('id', 'lifeSupportPilotDamageWarning');
+        warning.setAttribute('class', 'screen-only no-autocolor');
+        warning.setAttribute('pointer-events', 'none');
+        warning.setAttribute('display', 'none');
+        warning.setAttribute('transform', `translate(${warningX} ${warningY})`);
+        warning.setAttribute('data-width', warningWidth.toString());
+        warning.setAttribute('data-height', warningHeight.toString());
+
+        const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        defs.append(
+            this.createLifeSupportHeatDamageIcon(),
+            this.createLifeSupportOxygenDamageIcon(),
+        );
+        warning.appendChild(defs);
+        warriorData.appendChild(warning);
+    }
+
+    private static createLifeSupportHeatDamageIcon(): SVGSymbolElement {
+        const symbol = document.createElementNS('http://www.w3.org/2000/svg', 'symbol');
+        symbol.setAttribute('id', 'lifeSupportHeatDamageIcon');
+        symbol.setAttribute('viewBox', '-48 -48 608 608');
+
+        const flame = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        flame.setAttribute('class', 'lifeSupportHeatFlame');
+        flame.setAttribute('d', 'M392.172,147.731c13.598,34.6-10.914,87.102-45.319,68.762c-25.344-13.528-18.732-38.095,0.456-72.5c27.26-48.843-20.194-82.996-20.194-82.996s-9.013,62.081-60.738,51.402C222.128,103.268,220.306,27.526,239.464,0c-69.092,8.212-79.267,107.563-46.951,144.15c38.864,43.999,31.594,102.649-18.451,100.592c-36.398-1.492-53.231-46.943-33.965-91.712c-65.763,27.213-92.19,109.904-87.338,161.722c3.282,34.805,10.411,76.778,39.633,112.682c51.71,72.099,146.821,104.148,234.237,72.208c84.402-30.84,135.859-111.889,133.065-197.044C459.254,264.197,450.617,186.932,392.172,147.731z');
+        flame.setAttribute('fill', '#f4511e');
+        flame.setAttribute('stroke', '#000');
+        flame.setAttribute('stroke-width', '96');
+        flame.setAttribute('stroke-linejoin', 'round');
+        flame.setAttribute('paint-order', 'stroke fill');
+
+        const letterPaths = [
+            'M199.123,395.55c-0.141,0.895-0.722,1.554-1.602,1.672l-17.634,2.34c-0.88,0.11-1.461-0.392-1.319-1.288l6.862-39.53c0.142-0.598-0.157-0.856-0.738-0.778l-31.327,4.153c-0.58,0.078-0.879,0.408-1.02,1.013l-6.847,39.524c-0.157,0.903-0.596,1.539-1.46,1.656l-17.634,2.34c-0.88,0.118-1.46-0.392-1.319-1.287l17.053-98.448c0.142-0.888,0.738-1.555,1.602-1.672l17.634-2.34c0.88-0.117,1.32,0.416,1.178,1.303l-6.564,38.472c-0.142,0.613,0.141,0.864,0.722,0.786l31.185-4.138c0.597-0.079,0.88-0.408,1.021-1.013l6.705-38.487c0.157-0.895,0.738-1.562,1.601-1.672l17.634-2.34c0.879-0.118,1.46,0.392,1.319,1.288L199.123,395.55z',
+            'M293.606,363.344c-7.883,16.936-20.854,25.501-38.487,27.841c-18.654,2.473-31.327-6.195-31.327-26.161c0-8.888,4.804-39.398,9.908-50.57c7.867-16.928,20.994-25.525,38.472-27.841c18.655-2.473,31.342,6.194,31.342,26.16C303.515,321.668,298.71,352.178,293.606,363.344z',
+            'M389.236,289.455c-0.142,0.895-0.722,1.554-1.602,1.672l-24.339,3.227c-0.581,0.078-0.88,0.408-1.021,1.005l-13.85,80.39c-0.141,0.903-0.722,1.554-1.602,1.672l-17.634,2.339c-0.723,0.094-1.303-0.408-1.162-1.303l13.85-80.39c0.142-0.604-0.157-0.856-0.738-0.777l-24.182,3.211c-0.88,0.11-1.461-0.392-1.32-1.287l2.764-15.672c0.157-0.887,0.738-1.554,1.617-1.672l70.678-9.374c0.879-0.117,1.46,0.4,1.303,1.288L389.236,289.455z',
+        ].map(data => {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('class', 'lifeSupportHeatLetter');
+            path.setAttribute('d', data);
+            path.setAttribute('fill', '#fff');
+            return path;
+        });
+
+        const counter = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        counter.setAttribute('class', 'lifeSupportHeatCounter');
+        counter.setAttribute('d', 'M269.408,305.205c-8.008,1.06-13.692,6.328-17.053,13.92c-3.501,7.31-7.867,34.114-7.867,41.259c0,8.597,4.946,13.339,13.41,12.216c8.008-1.06,13.692-6.336,17.194-13.936c3.345-7.302,7.726-34.114,7.726-41.251C282.819,308.808,278.014,304.058,269.408,305.205z');
+        counter.setAttribute('fill', '#f4511e');
+
+        symbol.append(flame, ...letterPaths, counter);
+        return symbol;
+    }
+
+    private static createLifeSupportOxygenDamageIcon(): SVGSymbolElement {
+        const symbol = document.createElementNS('http://www.w3.org/2000/svg', 'symbol');
+        symbol.setAttribute('id', 'lifeSupportOxygenDamageIcon');
+        symbol.setAttribute('viewBox', '-48 -48 608 608');
+
+        const shapes = [
+            'M80 456V226c0-46 32-76 70-84v-28h30v28c38 8 70 38 70 84v230q0 18-18 18H98q-18 0-18-18z',
+            'M140 142V82h-28V42h96v40h-28v23h88v40h-88v-3z',
+            'M112 78a50 50 0 1 0 0 100a50 50 0 1 0 0-100zm0 34a16 16 0 1 1 0 32a16 16 0 1 1 0-32z',
+            'M292 224q0-58 58-58h18q58 0 58 58v106q0 58-58 58h-18q-58 0-58-58zm50 2v102q0 16 16 16h2q16 0 16-16V226q0-16-16-16h-2q-16 0-16 16z',
+            'M412 360q0-46 46-46h12q40 0 40 40q0 24-22 40l-37 27h59v47H404v-48l57-45q9-7 9-17q0-8-10-8h-8q-8 0-8 10z',
+        ].map((data, index) => {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('class', index < 3 ? 'lifeSupportOxygenTank' : 'lifeSupportOxygenLabel');
+            path.setAttribute('d', data);
+            path.setAttribute('fill', index < 3 ? '#2196f3' : '#fff');
+            path.setAttribute('stroke', '#000');
+            path.setAttribute('stroke-width', '96');
+            path.setAttribute('stroke-linejoin', 'round');
+            path.setAttribute('paint-order', 'stroke fill');
+            if (index === 2 || index === 3) path.setAttribute('fill-rule', 'evenodd');
+            if (index === 3) path.setAttribute('transform', 'translate(-44 0)');
+            return path;
+        });
+
+        symbol.append(...shapes);
+        return symbol;
     }
 
     private static syncConditionButtonWrapper(buttonWrapper: SVGElement, buttons: readonly { key: string; label: string; color: string; width: number }[]): void {

@@ -61,6 +61,14 @@ export class TWMekRules extends MekRules {
     protected override get shieldBashPunchBonusEnabled(): boolean { return false; }
     protected override get standaloneShieldDamageEnabled(): boolean { return true; }
 
+    override heatLifeSupportPilotHits(heat: number): number {
+        if (!this.hasDamagedLifeSupport() || heat <= 0) return 0;
+
+        if (this.hasTorsoMountedCockpit()) return heat >= 15 ? 2 : 1;
+        if (heat >= 26) return 2;
+        return heat >= 15 ? 1 : 0;
+    }
+
     override mountedCriticalDamageDestructionThreshold(_equipment: Equipment | null): number {
         return 1;
     }

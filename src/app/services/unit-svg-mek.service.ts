@@ -4,7 +4,7 @@
 
 import { uidTranslations } from "../models/common.model";
 import { MountedEquipment  } from '../models/mounted-equipment.model';
-import type { CriticalSlot } from "../models/force-serialization";
+import type { CriticalSlot, HeatProfile } from "../models/force-serialization";
 import { UnitSvgService } from "./unit-svg.service";
 import { AmmoEquipment } from "../models/equipment.model";
 import { MekRules } from "../models/rules/mek-rules";
@@ -34,6 +34,48 @@ export class UnitSvgMekService extends UnitSvgService {
         this.updateHeatSinkPips();
         this.updateInventory();
         this.updateTurnState();
+    }
+
+    protected override updateHeatDisplay(heat: HeatProfile): void {
+        super.updateHeatDisplay(heat);
+        this.updateLifeSupportPilotDamageWarning(heat);
+    }
+
+    private updateLifeSupportPilotDamageWarning(heat: HeatProfile): void {
+        const warning = this.unit.svg()?.getElementById('lifeSupportPilotDamageWarning');
+        if (!warning) return;
+
+        const heatHits = this.mekRules.heatLifeSupportPilotHits(heat.next ?? heat.current);
+        const oxygenHits = this.mekRules.submergedLifeSupportPilotHits();
+        const iconKinds: ('heat' | 'oxygen')[] = [];
+        for (let i = 0; i < heatHits; i++) iconKinds.push('heat');
+        for (let i = 0; i < oxygenHits; i++) iconKinds.push('oxygen');
+
+        warning.querySelectorAll('.lifeSupportPilotDamageIcon').forEach(icon => icon.remove());
+        if (iconKinds.length === 0) {
+            warning.setAttribute('display', 'none');
+            warning.removeAttribute('aria-label');
+            return;
+        }
+
+        const warningWidth = Number(warning.getAttribute('data-width')) || 42;
+        const iconSize = Number(warning.getAttribute('data-height')) || 15;
+        const iconGap = -1.5;
+        const iconsWidth = iconKinds.length * iconSize + (iconKinds.length - 1) * iconGap;
+        const startX = warningWidth - iconsWidth;
+        iconKinds.forEach((kind, index) => {
+            const icon = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+            icon.setAttribute('class', `lifeSupportPilotDamageIcon ${kind}`);
+            icon.setAttribute('href', kind === 'heat' ? '#lifeSupportHeatDamageIcon' : '#lifeSupportOxygenDamageIcon');
+            icon.setAttribute('x', (startX + index * (iconSize + iconGap)).toString());
+            icon.setAttribute('y', '0');
+            icon.setAttribute('width', iconSize.toString());
+            icon.setAttribute('height', iconSize.toString());
+            warning.appendChild(icon);
+        });
+
+        warning.setAttribute('aria-label', `${heatHits} heat, ${oxygenHits} oxygen-deprivation pilot damage`);
+        warning.removeAttribute('display');
     }
 
     protected updateCritSlotDisplay(criticalSlots: CriticalSlot[]) {

@@ -1628,6 +1628,7 @@ describe('MekRules', () => {
         const rules = forceUnit.rules as MekRules;
 
         expect(rules.getBasePilotingSkill()).toBe(6);
+        expect(rules.getActivePilotCrewId()).toBe(1);
         const punchModifiers = rules.getEquipmentToHitModifiers(punchEntry(forceUnit));
         expect(toHitModifierTotal(punchModifiers)).toBe(2);
         expect(punchModifiers).toEqual([
@@ -3259,6 +3260,47 @@ describe('MekRules', () => {
         expect(forceUnit.isInternalLocCommittedPhysicallyDestroyed('LL')).toBeTrue();
         expect(forceUnit.getLocationConditionValue('LL', 'narc')).toBeUndefined();
         expect(forceUnit.serialize().state.locations['LL'].conditions).toEqual(['blown-off']);
+    });
+
+    it('uses Core 2026 Life Support heat thresholds, including torso-mounted cockpits', () => {
+        const intact = createRulesHarness();
+        const standard = createRulesHarness({
+            critSlots: [
+                { id: 'life-support', name: 'Life Support', loc: 'HD', slot: 0, destroyed: 1 },
+            ],
+        });
+        const torsoCockpit = createRulesHarness({
+            critSlots: [
+                { id: 'cockpit', name: 'Cockpit', loc: 'CT', slot: 0 },
+                { id: 'life-support', name: 'Life Support', loc: 'HD', slot: 0, destroyed: 1 },
+            ],
+        });
+
+        expect(intact.heatLifeSupportPilotHits(30)).toBe(0);
+        expect([9, 10, 19, 20].map(heat => standard.heatLifeSupportPilotHits(heat))).toEqual([0, 1, 1, 2]);
+        expect([1, 14, 15].map(heat => torsoCockpit.heatLifeSupportPilotHits(heat))).toEqual([1, 1, 2]);
+    });
+
+    it('suppresses head-hit pilot damage for a torso-mounted cockpit', () => {
+        const standard = createRulesHarness();
+        const torsoCockpit = createRulesHarness({
+            critSlots: [{ id: 'cockpit', name: 'Cockpit', loc: 'CT', slot: 0 }],
+        });
+
+        expect(standard.headHitPilotHits()).toBe(1);
+        expect(torsoCockpit.headHitPilotHits()).toBe(0);
+    });
+
+    it('applies damaged Life Support drowning only while fully submerged', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [{ id: 'life-support', name: 'Life Support', loc: 'HD', slot: 0, destroyed: 1 }],
+        });
+
+        expect(forceUnit.rules.submergedLifeSupportPilotHits()).toBe(0);
+
+        forceUnit.turnState().setCover('underwater-depth-2');
+
+        expect(forceUnit.rules.submergedLifeSupportPilotHits()).toBe(1);
     });
 });
 
