@@ -36,9 +36,17 @@ export class UnitSvgMekService extends UnitSvgService {
         this.updateTurnState();
     }
 
-    private updateCritSlotDisplay(criticalSlots: CriticalSlot[]) {
+    protected updateCritSlotDisplay(criticalSlots: CriticalSlot[]) {
         const svg = this.unit.svg();
         if (!svg) return;
+        const extraHitPipsEnabled = this.unit.gameRules.id !== 'tw';
+        svg.querySelectorAll<SVGElement>('.extraHitPip').forEach(pip => {
+            if (extraHitPipsEnabled) {
+                pip.removeAttribute('display');
+            } else {
+                pip.setAttribute('display', 'none');
+            }
+        });
         const ammoProfile = new Map<string, number>();
         criticalSlots.forEach(criticalSlot => {
             const el = svg.querySelector(`.critSlot[loc="${criticalSlot.loc}"][slot="${criticalSlot.slot}"]`);
@@ -48,6 +56,11 @@ export class UnitSvgMekService extends UnitSvgService {
             const systemSlot = el.getAttribute('type') === 'sys';
             const modularArmor = el.getAttribute('modularArmor') === '1';
             const isAmmo = el.classList.contains('ammoSlot');
+            const extraHit = extraHitPipsEnabled && el.getAttribute('extraHit') === '1';
+            const hitCount = Math.max(0, criticalSlot.hits ?? 0);
+            const pipHitCapacity = (criticalSlot.armored ? 1 : 0) + (extraHit ? 1 : 0);
+            const showWholeSlotHit = hitCount === 0 || hitCount > pipHitCapacity;
+            const wholeSlotDamaged = !!criticalSlot.destroyed && showWholeSlotHit;
 
             if (isAmmo) {
                 const totalAmmo = criticalSlot?.totalAmmo || parseInt(el.getAttribute('totalAmmo') || '0');
@@ -87,36 +100,30 @@ export class UnitSvgMekService extends UnitSvgService {
                 }
             }
 
-            if (!!criticalSlot.destroyed) {
+            if (wholeSlotDamaged) {
                 el.classList.add('damaged');
                 el.classList.remove('willDamage');
             } else {
                 el.classList.remove('damaged');
-                el.classList.toggle('willDamage', !!criticalSlot.destroying);
+                el.classList.toggle('willDamage', !!criticalSlot.destroying && showWholeSlotHit);
             }
 
-            if (criticalSlot.armored && !criticalSlot.destroyed) {
-                const armorPip = el.querySelector('.armoredLocPip');
-                if (armorPip) {
-                    const isHit = (criticalSlot.hits ?? 0) > 0;
-                    if (armorPip.classList.contains('damaged') !== isHit) {
-                        armorPip.classList.add('fresh');
-                    } else if (armorPip.classList.contains('fresh')) {
-                        armorPip.classList.remove('fresh');
-                    }
-                    armorPip.classList.toggle('damaged', isHit);
-                }
+            if (criticalSlot.armored) {
+                const armoredPip = el.querySelector('.armoredLocPip');
+                this.updateCriticalSlotPip(armoredPip, hitCount > 0);
+                if (wholeSlotDamaged) armoredPip?.classList.remove('fresh');
+            }
+
+            if (extraHit) {
+                const precedingArmoredHit = criticalSlot.armored ? 1 : 0;
+                const extraHitPip = el.querySelector('.extraHitPip');
+                this.updateCriticalSlotPip(extraHitPip, hitCount > precedingArmoredHit);
+                if (wholeSlotDamaged) extraHitPip?.classList.remove('fresh');
             }
 
             if (modularArmor) {
                 el.querySelectorAll('.modularArmorPip').forEach((pipEl, index) => {
-                    const isHit = (criticalSlot.consumed ?? 0) > index;
-                    if (pipEl.classList.contains('damaged') !== isHit) {
-                        pipEl.classList.add('fresh');
-                    } else if (pipEl.classList.contains('fresh')) {
-                        pipEl.classList.remove('fresh');
-                    }
-                    pipEl.classList.toggle('damaged', isHit);
+                    this.updateCriticalSlotPip(pipEl, (criticalSlot.consumed ?? 0) > index);
                 });
             }
 
@@ -135,6 +142,16 @@ export class UnitSvgMekService extends UnitSvgService {
             }
         });
         this.renderAmmoProfile(ammoProfile);
+    }
+
+    private updateCriticalSlotPip(pip: Element | null, isHit: boolean): void {
+        if (!pip) return;
+        if (pip.classList.contains('damaged') !== isHit) {
+            pip.classList.add('fresh');
+        } else {
+            pip.classList.remove('fresh');
+        }
+        pip.classList.toggle('damaged', isHit);
     }
 
     protected override updateInventory() {
