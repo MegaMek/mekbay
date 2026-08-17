@@ -183,4 +183,61 @@ describe('MultilineDropdownComponent', () => {
         expect(measureOptions.map(option => option.textContent?.trim())).toEqual(options.map(option => option.label));
     });
 
+    it('ellipsizes the leading label while keeping a trailing label separate', () => {
+        const fixture = TestBed.createComponent(MultilineDropdownComponent);
+        fixture.componentRef.setInput('options', [{
+            value: 'heavy-gauss',
+            label: '[HD] iHeavy Gauss Ammo (4/4)',
+            trailingLabel: '(4/4)',
+        }]);
+        fixture.componentRef.setInput('value', 'heavy-gauss');
+        (fixture.nativeElement as HTMLElement).style.width = '150px';
+        fixture.detectChanges();
+
+        const trigger = fixture.nativeElement.querySelector('.multiline-dropdown-trigger') as HTMLButtonElement;
+        const label = trigger.querySelector('.multiline-dropdown-label') as HTMLElement;
+        const leadingLabel = trigger.querySelector('.multiline-dropdown-label-text') as HTMLElement;
+        const trailingLabel = trigger.querySelector('.multiline-dropdown-trailing-label') as HTMLElement;
+
+        expect(leadingLabel.textContent?.trim()).toBe('[HD] iHeavy Gauss Ammo');
+        expect(trailingLabel.textContent?.trim()).toBe('(4/4)');
+        expect(getComputedStyle(trigger).whiteSpace).toBe('nowrap');
+        expect(getComputedStyle(leadingLabel).textOverflow).toBe('ellipsis');
+        expect(getComputedStyle(trailingLabel).whiteSpace).toBe('nowrap');
+        expect(leadingLabel.scrollWidth).toBeGreaterThan(leadingLabel.clientWidth);
+        expect(trailingLabel.scrollWidth).toBe(trailingLabel.clientWidth);
+        expect(trailingLabel.getBoundingClientRect().right).toBeLessThanOrEqual(label.getBoundingClientRect().right);
+        expect(trigger.scrollHeight).toBe(trigger.clientHeight);
+    });
+
+    it('allows an opted-in overlay panel to expand to its content width', async () => {
+        const fixture = TestBed.createComponent(MultilineDropdownComponent);
+        fixture.componentRef.setInput('options', [{
+            value: 'heavy-gauss',
+            label: '[HD] iHeavy Gauss Ammo (4/4)',
+            trailingLabel: '(4/4)',
+        }]);
+        fixture.componentRef.setInput('value', 'heavy-gauss');
+        fixture.componentRef.setInput('expandPanelToContent', true);
+        (fixture.nativeElement as HTMLElement).style.width = '150px';
+        fixture.detectChanges();
+
+        const trigger = fixture.nativeElement.querySelector('.multiline-dropdown-trigger') as HTMLButtonElement;
+        trigger.click();
+        fixture.detectChanges();
+        await nextAnimationFrame();
+        await nextAnimationFrame();
+
+        const panelHost = overlayContainerElement.querySelector('multiline-dropdown-panel') as HTMLElement;
+        const overlayPane = panelHost.closest('.cdk-overlay-pane') as HTMLElement;
+        const optionLabel = panelHost.querySelector('.multiline-dropdown-option-label') as HTMLElement;
+        expect(panelHost.classList.contains('expand-to-content')).toBeTrue();
+        expect(optionLabel.textContent?.trim()).toBe('[HD] iHeavy Gauss Ammo (4/4)');
+        expect(overlayPane.getBoundingClientRect().width).toBeGreaterThan(trigger.getBoundingClientRect().width);
+    });
+
 });
+
+function nextAnimationFrame(): Promise<void> {
+    return new Promise(resolve => requestAnimationFrame(() => resolve()));
+}

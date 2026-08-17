@@ -6,6 +6,7 @@ import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedAmmo, MountedWeapon } from '../models/mounted-equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import type { CriticalSlot } from '../models/force-serialization';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { getInventoryControlAmmoProfileId, getInventoryControlModeAmmoSummary, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from './inventory-control.util';
 
@@ -133,6 +134,56 @@ describe('inventory-control ammo selection', () => {
         );
 
         expect(summary.options[0].profileId).toBe('AC5 Ammo||M_STANDARD');
+    });
+
+    it('keeps a damaged bin usable until the critical destruction commits', () => {
+        const weapon = new WeaponEquipment({
+            id: 'AC5', name: 'AC/5', type: 'weapon',
+            weapon: { ammoType: 'AC', rackSize: 5, damage: 5 },
+        });
+        const ammo = new AmmoEquipment({
+            id: 'AC5 Ammo', name: 'AC/5 Ammo', type: 'ammo',
+            ammo: { type: 'AC', rackSize: 5, shots: 20, munitionType: ['M_STANDARD'] },
+        });
+        const ammoSlot: CriticalSlot = {
+            id: 'ammo@LT',
+            name: ammo.internalName,
+            loc: 'LT',
+            slot: 0,
+            eq: ammo,
+            totalAmmo: 20,
+            consumed: 3,
+            destroying: Date.now(),
+        };
+        const inventory: MountedWeapon[] = [];
+        const owner = {
+            getInventory: () => inventory,
+            getCritSlots: () => [ammoSlot],
+            getCritSlot: () => ammoSlot,
+            getEquipmentStatus: (source: CriticalSlot) => source.destroyed ? 'destroyed' as const : 'available' as const,
+            isEquipmentOperational: (source: CriticalSlot) => !source.destroyed,
+        } as unknown as CBTForceUnit;
+        const mountedWeapon = new MountedWeapon({ owner, id: 'ac5', name: weapon.name, equipment: weapon });
+        inventory.push(mountedWeapon);
+        const catalog = new EquipmentRegistry({ [ammo.internalName]: ammo });
+
+        const pendingSummary = getInventoryControlModeAmmoSummary(mountedWeapon, catalog, {}, null);
+        expect(pendingSummary.remaining).toBe(17);
+        expect(pendingSummary.options[0]).toEqual(jasmine.objectContaining({
+            remaining: 17,
+            total: 20,
+            destroyed: false,
+        }));
+
+        ammoSlot.destroying = undefined;
+        ammoSlot.destroyed = Date.now();
+        const committedSummary = getInventoryControlModeAmmoSummary(mountedWeapon, catalog, {}, null);
+        expect(committedSummary.remaining).toBe(0);
+        expect(committedSummary.options[0]).toEqual(jasmine.objectContaining({
+            remaining: 0,
+            total: 20,
+            destroyed: true,
+        }));
     });
 
     it('sorts and normalizes fields when creating an ammo profile ID', () => {

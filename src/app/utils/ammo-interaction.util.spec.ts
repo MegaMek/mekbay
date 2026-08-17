@@ -12,7 +12,7 @@ import {
     type HandlerCommandContext,
     type HandlerDialogsService,
 } from '../services/equipment-interaction-registry.service';
-import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlEntriesForUnitWeapons, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, isIntrinsicOneShotAmmoMount, materializeIntrinsicOneShotAmmoForInventory, setAmmoEntryValue, type AmmoControlEntry } from './ammo-interaction.util';
+import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlEntriesForUnitWeapons, getAmmoControlEntryForCriticalSlot, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, isIntrinsicOneShotAmmoMount, materializeIntrinsicOneShotAmmoForInventory, setAmmoEntryValue, type AmmoControlEntry } from './ammo-interaction.util';
 
 function createAmmo(id: string, shortName: string): AmmoEquipment {
     return new AmmoEquipment({
@@ -135,6 +135,46 @@ function testEquipmentStatus(source: MountedEquipment | CriticalSlot): 'availabl
 function testEquipmentOperational(source: MountedEquipment | CriticalSlot): boolean {
     return testEquipmentStatus(source) === 'available';
 }
+
+describe('ammo interaction critical damage', () => {
+    it('keeps a damaged bin usable until destruction commits without erasing its rounds', () => {
+        const ammo = createAmmo('Clan Ultra AC/20 Ammo', 'Ultra AC/20 Ammo');
+        const slot: CriticalSlot = {
+            id: 'ammo@LT',
+            name: ammo.internalName,
+            loc: 'LT',
+            slot: 0,
+            eq: ammo,
+            totalAmmo: 5,
+            consumed: 1,
+            destroying: Date.now(),
+        };
+        const unit = {
+            svg: () => null,
+            getEquipmentStatus: (source: CriticalSlot) => source.destroyed ? 'destroyed' : 'available',
+        } as unknown as CBTForceUnit;
+        const catalog = createEquipmentCatalog({ [ammo.internalName]: ammo });
+
+        const pendingEntry = getAmmoControlEntryForCriticalSlot(unit, slot, catalog)!;
+        expect(pendingEntry.status).toBe('available');
+        expect(pendingEntry.totalAmmo).toBe(5);
+        expect(pendingEntry.consumed).toBe(1);
+        expect(getAmmoEntryRemaining(pendingEntry)).toBe(4);
+
+        slot.destroying = undefined;
+        slot.destroyed = Date.now();
+        const destroyedEntry = getAmmoControlEntryForCriticalSlot(unit, slot, catalog)!;
+        expect(destroyedEntry.status).toBe('destroyed');
+        expect(destroyedEntry.consumed).toBe(1);
+        expect(getAmmoEntryRemaining(destroyedEntry)).toBe(0);
+
+        slot.destroyed = undefined;
+        const repairedEntry = getAmmoControlEntryForCriticalSlot(unit, slot, catalog)!;
+        expect(repairedEntry.status).toBe('available');
+        expect(repairedEntry.consumed).toBe(1);
+        expect(getAmmoEntryRemaining(repairedEntry)).toBe(4);
+    });
+});
 
 describe('ammo interaction direct inventory groups', () => {
     const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo', 'Ultra AC/20 Ammo');
