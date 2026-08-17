@@ -3,14 +3,17 @@
 // Author: Drake
 
 import { DestroyRef, computed, effect, inject, Injectable, signal } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import type { ForceAlignment } from '../models/force-slot.model';
 import type { Force } from '../models/force.model';
 import type { LobbyParticipant, LobbyState } from '../models/lobby.model';
 import { DataService } from './data.service';
 import { DialogsService } from './dialogs.service';
+import { DisplayNameService } from './display-name.service';
 import { ForceBuilderService } from './force-builder.service';
 import { ToastService } from './toast.service';
 import { WsService } from './ws.service';
+import { normalizeDisplayName } from '../utils/display-name.util';
 
 const LOBBY_CODE_PATTERN = /^[a-z0-9]{4}$/;
 const MAX_LOBBY_PARTICIPANTS = 16;
@@ -22,6 +25,7 @@ export class LobbyService {
     private readonly wsService = inject(WsService);
     private readonly dataService = inject(DataService);
     private readonly dialogsService = inject(DialogsService);
+    private readonly displayNameService = inject(DisplayNameService);
     private readonly forceBuilderService = inject(ForceBuilderService);
     private readonly toastService = inject(ToastService);
 
@@ -40,7 +44,7 @@ export class LobbyService {
     private readonly pendingDraftSaves = new WeakSet<Force>();
     private reconcileQueue = Promise.resolve();
     private retryTimer: ReturnType<typeof setTimeout> | null = null;
-    private lastOwnedForceKey: string | null = null;
+    private lastPublishedForceKey: string | null = null;
     private forceLimitWarningShown = false;
     private restoreVersion = 0;
 
@@ -52,10 +56,13 @@ export class LobbyService {
             this.applyState(state);
             this.lobbyStateKnown.set(true);
         });
-        const unregisterClosed = this.wsService.registerMessageHandler('lobbyClosed', () => {
+        const unregisterClosed = this.wsService.registerMessageHandler('lobbyClosed', msg => {
             this.invalidateRestore();
             this.lobbyStateKnown.set(true);
-            void this.clearLobby('The lobby was closed.');
+            const message = msg.reason === 'inactivity'
+                ? 'Operation lobby closed due to inactivity'
+                : 'The lobby was closed.';
+            void this.clearLobby(message);
         });
         const unregisterKicked = this.wsService.registerMessageHandler('lobbyKicked', () => {
             this.invalidateRestore();
@@ -89,28 +96,33 @@ export class LobbyService {
             if (!state) return;
 
             this.queueReconcile();
+            const remoteInstanceIds = new Set(
+                state.participants
+                    .filter(participant => !participant.self)
+                    .flatMap(participant => participant.instanceIds),
+            );
             for (const slot of slots) {
                 if (slot.alignment === 'friendly' && slot.force.owned()
                     && slot.force.units().length > 0 && !slot.force.instanceId()) {
                     this.saveDraftForLobby(slot.force);
                 }
             }
-            const ownedInstanceIds = slots
-                .filter(slot => slot.alignment === 'friendly' && slot.force.owned())
+            const publishedInstanceIds = slots
+                .filter(slot => slot.alignment === 'friendly')
                 .map(slot => slot.force.instanceId())
-                .filter((instanceId): instanceId is string => !!instanceId);
-            if (ownedInstanceIds.length > MAX_LOBBY_FORCES && !this.forceLimitWarningShown) {
+                .filter((instanceId): instanceId is string => !!instanceId && !remoteInstanceIds.has(instanceId));
+            if (publishedInstanceIds.length > MAX_LOBBY_FORCES && !this.forceLimitWarningShown) {
                 this.forceLimitWarningShown = true;
                 this.toastService.showToast(`A lobby supports up to ${MAX_LOBBY_FORCES} forces per participant.`, 'info');
-            } else if (ownedInstanceIds.length <= MAX_LOBBY_FORCES) {
+            } else if (publishedInstanceIds.length <= MAX_LOBBY_FORCES) {
                 this.forceLimitWarningShown = false;
             }
             if (!connected) return;
 
-            const instanceIds = ownedInstanceIds.slice(0, MAX_LOBBY_FORCES).sort();
+            const instanceIds = publishedInstanceIds.slice(0, MAX_LOBBY_FORCES).sort();
             const key = instanceIds.join('\n');
-            if (key !== this.lastOwnedForceKey) {
-                this.lastOwnedForceKey = key;
+            if (key !== this.lastPublishedForceKey) {
+                this.lastPublishedForceKey = key;
                 this.wsService.send({ action: 'syncLobbyForces', instanceIds });
             }
         });
@@ -125,6 +137,21 @@ export class LobbyService {
     }
 
     async createLobby(): Promise<void> {
+        let displayName = await this.displayNameService.current();
+        if (!displayName) {
+            const { CreateLobbyDialogComponent } = await import('../components/create-lobby-dialog/create-lobby-dialog.component');
+            const ref = this.dialogsService.createDialog<string | null>(
+                CreateLobbyDialogComponent,
+                {
+                    disableClose: true,
+                    autoFocus: 'first-tabbable',
+                    data: { displayName: await this.displayNameService.generate() },
+                },
+            );
+            displayName = await firstValueFrom(ref.closed) ?? null;
+            if (!displayName) return;
+        }
+        await this.displayNameService.save(displayName);
         this.invalidateRestore();
         this.lobbyStateKnown.set(false);
         try {
@@ -140,11 +167,12 @@ export class LobbyService {
         }
     }
 
-    async joinLobby(rawCode: string): Promise<void> {
+    async joinLobby(rawCode: string, requestedDisplayName?: string): Promise<void> {
         const code = rawCode.trim().toLowerCase();
         if (!LOBBY_CODE_PATTERN.test(code)) {
             throw new Error('Enter a valid 4-character lobby code.');
         }
+        await this.displayNameService.save(requestedDisplayName ?? await this.displayNameService.currentOrGenerated());
 
         this.invalidateRestore();
         this.lobbyStateKnown.set(false);
@@ -159,6 +187,34 @@ export class LobbyService {
         } finally {
             this.lobbyStateKnown.set(true);
         }
+    }
+
+    async promptAndJoin(): Promise<void> {
+        if (this.hasLobby()) {
+            await this.showLobbyDialog();
+            return;
+        }
+
+        const { JoinLobbyDialogComponent } = await import('../components/join-lobby-dialog/join-lobby-dialog.component');
+        const ref = this.dialogsService.createDialog<boolean | null>(
+            JoinLobbyDialogComponent,
+            {
+                disableClose: true,
+                autoFocus: 'first-tabbable',
+                data: {
+                    displayName: await this.displayNameService.currentOrGenerated(),
+                    attemptJoin: (code: string, displayName: string) => this.joinLobby(code, displayName),
+                },
+            },
+        );
+        const joined = await firstValueFrom(ref.closed);
+        if (joined) await this.showLobbyDialog();
+    }
+
+    async showLobbyDialog(): Promise<void> {
+        if (!this.hasLobby()) return;
+        const { LobbyDialogComponent } = await import('../components/lobby-dialog/lobby-dialog.component');
+        this.dialogsService.createDialog(LobbyDialogComponent);
     }
 
     leaveLobby(): void {
@@ -201,7 +257,9 @@ export class LobbyService {
         if (!this.wsService.wsConnected()) {
             throw new Error('The server is not connected.');
         }
-        const response = await this.wsService.sendAndWaitForResponse(payload);
+        const response = await this.wsService.sendAndWaitForResponse(payload, {
+            suppressGlobalError: true,
+        });
         if (!response) throw new Error('The server did not respond.');
         if (response.action === 'error') throw new Error(response.message || 'Lobby request failed.');
         return response;
@@ -257,8 +315,10 @@ export class LobbyService {
                 || !entry.instanceIds.every((id: unknown) => typeof id === 'string' && id.length > 0 && id.length <= 128)) {
                 return null;
             }
+            const displayName = normalizeDisplayName(entry.displayName) ?? `Player ${entry.publicId.slice(0, 8)}`;
             participants.push({
                 publicId: entry.publicId,
+                displayName,
                 self: entry.self,
                 host: entry.host,
                 connected: entry.connected,
@@ -348,13 +408,17 @@ export class LobbyService {
             const attempts = this.remoteLoadAttempts.get(instanceId) ?? 0;
             if (attempts >= MAX_REMOTE_LOAD_ATTEMPTS) continue;
             this.remoteLoadAttempts.set(instanceId, attempts + 1);
-            const force = await this.dataService.getForce(instanceId);
+            const force = await this.dataService.getForce(instanceId, false, {
+                skipLocal: true,
+                showLoading: false,
+            });
             if (!force) {
                 shouldRetry = true;
                 continue;
             }
             force.owned.set(false);
-            await this.forceBuilderService.addForce(force, alignment, { activate: false });
+            const activate = this.forceBuilderService.loadedForces().length === 0;
+            this.forceBuilderService.addLoadedForce(force, alignment, { activate, persistInUrl: false });
             this.managedRemoteIds.add(instanceId);
             this.remoteLoadAttempts.delete(instanceId);
         }
@@ -370,7 +434,7 @@ export class LobbyService {
     private async clearLobby(message?: string): Promise<void> {
         if (!this.state() && this.managedRemoteIds.size === 0) return;
         this.state.set(null);
-        this.lastOwnedForceKey = null;
+        this.lastPublishedForceKey = null;
         this.forceLimitWarningShown = false;
         this.remoteLoadAttempts.clear();
         if (this.retryTimer) {

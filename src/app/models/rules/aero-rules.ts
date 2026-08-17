@@ -108,6 +108,12 @@ export class AeroRules extends UnitTypeRulesBase {
      * Aero heat dissipation: engine HS - turned-off.
      */
     override readonly heatDissipation = computed<HeatDissipationState | null>(() => {
-        return this.heatMgmt.baseDissipation();
+        const base = this.heatMgmt.baseDissipation();
+        if (!base) return null;
+        return {
+            ...base,
+            totalDissipation: base.totalDissipation
+                + (this.unit.getEquipmentHeatDissipationBonus?.(base) ?? 0),
+        };
     });
 }

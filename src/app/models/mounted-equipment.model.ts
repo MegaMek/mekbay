@@ -9,6 +9,7 @@ import { AmmoEquipment, MiscEquipment, WeaponEquipment, type Equipment } from '.
 import { WEAPON_TYPES, type WeaponType } from './weapon-types.model';
 import type { CriticalSlot } from './force-serialization';
 import { isPhysicalWeaponEquipment } from './entity/utils/physical-weapon';
+import { calculateInventoryName } from '../utils/inventory-name.util';
 
 export interface MountedEquipmentInit {
     readonly owner: CBTForceUnit;
@@ -51,6 +52,7 @@ export class MountedEquipment {
     private parentEquipment?: null | MountedEquipment;
     owner: CBTForceUnit;
     id: string;
+    /** Raw equipment/attack identifier. Use getDisplayName() for user-facing text. */
     name: string;
     locations?: Set<string>;
     equipment?: Equipment;
@@ -177,6 +179,11 @@ export class MountedEquipment {
 
     isPhysicalWeapon(): boolean {
         return this.isIntrinsicPhysicalAttack() || isPhysicalWeaponEquipment(this.equipment);
+    }
+
+    /** Returns the canonical user-facing name, including mount-specific modifiers. */
+    getDisplayName(fallbackName: string = this.name): string {
+        return calculateInventoryName(this) ?? fallbackName;
     }
 
     constructor(data: MountedEquipmentInit) {

@@ -2,7 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { composeTurnSummaryHeatRows, countActionablePsrChecks, displayPsrModifiers } from './page-turn-summary.util';
+import { composeTurnSummaryHeatRows, countActionablePsrChecks, displayPsrModifiers, isMoveModeDisabledWhileProne } from './page-turn-summary.util';
+
+describe('isMoveModeDisabledWhileProne', () => {
+    it('disables only jump while prone without changing its selected state', () => {
+        expect(isMoveModeDisabledWhileProne('jump', true)).toBeTrue();
+        expect(isMoveModeDisabledWhileProne('jump', false)).toBeFalse();
+        expect(isMoveModeDisabledWhileProne('run', true)).toBeFalse();
+    });
+});
 
 describe('countActionablePsrChecks', () => {
     const fallCheck = { failureOutcome: 'Fall' };
@@ -71,5 +79,22 @@ describe('composeTurnSummaryHeatRows', () => {
             { id: 'weapons', label: 'Weapons', value: 20, selectedValue: 15 },
             { id: 'engine', label: 'Engine', value: 5 },
         ]);
+    });
+
+    it('adds extra underwater dissipation as a blue negative source', () => {
+        expect(composeTurnSummaryHeatRows(
+            [{ id: 'movement', label: 'Movement', value: 2 }],
+            { hasSelection: false, value: 0, entryIds: new Set() },
+            3,
+        )).toEqual([
+            { id: 'movement', label: 'Movement', value: 2 },
+            { id: 'underwater-dissipation', label: 'Water', value: -3, underwater: true },
+        ]);
+    });
+
+    it('does not add an underwater source without a positive bonus', () => {
+        const selection = { hasSelection: false, value: 0, entryIds: new Set<string>() };
+        expect(composeTurnSummaryHeatRows([], selection, 0)).toEqual([]);
+        expect(composeTurnSummaryHeatRows([], selection, -1)).toEqual([]);
     });
 });

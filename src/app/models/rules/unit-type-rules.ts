@@ -5,7 +5,7 @@
 import { computed, signal, type Signal } from '@angular/core';
 import { MountedWeapon, type MountedEquipment } from '../mounted-equipment.model';
 import { ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY, type ToHitModifierBreakdownEntry } from './game-rules';
-import { WeaponEquipment } from '../equipment.model';
+import { WeaponEquipment, type Equipment } from '../equipment.model';
 import type { CriticalSlot, RuleCheckOutcome, SerializedC3NetworkGroup } from '../force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
@@ -76,10 +76,13 @@ export interface ChargeDamage {
     maxDamage: number | null;
     bonusDamage: number;
     maxBonusDamage: number;
+    /** Ruleset-specific symbolic damage shown until Walk or Run is selected, including current bonuses. */
+    displayFormula?: string;
 }
 
 export const ENTRY_DISABLED_STATE_KEY = 'disabled';
 export const ENTRY_DISABLED_STATE_VALUE = 'true';
+export const NARC_CONDITION_COLOR = '#f00';
 
 export interface LocationConditionControl {
     key: string;
@@ -176,6 +179,7 @@ export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = [
     { key: 'crippled', label: 'CRIPPLED', color: '#b70000' },
     { key: 'swarmed', label: 'SWARMED', color: '#46b48e', placement: 'menu' },
     { key: 'tagged', label: 'TAGGED', color: '#3385d7', placement: 'menu' },
+    { key: 'ecm-shielded', label: 'ECM SHIELDED', color: '#008f7a', placement: 'menu' },
     { key: 'skidding', label: 'SKIDDING', color: '#bfb300', placement: 'menu' },
     { key: 'jammed', label: 'JAMMED', color: '#ff6be6', placement: 'menu' },
     { key: 'spotting', label: 'SPOTTING', color: '#471fad' },
@@ -246,6 +250,9 @@ export interface UnitTypeRules {
     /** PSR target roll number (piloting skill + modifiers). Non-Mek types return 0. */
     readonly PSRTargetRoll: Signal<number>;
 
+    /** Modifier applied specifically when this unit attempts to stand up. */
+    readonly standingUpPSRModifier: number;
+
     /** Whether current phase damage causes automatic falling or equivalent unit-type failure. */
     readonly autoFall: Signal<boolean>;
 
@@ -294,6 +301,9 @@ export interface UnitTypeRules {
     /** Aggregate current critical facts into mount-level status. */
     getMountedCriticalStatusContribution(facts: EquipmentStatusFacts): EquipmentStatus;
 
+    /** Number of damaging critical hits required to destroy a mounted component. */
+    mountedCriticalDamageDestructionThreshold(equipment: Equipment | null): number;
+
     /** Location-scoped unit-type-specific status contribution. */
     getEquipmentStatusContributionAtLocation(facts: EquipmentStatusFacts, location: string): EquipmentStatus;
 
@@ -305,6 +315,9 @@ export interface UnitTypeRules {
 
     /** Unit-type-specific permission for an otherwise operational equipment action. */
     canPerformEquipmentAction(entry: MountedEquipment, action: EquipmentAction): boolean;
+
+    /** Whether an inventory entry represents an independent action that can be selected and performed. */
+    hasIndependentInventoryControlAction(entry: MountedEquipment): boolean;
 
     /** Resolve rule-derived to-hit modifiers for one inventory entry. */
     getEquipmentToHitModifiers(entry: MountedEquipment): readonly ToHitModifierBreakdownEntry[];
@@ -348,9 +361,6 @@ export interface UnitTypeRules {
     /** Unit-type-specific attack modifier for spotting. */
     getSpottingModifier(): number;
 
-    /** Unit-type-specific attack modifier for indirect fire. */
-    getIndirectFireModifier(): number;
-
     /** Unit-type-specific gunnery skill for runtime target-number calculations. */
     getBaseGunnerySkill(): number;
 
@@ -375,6 +385,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     readonly controlRollFullLabel: string;
     readonly PSRModifiers: Signal<{ modifier: number; modifiers: PSRCheck[] }> = signal({ modifier: 0, modifiers: [] });
     readonly PSRTargetRoll: Signal<number> = signal(0);
+    readonly standingUpPSRModifier: number = 0;
     protected readonly ruleModifiers: Signal<UnitRuleModifier[]> = computed(() => [
         ...this.buildRuleModifiers(),
         ...this.buildTurnStateRuleModifiers(this.unit.turnState?.()),
@@ -498,6 +509,10 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         return facts.criticals.some(critical => critical.status === 'destroyed') ? 'destroyed' : 'available';
     }
 
+    mountedCriticalDamageDestructionThreshold(_equipment: Equipment | null): number {
+        return 1;
+    }
+
     getEquipmentStatusContributionAtLocation(facts: EquipmentStatusFacts, _location: string): EquipmentStatus {
         return this.getEquipmentStatusContribution(facts);
     }
@@ -511,6 +526,10 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     canPerformEquipmentAction(_entry: MountedEquipment, _action: EquipmentAction): boolean {
+        return true;
+    }
+
+    hasIndependentInventoryControlAction(_entry: MountedEquipment): boolean {
         return true;
     }
 
@@ -535,7 +554,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         if (!targetingComputer) return [];
         if (!this.isTargetingComputerEligible(entry)) return [];
 
-        const label = targetingComputer.equipment?.name ?? targetingComputer.name;
+        const label = targetingComputer.getDisplayName();
         const status = this.unit.getEquipmentStatus(targetingComputer);
         return status === 'available'
             ? [{ label, modifier: -1 }]
@@ -659,10 +678,6 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         return 1;
     }
 
-    getIndirectFireModifier(): number {
-        return 1;
-    }
-
     getBaseGunnerySkill(): number {
         return this.unit.getCrewMember(0)?.getSkill('gunnery') ?? this.unit.gunnerySkill();
     }
@@ -718,6 +733,12 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     applyInventoryControlDisplayEffects(entry: MountedEquipment, display: InventoryControlDisplayData): InventoryControlDisplayData {
         if (!entry.isIntrinsicPhysicalAttack() || entry.name.toLowerCase() !== 'charge') return display;
         const chargeDamage = this.chargeDamage();
+        if (chargeDamage.displayFormula) {
+            return {
+                ...display,
+                damage: chargeDamage.displayFormula,
+            };
+        }
         if (chargeDamage.damage === null || chargeDamage.maxDamage === null) {
             return chargeDamage.bonusDamage > 0
                 ? { ...display, damage: `${display.damage}+${chargeDamage.bonusDamage}` }
@@ -733,16 +754,28 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     protected computeChargeDamage(bonusDamage = 0, maxBonusDamage = bonusDamage): ChargeDamage {
         const damagePerTMM = this.unit.getUnit().tons / 5;
-        const baseDamage = damagePerTMM
-            * (getTargetMovementDistanceModifier(this.unit.turnState().moveDistance()) + 1);
+        const moveMode = this.unit.turnState().moveMode();
+        const ramPlates = this.unit.getInventory().filter(entry => entry.equipment?.hasFlag('F_RAM_PLATE'));
+        const hasRamPlate = ramPlates.length > 0;
+        const hasWorkingRamPlate = ramPlates.some(entry => this.unit.isEquipmentOperational(entry));
+        const damageFor = (movementModifier: number, hasRamPlate: boolean): number => {
+            const baseDamage = Math.ceil(damagePerTMM * (movementModifier + 1));
+            return hasRamPlate ? Math.ceil(baseDamage * 1.5) : baseDamage;
+        };
+        const movementModifier = getTargetMovementDistanceModifier(this.unit.turnState().moveDistance());
         const maxRunDistance = this.unit.getUnit().run;
-        const maxBaseDamage = damagePerTMM
-            * (getTargetMovementDistanceModifier(maxRunDistance) + 1);
+        const maxMovementModifier = getTargetMovementDistanceModifier(maxRunDistance);
+        const formulaDamagePerTMM = Math.round(
+            damagePerTMM * (hasWorkingRamPlate ? 1.5 : 1) * 100,
+        ) / 100;
         return {
-            damage: baseDamage + bonusDamage,
-            maxDamage: maxBaseDamage + maxBonusDamage,
+            damage: damageFor(movementModifier, hasWorkingRamPlate) + bonusDamage,
+            maxDamage: damageFor(maxMovementModifier, hasRamPlate) + maxBonusDamage,
             bonusDamage,
             maxBonusDamage,
+            ...(moveMode !== 'walk' && moveMode !== 'run' && {
+                displayFormula: `${formulaDamagePerTMM}×(TMM+1)${bonusDamage > 0 ? `+${bonusDamage}` : ''}`,
+            }),
         };
     }
 

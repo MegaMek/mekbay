@@ -74,6 +74,8 @@ function jumpJetTonnage(unitTonnage: number): number {
 
 const MEK_COCKPIT_FEATURES: Readonly<Partial<Record<CockpitType, EntityFeature>>> = {
   Small: 'Small Cockpit',
+  Primitive: 'Primitive Cockpit',
+  'Primitive Industrial': 'Primitive Industrial Cockpit',
   'Command Console': 'Command Console',
   'Torso-Mounted': 'Torso-Mounted Cockpit',
   Dual: 'Dual Cockpit',

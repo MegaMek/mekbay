@@ -161,10 +161,55 @@ describe('PpcCapacitorHandler', () => {
 
         const discharged = setup();
         expect(registry.applyWeaponTypes(discharged.weapon, baseTypes, queryContext)).toBe(baseTypes);
+        expect(registry.applyWeaponTypes(
+            discharged.weapon,
+            new Set(['DE', 'X'] as const),
+            queryContext,
+        )).toEqual(new Set(['DE'] as const));
 
         const unavailable = setup(true);
         unavailable.capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
         expect(registry.applyWeaponTypes(unavailable.weapon, baseTypes, queryContext)).toBe(baseTypes);
+    });
+
+    it('owns delayed explosions for both halves of a charged PPC/capacitor pair', () => {
+        const { weapon, capacitor } = setup();
+        capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
+        const explosionContext = {
+            mountedCriticalSlots: (entry: MountedEquipment) => entry === weapon ? 2 : 1,
+            componentCriticalHits: (_entry: MountedEquipment) => 0,
+            effectiveMaximumWeaponDamage: (_entry: MountedWeapon) => 10,
+        };
+
+        for (const hitEntry of [weapon, capacitor]) {
+            expect(handler.getCriticalDelayedExplosion(hitEntry, explosionContext, queryContext))
+                .toEqual({
+                    explosion: {
+                        source: weapon,
+                        equipment: 'Light PPC + PPC Capacitor',
+                        rawDamage: 6,
+                        destroyEntries: [weapon, capacitor],
+                    },
+                });
+        }
+    });
+
+    it('owns but suppresses the delayed explosion while the capacitor is discharged or previously damaged', () => {
+        const discharged = setup();
+        const context = {
+            mountedCriticalSlots: (_entry: MountedEquipment) => 1,
+            componentCriticalHits: (_entry: MountedEquipment) => 0,
+            effectiveMaximumWeaponDamage: (_entry: MountedWeapon) => 10,
+        };
+        expect(handler.getCriticalDelayedExplosion(discharged.weapon, context, queryContext))
+            .toEqual({ explosion: null });
+
+        const damaged = setup();
+        damaged.capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
+        expect(handler.getCriticalDelayedExplosion(damaged.weapon, {
+            ...context,
+            componentCriticalHits: (entry: MountedEquipment) => entry === damaged.capacitor ? 1 : 0,
+        }, queryContext)).toEqual({ explosion: null });
     });
 
     it('uses the query context for pure capacitor projections without mutating state or base types', () => {
@@ -260,149 +305,35 @@ describe('PpcCapacitorHandler', () => {
 
     for (const state of [PPC_CAPACITOR_CHARGING_STATE, PPC_CAPACITOR_CHARGED_STATE] as const) {
         for (const hitEntry of ['PPC', 'capacitor'] as const) {
-            it(`explodes both direct-inventory mounts when a ${state} ${hitEntry} hit is committed`, () => {
-                const { weapon, capacitor, markEquipmentStateChanged } = setup();
+            it(`does not infer an explosion from a manual ${state} ${hitEntry} inventory hit`, () => {
+                const { weapon, capacitor } = setup();
                 capacitor.states.set(PPC_CAPACITOR_STATE_KEY, state);
-                (hitEntry === 'PPC' ? weapon : capacitor).setPendingDestroyed(true);
-
-                expect(weapon.committedDestroyed()).toBeFalse();
-                expect(capacitor.committedDestroyed()).toBeFalse();
+                const hit = hitEntry === 'PPC' ? weapon : capacitor;
+                const untouched = hitEntry === 'PPC' ? capacitor : weapon;
+                hit.setPendingDestroyed(true);
 
                 handler.beforeEquipmentStateCommit(weapon);
-                weapon.commitPendingDestroyed();
-                capacitor.commitPendingDestroyed();
+                hit.commitPendingDestroyed();
 
-                expect(weapon.committedDestroyed()).toBeTrue();
-                expect(capacitor.committedDestroyed()).toBeTrue();
-                expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
-                expect(markEquipmentStateChanged).not.toHaveBeenCalled();
+                expect(hit.committedDestroyed()).toBeTrue();
+                expect(untouched.committedDestroyed()).toBeFalse();
+                expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe(state);
             });
         }
     }
 
-    it('does not explode direct-inventory mounts before a charged hit is pending', () => {
-        const { weapon, capacitor, inventoryWrites } = setup();
-        capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
-
-        handler.beforeEquipmentStateCommit(weapon);
-
-        expect(weapon.hasPendingDestroyedChange()).toBeFalse();
-        expect(capacitor.hasPendingDestroyedChange()).toBeFalse();
-        expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe(PPC_CAPACITOR_CHARGED_STATE);
-        expect(inventoryWrites).toEqual([]);
-    });
-
-    it('commits an ordinary direct-inventory hit while the capacitor is discharged', () => {
-        const { weapon, capacitor } = setup();
-        weapon.setPendingDestroyed(true);
-
-        handler.beforeEquipmentStateCommit(weapon);
-        weapon.commitPendingDestroyed();
-        capacitor.commitPendingDestroyed();
-
-        expect(weapon.committedDestroyed()).toBeTrue();
-        expect(capacitor.committedDestroyed()).toBeFalse();
-        expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
-    });
-
-    for (const state of [PPC_CAPACITOR_CHARGING_STATE, PPC_CAPACITOR_CHARGED_STATE] as const) {
-        for (const hitEntry of ['PPC', 'capacitor'] as const) {
-            it(`destroys every linked Mek critical slot when a ${state} ${hitEntry} slot hit is committed`, () => {
-                const { weapon, capacitor, criticalSlotWrites, weaponSlots, capacitorSlots, unrelatedSlot } = setupWithCriticalSlots();
-                capacitor.states.set(PPC_CAPACITOR_STATE_KEY, state);
-                const hitSlots = hitEntry === 'PPC' ? weaponSlots : capacitorSlots;
-                hitSlots[0].hits = 1;
-                hitSlots[0].destroying = 10;
-
-                handler.beforeEquipmentStateCommit(weapon);
-
-                const explosionSlots = [...weaponSlots, ...capacitorSlots];
-                expect(explosionSlots.every(slot => !!slot.destroying)).toBeTrue();
-                expect(new Set(explosionSlots.map(slot => slot.destroying)).size).toBe(1);
-                expect(capacitorSlots[1].hits).toBe(2);
-                expect(unrelatedSlot.destroying).toBeUndefined();
-                expect(weapon.hasPendingDestroyedChange()).toBeFalse();
-                expect(capacitor.hasPendingDestroyedChange()).toBeFalse();
-                expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
-                expect(criticalSlotWrites.length).toBe(1);
-            });
-        }
-    }
-
-    it('does not retrigger an explosion for an already committed critical hit', () => {
-        const committed = setupWithCriticalSlots();
-        committed.capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
-        committed.weaponSlots[0].hits = 1;
-        committed.weaponSlots[0].destroying = 10;
-        committed.weaponSlots[0].destroyed = 10;
-
-        handler.beforeEquipmentStateCommit(committed.weapon);
-
-        expect(committed.weaponSlots[1].destroying).toBeUndefined();
-        expect(committed.capacitorSlots.every(slot => slot.destroying === undefined)).toBeTrue();
-        expect(committed.criticalSlotWrites).toEqual([]);
-    });
-
-    it('does not treat location-derived critical destruction as a PPC critical hit', () => {
+    it('does not infer an explosion from a manually edited critical slot', () => {
         const { weapon, capacitor, criticalSlotWrites, weaponSlots, capacitorSlots } = setupWithCriticalSlots();
         capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
+        weaponSlots[0].hits = 1;
         weaponSlots[0].destroying = 10;
 
         handler.beforeEquipmentStateCommit(weapon);
 
-        expect(weaponSlots[0].destroying).toBe(10);
         expect(weaponSlots[1].destroying).toBeUndefined();
         expect(capacitorSlots.every(slot => slot.destroying === undefined)).toBeTrue();
         expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe(PPC_CAPACITOR_CHARGED_STATE);
         expect(criticalSlotWrites).toEqual([]);
-
-        handler.onEndTurn(weapon);
-
-        expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
-    });
-
-    it('does not explode a later PPC hit from a stale charge on an already destroyed capacitor', () => {
-        const { weapon, capacitor } = setup();
-        capacitor.setCommittedDestroyed(true);
-        capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
-        weapon.setPendingDestroyed(true);
-
-        handler.beforeEquipmentStateCommit(weapon);
-        weapon.commitPendingDestroyed();
-
-        expect(weapon.committedDestroyed()).toBeTrue();
-        expect(capacitor.hasPendingDestroyedChange()).toBeFalse();
-        expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe(PPC_CAPACITOR_CHARGED_STATE);
-    });
-
-    it('still explodes a charged disabled pair that is not destroyed', () => {
-        const { owner, weapon, capacitor } = setup();
-        capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
-        owner.getEquipmentStatus = () => 'disabled';
-        weapon.setPendingDestroyed(true);
-
-        handler.beforeEquipmentStateCommit(weapon);
-        weapon.commitPendingDestroyed();
-        capacitor.commitPendingDestroyed();
-
-        expect(weapon.committedDestroyed()).toBeTrue();
-        expect(capacitor.committedDestroyed()).toBeTrue();
-        expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
-    });
-
-    it('explodes a charging capacitor when its hit is committed at end turn', () => {
-        const { weapon, capacitor } = setup();
-        capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGING_STATE);
-        weapon.setPendingDestroyed(true);
-
-        handler.beforeEquipmentStateCommit(weapon);
-        handler.onEndTurn(weapon);
-        weapon.commitPendingDestroyed();
-        capacitor.commitPendingDestroyed();
-
-        expect(weapon.committedDestroyed()).toBeTrue();
-        expect(capacitor.committedDestroyed()).toBeTrue();
-        expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
     });
 
     it('does not let an unavailable charging capacitor block its usable PPC', () => {

@@ -679,8 +679,8 @@ describe('VehicleRules', () => {
         expect(chargeEntry.owner.canPerformEquipmentAction(chargeEntry, 'physical-attack')).toBeTrue();
     });
 
-    it('calculates charge damage for core2026 vehicles and preserves TW sheet damage', () => {
-        const rules = createRulesHarness({ tons: 60, moveDistance: 5 });
+    it('calculates charge damage for core2026 and TW vehicles', () => {
+        const rules = createRulesHarness({ tons: 60, moveDistance: 5, moveMode: 'walk' });
         expect(rules.chargeDamage()).toEqual({
             damage: 36,
             maxDamage: 60,
@@ -688,13 +688,19 @@ describe('VehicleRules', () => {
             maxBonusDamage: 0,
         });
 
-        const twRules = createRulesHarness({ tons: 60, moveDistance: 5, rulesId: 'tw' });
+        const twRules = createRulesHarness({ tons: 60, moveDistance: 5, moveMode: 'walk', rulesId: 'tw' });
         expect(twRules.chargeDamage()).toEqual({
-            damage: null,
-            maxDamage: null,
+            damage: 24,
+            maxDamage: 66,
             bonusDamage: 0,
             maxBonusDamage: 0,
         });
+
+        const charge = entry({ id: 'Charge', intrinsicPhysicalAttack: true });
+        expect(twRules.applyInventoryControlDisplayEffects(charge, {
+            name: 'Charge', location: '—', heat: '—', damage: 'Wrong SVG value', hit: 'Vs',
+            min: '—', short: '—', medium: '—', long: '—',
+        }).damage).toBe('24 [66]');
     });
 
     it('adds the movement hit modifier again for weapons in damaged stabilizer locations', () => {

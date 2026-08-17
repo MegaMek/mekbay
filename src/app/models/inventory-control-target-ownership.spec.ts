@@ -15,7 +15,12 @@ describe('inventory control target ownership', () => {
             skidding: true,
             prone: true,
             targetHexCover: 'heavy',
-            largeTarget: true
+            waterDepth: 'underwater-depth-1',
+            buildingCover: 'building-2',
+            largeTarget: true,
+            narcAboveWater: true,
+            narcUnderwater: false,
+            ecmShielded: true,
         });
 
         expect(result.shared).toEqual({
@@ -24,7 +29,12 @@ describe('inventory control target ownership', () => {
             skidding: true,
             prone: true,
             targetHexCover: 'heavy',
-            largeTarget: true
+            waterDepth: 'underwater-depth-1',
+            buildingCover: 'building-2',
+            largeTarget: true,
+            narcAboveWater: true,
+            narcUnderwater: false,
+            ecmShielded: true,
         });
         expect(result.local).toBeUndefined();
     });
@@ -38,7 +48,8 @@ describe('inventory control target ownership', () => {
             secondaryTarget: true,
             secondaryTargetSideBack: false,
             spotterMoveMode: 'jump',
-            spotterDeclaredAttacks: true
+            spotterDeclaredAttacks: true,
+            customModifier: -2,
         });
 
         expect(result.shared).toBeUndefined();
@@ -50,7 +61,8 @@ describe('inventory control target ownership', () => {
             secondaryTarget: true,
             secondaryTargetSideBack: false,
             spotterMoveMode: 'jump',
-            spotterDeclaredAttacks: true
+            spotterDeclaredAttacks: true,
+            customModifier: -2,
         });
     });
 
@@ -68,5 +80,17 @@ describe('inventory control target ownership', () => {
     it('handles absent calculator state', () => {
         expect(splitInventoryControlCalculatorState(undefined)).toEqual({});
         expect(mergeInventoryControlCalculatorState(undefined, undefined)).toBeUndefined();
+    });
+
+    it('preserves explicitly cleared fields when splitting a calculator patch', () => {
+        expect(splitInventoryControlCalculatorState({
+            targetHexCover: 'heavy',
+            waterDepth: undefined,
+            buildingCover: undefined,
+        }).shared).toEqual({
+            targetHexCover: 'heavy',
+            waterDepth: undefined,
+            buildingCover: undefined,
+        });
     });
 });

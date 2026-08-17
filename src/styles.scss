@@ -34,13 +34,18 @@
     -webkit-tap-highlight-color: transparent;
     --semantic-color: #17a2b8;
     --semantic-color-highlight: #8fe7ed;
-    --primary-focus-color: rgb(154, 154, 255);
-    --primary-focus-color-highlight: rgb(174, 174, 255);
+    
+    --primary-focus-color: rgb(174, 174, 253);
+    --primary-focus-color-highlight: rgb(192, 192, 255);
+    // --primary-focus-color: rgb(154, 154, 255);
+    // --primary-focus-color-highlight: rgb(174, 174, 255);
 
-    --highlight-color: #8885;
+    --highlight-color: #8886;
+    --equipment-hover-secondary-color: #8883;
 
     --disabled-color: #888;
     --damage-color: #F00;
+    --success: #7dcc80;
     --danger: #F00;
     --undamaged-highlight-color: #FEE;
     --undamaged-night-highlight-color: #300;
@@ -690,13 +695,13 @@ hr {
     }
 
     &.primary {
-        --btn-text-color: var(--primary-focus-color);
-        --btn-border-color: rgb(58, 58, 255);
+        --btn-text-color: #ddddff;
+        --btn-border-color: #9a9aff; // rgb(58, 58, 255);
 
         &:hover {
             background-color: #003;
-            --btn-text-color: rgb(242, 242, 255);
-            --btn-border-color: rgb(81, 81, 255);
+            --btn-text-color: #fff;
+            --btn-border-color: #c6c6ff; // rgb(81, 81, 255);
         }
     }
 
@@ -866,7 +871,6 @@ hr {
         color: var(--text-color-secondary);
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
         letter-spacing: 0.1em;
 
         &.centered {
@@ -970,7 +974,6 @@ hr {
         color: var(--text-color-secondary);
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
         letter-spacing: 0.1em;
 
         &.centered {
@@ -1830,6 +1833,12 @@ hr.divider {
                 pointer-events: none;
             }
 
+            &.equipment-hover-secondary>.critSlot-bg-rect {
+                fill: var(--equipment-hover-secondary-color);
+                stroke: var(--equipment-hover-secondary-color);
+                stroke-width: 0.35px;
+            }
+
             .critSlot-bg-rect {
                 &:hover {
                     fill: var(--highlight-color);
@@ -2057,8 +2066,8 @@ hr.divider {
         .pip.damaged.fresh {
             fill: #FF0 !important;
             stroke: var(--damage-color) !important;
-            stroke-width: 1.5px;
-            paint-order: stroke fill;
+            stroke-width: 2.5px;
+            paint-order: fill stroke;
         }
 
         .pip.damaged.pending:not(.fresh) {
@@ -2086,6 +2095,10 @@ hr.divider {
         }
 
         .inventoryEntry {
+            &.equipment-hover-secondary>.inventoryEntryButton {
+                fill: var(--equipment-hover-secondary-color);
+            }
+
             &:hover>.inventoryEntryButton {
                 fill: var(--highlight-color);
             }

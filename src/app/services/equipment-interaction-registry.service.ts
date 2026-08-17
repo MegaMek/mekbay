@@ -4,7 +4,7 @@
 
 import { Injectable } from '@angular/core';
 import type { PickerChoice, PickerValue } from '../components/picker/picker.interface';
-import type { MountedEquipment } from '../models/mounted-equipment.model';
+import type { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import type { Toast, ToastService } from './toast.service';
 import type { DialogsService } from './dialogs.service';
 import type { AmmoEquipment } from '../models/equipment.model';
@@ -17,11 +17,14 @@ import type { UnitHeatSource } from '../models/rules/unit-type-rules';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
 import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-control-physical-damage.util';
+import type { AerospaceAttackValues } from '../utils/aerospace-range.util';
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { Force } from '../models/force.model';
 import type { EquipmentAction, EquipmentStateEdit } from '../models/cbt-force-unit.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { EquipmentStatus } from '../models/equipment-status.model';
+import type { InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
+import type { HeatDissipationState } from '../models/rules/heat-management';
 
 export interface HandlerQueryContext {
     readonly equipmentCatalog: EquipmentRegistry;
@@ -30,6 +33,38 @@ export interface HandlerQueryContext {
     readonly canProvidePassiveEffect: (equipment: MountedEquipment) => boolean;
     readonly isReadOnly: (equipment: MountedEquipment) => boolean;
     readonly choiceSurface?: 'critical' | 'inventory' | 'turn-summary';
+}
+
+export interface CriticalDelayedExplosionContext {
+    readonly mountedCriticalSlots: (entry: MountedEquipment) => number;
+    readonly componentCriticalHits: (entry: MountedEquipment) => number;
+    readonly effectiveMaximumWeaponDamage: (entry: MountedWeapon) => number;
+}
+
+/** A component explosion which its handler can cancel before phase-end damage commits. */
+export interface CriticalDelayedExplosion {
+    readonly source: MountedEquipment;
+    readonly equipment: string;
+    readonly rawDamage: number;
+    readonly destroyEntries?: readonly MountedEquipment[];
+}
+
+/** Presence means the handler owns explosion eligibility for this critical hit. */
+export interface CriticalDelayedExplosionHandling {
+    readonly explosion: CriticalDelayedExplosion | null;
+}
+
+/** Returns the original set when no change is needed. */
+export function setEffectiveWeaponType(
+    types: ReadonlySet<WeaponType>,
+    type: WeaponType,
+    enabled: boolean,
+): ReadonlySet<WeaponType> {
+    if (types.has(type) === enabled) return types;
+    const nextTypes = new Set(types);
+    if (enabled) nextTypes.add(type);
+    else nextTypes.delete(type);
+    return nextTypes;
 }
 
 export function createHandlerQueryContext(
@@ -87,11 +122,14 @@ export interface HandlerChoice extends PickerChoice {
     stateEdit?: EquipmentStateEdit;
     /** Non-mutating navigation that remains useful on a read-only unit. */
     readOnlySafe?: boolean;
+    /** Numeric 2D6 target for an escalating-failure step; 0 means no check and 13 means automatic failure. */
+    failureTarget?: number;
 }
 
 export interface ToHitAdjustmentContext {
     parent?: MountedEquipment;
     selectedAmmo?: AmmoEquipment | null;
+    target?: InventoryControlRuntimeTarget | null;
 }
 
 /**
@@ -145,6 +183,13 @@ export abstract class EquipmentInteractionHandler {
      */
     beforeEquipmentStateCommit?(equipment: MountedEquipment): void;
 
+    /** Declares a rules/state-specific Mek explosion that this handler owns through phase end. */
+    getCriticalDelayedExplosion?(
+        hitEntry: MountedEquipment,
+        explosionContext: CriticalDelayedExplosionContext,
+        context: HandlerQueryContext,
+    ): CriticalDelayedExplosionHandling | null;
+
     /**
      * Hook called when the owning unit ends its turn.
      */
@@ -162,6 +207,13 @@ export abstract class EquipmentInteractionHandler {
         options: InventoryControlDisplayEffectOptions,
         context: HandlerQueryContext
     ): InventoryControlDisplayData;
+
+    /** Applies equipment mode/state to an aerospace weapon's attack values. */
+    applyInventoryControlAerospaceAttackValueEffects?(
+        equipment: MountedEquipment,
+        values: AerospaceAttackValues,
+        context: HandlerQueryContext
+    ): AerospaceAttackValues;
 
     /**
      * Applies equipment-state modifiers to a weapon's unformatted damage value.
@@ -252,6 +304,13 @@ export abstract class EquipmentInteractionHandler {
     getRunMovementMultiplierBonus?(
         equipment: MountedEquipment,
         turnState: TurnState,
+        context: HandlerQueryContext
+    ): number;
+
+    /** Adds equipment-state bonuses to the unit's current heat-dissipation capacity. */
+    getHeatDissipationBonus?(
+        equipment: MountedEquipment,
+        dissipation: HeatDissipationState,
         context: HandlerQueryContext
     ): number;
 
@@ -388,6 +447,22 @@ export class EquipmentInteractionRegistry {
         }
     }
 
+    getCriticalDelayedExplosion(
+        hitEntry: MountedEquipment,
+        explosionContext: CriticalDelayedExplosionContext,
+        context: HandlerQueryContext,
+    ): CriticalDelayedExplosionHandling | null {
+        for (const handler of this.handlers.values()) {
+            const explosion = handler.getCriticalDelayedExplosion?.(
+                hitEntry,
+                explosionContext,
+                context,
+            );
+            if (explosion) return explosion;
+        }
+        return null;
+    }
+
     onEndTurn(equipment: MountedEquipment, notifications: HandlerNotifications): void {
         for (const handler of this.getHandlers(equipment)) {
             handler.onEndTurn?.(equipment, notifications);
@@ -416,6 +491,19 @@ export class EquipmentInteractionRegistry {
             }
         }
         return nextDisplay;
+    }
+
+    applyInventoryControlAerospaceAttackValueEffects(
+        equipment: MountedEquipment,
+        values: AerospaceAttackValues,
+        context: HandlerQueryContext
+    ): AerospaceAttackValues {
+        let nextValues = values;
+        for (const handler of this.getHandlers(equipment)) {
+            nextValues = handler.applyInventoryControlAerospaceAttackValueEffects?.(equipment, nextValues, context)
+                ?? nextValues;
+        }
+        return nextValues;
     }
 
     applyWeaponTypes(
@@ -500,13 +588,18 @@ export class EquipmentInteractionRegistry {
     getToHitAdjustments(
         equipment: MountedEquipment,
         context: HandlerQueryContext,
-        selectedAmmo?: AmmoEquipment | null
+        selectedAmmo?: AmmoEquipment | null,
+        target?: InventoryControlRuntimeTarget | null
     ): ToHitAdjustment[] {
+        const adjustmentContext: ToHitAdjustmentContext = {
+            selectedAmmo,
+            ...(target !== undefined && { target })
+        };
         const adjustments = this.getHandlers(equipment)
-            .flatMap(handler => handler.getToHitAdjustments?.(equipment, { selectedAmmo }, context) ?? []);
+            .flatMap(handler => handler.getToHitAdjustments?.(equipment, adjustmentContext, context) ?? []);
         for (const linked of equipment.linkedWith ?? []) {
             for (const handler of this.getHandlers(linked)) {
-                adjustments.push(...(handler.getToHitAdjustments?.(linked, { parent: equipment, selectedAmmo }, context) ?? []));
+                adjustments.push(...(handler.getToHitAdjustments?.(linked, { ...adjustmentContext, parent: equipment }, context) ?? []));
             }
         }
         return adjustments;
@@ -525,13 +618,15 @@ export class EquipmentInteractionRegistry {
     inventoryControlRules(context: HandlerQueryContext): InventoryControlRules {
         return {
             applyDisplayEffects: (equipment, display, options) => this.applyInventoryControlDisplayEffects(equipment, display, options, context),
+            applyAerospaceAttackValueEffects: (equipment, values) =>
+                this.applyInventoryControlAerospaceAttackValueEffects(equipment, values, context),
             applyDamageEffects: (equipment, damage, options) => this.applyInventoryControlDamageEffects(equipment, damage, options, context),
             applyPhysicalDamageEffects: (equipment, effect) => this.applyInventoryControlPhysicalDamageEffects(equipment, effect, context),
             resolveHeatEffect: equipment => this.getInventoryControlHeatEffect(equipment, context),
             applyHeatEffects: (equipment, heat) => this.applyInventoryControlHeatEffects(equipment, heat, context),
             applyWeaponTypes: (equipment, types) => this.applyWeaponTypes(equipment, types, context),
             matchesAmmo: (equipment, ammo, mode) => this.matchesInventoryAmmo(equipment, ammo, mode, context),
-            resolveToHitAdjustments: (equipment, selectedAmmo) => this.getToHitAdjustments(equipment, context, selectedAmmo),
+            resolveToHitAdjustments: (equipment, selectedAmmo, target) => this.getToHitAdjustments(equipment, context, selectedAmmo, target),
             isSelectable: equipment => this.isInventoryControlSelectable(equipment, context)
         };
     }
@@ -552,6 +647,16 @@ export class EquipmentInteractionRegistry {
     ): number {
         return inventory.reduce((total, equipment) => total + this.getHandlers(equipment)
             .reduce((equipmentTotal, handler) => equipmentTotal + (handler.getRunMovementMultiplierBonus?.(equipment, turnState, context) ?? 0), 0), 0);
+    }
+
+    getHeatDissipationBonus(
+        inventory: readonly MountedEquipment[],
+        dissipation: HeatDissipationState,
+        context: HandlerQueryContext
+    ): number {
+        return inventory.reduce((total, equipment) => total + this.getHandlers(equipment)
+            .reduce((equipmentTotal, handler) => equipmentTotal
+                + (handler.getHeatDissipationBonus?.(equipment, dissipation, context) ?? 0), 0), 0);
     }
 }
 

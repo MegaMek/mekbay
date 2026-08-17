@@ -203,6 +203,15 @@ export interface Unit {
     _publicTags?: PublicTagInfo[]; // Tags from other users (temporary or subscribed)
 }
 
+export type UnitHeight = 1 | 2 | 3;
+
+export function getUnitHeight(unit: Pick<Unit, 'type' | 'tons'>, prone = false): UnitHeight {
+    const standingHeight: UnitHeight = unit.type !== 'Mek' ? 1 : unit.tons > 100 ? 3 : 2;
+    return prone && standingHeight > 1
+        ? (standingHeight - 1) as UnitHeight
+        : standingHeight;
+}
+
 /** Information about a public tag from another user */
 export interface PublicTagInfo {
     /** The tag name */

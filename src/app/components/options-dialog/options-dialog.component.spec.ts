@@ -12,6 +12,7 @@ import { AppUpdateService } from '../../services/app-update.service';
 import { DataService } from '../../services/data.service';
 import { DbService } from '../../services/db.service';
 import { DialogsService } from '../../services/dialogs.service';
+import { DisplayNameService } from '../../services/display-name.service';
 import { GameService } from '../../services/game.service';
 import { LoggerService } from '../../services/logger.service';
 import { OptionsService } from '../../services/options.service';
@@ -24,7 +25,10 @@ import { UserStateService } from '../../services/userState.service';
 import { OptionsDialogComponent } from './options-dialog.component';
 
 describe('OptionsDialogComponent', () => {
-    function configureComponent(optionsService: object): OptionsDialogComponent {
+    function configureComponent(
+        optionsService: object,
+        displayNameService: object = { generate: () => Promise.resolve('Specter'), save: (value: string) => Promise.resolve(value) },
+    ): OptionsDialogComponent {
         TestBed.configureTestingModule({
             providers: [
                 { provide: AccountAuthService, useValue: { authInFlight: signal(false) } },
@@ -33,6 +37,7 @@ describe('OptionsDialogComponent', () => {
                 { provide: DbService, useValue: { getSheetsStoreSize: () => Promise.resolve({ memorySize: 0, count: 0 }), getCanvasStoreSize: () => Promise.resolve(0) } },
                 { provide: DialogRef, useValue: { close: () => undefined } },
                 { provide: DialogsService, useValue: {} },
+                { provide: DisplayNameService, useValue: displayNameService },
                 { provide: GameService, useValue: {} },
                 { provide: LoggerService, useValue: {} },
                 { provide: OptionsService, useValue: optionsService },
@@ -46,6 +51,7 @@ describe('OptionsDialogComponent', () => {
                     useValue: {
                         uuid: signal(''),
                         publicId: signal(''),
+                        displayName: signal(''),
                         availableAuthProviders: signal([]),
                         oauthProviders: signal([]),
                         hasOAuth: signal(false),
@@ -124,6 +130,7 @@ describe('OptionsDialogComponent', () => {
                 { provide: DbService, useValue: { getSheetsStoreSize: () => Promise.resolve({ memorySize: 0, count: 0 }), getCanvasStoreSize: () => Promise.resolve(0) } },
                 { provide: DialogRef, useValue: { close: () => undefined } },
                 { provide: DialogsService, useValue: {} },
+                { provide: DisplayNameService, useValue: { generate: () => Promise.resolve('Specter'), save: (value: string) => Promise.resolve(value) } },
                 { provide: GameService, useValue: {} },
                 { provide: LoggerService, useValue: {} },
                 { provide: OptionsService, useValue: { options: () => ({ unitServers: [] }) } },
@@ -137,6 +144,7 @@ describe('OptionsDialogComponent', () => {
                     useValue: {
                         uuid: signal(''),
                         publicId: signal(''),
+                        displayName: signal(''),
                         availableAuthProviders: signal([]),
                         oauthProviders: signal([]),
                         hasOAuth: signal(false),
@@ -149,5 +157,24 @@ describe('OptionsDialogComponent', () => {
 
         expect(component.equipmentCount()).toBe(2);
         expect(getEquipmentRegistry).toHaveBeenCalled();
+    });
+
+    it('generates and saves the account display name through the shared service', async () => {
+        const displayNameService = {
+            generate: jasmine.createSpy('generate').and.resolveTo('Atlas'),
+            save: jasmine.createSpy('save').and.callFake(async (value: string) => value),
+        };
+        const component = configureComponent({ options: () => ({ unitServers: [] }) }, displayNameService);
+        const input = document.createElement('input');
+
+        await component.fillRandomDisplayName(input);
+        expect(input.value).toBe('Atlas');
+
+        input.value = 'Specter';
+        await component.queueDisplayNameSave(input);
+
+        expect(displayNameService.save.calls.allArgs()).toEqual([['Atlas'], ['Specter']]);
+        expect(input.value).toBe('Specter');
+        expect(component.displayNameError()).toBe('');
     });
 });

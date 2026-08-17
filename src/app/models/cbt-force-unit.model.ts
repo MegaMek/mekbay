@@ -4,7 +4,7 @@
 
 import { computed, createEnvironmentInjector, effect, type EffectRef, EnvironmentInjector, type Injector, isDevMode, runInInjectionContext, signal, type Signal, untracked, type WritableSignal } from '@angular/core';
 import { DataService } from '../services/data.service';
-import type { Unit } from "./units.model";
+import { getUnitHeight, type Unit, type UnitHeight } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { MountedAmmo, MountedEquipment, MountedWeapon } from './mounted-equipment.model';
 import { type CriticalSlot, type HeatProfile, type LocationData, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, TURN_STATE_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type RuleCheckOutcome, type SerializedCrewMember, type SerializedRuleCheck, committedConditionData, conditionsForSerialization, conditionsHasActive, conditionsHasCommittedActive, conditionsMapFromSerialization, normalizeConditionData, normalizeConditionKey } from './force-serialization';
@@ -19,7 +19,7 @@ import { UnitSvgAeroService } from '../services/unit-svg-aero.service';
 import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
 import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
-import { AmmoEquipment } from './equipment.model';
+import { AmmoEquipment, isTorpedoAmmo } from './equipment.model';
 import type { AmmoEquipment as AmmoEquipmentType } from './equipment.model';
 import type { EquipmentFlag } from './equipment-flags.type';
 import type { WeaponType } from './weapon-types.model';
@@ -31,8 +31,14 @@ import { Sanitizer } from '../utils/sanitizer.util';
 import type { UnitTypeRules } from './rules/unit-type-rules';
 import { type InventoryControlRuntimeAmmoSelection, type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
 import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
-import { getMekLocationParent } from './entity/types';
-import { createHandlerQueryContext, EquipmentInteractionRegistry, EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
+import { getMekLegLocations, getMekLocationParent, inferMekConfigFromLocations, MEK_REAR_ARMOR_LOCATIONS } from './entity/types';
+import {
+    createHandlerQueryContext,
+    EquipmentInteractionRegistry,
+    EquipmentInteractionRegistryService,
+    type CriticalDelayedExplosionContext,
+    type CriticalDelayedExplosionHandling,
+} from '../services/equipment-interaction-registry.service';
 import type { UnitHeatSource } from './rules/unit-type-rules';
 import { resolveInventoryControlSelectedAmmoType, type InventoryControlDisplayData, type InventoryControlDisplayEffectOptions, type InventoryControlRules } from '../utils/inventory-control.util';
 import { ToastService } from '../services/toast.service';
@@ -51,6 +57,7 @@ import {
     type EquipmentStatusFacts,
 } from './equipment-status.model';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from './rules/unit-type-rules';
+import type { HeatDissipationState } from './rules/heat-management';
 
 export type EquipmentStatusSource = MountedEquipment | CriticalSlot;
 export type EquipmentAction =
@@ -136,6 +143,10 @@ export class CBTForceUnit extends ForceUnit {
     /** Unit-type-specific game rules (destruction, PSR, systems status for Meks). */
     get rules(): UnitTypeRules { return this._rules; }
 
+    getHeight(): UnitHeight {
+        return getUnitHeight(this.getUnit(), this.getCondition('prone'));
+    }
+
     useAutomations(): boolean {
         return this.injector.get(OptionsService, null, { optional: true })?.options().cbtAutomations ?? true;
     }
@@ -170,6 +181,14 @@ export class CBTForceUnit extends ForceUnit {
         );
     }
 
+    getEquipmentHeatDissipationBonus(dissipation: HeatDissipationState): number {
+        return this.getEquipmentInteractionRegistry().getHeatDissipationBonus(
+            this.getInventory(),
+            dissipation,
+            this.getHandlerQueryContext(),
+        );
+    }
+
     getInventoryControlRules(): InventoryControlRules {
         const equipmentRules = this.injector.get(EquipmentInteractionRegistryService)
             .getRegistry()
@@ -183,12 +202,29 @@ export class CBTForceUnit extends ForceUnit {
         };
     }
 
+    isInventoryWeaponUsableInWater(entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null): boolean {
+        if (!(entry instanceof MountedWeapon) || entry.isPhysicalWeapon() || !this.isEquipmentSubmerged(entry)) return true;
+        return entry.equipment?.hasFlag('F_ENERGY') === true
+            || isTorpedoAmmo(selectedAmmo);
+    }
+
     /** Canonical status/profile-aware weapon types for domain rule evaluation. */
     getEffectiveWeaponTypes(entry: MountedWeapon): ReadonlySet<WeaponType> {
         const baseTypes = new Set(entry.getWeaponTypes(this.getInventoryControlSelectedAmmo(entry)));
         return this.getEquipmentInteractionRegistry().applyWeaponTypes(
             entry,
             baseTypes,
+            this.getHandlerQueryContext(),
+        );
+    }
+
+    getCriticalDelayedExplosion(
+        hitEntry: MountedEquipment,
+        context: CriticalDelayedExplosionContext,
+    ): CriticalDelayedExplosionHandling | null {
+        return this.getEquipmentInteractionRegistry().getCriticalDelayedExplosion(
+            hitEntry,
+            context,
             this.getHandlerQueryContext(),
         );
     }
@@ -371,6 +407,7 @@ export class CBTForceUnit extends ForceUnit {
         super.setCondition(condition, active);
         if (wasActive !== this.getCondition(condition)) {
             this.turnState().reconcileHeatSources();
+            if (condition === 'prone') this.applyUnderwaterBreachAndFlooding();
             if (condition === 'jammed' || condition === 'immobile' || condition === 'prone' || condition === 'skidding') {
                 this.force.units().forEach(unit => unit.inventoryControl.markInventoryViewChanged());
             }
@@ -705,15 +742,10 @@ export class CBTForceUnit extends ForceUnit {
         if (locations[locKey] === undefined) {
             locations[locKey] = {};
         }
-        if (consolidateImmediately) {
-            locations[locKey].armor = (locations[locKey].armor ?? 0) + (locations[locKey].pendingArmor ?? 0) + hits;
-            locations[locKey].pendingArmor = undefined;
-        } else {
-            if (typeof locations[locKey].pendingArmor !== 'number') {
-                locations[locKey].pendingArmor = 0;
-            }
-            locations[locKey].pendingArmor += hits;
+        if (typeof locations[locKey].pendingArmor !== 'number') {
+            locations[locKey].pendingArmor = 0;
         }
+        locations[locKey].pendingArmor += hits;
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
         this.markEquipmentLocationsChanged();
         let hitsForPsr = hits;
@@ -721,6 +753,7 @@ export class CBTForceUnit extends ForceUnit {
             hitsForPsr = Math.ceil(hitsForPsr / 2);
         }
         this.state.turnState().addDmgReceived(hitsForPsr);
+        if (consolidateImmediately) this.state.consolidateLocations();
         this.evaluateDestroyed();
         this.setModified();
     }
@@ -803,7 +836,7 @@ export class CBTForceUnit extends ForceUnit {
         return this.getLocationConditions(loc).get(this.normalizeLocationCondition(condition))?.value;
     }
 
-    setLocationCondition(loc: string, condition: string, active: boolean): void {
+    setLocationCondition(loc: string, condition: string, active: boolean, commit = false): void {
         const normalizedCondition = this.normalizeLocationCondition(condition);
         if (!loc || !normalizedCondition) return;
         const conditions = conditionsMapFromSerialization(this.state.locations()[loc]?.conditions);
@@ -811,13 +844,16 @@ export class CBTForceUnit extends ForceUnit {
         if (currentActive === active) return;
         const existing = conditions.get(normalizedCondition);
         if (active) {
-            conditions.set(normalizedCondition, conditions.has(normalizedCondition)
+            conditions.set(normalizedCondition, commit || conditions.has(normalizedCondition)
                 ? committedConditionData(existing)
                 : { pending: true });
         } else {
             conditions.delete(normalizedCondition);
         }
         this.writeLocationConditions(loc, conditions);
+        if (normalizedCondition === 'blown-off') {
+            this._rules.evaluateLegDestroyed(loc, active ? 1 : -1);
+        }
     }
 
     setLocationConditionValue(loc: string, condition: string, value: number | undefined): void {
@@ -832,6 +868,65 @@ export class CBTForceUnit extends ForceUnit {
         if (conditions.get(normalizedCondition)?.value === value) return;
         conditions.set(normalizedCondition, normalizeConditionData({ value }));
         this.writeLocationConditions(loc, conditions);
+    }
+
+    getActiveNarcWaterLayers(): { aboveWater: boolean; underwater: boolean } {
+        let aboveWater = false;
+        let underwater = false;
+        for (const loc of Object.keys(this.state.locations())) {
+            if (!this.getLocationCondition(loc, 'narc') || this.isInternalLocCommittedPhysicallyDestroyed(loc)) continue;
+            if (this.isLocationSubmerged(loc)) underwater = true;
+            else aboveWater = true;
+        }
+        return { aboveWater, underwater };
+    }
+
+    isEquipmentSubmerged(entry: MountedEquipment): boolean {
+        if (this.getUnit().type !== 'Mek') return false;
+        if (this.turnState().submerged()) return true;
+        if (!this.turnState().partiallyUnderwater()) return false;
+
+        const location = parseInventoryComponentReference(entry.id)?.location
+            ?? entry.locations?.values().next().value;
+        return location !== undefined && this.isLocationSubmerged(location);
+    }
+
+    private isLocationSubmerged(location: string): boolean {
+        if (this.getUnit().type !== 'Mek') return false;
+        if (this.turnState().submerged()) return true;
+        if (!this.turnState().partiallyUnderwater()) return false;
+
+        const legLocations = new Set<string>(getMekLegLocations(
+            inferMekConfigFromLocations(this.locations?.internal.keys() ?? []),
+        ));
+        return location.split('/').some(loc => legLocations.has(loc.trim()));
+    }
+
+    applyUnderwaterBreachAndFlooding(commit = false): void {
+        const internalLocations = this.locations?.internal;
+        const armorLocations = this.locations?.armor;
+        const submerged = this.turnState().submerged();
+        const partiallyUnderwater = this.turnState().partiallyUnderwater();
+        if (this.getUnit().type !== 'Mek' || (!submerged && !partiallyUnderwater) || !internalLocations || !armorLocations) return;
+
+        const submergedLocations = submerged
+            ? Array.from(internalLocations.keys())
+            : getMekLegLocations(inferMekConfigFromLocations(internalLocations.keys()));
+        for (const loc of submergedLocations) {
+            if (!internalLocations.has(loc) || this.isInternalLocPhysicallyDestroyed(loc)) continue;
+            // Armor metadata is sparse, so a missing front/rear entry means that facing is exposed.
+            const armorByFacing = new Map(
+                Array.from(armorLocations.values())
+                    .filter(armor => armor.loc === loc)
+                    .map(armor => [armor.rear, armor] as const),
+            );
+            const armorFacings = MEK_REAR_ARMOR_LOCATIONS.has(loc) ? [false, true] : [false];
+            const armorBreached = armorFacings.some(rear => {
+                const armor = armorByFacing.get(rear);
+                return !armor || this.getCommittedArmorHits(loc, rear) >= this.getArmorPoints(loc, rear);
+            });
+            if (armorBreached) this.setLocationCondition(loc, 'flooded', true, commit);
+        }
     }
 
     isArmorLocDestroyed(loc: string, rear: boolean = false): boolean {
@@ -978,6 +1073,7 @@ export class CBTForceUnit extends ForceUnit {
             return false;
         }
         if (action === 'physical-attack' && this.isPhysicalActionUnavailable(entry)) return false;
+        if (action === 'fire' && !this.isInventoryWeaponUsableInWater(entry, this.getInventoryControlSelectedAmmo(entry))) return false;
         return this.rules.canPerformEquipmentAction(entry, action);
     }
 
@@ -1530,6 +1626,7 @@ export class CBTForceUnit extends ForceUnit {
     }
     
     public endTurn() {
+        const endsForceTurn = !this.force.units().some(unit => unit !== this && unit.turnState().dirty());
         if (this.useAutomations() && (this.getHeat().next !== undefined || this.turnState().hasPendingHeatResolution())) {
             this.applyHeat();
         }
@@ -1547,6 +1644,7 @@ export class CBTForceUnit extends ForceUnit {
         const notifications = this.injector.get(ToastService);
         this.forEachCurrentInventoryEntry(entry => equipmentRegistry.onEndTurn(entry, notifications));
         this.state.endTurn();
+        if (endsForceTurn) this.force.clearExpiredManualTargetTags(this);
         this.inventoryControl.markAmmoSourcesChanged();
         this.phaseTrigger.update(v => v + 1); // Trigger change detection
         this.state.resetTurnState();

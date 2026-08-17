@@ -138,9 +138,10 @@ export class LobbyDialogComponent {
     }
 
     private participantLabel(participant: LobbyParticipant): string {
-        if (participant.self) return participant.host ? 'You (Host)' : 'You';
-        if (participant.host) return 'Host';
-        return `Player ${participant.publicId.slice(0, 8)}`;
+        if (participant.self) return participant.host
+            ? `${participant.displayName} (You, Host)`
+            : `${participant.displayName} (You)`;
+        return participant.host ? `${participant.displayName} (Host)` : participant.displayName;
     }
 
     private calculateTotals(participants: LobbyDisplayParticipant[]): LobbySideTotals {

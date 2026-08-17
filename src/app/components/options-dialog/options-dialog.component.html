@@ -71,21 +71,6 @@
                         <option value="both">Adjusted and before skill</option>
                     </select>
                 </div>
-                <div class="option-section-title">Printing</div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="printRosterSummary">Include roster summary:</label>
-                        <select id="printRosterSummary" class="bt-select"
-                            [value]="optionsService.options().printRosterSummary"
-                            (change)="onprintRosterSummaryChange($event)">
-                            <option value="false">No (default)</option>
-                            <option value="true">Yes</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Include a summary of the roster in the print output.</p>
-                    </div>
-                </div>
             </div>
             }
             @case ('Search') {
@@ -163,6 +148,24 @@
             @case ('Account') {
             <div class="settings-view-content">
                 <div class="option-col">
+                    <div class="form-fields account-display-name-field">
+                        <label class="field-label" for="userDisplayName">Display name:</label>
+                        <div class="input-wrapper">
+                            <input #displayNameInput id="userDisplayName" class="field-input" type="text"
+                                autocomplete="nickname" maxlength="16" [value]="userDisplayName()"
+                                [attr.aria-busy]="displayNameSaving() || displayNameGenerating()"
+                                (input)="queueDisplayNameSave(displayNameInput)"
+                                (keydown)="onDisplayNameKeydown($event, displayNameInput)" />
+                            <button type="button" class="random-button" (click)="fillRandomDisplayName(displayNameInput)"
+                                [disabled]="displayNameGenerating()"
+                                aria-label="Generate random callsign" title="Generate random callsign"></button>
+                        </div>
+                        @if (displayNameError()) {<div class="error-msg">{{ displayNameError() }}</div>}
+                        <span class="field-note">Shown to other participants in Operation Lobbies</span>
+                    </div>
+                </div>
+                <div class="option-section-title">Identity</div>
+                <div class="option-col">
                     <label for="userUuid">User identifier:</label>
                     <div class="option-row">
                         <div class="sensitive-input-wrapper">
@@ -194,9 +197,9 @@
                                 }
                             </button>
                         </div>
-                        @if (!userHasOAuth()) {
-                        <button class="bt-button" (click)="onSetUuid(uuidInput.value)">APPLY</button>
-                        }
+                        <button class="bt-button" type="button" [disabled]="userHasOAuth()"
+                            [title]="userHasOAuth() ? 'User Identifier changes are disabled for OAuth-connected accounts' : 'Apply User Identifier'"
+                            (click)="onSetUuid(uuidInput.value)">APPLY</button>
                     </div>
                     @if (userUuidError) {<div class="error-msg">{{ userUuidError }}</div>}
                     <div class="account-summary-row">
@@ -456,43 +459,10 @@
                             network costs.</p>
                     </div>
                 </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="trackPhaseAndTurn">Track game phase/turn:</label>
-                        <select id="trackPhaseAndTurn" class="bt-select"
-                            [value]="optionsService.options().trackPhaseAndTurn" (change)="onTrackPhaseAndTurn($event)">
-                            <option value="true">Enabled (default)</option>
-                            <option value="false">Disabled</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Tracks game phases and turns, including pending damage, next-phase modifiers, and end-of-turn
-                            cleanup.</p>
-                        <p>When disabled, these mechanics must be tracked manually. <strong>Damage and to-hit modifiers
-                                take effect immediately instead of being deferred to the appropriate phase or
-                                turn.</strong></p>
-                    </div>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="cbtAutomations">Automations:</label>
-                        <select id="cbtAutomations" class="bt-select" [value]="optionsService.options().cbtAutomations"
-                            (change)="onCbtAutomationsChange($event)">
-                            <option value="true">Enabled</option>
-                            <option value="false">Disabled (default)</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Shows the calculated heat projection and lets <strong>APPLY HEAT</strong> register it
-                            automatically.</p>
-                        <p>When enabled, ending the turn also applies any pending calculated heat. When disabled, heat
-                            must be entered and applied manually.</p>
-                    </div>
-                </div>
                 <div class="option-row">
                     <label for="recordSheetCenterPanelContent">Center panel:</label>
                     <select id="recordSheetCenterPanelContent" class="bt-select"
-                        [value]="optionsService.options().recordSheetCenterPanelContent"
+                        [value]="optionsService.options().printAllOptions.recordSheetCenterPanelContent"
                         (change)="onRecordSheetCenterPanelContentChange($event)">
                         <option value="clusterTable">Hit location and cluster table (default)</option>
                         <option value="fluffImage">Artwork</option>
@@ -544,6 +514,40 @@
                         <option value="disabled">Disabled</option>
                     </select>
                 </div>
+                <div class="option-col">
+                    <div class="option-row">
+                        <label for="trackPhaseAndTurn">Track game phase/turn:</label>
+                        <select id="trackPhaseAndTurn" class="bt-select"
+                            [value]="optionsService.options().trackPhaseAndTurn" (change)="onTrackPhaseAndTurn($event)">
+                            <option value="true">Enabled (default)</option>
+                            <option value="false">Disabled</option>
+                        </select>
+                    </div>
+                    <div class="description">
+                        <p>Tracks game phases and turns, including pending damage, next-phase modifiers, and end-of-turn
+                            cleanup.</p>
+                        <p>When disabled, these mechanics must be tracked manually. <strong>Damage and to-hit modifiers
+                                take effect immediately instead of being deferred to the appropriate phase or
+                                turn.</strong></p>
+                    </div>
+                </div>
+                <div class="option-section-title">Automations</div>
+                <div class="option-col">
+                    <div class="option-row">
+                        <label for="cbtAutomations">Automations:</label>
+                        <select id="cbtAutomations" class="bt-select" [value]="optionsService.options().cbtAutomations"
+                            (change)="onCbtAutomationsChange($event)">
+                            <option value="true">Enabled</option>
+                            <option value="false">Disabled (default)</option>
+                        </select>
+                    </div>
+                    <div class="description">
+                        <p>Shows the calculated heat projection and lets <strong>APPLY HEAT</strong> register it
+                            automatically.</p>
+                        <p>When enabled, ending the turn also applies any pending calculated heat. When disabled, heat
+                            must be entered and applied manually.</p>
+                    </div>
+                </div>
                 <div class="option-section-title">Optional rules</div>
                 <div class="option-row">
                     <label for="CBTForcedWithdrawal">Forced Withdrawal (Cripple):</label>
@@ -589,16 +593,6 @@
                         <p>When enabled: damage is automatically assigned in the order armor->structure.</p>
                         <p>When disabled: damage must be assigned manually to either armor or structure.</p>
                     </div>
-                </div>
-                <div class="option-section-title">Printing</div>
-                <div class="option-row">
-                    <label for="ASPrintPageBreakOnGroups">Split groups in pages:</label>
-                    <select id="ASPrintPageBreakOnGroups" class="bt-select"
-                        [value]="optionsService.options().ASPrintPageBreakOnGroups"
-                        (change)="onASPrintPageBreakOnGroupsChange($event)">
-                        <option value="true">Yes (default)</option>
-                        <option value="false">No</option>
-                    </select>
                 </div>
                 <div class="option-section-title">Rules</div>
                 <div class="option-col">

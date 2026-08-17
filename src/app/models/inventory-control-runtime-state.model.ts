@@ -4,11 +4,21 @@
 
 import { computed, signal } from '@angular/core';
 import type { MountedEquipment } from './mounted-equipment.model';
-import type { TnTargetNumberCalculatorState, TnTargetUnitType } from './target-number-calculator.model';
+import type { AmmoEquipment } from './equipment.model';
+import type { CBTGameRules } from './rules/game-rules';
+import { resolveTnTargetWaterState, type TnTargetNumberCalculatorState, type TnTargetUnitType } from './target-number-calculator.model';
 
 export type InventoryControlRuntimeRangeKey = 'short' | 'medium' | 'long' | 'extreme';
 
-export const INVENTORY_CONTROL_TARGET_MAX_COUNT = 12;
+export const INVENTORY_CONTROL_TARGET_MAX_COUNT = 20;
+export const INVENTORY_CONTROL_INDIRECT_FIRE_TARGET_REASON = 'Requires an indirect-fire weapon';
+export const INVENTORY_CONTROL_INDIRECT_FIRE_AMMO_TARGET_REASON = 'Selected ammunition cannot fire indirectly at this target';
+export const INVENTORY_CONTROL_WATER_LAYER_TARGET_REASON = 'Weapon and target are in different water layers';
+export const INVENTORY_CONTROL_TAG_INFANTRY_TARGET_REASON = 'TAG cannot designate infantry';
+export const INVENTORY_CONTROL_NARC_INFANTRY_TARGET_REASON = 'NARC beacons cannot target infantry';
+export const INVENTORY_CONTROL_NARC_BUILDING_TARGET_REASON = 'NARC beacons cannot be fired into buildings';
+export const INVENTORY_CONTROL_BOMBAST_SECONDARY_TARGET_REASON = 'Bombast Lasers cannot fire at secondary targets';
+export const INVENTORY_CONTROL_THUNDER_TERRAIN_TARGET_REASON = 'Thunder missiles can only target terrain';
 export const INVENTORY_CONTROL_TARGET_COLORS = [
     '#c0f7ff',
     '#ffebca',
@@ -43,6 +53,79 @@ export interface InventoryControlRuntimeTarget {
     tnCalculator?: TnTargetNumberCalculatorState;
 }
 
+/** Calculator-derived modes are inactive while the target TN is manually overridden. */
+export function getEffectiveInventoryControlCalculatorState(
+    target: Pick<InventoryControlRuntimeTarget, 'manualTnModifier' | 'tnCalculator'>
+): TnTargetNumberCalculatorState | undefined {
+    return target.manualTnModifier === undefined ? target.tnCalculator : undefined;
+}
+
+export function inventoryControlTargetUsesIndirectFire(
+    target: Pick<InventoryControlRuntimeTarget, 'manualTnModifier' | 'tnCalculator'>
+): boolean {
+    return getEffectiveInventoryControlCalculatorState(target)?.indirectFire === true;
+}
+
+export function inventoryControlEntryAllowsTarget(
+    entry: MountedEquipment,
+    target: Pick<InventoryControlRuntimeTarget, 'manualTnModifier' | 'tnCalculator' | 'unitType'>,
+    selectedAmmo: AmmoEquipment | null = entry.owner.getInventoryControlSelectedAmmo(entry),
+    gameRules: CBTGameRules = entry.owner.gameRules,
+): boolean {
+    return inventoryControlEntryTargetDisabledReason(entry, target, selectedAmmo, gameRules) === null;
+}
+
+export function inventoryControlEntryTargetDisabledReason(
+    entry: MountedEquipment,
+    target: Pick<InventoryControlRuntimeTarget, 'manualTnModifier' | 'tnCalculator' | 'unitType'>,
+    selectedAmmo: AmmoEquipment | null = entry.owner.getInventoryControlSelectedAmmo(entry),
+    gameRules: CBTGameRules = entry.owner.gameRules,
+): string | null {
+    if (selectedAmmo?.hasMunitionType('M_THUNDER') === true && target.unitType !== 'terrain') {
+        return INVENTORY_CONTROL_THUNDER_TERRAIN_TARGET_REASON;
+    }
+
+    if (entry.equipment?.hasFlag('F_TAG') === true && !gameRules.allowsTagDesignation(target.unitType)) {
+        return INVENTORY_CONTROL_TAG_INFANTRY_TARGET_REASON;
+    }
+
+    if (entry.equipment?.hasFlag('F_NARC') === true) {
+        const narcRestriction = gameRules.getNarcBeaconAttackRestriction({
+            targetInsideBuilding: target.tnCalculator?.buildingCover !== undefined,
+            targetIsInfantry: target.unitType === 'infantry' || target.unitType === 'battle-armor',
+        });
+        if (narcRestriction === 'infantry') return INVENTORY_CONTROL_NARC_INFANTRY_TARGET_REASON;
+        if (narcRestriction === 'building') return INVENTORY_CONTROL_NARC_BUILDING_TARGET_REASON;
+    }
+
+    if (entry.equipment?.hasFlag('F_BOMBAST_LASER') === true
+        && gameRules.id === 'tw'
+        && (target.tnCalculator?.secondaryTarget === true
+            || target.tnCalculator?.secondaryTargetSideBack === true)) {
+        return INVENTORY_CONTROL_BOMBAST_SECONDARY_TARGET_REASON;
+    }
+
+    const calculator = getEffectiveInventoryControlCalculatorState(target);
+    if (!calculator) return null;
+    if (calculator.indirectFire && entry.equipment?.hasFlag('F_INDIRECT_FIRE') !== true) {
+        return INVENTORY_CONTROL_INDIRECT_FIRE_TARGET_REASON;
+    }
+
+    const targetWaterState = resolveTnTargetWaterState({ ...calculator, unitType: target.unitType });
+    const weaponUnderwater = entry.owner.isEquipmentSubmerged?.(entry) ?? false;
+    if ((targetWaterState.submerged && !weaponUnderwater)
+        || (weaponUnderwater && !targetWaterState.partiallyUnderwater && !targetWaterState.submerged)) {
+        return INVENTORY_CONTROL_WATER_LAYER_TARGET_REASON;
+    }
+    if (calculator.indirectFire && !gameRules.canFireIndirectly(entry, selectedAmmo, {
+        weaponUnderwater,
+        targetHasUnderwaterLayer: calculator.waterDepth !== undefined,
+    })) {
+        return INVENTORY_CONTROL_INDIRECT_FIRE_AMMO_TARGET_REASON;
+    }
+    return null;
+}
+
 /** Target data whose value depends on the attacking unit and its line of sight. */
 export interface InventoryControlUnitTargetState {
     distance: number;
@@ -60,7 +143,13 @@ const SHARED_TARGET_CALCULATOR_KEYS = [
     'prone',
     'immobile',
     'targetHexCover',
-    'largeTarget'
+    'waterDepth',
+    'buildingCover',
+    'largeTarget',
+    'narcAboveWater',
+    'narcUnderwater',
+    'tagged',
+    'ecmShielded'
 ] as const satisfies readonly (keyof TnTargetNumberCalculatorState)[];
 
 const SHARED_TARGET_CALCULATOR_KEY_SET = new Set<keyof TnTargetNumberCalculatorState>(SHARED_TARGET_CALCULATOR_KEYS);
@@ -74,7 +163,6 @@ export function splitInventoryControlCalculatorState(state: TnTargetNumberCalcul
     const local: TnTargetNumberCalculatorState = {};
     for (const key of Object.keys(state) as (keyof TnTargetNumberCalculatorState)[]) {
         const value = state[key];
-        if (value === undefined) continue;
         Object.assign(SHARED_TARGET_CALCULATOR_KEY_SET.has(key) ? shared : local, { [key]: value });
     }
     return {

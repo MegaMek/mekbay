@@ -31,7 +31,7 @@ export abstract class MultiModeHandler extends EquipmentInteractionHandler {
         
         const mode = this.getModes(equipment).find(m => m.value === value.value);
         context.toastService.showToast(
-            `${equipment.equipment?.name||equipment.name} mode: ${mode?.label || value.value}`,
+            `${equipment.getDisplayName()} mode: ${mode?.label || value.value}`,
             'info'
         );
         return true;

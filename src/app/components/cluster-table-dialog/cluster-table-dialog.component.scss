@@ -6,6 +6,10 @@
     color: var(--text-color, #f5f5f5);
 }
 
+.cluster-dialog.history-open {
+    height: 92vh;
+}
+
 .dialog-header {
     display: flex;
     align-items: center;
@@ -26,6 +30,7 @@ h2 {
 }
 
 h3 {
+    font-size: 1.1em;
     text-align: center;
 }
 
@@ -37,8 +42,116 @@ h3 {
     cursor: pointer;
 }
 
+.table-selector {
+    position: relative;
+    z-index: 3;
+    padding: 0;
+    border-bottom: 1px solid var(--border-color);
+    background: #0002;
+}
+
+.table-selector-bar {
+    display: flex;
+    gap: 0;
+    min-width: 0;
+}
+
+.table-group-control {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.table-group-button,
+.table-subtype-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-color-secondary);
+    font: inherit;
+    font-size: .84rem;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+
+    &:hover {
+        background: #fff1;
+        color: var(--text-color);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--bt-yellow);
+        outline-offset: -2px;
+    }
+
+    &.selected {
+        background: #fff1;
+        color: var(--bt-yellow);
+        box-shadow: inset 0 -2px 0 var(--bt-yellow);
+    }
+}
+
+.table-group-button {
+    width: 100%;
+    gap: .45rem;
+    padding: .5rem .6rem;
+    white-space: nowrap;
+}
+
+.selector-chevron {
+    width: .4rem;
+    height: .4rem;
+    border-right: 1px solid currentColor;
+    border-bottom: 1px solid currentColor;
+    transform: translateY(-.1rem) rotate(45deg);
+    transition: transform 120ms ease;
+}
+
+.selector-chevron.expanded {
+    transform: translateY(.1rem) rotate(225deg);
+}
+
+.table-subtype-menu {
+    position: absolute;
+    top: calc(100% + 1px);
+    left: 0;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    min-width: max(100%, 10rem);
+    padding: .2rem;
+    border: 1px solid var(--border-color);
+    background: var(--background-color, #171717);
+    box-shadow: 0 .5rem 1rem #0008;
+}
+
+.table-group-control:nth-last-child(-n + 2) .table-subtype-menu {
+    right: 0;
+    left: auto;
+}
+
+.table-subtype-button {
+    justify-content: flex-start;
+    width: 100%;
+    padding: .45rem .6rem;
+    white-space: nowrap;
+
+    &.selected {
+        box-shadow: inset 2px 0 0 var(--bt-yellow);
+    }
+}
+
 .dialog-content {
     position: relative;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+    align-items: start;
+    gap: 1.2rem 1rem;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow: auto;
     padding: 1rem 1.25rem;
 }
@@ -52,17 +165,34 @@ h3 {
 }
 
 .table-section {
+    grid-column: 1 / -1;
     display: flex;
     flex-direction: column;
+    min-width: 0;
     gap: 8px;
+
+    > h3 {
+        white-space: pre-line;
+    }
 }
 
-.table-section + .table-section {
-    margin-top: 1.2rem;
+.compact-table-section {
+    grid-column: auto;
+
+    .reference-table {
+        width: 100%;
+        table-layout: fixed;
+    }
+
+    th,
+    td {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
 }
 
 .roll-instructions {
-    margin-top: 1rem;
+    grid-column: 1 / -1;
     text-align: center;
     color: var(--text-color-secondary);
     font-size: .9rem;
@@ -73,58 +203,58 @@ h3 {
     max-width: 100%;
 }
 
-table {
+.reference-table {
+    width: max-content;
+    min-width: 100%;
     border-collapse: collapse;
 }
 
-.hit-location-table {
+.reference-table:not(.rollable-table) {
     width: 100%;
-    min-width: 0;
-}
-
-.cluster-hit-table {
-    width: max-content;
-    min-width: 100%;
-}
-
-.combined-table {
-    width: max-content;
-    min-width: 100%;
-}
-
-.physical-location-table {
-    width: 100%;
-    min-width: 260px;
-}
-
-.physical-location-table thead tr:first-child th:last-child,
-.physical-location-table thead tr:nth-child(2) th:nth-child(4),
-.physical-location-table tbody td:nth-child(5) {
-    border-left-width: 4px;
 }
 
 th,
 td {
+    min-width: 42px;
+    padding: 0;
     border: 1px solid var(--border-color);
     text-align: center;
-    white-space: nowrap;
-    min-width: 24px;
+    vertical-align: middle;
 }
 
 th {
-    background: #FFF2;
+    background: #fff2;
+}
+
+th:not(.roll-column) .table-header-label {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    padding: .45rem .6rem;
+    white-space: normal;
+}
+
+.reference-table:not(.rollable-table) td {
+    padding: .45rem .6rem;
+    white-space: normal;
+}
+
+.header-group {
+    padding: .35rem .5rem;
 }
 
 th.roll-column,
-td:first-child {
+td.roll-column {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    box-sizing: border-box;
     width: 80px;
     min-width: 80px;
     max-width: 80px;
     padding: .35rem .5rem;
-    position: sticky;
-    left: 0;
-    z-index: 1;
     background: var(--background-color);
+    white-space: nowrap;
 }
 
 th.roll-column {
@@ -132,22 +262,52 @@ th.roll-column {
 }
 
 .table-roll-button {
-    display: block;
     box-sizing: border-box;
     width: 100%;
     min-height: 2rem;
     padding: .35rem .5rem;
+    font: inherit;
+    cursor: pointer;
+    white-space: normal;
+}
+
+td .table-roll-button {
+    display: block;
+    margin-inline: auto;
     border: 0;
     background: transparent;
     color: inherit;
-    font: inherit;
-    cursor: pointer;
-    white-space: nowrap;
+}
 
-    &.cluster {
-        min-width: 42px;
-        padding: .35rem;
-    }
+.roll-header-button {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    padding: 0;
+    white-space: normal;
+}
+
+th.rollable-column {
+    position: relative;
+    height: 2rem;
+}
+
+th.rollable-column,
+td.rollable-cell {
+    cursor: pointer;
+}
+
+.reference-table[data-table-key^='cluster-'] .table-roll-button,
+.combined-table th .table-roll-button {
+    min-width: 42px;
+}
+
+.reference-table[data-table-key='mek-physical-locations'] thead tr:first-child th:last-child,
+.reference-table[data-table-key='mek-physical-locations'] thead tr:nth-child(2) th:nth-child(4),
+.reference-table[data-table-key='mek-physical-locations'] tbody td:nth-child(5) {
+    border-left-width: 4px;
 }
 
 // State precedence: hover column, then rolled row, then selected result cell.
@@ -155,8 +315,7 @@ td.column-hovered {
     background: var(--hover-highlight-transparent, #fff1);
 }
 
-tr.rolled-row-highlight td,
-td.rolled-row-highlight {
+tr.rolled-row-highlight td {
     background: var(--bt-yellow-background);
 }
 
@@ -164,37 +323,169 @@ td.rolled-highlight {
     box-shadow: inset 0 0 0 2px var(--bt-yellow);
 }
 
+.note {
+    color: var(--text-color-secondary);
+    font-size: .8rem;
+    line-height: 1.3;
+}
+
+.roll-history-panel {
+    display: flex;
+    flex: 0 0 auto;
+    max-height: 40%;
+    flex-direction: column;
+    min-height: 0;
+    border-top: 1px solid var(--border-color);
+    background: var(--background-color);
+
+    > header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: .45rem .75rem;
+        border-bottom: 1px solid var(--border-color);
+
+        h3 {
+            font-size: .9rem;
+        }
+
+        span {
+            color: var(--bt-yellow);
+            font-weight: 700;
+        }
+    }
+
+    > footer {
+        display: flex;
+        justify-content: flex-end;
+        padding: .35rem .75rem;
+        border-top: 1px solid var(--border-color);
+    }
+}
+
+.roll-history-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: .2rem .65rem;
+}
+
+.empty-history {
+    padding: 1.25rem;
+    color: var(--text-color-secondary);
+    text-align: center;
+}
+
+.history-entry {
+    display: grid;
+    width: 100%;
+    grid-template-columns: 2.5rem 9rem minmax(0, 1fr) 7.75rem;
+    align-items: center;
+    gap: .5rem;
+    padding: .3rem .2rem;
+    border-bottom: 1px solid var(--border-color);
+    font-size: .82rem;
+    line-height: 1.2;
+
+    strong {
+        color: var(--bt-yellow);
+    }
+
+    &:last-of-type {
+        border-bottom: none;
+    }
+
+}
+
+.history-index {
+    color: var(--text-color-secondary);
+    font-size: .75rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.history-result {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.history-source {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-color-secondary);
+    font-size: .75rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-roll {
+    color: var(--text-color-secondary);
+    font-size: .75rem;
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.roll-counter {
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    align-items: center;
+}
+
+.reset-history-button {
+    gap: .4rem;
+    padding: .35rem .6rem;
+}
+
 .dialog-buttons {
     display: flex;
     justify-content: center;
+    gap: .5rem;
     padding: 8px;
     border-top: 1px solid var(--border-color);
 
     button {
-        padding: 8px;
         min-width: 100px;
+        padding: 8px;
+    }
+
+    .history-button {
+        min-width: 64px;
+    }
+
+    .history-button.active {
+        --btn-text-color: var(--bt-yellow);
+        --btn-border-color: var(--bt-yellow);
     }
 }
 
 @media (max-width: 600px) {
+    .cluster-dialog {
+        width: 100vw;
+    }
+
+    .table-group-control {
+        flex: 1 1 auto;
+    }
+
+    .table-group-button,
+    .table-subtype-button {
+        padding: .4rem .45rem;
+        font-size: .78rem;
+    }
+
     .dialog-content {
         padding: .75rem;
     }
 
-    .physical-location-table {
-        table-layout: fixed;
-    }
-
-    .physical-location-table th,
-    .physical-location-table td {
-        min-width: 0;
-    }
-
     th.roll-column,
-    td:first-child {
-        width: 2.5rem;
-        min-width: 2.5rem;
-        max-width: 2.5rem;
+    td.roll-column {
+        width: 2.75rem;
+        min-width: 2.75rem;
+        max-width: 2.75rem;
         padding: .3rem .35rem;
     }
 
@@ -206,7 +497,88 @@ td.rolled-highlight {
         padding: .3rem .35rem;
     }
 
-    .physical-location-table .table-roll-button {
-        padding-inline: .15rem;
+    .table-section:is(
+        [data-table-section^='vehicle-motive-'],
+        [data-table-section='vehicle-ground-critical'],
+        [data-table-section='vehicle-vtol-critical'],
+        [data-table-section^='battle-armor-'],
+        [data-table-section^='conventional-']
+    ) {
+        > h3 {
+            font-size: .9rem;
+            line-height: 1.15;
+        }
+
+        .reference-table {
+            width: 100%;
+            table-layout: fixed;
+            font-size: .78rem;
+            line-height: 1.2;
+        }
+
+        th,
+        td {
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+
+        th:not(.roll-column) .table-header-label,
+        .header-group,
+        .reference-table:not(.rollable-table) td,
+        .table-roll-button {
+            padding: .3rem .2rem;
+        }
+
+        .table-roll-button {
+            max-width: none;
+            overflow-wrap: anywhere;
+        }
+
+        .note {
+            font-size: .72rem;
+        }
+    }
+
+    .reference-table[data-table-key='battle-armor-swarm-modifiers'] {
+        th:first-child,
+        td:first-child {
+            width: 27%;
+        }
+
+        th:first-child {
+            overflow-wrap: normal;
+            word-break: normal;
+        }
+    }
+
+    .roll-history-panel {
+        flex-basis: 60%;
+    }
+
+    .history-entry {
+        grid-template-areas:
+            'index result roll'
+            'index source source';
+        grid-template-columns: 2.1rem minmax(0, 1fr) 7.25rem;
+        gap: .12rem .4rem;
+        padding: .3rem 0;
+    }
+
+    .history-index {
+        grid-area: index;
+        align-self: start;
+        padding-top: .05rem;
+    }
+
+    .history-result {
+        grid-area: result;
+    }
+
+    .history-source {
+        grid-area: source;
+    }
+
+    .history-roll {
+        grid-area: roll;
     }
 }

@@ -321,9 +321,9 @@ describe('equipment model', () => {
         expect(internalWeapon.isInternalRepresentation).toBeTrue();
     });
 
-    it('identifies physical shields from club and shield-size semantics', () => {
+    it('identifies shields independently of club and shield-size flags', () => {
         const shield = new MiscEquipment({
-            id: 'shield', name: 'Shield', type: 'misc', flags: ['F_CLUB', 'S_SHIELD_MEDIUM'],
+            id: 'shield', name: 'Shield', type: 'misc', flags: ['F_SHIELD', 'S_SHIELD_MEDIUM'],
         });
         const club = new MiscEquipment({
             id: 'club', name: 'Club', type: 'misc', flags: ['F_CLUB'],
@@ -332,9 +332,9 @@ describe('equipment model', () => {
             id: 'malformed-shield', name: 'Malformed Shield', type: 'misc', flags: ['S_SHIELD_MEDIUM'],
         });
 
-        expect(shield.isShield).toBeTrue();
-        expect(club.isShield).toBeFalse();
-        expect(malformed.isShield).toBeFalse();
+        expect(shield.hasFlag('F_SHIELD')).toBeTrue();
+        expect(club.hasFlag('F_SHIELD')).toBeFalse();
+        expect(malformed.hasFlag('F_SHIELD')).toBeFalse();
     });
 
     it('identifies bomb ammo and bomb weapons without misclassifying carriers or ordinary ordnance', () => {
@@ -373,6 +373,24 @@ function weapon(
     });
 }
 describe('equipment damage types', () => {
+
+    it('keeps optional AC, PPC, and pod explosions out of base weapon types', () => {
+        const intrinsic = new WeaponEquipment({
+            id: 'IntrinsicExplosive', name: 'Intrinsic Explosive', type: 'weapon',
+            stats: { explosive: true },
+        });
+        expect(intrinsic.getWeaponTypes()).toContain('X');
+
+        for (const flag of ['F_AC', 'F_PPC', 'F_B_POD', 'F_M_POD'] as const) {
+            const conditional = new WeaponEquipment({
+                id: flag, name: flag, type: 'weapon', flags: [flag],
+                stats: { explosive: true },
+            });
+            expect(conditional.getWeaponTypes())
+                .withContext(flag)
+                .not.toContain('X');
+        }
+    });
 
     it('derives weapon types from flags and weapon data', () => {
         const weapon = new WeaponEquipment({

@@ -15,6 +15,8 @@ import { TooltipDirective } from './tooltip.directive';
             <span class="parent-label">Parent</span>
             <button class="child" type="button" [tooltip]="'Child tooltip'" tooltipType="error" [tooltipDelay]="0">Child</button>
             <button class="weakened" type="button" [tooltip]="[{ label: 'Apollo Destroyed', value: '+0', weakened: true }]" [tooltipDelay]="0">Weakened</button>
+            <button class="nested-line" type="button" [tooltip]="[{ label: 'Target A', value: '+1' }, { label: 'Moved 3-4', value: '+1', nested: true }]" [tooltipDelay]="0">Nested</button>
+            <button class="ignored-line" type="button" [tooltip]="[{ label: 'Spotter Moved (Run)', value: '+2', nested: true, ignored: true }]" [tooltipDelay]="0">Ignored</button>
         </div>
         <label class="mode-label">
             <input class="mode-radio" type="radio">
@@ -35,6 +37,20 @@ function dispatchPointerOver(target: HTMLElement, relatedTarget: EventTarget | n
         bubbles: true,
         pointerType: 'mouse',
         relatedTarget,
+    }));
+}
+
+function dispatchPointerOut(target: HTMLElement, pointerType: 'mouse' | 'touch' = 'mouse'): void {
+    target.dispatchEvent(new PointerEvent('pointerout', {
+        bubbles: true,
+        pointerType,
+    }));
+}
+
+function dispatchTouchPointer(target: HTMLElement, type: 'pointerdown' | 'pointerup'): void {
+    target.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        pointerType: 'touch',
     }));
 }
 
@@ -75,6 +91,82 @@ describe('TooltipDirective', () => {
         expect(getTooltipTexts()).toEqual(['Child tooltip']);
     });
 
+    it('shows a tooltip on touch tap and dismisses it on an outside tap', async () => {
+        const fixture = TestBed.createComponent(TestHostComponent);
+        fixture.detectChanges();
+
+        const element = fixture.nativeElement as HTMLElement;
+        const child = element.querySelector('.child') as HTMLElement;
+        const outside = element.querySelector('.mode-radio') as HTMLElement;
+
+        dispatchTouchPointer(child, 'pointerdown');
+        dispatchTouchPointer(child, 'pointerup');
+        dispatchPointerOut(child, 'touch');
+        await flushTooltipTasks(fixture);
+
+        expect(getTooltipTexts()).toEqual(['Child tooltip']);
+        expect(overlayContainerElement.querySelector('.tooltip-lock-progress')).toBeNull();
+
+        const tooltip = overlayContainerElement.querySelector('.tooltip-content') as HTMLElement;
+        dispatchTouchPointer(tooltip, 'pointerdown');
+        expect(getTooltipTexts()).toEqual(['Child tooltip']);
+
+        dispatchTouchPointer(outside, 'pointerdown');
+        expect(getTooltipTexts()).toEqual([]);
+    });
+
+    it('shows a tooltip while touch is held', () => {
+        jasmine.clock().install();
+        try {
+            const fixture = TestBed.createComponent(TestHostComponent);
+            fixture.detectChanges();
+
+            const child = fixture.nativeElement.querySelector('.child') as HTMLElement;
+            dispatchTouchPointer(child, 'pointerdown');
+            jasmine.clock().tick(300);
+
+            expect(getTooltipTexts()).toEqual(['Child tooltip']);
+            expect(overlayContainerElement.querySelector('.tooltip-lock-progress')).toBeNull();
+        } finally {
+            jasmine.clock().uninstall();
+        }
+    });
+
+    it('locks a mouse tooltip after its progress bar completes', () => {
+        jasmine.clock().install();
+        try {
+            const fixture = TestBed.createComponent(TestHostComponent);
+            fixture.detectChanges();
+
+            const element = fixture.nativeElement as HTMLElement;
+            const child = element.querySelector('.child') as HTMLElement;
+            const outside = element.querySelector('.mode-radio') as HTMLElement;
+
+            dispatchPointerOver(child);
+            jasmine.clock().tick(0);
+
+            const progress = overlayContainerElement.querySelector('.tooltip-lock-progress') as HTMLElement | null;
+            expect(progress).not.toBeNull();
+            expect(getComputedStyle(progress!).height).toBe('2px');
+            expect(getComputedStyle(progress!).animationDuration).toBe('2s');
+
+            dispatchPointerOut(child);
+            expect(getTooltipTexts()).toEqual([]);
+
+            dispatchPointerOver(child);
+            jasmine.clock().tick(0);
+            jasmine.clock().tick(2000);
+
+            dispatchPointerOut(child);
+            expect(getTooltipTexts()).toEqual(['Child tooltip']);
+
+            outside.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+            expect(getTooltipTexts()).toEqual([]);
+        } finally {
+            jasmine.clock().uninstall();
+        }
+    });
+
     it('applies the error frame class when tooltipType is error', async () => {
         const fixture = TestBed.createComponent(TestHostComponent);
         fixture.detectChanges();
@@ -102,6 +194,32 @@ describe('TooltipDirective', () => {
         expect(row?.classList.contains('weakened')).toBeTrue();
         expect(row?.textContent).toContain('Apollo Destroyed');
         expect(row?.textContent).toContain('+0');
+    });
+
+    it('indents nested breakdown lines', async () => {
+        const fixture = TestBed.createComponent(TestHostComponent);
+        fixture.detectChanges();
+
+        dispatchPointerOver(fixture.nativeElement.querySelector('.nested-line') as HTMLElement);
+        await flushTooltipTasks(fixture);
+
+        const row = overlayContainerElement.querySelector('.tooltip-row.nested');
+        expect(row?.textContent).toContain('Moved 3-4');
+        expect(row?.textContent).toContain('+1');
+    });
+
+    it('strikes through ignored breakdown lines', async () => {
+        const fixture = TestBed.createComponent(TestHostComponent);
+        fixture.detectChanges();
+
+        dispatchPointerOver(fixture.nativeElement.querySelector('.ignored-line') as HTMLElement);
+        await flushTooltipTasks(fixture);
+
+        const row = overlayContainerElement.querySelector('.tooltip-row.nested.ignored');
+        const label = row?.querySelector('.label');
+        expect(row?.textContent).toContain('Spotter Moved (Run)');
+        expect(row?.textContent).toContain('+2');
+        expect(getComputedStyle(label!).textDecorationLine).toContain('line-through');
     });
 
     it('triggers from tooltip label text but not its adjacent radio input', async () => {

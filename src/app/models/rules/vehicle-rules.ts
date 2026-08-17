@@ -54,7 +54,7 @@ const STABILIZER_HIT_LOCATIONS: Record<string, readonly string[]> = {
  * Vehicle / Naval / VTOL / default game rules.
  */
  
-export const VEHICLE_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['swarmed', 'tagged', 'skidding', 'jammed']);
+export const VEHICLE_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['swarmed', 'tagged', 'ecm-shielded', 'skidding', 'jammed']);
 export const VEHICLE_CREW_STATE_CONTROLS: readonly CrewStateControlDefinition[] = crewStateDefinitions(['killed', 'stunned']) as readonly CrewStateControlDefinition[];
 export const VEHICLE_CREW_STATE_DISPLAYS: readonly CrewStateDefinition[] = crewStateDefinitions(['killed', 'stunned']);
 

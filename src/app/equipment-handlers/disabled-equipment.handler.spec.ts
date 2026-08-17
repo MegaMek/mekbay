@@ -15,7 +15,12 @@ import {
 import type { DialogsService } from '../services/dialogs.service';
 import type { ToastService } from '../services/toast.service';
 import { createTestEquipmentOwner } from '../testing/unit-test-helpers';
-import { DisabledEquipmentHandler, isEquipmentDisabledByFailure } from './disabled-equipment.handler';
+import { DisabledStateToggleHandler, isEquipmentDisabledByFailure } from './disabled-equipment.handler';
+
+class TestDisabledHandler extends DisabledStateToggleHandler {
+    readonly id = 'test-disabled-handler';
+    override readonly flags: EquipmentFlag[] = ['F_TEST_ONLY'];
+}
 
 function owner() {
     const { owner } = createTestEquipmentOwner();
@@ -34,8 +39,8 @@ function entry(flags: EquipmentFlag[], states = new Map<string, string>(), destr
     });
 }
 
-describe('DisabledEquipmentHandler', () => {
-    const handler = new DisabledEquipmentHandler();
+describe('DisabledStateToggleHandler', () => {
+    const handler = new TestDisabledHandler();
     const queryContext = createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY);
     const commandContext = createHandlerCommandContext(
         EMPTY_EQUIPMENT_REGISTRY,
@@ -43,10 +48,12 @@ describe('DisabledEquipmentHandler', () => {
         jasmine.createSpyObj<DialogsService>('DialogsService', ['createDialog']),
     );
 
-    it('applies to equipment with any disableable failure flag', () => {
-        expect(handler.applicableTo(entry(['F_RADICAL_HEATSINK']))).toBeTrue();
-        expect(handler.applicableTo(entry(['F_TEST_ONLY', 'F_RADICAL_HEATSINK']))).toBeTrue();
-        expect(handler.applicableTo(entry(['F_TEST_ONLY']))).toBeFalse();
+    it('is selected by the registry through its concrete handler flags', () => {
+        const registry = new EquipmentInteractionRegistry();
+        registry.register(handler);
+
+        expect(registry.getHandlers(entry(['F_TEST_ONLY']))).toEqual([handler]);
+        expect(registry.getHandlers(entry(['F_RADICAL_HEATSINK']))).toEqual([]);
     });
 
     it('is transparent unless disabled is true', () => {
@@ -56,7 +63,7 @@ describe('DisabledEquipmentHandler', () => {
     });
 
     it('toggles disabled state and persists the inventory entry', () => {
-        const mounted = entry(['F_RADICAL_HEATSINK']);
+        const mounted = entry(['F_TEST_ONLY']);
 
         handler.handleSelection(mounted, handler.getChoices(mounted, queryContext)[0], commandContext);
 
@@ -71,7 +78,7 @@ describe('DisabledEquipmentHandler', () => {
     });
 
     it('keeps the toggle available while the entry is disabled by this handler', () => {
-        const mounted = entry(['F_RADICAL_HEATSINK'], new Map([[ENTRY_DISABLED_STATE_KEY, 'true']]));
+        const mounted = entry(['F_TEST_ONLY'], new Map([[ENTRY_DISABLED_STATE_KEY, 'true']]));
         const registry = new EquipmentInteractionRegistry();
         registry.register(handler);
 

@@ -5,42 +5,48 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { ColorPickerButtonComponent } from '../color-picker-button/color-picker-button.component';
 import {
+    getEffectiveInventoryControlCalculatorState,
     INVENTORY_CONTROL_TARGET_COLORS,
     INVENTORY_CONTROL_TARGET_MAX_COUNT,
     type InventoryControlRuntimeTarget,
     type InventoryControlRuntimeTargetId
 } from '../../models/inventory-control-runtime-state.model';
 import { TooltipDirective } from '../../directives/tooltip.directive';
-import { getUnitConditionDefinition } from '../../models/rules/unit-type-rules';
-import type { C3DegradationLabel } from '../../models/rules/game-rules';
+import { getUnitConditionDefinition, NARC_CONDITION_COLOR } from '../../models/rules/unit-type-rules';
+import { CORE_2026_GAME_RULES, type C3DegradationLabel, type CBTGameRules } from '../../models/rules/game-rules';
 import {
-    ADJACENT_RANGE,
-    getInterveningWoodsModifier,
-    getIndirectFireModifier,
-    getTargetAirborneModifier,
-    getTargetHexCoverModifier,
-    getTargetMovementBracketModifier,
-    getTargetProneModifier,
-    getTargetUnitTypeModifier,
-    isStaticTargetType,
-    isTerrainTargetType,
-    TN_IMMOBILE,
-    TN_PARTIAL_COVER_MODIFIER,
-    TN_LARGE_TARGET_MODIFIER,
-    TN_SECONDARY_TARGET_MODIFIER,
-    TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER,
-    TN_SKIDDING_MODIFIER,
-    TN_TARGET_MOVEMENT_BRACKETS,
-    TN_TARGET_UNIT_TYPE_OPTIONS,
+    calculateTargetTnModifierBreakdown,
+    type TnTargetModifierBreakdownEntry,
+    type TnTargetNumberCalculatorState,
 } from '../../models/target-number-calculator.model';
-import { inventoryTargetAllowsC3, inventoryTargetUsesC3 } from '../../utils/inventory-target-number.util';
+import { unitBuildingLevelNumber, unitWaterDepthNumber } from '../../models/unit-cover.model';
+import {
+    inventoryTargetAllowsC3,
+    inventoryTargetUsesC3,
+    resolveTargetGuidance,
+} from '../../utils/inventory-target-number.util';
 
 const JAMMED_CONDITION_COLOR = getUnitConditionDefinition('jammed')?.color ?? '#ff6be6';
+const TAGGED_CONDITION_COLOR = getUnitConditionDefinition('tagged').color;
 
 interface TargetModifierPill {
     label: string;
-    modifier: number;
+    modifier?: number;
+    accentColor?: string;
+    invalid?: boolean;
+    invalidReason?: string;
+    custom?: boolean;
 }
+
+export interface NarcCapableWeaponLayers {
+    aboveWater: boolean;
+    underwater: boolean;
+}
+
+const NO_NARC_CAPABLE_WEAPON_LAYERS: NarcCapableWeaponLayers = {
+    aboveWater: false,
+    underwater: false,
+};
 
 export interface WeaponTargetUpdateRequest {
     targetId: InventoryControlRuntimeTargetId;
@@ -122,7 +128,7 @@ export interface WeaponTargetCalculatorRequest {
                                                 <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepTnModifier(target, 1)">+</button>
                                             </span>
                                         </div>
-                                        <button class="bt-button square-small calculator-button" type="button" [disabled]="readOnly()" (click)="openTnCalculator(target.id, $event)" aria-label="Open TN calculator" title="Open TN calculator">
+                                        <button class="bt-button square primary calculator-button" type="button" [disabled]="readOnly()" (click)="openTnCalculator(target.id, $event)" aria-label="Open TN calculator" title="Open TN calculator">
                                             <svg fill="currentColor" width="16px" height="16px" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
                                             <path d="M116,184a12,12,0,0,1-12,12H84v20a12,12,0,0,1-24,0V196H40a12,12,0,0,1,0-24H60V152a12,12,0,0,1,24,0v20h20A12,12,0,0,1,116,184ZM104,60H40a12,12,0,0,0,0,24h64a12,12,0,0,0,0-24Zm48,116.06641h64a12,12,0,0,0,0-24H152a12,12,0,0,0,0,24Zm64,15.86718H152a12,12,0,0,0,0,24h64a12,12,0,0,0,0-24Zm-64.48535-87.44824a12.00033,12.00033,0,0,0,16.9707,0L184,88.9707l15.51465,15.51465a12.0001,12.0001,0,0,0,16.9707-16.9707L200.9707,72l15.51465-15.51465a12.0001,12.0001,0,0,0-16.9707-16.9707L184,55.0293,168.48535,39.51465a12.0001,12.0001,0,0,0-16.9707,16.9707L167.0293,72,151.51465,87.51465A12.00062,12.00062,0,0,0,151.51465,104.48535Z"/>
                                             </svg>
@@ -136,9 +142,14 @@ export interface WeaponTargetCalculatorRequest {
                                                 @if (modifierPills.length > 0) {
                                                     <div class="target-modifier-pills" aria-label="Assigned target modifiers">
                                                         @for (pill of modifierPills; track $index) {
-                                                            <span class="target-modifier-pill">
+                                                            <span class="target-modifier-pill" [class.guidance-pill]="pill.accentColor !== undefined" [class.invalid-guidance]="pill.invalid" [class.custom-pill]="pill.custom" [style.--target-pill-accent]="pill.accentColor ?? null" [attr.aria-label]="pill.invalid ? pill.label + ' guidance unavailable' : null" [attr.title]="pill.invalid ? pill.invalidReason : null">
                                                                 <span class="modifier-label">{{ pill.label }}</span>
-                                                                <span class="modifier-badge">{{ formatModifier(pill.modifier) }}</span>
+                                                                @if (pill.modifier !== undefined) {
+                                                                    <span class="modifier-badge">{{ formatModifier(pill.modifier) }}</span>
+                                                                }
+                                                                @if (pill.custom) {
+                                                                    <button class="custom-pill-remove" type="button" [disabled]="readOnly()" aria-label="Remove custom TN modifier" title="Remove custom TN modifier" (click)="removeCustomModifier(target.id)">×</button>
+                                                                }
                                                             </span>
                                                         }
                                                     </div>
@@ -170,9 +181,14 @@ export interface WeaponTargetCalculatorRequest {
                                     @if (modifierPills.length > 0) {
                                         <div class="target-modifier-pills target-modifier-pills-fallback" aria-label="Assigned target modifiers">
                                             @for (pill of modifierPills; track $index) {
-                                                <span class="target-modifier-pill">
+                                                <span class="target-modifier-pill" [class.guidance-pill]="pill.accentColor !== undefined" [class.invalid-guidance]="pill.invalid" [class.custom-pill]="pill.custom" [style.--target-pill-accent]="pill.accentColor ?? null" [attr.aria-label]="pill.invalid ? pill.label + ' guidance unavailable' : null" [attr.title]="pill.invalid ? pill.invalidReason : null">
                                                     <span class="modifier-label">{{ pill.label }}</span>
-                                                    <span class="modifier-badge">{{ formatModifier(pill.modifier) }}</span>
+                                                    @if (pill.modifier !== undefined) {
+                                                        <span class="modifier-badge">{{ formatModifier(pill.modifier) }}</span>
+                                                    }
+                                                    @if (pill.custom) {
+                                                        <button class="custom-pill-remove" type="button" [disabled]="readOnly()" aria-label="Remove custom TN modifier" title="Remove custom TN modifier" (click)="removeCustomModifier(target.id)">×</button>
+                                                    }
                                                 </span>
                                             }
                                         </div>
@@ -311,7 +327,7 @@ export interface WeaponTargetCalculatorRequest {
             gap: 4px;
             min-height: 24px;
             max-width: 100%;
-            padding: 0 2px 0 6px;
+            padding: 0 6px;
             border: 1px solid var(--border-color);
             background: rgba(0, 0, 0, 0.35);
             color: var(--text-color-secondary);
@@ -326,10 +342,39 @@ export interface WeaponTargetCalculatorRequest {
             text-overflow: ellipsis;
         }
 
+        .target-modifier-pill.guidance-pill {
+            border-color: var(--target-pill-accent);
+            background: color-mix(in srgb, var(--target-pill-accent) 48%, #141414);
+            color: #fff;
+            font-weight: 700;
+        }
+
+        .target-modifier-pill.guidance-pill.invalid-guidance {
+            border-color: color-mix(in srgb, var(--target-pill-accent) 55%, var(--border-color));
+            background: rgba(0, 0, 0, 0.35);
+            color: var(--text-color-secondary);
+            font-weight: 400;
+        }
+
+        .target-modifier-pill.custom-pill {
+            border-color: var(--bt-yellow, #EAAE3F);
+            background: color-mix(in srgb, var(--bt-yellow, #EAAE3F) 24%, #141414);
+            color: var(--bt-yellow, #EAAE3F);
+            font-weight: 700;
+        }
+
+        .target-modifier-pill.invalid-guidance .modifier-label {
+            color: var(--danger, red);
+            text-decoration-line: line-through;
+            text-decoration-color: red;
+            text-decoration-thickness: 2px;
+        }
+
         .target-modifier-pill .modifier-badge {
             flex: 0 0 18px;
             inline-size: 18px;
             block-size: 18px;
+            margin-right: -4px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -341,6 +386,33 @@ export interface WeaponTargetCalculatorRequest {
             font-variant-numeric: tabular-nums;
             line-height: 1;
             box-sizing: border-box;
+        }
+
+        .custom-pill-remove {
+            inline-size: 18px;
+            block-size: 18px;
+            margin: 0 -4px 0 0;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: inherit;
+            font: inherit;
+            font-size: 1rem;
+            font-weight: 800;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .custom-pill-remove:hover:not(:disabled),
+        .custom-pill-remove:focus-visible {
+            background: var(--bt-yellow, #EAAE3F);
+            color: #000;
+            outline: none;
+        }
+
+        .custom-pill-remove:disabled {
+            cursor: not-allowed;
+            opacity: 0.45;
         }
 
         .target-main-row,
@@ -636,7 +708,9 @@ export class WeaponTargetsMenuComponent {
     readonly showC3Distance = input(false);
     readonly c3Degraded = input(false);
     readonly c3DegradationLabel = input<C3DegradationLabel>('DEGRADED');
-    readonly indirectFireBaseModifier = input(1);
+    readonly gameRules = input<CBTGameRules>(CORE_2026_GAME_RULES);
+    readonly hasSemiGuidedMissiles = input(false);
+    readonly narcCapableWeaponLayers = input<NarcCapableWeaponLayers>(NO_NARC_CAPABLE_WEAPON_LAYERS);
     readonly opforAvailable = input(false);
     readonly opforEnabled = input(false);
     readonly readOnly = input(false);
@@ -705,6 +779,11 @@ export class WeaponTargetsMenuComponent {
         this.updateRequest.emit({ targetId, patch: { tnModifier: this.parseNumber(value, 0, false) }, manualTnOverride: true });
     }
 
+    removeCustomModifier(targetId: InventoryControlRuntimeTargetId): void {
+        if (this.readOnly()) return;
+        this.updateRequest.emit({ targetId, patch: { tnCalculator: { customModifier: undefined } } });
+    }
+
     stepDistance(target: InventoryControlRuntimeTarget, delta: number): void {
         if (this.readOnly()) return;
         this.updateRequest.emit({ targetId: target.id, patch: { distance: Math.max(0, target.distance + delta) } });
@@ -762,92 +841,90 @@ export class WeaponTargetsMenuComponent {
     }
 
     targetModifierPills(target: InventoryControlRuntimeTarget): TargetModifierPill[] {
+        const guidancePills = this.targetGuidancePills(target);
+        const calculator = getEffectiveInventoryControlCalculatorState(target);
+        if (!calculator) return guidancePills;
+        const breakdown = calculateTargetTnModifierBreakdown({
+            ...calculator,
+            unitType: target.unitType,
+            range: target.distance,
+        }, this.gameRules());
+        return [...guidancePills, ...this.targetBreakdownPills(breakdown, calculator)];
+    }
+
+    private targetGuidancePills(target: InventoryControlRuntimeTarget): TargetModifierPill[] {
         const calculator = target.tnCalculator;
         if (!calculator) return [];
 
+        const narcWeaponLayers = this.narcCapableWeaponLayers();
+        const guidance = resolveTargetGuidance(calculator, target.unitType, {
+            semiGuided: this.hasSemiGuidedMissiles(),
+            narcCapableAboveWater: narcWeaponLayers.aboveWater,
+            narcCapableUnderwater: narcWeaponLayers.underwater,
+        }, this.gameRules());
         const pills: TargetModifierPill[] = [];
-        const addModifier = (label: string, modifier: number): void => {
-            if (modifier !== 0) pills.push({ label, modifier });
-        };
-        const staticTarget = isStaticTargetType(target.unitType);
-        const prone = calculator.prone ?? false;
-        const immobile = calculator.immobile ?? (staticTarget && calculator.prone === undefined);
-
-        const typeModifier = getTargetUnitTypeModifier(target.unitType);
-        if (typeModifier != 0) {
-            const unitTypeLabel = TN_TARGET_UNIT_TYPE_OPTIONS.find(option => option.value === target.unitType)?.label
-                ?? target.unitType
-                ?? 'Type';
-            addModifier(unitTypeLabel, getTargetUnitTypeModifier(target.unitType));
+        if (guidance.semiGuided) {
+            pills.push({ label: 'Tagged', accentColor: TAGGED_CONDITION_COLOR });
         }
 
-        if (!staticTarget) {
-            if (calculator.isAirborne) {
-                addModifier('Airborne', getTargetAirborneModifier(true));
-            }
-
-            const movementBracket = TN_TARGET_MOVEMENT_BRACKETS.find(bracket => bracket.id === calculator.targetMovementBracket);
-            if (movementBracket) {
-                addModifier(`Moved ${movementBracket.label}`, getTargetMovementBracketModifier(movementBracket.id));
-            }
-
-            if (calculator.skidding) {
-                addModifier('Skidding', TN_SKIDDING_MODIFIER);
-            }
+        if (guidance.narcRelevant) {
+            pills.push({
+                label: 'NARC',
+                accentColor: NARC_CONDITION_COLOR,
+                ...(guidance.narc ? {} : {
+                    invalid: true,
+                    invalidReason: guidance.narcUnavailableReason === 'ecm-shielded'
+                        ? 'NARC guidance is suppressed by ECM'
+                        : 'NARC guidance is unavailable across this water layer',
+                }),
+            });
         }
-
-        if (prone && !staticTarget) {
-            addModifier('Prone', getTargetProneModifier(target.distance));
-        }
-        if (immobile) {
-            addModifier('Immobile', TN_IMMOBILE);
-        }
-
-        switch (calculator.interveningWoods) {
-            case 'light1':
-                addModifier('LoS', getInterveningWoodsModifier('light1'));
-                break;
-            case 'light2':
-                addModifier('LoS', getInterveningWoodsModifier('light2'));
-                break;
-        }
-
-        if (!isTerrainTargetType(target.unitType)) {
-            switch (calculator.targetHexCover) {
-                case 'light':
-                    addModifier('Light Wood', getTargetHexCoverModifier('light'));
-                    break;
-                case 'heavy':
-                    addModifier('Heavy Wood', getTargetHexCoverModifier('heavy'));
-                    break;
-            }
-        }
-
-        if (calculator.partialCover && !staticTarget && target.distance > ADJACENT_RANGE && !prone) {
-            addModifier('Partial Cover', TN_PARTIAL_COVER_MODIFIER);
-        }
-
-        if (calculator.secondaryTarget) {
-            addModifier('Secondary', TN_SECONDARY_TARGET_MODIFIER);
-        } else if (calculator.secondaryTargetSideBack) {
-            addModifier('Secondary (Side/Back)', TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER);
-        }
-
-        if (calculator.largeTarget) {
-            addModifier('Large', TN_LARGE_TARGET_MODIFIER);
-        }
-
-        if (calculator.indirectFire) {
-            const spotterMoveMode = calculator.spotterMoveMode ?? 'stationary';
-            const baseModifier = getIndirectFireModifier(true, 'stationary', false, this.indirectFireBaseModifier());
-            addModifier('Indirect', baseModifier);
-            addModifier(
-                'Spotter',
-                getIndirectFireModifier(true, spotterMoveMode, calculator.spotterDeclaredAttacks, this.indirectFireBaseModifier()) - baseModifier,
-            );
-        }
-
         return pills;
+    }
+
+    private targetBreakdownPills(
+        breakdown: readonly TnTargetModifierBreakdownEntry[],
+        calculator: TnTargetNumberCalculatorState,
+    ): TargetModifierPill[] {
+        const pills: TargetModifierPill[] = [];
+        let spotterModifier = 0;
+        for (const entry of breakdown) {
+            if (entry.label.startsWith('Spotter ')) {
+                spotterModifier += entry.modifier;
+                continue;
+            }
+            pills.push({
+                label: this.targetModifierPillLabel(entry, calculator),
+                modifier: entry.modifier,
+                ...(entry.label === 'Custom' && { custom: true }),
+            });
+        }
+        if (spotterModifier !== 0) pills.push({ label: 'Spotter', modifier: spotterModifier });
+        return pills;
+    }
+
+    private targetModifierPillLabel(
+        entry: TnTargetModifierBreakdownEntry,
+        calculator: TnTargetNumberCalculatorState,
+    ): string {
+        if (entry.partialCoverSource === 'water' && calculator.waterDepth) {
+            return `Depth ${unitWaterDepthNumber(calculator.waterDepth)}`;
+        }
+        if ((entry.partialCoverSource === 'building' || entry.label === 'Heavy Cover (building)')
+            && calculator.buildingCover) {
+            return `Building lv${unitBuildingLevelNumber(calculator.buildingCover)}`;
+        }
+        switch (entry.label) {
+            case 'Intervening Woods': return 'LoS';
+            case 'Light Cover': return 'Light Wood';
+            case 'Heavy Cover': return 'Heavy Wood';
+            case 'Secondary Target': return 'Secondary';
+            case 'Secondary Target (side/back)': return 'Secondary (Side/Back)';
+            case 'Large Target': return 'Large';
+            case 'Indirect Fire': return 'Indirect';
+            case 'Prone (adjacent)': return 'Prone';
+            default: return entry.label;
+        }
     }
 
     formatModifier(value: number): string {

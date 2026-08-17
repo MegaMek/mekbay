@@ -3,11 +3,18 @@
 // Author: Drake
 
 
+export const PRINT_OPTION_VALUES = {
+    recordSheetCenterPanelContent: ['fluffImage', 'clusterTable'],
+    ASPrintCardSize: ['standard', 'enlarged'],
+    printMargin: ['none', 'browserDefined'],
+} as const;
+
 export interface PrintAllOptions {
     clean: boolean;
     printPilotData: boolean;
     printRosterSummary: boolean;
-    recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
+    recordSheetCenterPanelContent: typeof PRINT_OPTION_VALUES.recordSheetCenterPanelContent[number];
     ASPrintPageBreakOnGroups: boolean;
-    printMargin: 'none' | 'browserDefined';
+    ASPrintCardSize: typeof PRINT_OPTION_VALUES.ASPrintCardSize[number];
+    printMargin: typeof PRINT_OPTION_VALUES.printMargin[number];
 }

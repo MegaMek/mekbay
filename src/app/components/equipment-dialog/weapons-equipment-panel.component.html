@@ -99,7 +99,7 @@
                                                     {{ rowTarget.target?.letter ?? '' }}
                                                 </button>
                                             } @else {
-                                                <input type="checkbox" class="bt-checkbox" [checked]="isSelected(row)" (change)="toggleSelected(row)">
+                                                <input type="checkbox" class="bt-checkbox" [checked]="isSelected(row)" [disabled]="!isSelected(row) && (row.disabled || row.destroyed)" (change)="toggleSelected(row)">
                                             }
                                         }
                                     </div>

@@ -1,0 +1,59 @@
+.careful-stand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 32px;
+    color: var(--text-color);
+    cursor: pointer;
+}
+
+.careful-stand input {
+    margin: 0;
+}
+
+.modifier-badge {
+    flex: 0 0 24px;
+    inline-size: 24px;
+    block-size: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.6);
+    color: var(--text-color);
+    font-size: 0.78em;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.attempts {
+    position: relative;
+    display: grid;
+    place-items: center;
+    margin: 0 8px 8px;
+    padding: 8px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-color-secondary);
+    text-transform: uppercase;
+    font-size: 0.72em;
+    font-weight: 700;
+}
+
+.attempts strong {
+    min-inline-size: 2ch;
+    color: var(--text-color);
+    font-size: 2.8em;
+    line-height: 1;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.attempts-stepper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}

@@ -182,7 +182,8 @@ export class TaggingService {
                             title: tagType === 'chassis' ? 'Add New Tag to all variants' : 'Add New Tag to Unit',
                             inputType: 'text',
                             defaultValue: '',
-                            placeholder: 'Enter tag...'
+                            placeholder: 'Enter tag...',            
+                            centerInput: true,
                         } as InputDialogData
                     });
     

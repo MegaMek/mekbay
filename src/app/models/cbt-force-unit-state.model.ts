@@ -68,6 +68,7 @@ export class CBTForceUnitState extends ForceUnitState {
             };
         }
         this.locations.set(updated);
+        this.unit.applyUnderwaterBreachAndFlooding(true);
         this.unit.clearNarcFromCommittedPhysicallyDestroyedLocations();
         this.unit.evaluateDestroyed();
         this.unit.setModified();
@@ -144,10 +145,13 @@ export class CBTForceUnitState extends ForceUnitState {
     }
 
     endPhase() {
+        const turnState = this.turnState();
+        if (turnState.autoFall() && !this.hasCondition('prone')) {
+            this.unit.setCondition('prone', true);
+        }
         this.consolidateLocations();
         this.consolidateCrits();
         this.consolidateInventory();
-        const turnState = this.turnState();
         turnState.resetPSRChecks();
         turnState.commitEquipmentStateChanges();
     }

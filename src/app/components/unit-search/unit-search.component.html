@@ -322,10 +322,6 @@
                 <div class="as-td cbt-td-bv">{{ formatClassicBv(unit, gunnery, piloting) }}</div>
             </ng-template>
 
-            <ng-template #tableTonsCell let-unit>
-                <div class="as-td cbt-td-tons">{{ formatTons(unit.tons) }}</div>
-            </ng-template>
-
             <ng-template #tableTypeCell let-unit>
                 <div class="as-td as-td-type" [tooltip]="unitTypeDisplayNames[unit.as.TP]">{{ unit.as.TP }}</div>
             </ng-template>

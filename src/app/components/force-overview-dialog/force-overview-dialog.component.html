@@ -110,7 +110,7 @@
             id="force-groups"
             [class.compact]="viewMode() === 'compact'" 
             [class.single-group]="hasSingleGroup()" 
-            [class.as-table-mode]="isTableMode()"
+            [class.table-mode]="isTableMode()"
             cdkDropList 
             [cdkDropListData]="groups()" 
             cdkDropListOrientation="vertical"
@@ -118,7 +118,7 @@
             [cdkDropListDisabled]="!canDragDrop()"
             (cdkDropListDropped)="dropGroup($event)">
             @if (isTableMode()) {
-                <mb-data-table class="force-as-table"
+                <mb-data-table class="force-unit-table"
                     [rows]="forceTableRows()"
                     [columns]="forceTableColumns()"
                     [itemSize]="48"
@@ -190,18 +190,28 @@
                     }
                 </ng-template>
 
+                <ng-template #tableValueCell let-row>
+                    @if (row.kind === 'unit') {
+                    <div class="as-td table-value-cell">{{ displayedUnitBvPv(row.vm.forceUnit) }}</div>
+                    }
+                </ng-template>
+
                 <ng-template #tableSkillCell let-row>
                     @if (row.kind === 'unit') {
                     <button type="button" class="as-td as-td-skill clickable"
                         (click)="onPilotClick(row.vm.forceUnit); $event.stopPropagation()"
                         [attr.aria-label]="isAlphaStrike() ? 'Edit pilot' : 'Edit crew'"
-                        [title]="isAlphaStrike() ? 'Edit pilot' : 'Edit crew'">{{ getPilotSkill(row.vm) }}</button>
+                        [title]="isAlphaStrike() ? 'Edit pilot' : 'Edit crew'">{{ getPilotStats(row.vm) }}</button>
                     }
                 </ng-template>
 
                 <ng-template #tableMovementCell let-row>
                     @if (row.kind === 'unit') {
-                    <div class="as-td as-td-mv" [innerHTML]="formatASMovement(row.vm.unit)"></div>
+                        @if (isAlphaStrike()) {
+                        <div class="as-td as-td-mv" [innerHTML]="formatASMovement(row.vm.unit)"></div>
+                        } @else {
+                        <div class="as-td cbt-td-mv">{{ formatClassicMovement(row.vm.unit) }}</div>
+                        }
                     }
                 </ng-template>
 
@@ -323,7 +333,7 @@
 </div>
 
 <div class="dialog-footer">
-    @if (!isSummaryTab()) {
+    @if (isUnitsTab()) {
         <div class="sort-controls">
             <select class="bt-input sort-select"
                 (change)="setSortOrder($any($event.target).value)">
@@ -378,7 +388,7 @@
                 </svg>
             }
         </button>
+        <div class="spanner"></div>
     }
-    <div class="spanner"></div>
     <button class="modal-btn bt-button" (click)="close()">DISMISS</button>
 </div>

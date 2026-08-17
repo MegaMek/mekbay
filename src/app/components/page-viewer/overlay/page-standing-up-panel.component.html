@@ -1,0 +1,82 @@
+<div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
+    <div class="header">Standing Up</div>
+    <div class="psr-target">
+        <span>Target roll</span>
+        <strong>{{ targetRoll() }}</strong>
+    </div>
+    <div class="body">
+        <div class="attempts">
+            <span>Attempts</span>
+            <div class="attempts-stepper">
+                <button type="button" class="bt-button square-small" [disabled]="attempts() === 0"
+                    aria-label="Decrease stand attempts" title="Decrease stand attempts" (click)="adjustAttempts(-1)">-</button>
+                <strong>{{ attempts() }}</strong>
+                <button type="button" class="bt-button square-small"
+                    aria-label="Increase stand attempts" title="Increase stand attempts" (click)="adjustAttempts(1)">+</button>
+            </div>
+        </div>
+        <div class="psr-list">
+            <div class="psr-item" [class.resolved]="lastOutcome() === 'success'"
+                [class.failed]="lastOutcome() === 'failed'">
+                <div class="psr-check-header">
+                    <div class="psr-item-content">
+                        <div class="psr-reason">Stand up!</div>
+                        <div class="psr-subtitle">Failure: <span class="psr-failure-value">Remain prone</span></div>
+                    </div>
+                    @if (lastOutcome(); as result) {
+                        <div class="psr-result" [class.failed]="result === 'failed'">{{ result }}</div>
+                    }
+                </div>
+                @if (lastOutcome() !== 'success') {
+                    <div class="psr-resolution-actions">
+                        <button type="button" class="random-button" [disabled]="diceRoller()?.isRolling()"
+                            aria-label="Roll 2d6 for standing up" title="Roll 2d6 for standing up"
+                            (click)="roll()"></button>
+                        <button class="bt-button success" type="button" (click)="resolve('success')">SUCCESS</button>
+                        <button class="bt-button danger" type="button" (click)="resolve('failed')">FAILURE</button>
+                    </div>
+                }
+            </div>
+        </div>
+        <label class="careful-stand">
+            <input type="checkbox" class="bt-checkbox" [checked]="carefulStand()" (change)="setCarefulStand($event)">
+            <span>Careful stand (optional)</span>
+            <span class="modifier-badge">-2</span>
+        </label>
+        @if (modifiersList().length > 0) {
+            <div class="roll-details">
+                <div class="roll-details-label">Modifiers</div>
+                <div class="modifiers">
+                    @for (modifier of modifiersList(); track $index) {
+                        <div class="modifier-item">
+                            <span class="modifier-location">
+                                @if (modifier.loc) { {{ modifier.loc }} } @else { &mdash; }
+                            </span>
+                            <span class="modifier-reason">{{ modifier.reason }}</span>
+                            <strong class="modifier-value" [class.bonus]="modifier.pilotCheck < 0">
+                                {{ modifier.pilotCheck >= 0 ? '+' : '' }}{{ modifier.pilotCheck }}
+                            </strong>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+    <div class="actions">
+        <button class="bt-button" type="button" (click)="close()">DISMISS</button>
+    </div>
+</div>
+
+<dice-roller
+    #roller
+    [diceCount]="2"
+    [diceSides]="6"
+    [showInline]="false"
+    [showOverlay]="true"
+    [reserveOverlayResultSpace]="true"
+    [compactOverlayResult]="true"
+    [overlayResult]="rolledResult()"
+    [overlayResultTone]="rolledResultTone()"
+    overlayCloseHint="Click to return to standing up"
+    (finished)="onRollFinished($event)"
+/>

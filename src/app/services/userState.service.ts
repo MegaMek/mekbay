@@ -7,6 +7,7 @@ import { DbService, type UserData } from './db.service';
 import { LoggerService } from './logger.service';
 import type { AvailableAuthProvider, LinkedOAuthProvider, UserStateSnapshot } from '../models/account-auth.model';
 import { uuidv4 } from '../utils/uuid.util';
+import { normalizeDisplayName } from '../utils/display-name.util';
 
 
 @Injectable({ providedIn: 'root' })
@@ -19,6 +20,7 @@ export class UserStateService {
     private readonly initPromise: Promise<void>;
     public uuid = computed<string>(() => this.userData().uuid);
     public publicId = computed<string | undefined>(() => this.userData().publicId);
+    public displayName = computed<string | undefined>(() => this.userData().displayName);
     public hasOAuth = computed<boolean>(() => this.userData().hasOAuth ?? ((this.userData().oauthProviders?.length ?? 0) > 0));
     public oauthProviderCount = computed<number>(() => this.userData().oauthProviderCount ?? (this.userData().oauthProviders?.length ?? 0));
     public oauthProviders = computed<LinkedOAuthProvider[]>(() => this.userData().oauthProviders || []);
@@ -34,6 +36,9 @@ export class UserStateService {
         const nextData: UserData = { uuid };
         if (current.tabSubs) {
             nextData.tabSubs = [...current.tabSubs];
+        }
+        if (current.displayName) {
+            nextData.displayName = current.displayName;
         }
         return nextData;
     }
@@ -99,6 +104,15 @@ export class UserStateService {
         this.logger.info(`User publicId updated: ${publicId}`);
     }
 
+    public async setDisplayName(value: string): Promise<void> {
+        const displayName = normalizeDisplayName(value);
+        if (!displayName) {
+            throw new Error('Display name must be 1 to 16 characters.');
+        }
+        if (this.userData().displayName === displayName) return;
+        await this.persistUserData({ ...this.userData(), displayName });
+    }
+
     public async dismissAccountProtectionPrompt(): Promise<void> {
         if (this.accountProtectionPromptDismissed()) {
             return;
@@ -119,6 +133,11 @@ export class UserStateService {
             } else {
                 delete nextUserData.publicId;
             }
+        }
+
+        const displayName = normalizeDisplayName(snapshot.displayName);
+        if (displayName) {
+            nextUserData.displayName = displayName;
         }
 
         if ('hasOAuth' in snapshot) {

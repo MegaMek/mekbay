@@ -9,6 +9,7 @@ import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import type { C3NetworkType } from './c3-network.model';
 import type { MotiveModes } from './motiveModes.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
+import { deserializeUnitCover, serializeUnitCover, type SerializedUnitCover } from './unit-cover.model';
 
 export const FORCE_NOTE_MAX_LENGTH = 2000;
 export const FORCE_TAG_MAX_LENGTH = 48;
@@ -82,6 +83,8 @@ export interface SerializedTurnState {
     airborne?: boolean;
     moveMode?: MotiveModes;
     moveDistance?: number;
+    standAttempts?: number;
+    cover?: SerializedUnitCover;
     dmgReceived?: number;
     weaponsHeat?: number;
     acknowledgedHeatSources?: Record<string, string>;
@@ -437,6 +440,8 @@ export const TURN_STATE_SCHEMA = Sanitizer.schema<SerializedTurnState>()
     .custom('airborne', (value: unknown) => typeof value === 'boolean' ? value : undefined)
     .custom('moveMode', (value: unknown) => MOTIVE_MODE_VALUES.includes(value as MotiveModes) ? value as MotiveModes : undefined)
     .custom('moveDistance', sanitizeOptionalNonNegativeNumber)
+    .custom('standAttempts', sanitizeOptionalNonNegativeNumber)
+    .custom('cover', sanitizeOptionalCover)
     .custom('dmgReceived', sanitizeOptionalNonNegativeNumber)
     .custom('weaponsHeat', sanitizeOptionalNonNegativeNumber)
     .custom('acknowledgedHeatSources', sanitizeStringRecord)
@@ -518,6 +523,11 @@ function sanitizeOptionalNonNegativeNumber(value: unknown): number | undefined {
     if (value === undefined || value === null || value === '') return undefined;
     const parsed = typeof value === 'number' ? value : Number(value);
     return Number.isFinite(parsed) ? Math.max(0, parsed) : undefined;
+}
+
+function sanitizeOptionalCover(value: unknown): SerializedUnitCover | undefined {
+    const cover = deserializeUnitCover(value);
+    return cover === undefined ? undefined : serializeUnitCover(cover);
 }
 
 function sanitizeNumberRecord(value: unknown): Record<string, number> | undefined {

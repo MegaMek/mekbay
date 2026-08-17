@@ -28,7 +28,7 @@ export abstract class CycleModeHandler extends EquipmentInteractionHandler {
         }
         
         context.toastService.showToast(
-            `${equipment.equipment?.name||equipment.name} changed ${this.modeLabel.toLowerCase()}: ${choice.label}`,
+            `${equipment.getDisplayName()} changed ${this.modeLabel.toLowerCase()}: ${choice.label}`,
             choice.tooltipType || 'info'
         );
         return true;

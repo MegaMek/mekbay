@@ -222,7 +222,7 @@
     padding: 4px 2px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
 
     .force-view:not(.dragging) & {
         touch-action: pan-y !important;

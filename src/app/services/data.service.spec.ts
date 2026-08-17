@@ -536,6 +536,39 @@ describe('DataService', () => {
         expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(cloudRawForce as any);
     });
 
+    it('loads a remote force without touching local storage when requested', async () => {
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({
+            data: {
+                version: 1,
+                instanceId: 'remote-force',
+                timestamp: '2026-04-05T00:00:00Z',
+                type: GameSystem.CLASSIC,
+                name: 'Remote Force',
+                owned: false,
+                groups: [],
+            },
+        });
+        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
+
+        service.isCloudForceLoading.set(false);
+        const force = await service.getForce('remote-force', false, {
+            skipLocal: true,
+            showLoading: false,
+        });
+
+        expect(force?.name).toBe('Remote Force');
+        expect(force?.owned()).toBeFalse();
+        expect(dbServiceMock.getForce).not.toHaveBeenCalled();
+        expect(dbServiceMock.saveForce).not.toHaveBeenCalled();
+        expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
+            action: 'getForce',
+            instanceId: 'remote-force',
+            ownedOnly: false,
+        });
+        expect(JSON.stringify(wsServiceMock.sendAndWaitForResponse.calls.allArgs())).not.toContain('uuid');
+        expect(service.isCloudForceLoading()).toBeFalse();
+    });
+
     it('flushes reconnect cloud saves immediately and waits for acknowledgement', async () => {
         const serializedForce = {
             version: 1,

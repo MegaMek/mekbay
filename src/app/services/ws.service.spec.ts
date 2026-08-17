@@ -70,6 +70,24 @@ describe('WsService', () => {
         expect(getPhase(service)).toBe('hidden');
     });
 
+    it('applies the display name returned in registration user state', () => {
+        const service = TestBed.inject(WsService);
+
+        (service as any).handleMessage({
+            data: JSON.stringify({
+                action: 'userState',
+                publicId: 'public-1',
+                displayName: 'Specter',
+                hasOAuth: false,
+                oauthProviderCount: 0,
+            }),
+        } as MessageEvent);
+
+        expect(userStateService.applyServerState).toHaveBeenCalledWith(
+            jasmine.objectContaining({ publicId: 'public-1', displayName: 'Specter' }),
+        );
+    });
+
     it('shows back online after reconnecting and keeps future failures visible', () => {
         const service = TestBed.inject(WsService);
         const scheduledCallbacks: Array<() => void> = [];
@@ -256,6 +274,46 @@ describe('WsService', () => {
         (service as any).recoverConnection(true);
 
         expect(connectSpy).toHaveBeenCalled();
+    });
+
+    it('does not globally report an error owned by a pending request', async () => {
+        const service = TestBed.inject(WsService);
+        const socket = createSocketMock();
+        const globalErrorHandler = jasmine.createSpy('globalErrorHandler');
+        (service as any).ws = socket;
+        service.setGlobalErrorHandler(globalErrorHandler);
+
+        const responsePromise = service.sendAndWaitForResponse(
+            { action: 'joinLobby' },
+            { suppressGlobalError: true },
+        );
+        const request = sentMessages(socket)[0];
+        const event = {
+            data: JSON.stringify({
+                action: 'error',
+                requestId: request.requestId,
+                message: 'Lobby not found',
+            }),
+        } as MessageEvent;
+
+        (service as any).handleMessage(event);
+        const requestHandler = socket.addEventListener.calls.mostRecent().args[1] as (event: MessageEvent) => void;
+        requestHandler(event);
+
+        expect((await responsePromise).message).toBe('Lobby not found');
+        expect(globalErrorHandler).not.toHaveBeenCalled();
+    });
+
+    it('continues to globally report unsolicited server errors', () => {
+        const service = TestBed.inject(WsService);
+        const globalErrorHandler = jasmine.createSpy('globalErrorHandler');
+        service.setGlobalErrorHandler(globalErrorHandler);
+
+        (service as any).handleMessage({
+            data: JSON.stringify({ action: 'error', message: 'Server error' }),
+        } as MessageEvent);
+
+        expect(globalErrorHandler).toHaveBeenCalledOnceWith('Server error');
     });
 });
 

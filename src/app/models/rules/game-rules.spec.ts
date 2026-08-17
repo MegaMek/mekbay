@@ -5,8 +5,16 @@
 import { EquipmentFlag } from '../equipment-flags.type';
 import { EquipmentRegistry } from '../equipment-lookup';
 import { AmmoEquipment, MiscEquipment, WeaponEquipment, type Equipment } from '../equipment.model';
-import { MountedEquipment } from '../mounted-equipment.model';
-import { CORE_2026_GAME_RULES, TW_GAME_RULES, separateHeatFireModifier } from './game-rules';
+import { MountedEquipment, MountedWeapon } from '../mounted-equipment.model';
+import type { WeaponType } from '../weapon-types.model';
+import {
+    CORE_2026_GAME_RULES,
+    ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+    ESCALATING_FAILURE_NO_CHECK_TARGET,
+    TW_GAME_RULES,
+    separateHeatFireModifier,
+    type MekImmediateCriticalExplosionContext,
+} from './game-rules';
 
 let entryId = 0;
 
@@ -44,6 +52,31 @@ function mountedWeapon(toHitModifier: number | number[], linkedWith: MountedEqui
 
 function physicalAttack(name: string): MountedEquipment {
     return new MountedEquipment({ owner: owner(), id: name, name, intrinsicPhysicalAttack: true });
+}
+
+function criticalExplosionContext(
+    hitEntry: MountedEquipment,
+    options: {
+        readonly types?: readonly WeaponType[];
+        readonly remainingAmmoDamage?: number;
+        readonly remainingAmmoShots?: number;
+        readonly mountedCriticalSlots?: number;
+        readonly componentCriticalHits?: number;
+        readonly operational?: boolean;
+        readonly usableAmmo?: boolean;
+    } = {},
+): MekImmediateCriticalExplosionContext {
+    return {
+        hitEntry,
+        hitEquipment: hitEntry.equipment ?? null,
+        remainingAmmoDamage: options.remainingAmmoDamage ?? 0,
+        remainingAmmoShots: options.remainingAmmoShots ?? 0,
+        mountedCriticalSlots: options.mountedCriticalSlots ?? 1,
+        previousComponentCriticalHits: options.componentCriticalHits ?? 0,
+        explosiveWeapon: options.types?.includes('X') === true,
+        parentOperational: options.operational !== false,
+        hasUsableAmmo: options.usableAmmo !== false,
+    };
 }
 
 function tagBvContext(options: {
@@ -267,6 +300,46 @@ function coreTagBvContext(options: {
 }
 
 describe('game rules', () => {
+    describe('escalating failure targets', () => {
+        it('uses the standardized numeric Core sequence for every checked component', () => {
+            const standard = [3, 5, 7, 10, 11] as const;
+
+            expect(CORE_2026_GAME_RULES.escalatingFailureTargets).toEqual(standard);
+            expect(CORE_2026_GAME_RULES.radicalHeatSinkFailureTargets).toEqual(standard);
+            expect(CORE_2026_GAME_RULES.emergencyCoolantSystemFailureTargets).toEqual(standard);
+            expect(CORE_2026_GAME_RULES.viralJammerFailureTargets).toEqual(standard);
+            expect(CORE_2026_GAME_RULES.blueShieldFailureTargets).toEqual([
+                ESCALATING_FAILURE_NO_CHECK_TARGET,
+                ESCALATING_FAILURE_NO_CHECK_TARGET,
+                ESCALATING_FAILURE_NO_CHECK_TARGET,
+                ESCALATING_FAILURE_NO_CHECK_TARGET,
+                ESCALATING_FAILURE_NO_CHECK_TARGET,
+                ...standard,
+            ]);
+        });
+
+        it('preserves numeric legacy TW component sequences', () => {
+            expect(TW_GAME_RULES.escalatingFailureTargets).toEqual([
+                3, 5, 7, 11, ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+            ]);
+            expect(TW_GAME_RULES.radicalHeatSinkFailureTargets).toEqual([
+                3, 5, 7, 10, 11, ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+            ]);
+            expect(TW_GAME_RULES.blueShieldFailureTargets).toEqual([
+                0, 0, 0, 0, 0, 0,
+                3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+            ]);
+            expect(TW_GAME_RULES.emergencyCoolantSystemFailureTargets).toEqual([
+                3, 5, 7, 10, ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+            ]);
+            expect(TW_GAME_RULES.viralJammerFailureTargets).toEqual([
+                4, 5, 6, 7, 8, 9, 10, 11, 12,
+                ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+            ]);
+        });
+    });
+
     describe('C3 degradation', () => {
         const target = {
             id: 'A', letter: 'A', name: 'Target', color: '#000',
@@ -305,23 +378,75 @@ describe('game rules', () => {
         });
     });
 
-    it('reduces Core 2026 MRM hit modifiers without changing TW values', () => {
-        const mrm = new WeaponEquipment({
-            id: 'MRM10', name: 'MRM 10', type: 'weapon',
-            stats: { toHitModifier: [-1, 0, 1] },
-            flags: ['F_MRM'],
-            weapon: { ammoType: 'MRM' }
+    describe('indirect-fire ammunition legality', () => {
+        const dryContext = { weaponUnderwater: false, targetHasUnderwaterLayer: false } as const;
+        const underwaterContext = { weaponUnderwater: true, targetHasUnderwaterLayer: true } as const;
+        const launcher = (ammoType: 'LRM' | 'MML', indirect = true) => new MountedEquipment({
+            owner: owner(),
+            id: `indirect-${entryId++}`,
+            name: 'Launcher',
+            equipment: new WeaponEquipment({
+                id: `Launcher-${entryId++}`,
+                name: 'Launcher',
+                type: 'weapon',
+                flags: indirect ? ['F_INDIRECT_FIRE'] : [],
+                weapon: { ammoType, rackSize: ammoType === 'MML' ? 9 : 10 },
+            }),
+        });
+        const ammunition = (
+            id: string,
+            ammoType: 'LRM' | 'MML',
+            flags: EquipmentFlag[] = [],
+            torpedo = false,
+        ) => new AmmoEquipment({
+            id,
+            name: id,
+            shortName: id,
+            type: 'ammo',
+            flags,
+            ammo: {
+                type: ammoType,
+                rackSize: ammoType === 'MML' ? 9 : 10,
+                shots: 12,
+                munitionType: torpedo ? ['M_TORPEDO'] : [],
+            },
         });
 
-        expect(CORE_2026_GAME_RULES.resolveToHit({ subject: mrm }).profile).toEqual([-2, -1, 0]);
-        expect(CORE_2026_GAME_RULES.resolveToHit({ subject: mrm, range: 'medium' }).value).toBe(-1);
-        expect(TW_GAME_RULES.resolveToHit({ subject: mrm }).profile).toEqual([-1, 0, 1]);
+        it('requires an indirect launcher and the LRM profile for MML ammunition', () => {
+            const standardLrm = ammunition('LRM Ammo', 'LRM');
+            const mmlLrm = ammunition('MML LRM Ammo', 'MML', ['F_MML_LRM']);
+            const mmlSrm = ammunition('MML SRM Ammo', 'MML', ['F_MML_SRM']);
+
+            expect(CORE_2026_GAME_RULES.canFireIndirectly(launcher('LRM', false), standardLrm, dryContext)).toBeFalse();
+            expect(CORE_2026_GAME_RULES.canFireIndirectly(launcher('LRM'), standardLrm, dryContext)).toBeTrue();
+            expect(CORE_2026_GAME_RULES.canFireIndirectly(launcher('MML'), mmlLrm, dryContext)).toBeTrue();
+            expect(CORE_2026_GAME_RULES.canFireIndirectly(launcher('MML'), mmlSrm, dryContext)).toBeFalse();
+            expect(TW_GAME_RULES.canFireIndirectly(launcher('MML'), mmlLrm, dryContext)).toBeTrue();
+            expect(TW_GAME_RULES.canFireIndirectly(launcher('MML'), mmlSrm, dryContext)).toBeFalse();
+        });
+
+        it('forbids Core torpedo indirect fire and requires both TW endpoints underwater', () => {
+            const lrm = launcher('LRM');
+            const torpedo = ammunition('LRM Torpedo Ammo', 'LRM', [], true);
+
+            expect(CORE_2026_GAME_RULES.canFireIndirectly(lrm, torpedo, underwaterContext)).toBeFalse();
+            expect(TW_GAME_RULES.canFireIndirectly(lrm, torpedo, dryContext)).toBeFalse();
+            expect(TW_GAME_RULES.canFireIndirectly(lrm, torpedo, {
+                weaponUnderwater: true,
+                targetHasUnderwaterLayer: false,
+            })).toBeFalse();
+            expect(TW_GAME_RULES.canFireIndirectly(lrm, torpedo, {
+                weaponUnderwater: false,
+                targetHasUnderwaterLayer: true,
+            })).toBeFalse();
+            expect(TW_GAME_RULES.canFireIndirectly(lrm, torpedo, underwaterContext)).toBeTrue();
+        });
     });
 
-    it('resolves the catalog MRM +1 modifier as zero in Core 2026 and one in TW', () => {
+    it('resolves the Core 2026 MRM modifier as zero in Core 2026 and one in TW', () => {
         const mrm = new WeaponEquipment({
             id: 'MRM10', name: 'MRM 10', type: 'weapon',
-            stats: { toHitModifier: 1 },
+            stats: { toHitModifier: 0 },
             flags: ['F_MRM'],
             weapon: { ammoType: 'MRM' }
         });
@@ -485,14 +610,14 @@ describe('game rules', () => {
         });
     });
 
-    it('sets Core 2026 claw and lance hit modifiers to zero without changing TW values', () => {
+    it('keeps the Core 2026 claw hit modifier at zero and adds one under TW', () => {
         const claw = new WeaponEquipment({
             id: 'BattleClaw', name: 'Battle Claw', type: 'weapon',
-            flags: ['S_CLAW'], stats: { toHitModifier: -2 }
+            flags: ['S_CLAW'], stats: { toHitModifier: 0 }
         });
 
         expect(CORE_2026_GAME_RULES.resolveToHit({ subject: claw }).profile).toEqual([0]);
-        expect(TW_GAME_RULES.resolveToHit({ subject: claw }).profile).toEqual([-2]);
+        expect(TW_GAME_RULES.resolveToHit({ subject: claw }).profile).toEqual([1]);
     });
 
     it('resolves scalar and range-specific mounted weapon hit modifiers', () => {
@@ -691,5 +816,310 @@ describe('game rules', () => {
             subject: mountedWeapon(-2),
             adjustments: [{ kind: 'unsupported' }]
         }).value).toBeNull();
+    });
+});
+
+describe('Mek explosion rules', () => {
+    it('uses effective X as the sole weapon explosion eligibility gate', () => {
+        const equipment = new WeaponEquipment({
+            id: 'ExplosiveWeapon',
+            name: 'Explosive weapon',
+            type: 'weapon',
+            stats: { explosive: true, criticalSlots: 4 },
+            weapon: { explosionDamage: 15 },
+        });
+        const entry = new MountedWeapon({
+            owner: owner(), id: 'explosive-weapon', name: equipment.name, equipment,
+        });
+
+        expect(CORE_2026_GAME_RULES.getMekImmediateCriticalExplosion(
+            criticalExplosionContext(entry, { mountedCriticalSlots: 4 }),
+        )).toBeNull();
+        expect(TW_GAME_RULES.getMekImmediateCriticalExplosion(
+            criticalExplosionContext(entry, { mountedCriticalSlots: 4 }),
+        )).toBeNull();
+
+        expect(CORE_2026_GAME_RULES.getMekImmediateCriticalExplosion(
+            criticalExplosionContext(entry, { types: ['X'], mountedCriticalSlots: 4 }),
+        )).toEqual(jasmine.objectContaining({ rawDamage: 8 }));
+        expect(TW_GAME_RULES.getMekImmediateCriticalExplosion(
+            criticalExplosionContext(entry, { types: ['X'], mountedCriticalSlots: 4 }),
+        )).toEqual(jasmine.objectContaining({ rawDamage: 15 }));
+    });
+
+    it('requires the explosive flag for miscellaneous equipment', () => {
+        const explosive = new MountedEquipment({
+            owner: owner(),
+            id: 'explosive-misc',
+            name: 'Explosive misc',
+            equipment: new MiscEquipment({
+                id: 'ExplosiveMisc', name: 'Explosive misc', type: 'misc',
+                stats: { explosive: true },
+            }),
+        });
+        const inert = new MountedEquipment({
+            owner: owner(),
+            id: 'inert-misc',
+            name: 'Inert misc',
+            equipment: new MiscEquipment({
+                id: 'InertMisc', name: 'Inert misc', type: 'misc',
+                stats: { explosive: false },
+            }),
+        });
+
+        expect(CORE_2026_GAME_RULES.getMekImmediateCriticalExplosion(
+            criticalExplosionContext(explosive, { mountedCriticalSlots: 3 }),
+        )).toEqual(jasmine.objectContaining({ rawDamage: 6 }));
+        expect(CORE_2026_GAME_RULES.getMekImmediateCriticalExplosion(
+            criticalExplosionContext(inert, { mountedCriticalSlots: 3 }),
+        )).toBeNull();
+    });
+
+    it('resolves stateful and fixed-damage miscellaneous explosions', () => {
+        const blueShield = new MountedEquipment({
+            owner: owner(),
+            id: 'blue-shield',
+            name: 'Blue Shield',
+            states: new Map([['blueShieldUsedThisTurn', 'true']]),
+            equipment: new MiscEquipment({
+                id: 'BlueShield', name: 'Blue Shield', type: 'misc',
+                flags: ['F_BLUE_SHIELD'], stats: { explosive: true },
+            }),
+        });
+        expect(CORE_2026_GAME_RULES.getMekImmediateCriticalExplosion(
+            criticalExplosionContext(blueShield),
+        )).toEqual(jasmine.objectContaining({ rawDamage: 5 }));
+        blueShield.states.delete('blueShieldUsedThisTurn');
+        expect(CORE_2026_GAME_RULES.getMekImmediateCriticalExplosion(
+            criticalExplosionContext(blueShield),
+        )).toBeNull();
+
+        for (const [flags, expectedDamage] of [
+            [['F_JUMP_JET', 'S_IMPROVED', 'S_PROTOTYPE'], 10],
+            [['F_EMERGENCY_COOLANT_SYSTEM'], 5],
+            [['F_FUEL'], 20],
+        ] as const) {
+            const equipment = new MiscEquipment({
+                id: flags[0], name: flags[0], type: 'misc',
+                flags: [...flags], stats: { explosive: true },
+            });
+            const entry = new MountedEquipment({
+                owner: owner(), id: flags[0], name: flags[0], equipment,
+            });
+            expect(TW_GAME_RULES.getMekImmediateCriticalExplosion(criticalExplosionContext(entry)))
+                .withContext(flags.join(' + '))
+                .toEqual(jasmine.objectContaining({ rawDamage: expectedDamage }));
+        }
+    });
+
+    it('replaces the RISC pulse-module follow-up check with its linked laser critical', () => {
+        const laserEquipment = new WeaponEquipment({
+            id: 'MediumLaser', name: 'Medium Laser', type: 'weapon',
+            flags: ['F_ENERGY', 'F_LASER'],
+        });
+        const laser = new MountedWeapon({
+            owner: owner(), id: 'laser', name: laserEquipment.name, equipment: laserEquipment,
+        });
+        const module = new MountedEquipment({
+            owner: laser.owner,
+            id: 'pulse-module',
+            name: 'RISC Laser Pulse Module',
+            parent: laser,
+            equipment: new MiscEquipment({
+                id: 'RISCLaserPulseModule', name: 'RISC Laser Pulse Module', type: 'misc',
+                flags: ['F_WEAPON_ENHANCEMENT', 'F_RISC_LASER_PULSE_MODULE'],
+                stats: { explosive: true },
+            }),
+        });
+
+        expect(TW_GAME_RULES.getMekImmediateCriticalExplosion(criticalExplosionContext(module)))
+            .toEqual(jasmine.objectContaining({ rawDamage: 2, automaticCriticalEntry: laser }));
+        expect(TW_GAME_RULES.getMekImmediateCriticalExplosion(
+            criticalExplosionContext(module, { operational: false }),
+        )).toBeNull();
+    });
+
+    it('explodes only unused coolant pods using the active ruleset damage', () => {
+        const equipment = new AmmoEquipment({
+            id: 'CoolantPod', name: 'Coolant Pod', type: 'ammo',
+            ammo: { type: 'COOLANT_POD', shots: 1 },
+        });
+        const entry = new MountedEquipment({
+            owner: owner(), id: 'coolant-pod', name: equipment.name, equipment,
+        });
+
+        expect(CORE_2026_GAME_RULES.getMekImmediateCriticalExplosion(
+            criticalExplosionContext(entry, { remainingAmmoShots: 1 }),
+        )).toEqual(jasmine.objectContaining({ rawDamage: 2 }));
+        expect(TW_GAME_RULES.getMekImmediateCriticalExplosion(
+            criticalExplosionContext(entry, { remainingAmmoShots: 1 }),
+        )).toEqual(jasmine.objectContaining({ rawDamage: 10 }));
+        expect(CORE_2026_GAME_RULES.getMekImmediateCriticalExplosion(
+            criticalExplosionContext(entry),
+        )).toBeNull();
+    });
+
+    it('uses mounted critical slots and the Core 20-point cap', () => {
+        const weapon = mountedWeapon(0).equipment as WeaponEquipment;
+
+        expect(CORE_2026_GAME_RULES.getExplosiveWeaponDamage(weapon, 4)).toBe(8);
+        expect(CORE_2026_GAME_RULES.resolveMekExplosionDamage({
+            damage: 100,
+            protection: 'none',
+            remainingInternal: 12,
+            remainingArmor: 8,
+            originalArmor: 8,
+            torso: true,
+        })).toEqual({
+            internalDamage: 20,
+            armorDamage: 0,
+            armorRear: true,
+            stopsTransfer: false,
+        });
+    });
+
+    it('applies the Core armor blowout only when the standard cap is exceeded', () => {
+        expect(CORE_2026_GAME_RULES.resolveMekExplosionDamage({
+            damage: 20,
+            protection: 'none',
+            remainingInternal: 25,
+            remainingArmor: 8,
+            originalArmor: 8,
+            torso: true,
+        })).toEqual({
+            internalDamage: 20,
+            armorDamage: 0,
+            armorRear: true,
+            stopsTransfer: false,
+        });
+        expect(CORE_2026_GAME_RULES.resolveMekExplosionDamage({
+            damage: 21,
+            protection: 'none',
+            remainingInternal: 25,
+            remainingArmor: 8,
+            originalArmor: 8,
+            torso: true,
+        })).toEqual({
+            internalDamage: 20,
+            armorDamage: 8,
+            armorRear: true,
+            stopsTransfer: false,
+        });
+        expect(CORE_2026_GAME_RULES.resolveMekExplosionDamage({
+            damage: 8,
+            protection: 'none',
+            remainingInternal: 31,
+            remainingArmor: 12,
+            originalArmor: 12,
+            torso: true,
+            armorBlowoutPending: true,
+        })).toEqual({
+            internalDamage: 8,
+            armorDamage: 12,
+            armorRear: true,
+            stopsTransfer: false,
+        });
+    });
+
+    it('applies Core CASE and CASE II caps and armor blowout', () => {
+        expect(CORE_2026_GAME_RULES.resolveMekExplosionDamage({
+            damage: 100,
+            protection: 'case',
+            remainingInternal: 12,
+            remainingArmor: 8,
+            originalArmor: 8,
+            torso: true,
+        })).toEqual({
+            internalDamage: 10,
+            armorDamage: 8,
+            armorRear: true,
+            stopsTransfer: true,
+        });
+        expect(CORE_2026_GAME_RULES.resolveMekExplosionDamage({
+            damage: 100,
+            protection: 'case-ii',
+            remainingInternal: 12,
+            remainingArmor: 20,
+            originalArmor: 20,
+            torso: false,
+        })).toEqual({
+            internalDamage: 1,
+            armorDamage: 10,
+            armorRear: false,
+            stopsTransfer: true,
+        });
+    });
+
+    it('uses full TW damage for normal and CASE explosions', () => {
+        expect(TW_GAME_RULES.resolveMekExplosionDamage({
+            damage: 100,
+            protection: 'none',
+            remainingInternal: 12,
+            remainingArmor: 10,
+            originalArmor: 10,
+            torso: true,
+        })).toEqual({
+            internalDamage: 100,
+            armorDamage: 0,
+            armorRear: true,
+            stopsTransfer: false,
+        });
+        expect(TW_GAME_RULES.resolveMekExplosionDamage({
+            damage: 100,
+            protection: 'case',
+            remainingInternal: 12,
+            remainingArmor: 10,
+            originalArmor: 10,
+            torso: true,
+        })).toEqual({
+            internalDamage: 100,
+            armorDamage: 0,
+            armorRear: true,
+            stopsTransfer: true,
+        });
+    });
+
+    it('uses weapon explosion damage and BMM/TW CASE II venting', () => {
+        const weapon = new WeaponEquipment({
+            id: 'ExplosiveWeapon',
+            name: 'Explosive weapon',
+            type: 'weapon',
+            weapon: { explosionDamage: 15 },
+        });
+
+        expect(TW_GAME_RULES.getExplosiveWeaponDamage(weapon, 4)).toBe(15);
+        expect(TW_GAME_RULES.resolveMekExplosionDamage({
+            damage: 100,
+            protection: 'case-ii',
+            remainingInternal: 10,
+            remainingArmor: 20,
+            originalArmor: 15,
+            torso: false,
+        })).toEqual({
+            internalDamage: 1,
+            armorDamage: 8,
+            armorRear: false,
+            stopsTransfer: true,
+        });
+        expect(TW_GAME_RULES.resolveMekExplosionDamage({
+            damage: 100,
+            protection: 'case-ii',
+            remainingInternal: 10,
+            remainingArmor: 120,
+            originalArmor: 120,
+            torso: true,
+        })).toEqual({
+            internalDamage: 1,
+            armorDamage: 99,
+            armorRear: true,
+            stopsTransfer: true,
+        });
+    });
+
+    it('describes CASE effects for the active ruleset', () => {
+        expect(CORE_2026_GAME_RULES.getMekExplosionProtectionNote('case')).toContain('Caps internal damage at 10');
+        expect(TW_GAME_RULES.getMekExplosionProtectionNote('case')).toContain('full explosion damage');
+        expect(TW_GAME_RULES.getMekExplosionProtectionNote('case-ii')).toContain('half the original armor');
+        expect(TW_GAME_RULES.getMekExplosionProtectionNote('none')).toBeNull();
     });
 });

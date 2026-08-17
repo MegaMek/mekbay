@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, computed, inject, Injector, input, output } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, computed, inject, Injector, input, output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
@@ -17,22 +17,48 @@ import { ToastService } from '../../../services/toast.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { DataService } from '../../../services/data.service';
 import type { MountedEquipment } from '../../../models/mounted-equipment.model';
-import { MascHandler } from '../../../equipment-handlers/masc.handler';
+import { EscalatingFailureHandler } from '../../../equipment-handlers/escalatingfailure.handler';
 import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
-import { composeTurnSummaryHeatRows, displayPsrModifiers } from './page-turn-summary.util';
+import { composeTurnSummaryHeatRows, displayPsrModifiers, isMoveModeDisabledWhileProne } from './page-turn-summary.util';
 import { orderedModifierTooltipLines } from '../../../utils/hit-target-tooltip.util';
+import { toggleStandingUpOverlay } from './page-standing-up-panel.component';
+import { isUnitBuildingLevel, isUnitWaterDepth, type UnitCover } from '../../../models/unit-cover.model';
+import { CoverLevelPickerComponent } from '../../cover-level-picker/cover-level-picker.component';
 
 interface EquipmentTrackControlRow {
     entry: MountedEquipment;
     label: string;
     damaged: boolean;
+    active: boolean;
     sequenceChoices: HandlerChoice[];
     statusChoice?: HandlerChoice;
 }
 
+const MAX_VISIBLE_FAILURE_STEPS = 5;
+
+function visibleFailureSteps(choices: HandlerChoice[]): HandlerChoice[] {
+    if (choices.length <= MAX_VISIBLE_FAILURE_STEPS) return choices;
+    const selectedIndex = choices.findIndex(choice => choice.active && choice.selectionTone !== 'muted');
+    const nextIndex = choices.findIndex(choice => !choice.disabled && !choice.active);
+    const lastActiveIndex = choices.reduce(
+        (lastIndex, choice, index) => choice.active ? index : lastIndex,
+        -1,
+    );
+    const focusIndex = selectedIndex >= 0
+        ? selectedIndex
+        : nextIndex >= 0
+            ? nextIndex
+            : Math.max(0, lastActiveIndex);
+    const start = Math.max(0, Math.min(
+        focusIndex - Math.floor(MAX_VISIBLE_FAILURE_STEPS / 2),
+        choices.length - MAX_VISIBLE_FAILURE_STEPS,
+    ));
+    return choices.slice(start, start + MAX_VISIBLE_FAILURE_STEPS);
+}
+
 @Component({
     selector: 'page-turn-summary-panel',
-    imports: [CommonModule, HexSliderComponent, TooltipDirective],
+    imports: [CommonModule, HexSliderComponent, TooltipDirective, CoverLevelPickerComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './page-turn-summary-panel.component.html',
     styleUrl: './page-turn-summary-panel.component.scss'
@@ -50,6 +76,11 @@ export class PageTurnSummaryPanelComponent {
     readonly force = this.parent.force;
     readonly endTurnForAllButtonVisible = input<boolean>(false);
     readonly endTurnForAllClicked = output<void>();
+    readonly renderReady = signal(false);
+
+    constructor() {
+        afterNextRender(() => this.renderReady.set(true));
+    }
 
     private queryContext(): HandlerQueryContext {
         return createHandlerQueryContext(this.dataService.getEquipmentRegistry(), 'turn-summary');
@@ -116,6 +147,25 @@ export class PageTurnSummaryPanelComponent {
         return unit.turnState().moveMode();
     });
 
+    readonly prone = computed(() => this.unit()?.getCondition('prone') ?? false);
+
+    readonly canStandUp = computed(() => this.unit()?.turnState().canStandUp() ?? false);
+
+    isMoveModeDisabled(mode: MotiveModes): boolean {
+        return isMoveModeDisabledWhileProne(mode, this.prone());
+    }
+
+    standUp(event: MouseEvent): void {
+        event.stopPropagation();
+        const unit = this.unit();
+        if (!unit || !unit.turnState().canStandUp()) return;
+        if (unit.turnState().canStandWithoutPSR()) {
+            unit.turnState().resolveStandAttempt('success');
+            return;
+        }
+        toggleStandingUpOverlay(this.parent, this.overlayManager, this.injector, this.overlay);
+    }
+
     moveModeModifierLabel(mode: MotiveModes): string | null {
         const unit = this.unit();
         const modifier = unit?.rules.getAttackMovementModifier(mode, unit.turnState().airborne() ?? false) ?? 0;
@@ -142,6 +192,23 @@ export class PageTurnSummaryPanelComponent {
         return unit.turnState().spotting();
     });
 
+    readonly cover = computed(() => this.unit()?.turnState().cover());
+    readonly waterDepth = computed(() => {
+        const cover = this.cover();
+        return isUnitWaterDepth(cover) ? cover : '';
+    });
+    readonly buildingLevel = computed(() => {
+        const cover = this.cover();
+        return isUnitBuildingLevel(cover) ? cover : '';
+    });
+
+    readonly coverModifierLabel = computed(() => {
+        if (this.cover() === 'light' || this.unit()?.turnState().partiallyUnderwater()) return '+1';
+        if (this.cover() === 'heavy') return '+2';
+        const buildingModifier = this.unit()?.turnState().buildingCoverState().modifier ?? 0;
+        return buildingModifier === 0 ? null : `+${buildingModifier}`;
+    });
+
     readonly spottingModifierLabel = computed(() => {
         const unit = this.unit();
         if (!unit) return null;
@@ -157,7 +224,11 @@ export class PageTurnSummaryPanelComponent {
     readonly heatRows = computed(() => {
         const unit = this.unit();
         if (!unit) return [];
-        return composeTurnSummaryHeatRows(unit.turnState().heatSources(), unit.selectedInventoryWeaponHeat());
+        return composeTurnSummaryHeatRows(
+            unit.turnState().heatSources(),
+            unit.selectedInventoryWeaponHeat(),
+            unit.rules.heatDissipation()?.underwaterBonus ?? 0,
+        );
     });
 
     readonly psrModifiers = computed(() => {
@@ -170,18 +241,19 @@ export class PageTurnSummaryPanelComponent {
         const unit = this.unit();
         if (!unit) return [];
         return unit.getInventory()
-            .filter(entry => entry.equipment?.flags?.has('F_MASC'))
             .map(entry => {
-                const active = entry.equipment?.flags?.has('F_MASC') ? MascHandler.isActive(entry) : true;
                 const damaged = entry.owner.isEquipmentResolvedDestroyed(entry);
                 const choices = this.equipmentRegistry.getChoices(entry, this.queryContext());
+                const escalatingChoices = choices.filter(choice => choice._handler instanceof EscalatingFailureHandler);
+                const allSequenceChoices = escalatingChoices.filter(choice => choice.failureTarget !== undefined);
+                const active = allSequenceChoices.some(choice => choice.active && choice.selectionTone !== 'muted');
                 return {
                     entry,
-                    label: entry.equipment?.name || entry.name,
+                    label: entry.getDisplayName(),
                     damaged,
                     active,
-                    sequenceChoices: choices.filter(choice => typeof choice.value === 'number'),
-                    statusChoice: choices.find(choice => typeof choice.value !== 'number'),
+                    sequenceChoices: visibleFailureSteps(allSequenceChoices),
+                    statusChoice: escalatingChoices.find(choice => choice.failureTarget === undefined),
                 };
             })
             .filter(row => !row.damaged || row.active)
@@ -233,7 +305,7 @@ export class PageTurnSummaryPanelComponent {
 
     selectMove(mode: MotiveModes): void {
         const unit = this.unit();
-        if (!unit) return;
+        if (!unit || this.isMoveModeDisabled(mode)) return;
         const turnState = unit.turnState();
         const current = turnState.moveMode();
         if (current === mode) {
@@ -251,6 +323,22 @@ export class PageTurnSummaryPanelComponent {
         if (!unit) return;
         const turnState = unit.turnState();
         turnState.spotting.set(!turnState.spotting());
+    }
+
+    selectCover(cover: UnitCover): void {
+        const turnState = this.unit()?.turnState();
+        if (!turnState) return;
+        turnState.setCover(turnState.cover() === cover ? undefined : cover);
+    }
+
+    selectWaterDepth(value: string): void {
+        if (!isUnitWaterDepth(value)) return;
+        this.selectCover(value);
+    }
+
+    selectBuildingLevel(value: string): void {
+        if (!isUnitBuildingLevel(value)) return;
+        this.selectCover(value);
     }
 
     async handleEquipmentTrackChoice(row: EquipmentTrackControlRow, choice: HandlerChoice): Promise<void> {

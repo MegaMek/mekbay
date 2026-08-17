@@ -106,7 +106,7 @@ export class C3EmergencyMasterHandler extends EquipmentInteractionHandler {
         equipment.owner.setInventoryEntry(equipment);
         if (choice.value === C3EM_TOGGLE_CHOICE_VALUE) return true;
         context.toastService.showToast(
-            `${equipment.equipment?.name || equipment.name}: ${this.statusLabel(equipment)}`,
+            `${equipment.getDisplayName()}: ${this.statusLabel(equipment)}`,
             C3EmergencyMasterHandler.status(equipment) === 'fried' ? 'error' : 'info'
         );
         return true;
@@ -121,7 +121,7 @@ export class C3EmergencyMasterHandler extends EquipmentInteractionHandler {
         }
         equipment.owner.setInventoryEntry(equipment);
         notifications.showToast(
-            `${equipment.owner.getNotificationDisplayName()}: ${equipment.equipment?.name || equipment.name} ${this.statusLabel(equipment)}`,
+            `${equipment.owner.getNotificationDisplayName()}: ${equipment.getDisplayName()} ${this.statusLabel(equipment)}`,
             nextTurns === C3EM_FRIED_SEQUENCE_VALUE ? 'error' : 'info'
         );
     }
@@ -154,7 +154,7 @@ export class C3EmergencyMasterHandler extends EquipmentInteractionHandler {
             }
             if (!activatedKeys.has(key)) continue;
             notifications.showToast(
-                `${equipment.owner.getNotificationDisplayName()}: ${equipment.equipment?.name || equipment.name} EMERGENCY active`,
+                `${equipment.owner.getNotificationDisplayName()}: ${equipment.getDisplayName()} EMERGENCY active`,
                 'info',
                 `c3em-activation-${force.instanceId() ?? force.name}-${key}`
             );

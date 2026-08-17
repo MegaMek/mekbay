@@ -1,5 +1,5 @@
 <div class="wide-dialog lobby-dialog">
-    <h2 class="wide-dialog-title">Lobby</h2>
+    <h2 class="wide-dialog-title">Operation Lobby</h2>
     <div class="wide-dialog-body">
         @if (lobbyService.state(); as lobby) {
             <div class="lobby-controls">
@@ -53,8 +53,6 @@
                                                 <span class="op-force-val">{{ force.metric }}: {{ force.points | number }}</span>
                                             }
                                         </div>
-                                    } @empty {
-                                        <span class="empty-force">No forces</span>
                                     }
                                 </div>
                             </article>
@@ -106,8 +104,6 @@
                                                 <span class="op-force-val">{{ force.metric }}: {{ force.points | number }}</span>
                                             }
                                         </div>
-                                    } @empty {
-                                        <span class="empty-force">No forces</span>
                                     }
                                 </div>
                             </article>

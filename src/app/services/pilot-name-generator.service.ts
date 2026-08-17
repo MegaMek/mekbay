@@ -4,7 +4,7 @@
 
 import { inject, Injectable } from '@angular/core';
 import { PilotNameCatalogService } from './catalogs/pilot-name-catalog.service';
-import { generatePilotName, type PilotNameGenerationOptions } from '../utils/pilot-name-generator.util';
+import { generatePilotName, pickWeighted, type PilotNameGenerationOptions } from '../utils/pilot-name-generator.util';
 
 @Injectable({ providedIn: 'root' })
 export class PilotNameGeneratorService {
@@ -13,5 +13,11 @@ export class PilotNameGeneratorService {
     async generate(options: PilotNameGenerationOptions = {}): Promise<string | null> {
         await this.catalog.initialize();
         return generatePilotName(this.catalog.getCatalog(), options);
+    }
+
+    async generateCallsign(maxLength = Number.POSITIVE_INFINITY): Promise<string | null> {
+        await this.catalog.initialize();
+        const candidates = this.catalog.getCatalog().callsigns.filter(entry => entry.value.length <= maxLength);
+        return pickWeighted(candidates) ?? null;
     }
 }

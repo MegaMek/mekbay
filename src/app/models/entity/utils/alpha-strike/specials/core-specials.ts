@@ -162,9 +162,8 @@ function addCommonEquipmentSpecials(
 ): void {
   if (equipment.hasFlag('F_ADVANCED_FIRE_CONTROL')) specials.add('AFC');
   if (equipment.hasFlag('F_BASIC_FIRE_CONTROL')) specials.add('BFC');
-  if (equipment.hasAnyFlag(['F_HAND_WEAPON', 'F_TALON', 'F_CLUB', 'F_SPIKES', 'F_PROTOMEK_MELEE'])) specials.add('MEL');
-  if (equipment.hasFlag('F_CLUB')
-    && equipment.hasAnyFlag(['S_SHIELD_SMALL', 'S_SHIELD_MEDIUM', 'S_SHIELD_LARGE'])) {
+  if (equipment.hasAnyFlag(['F_SHIELD', 'F_HAND_WEAPON', 'F_TALON', 'F_CLUB', 'F_SPIKES', 'F_PROTOMEK_MELEE'])) specials.add('MEL');
+  if (equipment.hasFlag('F_SHIELD')) {
     specials.add('SHLD');
   }
   if (equipment.hasAnyFlag(['S_DUAL_SAW', 'S_CHAINSAW', 'S_BUZZSAW', 'S_RETRACTABLE_BLADE'])) specials.add('SAW');

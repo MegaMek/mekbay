@@ -661,16 +661,20 @@ export class DataService {
         return cloudTs > localTs;
     }
 
-    public async getForce(instanceId: string, ownedOnly: boolean = false): Promise<Force | null> {
-        const localRaw = await this.dbService.getForce(instanceId);
+    public async getForce(
+        instanceId: string,
+        ownedOnly: boolean = false,
+        { skipLocal = false, showLoading = true }: { skipLocal?: boolean; showLoading?: boolean } = {},
+    ): Promise<Force | null> {
+        const localRaw = skipLocal ? null : await this.dbService.getForce(instanceId);
         let cloudRaw: any | null = null;
         let triedCloud = false;
-        this.isCloudForceLoading.set(true);
+        if (showLoading) this.isCloudForceLoading.set(true);
         try {
             const ws = await this.canUseCloud();
             if (ws) {
                 try {
-                    cloudRaw = await this.getForceCloud(instanceId, ownedOnly);
+                    cloudRaw = await this.getForceCloud(instanceId, ownedOnly, !skipLocal);
                     triedCloud = true;
                 } catch {
                     cloudRaw = null;
@@ -678,7 +682,7 @@ export class DataService {
                 }
             }
         } finally {
-            this.isCloudForceLoading.set(false);
+            if (showLoading) this.isCloudForceLoading.set(false);
         }
         let local: Force | null = null;
         let cloud: Force | null = null;
@@ -1696,13 +1700,16 @@ export class DataService {
         }
     }
 
-    private async getForceCloud(instanceId: string, ownedOnly: boolean): Promise<any | null> {
+    private async getForceCloud(
+        instanceId: string,
+        ownedOnly: boolean,
+        includeOwnership: boolean = true,
+    ): Promise<any | null> {
         const ws = await this.canUseCloud();
         if (!ws) return null;
-        const uuid = this.userStateService.uuid();
         const payload = {
             action: 'getForce',
-            uuid,
+            ...(includeOwnership ? { uuid: this.userStateService.uuid() } : {}),
             instanceId,
             ownedOnly,
         };

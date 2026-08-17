@@ -11,13 +11,20 @@ import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
 import {
     EquipmentInteractionHandler,
+    setEffectiveWeaponType,
     type HandlerCommandContext,
     type HandlerQueryContext,
+    type CriticalDelayedExplosionContext,
+    type CriticalDelayedExplosionHandling,
     type ToHitAdjustmentContext
 } from '../services/equipment-interaction-registry.service';
 import type { InventoryControlDamageContext } from '../utils/inventory-control-damage.util';
 import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 import { INVENTORY_CONTROL_MODE_STATE, setInventoryControlMode } from '../utils/inventory-control.util';
+import {
+    cancelPendingMekComponentExplosion,
+    resolvePendingMekComponentExplosion,
+} from '../utils/mek-critical-hit.util';
 
 export const BOMBAST_LASER_DAMAGE_8_MODE = 'Damage 8';
 export const BOMBAST_LASER_DAMAGE_12_MODE = 'Damage 12';
@@ -121,6 +128,7 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
             if (setBombastLaserChargeState(equipment, null)) {
                 equipment.owner.setInventoryEntry(equipment);
             }
+            cancelPendingMekComponentExplosion(equipment);
             context.toastService.showToast('Bombast Laser discharged', 'info');
         }
         return true;
@@ -131,6 +139,17 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
         const discharged = setBombastLaserChargeState(equipment, null);
         const markedFired = equipment.setState(BOMBAST_LASER_FIRED_STATE_KEY, '1');
         if (discharged || markedFired) equipment.owner.setInventoryEntry(equipment);
+    }
+
+    override beforeEquipmentStateCommit(equipment: MountedEquipment): void {
+        if (!supportsBombastLaserRules(equipment)) return;
+        const explosion = resolvePendingMekComponentExplosion(
+            equipment,
+            equipment.states.has(BOMBAST_LASER_FIRED_STATE_KEY),
+        );
+        if (explosion && setBombastLaserChargeState(equipment, null)) {
+            equipment.owner.setInventoryEntry(equipment);
+        }
     }
 
     override onEndTurn(equipment: MountedEquipment): void {
@@ -180,10 +199,36 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
         types: ReadonlySet<WeaponType>,
         _context: HandlerQueryContext
     ): ReadonlySet<WeaponType> {
-        return supportsBombastLaserRules(equipment)
-            && bombastLaserChargeState(equipment) === BOMBAST_LASER_CHARGED_STATE
-            ? new Set([...types, 'X'])
-            : types;
+        return setEffectiveWeaponType(
+            types,
+            'X',
+            supportsBombastLaserRules(equipment)
+                && bombastLaserChargeState(equipment) === BOMBAST_LASER_CHARGED_STATE,
+        );
+    }
+
+    override getCriticalDelayedExplosion(
+        hitEntry: MountedEquipment,
+        explosionContext: CriticalDelayedExplosionContext,
+        _context: HandlerQueryContext,
+    ): CriticalDelayedExplosionHandling | null {
+        const equipment = hitEntry.equipment;
+        if (!supportsBombastLaserRules(hitEntry)
+            || !(equipment instanceof WeaponEquipment)
+            || !equipment.hasFlag('F_BOMBAST_LASER')) return null;
+        if (bombastLaserChargeState(hitEntry) !== BOMBAST_LASER_CHARGED_STATE
+            || explosionContext.componentCriticalHits(hitEntry) > 0) return { explosion: null };
+
+        return {
+            explosion: {
+                source: hitEntry,
+                equipment: hitEntry.getDisplayName(),
+                rawDamage: hitEntry.owner.gameRules.getExplosiveWeaponDamage(
+                    equipment,
+                    explosionContext.mountedCriticalSlots(hitEntry),
+                ),
+            },
+        };
     }
 
     override getToHitAdjustments(
@@ -201,7 +246,7 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
             : [{
                 kind: 'replace-base',
                 value: modifier,
-                label: `${equipment.equipment?.shortName ?? equipment.name} (${mode})`
+                label: `${equipment.getDisplayName()} (${mode})`
             }];
     }
 }

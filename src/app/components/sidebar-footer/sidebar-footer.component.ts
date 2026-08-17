@@ -348,25 +348,11 @@ export class SidebarFooterComponent {
     }
 
     async joinLobby(): Promise<void> {
-        const code = await this.dialogsService.prompt(
-            'Enter the 4-character lobby code.',
-            'Join Lobby',
-            '',
-            'Codes use lowercase letters and numbers.',
-        );
-        if (!code) return;
-        try {
-            await this.lobbyService.joinLobby(code);
-            await this.showLobbyDialog();
-        } catch (error) {
-            this.toastService.showToast(error instanceof Error ? error.message : 'Could not join the lobby.', 'error');
-        }
+        await this.lobbyService.promptAndJoin();
     }
 
     async showLobbyDialog(): Promise<void> {
-        if (!this.lobbyService.hasLobby()) return;
-        const { LobbyDialogComponent } = await import('../lobby-dialog/lobby-dialog.component');
-        this.dialogsService.createDialog(LobbyDialogComponent);
+        await this.lobbyService.showLobbyDialog();
     }
 
     async requestRepairAll(): Promise<void> {

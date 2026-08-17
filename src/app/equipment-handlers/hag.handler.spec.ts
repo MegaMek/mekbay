@@ -9,8 +9,14 @@ import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.mod
 import { createHandlerCommandContext, createHandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import type { DialogsService } from '../services/dialogs.service';
 import type { ToastService } from '../services/toast.service';
-import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
-import { HAG_FLAK_MODE, HAG_STANDARD_MODE, HagHandler, selectedHagMode } from './hag.handler';
+import {
+    GAUSS_POWER_STATE_KEY,
+    GAUSS_POWERED_DOWN_STATE,
+    GAUSS_POWERING_UP_STATE,
+    gaussPowerState,
+} from '../utils/gauss-power-state.util';
+import { GaussPowerHandler } from './gauss-power.handler';
+import { HAG_FLAK_MODE, HAG_MODE_STATE_KEY, HAG_STANDARD_MODE, HagHandler, selectedHagMode } from './hag.handler';
 
 function owner() {
     return {
@@ -25,12 +31,12 @@ function hag(mode?: string): MountedWeapon {
         owner: owner(),
         id: 'CLHAG20',
         name: 'HAG/20',
-        states: mode ? new Map([[INVENTORY_CONTROL_MODE_STATE, mode]]) : undefined,
+        states: mode ? new Map([[HAG_MODE_STATE_KEY, mode]]) : undefined,
         equipment: new WeaponEquipment({
             id: 'CLHAG20',
             name: 'HAG/20',
             type: 'weapon',
-            flags: ['F_HAG', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+            flags: ['F_HAG', 'F_GAUSS', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
             stats: { explosive: true },
             weapon: {
                 ammoType: 'HAG',
@@ -67,13 +73,37 @@ describe('HagHandler', () => {
         })]);
     });
 
-    it('persists the selected mode through the inventory-control state', () => {
+    it('persists the selected mode through the HAG state', () => {
         const entry = hag();
 
         expect(handler.handleSelection(entry, { label: 'FLAK', value: HAG_FLAK_MODE }, commandContext)).toBeTrue();
 
-        expect(entry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe(HAG_FLAK_MODE);
+        expect(entry.states.get(HAG_MODE_STATE_KEY)).toBe(HAG_FLAK_MODE);
         expect(entry.owner.setInventoryEntry).toHaveBeenCalledWith(entry);
+    });
+
+    it('keeps HAG mode and Gauss power as independent states', () => {
+        const entry = hag(HAG_FLAK_MODE);
+        entry.states.set(GAUSS_POWER_STATE_KEY, GAUSS_POWERED_DOWN_STATE);
+        Object.assign(entry.owner, {
+            turnState: () => ({ markEquipmentStateChanged: jasmine.createSpy('markEquipmentStateChanged') }),
+        });
+
+        const gaussHandler = new GaussPowerHandler();
+        gaussHandler.handleSelection(
+            entry,
+            gaussHandler.getChoices(entry, queryContext)[0],
+            commandContext,
+        );
+
+        expect(gaussPowerState(entry)).toBe(GAUSS_POWERING_UP_STATE);
+        expect(selectedHagMode(entry)).toBe(HAG_FLAK_MODE);
+
+        handler.handleSelection(entry, { label: 'STD', value: HAG_STANDARD_MODE }, commandContext);
+
+        expect(selectedHagMode(entry)).toBe(HAG_STANDARD_MODE);
+        expect(gaussPowerState(entry)).toBe(GAUSS_POWERING_UP_STATE);
+        expect(entry.states.get(HAG_MODE_STATE_KEY)).toBe(HAG_STANDARD_MODE);
     });
 
     it('keeps DB only in STD and replaces it with F in FLAK', () => {

@@ -51,6 +51,21 @@ describe('buildUnitComponentMetadata', () => {
     expect(component.m).toBeUndefined();
   });
 
+  it('exports shields as physical equipment without cached damage values', () => {
+    const entity = new BipedMekEntity();
+    entity.setTonnage(75);
+    const shield = new MiscEquipment({
+      id: 'ISLargeShield', name: 'Shield (Large)', type: 'misc',
+      flags: ['F_SHIELD', 'S_SHIELD_LARGE'],
+    });
+    entity.setEquipment([mount(shield, 'LA')]);
+
+    const component = buildUnitComponentMetadata(entity)!.find(entry => entry.id === shield.id)!;
+    expect(component).toEqual(jasmine.objectContaining({ t: 'P', l: 'LA' }));
+    expect(component.d).toBeUndefined();
+    expect(component.md).toBeUndefined();
+  });
+
   it('exports installed Mek lower-arm and hand actuators as synthetic system components', () => {
     const entity = new BipedMekEntity();
     entity.hasLowerArmActuator.set({ left: true, right: false });

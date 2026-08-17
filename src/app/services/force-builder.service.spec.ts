@@ -18,6 +18,8 @@ import { CBTForce } from '../models/cbt-force.model';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import type { SerializedForce } from '../models/force-serialization';
+import type { UnitCover } from '../models/unit-cover.model';
+import { CORE_2026_GAME_RULES } from '../models/rules/game-rules';
 
 function createFaction(id: number, name: string): Faction {
     return {
@@ -590,9 +592,10 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
         };
     }
 
-    function createEnemyUnit(id: string, name: string, definition: Partial<Unit> = {}): CBTForceUnit {
+    function createEnemyUnit(id: string, name: string, definition: Partial<Unit> = {}, cover?: UnitCover): CBTForceUnit {
         return {
             id,
+            gameRules: CORE_2026_GAME_RULES,
             getDisplayName: () => name,
             getUnit: () => ({
                 type: 'Mek',
@@ -603,10 +606,12 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
                 ...definition
             } as Unit),
             getCondition: () => false,
+            getActiveNarcWaterLayers: () => ({ aboveWater: false, underwater: false }),
             turnState: () => ({
                 moveMode: signal(null),
                 moveDistance: signal<number | null>(0),
-                airborne: signal<boolean | null>(false)
+                airborne: signal<boolean | null>(false),
+                cover: signal<UnitCover | undefined>(cover)
             })
         } as unknown as CBTForceUnit;
     }
@@ -771,7 +776,13 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
                 largeTarget: imported.tnCalculator?.largeTarget,
                 skidding: imported.tnCalculator?.skidding,
                 targetMovementBracket: imported.tnCalculator?.targetMovementBracket,
-                isAirborne: imported.tnCalculator?.isAirborne
+                isAirborne: imported.tnCalculator?.isAirborne,
+                targetHexCover: imported.tnCalculator?.targetHexCover,
+                waterDepth: imported.tnCalculator?.waterDepth,
+                buildingCover: imported.tnCalculator?.buildingCover,
+                narcAboveWater: imported.tnCalculator?.narcAboveWater,
+                narcUnderwater: imported.tnCalculator?.narcUnderwater,
+                tagged: imported.tnCalculator?.tagged
             },
             unitType: imported.unitType,
             readOnly: imported.readOnly,
@@ -785,6 +796,31 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
         (harness.service as any).syncOpforInventoryTargets(harness.force, [enemy]);
 
         expect(harness.force.replaceInventoryControlTargets).toHaveBeenCalledTimes(1);
+    });
+
+    it('synchronizes unit cover into linked target state', () => {
+        const harness = createOpforHarness();
+
+        (harness.service as any).syncOpforInventoryTargets(
+            harness.force,
+            [createEnemyUnit('enemy-1', 'Submerged Atlas', {}, 'underwater-depth-1')]
+        );
+
+        expect(harness.targets()[0].tnCalculator).toEqual(jasmine.objectContaining({
+            targetHexCover: 'none',
+            waterDepth: 'underwater-depth-1',
+        }));
+
+        (harness.service as any).syncOpforInventoryTargets(
+            harness.force,
+            [createEnemyUnit('enemy-1', 'Atlas in Building', {}, 'building-2')]
+        );
+
+        expect(harness.targets()[0].tnCalculator).toEqual(jasmine.objectContaining({
+            targetHexCover: 'none',
+            waterDepth: undefined,
+            buildingCover: 'building-2',
+        }));
     });
 
     it('does not rewrite targets after adding a manual target beside existing OPFOR', () => {

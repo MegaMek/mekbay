@@ -34,7 +34,7 @@ import { UACFiringModeHandler } from '../equipment-handlers/uac-firing-mode.hand
 import { EquipmentFlag } from './equipment-flags.type';
 import { EquipmentRegistry } from './equipment-lookup';
 import { OptionsService } from '../services/options.service';
-import { formatPilotingDisplay } from './rules/unit-type-rules';
+import { formatPilotingDisplay, type ChargeDamage } from './rules/unit-type-rules';
 import { registerAllHandlers } from '../equipment-handlers';
 import {
     PPC_CAPACITOR_CHARGING_STATE,
@@ -47,6 +47,7 @@ import {
     BOMBAST_LASER_CHARGING_STATE,
     BombastLaserHandler,
 } from '../equipment-handlers/bombast-laser.handler';
+import { applyMekCriticalRoll } from '../utils/mek-critical-hit.util';
 
 function createEquipment(): EquipmentMap {
     const ultraAc20 = new WeaponEquipment({
@@ -178,7 +179,7 @@ function createMekUnit(): Unit {
 }
 
 function createMekUnitWithDissipation(dissipation: number): Unit {
-    const heatSink = new Equipment({
+    const heatSink = new MiscEquipment({
         id: 'test-heat-sink',
         name: 'Test Heat Sink',
         type: 'misc',
@@ -200,6 +201,46 @@ function createMekUnitWithDissipation(dissipation: number): Unit {
             eq: heatSink,
         }],
     });
+}
+
+function createMekUnitWithCriticalHeatsinks(): { unit: Unit; single: MiscEquipment; double: MiscEquipment } {
+    const single = new MiscEquipment({
+        id: 'test-single-heat-sink',
+        name: 'Test Single Heat Sink',
+        type: 'misc',
+        flags: ['F_HEAT_SINK'],
+    });
+    const double = new MiscEquipment({
+        id: 'test-double-heat-sink',
+        name: 'Test Double Heat Sink',
+        type: 'misc',
+        flags: ['F_DOUBLE_HEAT_SINK'],
+    });
+    const component = (id: string, equipment: Equipment, location: string, position: number, quantity = 1): Unit['comp'][number] => ({
+        id,
+        q: quantity,
+        q2: 0,
+        n: equipment.name,
+        t: 'E',
+        p: position,
+        l: location,
+        c: '',
+        os: 0,
+        eq: equipment,
+    });
+    return {
+        single,
+        double,
+        unit: createEmptyUnit({
+            ...createMekUnit(),
+            heat: 20,
+            comp: [
+                component('engine-sinks', single, '', -1, 2),
+                component('leg-sink', single, 'LL', 0),
+                component('torso-sink', double, 'LT', 0),
+            ],
+        }),
+    };
 }
 
 function createSelectedHeatUnit(equipment: EquipmentMap, dissipation: number): Unit {
@@ -667,6 +708,10 @@ class ExposedUnitSvgService extends UnitSvgService {
     renderDamage(damageText: SVGElement, damage: string): void {
         this.renderInventoryDamageText(damageText, damage);
     }
+
+    renderCharge(entry: MountedEquipment, chargeDamage: ChargeDamage): void {
+        this.renderChargeDamage(entry, chargeDamage);
+    }
 }
 
 class ExposedUnitSvgVehicleService extends UnitSvgVehicleService {
@@ -866,6 +911,36 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         unit.isLoaded.set(true);
     }
 
+    function createCriticalHeatSinkForceUnit(): {
+        forceUnit: CBTForceUnit;
+        legSlot: CriticalSlot;
+        torsoSlots: CriticalSlot[];
+    } {
+        const { unit, single, double } = createMekUnitWithCriticalHeatsinks();
+        const forceUnit = createForceUnit(unit);
+        forceUnit.locations = {
+            armor: new Map([
+                ['LL', { loc: 'LL', rear: false, points: 5 }],
+                ['LT', { loc: 'LT', rear: false, points: 5 }],
+            ]),
+            internal: new Map([
+                ['LL', { loc: 'LL', points: 5 }],
+                ['LT', { loc: 'LT', points: 5 }],
+            ]),
+        };
+        const legSlot: CriticalSlot = { id: 'leg-sink', name: single.name, loc: 'LL', slot: 0, hits: 0, eq: single };
+        const torsoSlots: CriticalSlot[] = [0, 1, 2].map(slot => ({
+            id: 'torso-sink',
+            name: double.name,
+            loc: 'LT',
+            slot,
+            hits: 0,
+            eq: double,
+        }));
+        forceUnit.setCritSlots([legSlot, ...torsoSlots], true);
+        return { forceUnit, legSlot, torsoSlots };
+    }
+
     function expectControlRollDisplay(element: Element | null, expectedText: string, expectedLabel: string): void {
         expect(element?.textContent).toBe(expectedText);
         const suffix = element?.querySelector<SVGTSpanElement>(':scope > .controlRollModifier');
@@ -1052,6 +1127,17 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.endTurn();
 
         expect(handler.calls).toBe(1);
+    });
+
+    it('resets stand attempts and cover when ending the turn', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.turnState().standAttempts.set(3);
+        forceUnit.turnState().setCover('heavy');
+
+        forceUnit.endTurn();
+
+        expect(forceUnit.turnState().standAttempts()).toBeUndefined();
+        expect(forceUnit.turnState().cover()).toBeUndefined();
     });
 
     it('reacquires each current mount when an end-turn hook rebuilds inventory', () => {
@@ -1620,6 +1706,194 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const summary = svg.querySelector<SVGTextElement>('#damagedEngineHeatText');
         expect(summary?.querySelector('tspan')).toBeNull();
         expect(summary?.getAttribute('display')).toBe('none');
+    });
+
+    it('doubles submerged operational sinks, including engine sinks once the torso is underwater', () => {
+        const { forceUnit, legSlot } = createCriticalHeatSinkForceUnit();
+
+        expect(forceUnit.rules.heatDissipation()?.totalDissipation).toBe(5);
+
+        forceUnit.turnState().setCover('underwater-depth-1');
+        expect(forceUnit.turnState().partiallyUnderwater()).toBeTrue();
+        expect(forceUnit.turnState().submerged()).toBeFalse();
+        expect(forceUnit.rules.heatDissipation()?.totalDissipation).toBe(6);
+        expect(forceUnit.rules.heatDissipation()?.underwaterBonus).toBe(1);
+
+        forceUnit.setCondition('prone', true);
+        expect(forceUnit.turnState().partiallyUnderwater()).toBeFalse();
+        expect(forceUnit.turnState().submerged()).toBeTrue();
+        expect(forceUnit.rules.heatDissipation()?.totalDissipation).toBe(10);
+        expect(forceUnit.rules.heatDissipation()?.underwaterBonus).toBe(5);
+
+        forceUnit.applyHitToCritSlot(legSlot, 1, true);
+        expect(forceUnit.rules.heatDissipation()?.totalDissipation).toBe(8);
+        expect(forceUnit.rules.heatDissipation()?.underwaterBonus).toBe(4);
+
+        forceUnit.setLocationCondition('LT', 'blown-off', true);
+        forceUnit.endPhase();
+        expect(forceUnit.rules.heatDissipation()?.totalDissipation).toBe(4);
+        expect(forceUnit.rules.heatDissipation()?.underwaterBonus).toBe(2);
+    });
+
+    it('does not double directly destroyed heat sinks', () => {
+        const { forceUnit, torsoSlots } = createCriticalHeatSinkForceUnit();
+        const torsoSink = new MountedMisc({
+            owner: forceUnit,
+            id: 'torso-sink',
+            name: torsoSlots[0].name!,
+            equipment: torsoSlots[0].eq as MiscEquipment,
+            locations: new Set(['LT']),
+            critSlots: torsoSlots,
+            destroyed: true,
+        });
+        forceUnit.setInventory([torsoSink], true);
+
+        forceUnit.turnState().setCover('underwater-depth-2');
+
+        expect(forceUnit.rules.heatDissipation()?.underwaterBonus).toBe(3);
+        expect(forceUnit.rules.heatDissipation()?.totalDissipation).toBe(6);
+    });
+
+    it('keeps the best underwater heat sinks active when sinks are turned off', () => {
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        forceUnit.turnState().setCover('underwater-depth-2');
+
+        forceUnit.setHeatsinksOff(2);
+        expect(forceUnit.rules.heatDissipation()?.underwaterBonus).toBe(3);
+
+        forceUnit.setHeatsinksOff(3);
+        expect(forceUnit.rules.heatDissipation()?.underwaterBonus).toBe(2);
+
+        forceUnit.setHeatsinksOff(4);
+        expect(forceUnit.rules.heatDissipation()?.underwaterBonus).toBe(1);
+    });
+
+    it('offsets superheavy submersion and heat-sink bonuses by one depth', () => {
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        forceUnit.getUnit().tons = 150;
+
+        forceUnit.turnState().setCover('underwater-depth-1');
+        expect(forceUnit.turnState().partiallyUnderwater()).toBeFalse();
+        expect(forceUnit.turnState().submerged()).toBeFalse();
+        expect(forceUnit.rules.heatDissipation()?.totalDissipation).toBe(5);
+
+        forceUnit.turnState().setCover('underwater-depth-2');
+        expect(forceUnit.turnState().partiallyUnderwater()).toBeTrue();
+        expect(forceUnit.turnState().submerged()).toBeFalse();
+        expect(forceUnit.rules.heatDissipation()?.totalDissipation).toBe(6);
+
+        forceUnit.setCondition('prone', true);
+        expect(forceUnit.turnState().partiallyUnderwater()).toBeFalse();
+        expect(forceUnit.turnState().submerged()).toBeTrue();
+        expect(forceUnit.rules.heatDissipation()?.totalDissipation).toBe(10);
+    });
+
+    it('caps the underwater heat-sink bonus at 6', () => {
+        const forceUnit = createForceUnit(createMekUnitWithDissipation(10));
+
+        forceUnit.turnState().setCover('underwater-depth-2');
+
+        expect(forceUnit.rules.heatDissipation()?.underwaterBonus).toBe(6);
+        expect(forceUnit.rules.heatDissipation()?.totalDissipation).toBe(16);
+    });
+
+    it('reports effective height from unit size and posture', () => {
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+
+        expect(forceUnit.getHeight()).toBe(2);
+
+        forceUnit.getUnit().tons = 150;
+        expect(forceUnit.getHeight()).toBe(3);
+
+        forceUnit.setCondition('prone', true);
+        expect(forceUnit.getHeight()).toBe(2);
+    });
+
+    it('automatically floods armorless submerged locations based on posture', () => {
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        forceUnit.setArmorHits('LT', 5);
+        forceUnit.turnState().setCover('underwater-depth-1');
+
+        expect(forceUnit.getLocationCondition('LT', 'flooded')).toBeFalse();
+
+        forceUnit.addArmorHits('LL', 5);
+        forceUnit.endPhase();
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeTrue();
+        expect(forceUnit.getLocationCondition('LT', 'flooded')).toBeFalse();
+
+        forceUnit.setCondition('prone', true);
+        expect(forceUnit.getLocationCondition('LT', 'flooded')).toBeTrue();
+    });
+
+    it('waits to flood a location until pending armor damage is committed', () => {
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        forceUnit.turnState().setCover('underwater-depth-1');
+
+        forceUnit.addArmorHits('LL', 5);
+
+        expect(forceUnit.getCommittedArmorHits('LL')).toBe(0);
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeFalse();
+
+        forceUnit.endPhase();
+
+        expect(forceUnit.getCommittedArmorHits('LL')).toBe(5);
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeTrue();
+    });
+
+    it('floods all submerged locations at the unit-specific full-submersion depth', () => {
+        const normal = createCriticalHeatSinkForceUnit().forceUnit;
+        normal.setArmorHits('LT', 5);
+        normal.turnState().setCover('underwater-depth-2');
+        expect(normal.getLocationCondition('LT', 'flooded')).toBeTrue();
+
+        const superheavy = createCriticalHeatSinkForceUnit().forceUnit;
+        superheavy.getUnit().tons = 150;
+        superheavy.setArmorHits('LT', 5);
+        superheavy.turnState().setCover('underwater-depth-1');
+        expect(superheavy.getLocationCondition('LT', 'flooded')).toBeFalse();
+        superheavy.turnState().setCover('underwater-depth-2');
+        expect(superheavy.getLocationCondition('LT', 'flooded')).toBeFalse();
+        superheavy.turnState().setCover('underwater-depth-3');
+        expect(superheavy.getLocationCondition('LT', 'flooded')).toBeTrue();
+    });
+
+    it('floods a location when either front or rear armor facing is breached', () => {
+        const rearBreached = createCriticalHeatSinkForceUnit().forceUnit;
+        rearBreached.locations!.armor.set('LT-rear', { loc: 'LT', rear: true, points: 5 });
+        rearBreached.setLocations({
+            LT: { armor: 5 },
+            'LT-rear': { armor: 0 },
+        }, true);
+        rearBreached.turnState().setCover('underwater-depth-1');
+        rearBreached.setCondition('prone', true);
+        expect(rearBreached.getLocationCondition('LT', 'flooded')).toBeTrue();
+
+        const frontBreached = createCriticalHeatSinkForceUnit().forceUnit;
+        frontBreached.locations!.armor.set('LT-rear', { loc: 'LT', rear: true, points: 5 });
+        frontBreached.setLocations({
+            LT: { armor: 0 },
+            'LT-rear': { armor: 5 },
+        }, true);
+        frontBreached.turnState().setCover('underwater-depth-1');
+        frontBreached.setCondition('prone', true);
+        expect(frontBreached.getLocationCondition('LT', 'flooded')).toBeTrue();
+    });
+
+    it('disables heat sinks in flooded and blown-off locations', () => {
+        const { forceUnit, legSlot } = createCriticalHeatSinkForceUnit();
+        forceUnit.turnState().setCover('underwater-depth-1');
+        forceUnit.addArmorHits('LL', 5);
+        forceUnit.endPhase();
+
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeTrue();
+        expect(forceUnit.getEquipmentStatus(legSlot)).toBe('disabled');
+        expect(forceUnit.rules.heatDissipation()?.totalDissipation).toBe(4);
+
+        forceUnit.setLocationCondition('LL', 'blown-off', true);
+        forceUnit.endPhase();
+
+        expect(forceUnit.getEquipmentStatus(legSlot)).toBe('destroyed');
+        expect(forceUnit.rules.heatDissipation()?.totalDissipation).toBe(4);
     });
 
     it('shows a single dissipation value when all remaining cooling is used', () => {
@@ -2431,7 +2705,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe(PPC_CAPACITOR_CHARGING_STATE);
     });
 
-    it('commits a charged PPC-capacitor explosion for direct inventory at phase end', () => {
+    it('does not infer a charged PPC-capacitor explosion from manual inventory destruction', () => {
         const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
         const { weapon, capacitor } = installChargedPpcPair(forceUnit);
@@ -2442,13 +2716,13 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const committedWeapon = forceUnit.getInventory().find(entry => entry.id === weapon.id)!;
         const committedCapacitor = forceUnit.getInventory().find(entry => entry.id === capacitor.id)!;
         expect(committedWeapon.committedDestroyed()).toBeTrue();
-        expect(committedCapacitor.committedDestroyed()).toBeTrue();
+        expect(committedCapacitor.committedDestroyed()).toBeFalse();
         expect(committedWeapon.pendingDestroyed()).toBeUndefined();
         expect(committedCapacitor.pendingDestroyed()).toBeUndefined();
-        expect(committedCapacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
+        expect(committedCapacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe(PPC_CAPACITOR_CHARGED_STATE);
     });
 
-    it('commits a charging PPC-capacitor explosion before end-turn state advancement', () => {
+    it('does not explode a charging PPC-capacitor from manual inventory destruction', () => {
         const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
         const { weapon, capacitor } = installChargedPpcPair(forceUnit);
@@ -2461,7 +2735,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const committedWeapon = forceUnit.getInventory().find(entry => entry.id === weapon.id)!;
         const committedCapacitor = forceUnit.getInventory().find(entry => entry.id === capacitor.id)!;
         expect(committedWeapon.committedDestroyed()).toBeTrue();
-        expect(committedCapacitor.committedDestroyed()).toBeTrue();
+        expect(committedCapacitor.committedDestroyed()).toBeFalse();
         expect(committedCapacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
     });
 
@@ -2471,7 +2745,13 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             const { weaponSlots, capacitorSlots, unrelatedSlot } = installChargedPpcPair(forceUnit, true);
             const triggerSlot = consolidateImmediately ? weaponSlots[0] : capacitorSlots[0];
 
-            forceUnit.applyHitToCritSlot(triggerSlot, 1, consolidateImmediately);
+            const result = applyMekCriticalRoll(
+                forceUnit,
+                'RA',
+                [1, (triggerSlot.slot ?? 0) + 1],
+                consolidateImmediately,
+            );
+            expect(result?.applied).toBeTrue();
             if (!consolidateImmediately) forceUnit.endPhase();
 
             const committedSlots = [...weaponSlots, ...capacitorSlots]
@@ -2670,6 +2950,36 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         expect(restored.getCondition('tagged')).toBeFalse();
         expect(restored.getCondition('skidding')).toBeFalse();
+    });
+
+    it('waits for the last dirty unit before clearing TAGGED from force-shared manual targets', () => {
+        const forceUnit = createForceUnit();
+        const force = forceUnit.force as TestCBTForce;
+        const otherUnit = new CBTForceUnit(
+            createMekUnit(), force, dataService, unitInitializer, injector,
+        );
+        force.setUnits([forceUnit, otherUnit]);
+        forceUnit.turnState().moveMode.set('walk');
+        otherUnit.turnState().moveMode.set('walk');
+        force.inventoryControlTargets.replaceTargets([
+            {
+                id: 'A', letter: 'A', name: 'Manual target', color: '#000', source: 'manual',
+                unitType: 'mek-biped', distance: 1, tnModifier: 0, tnCalculator: { tagged: true },
+            },
+            {
+                id: 'opfor:enemy', letter: 'B', name: 'OPFOR target', color: '#f00', source: 'opfor',
+                unitType: 'mek-biped', distance: 1, tnModifier: 0, tnCalculator: { tagged: true },
+            },
+        ]);
+
+        forceUnit.endTurn();
+
+        expect(force.getInventoryControlTarget('A')?.tnCalculator?.tagged).toBeTrue();
+
+        otherUnit.endTurn();
+
+        expect(force.getInventoryControlTarget('A')?.tnCalculator?.tagged).toBeFalse();
+        expect(force.getInventoryControlTarget('opfor:enemy')?.tnCalculator?.tagged).toBeTrue();
     });
 
     it('serializes and restores turn state data', () => {
@@ -3087,7 +3397,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(serialized.state.inventory).toBeUndefined();
     });
 
-    it('reuses deleted target letters and caps targets at twelve', () => {
+    it('reuses deleted target letters and caps targets', () => {
         const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
 
@@ -3152,7 +3462,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
                 indirectFire: true,
                 secondaryTarget: true,
                 spotterMoveMode: 'jump',
-                spotterDeclaredAttacks: true
+                spotterDeclaredAttacks: true,
+                customModifier: 2,
             }
         });
 
@@ -3174,6 +3485,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(secondTarget.tnCalculator?.secondaryTarget).toBeUndefined();
         expect(secondTarget.tnCalculator?.spotterMoveMode).toBeUndefined();
         expect(secondTarget.tnCalculator?.spotterDeclaredAttacks).toBeUndefined();
+        expect(secondTarget.tnCalculator?.customModifier).toBeUndefined();
 
         expect(firstTarget.distance).toBe(3);
         expect(firstTarget.c3Distance).toBe(2);
@@ -3185,7 +3497,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             indirectFire: true,
             secondaryTarget: true,
             spotterMoveMode: 'jump',
-            spotterDeclaredAttacks: true
+            spotterDeclaredAttacks: true,
+            customModifier: 2,
         }));
 
         secondUnit.updateInventoryControlTarget(target!.id, {
@@ -3197,6 +3510,26 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(firstUnit.getInventoryControlTarget(target!.id)?.tnModifier).toBe(8);
         expect(secondUnit.getInventoryControlTarget(target!.id)?.distance).toBe(12);
         expect(secondUnit.getInventoryControlTarget(target!.id)?.tnModifier).toBe(2);
+    });
+
+    it('keeps custom target modifiers per attacking unit and clears them independently', () => {
+        const force = new TestCBTForce('Test Force', dataService, unitInitializer, injector);
+        const firstUnit = force.addUnit(createVehicleUnit(equipment));
+        const secondUnit = force.addUnit(createVehicleUnit(equipment));
+        const target = firstUnit.createInventoryControlTarget()!;
+
+        firstUnit.updateInventoryControlTarget(target.id, { tnCalculator: { customModifier: 2 } });
+
+        expect(firstUnit.getInventoryControlTarget(target.id)?.tnModifier).toBe(2);
+        expect(firstUnit.getInventoryControlTarget(target.id)?.tnCalculator?.customModifier).toBe(2);
+        expect(secondUnit.getInventoryControlTarget(target.id)?.tnModifier).toBe(0);
+        expect(secondUnit.getInventoryControlTarget(target.id)?.tnCalculator?.customModifier).toBeUndefined();
+        expect(force.getInventoryControlTarget(target.id)?.tnCalculator?.customModifier).toBeUndefined();
+
+        firstUnit.updateInventoryControlTarget(target.id, { tnCalculator: { customModifier: undefined } });
+
+        expect(firstUnit.getInventoryControlTarget(target.id)?.tnModifier).toBe(0);
+        expect(firstUnit.getInventoryControlTarget(target.id)?.tnCalculator?.customModifier).toBeUndefined();
     });
 
     it('allocates target letters once for the entire force', () => {
@@ -3237,6 +3570,33 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             targetMovementBracket: '7-9',
             targetHexCover: 'heavy',
             prone: true
+        }));
+    });
+
+    it('clears explicitly undefined shared calculator fields', () => {
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
+        const target = forceUnit.createInventoryControlTarget()!;
+        forceUnit.updateInventoryControlTarget(target.id, {
+            tnCalculator: {
+                targetMovementBracket: '7-9',
+                targetHexCover: 'none',
+                buildingCover: 'building-2',
+            },
+        });
+
+        forceUnit.updateInventoryControlTarget(target.id, {
+            tnCalculator: {
+                targetHexCover: 'heavy',
+                waterDepth: undefined,
+                buildingCover: undefined,
+            },
+        });
+
+        expect(forceUnit.getInventoryControlTarget(target.id)?.tnCalculator).toEqual(jasmine.objectContaining({
+            targetMovementBracket: '7-9',
+            targetHexCover: 'heavy',
+            waterDepth: undefined,
+            buildingCover: undefined,
         }));
     });
 
@@ -3415,7 +3775,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(hitModText.textContent).toBe('-4');
     });
 
-    it('renders the selected UAC firing mode after the SVG inventory name', () => {
+    it('calculates rear-mounted inventory names before appending the selected UAC firing mode', () => {
         const rotary = new WeaponEquipment({
             id: 'CLRotaryAC5',
             name: 'Rotary AC/5',
@@ -3428,13 +3788,14 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const forceUnit = createForceUnit(createEmptyUnit({
             ...createMekUnit(),
             comp: [{
-                id: 'CLRotaryAC5@LT#2',
+                id: 'CLRotaryAC5',
                 q: 1,
                 q2: 0,
                 n: 'Rotary AC/5',
                 t: 'B',
                 p: 1,
                 l: 'LT',
+                rear: true,
                 r: '4/8/12',
                 m: '0',
                 d: '5/Sht',
@@ -3446,8 +3807,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         }));
         const svg = new DOMParser().parseFromString(`
             <svg xmlns="http://www.w3.org/2000/svg">
-                <g class="inventoryEntry" id="CLRotaryAC5@LT#2" hitMod="0">
-                    <g class="name"><text>Rotary AC/5</text></g>
+                <g class="inventoryEntry" id="CLRotaryAC5@LT#2" hitMod="0" rearMounted="1">
+                    <g class="name"><text>Stale SVG Name</text></g>
                     <text class="heat">1</text>
                     <g class="damage"><text>5/Sht</text></g>
                     <text class="range_short">4</text>
@@ -3465,9 +3826,12 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         svgService.refreshInventory();
 
-        expect(entry.el?.querySelector(':scope > .name > text')?.textContent).toBe('Rotary AC/5 (3-shot)');
+        expect(entry.el?.querySelector(':scope > .name > text')?.textContent).toBe('Rotary AC/5 (R) (3-shot)');
         expect(entry.el?.querySelector(':scope > .heat')?.textContent).toBe('1/s');
         expect(entry.el?.querySelector(':scope > .damage > text')?.textContent).toBe('5/Sht [DB,R6,S]');
+
+        svgService.refreshInventory();
+        expect(entry.el?.querySelector(':scope > .name > text')?.textContent).toBe('Rotary AC/5 (R) (3-shot)');
     });
 
     it('reactively disables intact SVG equipment while shutdown without marking it damaged', () => {
@@ -3971,6 +4335,46 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(damageLines.map(line => line.textContent)).toEqual(['1/Msl', '[C5,H,M,OS,S]']);
     });
 
+    it('renders a CORE charge formula with the current spike bonus instead of the SVG default', () => {
+        const forceUnit = createForceUnit();
+        const entryEl = new DOMParser().parseFromString(`
+            <g xmlns="http://www.w3.org/2000/svg" class="inventoryEntry">
+                <g class="damage"><text>Wrong SVG value</text></g>
+            </g>
+        `, 'image/svg+xml').documentElement as unknown as SVGElement;
+        const charge = new MountedEquipment({
+            owner: forceUnit,
+            id: 'Charge',
+            name: 'charge',
+            intrinsicPhysicalAttack: true,
+            el: entryEl,
+        });
+        const damageText = entryEl.querySelector(':scope > .damage > text') as SVGTextElement;
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.renderCharge(charge, {
+            damage: 12,
+            maxDamage: 42,
+            bonusDamage: 2,
+            maxBonusDamage: 2,
+            displayFormula: '10×(TMM+1)+2',
+        });
+
+        expect(damageText.textContent).toBe('10×(TMM+1)+2');
+        expect(damageText.classList.contains('damaged')).toBeFalse();
+
+        svgService.renderCharge(charge, {
+            damage: 10,
+            maxDamage: 42,
+            bonusDamage: 0,
+            maxBonusDamage: 2,
+            displayFormula: '10×(TMM+1)',
+        });
+
+        expect(damageText.textContent).toBe('10×(TMM+1)');
+        expect(damageText.classList.contains('damaged')).toBeTrue();
+    });
+
     it('renders vibroblade OFF and ON damage on the Mek SVG', () => {
         const vibroblade = new MiscEquipment({
             id: 'ISMediumVibroblade',
@@ -4459,6 +4863,126 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(linkedEls.some(el => el.classList.contains('disabledLocation'))).toBeFalse();
         expect(linkedCritGroup.classList.contains('disabledLocation')).toBeFalse();
         expect(linkedCritGroup.classList.contains('locationDestroyed')).toBeTrue();
+    });
+
+    it('keeps NARC active through pending location destruction and removes it when committed', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit, createMekDamageSvg());
+        forceUnit.locations!.armor.set('LL', { loc: 'LL', rear: false, points: 1 });
+        forceUnit.locations!.internal.set('LL', { loc: 'LL', points: 1 });
+        forceUnit.setLocations({ ...forceUnit.getLocations(), LL: { armor: 0, internal: 0 } }, true);
+        forceUnit.setLocationCondition('LA', 'narc', true);
+        forceUnit.setLocationCondition('LL', 'narc', true);
+
+        expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: true, underwater: false });
+
+        forceUnit.turnState().setCover('underwater-depth-1');
+        expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: true, underwater: true });
+
+        forceUnit.setCondition('prone', true);
+        expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: false, underwater: true });
+
+        forceUnit.setCondition('prone', false);
+        forceUnit.addInternalHits('LL', forceUnit.getInternalPoints('LL'));
+        expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: true, underwater: true });
+
+        forceUnit.endPhase();
+        expect(forceUnit.getCondition('prone')).toBeTrue();
+        expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: false, underwater: true });
+
+        forceUnit.setLocationCondition('LA', 'blown-off', true);
+        expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: false, underwater: true });
+
+        forceUnit.endPhase();
+        expect(forceUnit.getActiveNarcWaterLayers()).toEqual({ aboveWater: false, underwater: false });
+    });
+
+    it('classifies firing weapons by their water layer', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit, createMekDamageSvg());
+        const weapon = new WeaponEquipment({
+            id: 'TestNarcCapableLauncher',
+            name: 'Test NARC-Capable Launcher',
+            type: 'weapon',
+            weapon: { ammoType: 'LRM', rackSize: 5, ranges: [7, 14, 21, 28] },
+        });
+        const legWeapon = new MountedWeapon({
+            owner: forceUnit,
+            id: `${weapon.internalName}@LL#0`,
+            name: weapon.internalName,
+            equipment: weapon,
+            locations: new Set(['LL']),
+        });
+        const torsoWeapon = new MountedWeapon({
+            owner: forceUnit,
+            id: `${weapon.internalName}@LT#1`,
+            name: weapon.internalName,
+            equipment: weapon,
+            locations: new Set(['LT']),
+        });
+
+        expect(forceUnit.isEquipmentSubmerged(legWeapon)).toBeFalse();
+        expect(forceUnit.isEquipmentSubmerged(torsoWeapon)).toBeFalse();
+
+        forceUnit.turnState().setCover('underwater-depth-1');
+        expect(forceUnit.isEquipmentSubmerged(legWeapon)).toBeTrue();
+        expect(forceUnit.isEquipmentSubmerged(torsoWeapon)).toBeFalse();
+
+        forceUnit.setCondition('prone', true);
+        expect(forceUnit.isEquipmentSubmerged(legWeapon)).toBeTrue();
+        expect(forceUnit.isEquipmentSubmerged(torsoWeapon)).toBeTrue();
+
+        forceUnit.setCondition('prone', false);
+        forceUnit.turnState().setCover('underwater-depth-2');
+        expect(forceUnit.isEquipmentSubmerged(legWeapon)).toBeTrue();
+        expect(forceUnit.isEquipmentSubmerged(torsoWeapon)).toBeTrue();
+    });
+
+    it('allows energy weapons, converted torpedoes, and native SRT/LRT/NLRT ammunition underwater', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit, createMekDamageSvg());
+        const ballistic = new WeaponEquipment({
+            id: 'TestBallistic',
+            name: 'Test Ballistic',
+            type: 'weapon',
+            weapon: { ammoType: 'LRM', rackSize: 5, ranges: [7, 14, 21, 28] },
+        });
+        const energy = new WeaponEquipment({
+            id: 'TestEnergy',
+            name: 'Test Energy',
+            type: 'weapon',
+            flags: ['F_ENERGY'],
+            weapon: { ammoType: 'NA', ranges: [3, 6, 9, 12] },
+        });
+        const legBallistic = new MountedWeapon({ owner: forceUnit, id: 'TestBallistic@LL#0', name: ballistic.name, equipment: ballistic, locations: new Set(['LL']) });
+        const legEnergy = new MountedWeapon({ owner: forceUnit, id: 'TestEnergy@LL#1', name: energy.name, equipment: energy, locations: new Set(['LL']) });
+        const standardAmmo = new AmmoEquipment({
+            id: 'StandardAmmo', name: 'Standard Ammo', type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 5, shots: 24 },
+        });
+        const torpedoAmmo = new AmmoEquipment({
+            id: 'TorpedoAmmo', name: 'Torpedo Ammo', type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 5, shots: 24, munitionType: ['M_TORPEDO'] },
+        });
+        const nativeTorpedoAmmo = (['SRM_TORPEDO', 'LRM_TORPEDO', 'NLRM_TORPEDO'] as const)
+            .map(type => new AmmoEquipment({
+                id: type, name: type, type: 'ammo',
+                ammo: { type, rackSize: 5, shots: 24 },
+            }));
+        const comboAmmo = new AmmoEquipment({
+            id: 'ComboAmmo', name: 'Combo Ammo', type: 'ammo',
+            ammo: { type: 'LRM_TORPEDO_COMBO', rackSize: 5, shots: 24 },
+        });
+        forceUnit.setInventory([legBallistic, legEnergy]);
+        forceUnit.turnState().setCover('underwater-depth-1');
+
+        expect(forceUnit.isInventoryWeaponUsableInWater(legBallistic, standardAmmo)).toBeFalse();
+        expect(forceUnit.isInventoryWeaponUsableInWater(legBallistic, torpedoAmmo)).toBeTrue();
+        expect(nativeTorpedoAmmo.every(ammo => forceUnit.isInventoryWeaponUsableInWater(legBallistic, ammo))).toBeTrue();
+        expect(forceUnit.isInventoryWeaponUsableInWater(legBallistic, comboAmmo)).toBeFalse();
+        expect(forceUnit.isInventoryWeaponUsableInWater(legEnergy)).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(legBallistic, 'fire')).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(legEnergy, 'fire')).toBeTrue();
     });
 
     it('renders target range classes from the ammo-aware typed MML mode', () => {

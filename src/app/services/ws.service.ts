@@ -16,6 +16,11 @@ export const PROTOCOL_VERSION = 2;
 export type ConnectionStatusPhase = 'hidden' | 'offline' | 'online';
 export type ForceUpdateSource = 'live' | 'reconnect';
 
+interface WsRequestOptions {
+    timeout?: number;
+    suppressGlobalError?: boolean;
+}
+
 interface ForceSubscription {
     onRemoteUpdate: (data: SerializedForce, source: ForceUpdateSource) => void | Promise<void>;
     handler: ((event: MessageEvent) => void) | null;
@@ -54,6 +59,7 @@ export class WsService {
     public wsConnected = signal<boolean>(false);
     private userStateService = inject(UserStateService);
     private globalErrorHandler: ((message: string) => void) | null = null;
+    private readonly locallyHandledErrorRequestIds = new Set<string>();
     private lastRegisteredUuid = '';
     private resumeProbeInFlight = false;
     private lastResumeProbeAt = 0;
@@ -96,6 +102,7 @@ export class WsService {
         this.registerMessageHandler('userState', (msg) => {
             const snapshot = {
                 publicId: msg.publicId ?? null,
+                displayName: typeof msg.displayName === 'string' ? msg.displayName : null,
                 hasOAuth: msg.hasOAuth,
                 oauthProviderCount: msg.oauthProviderCount,
                 oauthProviders: Array.isArray(msg.oauthProviders) ? msg.oauthProviders : undefined,
@@ -308,8 +315,12 @@ export class WsService {
             return;
         }
 
-        if (msg?.action === 'error' && this.globalErrorHandler) {
-            this.globalErrorHandler(msg.message || 'Unknown error');
+        if (msg?.action === 'error') {
+            const locallyHandled = typeof msg.requestId === 'string'
+                && this.locallyHandledErrorRequestIds.delete(msg.requestId);
+            if (!locallyHandled && this.globalErrorHandler) {
+                this.globalErrorHandler(msg.message || 'Unknown error');
+            }
         }
 
         const action = msg?.action;
@@ -570,13 +581,23 @@ export class WsService {
     /**
      * Send a message and wait for response
      */
-    public async sendAndWaitForResponse(payload: object, timeout: number = 5000): Promise<any | null> {
+    public async sendAndWaitForResponse(
+        payload: object,
+        timeoutOrOptions: number | WsRequestOptions = 5000,
+    ): Promise<any | null> {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             this.logger.warn('Cannot send: WebSocket not connected');
             return null;
         }
 
+        const options = typeof timeoutOrOptions === 'number'
+            ? { timeout: timeoutOrOptions }
+            : timeoutOrOptions;
+        const timeout = options.timeout ?? 5000;
         const requestId = uuidv7();
+        if (options.suppressGlobalError) {
+            this.locallyHandledErrorRequestIds.add(requestId);
+        }
         const message = {
             ...payload,
             sessionId: this.wsSessionId,
@@ -592,7 +613,11 @@ export class WsService {
                 try {
                     const msg = JSON.parse(event.data);
                     if (msg.requestId === requestId) {
-                        cleanup();
+                        const preserveErrorOwnership = options.suppressGlobalError && msg.action === 'error';
+                        cleanup(preserveErrorOwnership);
+                        if (preserveErrorOwnership) {
+                            queueMicrotask(() => this.locallyHandledErrorRequestIds.delete(requestId));
+                        }
                         resolve(msg);
                     }
                 } catch {
@@ -600,10 +625,13 @@ export class WsService {
                 }
             };
 
-            const cleanup = () => {
+            const cleanup = (preserveErrorOwnership = false) => {
                 ws.removeEventListener('message', handler);
                 if (timeoutId !== null) {
                     clearTimeout(timeoutId);
+                }
+                if (!preserveErrorOwnership) {
+                    this.locallyHandledErrorRequestIds.delete(requestId);
                 }
             };
 

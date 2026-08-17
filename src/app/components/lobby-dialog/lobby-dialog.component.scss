@@ -97,9 +97,10 @@
 
 .lobby-participant {
     min-width: 0;
-    padding: 2px 0 5px;
+    padding: 2px 0;
     cursor: grab;
     border: 1px solid var(--border-color);
+    box-sizing: border-box;
 
     &.self {
         border-color: transparent;
@@ -154,13 +155,6 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-}
-
-.empty-force {
-    padding: 2px 6px;
-    color: var(--text-color-secondary);
-    font-size: 0.75em;
-    opacity: 0.65;
 }
 
 .lobby-participant.offline .participant-name,

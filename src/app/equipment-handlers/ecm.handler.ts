@@ -65,7 +65,7 @@ export class ECMHandler extends EquipmentInteractionHandler {
             equipment.owner.setInventoryEntry(equipment);
         }
         context.toastService.showToast(
-            `${equipment.equipment?.name||equipment.name} mode: ${choice.label}`,
+            `${equipment.getDisplayName()} mode: ${choice.label}`,
             'info'
         );
         return true;

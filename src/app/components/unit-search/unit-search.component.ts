@@ -51,7 +51,6 @@ import { KeyboardShortcutService } from '../../services/keyboard-shortcut.servic
 import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-panel.component';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
-import { formatMovement } from '../../utils/as-common.util';
 import type { UnitType } from '../../models/units.model';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import { updateNumericRangeBound } from '../../utils/unit-search-normalization-range.util';
@@ -68,6 +67,14 @@ import type { UnitSearchViewMode } from '../../models/options.model';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { SimpleSliderComponent } from '../simple-slider/simple-slider.component';
 import { normalizeBoundedInteger, normalizeBoundedIntegerInput } from '../../utils/bounded-integer-input.util';
+import {
+    buildUnitDataTableColumns,
+    formatAlphaStrikeUnitMovement,
+    formatClassicUnitMovement,
+    formatUnitDataTableSortSlotValue,
+    getUnitDataTableSortSlotHeader,
+    isUnitDataTableSortActive,
+} from '../../utils/unit-data-table.util';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup extends UnitVariantGroupIdentity {
@@ -291,7 +298,6 @@ export class UnitSearchComponent {
     private readonly tableYearCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableYearCell');
     private readonly tableTypeCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableTypeCell');
     private readonly tableBvCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableBvCell');
-    private readonly tableTonsCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableTonsCell');
     private readonly tablePvCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tablePvCell');
     private readonly tableMovementCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableMovementCell');
     private readonly tableClassicMovementCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableClassicMovementCell');
@@ -530,42 +536,12 @@ export class UnitSearchComponent {
         return opt?.slotLabel || opt?.label || key;
     });
 
-    /**
-     * For AS table view: returns the sort slot header label if the current sort
-     * is not already visible in the table columns, otherwise null.
-     */
-    readonly asTableSortSlotHeader = computed((): string | null => {
-        const key = this.filtersService.selectedSort();
-        if (!key) return null;
-
-        // Check if key is directly in table columns
-        if (UnitSearchComponent.AS_TABLE_VISIBLE_KEYS.includes(key)) return null;
-
-        // Check if key is in a group that's in table columns
-        for (const groupName of UnitSearchComponent.AS_TABLE_VISIBLE_GROUPS) {
-            const group = UnitSearchComponent.SORT_KEY_GROUPS[groupName];
-            if (group && group.includes(key)) return null;
-        }
-
-        // Key is not displayed in table - return the label
-        const opt: SortOption | undefined = this.SORT_OPTIONS.find(o => o.key === key);
-        return opt?.slotLabel || opt?.label || key;
-    });
-
-    readonly cbtTableSortSlotHeader = computed((): string | null => {
-        const key = this.filtersService.selectedSort();
-        if (!key) return null;
-
-        if (UnitSearchComponent.CBT_TABLE_VISIBLE_KEYS.includes(key)) return null;
-
-        for (const groupName of UnitSearchComponent.CBT_TABLE_VISIBLE_GROUPS) {
-            const group = UnitSearchComponent.SORT_KEY_GROUPS[groupName];
-            if (group && group.includes(key)) return null;
-        }
-
-        const opt: SortOption | undefined = this.SORT_OPTIONS.find(o => o.key === key);
-        return opt?.slotLabel || opt?.label || key;
-    });
+    /** Label for a selected sort that is not represented by a standard table column. */
+    readonly unitTableSortSlotHeader = computed(() => getUnitDataTableSortSlotHeader(
+        this.gameService.currentGameSystem(),
+        this.filtersService.selectedSort(),
+        this.SORT_OPTIONS,
+    ));
 
     readonly unitSearchTableColumns = computed<readonly DataTableColumn<Unit>[]>(() => {
         const iconCell = this.tableIconCell();
@@ -573,383 +549,67 @@ export class UnitSearchComponent {
         const yearCell = this.tableYearCell();
         const typeCell = this.tableTypeCell();
         const bvCell = this.tableBvCell();
-        const tonsCell = this.tableTonsCell();
         const pvCell = this.tablePvCell();
         const movementCell = this.tableMovementCell();
         const classicMovementCell = this.tableClassicMovementCell();
         const specialsCell = this.tableSpecialsCell();
         const tagsCell = this.tableTagsCell();
+        const gameSystem = this.gameService.currentGameSystem();
+        const isAlphaStrike = gameSystem === GameSystem.ALPHA_STRIKE;
+        const valueCell = isAlphaStrike ? pvCell : bvCell;
+        const selectedMovementCell = isAlphaStrike ? movementCell : classicMovementCell;
 
-        if (!iconCell || !nameCell || !yearCell || !tagsCell) {
+        if (!iconCell || !nameCell || !yearCell || !valueCell || !selectedMovementCell || !tagsCell) {
+            return [];
+        }
+        if (isAlphaStrike && (!typeCell || !specialsCell)) {
             return [];
         }
 
-        if (!this.gameService.isAlphaStrike()) {
-            if (!bvCell || !tonsCell || !classicMovementCell) {
-                return [];
-            }
-
-            const columns: DataTableColumn<Unit>[] = [
-                {
-                    id: 'icon',
-                    header: '',
-                    track: 40,
-                    cellTemplate: iconCell,
-                    align: 'center',
-                },
-                {
-                    id: 'name',
-                    header: 'Name',
-                    track: { minPx: 320, flex: 1.35 },
-                    cellTemplate: nameCell,
-                    sortKey: 'name',
-                    sortActive: this.isSortActive('name'),
-                },
-                {
-                    id: 'type',
-                    header: 'Type',
-                    track: 100,
-                    value: unit => unit.type,
-                    sortKey: 'type',
-                    sortActive: this.isSortActive('type'),
-                    cellClass: this.tableCellClass('cbt-td-type', this.isSortActive('type')),
-                },
-                {
-                    id: 'subtype',
-                    header: 'Subtype',
-                    track: 130,
-                    value: unit => this.formatClassicSubtype(unit),
-                    sortKey: 'subtype',
-                    sortActive: this.isSortActive('subtype'),
-                    cellClass: this.tableCellClass('cbt-td-subtype', this.isSortActive('subtype')),
-                },
-                {
-                    id: 'role',
-                    header: 'Role',
-                    track: 130,
-                    value: unit => unit.role !== 'None' ? unit.role : '',
-                    sortKey: 'role',
-                    sortActive: this.isSortActive('role'),
-                    cellClass: this.tableCellClass('as-td-role', this.isSortActive('role')),
-                },
-                {
-                    id: 'bv',
-                    header: 'BV',
-                    track: this.filtersService.activeBvNormalization() ? 128 : 78,
-                    cellTemplate: bvCell,
-                    sortKey: 'bv',
-                    sortActive: this.isSortActive('bv'),
-                    cellClass: this.tableCellClass('cbt-td-bv is-bold', this.isSortActive('bv')),
-                    align: 'right',
-                },
-            ];
-
-            if (this.filtersService.activeBvNormalization()) {
-                columns.push({
-                    id: 'normalized-skills',
-                    header: 'G/P',
-                    track: 56,
-                    value: unit => this.formatNormalizedSkills(unit),
-                    cellTone: 'focus',
-                    align: 'center',
-                });
-            }
-
-            columns.push(
-                {
-                    id: 'tons',
-                    header: 'Tons',
-                    track: 64,
-                    cellTemplate: tonsCell,
-                    sortKey: 'tons',
-                    sortActive: this.isSortActive('tons'),
-                    cellClass: this.tableCellClass('cbt-td-tons', this.isSortActive('tons')),
-                    align: 'right',
-                },
-                {
-                    id: 'year',
-                    header: 'Year',
-                    track: 72,
-                    cellTemplate: yearCell,
-                    sortKey: 'year',
-                    sortActive: this.isSortActive('year'),
-                    cellClass: this.tableCellClass('as-td-year', this.isSortActive('year')),
-                    align: 'center',
-                },
-                {
-                    id: 'rules',
-                    header: 'Rules',
-                    track: 108,
-                    value: unit => unit.level,
-                    sortKey: 'level',
-                    sortActive: this.isSortActive('level'),
-                    cellClass: this.tableCellClass('cbt-td-rules', this.isSortActive('level')),
-                },
-                {
-                    id: 'tech',
-                    header: 'Tech',
-                    track: 100,
-                    value: unit => unit._techBaseDisplay,
-                    sortKey: '_techBaseDisplay',
-                    sortActive: this.isSortActive('_techBaseDisplay'),
-                    cellClass: this.tableCellClass('cbt-td-tech', this.isSortActive('_techBaseDisplay')),
-                },
-                {
-                    id: 'movement',
-                    header: 'Move',
-                    track: 96,
-                    cellTemplate: classicMovementCell,
-                    sortKey: 'walk',
-                    sortGroupKey: 'movement',
-                    sortActive: this.isSortActive('movement'),
-                    cellClass: this.tableCellClass('cbt-td-mv', this.isSortActive('movement')),
-                },
-                {
-                    id: 'armor',
-                    header: 'Armor',
-                    track: 72,
-                    value: unit => unit.armor,
-                    sortKey: 'armor',
-                    sortActive: this.isSortActive('armor'),
-                    cellClass: this.tableCellClass('cbt-td-armor', this.isSortActive('armor')),
-                    align: 'right',
-                },
-                {
-                    id: 'structure',
-                    header: 'Structure',
-                    track: 86,
-                    value: unit => unit.internal,
-                    sortKey: 'internal',
-                    sortActive: this.isSortActive('internal'),
-                    cellClass: this.tableCellClass('cbt-td-structure', this.isSortActive('internal')),
-                    align: 'right',
-                },
-                {
-                    id: 'firepower',
-                    header: 'Firepower',
-                    track: 88,
-                    value: unit => this.formatClassicStat(unit._mdSumNoPhysical),
-                    sortKey: '_mdSumNoPhysical',
-                    sortActive: this.isSortActive('_mdSumNoPhysical'),
-                    cellClass: this.tableCellClass('cbt-td-firepower', this.isSortActive('_mdSumNoPhysical')),
-                    align: 'right',
-                },
-                {
-                    id: 'damage-per-turn',
-                    header: 'Dmg/Turn',
-                    track: 92,
-                    value: unit => this.formatClassicStat(unit.dpt),
-                    sortKey: 'dpt',
-                    sortActive: this.isSortActive('dpt'),
-                    cellClass: this.tableCellClass('cbt-td-dpt', this.isSortActive('dpt')),
-                    align: 'right',
-                },
-                {
-                    id: 'network',
-                    header: 'Network',
-                    track: 96,
-                    value: unit => unit.c3 ?? '',
-                    sortKey: 'c3',
-                    sortActive: this.isSortActive('c3'),
-                    cellClass: this.tableCellClass('cbt-td-network', this.isSortActive('c3')),
-                },
-                {
-                    id: 'cost',
-                    header: 'Cost',
-                    track: 110,
-                    value: unit => unit.cost ? FormatNumberPipe.formatValue(unit.cost, true, false) : '',
-                    sortKey: 'cost',
-                    sortActive: this.isSortActive('cost'),
-                    cellClass: this.tableCellClass('cbt-td-cost', this.isSortActive('cost')),
-                    align: 'right',
-                },
-            );
-
-            if (this.cbtTableSortSlotHeader()) {
-                columns.push({
-                    id: 'sort-slot',
-                    header: this.cbtTableSortSlotHeader() ?? '',
-                    track: 100,
-                    value: unit => this.getClassicTableSortSlot(unit) ?? '',
-                    headerClass: 'as-th-sort-slot',
-                    cellClass: 'as-td-sort-slot sort-slot',
-                    align: 'center',
-                });
-            }
-
-            columns.push({
-                id: 'tags',
-                header: 'Tags',
-                track: 230,
-                cellTemplate: tagsCell,
-                headerClass: 'as-th-tags',
-                cellClass: 'as-td-tags',
-                align: 'right',
-            });
-
-            return columns;
-        }
-
-        if (!typeCell || !pvCell || !movementCell || !specialsCell) {
-            return [];
-        }
-
-        const columns: DataTableColumn<Unit>[] = [
-            {
-                id: 'icon',
-                header: '',
-                track: 40,
-                cellTemplate: iconCell,
-                align: 'center',
-            },
-            {
-                id: 'name',
-                header: 'Name',
-                track: { minPx: 320, flex: 1.35 },
-                cellTemplate: nameCell,
-                sortKey: 'name',
-                sortActive: this.isSortActive('name'),
-            },
-            {
-                id: 'year',
-                header: 'Year',
-                track: 72,
-                cellTemplate: yearCell,
-                sortKey: 'year',
-                sortActive: this.isSortActive('year'),
-                cellClass: this.tableCellClass('as-td-year', this.isSortActive('year')),
-                align: 'center',
-            },
-            {
-                id: 'type',
-                header: 'Type',
-                track: 50,
-                cellTemplate: typeCell,
-                sortKey: 'as.TP',
-                sortActive: this.isSortActive('as.TP'),
-                cellClass: this.tableCellClass('as-td-type', this.isSortActive('as.TP')),
-                align: 'center',
-            },
-            {
-                id: 'role',
-                header: 'Role',
-                track: 130,
-                value: unit => unit.role !== 'None' ? unit.role : '',
-                sortKey: 'role',
-                sortActive: this.isSortActive('role'),
-                cellClass: this.tableCellClass('as-td-role', this.isSortActive('role')),
-            },
-            {
-                id: 'pv',
-                header: 'PV',
-                track: this.filtersService.activePvNormalization() ? 82 : 45,
-                cellTemplate: pvCell,
-                sortKey: 'as.PV',
-                sortActive: this.isSortActive('as.PV'),
-                cellClass: this.tableCellClass('as-td-pv is-bold', this.isSortActive('as.PV')),
-                align: 'right',
-            },
-            ...(this.filtersService.activePvNormalization() ? [{
+        const afterValueColumns: DataTableColumn<Unit>[] = [];
+        if (isAlphaStrike && this.filtersService.activePvNormalization()) {
+            afterValueColumns.push({
                 id: 'normalized-skill',
                 header: 'Skill',
                 track: 45,
-                value: (unit: Unit) => getNormalizationGunnery(this.getSearchResultContext(unit)),
-                cellTone: 'focus' as const,
-                align: 'center' as const,
-            }] : []),
-            {
-                id: 'sz',
-                header: 'SZ',
-                track: 30,
-                value: unit => unit.as.SZ,
-                sortKey: 'as.SZ',
-                sortActive: this.isSortActive('as.SZ'),
-                cellClass: this.tableCellClass('as-td-sz', this.isSortActive('as.SZ')),
+                value: unit => getNormalizationGunnery(this.getSearchResultContext(unit)),
+                cellTone: 'focus',
                 align: 'center',
-            },
-            {
-                id: 'mv',
-                header: 'MV',
-                track: 65,
-                cellTemplate: movementCell,
-                sortKey: 'as._mv',
-                sortActive: this.isSortActive('as._mv'),
-                cellClass: this.tableCellClass('as-td-mv', this.isSortActive('as._mv')),
-                align: 'center',
-            },
-            {
-                id: 'tmm',
-                header: 'TMM',
-                track: 40,
-                value: unit => unit.as.TMM ?? '—',
-                sortKey: 'as.TMM',
-                sortActive: this.isSortActive('as.TMM'),
-                cellClass: this.tableCellClass('as-td-tmm', this.isSortActive('as.TMM')),
-                align: 'center',
-            },
-            {
-                id: 'damage',
-                header: 'S/M/L',
-                track: 60,
-                value: unit => !unit.as.usesArcs ? `${unit.as.dmg.dmgS}/${unit.as.dmg.dmgM}/${unit.as.dmg.dmgL}` : '',
-                sortKey: 'as.dmg._dmgS',
-                sortGroupKey: 'as.damage',
-                sortActive: this.isSortActive('as.damage'),
-                cellClass: this.tableCellClass('as-td-dmg', this.isSortActive('as.damage')),
-                align: 'center',
-            },
-            {
-                id: 'arm',
-                header: 'A',
-                track: 40,
-                value: unit => unit.as.Arm,
-                sortKey: 'as.Arm',
-                sortActive: this.isSortActive('as.Arm'),
-                cellClass: this.tableCellClass('as-td-arm', this.isSortActive('as.Arm')),
-                align: 'center',
-            },
-            {
-                id: 'str',
-                header: 'S',
-                track: 40,
-                value: unit => unit.as.Str,
-                sortKey: 'as.Str',
-                sortActive: this.isSortActive('as.Str'),
-                cellClass: this.tableCellClass('as-td-str', this.isSortActive('as.Str')),
-                align: 'center',
-            },
-            {
-                id: 'ov',
-                header: 'OV',
-                track: 30,
-                value: unit => unit.as.usesOV ? unit.as.OV : '',
-                sortKey: 'as.OV',
-                sortActive: this.isSortActive('as.OV'),
-                cellClass: this.tableCellClass('as-td-ov', this.isSortActive('as.OV')),
-                align: 'center',
-            },
-        ];
-
-        if (this.asTableSortSlotHeader()) {
-            columns.push({
-                id: 'sort-slot',
-                header: this.asTableSortSlotHeader() ?? '',
-                track: 80,
-                value: unit => this.getAsTableSortSlot(unit) ?? '',
-                headerClass: 'as-th-sort-slot',
-                cellClass: 'as-td-sort-slot sort-slot',
+            });
+        } else if (!isAlphaStrike && this.filtersService.activeBvNormalization()) {
+            afterValueColumns.push({
+                id: 'normalized-skills',
+                header: 'G/P',
+                track: 56,
+                value: unit => this.formatNormalizedSkills(unit),
+                cellTone: 'focus',
                 align: 'center',
             });
         }
 
-        columns.push(
-            {
-                id: 'specials',
-                header: 'Special',
-                track: { minPx: 220, flex: 1 },
-                cellTemplate: specialsCell,
+        const sortSlotHeader = this.unitTableSortSlotHeader();
+        return buildUnitDataTableColumns({
+            gameSystem,
+            getUnit: unit => unit,
+            isSortActive: keyOrGroup => this.isSortActive(keyOrGroup),
+            templates: {
+                icon: iconCell,
+                name: nameCell,
+                year: yearCell,
+                value: valueCell,
+                movement: selectedMovementCell,
+                type: typeCell,
+                specials: specialsCell,
             },
-            {
+            valueTrack: isAlphaStrike
+                ? (this.filtersService.activePvNormalization() ? 82 : 45)
+                : (this.filtersService.activeBvNormalization() ? 128 : 78),
+            afterValueColumns,
+            sortSlot: sortSlotHeader ? {
+                header: sortSlotHeader,
+                value: unit => this.getUnitTableSortSlot(unit) ?? '',
+            } : null,
+            trailingColumns: [{
                 id: 'tags',
                 header: 'Tags',
                 track: 230,
@@ -957,10 +617,8 @@ export class UnitSearchComponent {
                 headerClass: 'as-th-tags',
                 cellClass: 'as-td-tags',
                 align: 'right',
-            },
-        );
-
-        return columns;
+            }],
+        });
     });
 
     /** Current sort key for expanded card highlighting */
@@ -1961,18 +1619,6 @@ export class UnitSearchComponent {
     }
 
     /**
-     * Keys that are grouped together in the UI display.
-     * When any key in a group is displayed, sorting by any other key in the group
-     * should highlight that display (not create a separate sort slot).
-     */
-    private static readonly SORT_KEY_GROUPS: Record<string, readonly string[]> = {
-        // AS damage displayed as S/M/L composite
-        'as.damage': ['as.dmg._dmgS', 'as.dmg._dmgM', 'as.dmg._dmgL', 'as.dmg._dmgE'],
-        // CBT movement displayed as "walk / run / jump / umu"
-        'movement': ['walk', 'run', 'jump', 'umu'],
-    };
-
-    /**
      * Check if the current sort key matches any of the provided keys or groups.
      * Use in templates: [class.sort-slot]="isSortActive('as.PV')" or isSortActive('as.damage')
      */
@@ -2025,59 +1671,13 @@ export class UnitSearchComponent {
     }
 
     isSortActive(...keysOrGroups: string[]): boolean {
-        const currentSort = this.filtersService.selectedSort();
-        if (!currentSort) return false;
-
-        for (const keyOrGroup of keysOrGroups) {
-            // Check if it's a group name
-            const group = UnitSearchComponent.SORT_KEY_GROUPS[keyOrGroup];
-            if (group) {
-                if (group.includes(currentSort)) return true;
-            } else if (keyOrGroup === currentSort) {
-                return true;
-            }
-        }
-        return false;
+        return isUnitDataTableSortActive(this.filtersService.selectedSort(), ...keysOrGroups);
     }
 
-    /**
-     * Keys always visible in the AS table row.
-     * Used by both asTableSortSlotHeader and getAsTableSortSlot.
-     */
-    private static readonly AS_TABLE_VISIBLE_KEYS = ['name', 'year', 'as.TP', 'role', 'as.PV', 'as.SZ', 'as._mv', 'as.TMM', 'as.Arm', 'as.Str', 'as.OV'];
-    private static readonly AS_TABLE_VISIBLE_GROUPS = ['as.damage'];
-    private static readonly CBT_TABLE_VISIBLE_KEYS = ['name', 'type', 'subtype', 'role', 'bv', 'tons', 'year', 'level', '_techBaseDisplay', 'moveType', 'armor', 'internal', '_mdSumNoPhysical', 'dpt', 'c3', 'cost'];
-    private static readonly CBT_TABLE_VISIBLE_GROUPS = ['movement'];
-
-    /**
-     * Get the sort slot value for AS table row view.
-     * Returns null if the sort key is already visible in the table columns.
-     */
-    getAsTableSortSlot(unit: Unit): string | null {
+    getUnitTableSortSlot(unit: Unit): string | null {
         const key = this.filtersService.selectedSort();
-        if (!key) return null;
-
-        // Check if key is directly in table columns
-        if (UnitSearchComponent.AS_TABLE_VISIBLE_KEYS.includes(key)) return null;
-
-        // Check if key is in a group that's in table columns
-        for (const groupName of UnitSearchComponent.AS_TABLE_VISIBLE_GROUPS) {
-            const group = UnitSearchComponent.SORT_KEY_GROUPS[groupName];
-            if (group && group.includes(key)) return null;
-        }
-
-        return this.formatTableSortSlotValue(unit, key);
-    }
-
-    getClassicTableSortSlot(unit: Unit): string | null {
-        const key = this.filtersService.selectedSort();
-        if (!key) return null;
-
-        if (UnitSearchComponent.CBT_TABLE_VISIBLE_KEYS.includes(key)) return null;
-
-        for (const groupName of UnitSearchComponent.CBT_TABLE_VISIBLE_GROUPS) {
-            const group = UnitSearchComponent.SORT_KEY_GROUPS[groupName];
-            if (group && group.includes(key)) return null;
+        if (!key || !this.unitTableSortSlotHeader()) {
+            return null;
         }
 
         return this.formatTableSortSlotValue(unit, key);
@@ -2136,24 +1736,7 @@ export class UnitSearchComponent {
     }
 
     formatClassicMovement(unit: Unit): string {
-        if (!unit.walk) return '';
-
-        let movement = `${unit.walk} / ${unit.run}`;
-        if (unit.run2 && unit.run2 !== unit.run) {
-            movement += ` [${unit.run2}]`;
-        }
-        if (unit.jump) {
-            movement += ` / ${unit.jump}`;
-        }
-        if (unit.umu) {
-            movement += ` / ${unit.umu}`;
-        }
-
-        return movement;
-    }
-
-    formatClassicSubtype(unit: Unit): string {
-        return unit.subtype && unit.subtype !== unit.type ? unit.subtype : '';
+        return formatClassicUnitMovement(unit);
     }
 
     formatArmorType(armorType: string | undefined): string {
@@ -2167,26 +1750,13 @@ export class UnitSearchComponent {
     }
 
     private formatTableSortSlotValue(unit: Unit, key: string): string {
-        if (UnitSearchComponent.SORT_KEY_GROUPS['movement'].includes(key)) {
-            return this.formatClassicMovement(unit) || '—';
-        }
-
-        if (key === 'subtype') {
-            return this.formatClassicSubtype(unit) || '—';
-        }
-
         if (isMegaMekRaritySortKey(key)) {
             return this.formatMegaMekRaritySortScore(this.filtersService.getMegaMekRaritySortScore(unit));
         }
 
-        const raw = this.getUnitSortRawValue(unit, key);
-        if (raw == null) return '—';
-
-        if (typeof raw === 'number' && isASDamageFilterKey(key)) {
-            return formatASDamageValue(raw);
-        }
-
-        return typeof raw === 'number' ? FormatNumberPipe.formatValue(raw, true, false) : String(raw);
+        return formatUnitDataTableSortSlotValue(unit, key, (candidate, sortKey) =>
+            this.getUnitSortRawValue(candidate, sortKey)
+        );
     }
 
     getSearchResultMegaMekRarity(unit: Unit): string {
@@ -2224,13 +1794,6 @@ export class UnitSearchComponent {
         return this.getNestedProperty(unit, key);
     }
 
-    formatClassicStat(value: number | undefined): string {
-        if (value === undefined || value === null) {
-            return '—';
-        }
-        return FormatNumberPipe.formatValue(value, true, false);
-    }
-
     formatClassicBv(unit: Unit, gunnery: number, piloting: number): string {
         if (this.filtersService.activeBvNormalization()) {
             return formatBvPv(
@@ -2259,19 +1822,6 @@ export class UnitSearchComponent {
             unit.as.PV,
             'both',
         );
-    }
-
-    formatTons(tons: number | undefined): string {
-        if (tons === undefined) return '';
-
-        const format = (value: number) => Math.round(value * 100) / 100;
-        if (tons < 1000) {
-            return `${format(tons)}`;
-        }
-        if (tons < 1000000) {
-            return `${format(tons / 1000)}k`;
-        }
-        return `${format(tons / 1000000)}M`;
     }
 
     async onAddTag({ unit, event }: TagClickEvent) {
@@ -2610,26 +2160,7 @@ export class UnitSearchComponent {
      * Handles different movement modes (j for jump, etc.)
      */
     formatASMovement(unit: Unit): string {
-        const mvm = unit.as.MVm;
-        if (!mvm) return unit.as.MV ?? '';
-
-        const entries = Object.entries(mvm)
-            .filter(([, value]) => typeof value === 'number' && value > 0) as Array<[string, number]>;
-
-        if (entries.length === 0) return unit.as.MV ?? '';
-
-        return entries
-            .sort((a, b) => {
-                if (a[0] === '') return -1;
-                if (b[0] === '') return 1;
-                return 0;
-            })
-            .map(([mode, inches]) => formatMovement(inches, mode, this.optionsService.options().ASUseHex))
-            .join('/');
-    }
-
-    private tableCellClass(base: string, active: boolean): string {
-        return active ? `${base} sort-slot` : base;
+        return formatAlphaStrikeUnitMovement(unit, this.optionsService.options().ASUseHex);
     }
 
     private currentViewport(): CdkVirtualScrollViewport | undefined {

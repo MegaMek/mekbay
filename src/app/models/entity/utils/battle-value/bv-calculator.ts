@@ -204,7 +204,7 @@ export class BVCalculator {
     if (equipment instanceof WeaponEquipment) {
       return equipment.hasAnyFlag(['F_AMS', 'F_M_POD', 'F_B_POD']) || equipment.ammoType === 'SCREEN_LAUNCHER';
     }
-    return equipment instanceof MiscEquipment && (equipment.isShield || equipment.hasAnyFlag([
+    return equipment instanceof MiscEquipment && (equipment.hasFlag('F_SHIELD') || equipment.hasAnyFlag([
       'F_ECM', 'F_BAP', 'F_VIRAL_JAMMER_DECOY', 'F_VIRAL_JAMMER_HOMING', 'F_AP_POD',
       'F_MASS', 'F_HEAVY_BRIDGE_LAYER', 'F_MEDIUM_BRIDGE_LAYER', 'F_LIGHT_BRIDGE_LAYER',
       'F_BULLDOZER', 'F_CHAFF_POD', 'F_SPIKES',
@@ -378,7 +378,7 @@ export class BVCalculator {
       const isOffensiveArmor = equipment instanceof ArmorEquipment
         && equipment.hasFlag('F_ELECTRIC_DISCHARGE_ARMOR');
       if (!(equipment instanceof MiscEquipment || isOffensiveArmor) || equipment.hasAnyFlag(excluded)
-        || (equipment instanceof MiscEquipment && equipment.isShield)
+        || (equipment instanceof MiscEquipment && equipment.hasFlag('F_SHIELD'))
         || (equipment.hasFlag('F_ECM') && !equipment.hasFlag('F_WATCHDOG'))
         || this.countsAsOffensiveWeapon(mount)) continue;
       let value = mount.getBV(this.entity);

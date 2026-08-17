@@ -256,25 +256,24 @@ export class PageInteractionOverlayComponent {
     }
 
     async endTurnForAll() {
+        const force = this.force();
+        if (!force) return;
         const confirm = await this.dialogsService.requestConfirmation(
             'Are you sure you want to end the turn for all units?',
             'End Turn',
             'info'
         );
         if (!confirm) return;
-        const force = this.force();
-        if (!force) return;
-        force.units().forEach(unit => {
-            unit.endTurn();
-        });
+        const units = force.units();
+        units.forEach(unit => unit.endTurn());
     }
 
-    async endPhase(event: MouseEvent) {
+    endPhase(event: MouseEvent): void {
         event.stopPropagation();
         this.unit()?.endPhase();
     }
 
-    async endTurn(event: MouseEvent) {
+    endTurn(event: MouseEvent): void {
         event.stopPropagation();
         this.unit()?.endTurn();
     }

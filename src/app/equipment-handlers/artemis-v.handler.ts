@@ -8,6 +8,7 @@ import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
 import { isArtemisCompatibleWeapon } from '../models/entity/utils/equipment-link-rules';
 import { EquipmentInteractionHandler, type HandlerCommandContext, type HandlerQueryContext, type ToHitAdjustmentContext } from '../services/equipment-interaction-registry.service';
+import { inventoryControlTargetUsesIndirectFire } from '../models/inventory-control-runtime-state.model';
 
 export class ArtemisVHandler extends EquipmentInteractionHandler {
     readonly id = 'artemis-v-handler';
@@ -26,6 +27,7 @@ export class ArtemisVHandler extends EquipmentInteractionHandler {
         adjustmentContext: ToHitAdjustmentContext,
         context: HandlerQueryContext
     ): readonly ToHitAdjustment[] {
+        if (adjustmentContext.target && inventoryControlTargetUsesIndirectFire(adjustmentContext.target)) return [];
         const weapon = adjustmentContext.parent?.equipment;
         if (!weapon || !isArtemisCompatibleWeapon(weapon)) return [];
         const selectedAmmo = adjustmentContext.selectedAmmo;
@@ -34,7 +36,7 @@ export class ArtemisVHandler extends EquipmentInteractionHandler {
         const unitJammed = equipment.owner.getCondition('jammed');
         const incompatibleAmmo = selectedAmmo !== undefined && !selectedAmmo?.hasMunitionType('M_ARTEMIS_V_CAPABLE');
         const weakened = unavailable || unitJammed || incompatibleAmmo;
-        const label = equipment.equipment?.shortName ?? equipment.name;
+        const label = equipment.getDisplayName();
         const unavailableLabel = status === 'destroyed'
             ? `${label} Destroyed`
             : status === 'disabled'

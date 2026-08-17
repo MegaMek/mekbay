@@ -14,7 +14,7 @@ import { LayoutService } from '../../services/layout.service';
 import { OptionsService } from '../../services/options.service';
 import { PickerFactoryService } from '../../services/picker-factory.service';
 import { ToastService } from '../../services/toast.service';
-import { MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
+import { MiscEquipment, WeaponEquipment, type Equipment } from '../../models/equipment.model';
 import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
 import { MountedEquipment } from '../../models/mounted-equipment.model';
 import { InventoryControlRuntimeState, type InventoryControlRuntimeRangeKey } from '../../models/inventory-control-runtime-state.model';
@@ -23,8 +23,10 @@ import { RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE } from '../../equipment
 import { SvgInteractionService } from './svg-interaction.service';
 import type { ZoomPanServiceInterface } from './zoom-pan.interface';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
-import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
+import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../models/rules/game-rules';
 import type { EquipmentAction } from '../../models/cbt-force-unit.model';
+import { MekCriticalChanceDialogComponent } from './mek-critical-chance-dialog.component';
+import { MekCriticalRollDialogComponent } from './mek-critical-roll-dialog.component';
 
 type SvgInteractionServicePrivate = {
     addSvgTapHandler(
@@ -39,8 +41,10 @@ type SvgInteractionServicePrivate = {
     cleanup(): void;
     getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; baselineHeat: number; containerRect: DOMRect } | null;
     updateHeatHighlight(heatValue: number): void;
-    locationConditionDropdownChoices(unit: any, loc: string): Array<{ key: string }>;
+    locationConditionDropdownChoices(unit: any, loc: string): Array<{ key: string; action?: boolean; isBreak?: boolean }>;
     setupLocationConditionInteractions(svg: SVGSVGElement, signal: AbortSignal): void;
+    openMekCriticalChanceDialog(unit: any, location: string): void;
+    openMekCriticalRollDialog(unit: any, location: string, requiredHits?: number): void;
 };
 
 const NO_CONDITION_RULES = {
@@ -48,13 +52,22 @@ const NO_CONDITION_RULES = {
     crewStateControls: [],
     locationConditionControls: [],
     getEquipmentToHitModifiers: () => [],
+    mountedCriticalDamageDestructionThreshold: (equipment: Equipment | null) =>
+        equipment?.hasFlag('F_AC') ? 2 : 1,
     heatDissipation: () => null,
     getBaseGunnerySkill: () => 4,
     getBasePilotingSkill: () => 5,
+    hasIndependentInventoryControlAction: () => true,
 };
 
 function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInventory: () => MountedEquipment[]; rules: typeof NO_CONDITION_RULES } {
     const unit = {
+        gameRules: CORE_2026_GAME_RULES,
+        getUnit: () => ({
+            structureType: '',
+            features: [],
+            armorType: 'Standard',
+        }),
         getInventory: () => [],
         getEquipmentStatus: () => 'available',
         isEquipmentOperational: () => true,
@@ -75,7 +88,7 @@ describe('SvgInteractionService', () => {
     let service: SvgInteractionServicePrivate;
     let zoomPanService: ZoomPanServiceInterface;
     let dialogsService: { createDialog: jasmine.Spy };
-    let dialogClosedCallbacks: Array<() => void>;
+    let dialogClosedCallbacks: Array<(result?: any) => void>;
     let closeDialog: jasmine.Spy;
     let forceBuilderService: { selectUnit: jasmine.Spy; editPilotOfUnit: jasmine.Spy };
     let pickerFactory: { createChoicePicker: jasmine.Spy; createNumericPicker: jasmine.Spy };
@@ -96,7 +109,7 @@ describe('SvgInteractionService', () => {
             createDialog: jasmine.createSpy('createDialog').and.callFake(() => ({
             close: closeDialog,
                 closed: {
-                    subscribe: (callback: () => void) => {
+                    subscribe: (callback: (result?: any) => void) => {
                         dialogClosedCallbacks.push(callback);
                         return { unsubscribe: jasmine.createSpy('unsubscribe') };
                     }
@@ -179,6 +192,63 @@ describe('SvgInteractionService', () => {
         expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
     });
 
+    it('leaves a passive Core shield enabled without binding attack selection', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit(`
+            <g class="inventoryEntry">
+                <rect class="mainButton inventoryEntryButton"></rect>
+                <g class="name"><text>Medium Shield</text></g>
+            </g>
+        `);
+        entry.equipment = new MiscEquipment({
+            id: 'ISMediumShield',
+            name: 'Medium Shield',
+            type: 'misc',
+            flags: ['F_SHIELD', 'S_SHIELD_MEDIUM'],
+        });
+        entry.locations = new Set(['LA']);
+        unit.gameRules = CORE_2026_GAME_RULES;
+        unit.canPerformEquipmentAction = () => false;
+        unit.rules = {
+            ...NO_CONDITION_RULES,
+            hasIndependentInventoryControlAction: () => false,
+        };
+        pageViewerState.setForceUnits([unit]);
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+        const button = entry.el!.querySelector('.mainButton') as SVGElement;
+
+        expect(entry.el!.classList).not.toContain('disabledInventory');
+        expect(button.classList).not.toContain('interactive');
+        button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
+    });
+
+    it('binds an enabled TW shield as an independent attack selection', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit(`
+            <g class="inventoryEntry">
+                <rect class="mainButton inventoryEntryButton"></rect>
+                <g class="name"><text>Medium Shield</text></g>
+            </g>
+        `);
+        entry.equipment = new MiscEquipment({
+            id: 'ISMediumShield',
+            name: 'Medium Shield',
+            type: 'misc',
+            flags: ['F_SHIELD', 'S_SHIELD_MEDIUM'],
+        });
+        entry.locations = new Set(['LA']);
+        unit.gameRules = TW_GAME_RULES;
+        pageViewerState.setForceUnits([unit]);
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+        const button = entry.el!.querySelector('.mainButton') as SVGElement;
+
+        expect(entry.el!.classList).not.toContain('disabledInventory');
+        expect(button.classList).toContain('interactive');
+        button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
+    });
+
     it('gates ground EXT sheet controls behind the Extreme Range option', () => {
         const disabled = createInventoryInteractionUnit();
         pageViewerState.setForceUnits([disabled.unit]);
@@ -228,8 +298,61 @@ describe('SvgInteractionService', () => {
             getLocationConditionValue: () => undefined,
         });
 
-        expect(service.locationConditionDropdownChoices(unit, 'LT').map(choice => choice.key)).toEqual(['flooded']);
-        expect(service.locationConditionDropdownChoices(unit, 'LA').map(choice => choice.key)).toEqual(['flooded', 'blown-off']);
+        const torsoChoices = service.locationConditionDropdownChoices(unit, 'LT');
+        const armChoices = service.locationConditionDropdownChoices(unit, 'LA');
+
+        expect(torsoChoices.filter(choice => !choice.isBreak).map(choice => choice.key))
+            .toEqual(['flooded', 'critical-chance', 'critical-roll']);
+        expect(armChoices.filter(choice => !choice.isBreak).map(choice => choice.key))
+            .toEqual(['flooded', 'blown-off', 'critical-chance', 'critical-roll']);
+        expect(torsoChoices.filter(choice => choice.action).map(choice => choice.key))
+            .toEqual(['critical-chance', 'critical-roll']);
+        expect(torsoChoices.filter(choice => choice.isBreak).length).toBe(1);
+    });
+
+    it('hands critical chance hits to a guided critical roll dialog', () => {
+        const unit = createSvgInteractionUnit({});
+
+        service.openMekCriticalChanceDialog(unit, 'LA');
+        expect(dialogsService.createDialog.calls.mostRecent().args[0]).toBe(MekCriticalChanceDialogComponent);
+
+        dialogClosedCallbacks[0]({ kind: 'critical-hits', count: 2 });
+
+        expect(dialogsService.createDialog.calls.mostRecent().args[0]).toBe(MekCriticalRollDialogComponent);
+        expect(dialogsService.createDialog.calls.mostRecent().args[1].data).toEqual(jasmine.objectContaining({
+            unit,
+            location: 'LA',
+            requiredHits: 2,
+        }));
+    });
+
+    it('applies a blow-off result without opening the critical roll dialog', () => {
+        const setLocationCondition = jasmine.createSpy('setLocationCondition');
+        const unit = createSvgInteractionUnit({ setLocationCondition });
+
+        service.openMekCriticalChanceDialog(unit, 'HD');
+        dialogClosedCallbacks[0]({ kind: 'blown-off' });
+
+        expect(setLocationCondition).toHaveBeenCalledOnceWith('HD', 'blown-off', true, false);
+        expect(dialogsService.createDialog).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets an intact armored shoulder absorb a limb blow-off result', () => {
+        const shoulder = { id: 'shoulder@LA', name: 'Shoulder', loc: 'LA', slot: 0, armored: true, hits: 0 };
+        const applyHitToCritSlot = jasmine.createSpy('applyHitToCritSlot');
+        const setLocationCondition = jasmine.createSpy('setLocationCondition');
+        const unit = createSvgInteractionUnit({
+            getCritSlots: () => [shoulder],
+            applyHitToCritSlot,
+            setLocationCondition,
+        });
+
+        service.openMekCriticalChanceDialog(unit, 'LA');
+        dialogClosedCallbacks[0]({ kind: 'blown-off' });
+
+        expect(applyHitToCritSlot).toHaveBeenCalledOnceWith(shoulder, 1, false);
+        expect(setLocationCondition).not.toHaveBeenCalled();
+        expect(dialogsService.createDialog).toHaveBeenCalledTimes(1);
     });
 
     it('binds location condition interactions to enlarged controls rather than label text', () => {
@@ -503,6 +626,152 @@ describe('SvgInteractionService', () => {
         expect(svg.classList.contains('read-only')).toBeFalse();
     });
 
+    it('faintly cross-highlights a Mek inventory entry and all of its critical slots', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = `
+            <g class="inventoryEntry" id="ISMediumLaser@RA#0"><rect class="inventoryEntryButton"></rect></g>
+            <g class="inventoryEntry" id="ISSmallLaser@LA#0"><rect class="inventoryEntryButton"></rect></g>
+            <g class="critSlot" loc="RA" slot="0" uid="ISMediumLaser@RA#0"><rect class="critSlot-bg-rect"></rect></g>
+            <g class="critSlot" loc="RT" slot="4" uid="ISMediumLaser@RA#0"><rect class="critSlot-bg-rect"></rect></g>
+            <g class="critSlot" loc="LA" slot="1" uid="ISSmallLaser@LA#0"><rect class="critSlot-bg-rect"></rect></g>
+        `;
+        const inventoryElement = svg.querySelector<SVGElement>('#ISMediumLaser\\@RA\\#0')!;
+        const otherInventoryElement = svg.querySelector<SVGElement>('#ISSmallLaser\\@LA\\#0')!;
+        const criticalSlotElements = Array.from(svg.querySelectorAll<SVGElement>('.critSlot'));
+        const criticalSlots = [
+            { id: 'ISMediumLaser@RA#0', loc: 'RA', slot: 0 },
+            { id: 'ISMediumLaser@RA#0', loc: 'RT', slot: 4 },
+        ];
+        let entry!: MountedEquipment;
+        let otherEntry!: MountedEquipment;
+        const unit = createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek' }),
+            getInventory: () => [entry, otherEntry],
+        });
+        entry = new MountedEquipment({
+            owner: unit as any,
+            id: 'ISMediumLaser@RA#0',
+            name: 'ISMediumLaser',
+            critSlots: criticalSlots,
+            el: inventoryElement,
+        });
+        otherEntry = new MountedEquipment({
+            owner: unit as any,
+            id: 'ISSmallLaser@LA#0',
+            name: 'ISSmallLaser',
+            critSlots: [{ id: 'ISSmallLaser@LA#0', loc: 'LA', slot: 1 }],
+            el: otherInventoryElement,
+        });
+
+        service.updateUnit(unit);
+        service.setupReadOnlyInteractions(svg);
+
+        inventoryElement.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+
+        expect(inventoryElement.classList).not.toContain('equipment-hover-secondary');
+        expect(criticalSlotElements[0].classList).toContain('equipment-hover-secondary');
+        expect(criticalSlotElements[1].classList).toContain('equipment-hover-secondary');
+        expect(criticalSlotElements[2].classList).not.toContain('equipment-hover-secondary');
+        expect(otherInventoryElement.classList).not.toContain('equipment-hover-secondary');
+
+        inventoryElement.dispatchEvent(new MouseEvent('pointerout', { bubbles: true }));
+        criticalSlotElements[0].dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+
+        expect(inventoryElement.classList).toContain('equipment-hover-secondary');
+        expect(criticalSlotElements[0].classList).not.toContain('equipment-hover-secondary');
+        expect(criticalSlotElements[1].classList).toContain('equipment-hover-secondary');
+        expect(criticalSlotElements[2].classList).not.toContain('equipment-hover-secondary');
+
+        service.setupReadOnlyInteractions(svg);
+        expect(svg.querySelectorAll('.equipment-hover-secondary').length).toBe(0);
+    });
+
+    it('does not cross-highlight equipment on non-Mek sheets', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = `
+            <g class="inventoryEntry"><rect class="inventoryEntryButton"></rect></g>
+            <g class="critSlot" loc="FR" slot="0" uid="ISMediumLaser@FR#0"><rect class="critSlot-bg-rect"></rect></g>
+        `;
+        const inventoryElement = svg.querySelector<SVGElement>('.inventoryEntry')!;
+        let entry!: MountedEquipment;
+        const unit = createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Tank' }),
+            getInventory: () => [entry],
+        });
+        entry = new MountedEquipment({
+            owner: unit as any,
+            id: 'ISMediumLaser@FR#0',
+            name: 'ISMediumLaser',
+            critSlots: [{ id: 'ISMediumLaser@FR#0', loc: 'FR', slot: 0 }],
+            el: inventoryElement,
+        });
+
+        service.updateUnit(unit);
+        service.setupReadOnlyInteractions(svg);
+        inventoryElement.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+
+        expect(svg.querySelectorAll('.equipment-hover-secondary').length).toBe(0);
+    });
+
+    it('cross-highlights repeated Mek system critical slots without inventory rows', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const systems = [
+            { uid: 'Engine', locations: ['CT', 'LT'] },
+            { uid: 'Gyro', locations: ['CT', 'CT'] },
+            { uid: 'Sensors', locations: ['HD', 'CT'] },
+            { uid: 'Life Support', locations: ['LT', 'RT'] },
+        ];
+        svg.innerHTML = systems.flatMap((system, systemIndex) => system.locations.map((location, slot) => `
+            <g class="critSlot" type="sys" loc="${location}" slot="${systemIndex * 2 + slot}" uid="${system.uid}">
+                <rect class="critSlot-bg-rect"></rect>
+            </g>
+        `)).join('');
+        const unit = createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek' }),
+        });
+
+        service.updateUnit(unit);
+        service.setupReadOnlyInteractions(svg);
+
+        systems.forEach(system => {
+            const slots = Array.from(svg.querySelectorAll<SVGElement>(`.critSlot[uid="${system.uid}"]`));
+            slots[0].dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+
+            expect(slots[0].classList).not.toContain('equipment-hover-secondary');
+            expect(slots[1].classList).toContain('equipment-hover-secondary');
+
+            slots[0].dispatchEvent(new MouseEvent('pointerout', { bubbles: true }));
+            expect(slots[1].classList).not.toContain('equipment-hover-secondary');
+        });
+    });
+
+    it('keeps same-named Mek limb systems scoped to their own location', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = `
+            <g class="critSlot" type="sys" loc="LA" slot="0" uid="Shoulder"><rect class="critSlot-bg-rect"></rect></g>
+            <g class="critSlot" type="sys" loc="RA" slot="0" uid="Shoulder"><rect class="critSlot-bg-rect"></rect></g>
+            <g class="critSlot" type="sys" loc="LL" slot="0" uid="Hip"><rect class="critSlot-bg-rect"></rect></g>
+            <g class="critSlot" type="sys" loc="RL" slot="0" uid="Hip"><rect class="critSlot-bg-rect"></rect></g>
+        `;
+        const unit = createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek' }),
+        });
+
+        service.updateUnit(unit);
+        service.setupReadOnlyInteractions(svg);
+
+        const leftShoulder = svg.querySelector<SVGElement>('.critSlot[uid="Shoulder"][loc="LA"]')!;
+        const rightShoulder = svg.querySelector<SVGElement>('.critSlot[uid="Shoulder"][loc="RA"]')!;
+        const leftHip = svg.querySelector<SVGElement>('.critSlot[uid="Hip"][loc="LL"]')!;
+        const rightHip = svg.querySelector<SVGElement>('.critSlot[uid="Hip"][loc="RL"]')!;
+
+        leftShoulder.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+        expect(rightShoulder.classList).not.toContain('equipment-hover-secondary');
+
+        leftHip.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+        expect(rightHip.classList).not.toContain('equipment-hover-secondary');
+    });
+
     it('shows equipment handler choices for mounted equipment crit slots', async () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.innerHTML = '<g class="critSlot" loc="CT" slot="0" uid="CLActiveProbe@CT#0" hittable="1"><text>Active Probe</text></g>';
@@ -549,6 +818,63 @@ describe('SvgInteractionService', () => {
         await pickerConfig.onPick(handlerChoice);
 
         expect(registryHandleSelection).toHaveBeenCalledWith(entry, handlerChoice, jasmine.any(Object));
+    });
+
+    it('offers the second critical hit for a damaged one-slot Core AC/2', async () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = '<g class="critSlot" loc="RA" slot="0" uid="Autocannon/2@RA#0" hittable="1"><text>AC/2</text></g>';
+        const equipment = new WeaponEquipment({
+            id: 'Autocannon/2',
+            name: 'AC/2',
+            type: 'weapon',
+            flags: ['F_AC'],
+            stats: { criticalSlots: 1 },
+            weapon: { ammoType: 'AC', damage: 2 },
+        });
+        const critSlot = {
+            id: 'Autocannon/2@RA#0',
+            name: equipment.name,
+            loc: 'RA',
+            slot: 0,
+            hits: 1,
+            destroying: 1,
+            destroyed: 1,
+            eq: equipment,
+        };
+        const applyHitToCritSlot = jasmine.createSpy('applyHitToCritSlot');
+        let entry!: MountedEquipment;
+        const unit = createSvgInteractionUnit({
+            id: 'unit-ac2',
+            getUnit: () => ({ type: 'Mek' }),
+            getInventory: () => [entry],
+            getCritSlots: () => [critSlot],
+            getCritSlot: (loc: string, slot: number) => loc === 'RA' && slot === 0 ? critSlot : null,
+            findCurrentCriticalSlot: () => critSlot,
+            isInternalLocPhysicallyDestroyed: () => false,
+            getEquipmentStatus: () => 'available' as const,
+            isEquipmentOperational: () => true,
+            applyHitToCritSlot,
+        });
+        entry = new MountedEquipment({
+            owner: unit as any,
+            id: critSlot.id,
+            name: equipment.name,
+            equipment,
+            critSlots: [critSlot],
+        });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(svg.querySelector('.critSlot') as SVGElement, 32);
+
+        const pickerConfig = pickerFactory.createChoicePicker.calls.mostRecent().args[0];
+        const criticalHit = pickerConfig.values.find((choice: { value: unknown }) => choice.value === 'Hit');
+        expect(criticalHit).toBeDefined();
+        expect(pickerConfig.values.map((choice: { value: unknown }) => choice.value)).toContain('Repair');
+
+        await pickerConfig.onPick(criticalHit!);
+
+        expect(applyHitToCritSlot).toHaveBeenCalledOnceWith(critSlot, 1, false);
     });
 
     it('updates Sensor hits tiers from critical hit state', () => {

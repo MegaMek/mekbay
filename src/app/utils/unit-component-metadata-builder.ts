@@ -468,7 +468,8 @@ function isStructuralMisc(entity: BaseEntity, equipment: MiscEquipment): boolean
   ]) || (equipment.hasFlag('F_AP_MOUNT') && !equipment.hasFlag('F_BA_MANIPULATOR'));
 }
 
-function physicalDamage(mount: EntityMountedEquipment): Pick<ExportComponent, 'd' | 'md'> {
+function physicalDamage(mount: EntityMountedEquipment): Partial<Pick<ExportComponent, 'd' | 'md'>> {
+  if (mount.equipment?.hasFlag('F_SHIELD')) return {};
   const damage = mount.getPhysicalWeaponDamage()?.value ?? 0;
   return { d: String(damage), md: String(damage) };
 }

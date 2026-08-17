@@ -55,7 +55,7 @@ export type AmmoCategory = 'Ballistic' | 'Missile' | 'Energy' | 'Artillery' | 'B
 
 export type AmmoType =
     | 'NA' | 'AC' | 'VEHICLE_FLAMER' | 'MG' | 'MG_HEAVY' | 'MG_LIGHT' | 'GAUSS'
-    | 'LRM' | 'LRM_TORPEDO' | 'SRM' | 'SRM_TORPEDO' | 'SRM_STREAK' | 'MRM'
+    | 'LRM' | 'LRM_TORPEDO' | 'NLRM_TORPEDO' | 'SRM' | 'SRM_TORPEDO' | 'SRM_STREAK' | 'MRM'
     | 'NARC' | 'AMS' | 'ARROW_IV' | 'LONG_TOM' | 'SNIPER' | 'THUMPER'
     | 'AC_LBX' | 'AC_ULTRA' | 'GAUSS_LIGHT' | 'GAUSS_HEAVY' | 'AC_ROTARY'
     | 'SRM_ADVANCED' | 'BA_MICRO_BOMB' | 'LRM_TORPEDO_COMBO' | 'MINE' | 'ATM'
@@ -88,6 +88,7 @@ export const AMMO_TYPE_CATEGORY: Record<AmmoType, AmmoCategory> = {
     GAUSS: 'Ballistic',
     LRM: 'Missile',
     LRM_TORPEDO: 'Missile',
+    NLRM_TORPEDO: 'Missile',
     SRM: 'Missile',
     SRM_TORPEDO: 'Missile',
     SRM_STREAK: 'Missile',
@@ -931,6 +932,18 @@ export class AmmoEquipment extends Equipment {
     }
 }
 
+const NATIVE_TORPEDO_AMMO_TYPES = new Set<AmmoType>([
+    'LRM_TORPEDO',
+    'SRM_TORPEDO',
+    'NLRM_TORPEDO',
+]);
+
+/** MegaMek's native SRT/LRT/NLRT ammo types plus torpedo-converted missile ammo. */
+export function isTorpedoAmmo(ammo: AmmoEquipment | null | undefined): boolean {
+    return ammo !== null && ammo !== undefined
+        && (NATIVE_TORPEDO_AMMO_TYPES.has(ammo.ammoType) || ammo.hasMunitionType('M_TORPEDO'));
+}
+
 // ============================================================================
 // Misc Equipment Class
 // ============================================================================
@@ -947,11 +960,6 @@ export class MiscEquipment extends Equipment {
     get baseDamageAbsorptionRate(): number { return this.misc.baseDamageAbsorptionRate; }
     get baseDamageCapacity(): number { return this.misc.baseDamageCapacity; }
     get industrial(): boolean { return this.misc.industrial; }
-    /** Whether this is a physical shield, equivalent to MegaMek's MiscType.isShield(). */
-    get isShield(): boolean {
-        return this.hasFlag('F_CLUB')
-            && this.hasAnyFlag(['S_SHIELD_SMALL', 'S_SHIELD_MEDIUM', 'S_SHIELD_LARGE']);
-    }
     /** Heat generated while operating, equivalent to MegaMek's MiscType.getHeat(). */
     get operatingHeat(): number {
         if (this.hasAnyFlag(['F_NULL_SIG', 'F_VOID_SIG'])) return 10;
@@ -970,7 +978,7 @@ export class MiscEquipment extends Equipment {
     }
     get isArmorKit(): boolean { return this.hasFlag('F_ARMOR_KIT'); }
     get isHeatSink(): boolean {
-        return this.hasAnyFlag(['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE']);
+        return this.hasAnyFlag(['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE', 'F_LASER_HEAT_SINK']);
     }
     get isCompactHeatSink(): boolean { return this.hasFlag('F_COMPACT_HEAT_SINK'); }
     get heatSinkUnitsPerMount(): number {

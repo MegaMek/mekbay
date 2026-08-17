@@ -8,6 +8,7 @@ import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, WeaponEquipment, MiscEquipment, type AmmoType, type EquipmentMap } from '../../models/equipment.model';
 import { INVENTORY_CONTROL_TARGET_COLORS } from '../../models/inventory-control-runtime-state.model';
 import type { UnitModifierBreakdownEntry } from '../../models/rules/unit-type-rules';
+import type { EquipmentAction } from '../../models/cbt-force-unit.model';
 import type { EquipmentStatus } from '../../models/equipment-status.model';
 import { MountedAmmo, MountedEquipment } from '../../models/mounted-equipment.model';
 import { type CriticalSlot } from '../../models/force-serialization';
@@ -133,6 +134,8 @@ interface CreateComponentOptions {
     handlers?: EquipmentInteractionHandler[];
     equipmentStatusesAtLocation?: ReadonlyMap<MountedEquipment, ReadonlyMap<string, EquipmentStatus>>;
     applyUnitDisplayEffects?: (entry: MountedEquipment, display: InventoryControlDisplayData) => InventoryControlDisplayData;
+    resolveEquipmentActionPermission?: (entry: MountedEquipment, action: EquipmentAction) => boolean;
+    hasIndependentInventoryControlAction?: (entry: MountedEquipment) => boolean;
 }
 
 function createComponent(
@@ -196,7 +199,9 @@ function createComponent(
         gameRules: options.gameRules,
         readOnly: options.readOnly,
         hasDirectInventory: options.hasDirectInventory,
-        applyInventoryControlDisplayEffects: options.applyUnitDisplayEffects
+        applyInventoryControlDisplayEffects: options.applyUnitDisplayEffects,
+        resolveEquipmentActionPermission: options.resolveEquipmentActionPermission,
+        hasIndependentInventoryControlAction: options.hasIndependentInventoryControlAction,
     });
     const unit = unitHarness.unit;
     spyOn(unit, 'setHeat').and.callThrough();
@@ -604,6 +609,64 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(renderedRow.classList.contains('disabled-entry')).toBeFalse();
     });
 
+    it('shows a Core shield as passive without a checkbox or disabled presentation', () => {
+        const shield = entry({
+            id: 'core-shield',
+            equipment: misc('Medium Shield', ['F_SHIELD', 'S_SHIELD_MEDIUM']),
+            locations: new Set(['LA']),
+            el: svgEntry('<g><g class="name"><text>Medium Shield</text></g></g>'),
+        });
+        const { component, fixture, unit } = createComponent([shield], {}, [], new Map(), {
+            gameRules: CORE_2026_GAME_RULES,
+            resolveEquipmentActionPermission: (entry, action) => entry !== shield || action !== 'physical-attack',
+            hasIndependentInventoryControlAction: entry => entry !== shield,
+        });
+        const row = component.groups().find(group => group.id === 'physical')!.rows[0];
+        const renderedRow = fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement;
+
+        expect(unit.getEquipmentStatus(shield)).toBe('available');
+        expect(unit.canPerformEquipmentAction(shield, 'physical-attack')).toBeFalse();
+        expect(component.isSelectable(row)).toBeFalse();
+        expect(row.disabled).toBeFalse();
+        expect(renderedRow.querySelector('.select-cell input[type="checkbox"]')).toBeNull();
+        expect(renderedRow.classList.contains('operation-disabled-entry')).toBeFalse();
+        expect(renderedRow.classList.contains('disabled-entry')).toBeFalse();
+    });
+
+    it('keeps a TW shield selectable with its own damage profile and FIRED action', async () => {
+        const shield = entry({
+            id: 'tw-shield',
+            equipment: misc('Medium Shield', ['F_SHIELD', 'S_SHIELD_MEDIUM']),
+            locations: new Set(['LA']),
+            el: svgEntry('<g><g class="name"><text>Medium Shield</text></g></g>'),
+        });
+        const { component, fixture, dialogsService } = createComponent([shield], {}, [], new Map(), {
+            gameRules: TW_GAME_RULES,
+            hasIndependentInventoryControlAction: () => true,
+            applyUnitDisplayEffects: (entry, display) => entry === shield
+                ? { ...display, damage: '5' }
+                : display,
+        });
+        const row = component.groups().find(group => group.id === 'physical')!.rows[0];
+        const renderedRow = fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement;
+        const checkbox = renderedRow.querySelector('.select-cell input[type="checkbox"]') as HTMLInputElement;
+
+        expect(component.isSelectable(row)).toBeTrue();
+        expect(row.disabled).toBeFalse();
+        expect(row.display.damage).toBe('5');
+        expect(checkbox).not.toBeNull();
+        expect(checkbox.disabled).toBeFalse();
+        expect(renderedRow.classList.contains('operation-disabled-entry')).toBeFalse();
+        expect(renderedRow.classList.contains('disabled-entry')).toBeFalse();
+
+        component.toggleSelected(row);
+        expect(component.isSelected(row)).toBeTrue();
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(dialogsService.showNoticeHtml).toHaveBeenCalledWith(jasmine.any(String), 'Weapons Fired');
+        expect(dialogsService.showError).not.toHaveBeenCalled();
+    });
+
     it('marks disabled inventory-only rows without mutating attached SVG', () => {
         const uac = entry({
             id: 'uac',
@@ -841,7 +904,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         const mrm = entry({
             id: 'MRM 10@RT#0',
-            equipment: weapon('MRM 10', 'MRM', 10, [3, 8, 15, 22], 1),
+            equipment: weapon('MRM 10', 'MRM', 10, [3, 8, 15, 22]),
             linkedWith: [apollo],
             el: svgEntry('<g><g class="name"><text>MRM 10</text></g><text class="location">RT</text><text class="heat">4</text><g class="damage"><text>1/Msl [C,M]</text></g><text class="range_short">3</text><text class="range_medium">8</text><text class="range_long">15</text></g>')
         });
@@ -897,7 +960,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         const mrm = entry({
             id: 'MRM 40@TU#0',
-            equipment: weapon('MRM 40', 'MRM', 40, [3, 8, 15, 22], 1),
+            equipment: weapon('MRM 40', 'MRM', 40, [3, 8, 15, 22]),
             linkedWith: [apollo],
             el: svgEntry('<g><g class="name"><text>MRM 40</text></g><text class="location">TU</text><g class="damage"><text>1/Msl [C,M,S]</text></g><text class="range_short">3</text><text class="range_medium">8</text><text class="range_long">15</text></g>')
         });
@@ -941,7 +1004,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         const mrm = entry({
             id: 'MRM 10@RT#0',
-            equipment: weapon('MRM 10', 'MRM', 10, [3, 8, 15, 22], 1),
+            equipment: weapon('MRM 10', 'MRM', 10, [3, 8, 15, 22]),
             linkedWith: [apollo],
             el: svgEntry('<g><g class="name"><text>MRM 10</text></g><text class="location">RT</text><text class="heat">4</text><g class="damage"><text>1/Msl [C,M]</text></g><text class="range_short">3</text><text class="range_medium">8</text><text class="range_long">15</text></g>')
         });
@@ -1750,13 +1813,162 @@ describe('WeaponsEquipmentPanelComponent', () => {
         fixture.destroy();
     });
 
+    it('shows indirect targets as disabled X choices for direct-fire weapons', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [3, 6, 9, 12]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
+        const { component, fixture, unit } = createComponent([laser]);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('B', { distance: 4, tnCalculator: { indirectFire: true } });
+        fixture.detectChanges();
+
+        (fixture.nativeElement.querySelector('.weapon-equipment-row .target-selector') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice')) as HTMLButtonElement[];
+
+        expect(choices[2].disabled).toBeTrue();
+        expect(choices[2].querySelector('.target-choice-tn')?.textContent?.trim()).toBe('X');
+        expect(choices[2].title).toBe('Requires an indirect-fire weapon');
+        choices[2].click();
+        expect(unit.getInventoryControlEntryTargetId(row.id)).toBeUndefined();
+
+        unit.setInventoryControlEntryTarget(row.entry, 'B');
+        expect(component.targetState(row)).toEqual(jasmine.objectContaining({
+            invalidTarget: true,
+            invalidTargetReason: 'type',
+            targetNumberText: 'X',
+        }));
+        fixture.destroy();
+    });
+
+    it('shows submerged targets as disabled X choices for above-water weapons', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
+        const { component, fixture, unit } = createComponent([laser]);
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', {
+            unitType: 'mek-biped',
+            tnCalculator: { waterDepth: 'underwater-depth-2' },
+        });
+        fixture.detectChanges();
+
+        (fixture.nativeElement.querySelector('.weapon-equipment-row .target-selector') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice')) as HTMLButtonElement[];
+
+        expect(choices[1].disabled).toBeTrue();
+        expect(choices[1].querySelector('.target-choice-tn')?.textContent?.trim()).toBe('X');
+        expect(choices[1].title).toBe('Weapon and target are in different water layers');
+        expect(component.targetState(component.groups().find(group => group.id === 'ranged')!.rows[0]).targetNumberText).not.toBe('X');
+        fixture.destroy();
+    });
+
+    it('allows an indirect-fire weapon to select an indirect target', () => {
+        const indirectEquipment = new WeaponEquipment({
+            id: 'lrm',
+            name: 'LRM',
+            type: 'weapon',
+            flags: ['F_INDIRECT_FIRE'],
+            weapon: { ammoType: 'NA', ranges: [7, 14, 21, 28] },
+        });
+        const lrm = entry({ id: 'lrm', equipment: indirectEquipment, el: svgEntry('<g><g class="name"><text>LRM</text></g><text class="range_short">7</text><text class="range_medium">14</text><text class="range_long">21</text></g>') });
+        const { component, fixture, unit } = createComponent([lrm]);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('B', { distance: 4, tnCalculator: { indirectFire: true } });
+        fixture.detectChanges();
+
+        (fixture.nativeElement.querySelector('.weapon-equipment-row .target-selector') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice')) as HTMLButtonElement[];
+
+        expect(choices[2].disabled).toBeFalse();
+        choices[2].click();
+        expect(unit.getInventoryControlEntryTargetId(row.id)).toBe('B');
+        fixture.destroy();
+    });
+
+    it('blocks firing when an MML with an indirect target is switched from LRM to SRM ammo', async () => {
+        const mml = entry({
+            id: 'mml',
+            equipment: weapon('MML 5', 'MML', 5, [6, 7, 14, 21], 0, 3),
+            el: svgEntry(`
+                <g>
+                    <g class="name"><text>MML 5</text></g>
+                    <text class="heat">3</text>
+                    <g class="alternativeMode selected" mode="LRM"><g class="name"><text>LRM</text></g><text class="range_short">7</text><text class="range_medium">14</text><text class="range_long">21</text></g>
+                    <g class="alternativeMode" mode="SRM"><g class="name"><text>SRM</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>
+                </g>
+            `),
+        });
+        mml.equipment!.flags.add('F_INDIRECT_FIRE');
+        const lrmAmmo = ammo('MML 5 LRM Ammo', 'MML', 5, ['M_STANDARD'], ['F_MML_LRM']);
+        const srmAmmo = ammo('MML 5 SRM Ammo', 'MML', 5, ['M_STANDARD'], ['F_MML_SRM']);
+        const lrmBin = entry({ id: 'lrm-ammo', equipment: lrmAmmo, totalAmmo: 10, consumed: 0, locations: new Set(['RT']) });
+        const srmBin = entry({ id: 'srm-ammo', equipment: srmAmmo, totalAmmo: 10, consumed: 0, locations: new Set(['RT']) });
+        const { component, unit, dialogsService, turnState } = createComponent(
+            [mml, lrmBin, srmBin],
+            { [lrmAmmo.internalName]: lrmAmmo, [srmAmmo.internalName]: srmAmmo },
+        );
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 8, tnCalculator: { indirectFire: true } });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+
+        expect(component.targetState(row).invalidTarget).toBeFalse();
+
+        await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'SRM', label: 'SRM' });
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(component.targetState(row)).toEqual(jasmine.objectContaining({
+            invalidTarget: true,
+            invalidTargetReason: 'type',
+            targetNumberText: 'X',
+        }));
+
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(dialogsService.showError).toHaveBeenCalledWith(
+            'MML 5 cannot fire at its selected target.',
+            'Invalid Target'
+        );
+        expect(lrmBin.consumed).toBe(0);
+        expect(srmBin.consumed).toBe(0);
+        expect(turnState.addFiredHeat).not.toHaveBeenCalled();
+    });
+
+    it('disables an indirect target for ranged select all when any included weapon is direct-fire only', () => {
+        const direct = entry({ id: 'direct', equipment: weapon('direct'), el: svgEntry('<g><g class="name"><text>Direct</text></g></g>') });
+        const indirectEquipment = weapon('indirect');
+        indirectEquipment.flags.add('F_INDIRECT_FIRE');
+        const indirect = entry({ id: 'indirect', equipment: indirectEquipment, el: svgEntry('<g><g class="name"><text>Indirect</text></g></g>') });
+        const { component, fixture, unit } = createComponent([direct, indirect]);
+        unit.createInventoryControlTarget();
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('B', { tnCalculator: { indirectFire: true } });
+        fixture.detectChanges();
+        const rangedSection = (Array.from(fixture.nativeElement.querySelectorAll('.weapon-equipment-section')) as HTMLElement[])
+            .find(section => section.querySelector('.section-title-text')?.textContent?.trim() === 'Ranged Weapons')!;
+
+        (rangedSection.querySelector('.select-header .target-selector') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice')) as HTMLButtonElement[];
+
+        expect(choices[2].disabled).toBeTrue();
+        expect(choices[2].querySelector('.target-choice-tn')?.textContent?.trim()).toBe('X');
+        choices[2].click();
+        expect(unit.getInventoryControlEntryTargetId(direct.id)).toBeUndefined();
+        expect(unit.getInventoryControlEntryTargetId(indirect.id)).toBeUndefined();
+        fixture.destroy();
+    });
+
     it('ignores an Immobile static target modifier for AE damage weapons', () => {
         const aeWeapon = entry({
             id: 'ae-weapon',
             equipment: new WeaponEquipment({ id: 'ae-weapon', name: 'Area Effect Weapon', type: 'weapon', flags: ['F_ARTILLERY'], weapon: { ranges: [3, 6, 9, 12] } }),
             el: svgEntry('<g><g class="name"><text>Area Effect Weapon</text></g><g class="damage"><text>5 [AE]</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>')
         });
-        const { component, unit } = createComponent([aeWeapon], {}, [], new Map(), { attackMovementCanAffectTargetNumbers: false });
+        const { component, unit, unitHarness } = createComponent([aeWeapon], {}, [], new Map(), { attackMovementCanAffectTargetNumbers: false });
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', {
@@ -1767,6 +1979,14 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.setInventoryControlEntryTarget(row.entry, 'A');
 
         expect(component.targetState(row).targetNumberText).toBe('4');
+
+        unitHarness.runtime.replaceTargets([{
+            ...unit.getInventoryControlTarget('A')!,
+            tnModifier: -4,
+            manualTnModifier: -4
+        }]);
+
+        expect(component.targetState(row).targetNumberText).toBe('0');
     });
 
     it('uses the target selector for ranged select all when targets exist', () => {
@@ -2134,6 +2354,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         const launcherEquipment = weapon('LRM 15', 'MML', 15, [7, 14, 21, 28]);
         launcherEquipment.flags.add('F_ARTEMIS_COMPATIBLE');
+        launcherEquipment.flags.add('F_INDIRECT_FIRE');
         const launcher = entry({
             id: 'launcher',
             equipment: launcherEquipment,
@@ -2158,6 +2379,14 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         expect(row.display.hit).toBe('-1');
+
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 5, tnCalculator: { indirectFire: true } });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        const indirectState = component.targetState(row);
+
+        expect(indirectState.hitText).toBe('+0');
+        expect(indirectState.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'ArtemisV' }));
     });
 
     it('uses piloting skill for physical target numbers', () => {
@@ -2203,6 +2432,58 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const rangeCells = Array.from(fixture.nativeElement.querySelectorAll('.range-cell')) as HTMLElement[];
         expect(rangeCells.every(cell => cell.classList.contains('out-of-range'))).toBeTrue();
         expect(rangeCells.every(cell => cell.style.getPropertyValue('--range-selection-color') === '')).toBeTrue();
+    });
+
+    it('allows a selected disabled row to be deselected individually but not selected again', () => {
+        const disabled = entry({ id: 'disabled', equipment: weapon('disabled'), el: svgEntry('<g><g class="name"><text>Disabled</text></g></g>') });
+        const equipmentStatuses = new Map<MountedEquipment, EquipmentStatus>([
+            [disabled, 'disabled']
+        ]);
+        const { component, fixture, unit } = createComponent([disabled], {}, [], equipmentStatuses);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        unit.setInventoryControlEntrySelected(row.entry, true);
+        fixture.detectChanges();
+
+        let checkbox = fixture.nativeElement.querySelector('.weapon-equipment-row .select-cell .bt-checkbox') as HTMLInputElement;
+        expect(checkbox.checked).toBeTrue();
+        expect(checkbox.disabled).toBeFalse();
+
+        checkbox.click();
+        fixture.detectChanges();
+
+        checkbox = fixture.nativeElement.querySelector('.weapon-equipment-row .select-cell .bt-checkbox') as HTMLInputElement;
+        expect(component.isSelected(row)).toBeFalse();
+        expect(checkbox.checked).toBeFalse();
+        expect(checkbox.disabled).toBeTrue();
+
+        checkbox.click();
+        fixture.detectChanges();
+
+        expect(component.isSelected(row)).toBeFalse();
+    });
+
+    it('deselects disabled ranged weapons from the group checkbox when no active rows remain', () => {
+        const disabled = entry({ id: 'disabled', equipment: weapon('disabled'), el: svgEntry('<g><g class="name"><text>Disabled</text></g></g>') });
+        const equipmentStatuses = new Map<MountedEquipment, EquipmentStatus>([
+            [disabled, 'disabled']
+        ]);
+        const { component, fixture, unit } = createComponent([disabled], {}, [], equipmentStatuses);
+        const group = component.groups().find(candidate => candidate.id === 'ranged')!;
+        const row = group.rows[0];
+
+        unit.setInventoryControlEntrySelected(row.entry, true);
+        fixture.detectChanges();
+
+        let checkbox = fixture.nativeElement.querySelector('.ranged-select-all') as HTMLInputElement;
+        expect(checkbox.checked).toBeTrue();
+
+        checkbox.click();
+        fixture.detectChanges();
+
+        checkbox = fixture.nativeElement.querySelector('.ranged-select-all') as HTMLInputElement;
+        expect(component.isSelected(row)).toBeFalse();
+        expect(checkbox.checked).toBeFalse();
     });
 
     it('toggles all ranged weapons from the ranged group header checkbox', () => {

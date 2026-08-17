@@ -17,7 +17,7 @@ import { formatGunneryDisplay, formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../utils/inventory-target-number.util';
-import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, inventoryControlEntryAction, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, readInventoryControlDisplayData, syncSvgMode, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
+import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, isInventoryControlEntryActionUnavailable, isInventoryControlSelectableEntry, readInventoryControlDisplayData, syncSvgMode, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
 import { inventoryControlDamageRange, resolveInventoryControlDamageText } from '../utils/inventory-control-damage.util';
 import { formatInventoryControlHeat, resolveHeatSummarySources, resolveInventoryControlHeatEffect, resolveSelectedWeaponPreviewHeatSources } from '../utils/inventory-control-heat.util';
 import { calculateHeatProjection, type HeatProjection } from '../models/turn-state.model';
@@ -1255,14 +1255,18 @@ export class UnitSvgService {
         return (line.textContent?.length ?? 0) * fontSize * 0.7;
     }
 
-    protected resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): ToHitResolution {
+    protected resolveInventoryControlToHit(
+        entry: MountedEquipment,
+        range?: InventoryControlRuntimeRangeKey | null,
+        target?: InventoryControlRuntimeTarget | null
+    ): ToHitResolution {
         const stateModifiers = this.unit.rules.getEquipmentToHitModifiers(entry);
         const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
         return this.unit.gameRules.resolveToHit({
             subject: entry,
             stateModifiers,
             range,
-            adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
+            adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo, target)
         });
     }
 
@@ -1271,7 +1275,7 @@ export class UnitSvgService {
         const row = this.inventoryControlRow(entry);
         if (!row) return null;
         const hitModifierRange = this.inventoryControlRangeForTarget(entry, target, false);
-        const hitResolution = this.resolveInventoryControlToHit(entry, hitModifierRange);
+        const hitResolution = this.resolveInventoryControlToHit(entry, hitModifierRange, target);
         const c3Resolution = this.unit.resolveC3Targeting(target);
         const text = inventoryTargetNumberText({
             entry,
@@ -1287,7 +1291,7 @@ export class UnitSvgService {
             attackModifierBreakdown: this.unit.turnState().getAttackModifierBreakdown(),
             hitResolution,
             c3DegradationSource: c3Resolution.degradationSource,
-            gameRules: this.unit.gameRules
+            gameRules: this.unit.gameRules,
         });
         return text || null;
     }
@@ -1326,7 +1330,7 @@ export class UnitSvgService {
         for (const entry of this.unit.getInventory()) {
             if (!entry.el) continue;
             const entryState = entryStates.get(entry.id);
-            const selected = entryState?.selected ?? false;
+            const selected = isInventoryControlSelectableEntry(entry) && (entryState?.selected ?? false);
             const targetId = entryState?.targetId;
             const target = targetId ? targets.get(targetId) : undefined;
             const targetNumberText = selected && target ? this.inventoryTargetNumberText(entry, target) : null;
@@ -1338,7 +1342,7 @@ export class UnitSvgService {
             this.renderInventoryControlHeatEntry(entry, weaponRuleRange);
             this.renderInventoryControlRangeDamageEntry(entry, weaponRuleRange);
             if (this.unit.getEquipmentStatus(entry) !== 'destroyed') {
-                this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry, weaponRuleRange));
+                this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry, weaponRuleRange, target));
             }
             entry.el.classList.toggle('selected', selected);
             entry.el.classList.toggle('selected-alternative-mode', selected && hasSelectedMode);
@@ -1590,7 +1594,7 @@ export class UnitSvgService {
     protected renderInventoryEntryState(entry: MountedEquipment): void {
         if (!entry.el) return;
         const status = this.unit.getEquipmentStatus(entry);
-        const actionUnavailable = !entry.owner.canPerformEquipmentAction(entry, inventoryControlEntryAction(entry));
+        const actionUnavailable = isInventoryControlEntryActionUnavailable(entry);
         syncSvgMode(
             entry,
             getSelectedInventoryControlMode(entry, this.unit.getEquipmentRegistry(), this.unit.getInventoryControlRules().matchesAmmo),
@@ -1665,16 +1669,21 @@ export class UnitSvgService {
             originalText = damageEl.textContent || '';
             damageEl.setAttribute(INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, originalText);
         }
-        if (!originalText) return;
-        if (chargeDamage.damage === null || chargeDamage.maxDamage === null) {
-            this.renderInventoryDamageText(damageEl, chargeDamage.bonusDamage > 0
+        let damageText: string;
+        if (chargeDamage.displayFormula) {
+            damageText = chargeDamage.displayFormula;
+        } else if (!originalText) {
+            return;
+        } else if (chargeDamage.damage === null || chargeDamage.maxDamage === null) {
+            damageText = chargeDamage.bonusDamage > 0
                 ? `${originalText}+${chargeDamage.bonusDamage}`
-                : originalText);
+                : originalText;
         } else {
-            this.renderInventoryDamageText(damageEl, chargeDamage.damage !== chargeDamage.maxDamage
+            damageText = chargeDamage.damage !== chargeDamage.maxDamage
                 ? `${chargeDamage.damage} [${chargeDamage.maxDamage}]`
-                : `${chargeDamage.damage}`);
+                : `${chargeDamage.damage}`;
         }
+        this.renderInventoryDamageText(damageEl, damageText);
         damageEl.classList.toggle('damaged', chargeDamage.bonusDamage < chargeDamage.maxBonusDamage);
     }
 

@@ -43,6 +43,10 @@
     background: var(--text-color);
     opacity: 0.3;
 
+    &:last-child {
+        display: none;
+    }
+
     @media print {
         display: none;
     }

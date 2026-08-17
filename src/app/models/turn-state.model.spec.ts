@@ -12,13 +12,14 @@ import { MekRules } from './rules/mek-rules';
 import type { UnitTypeRules } from './rules/unit-type-rules';
 import type { Unit } from './units.model';
 import { calculateHeatProjection, TurnState } from './turn-state.model';
-import { Equipment } from './equipment.model';
+import { Equipment, MiscEquipment } from './equipment.model';
 import { PpcCapacitorHandler, PPC_CAPACITOR_STATE_KEY } from '../equipment-handlers/ppc-capacitor.handler';
 import { TWAeroRules, TWInfantryRules, TWMekRules } from './rules/tw-rules';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
 import { EquipmentFlag } from './equipment-flags.type';
 import { EMPTY_EQUIPMENT_REGISTRY } from './equipment-lookup';
 import { createHandlerQueryContext } from '../services/equipment-interaction-registry.service';
+import { getUnitHeight } from './units.model';
 
 interface TurnStateHarnessOptions {
     critSlots?: CriticalSlot[];
@@ -124,6 +125,10 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         },
         setCondition,
         getUnit: () => ({ type: 'Mek', comp: [], ...options.unit } as Unit),
+        getHeight: () => getUnitHeight(
+            { type: 'Mek', tons: 0, ...options.unit } as Pick<Unit, 'type' | 'tons'>,
+            options.prone ?? false,
+        ),
         turnState: () => turnState,
     };
 
@@ -166,7 +171,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
 }
 
 function createTurnStateHarnessWithDissipation(dissipation: number): TurnStateHarness {
-    const heatSink = new Equipment({
+    const heatSink = new MiscEquipment({
         id: 'test-heat-sink',
         name: 'Test Heat Sink',
         type: 'misc',
@@ -335,6 +340,55 @@ describe('TurnState', () => {
     });
 
     describe('serialization', () => {
+        it('keeps stand attempts undefined by default and round-trips an explicit zero', () => {
+            const { turnState } = createTurnStateHarness();
+
+            expect(turnState.standAttempts()).toBeUndefined();
+            expect(turnState.serialize()).toBeUndefined();
+
+            turnState.resetStandAttempts();
+
+            expect(turnState.dirty()).toBeTrue();
+            expect(turnState.serialize()).toEqual({ standAttempts: 0 });
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(turnState.serialize());
+
+            expect(restored.standAttempts()).toBe(0);
+            expect(restored.serialize()).toEqual({ standAttempts: 0 });
+        });
+
+        it('omits no cover and round-trips active cover', () => {
+            const { turnState } = createTurnStateHarness();
+
+            turnState.setCover(undefined);
+            expect(turnState.dirty()).toBeFalse();
+            expect(turnState.serialize()).toBeUndefined();
+
+            turnState.setCover('underwater-depth-1');
+            expect(turnState.dirty()).toBeTrue();
+            expect(turnState.serialize()).toEqual({ cover: 3 });
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(turnState.serialize());
+            expect(restored.cover()).toBe('underwater-depth-1');
+
+            restored.setCover('underwater-depth-2');
+            expect(restored.serialize()).toEqual({ cover: 4 });
+            restored.setCover('underwater-depth-3');
+            expect(restored.serialize()).toEqual({ cover: 5 });
+            restored.setCover('building-1');
+            expect(restored.serialize()).toEqual({ cover: 6 });
+            restored.setCover('building-2');
+            expect(restored.serialize()).toEqual({ cover: 7 });
+            restored.setCover('building-3');
+            expect(restored.serialize()).toEqual({ cover: 8 });
+
+            restored.setCover(undefined);
+            expect(restored.cover()).toBeUndefined();
+            expect(restored.serialize()).toBeUndefined();
+        });
+
         it('round-trips resolved PSR outcomes', () => {
             const { turnState } = createTurnStateHarness();
             turnState.addDmgReceived(20);
@@ -530,6 +584,73 @@ describe('TurnState', () => {
         });
     });
 
+    describe('standing up', () => {
+        it('adjusts stand attempts without allowing a negative count', () => {
+            const { turnState } = createTurnStateHarness();
+
+            turnState.adjustStandAttempts(2);
+            expect(turnState.standAttempts()).toBe(2);
+
+            turnState.adjustStandAttempts(-1);
+            expect(turnState.standAttempts()).toBe(1);
+
+            turnState.adjustStandAttempts(-2);
+            expect(turnState.standAttempts()).toBe(0);
+        });
+
+        it('records outcomes and removes prone only after success', () => {
+            const { turnState } = createTurnStateHarness({ prone: true });
+
+            expect(turnState.resolveStandAttempt('failed')).toBeTrue();
+            expect(turnState.standAttempts()).toBe(1);
+            expect(turnState.unitState.unit.setCondition).not.toHaveBeenCalled();
+
+            expect(turnState.resolveStandAttempt('success')).toBeTrue();
+            expect(turnState.standAttempts()).toBe(2);
+            expect(turnState.unitState.unit.setCondition).toHaveBeenCalledOnceWith('prone', false);
+        });
+
+        it('disables standing for stationary movement and too many destroyed legs', () => {
+            const stationary = createTurnStateHarness({ prone: true });
+            stationary.turnState.moveMode.set('stationary');
+            expect(stationary.turnState.canStandUp()).toBeFalse();
+
+            expect(createTurnStateHarness({
+                prone: true,
+                currentDestroyedLegs: ['LL', 'RL'],
+            }).turnState.canStandUp()).toBeFalse();
+
+            expect(createTurnStateHarness({
+                prone: true,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                currentDestroyedLegs: ['FLL', 'FRL'],
+            }).turnState.canStandUp()).toBeTrue();
+
+            expect(createTurnStateHarness({
+                prone: true,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                currentDestroyedLegs: ['FLL', 'FRL', 'RLL'],
+            }).turnState.canStandUp()).toBeFalse();
+        });
+
+        it('lets only an intact quad stand without a PSR', () => {
+            const quad = createTurnStateHarness({
+                prone: true,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+            });
+            const damagedQuad = createTurnStateHarness({
+                prone: true,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                currentDestroyedLegs: ['FLL'],
+            });
+            const biped = createTurnStateHarness({ prone: true });
+
+            expect(quad.turnState.canStandWithoutPSR()).toBeTrue();
+            expect(damagedQuad.turnState.canStandWithoutPSR()).toBeFalse();
+            expect(biped.turnState.canStandWithoutPSR()).toBeFalse();
+        });
+    });
+
     describe('getPSRChecks', () => {
         it('includes movement PSR checks when applyMovePSR is enabled', () => {
             const { turnState } = createTurnStateHarness({
@@ -679,6 +800,19 @@ describe('TurnState', () => {
             turnState.moveMode.set('jump');
             turnState.moveDistance.set(5);
             expect(getMovementHeat(turnState)).toBe(5);
+        });
+
+        it('adds stand attempts to movement heat only under TW rules', () => {
+            const core = createTurnStateHarness();
+            core.turnState.moveMode.set('run');
+            core.turnState.standAttempts.set(3);
+
+            const tw = createTurnStateHarness({ rulesId: 'tw' });
+            tw.turnState.moveMode.set('run');
+            tw.turnState.standAttempts.set(3);
+
+            expect(getMovementHeat(core.turnState)).toBe(2);
+            expect(getMovementHeat(tw.turnState)).toBe(5);
         });
 
         it('uses reduced jump heat for working improved jump jets', () => {

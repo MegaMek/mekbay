@@ -4,6 +4,7 @@
 
 import type { PSRCheck, UnitHeatSource } from '../../../models/rules/unit-type-rules';
 import type { SelectedInventoryWeaponHeat } from '../../../utils/inventory-control-heat.util';
+import type { MotiveModes } from '../../../models/motiveModes.model';
 
 export interface TurnSummaryHeatRow {
     readonly id: string;
@@ -11,25 +12,42 @@ export interface TurnSummaryHeatRow {
     readonly value: number;
     readonly selectedValue?: number;
     readonly selectedOnly?: boolean;
+    readonly underwater?: boolean;
 }
+
+export const TURN_SUMMARY_UNDERWATER_HEAT_SOURCE_ID = 'underwater-dissipation';
 
 export function composeTurnSummaryHeatRows(
     sources: readonly UnitHeatSource[],
-    selection: SelectedInventoryWeaponHeat
+    selection: SelectedInventoryWeaponHeat,
+    underwaterBonus = 0,
 ): TurnSummaryHeatRow[] {
-    const rows = sources.map(source => ({ id: source.id, label: source.label, value: source.value }));
-    if (!selection.hasSelection) return rows;
+    const rows: TurnSummaryHeatRow[] = sources.map(source => ({ id: source.id, label: source.label, value: source.value }));
+    let result = rows;
 
-    const weaponsRow = rows.find(row => row.id === 'weapons');
-    if (weaponsRow) {
-        return rows.map(row => row === weaponsRow ? { ...row, selectedValue: selection.value } : row);
+    if (selection.hasSelection) {
+        const weaponsRow = rows.find(row => row.id === 'weapons');
+        if (weaponsRow) {
+            result = rows.map(row => row === weaponsRow ? { ...row, selectedValue: selection.value } : row);
+        } else {
+            result = [{
+                id: 'selected-weapons',
+                label: 'Selected Weapons',
+                value: selection.value,
+                selectedOnly: true,
+            }, ...rows];
+        }
     }
-    return [{
-        id: 'selected-weapons',
-        label: 'Selected Weapons',
-        value: selection.value,
-        selectedOnly: true,
-    }, ...rows];
+
+    if (Number.isFinite(underwaterBonus) && underwaterBonus > 0) {
+        result = [...result, {
+            id: TURN_SUMMARY_UNDERWATER_HEAT_SOURCE_ID,
+            label: 'Water',
+            value: -underwaterBonus,
+            underwater: true,
+        }];
+    }
+    return result;
 }
 
 export function displayPsrModifiers(modifiers: readonly PSRCheck[]): Array<PSRCheck & { pilotCheck: number }> {
@@ -48,4 +66,11 @@ export function countActionablePsrChecks(
     autoFall: boolean
 ): number {
     return autoFall ? checks.filter(check => check.failureOutcome !== 'Fall').length : checks.length;
+}
+
+export function isMoveModeDisabledWhileProne(
+    mode: MotiveModes,
+    prone: boolean,
+): boolean {
+    return mode === 'jump' && prone;
 }

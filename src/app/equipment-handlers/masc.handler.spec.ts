@@ -85,7 +85,18 @@ describe('MascHandler', () => {
         const choices = handler.getChoices(mascEntry(['F_MASC'], null, {}, CORE_2026_GAME_RULES), queryContext());
 
         expect(choices.slice(0, 5).map(choice => choice.label)).toEqual(['3+', '5+', '7+', '10+', '11+']);
+        expect(choices.slice(0, 5).map(choice => choice.failureTarget)).toEqual([3, 5, 7, 10, 11]);
         expect(choices[4].colors).toEqual(jasmine.objectContaining({ selected: 'var(--bt-yellow)' }));
+    });
+
+    it('can use the final target repeatedly without advancing past the sequence', () => {
+        const entry = mascEntry();
+        MascHandler.setSequenceState(entry, CORE_2026_GAME_RULES.escalatingFailureTargets.length);
+
+        handler.handleSelection(entry, handler.getChoices(entry, queryContext())[4], commandContext);
+
+        expect(MascHandler.getSequenceState(entry)).toBe(5);
+        expect(handler.isActive(entry)).toBeTrue();
     });
 
     it('advances one step at a time and unlocks the next button', () => {

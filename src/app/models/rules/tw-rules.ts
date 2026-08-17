@@ -8,12 +8,13 @@ import { InfantryRules } from './infantry-rules';
 import { MekRules, type MekLegDamageState, type MekLegMovementResult } from './mek-rules';
 import { ProtoMekRules } from './protomek-rules';
 import { VehicleRules } from './vehicle-rules';
-import type { ChargeDamage, PSRCheck } from './unit-type-rules';
+import type { ChargeDamage, PSRCheck, UnitHeatSource } from './unit-type-rules';
 import type { CriticalSlot, SerializedC3NetworkGroup } from '../force-serialization';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import { C3TaxCalculator } from '../c3-network.model';
 import { getMekLimbLocations, inferMekConfigFromLocations, LEG_LOCATIONS, MEK_SIDE_TORSO_LOCATIONS, MEK_TORSO_LOCATIONS } from '../entity/types';
 import type { TurnState } from '../turn-state.model';
+import type { Equipment } from '../equipment.model';
 
 function calculateTWC3Tax(
     unit: CBTForceUnit,
@@ -24,7 +25,53 @@ function calculateTWC3Tax(
     return calculator.totalWar(unit);
 }
 
+function calculateTWChargeDamage(
+    unit: CBTForceUnit,
+    bonusDamage = 0,
+    maxBonusDamage = bonusDamage,
+): ChargeDamage {
+    const damagePerHex = unit.getUnit().tons / 10;
+    const moveMode = unit.turnState().moveMode();
+    const movedHexes = Math.max(1, unit.turnState().moveDistance() ?? 0);
+    const maxMovedHexes = Math.max(1, unit.getUnit().run);
+    const ramPlates = unit.getInventory().filter(entry => entry.equipment?.hasFlag('F_RAM_PLATE'));
+    const hasRamPlate = ramPlates.length > 0;
+    const hasWorkingRamPlate = ramPlates.some(entry => unit.isEquipmentOperational(entry));
+    const damageFor = (hexes: number, hasRamPlate: boolean): number => {
+        // TW counts every movement hex after the first; MegaMek rounds before applying a Ram Plate.
+        const baseDamage = Math.ceil(damagePerHex * (hexes - 1));
+        return hasRamPlate ? Math.ceil(baseDamage * 1.5) : baseDamage;
+    };
+    const formulaDamagePerHex = Math.round(
+        damagePerHex * (hasWorkingRamPlate ? 1.5 : 1) * 100,
+    ) / 100;
+    return {
+        damage: damageFor(movedHexes, hasWorkingRamPlate) + bonusDamage,
+        maxDamage: damageFor(maxMovedHexes, hasRamPlate) + maxBonusDamage,
+        bonusDamage,
+        maxBonusDamage,
+        ...(moveMode !== 'walk' && moveMode !== 'run' && {
+            displayFormula: `${formulaDamagePerHex}/hex${bonusDamage > 0 ? `+${bonusDamage}` : ''}`,
+        }),
+    };
+}
+
 export class TWMekRules extends MekRules {
+    override readonly standingUpPSRModifier: number = 0;
+    protected override get shieldBashPunchBonusEnabled(): boolean { return false; }
+    protected override get standaloneShieldDamageEnabled(): boolean { return true; }
+
+    override mountedCriticalDamageDestructionThreshold(_equipment: Equipment | null): number {
+        return 1;
+    }
+
+    override heatSources(turnState: TurnState): UnitHeatSource[] {
+        return super.heatSources(turnState).map(source => source.id === 'movement'
+            ? { ...source, value: source.value + (turnState.standAttempts() ?? 0) }
+            : source
+        );
+    }
+
     protected override getLegActuatorPSRChecks(
         turnState: TurnState,
         movementCheck: PSRCheck | null,
@@ -210,10 +257,6 @@ export class TWMekRules extends MekRules {
         return { pilotCheck: this.gyroHitPSRModifier, reason: 'Gyro damaged' };
     }
 
-    protected override mountedCriticalDamageDestructionThreshold(): number {
-        return 1;
-    }
-
     protected override readonly immobile = computed<boolean>(() => {
         if (!this.unit.isLoaded()) return false;
         if (this.unit.getCondition('shutdown')) return true;
@@ -221,10 +264,6 @@ export class TWMekRules extends MekRules {
         if (!this.hasDroneOperatingSystem() && !this.hasFunctionalCrew()) return true;
         return false;
     });
-
-    protected override destroyedLegCausesAutoFall(): boolean {
-        return true;
-    }
 
     protected override destroyedLegPSR(_isQuadruped: boolean): { fallCheck: number; pilotCheck: number } {
         return { fallCheck: 100, pilotCheck: 5 };
@@ -236,10 +275,6 @@ export class TWMekRules extends MekRules {
 
     protected override runningWithDestroyedLegRequiresCheck(): boolean {
         return false;
-    }
-
-    protected override destroyedLegRequiresImmediatePSR(_destroyedLegsCount: number): boolean {
-        return true;
     }
 
     protected override applyLegDamageToMovement(
@@ -285,12 +320,7 @@ export class TWMekRules extends MekRules {
     }
 
     protected override computeChargeDamage(bonusDamage = 0, maxBonusDamage = bonusDamage): ChargeDamage {
-        return {
-            damage: null,
-            maxDamage: null,
-            bonusDamage,
-            maxBonusDamage,
-        };
+        return calculateTWChargeDamage(this.unit, bonusDamage, maxBonusDamage);
     }
 }
 
@@ -318,6 +348,6 @@ export class TWVehicleRules extends VehicleRules {
     }
 
     protected override computeChargeDamage(bonusDamage = 0, maxBonusDamage = bonusDamage): ChargeDamage {
-        return { damage: null, maxDamage: null, bonusDamage, maxBonusDamage };
+        return calculateTWChargeDamage(this.unit, bonusDamage, maxBonusDamage);
     }
 }

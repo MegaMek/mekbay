@@ -251,9 +251,12 @@ export class ForceBuilderService {
                 unit.getCondition('immobile');
                 unit.getCondition('prone');
                 unit.getCondition('skidding');
+                unit.getCondition('tagged');
+                unit.getActiveNarcWaterLayers();
                 unit.turnState().moveMode();
                 unit.turnState().moveDistance();
                 unit.turnState().airborne();
+                unit.turnState().cover();
             }
 
             for (const force of cbtForces) {
@@ -326,6 +329,10 @@ export class ForceBuilderService {
     }
     /** True when a force is loaded (non-null). */
     hasForces = computed<boolean>(() => this.loadedForces().length > 0);
+    /** True when at least one force was loaded by this user rather than supplied by a lobby. */
+    hasUserLoadedForces = computed<boolean>(() => (
+        this.loadedForces().some(slot => slot.persistInUrl !== false)
+    ));
     /** Current force's game system, or null. */
     forceGameSystem = computed<GameSystem | null>(() => this.smartCurrentForce()?.gameSystem ?? null);
 
@@ -387,8 +394,12 @@ export class ForceBuilderService {
     /**
      * Creates a ForceSlot, sets up WS and change subscriptions for a force.
      */
-    private setupForceSlot(force: Force, alignment: ForceAlignment): ForceSlot {
-        const slot: ForceSlot = { force, alignment, changeSub: null };
+    private setupForceSlot(
+        force: Force,
+        alignment: ForceAlignment,
+        { persistInUrl = true }: { persistInUrl?: boolean } = {},
+    ): ForceSlot {
+        const slot: ForceSlot = { force, alignment, changeSub: null, persistInUrl };
         const instanceId = force.instanceId();
         this.logger.info(`ForceBuilderService: Setting up force slot for "${force.displayName()}"${instanceId ? ` (instance: ${instanceId})` : ''}`);
         if (instanceId) {
@@ -434,7 +445,9 @@ export class ForceBuilderService {
         this.teardownForceSlot(slot);
 
         // Re-setup slot with cloned force
-        const newSlot = this.setupForceSlot(cloned, slot.alignment);
+        const newSlot = this.setupForceSlot(cloned, slot.alignment, {
+            persistInUrl: slot.persistInUrl,
+        });
         this.loadedForces.update(slots => slots.map(s => s === slot ? newSlot : s));
 
         if (wasActive) {
@@ -471,14 +484,18 @@ export class ForceBuilderService {
      * the alignment filter if necessary so the new force is visible.
      * Pass `activate: false` to just add the slot without switching selection/filter.
      */
-    addLoadedForce(force: Force, alignment: ForceAlignment = 'friendly', { activate = true }: { activate?: boolean } = {}): void {
+    addLoadedForce(
+        force: Force,
+        alignment: ForceAlignment = 'friendly',
+        { activate = true, persistInUrl = true }: { activate?: boolean; persistInUrl?: boolean } = {},
+    ): void {
         // Guard against duplicate instanceIds (can occur from concurrent async loads)
         const instanceId = force.instanceId();
         if (instanceId && this.loadedForces().some(s => s.force.instanceId() === instanceId)) {
             this.logger.warn(`ForceBuilderService: Skipping duplicate force "${force.displayName()}" (instance: ${instanceId})`);
             return;
         }
-        const slot = this.setupForceSlot(force, alignment);
+        const slot = this.setupForceSlot(force, alignment, { persistInUrl });
         this.loadedForces.update(slots => [...slots, slot]);
 
         if (activate) {
@@ -747,13 +764,30 @@ export class ForceBuilderService {
     async loadForce(force: Force): Promise<boolean> {
         this.urlStateInitialized.set(false);
         try {
-            const cleared = await this.clear();
+            const hasLobbyForces = this.loadedForces().some(slot => slot.persistInUrl === false);
+            const cleared = hasLobbyForces
+                ? await this.clearUserLoadedForces()
+                : await this.clear();
             if (!cleared) return false; // User cancelled operation/force save prompt
             this.addLoadedForce(force, 'friendly', { activate: true });
             this.loadAllUnitsWithOverlay([force]);
         } finally {
             this.urlStateInitialized.set(true);
         }
+        return true;
+    }
+
+    private async clearUserLoadedForces(): Promise<boolean> {
+        const userSlots = this.loadedForces().filter(slot => slot.persistInUrl !== false);
+        if (userSlots.length === 0) return true;
+        if (!await this.promptSaveOperationIfNeeded()) return false;
+        for (const slot of userSlots) {
+            if (!await this.promptSaveForceIfNeeded(slot.force)) return false;
+        }
+        for (const slot of userSlots) {
+            await this.removeLoadedForce(slot.force, { skipPrompt: true });
+        }
+        this.currentOperation.set(null);
         return true;
     }
 
@@ -1836,8 +1870,10 @@ export class ForceBuilderService {
         effect(() => {
             const params = this.queryParameters();
             const selectedUnit = this.selectedUnit();
-            
-            const sel = selectedUnit?.force?.instanceId() ? selectedUnit?.id : null;
+            const selectedSlot = selectedUnit ? this.getForceSlot(selectedUnit.force) : undefined;
+            const sel = selectedUnit?.force?.instanceId() && selectedSlot?.persistInUrl !== false
+                ? selectedUnit.id
+                : null;
             if (!this.urlStateInitialized()) {
                 return;
             }

@@ -22,12 +22,12 @@ function makeSvg(): SVGSVGElement {
 describe('UnitDetailsSheetTabComponent', () => {
     let sheetService: jasmine.SpyObj<Pick<SheetService, 'getSheet'>>;
     let logger: jasmine.SpyObj<Pick<LoggerService, 'error'>>;
-    const options = signal({ recordSheetCenterPanelContent: 'clusterTable' });
+    const options = signal({ printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
 
     beforeEach(() => {
         sheetService = jasmine.createSpyObj<Pick<SheetService, 'getSheet'>>('SheetService', ['getSheet']);
         logger = jasmine.createSpyObj<Pick<LoggerService, 'error'>>('LoggerService', ['error']);
-        options.set({ recordSheetCenterPanelContent: 'clusterTable' });
+        options.set({ printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
         sheetService.getSheet.and.resolveTo(makeSvg());
 
         TestBed.configureTestingModule({

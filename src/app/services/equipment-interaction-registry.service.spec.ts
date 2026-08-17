@@ -28,6 +28,7 @@ import {
     type HandlerToastService,
 } from './equipment-interaction-registry.service';
 import type { Force } from '../models/force.model';
+import type { AerospaceAttackValues } from '../utils/aerospace-range.util';
 import { of } from 'rxjs';
 
 function svgEntry(html: string): SVGElement {
@@ -165,6 +166,32 @@ class DamageHandler extends EquipmentInteractionHandler {
             values: damage.values.map(value => value + this.amount),
             maximum: damage.maximum + this.amount,
         };
+    }
+
+    override getChoices(): PickerChoice[] {
+        return [];
+    }
+
+    override handleSelection(): boolean {
+        return false;
+    }
+}
+
+class AerospaceAttackValueHandler extends EquipmentInteractionHandler {
+    constructor(readonly id: string, readonly amount: number, override readonly priority: number) {
+        super();
+    }
+
+    override applyInventoryControlAerospaceAttackValueEffects(
+        _equipment: MountedEquipment,
+        values: AerospaceAttackValues,
+    ): AerospaceAttackValues {
+        return [
+            values[0] + this.amount,
+            values[1] + this.amount,
+            values[2] + this.amount,
+            values[3] + this.amount,
+        ];
     }
 
     override getChoices(): PickerChoice[] {
@@ -490,6 +517,19 @@ describe('EquipmentInteractionRegistryService', () => {
         expect(registry.getAllHandlers().map(handler => handler.id)).toEqual(['late', 'early']);
     });
 
+    it('composes aerospace attack-value effects through inventory-control rules', () => {
+        const registry = new EquipmentInteractionRegistryService().getRegistry();
+        registry.register(new AerospaceAttackValueHandler('late', 1, 1));
+        registry.register(new AerospaceAttackValueHandler('early', 2, 10));
+        const input = [4, 3, 2, 1] as const;
+
+        const result = registry.inventoryControlRules(queryContext())
+            .applyAerospaceAttackValueEffects!(atmEntry(), input);
+
+        expect(result).toEqual([7, 6, 5, 4]);
+        expect(input).toEqual([4, 3, 2, 1]);
+    });
+
     it('aggregates the TW Apollo bonus for a linked MRM launcher', () => {
         const registry = new EquipmentInteractionRegistryService().getRegistry();
         registry.register(new ApolloHandler());
@@ -506,7 +546,7 @@ describe('EquipmentInteractionRegistryService', () => {
             equipment: new WeaponEquipment({
                 id: 'MRM10', name: 'MRM 10', type: 'weapon',
                 flags: ['F_MRM'],
-                stats: { toHitModifier: 1 },
+                stats: { toHitModifier: 0 },
                 weapon: { ammoType: 'MRM', rackSize: 10, ranges: [3, 8, 15, 22] }
             }),
             linkedWith: [apollo]

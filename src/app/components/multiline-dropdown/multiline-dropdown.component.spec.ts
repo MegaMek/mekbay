@@ -182,4 +182,5 @@ describe('MultilineDropdownComponent', () => {
         const measureOptions = Array.from(fixture.nativeElement.querySelectorAll('.multiline-dropdown-measure-option')) as HTMLElement[];
         expect(measureOptions.map(option => option.textContent?.trim())).toEqual(options.map(option => option.label));
     });
+
 });

@@ -3,10 +3,17 @@
 // Author: Drake
 
 import type { PickerChoice } from '../components/picker/picker.interface';
-import type { MountedEquipment } from '../models/mounted-equipment.model';
+import { MountedWeapon, type MountedEquipment } from '../models/mounted-equipment.model';
 import type { TurnState } from '../models/turn-state.model';
 import type { UnitHeatSource } from '../models/rules/unit-type-rules';
-import { EquipmentInteractionHandler, type HandlerCommandContext, type HandlerQueryContext } from '../services/equipment-interaction-registry.service';
+import {
+    EquipmentInteractionHandler,
+    setEffectiveWeaponType,
+    type HandlerCommandContext,
+    type HandlerQueryContext,
+    type CriticalDelayedExplosionContext,
+    type CriticalDelayedExplosionHandling,
+} from '../services/equipment-interaction-registry.service';
 import type { WeaponDamage } from '../models/equipment.model';
 import { isPpcCapacitorCompatibleWeapon } from '../models/entity/utils/equipment-link-rules';
 import type { InventoryControlDamageContext } from '../utils/inventory-control-damage.util';
@@ -14,6 +21,10 @@ import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat
 import type { WeaponType } from '../models/weapon-types.model';
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { CriticalSlot } from '../models/force-serialization';
+import {
+    cancelPendingMekComponentExplosion,
+    resolvePendingMekComponentExplosion,
+} from '../utils/mek-critical-hit.util';
 
 export const PPC_CAPACITOR_STATE_KEY = 'ppc_capacitor_state';
 export const PPC_CAPACITOR_CHARGING_STATE = 'charging';
@@ -28,10 +39,6 @@ export class PpcCapacitorHandler extends EquipmentInteractionHandler {
     readonly id = 'ppc-capacitor-handler';
     override readonly flags: EquipmentFlag[] = ['F_PPC'];
     override readonly priority = 20;
-
-    override applicableTo(equipment: MountedEquipment): boolean {
-        return linkedPpcCapacitor(equipment) !== null;
-    }
 
     getChoices(equipment: MountedEquipment, context: HandlerQueryContext): PickerChoice[] {
         const capacitor = linkedPpcCapacitor(equipment);
@@ -59,6 +66,7 @@ export class PpcCapacitorHandler extends EquipmentInteractionHandler {
         if (!capacitor || !isPpcCapacitorUsable(equipment, capacitor, getCanonicalOwnerStatus)) return true;
 
         const charging = choice.value === PPC_CAPACITOR_CHARGING_STATE;
+        const discharging = choice.value === 'discharged';
         if (charging && capacitor.states.has(PPC_CAPACITOR_FIRED_STATE_KEY)) {
             context.toastService.showToast('A fired PPC cannot charge its capacitor this turn.', 'error');
             return true;
@@ -67,6 +75,7 @@ export class PpcCapacitorHandler extends EquipmentInteractionHandler {
             capacitor.owner.setInventoryEntry(capacitor);
             if (charging) capacitor.owner.turnState().markEquipmentStateChanged();
         }
+        if (discharging) cancelPendingMekComponentExplosion(equipment);
         context.toastService.showToast(`PPC Capacitor ${charging ? 'charging' : 'discharged'}`, 'info');
         return true;
     }
@@ -132,44 +141,52 @@ export class PpcCapacitorHandler extends EquipmentInteractionHandler {
         types: ReadonlySet<WeaponType>,
         context: HandlerQueryContext
     ): ReadonlySet<WeaponType> {
-        if (!chargedLinkedPpcCapacitor(equipment, context.getStatus)) return types;
-        return new Set([...types, 'X']);
+        return setEffectiveWeaponType(
+            types,
+            'X',
+            chargedLinkedPpcCapacitor(equipment, context.getStatus) !== null,
+        );
+    }
+
+    override getCriticalDelayedExplosion(
+        hitEntry: MountedEquipment,
+        explosionContext: CriticalDelayedExplosionContext,
+        context: HandlerQueryContext,
+    ): CriticalDelayedExplosionHandling | null {
+        const weapon = ppcWeaponForCriticalHit(hitEntry);
+        if (!weapon) return null;
+
+        const capacitor = linkedPpcCapacitor(weapon);
+        if (!capacitor || (hitEntry !== weapon && hitEntry !== capacitor)) return null;
+        if (!isPpcCapacitorUsable(weapon, capacitor, context.getStatus)
+            || !isPpcCapacitorCharged(capacitor)) return { explosion: null };
+        if (explosionContext.componentCriticalHits(weapon) > 0
+            || explosionContext.componentCriticalHits(capacitor) > 0) return { explosion: null };
+
+        const rawDamage = weapon.owner.gameRules.id === 'core2026'
+            ? (explosionContext.mountedCriticalSlots(weapon)
+                + explosionContext.mountedCriticalSlots(capacitor)) * 2
+            : explosionContext.effectiveMaximumWeaponDamage(weapon);
+        return {
+            explosion: {
+                source: weapon,
+                equipment: `${weapon.getDisplayName()} + ${capacitor.getDisplayName()}`,
+                rawDamage: Math.max(0, rawDamage),
+                destroyEntries: [weapon, capacitor],
+            },
+        };
     }
 
     override beforeEquipmentStateCommit(equipment: MountedEquipment): void {
         const capacitor = linkedPpcCapacitor(equipment);
-        if (!capacitor
-            || !isCompatiblePpcCapacitorLink(equipment, capacitor)
-            || !isPpcCapacitorExplosive(capacitor)
-            || isPpcCapacitorPairDestroyed(equipment, capacitor)
-            || (!hasPendingDirectHit(equipment) && !hasPendingDirectHit(capacitor))) return;
-
-        const criticalSlots = new Set([
-            ...currentCriticalSlots(equipment),
-            ...currentCriticalSlots(capacitor),
-        ]);
-        const triggerTimestamps = [...criticalSlots]
-            .filter(isPendingCriticalHit)
-            .map(slot => slot.destroying!);
-        const timestamp = triggerTimestamps.length > 0 ? Math.min(...triggerTimestamps) : Date.now();
-        let criticalSlotsChanged = false;
-        for (const slot of criticalSlots) {
-            if (slot.destroyed || slot.destroying) continue;
-            slot.hits = Math.max(slot.hits ?? 0, slot.armored ? 2 : 1);
-            slot.destroying = timestamp;
-            criticalSlotsChanged = true;
+        if (!capacitor || !isCompatiblePpcCapacitorLink(equipment, capacitor)) return;
+        const explosion = resolvePendingMekComponentExplosion(
+            equipment,
+            capacitor.states.has(PPC_CAPACITOR_FIRED_STATE_KEY),
+        );
+        if (explosion && setPpcCapacitorState(capacitor, null)) {
+            capacitor.owner.setInventoryEntry(capacitor);
         }
-        if (criticalSlotsChanged) {
-            equipment.owner.setCritSlots([...equipment.owner.getCritSlots()]);
-        }
-
-        let inventoryChanged = setPpcCapacitorState(capacitor, null);
-        for (const entry of [equipment, capacitor]) {
-            if (currentCriticalSlots(entry).length === 0) {
-                inventoryChanged = entry.setPendingDestroyed(true) || inventoryChanged;
-            }
-        }
-        if (inventoryChanged) equipment.owner.setInventoryEntry(equipment);
     }
 
     override getInventoryHeatSources(
@@ -201,6 +218,22 @@ function linkedPpcCapacitor(weapon: MountedEquipment): MountedEquipment | null {
     return weapon.linkedWith?.find(isPpcCapacitor) ?? null;
 }
 
+function ppcWeaponForCriticalHit(hitEntry: MountedEquipment): MountedWeapon | null {
+    if (hitEntry instanceof MountedWeapon) {
+        return hitEntry.equipment?.hasFlag('F_PPC') === true ? hitEntry : null;
+    }
+    if (!isPpcCapacitor(hitEntry)) return null;
+
+    if (hitEntry.parent instanceof MountedWeapon
+        && hitEntry.parent.linkedWith?.includes(hitEntry)
+        && isCompatiblePpcCapacitorLink(hitEntry.parent, hitEntry)) return hitEntry.parent;
+
+    return hitEntry.owner.getInventory().find((candidate): candidate is MountedWeapon =>
+        candidate instanceof MountedWeapon
+        && candidate.linkedWith?.includes(hitEntry) === true
+        && isCompatiblePpcCapacitorLink(candidate, hitEntry)) ?? null;
+}
+
 type EquipmentStatusQuery = HandlerQueryContext['getStatus'];
 
 function isPpcCapacitorUsable(
@@ -217,11 +250,6 @@ function getCanonicalOwnerStatus(equipment: MountedEquipment) {
     return equipment.owner.getEquipmentStatus(equipment);
 }
 
-function isPpcCapacitorPairDestroyed(weapon: MountedEquipment, capacitor: MountedEquipment): boolean {
-    return getCanonicalOwnerStatus(weapon) === 'destroyed'
-        || getCanonicalOwnerStatus(capacitor) === 'destroyed';
-}
-
 function isCompatiblePpcCapacitorLink(weapon: MountedEquipment, capacitor: MountedEquipment): boolean {
     return isPpcCapacitor(capacitor)
         && weapon.equipment != null
@@ -230,11 +258,6 @@ function isCompatiblePpcCapacitorLink(weapon: MountedEquipment, capacitor: Mount
 
 function isPpcCapacitorCharged(capacitor: MountedEquipment): boolean {
     return ppcCapacitorState(capacitor) === PPC_CAPACITOR_CHARGED_STATE;
-}
-
-function isPpcCapacitorExplosive(capacitor: MountedEquipment): boolean {
-    const state = ppcCapacitorState(capacitor);
-    return state === PPC_CAPACITOR_CHARGING_STATE || state === PPC_CAPACITOR_CHARGED_STATE;
 }
 
 function ppcCapacitorState(capacitor: MountedEquipment): typeof PPC_CAPACITOR_CHARGING_STATE | typeof PPC_CAPACITOR_CHARGED_STATE | null {
@@ -255,24 +278,11 @@ function currentCriticalSlots(equipment: MountedEquipment): CriticalSlot[] {
     return equipment.critSlots?.flatMap(slot => equipment.owner.findCurrentCriticalSlot(slot) ?? []) ?? [];
 }
 
-function hasPendingDirectHit(equipment: MountedEquipment): boolean {
-    const criticalSlots = currentCriticalSlots(equipment);
-    return criticalSlots.length > 0
-        ? criticalSlots.some(isPendingCriticalHit)
-        : equipment.isDestroying();
-}
-
 function hasPendingDestruction(equipment: MountedEquipment): boolean {
     const criticalSlots = currentCriticalSlots(equipment);
     return criticalSlots.length > 0
         ? criticalSlots.some(slot => !!slot.destroying && !slot.destroyed)
         : equipment.isDestroying();
-}
-
-function isPendingCriticalHit(slot: CriticalSlot): boolean {
-    return !!slot.destroying
-        && !slot.destroyed
-        && (slot.hits ?? 0) >= (slot.armored ? 2 : 1);
 }
 
 function setPpcCapacitorState(

@@ -4,8 +4,10 @@
 
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { from, of } from 'rxjs';
 import { DataService } from './data.service';
 import { DialogsService } from './dialogs.service';
+import { DisplayNameService } from './display-name.service';
 import { ForceBuilderService } from './force-builder.service';
 import { LobbyService } from './lobby.service';
 import { ToastService } from './toast.service';
@@ -32,6 +34,7 @@ describe('LobbyService', () => {
     let dataService: any;
     let dialogsService: any;
     let toastService: any;
+    let displayNameService: any;
 
     beforeEach(() => {
         handlers = new Map();
@@ -48,12 +51,11 @@ describe('LobbyService', () => {
         };
         forceBuilderService = {
             loadedForces: signal<any[]>([]),
-            addForce: jasmine.createSpy('addForce').and.callFake(async (force: any, alignment: string) => {
+            addLoadedForce: jasmine.createSpy('addLoadedForce').and.callFake((force: any, alignment: string, options: any) => {
                 forceBuilderService.loadedForces.update((slots: any[]) => [
                     ...slots,
-                    { force, alignment, changeSub: null },
+                    { force, alignment, changeSub: null, persistInUrl: options?.persistInUrl },
                 ]);
-                return true;
             }),
             removeLoadedForce: jasmine.createSpy('removeLoadedForce').and.callFake(async (force: any) => {
                 forceBuilderService.loadedForces.update((slots: any[]) => slots.filter(slot => slot.force !== force));
@@ -63,8 +65,17 @@ describe('LobbyService', () => {
             getForce: jasmine.createSpy('getForce'),
             saveForce: jasmine.createSpy('saveForce').and.resolveTo(),
         };
-        dialogsService = { requestConfirmation: jasmine.createSpy('requestConfirmation') };
+        dialogsService = {
+            requestConfirmation: jasmine.createSpy('requestConfirmation'),
+            createDialog: jasmine.createSpy('createDialog'),
+        };
         toastService = { showToast: jasmine.createSpy('showToast') };
+        displayNameService = {
+            current: jasmine.createSpy('current').and.resolveTo('Specter'),
+            currentOrGenerated: jasmine.createSpy('currentOrGenerated').and.resolveTo('Specter'),
+            generate: jasmine.createSpy('generate').and.resolveTo('Atlas'),
+            save: jasmine.createSpy('save').and.resolveTo('Specter'),
+        };
 
         TestBed.configureTestingModule({
             providers: [
@@ -74,12 +85,48 @@ describe('LobbyService', () => {
                 { provide: ForceBuilderService, useValue: forceBuilderService },
                 { provide: DataService, useValue: dataService },
                 { provide: DialogsService, useValue: dialogsService },
+                { provide: DisplayNameService, useValue: displayNameService },
                 { provide: ToastService, useValue: toastService },
             ],
         });
     });
 
     it('creates a lobby without putting the private user UUID in its payload', async () => {
+        wsService.sendAndWaitForResponse.and.resolveTo({
+                action: 'lobbyCreated',
+                state: {
+                    action: 'lobbyState',
+                    code: 'a1b2',
+                    locked: false,
+                    isHost: true,
+                    participants: [{
+                        publicId: 'public-host',
+                        displayName: 'Specter',
+                        self: true,
+                        host: true,
+                        connected: true,
+                        alignment: 'friendly',
+                        instanceIds: [],
+                    }],
+                },
+            });
+        const service = TestBed.inject(LobbyService);
+
+        await service.createLobby();
+        await settleEffects();
+
+        expect(displayNameService.save).toHaveBeenCalledOnceWith('Specter');
+        expect(wsService.sendAndWaitForResponse).toHaveBeenCalledWith(
+            { action: 'createLobby' },
+            { suppressGlobalError: true },
+        );
+        expect(JSON.stringify(wsService.sendAndWaitForResponse.calls.allArgs())).not.toContain('uuid');
+        expect(service.state()?.code).toBe('a1b2');
+    });
+
+    it('asks for a display name before creating the first lobby', async () => {
+        displayNameService.current.and.resolveTo(null);
+        dialogsService.createDialog.and.returnValue({ closed: of('Barn Owl') });
         wsService.sendAndWaitForResponse.and.resolveTo({
             action: 'lobbyCreated',
             state: {
@@ -89,6 +136,7 @@ describe('LobbyService', () => {
                 isHost: true,
                 participants: [{
                     publicId: 'public-host',
+                    displayName: 'Barn Owl',
                     self: true,
                     host: true,
                     connected: true,
@@ -100,11 +148,33 @@ describe('LobbyService', () => {
         const service = TestBed.inject(LobbyService);
 
         await service.createLobby();
-        await settleEffects();
 
-        expect(wsService.sendAndWaitForResponse).toHaveBeenCalledWith({ action: 'createLobby' });
-        expect(JSON.stringify(wsService.sendAndWaitForResponse.calls.allArgs())).not.toContain('uuid');
-        expect(service.state()?.code).toBe('a1b2');
+        expect(dialogsService.createDialog).toHaveBeenCalledWith(
+            jasmine.any(Function),
+            jasmine.objectContaining({
+                disableClose: true,
+                data: { displayName: 'Atlas' },
+            }),
+        );
+        expect(displayNameService.save).toHaveBeenCalledOnceWith('Barn Owl');
+        expect(wsService.sendAndWaitForResponse).toHaveBeenCalledWith(
+            { action: 'createLobby' },
+            { suppressGlobalError: true },
+        );
+    });
+
+    it('does not save a name or create a lobby when the first-use dialog is cancelled', async () => {
+        displayNameService.current.and.resolveTo(null);
+        dialogsService.createDialog.and.returnValue({ closed: of(null) });
+        const service = TestBed.inject(LobbyService);
+
+        await service.createLobby();
+
+        expect(displayNameService.save).not.toHaveBeenCalled();
+        expect(wsService.sendAndWaitForResponse).not.toHaveBeenCalledWith(
+            { action: 'createLobby' },
+            jasmine.anything(),
+        );
     });
 
     it('normalizes lobby codes before joining', async () => {
@@ -133,8 +203,78 @@ describe('LobbyService', () => {
 
         await service.joinLobby(' A1B2 ');
 
-        expect(wsService.sendAndWaitForResponse).toHaveBeenCalledWith({ action: 'joinLobby', code: 'a1b2' });
+        expect(wsService.sendAndWaitForResponse).toHaveBeenCalledWith(
+            { action: 'joinLobby', code: 'a1b2' },
+            { suppressGlobalError: true },
+        );
         expect(service.state()?.code).toBe('a1b2');
+    });
+
+    it('joins as a spectator through the shared lobby prompt', async () => {
+        dialogsService.createDialog.and.callFake((_component: unknown, options: any) => ({
+            closed: from(options.data.attemptJoin('a1b2', 'Specter').then(() => true)),
+        }));
+        wsService.sendAndWaitForResponse.and.callFake(async (payload: { action: string }) => (
+            payload.action === 'joinLobby'
+                ? {
+                    action: 'lobbyJoined',
+                    state: {
+                        action: 'lobbyState',
+                        code: 'a1b2',
+                        locked: false,
+                        isHost: false,
+                        participants: [{
+                            publicId: 'public-spectator',
+                            self: true,
+                            host: false,
+                            connected: true,
+                            alignment: 'friendly',
+                            instanceIds: [],
+                        }],
+                    },
+                }
+                : { action: 'lobbyStateResult', state: null }
+        ));
+        const service = TestBed.inject(LobbyService);
+        const showLobbyDialog = spyOn(service, 'showLobbyDialog').and.resolveTo();
+
+        await service.promptAndJoin();
+
+        expect(dialogsService.createDialog).toHaveBeenCalledWith(
+            jasmine.any(Function),
+            jasmine.objectContaining({
+                disableClose: true,
+                data: jasmine.objectContaining({
+                    displayName: 'Specter',
+                    attemptJoin: jasmine.any(Function),
+                }),
+            }),
+        );
+        expect(displayNameService.save).toHaveBeenCalledOnceWith('Specter');
+        expect(wsService.sendAndWaitForResponse).toHaveBeenCalledWith(
+            { action: 'joinLobby', code: 'a1b2' },
+            { suppressGlobalError: true },
+        );
+        expect(forceBuilderService.loadedForces()).toEqual([]);
+        expect(showLobbyDialog).toHaveBeenCalled();
+    });
+
+    it('seeds the join dialog from the account display name service', async () => {
+        dialogsService.createDialog.and.returnValue({ closed: of(null) });
+        const service = TestBed.inject(LobbyService);
+
+        await service.promptAndJoin();
+
+        expect(displayNameService.currentOrGenerated).toHaveBeenCalled();
+        expect(dialogsService.createDialog).toHaveBeenCalledWith(
+            jasmine.any(Function),
+            jasmine.objectContaining({
+                data: jasmine.objectContaining({
+                    displayName: 'Specter',
+                    attemptJoin: jasmine.any(Function),
+                }),
+            }),
+        );
     });
 
     it('restores a resumed lobby after late service initialization', async () => {
@@ -198,9 +338,15 @@ describe('LobbyService', () => {
         await settleEffects();
 
         expect(wsService.send).toHaveBeenCalledWith({ action: 'syncLobbyForces', instanceIds: ['own-force'] });
-        expect(dataService.getForce).toHaveBeenCalledWith('remote-force');
+        expect(dataService.getForce).toHaveBeenCalledWith('remote-force', false, {
+            skipLocal: true,
+            showLoading: false,
+        });
         expect(remoteForce.owned()).toBeFalse();
-        expect(forceBuilderService.addForce).toHaveBeenCalledWith(remoteForce, 'enemy', { activate: false });
+        expect(forceBuilderService.addLoadedForce).toHaveBeenCalledWith(remoteForce, 'enemy', {
+            activate: false,
+            persistInUrl: false,
+        });
         expect(forceBuilderService.loadedForces()[0].alignment).toBe('friendly');
 
         handlers.get('lobbyState')?.({
@@ -216,6 +362,84 @@ describe('LobbyService', () => {
 
         expect(forceBuilderService.removeLoadedForce).toHaveBeenCalledWith(remoteForce, { skipPrompt: true });
         expect(forceBuilderService.loadedForces().map((slot: any) => slot.force)).toEqual([ownForce]);
+    });
+
+    it('activates the first remote force for a force-less spectator', async () => {
+        const remoteForce = createForce('remote-force', true);
+        dataService.getForce.and.resolveTo(remoteForce);
+        TestBed.inject(LobbyService);
+
+        handlers.get('lobbyState')?.({
+            action: 'lobbyState',
+            code: 'room',
+            locked: false,
+            isHost: false,
+            participants: [
+                { publicId: 'spectator', self: true, host: false, connected: true, alignment: 'friendly', instanceIds: [] },
+                { publicId: 'host', self: false, host: true, connected: true, alignment: 'enemy', instanceIds: ['remote-force'] },
+            ],
+        });
+        await settleEffects();
+
+        expect(forceBuilderService.addLoadedForce).toHaveBeenCalledWith(remoteForce, 'enemy', {
+            activate: true,
+            persistInUrl: false,
+        });
+    });
+
+    it('publishes friendly local forces regardless of cloud ownership', async () => {
+        const sharedForce = createForce('shared-force', false);
+        forceBuilderService.loadedForces.set([{
+            force: sharedForce,
+            alignment: 'friendly',
+            changeSub: null,
+        }]);
+        TestBed.inject(LobbyService);
+
+        handlers.get('lobbyState')?.({
+            action: 'lobbyState',
+            code: 'room',
+            locked: false,
+            isHost: true,
+            participants: [
+                { publicId: 'self', self: true, host: true, connected: true, alignment: 'friendly', instanceIds: [] },
+            ],
+        });
+        await settleEffects();
+
+        expect(wsService.send).toHaveBeenCalledWith({
+            action: 'syncLobbyForces',
+            instanceIds: ['shared-force'],
+        });
+    });
+
+    it('does not republish forces downloaded from another lobby participant', async () => {
+        const remoteForce = createForce('remote-force', false);
+        forceBuilderService.loadedForces.set([{
+            force: remoteForce,
+            alignment: 'friendly',
+            changeSub: null,
+        }]);
+        const service = TestBed.inject(LobbyService);
+
+        handlers.get('lobbyState')?.({
+            action: 'lobbyState',
+            code: 'room',
+            locked: false,
+            isHost: false,
+            participants: [
+                { publicId: 'self', self: true, host: false, connected: true, alignment: 'friendly', instanceIds: [] },
+                { publicId: 'ally', self: false, host: true, connected: true, alignment: 'friendly', instanceIds: ['remote-force'] },
+            ],
+        });
+        await settleEffects();
+
+        expect(service.hasLobby()).toBeTrue();
+        expect(wsService.send).toHaveBeenCalledWith({ action: 'syncLobbyForces', instanceIds: [] });
+        expect(wsService.send).not.toHaveBeenCalledWith({
+            action: 'syncLobbyForces',
+            instanceIds: ['remote-force'],
+        });
     });
 
     it('never publishes locally hostile forces and unloads them in lobby mode', async () => {
@@ -301,7 +525,29 @@ describe('LobbyService', () => {
         expect(service.state()).toBeNull();
     });
 
-    it('publishes at most eight owned forces per participant', async () => {
+    it('shows the inactivity toast when the server closes an idle operation lobby', async () => {
+        const service = TestBed.inject(LobbyService);
+        handlers.get('lobbyState')?.({
+            action: 'lobbyState',
+            code: 'room',
+            locked: false,
+            isHost: true,
+            participants: [
+                { publicId: 'self', self: true, host: true, connected: true, alignment: 'friendly', instanceIds: [] },
+            ],
+        });
+
+        handlers.get('lobbyClosed')?.({ action: 'lobbyClosed', reason: 'inactivity' });
+        await settleEffects();
+
+        expect(service.state()).toBeNull();
+        expect(toastService.showToast).toHaveBeenCalledWith(
+            'Operation lobby closed due to inactivity',
+            'info',
+        );
+    });
+
+    it('publishes at most eight locally loaded forces per participant', async () => {
         forceBuilderService.loadedForces.set(Array.from({ length: 9 }, (_, index) => ({
             force: createForce(`force-${index}`, true),
             alignment: 'friendly',

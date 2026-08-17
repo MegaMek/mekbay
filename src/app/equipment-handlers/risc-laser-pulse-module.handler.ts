@@ -55,7 +55,7 @@ export class RiscLaserPulseModuleHandler extends EquipmentInteractionHandler {
         context: HandlerQueryContext
     ): readonly ToHitAdjustment[] {
         const parent = adjustmentContext.parent;
-        const label = equipment.equipment?.shortName ?? equipment.name;
+        const label = equipment.getDisplayName();
         if (!parent) return isRiscLaserPulseModule(equipment) ? [{ kind: 'replace-base', value: -2, label }] : [];
         if (!isRiscLaserPulseModule(equipment) || !this.isLaserWithRiscModule(parent)) return [];
         const active = this.isModuleUsable(parent, equipment, context) && this.selectedMode(parent) === RISC_LASER_PULSE_MODE;

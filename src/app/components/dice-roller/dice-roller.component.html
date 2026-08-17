@@ -4,29 +4,31 @@
         @for (value of diceResults(); let i = $index; let last = $last; track i) {
         <div class="die" [class.large]="!small()" tabindex="0" (click)="onDieClick()" [class.interactive]="rollOnDieClick()" [class.rolling]="isRolling()">
             <span>{{ value === null ? '?' : value }}</span>
-        </div>@if (!last) {<span class="plus-sign"> + </span>}
+        </div>@if (!last && showSum()) {<span class="plus-sign"> + </span>}
         }
-        @if (modifier() !== 0) {
-        <span class="operator"> {{ modifier() > 0 ? '+' : '−' }} </span>
-        <span class="modifier-value" [class.large]="!small()">{{ modifier() > 0 ? modifier() : -modifier() }}</span>
+        @if (showSum() && modifier() !== 0) {
+        <span class="modifier-value" [class.large]="!small()">
+            {{ modifier() > 0 ? '+' + modifier() : '−' + -modifier() }}
+        </span>
         }
-        @if (rollFinished()) {
-        <div class="sum" [class.large]="!small()"> = {{ diceSum() }}</div>
+        @if (showSum() && rollFinished()) {
+        <div class="sum" [class.large]="!small()"> = <span class="value">{{ diceSum() }}</span></div>
         }
     </div>
     }
 
     <!-- overlay -->
     @if (overlayVisible()) {
-    <div class="dice-overlay" [class.can-close]="canCloseOverlay()" (click)="onOverlayBackgroundClick()">
+    <div class="dice-overlay" [class.can-close]="canCloseOverlay()" [class.can-finish]="isRolling()"
+        (click)="onOverlayBackgroundClick()">
         <div class="dice-overlay-inner">
             @if (reserveOverlayResultSpace() || overlayResult()) {
             <div class="overlay-result" [class.pending]="!rollFinished() || !overlayResult()"
                 [class.compact]="compactOverlayResult()"
                 [class.success]="overlayResultTone() === 'success'"
-                [class.failed]="overlayResultTone() === 'failed'">
-                {{ rollFinished() ? overlayResult() : '' }}
-            </div>
+                [class.failed]="overlayResultTone() === 'failed'"
+                [mbAutoFitText]="rollFinished() ? overlayResult() : ''"
+                [mbAutoFitTextMinCharacters]="1">{{ rollFinished() ? overlayResult() : '' }}</div>
             }
             <div class="overlay-dice-row">
                 @for (value of diceResults(); let i = $index; track i) {
@@ -34,16 +36,19 @@
                     <span>{{ value === null ? '?' : value }}</span>
                 </div>
                 }
-                @if (modifier() !== 0) {
-                <span class="operator large"> {{ modifier() > 0 ? '+' : '−' }} </span>
-                <span class="modifier-value large">{{ modifier() > 0 ? modifier() : -modifier() }}</span>
+                @if (showSum() && modifier() !== 0) {
+                <span class="modifier-value large">
+                    {{ modifier() > 0 ? '+' + modifier() : '−' + -modifier() }}
+                </span>
                 }
             </div>
-            @if (rollFinished() && !overlayResult()) {
+            @if (showSum() && rollFinished() && !overlayResult()) {
             <div class="overlay-sum">{{ diceSum() }}</div>
             }
-            @if ((reserveOverlayResultSpace() || rollFinished()) && overlayCloseHint()) {
-            <div class="overlay-hint" [class.pending]="!rollFinished()">{{ overlayCloseHint() }}</div>
+            @if (isRolling() && overlayRollingHint()) {
+            <div class="overlay-hint">{{ overlayRollingHint() }}</div>
+            } @else if (rollFinished() && overlayCloseHint()) {
+            <div class="overlay-hint">{{ overlayCloseHint() }}</div>
             }
         </div>
     </div>

@@ -96,6 +96,22 @@ export class CBTForce extends Force<CBTForceUnit> {
         this.markInventoryControlChanged(true, undefined, true);
     }
 
+    clearExpiredManualTargetTags(sourceUnit?: CBTForceUnit): void {
+        let changed = false;
+        const targets = this.getInventoryControlTargets().map(target => {
+            if (target.source === 'opfor' || target.tnCalculator?.tagged !== true) return target;
+            changed = true;
+            return {
+                ...target,
+                tnCalculator: { ...target.tnCalculator, tagged: false },
+            };
+        });
+        if (!changed) return;
+
+        this.inventoryControlTargets.replaceTargets(targets);
+        this.markInventoryControlChanged(false, sourceUnit);
+    }
+
     private toSharedInventoryControlTarget(target: InventoryControlRuntimeTarget): InventoryControlRuntimeTarget {
         const sharedCalculator = splitInventoryControlCalculatorState(target.tnCalculator).shared;
         return {

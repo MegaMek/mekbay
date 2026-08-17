@@ -135,8 +135,7 @@ export class UnitBlockComponent {
         if (!forceUnit) return [];
 
         const conditionKeys = new Set(forceUnit.getConditions().keys());
-
-        return Array.from(conditionKeys)
+        const unitConditions = Array.from(conditionKeys)
             .map(key => {
                 const condition = getUnitConditionDefinition(key);
                 return {
@@ -146,6 +145,31 @@ export class UnitBlockComponent {
                 };
             })
             .sort((left, right) => unitConditionSortIndex(left.key) - unitConditionSortIndex(right.key) || left.label.localeCompare(right.label));
+
+        if (!(forceUnit instanceof CBTForceUnit)) return unitConditions;
+
+        const crewStates = new Set(forceUnit.getCrewMembers().map(crewMember => crewMember.getState()));
+        const crewConditions = Array.from(crewStates).flatMap(state => {
+            const definition = forceUnit.rules.crewStateDefinition(state);
+            return definition ? [{
+                key: `crew-${definition.key}`,
+                label: definition.bannerLabel,
+                color: definition.color,
+            }] : [];
+        });
+
+        const locationConditions = [];
+        const hasNarc = Object.keys(forceUnit.getLocations()).some(location => forceUnit.getLocationCondition(location, 'narc'));
+        if (hasNarc) {
+            const narcDefinition = forceUnit.rules.locationConditionControls.find(condition => condition.key === 'narc');
+            locationConditions.push({
+                key: 'location-narc',
+                label: narcDefinition?.label ?? 'NARC',
+                color: narcDefinition?.color ?? '#f00',
+            });
+        };
+
+        return [...unitConditions, ...crewConditions, ...locationConditions];
     });
 
     tagDisplay = computed<{ label: 'TAG' | 'LTAG'; unavailable: boolean } | undefined>(() => {

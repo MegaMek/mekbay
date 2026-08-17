@@ -293,7 +293,7 @@ describe('battle value family dispatch', () => {
     const entity = new TestBipedMekEntity();
     const shield = new MiscEquipment({
       id: 'shield', name: 'Medium Shield', type: 'misc', stats: { bv: 20 },
-      flags: ['F_CLUB', 'S_SHIELD_MEDIUM'],
+      flags: ['F_SHIELD', 'S_SHIELD_MEDIUM'],
     });
     const shieldMount = mount(shield, 'LA');
     entity.setEquipment([shieldMount]);

@@ -78,6 +78,8 @@ describe('heat state sanitization', () => {
 
         expect(Sanitizer.sanitize({
             moveDistance: 'invalid',
+            standAttempts: Number.NaN,
+            cover: Number.NaN,
             dmgReceived: Number.NaN,
             weaponsHeat: Number.POSITIVE_INFINITY,
             heatDissipationConsumed: Number.POSITIVE_INFINITY,
@@ -100,6 +102,29 @@ describe('heat state sanitization', () => {
         expect(Sanitizer.sanitize({ heatDissipationConsumed: -2 }, TURN_STATE_SCHEMA)).toEqual({
             heatDissipationConsumed: 0,
         });
+    });
+
+    it('preserves zero stand attempts and clamps negative values', () => {
+        expect(Sanitizer.sanitize({ standAttempts: 0 }, TURN_STATE_SCHEMA)).toEqual({
+            standAttempts: 0,
+        });
+        expect(Sanitizer.sanitize({ standAttempts: -2 }, TURN_STATE_SCHEMA)).toEqual({
+            standAttempts: 0,
+        });
+    });
+
+    it('keeps only active cover values', () => {
+        expect(Sanitizer.sanitize({ cover: 0 }, TURN_STATE_SCHEMA)).toEqual({});
+        expect(Sanitizer.sanitize({ cover: 1 }, TURN_STATE_SCHEMA)).toEqual({ cover: 1 });
+        expect(Sanitizer.sanitize({ cover: 3 }, TURN_STATE_SCHEMA)).toEqual({ cover: 3 });
+        expect(Sanitizer.sanitize({ cover: 4 }, TURN_STATE_SCHEMA)).toEqual({ cover: 4 });
+        expect(Sanitizer.sanitize({ cover: 5 }, TURN_STATE_SCHEMA)).toEqual({ cover: 5 });
+        expect(Sanitizer.sanitize({ cover: 6 }, TURN_STATE_SCHEMA)).toEqual({ cover: 6 });
+        expect(Sanitizer.sanitize({ cover: 7 }, TURN_STATE_SCHEMA)).toEqual({ cover: 7 });
+        expect(Sanitizer.sanitize({ cover: 8 }, TURN_STATE_SCHEMA)).toEqual({ cover: 8 });
+        expect(Sanitizer.sanitize({ cover: 9 }, TURN_STATE_SCHEMA)).toEqual({});
+        expect(Sanitizer.sanitize({ cover: '3' }, TURN_STATE_SCHEMA)).toEqual({});
+        expect(Sanitizer.sanitize({ cover: 1.5 }, TURN_STATE_SCHEMA)).toEqual({});
     });
 
     it('normalizes PSR locations and rejects non-positive or fractional hit counts', () => {
