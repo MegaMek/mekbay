@@ -285,9 +285,6 @@ export function applyMekCriticalRoll(
         })
         : null;
 
-    if (equipment instanceof AmmoEquipment && criticalHitApplied) {
-        slot.consumed = criticalSlotTotalAmmo(unit, slot, equipment);
-    }
     if (delayedExplosion) {
         queueMekComponentExplosion(unit, slot, targetLocation, delayedExplosion, consolidateImmediately);
     }
