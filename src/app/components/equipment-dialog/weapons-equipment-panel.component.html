@@ -186,6 +186,7 @@
                                                             [options]="ammoDropdownOptions(row)"
                                                             [value]="ammo.selectedOptionId"
                                                             [disabled]="readOnly()"
+                                                            [expandPanelToContent]="true"
                                                             (valueChange)="selectAmmoOption(row, $event)"
                                                         />
                                                     } @else {

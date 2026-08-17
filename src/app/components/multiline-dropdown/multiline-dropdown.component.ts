@@ -13,6 +13,8 @@ import { DropdownPointerActivationGuard, scrollActiveOptionIntoView } from '../.
 export interface MultilineDropdownOption {
     value: string;
     label: string;
+    /** A trailing part of label that must remain visible when the closed trigger truncates. */
+    trailingLabel?: string | null;
     modifierLabel?: string | null;
     disabled?: boolean;
     destroyed?: boolean;
@@ -30,6 +32,7 @@ interface MultilineDropdownPointerHoverEvent {
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         '[style.font-size]': 'fontSize() || null',
+        '[class.expand-to-content]': 'expandToContent()',
     },
     template: `
         <div
@@ -68,6 +71,19 @@ interface MultilineDropdownPointerHoverEvent {
             display: block;
             width: 100%;
             min-height: 0;
+        }
+
+        :host(.expand-to-content) {
+            box-sizing: border-box;
+            width: max-content;
+            min-width: 100%;
+            max-width: calc(100dvw - 8px);
+        }
+
+        :host(.expand-to-content) .multiline-dropdown-options {
+            width: max-content;
+            min-width: 100%;
+            max-width: calc(100dvw - 8px);
         }
 
         .multiline-dropdown-options {
@@ -158,6 +174,7 @@ class MultilineDropdownPanelComponent {
     readonly activeOptionId = input('');
     readonly activeIndex = input(0);
     readonly fontSize = input('');
+    readonly expandToContent = input(false);
 
     readonly selected = output<MultilineDropdownOption>();
     readonly pointerHovered = output<MultilineDropdownPointerHoverEvent>();
@@ -195,12 +212,18 @@ class MultilineDropdownPanelComponent {
                 [attr.aria-controls]="optionsId()"
                 [attr.aria-expanded]="open()"
                 [attr.aria-label]="label()"
+                [attr.title]="selectedLabel()"
                 [disabled]="disabled() || options().length === 0"
                 [class.destroyed]="selectedOption()?.destroyed"
                 (click)="toggle()"
                 (keydown)="onTriggerKeydown($event)"
             >
-                <span class="multiline-dropdown-label">{{ selectedLabel() }}</span>
+                <span class="multiline-dropdown-label">
+                    <span class="multiline-dropdown-label-text">{{ selectedLeadingLabel() }}</span>
+                    @if (selectedTrailingLabel(); as trailingLabel) {
+                        <span class="multiline-dropdown-trailing-label">{{ trailingLabel }}</span>
+                    }
+                </span>
                 @if (selectedOption()?.modifierLabel; as modifierLabel) {
                     <span class="modifier-badge">{{ modifierLabel }}</span>
                 }
@@ -234,6 +257,10 @@ class MultilineDropdownPanelComponent {
             width: 100%;
             height: 100%;
             gap: 4px;
+            overflow: hidden;
+            overflow-wrap: normal;
+            word-break: normal;
+            white-space: nowrap;
             text-align: left;
             cursor: pointer;
         }
@@ -252,11 +279,27 @@ class MultilineDropdownPanelComponent {
         .multiline-dropdown-label {
             grid-column: 1;
             grid-row: 1;
-            flex: 1 1 auto;
+            display: flex;
+            align-items: center;
+            gap: 0.3em;
             min-width: 0;
-            white-space: normal;
+            overflow: hidden;
             overflow-wrap: normal;
             word-break: normal;
+            white-space: nowrap;
+        }
+
+        .multiline-dropdown-label-text {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .multiline-dropdown-trailing-label {
+            flex: 0 0 auto;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
         }
 
         .multiline-dropdown-measure {
@@ -323,6 +366,7 @@ export class MultilineDropdownComponent implements OnDestroy {
     readonly placeholder = input('Select');
     readonly controlId = input(this.instanceId);
     readonly disabled = input(false);
+    readonly expandPanelToContent = input(false);
 
     readonly valueChange = output<string>();
     readonly optionSelected = output<MultilineDropdownOption>();
@@ -333,6 +377,21 @@ export class MultilineDropdownComponent implements OnDestroy {
     readonly activeOptionId = computed(() => this.optionId(this.activeIndex()));
     readonly selectedOption = computed(() => this.options().find(option => option.value === this.value()) ?? null);
     readonly selectedLabel = computed(() => this.selectedOption()?.label ?? this.placeholder());
+    readonly selectedTrailingLabel = computed(() => {
+        const option = this.selectedOption();
+        const trailingLabel = option?.trailingLabel?.trim();
+        return option && trailingLabel && option.label.trimEnd().endsWith(trailingLabel)
+            ? trailingLabel
+            : null;
+    });
+    readonly selectedLeadingLabel = computed(() => {
+        const option = this.selectedOption();
+        if (!option) return this.placeholder();
+        const trailingLabel = this.selectedTrailingLabel();
+        return trailingLabel
+            ? option.label.trimEnd().slice(0, -trailingLabel.length).trimEnd()
+            : option.label;
+    });
 
     optionId(index: number): string {
         return `${this.optionsId()}-${index}`;
@@ -465,6 +524,7 @@ export class MultilineDropdownComponent implements OnDestroy {
         panelRef.setInput('activeOptionId', this.activeOptionId());
         panelRef.setInput('activeIndex', this.activeIndex());
         panelRef.setInput('fontSize', this.triggerFontSize());
+        panelRef.setInput('expandToContent', this.expandPanelToContent());
         panelRef.changeDetectorRef.detectChanges();
         if (scrollActiveIntoView) {
             this.scrollActiveOptionIntoView(panelRef.location.nativeElement as HTMLElement);
