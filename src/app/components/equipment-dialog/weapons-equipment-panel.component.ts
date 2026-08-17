@@ -753,6 +753,7 @@ export class WeaponsEquipmentPanelComponent {
         return row.ammo.options.map(option => ({
             value: option.id,
             label: option.label,
+            trailingLabel: `(${option.remaining}/${option.total})`,
             disabled: option.disabled,
             destroyed: option.destroyed,
         }));

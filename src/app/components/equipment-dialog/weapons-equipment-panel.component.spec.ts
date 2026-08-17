@@ -3267,15 +3267,24 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const leftBin = entry({ id: 'left-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 1, locations: new Set(['LT']) });
         const rightBin = entry({ id: 'right-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 5, locations: new Set(['RT']) });
         const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
-        const { component } = createComponent([atm, leftBin, rightBin], equipmentMap);
+        const { component, fixture } = createComponent([atm, leftBin, rightBin], equipmentMap);
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         expect(row.ammo.options.map(option => option.label)).toEqual([
             '[LT] ATM 6 Standard (9/10)',
             '[RT] ATM 6 Standard (5/10)'
         ]);
+        expect(component.ammoDropdownOptions(row).map(option => option.trailingLabel)).toEqual([
+            '(9/10)',
+            '(5/10)'
+        ]);
         expect(component.ammoState(row).selectedOptionId).toBe(row.ammo.options[0].id);
         expect(component.ammoState(row).text).toBe('[LT] ATM 6 Standard (9/10)');
+
+        fixture.detectChanges();
+        const ammoChoice = fixture.nativeElement.querySelector('.ammo-choice') as HTMLElement;
+        expect(ammoChoice.querySelector('.multiline-dropdown-label-text')?.textContent?.trim()).toBe('[LT] ATM 6 Standard');
+        expect(ammoChoice.querySelector('.multiline-dropdown-trailing-label')?.textContent?.trim()).toBe('(9/10)');
     });
 
     it('shows No ammo only when a weapon has no ammo choices', () => {
