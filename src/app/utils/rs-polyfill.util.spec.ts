@@ -23,6 +23,51 @@ describe('RsPolyfillUtil', () => {
         expect(filters[0].querySelector('feFuncB')?.getAttribute('tableValues')).toBe('1 0');
     });
 
+    it('adds hidden Life Support damage icon definitions to the available Mek warrior panel', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const warriorData = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        warriorData.setAttribute('id', 'warriorDataDual');
+        warriorData.getBBox = () => ({ x: 2, y: 3, width: 148, height: 84 } as DOMRect);
+        svg.appendChild(warriorData);
+        const addWarning = (RsPolyfillUtil as unknown as {
+            addLifeSupportPilotDamageWarning: (unit: { type: string }, svg: SVGSVGElement) => void;
+        }).addLifeSupportPilotDamageWarning.bind(RsPolyfillUtil);
+
+        addWarning({ type: 'Mek' }, svg);
+        addWarning({ type: 'Mek' }, svg);
+
+        const warning = svg.getElementById('lifeSupportPilotDamageWarning');
+        const flame = warning?.querySelector('#lifeSupportHeatDamageIcon .lifeSupportHeatFlame');
+        const heatLetters = warning?.querySelectorAll('#lifeSupportHeatDamageIcon .lifeSupportHeatLetter') ?? [];
+        const heatCounter = warning?.querySelector('#lifeSupportHeatDamageIcon .lifeSupportHeatCounter');
+        const oxygenShapes = warning?.querySelectorAll('#lifeSupportOxygenDamageIcon path') ?? [];
+        expect(svg.querySelectorAll('#lifeSupportPilotDamageWarning').length).toBe(1);
+        expect(warning?.tagName.toLowerCase()).toBe('g');
+        expect(warning?.parentNode).toBe(warriorData);
+        expect(warning?.getAttribute('transform')).toBe('translate(102 1)');
+        expect(warning?.getAttribute('data-width')).toBe('42');
+        expect(warning?.getAttribute('data-height')).toBe('15');
+        expect(warning?.querySelector(':scope > rect')).toBeNull();
+        expect(warning?.querySelector(':scope > text')).toBeNull();
+        expect(flame?.getAttribute('fill')).toBe('#f4511e');
+        expect(flame?.getAttribute('stroke')).toBe('#000');
+        expect(flame?.getAttribute('stroke-width')).toBe('96');
+        expect(flame?.getAttribute('paint-order')).toBe('stroke fill');
+        expect(heatLetters.length).toBe(3);
+        expect(Array.from(heatLetters).every(path => path.getAttribute('fill') === '#fff')).toBeTrue();
+        expect(heatCounter?.getAttribute('fill')).toBe('#f4511e');
+        expect(oxygenShapes.length).toBe(5);
+        expect(Array.from(oxygenShapes).slice(0, 3).every(path => path.getAttribute('fill') === '#2196f3')).toBeTrue();
+        expect(Array.from(oxygenShapes).slice(3).every(path => path.getAttribute('fill') === '#fff')).toBeTrue();
+        expect(oxygenShapes[3].getAttribute('transform')).toBe('translate(-44 0)');
+        expect(Array.from(oxygenShapes).every(path => path.getAttribute('stroke') === '#000')).toBeTrue();
+        expect(Array.from(oxygenShapes).every(path => path.getAttribute('stroke-width') === '96')).toBeTrue();
+        expect(Array.from(oxygenShapes).every(path => path.getAttribute('paint-order') === 'stroke fill')).toBeTrue();
+        expect(warning?.querySelectorAll('use').length).toBe(0);
+        expect(warning?.getAttribute('display')).toBe('none');
+        expect(warning?.getAttribute('pointer-events')).toBe('none');
+    });
+
     it('injects fluff at outer root coordinates across a nested SVG viewport', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const parent = document.createElementNS('http://www.w3.org/2000/svg', 'g');

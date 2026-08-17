@@ -19,7 +19,7 @@ import {
     TN_SKIDDING_MODIFIER,
 } from '../target-number-calculator.model';
 import type { CBTForceUnit, EquipmentAction } from '../cbt-force-unit.model';
-import type { HeatDissipationState } from './heat-management';
+import type { HeatDissipationState, HeatScaleEntry } from './heat-management';
 import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
 import { C3TaxCalculator } from '../c3-network.model';
 import type {
@@ -182,6 +182,8 @@ export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = [
     { key: 'ecm-shielded', label: 'ECM SHIELDED', color: '#008f7a', placement: 'menu' },
     { key: 'skidding', label: 'SKIDDING', color: '#bfb300', placement: 'menu' },
     { key: 'jammed', label: 'JAMMED', color: '#ff6be6', placement: 'menu' },
+    { key: 'out-of-control', important: true, label: 'OUT OF CONTROL', color: '#d46b00', placement: 'menu' },
+    { key: 'random-movement', important: true, label: 'RANDOM MOVEMENT', color: '#b56bdb', placement: 'menu' },
     { key: 'spotting', label: 'SPOTTING', color: '#471fad' },
 ];
 
@@ -258,6 +260,9 @@ export interface UnitTypeRules {
 
     /** Heat dissipation state for heat-tracking units. Non-heat units return null. */
     readonly heatDissipation: Signal<HeatDissipationState | null>;
+
+    /** Heat scale used by this unit type. Empty for units without heat-scale effects. */
+    readonly heatScale: readonly HeatScaleEntry[];
 
     /** Manual condition controls available for this unit type. */
     readonly conditionControls: readonly UnitConditionControl[];
@@ -343,6 +348,21 @@ export interface UnitTypeRules {
     /** Heat sources produced by current phase choices and damage state. */
     heatSources(turnState: TurnState): UnitHeatSource[];
 
+    /** Whether the unit's life support has suffered a critical hit. */
+    hasDamagedLifeSupport(): boolean;
+
+    /** Potential pilot hits from damaged life support at the given heat level. */
+    heatLifeSupportPilotHits(heat: number): number;
+
+    /** End Phase pilot hits caused by damaged life support while fully submerged. */
+    submergedLifeSupportPilotHits(): number;
+
+    /** Pilot hits caused by one damaging hit to the head. */
+    headHitPilotHits(): number;
+
+    /** Crew member currently able to make piloting checks, if any. */
+    getActivePilotCrewId(): number | null;
+
     /** Unit-type-specific movement distance override. Return null to use base unit data. */
     getMaxDistanceForMoveMode(moveMode: MotiveModes): number | null;
 
@@ -366,6 +386,9 @@ export interface UnitTypeRules {
 
     /** Unit-type-specific piloting skill for runtime target-number calculations. */
     getBasePilotingSkill(): number;
+
+    /** Standard control-roll target using the unit's currently represented damage modifiers. */
+    getStandardControlRollTarget(): number;
 
     /** Attack modifier breakdown for turn summary UI. */
     getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[];
@@ -398,6 +421,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         projectRuleModifiers(this.ruleModifiers(), 'psr'));
     readonly autoFall: Signal<boolean> = signal(false);
     readonly heatDissipation: Signal<HeatDissipationState | null> = signal(null);
+    readonly heatScale: readonly HeatScaleEntry[] = [];
     protected readonly baseConditionControls: readonly UnitConditionControl[] = [];
     protected readonly baseCrewStateControls: readonly CrewStateControlDefinition[] = [];
     readonly locationConditionControls: readonly LocationConditionControl[] = [];
@@ -654,6 +678,26 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         return sources;
     }
 
+    hasDamagedLifeSupport(): boolean {
+        return false;
+    }
+
+    heatLifeSupportPilotHits(_heat: number): number {
+        return 0;
+    }
+
+    submergedLifeSupportPilotHits(): number {
+        return 0;
+    }
+
+    headHitPilotHits(): number {
+        return 0;
+    }
+
+    getActivePilotCrewId(): number | null {
+        return this.unit.getCrewMember(0)?.getState() === 'healthy' ? 0 : null;
+    }
+
     getMaxDistanceForMoveMode(_moveMode: MotiveModes): number | null {
         return null;
     }
@@ -684,6 +728,10 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     getBasePilotingSkill(): number {
         return this.unit.getCrewMember(0)?.getSkill('piloting') ?? this.unit.pilotingSkill();
+    }
+
+    getStandardControlRollTarget(): number {
+        return this.getBasePilotingSkill() + this.PSRModifiers().modifier;
     }
 
     getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {

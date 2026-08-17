@@ -199,4 +199,19 @@ describe('TWMekRules', () => {
         expect(turnState.PSRRollsCount()).toBe(2);
         expect(forceUnit.rules.PSRModifiers().modifier).toBe(2);
     });
+
+    it('uses Total Warfare Life Support heat thresholds, including torso-mounted cockpits', () => {
+        const intact = createTWForceUnit().rules;
+        const standard = createTWForceUnit([
+            { id: 'life-support', name: 'Life Support', loc: 'HD', slot: 0, destroyed: 1 },
+        ]).rules;
+        const torsoCockpit = createTWForceUnit([
+            { id: 'cockpit', name: 'Cockpit', loc: 'CT', slot: 0 },
+            { id: 'life-support', name: 'Life Support', loc: 'HD', slot: 0, destroyed: 1 },
+        ]).rules;
+
+        expect(intact.heatLifeSupportPilotHits(30)).toBe(0);
+        expect([14, 15, 25, 26].map(heat => standard.heatLifeSupportPilotHits(heat))).toEqual([0, 1, 1, 2]);
+        expect([1, 14, 15].map(heat => torsoCockpit.heatLifeSupportPilotHits(heat))).toEqual([1, 1, 2]);
+    });
 });
