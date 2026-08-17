@@ -1165,7 +1165,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(handler.receivedCurrentEntries).toEqual([true, true]);
     });
 
-    it('applies heat, clears registered sources, and starts the next turn without a no-op resolution', () => {
+    it('applies a manual heat correction without resolving turn heat sources', () => {
         const forceUnit = createForceUnit();
         forceUnit.turnState().moveMode.set('run');
         forceUnit.turnState().addFiredHeat(8);
@@ -1175,12 +1175,17 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         expect(forceUnit.getHeat().current).toBe(12);
         expect(forceUnit.getHeat().next).toBeUndefined();
-        expect(forceUnit.turnState().weaponsHeat()).toBe(0);
-        expect(forceUnit.turnState().heatSources()).toEqual([]);
-        expect(forceUnit.turnState().heatProjectionVisible()).toBeFalse();
+        expect(forceUnit.turnState().weaponsHeat()).toBe(8);
+        expect(forceUnit.turnState().heatSources().map(source => source.id)).toEqual(['movement', 'weapons']);
+        expect(forceUnit.turnState().heatProjectionVisible()).toBeTrue();
+        expect(forceUnit.turnState().serialize()?.heatDissipationConsumed).toBeUndefined();
+        expect(forceUnit.turnState().serialize()?.acknowledgedHeatSources).toBeUndefined();
+
+        const projectedHeat = forceUnit.turnState().heatProjection().projected;
 
         forceUnit.endTurn();
 
+        expect(forceUnit.getHeat().current).toBe(projectedHeat);
         expect(forceUnit.turnState().heatSources()).toContain(jasmine.objectContaining({
             id: 'movement',
             value: 0,
@@ -1222,6 +1227,24 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.endTurn();
 
         expect(forceUnit.getHeat().current).toBe(projectedHeat);
+        expect(forceUnit.getHeat().next).toBeUndefined();
+    });
+
+    it('uses the calculated projection instead of an unapplied manual target when ending the turn', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            ...createMekUnit(),
+            heat: 20,
+            dissipation: 5,
+        }));
+        forceUnit.setHeatData({ current: 10, previous: 10 });
+        forceUnit.turnState().addFiredHeat(8);
+        const projectedHeat = forceUnit.turnState().heatProjection().projected;
+        forceUnit.setHeat(25);
+
+        forceUnit.endTurn();
+
+        expect(forceUnit.getHeat().current).toBe(projectedHeat);
+        expect(forceUnit.getHeat().current).not.toBe(25);
         expect(forceUnit.getHeat().next).toBeUndefined();
     });
 
@@ -1301,22 +1324,23 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.getHeat().current).toBe(10);
     });
 
-    it('shows acknowledged heat sources for manual tracking while automations are disabled', () => {
+    it('keeps sources unresolved when automations are toggled after a manual heat correction', () => {
         const forceUnit = createForceUnit();
         forceUnit.turnState().moveMode.set('run');
         forceUnit.turnState().addFiredHeat(8);
+        forceUnit.setHeat(12);
         forceUnit.applyHeat();
-        expect(forceUnit.turnState().heatSources()).toEqual([]);
+        expect(forceUnit.turnState().heatSources().map(source => source.id)).toEqual(['movement', 'weapons']);
 
         cbtAutomations.set(false);
 
-        expect(forceUnit.turnState().heatSources()).toContain(jasmine.objectContaining({ id: 'movement' }));
+        expect(forceUnit.turnState().heatSources().map(source => source.id)).toEqual(['movement', 'weapons']);
         expect(forceUnit.turnState().heatProjectionVisible()).toBeTrue();
 
         cbtAutomations.set(true);
 
-        expect(forceUnit.turnState().heatSources()).toEqual([]);
-        expect(forceUnit.turnState().heatProjectionVisible()).toBeFalse();
+        expect(forceUnit.turnState().heatSources().map(source => source.id)).toEqual(['movement', 'weapons']);
+        expect(forceUnit.turnState().heatProjectionVisible()).toBeTrue();
     });
 
     it('applies an explicit user heat target without acknowledging sources when CBT automations are disabled', () => {
@@ -1337,7 +1361,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.turnState().serialize()?.acknowledgedHeatSources).toBeUndefined();
     });
 
-    it('applies the calculated projection when the user has not selected next heat', () => {
+    it('does not apply the calculated projection without a manual heat target', () => {
         const forceUnit = createForceUnit(createEmptyUnit({
             ...createMekUnit(),
             heat: 20,
@@ -1346,15 +1370,19 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.setHeatData({ current: 10, previous: 10 });
         forceUnit.turnState().moveMode.set('run');
         forceUnit.turnState().addFiredHeat(8);
+        const projectedHeat = forceUnit.turnState().heatProjection().projected;
 
         forceUnit.applyHeat();
 
-        expect(forceUnit.getHeat().current).toBe(20);
+        expect(forceUnit.getHeat().current).toBe(10);
         expect(forceUnit.getHeat().next).toBeUndefined();
-        expect(forceUnit.turnState().heatSources()).toEqual([]);
+        expect(forceUnit.turnState().heatProjection().projected).toBe(projectedHeat);
+        expect(forceUnit.turnState().heatSources().map(source => source.id)).toEqual(['movement', 'weapons']);
+        expect(forceUnit.turnState().serialize()?.heatDissipationConsumed).toBeUndefined();
+        expect(forceUnit.turnState().serialize()?.acknowledgedHeatSources).toBeUndefined();
     });
 
-    it('uses the user-selected next heat instead of the calculated projection', () => {
+    it('sets a user-selected heat target without consuming the calculated projection', () => {
         const forceUnit = createForceUnit(createEmptyUnit({
             ...createMekUnit(),
             heat: 20,
@@ -1368,9 +1396,13 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         expect(forceUnit.getHeat().current).toBe(23);
         expect(forceUnit.getHeat().next).toBeUndefined();
+        expect(forceUnit.turnState().heatSources().some(source => source.id === 'weapons')).toBeTrue();
+        expect(forceUnit.turnState().heatProjection().projected).not.toBe(23);
+        expect(forceUnit.turnState().serialize()?.heatDissipationConsumed).toBeUndefined();
+        expect(forceUnit.turnState().serialize()?.acknowledgedHeatSources).toBeUndefined();
     });
 
-    it('applies dissipation only once when new heat sources appear in the same turn', () => {
+    it('keeps recalculating from current heat until the turn ends', () => {
         const forceUnit = createForceUnit(createEmptyUnit({
             ...createMekUnit(),
             heat: 20,
@@ -1383,31 +1415,33 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.applyHeat();
         forceUnit.turnState().addFiredHeat(3);
 
-        expect(forceUnit.getHeat().current).toBe(firstProjection);
+        expect(forceUnit.getHeat().current).toBe(10);
         expect(forceUnit.turnState().heatProjection().projected).toBe(firstProjection + 3);
+
+        const finalProjection = forceUnit.turnState().heatProjection().projected;
+        forceUnit.endTurn();
+
+        expect(forceUnit.getHeat().current).toBe(finalProjection);
     });
 
-    it('retains unused dissipation after an applied projection clips at zero', () => {
+    it('applies a cooling projection only when the turn ends', () => {
         const forceUnit = createForceUnit(createMekUnitWithDissipation(20));
         forceUnit.setHeatData({ current: 5, previous: 5 });
         forceUnit.turnState().moveMode.set('walk');
+        expect(forceUnit.turnState().heatProjection().projected).toBe(0);
 
         forceUnit.applyHeat();
 
+        expect(forceUnit.getHeat().current).toBe(5);
+        expect(forceUnit.turnState().effectiveHeatDissipation()).toBe(20);
+        expect(forceUnit.turnState().serialize()?.heatDissipationConsumed).toBeUndefined();
+
+        forceUnit.endTurn();
+
         expect(forceUnit.getHeat().current).toBe(0);
-        expect(forceUnit.turnState().effectiveHeatDissipation()).toBe(14);
-        expect(forceUnit.turnState().serialize()?.heatDissipationConsumed).toBe(6);
-
-        forceUnit.turnState().addFiredHeat(5);
-
-        expect(forceUnit.turnState().heatSources()).toEqual([
-            { id: 'weapons', label: 'Weapons', value: 5 },
-        ]);
-        expect(forceUnit.turnState().heatProjection().projected).toBe(0);
-        expect(forceUnit.turnState().heatProjection().consumedDissipation).toBe(5);
     });
 
-    it('shows residual dissipation in blue in the SVG heat source stack', () => {
+    it('shows the full turn dissipation in the SVG heat source stack until end turn', () => {
         const forceUnit = createForceUnit(createMekUnitWithDissipation(20));
         const svg = new DOMParser().parseFromString(`
             <svg xmlns="http://www.w3.org/2000/svg">
@@ -1425,11 +1459,12 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         const lines = Array.from(svg.querySelectorAll<SVGTSpanElement>('#damagedEngineHeatText > tspan'));
         expect(lines.map(line => line.textContent)).toEqual([
+            'Movement: +1',
             'Weapons: +5',
-            'Sink (-14): -5',
+            'Sink (-20): -11',
         ]);
-        expect(lines[1].getAttribute('fill')).toBe('#2070d1');
-        expect(lines[1].getAttribute('y')).toBe('100');
+        expect(lines[2].getAttribute('fill')).toBe('#2070d1');
+        expect(lines[2].getAttribute('y')).toBe('100');
     });
 
     it('renders committed and selected inventory heat separately with committed sink usage', () => {
@@ -1919,96 +1954,42 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(lines[1].getAttribute('fill')).toBe('#2070d1');
     });
 
-    it('hides unused remaining cooling and renders a heatsink capacity deficit red', () => {
+    it('keeps heatsink changes in the projection until the turn ends', () => {
         const forceUnit = createForceUnit(createMekUnitWithDissipation(20));
-        const svg = new DOMParser().parseFromString(`
-            <svg xmlns="http://www.w3.org/2000/svg">
-                <text id="damagedEngineHeatText" x="10" y="100"></text>
-            </svg>
-        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
-        forceUnit.svg.set(svg);
         forceUnit.setHeatData({ current: 15, previous: 15 });
         forceUnit.turnState().moveMode.set('walk');
-        forceUnit.applyHeat();
-        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
 
-        expect(forceUnit.turnState().serialize()?.heatDissipationConsumed).toBe(16);
-        expect(forceUnit.turnState().heatDissipationBalance()).toBe(4);
+        expect(forceUnit.turnState().heatProjection().projected).toBe(0);
+        forceUnit.applyHeat();
+
+        expect(forceUnit.getHeat().current).toBe(15);
+        expect(forceUnit.turnState().serialize()?.heatDissipationConsumed).toBeUndefined();
+
+        forceUnit.setHeatsinksOff(7);
+
+        expect(forceUnit.turnState().heatDissipationBalance()).toBe(13);
+        expect(forceUnit.turnState().heatProjection().projected).toBe(3);
+
+        forceUnit.applyHeat();
+
+        expect(forceUnit.getHeat().current).toBe(15);
+        expect(forceUnit.turnState().serialize()?.heatDissipationConsumed).toBeUndefined();
 
         forceUnit.setHeatsinksOff(3);
-        svgService.refreshTurnState();
-
-        let line = svg.querySelector<SVGTSpanElement>('#damagedEngineHeatText > tspan');
-        expect(forceUnit.turnState().heatDissipationBalance()).toBe(1);
-        expect(line).toBeNull();
-        expect(svg.querySelector('#damagedEngineHeatText')?.getAttribute('display')).toBe('none');
-
-        forceUnit.setHeatsinksOff(7);
-        svgService.refreshTurnState();
-
-        line = svg.querySelector<SVGTSpanElement>('#damagedEngineHeatText > tspan');
-        expect(forceUnit.turnState().heatDissipationBalance()).toBe(-3);
-        expect(forceUnit.turnState().heatSources()).toContain(jasmine.objectContaining({
-            id: 'heat-dissipation-deficit',
-            value: 3,
-        }));
-        expect(forceUnit.turnState().heatProjection().projected).toBe(3);
-        expect(forceUnit.turnState().hasPendingHeatResolution()).toBeTrue();
-        expect(line?.textContent).toBe('Sink: +3');
-        expect(line?.getAttribute('fill')).toBe('#f00');
-    });
-
-    it('applies a heatsink capacity deficit once and restores cooling when sinks are re-enabled', () => {
-        const forceUnit = createForceUnit(createMekUnitWithDissipation(20));
-        forceUnit.setHeatData({ current: 15, previous: 15 });
-        forceUnit.turnState().moveMode.set('walk');
-        forceUnit.applyHeat();
-        forceUnit.setHeatsinksOff(7);
-
-        forceUnit.applyHeat();
-
-        expect(forceUnit.getHeat().current).toBe(3);
-        expect(forceUnit.turnState().serialize()?.heatDissipationConsumed).toBe(13);
-        expect(forceUnit.turnState().heatDissipationBalance()).toBe(0);
-        expect(forceUnit.turnState().heatSources()).toEqual([]);
-        expect(forceUnit.turnState().hasPendingHeatResolution()).toBeFalse();
-
-        forceUnit.applyHeat();
-        expect(forceUnit.getHeat().current).toBe(3);
-
-        forceUnit.setHeatsinksOff(0);
-        expect(forceUnit.turnState().heatDissipationBalance()).toBe(7);
+        expect(forceUnit.turnState().heatDissipationBalance()).toBe(17);
         expect(forceUnit.turnState().heatProjection().projected).toBe(0);
 
-        forceUnit.applyHeat();
+        forceUnit.endTurn();
+
         expect(forceUnit.getHeat().current).toBe(0);
-        expect(forceUnit.turnState().serialize()?.heatDissipationConsumed).toBe(16);
-        expect(forceUnit.turnState().heatDissipationBalance()).toBe(4);
+        expect(forceUnit.getHeat().next).toBeUndefined();
     });
 
-    it('does not commit a transient capacity deficit when sinks are re-enabled before applying heat', () => {
+    it('settles a persisted dissipation deficit when automations are disabled', () => {
         const forceUnit = createForceUnit(createMekUnitWithDissipation(20));
         forceUnit.setHeatData({ current: 15, previous: 15 });
         forceUnit.turnState().moveMode.set('walk');
-        forceUnit.applyHeat();
-
-        forceUnit.setHeatsinksOff(7);
-        expect(forceUnit.turnState().heatProjection().projected).toBe(3);
-
-        forceUnit.setHeatsinksOff(3);
-
-        expect(forceUnit.getHeat().current).toBe(0);
-        expect(forceUnit.turnState().heatDissipationBalance()).toBe(1);
-        expect(forceUnit.turnState().heatSources()).toEqual([]);
-        expect(forceUnit.turnState().hasPendingHeatResolution()).toBeFalse();
-        expect(forceUnit.turnState().serialize()?.heatDissipationConsumed).toBe(16);
-    });
-
-    it('settles an explicitly applied capacity deficit when automations are disabled', () => {
-        const forceUnit = createForceUnit(createMekUnitWithDissipation(20));
-        forceUnit.setHeatData({ current: 15, previous: 15 });
-        forceUnit.turnState().moveMode.set('walk');
-        forceUnit.applyHeat();
+        forceUnit.turnState().acknowledgeHeatSources(16);
         forceUnit.setHeatsinksOff(7);
         cbtAutomations.set(false);
         forceUnit.setHeat(3);
@@ -2020,48 +2001,6 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.turnState().heatDissipationBalance()).toBe(0);
         expect(forceUnit.turnState().heatSources()).toContain(jasmine.objectContaining({ id: 'movement' }));
         expect(forceUnit.turnState().hasPendingHeatResolution()).toBeTrue();
-
-        cbtAutomations.set(true);
-        forceUnit.applyHeat();
-
-        expect(forceUnit.getHeat().current).toBe(3);
-        expect(forceUnit.turnState().hasPendingHeatResolution()).toBeFalse();
-    });
-
-    it('omits dissipation from the SVG heat source stack when none remains', () => {
-        const forceUnit = createForceUnit(createMekUnitWithDissipation(5));
-        const svg = new DOMParser().parseFromString(`
-            <svg xmlns="http://www.w3.org/2000/svg">
-                <text id="damagedEngineHeatText" x="10" y="100"></text>
-            </svg>
-        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
-        forceUnit.svg.set(svg);
-        forceUnit.setHeatData({ current: 10, previous: 10 });
-        forceUnit.turnState().addFiredHeat(1);
-        forceUnit.applyHeat();
-        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
-
-        svgService.refreshTurnState();
-
-        expect(svg.querySelector('#damagedEngineHeatText')?.getAttribute('display')).toBe('none');
-        expect(svg.querySelector('#damagedEngineHeatText > tspan')).toBeNull();
-    });
-
-    it('accumulates partial dissipation consumption up to the turn capacity', () => {
-        const forceUnit = createForceUnit(createMekUnitWithDissipation(5));
-        forceUnit.setHeatData({ current: 0, previous: 0 });
-        forceUnit.turnState().addFiredHeat(2);
-
-        forceUnit.applyHeat();
-        expect(forceUnit.turnState().effectiveHeatDissipation()).toBe(3);
-
-        forceUnit.turnState().addFiredHeat(4);
-        expect(forceUnit.turnState().heatProjection().projected).toBe(1);
-        forceUnit.applyHeat();
-
-        expect(forceUnit.getHeat().current).toBe(1);
-        expect(forceUnit.turnState().effectiveHeatDissipation()).toBe(0);
-        expect(forceUnit.turnState().serialize()?.heatDissipationConsumed).toBe(5);
     });
 
     it('reactivates only damaged-engine heat for rules-driven critical writes', () => {
@@ -2075,28 +2014,41 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.turnState().heatSources().map(source => source.id)).toEqual(['damaged-engine']);
     });
 
-    it('removes the heat projection graphics after applying heat', () => {
-        const forceUnit = createForceUnit();
+    it('keeps projection graphics until automated end-turn resolution', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            ...createMekUnit(),
+            heat: 20,
+            dissipation: 0,
+        }));
         const svg = new DOMParser().parseFromString(`
             <svg xmlns="http://www.w3.org/2000/svg">
                 <g id="heatScale">
-                    <path id="heat-projection-path"></path>
-                    <text id="heat-projection-overflow-text"></text>
+                    ${Array.from({ length: 11 }, (_, value) => `<rect class="heat" heat="${value}" x="0" y="${100 - value * 5}" width="5" height="5"></rect>`).join('')}
                 </g>
             </svg>
         `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
         forceUnit.svg.set(svg);
+        forceUnit.setHeatData({ current: 2, previous: 2 });
         const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
-        forceUnit.turnState().addFiredHeat(8);
+        forceUnit.turnState().addFiredHeat(5);
+
+        svgService.refreshHeat();
+        const projectionPath = svg.querySelector('#heat-projection-path');
+        expect(projectionPath).not.toBeNull();
 
         forceUnit.applyHeat();
         svgService.refreshHeat();
 
+        expect(svg.querySelector('#heat-projection-path')).toBe(projectionPath);
+
+        forceUnit.endTurn();
+        svgService.refreshHeat();
+
         expect(svg.querySelector('#heat-projection-path')).toBeNull();
-        expect(svg.querySelector('#heat-projection-overflow-text')).toBeNull();
+        expect(svg.querySelector('#projection-arrow')).toBeNull();
     });
 
-    it('shows a hollow calculated arrow and lets a user next target override it', () => {
+    it('separates a manual heat target from the automated projection UI', () => {
         const forceUnit = createForceUnit(createEmptyUnit({
             ...createMekUnit(),
             heat: 20,
@@ -2126,7 +2078,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(calculatedProjectionPath?.tagName.toLowerCase()).toBe('path');
         expect((calculatedProjectionPath?.getAttribute('d')?.match(/\bM\b/g) ?? []).length).toBe(1);
         expect(svg.querySelectorAll('#heat-projection-path').length).toBe(1);
-        expect(svg.querySelector('#heatDataPanel')?.classList.contains('heatApplicationAvailable')).toBeTrue();
+        expect(svg.querySelector('#heatDataPanel')?.classList.contains('heatApplicationAvailable')).toBeFalse();
+        const initialProjectionPathData = calculatedProjectionPath?.getAttribute('d');
 
         forceUnit.setHeat(4);
         svgService.refreshHeat();
@@ -2134,11 +2087,20 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(svg.querySelector('#projection-arrow')).toBeNull();
         expect(svg.querySelector('#next-arrow')).not.toBeNull();
         expect(svg.querySelector('#heat-projection-path')).toBe(calculatedProjectionPath);
+        expect(svg.querySelector('#heat-projection-path')?.getAttribute('d')).toBe(initialProjectionPathData);
+        expect(svg.querySelector('#heatDataPanel')?.classList.contains('heatApplicationAvailable')).toBeTrue();
 
         forceUnit.applyHeat();
         svgService.refreshHeat();
 
-        expect(svg.querySelector('#heat-projection-path')).toBeNull();
+        expect(forceUnit.getHeat().current).toBe(4);
+        expect(forceUnit.getHeat().next).toBeUndefined();
+        expect(forceUnit.turnState().heatSources().some(source => source.id === 'weapons')).toBeTrue();
+        expect(svg.querySelector('#next-arrow')).toBeNull();
+        expect(svg.querySelector('#projection-arrow')).not.toBeNull();
+        expect(svg.querySelector('#heat-projection-path')).toBe(calculatedProjectionPath);
+        expect(svg.querySelector('#heat-projection-path')?.getAttribute('d')).not.toBe(initialProjectionPathData);
+        expect(svg.querySelector('#heatDataPanel')?.classList.contains('heatApplicationAvailable')).toBeFalse();
     });
 
     it('centers the overflow projection arrow over its body', () => {

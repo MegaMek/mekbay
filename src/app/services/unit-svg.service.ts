@@ -626,20 +626,22 @@ export class UnitSvgService {
         const svg = this.unit.svg();
         if (!svg) return;
 
-        if (!svg.getElementById('heatScale')) return;
+        const heatScale = svg.getElementById('heatScale') as SVGGElement | null;
+        if (!heatScale) return;
 
         const projection = this.unit.turnState().heatProjection();
-        const hasUserTarget = heat.next !== undefined;
+        const manualTarget = heat.next;
+        const hasUserTarget = manualTarget !== undefined;
         const automationsEnabled = this.unit.useAutomations();
-        const heatApplicationAvailable = hasUserTarget
-            || (automationsEnabled && this.unit.turnState().hasPendingHeatResolution());
-        const applicationTarget = heat.next ?? projection.projected;
+        const showProjection = automationsEnabled
+            && !hasUserTarget
+            && this.unit.turnState().hasPendingHeatResolution();
         const heatDataPanel = svg.querySelector('#heatDataPanel');
         if (heatDataPanel && !this.unit.readOnly()) {
             heatDataPanel.classList.toggle('dirtyHeat', hasUserTarget);
-            heatDataPanel.classList.toggle('heatApplicationAvailable', heatApplicationAvailable);
-            heatDataPanel.classList.toggle('hot', heatApplicationAvailable && heat.current <= applicationTarget);
-            heatDataPanel.classList.toggle('cold', heatApplicationAvailable && heat.current > applicationTarget);
+            heatDataPanel.classList.toggle('heatApplicationAvailable', hasUserTarget);
+            heatDataPanel.classList.toggle('hot', manualTarget !== undefined && heat.current <= manualTarget);
+            heatDataPanel.classList.toggle('cold', manualTarget !== undefined && heat.current > manualTarget);
         }
 
         const heatValue = heat.next ?? heat.current;
@@ -802,16 +804,13 @@ export class UnitSvgService {
             svg.querySelector('#next-arrow')?.remove();
         }
 
-        const showProjectionArrow = automationsEnabled
-            && !hasUserTarget
-            && this.unit.turnState().hasPendingHeatResolution();
-        const targetHeat = hasUserTarget ? heat.next : showProjectionArrow ? projection.projected : undefined;
+        const targetHeat = hasUserTarget ? manualTarget : showProjection ? projection.projected : undefined;
         if (heat.previous !== heat.current && heat.previous !== targetHeat) {
             updateArrow('faded-arrow', heat.previous, 'previous');
         } else {
             svg.querySelector('#faded-arrow')?.remove();
         }
-        if (showProjectionArrow) {
+        if (showProjection) {
             updateArrow('projection-arrow', projection.projected, projection.delta > 0 ? 'projectionHot' : 'projectionCold');
         } else {
             svg.querySelector('#projection-arrow')?.remove();
@@ -822,7 +821,6 @@ export class UnitSvgService {
                 svg.querySelector('#heat-selected-weapons-target-marker')?.remove();
                 this.updateHeatProjectionPreview(heat);
             } else {
-                const heatScale = svg.getElementById('heatScale') as SVGGElement;
                 this.clearHeatProjectionPreview(heatScale);
                 this.updateManualHeatProjectionMarkers(heatScale, heat);
             }

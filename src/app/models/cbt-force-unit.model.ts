@@ -1610,25 +1610,27 @@ export class CBTForceUnit extends ForceUnit {
         }
     }
 
-    applyHeat() {
+    /** Commits only a pending manual heat correction. Automated heat resolves at end of turn. */
+    applyHeat(): void {
         const heat = this.getHeat();
-        const projection = this.turnState().heatProjection();
-        if (heat.next === undefined) {
-            if (!this.useAutomations()) return;
-            this.setHeat(projection.projected);
-        }
+        if (heat.next === undefined) return;
         this.state.consolidateHeat();
-        if (this.useAutomations()) {
-            this.turnState().acknowledgeHeatSources(projection.consumedDissipation);
-        } else {
+        if (!this.useAutomations()) {
             this.turnState().settleHeatDissipationDeficit();
         }
+    }
+
+    private resolveEndTurnHeat(): void {
+        const projection = this.turnState().heatProjection();
+        this.setHeat(projection.projected);
+        this.state.consolidateHeat();
+        this.turnState().acknowledgeHeatSources(projection.consumedDissipation);
     }
     
     public endTurn() {
         const endsForceTurn = !this.force.units().some(unit => unit !== this && unit.turnState().dirty());
         if (this.useAutomations() && (this.getHeat().next !== undefined || this.turnState().hasPendingHeatResolution())) {
-            this.applyHeat();
+            this.resolveEndTurnHeat();
         }
         this.clearInventoryControlSelection();
         // deselect all inventory items
