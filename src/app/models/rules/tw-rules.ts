@@ -31,13 +31,28 @@ function calculateTWChargeDamage(
     maxBonusDamage = bonusDamage,
 ): ChargeDamage {
     const damagePerHex = unit.getUnit().tons / 10;
+    const moveMode = unit.turnState().moveMode();
     const movedHexes = Math.max(1, unit.turnState().moveDistance() ?? 0);
     const maxMovedHexes = Math.max(1, unit.getUnit().run);
+    const ramPlates = unit.getInventory().filter(entry => entry.equipment?.hasFlag('F_RAM_PLATE'));
+    const hasRamPlate = ramPlates.length > 0;
+    const hasWorkingRamPlate = ramPlates.some(entry => unit.isEquipmentOperational(entry));
+    const damageFor = (hexes: number, hasRamPlate: boolean): number => {
+        // TW counts every movement hex after the first; MegaMek rounds before applying a Ram Plate.
+        const baseDamage = Math.ceil(damagePerHex * (hexes - 1));
+        return hasRamPlate ? Math.ceil(baseDamage * 1.5) : baseDamage;
+    };
+    const formulaDamagePerHex = Math.round(
+        damagePerHex * (hasWorkingRamPlate ? 1.5 : 1) * 100,
+    ) / 100;
     return {
-        damage: Math.ceil(damagePerHex * (movedHexes - 1)) + bonusDamage,
-        maxDamage: Math.ceil(damagePerHex * (maxMovedHexes - 1)) + maxBonusDamage,
+        damage: damageFor(movedHexes, hasWorkingRamPlate) + bonusDamage,
+        maxDamage: damageFor(maxMovedHexes, hasRamPlate) + maxBonusDamage,
         bonusDamage,
         maxBonusDamage,
+        ...(moveMode !== 'walk' && moveMode !== 'run' && {
+            displayFormula: `${formulaDamagePerHex}/hex${bonusDamage > 0 ? `+${bonusDamage}` : ''}`,
+        }),
     };
 }
 

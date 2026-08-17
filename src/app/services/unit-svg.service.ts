@@ -1669,16 +1669,21 @@ export class UnitSvgService {
             originalText = damageEl.textContent || '';
             damageEl.setAttribute(INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, originalText);
         }
-        if (!originalText) return;
-        if (chargeDamage.damage === null || chargeDamage.maxDamage === null) {
-            this.renderInventoryDamageText(damageEl, chargeDamage.bonusDamage > 0
+        let damageText: string;
+        if (chargeDamage.displayFormula) {
+            damageText = chargeDamage.displayFormula;
+        } else if (!originalText) {
+            return;
+        } else if (chargeDamage.damage === null || chargeDamage.maxDamage === null) {
+            damageText = chargeDamage.bonusDamage > 0
                 ? `${originalText}+${chargeDamage.bonusDamage}`
-                : originalText);
+                : originalText;
         } else {
-            this.renderInventoryDamageText(damageEl, chargeDamage.damage !== chargeDamage.maxDamage
+            damageText = chargeDamage.damage !== chargeDamage.maxDamage
                 ? `${chargeDamage.damage} [${chargeDamage.maxDamage}]`
-                : `${chargeDamage.damage}`);
+                : `${chargeDamage.damage}`;
         }
+        this.renderInventoryDamageText(damageEl, damageText);
         damageEl.classList.toggle('damaged', chargeDamage.bonusDamage < chargeDamage.maxBonusDamage);
     }
 

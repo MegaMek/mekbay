@@ -2066,8 +2066,8 @@ hr.divider {
         .pip.damaged.fresh {
             fill: #FF0 !important;
             stroke: var(--damage-color) !important;
-            stroke-width: 1.5px;
-            paint-order: stroke fill;
+            stroke-width: 2.5px;
+            paint-order: fill stroke;
         }
 
         .pip.damaged.pending:not(.fresh) {

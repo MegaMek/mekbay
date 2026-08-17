@@ -76,6 +76,8 @@ export interface ChargeDamage {
     maxDamage: number | null;
     bonusDamage: number;
     maxBonusDamage: number;
+    /** Ruleset-specific symbolic damage shown until Walk or Run is selected, including current bonuses. */
+    displayFormula?: string;
 }
 
 export const ENTRY_DISABLED_STATE_KEY = 'disabled';
@@ -731,6 +733,12 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     applyInventoryControlDisplayEffects(entry: MountedEquipment, display: InventoryControlDisplayData): InventoryControlDisplayData {
         if (!entry.isIntrinsicPhysicalAttack() || entry.name.toLowerCase() !== 'charge') return display;
         const chargeDamage = this.chargeDamage();
+        if (chargeDamage.displayFormula) {
+            return {
+                ...display,
+                damage: chargeDamage.displayFormula,
+            };
+        }
         if (chargeDamage.damage === null || chargeDamage.maxDamage === null) {
             return chargeDamage.bonusDamage > 0
                 ? { ...display, damage: `${display.damage}+${chargeDamage.bonusDamage}` }
@@ -746,16 +754,28 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     protected computeChargeDamage(bonusDamage = 0, maxBonusDamage = bonusDamage): ChargeDamage {
         const damagePerTMM = this.unit.getUnit().tons / 5;
-        const baseDamage = damagePerTMM
-            * (getTargetMovementDistanceModifier(this.unit.turnState().moveDistance()) + 1);
+        const moveMode = this.unit.turnState().moveMode();
+        const ramPlates = this.unit.getInventory().filter(entry => entry.equipment?.hasFlag('F_RAM_PLATE'));
+        const hasRamPlate = ramPlates.length > 0;
+        const hasWorkingRamPlate = ramPlates.some(entry => this.unit.isEquipmentOperational(entry));
+        const damageFor = (movementModifier: number, hasRamPlate: boolean): number => {
+            const baseDamage = Math.ceil(damagePerTMM * (movementModifier + 1));
+            return hasRamPlate ? Math.ceil(baseDamage * 1.5) : baseDamage;
+        };
+        const movementModifier = getTargetMovementDistanceModifier(this.unit.turnState().moveDistance());
         const maxRunDistance = this.unit.getUnit().run;
-        const maxBaseDamage = damagePerTMM
-            * (getTargetMovementDistanceModifier(maxRunDistance) + 1);
+        const maxMovementModifier = getTargetMovementDistanceModifier(maxRunDistance);
+        const formulaDamagePerTMM = Math.round(
+            damagePerTMM * (hasWorkingRamPlate ? 1.5 : 1) * 100,
+        ) / 100;
         return {
-            damage: baseDamage + bonusDamage,
-            maxDamage: maxBaseDamage + maxBonusDamage,
+            damage: damageFor(movementModifier, hasWorkingRamPlate) + bonusDamage,
+            maxDamage: damageFor(maxMovementModifier, hasRamPlate) + maxBonusDamage,
             bonusDamage,
             maxBonusDamage,
+            ...(moveMode !== 'walk' && moveMode !== 'run' && {
+                displayFormula: `${formulaDamagePerTMM}×(TMM+1)${bonusDamage > 0 ? `+${bonusDamage}` : ''}`,
+            }),
         };
     }
 

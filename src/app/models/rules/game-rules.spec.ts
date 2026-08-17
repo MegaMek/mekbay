@@ -1118,7 +1118,6 @@ describe('Mek explosion rules', () => {
 
     it('describes CASE effects for the active ruleset', () => {
         expect(CORE_2026_GAME_RULES.getMekExplosionProtectionNote('case')).toContain('Caps internal damage at 10');
-        expect(CORE_2026_GAME_RULES.getMekExplosionProtectionNote('case-ii')).toContain('critical-hit check is −1');
         expect(TW_GAME_RULES.getMekExplosionProtectionNote('case')).toContain('full explosion damage');
         expect(TW_GAME_RULES.getMekExplosionProtectionNote('case-ii')).toContain('half the original armor');
         expect(TW_GAME_RULES.getMekExplosionProtectionNote('none')).toBeNull();

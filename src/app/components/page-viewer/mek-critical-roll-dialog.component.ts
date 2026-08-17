@@ -21,7 +21,6 @@ export interface MekCriticalRollDialogData {
     readonly unit: CBTForceUnit;
     readonly location: string;
     readonly requiredHits?: number;
-    readonly caseIISuppression?: boolean;
     readonly consolidateImmediately: boolean;
 }
 
@@ -50,10 +49,7 @@ export interface MekCriticalRollDialogResult {
                             <span class="protection-note">{{ explosionProtectionNote }}</span>
                         </div>
                     }
-                    @if (caseIIMessage(); as message) {
-                        <div class="critical-result" [class.no-critical]="caseIISuppressed()">{{ message }}</div>
-                    }
-                    <dice-roller #roller [diceCount]="diceCount()" [showSum]="awaitingCaseIICheck()" (finished)="onFinished($event)" />
+                    <dice-roller #roller [diceCount]="diceCount" (finished)="onFinished($event)" />
 
                     @if (outcome(); as currentOutcome) {
                         <div class="critical-result" [class.reroll]="!currentOutcome.applied" aria-live="polite">
@@ -122,14 +118,9 @@ export class MekCriticalRollDialogComponent {
     readonly locationLabel = this.targetLocation === this.data.location
         ? getMekLocationLabel(this.targetLocation) ?? this.targetLocation
         : `${getMekLocationLabel(this.data.location) ?? this.data.location} → ${getMekLocationLabel(this.targetLocation) ?? this.targetLocation}`;
-    readonly awaitingCaseIICheck = signal(this.data.caseIISuppression === true);
-    readonly diceCount = computed(() => this.awaitingCaseIICheck()
-        ? 2
-        : mekCriticalRollDiceCount(this.targetLocation));
+    readonly diceCount = mekCriticalRollDiceCount(this.targetLocation);
     readonly appliedHits = signal(0);
     readonly outcome = signal<MekCriticalRollOutcome | null>(null);
-    readonly caseIIMessage = signal<string | null>(null);
-    readonly caseIISuppressed = signal(false);
     readonly discarded = signal(false);
     readonly complete = computed(() =>
         this.discarded()
@@ -151,12 +142,6 @@ export class MekCriticalRollDialogComponent {
             return;
         }
         this.outcome.set(null);
-        this.caseIIMessage.set(null);
-        this.caseIISuppressed.set(false);
-        if (this.awaitingCaseIICheck()) {
-            this.roller()?.roll();
-            return;
-        }
         const results = randomValidMekCriticalRoll(
             this.data.unit,
             this.targetLocation,
@@ -167,19 +152,7 @@ export class MekCriticalRollDialogComponent {
         this.roller()?.roll(results);
     }
 
-    onFinished(event: { readonly results: number[]; readonly sum?: number }): void {
-        if (this.awaitingCaseIICheck()) {
-            const sum = event.sum ?? event.results.reduce((total, die) => total + die, 0);
-            if (sum >= 8) {
-                this.caseIISuppressed.set(true);
-                this.caseIIMessage.set(`CASE II suppresses critical hit ${this.appliedHits() + 1} (${sum}).`);
-                this.appliedHits.update(value => value + 1);
-            } else {
-                this.caseIIMessage.set(`CASE II check fails (${sum}); apply the critical hit.`);
-                this.awaitingCaseIICheck.set(false);
-            }
-            return;
-        }
+    onFinished(event: { readonly results: number[] }): void {
         const outcome = applyMekCriticalRoll(
             this.data.unit,
             this.targetLocation,
@@ -194,16 +167,12 @@ export class MekCriticalRollDialogComponent {
         }
         this.outcome.set(outcome);
         this.appliedHits.update(value => value + 1);
-        this.awaitingCaseIICheck.set(this.data.caseIISuppression === true && !this.complete());
     }
 
     rollButtonLabel(): string {
         if (this.discarded()) return 'CRITICALS DISCARDED';
         if (this.complete()) return 'CRITICALS APPLIED';
         if (!this.hasRollableSlot()) return 'DISCARD REMAINING';
-        if (this.awaitingCaseIICheck()) {
-            return `ROLL CASE II (${this.appliedHits() + 1}/${this.data.requiredHits ?? 1})`;
-        }
         if (this.data.requiredHits === undefined) return 'ROLL CRITICAL';
         return `ROLL CRITICAL (${this.appliedHits()+1}/${this.data.requiredHits})`;
     }

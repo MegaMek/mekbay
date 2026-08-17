@@ -156,11 +156,9 @@ export class MekCriticalChanceDialogComponent {
     readonly modifierTotal = computed(() => this.modifiers.reduce((total, modifier) =>
         total + (!modifier.optional || this.optionalModifiers().has(modifier.label) ? modifier.value : 0),
     this.situationalModifierEnabled() ? this.situationalModifier() : 0));
-    readonly rollTotal = signal<{ readonly raw: number; readonly modifier: number; readonly modified: number } | null>(null);
 
     roll(): void {
         this.result.set(null);
-        this.rollTotal.set(null);
         this.roller()?.roll();
     }
 
@@ -171,7 +169,6 @@ export class MekCriticalChanceDialogComponent {
     private resolveRoll(raw: number): void {
         const modifier = this.modifierTotal();
         const modified = Math.min(12, raw + modifier);
-        this.rollTotal.set({ raw, modifier, modified });
         this.result.set(resolveMekCriticalChance(modified, this.data.canBlowOff));
     }
 
@@ -204,7 +201,6 @@ export class MekCriticalChanceDialogComponent {
         const results = roller?.diceResults();
         if (!roller?.rollFinished() || !results || results.some(value => value === null)) {
             this.result.set(null);
-            this.rollTotal.set(null);
             return;
         }
         this.resolveRoll(results.reduce<number>((total, die) => total + (die ?? 0), 0));

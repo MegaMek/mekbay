@@ -1240,16 +1240,34 @@ describe('MekRules', () => {
             internalLocations: ['LL'],
             critSlots: [{ ...crit('Spikes', false), loc: 'LL' }],
         });
+        const chargeDisplay = (forceUnit: CBTForceUnit) => forceUnit.rules.applyInventoryControlDisplayEffects(
+            new MountedEquipment({
+                owner: forceUnit,
+                id: 'Charge',
+                name: 'charge',
+                intrinsicPhysicalAttack: true,
+            }),
+            {
+                name: 'Charge', location: '—', heat: '—', damage: 'Wrong SVG value', hit: 'Vs',
+                min: '—', short: '—', medium: '—', long: '—',
+            },
+        ).damage;
 
         const flooded = createSpikeUnit();
         flooded.setLocationCondition('LL', 'flooded', true);
         flooded.endPhase();
-        expect((flooded.rules as MekRules).physicalCombat()?.chargeDamage).toEqual(jasmine.objectContaining({ bonusDamage: 2, maxBonusDamage: 2 }));
+        expect((flooded.rules as MekRules).physicalCombat()?.chargeDamage).toEqual(jasmine.objectContaining({
+            bonusDamage: 2,
+            maxBonusDamage: 2,
+            displayFormula: '10×(TMM+1)+2',
+        }));
+        expect(chargeDisplay(flooded)).toBe('10×(TMM+1)+2');
 
         const blownOff = createSpikeUnit();
         blownOff.setLocationCondition('LL', 'blown-off', true);
         blownOff.endPhase();
         expect((blownOff.rules as MekRules).physicalCombat()?.chargeDamage).toEqual(jasmine.objectContaining({ bonusDamage: 0, maxBonusDamage: 2 }));
+        expect(chargeDisplay(blownOff)).toBe('10×(TMM+1)');
 
         const structurallyDestroyed = createSpikeUnit();
         structurallyDestroyed.addInternalHits('LL', structurallyDestroyed.getInternalPoints('LL'));
@@ -1257,9 +1275,61 @@ describe('MekRules', () => {
         expect((structurallyDestroyed.rules as MekRules).physicalCombat()?.chargeDamage).toEqual(jasmine.objectContaining({ bonusDamage: 0, maxBonusDamage: 2 }));
     });
 
+    it('applies a working Ram Plate to the CORE charge formula and rounded damage before spikes', () => {
+        const forceUnit = createForceUnitHarness({
+            tons: 45,
+            run: 8,
+            internalLocations: ['LL'],
+            critSlots: [{ ...crit('Spikes', false), loc: 'LL' }],
+        });
+        const ramPlate = new MountedEquipment({
+            owner: forceUnit,
+            id: 'ISRamPlate',
+            name: 'Ram Plate',
+            equipment: miscEquipment('ISRamPlate', 'Ram Plate', ['F_RAM_PLATE']),
+        });
+        const charge = new MountedEquipment({
+            owner: forceUnit,
+            id: 'Charge',
+            name: 'charge',
+            intrinsicPhysicalAttack: true,
+        });
+        const display = {
+            name: 'Charge', location: '—', heat: '—', damage: 'Wrong SVG value', hit: 'Vs',
+            min: '—', short: '—', medium: '—', long: '—',
+        };
+        forceUnit.setInventory([ramPlate]);
+        const mountedRamPlate = forceUnit.getInventory()[0];
+
+        expect(forceUnit.rules.applyInventoryControlDisplayEffects(charge, display).damage)
+            .toBe('13.5×(TMM+1)+2');
+
+        forceUnit.turnState().moveMode.set('walk');
+        forceUnit.turnState().moveDistance.set(5);
+        expect(forceUnit.rules.chargeDamage()).toEqual({
+            damage: 43,
+            maxDamage: 56,
+            bonusDamage: 2,
+            maxBonusDamage: 2,
+        });
+
+        mountedRamPlate.setCommittedDestroyed(true);
+        expect(forceUnit.rules.chargeDamage()).toEqual({
+            damage: 29,
+            maxDamage: 56,
+            bonusDamage: 2,
+            maxBonusDamage: 2,
+        });
+
+        forceUnit.turnState().moveMode.set(null);
+        expect(forceUnit.rules.applyInventoryControlDisplayEffects(charge, display).damage)
+            .toBe('9×(TMM+1)+2');
+    });
+
     it('calculates charge damage using the selected ruleset', () => {
         const forceUnit = createForceUnitHarness();
         forceUnit.getUnit().tons = 45;
+        forceUnit.turnState().moveMode.set('walk');
         forceUnit.turnState().moveDistance.set(5);
         const charge = new MountedEquipment({
             owner: forceUnit,
@@ -1307,13 +1377,7 @@ describe('MekRules', () => {
             name: 'charge',
             intrinsicPhysicalAttack: true,
         });
-        expect((twForceUnit.rules as MekRules).physicalCombat()?.chargeDamage).toEqual({
-            damage: 18,
-            maxDamage: 32,
-            bonusDamage: 0,
-            maxBonusDamage: 0,
-        });
-        expect(twForceUnit.rules.applyInventoryControlDisplayEffects(twCharge, {
+        const twChargeDisplay = {
             name: 'Charge',
             location: '—',
             heat: '—',
@@ -1323,7 +1387,71 @@ describe('MekRules', () => {
             short: '—',
             medium: '—',
             long: '—',
-        }).damage).toBe('18 [32]');
+        };
+        expect(twForceUnit.rules.applyInventoryControlDisplayEffects(twCharge, twChargeDisplay).damage)
+            .toBe('4.5/hex');
+
+        twForceUnit.turnState().moveMode.set('walk');
+        expect((twForceUnit.rules as MekRules).physicalCombat()?.chargeDamage).toEqual({
+            damage: 18,
+            maxDamage: 32,
+            bonusDamage: 0,
+            maxBonusDamage: 0,
+        });
+        expect(twForceUnit.rules.applyInventoryControlDisplayEffects(twCharge, twChargeDisplay).damage)
+            .toBe('18 [32]');
+
+        const ramPlateEquipment = miscEquipment('ISRamPlate', 'Ram Plate', ['F_RAM_PLATE']);
+        const ramPlate = new MountedEquipment({
+            owner: twForceUnit,
+            id: 'ISRamPlate',
+            name: 'Ram Plate',
+            equipment: ramPlateEquipment,
+        });
+        twForceUnit.setInventory([ramPlate]);
+        twForceUnit.turnState().moveDistance.set(2);
+        expect((twForceUnit.rules as MekRules).physicalCombat()?.chargeDamage).toEqual({
+            damage: 8,
+            maxDamage: 48,
+            bonusDamage: 0,
+            maxBonusDamage: 0,
+        });
+        expect(twForceUnit.rules.applyInventoryControlDisplayEffects(twCharge, twChargeDisplay).damage)
+            .toBe('8 [48]');
+    });
+
+    it('shows the TW per-hex charge formula with a Ram Plate and spikes until movement is selected', () => {
+        const forceUnit = createForceUnitHarness({
+            rulesId: 'tw',
+            tons: 45,
+            run: 8,
+            internalLocations: ['LL'],
+            critSlots: [{ ...crit('Spikes', false), loc: 'LL' }],
+        });
+        forceUnit.setInventory([new MountedEquipment({
+            owner: forceUnit,
+            id: 'ISRamPlate',
+            name: 'Ram Plate',
+            equipment: miscEquipment('ISRamPlate', 'Ram Plate', ['F_RAM_PLATE']),
+        })]);
+        const charge = new MountedEquipment({
+            owner: forceUnit,
+            id: 'Charge',
+            name: 'charge',
+            intrinsicPhysicalAttack: true,
+        });
+        const display = {
+            name: 'Charge', location: '—', heat: '—', damage: 'Wrong SVG value', hit: 'Vs',
+            min: '—', short: '—', medium: '—', long: '—',
+        };
+
+        expect(forceUnit.rules.applyInventoryControlDisplayEffects(charge, display).damage)
+            .toBe('6.75/hex+2');
+
+        forceUnit.turnState().moveMode.set('walk');
+        forceUnit.turnState().moveDistance.set(5);
+        expect(forceUnit.rules.applyInventoryControlDisplayEffects(charge, display).damage)
+            .toBe('29 [50]');
     });
 
     it('applies TSM to capped inactive vibroblade damage but not fixed active damage', () => {

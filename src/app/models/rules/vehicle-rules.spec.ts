@@ -680,7 +680,7 @@ describe('VehicleRules', () => {
     });
 
     it('calculates charge damage for core2026 and TW vehicles', () => {
-        const rules = createRulesHarness({ tons: 60, moveDistance: 5 });
+        const rules = createRulesHarness({ tons: 60, moveDistance: 5, moveMode: 'walk' });
         expect(rules.chargeDamage()).toEqual({
             damage: 36,
             maxDamage: 60,
@@ -688,7 +688,7 @@ describe('VehicleRules', () => {
             maxBonusDamage: 0,
         });
 
-        const twRules = createRulesHarness({ tons: 60, moveDistance: 5, rulesId: 'tw' });
+        const twRules = createRulesHarness({ tons: 60, moveDistance: 5, moveMode: 'walk', rulesId: 'tw' });
         expect(twRules.chargeDamage()).toEqual({
             damage: 24,
             maxDamage: 66,

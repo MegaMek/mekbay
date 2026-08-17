@@ -280,7 +280,7 @@ describe('Mek critical-hit workflow', () => {
         expect(hasRollableMekCriticalSlot(currentPhase.unit, 'LA')).toBeFalse();
     });
 
-    it('applies ruleset critical-chance modifiers without mixing the CASE II systems', () => {
+    it('applies ruleset and armor critical-chance modifiers', () => {
         const core = criticalUnit(
             CORE_2026_GAME_RULES,
             [],
@@ -290,13 +290,14 @@ describe('Mek critical-hit workflow', () => {
             {},
             { armorType: 'Hardened' },
         );
-        expect(mekCriticalChanceModifiers(core.unit, 'LT', {
-            internalExplosion: true,
-            caseII: true,
-        })).toEqual([
+        expect(mekCriticalChanceModifiers(core.unit, 'LT')).toEqual([
             { label: 'Reinforced structure', value: -1 },
-            { label: 'CASE II internal explosion', value: -1 },
-            { label: 'Hardened armor in damaged facing', value: -2, optional: true, enabled: true },
+            {
+                label: 'Hardened armor in damaged facing',
+                value: -2,
+                optional: true,
+                enabled: true,
+            },
         ]);
 
         const tw = criticalUnit(
@@ -308,10 +309,7 @@ describe('Mek critical-hit workflow', () => {
             {},
             { armorType: 'Standard', features: ['Primitive Cockpit'] },
         );
-        expect(mekCriticalChanceModifiers(tw.unit, 'LT', {
-            internalExplosion: true,
-            caseII: true,
-        })).toEqual([
+        expect(mekCriticalChanceModifiers(tw.unit, 'LT')).toEqual([
             { label: 'Reinforced structure', value: -1 },
             { label: 'Primitive Mek', value: 2 },
         ]);

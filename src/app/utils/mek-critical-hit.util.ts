@@ -27,8 +27,6 @@ export interface MekCriticalChanceModifier {
 }
 
 export interface MekCriticalChanceContext {
-    readonly internalExplosion?: boolean;
-    readonly caseII?: boolean;
     readonly hardenedArmorApplies?: boolean;
 }
 
@@ -174,13 +172,8 @@ export function mekCriticalChanceModifiers(
             || feature === 'Primitive Industrial Cockpit')) {
         modifiers.push({ label: 'Primitive Mek', value: 2 });
     }
-    if (unit.gameRules.id === 'core2026'
-        && context.internalExplosion
-        && (context.caseII ?? getMekExplosionProtection(unit, location) === 'case-ii')) {
-        modifiers.push({ label: 'CASE II internal explosion', value: -1 });
-    }
-
-    if (unitData.armorType.trim().toLowerCase().includes('hardened')) {
+    if (context.hardenedArmorApplies !== false
+        && unitData.armorType.trim().toLowerCase().includes('hardened')) {
         const enabled = context.hardenedArmorApplies ?? hasRemainingMekArmor(unit, location);
         modifiers.push({
             label: 'Hardened armor in damaged facing',

@@ -34,7 +34,7 @@ import { UACFiringModeHandler } from '../equipment-handlers/uac-firing-mode.hand
 import { EquipmentFlag } from './equipment-flags.type';
 import { EquipmentRegistry } from './equipment-lookup';
 import { OptionsService } from '../services/options.service';
-import { formatPilotingDisplay } from './rules/unit-type-rules';
+import { formatPilotingDisplay, type ChargeDamage } from './rules/unit-type-rules';
 import { registerAllHandlers } from '../equipment-handlers';
 import {
     PPC_CAPACITOR_CHARGING_STATE,
@@ -707,6 +707,10 @@ class ExposedUnitSvgService extends UnitSvgService {
 
     renderDamage(damageText: SVGElement, damage: string): void {
         this.renderInventoryDamageText(damageText, damage);
+    }
+
+    renderCharge(entry: MountedEquipment, chargeDamage: ChargeDamage): void {
+        this.renderChargeDamage(entry, chargeDamage);
     }
 }
 
@@ -4329,6 +4333,46 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         svgService.renderDamage(damageLines[0], '1/Msl [C5,H,M,OS,S]');
         expect(damageLines.map(line => line.textContent)).toEqual(['1/Msl', '[C5,H,M,OS,S]']);
+    });
+
+    it('renders a CORE charge formula with the current spike bonus instead of the SVG default', () => {
+        const forceUnit = createForceUnit();
+        const entryEl = new DOMParser().parseFromString(`
+            <g xmlns="http://www.w3.org/2000/svg" class="inventoryEntry">
+                <g class="damage"><text>Wrong SVG value</text></g>
+            </g>
+        `, 'image/svg+xml').documentElement as unknown as SVGElement;
+        const charge = new MountedEquipment({
+            owner: forceUnit,
+            id: 'Charge',
+            name: 'charge',
+            intrinsicPhysicalAttack: true,
+            el: entryEl,
+        });
+        const damageText = entryEl.querySelector(':scope > .damage > text') as SVGTextElement;
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.renderCharge(charge, {
+            damage: 12,
+            maxDamage: 42,
+            bonusDamage: 2,
+            maxBonusDamage: 2,
+            displayFormula: '10×(TMM+1)+2',
+        });
+
+        expect(damageText.textContent).toBe('10×(TMM+1)+2');
+        expect(damageText.classList.contains('damaged')).toBeFalse();
+
+        svgService.renderCharge(charge, {
+            damage: 10,
+            maxDamage: 42,
+            bonusDamage: 0,
+            maxBonusDamage: 2,
+            displayFormula: '10×(TMM+1)',
+        });
+
+        expect(damageText.textContent).toBe('10×(TMM+1)');
+        expect(damageText.classList.contains('damaged')).toBeTrue();
     });
 
     it('renders vibroblade OFF and ON damage on the Mek SVG', () => {

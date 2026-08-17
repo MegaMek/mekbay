@@ -72,7 +72,6 @@ describe('MekCriticalRollDialogComponent', () => {
 
         expect(element.querySelector('.protection-badge')?.textContent).toContain('CASE II');
         expect(element.querySelector('.protection-note')?.textContent).toContain('Caps internal damage at 1');
-        expect(element.querySelector('.protection-note')?.textContent).toContain('critical-hit check is −1');
 
         caseIISlot.destroyed = 1;
         slotsVersion.update(version => version + 1);
