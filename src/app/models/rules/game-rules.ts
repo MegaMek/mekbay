@@ -763,20 +763,6 @@ export class TWGameRules extends CBTGameRules {
 
         return super.getRulesProfile(equipment);
     }
-
-    protected override getRulesProfile(equipment: Equipment): number[] {
-        // Claws have a +1 hit modifier instead of Core 2026's 0.
-        if (equipment.flags.has('S_CLAW')) {
-            return [1];
-        }
-
-        // MRM have +1 instead of 0 of core
-        if (equipment instanceof WeaponEquipment && equipment.hasFlag('F_MRM')) {
-            return [1];
-        }
-
-        return super.getRulesProfile(equipment);
-    }
 }
 
 export const CORE_2026_GAME_RULES = new GameRules();
