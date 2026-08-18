@@ -414,6 +414,15 @@
                                 <input
                                     class="bt-checkbox"
                                     type="checkbox"
+                                    [checked]="ignoreRarityWeight()"
+                                    (change)="onIgnoreRarityWeightChange($event)" />
+                                <span class="generator-option-label" [tooltip]="ignoreRarityWeightTooltip()">Ignore Rarity Weight</span>
+                            </label>
+
+                            <label class="generator-option">
+                                <input
+                                    class="bt-checkbox"
+                                    type="checkbox"
                                     [checked]="preventDuplicateChassis()"
                                     (change)="onPreventDuplicateChassisChange($event)" />
                                 <span class="generator-option-label" [tooltip]="preventDuplicateChassisTooltip()">Prevent Duplicate Chassis</span>

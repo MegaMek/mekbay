@@ -59,6 +59,7 @@ const LOG_ATTEMPTS = false;
 const FORCE_GENERATION_OPTIMIZE_SELECTED_SKILLS_FOR_BUDGET = true;
 const FORCE_GENERATION_SKILL_OPTIMIZATION_STATE_LIMIT = 5_000;
 const DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT = 10;
+const IGNORED_RARITY_FORCE_GENERATOR_WEIGHTS = { requisition: 1, salvage: 0 } as const;
 const FORCE_GENERATION_PRODUCTION_SOURCE_ROLL_WEIGHT = 5;
 const FORCE_GENERATION_SALVAGE_SOURCE_ROLL_WEIGHT = 1;
 const IMPLICIT_MULTI_FACTION_EXCLUDED_IDS = new Set<number>([MULFACTION_EXTINCT]);
@@ -92,6 +93,7 @@ interface ForceGenerationCandidateUnit {
     unit: Unit;
     requisitionWeight: number;
     salvageWeight: number;
+    availabilityWeightsIgnored: boolean;
     cost: number;
     alias?: string;
     commander?: boolean;
@@ -490,6 +492,7 @@ export interface ForceGenerationRequest {
     piloting: number;
     skillRanges?: ForceGenerationSkillRanges;
     lockedUnits?: readonly GeneratedForceUnit[];
+    ignoreRarityWeight?: boolean;
     preventDuplicateChassis?: boolean;
     useTaggedQuantities?: boolean;
     useUnitTagsAsChassisTags?: boolean;
@@ -2218,7 +2221,9 @@ export class ForceGeneratorService implements OnDestroy {
         const budgetRange = this.normalizeBudgetRange(options.budgetRange);
         const skillSettings = resolveForceGenerationSkillSettings(options);
         const hasVariableSkillSettings = hasVariableForceGenerationSkillSettings(options.gameSystem, skillSettings);
-        const availabilityWeightCache = this.resolveAvailabilityWeightCache(eligibleUnits, options.context);
+        const availabilityWeightCache = options.ignoreRarityWeight === true
+            ? undefined
+            : this.resolveAvailabilityWeightCache(eligibleUnits, options.context);
 
         if (requestedTargetFormations.length > 0 && !targetFormationContext && !targetFormationSetContext) {
             return this.buildEmptyPreview(
@@ -2888,8 +2893,10 @@ export class ForceGeneratorService implements OnDestroy {
 
         const emptyFailureMessage = candidates.length === 0
             ? didFilterCandidatesForSkills
-                ? `Only ${candidates.length} availability-positive units can satisfy the selected skill ranges with max delta ${skillSettings.maxDelta}.`
-                : this.getPositiveAvailabilityMessage(candidates.length, options.context)
+                ? `Only ${candidates.length} ${options.ignoreRarityWeight === true ? 'eligible' : 'availability-positive'} units can satisfy the selected skill ranges with max delta ${skillSettings.maxDelta}.`
+                : options.ignoreRarityWeight === true
+                    ? 'No eligible units match the current search settings.'
+                    : this.getPositiveAvailabilityMessage(candidates.length, options.context)
             : 'Unable to build a force within the selected BV/PV range and unit count constraints.';
 
         return this.buildEmptyPreview(
@@ -3604,13 +3611,19 @@ export class ForceGeneratorService implements OnDestroy {
         lockedUnit?: GeneratedForceUnit,
         availabilityWeightCache?: ForceGenerationAvailabilityWeightCache,
     ): ForceGenerationCandidateUnit {
-        const availabilityWeights = this.getCachedAvailabilityWeights(unit, context, availabilityWeightCache);
+        const availabilityWeights = this.getCandidateAvailabilityWeights(
+            unit,
+            context,
+            options,
+            availabilityWeightCache,
+        );
         const baseCandidate = this.createBaseCandidateUnit(unit, options);
 
         return {
             unit,
             requisitionWeight: availabilityWeights.requisition,
             salvageWeight: availabilityWeights.salvage,
+            availabilityWeightsIgnored: options.ignoreRarityWeight === true,
             cost: lockedUnit?.cost ?? baseCandidate.cost,
             alias: lockedUnit?.alias,
             commander: lockedUnit?.commander,
@@ -4746,11 +4759,22 @@ export class ForceGeneratorService implements OnDestroy {
         return computedWeights;
     }
 
+    private getCandidateAvailabilityWeights(
+        unit: Unit,
+        context: ForceGenerationContext,
+        options: ForceGenerationRequest,
+        availabilityWeightCache?: ForceGenerationAvailabilityWeightCache,
+    ): { requisition: number; salvage: number } {
+        return options.ignoreRarityWeight === true
+            ? IGNORED_RARITY_FORCE_GENERATOR_WEIGHTS
+            : this.getCachedAvailabilityWeights(unit, context, availabilityWeightCache);
+    }
+
     private resolvePreparedCandidateCache(
         eligibleUnits: readonly Unit[],
         context: ForceGenerationContext,
         options: ForceGenerationRequest,
-        availabilityWeightCache: ForceGenerationAvailabilityWeightCache,
+        availabilityWeightCache?: ForceGenerationAvailabilityWeightCache,
     ): ForceGenerationPreparedCandidateCache {
         const signature = this.buildPreparedCandidateCacheSignature(
             eligibleUnits,
@@ -4774,10 +4798,10 @@ export class ForceGeneratorService implements OnDestroy {
     private buildPreparedCandidateCacheSignature(
         eligibleUnits: readonly Unit[],
         options: ForceGenerationRequest,
-        availabilityWeightCache: ForceGenerationAvailabilityWeightCache,
+        availabilityWeightCache?: ForceGenerationAvailabilityWeightCache,
     ): string {
         return [
-            availabilityWeightCache.signature,
+            availabilityWeightCache?.signature ?? `availability:ignored:${this.dataService.searchCorpusVersion()}`,
             `eligible:${buildForceGenerationUnitListSignature(eligibleUnits)}`,
             `game:${options.gameSystem}`,
             `skills:${buildForceGenerationSkillSettingsSignature(options)}`,
@@ -4789,15 +4813,16 @@ export class ForceGeneratorService implements OnDestroy {
         eligibleUnits: readonly Unit[],
         context: ForceGenerationContext,
         options: ForceGenerationRequest,
-        availabilityWeightCache: ForceGenerationAvailabilityWeightCache,
+        availabilityWeightCache?: ForceGenerationAvailabilityWeightCache,
     ): ForceGenerationPreparedCandidateCache {
         const baseCandidateCache = this.resolveBaseCandidateCache(eligibleUnits, options);
         const candidates: ForceGenerationCandidateUnit[] = [];
 
         for (const baseCandidate of baseCandidateCache.candidates) {
-            const availabilityWeights = this.getCachedAvailabilityWeights(
+            const availabilityWeights = this.getCandidateAvailabilityWeights(
                 baseCandidate.unit,
                 context,
+                options,
                 availabilityWeightCache,
             );
 
@@ -4809,6 +4834,7 @@ export class ForceGeneratorService implements OnDestroy {
                 unit: baseCandidate.unit,
                 requisitionWeight: availabilityWeights.requisition,
                 salvageWeight: availabilityWeights.salvage,
+                availabilityWeightsIgnored: options.ignoreRarityWeight === true,
                 cost: baseCandidate.cost,
                 skill: baseCandidate.skill,
                 gunnery: baseCandidate.gunnery,
@@ -5256,6 +5282,7 @@ export class ForceGeneratorService implements OnDestroy {
         eligibleUnitCount: number,
         candidateUnitCount: number,
         context: ForceGenerationContext,
+        ignoreRarityWeight: boolean,
         budgetRange: { min: number; max: number },
         minUnitCount: number,
         maxUnitCount: number,
@@ -5274,8 +5301,11 @@ export class ForceGeneratorService implements OnDestroy {
         const lines: string[] = [];
         const budgetLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
         const maxLabel = Number.isFinite(budgetRange.max) ? budgetRange.max.toLocaleString() : 'no max';
-        const availabilitySourceRollNote = this.getAvailabilitySourceRollNote(availabilitySourceCandidates);
-        lines.push(`Eligible units: ${eligibleUnitCount} units. Availability-positive candidates: ${candidateUnitCount} units. Target: ${minUnitCount}-${maxUnitCount} units, ${budgetLabel} ${budgetRange.min.toLocaleString()} to ${maxLabel}.`);
+        const availabilitySourceRollNote = ignoreRarityWeight
+            ? null
+            : this.getAvailabilitySourceRollNote(availabilitySourceCandidates);
+        const candidateLabel = ignoreRarityWeight ? 'Uniform-weight candidates' : 'Availability-positive candidates';
+        lines.push(`Eligible units: ${eligibleUnitCount} units. ${candidateLabel}: ${candidateUnitCount} units. Target: ${minUnitCount}-${maxUnitCount} units, ${budgetLabel} ${budgetRange.min.toLocaleString()} to ${maxLabel}.`);
         lines.push(formatForceGenerationSkillSettingsNote(gameSystem, skillSettings));
         lines.push(...searchSettings);
         const generatorFlagsNote = formatForceGeneratorFlags(
@@ -5292,7 +5322,9 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         const contextParts = [context.forceFaction?.name, context.forceEra?.name].filter(Boolean);
-        const weightScopeNote = this.getAvailabilityWeightScopeNote(context);
+        const weightScopeNote = ignoreRarityWeight
+            ? 'Availability weights: ignored; all candidates use equal weight.'
+            : this.getAvailabilityWeightScopeNote(context);
         if (contextParts.length > 0) {
             lines.push(weightScopeNote
                 ? `Generation context: ${contextParts.join(' - ')}. ${weightScopeNote}`
@@ -5322,7 +5354,9 @@ export class ForceGeneratorService implements OnDestroy {
                 lines.push(availabilitySourceRollNote);
             }
         } else {
-            lines.push('Ruleset guidance: none resolved, so picks used weighted search only.');
+            lines.push(ignoreRarityWeight
+                ? 'Ruleset guidance: none resolved, so picks used uniform random search.'
+                : 'Ruleset guidance: none resolved, so picks used weighted search only.');
             if (availabilitySourceRollNote) {
                 lines.push(availabilitySourceRollNote);
             }
@@ -5331,24 +5365,22 @@ export class ForceGeneratorService implements OnDestroy {
         for (const [index, step] of (selectionAttempt?.selectionSteps ?? []).entries()) {
             const skillSummary = formatForceGenerationSkillSummary(gameSystem, step);
             const skillNote = skillSummary ? `, ${skillSummary}` : '';
-            if (step.locked) {
-                const reasons = step.rulesetReasons.length > 0
-                    ? `; ruleset bias ${step.rulesetReasons.join(', ')}`
-                    : '';
-                lines.push(
-                    `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: locked, R ${formatForceGeneratorWeight(step.requisitionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
-                );
-                continue;
-            }
-
-            const fallbackNote = step.usedFallbackSource && step.source !== step.rolledSource
+            const fallbackNote = !ignoreRarityWeight && step.usedFallbackSource && step.source !== step.rolledSource
                 ? `; rolled ${step.rolledSource} but used ${step.source}`
                 : '';
             const reasons = step.rulesetReasons.length > 0
                 ? `; ruleset bias ${step.rulesetReasons.join(', ')}`
                 : '';
+            const selectionNote = step.locked
+                ? 'locked'
+                : ignoreRarityWeight
+                    ? 'pick'
+                    : `${step.source} pick${fallbackNote}`;
+            const weightNote = ignoreRarityWeight
+                ? ''
+                : `, R ${formatForceGeneratorWeight(step.requisitionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}`;
             lines.push(
-                `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: ${step.source} pick${fallbackNote}, R ${formatForceGeneratorWeight(step.requisitionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
+                `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: ${selectionNote}${weightNote}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
             );
         }
 
@@ -5450,6 +5482,7 @@ export class ForceGeneratorService implements OnDestroy {
             eligibleUnitCount,
             candidateUnitCount,
             options.context,
+            options.ignoreRarityWeight === true,
             budgetRange,
             minUnitCount,
             maxUnitCount,
@@ -5503,6 +5536,7 @@ export class ForceGeneratorService implements OnDestroy {
             eligibleUnitCount,
             candidateUnitCount,
             options.context,
+            options.ignoreRarityWeight === true,
             budgetRange,
             minUnitCount,
             maxUnitCount,
@@ -7601,6 +7635,19 @@ export class ForceGeneratorService implements OnDestroy {
         source: ForceGenerationAvailabilitySource;
         usedFallbackSource: boolean;
     } {
+        const getRulesetScore = (candidate: ForceGenerationCandidateUnit): number => (
+            selectionPreparation?.rulesetScoreByCandidate.get(candidate)
+                ?? this.getRulesetMatchScore(candidate, rulesetProfile)
+        );
+        if (candidates.every((candidate) => candidate.availabilityWeightsIgnored)) {
+            return {
+                candidate: pickWeightedRandomEntry(candidates, getRulesetScore),
+                rolledSource: 'requisition',
+                source: 'requisition',
+                usedFallbackSource: false,
+            };
+        }
+
         const source = this.pickAvailabilitySource(candidates);
         const alternateSource: ForceGenerationAvailabilitySource = source === 'requisition' ? 'salvage' : 'requisition';
         const sourceCandidates = candidates.filter((candidate) => this.getAvailabilityWeightForSource(candidate, source) > 0);
@@ -7615,9 +7662,7 @@ export class ForceGeneratorService implements OnDestroy {
         return {
             candidate: pickWeightedRandomEntry(weightedCandidates, (candidate) => {
                 const availabilityWeight = Math.max(0.05, this.getAvailabilityWeightForSource(candidate, weightedSource));
-                const rulesetScore = selectionPreparation?.rulesetScoreByCandidate.get(candidate)
-                    ?? this.getRulesetMatchScore(candidate, rulesetProfile);
-                return availabilityWeight * rulesetScore;
+                return availabilityWeight * getRulesetScore(candidate);
             }),
             rolledSource: source,
             source: weightedSource,
