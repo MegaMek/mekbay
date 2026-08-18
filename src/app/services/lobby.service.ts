@@ -16,7 +16,7 @@ import { WsService } from './ws.service';
 import { normalizeDisplayName } from '../utils/display-name.util';
 
 const LOBBY_CODE_PATTERN = /^[a-z0-9]{4}$/;
-const MAX_LOBBY_PARTICIPANTS = 16;
+const MAX_LOBBY_PARTICIPANTS = 32;
 const MAX_LOBBY_FORCES = 8;
 const MAX_REMOTE_LOAD_ATTEMPTS = 8;
 
