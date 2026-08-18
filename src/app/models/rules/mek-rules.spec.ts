@@ -3291,15 +3291,37 @@ describe('MekRules', () => {
         expect(torsoCockpit.headHitPilotHits()).toBe(0);
     });
 
-    it('applies damaged Life Support drowning only while fully submerged', () => {
+    it('applies damaged Life Support drowning in Depth 2 standing or Depth 1 prone', () => {
         const forceUnit = createForceUnitHarness({
             critSlots: [{ id: 'life-support', name: 'Life Support', loc: 'HD', slot: 0, destroyed: 1 }],
         });
 
         expect(forceUnit.rules.submergedLifeSupportPilotHits()).toBe(0);
 
+        forceUnit.turnState().setCover('underwater-depth-1');
+        expect(forceUnit.rules.submergedLifeSupportPilotHits()).toBe(0);
+
+        forceUnit.setCondition('prone', true);
+        expect(forceUnit.rules.submergedLifeSupportPilotHits()).toBe(1);
+
+        forceUnit.setCondition('prone', false);
+
         forceUnit.turnState().setCover('underwater-depth-2');
 
+        expect(forceUnit.rules.submergedLifeSupportPilotHits()).toBe(1);
+    });
+
+    it('superheavy Meks are height 3, they need Depth 2 and Prone to start drowning', () => {
+        const forceUnit = createForceUnitHarness({
+            tons: 150,
+            critSlots: [{ id: 'life-support', name: 'Life Support', loc: 'HD', slot: 0, destroyed: 1 }],
+        });
+        forceUnit.setCondition('prone', true);
+        expect(forceUnit.getHeight()).toBe(2);
+        forceUnit.turnState().setCover('underwater-depth-1');
+        expect(forceUnit.turnState().submerged()).toBeFalse();
+        forceUnit.turnState().setCover('underwater-depth-2');
+        expect(forceUnit.turnState().submerged()).toBeTrue();
         expect(forceUnit.rules.submergedLifeSupportPilotHits()).toBe(1);
     });
 });
