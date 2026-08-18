@@ -3298,6 +3298,69 @@ describe('ForceGeneratorService', () => {
         expect(preview.explanationLines.some((line) => line.includes('Shadow Hawk SHD-2H: salvage pick'))).toBeTrue();
     });
 
+    it('uses one uniform candidate pool and omits availability source details when rarity weights are ignored', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const lockedUnit = createUnit({
+            id: 1,
+            name: 'Akuma AKU-2XK',
+            chassis: 'Akuma',
+            model: 'AKU-2XK',
+            as: { PV: 5 } as Unit['as'],
+        });
+        const zeroAvailabilityUnit = createUnit({
+            id: 2,
+            name: 'Uniform Candidate',
+            chassis: 'Jenner',
+            model: 'JR7-D',
+            as: { PV: 5 } as Unit['as'],
+        });
+        megaMekAvailabilityByUnitName.set(lockedUnit.name, {
+            e: { '3150': { '10': [100, 0] } },
+        });
+        megaMekAvailabilityByUnitName.set(zeroAvailabilityUnit.name, {
+            e: { '3150': { '10': [0, 0] } },
+        });
+        dataServiceMock.getMegaMekAvailabilityRecordForUnit.calls.reset();
+        const pickAvailabilitySourceSpy = spyOn<any>(service, 'pickAvailabilitySource').and.callThrough();
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [lockedUnit, zeroAvailabilityUnit],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 10, max: 10 },
+            minUnitCount: 2,
+            maxUnitCount: 2,
+            gunnery: 4,
+            piloting: 5,
+            ignoreRarityWeight: true,
+            lockedUnits: [{
+                unit: lockedUnit,
+                cost: 5,
+                skill: 4,
+                lockKey: 'locked-akuma',
+            }],
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((generatedUnit) => generatedUnit.unit)).toEqual([lockedUnit, zeroAvailabilityUnit]);
+        expect(dataServiceMock.getMegaMekAvailabilityRecordForUnit).not.toHaveBeenCalled();
+        expect(pickAvailabilitySourceSpy).not.toHaveBeenCalled();
+        expect(preview.explanationLines[0]).toContain('Uniform-weight candidates: 2 units.');
+        expect(preview.explanationLines).toContain(
+            'Generation context: Federated Suns - ilClan. Availability weights: ignored; all candidates use equal weight.',
+        );
+
+        const explanation = preview.explanationLines.join('\n');
+        expect(explanation).not.toContain('Source roll odds:');
+        expect(explanation).not.toContain('requisition pick');
+        expect(explanation).not.toContain('salvage pick');
+        expect(explanation).not.toContain('R 1 / S 0');
+        expect(explanation).toContain('Akuma AKU-2XK: locked, Skill 4, 5 PV');
+        expect(explanation).toContain('Jenner JR7-D: pick, Skill 4, 5 PV');
+    });
+
     it('does not weight equally available candidate rolls by cost', () => {
         const cheapUnit = createUnit({ id: 1, name: 'Cheap Equal Availability', as: { PV: 10 } as Unit['as'] });
         const expensiveUnit = createUnit({ id: 2, name: 'Expensive Equal Availability', as: { PV: 90 } as Unit['as'] });

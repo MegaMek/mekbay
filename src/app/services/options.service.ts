@@ -4,7 +4,7 @@
 
 import { inject, Injectable, signal } from '@angular/core';
 import { DbService } from './db.service';
-import { OPTION_VALUES, type CBTOptionalRules, type ColorScheme, type ForceBudgetOptimizerLastSkills, type ForceGeneratorOptions, type Options } from '../models/options.model';
+import { OPTION_VALUES, type CBTOptionalRules, type ForceBudgetOptimizerLastSkills, type ForceGeneratorOptions, type Options } from '../models/options.model';
 import { PRINT_OPTION_VALUES, type PrintAllOptions } from '../models/print-options.model';
 import { GameSystem, normalizeUnitServerUrl } from '../models/common.model';
 
@@ -26,7 +26,6 @@ const DEFAULT_OPTIONS: Options = {
     printAllOptions: {
         clean: false,
         printPilotData: true,
-        printRosterSummary: false,
         recordSheetCenterPanelContent: 'clusterTable',
         ASPrintPageBreakOnGroups: true,
         ASPrintCardSize: 'standard',
@@ -68,6 +67,7 @@ const DEFAULT_OPTIONS: Options = {
             maxDelta: 2,
         },
         failureSearchWindowMs: 300,
+        ignoreRarityWeight: false,
         preventDuplicateChassis: false,
         useTaggedQuantities: false,
         useUnitTagsAsChassisTags: false,
@@ -78,18 +78,6 @@ const DEFAULT_OPTIONS: Options = {
         skill: { min: 2, max: 5 },
         maxDelta: 2,
     },
-};
-
-type LegacyOptions = Partial<Omit<Options, 'printAllOptions'>> & {
-    themeColor?: 'normal' | 'night';
-    sheetsColor?: 'normal' | 'night';
-    ASCardStyle?: 'colored' | 'monochrome';
-    printAllOptions?: Partial<PrintAllOptions>;
-    printRosterSummary?: boolean;
-    recordSheetCenterPanelContent?: PrintAllOptions['recordSheetCenterPanelContent'];
-    ASPrintPageBreakOnGroups?: boolean;
-    ASPrintCardSize?: PrintAllOptions['ASPrintCardSize'];
-    printMargin?: PrintAllOptions['printMargin'];
 };
 
 function resolveSavedValue<T extends string | number | boolean>(
@@ -103,49 +91,28 @@ function resolveSavedValue<T extends string | number | boolean>(
     return validType && validNumber && validValue ? saved as T : fallback;
 }
 
-function resolveColorScheme(saved: LegacyOptions | null | undefined): ColorScheme {
-    if (saved?.colorScheme != null) {
-        return resolveSavedValue(saved.colorScheme, DEFAULT_OPTIONS.colorScheme, OPTION_VALUES.colorScheme);
-    }
-
-    if (saved?.themeColor != null) {
-        return saved.themeColor === 'night' ? 'night' : DEFAULT_OPTIONS.colorScheme;
-    }
-
-    // Existing settings may contain both former options. Prefer the global sheet theme.
-    if (saved?.sheetsColor != null) {
-        return saved.sheetsColor === 'night' ? 'night' : DEFAULT_OPTIONS.colorScheme;
-    }
-
-    return saved?.ASCardStyle === 'colored' ? 'night' : DEFAULT_OPTIONS.colorScheme;
-}
-
-function resolvePrintAllOptions(saved: LegacyOptions | null | undefined): PrintAllOptions {
+function resolvePrintAllOptions(saved: Options | null | undefined): PrintAllOptions {
     const defaults = DEFAULT_OPTIONS.printAllOptions;
     const printOptions = saved?.printAllOptions;
     return {
         clean: resolveSavedValue(printOptions?.clean, defaults.clean),
         printPilotData: resolveSavedValue(printOptions?.printPilotData, defaults.printPilotData),
-        printRosterSummary: resolveSavedValue(
-            printOptions?.printRosterSummary ?? saved?.printRosterSummary,
-            defaults.printRosterSummary,
-        ),
         recordSheetCenterPanelContent: resolveSavedValue(
-            printOptions?.recordSheetCenterPanelContent ?? saved?.recordSheetCenterPanelContent,
+            printOptions?.recordSheetCenterPanelContent,
             defaults.recordSheetCenterPanelContent,
             PRINT_OPTION_VALUES.recordSheetCenterPanelContent,
         ),
         ASPrintPageBreakOnGroups: resolveSavedValue(
-            printOptions?.ASPrintPageBreakOnGroups ?? saved?.ASPrintPageBreakOnGroups,
+            printOptions?.ASPrintPageBreakOnGroups,
             defaults.ASPrintPageBreakOnGroups,
         ),
         ASPrintCardSize: resolveSavedValue(
-            printOptions?.ASPrintCardSize ?? saved?.ASPrintCardSize,
+            printOptions?.ASPrintCardSize,
             defaults.ASPrintCardSize,
             PRINT_OPTION_VALUES.ASPrintCardSize,
         ),
         printMargin: resolveSavedValue(
-            printOptions?.printMargin ?? saved?.printMargin,
+            printOptions?.printMargin,
             defaults.printMargin,
             PRINT_OPTION_VALUES.printMargin,
         ),
@@ -202,6 +169,7 @@ function resolveForceGeneratorOptions(saved: Options | null | undefined): ForceG
             maxDelta: resolveSavedValue(forceGenerator?.lastSkills?.maxDelta, defaults.lastSkills.maxDelta),
         },
         failureSearchWindowMs: resolveSavedValue(forceGenerator?.failureSearchWindowMs, defaults.failureSearchWindowMs),
+        ignoreRarityWeight: resolveSavedValue(forceGenerator?.ignoreRarityWeight, defaults.ignoreRarityWeight),
         preventDuplicateChassis: resolveSavedValue(forceGenerator?.preventDuplicateChassis, defaults.preventDuplicateChassis),
         useTaggedQuantities: resolveSavedValue(forceGenerator?.useTaggedQuantities, defaults.useTaggedQuantities),
         useUnitTagsAsChassisTags: resolveSavedValue(forceGenerator?.useUnitTagsAsChassisTags, defaults.useUnitTagsAsChassisTags),
@@ -289,7 +257,7 @@ export class OptionsService {
     async initOptions() {
         const saved = await this.dbService.getOptions();
         this.options.set({
-            colorScheme: resolveColorScheme(saved),
+            colorScheme: resolveSavedValue(saved?.colorScheme, DEFAULT_OPTIONS.colorScheme, OPTION_VALUES.colorScheme),
             pickerStyle: resolveSavedValue(saved?.pickerStyle, DEFAULT_OPTIONS.pickerStyle, OPTION_VALUES.pickerStyle),
             canvasInput: resolveSavedValue(saved?.canvasInput, DEFAULT_OPTIONS.canvasInput, OPTION_VALUES.canvasInput),
             swipeToNextSheet: resolveSavedValue(saved?.swipeToNextSheet, DEFAULT_OPTIONS.swipeToNextSheet, OPTION_VALUES.swipeToNextSheet),

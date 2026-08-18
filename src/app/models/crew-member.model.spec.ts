@@ -3,7 +3,7 @@
 // Author: Drake
 
 import type { CBTForceUnit } from './cbt-force-unit.model';
-import { CrewMember, getConsciousnessHitCount, getConsciousnessTarget } from './crew-member.model';
+import { CrewMember, DEAD_CREW_HIT_THRESHOLD, getConsciousnessHitCount, getConsciousnessTarget } from './crew-member.model';
 
 describe('CrewMember serialization', () => {
     function createCrew(unitSubtype: string): CrewMember {
@@ -44,5 +44,21 @@ describe('consciousness table', () => {
         expect([1, 2, 3, 4, 5].map(getConsciousnessTarget)).toEqual([3, 5, 7, 10, 11]);
         expect([3, 5, 7, 10, 11].map(getConsciousnessHitCount)).toEqual([1, 2, 3, 4, 5]);
         expect(getConsciousnessHitCount(8)).toBeNull();
+    });
+
+    it('keeps pilot damage on the six-box record-sheet track', () => {
+        const unit = {
+            getUnit: () => ({ subtype: 'BattleMek' }),
+            rules: { isCrewCockpitDestroyed: () => false },
+            setCrewMember: jasmine.createSpy('setCrewMember'),
+            setModified: jasmine.createSpy('setModified'),
+        } as unknown as CBTForceUnit;
+        const crew = new CrewMember(0, unit);
+
+        crew.setHits(99);
+        expect(crew.getHits()).toBe(DEAD_CREW_HIT_THRESHOLD);
+
+        crew.setHits(-4);
+        expect(crew.getHits()).toBe(0);
     });
 });

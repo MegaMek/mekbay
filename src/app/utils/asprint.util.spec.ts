@@ -38,83 +38,179 @@ describe('ASPrintUtil', () => {
         expect(flexStyles).toContain('size: landscape;');
     });
 
-    it('adds the dedicated rules-reference page only when the roster summary is enabled', async () => {
-        const createContainer = async () => {
+    it('builds a cards-only print container', async () => {
+        const createContainer = () => {
             const overlay = document.createElement('div');
             overlay.id = 'as-multipage-container';
             overlay.appendChild(document.createElement('style'));
             const cardPage = document.createElement('div');
             cardPage.className = 'as-print-page';
             overlay.appendChild(cardPage);
-            document.body.appendChild(overlay);
-            document.body.classList.add('as-multipage-container-active');
-            return { overlay, cardComponentRefs: [] };
+            return overlay;
         };
         spyOn<any>(ASPrintUtil, 'createFixedPrintContainer').and.callFake(createContainer);
         spyOn<any>(ASPrintUtil, 'createFlexPrintContainer').and.callFake(createContainer);
-        const rosterPage = document.createElement('div');
-        rosterPage.className = 'as-roster-summary';
-        spyOn<any>(ASPrintUtil, 'createRosterSummaryPage').and.resolveTo(rosterPage);
 
         const unit = {
-            id: 'u1',
-            alias: () => undefined,
-            manualPilotAbilities: () => [],
-            formationAbilities: () => [],
+            disabledSaving: false,
+            serialize: () => ({ state: 'original' }),
+            update: jasmine.createSpy('update'),
+            repairAll: jasmine.createSpy('repairAll'),
             getUnit: () => ({
-                name: 'Atlas AS7-D',
-                chassis: 'Atlas',
-                model: 'AS7-D',
-                as: { TP: 'BM', specials: [] },
+                as: { TP: 'BM' },
             }),
         };
         const group = {
             units: () => [unit],
-            activeFormation: () => null,
-            groupDisplayName: () => 'First Lance',
-            formationDisplayName: () => null,
-            hasValidFormation: () => true,
         };
-        const optionsService = { options: () => ({ ASUseHex: false }) };
-        const injector = {
-            get: () => ({
-                parseAbility: (text: string) => ({ originalText: text, ability: null }),
+
+        await ASPrintUtil.multipagePrint(
+            { tick: jasmine.createSpy('tick') } as never,
+            {} as never,
+            {} as never,
+            [group] as never,
+            {
+                clean: true,
+                ASPrintPageBreakOnGroups: false,
+                ASPrintCardSize: 'standard',
+                printMargin: 'none',
+            },
+            false,
+        );
+
+        const overlay = document.getElementById('as-multipage-container')!;
+        expect(overlay.querySelectorAll('.as-print-page').length).toBe(1);
+        expect(overlay.querySelector('.as-roster-summary')).toBeNull();
+        expect(overlay.querySelector('.as-rules-reference')).toBeNull();
+        expect(unit.repairAll).toHaveBeenCalled();
+
+        window.dispatchEvent(new Event('click'));
+        expect(unit.update).toHaveBeenCalledWith({ state: 'original' });
+        expect(unit.disabledSaving).toBeFalse();
+    });
+
+    it('temporarily clears current heat and restores the complete unit state after printing', async () => {
+        const createContainer = () => {
+            const overlay = document.createElement('div');
+            overlay.id = 'as-multipage-container';
+            return overlay;
+        };
+        spyOn<any>(ASPrintUtil, 'createFixedPrintContainer').and.callFake(createContainer);
+        spyOn<any>(ASPrintUtil, 'createFlexPrintContainer').and.callFake(createContainer);
+
+        let heat = 2;
+        let pendingHeat = 1;
+        let renderedHeat: [number, number] | undefined;
+        const serialized = { state: 'original' };
+        const unit = {
+            disabledSaving: false,
+            serialize: () => serialized,
+            update: jasmine.createSpy('update').and.callFake(() => {
+                heat = 2;
+                pendingHeat = 1;
             }),
+            repairAll: jasmine.createSpy('repairAll'),
+            setHeat: (value: number) => { heat = value; },
+            setPendingHeat: (value: number) => { pendingHeat = value; },
+            getUnit: () => ({ as: { TP: 'BM' } }),
         };
-        const force = { name: 'Example Force' };
+        const group = { units: () => [unit] };
 
-        const withSummary = await printWithSummarySetting(true);
-        expect(withSummary.querySelector('.as-roster-summary')).not.toBeNull();
-        expect(withSummary.querySelector('.as-rules-reference')).not.toBeNull();
-        window.dispatchEvent(new Event('click'));
+        await ASPrintUtil.multipagePrint(
+            { tick: () => { renderedHeat = [heat, pendingHeat]; } } as never,
+            {} as never,
+            {} as never,
+            [group] as never,
+            {
+                clean: false,
+                ASPrintPageBreakOnGroups: false,
+                ASPrintCardSize: 'standard',
+                printMargin: 'none',
+            },
+            false,
+        );
 
-        const withoutSummary = await printWithSummarySetting(false);
-        expect(withoutSummary.querySelector('.as-roster-summary')).toBeNull();
-        expect(withoutSummary.querySelector('.as-rules-reference')).toBeNull();
-        window.dispatchEvent(new Event('click'));
+        expect(renderedHeat).toEqual([0, 0]);
+        expect(unit.update).toHaveBeenCalledWith(serialized);
+        expect(heat).toBe(2);
+        expect(pendingHeat).toBe(1);
+        expect(unit.disabledSaving).toBeFalse();
 
-        async function printWithSummarySetting(printRosterSummary: boolean): Promise<HTMLElement> {
-            await ASPrintUtil.multipagePrint(
-                {} as never,
-                injector as never,
-                optionsService as never,
-                [group] as never,
-                {
-                    clean: true,
-                    printPilotData: true,
-                    printRosterSummary,
-                    recordSheetCenterPanelContent: 'clusterTable',
-                    ASPrintPageBreakOnGroups: false,
-                    ASPrintCardSize: 'standard',
-                    printMargin: 'none',
-                },
-                false,
-                force as never,
-            );
-            return document.getElementById('as-multipage-container')!;
-        }
+        window.dispatchEvent(new Event('afterprint'));
+
+        expect(unit.update).toHaveBeenCalledTimes(1);
+        expect(heat).toBe(2);
+        expect(pendingHeat).toBe(1);
+        expect(unit.disabledSaving).toBeFalse();
+    });
+
+    it('restores unit state and removes the overlay when rendering fails', async () => {
+        const createContainer = () => {
+            const overlay = document.createElement('div');
+            overlay.id = 'as-multipage-container';
+            return overlay;
+        };
+        spyOn<any>(ASPrintUtil, 'createFixedPrintContainer').and.callFake(createContainer);
+        spyOn<any>(ASPrintUtil, 'createFlexPrintContainer').and.callFake(createContainer);
+
+        const unit = {
+            disabledSaving: false,
+            serialize: () => ({ state: 'original' }),
+            update: jasmine.createSpy('update'),
+            repairAll: jasmine.createSpy('repairAll'),
+            getUnit: () => ({ as: { TP: 'BM' } }),
+        };
+        const group = { units: () => [unit] };
+        const renderError = new Error('render failed');
+
+        await expectAsync(ASPrintUtil.multipagePrint(
+            { tick: () => { throw renderError; } } as never,
+            {} as never,
+            {} as never,
+            [group] as never,
+            {
+                clean: true,
+                ASPrintPageBreakOnGroups: false,
+                ASPrintCardSize: 'standard',
+                printMargin: 'none',
+            },
+            false,
+        )).toBeRejectedWith(renderError);
+
+        expect(unit.update).toHaveBeenCalledWith({ state: 'original' });
+        expect(unit.disabledSaving).toBeFalse();
+        expect(document.getElementById('as-multipage-container')).toBeNull();
+        expect(document.body.classList).not.toContain('as-multipage-container-active');
+    });
+
+    it('attempts to restore every unit when one restoration fails', () => {
+        const restoreError = new Error('restore failed');
+        const firstUnit = {
+            disabledSaving: false,
+            serialize: () => ({ state: 'first' }),
+            update: jasmine.createSpy('first update').and.throwError(restoreError),
+            repairAll: jasmine.createSpy('first repair'),
+        };
+        const secondUnit = {
+            disabledSaving: false,
+            serialize: () => ({ state: 'second' }),
+            update: jasmine.createSpy('second update'),
+            repairAll: jasmine.createSpy('second repair'),
+        };
+        const restore = prepareUnitsForPrint([firstUnit, secondUnit], true);
+
+        expect(restore).toThrow(restoreError);
+        expect(firstUnit.disabledSaving).toBeFalse();
+        expect(secondUnit.update).toHaveBeenCalledWith({ state: 'second' });
+        expect(secondUnit.disabledSaving).toBeFalse();
     });
 });
+
+function prepareUnitsForPrint(units: unknown[], clean: boolean): () => void {
+    return (ASPrintUtil as unknown as {
+        prepareUnitsForPrint(units: unknown[], clean: boolean): () => void;
+    }).prepareUnitsForPrint(units, clean);
+}
 
 function getPrintLayout(cardSize: PrintAllOptions['ASPrintCardSize']): TestPrintLayout {
     return (ASPrintUtil as unknown as {

@@ -57,6 +57,7 @@ function c3BadgeUnit(
         shutdown: { value: false, writable: true, configurable: true },
         getUnit: { value: () => ({ comp: [] }), configurable: true },
         getInventory: { value: () => inventory, configurable: true },
+        getCrewMember: { value: () => ({ getState: () => 'healthy' }), configurable: true },
         getEquipmentStatus: {
             value: (entry: MountedEquipment) => unavailable.has(entry.id) ? 'destroyed' : 'available',
             configurable: true,

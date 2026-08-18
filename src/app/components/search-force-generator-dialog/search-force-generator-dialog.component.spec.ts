@@ -61,6 +61,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
                     maxDelta: 1,
                 },
                 failureSearchWindowMs: 300,
+                ignoreRarityWeight: false,
                 preventDuplicateChassis: false,
                 useTaggedQuantities: false,
                 useUnitTagsAsChassisTags: false,
@@ -1139,6 +1140,21 @@ describe('SearchForceGeneratorDialogComponent', () => {
         component.reroll();
 
         expect(buildPreviewSpy.calls.mostRecent().args[0].preventDuplicateChassis).toBeTrue();
+    });
+
+    it('stores and forwards the ignored-rarity checkbox state', () => {
+        component.onIgnoreRarityWeightChange({
+            target: { checked: true },
+        } as unknown as Event);
+
+        expect(buildPreviewSpy).not.toHaveBeenCalled();
+        expect(component.ignoreRarityWeight()).toBeTrue();
+        expect(optionsSignal().forceGenerator.ignoreRarityWeight).toBeTrue();
+        expect(component.ignoreRarityWeightTooltip()).toContain('every eligible unit has the same base chance');
+
+        component.reroll();
+
+        expect(buildPreviewSpy.calls.mostRecent().args[0].ignoreRarityWeight).toBeTrue();
     });
 
     it('unchecks tagged quantities when duplicate-chassis prevention is checked', () => {

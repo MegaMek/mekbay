@@ -12,6 +12,7 @@ import { OptionsService } from '../../services/options.service';
 
 export interface PrintOptionsDialogData {
     gameSystem: GameSystem;
+    printSummary: (printOptions: PrintAllOptions) => Promise<void>;
 }
 
 @Component({
@@ -29,18 +30,6 @@ export interface PrintOptionsDialogData {
             <p class="message">These settings only apply to this print job.</p>
 
             <div class="option-grid">
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="printRosterSummary">Roster summary:</label>
-                        <select id="printRosterSummary" class="bt-select option-select"
-                            [value]="printOptions().printRosterSummary"
-                            (change)="onBooleanChange('printRosterSummary', $event)">
-                            <option value="false">No</option>
-                            <option value="true">Yes</option>
-                        </select>
-                    </div>
-                </div>
-
                 <div class="option-col">
                     <div class="option-row">
                         <label for="cleanPrint">Units condition:</label>
@@ -121,8 +110,9 @@ export interface PrintOptionsDialogData {
             </div>
         </div>
         <div class="wide-dialog-actions">
-            <button class="bt-button primary" (click)="onPrint()">PRINT</button>
-            <button class="bt-button" (click)="onClose()">CANCEL</button>
+            <button class="bt-button primary" [disabled]="isPrinting()" (click)="onPrint()">{{ isClassic() ? 'SHEETS' : 'CARDS' }}</button>
+            <button class="bt-button" [disabled]="isPrinting()" (click)="onPrintSummary()">SUMMARY</button>
+            <button class="bt-button" [disabled]="isPrinting()" (click)="onClose()">DISMISS</button>
         </div>
     </div>
     `,
@@ -159,6 +149,10 @@ export interface PrintOptionsDialogData {
             gap: 0.75rem;
         }
 
+        .option-row > label {
+            text-align: left;
+        }
+
         .description {
             font-size: 0.8em;
             color: var(--text-color-secondary);
@@ -181,15 +175,16 @@ export interface PrintOptionsDialogData {
                 width: calc(100vw - 16px);
             }
 
-            .option-row {
-                flex-direction: column;
-                align-items: stretch;
+            .option-row:has(> label + select) {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                align-items: center;
             }
 
-            .option-select {
-                min-width: 0;
-                width: 100%;
-                max-width: none;
+            .option-row > label + select {
+                width: max-content;
+                min-width: 140px;
+                max-width: min(360px, 55vw);
             }
         }
     `]
@@ -202,11 +197,12 @@ export class PrintOptionsDialogComponent {
     protected readonly printOptions = signal<PrintAllOptions>({
         ...this.optionsService.options().printAllOptions,
     });
+    protected readonly isPrinting = signal(false);
 
     protected readonly isClassic = computed(() => this.data.gameSystem === GameSystem.CLASSIC);
     protected readonly isAlphaStrike = computed(() => this.data.gameSystem === GameSystem.ALPHA_STRIKE);
 
-    protected onBooleanChange(key: 'clean' | 'printPilotData' | 'printRosterSummary' | 'ASPrintPageBreakOnGroups', event: Event): void {
+    protected onBooleanChange(key: 'clean' | 'printPilotData' | 'ASPrintPageBreakOnGroups', event: Event): void {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.printOptions.update(current => ({ ...current, [key]: value }));
     }
@@ -227,12 +223,32 @@ export class PrintOptionsDialogComponent {
     }
 
     protected onClose(): void {
+        if (this.isPrinting()) return;
         this.dialogRef.close(null);
     }
 
     protected async onPrint(): Promise<void> {
+        await this.runPrint(printOptions => this.dialogRef.close(printOptions));
+    }
+
+    protected async onPrintSummary(): Promise<void> {
+        await this.runPrint(printOptions => this.data.printSummary(printOptions));
+    }
+
+    private async runPrint(action: (printOptions: PrintAllOptions) => void | Promise<void>): Promise<void> {
+        if (this.isPrinting()) return;
+        this.isPrinting.set(true);
+        try {
+            const printOptions = await this.savePrintOptions();
+            await action(printOptions);
+        } finally {
+            this.isPrinting.set(false);
+        }
+    }
+
+    private async savePrintOptions(): Promise<PrintAllOptions> {
         const printOptions = this.printOptions();
         await this.optionsService.setOption('printAllOptions', printOptions);
-        this.dialogRef.close(printOptions);
+        return printOptions;
     }
 }
