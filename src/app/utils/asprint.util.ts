@@ -880,7 +880,7 @@ export class ASPrintUtil {
         // Table header
         const thead = document.createElement('thead');
         const headerRow = document.createElement('tr');
-        const columns = ['Unit', 'TP', 'SZ', 'Skill', 'PV', 'Role', 'MV', 'S', 'M', 'L', 'A+S', 'OV', 'Specials'];
+        const columns = ['Unit', 'TP', 'SZ', 'Skill', 'PV', 'Role', 'TMM', 'MV', 'S', 'M', 'L', 'A+S', 'OV', 'Specials'];
         for (const col of columns) {
             const th = document.createElement('th');
             th.textContent = col;
@@ -910,6 +910,7 @@ export class ASPrintUtil {
                     { content: String(forceUnit.pilotSkill()) },
                     { content: String(adjustedPv) },
                     { content: unit.role || '' },
+                    { content: this.formatRosterTmm(forceUnit) },
                     { content: this.formatRosterMovement(forceUnit, useHex), renderAsHtml: true },
                     { content: as.dmg.dmgS },
                     { content: as.dmg.dmgM },
@@ -955,6 +956,15 @@ export class ASPrintUtil {
         }
 
         return container;
+    }
+
+    private static formatRosterTmm(forceUnit: ASForceUnit): string {
+        const isBattleMek = forceUnit.getUnit().as.TP === 'BM';
+
+        return Object.entries(forceUnit.effectiveTmm())
+            .filter(([mode]) => !isBattleMek || (mode !== 'a' && mode !== 'g'))
+            .map(([mode, value]) => `${value}${mode}`)
+            .join('/');
     }
 
     private static formatRosterMovement(forceUnit: ASForceUnit, useHex: boolean): string {

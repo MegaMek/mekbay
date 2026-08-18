@@ -324,7 +324,9 @@ export class RsPolyfillUtil {
     }
 
     private static addLifeSupportPilotDamageWarning(unit: Unit, svg: SVGSVGElement): void {
-        if (unit.type !== 'Mek' || svg.getElementById('lifeSupportPilotDamageWarning')) return;
+        if (unit.type !== 'Mek'
+            || svg.getElementById('heatLifeSupportWarning')
+            || svg.getElementById('lifeSupportPilotDamageWarning')) return;
 
         const warriorData = [
             this.WARRIOR_DATA_SINGLE,
@@ -337,7 +339,7 @@ export class RsPolyfillUtil {
         const warningWidth = 42;
         const warningHeight = 15;
         const warningX = coords.x + coords.width - warningWidth - 6;
-        const warningY = coords.y - 0.5;
+        const warningY = coords.y - 2;
         const warning = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         warning.setAttribute('id', 'lifeSupportPilotDamageWarning');
         warning.setAttribute('class', 'screen-only no-autocolor');
