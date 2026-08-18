@@ -69,7 +69,10 @@ export class CrewMember {
 
     toggleUnconscious() {
         const newState = this.state === 'unconscious' ? 'healthy' : 'unconscious';
-        this.unit.setCrewState(this.id, newState);
+        if (this.state === newState) return;
+        this.state = newState;
+        this.unit.setCrewMember(this.id, this);
+        this.unit.setModified();
     }
 
     isDead(): boolean {
