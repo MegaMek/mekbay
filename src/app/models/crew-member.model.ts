@@ -10,6 +10,16 @@ export const DEFAULT_GUNNERY_SKILL = 4;
 export const DEFAULT_PILOTING_SKILL = 5;
 export const DEAD_CREW_HIT_THRESHOLD = 6;
 export const CRIPPLED_CREW_HIT_THRESHOLD = 4;
+const CONSCIOUSNESS_SCALE = [3, 5, 7, 10, 11];
+
+export function getConsciousnessTarget(hits: number): number | null {
+    return CONSCIOUSNESS_SCALE[Math.trunc(hits) - 1] ?? null;
+}
+
+export function getConsciousnessHitCount(target: number): number | null {
+    const hitIndex = CONSCIOUSNESS_SCALE.indexOf(Math.trunc(target));
+    return hitIndex < 0 ? null : hitIndex + 1;
+}
 
 export type SkillType = 'gunnery' | 'piloting';
 export type CrewMemberState = 'healthy' | 'ejected' | 'unconscious' | 'dead' | 'killed' | 'stunned';
@@ -46,6 +56,10 @@ export class CrewMember {
 
     getId(): number {
         return this.id;
+    }
+
+    getConsciousnessTarget() {
+        return getConsciousnessTarget(this.getHits());
     }
 
     toggleUnconscious() {

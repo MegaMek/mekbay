@@ -3,7 +3,7 @@
 // Author: Drake
 
 import type { CBTForceUnit } from './cbt-force-unit.model';
-import { CrewMember } from './crew-member.model';
+import { CrewMember, getConsciousnessHitCount, getConsciousnessTarget } from './crew-member.model';
 
 describe('CrewMember serialization', () => {
     function createCrew(unitSubtype: string): CrewMember {
@@ -36,5 +36,13 @@ describe('CrewMember serialization', () => {
 
         expect(serialized.asfGunnerySkill).toBe(2);
         expect(serialized.asfPilotingSkill).toBe(3);
+    });
+});
+
+describe('consciousness table', () => {
+    it('maps pilot-hit tiers in both directions', () => {
+        expect([1, 2, 3, 4, 5].map(getConsciousnessTarget)).toEqual([3, 5, 7, 10, 11]);
+        expect([3, 5, 7, 10, 11].map(getConsciousnessHitCount)).toEqual([1, 2, 3, 4, 5]);
+        expect(getConsciousnessHitCount(8)).toBeNull();
     });
 });
