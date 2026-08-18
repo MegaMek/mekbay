@@ -12,6 +12,11 @@ export const DEAD_CREW_HIT_THRESHOLD = 6;
 export const CRIPPLED_CREW_HIT_THRESHOLD = 4;
 const CONSCIOUSNESS_SCALE = [3, 5, 7, 10, 11];
 
+function normalizeCrewHits(hits: number): number {
+    if (!Number.isFinite(hits)) return 0;
+    return Math.min(DEAD_CREW_HIT_THRESHOLD, Math.max(0, Math.trunc(hits)));
+}
+
 export function getConsciousnessTarget(hits: number): number | null {
     return CONSCIOUSNESS_SCALE[Math.trunc(hits) - 1] ?? null;
 }
@@ -64,10 +69,7 @@ export class CrewMember {
 
     toggleUnconscious() {
         const newState = this.state === 'unconscious' ? 'healthy' : 'unconscious';
-        if (this.state === newState) return;
-        this.state = newState;
-        this.unit.setCrewMember(this.id, this);
-        this.unit.setModified();
+        this.unit.setCrewState(this.id, newState);
     }
 
     isDead(): boolean {
@@ -141,8 +143,9 @@ export class CrewMember {
     }
 
     setHits(hits: number) {
-        if (hits === this.hits) return;
-        this.hits = hits;
+        const normalized = normalizeCrewHits(hits);
+        if (normalized === this.hits) return;
+        this.hits = normalized;
         this.unit.setCrewMember(this.id, this);
         this.unit.setModified();
     }
@@ -186,7 +189,8 @@ export class CrewMember {
         if (data.pilotingSkill !== this.pilotingSkill) this.pilotingSkill = data.pilotingSkill;
         if (data.asfGunnerySkill !== this.asfGunnerySkill) this.asfGunnerySkill = data.asfGunnerySkill;
         if (data.asfPilotingSkill !== this.asfPilotingSkill) this.asfPilotingSkill = data.asfPilotingSkill;
-        if (data.hits !== this.hits) this.hits = data.hits;
+        const hits = normalizeCrewHits(data.hits);
+        if (hits !== this.hits) this.hits = hits;
 
         const newState = CrewMember.deserializeStoredState(data.state, this.unit);
         if (newState !== this.state) this.state = newState;

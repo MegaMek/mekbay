@@ -159,6 +159,10 @@ export interface PrintOptionsDialogData {
             gap: 0.75rem;
         }
 
+        .option-row > label {
+            text-align: left;
+        }
+
         .description {
             font-size: 0.8em;
             color: var(--text-color-secondary);
@@ -181,15 +185,16 @@ export interface PrintOptionsDialogData {
                 width: calc(100vw - 16px);
             }
 
-            .option-row {
-                flex-direction: column;
-                align-items: stretch;
+            .option-row:has(> label + select) {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                align-items: center;
             }
 
-            .option-select {
-                min-width: 0;
-                width: 100%;
-                max-width: none;
+            .option-row > label + select {
+                width: max-content;
+                min-width: 140px;
+                max-width: min(360px, 55vw);
             }
         }
     `]
