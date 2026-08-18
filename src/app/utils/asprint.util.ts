@@ -4,18 +4,14 @@
 
 import { type ApplicationRef, type ComponentRef, createComponent, EnvironmentInjector, type Injector } from '@angular/core';
 import type { ASForceUnit } from '../models/as-force-unit.model';
-import { getFactionAffinity } from '../models/factions.model';
-import type { Force, UnitGroup } from '../models/force.model';
+import type { UnitGroup } from '../models/force.model';
 import { AlphaStrikeCardComponent } from '../components/alpha-strike-card/alpha-strike-card.component';
 import { getLayoutForUnitType } from '../components/alpha-strike-card/card-layout.config';
 import type { OptionsService } from '../services/options.service';
 import type { ColorScheme } from '../models/options.model';
-import { formatMovement, formatMovementWithAlternate } from './as-common.util';
 import { isIOS } from './platform.util';
 import type { PrintAllOptions } from '../models/print-options.model';
-import { createPrintRosterLogoMarkup, createPrintRosterQrMarkup, getPrintRosterBrandingStyles } from './print-roster-branding.util';
-import { AsAbilityLookupService } from '../services/as-ability-lookup.service';
-import { createASPrintRulesReferencePage, getASPrintRulesReferenceStyles } from './as-print-reference.util';
+import { mountPrintOverlay } from './print-overlay.util';
 
 /**
  * Represents a single card to render (handles multi-card units)
@@ -24,12 +20,6 @@ interface CardRenderItem {
     forceUnit: ASForceUnit;
     cardIndex: number;
     groupIndex: number;
-}
-
-interface RosterCell {
-    content: string;
-    className?: string;
-    renderAsHtml?: boolean;
 }
 
 interface ASPrintLayout {
@@ -62,6 +52,29 @@ const AS_PRINT_LAYOUTS = {
     },
 } satisfies Record<PrintAllOptions['ASPrintCardSize'], ASPrintLayout>;
 
+type ASCardPrintOptions = Pick<
+    PrintAllOptions,
+    'clean' | 'ASPrintPageBreakOnGroups' | 'ASPrintCardSize' | 'printMargin'
+>;
+
+interface ASPrintUnitSnapshot {
+    unit: ASForceUnit;
+    serialized: ReturnType<ASForceUnit['serialize']>;
+    disabledSaving: boolean;
+}
+
+interface ASPrintContainerOptions {
+    appRef: ApplicationRef;
+    injector: Injector;
+    optionsService: OptionsService;
+    cardItems: CardRenderItem[];
+    pageBreakOnGroups: boolean;
+    groups: UnitGroup<ASForceUnit>[];
+    printMargin: PrintAllOptions['printMargin'];
+    cardSize: PrintAllOptions['ASPrintCardSize'];
+    componentRefs: ComponentRef<AlphaStrikeCardComponent>[];
+}
+
 
 export class ASPrintUtil {
     /**
@@ -79,9 +92,8 @@ export class ASPrintUtil {
         injector: Injector,
         optionsService: OptionsService,
         groups: UnitGroup<ASForceUnit>[],
-        printOptions: PrintAllOptions,
+        printOptions: ASCardPrintOptions,
         triggerPrint: boolean = true,
-        force?: Force
     ): Promise<void> {
         const allUnits = groups.flatMap(g => g.units());
         if (allUnits.length === 0) {
@@ -89,93 +101,80 @@ export class ASPrintUtil {
             return;
         }
 
-        const clean = printOptions.clean;
-
-        // Store original heat values and set to 0 for printing
-        const originalHeats = new Map<ASForceUnit, number>();
-        if (!clean) {
-            for (const unit of allUnits) {
-                unit.disabledSaving = true;
-                const unitHeat = unit.getHeat();
-                originalHeats.set(unit, unitHeat);
-                unit.setHeat(0);
-            }
-        }
-
-        // Expand units into individual cards (multi-card units become multiple entries)
-        const cardRenderItems = this.expandToCardItems(groups);
-        const pageBreakOnGroups = printOptions.ASPrintPageBreakOnGroups;
-        const cardSize = printOptions.ASPrintCardSize ?? 'standard';
-        
-        // Create print container - use different layouts for iOS vs other platforms
-        const useFixedLayout = isIOS();
-        const { overlay, cardComponentRefs } = useFixedLayout
-            ? await this.createFixedPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups, printOptions.printMargin, cardSize)
-            : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups, printOptions.printMargin, cardSize);
-
-        // Insert the roster and rules-reference pages before the cards when summary printing is enabled.
-        const printRosterSummary = printOptions.printRosterSummary;
-        if (printRosterSummary && force) {
-            const useHex = optionsService.options().ASUseHex;
-            const rosterPage = await this.createRosterSummaryPage(groups, force, useHex);
-            const rulesReferencePage = createASPrintRulesReferencePage(
-                groups,
-                injector.get(AsAbilityLookupService),
-                useHex,
-                force.name,
-            );
-            const firstContentNode = Array.from(overlay.children).find(child => !(child instanceof HTMLStyleElement));
-            if (firstContentNode) {
-                overlay.insertBefore(rosterPage, firstContentNode);
-                overlay.insertBefore(rulesReferencePage, firstContentNode);
-            } else {
-                overlay.appendChild(rosterPage);
-                overlay.appendChild(rulesReferencePage);
-            }
-        }
-
-        // Wait for fonts and images to load
-        if ((document as any).fonts?.ready) {
-            try { await (document as any).fonts.ready; } catch { /* ignore */ }
-        }
-        await this.waitForImagesToLoad(overlay);
-        await this.nextAnimationFrames(2);
-
-        // Trigger print
-        if (triggerPrint) {
-            window.print();
-        }
-
-        // Remove overlay on first user interaction
-        const removeOverlay = () => {
-            // Cleanup component refs
-            for (const ref of cardComponentRefs) {
-                appRef.detachView(ref.hostView);
-                ref.destroy();
-            }
-
-            overlay.remove();
-            document.body.classList.remove('as-multipage-container-active');
-
-            // Restore original heat values
-            if (originalHeats.size > 0) {
-                for (const unit of allUnits) {
-                    const heat = originalHeats.get(unit);
-                    if (heat !== undefined) {
-                        unit.setHeat(heat);
-                        unit.disabledSaving = false;
-                    }
+        const restoreUnits = this.prepareUnitsForPrint(allUnits, printOptions.clean);
+        const cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
+        let detachedViewCount = 0;
+        const detachViews = () => {
+            let firstError: unknown;
+            while (detachedViewCount < cardComponentRefs.length) {
+                const ref = cardComponentRefs[detachedViewCount];
+                detachedViewCount++;
+                try {
+                    appRef.detachView(ref.hostView);
+                } catch (error) {
+                    firstError ??= error;
                 }
             }
+            if (firstError !== undefined) {
+                throw firstError;
+            }
+        };
+        let cleanedUp = false;
+        const cleanup = () => {
+            if (cleanedUp) return;
+            cleanedUp = true;
 
-            window.removeEventListener('click', removeOverlay, { capture: true });
-            window.removeEventListener('keydown', removeOverlay, { capture: true });
-            window.removeEventListener('pointerdown', removeOverlay, { capture: true });
+            let firstError: unknown;
+            const attempt = (operation: () => void) => {
+                try {
+                    operation();
+                } catch (error) {
+                    firstError ??= error;
+                }
+            };
+
+            attempt(restoreUnits);
+            attempt(detachViews);
+            for (const ref of cardComponentRefs) {
+                attempt(() => ref.destroy());
+            }
+            if (firstError !== undefined) {
+                throw firstError;
+            }
         };
 
-        window.addEventListener('click', removeOverlay, { capture: true, once: true });
-        window.addEventListener('keydown', removeOverlay, { capture: true, once: true });
-        window.addEventListener('pointerdown', removeOverlay, { capture: true, once: true });
+        try {
+            const cardRenderItems = this.expandToCardItems(groups);
+            const containerOptions: ASPrintContainerOptions = {
+                appRef,
+                injector,
+                optionsService,
+                cardItems: cardRenderItems,
+                pageBreakOnGroups: printOptions.ASPrintPageBreakOnGroups,
+                groups,
+                printMargin: printOptions.printMargin,
+                cardSize: printOptions.ASPrintCardSize,
+                componentRefs: cardComponentRefs,
+            };
+            const overlay = isIOS()
+                ? this.createFixedPrintContainer(containerOptions)
+                : this.createFlexPrintContainer(containerOptions);
+
+            await mountPrintOverlay({
+                overlay,
+                bodyClass: 'as-multipage-container-active',
+                triggerPrint,
+                onMount: () => {
+                    appRef.tick();
+                    detachViews();
+                    restoreUnits();
+                },
+                onCleanup: cleanup,
+            });
+        } catch (error) {
+            cleanup();
+            throw error;
+        }
     }
 
     /**
@@ -202,21 +201,65 @@ export class ASPrintUtil {
         return items;
     }
 
+    private static prepareUnitsForPrint(units: ASForceUnit[], clean: boolean): () => void {
+        const snapshots: ASPrintUnitSnapshot[] = units.map(unit => ({
+            unit,
+            serialized: unit.serialize(),
+            disabledSaving: unit.disabledSaving,
+        }));
+        let restored = false;
+        const restore = () => {
+            if (restored) return;
+
+            let firstError: unknown;
+            for (const snapshot of snapshots) {
+                try {
+                    snapshot.unit.update(snapshot.serialized);
+                } catch (error) {
+                    firstError ??= error;
+                } finally {
+                    snapshot.unit.disabledSaving = snapshot.disabledSaving;
+                }
+            }
+            restored = true;
+            if (firstError !== undefined) {
+                throw firstError;
+            }
+        };
+
+        try {
+            for (const unit of units) {
+                unit.disabledSaving = true;
+                if (clean) {
+                    unit.repairAll();
+                } else {
+                    unit.setHeat(0);
+                    unit.setPendingHeat(0);
+                }
+            }
+        } catch (error) {
+            restore();
+            throw error;
+        }
+
+        return restore;
+    }
+
     /**
      * Creates a fixed grid print container (iOS-specific).
      * Uses fixed page dimensions for reliable printing on iOS.
      */
-    private static async createFixedPrintContainer(
-        appRef: ApplicationRef,
-        injector: Injector,
-        optionsService: OptionsService,
-        cardItems: CardRenderItem[],
-        pageBreakOnGroups: boolean,
-        groups: UnitGroup<ASForceUnit>[],
-        printMargin: PrintAllOptions['printMargin'],
-        cardSize: PrintAllOptions['ASPrintCardSize']
-    ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
-        const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
+    private static createFixedPrintContainer({
+        appRef,
+        injector,
+        optionsService,
+        cardItems,
+        pageBreakOnGroups,
+        groups,
+        printMargin,
+        cardSize,
+        componentRefs,
+    }: ASPrintContainerOptions): HTMLElement {
         const useHex = optionsService.options().ASUseHex;
         const cardStyle = optionsService.options().colorScheme;
         const layout = this.getPrintLayout(cardSize);
@@ -293,31 +336,24 @@ export class ASPrintUtil {
             }
         }
         
-        // Append to body
-        document.body.appendChild(overlay);
-        document.body.classList.add('as-multipage-container-active');
-        
-        // Trigger change detection for all components
-        appRef.tick();
-        
-        return { overlay, cardComponentRefs: componentRefs };
+        return overlay;
     }
 
     /**
      * Creates a flexible print container (non-iOS platforms).
      * Uses flexbox with auto-wrapping for portrait/landscape support.
      */
-    private static async createFlexPrintContainer(
-        appRef: ApplicationRef,
-        injector: Injector,
-        optionsService: OptionsService,
-        cardItems: CardRenderItem[],
-        pageBreakOnGroups: boolean,
-        groups: UnitGroup<ASForceUnit>[],
-        printMargin: PrintAllOptions['printMargin'],
-        cardSize: PrintAllOptions['ASPrintCardSize']
-    ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
-        const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
+    private static createFlexPrintContainer({
+        appRef,
+        injector,
+        optionsService,
+        cardItems,
+        pageBreakOnGroups,
+        groups,
+        printMargin,
+        cardSize,
+        componentRefs,
+    }: ASPrintContainerOptions): HTMLElement {
         const useHex = optionsService.options().ASUseHex;
         const cardStyle = optionsService.options().colorScheme;
         
@@ -385,14 +421,7 @@ export class ASPrintUtil {
             overlay.appendChild(flexContainer);
         }
         
-        // Append to body
-        document.body.appendChild(overlay);
-        document.body.classList.add('as-multipage-container-active');
-        
-        // Trigger change detection for all components
-        appRef.tick();
-        
-        return { overlay, cardComponentRefs: componentRefs };
+        return overlay;
     }
     
     /**
@@ -426,7 +455,6 @@ export class ASPrintUtil {
         nameSpan.textContent = group.groupDisplayName();
         header.appendChild(nameSpan);
 
-        const formation = group.activeFormation();
         const subtitle = group.formationDisplayName();
         if (subtitle) {
             const formSpan = document.createElement('span');
@@ -464,20 +492,28 @@ export class ASPrintUtil {
             environmentInjector,
             elementInjector: injector
         });
-        
-        componentRef.setInput('forceUnit', item.forceUnit);
-        componentRef.setInput('cardIndex', item.cardIndex);
-        componentRef.setInput('cardStyle', cardStyle);
-        componentRef.setInput('useHex', useHex);
-        componentRef.setInput('isSelected', false);
-        
-        appRef.attachView(componentRef.hostView);
-        
-        const cardElement = componentRef.location.nativeElement as HTMLElement;
-        cellDiv.appendChild(cardElement);
-        container.appendChild(cellDiv);
-        
-        componentRefs.push(componentRef);
+        let attached = false;
+        try {
+            componentRef.setInput('forceUnit', item.forceUnit);
+            componentRef.setInput('cardIndex', item.cardIndex);
+            componentRef.setInput('cardStyle', cardStyle);
+            componentRef.setInput('useHex', useHex);
+            componentRef.setInput('isSelected', false);
+
+            appRef.attachView(componentRef.hostView);
+            attached = true;
+
+            const cardElement = componentRef.location.nativeElement as HTMLElement;
+            cellDiv.appendChild(cardElement);
+            container.appendChild(cellDiv);
+            componentRefs.push(componentRef);
+        } catch (error) {
+            if (attached) {
+                appRef.detachView(componentRef.hostView);
+            }
+            componentRef.destroy();
+            throw error;
+        }
     }
 
     private static getPrintLayout(cardSize: PrintAllOptions['ASPrintCardSize']): ASPrintLayout {
@@ -585,10 +621,6 @@ export class ASPrintUtil {
                 margin-left: 0.05in;
             }
 
-            ${this.getRosterSummaryStyles()}
-            ${getASPrintRulesReferenceStyles()}
-            ${getPrintRosterBrandingStyles()}
-
             @media print {
                 body, html {
                     margin: 0 !important;
@@ -609,16 +641,6 @@ export class ASPrintUtil {
                 .as-print-page.last-page {
                     page-break-after: auto;
                     break-after: auto;
-                }
-
-                .as-roster-summary {
-                    page-break-after: always;
-                    break-after: page;
-                }
-
-                .as-rules-reference {
-                    page-break-after: always;
-                    break-after: page;
                 }
 
                 @page {
@@ -719,10 +741,6 @@ export class ASPrintUtil {
                 margin-left: 0.05in;
             }
 
-            ${this.getRosterSummaryStyles()}
-            ${getASPrintRulesReferenceStyles()}
-            ${getPrintRosterBrandingStyles()}
-
             @media print {
                 body, html {
                     margin: 0 !important;
@@ -738,16 +756,6 @@ export class ASPrintUtil {
                     break-after: page;
                 }
 
-                .as-roster-summary {
-                    page-break-after: always;
-                    break-after: page;
-                }
-
-                .as-rules-reference {
-                    page-break-after: always;
-                    break-after: page;
-                }
-
                 @page {
                     size: ${layout.pageSize};
                     margin: ${printMargin === 'none' ? '0' : '0.25in'} !important;
@@ -757,286 +765,4 @@ export class ASPrintUtil {
         `;
     }
 
-    /**
-     * Returns shared CSS styles for the roster summary table.
-     */
-    private static getRosterSummaryStyles(): string {
-        return `
-            .as-roster-summary {
-                position: relative;
-                background: white;
-                padding: 0.2in 0.04in 0;
-                box-sizing: border-box;
-                font-family: sans-serif;
-                color: #222;
-            }
-
-            .as-roster-header {
-                display: flex;
-                align-items: baseline;
-                gap: 0.1in;
-                padding: 0 1.5in 0.08in 0.04in;
-                border-bottom: 2px solid #333;
-                margin-bottom: 0.1in;
-            }
-
-            .as-roster-faction {
-                font-size: 10pt;
-                color: #555;
-            }
-
-            .as-roster-faction::after {
-                content: ':';
-                margin-left: 2px;
-            }
-
-            .as-roster-force-name {
-                font-size: 12pt;
-                font-weight: 700;
-            }
-
-            .as-roster-table {
-                width: 100%;
-                border-collapse: collapse;
-                font-size: 8pt;
-            }
-
-            .as-roster-table th {
-                font-weight: 700;
-                text-align: left;
-                padding: 2px 4px;
-                border-bottom: 1.5px solid #555;
-                white-space: nowrap;
-            }
-
-            .as-roster-table td {
-                padding: 2px 4px;
-                border-bottom: 0.5px solid #ddd;
-                vertical-align: top;
-                white-space: nowrap;
-            }
-
-            .as-roster-footer {
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                gap: 0.12in;
-                font-weight: 700;
-                font-size: 11pt;
-                margin-top: 0.14in;
-                padding: 0.08in 0.04in 0.05in;
-                border-top: 2px solid #333;
-                box-sizing: border-box;
-            }
-
-            .as-roster-footer-total {
-                margin-left: auto;
-                text-align: right;
-                padding-top: 0.04in;
-            }
-        `;
-    }
-
-    /**
-     * Creates a roster summary page with a table of all units.
-     */
-    private static async createRosterSummaryPage(groups: UnitGroup<ASForceUnit>[], force: Force, useHex: boolean): Promise<HTMLElement> {
-        const container = document.createElement('div');
-        container.className = 'as-roster-summary';
-
-        // Header
-        const header = document.createElement('div');
-        header.className = 'as-roster-header';
-        const parts: string[] = [];
-        const faction = force.faction();
-        if (faction) {
-            let factionLabel = faction.name;
-            const factionAffinity = getFactionAffinity(faction);
-            if (factionAffinity !== 'Other' && factionAffinity !== faction.name) {
-                factionLabel += ` · ${factionAffinity}`;
-            }
-            parts.push(factionLabel);
-        }
-        const era = force.era();
-        if (era) {
-            parts.push(era.name);
-        }
-        if (parts.length > 0) {
-            const factionSpan = document.createElement('span');
-            factionSpan.className = 'as-roster-faction';
-            factionSpan.textContent = parts.join(' \u00B7 ');
-            header.appendChild(factionSpan);
-        }
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'as-roster-force-name';
-        nameSpan.textContent = force.name || '';
-        header.appendChild(nameSpan);
-        container.appendChild(header);
-
-        // Table
-        const table = document.createElement('table');
-        table.className = 'as-roster-table';
-
-        // Table header
-        const thead = document.createElement('thead');
-        const headerRow = document.createElement('tr');
-        const columns = ['Unit', 'TP', 'SZ', 'Skill', 'PV', 'Role', 'TMM', 'MV', 'S', 'M', 'L', 'A+S', 'OV', 'Specials'];
-        for (const col of columns) {
-            const th = document.createElement('th');
-            th.textContent = col;
-            headerRow.appendChild(th);
-        }
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
-
-        // Table body
-        const tbody = document.createElement('tbody');
-        let totalPv = 0;
-
-        for (const group of groups) {
-            for (const forceUnit of group.units()) {
-                const unit = forceUnit.getUnit();
-                const as = unit.as;
-                const adjustedPv = forceUnit.adjustedPv();
-                totalPv += adjustedPv;
-
-                const row = document.createElement('tr');
-
-                const unitName = [unit.chassis, unit.model].filter(Boolean).join(' ');
-                const cells: RosterCell[] = [
-                    { content: unitName },
-                    { content: as.TP },
-                    { content: String(as.SZ) },
-                    { content: String(forceUnit.pilotSkill()) },
-                    { content: String(adjustedPv) },
-                    { content: unit.role || '' },
-                    { content: this.formatRosterTmm(forceUnit) },
-                    { content: this.formatRosterMovement(forceUnit, useHex), renderAsHtml: true },
-                    { content: as.dmg.dmgS },
-                    { content: as.dmg.dmgM },
-                    { content: as.dmg.dmgL },
-                    { content: `${as.Arm}+${as.Str}` },
-                    { content: String(as.OV) },
-                    { content: (as.specials || []).join(', ') }
-                ];
-
-                for (const cell of cells) {
-                    row.appendChild(this.createRosterCell(cell));
-                }
-
-                tbody.appendChild(row);
-            }
-        }
-        table.appendChild(tbody);
-        container.appendChild(table);
-
-        // Footer with total PV
-        const footer = document.createElement('div');
-        footer.className = 'as-roster-footer';
-
-        const qrHost = document.createElement('div');
-        qrHost.innerHTML = await createPrintRosterQrMarkup(force);
-        const qr = qrHost.firstElementChild;
-        if (qr) {
-            footer.appendChild(qr);
-        }
-
-        const total = document.createElement('div');
-        total.className = 'as-roster-footer-total';
-        total.textContent = `Total PV: ${totalPv}`;
-        footer.appendChild(total);
-
-        container.appendChild(footer);
-
-        const brandingHost = document.createElement('div');
-        brandingHost.innerHTML = createPrintRosterLogoMarkup();
-        const branding = brandingHost.firstElementChild;
-        if (branding) {
-            container.appendChild(branding);
-        }
-
-        return container;
-    }
-
-    private static formatRosterTmm(forceUnit: ASForceUnit): string {
-        const isBattleMek = forceUnit.getUnit().as.TP === 'BM';
-
-        return Object.entries(forceUnit.effectiveTmm())
-            .filter(([mode]) => !isBattleMek || (mode !== 'a' && mode !== 'g'))
-            .map(([mode, value]) => `${value}${mode}`)
-            .join('/');
-    }
-
-    private static formatRosterMovement(forceUnit: ASForceUnit, useHex: boolean): string {
-        const movementEntries = Object.entries(forceUnit.effectiveMovement())
-            .filter(([, value]) => typeof value === 'number') as Array<[string, number]>;
-
-        if (forceUnit.getUnit().as.TP === 'BM') {
-            return movementEntries
-                .filter(([mode]) => mode !== 'a' && mode !== 'g')
-                .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : 0))
-                .map(([mode, inches]) => this.formatRosterMovementEntry(forceUnit, mode, inches, useHex))
-                .join('/');
-        }
-
-        return movementEntries
-            .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : 0))
-            .map(([mode, inches]) => this.formatRosterMovementEntry(forceUnit, mode, inches, useHex))
-            .join('/');
-    }
-
-    private static formatRosterMovementEntry(forceUnit: ASForceUnit, mode: string, inches: number, useHex: boolean): string {
-        const display = forceUnit.movementDisplayValue(mode, inches);
-        const formatted = display.adjustedInches !== undefined
-            ? formatMovementWithAlternate(display.baseInches, display.adjustedInches, mode, useHex)
-            : formatMovement(display.baseInches, mode, useHex);
-
-        return formatted;
-    }
-
-    private static createRosterCell(cell: RosterCell): HTMLTableCellElement {
-        const td = document.createElement('td');
-
-        if (cell.renderAsHtml) {
-            td.innerHTML = cell.content;
-        } else {
-            td.textContent = cell.content;
-        }
-
-        if (cell.className) {
-            td.className = cell.className;
-        }
-
-        return td;
-    }
-
-    /**
-     * Waits for all images to load within the container.
-     */
-    private static async waitForImagesToLoad(root: ParentNode): Promise<void> {
-        const images = Array.from(root.querySelectorAll('img')) as HTMLImageElement[];
-        if (images.length === 0) return;
-
-        await Promise.all(images.map(img => new Promise<void>((resolve) => {
-            const done = () => resolve();
-            
-            if (img.complete) {
-                return resolve();
-            }
-            
-            img.addEventListener('load', done, { once: true });
-            img.addEventListener('error', done, { once: true });
-            // Safety timeout
-            setTimeout(done, 4000);
-        })));
-    }
-
-    /**
-     * Waits for the specified number of animation frames.
-     */
-    private static async nextAnimationFrames(n: number = 1): Promise<void> {
-        for (let i = 0; i < n; i++) {
-            await new Promise<void>(r => requestAnimationFrame(() => r()));
-        }
-    }
 }

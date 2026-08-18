@@ -12,7 +12,6 @@ export const PRINT_OPTION_VALUES = {
 export interface PrintAllOptions {
     clean: boolean;
     printPilotData: boolean;
-    printRosterSummary: boolean;
     recordSheetCenterPanelContent: typeof PRINT_OPTION_VALUES.recordSheetCenterPanelContent[number];
     ASPrintPageBreakOnGroups: boolean;
     ASPrintCardSize: typeof PRINT_OPTION_VALUES.ASPrintCardSize[number];
