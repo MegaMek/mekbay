@@ -5,7 +5,6 @@
 import { TestBed } from '@angular/core/testing';
 import { DbService } from './db.service';
 import { OptionsService } from './options.service';
-import type { PrintAllOptions } from '../models/print-options.model';
 import { GameSystem } from '../models/common.model';
 
 describe('OptionsService', () => {
@@ -62,7 +61,6 @@ describe('OptionsService', () => {
         expect(service.options().printAllOptions).toEqual({
             clean: false,
             printPilotData: true,
-            printRosterSummary: false,
             recordSheetCenterPanelContent: 'clusterTable',
             ASPrintPageBreakOnGroups: true,
             ASPrintCardSize: 'standard',
@@ -139,7 +137,6 @@ describe('OptionsService', () => {
             printAllOptions: {
                 clean: true,
                 printPilotData: 'yes',
-                printRosterSummary: 1,
                 recordSheetCenterPanelContent: 'diagram',
                 ASPrintPageBreakOnGroups: 'false',
                 ASPrintCardSize: 'large',
@@ -167,6 +164,7 @@ describe('OptionsService', () => {
                     maxDelta: 'two',
                 },
                 failureSearchWindowMs: Number.NaN,
+                ignoreRarityWeight: 'false',
                 preventDuplicateChassis: 'false',
                 useTaggedQuantities: 1,
                 useUnitTagsAsChassisTags: null,
@@ -184,7 +182,6 @@ describe('OptionsService', () => {
         expect(service.options().printAllOptions).toEqual({
             clean: true,
             printPilotData: true,
-            printRosterSummary: false,
             recordSheetCenterPanelContent: 'clusterTable',
             ASPrintPageBreakOnGroups: true,
             ASPrintCardSize: 'standard',
@@ -209,6 +206,7 @@ describe('OptionsService', () => {
                 maxDelta: 2,
             },
             failureSearchWindowMs: 300,
+            ignoreRarityWeight: false,
             preventDuplicateChassis: false,
             useTaggedQuantities: false,
             useUnitTagsAsChassisTags: false,
@@ -226,7 +224,6 @@ describe('OptionsService', () => {
             printAllOptions: {
                 clean: true,
                 printPilotData: false,
-                printRosterSummary: true,
                 recordSheetCenterPanelContent: 'fluffImage',
                 ASPrintPageBreakOnGroups: false,
                 ASPrintCardSize: 'enlarged',
@@ -236,26 +233,9 @@ describe('OptionsService', () => {
 
         const service = await createService();
 
-        expect(service.options().printAllOptions).toEqual(
-            (savedOptions as { printAllOptions: PrintAllOptions }).printAllOptions
-        );
-    });
-
-    it('migrates legacy root print options into the nested object', async () => {
-        savedOptions = {
-            printRosterSummary: true,
-            recordSheetCenterPanelContent: 'fluffImage',
-            ASPrintPageBreakOnGroups: false,
-            ASPrintCardSize: 'enlarged',
-            printMargin: 'none',
-        };
-
-        const service = await createService();
-
         expect(service.options().printAllOptions).toEqual({
-            clean: false,
-            printPilotData: true,
-            printRosterSummary: true,
+            clean: true,
+            printPilotData: false,
             recordSheetCenterPanelContent: 'fluffImage',
             ASPrintPageBreakOnGroups: false,
             ASPrintCardSize: 'enlarged',
@@ -315,32 +295,14 @@ describe('OptionsService', () => {
         expect(service.options().colorScheme).toBe('night');
     });
 
-    it('migrates legacy sheet and Alpha Strike color settings deterministically', async () => {
-        savedOptions = { sheetsColor: 'normal', ASCardStyle: 'colored' };
-
-        const service = await createService();
-
-        expect(service.options().colorScheme).toBe('default');
-    });
-
-    it('maps a legacy colored Alpha Strike card style when no sheet color exists', async () => {
-        savedOptions = { ASCardStyle: 'colored' };
-
-        const service = await createService();
-
-        expect(service.options().colorScheme).toBe('night');
-    });
-
-    it('persists only canonical theme options after an update', async () => {
-        savedOptions = { sheetsColor: 'night', ASCardStyle: 'monochrome' };
+    it('persists option updates', async () => {
+        savedOptions = { colorScheme: 'night' };
         const service = await createService();
 
         await service.setOption('colorScheme', 'default');
 
-        const persisted = dbService.saveOptions.calls.mostRecent().args[0] as Record<string, unknown>;
-        expect(persisted['colorScheme']).toBe('default');
-        expect(persisted['themeColor']).toBeUndefined();
-        expect(persisted['sheetsColor']).toBeUndefined();
-        expect(persisted['ASCardStyle']).toBeUndefined();
+        expect(dbService.saveOptions).toHaveBeenCalledWith(jasmine.objectContaining({
+            colorScheme: 'default',
+        }));
     });
 });

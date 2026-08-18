@@ -52,6 +52,7 @@ export interface ForceGeneratorOptions {
         maxDelta: number;
     };
     failureSearchWindowMs: number;
+    ignoreRarityWeight: boolean;
     preventDuplicateChassis: boolean;
     useTaggedQuantities: boolean;
     useUnitTagsAsChassisTags: boolean;
