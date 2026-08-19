@@ -7,7 +7,7 @@ import type { CBTForceUnit, EquipmentAction } from '../cbt-force-unit.model';
 import type { CrewMember, SkillType } from '../crew-member.model';
 import type { MountedEquipment } from '../mounted-equipment.model';
 import type { CriticalSlot, RuleCheckOutcome } from '../force-serialization';
-import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, NARC_CONDITION_COLOR, PSRCheckKind, sortPSRModifiers, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type ChargeDamage, type LocationConditionControl, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitRuleModifier } from './unit-type-rules';
+import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, NARC_CONDITION_COLOR, sortPSRModifiers, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type ChargeDamage, type LocationConditionControl, type PSRCheck, type PSRCheckKind, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitRuleModifier } from './unit-type-rules';
 import type { EquipmentStatus, EquipmentStatusFacts } from '../equipment-status.model';
 import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
@@ -33,9 +33,9 @@ import { uuidv7 } from '../../utils/uuid.util';
 
 type ArmLocation = 'LA' | 'RA';
 
-const LEG_DAMAGE_MOVEMENT_CRITICAL_NAMES: Partial<Record<PSRCheckKind, readonly string[]>> = {
-    ['damaged-leg-actuator-movement']: ['Leg', 'Foot', 'Hip'],
-    ['damaged-hip-movement']: ['Hip'],
+const LEG_DAMAGE_MOVEMENT_CRITICAL_NAMES: Record<PSRCheckKind, readonly string[]> = {
+    'damaged-leg-actuator-movement': ['Leg', 'Foot', 'Hip'],
+    'damaged-hip-movement': ['Hip'],
 };
 
 interface MekArmStatus {
@@ -143,12 +143,19 @@ export class MekRules extends UnitTypeRulesBase {
     protected override readonly immobile = computed<boolean>(() => {
         if (!this.unit.isLoaded()) return false;
         if (this.unit.getCondition('shutdown')) return true;
-        if (this.allLimbsDestroyedOrMissing()) return true;
         if (!this.hasDroneOperatingSystem() && !this.hasFunctionalCrew()) return true;
         const unit = this.unit.getUnit();
         const movement = this.computeBaseMovementProfile();
         if (!movement) return false;
         const canUseJumpingMovement = !this.unit.getCondition('prone');
+        const hasUsableNonGroundMovement = canUseJumpingMovement && (
+            (unit.jump > 0 && movement.jump > 0)
+            || (unit.umu > 0 && movement.UMU > 0)
+        );
+        // Sparse records can omit destroyed limbs entirely. Losing every limb
+        // is damage-caused immobility unless a standing Mek can still leave by
+        // a surviving non-ground mode.
+        if (this.allLimbsDestroyedOrMissing() && !hasUsableNonGroundMovement) return true;
         const availableModes = [
             unit.walk > 0 ? movement.walk : null,
             unit.run > 0 ? this.baseRunValue(movement) : null,
@@ -207,9 +214,9 @@ export class MekRules extends UnitTypeRulesBase {
         if (config !== 'Tripod') return limbLocations.every(isDestroyedOrMissing);
 
         const armsDestroyedOrMissing = limbLocations
-        .filter(loc => !isMekLegLocation(config, loc))
-        .every(isDestroyedOrMissing);
-        // For Tripod is enough 2 of the 3 legs to consider that all legs are destroyed, as if they where bipeds
+            .filter(loc => !isMekLegLocation(config, loc))
+            .every(isDestroyedOrMissing);
+        // A tripod with two destroyed legs follows the biped both-legs-destroyed state.
         const destroyedOrMissingLegs = getMekLegLocations(config)
             .filter(isDestroyedOrMissing)
             .length;
@@ -591,6 +598,7 @@ export class MekRules extends UnitTypeRulesBase {
         const hasDamagedLegActuators = critSlots.some(slot => {
             if (!slot.name || !slot.loc || !this.isCritUnavailable(slot)) return false;
             if (!LEG_LOCATIONS.has(slot.loc)) return false;
+            if (this.unit.isInternalLocCommittedDestroyed(slot.loc)) return false;
             return this.isNamedCrit(slot, 'Leg')
                 || this.isNamedCrit(slot, 'Foot')
                 || this.isNamedCrit(slot, 'Hip');
@@ -618,10 +626,15 @@ export class MekRules extends UnitTypeRulesBase {
                 };
             }
             if (hasDamagedLeg && damagedLegRequiresCheck) {
+                const modifier = this.destroyedLegMovementPSRModifier(
+                    moveMode,
+                    isQuadruped,
+                    destroyedLegsCount,
+                );
                 return {
-                    fallCheck: 0,
-                    pilotCheck: 0,
-                    ...(damagedLegLocation && { loc: damagedLegLocation }),
+                    fallCheck: modifier,
+                    pilotCheck: modifier,
+                    ...(modifier === 0 && damagedLegLocation && { loc: damagedLegLocation }),
                     reason: 'Jumping with damaged leg'
                 };
             }
@@ -644,7 +657,6 @@ export class MekRules extends UnitTypeRulesBase {
             return {
                 fallCheck: 0,
                 pilotCheck: 0,
-                kind: 'damaged-hip-movement',
                 reason: 'Running with damaged hip',
             };
         }
@@ -673,16 +685,6 @@ export class MekRules extends UnitTypeRulesBase {
                 };
             }
         }
-        if (this.runningMinimumMovementWithDestroyedLegRequiresCheck()
-            && hasDamagedLeg
-            && damagedLegRequiresCheck) {
-            return {
-                fallCheck: 0,
-                pilotCheck: 0,
-                ...(damagedLegLocation && { loc: damagedLegLocation }),
-                reason: 'Running with damaged leg'
-            };
-        }
         return null;
     }
 
@@ -692,7 +694,7 @@ export class MekRules extends UnitTypeRulesBase {
             return {
                 fallCheck: 2,
                 pilotCheck: 2,
-                reason: 'Jumping with damaged heavy-duty gyro',
+                reason: 'Jumping with damaged HD gyro',
                 ignorePreExistingGyro: true,
             };
         }
@@ -707,12 +709,16 @@ export class MekRules extends UnitTypeRulesBase {
         return isQuadruped ? destroyedLegsCount >= 2 : destroyedLegsCount >= 1;
     }
 
-    protected runningWithDestroyedLegRequiresCheck(): boolean {
-        return true;
+    protected destroyedLegMovementPSRModifier(
+        _moveMode: 'run' | 'jump',
+        _isQuadruped: boolean,
+        _destroyedLegsCount: number,
+    ): number {
+        return 0;
     }
 
-    protected runningMinimumMovementWithDestroyedLegRequiresCheck(): boolean {
-        return false;
+    protected runningWithDestroyedLegRequiresCheck(): boolean {
+        return true;
     }
 
     protected runningDamageCheckRequiresHexMovement(): boolean {
@@ -1118,14 +1124,10 @@ export class MekRules extends UnitTypeRulesBase {
         // Calculate pre-existing leg destruction modifiers. If a leg is gone, is gone.
         for (const loc of destroyedLegs) {
             ignoreLeg.add(loc); // Track destroyed legs, we ignore further modifiers on that leg
-            const modifier = this.destroyedLegPSR(config === 'Quad').pilotCheck;
-            preExisting += modifier;
-            modifiers.push({
-                pilotCheck: modifier,
-                loc,
-                reason: 'Leg Destroyed',
-            });
         }
+        const destroyedLegModifiers = this.getPreExistingDestroyedLegPSRModifiers(config, destroyedLegs);
+        preExisting += destroyedLegModifiers.reduce((total, modifier) => total + (modifier.pilotCheck ?? 0), 0);
+        modifiers.push(...destroyedLegModifiers);
         if (undamagedLegs) {
             if (config === 'Tripod') {
                 preExisting -= 1; // Tripod unit with all legs intact gets -1 modifier
@@ -1183,16 +1185,12 @@ export class MekRules extends UnitTypeRulesBase {
                 reason: "Mounts Hardened Armor"
             });
         }
-        const modularArmorPanelsCount = critSlots.filter(slot => this.isNamedCrit(slot, 'Modular Armor')).length;
-        if (modularArmorPanelsCount > 0) {
-            const destroyedModularArmorPanelsCount = critSlots.filter(slot => this.isNamedCrit(slot, 'Modular Armor') && (slot.destroyed || ((slot.consumed ?? 0) >= 10))).length;
-            if (destroyedModularArmorPanelsCount < modularArmorPanelsCount) {
-                preExisting += 1; // Modular armor gives +1 modifier (until destroyed or fully consumed)
-                modifiers.push({
-                    pilotCheck: 1,
-                    reason: "Mounts Modular Armor"
-                });
-            }
+        if (this.modularArmorState().active) {
+            preExisting += 1; // Modular armor gives +1 modifier (until destroyed or fully consumed)
+            modifiers.push({
+                pilotCheck: 1,
+                reason: "Mounts Modular Armor"
+            });
         }
         const hasSmallOrTorsoCockpit = critSlots.some(slot => slot.loc
             && ((this.isNamedCrit(slot, 'Cockpit') && this.isNamedCrit(slot, 'Small'))
@@ -1225,6 +1223,34 @@ export class MekRules extends UnitTypeRulesBase {
         const finalModifier = preExisting + currentModifiers;
         return { modifier: finalModifier, modifiers: sortPSRModifiers(modifiers) };
     });
+
+    protected getPreExistingDestroyedLegPSRModifiers(
+        config: MekConfig,
+        destroyedLegs: readonly string[],
+    ): PSRCheck[] {
+        if (config !== 'Quad') {
+            const modifier = this.destroyedLegPSR(false).pilotCheck;
+            return destroyedLegs.map(loc => ({
+                pilotCheck: modifier,
+                loc,
+                reason: 'Leg Destroyed',
+            }));
+        }
+
+        let modifier = 0;
+        if (destroyedLegs.length <= 2) {
+            modifier = destroyedLegs.length;
+        } else if (destroyedLegs.length === 3) {
+            modifier = this.destroyedLegPSR(false).pilotCheck;
+        }
+        if (modifier === 0) return [];
+        return [{
+            pilotCheck: modifier,
+            ...(destroyedLegs.length === 1 && { loc: destroyedLegs[0] }),
+            reason: 'Leg Destroyed',
+            ...(destroyedLegs.length > 1 && { modifierReason: `Legs Destroyed (${destroyedLegs.length})` }),
+        }];
+    }
 
     protected getPreExistingLegActuatorPSRModifiers(
         critSlots: readonly CriticalSlot[],
@@ -1317,12 +1343,15 @@ export class MekRules extends UnitTypeRulesBase {
         return null;
     }
 
-    override isMotiveModeAvailable(moveMode: MotiveModes, turnState?: TurnState): boolean {
+    override isMotiveModeAvailable(moveMode: MotiveModes): boolean {
+        if (this.immobile()) return moveMode === 'stationary';
         const movement = this.movementState();
         if (moveMode === 'walk') return (movement?.walk ?? 0) > 0;
         if (moveMode === 'run') {
             return (movement?.run ?? 0) > 0 || this.getRunningMinimumMovementDistance() > 0;
         }
+        if (moveMode === 'jump') return (movement?.jump ?? 0) > 0;
+        if (moveMode === 'UMU') return (movement?.UMU ?? 0) > 0;
         return true;
     }
 
@@ -1330,30 +1359,28 @@ export class MekRules extends UnitTypeRulesBase {
         return 0;
     }
 
-    protected maximumDestroyedLegsForStanding(config: MekConfig): number {
+    protected destroyedLegStandThreshold(config: MekConfig): number {
         return config === 'Quad' ? 3 : 1;
-    }
-
-    protected destroyedLegStandAttemptLimit(_config: MekConfig, _destroyedLegs: number): number | null {
-        return null;
     }
 
     protected isMovementPSRFoldedIntoStandAttempt(_turnState: TurnState): boolean {
         return false;
     }
 
-    protected destroyedLegStandAttemptRequiresRunning(config: MekConfig, destroyedLegs: number): boolean {
-        return destroyedLegs === (config === 'Quad' ? 3 : 1);
+    protected isDestroyedLegStandException(config: MekConfig, destroyedLegs: number): boolean {
+        return destroyedLegs === this.destroyedLegStandThreshold(config);
     }
 
     override canStandUp(turnState: TurnState): boolean {
         if (turnState.carefulStand()) return false;
         if (!turnState.unitState.hasCondition('prone')) return false;
+        if (this.immobile()) return false;
+        if (this.gyroPSRModifierHitCount() >= this.gyroDestructionHitThreshold()) return false;
         // Standing normally costs MP, and Minimum Movement can only reduce that
         // cost when the Mek still has at least 1 usable Walking MP.
         if ((this.movementState()?.walk ?? 0) < 1) return false;
         const { config, destroyedLegs, destroyedArms, hasIntactLeg } = this.currentLegState();
-        if (!hasIntactLeg || destroyedLegs.length > this.maximumDestroyedLegsForStanding(config)) return false;
+        if (!hasIntactLeg || destroyedLegs.length > this.destroyedLegStandThreshold(config)) return false;
         return config === 'Quad' || destroyedLegs.length !== 1 || destroyedArms.length !== 2;
     }
 
@@ -1372,27 +1399,22 @@ export class MekRules extends UnitTypeRulesBase {
 
     override getStandAttemptMovementMode(turnState: TurnState): MotiveModes | null {
         const { config, destroyedLegs } = this.currentLegState();
-        if (this.destroyedLegStandAttemptRequiresRunning(config, destroyedLegs.length)
+        if (this.isDestroyedLegStandException(config, destroyedLegs.length)
             || this.movementState()?.walk === 1) {
             return 'run';
         }
         return turnState.moveMode() === 'run' ? 'run' : 'walk';
     }
 
-    override getStandAttemptLimit(_turnState: TurnState): number | null {
-        const { config, destroyedLegs } = this.currentLegState();
-        return this.destroyedLegStandAttemptLimit(config, destroyedLegs.length);
-    }
-
     override getMovementPointsSpent(turnState: TurnState): number {
         const standAttemptMp = Math.max(0, turnState.standAttempts() ?? 0) * 2;
-        if (!turnState.carefulStand()) return standAttemptMp;
-
         const moveMode = turnState.moveMode();
         const movementCapacity = moveMode === null
             ? 0
             : this.getEffectiveMaxDistanceForMoveMode(moveMode, turnState) ?? 0;
-        return Math.max(standAttemptMp, movementCapacity);
+        return turnState.carefulStand()
+            ? movementCapacity
+            : standAttemptMp; // We return the full value so the user can clearly see they over-attempted
     }
 
     override getEffectiveMaxDistanceForMoveMode(moveMode: MotiveModes, turnState: TurnState): number | null {
@@ -1660,7 +1682,12 @@ export class MekRules extends UnitTypeRulesBase {
         const unit = this.unit.getUnit();
         if (!unit) return null;
 
-        let walkValue = unit.walk;
+        const restoredWalk = unit.walk + this.restoredEquipmentWalkMP();
+        const restoredRun = Math.max(
+            0,
+            Math.round(restoredWalk * 1.5) + (unit.armorType === 'Hardened' ? -1 : 0),
+        );
+        let walkValue = restoredWalk;
         let jumpValue = unit.jump;
         let UMUValue = unit.umu;
         let moveImpaired = false;
@@ -1669,7 +1696,7 @@ export class MekRules extends UnitTypeRulesBase {
         const internalLocations = systemsStatus.internalLocations;
         const legMovement = this.applyLegDamageToMovement(
             walkValue,
-            unit.run,
+            restoredRun,
             systemsStatus,
             internalLocations.has('LL') && internalLocations.has('RL'),
             internalLocations.has('RLL') && internalLocations.has('FLL')
@@ -1681,7 +1708,7 @@ export class MekRules extends UnitTypeRulesBase {
             walkValue -= systemsStatus.destroyedLegActuatorsCount;
             walkValue -= systemsStatus.destroyedFeetCount;
         }
-        walkValue = Math.max(0, Math.min(unit.walk, walkValue));
+        walkValue = Math.max(0, Math.min(restoredWalk, walkValue));
         if (systemsStatus.destroyedLegActuatorsCount != 0 || systemsStatus.destroyedFeetCount != 0) {
             moveImpaired = true;
         }
@@ -1703,6 +1730,7 @@ export class MekRules extends UnitTypeRulesBase {
         }
 
         return {
+            baselineWalk: restoredWalk,
             walk: walkValue,
             runDisabled: legMovement.runDisabled,
             runCap: legMovement.runCap,
@@ -1712,6 +1740,33 @@ export class MekRules extends UnitTypeRulesBase {
             jumpImpaired: (jumpValue < unit.jump),
             UMUImpaired: (UMUValue < unit.umu),
         };
+    }
+
+    private restoredEquipmentWalkMP(): number {
+        const modularArmor = this.modularArmorState();
+        const config = inferMekConfigFromLocations(this.unit.locations?.internal.keys() ?? []);
+        const shields = config === 'Quad'
+            ? []
+            : this.unit.getInventory().filter(entry =>
+                entry.equipment?.hasFlag('F_SHIELD')
+                && entry.equipment.hasAnyFlag(['S_SHIELD_LARGE', 'S_SHIELD_MEDIUM']));
+        return (modularArmor.installed && !modularArmor.active ? 1 : 0)
+            + shields.filter(entry => !this.shieldRetainsMobilityPenalty(entry)).length;
+    }
+
+    private modularArmorState(): { installed: boolean; active: boolean } {
+        const panels = this.unit.getCritSlots().filter(slot =>
+            slot.eq?.hasFlag('F_MODULAR_ARMOR') || this.isNamedCrit(slot, 'Modular Armor'));
+        return {
+            installed: panels.length > 0,
+            active: panels.some(slot => !this.isCritUnavailable(slot) && (slot.consumed ?? 0) < 10),
+        };
+    }
+
+    protected shieldRetainsMobilityPenalty(entry: MountedEquipment): boolean {
+        // Core shields stop imposing their Mobility Modifier as soon as either
+        // current DA or DC reaches 0. Equipment status already evaluates both.
+        return this.unit.isEquipmentOperational(entry);
     }
 
     protected applyLegDamageToMovement(
@@ -1749,6 +1804,7 @@ export class MekRules extends UnitTypeRulesBase {
             } else if (damage.destroyedLegsCount === 3) {
                 walk = Math.min(walk, 1);
                 runCap = Math.min(unitRun, 2);
+                applyActuatorDamage = false;
             } else {
                 walk = 0;
                 runDisabled = true;
@@ -1833,7 +1889,7 @@ export class MekRules extends UnitTypeRulesBase {
         }
 
         return {
-            moveImpaired: baseMovement.moveImpaired || (walkValue < unit.walk),
+            moveImpaired: baseMovement.moveImpaired || (walkValue < baseMovement.baselineWalk),
             walk: walkValue,
             maxWalk: maxWalkValue,
             run: runValue,

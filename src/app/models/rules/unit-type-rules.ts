@@ -396,8 +396,8 @@ export interface UnitTypeRules {
     /** Unit-type-specific minimum movement distance override. Return null to use 0. */
     getMinDistanceForMoveMode(moveMode: MotiveModes): number | null;
 
-    /** Unit-type-specific movement mode availability, optionally for the current turn context. */
-    isMotiveModeAvailable(moveMode: MotiveModes, turnState?: TurnState): boolean;
+    /** Unit-type-specific movement mode availability. */
+    isMotiveModeAvailable(moveMode: MotiveModes): boolean;
 
     /** Unit-type-specific attack movement modifier. */
     getAttackMovementModifier(moveMode: MotiveModes | null | undefined, airborne?: boolean): number;
@@ -760,7 +760,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         return null;
     }
 
-    isMotiveModeAvailable(_moveMode: MotiveModes, _turnState?: TurnState): boolean {
+    isMotiveModeAvailable(_moveMode: MotiveModes): boolean {
         return true;
     }
 

@@ -15,6 +15,7 @@ import { C3TaxCalculator } from '../c3-network.model';
 import { getMekLimbLocations, inferMekConfigFromLocations, LEG_LOCATIONS, MEK_SIDE_TORSO_LOCATIONS, MEK_TORSO_LOCATIONS, QUAD_LEG_LOCATIONS, type MekConfig } from '../entity/types';
 import type { TurnState } from '../turn-state.model';
 import type { Equipment } from '../equipment.model';
+import type { MountedEquipment } from '../mounted-equipment.model';
 
 function calculateTWC3Tax(
     unit: CBTForceUnit,
@@ -62,25 +63,31 @@ export class TWMekRules extends MekRules {
     protected override get shieldBashPunchBonusEnabled(): boolean { return false; }
     protected override get standaloneShieldDamageEnabled(): boolean { return true; }
 
-    /** If more legs are destroyed, the unit simply can't stand up at all */
-    protected override maximumDestroyedLegsForStanding(config: MekConfig): number {
+    protected override shieldRetainsMobilityPenalty(entry: MountedEquipment): boolean {
+        if (entry.committedDestroyed()) return false;
+        const criticals = this.entryCriticalSlots(entry);
+        if (criticals.length === 0) {
+            return this.unit.getEquipmentInstallationLocationStatus(entry) === 'available';
+        }
+        // TW retains the modifier until every shield critical is unavailable.
+        // Critical status also accounts for a committed destroyed/blown-off arm.
+        return criticals.some(slot => this.unit.isEquipmentOperational(slot));
+    }
+
+    protected override destroyedLegStandThreshold(config: MekConfig): number {
         return config === 'Quad' ? 2 : 1;
     }
 
-    /** Limit how many attempts can be made to stand up */
-    protected override destroyedLegStandAttemptLimit(config: MekConfig, destroyedLegs: number): number | null {
-        return destroyedLegs === (config === 'Quad' ? 2 : 1) ? 1 : null;
+    override getStandAttemptLimit(_turnState: TurnState): number | null {
+        const { config, destroyedLegs } = this.currentLegState();
+        return this.isDestroyedLegStandException(config, destroyedLegs.length) ? 1 : null;
     }
 
     protected override isMovementPSRFoldedIntoStandAttempt(turnState: TurnState): boolean {
         const { config, destroyedLegs } = this.currentLegState();
         return (turnState.standAttempts() ?? 0) > 0
             && (turnState.moveDistance() ?? 0) === 0
-            && destroyedLegs.length === (config === 'Quad' ? 2 : 1);
-    }
-
-    protected override destroyedLegStandAttemptRequiresRunning(config: MekConfig, destroyedLegs: number): boolean {
-        return destroyedLegs === (config === 'Quad' ? 2 : 1);
+            && this.isDestroyedLegStandException(config, destroyedLegs.length);
     }
 
     override heatLifeSupportPilotHits(heat: number): number {
@@ -298,16 +305,33 @@ export class TWMekRules extends MekRules {
         return { fallCheck: 100, pilotCheck: 5 };
     }
 
+    protected override getPreExistingDestroyedLegPSRModifiers(
+        config: MekConfig,
+        destroyedLegs: readonly string[],
+    ): PSRCheck[] {
+        if (config !== 'Quad') return super.getPreExistingDestroyedLegPSRModifiers(config, destroyedLegs);
+        if (destroyedLegs.length !== 2) return [];
+        return [{
+            pilotCheck: 5,
+            reason: 'Leg Destroyed',
+            modifierReason: 'Legs Destroyed (2)',
+        }];
+    }
+
+    protected override destroyedLegMovementPSRModifier(
+        moveMode: 'run' | 'jump',
+        isQuadruped: boolean,
+        destroyedLegsCount: number,
+    ): number {
+        return moveMode === 'jump' && isQuadruped && destroyedLegsCount === 1 ? 5 : 0;
+    }
+
     protected override damagedLegRequiresMovementCheck(_isQuadruped: boolean, destroyedLegsCount: number): boolean {
         return destroyedLegsCount > 0;
     }
 
     protected override runningWithDestroyedLegRequiresCheck(): boolean {
         return false;
-    }
-
-    protected override runningMinimumMovementWithDestroyedLegRequiresCheck(): boolean {
-        return this.getRunningMinimumMovementDistance() > 0;
     }
 
     protected override runningDamageCheckRequiresHexMovement(): boolean {
@@ -338,9 +362,15 @@ export class TWMekRules extends MekRules {
         let moveImpaired = false;
 
         if (isBiped) {
-            for (let index = 0; index < damage.destroyedHipsCount; index++) {
-                walk = Math.ceil(walk * 0.5);
+            if (damage.destroyedHipsCount === 2) {
+                walk = 0;
                 moveImpaired = true;
+                runDisabled = true;
+            } else {
+                for (let index = 0; index < damage.destroyedHipsCount; index++) {
+                    walk = Math.ceil(walk * 0.5);
+                    moveImpaired = true;
+                }
             }
             if (damage.destroyedLegsCount === 1) {
                 walk = Math.min(walk, 1);
@@ -352,10 +382,6 @@ export class TWMekRules extends MekRules {
                 runDisabled = true;
             }
         } else if (isQuadruped) {
-            if (damage.destroyedHipsCount !== 0) {
-                walk -= damage.destroyedHipsCount;
-                moveImpaired = true;
-            }
             if (damage.destroyedLegsCount === 1) walk--;
             if (damage.destroyedLegsCount === 2) {
                 walk = Math.min(walk, 1);
@@ -363,6 +389,17 @@ export class TWMekRules extends MekRules {
             } else if (damage.destroyedLegsCount >= 3) {
                 walk = 0;
                 runDisabled = true;
+            }
+            
+            if (damage.destroyedHipsCount === 4) {
+                walk = 0;
+                moveImpaired = true;
+                runDisabled = true;
+            } else {
+                for (let index = 0; index < damage.destroyedHipsCount && walk > 0; index++) {
+                    walk = Math.ceil(walk * 0.5);
+                    moveImpaired = true;
+                }
             }
         }
 

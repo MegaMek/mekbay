@@ -20,12 +20,29 @@ describe('PageTurnSummaryPanelComponent', () => {
     it('distinguishes an Immobile unit from one with only Stationary available', () => {
         const immobile = signal(false);
         const rulesId = signal<'core2026' | 'tw'>('core2026');
-        const turnState = { airborne: signal<boolean | null>(false) };
+        const moveMode = signal<'stationary' | 'walk' | 'run' | 'jump' | 'UMU' | 'VTOL' | null>(null);
+        const turnState = {
+            airborne: signal<boolean | null>(false),
+            moveMode,
+            moveDistance: signal<number | null>(5),
+            carefulStand: signal(false),
+        };
         const unit = {
             get gameRules() {
                 return rulesId() === 'tw' ? TW_GAME_RULES : CORE_2026_GAME_RULES;
             },
             getCondition: (condition: string) => condition === 'immobile' && immobile(),
+            getUnit: () => ({
+                type: 'Mek',
+                subtype: 'BattleMek',
+                moveType: 'Biped',
+                jump: 0,
+                umu: 0,
+            }),
+            rules: {
+                getAttackMovementModifier: () => 0,
+                getCommittedDamageMovementModePSRCheck: () => null,
+            },
             getAvailableMotiveModes: () => [{ mode: 'stationary', label: 'Stationary', psr: false }],
             turnState: () => turnState,
         };
@@ -51,7 +68,6 @@ describe('PageTurnSummaryPanelComponent', () => {
             falling: () => false,
             PSRChecksCount: () => 0,
             controlRollShortLabel: () => 'PSR',
-            currentMoveMode: () => null,
             prone: () => false,
             canStandUp: () => false,
             standAttempts: () => 0,
@@ -70,6 +86,13 @@ describe('PageTurnSummaryPanelComponent', () => {
             equipmentTrackControlRows: () => [],
             airborne: () => false,
             canSwitchAirborneMode: () => false,
+            moveDistance: () => 5,
+            moveCapacity: () => 0,
+            moveMin: () => 0,
+            moveMax: () => 0,
+            moveDistanceTicks: () => [0],
+            hasMoveDistance: () => true,
+            overDistance: () => true,
         });
 
         expect(component.immobile()).toBeFalse();
@@ -96,6 +119,18 @@ describe('PageTurnSummaryPanelComponent', () => {
         expect(fixture.nativeElement.querySelector('.immobile-status')).toBeNull();
         expect(fixture.nativeElement.querySelectorAll('.move-button').length).toBe(1);
         expect(fixture.nativeElement.querySelector('.move-button.stationary-only')).not.toBeNull();
+
+        rulesId.set('core2026');
+        moveMode.set('run');
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelector('.immobile-status')?.textContent.trim())
+            .toBe('Unit is immobile');
+        expect(Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.move-button'))
+            .map(button => button.textContent?.trim())).toEqual(['', 'Run']);
+        expect(fixture.nativeElement.querySelector('.move-button.selected')?.textContent.trim()).toBe('Run');
+        expect(fixture.nativeElement.querySelector('hex-slider')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('.hex.danger')?.textContent.trim()).toBe('5');
     });
 
     it('reports spent stand-attempt MP and reopens the standing dialog without changing the attempt', () => {

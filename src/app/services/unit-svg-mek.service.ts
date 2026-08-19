@@ -275,8 +275,7 @@ export class UnitSvgMekService extends UnitSvgService {
         const movement = this.mekRules.movementState();
         if (!movement) return;
 
-        const turnState = this.unit.turnState();
-        const runWarning = this.unit.rules.isMotiveModeAvailable('run', turnState)
+        const runWarning = this.unit.rules.isMotiveModeAvailable('run')
             ? this.unit.rules.getCommittedDamageMovementModePSRCheck('run')
             : null;
         const jumpWarning = movement.jump > 0 ? this.unit.rules.getCommittedDamageMovementModePSRCheck('jump') : null;

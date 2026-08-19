@@ -7,7 +7,7 @@ import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
-import { canChangeAirborneGround, type MotiveModeOption, type MotiveModes } from '../../../models/motiveModes.model';
+import { canChangeAirborneGround, getMotiveModesOptionsByUnit, type MotiveModeOption, type MotiveModes } from '../../../models/motiveModes.model';
 import { HexSliderComponent } from '../../hex-slider/hex-slider.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import type { TooltipLine } from '../../tooltip/tooltip.component';
@@ -155,6 +155,10 @@ export class PageTurnSummaryPanelComponent {
         const unit = this.unit();
         return unit?.gameRules.id === 'core2026' && this.immobile();
     });
+
+    readonly showMovementControls = computed(() => (
+        !this.showImmobileStatus() || this.currentMoveMode() !== null
+    ));
 
     readonly canStandUp = computed(() => this.unit()?.turnState().canStandUp() ?? false);
 
@@ -328,7 +332,30 @@ export class PageTurnSummaryPanelComponent {
     readonly moveModes = computed<MotiveModeOption[]>(() => {
         const unit = this.unit();
         if (!unit) return [];
-        return unit.getAvailableMotiveModes(unit.turnState().airborne() ?? false);
+        const turnState = unit.turnState();
+        const airborne = turnState.airborne() ?? false;
+        const availableModes = unit.getAvailableMotiveModes(airborne);
+        const currentMode = turnState.moveMode();
+        if (currentMode === null || availableModes.some(option => option.mode === currentMode)) {
+            return availableModes;
+        }
+
+        const supportedModes = getMotiveModesOptionsByUnit(unit.getUnit(), airborne);
+        const currentOption = supportedModes.find(option => option.mode === currentMode);
+        if (!currentOption) return availableModes;
+
+        const visibleModes = new Map(availableModes.map(option => [option.mode, option]));
+        visibleModes.set(currentMode, {
+            ...currentOption,
+            psr: unit.rules.getCommittedDamageMovementModePSRCheck(
+                currentMode,
+                turnState.moveDistance(),
+            ) !== null,
+        });
+        return supportedModes.flatMap(option => {
+            const visibleOption = visibleModes.get(option.mode);
+            return visibleOption ? [visibleOption] : [];
+        });
     });
 
     readonly onlyStationaryMoveMode = computed(() => {

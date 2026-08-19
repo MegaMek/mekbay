@@ -9,7 +9,8 @@
     <section class="summary-section" aria-label="Movement">
         @if (showImmobileStatus()) {
             <div class="summary-row immobile-status" role="status">Unit is immobile</div>
-        } @else {
+        }
+        @if (showMovementControls()) {
         @if (canSwitchAirborneMode()) {
             <div class="button-row">
                 <button

@@ -1576,7 +1576,7 @@ export class CBTForceUnit extends ForceUnit {
     public getAvailableMotiveModes(airborne: boolean): MotiveModeOption[] {
         const turnState = this.turnState();
         return getMotiveModesOptionsByUnit(this.getUnit(), airborne)
-            .filter(option => this._rules.isMotiveModeAvailable(option.mode, turnState))
+            .filter(option => this._rules.isMotiveModeAvailable(option.mode))
             .map(option => ({
                 ...option,
                 psr: this._rules.getCommittedDamageMovementModePSRCheck(
