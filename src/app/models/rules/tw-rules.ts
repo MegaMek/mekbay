@@ -71,7 +71,7 @@ export class TWMekRules extends MekRules {
         }
         // TW retains the modifier until every shield critical is unavailable.
         // Critical status also accounts for a committed destroyed/blown-off arm.
-        return criticals.some(slot => this.unit.isEquipmentOperational(slot));
+        return !this.allShieldCriticalsUnavailable(entry);
     }
 
     protected override destroyedLegStandThreshold(config: MekConfig): number {

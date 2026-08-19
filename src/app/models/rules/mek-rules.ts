@@ -1765,9 +1765,15 @@ export class MekRules extends UnitTypeRulesBase {
 
     protected shieldRetainsMobilityPenalty(entry: MountedEquipment): boolean {
         // Core removes the Mobility Modifier as soon as either live shield
-        // track reaches 0. TW deliberately overrides this with its all-slots rule.
+        // track reaches 0, or when the shield itself has no surviving slot.
+        if (entry.committedDestroyed() || this.allShieldCriticalsUnavailable(entry)) return false;
         const state = this.getShieldDamageState(entry);
         return state !== null && state.absorption > 0 && state.capacity > 0;
+    }
+
+    protected allShieldCriticalsUnavailable(entry: MountedEquipment): boolean {
+        const criticals = this.entryCriticalSlots(entry);
+        return criticals.length > 0 && criticals.every(slot => !this.unit.isEquipmentOperational(slot));
     }
 
     protected applyLegDamageToMovement(
