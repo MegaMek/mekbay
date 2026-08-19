@@ -167,7 +167,7 @@ describe('TWMekRules', () => {
             .toEqual(jasmine.objectContaining({ walk: 3, run: 5 }));
     });
 
-    it('keeps same-phase hip and leg-actuator modifiers cumulative after commit in TW', () => {
+    it('keeps same-phase actuator then hip modifiers cumulative after commit in TW', () => {
         const forceUnit = createTWForceUnit([
             legActuatorCrit('hip', 'Hip', 'LL', false),
             legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL', false),
@@ -194,6 +194,37 @@ describe('TWMekRules', () => {
         expect(forceUnit.getCritSlot('LL', 1)?.destroyed).toBe(actuatorDestructionTimestamp);
         expect(forceUnit.getCritSlot('LL', 0)?.destroyedTurn)
             .toBe(forceUnit.getCritSlot('LL', 1)?.destroyedTurn);
+        expect((forceUnit.rules as TWMekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 2, run: 3 }));
+    });
+
+    it('keeps same-phase hip then actuator modifiers cumulative after commit in TW', () => {
+        const forceUnit = createTWForceUnit([
+            legActuatorCrit('hip', 'Hip', 'LL', false),
+            legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL', false),
+        ]);
+        let timestamp = 150;
+        spyOn(Date, 'now').and.callFake(() => ++timestamp);
+
+        hitCrit(forceUnit, 'LL', 0);
+        const hipDestructionTimestamp = forceUnit.getCritSlot('LL', 0)?.destroying;
+        hitCrit(forceUnit, 'LL', 1);
+        const actuatorDestructionTimestamp = forceUnit.getCritSlot('LL', 1)?.destroying;
+
+        expect(forceUnit.turnState().getPSRChecks().map(check => check.reason)).toEqual([
+            'Hip hit',
+            'Leg actuator hit',
+        ]);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+
+        forceUnit.endPhase();
+
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+        expect(hipDestructionTimestamp!).toBeLessThan(actuatorDestructionTimestamp!);
+        expect(forceUnit.getCritSlot('LL', 0)?.destroyed).toBe(hipDestructionTimestamp);
+        expect(forceUnit.getCritSlot('LL', 1)?.destroyed).toBe(actuatorDestructionTimestamp);
+        expect(forceUnit.getCritSlot('LL', 1)?.destroyedTurn)
+            .toBe(forceUnit.getCritSlot('LL', 0)?.destroyedTurn);
         expect((forceUnit.rules as TWMekRules).movementState())
             .toEqual(jasmine.objectContaining({ walk: 2, run: 3 }));
     });
