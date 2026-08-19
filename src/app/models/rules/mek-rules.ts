@@ -1764,9 +1764,10 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     protected shieldRetainsMobilityPenalty(entry: MountedEquipment): boolean {
-        // Core shields stop imposing their Mobility Modifier as soon as either
-        // current DA or DC reaches 0. Equipment status already evaluates both.
-        return this.unit.isEquipmentOperational(entry);
+        // Core removes the Mobility Modifier as soon as either live shield
+        // track reaches 0. TW deliberately overrides this with its all-slots rule.
+        const state = this.getShieldDamageState(entry);
+        return state !== null && state.absorption > 0 && state.capacity > 0;
     }
 
     protected applyLegDamageToMovement(
@@ -2446,9 +2447,9 @@ export class MekRules extends UnitTypeRulesBase {
         for (const entry of this.unit.getMountedEquipmentByFlag('F_SHIELD')) {
             const profile = resolveShieldProfile(entry.equipment);
             if (!profile || !this.shieldMountsAt(entry, loc)) continue;
-            // Equipment status is committed-only and already owns mount, location, critical, and shield-capacity
-            // destruction. In particular, a pending hit must not remove the bonus before damage is committed.
-            if (this.unit.getEquipmentStatus(entry) === 'destroyed') continue;
+            // Pending damage must not remove the committed bonus early.
+            const state = this.getShieldDamageState(entry);
+            if (!state || state.absorption === 0 || state.capacity === 0) continue;
             return profile.bashBonus;
         }
         return 0;
@@ -2456,33 +2457,89 @@ export class MekRules extends UnitTypeRulesBase {
 
     private currentShieldDamageAbsorption(
         entry: MountedEquipment,
-        loc: ArmLocation | undefined,
-        profile: ShieldProfile,
+        _loc: ArmLocation | undefined,
+        _profile: ShieldProfile,
     ): number {
-        return this.shieldDamageState(
-            profile,
-            this.shieldCriticalSlots(entry, loc).filter(slot => !!slot.destroyed).length,
-            loc,
-        ).absorption;
+        return this.getShieldDamageState(entry)?.absorption ?? 0;
+    }
+
+    /**
+     * Effective damage shown on a shield DA/DC track. Critical-slot and arm
+     * actuator losses are derived rather than persisted as ordinary shield
+     * hits, so repairing a critical cannot accidentally repair combat damage.
+     */
+    getShieldTrackHits(trackLocation: string, includePending = false): number | null {
+        const match = /^(DA|DC)(LA|RA)$/.exec(trackLocation);
+        if (!match) return null;
+
+        const track = match[1] as 'DA' | 'DC';
+        const loc = match[2] as ArmLocation;
+        const entry = this.unit.getMountedEquipmentByFlag('F_SHIELD')
+            .find(candidate => this.shieldMountsAt(candidate, loc));
+        if (!entry) return null;
+
+        const profile = resolveShieldProfile(entry.equipment);
+        const state = this.getShieldDamageState(entry, includePending);
+        if (!profile || !state) return null;
+        const maximum = track === 'DA' ? profile.damageAbsorption : profile.damageCapacity;
+        const remaining = track === 'DA' ? state.absorption : state.capacity;
+        return Math.min(maximum, Math.max(0, maximum - remaining));
+    }
+
+    private getShieldDamageState(
+        entry: MountedEquipment,
+        includePending = false,
+    ): { absorption: number; capacity: number } | null {
+        const profile = resolveShieldProfile(entry.equipment);
+        if (!profile) return null;
+
+        const loc = this.shieldArmLocation(entry);
+        const mountUnavailable = entry.committedDestroyed() || (includePending && entry.isDestroying());
+        const locationUnavailable = loc !== undefined && (includePending
+            ? this.unit.isInternalLocDestroyed(loc)
+            : this.unit.isInternalLocCommittedDestroyed(loc));
+        if (mountUnavailable || locationUnavailable) return { absorption: 0, capacity: 0 };
+
+        const destroyedCriticalCount = this.shieldCriticalSlots(entry, loc)
+            .filter(slot => includePending ? this.isDestroyedOrDestroyingCrit(slot) : !!slot.destroyed)
+            .length;
+        return this.shieldDamageState(profile, destroyedCriticalCount, loc, includePending);
     }
 
     private shieldDamageState(
         profile: ShieldProfile,
         destroyedCriticalCount: number,
         loc: ArmLocation | undefined,
+        includePending = false,
     ): { absorption: number; capacity: number } {
-        let actuatorPenalty = 0;
-        if (loc) {
-            const armStatus = this.systemsStatus().locationModifiers[loc];
-            if (armStatus?.destroyedShoulder) actuatorPenalty += 2;
-            if (armStatus?.destroyedUpperArms) actuatorPenalty++;
-            if (armStatus?.destroyedLowerArms) actuatorPenalty++;
-            if (armStatus?.destroyedHand) actuatorPenalty++;
-        }
+        const actuatorPenalty = loc ? this.shieldActuatorPenalty(loc, includePending) : 0;
+        const absorptionHits = loc
+            ? (includePending ? this.unit.getArmorHits(`DA${loc}`) : this.unit.getCommittedArmorHits(`DA${loc}`))
+            : 0;
+        const capacityHits = loc
+            ? (includePending ? this.unit.getArmorHits(`DC${loc}`) : this.unit.getCommittedArmorHits(`DC${loc}`))
+            : 0;
         return {
-            absorption: Math.max(0, profile.damageAbsorption - destroyedCriticalCount - actuatorPenalty),
-            capacity: Math.max(0, profile.damageCapacity - (destroyedCriticalCount * 5) - actuatorPenalty),
+            absorption: Math.max(0, profile.damageAbsorption - destroyedCriticalCount - actuatorPenalty - absorptionHits),
+            capacity: Math.max(0, profile.damageCapacity - (destroyedCriticalCount * 5) - actuatorPenalty - capacityHits),
         };
+    }
+
+    private shieldActuatorPenalty(loc: ArmLocation, includePending: boolean): number {
+        if (!includePending) {
+            const armStatus = this.systemsStatus().locationModifiers[loc];
+            return (armStatus?.destroyedShoulder ? 2 : 0)
+                + (armStatus?.destroyedUpperArms ? 1 : 0)
+                + (armStatus?.destroyedLowerArms ? 1 : 0)
+                + (armStatus?.destroyedHand ? 1 : 0);
+        }
+
+        const unavailable = (name: string) => this.unit.getCritSlots().some(slot =>
+            slot.loc === loc && this.isNamedCrit(slot, name) && this.isDestroyedOrDestroyingCrit(slot));
+        return (unavailable('Shoulder') ? 2 : 0)
+            + (unavailable('Upper Arm') ? 1 : 0)
+            + (unavailable('Lower Arm') ? 1 : 0)
+            + (unavailable('Hand') ? 1 : 0);
     }
 
     private shieldCriticalSlots(entry: MountedEquipment, loc?: string): CriticalSlot[] {

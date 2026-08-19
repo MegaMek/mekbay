@@ -47,6 +47,7 @@ import { MekCriticalChanceDialogComponent, type MekCriticalChanceDialogData } fr
 import { MekCriticalRollDialogComponent, type MekCriticalRollDialogData } from './mek-critical-roll-dialog.component';
 import { applyMekBlowOff, canApplyMekCriticalHitToSlot, mekCriticalChanceCanBlowOff, mekCriticalChanceModifiers, type MekCriticalChanceResult } from '../../utils/mek-critical-hit.util';
 import { uidTranslations } from '../../models/common.model';
+import type { MekRules } from '../../models/rules/mek-rules';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 type HeatMarkerData = { el: SVGElement | null, heat: number; baselineHeat: number };
@@ -636,13 +637,20 @@ export class SvgInteractionService {
                 pipsCount = 0;
             }
 
-            const getHits = () => {
+            const getStoredHits = () => {
                 if (isStructure) {
                     return this.unit()?.getInternalHits(loc) || 0;
                 } else {
                     return (this.unit()?.getArmorHits(loc, rear) || 0);
                 }
-            }
+            };
+            const getHits = () => {
+                const unit = this.unit();
+                if (isShield && unit?.getUnit().type === 'Mek') {
+                    return (unit.rules as MekRules).getShieldTrackHits(loc, true) ?? getStoredHits();
+                }
+                return getStoredHits();
+            };
 
             const armorToastId = `${this.unit()?.id}-${isStructure ? 'structure' : 'armor'}-${loc}-${rear ? 'rear' : ''}`;
             let lastAmountVariationTimestamp = 0;
@@ -719,7 +727,9 @@ export class SvgInteractionService {
                 };
                 const title = `${loc}${rear ? ' (Rear)' : ''}`;
                 const position = { x, y };
-                const startValue = - getHits() - consumedModularArmorPoints;
+                // Critical/actuator shield losses are derived and cannot be
+                // repaired by erasing ordinary damage from the DA/DC track.
+                const startValue = -getStoredHits() - consumedModularArmorPoints;
                 const remainingArmorPoints = Math.max(0, pipsCount - getHits() + availableModularArmorPoints);
                 const internalPoints = !isStructure && !isShield ? (this.unit()?.getInternalPoints(loc) ?? 0) : 0;
                 const remainingInternalPoints = Math.max(0, internalPoints - (this.unit()?.getInternalHits(loc) ?? 0));

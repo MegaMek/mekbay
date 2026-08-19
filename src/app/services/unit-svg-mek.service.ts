@@ -454,7 +454,12 @@ export class UnitSvgMekService extends UnitSvgService {
                 if (!loc || !linkedLoc) return;
                 if (!shieldInfo[loc]) {
                     const d = locations[loc];
-                    shieldInfo[loc] = { committed: d?.armor ?? 0, total: (d?.armor ?? 0) + (d?.pendingArmor ?? 0), idx: 0 };
+                    shieldInfo[loc] = {
+                        committed: this.mekRules.getShieldTrackHits(loc) ?? d?.armor ?? 0,
+                        total: this.mekRules.getShieldTrackHits(loc, true)
+                            ?? (d?.armor ?? 0) + (d?.pendingArmor ?? 0),
+                        idx: 0,
+                    };
                 }
                 const s = shieldInfo[loc];
                 this.updatePip(pip, ++s.idx, s.committed, s.total, initial);
@@ -464,7 +469,13 @@ export class UnitSvgMekService extends UnitSvgService {
             this.unit.locations?.armor.forEach(entry => {
                 const el = svg.querySelector(`.shield:not(.pip)[loc="${entry.loc}"]`);
                 if (!el) return;
-                const shieldExhausted = this.unit.isArmorLocDestroyed('DC' + entry.loc) || this.unit.isArmorLocDestroyed('DA' + entry.loc);
+                const shieldExhausted = ['DA', 'DC'].some(prefix => {
+                    const trackLoc = `${prefix}${entry.loc}`;
+                    const points = this.unit.getArmorPoints(trackLoc);
+                    const hits = this.mekRules.getShieldTrackHits(trackLoc, true)
+                        ?? this.unit.getArmorHits(trackLoc);
+                    return points > 0 && hits >= points;
+                });
                 if (shieldExhausted || this.unit.isInternalLocDestroyed(entry.loc)) {
                     el.classList.add('damaged');
                 } else {

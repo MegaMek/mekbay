@@ -362,7 +362,7 @@ export class TWMekRules extends MekRules {
         let moveImpaired = false;
 
         if (isBiped) {
-            if (damage.destroyedHipsCount === 2) {
+            if (damage.destroyedHipsCount >= 2) {
                 walk = 0;
                 moveImpaired = true;
                 runDisabled = true;
@@ -390,8 +390,8 @@ export class TWMekRules extends MekRules {
                 walk = 0;
                 runDisabled = true;
             }
-            
-            if (damage.destroyedHipsCount === 4) {
+
+            if (damage.destroyedHipsCount >= 4) {
                 walk = 0;
                 moveImpaired = true;
                 runDisabled = true;

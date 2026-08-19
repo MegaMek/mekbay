@@ -343,6 +343,8 @@ function createShieldHarness(
             { ...crit('Triple Strength Myomer', false), loc: 'RT', slot: 0, eq: tsm },
         ],
     });
+    forceUnit.locations!.armor.set('DALA', { loc: 'DALA', rear: false, points: 5 });
+    forceUnit.locations!.armor.set('DCLA', { loc: 'DCLA', rear: false, points: 18 });
     const currentShieldCriticals = forceUnit.getCritSlots().filter(slot => slot.eq === shieldEquipment);
     forceUnit.setInventory([new MountedEquipment({
         owner: forceUnit,
@@ -1063,6 +1065,39 @@ describe('MekRules', () => {
         expect((depletedCore.forceUnit.rules as MekRules).computeMeleeDamage(7, 'punch', 'LA'))
             .toEqual({ damage: 7, maxDamage: 14 });
         expect(depletedCore.forceUnit.isEquipmentOperational(depletedCore.shield)).toBeFalse();
+    });
+
+    it('subtracts 1 DA and 5 DC for every destroyed shield critical in both rulesets', () => {
+        for (const rulesId of ['core2026', 'tw'] as const) {
+            const { forceUnit } = createShieldHarness(rulesId, 1);
+            const rules = forceUnit.rules as MekRules;
+
+            expect(rules.getShieldTrackHits('DALA')).withContext(`${rulesId} DA`).toBe(1);
+            expect(rules.getShieldTrackHits('DCLA')).withContext(`${rulesId} DC`).toBe(5);
+        }
+    });
+
+    it('uses exhausted DA or DC for Core shield mobility but retains the TW modifier', () => {
+        for (const track of ['DALA', 'DCLA'] as const) {
+            const core = createShieldHarness('core2026');
+            const tw = createShieldHarness('tw');
+            const hits = core.forceUnit.getArmorPoints(track);
+            core.forceUnit.setArmorHits(track, hits);
+            tw.forceUnit.setArmorHits(track, hits);
+
+            expect((core.forceUnit.rules as MekRules).movementState())
+                .withContext(`Core ${track}`)
+                .toEqual(jasmine.objectContaining({ walk: 6, run: 9 }));
+            expect(core.forceUnit.isEquipmentOperational(core.shield))
+                .withContext(`Core ${track}`)
+                .toBeFalse();
+            expect((tw.forceUnit.rules as MekRules).movementState())
+                .withContext(`TW ${track}`)
+                .toEqual(jasmine.objectContaining({ walk: 5, run: 8 }));
+            expect(tw.forceUnit.isEquipmentOperational(tw.shield))
+                .withContext(`TW ${track}`)
+                .toBeFalse();
+        }
     });
 
     it('removes the shield mobility modifier at the ruleset-specific destruction threshold', () => {
