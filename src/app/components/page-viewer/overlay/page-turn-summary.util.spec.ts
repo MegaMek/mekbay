@@ -2,7 +2,42 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { composeTurnSummaryHeatRows, countActionablePsrChecks, displayPsrModifiers, isMoveModeDisabledWhileProne } from './page-turn-summary.util';
+import { Subject } from 'rxjs';
+import type { ManagedOverlayRef, OverlayManagerService } from '../../../services/overlay-manager.service';
+import { composeTurnSummaryHeatRows, countActionablePsrChecks, displayPsrModifiers, isMoveModeDisabledWhileProne, openTurnSummaryChildOverlay } from './page-turn-summary.util';
+
+describe('openTurnSummaryChildOverlay', () => {
+    it('blocks the parent summary until the child overlay closes', () => {
+        const closed = new Subject<void>();
+        const overlayManager = jasmine.createSpyObj<OverlayManagerService>(
+            'OverlayManagerService',
+            ['blockCloseUntil', 'unblockClose'],
+        );
+        const childOverlay = { closed } as ManagedOverlayRef<unknown>;
+        const openOverlay = jasmine.createSpy('openOverlay').and.returnValue(childOverlay);
+
+        expect(openTurnSummaryChildOverlay(overlayManager, 'unit-1', openOverlay)).toBe(childOverlay);
+        expect(overlayManager.blockCloseUntil).toHaveBeenCalledOnceWith('turnSummary-unit-1');
+        expect(openOverlay).toHaveBeenCalledTimes(1);
+        expect(overlayManager.unblockClose).not.toHaveBeenCalled();
+
+        closed.next();
+
+        expect(overlayManager.unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-1');
+    });
+
+    it('unblocks the parent summary if the child overlay cannot be created', () => {
+        const overlayManager = jasmine.createSpyObj<OverlayManagerService>(
+            'OverlayManagerService',
+            ['blockCloseUntil', 'unblockClose'],
+        );
+        const error = new Error('overlay creation failed');
+
+        expect(() => openTurnSummaryChildOverlay(overlayManager, 'unit-1', () => { throw error; }))
+            .toThrow(error);
+        expect(overlayManager.unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-1');
+    });
+});
 
 describe('isMoveModeDisabledWhileProne', () => {
     it('disables only jump while prone without changing its selected state', () => {

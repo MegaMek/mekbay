@@ -7,7 +7,7 @@ import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
-import { canChangeAirborneGround, type MotiveModeOption, type MotiveModes } from '../../../models/motiveModes.model';
+import { canChangeAirborneGround, getMotiveModesOptionsByUnit, type MotiveModeOption, type MotiveModes } from '../../../models/motiveModes.model';
 import { HexSliderComponent } from '../../hex-slider/hex-slider.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import type { TooltipLine } from '../../tooltip/tooltip.component';
@@ -149,21 +149,53 @@ export class PageTurnSummaryPanelComponent {
 
     readonly prone = computed(() => this.unit()?.getCondition('prone') ?? false);
 
+    readonly immobile = computed(() => this.unit()?.getCondition('immobile') ?? false);
+
+    readonly showImmobileStatus = computed(() => {
+        const unit = this.unit();
+        return unit?.gameRules.id === 'core2026' && this.immobile();
+    });
+
+    readonly showMovementControls = computed(() => (
+        !this.showImmobileStatus() || this.currentMoveMode() !== null
+    ));
+
     readonly canStandUp = computed(() => this.unit()?.turnState().canStandUp() ?? false);
 
+    readonly standAttempts = computed(() => this.unit()?.turnState().standAttempts() ?? 0);
+
+    readonly standAttemptMovementPointsSpent = computed(() => {
+        const unit = this.unit();
+        return unit?.rules.getMovementPointsSpent(unit.turnState()) ?? 0;
+    });
+
+    readonly standUpRequiresPSR = computed(() => {
+        const turnState = this.unit()?.turnState();
+        return turnState?.canStandUp() === true && !turnState.canStandWithoutPSR();
+    });
+
     isMoveModeDisabled(mode: MotiveModes): boolean {
+        if (this.unit()?.turnState().carefulStand?.()) return true;
         return isMoveModeDisabledWhileProne(mode, this.prone());
     }
 
     standUp(event: MouseEvent): void {
         event.stopPropagation();
         const unit = this.unit();
-        if (!unit || !unit.turnState().canStandUp()) return;
-        if (unit.turnState().canStandWithoutPSR()) {
-            unit.turnState().resolveStandAttempt('success');
+        if (!unit) return;
+        const turnState = unit.turnState();
+        if (!turnState.prepareStandAttempt()) return;
+        if (turnState.canStandWithoutPSR()) {
+            turnState.resolveStandAttempt('success');
             return;
         }
         toggleStandingUpOverlay(this.parent, this.overlayManager, this.injector, this.overlay);
+    }
+
+    reviewStandAttempts(event: MouseEvent): void {
+        event.stopPropagation();
+        if (this.standAttempts() === 0) return;
+        toggleStandingUpOverlay(this.parent, this.overlayManager, this.injector, this.overlay, { reviewOnly: true });
     }
 
     moveModeModifierLabel(mode: MotiveModes): string | null {
@@ -300,7 +332,35 @@ export class PageTurnSummaryPanelComponent {
     readonly moveModes = computed<MotiveModeOption[]>(() => {
         const unit = this.unit();
         if (!unit) return [];
-        return unit.getAvailableMotiveModes(unit.turnState().airborne() ?? false);
+        const turnState = unit.turnState();
+        const airborne = turnState.airborne() ?? false;
+        const availableModes = unit.getAvailableMotiveModes(airborne);
+        const currentMode = turnState.moveMode();
+        if (currentMode === null || availableModes.some(option => option.mode === currentMode)) {
+            return availableModes;
+        }
+
+        const supportedModes = getMotiveModesOptionsByUnit(unit.getUnit(), airborne);
+        const currentOption = supportedModes.find(option => option.mode === currentMode);
+        if (!currentOption) return availableModes;
+
+        const visibleModes = new Map(availableModes.map(option => [option.mode, option]));
+        visibleModes.set(currentMode, {
+            ...currentOption,
+            psr: unit.rules.getCommittedDamageMovementModePSRCheck(
+                currentMode,
+                turnState.moveDistance(),
+            ) !== null,
+        });
+        return supportedModes.flatMap(option => {
+            const visibleOption = visibleModes.get(option.mode);
+            return visibleOption ? [visibleOption] : [];
+        });
+    });
+
+    readonly onlyStationaryMoveMode = computed(() => {
+        const modes = this.moveModes();
+        return modes.length === 1 && modes[0].mode === 'stationary';
     });
 
     selectMove(mode: MotiveModes): void {
@@ -376,6 +436,14 @@ export class PageTurnSummaryPanelComponent {
         return unit.turnState().maxDistanceCurrentMoveMode();
     });
 
+    readonly moveCapacity = computed(() => {
+        const unit = this.unit();
+        if (!unit) return 0;
+        const mode = unit.turnState().moveMode();
+        if (!mode) return 0;
+        return unit.turnState().movementCapacityCurrentMoveMode();
+    });
+
     readonly moveMin = computed(() => {
         const unit = this.unit();
         if (!unit) return 0;
@@ -385,7 +453,7 @@ export class PageTurnSummaryPanelComponent {
     });
 
     readonly moveDistanceTicks = computed(() => {
-        const max = this.moveMax();
+        const max = this.moveCapacity();
         const length = Math.max(0, max + 1);
         return Array.from({ length }, (_value, index) => index);
     });

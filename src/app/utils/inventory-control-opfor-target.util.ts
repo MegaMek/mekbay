@@ -44,7 +44,7 @@ export function deriveOpforTargetCalculatorState(
     const immobile = unit.getCondition('immobile');
     const prone = unit.getCondition('prone');
     const moveDistance = unit.turnState().moveDistance();
-    const isAirborne = unit.turnState().moveMode() === 'jump' || unit.turnState().airborne() === true;
+    const isAirborne = unit.turnState().effectiveMoveMode() === 'jump' || unit.turnState().airborne() === true;
     const cover = unit.turnState().cover();
     const narcWaterLayers = unit.getActiveNarcWaterLayers();
     const targetMovementBracket = moveDistance !== null

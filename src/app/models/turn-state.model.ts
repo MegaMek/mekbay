@@ -4,7 +4,6 @@
 
 import { computed, signal, type WritableSignal } from "@angular/core";
 import { canChangeAirborneGround, getMotiveModeMaxDistance, type MotiveModes } from "./motiveModes.model";
-import { getMekLegLocations, inferMekConfigFromLocations } from "./entity/types";
 import type { CBTForceUnitState } from "./cbt-force-unit-state.model";
 import type { RuleCheckOutcome, SerializedPSRChecks, SerializedTurnState } from "./force-serialization";
 import { calculateModifierTotal, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitModifierTotal } from "./rules/unit-type-rules";
@@ -58,10 +57,22 @@ export class TurnState {
     private readonly heatDissipationConsumed = this.modifiedSignal<number>(0);
     private readonly psrOutcomes = this.modifiedSignal<Record<string, RuleCheckOutcome>>({});
     private readonly equipmentStateChanged = this.modifiedSignal<boolean>(false);
+    /** Per-unit turn sequence, retained across phase commits. */
+    private turnCounter: number;
     airborne = this.modifiedSignal<boolean | null>(null, 'movement');
     moveMode = this.modifiedSignal<MotiveModes | null>(null, 'movement');
     moveDistance = this.modifiedSignal<number | null>(null, 'movement');
+    /** Movement mode used by rules; Core defaults an unassigned Immobile unit to stationary. */
+    effectiveMoveMode = computed<MotiveModes | null>(() => {
+        const selectedMoveMode = this.moveMode();
+        if (selectedMoveMode !== null) return selectedMoveMode;
+        const unit = this.unitState.unit;
+        return unit.gameRules.id === 'core2026' && unit.getCondition('immobile')
+            ? 'stationary'
+            : null;
+    });
     standAttempts = this.modifiedSignal<number | undefined>(undefined);
+    carefulStand = this.modifiedSignal<boolean>(false);
     cover = this.modifiedSignal<UnitCover | undefined>(undefined);
     private readonly waterState = computed(() => {
         const cover = this.cover();
@@ -91,6 +102,7 @@ export class TurnState {
         const moveMode = this.moveMode();
         const moveDistance = this.moveDistance();
         const standAttempts = this.standAttempts();
+        const carefulStand = this.carefulStand();
         const cover = this.cover();
         const dmgReceived = this.dmgReceived();
         const weaponsHeat = this.weaponsHeat();
@@ -101,6 +113,7 @@ export class TurnState {
             || moveMode !== null
             || moveDistance !== null
             || standAttempts !== undefined
+            || carefulStand
             || cover !== undefined
             || dmgReceived != 0
             || weaponsHeat > 0
@@ -147,53 +160,16 @@ export class TurnState {
         });
     });
 
-    canRun = computed<boolean>(() => {
-        const unit = this.unitState.unit;
-        let damagedLegsCount = 0;
-        const internalLocations = unit.locations?.internal;
-        const config = inferMekConfigFromLocations(internalLocations?.keys() ?? []);
-        // Calculate pre-existing leg destruction modifiers. If a leg is gone, is gone.
-        for (const loc of getMekLegLocations(config)) {
-            if (!internalLocations?.has(loc)) continue;
-            if (unit.isInternalLocCommittedDestroyed(loc)) {
-                damagedLegsCount++;
-            }
-        }
-        return config === 'Quad' ? damagedLegsCount < 2 : damagedLegsCount < 1;
-    });
-
-    private readonly standingLegState = computed(() => {
-        const unit = this.unitState.unit;
-        const internalLocations = unit.locations?.internal;
-        const config = inferMekConfigFromLocations(internalLocations?.keys() ?? []);
-        const legs = getMekLegLocations(config);
-        const destroyedLegs = legs.filter(loc =>
-            internalLocations?.has(loc) && unit.isInternalLocDestroyed(loc)
-        ).length;
-        return { config, legs, destroyedLegs, internalLocations };
-    });
-
     canStandUp = computed<boolean>(() => {
-        if (!this.unitState.hasCondition('prone') || this.moveMode() === 'stationary') return false;
-        const { config, destroyedLegs } = this.standingLegState();
-        return destroyedLegs < (config === 'Quad' ? 3 : 2);
+        return this.unitState.unit.rules.canStandUp(this);
     });
 
     canStandWithoutPSR = computed<boolean>(() => {
-        if (!this.canStandUp()) return false;
-        const unit = this.unitState.unit;
-        const { config, legs, internalLocations } = this.standingLegState();
-        return config === 'Quad' && legs.every(loc =>
-            internalLocations?.has(loc) && !unit.isInternalLocDestroyed(loc)
-        );
-    });
-
-    getSpottingModifier = computed<number>(() => {
-        return this.spotting() ? this.unitState.unit.rules.getSpottingModifier() : 0;
+        return this.unitState.unit.rules.canStandWithoutPSR(this);
     });
 
     getAttackMovementModifier = computed<number>(() => {
-        return this.unitState.unit.rules.getAttackMovementModifier(this.moveMode(), this.airborne() ?? false);
+        return this.unitState.unit.rules.getAttackMovementModifier(this.effectiveMoveMode(), this.airborne() ?? false);
     });
 
     attackMovementModifierCanApply = computed<boolean>(() => {
@@ -210,7 +186,7 @@ export class TurnState {
     });
 
     missingAttackMovementModifier = computed<boolean>(() => {
-        return this.moveMode() === null && this.attackMovementModifierCanApply();
+        return this.effectiveMoveMode() === null && this.attackMovementModifierCanApply();
     });
 
     getAttackModifierBreakdown = computed<UnitModifierBreakdownEntry[]>(() => {
@@ -255,25 +231,47 @@ export class TurnState {
         return true;
     }
 
-    resolveStandAttempt(outcome: RuleCheckOutcome): boolean {
-        if (!this.canStandUp()) return false;
+    resolveStandAttempt(outcome: RuleCheckOutcome, options: { carefulStand?: boolean } = {}): boolean {
+        const carefulStand = options.carefulStand === true;
+        if (carefulStand && !this.unitState.unit.rules.canCarefulStand(this)) return false;
+        if (!this.prepareStandAttempt()) return false;
         this.adjustStandAttempts(1);
+        if (carefulStand) {
+            this.carefulStand.set(true);
+            this.clampMoveDistanceToCurrentModeRange();
+        }
         if (outcome === 'success') this.unitState.unit.setCondition('prone', false);
+        return true;
+    }
+
+    prepareStandAttempt(): boolean {
+        if (!this.canStandUp()) return false;
+        const standingMovementMode = this.unitState.unit.rules.getStandAttemptMovementMode(this);
+        if (standingMovementMode !== null && standingMovementMode !== this.moveMode()) {
+            this.moveMode.set(standingMovementMode);
+            if (this.moveDistance() === null) this.moveDistance.set(0);
+        }
         return true;
     }
 
     adjustStandAttempts(delta: number): void {
         if (!Number.isFinite(delta)) return;
+        const normalizedDelta = Math.trunc(delta);
         const current = this.standAttempts() ?? 0;
-        const next = Math.max(0, current + Math.trunc(delta));
-        if (next === current) return;
+        const next = Math.max(0, current + normalizedDelta);
+        const removedCarefulStand = normalizedDelta < 0 && this.carefulStand();
+        if (removedCarefulStand) this.carefulStand.set(false);
+        if (next === current && !removedCarefulStand) return;
         this.standAttempts.set(next);
-        if (this.unitState.unit.gameRules.id === 'tw') this.invalidateHeatSource('movement');
+        this.clampMoveDistanceToCurrentModeRange();
+        this.reconcileHeatSources();
     }
 
     resetStandAttempts(): void {
         this.standAttempts.set(0);
-        if (this.unitState.unit.gameRules.id === 'tw') this.invalidateHeatSource('movement');
+        this.carefulStand.set(false);
+        this.clampMoveDistanceToCurrentModeRange();
+        this.reconcileHeatSources();
     }
 
     setCover(cover: UnitCover | undefined): void {
@@ -294,7 +292,8 @@ export class TurnState {
     }
 
     currentPhase = computed<'I' | 'M' | 'W' | 'P' | 'H'>(() => {
-        if (this.moveMode() === null || (this.moveMode() !== 'stationary' && this.moveDistance() === null)) {
+        const moveMode = this.effectiveMoveMode();
+        if (moveMode === null || (moveMode !== 'stationary' && this.moveDistance() === null)) {
             return 'M';
         } else {
             return 'W';
@@ -352,8 +351,9 @@ export class TurnState {
 
     heatProjectionVisible = computed<boolean>(() => this.hasPendingHeatResolution());
 
-    constructor(unitState: CBTForceUnitState) {
+    constructor(unitState: CBTForceUnitState, turnCounter = 0) {
         this.unitState = unitState;
+        this.turnCounter = turnCounter;
     }
 
     capturePassiveHeatSourceBaseline(): void {
@@ -430,17 +430,21 @@ export class TurnState {
 
     serialize(): SerializedTurnState | undefined {
         const turnState: SerializedTurnState = {};
+        const turnCounter = this.turnCounter;
         const airborne = this.airborne();
         const moveMode = this.moveMode();
         const moveDistance = this.moveDistance();
         const standAttempts = this.standAttempts();
+        const carefulStand = this.carefulStand();
         const cover = this.cover();
         const psrChecks = this.serializePSRChecks();
 
+        if (turnCounter > 0) turnState.turnCounter = turnCounter;
         if (airborne === true) turnState.airborne = true;
         if (moveMode !== null) turnState.moveMode = moveMode;
         if (moveDistance !== null) turnState.moveDistance = moveDistance;
         if (standAttempts !== undefined) turnState.standAttempts = standAttempts;
+        if (carefulStand && this.unitState.unit.rules.supportsCarefulStand) turnState.carefulStand = true;
         if (cover !== undefined) turnState.cover = serializeUnitCover(cover);
         if (this.dmgReceived() > 0) turnState.dmgReceived = this.dmgReceived();
         if (this.weaponsHeat() > 0) turnState.weaponsHeat = this.weaponsHeat();
@@ -463,10 +467,14 @@ export class TurnState {
 
     update(data: SerializedTurnState | undefined) {
         this.withSuppressedModified(() => {
+            this.turnCounter = data?.turnCounter ?? this.turnCounter;
             this.airborne.set(data?.airborne ?? null);
             this.moveMode.set(data?.moveMode ?? null);
             this.moveDistance.set(data?.moveDistance ?? null);
             this.standAttempts.set(data?.standAttempts);
+            this.carefulStand.set(
+                data?.carefulStand === true && this.unitState.unit.rules.supportsCarefulStand
+            );
             this.cover.set(deserializeUnitCover(data?.cover));
             this.dmgReceived.set(data?.dmgReceived ?? 0);
             this.weaponsHeat.set(data?.weaponsHeat ?? 0);
@@ -478,6 +486,10 @@ export class TurnState {
             this.spotting.set(data?.spotting ?? false);
             this.equipmentStateChanged.set(data?.equipmentStateChanged ?? false);
         });
+    }
+
+    getTurnCounter(): number {
+        return this.turnCounter;
     }
 
     markEquipmentStateChanged(): void {
@@ -592,7 +604,7 @@ export class TurnState {
         return JSON.stringify([source.value, source.replacedByFiringEntryId ?? null, source.signature ?? null]);
     }
 
-    maxDistanceCurrentMoveMode = computed<number>(() => {
+    movementCapacityCurrentMoveMode = computed<number>(() => {
         const moveMode = this.moveMode();
         if (moveMode === 'stationary') {
             return 0;
@@ -609,6 +621,12 @@ export class TurnState {
         }
         const unit = this.unitState.unit.getUnit();
         return getMotiveModeMaxDistance(moveMode, unit, airborne ?? false);
+    });
+
+    maxDistanceCurrentMoveMode = computed<number>(() => {
+        const capacity = this.movementCapacityCurrentMoveMode();
+        const rules = this.unitState.unit.rules;
+        return Math.max(0, capacity - rules.getMovementPointsSpent(this));
     });
 
     minDistanceCurrentMoveMode = computed<number>(() => {

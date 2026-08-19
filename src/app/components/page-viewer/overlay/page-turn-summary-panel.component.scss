@@ -114,6 +114,19 @@
     &.stationary {
         max-width: 40px;
     }
+
+    &.stationary-only {
+        width: 100%;
+        max-width: none;
+    }
+}
+
+.immobile-status {
+    min-height: 40px;
+    justify-content: center;
+    font-weight: 600;
+    text-align: center;
+    color: var(--text-color-secondary);
 }
 
 .spotting-button {
@@ -125,6 +138,30 @@
     --hex-slider-track-overhang: 14px;
     flex: 1 1 auto;
     min-width: 0;
+}
+
+.stand-attempts-summary {
+    justify-content: center;
+    padding: 4px;
+}
+
+.stand-attempts-link {
+    appearance: none;
+    border: 0;
+    background: none;
+    padding: 0;
+    color: var(--text-color-secondary);
+    font: inherit;
+    font-size: 0.82em;
+    font-variant-numeric: tabular-nums;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+        color: var(--text-color);
+    }
 }
 
 .equipment-track-row {

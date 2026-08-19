@@ -2,13 +2,45 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { signal } from '@angular/core';
+import { Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Overlay } from '@angular/cdk/overlay';
+import { Subject } from 'rxjs';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import type { PSRCheck } from '../../../models/rules/unit-type-rules';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
-import { PagePsrWarningPanelComponent, psrRollOutcome } from './page-psr-warning-panel.component';
+import { PagePsrWarningPanelComponent, psrRollOutcome, togglePsrWarningOverlay } from './page-psr-warning-panel.component';
+
+describe('togglePsrWarningOverlay', () => {
+    it('keeps Turn Summary open until PSR Warning closes', () => {
+        const closed = new Subject<void>();
+        const overlayManager = {
+            has: jasmine.createSpy('has').and.returnValue(false),
+            closeManagedOverlay: jasmine.createSpy('closeManagedOverlay'),
+            createManagedOverlay: jasmine.createSpy('createManagedOverlay').and.returnValue({ closed }),
+            blockCloseUntil: jasmine.createSpy('blockCloseUntil'),
+            unblockClose: jasmine.createSpy('unblockClose'),
+        } as unknown as OverlayManagerService;
+        const parent = { unit: signal({ id: 'unit-1' }) } as unknown as PageInteractionOverlayComponent;
+        const overlay = { scrollStrategies: { block: () => ({}) } } as unknown as Overlay;
+
+        togglePsrWarningOverlay(
+            parent,
+            overlayManager,
+            Injector.create({ providers: [] }),
+            overlay,
+        );
+
+        expect(overlayManager.blockCloseUntil).toHaveBeenCalledOnceWith('turnSummary-unit-1');
+        expect(overlayManager.closeManagedOverlay).not.toHaveBeenCalledWith('turnSummary-unit-1');
+
+        closed.next();
+
+        expect(overlayManager.unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-1');
+        expect(overlayManager.closeManagedOverlay).not.toHaveBeenCalledWith('turnSummary-unit-1');
+    });
+});
 
 describe('psrRollOutcome', () => {
     it('succeeds on or above the target and fails below it', () => {

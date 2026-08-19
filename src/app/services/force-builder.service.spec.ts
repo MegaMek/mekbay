@@ -609,6 +609,7 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
             getActiveNarcWaterLayers: () => ({ aboveWater: false, underwater: false }),
             turnState: () => ({
                 moveMode: signal(null),
+                effectiveMoveMode: signal(null),
                 moveDistance: signal<number | null>(0),
                 airborne: signal<boolean | null>(false),
                 cover: signal<UnitCover | undefined>(cover)

@@ -5,6 +5,7 @@
 import type { PSRCheck, UnitHeatSource } from '../../../models/rules/unit-type-rules';
 import type { SelectedInventoryWeaponHeat } from '../../../utils/inventory-control-heat.util';
 import type { MotiveModes } from '../../../models/motiveModes.model';
+import type { ManagedOverlayRef, OverlayManagerService } from '../../../services/overlay-manager.service';
 
 export interface TurnSummaryHeatRow {
     readonly id: string;
@@ -16,6 +17,24 @@ export interface TurnSummaryHeatRow {
 }
 
 export const TURN_SUMMARY_UNDERWATER_HEAT_SOURCE_ID = 'underwater-dissipation';
+
+/** Keeps the summary's capture-phase outside-click handler dormant while a modal child is open. */
+export function openTurnSummaryChildOverlay<T>(
+    overlayManager: OverlayManagerService,
+    unitId: string,
+    openOverlay: () => ManagedOverlayRef<T>,
+): ManagedOverlayRef<T> {
+    const parentOverlayKey = `turnSummary-${unitId}`;
+    overlayManager.blockCloseUntil(parentOverlayKey);
+    try {
+        const childOverlay = openOverlay();
+        childOverlay.closed.subscribe(() => overlayManager.unblockClose(parentOverlayKey));
+        return childOverlay;
+    } catch (error) {
+        overlayManager.unblockClose(parentOverlayKey);
+        throw error;
+    }
+}
 
 export function composeTurnSummaryHeatRows(
     sources: readonly UnitHeatSource[],

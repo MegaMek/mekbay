@@ -14,6 +14,7 @@ import { UnitInitializerService } from '../../services/unit-initializer.service'
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { OptionsService } from '../../services/options.service';
 import { TWMekRules } from './tw-rules';
+import { MEK_LOCATIONS } from '../entity/types';
 
 class TestCBTForce extends CBTForce {
     override emitChanged(): void {
@@ -56,13 +57,19 @@ function createTWForceUnit(critSlots: CriticalSlot[] = []): CBTForceUnit {
     const force = new TestCBTForce('Test Force', dataService, unitInitializer, injector);
     const forceUnit = new CBTForceUnit(baseUnit, force, dataService, unitInitializer, injector);
     forceUnit.locations = {
-        internal: new Map(['LL', 'RL'].map(loc => [loc, { loc, points: 1 }])),
-        armor: new Map(['LL', 'RL'].map(loc => [loc, { loc, rear: false, points: 1 }])),
+        internal: new Map(MEK_LOCATIONS.map(loc => [loc, { loc, points: 1 }])),
+        armor: new Map(MEK_LOCATIONS.map(loc => [loc, { loc, rear: false, points: 1 }])),
     };
     forceUnit.setLocations({}, true);
     forceUnit.writeCrits(critSlots);
     forceUnit.isLoaded.set(true);
     return forceUnit;
+}
+
+function hitCrit(forceUnit: CBTForceUnit, loc: string, slot: number): void {
+    const crit = forceUnit.getCritSlot(loc, slot);
+    if (!crit) throw new Error(`Missing critical slot ${loc}:${slot}`);
+    forceUnit.applyHitToCritSlot(crit);
 }
 
 describe('TWMekRules', () => {
@@ -140,6 +147,191 @@ describe('TWMekRules', () => {
         expect(forceUnit.rules.PSRModifiers().modifier).toBe(5);
     });
 
+    it('keeps multiple committed leg-actuator modifiers cumulative in TW', () => {
+        const forceUnit = createTWForceUnit([
+            legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL', false),
+            legActuatorCrit('lower-leg', 'Lower Leg Actuator', 'LL', false),
+        ]);
+
+        hitCrit(forceUnit, 'LL', 1);
+        hitCrit(forceUnit, 'LL', 2);
+        forceUnit.endPhase();
+
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(2);
+        expect(forceUnit.rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({
+            pilotCheck: 2,
+            loc: 'LL',
+            modifierReason: 'Leg Actuators Destroyed (2)',
+        }));
+        expect((forceUnit.rules as TWMekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 3, run: 5 }));
+    });
+
+    it('keeps same-phase actuator then hip modifiers cumulative after commit in TW', () => {
+        const forceUnit = createTWForceUnit([
+            legActuatorCrit('hip', 'Hip', 'LL', false),
+            legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL', false),
+        ]);
+        let timestamp = 100;
+        spyOn(Date, 'now').and.callFake(() => ++timestamp);
+
+        hitCrit(forceUnit, 'LL', 1);
+        const actuatorDestructionTimestamp = forceUnit.getCritSlot('LL', 1)?.destroying;
+        hitCrit(forceUnit, 'LL', 0);
+        const hipDestructionTimestamp = forceUnit.getCritSlot('LL', 0)?.destroying;
+
+        expect(forceUnit.turnState().getPSRChecks().map(check => check.reason)).toEqual([
+            'Leg actuator hit',
+            'Hip hit',
+        ]);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+
+        forceUnit.endPhase();
+
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+        expect(actuatorDestructionTimestamp!).toBeLessThan(hipDestructionTimestamp!);
+        expect(forceUnit.getCritSlot('LL', 0)?.destroyed).toBe(hipDestructionTimestamp);
+        expect(forceUnit.getCritSlot('LL', 1)?.destroyed).toBe(actuatorDestructionTimestamp);
+        expect(forceUnit.getCritSlot('LL', 0)?.destroyedTurn)
+            .toBe(forceUnit.getCritSlot('LL', 1)?.destroyedTurn);
+        expect((forceUnit.rules as TWMekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 2, run: 3 }));
+    });
+
+    it('keeps same-phase hip then actuator modifiers cumulative after commit in TW', () => {
+        const forceUnit = createTWForceUnit([
+            legActuatorCrit('hip', 'Hip', 'LL', false),
+            legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL', false),
+        ]);
+        let timestamp = 150;
+        spyOn(Date, 'now').and.callFake(() => ++timestamp);
+
+        hitCrit(forceUnit, 'LL', 0);
+        const hipDestructionTimestamp = forceUnit.getCritSlot('LL', 0)?.destroying;
+        hitCrit(forceUnit, 'LL', 1);
+        const actuatorDestructionTimestamp = forceUnit.getCritSlot('LL', 1)?.destroying;
+
+        expect(forceUnit.turnState().getPSRChecks().map(check => check.reason)).toEqual(
+            jasmine.arrayWithExactContents(['Hip hit', 'Leg actuator hit']),
+        );
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+
+        forceUnit.endPhase();
+
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+        expect(hipDestructionTimestamp!).toBeLessThan(actuatorDestructionTimestamp!);
+        expect(forceUnit.getCritSlot('LL', 0)?.destroyed).toBe(hipDestructionTimestamp);
+        expect(forceUnit.getCritSlot('LL', 1)?.destroyed).toBe(actuatorDestructionTimestamp);
+        expect(forceUnit.getCritSlot('LL', 1)?.destroyedTurn)
+            .toBe(forceUnit.getCritSlot('LL', 0)?.destroyedTurn);
+        expect((forceUnit.rules as TWMekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 2, run: 3 }));
+    });
+
+    it('keeps an earlier-phase actuator when the same-turn hip is hit later in TW', () => {
+        const forceUnit = createTWForceUnit([
+            legActuatorCrit('hip', 'Hip', 'LL', false),
+            legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL', false),
+        ]);
+        let timestamp = 200;
+        spyOn(Date, 'now').and.callFake(() => ++timestamp);
+
+        hitCrit(forceUnit, 'LL', 1);
+        forceUnit.endPhase();
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(1);
+
+        hitCrit(forceUnit, 'LL', 0);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+        forceUnit.endPhase();
+
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+        expect(forceUnit.getCritSlot('LL', 1)!.destroyed!)
+            .toBeLessThan(forceUnit.getCritSlot('LL', 0)!.destroyed!);
+        expect(forceUnit.getCritSlot('LL', 0)?.destroyedTurn)
+            .toBe(forceUnit.getCritSlot('LL', 1)?.destroyedTurn);
+        expect((forceUnit.rules as TWMekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 2, run: 3 }));
+    });
+
+    it('keeps a later-phase actuator modifier after an existing same-leg hip in TW', () => {
+        const forceUnit = createTWForceUnit([
+            legActuatorCrit('hip', 'Hip', 'LL', false),
+            legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL', false),
+        ]);
+        let timestamp = 300;
+        spyOn(Date, 'now').and.callFake(() => ++timestamp);
+
+        hitCrit(forceUnit, 'LL', 0);
+        forceUnit.endPhase();
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(2);
+
+        hitCrit(forceUnit, 'LL', 1);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+        forceUnit.endPhase();
+
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+        expect(forceUnit.getCritSlot('LL', 0)!.destroyed!)
+            .toBeLessThan(forceUnit.getCritSlot('LL', 1)!.destroyed!);
+        expect(forceUnit.getCritSlot('LL', 1)?.destroyedTurn)
+            .toBe(forceUnit.getCritSlot('LL', 0)?.destroyedTurn);
+        expect((forceUnit.rules as TWMekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 2, run: 3 }));
+    });
+
+    it('lets a later-turn hip replace an earlier same-leg actuator modifier in TW', () => {
+        const forceUnit = createTWForceUnit([
+            legActuatorCrit('hip', 'Hip', 'LL', false),
+            legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL', false),
+        ]);
+
+        hitCrit(forceUnit, 'LL', 1);
+        forceUnit.endTurn();
+
+        hitCrit(forceUnit, 'LL', 0);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(2);
+        forceUnit.endPhase();
+
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(2);
+        expect(forceUnit.getCritSlot('LL', 0)!.destroyedTurn!)
+            .toBeGreaterThan(forceUnit.getCritSlot('LL', 1)!.destroyedTurn!);
+        expect((forceUnit.rules as TWMekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 3, run: 5 }));
+    });
+
+    it('keeps a later-turn actuator modifier after an existing same-leg hip in TW', () => {
+        const forceUnit = createTWForceUnit([
+            legActuatorCrit('hip', 'Hip', 'LL', false),
+            legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL', false),
+        ]);
+
+        hitCrit(forceUnit, 'LL', 0);
+        forceUnit.endTurn();
+
+        hitCrit(forceUnit, 'LL', 1);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+        forceUnit.endPhase();
+
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+        expect(forceUnit.getCritSlot('LL', 1)!.destroyedTurn!)
+            .toBeGreaterThan(forceUnit.getCritSlot('LL', 0)!.destroyedTurn!);
+        expect((forceUnit.rules as TWMekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 2, run: 3 }));
+    });
+
+    it('retains the destroyed foot actuator PSR modifier in TW', () => {
+        const forceUnit = createTWForceUnit([
+            legActuatorCrit('foot', 'Foot', 'LL'),
+        ]);
+
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(1);
+        expect(forceUnit.rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({
+            pilotCheck: 1,
+            loc: 'LL',
+            reason: 'Leg Actuator(s) Destroyed',
+            modifierReason: 'Leg Actuator Destroyed',
+        }));
+    });
+
     it('stacks independent TW actuator checks with damage and gyro PSRs', () => {
         const forceUnit = createTWForceUnit();
         const turnState = forceUnit.turnState();
@@ -159,11 +351,11 @@ describe('TWMekRules', () => {
         expect(forceUnit.rules.PSRModifiers().modifier).toBe(6);
     });
 
-    it('retains one legacy TW movement trigger and hip-dominant modifier for same-leg damage', () => {
+    it('keeps one TW movement trigger when a later hip replaces older same-leg modifiers', () => {
         const forceUnit = createTWForceUnit([
-            legActuatorCrit('hip', 'Hip', 'LL'),
-            legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL'),
-            legActuatorCrit('foot', 'Foot', 'LL'),
+            { ...legActuatorCrit('hip', 'Hip', 'LL'), destroyedTurn: 2 },
+            { ...legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL'), destroyedTurn: 1 },
+            { ...legActuatorCrit('foot', 'Foot', 'LL'), destroyedTurn: 1 },
         ]);
         const turnState = forceUnit.turnState();
         turnState.moveMode.set('jump');
@@ -172,6 +364,7 @@ describe('TWMekRules', () => {
         expect(turnState.getPSRChecks()).toEqual([jasmine.objectContaining({
             fallCheck: 0,
             pilotCheck: 0,
+            kind: 'damaged-leg-actuator-movement',
             reason: 'Jumping with damaged leg actuator',
         })]);
         expect(turnState.PSRRollsCount()).toBe(1);
@@ -181,6 +374,26 @@ describe('TWMekRules', () => {
             loc: 'LL',
             reason: 'Hip Destroyed',
         }));
+    });
+
+    it('classifies movement checks independently from their display reason', () => {
+        const forceUnit = createTWForceUnit([
+            legActuatorCrit('lower-leg', 'Lower Leg Actuator', 'LL'),
+        ]);
+        const turnState = forceUnit.turnState();
+        turnState.moveMode.set('jump');
+        turnState.moveDistance.set(1);
+        spyOn(forceUnit.rules, 'getCommittedDamageMovementModePSRCheck').and.returnValue({
+            fallCheck: 0,
+            pilotCheck: 0,
+            kind: 'damaged-leg-actuator-movement',
+            reason: 'Localized movement check label',
+        });
+
+        expect(turnState.getPSRChecks()).toEqual([jasmine.objectContaining({
+            kind: 'damaged-leg-actuator-movement',
+            reason: 'Localized movement check label',
+        })]);
     });
 
     it('keeps current-hit and committed-movement actuator PSRs independent in TW', () => {

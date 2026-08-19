@@ -43,15 +43,23 @@
     inset-inline-end: calc(var(--hex-slider-track-overhang) * -1);
     block-size: var(--hex-slider-track-height);
     transform: translateY(-50%);
-    background: rgba(70, 70, 70, 0.72);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--background-input);
     box-sizing: border-box;
     overflow: hidden;
 }
 
 .blocked-track {
-    block-size: 100%;
-    background: #800;
+    position: absolute;
+    inset-block: 0;
+    background: #666;
+}
+
+.blocked-min-track {
+    inset-inline-start: 0;
+}
+
+.blocked-max-track {
+    inset-inline-end: 0;
 }
 
 .tick {

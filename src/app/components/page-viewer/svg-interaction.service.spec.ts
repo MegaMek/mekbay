@@ -1980,6 +1980,7 @@ function createInventoryInteractionUnit(html = `
         pilotingSkill: () => 5,
         turnState: () => ({
             moveMode: () => null,
+            effectiveMoveMode: () => null,
             airborne: () => false,
             getAttackMovementModifier: () => 0,
             getAttackModifierBreakdown: () => [],

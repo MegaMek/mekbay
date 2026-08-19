@@ -214,4 +214,45 @@ describe('unit-search worker', () => {
             telemetryQuery: 'canon:no',
         }).entries).toEqual([{ unitName: 'Unpublished Non-Canon' }]);
     });
+
+    it('ignores extra rulebook expansions until a baseline is selected in the worker', () => {
+        const unitA = createUnit('Unit A');
+        unitA.rulesRefs = ['BMM', 'Shrap01', 'IO:AE'];
+        const unitB = createUnit('Unit B');
+        unitB.rulesRefs = ['TW', 'Shrap01', 'AAA'];
+
+        const runtime = __test__.hydrateCorpus({
+            corpusVersion: '1:0',
+            units: [unitA, unitB],
+            indexes: {
+                rulesRefs: {
+                    BMM: ['Unit A'],
+                    TW: ['Unit B'],
+                    Shrap01: ['Unit A', 'Unit B'],
+                    'IO:AE': ['Unit A'],
+                    AAA: ['Unit B'],
+                },
+            },
+            factionEraIndex: {},
+        });
+        const baseRequest = createRequest();
+
+        const getEntries = (executionQuery: string) => __test__.buildResultMessage(runtime, {
+            ...baseRequest,
+            executionQuery,
+            telemetryQuery: executionQuery,
+        }).entries;
+
+        expect(getEntries('rulesRefs=Shrap01')).toEqual([
+            { unitName: 'Unit A' },
+            { unitName: 'Unit B' },
+        ]);
+        expect(getEntries('rulesRefs=Shrap01,AAA')).toEqual([
+            { unitName: 'Unit A' },
+            { unitName: 'Unit B' },
+        ]);
+        expect(getEntries('rulesRefs=TW,Shrap01')).toEqual([]);
+        expect(getEntries('rulesRefs=TW')).toEqual([]);
+        expect(getEntries('rulesRefs=TW,Shrap01,AAA')).toEqual([{ unitName: 'Unit B' }]);
+    });
 });

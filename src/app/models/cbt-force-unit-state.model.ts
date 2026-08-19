@@ -33,8 +33,8 @@ export class CBTForceUnitState extends ForceUnitState {
         this.turnState.set(new TurnState(this));
     }
 
-    resetTurnState() {
-        const turnState = new TurnState(this);
+    resetTurnState(turnCounter = 0) {
+        const turnState = new TurnState(this, turnCounter);
         this.turnState.set(turnState);
         turnState.capturePassiveHeatSourceBaseline();
     }
@@ -93,6 +93,11 @@ export class CBTForceUnitState extends ForceUnitState {
     consolidateCrits() {
         if (!this.hasUnconsolidatedCrits()) return;
         const crits = this.crits();
+        const commitsDestruction = crits.some(crit =>
+            crit.destroying !== undefined && crit.destroyed === undefined);
+        const destructionTurn = commitsDestruction
+            ? this.turnState().getTurnCounter()
+            : undefined;
         let updated = false;
         crits.forEach(crit => {
             if ((crit.pendingHits ?? 0) !== 0) {
@@ -102,8 +107,9 @@ export class CBTForceUnitState extends ForceUnitState {
                 crit.pendingHitTimestamps = undefined;
                 updated = true;
             }
-            if (!!crit.destroying !== !!crit.destroyed) {
+            if ((crit.destroying !== undefined) !== (crit.destroyed !== undefined)) {
                 crit.destroyed = crit.destroying;
+                crit.destroyedTurn = crit.destroying !== undefined ? destructionTurn : undefined;
                 updated = true;
             }
         });
@@ -250,6 +256,7 @@ export class CBTForceUnitState extends ForceUnitState {
                         !this.numberArraysEqual(existingCrit.pendingHitTimestamps, incomingCrit.pendingHitTimestamps) ||
                         existingCrit.destroying !== incomingCrit.destroying ||
                         existingCrit.destroyed !== incomingCrit.destroyed ||
+                        existingCrit.destroyedTurn !== incomingCrit.destroyedTurn ||
                         existingCrit.consumed !== incomingCrit.consumed) {
                         existingCrit.hits = incomingCrit.hits;
                         existingCrit.pendingHits = incomingCrit.pendingHits;
@@ -259,6 +266,7 @@ export class CBTForceUnitState extends ForceUnitState {
                         existingCrit.name = incomingCrit.name;
                         existingCrit.originalName = incomingCrit.originalName;
                         existingCrit.destroyed = incomingCrit.destroyed;
+                        existingCrit.destroyedTurn = incomingCrit.destroyedTurn;
                         existingCrit.consumed = incomingCrit.consumed;
                         critsChanged = true;
                     }
@@ -267,7 +275,9 @@ export class CBTForceUnitState extends ForceUnitState {
                     if ((existingCrit.hits ?? 0) > 0 || (existingCrit.pendingHits ?? 0) !== 0 ||
                         (existingCrit.hitTimestamps?.length ?? 0) > 0 || (existingCrit.pendingHitTimestamps?.length ?? 0) > 0 ||
                         existingCrit.destroying !== undefined ||
-                        existingCrit.destroyed !== undefined || (existingCrit.consumed ?? 0) > 0 ||
+                        existingCrit.destroyed !== undefined ||
+                        existingCrit.destroyedTurn !== undefined ||
+                        (existingCrit.consumed ?? 0) > 0 ||
                         existingCrit.originalName !== undefined) {
                         existingCrit.hits = 0;
                         existingCrit.pendingHits = undefined;
@@ -275,6 +285,7 @@ export class CBTForceUnitState extends ForceUnitState {
                         existingCrit.pendingHitTimestamps = undefined;
                         existingCrit.destroying = undefined;
                         existingCrit.destroyed = undefined;
+                        existingCrit.destroyedTurn = undefined;
                         existingCrit.consumed = undefined;
                         if (existingCrit.originalName) {
                             existingCrit.name = existingCrit.originalName;

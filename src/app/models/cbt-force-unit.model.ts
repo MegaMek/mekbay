@@ -25,7 +25,7 @@ import type { EquipmentFlag } from './equipment-flags.type';
 import type { WeaponType } from './weapon-types.model';
 import { C3Capabilities, type C3Component, C3NetworkType, C3Role } from './c3-network.model';
 import { isC3DisruptingStealthActive } from './stealth-equipment.model';
-import { getMotiveModesOptionsByUnit, type MotiveModeOption } from './motiveModes.model';
+import { getMotiveModeLabel, getMotiveModesOptionsByUnit, type MotiveModeOption, type MotiveModes } from './motiveModes.model';
 import type { TurnState } from './turn-state.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import type { UnitTypeRules } from './rules/unit-type-rules';
@@ -493,8 +493,9 @@ export class CBTForceUnit extends ForceUnit {
         slot.hits = Math.max(0, (slot.hits ?? 0) + damage);
         const destroying = slot.armored ? slot.hits >= 2 : slot.hits >= 1;
         slot.destroying = destroying ? Date.now() : undefined;
-        if (slot.destroyed && !destroying) {
+        if (slot.destroyed !== undefined && !destroying) {
             slot.destroyed = undefined; // Reset destroyed immediately
+            slot.destroyedTurn = undefined;
         }
         this.setCritSlot(slot);
         if (consolidateImmediately) {
@@ -1268,7 +1269,7 @@ export class CBTForceUnit extends ForceUnit {
     private isPhysicalActionUnavailable(entry: MountedEquipment): boolean {
         if (!entry.isPhysicalWeapon()) return false;
         if (this.getCondition('prone')) return true;
-        const moveMode = this.turnState().moveMode();
+        const moveMode = this.turnState().effectiveMoveMode();
         if (moveMode === null) return false; // unknown!
 
         const attack = entry.name.trim().toLocaleLowerCase();
@@ -1512,8 +1513,9 @@ export class CBTForceUnit extends ForceUnit {
         this.state.crew.set(crew);
         // Clear all crits
         const crits = this.state.crits().map(crit => {
-            if (crit.destroyed) {
+            if (crit.destroyed !== undefined || crit.destroyedTurn !== undefined) {
                 crit.destroyed = undefined;
+                crit.destroyedTurn = undefined;
             }
             if (crit.destroying) {
                 crit.destroying = undefined;
@@ -1574,11 +1576,24 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     public getAvailableMotiveModes(airborne: boolean): MotiveModeOption[] {
-        return getMotiveModesOptionsByUnit(this.getUnit(), airborne)
+        const turnState = this.turnState();
+        const unit = this.getUnit();
+        const options = getMotiveModesOptionsByUnit(unit, airborne);
+        for (const mode of ['jump', 'UMU'] satisfies MotiveModes[]) {
+            if ((mode !== 'jump' || !airborne)
+                && !options.some(option => option.mode === mode)
+                && (this._rules.getMaxDistanceForMoveMode(mode) ?? 0) > 0) {
+                options.push({ mode, label: getMotiveModeLabel(mode, unit, airborne) });
+            }
+        }
+        return options
             .filter(option => this._rules.isMotiveModeAvailable(option.mode))
             .map(option => ({
                 ...option,
-                psr: this._rules.getCommittedDamageMovementModePSRCheck(option.mode) !== null,
+                psr: this._rules.getCommittedDamageMovementModePSRCheck(
+                    option.mode,
+                    option.mode === turnState.moveMode() ? turnState.moveDistance() : 0,
+                ) !== null,
             }));
     }
 
@@ -1649,7 +1664,7 @@ export class CBTForceUnit extends ForceUnit {
         if (endsForceTurn) this.force.clearExpiredManualTargetTags(this);
         this.inventoryControl.markAmmoSourcesChanged();
         this.phaseTrigger.update(v => v + 1); // Trigger change detection
-        this.state.resetTurnState();
+        this.state.resetTurnState(this.turnState().getTurnCounter() + 1);
     }
 
     private _hasDirectInventory: boolean | null = null;

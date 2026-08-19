@@ -12,9 +12,10 @@ import type { ChargeDamage, PSRCheck, UnitHeatSource } from './unit-type-rules';
 import type { CriticalSlot, SerializedC3NetworkGroup } from '../force-serialization';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import { C3TaxCalculator } from '../c3-network.model';
-import { getMekLimbLocations, inferMekConfigFromLocations, LEG_LOCATIONS, MEK_SIDE_TORSO_LOCATIONS, MEK_TORSO_LOCATIONS } from '../entity/types';
+import { getMekLimbLocations, inferMekConfigFromLocations, LEG_LOCATIONS, MEK_SIDE_TORSO_LOCATIONS, MEK_TORSO_LOCATIONS, QUAD_LEG_LOCATIONS, type MekConfig } from '../entity/types';
 import type { TurnState } from '../turn-state.model';
 import type { Equipment } from '../equipment.model';
+import type { MountedEquipment } from '../mounted-equipment.model';
 
 function calculateTWC3Tax(
     unit: CBTForceUnit,
@@ -31,7 +32,7 @@ function calculateTWChargeDamage(
     maxBonusDamage = bonusDamage,
 ): ChargeDamage {
     const damagePerHex = unit.getUnit().tons / 10;
-    const moveMode = unit.turnState().moveMode();
+    const moveMode = unit.turnState().effectiveMoveMode();
     const movedHexes = Math.max(1, unit.turnState().moveDistance() ?? 0);
     const maxMovedHexes = Math.max(1, unit.getUnit().run);
     const ramPlates = unit.getInventory().filter(entry => entry.equipment?.hasFlag('F_RAM_PLATE'));
@@ -58,8 +59,36 @@ function calculateTWChargeDamage(
 
 export class TWMekRules extends MekRules {
     override readonly standingUpPSRModifier: number = 0;
+    override readonly supportsCarefulStand: boolean = true;
     protected override get shieldBashPunchBonusEnabled(): boolean { return false; }
     protected override get standaloneShieldDamageEnabled(): boolean { return true; }
+
+    protected override shieldRetainsMobilityPenalty(entry: MountedEquipment): boolean {
+        if (entry.committedDestroyed()) return false;
+        const criticals = this.entryCriticalSlots(entry);
+        if (criticals.length === 0) {
+            return this.unit.getEquipmentInstallationLocationStatus(entry) === 'available';
+        }
+        // TW retains the modifier until every shield critical is unavailable.
+        // Critical status also accounts for a committed destroyed/blown-off arm.
+        return !this.allShieldCriticalsUnavailable(entry);
+    }
+
+    protected override destroyedLegStandThreshold(config: MekConfig): number {
+        return config === 'Quad' ? 2 : 1;
+    }
+
+    override getStandAttemptLimit(_turnState: TurnState): number | null {
+        const { config, destroyedLegs } = this.currentLegState();
+        return this.isDestroyedLegStandException(config, destroyedLegs.length) ? 1 : null;
+    }
+
+    protected override isMovementPSRFoldedIntoStandAttempt(turnState: TurnState): boolean {
+        const { config, destroyedLegs } = this.currentLegState();
+        return (turnState.standAttempts() ?? 0) > 0
+            && (turnState.moveDistance() ?? 0) === 0
+            && this.isDestroyedLegStandException(config, destroyedLegs.length);
+    }
 
     override heatLifeSupportPilotHits(heat: number): number {
         if (!this.hasDamagedLifeSupport() || heat <= 0) return 0;
@@ -101,12 +130,10 @@ export class TWMekRules extends MekRules {
                 fallCheck: this.hipPSRModifier,
                 pilotCheck: this.hipPSRModifier,
                 loc,
-                legFilter: loc,
                 reason: 'Hip hit',
             });
         });
-        if (movementCheck?.reason === 'Jumping with damaged leg actuator'
-            || movementCheck?.reason === 'Running with damaged hip') {
+        if (this.isLegDamageMovementPSRCheck(movementCheck)) {
             checks.push(movementCheck);
         }
         return checks;
@@ -120,19 +147,18 @@ export class TWMekRules extends MekRules {
         const modifiers: PSRCheck[] = [];
         const destroyedHips = critSlots.filter(slot => slot.loc
             && LEG_LOCATIONS.has(slot.loc)
-            && !this.unit.isEquipmentOperational(slot)
+            && slot.destroyed !== undefined
             && !ignoreLeg.has(slot.loc)
             && this.isNamedCrit(slot, 'Hip'));
         for (const hip of destroyedHips) {
             modifier += this.hipPSRModifier;
             modifiers.push({ pilotCheck: this.hipPSRModifier, loc: hip.loc!, reason: 'Hip Destroyed' });
-            ignoreLeg.add(hip.loc!);
         }
-        const destroyedActuators = critSlots.filter(slot => slot.loc
-            && LEG_LOCATIONS.has(slot.loc)
-            && !this.unit.isEquipmentOperational(slot)
-            && !ignoreLeg.has(slot.loc)
-            && (this.isNamedCrit(slot, 'Leg') || this.isNamedCrit(slot, 'Foot')));
+        const destroyedActuators = this.effectiveCommittedLegActuators(
+            critSlots,
+            this.unit.turnState().getPSRCheckState().hipsHit,
+        )
+            .filter(slot => !ignoreLeg.has(slot.loc!));
         const destroyedActuatorCounts = new Map<string, number>();
         for (const actuator of destroyedActuators) {
             destroyedActuatorCounts.set(actuator.loc!, (destroyedActuatorCounts.get(actuator.loc!) ?? 0) + 1);
@@ -149,6 +175,49 @@ export class TWMekRules extends MekRules {
             });
         }
         return { modifier, modifiers };
+    }
+
+    private effectiveCommittedLegActuators(
+        critSlots: readonly CriticalSlot[],
+        currentTurnHipHits: ReadonlySet<string> | undefined = undefined,
+    ): CriticalSlot[] {
+        // BMM: a hip replaces same-leg actuator modifiers from earlier turns;
+        // actuator hits from the hip's turn or a later turn remain cumulative.
+        const hipDestroyedOnTurnByLeg = new Map<string, number>();
+        for (const slot of critSlots) {
+            if (!slot.loc
+                || !LEG_LOCATIONS.has(slot.loc)
+                || slot.destroyed === undefined
+                || !this.isNamedCrit(slot, 'Hip')) continue;
+            hipDestroyedOnTurnByLeg.set(
+                slot.loc,
+                Math.max(
+                    hipDestroyedOnTurnByLeg.get(slot.loc) ?? 0,
+                    slot.destroyedTurn ?? 0,
+                ),
+            );
+        }
+        if (currentTurnHipHits && currentTurnHipHits.size > 0) {
+            const currentTurn = this.unit.turnState().getTurnCounter();
+            for (const loc of currentTurnHipHits) {
+                hipDestroyedOnTurnByLeg.set(loc, currentTurn);
+            }
+        }
+
+        return critSlots.filter(slot => {
+            if (!slot.loc
+                || !LEG_LOCATIONS.has(slot.loc)
+                || slot.destroyed === undefined
+                || this.unit.isInternalLocCommittedDestroyed(slot.loc)
+                || (!this.isNamedCrit(slot, 'Leg') && !this.isNamedCrit(slot, 'Foot'))) return false;
+            const hipDestroyedOnTurn = hipDestroyedOnTurnByLeg.get(slot.loc);
+            const actuatorDestroyedOnTurn = slot.destroyedTurn ?? 0;
+            return hipDestroyedOnTurn === undefined || actuatorDestroyedOnTurn >= hipDestroyedOnTurn;
+        });
+    }
+
+    protected override legActuatorMovementReduction(): number {
+        return this.effectiveCommittedLegActuators(this.unit.getCritSlots()).length;
     }
 
     protected override usesTorsoCripplingRules(): boolean {
@@ -268,7 +337,7 @@ export class TWMekRules extends MekRules {
     protected override readonly immobile = computed<boolean>(() => {
         if (!this.unit.isLoaded()) return false;
         if (this.unit.getCondition('shutdown')) return true;
-        if (this.allLimbsDestroyedOrMissing()) return true;
+        if (this.allLimbsDestroyed()) return true;
         if (!this.hasDroneOperatingSystem() && !this.hasFunctionalCrew()) return true;
         return false;
     });
@@ -277,12 +346,50 @@ export class TWMekRules extends MekRules {
         return { fallCheck: 100, pilotCheck: 5 };
     }
 
+    protected override getPreExistingDestroyedLegPSRModifiers(
+        config: MekConfig,
+        destroyedLegs: readonly string[],
+    ): PSRCheck[] {
+        if (config !== 'Quad') return super.getPreExistingDestroyedLegPSRModifiers(config, destroyedLegs);
+        if (destroyedLegs.length !== 2) return [];
+        return [{
+            pilotCheck: 5,
+            reason: 'Leg Destroyed',
+            modifierReason: 'Legs Destroyed (2)',
+        }];
+    }
+
+    protected override destroyedLegMovementPSRModifier(
+        moveMode: 'run' | 'jump',
+        isQuadruped: boolean,
+        destroyedLegsCount: number,
+    ): number {
+        return moveMode === 'jump' && isQuadruped && destroyedLegsCount === 1 ? 5 : 0;
+    }
+
     protected override damagedLegRequiresMovementCheck(_isQuadruped: boolean, destroyedLegsCount: number): boolean {
         return destroyedLegsCount > 0;
     }
 
     protected override runningWithDestroyedLegRequiresCheck(): boolean {
         return false;
+    }
+
+    protected override runningDamageCheckRequiresHexMovement(): boolean {
+        return false;
+    }
+
+    protected override destroyedLegsApplyHipMovementCheck(_isQuadruped: boolean, _destroyedLegsCount: number): boolean {
+        return false;
+    }
+
+    protected override getRunningMinimumMovementDistance(): number {
+        const movement = this.movementState();
+        if (!movement || movement.walk < 1) return 0;
+        const systemsStatus = this.systemsStatus();
+        const isQuadruped = QUAD_LEG_LOCATIONS.some(loc => systemsStatus.internalLocations.has(loc));
+        const oneLeggedDestroyedCount = isQuadruped ? 2 : 1;
+        return systemsStatus.destroyedLegsCount === oneLeggedDestroyedCount ? 1 : 0;
     }
 
     protected override applyLegDamageToMovement(
@@ -296,9 +403,15 @@ export class TWMekRules extends MekRules {
         let moveImpaired = false;
 
         if (isBiped) {
-            for (let index = 0; index < damage.destroyedHipsCount; index++) {
-                walk = Math.ceil(walk * 0.5);
+            if (damage.destroyedHipsCount >= 2) {
+                walk = 0;
                 moveImpaired = true;
+                runDisabled = true;
+            } else {
+                for (let index = 0; index < damage.destroyedHipsCount; index++) {
+                    walk = Math.ceil(walk * 0.5);
+                    moveImpaired = true;
+                }
             }
             if (damage.destroyedLegsCount === 1) {
                 walk = Math.min(walk, 1);
@@ -310,10 +423,6 @@ export class TWMekRules extends MekRules {
                 runDisabled = true;
             }
         } else if (isQuadruped) {
-            if (damage.destroyedHipsCount !== 0) {
-                walk -= damage.destroyedHipsCount;
-                moveImpaired = true;
-            }
             if (damage.destroyedLegsCount === 1) walk--;
             if (damage.destroyedLegsCount === 2) {
                 walk = Math.min(walk, 1);
@@ -321,6 +430,17 @@ export class TWMekRules extends MekRules {
             } else if (damage.destroyedLegsCount >= 3) {
                 walk = 0;
                 runDisabled = true;
+            }
+
+            if (damage.destroyedHipsCount >= 4) {
+                walk = 0;
+                moveImpaired = true;
+                runDisabled = true;
+            } else {
+                for (let index = 0; index < damage.destroyedHipsCount && walk > 0; index++) {
+                    walk = Math.ceil(walk * 0.5);
+                    moveImpaired = true;
+                }
             }
         }
 

@@ -33,7 +33,7 @@ import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType, type Availabilit
 import { type SemanticOperator, type SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues, parseValueWithQuantity, type QuantityConstraint } from './semantic-filter.util';
 import { normalizeLooseText, wildcardToRegex } from './string.util';
 import { usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
-import { checkQuantityConstraint as checkQuantityConstraintCore, isEmbeddedApostrophe } from './unit-search-shared.util';
+import { checkQuantityConstraint as checkQuantityConstraintCore, isEmbeddedApostrophe, unitMatchesRulesRefsSelection } from './unit-search-shared.util';
 import { isASDamageSemanticKey, parseASDamageValue } from './as-damage.util';
 
 // ============================================================================
@@ -2749,6 +2749,14 @@ function evaluateDropdownFilter(
 ): boolean {
     if (conf.key === 'as.specials') {
         return evaluateASSpecialsFilter(unitValue, operator, values);
+    }
+
+    if (conf.key === 'rulesRefs' && (operator === '=' || operator === '==')) {
+        const selectedRulesRefs = Array.from(new Set(values.flatMap(value => {
+            const indexedMatches = matchIndexedStoredValues(conf.key, value, context);
+            return indexedMatches.length > 0 ? indexedMatches : [value];
+        })));
+        return unitMatchesRulesRefsSelection(unitValue, selectedRulesRefs);
     }
 
     if (unitValue == null) return operator === '!=';

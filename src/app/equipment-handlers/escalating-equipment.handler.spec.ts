@@ -38,8 +38,10 @@ function equipmentFixture(
     unitType: 'Mek' | 'Aero' = 'Mek',
     turnStateOverrides: Partial<Record<'moveMode' | 'weaponsHeat', () => unknown>> = {},
 ): EquipmentFixture {
+    const moveMode = turnStateOverrides.moveMode ?? (() => null);
     const turnState = {
-        moveMode: () => null,
+        moveMode,
+        effectiveMoveMode: moveMode,
         weaponsHeat: () => 0,
         ...turnStateOverrides,
     } as unknown as TurnState;

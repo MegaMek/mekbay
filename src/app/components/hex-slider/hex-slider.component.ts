@@ -35,6 +35,7 @@ export class HexSliderComponent {
     readonly min = input<number>(0);
     readonly max = input<number>(100);
     readonly blockedMin = input<number | null>(null);
+    readonly blockedMax = input<number | null>(null);
     readonly step = input<number>(1);
     readonly value = input<number>(0);
     readonly ticks = input<readonly number[] | null>(null);
@@ -57,11 +58,23 @@ export class HexSliderComponent {
         if (blockedMin === null) return this.minValue();
         return Math.max(this.minValue(), Math.min(this.maxValue(), this.normalizeNumber(blockedMin, this.minValue())));
     });
+    readonly effectiveMaxValue = computed(() => {
+        const blockedMax = this.blockedMax();
+        if (blockedMax === null) return this.maxValue();
+        return Math.max(
+            this.effectiveMinValue(),
+            Math.min(this.maxValue(), this.normalizeNumber(blockedMax, this.maxValue())),
+        );
+    });
     readonly stepValue = computed(() => Math.max(0.000001, Math.abs(this.normalizeNumber(this.step(), 1))));
     readonly clampedValue = computed(() => this.alignToStep(this.value()));
     readonly valueLabel = computed(() => this.label() ?? `${this.clampedValue()}`);
     readonly valuePercent = computed(() => this.percentForValue(this.clampedValue()));
     readonly blockedMinPercent = computed(() => this.effectiveMinValue() > this.minValue() ? this.percentForValue(this.effectiveMinValue()) : 0);
+    readonly blockedMaxPercent = computed(() => this.effectiveMaxValue() < this.maxValue()
+        ? 100 - this.percentForValue(this.effectiveMaxValue())
+        : 0
+    );
     readonly displayTicks = computed(() => {
         const explicitTicks = this.ticks();
         if (explicitTicks !== null) {
@@ -134,7 +147,7 @@ export class HexSliderComponent {
         if (event.key === 'PageUp') next = this.clampedValue() + step * 5;
         if (event.key === 'PageDown') next = this.clampedValue() - step * 5;
         if (event.key === 'Home') next = this.effectiveMinValue();
-        if (event.key === 'End') next = this.maxValue();
+        if (event.key === 'End') next = this.effectiveMaxValue();
         if (next === null) return;
 
         event.preventDefault();
@@ -198,7 +211,7 @@ export class HexSliderComponent {
 
     private alignToStep(value: number): number {
         const min = this.minValue();
-        const max = this.maxValue();
+        const max = this.effectiveMaxValue();
         const effectiveMin = this.effectiveMinValue();
         const step = this.stepValue();
         const stepped = min + Math.round((value - min) / step) * step;
