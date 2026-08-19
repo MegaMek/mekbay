@@ -298,6 +298,7 @@ export class UnitSearchIndexService {
             this.addSearchIndexValues('as.specials', unit.as?.specials ?? [], unit.name);
             this.addSearchIndexValues('as._motive', this.getASMotiveDisplayNames(unit), unit.name);
             this.addSearchIndexValues('source', getUnitSourceFilterValues(unit), unit.name);
+            this.addSearchIndexValues('rulesRefs', unit.rulesRefs ?? [], unit.name);
             this.addSearchIndexValues('componentName', unit.comp.map(component => component.n), unit.name);
             this.addComponentCountValues(unit);
             this.prepareUnitWeaponTypes(unit);
@@ -429,6 +430,7 @@ export class UnitSearchIndexService {
             'moveType',
             'as._motive',
             'source',
+            'rulesRefs',
             'componentName',
             'weaponType',
             'features',

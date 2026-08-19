@@ -255,6 +255,24 @@ describe('UnitSearchIndexService', () => {
         ]);
     });
 
+    it('indexes every unit rules reference as a dropdown value', () => {
+        const service = new UnitSearchIndexService();
+
+        service.rebuildIndexes([
+            createUnit({ name: 'Atlas AS7-D', rulesRefs: ['TM', 'TO'] }),
+            createUnit({ name: 'Locust LCT-1V', rulesRefs: ['TM'] }),
+            createUnit({ name: 'Legacy Unit' }),
+        ], [], []);
+
+        expect(service.getIndexedFilterValues('rulesRefs')).toEqual(['TM', 'TO']);
+        expect(service.getIndexedUnitIds('rulesRefs', 'TM')).toEqual(new Set(['Atlas AS7-D', 'Locust LCT-1V']));
+        expect(service.getIndexedUnitIds('rulesRefs', 'TO')).toEqual(new Set(['Atlas AS7-D']));
+        expect(service.getDropdownOptionUniverse('rulesRefs')).toEqual([
+            { name: 'TM' },
+            { name: 'TO' },
+        ]);
+    });
+
     it('indexes canon and published status as yes/no values', () => {
         const service = new UnitSearchIndexService();
 

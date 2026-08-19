@@ -172,6 +172,7 @@ export class UnitSearchFiltersService {
     /** Display name resolvers that need service dependencies (can't be defined in static config) */
     private readonly displayNameFns: Partial<Record<string, (v: string) => string>> = {
         'source': (v) => this.dataService.getSourcebookTitle(v),
+        'rulesRefs': (v) => this.dataService.getSourcebookTitle(v),
     };
 
     private buildIndexedDropdownOptions(

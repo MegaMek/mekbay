@@ -4965,11 +4965,43 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.queryParameters()['filters']).toBe(`as.specials:"${special}"`);
     });
 
-    it('declares indexed dropdown capabilities for source, faction, and era', () => {
+    it('ignores extra rulebook expansions until a baseline is selected', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Unit A';
+        bundle.units.units[0].rulesRefs = ['BMM', 'Shrap01', 'IO:AE'];
+        bundle.units.units[1].name = 'Unit B';
+        bundle.units.units[1].rulesRefs = ['TW', 'Shrap01', 'AAA'];
+
+        const { service } = createService(bundle);
+        const rulebookOptions = service.advOptions()['rulesRefs']?.options ?? [];
+        expect(rulebookOptions.filter(option => typeof option !== 'number').map(option => option.name).sort())
+            .toEqual(['AAA', 'BMM', 'IO:AE', 'Shrap01', 'TW']);
+
+        service.setFilter('rulesRefs', ['Shrap01']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit A', 'Unit B']);
+
+        service.setFilter('rulesRefs', ['Shrap01', 'AAA']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit A', 'Unit B']);
+
+        service.setFilter('rulesRefs', ['TW', 'Shrap01']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual([]);
+
+        service.setFilter('rulesRefs', ['TW']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual([]);
+
+        service.setFilter('rulesRefs', ['TW', 'Shrap01', 'AAA']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit B']);
+    });
+
+    it('declares indexed dropdown capabilities for rules references, source, faction, and era', () => {
+        const rulesRefsConfig = getAdvancedFilterConfigByKey('rulesRefs');
         const sourceConfig = getAdvancedFilterConfigByKey('source');
         const factionConfig = getAdvancedFilterConfigByKey('faction');
         const eraConfig = getAdvancedFilterConfigByKey('era');
 
+        expect(rulesRefsConfig?.multistate).toBeFalsy();
+        expect(usesIndexedDropdownUniverse(rulesRefsConfig)).toBeTrue();
+        expect(usesIndexedDropdownAvailability(rulesRefsConfig)).toBeTrue();
         expect(usesIndexedDropdownUniverse(sourceConfig)).toBeTrue();
         expect(usesIndexedDropdownAvailability(sourceConfig)).toBeTrue();
         expect(usesIndexedDropdownUniverse(factionConfig)).toBeTrue();
