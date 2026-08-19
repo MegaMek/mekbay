@@ -2059,7 +2059,7 @@ export class MekRules extends UnitTypeRulesBase {
                 ? { damage, text: `+${damage}`, weakened: false }
                 : { damage: null, text: '—', weakened: false };
         }
-        const damage = this.currentShieldDamageAbsorption(entry, location, profile);
+        const damage = this.getShieldDamageState(entry)?.absorption ?? 0;
         return {
             damage,
             text: `${damage}`,
@@ -2453,14 +2453,6 @@ export class MekRules extends UnitTypeRulesBase {
             return profile.bashBonus;
         }
         return 0;
-    }
-
-    private currentShieldDamageAbsorption(
-        entry: MountedEquipment,
-        _loc: ArmLocation | undefined,
-        _profile: ShieldProfile,
-    ): number {
-        return this.getShieldDamageState(entry)?.absorption ?? 0;
     }
 
     /**

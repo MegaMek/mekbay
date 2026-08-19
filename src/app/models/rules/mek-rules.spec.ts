@@ -3373,6 +3373,37 @@ describe('MekRules', () => {
         expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 2, run: 3 }));
     });
 
+    it('reduces TW ground MP to zero at the terminal hip threshold without making the Mek immobile', () => {
+        const scenarios = [
+            { name: 'biped', locations: ['LL', 'RL'], hips: ['LL', 'RL'] },
+            { name: 'tripod', locations: ['LL', 'RL', 'CL'], hips: ['LL', 'RL'] },
+            { name: 'tripod past threshold', locations: ['LL', 'RL', 'CL'], hips: ['LL', 'RL', 'CL'] },
+            { name: 'quad', locations: ['RLL', 'FLL', 'RRL', 'FRL'], hips: ['RLL', 'FLL', 'RRL', 'FRL'] },
+        ];
+
+        for (const scenario of scenarios) {
+            const forceUnit = createForceUnitHarness({
+                internalLocations: scenario.locations,
+                critSlots: scenario.hips.map((loc, index) => ({
+                    ...crit('Hip'),
+                    id: `${loc}-hip`,
+                    loc,
+                    slot: index,
+                })),
+                rulesId: 'tw',
+                walk: 5,
+                run: 8,
+            });
+
+            expect((forceUnit.rules as MekRules).movementState())
+                .withContext(scenario.name)
+                .toEqual(jasmine.objectContaining({ walk: 0, run: 0, moveImpaired: true }));
+            expect(forceUnit.rules.hasComputedCondition('immobile'))
+                .withContext(scenario.name)
+                .toBeFalse();
+        }
+    });
+
     it('keeps the Core Quad two-leg hip-equivalent run trigger to one PSR', () => {
         const forceUnit = createForceUnitHarness({
             internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
