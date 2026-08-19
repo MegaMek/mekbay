@@ -81,6 +81,23 @@ describe('HexSliderComponent', () => {
         expect(valueCommits).toEqual([1]);
     });
 
+    it('shows and enforces a blocked upper range', () => {
+        fixture.componentRef.setInput('blockedMax', 6);
+        fixture.detectChanges();
+        const slider = fixture.nativeElement.querySelector('.hex-slider') as HTMLDivElement;
+
+        expect(component.effectiveMaxValue()).toBe(6);
+        expect(component.blockedMaxPercent()).toBe(40);
+        expect(slider.getAttribute('aria-valuemax')).toBe('6');
+        expect(fixture.nativeElement.querySelector('.blocked-max-track')).not.toBeNull();
+
+        slider.dispatchEvent(pointerEvent('pointerdown', 1, 90));
+        window.dispatchEvent(pointerEvent('pointerup', 1, 90));
+
+        expect(valueChanges).toEqual([6]);
+        expect(valueCommits).toEqual([6]);
+    });
+
     it('uses tick label overrides without replacing other generated tick labels', () => {
         fixture.componentRef.setInput('tickLabelOverrides', { 8: 'RUN', 10: 'MASC' });
         fixture.detectChanges();

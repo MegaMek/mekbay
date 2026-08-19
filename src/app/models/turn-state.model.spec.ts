@@ -28,6 +28,7 @@ interface TurnStateHarnessOptions {
     internalLocations?: string[];
     unit?: Partial<Unit>;
     destroyed?: boolean;
+    immobile?: boolean;
     prone?: boolean;
     shutdown?: boolean;
     skidding?: boolean;
@@ -93,7 +94,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         isLoaded: () => true,
         destroyed: options.destroyed ?? false,
         shutdown: options.shutdown ?? false,
-        getCondition: () => false,
+        getCondition: (condition: string) => condition === 'immobile' && (options.immobile ?? false),
         getCrewMembers: () => [{ getState: () => 'healthy' }],
         getCritSlots: () => critSlots(),
         getInventory: () => inventory(),
@@ -125,6 +126,10 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         },
         setCondition,
         getUnit: () => ({ type: 'Mek', comp: [], ...options.unit } as Unit),
+        getAvailableMotiveModes: () => [
+            { mode: 'stationary' as const, label: 'Stationary' },
+            { mode: 'walk' as const, label: 'Walk' },
+        ],
         getHeight: () => getUnitHeight(
             { type: 'Mek', tons: 0, ...options.unit } as Pick<Unit, 'type' | 'tons'>,
             options.prone ?? false,
@@ -139,6 +144,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         hasUnconsolidatedLocations: computed(() => false),
         hasUnconsolidatedInventory: computed(() => false),
         hasCondition: (state: string) => {
+            if (state === 'immobile') return options.immobile ?? false;
             if (state === 'prone') return options.prone ?? false;
             if (state === 'skidding') return options.skidding ?? false;
             return false;
@@ -356,6 +362,33 @@ describe('TurnState', () => {
 
             expect(restored.standAttempts()).toBe(0);
             expect(restored.serialize()).toEqual({ standAttempts: 0 });
+        });
+
+        it('round-trips a careful stand and clears it with an empty update', () => {
+            const { turnState } = createTurnStateHarness({ rulesId: 'tw' });
+            turnState.carefulStand.set(true);
+
+            expect(turnState.serialize()).toEqual({ carefulStand: true });
+
+            const { turnState: restored } = createTurnStateHarness({ rulesId: 'tw' });
+            restored.update(turnState.serialize());
+
+            expect(restored.carefulStand()).toBeTrue();
+            expect(restored.serialize()).toEqual({ carefulStand: true });
+
+            restored.update(undefined);
+
+            expect(restored.carefulStand()).toBeFalse();
+            expect(restored.serialize()).toBeUndefined();
+        });
+
+        it('discards careful-stand state under Core rules', () => {
+            const { turnState } = createTurnStateHarness({ rulesId: 'core2026' });
+
+            turnState.update({ carefulStand: true });
+
+            expect(turnState.carefulStand()).toBeFalse();
+            expect(turnState.serialize()).toBeUndefined();
         });
 
         it('omits no cover and round-trips active cover', () => {
@@ -582,6 +615,101 @@ describe('TurnState', () => {
 
             expect(turnState.moveDistance()).toBe(8);
         });
+
+        it('keeps the movement-distance range editable while prone in either ruleset', () => {
+            for (const rulesId of ['core2026', 'tw'] as const) {
+                const { turnState } = createTurnStateHarness({
+                    prone: true,
+                    rulesId,
+                    unit: { walk: 4, walk2: 4, run: 6, run2: 6 },
+                });
+                turnState.moveMode.set('walk');
+                turnState.moveDistance.set(1);
+
+                expect(turnState.movementCapacityCurrentMoveMode()).withContext(rulesId).toBe(4);
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(rulesId).toBe(4);
+
+                turnState.clampMoveDistanceToCurrentModeRange();
+
+                expect(turnState.moveDistance()).withContext(rulesId).toBe(1);
+            }
+        });
+
+        it('retains Run 2 capacity for a Core Quad with three destroyed legs', () => {
+            const { turnState, rules } = createTurnStateHarness({
+                prone: false,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                committedDestroyedLegs: ['FLL', 'FRL', 'RLL'],
+                unit: { walk: 4, walk2: 4, run: 6, run2: 6 },
+            });
+            turnState.moveMode.set('run');
+
+            expect((rules as MekRules).movementState())
+                .toEqual(jasmine.objectContaining({ walk: 1, run: 2 }));
+            expect(turnState.movementCapacityCurrentMoveMode()).toBe(2);
+            expect(turnState.maxDistanceCurrentMoveMode()).toBe(2);
+        });
+
+        it('retains Run 2 capacity for a prone Core Quad with three destroyed legs', () => {
+            const { turnState, rules } = createTurnStateHarness({
+                prone: true,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                committedDestroyedLegs: ['FLL', 'FRL', 'RLL'],
+                unit: { walk: 4, walk2: 4, run: 6, run2: 6 },
+            });
+            turnState.moveMode.set('run');
+
+            expect((rules as MekRules).movementState())
+                .toEqual(jasmine.objectContaining({ walk: 1, run: 2 }));
+            expect(turnState.movementCapacityCurrentMoveMode()).toBe(2);
+            expect(turnState.maxDistanceCurrentMoveMode()).toBe(2);
+        });
+
+        it('preserves movement already completed when the unit becomes prone', () => {
+            for (const rulesId of ['core2026', 'tw'] as const) {
+                const { turnState } = createTurnStateHarness({
+                    prone: true,
+                    rulesId,
+                    unit: { walk: 4, walk2: 4, run: 6, run2: 6 },
+                });
+                turnState.moveMode.set('run');
+                turnState.moveDistance.set(6);
+
+                expect(turnState.movementCapacityCurrentMoveMode()).withContext(rulesId).toBe(6);
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(rulesId).toBe(6);
+
+                turnState.clampMoveDistanceToCurrentModeRange();
+
+                expect(turnState.moveDistance()).withContext(rulesId).toBe(6);
+            }
+        });
+
+        it('subtracts two movement points per stand attempt in Core and TW', () => {
+            for (const rulesId of ['core2026', 'tw'] as const) {
+                const { turnState } = createTurnStateHarness({
+                    rulesId,
+                    unit: { walk: 4, walk2: 4, run: 6, run2: 6 },
+                });
+                turnState.moveMode.set('walk');
+                turnState.moveDistance.set(4);
+
+                turnState.adjustStandAttempts(1);
+
+                expect(turnState.movementCapacityCurrentMoveMode()).withContext(rulesId).toBe(4);
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(rulesId).toBe(2);
+                expect(turnState.moveDistance()).withContext(rulesId).toBe(2);
+
+                turnState.adjustStandAttempts(1);
+
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(rulesId).toBe(0);
+                expect(turnState.moveDistance()).withContext(rulesId).toBe(0);
+
+                turnState.moveMode.set('run');
+
+                expect(turnState.movementCapacityCurrentMoveMode()).withContext(rulesId).toBe(6);
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(rulesId).toBe(2);
+            }
+        });
     });
 
     describe('standing up', () => {
@@ -598,6 +726,34 @@ describe('TurnState', () => {
             expect(turnState.standAttempts()).toBe(0);
         });
 
+        it('reconciles stand-attempt heat through the selected rules', () => {
+            const core = createTurnStateHarness();
+            core.turnState.moveMode.set('run');
+            core.turnState.acknowledgeHeatSources();
+
+            core.turnState.adjustStandAttempts(1);
+
+            expect(core.turnState.heatSources()).toEqual([]);
+
+            const tw = createTurnStateHarness({ rulesId: 'tw' });
+            tw.turnState.moveMode.set('run');
+            tw.turnState.acknowledgeHeatSources();
+
+            tw.turnState.adjustStandAttempts(1);
+
+            expect(getMovementHeat(tw.turnState)).toBe(3);
+            tw.turnState.acknowledgeHeatSources();
+
+            tw.turnState.resetStandAttempts();
+
+            expect(getMovementHeat(tw.turnState)).toBe(2);
+            tw.turnState.acknowledgeHeatSources();
+
+            tw.turnState.resetStandAttempts();
+
+            expect(tw.turnState.heatSources()).toEqual([]);
+        });
+
         it('records outcomes and removes prone only after success', () => {
             const { turnState } = createTurnStateHarness({ prone: true });
 
@@ -610,10 +766,108 @@ describe('TurnState', () => {
             expect(turnState.unitState.unit.setCondition).toHaveBeenCalledOnceWith('prone', false);
         });
 
-        it('disables standing for stationary movement and too many destroyed legs', () => {
+        it('supports careful stand only in TW and requires at least three remaining Walking MP', () => {
+            const core = createTurnStateHarness({
+                prone: true,
+                rulesId: 'core2026',
+                unit: { walk: 5, walk2: 5, run: 8, run2: 8 },
+            });
+            const exactThreshold = createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                unit: { walk: 3, walk2: 3, run: 5, run2: 5 },
+            });
+            const belowThreshold = createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                unit: { walk: 2, walk2: 2, run: 3, run2: 3 },
+            });
+            const threeRemaining = createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                unit: { walk: 5, walk2: 5, run: 8, run2: 8 },
+            });
+            const twoRemaining = createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                unit: { walk: 4, walk2: 4, run: 6, run2: 6 },
+            });
+            threeRemaining.turnState.adjustStandAttempts(1);
+            twoRemaining.turnState.adjustStandAttempts(1);
+
+            expect(core.rules.supportsCarefulStand).toBeFalse();
+            expect(core.rules.canCarefulStand(core.turnState)).toBeFalse();
+            expect(core.turnState.resolveStandAttempt('failed', { carefulStand: true })).toBeFalse();
+            expect(core.turnState.standAttempts()).toBeUndefined();
+
+            expect(exactThreshold.rules.supportsCarefulStand).toBeTrue();
+            expect(exactThreshold.rules.canCarefulStand(exactThreshold.turnState)).toBeTrue();
+            expect(belowThreshold.rules.canCarefulStand(belowThreshold.turnState)).toBeFalse();
+            expect(threeRemaining.rules.canCarefulStand(threeRemaining.turnState)).toBeTrue();
+            expect(twoRemaining.rules.canCarefulStand(twoRemaining.turnState)).toBeFalse();
+            expect(belowThreshold.turnState.resolveStandAttempt('failed', { carefulStand: true })).toBeFalse();
+            expect(belowThreshold.turnState.standAttempts()).toBeUndefined();
+        });
+
+        it('spends the entire phase on a careful stand whether it succeeds or fails', () => {
+            for (const outcome of ['success', 'failed'] as const) {
+                const { turnState, rules } = createTurnStateHarness({
+                    prone: true,
+                    rulesId: 'tw',
+                    unit: { walk: 5, walk2: 5, run: 8, run2: 8 },
+                });
+                turnState.moveMode.set('stationary');
+
+                expect(turnState.resolveStandAttempt(outcome, { carefulStand: true }))
+                    .withContext(outcome)
+                    .toBeTrue();
+                expect(turnState.carefulStand()).withContext(outcome).toBeTrue();
+                expect(turnState.moveMode()).withContext(outcome).toBe('walk');
+                expect(turnState.standAttempts()).withContext(outcome).toBe(1);
+                expect(turnState.movementCapacityCurrentMoveMode()).withContext(outcome).toBe(5);
+                expect(rules.getMovementPointsSpent(turnState)).withContext(outcome).toBe(5);
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(outcome).toBe(0);
+                expect(turnState.canStandUp()).withContext(outcome).toBeFalse();
+            }
+        });
+
+        it('retains Run as the worse movement mode when making a careful stand', () => {
+            const { turnState, rules } = createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                unit: { walk: 5, walk2: 5, run: 8, run2: 8 },
+            });
+            turnState.moveMode.set('run');
+            turnState.moveDistance.set(0);
+
+            expect(turnState.resolveStandAttempt('failed', { carefulStand: true })).toBeTrue();
+
+            expect(turnState.moveMode()).toBe('run');
+            expect(turnState.movementCapacityCurrentMoveMode()).toBe(8);
+            expect(rules.getMovementPointsSpent(turnState)).toBe(8);
+            expect(turnState.maxDistanceCurrentMoveMode()).toBe(0);
+
+            turnState.adjustStandAttempts(-1);
+
+            expect(turnState.carefulStand()).toBeFalse();
+            expect(turnState.standAttempts()).toBe(0);
+            expect(turnState.movementCapacityCurrentMoveMode()).toBe(8);
+            expect(rules.getMovementPointsSpent(turnState)).toBe(0);
+            expect(turnState.maxDistanceCurrentMoveMode()).toBe(8);
+        });
+
+        it('applies the Core and TW limb requirements for standing', () => {
             const stationary = createTurnStateHarness({ prone: true });
             stationary.turnState.moveMode.set('stationary');
-            expect(stationary.turnState.canStandUp()).toBeFalse();
+            expect(stationary.turnState.canStandUp()).toBeTrue();
+            expect(stationary.turnState.prepareStandAttempt()).toBeTrue();
+            expect(stationary.turnState.moveMode()).toBe('walk');
+            expect(stationary.turnState.moveDistance()).toBe(0);
+
+            expect(createTurnStateHarness({
+                prone: true,
+                currentDestroyedLegs: ['LL'],
+            }).turnState.canStandUp()).toBeTrue();
 
             expect(createTurnStateHarness({
                 prone: true,
@@ -630,12 +884,154 @@ describe('TurnState', () => {
                 prone: true,
                 internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
                 currentDestroyedLegs: ['FLL', 'FRL', 'RLL'],
+            }).turnState.canStandUp()).toBeTrue();
+
+            expect(createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                currentDestroyedLegs: ['FLL', 'FRL', 'RLL'],
             }).turnState.canStandUp()).toBeFalse();
+
+            expect(createTurnStateHarness({
+                prone: true,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                currentDestroyedLegs: ['FLL', 'FRL', 'RLL', 'RRL'],
+            }).turnState.canStandUp()).toBeFalse();
+
+            expect(createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                internalLocations: ['LA', 'RA', 'LL', 'RL'],
+                currentDestroyedLegs: ['LA', 'RA'],
+            }).turnState.canStandUp()).toBeTrue();
+
+            expect(createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                internalLocations: ['LA', 'RA', 'LL', 'RL'],
+                currentDestroyedLegs: ['LA', 'RA', 'LL'],
+            }).turnState.canStandUp()).toBeFalse();
+        });
+
+        it('classifies each TW destroyed-leg exception as running and reports its one-attempt limit', () => {
+            const scenarios = [
+                { label: 'biped with one leg', locations: ['LL', 'RL'], destroyed: ['LL'] },
+                { label: 'tripod with two legs', locations: ['LL', 'CL', 'RL'], destroyed: ['LL'] },
+                {
+                    label: 'quad with two legs',
+                    locations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                    destroyed: ['FLL', 'FRL'],
+                },
+            ];
+
+            for (const scenario of scenarios) {
+                const { turnState, rules } = createTurnStateHarness({
+                    prone: true,
+                    rulesId: 'tw',
+                    internalLocations: scenario.locations,
+                    committedDestroyedLegs: scenario.destroyed,
+                    unit: { walk: 5, walk2: 5, run: 8, run2: 8, jump: 0, umu: 0, heat: 0 },
+                });
+                turnState.moveMode.set('walk');
+
+                expect((rules as MekRules).movementState())
+                    .withContext(scenario.label)
+                    .toEqual(jasmine.objectContaining({ walk: 1, run: 0 }));
+                expect(rules.isMotiveModeAvailable('run')).withContext(scenario.label).toBeTrue();
+                expect(turnState.canStandUp()).withContext(scenario.label).toBeTrue();
+                expect(rules.getStandAttemptLimit(turnState)).withContext(scenario.label).toBe(1);
+
+                expect(turnState.prepareStandAttempt()).withContext(scenario.label).toBeTrue();
+
+                expect(turnState.moveMode()).withContext(scenario.label).toBe('run');
+                expect(turnState.moveDistance()).withContext(scenario.label).toBe(0);
+                expect(turnState.movementCapacityCurrentMoveMode()).withContext(scenario.label).toBe(1);
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(scenario.label).toBe(1);
+                expect(turnState.standAttempts()).withContext(scenario.label).toBeUndefined();
+
+                expect(turnState.resolveStandAttempt('failed')).withContext(scenario.label).toBeTrue();
+
+                expect(getMovementHeat(turnState)).withContext(scenario.label).toBe(3);
+                expect(turnState.standAttempts()).withContext(scenario.label).toBe(1);
+                expect(turnState.movementCapacityCurrentMoveMode()).withContext(scenario.label).toBe(1);
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(scenario.label).toBe(0);
+                expect(turnState.canStandUp()).withContext(scenario.label).toBeTrue();
+            }
+        });
+
+        it('classifies a Core one-legged stand as running while retaining ordinary Run movement', () => {
+            const { turnState, rules } = createTurnStateHarness({
+                prone: true,
+                committedDestroyedLegs: ['LL'],
+                unit: { walk: 5, walk2: 5, run: 8, run2: 8, jump: 0, umu: 0, heat: 0 },
+            });
+            turnState.moveMode.set('walk');
+
+            expect((rules as MekRules).movementState())
+                .toEqual(jasmine.objectContaining({ walk: 1, run: 2 }));
+            expect(rules.isMotiveModeAvailable('run')).toBeTrue();
+
+            expect(turnState.prepareStandAttempt()).toBeTrue();
+
+            expect(turnState.moveMode()).toBe('run');
+            expect(turnState.moveDistance()).toBe(0);
+
+            expect(turnState.resolveStandAttempt('failed')).toBeTrue();
+
+            expect(getMovementHeat(turnState)).toBe(2);
+        });
+
+        it('does not apply the TW one-attempt exception to a quad with only one destroyed leg', () => {
+            const { turnState } = createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                committedDestroyedLegs: ['FLL'],
+                unit: { walk: 5, walk2: 5, run: 8, run2: 8, jump: 0, umu: 0, heat: 0 },
+            });
+            turnState.moveMode.set('walk');
+
+            expect(turnState.unitState.unit.rules.getStandAttemptLimit(turnState)).toBeNull();
+
+            expect(turnState.resolveStandAttempt('failed')).toBeTrue();
+
+            expect(turnState.moveMode()).toBe('walk');
+            expect(turnState.canStandUp()).toBeTrue();
+        });
+
+        it('does not classify TW units that cannot stand as destroyed-leg stand exceptions', () => {
+            const scenarios = [
+                { label: 'biped with no legs', locations: ['LL', 'RL'], destroyed: ['LL', 'RL'] },
+                {
+                    label: 'quad with one leg',
+                    locations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                    destroyed: ['FLL', 'FRL', 'RLL'],
+                },
+            ];
+
+            for (const scenario of scenarios) {
+                const { turnState, rules } = createTurnStateHarness({
+                    prone: true,
+                    rulesId: 'tw',
+                    internalLocations: scenario.locations,
+                    committedDestroyedLegs: scenario.destroyed,
+                });
+                turnState.moveMode.set('walk');
+
+                expect(turnState.canStandUp()).withContext(scenario.label).toBeFalse();
+                expect(rules.getStandAttemptLimit(turnState)).withContext(scenario.label).toBeNull();
+                expect(rules.getStandAttemptMovementMode(turnState)).withContext(scenario.label).toBe('walk');
+            }
         });
 
         it('lets only an intact quad stand without a PSR', () => {
             const quad = createTurnStateHarness({
                 prone: true,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+            });
+            const standingQuad = createTurnStateHarness({
+                prone: false,
                 internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
             });
             const damagedQuad = createTurnStateHarness({
@@ -646,8 +1042,20 @@ describe('TurnState', () => {
             const biped = createTurnStateHarness({ prone: true });
 
             expect(quad.turnState.canStandWithoutPSR()).toBeTrue();
+            expect(standingQuad.turnState.canStandUp()).toBeFalse();
+            expect(standingQuad.turnState.canStandWithoutPSR()).toBeTrue();
             expect(damagedQuad.turnState.canStandWithoutPSR()).toBeFalse();
             expect(biped.turnState.canStandWithoutPSR()).toBeFalse();
+        });
+
+        it('does not apply Mek standing rules to other unit types', () => {
+            const infantry = createTurnStateHarness({ prone: true, rulesType: 'infantry' });
+            const aero = createTurnStateHarness({ prone: true, rulesType: 'aero' });
+
+            expect(infantry.turnState.canStandUp()).toBeFalse();
+            expect(infantry.turnState.canStandWithoutPSR()).toBeFalse();
+            expect(aero.turnState.canStandUp()).toBeFalse();
+            expect(aero.turnState.canStandWithoutPSR()).toBeFalse();
         });
     });
 
@@ -691,6 +1099,70 @@ describe('TurnState', () => {
 
             expect(getReasons(turnState)).toContain('Leg Actuator hit');
             expect(getReasons(turnState)).not.toContain('Jumping with damaged leg actuator');
+        });
+
+        it('folds TW destroyed-leg stand movement PSRs into the single stand roll', () => {
+            const scenarios = [
+                {
+                    label: 'biped with damaged gyro',
+                    locations: ['LL', 'RL'],
+                    destroyedLegs: ['LL'],
+                    crit: createCritSlot('Gyro', 'CT', { destroyed: 1 }),
+                    movementReason: 'Running with damaged gyro',
+                },
+                {
+                    label: 'biped with damaged hip',
+                    locations: ['LL', 'RL'],
+                    destroyedLegs: ['LL'],
+                    crit: createCritSlot('Hip', 'RL', { destroyed: 1 }),
+                    movementReason: 'Running with damaged hip',
+                },
+                {
+                    label: 'quad with damaged gyro',
+                    locations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                    destroyedLegs: ['FLL', 'FRL'],
+                    crit: createCritSlot('Gyro', 'CT', { destroyed: 1 }),
+                    movementReason: 'Running with damaged gyro',
+                },
+            ];
+
+            for (const scenario of scenarios) {
+                const { turnState, rules } = createTurnStateHarness({
+                    prone: true,
+                    rulesId: 'tw',
+                    internalLocations: scenario.locations,
+                    committedDestroyedLegs: scenario.destroyedLegs,
+                    critSlots: [scenario.crit],
+                    unit: { subtype: 'BattleMek' },
+                });
+                turnState.moveMode.set('run');
+                turnState.moveDistance.set(0);
+
+                const standModifier = rules.PSRModifiers().modifier;
+                expect(getReasons(turnState)).withContext(scenario.label).toContain(scenario.movementReason);
+                expect(turnState.PSRRollsCount()).withContext(scenario.label).toBe(1);
+
+                expect(turnState.resolveStandAttempt('failed')).withContext(scenario.label).toBeTrue();
+
+                expect(getReasons(turnState)).withContext(scenario.label).not.toContain(scenario.movementReason);
+                expect(turnState.PSRRollsCount()).withContext(scenario.label).toBe(0);
+                expect(rules.PSRModifiers().modifier).withContext(scenario.label).toBe(standModifier);
+            }
+        });
+
+        it('keeps ordinary TW running PSRs separate from an ordinary stand roll', () => {
+            const { turnState } = createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                critSlots: [createCritSlot('Gyro', 'CT', { destroyed: 1 })],
+            });
+            turnState.moveMode.set('run');
+            turnState.moveDistance.set(0);
+
+            expect(turnState.resolveStandAttempt('failed')).toBeTrue();
+
+            expect(getReasons(turnState)).toContain('Running with damaged gyro');
+            expect(turnState.PSRRollsCount()).toBe(1);
         });
     });
 
@@ -770,6 +1242,27 @@ describe('TurnState', () => {
     });
 
     describe('movement distance limits', () => {
+        it('treats a Core Immobile unit as stationary without storing a movement selection', () => {
+            const { turnState } = createTurnStateHarness({ immobile: true });
+
+            expect(turnState.moveMode()).toBeNull();
+            expect(turnState.effectiveMoveMode()).toBe('stationary');
+            expect(turnState.getAttackMovementModifier()).toBe(0);
+            expect(turnState.missingAttackMovementModifier()).toBeFalse();
+            expect(turnState.currentPhase()).toBe('W');
+            expect(turnState.dirty()).toBeFalse();
+        });
+
+        it('does not assign an effective movement mode to a TW Immobile unit', () => {
+            const { turnState } = createTurnStateHarness({ immobile: true, rulesId: 'tw' });
+
+            expect(turnState.moveMode()).toBeNull();
+            expect(turnState.effectiveMoveMode()).toBeNull();
+            expect(turnState.missingAttackMovementModifier()).toBeTrue();
+            expect(turnState.currentPhase()).toBe('M');
+            expect(turnState.dirty()).toBeFalse();
+        });
+
         it('uses unit rules for minimum movement distance', () => {
             const { turnState } = createTurnStateHarness({
                 rulesType: 'infantry',

@@ -1711,7 +1711,7 @@ export class UnitSvgService {
             summaryProjection.projected
         );
         // Update move mode display
-        const moveMode = turnState.moveMode();
+        const moveMode = turnState.effectiveMoveMode();
         const moveModifier = turnState.getAttackMovementModifier();
         let el: SVGElement | null = null;
         const mpWalkEl = svg.getElementById('mpWalk') as SVGElement | null;

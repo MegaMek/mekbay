@@ -128,7 +128,7 @@ describe('Mek critical-hit workflow', () => {
         }
     });
 
-    it('empties an exploding ammo bin and applies the Core damage cap with transfer', () => {
+    it('does not empties an exploding ammo bin and applies the Core damage cap with transfer', () => {
         const fixture = explodingAmmoUnit(CORE_2026_GAME_RULES);
 
         const outcome = applyMekCriticalRoll(fixture.unit, 'LT', [1, 1], true);
@@ -137,7 +137,7 @@ describe('Mek critical-hit workflow', () => {
         expect(outcome?.equipment).toBe('AC/10 Ammo');
         expect(outcome?.explosion?.rawDamage).toBe(100);
         expect(outcome?.explosion?.pilotHits).toBe(1);
-        expect(fixture.slot.consumed).toBe(10);
+        expect(fixture.slot.consumed).toBe(0);
         expect(fixture.internalHits.get('LT')).toBe(12);
         expect(fixture.internalHits.get('CT')).toBe(8);
         expect(fixture.armorHits.get('CT-rear')).toBe(12);

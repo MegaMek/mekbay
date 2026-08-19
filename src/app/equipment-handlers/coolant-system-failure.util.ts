@@ -20,7 +20,7 @@ export function getFailedCoolantSystemHeatSources(
     if (!isEquipmentDisabledByFailure(equipment) && !committedDestroyed) return [];
 
     const sources: UnitHeatSource[] = [];
-    const moveMode = turnState.moveMode();
+    const moveMode = turnState.effectiveMoveMode();
     if (moveMode !== null && moveMode !== 'stationary') {
         sources.push({ id: `${sourceId}:movement`, label, value: 1 });
     }

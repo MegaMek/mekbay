@@ -12,7 +12,7 @@ import type { ChargeDamage, PSRCheck, UnitHeatSource } from './unit-type-rules';
 import type { CriticalSlot, SerializedC3NetworkGroup } from '../force-serialization';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import { C3TaxCalculator } from '../c3-network.model';
-import { getMekLimbLocations, inferMekConfigFromLocations, LEG_LOCATIONS, MEK_SIDE_TORSO_LOCATIONS, MEK_TORSO_LOCATIONS } from '../entity/types';
+import { getMekLimbLocations, inferMekConfigFromLocations, LEG_LOCATIONS, MEK_SIDE_TORSO_LOCATIONS, MEK_TORSO_LOCATIONS, QUAD_LEG_LOCATIONS, type MekConfig } from '../entity/types';
 import type { TurnState } from '../turn-state.model';
 import type { Equipment } from '../equipment.model';
 
@@ -31,7 +31,7 @@ function calculateTWChargeDamage(
     maxBonusDamage = bonusDamage,
 ): ChargeDamage {
     const damagePerHex = unit.getUnit().tons / 10;
-    const moveMode = unit.turnState().moveMode();
+    const moveMode = unit.turnState().effectiveMoveMode();
     const movedHexes = Math.max(1, unit.turnState().moveDistance() ?? 0);
     const maxMovedHexes = Math.max(1, unit.getUnit().run);
     const ramPlates = unit.getInventory().filter(entry => entry.equipment?.hasFlag('F_RAM_PLATE'));
@@ -58,8 +58,30 @@ function calculateTWChargeDamage(
 
 export class TWMekRules extends MekRules {
     override readonly standingUpPSRModifier: number = 0;
+    override readonly supportsCarefulStand: boolean = true;
     protected override get shieldBashPunchBonusEnabled(): boolean { return false; }
     protected override get standaloneShieldDamageEnabled(): boolean { return true; }
+
+    /** If more legs are destroyed, the unit simply can't stand up at all */
+    protected override maximumDestroyedLegsForStanding(config: MekConfig): number {
+        return config === 'Quad' ? 2 : 1;
+    }
+
+    /** Limit how many attempts can be made to stand up */
+    protected override destroyedLegStandAttemptLimit(config: MekConfig, destroyedLegs: number): number | null {
+        return destroyedLegs === (config === 'Quad' ? 2 : 1) ? 1 : null;
+    }
+
+    protected override isMovementPSRFoldedIntoStandAttempt(turnState: TurnState): boolean {
+        const { config, destroyedLegs } = this.currentLegState();
+        return (turnState.standAttempts() ?? 0) > 0
+            && (turnState.moveDistance() ?? 0) === 0
+            && destroyedLegs.length === (config === 'Quad' ? 2 : 1);
+    }
+
+    protected override destroyedLegStandAttemptRequiresRunning(config: MekConfig, destroyedLegs: number): boolean {
+        return destroyedLegs === (config === 'Quad' ? 2 : 1);
+    }
 
     override heatLifeSupportPilotHits(heat: number): number {
         if (!this.hasDamagedLifeSupport() || heat <= 0) return 0;
@@ -105,8 +127,7 @@ export class TWMekRules extends MekRules {
                 reason: 'Hip hit',
             });
         });
-        if (movementCheck?.reason === 'Jumping with damaged leg actuator'
-            || movementCheck?.reason === 'Running with damaged hip') {
+        if (this.isLegDamageMovementPSRCheck(movementCheck)) {
             checks.push(movementCheck);
         }
         return checks;
@@ -283,6 +304,27 @@ export class TWMekRules extends MekRules {
 
     protected override runningWithDestroyedLegRequiresCheck(): boolean {
         return false;
+    }
+
+    protected override runningMinimumMovementWithDestroyedLegRequiresCheck(): boolean {
+        return this.getRunningMinimumMovementDistance() > 0;
+    }
+
+    protected override runningDamageCheckRequiresHexMovement(): boolean {
+        return false;
+    }
+
+    protected override destroyedLegsApplyHipMovementCheck(_isQuadruped: boolean, _destroyedLegsCount: number): boolean {
+        return false;
+    }
+
+    protected override getRunningMinimumMovementDistance(): number {
+        const movement = this.movementState();
+        if (!movement || movement.walk < 1) return 0;
+        const systemsStatus = this.systemsStatus();
+        const isQuadruped = QUAD_LEG_LOCATIONS.some(loc => systemsStatus.internalLocations.has(loc));
+        const oneLeggedDestroyedCount = isQuadruped ? 2 : 1;
+        return systemsStatus.destroyedLegsCount === oneLeggedDestroyedCount ? 1 : 0;
     }
 
     protected override applyLegDamageToMovement(

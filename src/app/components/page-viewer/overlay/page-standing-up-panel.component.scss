@@ -12,6 +12,11 @@
     margin: 0;
 }
 
+.careful-stand.disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
 .modifier-badge {
     flex: 0 0 24px;
     inline-size: 24px;
@@ -40,6 +45,11 @@
     text-transform: uppercase;
     font-size: 0.72em;
     font-weight: 700;
+}
+
+.stand-attempt-limit {
+    font-size: 0.8em;
+    color: var(--bt-yellow);
 }
 
 .attempts strong {

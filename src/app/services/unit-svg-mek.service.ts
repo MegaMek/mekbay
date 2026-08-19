@@ -275,7 +275,10 @@ export class UnitSvgMekService extends UnitSvgService {
         const movement = this.mekRules.movementState();
         if (!movement) return;
 
-        const runWarning = movement.maxRun > 0 ? this.unit.rules.getCommittedDamageMovementModePSRCheck('run') : null;
+        const turnState = this.unit.turnState();
+        const runWarning = this.unit.rules.isMotiveModeAvailable('run', turnState)
+            ? this.unit.rules.getCommittedDamageMovementModePSRCheck('run')
+            : null;
         const jumpWarning = movement.jump > 0 ? this.unit.rules.getCommittedDamageMovementModePSRCheck('jump') : null;
         const jumpMoveElementId = svg.getElementById('mpJump') ? 'mpJump' : (svg.getElementById('mp_2') ? 'mp_2' : null);
 
@@ -289,7 +292,8 @@ export class UnitSvgMekService extends UnitSvgService {
         const warningEl = svg.getElementById(`${moveElementId}-psr-warning`) as SVGTextElement | null;
         if (!warningEl) return;
 
-        const currentMoveMode = this.unit.turnState().moveMode();
+        const turnState = this.unit.turnState();
+        const currentMoveMode = turnState.effectiveMoveMode();
         let selectedMoveElementId: string | null = null;
         if (currentMoveMode === 'walk' || currentMoveMode === 'stationary') {
             selectedMoveElementId = 'mpWalk';
@@ -310,9 +314,12 @@ export class UnitSvgMekService extends UnitSvgService {
         warningEl.style.display = 'block';
         const warningMoveMode = moveElementId === 'mpRun' ? 'run' : 'jump';
         const isCurrentMoveMode = currentMoveMode === warningMoveMode;
-        const moveDistance = this.unit.turnState().moveDistance();
-        const triggersPsr = moveDistance !== null && (warningMoveMode === 'jump' || moveDistance > 0);
-        warningEl.classList.toggle('noPsrCheck', !isCurrentMoveMode || !triggersPsr);
+        const triggersPsr = isCurrentMoveMode
+            && this.unit.rules.getCommittedDamageMovementModePSRCheck(
+                warningMoveMode,
+                turnState.moveDistance(),
+            ) !== null;
+        warningEl.classList.toggle('noPsrCheck', !triggersPsr);
 
         if (!selectedMoveElementId) {
             warningEl.classList.remove('currentMoveMode', 'unusedMoveMode');

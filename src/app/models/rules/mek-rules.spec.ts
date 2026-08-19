@@ -2483,6 +2483,97 @@ describe('MekRules', () => {
         }).hasComputedCondition('crippled')).toBeFalse();
     });
 
+    it('marks TW biped, tripod, and quad Meks immobile after the required four limbs are destroyed', () => {
+        const scenarios = [
+            {
+                context: 'Biped',
+                internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
+                mobileDestroyedLocationSets: [['LA', 'RA', 'LL']],
+                immobileDestroyedLocations: ['LA', 'RA', 'LL', 'RL'],
+            },
+            {
+                context: 'Tripod',
+                internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'CL', 'RL'],
+                mobileDestroyedLocationSets: [
+                    ['LA', 'RA', 'LL'],
+                    ['LA', 'LL', 'CL', 'RL'],
+                ],
+                immobileDestroyedLocations: ['LA', 'RA', 'LL', 'CL'],
+            },
+            {
+                context: 'Quad',
+                internalLocations: ['LT', 'RT', 'CT', 'FLL', 'FRL', 'RLL', 'RRL'],
+                mobileDestroyedLocationSets: [['FLL', 'FRL', 'RLL']],
+                immobileDestroyedLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+            },
+        ];
+
+        for (const scenario of scenarios) {
+            const immobileUnit = createForceUnitHarness({
+                internalLocations: scenario.internalLocations,
+                committedDestroyedLocations: scenario.immobileDestroyedLocations,
+                rulesId: 'tw',
+            });
+
+            for (const destroyedLocations of scenario.mobileDestroyedLocationSets) {
+                const mobileUnit = createForceUnitHarness({
+                    internalLocations: scenario.internalLocations,
+                    committedDestroyedLocations: destroyedLocations,
+                    rulesId: 'tw',
+                });
+                expect(mobileUnit.rules.hasComputedCondition('immobile'))
+                    .withContext(`${scenario.context} with ${destroyedLocations.join(', ')} destroyed`)
+                    .toBeFalse();
+            }
+            expect(immobileUnit.rules.hasComputedCondition('immobile'))
+                .withContext(`${scenario.context} after the fourth required limb is destroyed`)
+                .toBeTrue();
+        }
+    });
+
+    it('marks Core biped and tripod Meks immobile when two destroyed legs reduce ground MP to zero', () => {
+        const scenarios = [
+            {
+                context: 'Biped',
+                internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
+                twoDestroyedLegs: ['LL', 'RL'],
+            },
+            {
+                context: 'Tripod',
+                internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'CL', 'RL'],
+                twoDestroyedLegs: ['LL', 'CL'],
+            },
+        ];
+
+        for (const scenario of scenarios) {
+            const mobileUnit = createForceUnitHarness({
+                internalLocations: scenario.internalLocations,
+                committedDestroyedLocations: ['LL'],
+                jump: 0,
+                umu: 0,
+            });
+            const immobileUnit = createForceUnitHarness({
+                internalLocations: scenario.internalLocations,
+                committedDestroyedLocations: scenario.twoDestroyedLegs,
+                jump: 0,
+                umu: 0,
+            });
+
+            expect((mobileUnit.rules as MekRules).movementState())
+                .withContext(`${scenario.context} with one destroyed leg`)
+                .toEqual(jasmine.objectContaining({ walk: 1, run: 2 }));
+            expect(mobileUnit.rules.hasComputedCondition('immobile'))
+                .withContext(`${scenario.context} with one destroyed leg`)
+                .toBeFalse();
+            expect((immobileUnit.rules as MekRules).movementState())
+                .withContext(`${scenario.context} with two destroyed legs`)
+                .toEqual(jasmine.objectContaining({ walk: 0, run: 0 }));
+            expect(immobileUnit.rules.hasComputedCondition('immobile'))
+                .withContext(`${scenario.context} with two destroyed legs`)
+                .toBeTrue();
+        }
+    });
+
     it('keeps core2026 Meks mobile while a damage-available movement mode remains', () => {
         const forceUnit = createForceUnitHarness({
             internalLocations: ['LL', 'RA', 'RT'],
@@ -2578,8 +2669,22 @@ describe('MekRules', () => {
         }
     });
 
-    it('offers Run only when the selected rules permit it after leg destruction', () => {
+    it('offers ordinary or minimum Run movement when the selected rules permit it after leg destruction', () => {
         const coreBiped = createForceUnitHarness({ committedDestroyedLocations: ['LL'] });
+        const coreTripod = createForceUnitHarness({
+            internalLocations: ['LL', 'CL', 'RL'],
+            committedDestroyedLocations: ['LL'],
+        });
+        const coreQuadWithTwoDestroyedLegs = createForceUnitHarness({
+            internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
+            committedDestroyedLocations: ['RLL', 'FLL'],
+            walk: 3,
+            run: 5,
+        });
+        const coreQuadWithThreeDestroyedLegs = createForceUnitHarness({
+            internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
+            committedDestroyedLocations: ['RLL', 'FLL', 'RRL'],
+        });
         const twBiped = createForceUnitHarness({ committedDestroyedLocations: ['LL'], rulesId: 'tw' });
         const twTripod = createForceUnitHarness({
             internalLocations: ['LL', 'CL', 'RL'],
@@ -2596,14 +2701,272 @@ describe('MekRules', () => {
             committedDestroyedLocations: ['RLL', 'FLL'],
             rulesId: 'tw',
         });
+        const twQuadWithThreeDestroyedLegs = createForceUnitHarness({
+            internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
+            committedDestroyedLocations: ['RLL', 'FLL', 'RRL'],
+            rulesId: 'tw',
+        });
         const offersRun = (unit: CBTForceUnit) => unit.getAvailableMotiveModes(false)
             .some(option => option.mode === 'run');
+        const runAvailability = (unit: CBTForceUnit) => ({
+            rules: unit.rules.isMotiveModeAvailable('run'),
+            offered: offersRun(unit),
+        });
 
-        expect(offersRun(coreBiped)).toBeTrue();
-        expect(offersRun(twBiped)).toBeFalse();
-        expect(offersRun(twTripod)).toBeFalse();
-        expect(offersRun(twQuadWithOneDestroyedLeg)).toBeTrue();
-        expect(offersRun(twQuadWithTwoDestroyedLegs)).toBeFalse();
+        expect((coreBiped.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 1, run: 2 }));
+        expect((coreTripod.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 1, run: 2 }));
+        expect((coreQuadWithTwoDestroyedLegs.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 1, run: 2 }));
+        expect((coreQuadWithThreeDestroyedLegs.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 1, run: 2 }));
+        expect((twBiped.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 1, run: 0 }));
+        expect((twTripod.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 1, run: 0 }));
+        expect((twQuadWithOneDestroyedLeg.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 4, run: 6 }));
+        expect((twQuadWithTwoDestroyedLegs.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 1, run: 0 }));
+        expect((twQuadWithThreeDestroyedLegs.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 0, run: 0 }));
+        expect(runAvailability(coreBiped)).toEqual({ rules: true, offered: true });
+        expect(runAvailability(coreTripod)).toEqual({ rules: true, offered: true });
+        expect(runAvailability(coreQuadWithTwoDestroyedLegs))
+            .toEqual({ rules: true, offered: true });
+        expect(runAvailability(coreQuadWithThreeDestroyedLegs))
+            .toEqual({ rules: true, offered: true });
+        expect(runAvailability(twBiped)).toEqual({ rules: true, offered: true });
+        expect(runAvailability(twTripod)).toEqual({ rules: true, offered: true });
+        expect(runAvailability(twQuadWithOneDestroyedLeg))
+            .toEqual({ rules: true, offered: true });
+        expect(runAvailability(twQuadWithTwoDestroyedLegs))
+            .toEqual({ rules: true, offered: true });
+        expect(runAvailability(twQuadWithThreeDestroyedLegs))
+            .toEqual({ rules: false, offered: false });
+    });
+
+    it('offers TW Running Minimum Movement and spends it on a one-legged stand attempt', () => {
+        const forceUnit = createForceUnitHarness({
+            committedDestroyedLocations: ['LL'],
+            rulesId: 'tw',
+        });
+        const turnState = forceUnit.turnState();
+        const offersRun = () => forceUnit.getAvailableMotiveModes(false)
+            .some(option => option.mode === 'run');
+
+        expect(forceUnit.rules.isMotiveModeAvailable('run')).toBeTrue();
+        expect(offersRun()).toBeTrue();
+        expect(forceUnit.rules.getEffectiveMaxDistanceForMoveMode('run', turnState)).toBe(1);
+
+        turnState.moveMode.set('run');
+        turnState.moveDistance.set(1);
+
+        expect(turnState.movementCapacityCurrentMoveMode()).toBe(1);
+        expect(turnState.maxDistanceCurrentMoveMode()).toBe(1);
+        expect(forceUnit.getAvailableMotiveModes(false).find(option => option.mode === 'run')?.psr).toBeTrue();
+
+        forceUnit.setCondition('prone', true);
+
+        expect(forceUnit.rules.isMotiveModeAvailable('run')).toBeTrue();
+        expect(forceUnit.rules.isMotiveModeAvailable('run', turnState)).toBeTrue();
+        expect(offersRun()).toBeTrue();
+        expect(turnState.movementCapacityCurrentMoveMode()).toBe(1);
+        expect(turnState.maxDistanceCurrentMoveMode()).toBe(1);
+
+        expect(turnState.resolveStandAttempt('success')).toBeTrue();
+
+        expect(turnState.moveMode()).toBe('run');
+        expect(turnState.standAttempts()).toBe(1);
+        expect(turnState.movementCapacityCurrentMoveMode()).toBe(1);
+        expect(turnState.maxDistanceCurrentMoveMode()).toBe(0);
+        expect(offersRun()).toBeTrue();
+
+        turnState.moveMode.set(null);
+
+        expect(offersRun()).toBeTrue();
+    });
+
+    it('does not grant TW Running Minimum Movement without usable Walking MP', () => {
+        const forceUnit = createForceUnitHarness({
+            committedDestroyedLocations: ['LL'],
+            rulesId: 'tw',
+            walk: 0,
+            run: 0,
+        });
+
+        expect((forceUnit.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 0, run: 0 }));
+        expect(forceUnit.rules.isMotiveModeAvailable('run')).toBeFalse();
+        expect(forceUnit.getAvailableMotiveModes(false).some(option => option.mode === 'run')).toBeFalse();
+        expect(forceUnit.rules.getEffectiveMaxDistanceForMoveMode('run', forceUnit.turnState())).toBe(0);
+    });
+
+    it('requires heat-adjusted Walking MP for ground movement and standing', () => {
+        const forceUnit = createForceUnitHarness({ walk: 5, run: 8 });
+        const turnState = forceUnit.turnState();
+        forceUnit.setCondition('prone', true);
+
+        forceUnit.setHeatData({ current: 24, previous: 24 });
+
+        expect((forceUnit.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 1, run: 2 }));
+        expect(forceUnit.rules.isMotiveModeAvailable('walk')).toBeTrue();
+        expect(forceUnit.rules.isMotiveModeAvailable('run')).toBeTrue();
+        expect(turnState.canStandUp()).toBeTrue();
+
+        forceUnit.setHeatData({ current: 30, previous: 30 });
+
+        expect((forceUnit.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 0, run: 0 }));
+        expect(forceUnit.rules.isMotiveModeAvailable('walk')).toBeFalse();
+        expect(forceUnit.rules.isMotiveModeAvailable('run')).toBeFalse();
+        expect(forceUnit.getAvailableMotiveModes(false).map(option => option.mode))
+            .not.toContain('walk');
+        expect(forceUnit.getAvailableMotiveModes(false).map(option => option.mode))
+            .not.toContain('run');
+        expect(turnState.canStandUp()).toBeFalse();
+    });
+
+    it('does not offer Walk when leg destruction leaves no ground MP or facing change', () => {
+        const scenarios = [
+            {
+                context: 'Core biped with both legs destroyed',
+                internalLocations: ['LL', 'RL'],
+                committedDestroyedLocations: ['LL', 'RL'],
+                rulesId: 'core2026' as const,
+            },
+            {
+                context: 'Core quad with all legs destroyed',
+                internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
+                committedDestroyedLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
+                rulesId: 'core2026' as const,
+            },
+            {
+                context: 'TW biped with both legs destroyed',
+                internalLocations: ['LL', 'RL'],
+                committedDestroyedLocations: ['LL', 'RL'],
+                rulesId: 'tw' as const,
+            },
+            {
+                context: 'TW quad with three legs destroyed',
+                internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
+                committedDestroyedLocations: ['RLL', 'FLL', 'RRL'],
+                rulesId: 'tw' as const,
+            },
+        ];
+
+        for (const scenario of scenarios) {
+            const forceUnit = createForceUnitHarness(scenario);
+
+            expect((forceUnit.rules as MekRules).movementState()?.walk)
+                .withContext(scenario.context)
+                .toBe(0);
+            expect(forceUnit.rules.isMotiveModeAvailable('walk'))
+                .withContext(scenario.context)
+                .toBeFalse();
+            expect(forceUnit.getAvailableMotiveModes(false).some(option => option.mode === 'walk'))
+                .withContext(scenario.context)
+                .toBeFalse();
+        }
+    });
+
+    it('colors Run for the current action rather than a potential destroyed-leg check', () => {
+        const forceUnit = createForceUnitHarness({
+            internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
+            committedDestroyedLocations: ['RLL', 'FLL', 'RRL'],
+            walk: 4,
+            run: 6,
+        });
+        const turnState = forceUnit.turnState();
+        const runOption = () => forceUnit.getAvailableMotiveModes(false)
+            .find(option => option.mode === 'run');
+        turnState.moveMode.set('run');
+        turnState.moveDistance.set(0);
+        forceUnit.setCondition('prone', true);
+
+        expect(runOption()?.psr).toBeFalse();
+
+        forceUnit.setCondition('prone', false);
+        turnState.moveDistance.set(1);
+
+        expect(runOption()?.psr).toBeTrue();
+    });
+
+    it('treats two destroyed Core Quad legs as a hip hit when using Running MP', () => {
+        const forceUnit = createForceUnitHarness({
+            internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
+            committedDestroyedLocations: ['RLL', 'FLL'],
+            walk: 4,
+            run: 6,
+        });
+        const turnState = forceUnit.turnState();
+        turnState.moveMode.set('run');
+        turnState.moveDistance.set(0);
+
+        const runOption = forceUnit.getAvailableMotiveModes(false)
+            .find(option => option.mode === 'run');
+
+        expect(runOption?.psr).toBeFalse();
+        expect(turnState.getPSRChecks()).not.toContain(jasmine.objectContaining({
+            reason: 'Running with damaged hip',
+        }));
+
+        turnState.moveDistance.set(1);
+
+        expect(forceUnit.getAvailableMotiveModes(false).find(option => option.mode === 'run')?.psr).toBeTrue();
+        expect(turnState.getPSRChecks()).toContain(jasmine.objectContaining({
+            reason: 'Running with damaged hip',
+        }));
+    });
+
+    it('keeps TW Run colored when running itself triggers a zero-hex damage PSR', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [{ ...crit('Gyro'), loc: 'CT' }],
+            rulesId: 'tw',
+        });
+        const turnState = forceUnit.turnState();
+        turnState.moveMode.set('run');
+        turnState.moveDistance.set(0);
+
+        const runOption = forceUnit.getAvailableMotiveModes(false)
+            .find(option => option.mode === 'run');
+
+        expect(runOption?.psr).toBeTrue();
+    });
+
+    it('marks TW destroyed-leg Minimum Movement as a zero-hex Run PSR', () => {
+        const biped = createForceUnitHarness({
+            committedDestroyedLocations: ['LL'],
+            rulesId: 'tw',
+        });
+        const bipedTurnState = biped.turnState();
+        bipedTurnState.moveMode.set('run');
+        bipedTurnState.moveDistance.set(0);
+
+        expect((biped.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 1, run: 0 }));
+        expect(biped.rules.isMotiveModeAvailable('run', bipedTurnState)).toBeTrue();
+        expect(biped.rules.getCommittedDamageMovementModePSRCheck('run', 0))
+            .toEqual(jasmine.objectContaining({ loc: 'LL', reason: 'Running with damaged leg' }));
+        expect(biped.getAvailableMotiveModes(false).find(option => option.mode === 'run')?.psr).toBeTrue();
+
+        const oneDestroyedLegQuad = createRulesHarness({
+            internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
+            committedDestroyedLocations: ['RLL'],
+            rulesId: 'tw',
+        });
+        const twoDestroyedLegQuad = createRulesHarness({
+            internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
+            committedDestroyedLocations: ['RLL', 'FLL'],
+            rulesId: 'tw',
+        });
+
+        expect(oneDestroyedLegQuad.getCommittedDamageMovementModePSRCheck('run', 0)).toBeNull();
+        expect(twoDestroyedLegQuad.isMotiveModeAvailable('run')).toBeTrue();
+        expect(twoDestroyedLegQuad.getCommittedDamageMovementModePSRCheck('run', 0)?.reason)
+            .toBe('Running with damaged leg');
     });
 
     it('never lets destroyed-leg movement increase a slower biped', () => {
@@ -2665,10 +3028,50 @@ describe('MekRules', () => {
             internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
             committedDestroyedLocations: ['RLL', 'FLL'],
         });
+        const threeLegQuad = createRulesHarness({
+            internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
+            committedDestroyedLocations: ['RLL', 'FLL', 'RRL'],
+        });
 
         expect(oneLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)).toBeNull();
-        expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)?.reason).toBe('Running with damaged leg');
+        expect(oneLegQuad.getCommittedDamageMovementModePSRCheck('jump', 1)).toBeNull();
+        expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('run', 0)).toBeNull();
+        expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)?.reason).toBe('Running with damaged hip');
+        expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)?.kind)
+            .toBe('damaged-hip-movement');
+        expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('jump', 0)?.reason).toBe('Jumping with damaged hip');
         expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)?.loc).toBeUndefined();
+        expect(threeLegQuad.getCommittedDamageMovementModePSRCheck('run', 0)).toBeNull();
+        expect(threeLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)?.reason)
+            .toBe('Running with damaged leg');
+        expect(threeLegQuad.getCommittedDamageMovementModePSRCheck('jump', 0)?.reason)
+            .toBe('Jumping with damaged leg');
+
+        const damagedGyro = createRulesHarness({
+            critSlots: [{ ...crit('Gyro'), loc: 'CT' }],
+        });
+        const damagedHip = createRulesHarness({
+            critSlots: [{ ...crit('Hip'), loc: 'LL' }],
+        });
+
+        expect(damagedGyro.getCommittedDamageMovementModePSRCheck('run', 0)).toBeNull();
+        expect(damagedHip.getCommittedDamageMovementModePSRCheck('run', 0)).toBeNull();
+
+        const twDamagedGyro = createRulesHarness({
+            critSlots: [{ ...crit('Gyro'), loc: 'CT' }],
+            rulesId: 'tw',
+        });
+        const twDamagedHip = createRulesHarness({
+            critSlots: [{ ...crit('Hip'), loc: 'LL' }],
+            rulesId: 'tw',
+        });
+
+        expect(twDamagedGyro.getCommittedDamageMovementModePSRCheck('run', 0)?.reason)
+            .toBe('Running with damaged gyro');
+        expect(twDamagedHip.getCommittedDamageMovementModePSRCheck('run', 0)?.reason)
+            .toBe('Running with damaged hip');
+        expect(twDamagedHip.getCommittedDamageMovementModePSRCheck('run', 0)?.kind)
+            .toBe('damaged-hip-movement');
     });
 
     it('requires a jump PSR for foot damage without requiring a run PSR', () => {
@@ -2678,6 +3081,8 @@ describe('MekRules', () => {
 
         expect(rules.getCommittedDamageMovementModePSRCheck('jump', 0)?.reason)
             .toBe('Jumping with damaged leg actuator');
+        expect(rules.getCommittedDamageMovementModePSRCheck('jump', 0)?.kind)
+            .toBe('damaged-leg-actuator-movement');
         expect(rules.getCommittedDamageMovementModePSRCheck('run', 1)).toBeNull();
     });
 

@@ -9,7 +9,7 @@ import type { PSRCheck } from '../../../models/rules/unit-type-rules';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
-import { displayPsrModifiers } from './page-turn-summary.util';
+import { displayPsrModifiers, openTurnSummaryChildOverlay } from './page-turn-summary.util';
 import { getMekLocationLabel } from '../../../models/entity/types';
 
 export function psrRollOutcome(sum: number, target: number): 'success' | 'failed' {
@@ -40,14 +40,16 @@ export function togglePsrWarningOverlay(
         parent: injector
     });
     const portal = new ComponentPortal(PagePsrWarningPanelComponent, null, customInjector);
-    overlayManager.createManagedOverlay(overlayKey, null, portal, {
-        hasBackdrop: true,
-        backdropClass: 'cdk-overlay-dark-backdrop',
-        panelClass: 'psr-warning-overlay-panel',
-        closeOnOutsideClick: true,
-        scrollStrategy: overlay.scrollStrategies.block(),
-        positions: []
-    });
+    openTurnSummaryChildOverlay(overlayManager, unitId, () =>
+        overlayManager.createManagedOverlay(overlayKey, null, portal, {
+            hasBackdrop: true,
+            backdropClass: 'cdk-overlay-dark-backdrop',
+            panelClass: 'psr-warning-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: overlay.scrollStrategies.block(),
+            positions: []
+        })
+    );
 }
 
 @Component({

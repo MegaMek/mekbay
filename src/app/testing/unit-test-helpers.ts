@@ -199,11 +199,11 @@ export interface CBTForceUnitTestHarnessOptions {
 
 export interface CBTForceUnitTestTurnState {
     moveMode(): MotiveModes | null;
+    effectiveMoveMode(): MotiveModes | null;
     airborne(): boolean;
     getAttackMovementModifier(): number;
     getAttackModifierBreakdown(): UnitModifierBreakdownEntry[];
     missingAttackMovementModifier(): boolean;
-    getSpottingModifier(): number;
     heatSources(): Array<{ id: string; label: string; value: number }>;
     heatDissipationBalance(): number;
     effectiveHeatDissipation(): number;
@@ -265,13 +265,13 @@ export class CBTForceUnitTestHarness {
         );
         this.turnState = {
             moveMode: () => options.moveMode ?? null,
+            effectiveMoveMode: () => options.moveMode ?? null,
             airborne: () => false,
             getAttackMovementModifier: attackMovementModifier,
             getAttackModifierBreakdown: () => options.attackModifierBreakdown ?? (attackMovementModifier() !== 0
                 ? [{ label: getMotiveModeLabel(options.moveMode!, baseUnit, false), modifier: attackMovementModifier(), priority: ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY }]
                 : []),
             missingAttackMovementModifier: () => (options.moveMode ?? null) === null && (options.attackMovementCanAffectTargetNumbers ?? true),
-            getSpottingModifier: () => 0,
             heatSources: () => [
                 ...(options.heatSources ? [{ id: 'test-source', label: 'Test Source', value: options.heatSources }] : []),
                 ...(firedHeat > 0 ? [{ id: 'weapons', label: 'Weapons', value: firedHeat }] : []),

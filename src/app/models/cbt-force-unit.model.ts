@@ -1268,7 +1268,7 @@ export class CBTForceUnit extends ForceUnit {
     private isPhysicalActionUnavailable(entry: MountedEquipment): boolean {
         if (!entry.isPhysicalWeapon()) return false;
         if (this.getCondition('prone')) return true;
-        const moveMode = this.turnState().moveMode();
+        const moveMode = this.turnState().effectiveMoveMode();
         if (moveMode === null) return false; // unknown!
 
         const attack = entry.name.trim().toLocaleLowerCase();
@@ -1574,11 +1574,15 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     public getAvailableMotiveModes(airborne: boolean): MotiveModeOption[] {
+        const turnState = this.turnState();
         return getMotiveModesOptionsByUnit(this.getUnit(), airborne)
-            .filter(option => this._rules.isMotiveModeAvailable(option.mode))
+            .filter(option => this._rules.isMotiveModeAvailable(option.mode, turnState))
             .map(option => ({
                 ...option,
-                psr: this._rules.getCommittedDamageMovementModePSRCheck(option.mode) !== null,
+                psr: this._rules.getCommittedDamageMovementModePSRCheck(
+                    option.mode,
+                    option.mode === turnState.moveMode() ? turnState.moveDistance() : 0,
+                ) !== null,
             }));
     }
 

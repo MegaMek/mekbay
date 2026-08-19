@@ -172,6 +172,7 @@ describe('TWMekRules', () => {
         expect(turnState.getPSRChecks()).toEqual([jasmine.objectContaining({
             fallCheck: 0,
             pilotCheck: 0,
+            kind: 'damaged-leg-actuator-movement',
             reason: 'Jumping with damaged leg actuator',
         })]);
         expect(turnState.PSRRollsCount()).toBe(1);
@@ -181,6 +182,26 @@ describe('TWMekRules', () => {
             loc: 'LL',
             reason: 'Hip Destroyed',
         }));
+    });
+
+    it('classifies movement checks independently from their display reason', () => {
+        const forceUnit = createTWForceUnit([
+            legActuatorCrit('lower-leg', 'Lower Leg Actuator', 'LL'),
+        ]);
+        const turnState = forceUnit.turnState();
+        turnState.moveMode.set('jump');
+        turnState.moveDistance.set(1);
+        spyOn(forceUnit.rules, 'getCommittedDamageMovementModePSRCheck').and.returnValue({
+            fallCheck: 0,
+            pilotCheck: 0,
+            kind: 'damaged-leg-actuator-movement',
+            reason: 'Localized movement check label',
+        });
+
+        expect(turnState.getPSRChecks()).toEqual([jasmine.objectContaining({
+            kind: 'damaged-leg-actuator-movement',
+            reason: 'Localized movement check label',
+        })]);
     });
 
     it('keeps current-hit and committed-movement actuator PSRs independent in TW', () => {
