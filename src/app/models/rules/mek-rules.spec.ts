@@ -357,6 +357,72 @@ function createShieldHarness(
     return { forceUnit, shield: forceUnit.getInventory()[0] };
 }
 
+function createShieldPropulsionHarness(
+    rulesId: 'core2026' | 'tw',
+    size: 'medium' | 'large',
+    destroyedShieldCriticals = 0,
+): { forceUnit: CBTForceUnit; shield: MountedEquipment } {
+    const large = size === 'large';
+    const shieldEquipment = miscEquipment(
+        large ? 'ISLargeShield' : 'ISMediumShield',
+        large ? 'Shield (Large)' : 'Shield (Medium)',
+        ['F_SHIELD', large ? 'S_SHIELD_LARGE' : 'S_SHIELD_MEDIUM'],
+    );
+    const jumpJet = miscEquipment('ISJumpJet', 'Jump Jet', ['F_JUMP_JET']);
+    const umu = miscEquipment('ISUMU', 'UMU', ['F_UMU']);
+    const shieldCriticalCount = large ? 7 : 5;
+    const shieldCriticals: CriticalSlot[] = Array.from({ length: shieldCriticalCount }, (_, index) => ({
+        ...crit(shieldEquipment.name, index < destroyedShieldCriticals),
+        id: `${shieldEquipment.id}@LA#${index + 4}`,
+        loc: 'LA',
+        slot: index + 4,
+        eq: shieldEquipment,
+    }));
+    const forceUnit = createForceUnitHarness({
+        rulesId,
+        walk: 4,
+        run: 6,
+        jump: large ? 0 : 2,
+        umu: large ? 0 : 2,
+        internalLocations: ['LA', 'RA', 'LT', 'RT', 'LL', 'RL'],
+        critSlots: [
+            ...armCritSlots('LA'),
+            ...armCritSlots('RA'),
+            ...shieldCriticals,
+            ...Array.from({ length: 3 }, (_, index) => ({
+                ...crit('Jump Jet', false),
+                id: `jump-jet-${index}`,
+                loc: 'LT',
+                slot: index,
+                eq: jumpJet,
+            })),
+            ...Array.from({ length: 2 }, (_, index) => ({
+                ...crit('UMU', false),
+                id: `umu-${index}`,
+                loc: 'RT',
+                slot: index,
+                eq: umu,
+            })),
+        ],
+    });
+    forceUnit.locations!.armor.set('DALA', {
+        loc: 'DALA', rear: false, points: large ? 7 : 5,
+    });
+    forceUnit.locations!.armor.set('DCLA', {
+        loc: 'DCLA', rear: false, points: large ? 25 : 18,
+    });
+    const currentShieldCriticals = forceUnit.getCritSlots().filter(slot => slot.eq === shieldEquipment);
+    forceUnit.setInventory([new MountedEquipment({
+        owner: forceUnit,
+        id: `${shieldEquipment.id}@LA`,
+        name: shieldEquipment.name,
+        equipment: shieldEquipment,
+        locations: new Set(['LA']),
+        critSlots: currentShieldCriticals,
+    })]);
+    return { forceUnit, shield: forceUnit.getInventory()[0] };
+}
+
 function directFireWeaponEntry(forceUnit: CBTForceUnit, flags: EquipmentFlag[] = []): MountedEquipment {
     const equipment = new WeaponEquipment({
         id: 'DirectFireWeapon',
@@ -1111,6 +1177,47 @@ describe('MekRules', () => {
             .toEqual(jasmine.objectContaining({ walk: 5, run: 8 }));
         expect((twAllCriticalsDestroyed.forceUnit.rules as MekRules).movementState())
             .toEqual(jasmine.objectContaining({ walk: 6, run: 9 }));
+    });
+
+    it('restores shield-suppressed Jump and UMU from installed propulsion', () => {
+        for (const rulesId of ['core2026', 'tw'] as const) {
+            const activeMedium = createShieldPropulsionHarness(rulesId, 'medium');
+            const destroyedMedium = createShieldPropulsionHarness(rulesId, 'medium', 5);
+            const activeLarge = createShieldPropulsionHarness(rulesId, 'large');
+            const destroyedLarge = createShieldPropulsionHarness(rulesId, 'large', 7);
+
+            expect((activeMedium.forceUnit.rules as MekRules).movementState())
+                .withContext(`${rulesId} active medium shield`)
+                .toEqual(jasmine.objectContaining({ walk: 4, jump: 2, UMU: 2 }));
+            expect((destroyedMedium.forceUnit.rules as MekRules).movementState())
+                .withContext(`${rulesId} destroyed medium shield`)
+                .toEqual(jasmine.objectContaining({ walk: 5, jump: 3, UMU: 2 }));
+            expect((activeLarge.forceUnit.rules as MekRules).movementState())
+                .withContext(`${rulesId} active large shield`)
+                .toEqual(jasmine.objectContaining({ walk: 4, jump: 0, UMU: 0 }));
+            expect((destroyedLarge.forceUnit.rules as MekRules).movementState())
+                .withContext(`${rulesId} destroyed large shield`)
+                .toEqual(jasmine.objectContaining({ walk: 5, jump: 3, UMU: 2 }));
+
+            const activeModes = activeLarge.forceUnit.getAvailableMotiveModes(false).map(option => option.mode);
+            const restoredModes = destroyedLarge.forceUnit.getAvailableMotiveModes(false).map(option => option.mode);
+            expect(activeModes).withContext(`${rulesId} active large shield modes`).not.toContain('jump');
+            expect(activeModes).withContext(`${rulesId} active large shield modes`).not.toContain('UMU');
+            expect(restoredModes).withContext(`${rulesId} destroyed large shield modes`).toContain('jump');
+            expect(restoredModes).withContext(`${rulesId} destroyed large shield modes`).toContain('UMU');
+        }
+    });
+
+    it('uses Core DA exhaustion but TW critical destruction to restore shield-suppressed Jump', () => {
+        const core = createShieldPropulsionHarness('core2026', 'medium');
+        const tw = createShieldPropulsionHarness('tw', 'medium');
+        core.forceUnit.setArmorHits('DALA', 5);
+        tw.forceUnit.setArmorHits('DALA', 5);
+
+        expect((core.forceUnit.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ jump: 3 }));
+        expect((tw.forceUnit.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ jump: 2 }));
     });
 
     it('uses DA zero in Core but all unavailable shield criticals in TW for the mobility modifier', () => {
@@ -2642,6 +2749,83 @@ describe('MekRules', () => {
         }
     });
 
+    it('restores modular-armor Jump MP before applying Jump Jet damage', () => {
+        for (const rulesId of ['core2026', 'tw'] as const) {
+            const modularArmor = miscEquipment(
+                'ISModularArmor',
+                'Modular Armor',
+                ['F_MODULAR_ARMOR'],
+            );
+            const jumpJet = miscEquipment('ISJumpJet', 'Jump Jet', ['F_JUMP_JET']);
+            const forceUnit = createForceUnitHarness({
+                rulesId,
+                jump: 2,
+                umu: 0,
+                internalLocations: ['LT', 'RT', 'LL', 'RL'],
+                critSlots: [
+                    {
+                        ...crit('Modular Armor', false),
+                        id: 'modular-armor',
+                        loc: 'RT',
+                        slot: 0,
+                        consumed: 10,
+                        eq: modularArmor,
+                    },
+                    ...Array.from({ length: 3 }, (_, index) => ({
+                        ...crit('Jump Jet', index === 0),
+                        id: `jump-jet-${index}`,
+                        loc: 'LT',
+                        slot: index,
+                        eq: jumpJet,
+                    })),
+                ],
+            });
+
+            expect((forceUnit.rules as MekRules).movementState())
+                .withContext(rulesId)
+                .toEqual(jasmine.objectContaining({ jump: 2, jumpImpaired: true }));
+            expect(forceUnit.getAvailableMotiveModes(false).map(option => option.mode))
+                .withContext(rulesId)
+                .toContain('jump');
+        }
+    });
+
+    it('uses restored equipment movement as the Core pre-damage immobility baseline', () => {
+        const modularArmor = miscEquipment(
+            'ISModularArmor',
+            'Modular Armor',
+            ['F_MODULAR_ARMOR'],
+        );
+        const createUnit = (consumed: number) => createForceUnitHarness({
+            rulesId: 'core2026',
+            walk: 0,
+            run: 0,
+            jump: 0,
+            umu: 0,
+            internalLocations: ['LT', 'LL', 'RL'],
+            critSlots: [
+                {
+                    ...crit('Modular Armor', false),
+                    id: 'modular-armor',
+                    loc: 'LT',
+                    slot: 0,
+                    consumed,
+                    eq: modularArmor,
+                },
+                { ...crit('Hip'), id: 'left-hip', loc: 'LL', slot: 0 },
+            ],
+        });
+        const activeArmor = createUnit(9);
+        const destroyedArmor = createUnit(10);
+
+        expect((activeArmor.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 0, run: 0 }));
+        expect(activeArmor.rules.hasComputedCondition('immobile')).toBeFalse();
+        expect((destroyedArmor.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 0, run: 0, moveImpaired: true }));
+        expect(destroyedArmor.rules.hasComputedCondition('immobile')).toBeTrue();
+    });
+
     it('marks movement impaired when damage consumes Walk MP restored from destroyed equipment', () => {
         const modularArmor = miscEquipment(
             'ISModularArmor',
@@ -3602,12 +3786,14 @@ describe('MekRules', () => {
             reason: 'Hip hit, Leg Actuator hit, Foot hit',
         })]);
         expect(turnState.PSRRollsCount()).toBe(1);
-        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(2);
         expect(forceUnit.rules.PSRModifiers().modifiers).toEqual(jasmine.arrayContaining([
             jasmine.objectContaining({ pilotCheck: 1, loc: 'LL', reason: 'Hip Destroyed' }),
             jasmine.objectContaining({ pilotCheck: 1, loc: 'LL', reason: 'Leg Actuator(s) Destroyed' }),
-            jasmine.objectContaining({ pilotCheck: 1, loc: 'LL', reason: 'Foot Actuator(s) Destroyed' }),
         ]));
+        expect(forceUnit.rules.PSRModifiers().modifiers.some(
+            modifier => modifier.reason === 'Foot Actuator(s) Destroyed',
+        )).toBeFalse();
     });
 
     it('uses separate Core jump PSRs for actuator damage in different legs', () => {
@@ -3627,10 +3813,10 @@ describe('MekRules', () => {
             jasmine.objectContaining({ loc: 'RL', reason: 'Hip hit' }),
         ]);
         expect(turnState.PSRRollsCount()).toBe(2);
-        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(2);
     });
 
-    it('keeps pre-existing destroyed actuator modifiers grouped by location', () => {
+    it('keeps Core pre-existing leg actuator modifiers grouped by location and ignores feet', () => {
         const forceUnit = createForceUnitHarness({
             critSlots: [
                 legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL'),
@@ -3639,7 +3825,7 @@ describe('MekRules', () => {
             ],
         });
 
-        expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(2);
         expect(forceUnit.rules.PSRModifiers().modifiers).toEqual(jasmine.arrayContaining([
             jasmine.objectContaining({
                 pilotCheck: 2,
@@ -3647,13 +3833,8 @@ describe('MekRules', () => {
                 reason: 'Leg Actuator(s) Destroyed',
                 modifierReason: 'Leg Actuators Destroyed (2)',
             }),
-            jasmine.objectContaining({
-                pilotCheck: 1,
-                loc: 'RL',
-                reason: 'Foot Actuator(s) Destroyed',
-                modifierReason: 'Foot Actuator Destroyed',
-            }),
         ]));
+        expect(forceUnit.rules.PSRModifiers().modifiers.some(modifier => modifier.loc === 'RL')).toBeFalse();
     });
 
     it('merges current and movement actuator triggers for the same Core leg', () => {
@@ -3835,7 +4016,10 @@ describe('MekRules', () => {
         expect(rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({
             pilotCheck: 1, loc: 'LL', reason: 'Hip Destroyed',
         }));
-        expect(rules.PSRModifiers().modifiers.some(modifier => modifier.reason === 'Leg Actuator(s) Destroyed')).toBeFalse();
+        expect(rules.PSRModifiers().modifiers.some(modifier =>
+            modifier.reason === 'Leg Actuator(s) Destroyed'
+            || modifier.reason === 'Foot Actuator(s) Destroyed'
+        )).toBeFalse();
         expect(rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({ pilotCheck: 2, reason: 'Gyro damaged' }));
         expect(toHitModifierTotal(rules.getEquipmentToHitModifiers(armWeapon))).toBe(0);
 

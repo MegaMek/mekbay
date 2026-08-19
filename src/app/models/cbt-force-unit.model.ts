@@ -25,7 +25,7 @@ import type { EquipmentFlag } from './equipment-flags.type';
 import type { WeaponType } from './weapon-types.model';
 import { C3Capabilities, type C3Component, C3NetworkType, C3Role } from './c3-network.model';
 import { isC3DisruptingStealthActive } from './stealth-equipment.model';
-import { getMotiveModesOptionsByUnit, type MotiveModeOption } from './motiveModes.model';
+import { getMotiveModeLabel, getMotiveModesOptionsByUnit, type MotiveModeOption, type MotiveModes } from './motiveModes.model';
 import type { TurnState } from './turn-state.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import type { UnitTypeRules } from './rules/unit-type-rules';
@@ -1575,7 +1575,16 @@ export class CBTForceUnit extends ForceUnit {
 
     public getAvailableMotiveModes(airborne: boolean): MotiveModeOption[] {
         const turnState = this.turnState();
-        return getMotiveModesOptionsByUnit(this.getUnit(), airborne)
+        const unit = this.getUnit();
+        const options = getMotiveModesOptionsByUnit(unit, airborne);
+        for (const mode of ['jump', 'UMU'] satisfies MotiveModes[]) {
+            if ((mode !== 'jump' || !airborne)
+                && !options.some(option => option.mode === mode)
+                && (this._rules.getMaxDistanceForMoveMode(mode) ?? 0) > 0) {
+                options.push({ mode, label: getMotiveModeLabel(mode, unit, airborne) });
+            }
+        }
+        return options
             .filter(option => this._rules.isMotiveModeAvailable(option.mode))
             .map(option => ({
                 ...option,

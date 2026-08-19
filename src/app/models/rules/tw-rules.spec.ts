@@ -140,6 +140,20 @@ describe('TWMekRules', () => {
         expect(forceUnit.rules.PSRModifiers().modifier).toBe(5);
     });
 
+    it('retains the destroyed foot actuator PSR modifier in TW', () => {
+        const forceUnit = createTWForceUnit([
+            legActuatorCrit('foot', 'Foot', 'LL'),
+        ]);
+
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(1);
+        expect(forceUnit.rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({
+            pilotCheck: 1,
+            loc: 'LL',
+            reason: 'Leg Actuator(s) Destroyed',
+            modifierReason: 'Leg Actuator Destroyed',
+        }));
+    });
+
     it('stacks independent TW actuator checks with damage and gyro PSRs', () => {
         const forceUnit = createTWForceUnit();
         const turnState = forceUnit.turnState();

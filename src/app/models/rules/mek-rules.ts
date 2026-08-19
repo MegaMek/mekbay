@@ -56,6 +56,15 @@ interface MekArmStatus {
     singleArmMod: number;
 }
 
+interface MekMobilityEquipmentState {
+    modularArmorInstalled: boolean;
+    modularArmorActive: boolean;
+    mediumShieldsInstalled: number;
+    mediumShieldsActive: number;
+    largeShieldsInstalled: number;
+    largeShieldsActive: number;
+}
+
 const TORSO_CRIPPLE_CHECK_KEY = 'core.torso-crippling';
 
 export const MEK_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['shutdown', 'prone', 'swarmed', 'tagged', 'ecm-shielded', 'skidding', 'jammed']);
@@ -144,25 +153,22 @@ export class MekRules extends UnitTypeRulesBase {
         if (!this.unit.isLoaded()) return false;
         if (this.unit.getCondition('shutdown')) return true;
         if (!this.hasDroneOperatingSystem() && !this.hasFunctionalCrew()) return true;
-        const unit = this.unit.getUnit();
         const movement = this.computeBaseMovementProfile();
         if (!movement) return false;
         const canUseJumpingMovement = !this.unit.getCondition('prone');
         const hasUsableNonGroundMovement = canUseJumpingMovement && (
-            (unit.jump > 0 && movement.jump > 0)
-            || (unit.umu > 0 && movement.UMU > 0)
+            movement.jump > 0 || movement.UMU > 0
         );
         // Sparse records can omit destroyed limbs entirely. Losing every limb
         // is damage-caused immobility unless a standing Mek can still leave by
         // a surviving non-ground mode.
         if (this.allLimbsDestroyedOrMissing() && !hasUsableNonGroundMovement) return true;
-        const availableModes = [
-            unit.walk > 0 ? movement.walk : null,
-            unit.run > 0 ? this.baseRunValue(movement) : null,
-            unit.jump > 0 && canUseJumpingMovement ? movement.jump : null,
-            unit.umu > 0 && canUseJumpingMovement ? movement.UMU : null,
+        const damageAvailableModes = [
+            movement.baselineWalk > 0 ? movement.walk : null,
+            movement.baselineJump > 0 && canUseJumpingMovement ? movement.jump : null,
+            movement.baselineUMU > 0 && canUseJumpingMovement ? movement.UMU : null,
         ].filter((value): value is number => value !== null);
-        return availableModes.length > 0 && availableModes.every(value => value <= 0);
+        return damageAvailableModes.length > 0 && damageAvailableModes.every(value => value <= 0);
     });
 
     protected override readonly crippled = computed<boolean>(() => {
@@ -1270,7 +1276,6 @@ export class MekRules extends UnitTypeRulesBase {
         for (const [loc, slots] of slotsByLocation) {
             const destroyedHipsCount = slots.filter(slot => this.isNamedCrit(slot, 'Hip')).length;
             const destroyedLegActuatorsCount = slots.filter(slot => this.isNamedCrit(slot, 'Leg')).length;
-            const destroyedFeetCount = slots.filter(slot => this.isNamedCrit(slot, 'Foot')).length;
             if (destroyedHipsCount > 0) {
                 modifiers.push({
                     pilotCheck: destroyedHipsCount * this.hipPSRModifier,
@@ -1286,16 +1291,6 @@ export class MekRules extends UnitTypeRulesBase {
                     modifierReason: destroyedLegActuatorsCount === 1
                         ? 'Leg Actuator Destroyed'
                         : `Leg Actuators Destroyed (${destroyedLegActuatorsCount})`,
-                });
-            }
-            if (destroyedFeetCount > 0) {
-                modifiers.push({
-                    pilotCheck: destroyedFeetCount,
-                    loc,
-                    reason: 'Foot Actuator(s) Destroyed',
-                    modifierReason: destroyedFeetCount === 1
-                        ? 'Foot Actuator Destroyed'
-                        : `Foot Actuators Destroyed (${destroyedFeetCount})`,
                 });
             }
         }
@@ -1682,17 +1677,28 @@ export class MekRules extends UnitTypeRulesBase {
         const unit = this.unit.getUnit();
         if (!unit) return null;
 
-        const restoredWalk = unit.walk + this.restoredEquipmentWalkMP();
+        const systemsStatus = this.systemsStatus();
+        const mobilityEquipment = this.mobilityEquipmentState();
+        const restoredWalk = unit.walk + this.restoredEquipmentWalkMP(mobilityEquipment);
         const restoredRun = Math.max(
             0,
             Math.round(restoredWalk * 1.5) + (unit.armorType === 'Hardened' ? -1 : 0),
         );
+        const baselineJump = this.equipmentAdjustedJumpBaseline(
+            unit.jump,
+            systemsStatus.jumpJetsCount,
+            mobilityEquipment,
+        );
+        const baselineUMU = this.equipmentAdjustedUMUBaseline(
+            unit.umu,
+            systemsStatus.UMUCount,
+            mobilityEquipment,
+        );
         let walkValue = restoredWalk;
-        let jumpValue = unit.jump;
-        let UMUValue = unit.umu;
+        let jumpValue = baselineJump;
+        let UMUValue = baselineUMU;
         let moveImpaired = false;
 
-        const systemsStatus = this.systemsStatus();
         const internalLocations = systemsStatus.internalLocations;
         const legMovement = this.applyLegDamageToMovement(
             walkValue,
@@ -1719,7 +1725,10 @@ export class MekRules extends UnitTypeRulesBase {
         } else {
             jumpValue = Math.max(0, jumpValue - systemsStatus.destroyedJumpJetsCount);
             if (systemsStatus.hasPartialWings) {
-                jumpValue -= this.partialWingJumpBonus(0) - this.partialWingJumpBonus();
+                jumpValue = Math.max(
+                    0,
+                    jumpValue - (this.partialWingJumpBonus(0) - this.partialWingJumpBonus()),
+                );
             }
         }
 
@@ -1731,18 +1740,55 @@ export class MekRules extends UnitTypeRulesBase {
 
         return {
             baselineWalk: restoredWalk,
+            baselineJump,
+            baselineUMU,
             walk: walkValue,
             runDisabled: legMovement.runDisabled,
             runCap: legMovement.runCap,
             jump: jumpValue,
             UMU: UMUValue,
             moveImpaired,
-            jumpImpaired: (jumpValue < unit.jump),
-            UMUImpaired: (UMUValue < unit.umu),
+            jumpImpaired: jumpValue < baselineJump,
+            UMUImpaired: UMUValue < baselineUMU,
         };
     }
 
-    private restoredEquipmentWalkMP(): number {
+    private restoredEquipmentWalkMP(equipment: MekMobilityEquipmentState): number {
+        return (equipment.modularArmorInstalled && !equipment.modularArmorActive ? 1 : 0)
+            + equipment.mediumShieldsInstalled - equipment.mediumShieldsActive
+            + equipment.largeShieldsInstalled - equipment.largeShieldsActive;
+    }
+
+    private equipmentAdjustedJumpBaseline(
+        storedJump: number,
+        installedJumpJets: number,
+        equipment: MekMobilityEquipmentState,
+    ): number {
+        if (equipment.largeShieldsActive > 0) return 0;
+
+        const hasInstalledPenalty = equipment.modularArmorInstalled
+            || equipment.mediumShieldsInstalled > 0
+            || equipment.largeShieldsInstalled > 0;
+        if (!hasInstalledPenalty) return storedJump;
+        if (installedJumpJets === 0) return 0;
+
+        const partialWingBonus = this.partialWingJumpBonus(0);
+        const activePenalty = equipment.mediumShieldsActive
+            + (equipment.modularArmorActive ? 1 : 0);
+        return Math.max(0, installedJumpJets + partialWingBonus - activePenalty);
+    }
+
+    private equipmentAdjustedUMUBaseline(
+        storedUMU: number,
+        installedUMUs: number,
+        equipment: MekMobilityEquipmentState,
+    ): number {
+        if (equipment.largeShieldsActive > 0) return 0;
+        if (equipment.largeShieldsInstalled === 0) return storedUMU;
+        return installedUMUs;
+    }
+
+    private mobilityEquipmentState(): MekMobilityEquipmentState {
         const modularArmor = this.modularArmorState();
         const config = inferMekConfigFromLocations(this.unit.locations?.internal.keys() ?? []);
         const shields = config === 'Quad'
@@ -1750,8 +1796,16 @@ export class MekRules extends UnitTypeRulesBase {
             : this.unit.getInventory().filter(entry =>
                 entry.equipment?.hasFlag('F_SHIELD')
                 && entry.equipment.hasAnyFlag(['S_SHIELD_LARGE', 'S_SHIELD_MEDIUM']));
-        return (modularArmor.installed && !modularArmor.active ? 1 : 0)
-            + shields.filter(entry => !this.shieldRetainsMobilityPenalty(entry)).length;
+        const mediumShields = shields.filter(entry => entry.equipment?.hasFlag('S_SHIELD_MEDIUM'));
+        const largeShields = shields.filter(entry => entry.equipment?.hasFlag('S_SHIELD_LARGE'));
+        return {
+            modularArmorInstalled: modularArmor.installed,
+            modularArmorActive: modularArmor.active,
+            mediumShieldsInstalled: mediumShields.length,
+            mediumShieldsActive: mediumShields.filter(entry => this.shieldRetainsMobilityPenalty(entry)).length,
+            largeShieldsInstalled: largeShields.length,
+            largeShieldsActive: largeShields.filter(entry => this.shieldRetainsMobilityPenalty(entry)).length,
+        };
     }
 
     private modularArmorState(): { installed: boolean; active: boolean } {
@@ -1841,9 +1895,9 @@ export class MekRules extends UnitTypeRulesBase {
                 maxWalk: 0,
                 run: 0,
                 maxRun: 0,
-                jumpImpaired: unit.jump > 0,
+                jumpImpaired: baseMovement.baselineJump > 0,
                 jump: 0,
-                UMUImpaired: unit.umu > 0,
+                UMUImpaired: baseMovement.baselineUMU > 0,
                 UMU: 0,
             };
         }
