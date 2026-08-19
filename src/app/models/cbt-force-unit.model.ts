@@ -493,8 +493,9 @@ export class CBTForceUnit extends ForceUnit {
         slot.hits = Math.max(0, (slot.hits ?? 0) + damage);
         const destroying = slot.armored ? slot.hits >= 2 : slot.hits >= 1;
         slot.destroying = destroying ? Date.now() : undefined;
-        if (slot.destroyed && !destroying) {
+        if (slot.destroyed !== undefined && !destroying) {
             slot.destroyed = undefined; // Reset destroyed immediately
+            slot.destroyedTurn = undefined;
         }
         this.setCritSlot(slot);
         if (consolidateImmediately) {
@@ -1512,8 +1513,9 @@ export class CBTForceUnit extends ForceUnit {
         this.state.crew.set(crew);
         // Clear all crits
         const crits = this.state.crits().map(crit => {
-            if (crit.destroyed) {
+            if (crit.destroyed !== undefined || crit.destroyedTurn !== undefined) {
                 crit.destroyed = undefined;
+                crit.destroyedTurn = undefined;
             }
             if (crit.destroying) {
                 crit.destroying = undefined;
@@ -1662,7 +1664,7 @@ export class CBTForceUnit extends ForceUnit {
         if (endsForceTurn) this.force.clearExpiredManualTargetTags(this);
         this.inventoryControl.markAmmoSourcesChanged();
         this.phaseTrigger.update(v => v + 1); // Trigger change detection
-        this.state.resetTurnState();
+        this.state.resetTurnState(this.turnState().getTurnCounter() + 1);
     }
 
     private _hasDirectInventory: boolean | null = null;

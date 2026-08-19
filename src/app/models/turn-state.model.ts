@@ -57,6 +57,8 @@ export class TurnState {
     private readonly heatDissipationConsumed = this.modifiedSignal<number>(0);
     private readonly psrOutcomes = this.modifiedSignal<Record<string, RuleCheckOutcome>>({});
     private readonly equipmentStateChanged = this.modifiedSignal<boolean>(false);
+    /** Per-unit turn sequence, retained across phase commits. */
+    private turnCounter: number;
     airborne = this.modifiedSignal<boolean | null>(null, 'movement');
     moveMode = this.modifiedSignal<MotiveModes | null>(null, 'movement');
     moveDistance = this.modifiedSignal<number | null>(null, 'movement');
@@ -349,8 +351,9 @@ export class TurnState {
 
     heatProjectionVisible = computed<boolean>(() => this.hasPendingHeatResolution());
 
-    constructor(unitState: CBTForceUnitState) {
+    constructor(unitState: CBTForceUnitState, turnCounter = 0) {
         this.unitState = unitState;
+        this.turnCounter = turnCounter;
     }
 
     capturePassiveHeatSourceBaseline(): void {
@@ -427,6 +430,7 @@ export class TurnState {
 
     serialize(): SerializedTurnState | undefined {
         const turnState: SerializedTurnState = {};
+        const turnCounter = this.turnCounter;
         const airborne = this.airborne();
         const moveMode = this.moveMode();
         const moveDistance = this.moveDistance();
@@ -435,6 +439,7 @@ export class TurnState {
         const cover = this.cover();
         const psrChecks = this.serializePSRChecks();
 
+        if (turnCounter > 0) turnState.turnCounter = turnCounter;
         if (airborne === true) turnState.airborne = true;
         if (moveMode !== null) turnState.moveMode = moveMode;
         if (moveDistance !== null) turnState.moveDistance = moveDistance;
@@ -462,6 +467,7 @@ export class TurnState {
 
     update(data: SerializedTurnState | undefined) {
         this.withSuppressedModified(() => {
+            this.turnCounter = data?.turnCounter ?? this.turnCounter;
             this.airborne.set(data?.airborne ?? null);
             this.moveMode.set(data?.moveMode ?? null);
             this.moveDistance.set(data?.moveDistance ?? null);
@@ -480,6 +486,10 @@ export class TurnState {
             this.spotting.set(data?.spotting ?? false);
             this.equipmentStateChanged.set(data?.equipmentStateChanged ?? false);
         });
+    }
+
+    getTurnCounter(): number {
+        return this.turnCounter;
     }
 
     markEquipmentStateChanged(): void {

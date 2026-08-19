@@ -130,7 +130,6 @@ export class TWMekRules extends MekRules {
                 fallCheck: this.hipPSRModifier,
                 pilotCheck: this.hipPSRModifier,
                 loc,
-                legFilter: loc,
                 reason: 'Hip hit',
             });
         });
@@ -148,19 +147,18 @@ export class TWMekRules extends MekRules {
         const modifiers: PSRCheck[] = [];
         const destroyedHips = critSlots.filter(slot => slot.loc
             && LEG_LOCATIONS.has(slot.loc)
-            && !this.unit.isEquipmentOperational(slot)
+            && slot.destroyed !== undefined
             && !ignoreLeg.has(slot.loc)
             && this.isNamedCrit(slot, 'Hip'));
         for (const hip of destroyedHips) {
             modifier += this.hipPSRModifier;
             modifiers.push({ pilotCheck: this.hipPSRModifier, loc: hip.loc!, reason: 'Hip Destroyed' });
-            ignoreLeg.add(hip.loc!);
         }
-        const destroyedActuators = critSlots.filter(slot => slot.loc
-            && LEG_LOCATIONS.has(slot.loc)
-            && !this.unit.isEquipmentOperational(slot)
-            && !ignoreLeg.has(slot.loc)
-            && (this.isNamedCrit(slot, 'Leg') || this.isNamedCrit(slot, 'Foot')));
+        const destroyedActuators = this.effectiveCommittedLegActuators(
+            critSlots,
+            this.unit.turnState().getPSRCheckState().hipsHit,
+        )
+            .filter(slot => !ignoreLeg.has(slot.loc!));
         const destroyedActuatorCounts = new Map<string, number>();
         for (const actuator of destroyedActuators) {
             destroyedActuatorCounts.set(actuator.loc!, (destroyedActuatorCounts.get(actuator.loc!) ?? 0) + 1);
@@ -177,6 +175,49 @@ export class TWMekRules extends MekRules {
             });
         }
         return { modifier, modifiers };
+    }
+
+    private effectiveCommittedLegActuators(
+        critSlots: readonly CriticalSlot[],
+        currentTurnHipHits: ReadonlySet<string> | undefined = undefined,
+    ): CriticalSlot[] {
+        // BMM: a hip replaces same-leg actuator modifiers from earlier turns;
+        // actuator hits from the hip's turn or a later turn remain cumulative.
+        const hipDestroyedOnTurnByLeg = new Map<string, number>();
+        for (const slot of critSlots) {
+            if (!slot.loc
+                || !LEG_LOCATIONS.has(slot.loc)
+                || slot.destroyed === undefined
+                || !this.isNamedCrit(slot, 'Hip')) continue;
+            hipDestroyedOnTurnByLeg.set(
+                slot.loc,
+                Math.max(
+                    hipDestroyedOnTurnByLeg.get(slot.loc) ?? 0,
+                    slot.destroyedTurn ?? 0,
+                ),
+            );
+        }
+        if (currentTurnHipHits && currentTurnHipHits.size > 0) {
+            const currentTurn = this.unit.turnState().getTurnCounter();
+            for (const loc of currentTurnHipHits) {
+                hipDestroyedOnTurnByLeg.set(loc, currentTurn);
+            }
+        }
+
+        return critSlots.filter(slot => {
+            if (!slot.loc
+                || !LEG_LOCATIONS.has(slot.loc)
+                || slot.destroyed === undefined
+                || this.unit.isInternalLocCommittedDestroyed(slot.loc)
+                || (!this.isNamedCrit(slot, 'Leg') && !this.isNamedCrit(slot, 'Foot'))) return false;
+            const hipDestroyedOnTurn = hipDestroyedOnTurnByLeg.get(slot.loc);
+            const actuatorDestroyedOnTurn = slot.destroyedTurn ?? 0;
+            return hipDestroyedOnTurn === undefined || actuatorDestroyedOnTurn >= hipDestroyedOnTurn;
+        });
+    }
+
+    protected override legActuatorMovementReduction(): number {
+        return this.effectiveCommittedLegActuators(this.unit.getCritSlots()).length;
     }
 
     protected override usesTorsoCripplingRules(): boolean {
@@ -296,7 +337,7 @@ export class TWMekRules extends MekRules {
     protected override readonly immobile = computed<boolean>(() => {
         if (!this.unit.isLoaded()) return false;
         if (this.unit.getCondition('shutdown')) return true;
-        if (this.allLimbsDestroyedOrMissing()) return true;
+        if (this.allLimbsDestroyed()) return true;
         if (!this.hasDroneOperatingSystem() && !this.hasFunctionalCrew()) return true;
         return false;
     });

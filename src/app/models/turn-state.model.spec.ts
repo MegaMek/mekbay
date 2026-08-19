@@ -528,6 +528,18 @@ describe('TurnState', () => {
             expect(restored.serialize()).toBeUndefined();
         });
 
+        it('starts at turn zero and round-trips the current turn counter', () => {
+            const { turnState } = createTurnStateHarness();
+
+            expect(turnState.getTurnCounter()).toBe(0);
+            expect(turnState.serialize()).toBeUndefined();
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(turnState.serialize());
+
+            expect(restored.getTurnCounter()).toBe(0);
+        });
+
         it('persists disabled movement PSRs while omitting other false and empty state', () => {
             const { turnState } = createTurnStateHarness();
             turnState.airborne.set(false);
@@ -542,7 +554,7 @@ describe('TurnState', () => {
 
             const serialized = turnState.serialize();
 
-            expect(serialized).toEqual({ applyMovePSR: false });
+            expect(turnState.serialize()).toEqual({ applyMovePSR: false });
 
             const { turnState: restored } = createTurnStateHarness();
             restored.update(serialized);

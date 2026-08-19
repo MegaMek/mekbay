@@ -106,6 +106,7 @@ export function createEmptyUnit(overrides: TestUnitOverrides = {}): Unit {
         engineHSType: 'Heat Sink',
         source: [],
         published: [],
+        rulesRefs: [],
         canon: true,
         canAntiMech: false,
         role: '',
@@ -151,6 +152,7 @@ export function createEmptyUnit(overrides: TestUnitOverrides = {}): Unit {
 
     unit.source = unitOverrides.source ? [...unitOverrides.source] : [];
     unit.published = unitOverrides.published ? [...unitOverrides.published] : [];
+    unit.rulesRefs = unitOverrides.rulesRefs ? [...unitOverrides.rulesRefs] : [];
     unit.comp = unitOverrides.comp ? [...unitOverrides.comp] : [];
     unit.quirks = unitOverrides.quirks ? [...unitOverrides.quirks] : [];
     unit.features = unitOverrides.features ? [...unitOverrides.features] : [];

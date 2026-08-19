@@ -889,6 +889,7 @@ export class SvgInteractionService {
         }
         critLoc.destroying = undefined;
         critLoc.destroyed = undefined;
+        critLoc.destroyedTurn = undefined;
         unit.setCritLoc(critLoc);
     }
 
@@ -976,6 +977,7 @@ export class SvgInteractionService {
         }
         critLoc.destroying = undefined;
         critLoc.destroyed = undefined;
+        critLoc.destroyedTurn = undefined;
         unit.setCritLoc(critLoc);
     }
 

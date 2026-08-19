@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CBT_SERIALIZED_STATE_SCHEMA, C3_NETWORK_GROUP_SCHEMA, FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
+import { CBT_SERIALIZED_STATE_SCHEMA, C3_NETWORK_GROUP_SCHEMA, CRIT_SLOT_SCHEMA, FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { C3NetworkType } from './c3-network.model';
 
@@ -93,6 +93,20 @@ describe('heat state sanitization', () => {
             next: 7,
             heatsinksOff: 0,
         });
+    });
+
+    it('sanitizes turn chronology as non-negative integer counters', () => {
+        expect(Sanitizer.sanitize({ turnCounter: 4.9 }, TURN_STATE_SCHEMA))
+            .toEqual({ turnCounter: 4 });
+        expect(Sanitizer.sanitize({ turnCounter: -2 }, TURN_STATE_SCHEMA))
+            .toEqual({ turnCounter: 0 });
+        expect(Sanitizer.sanitize({ turnCounter: Number.NaN }, TURN_STATE_SCHEMA))
+            .toEqual({});
+
+        expect(Sanitizer.sanitize({ id: 'crit', destroyedTurn: 7.8 }, CRIT_SLOT_SCHEMA))
+            .toEqual({ id: 'crit', destroyedTurn: 7 });
+        expect(Sanitizer.sanitize({ id: 'crit', destroyedTurn: Number.POSITIVE_INFINITY }, CRIT_SLOT_SCHEMA))
+            .toEqual({ id: 'crit' });
     });
 
     it('sanitizes consumed heat dissipation as a non-negative finite number', () => {

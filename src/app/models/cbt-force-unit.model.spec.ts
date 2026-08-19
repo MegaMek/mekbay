@@ -2986,8 +2986,34 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(restored.turnState().dmgReceived()).toBe(20);
         expect(restored.turnState().weaponsHeat()).toBe(8);
         expect(restored.turnState().spotting()).toBeTrue();
+        expect(restored.turnState().getTurnCounter()).toBe(forceUnit.turnState().getTurnCounter());
         expect(restored.turnState().getPSRCheckState().legActuators?.get('LL')).toBe(1);
         expect(restored.turnState().getPSRCheckState().hipsHit?.has('RL')).toBeTrue();
+    });
+
+    it('increments and persists the per-unit turn counter on endTurn', () => {
+        const forceUnit = createForceUnit();
+
+        expect(forceUnit.turnState().getTurnCounter()).toBe(0);
+
+        forceUnit.endTurn();
+        forceUnit.endTurn();
+
+        expect(forceUnit.turnState().getTurnCounter()).toBe(2);
+
+        const restored = CBTForceUnit.deserialize(
+            forceUnit.serialize(),
+            new TestCBTForce('Restored Turn Counter Force', dataService, unitInitializer, injector),
+            dataService,
+            unitInitializer,
+            injector,
+        );
+
+        expect(restored.turnState().getTurnCounter()).toBe(2);
+
+        restored.endTurn();
+
+        expect(restored.turnState().getTurnCounter()).toBe(3);
     });
 
     it('exposes spotting as a transient condition and clears it at end of turn', () => {

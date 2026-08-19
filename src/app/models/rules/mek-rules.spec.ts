@@ -11,7 +11,7 @@ import { MountedEquipment, MountedWeapon } from '../mounted-equipment.model';
 import { type CriticalSlot, type LocationData } from '../force-serialization';
 import { AmmoEquipment, Equipment, WeaponEquipment, type AmmoType } from '../equipment.model';
 import { EquipmentRegistry } from '../equipment-lookup';
-import type { Unit, UnitSubtype } from '../units.model';
+import type { Unit, UnitComponent, UnitSubtype } from '../units.model';
 import { DataService } from '../../services/data.service';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import { UnitInitializerService } from '../../services/unit-initializer.service';
@@ -27,6 +27,7 @@ import { VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '..
 import { PPC_CAPACITOR_CHARGED_STATE, PPC_CAPACITOR_CHARGING_STATE, PPC_CAPACITOR_STATE_KEY, PpcCapacitorHandler } from '../../equipment-handlers/ppc-capacitor.handler';
 import { EquipmentFlag } from '../equipment-flags.type';
 import { isInventoryControlSelectableEntry, syncSvgMode } from '../../utils/inventory-control.util';
+import { MEK_LOCATIONS, MEK_QUAD_LOCATIONS, MEK_TRIPOD_LOCATIONS } from '../entity/types';
 
 class TestCBTForce extends CBTForce {
     override emitChanged(): void {
@@ -64,6 +65,7 @@ function createRulesHarness(options: {
     subtype?: UnitSubtype;
     rulesId?: 'core2026' | 'tw';
     forcedWithdrawal?: boolean;
+    components?: UnitComponent[];
 } = {}): MekRules {
     return createForceUnitHarness(options).rules as MekRules;
 }
@@ -107,6 +109,18 @@ function normalizeGeneratedCriticalSlots(criticalSlots: readonly CriticalSlot[])
     });
 }
 
+function canonicalMekInternalLocations(subtype: UnitSubtype, requested: readonly string[] = []): string[] {
+    const isQuad = subtype.startsWith('Quad')
+        || requested.some(loc => ['FLL', 'FRL', 'RLL', 'RRL'].includes(loc));
+    const isTripod = subtype.startsWith('Tripod') || requested.includes('CL');
+    const canonical: readonly string[] = isQuad
+        ? MEK_QUAD_LOCATIONS
+        : isTripod
+            ? MEK_TRIPOD_LOCATIONS
+            : MEK_LOCATIONS;
+    return [...new Set([...canonical, ...requested])];
+}
+
 function createForceUnitHarness(options: {
     crewStates?: Exclude<CrewMemberState, 'dead'>[];
     crewHits?: number[];
@@ -125,6 +139,7 @@ function createForceUnitHarness(options: {
     subtype?: UnitSubtype;
     rulesId?: 'core2026' | 'tw';
     forcedWithdrawal?: boolean;
+    components?: UnitComponent[];
 } = {}): CBTForceUnit {
     optionsService.options.update(current => ({
         ...current,
@@ -146,12 +161,13 @@ function createForceUnitHarness(options: {
         umu: options.umu ?? 2,
         tons: options.tons ?? 50,
         engine: options.engine ?? 'Fusion',
+        comp: options.components ?? [],
     });
 
     dataService.getUnitByName.and.callFake((name: string): Unit | undefined => name === baseUnit.name ? baseUnit : undefined);
     const force = new TestCBTForce('Test Force', dataService, unitInitializer, injector);
     const forceUnit = new CBTForceUnit(baseUnit, force, dataService, unitInitializer, injector);
-    const internalLocations = options.internalLocations ?? ['LL', 'RL'];
+    const internalLocations = canonicalMekInternalLocations(baseUnit.subtype, options.internalLocations);
     const locationPoints = options.locationPoints ?? 1;
     forceUnit.locations = {
         internal: new Map(internalLocations.map(loc => [loc, { loc, points: locationPoints }])),
@@ -357,6 +373,18 @@ function createShieldHarness(
     return { forceUnit, shield: forceUnit.getInventory()[0] };
 }
 
+function unitComponent(equipment: Equipment, quantity: number, location: string): UnitComponent {
+    return {
+        id: equipment.id,
+        q: quantity,
+        n: equipment.name,
+        t: 'C',
+        p: 0,
+        l: location,
+        eq: equipment,
+    };
+}
+
 function createShieldPropulsionHarness(
     rulesId: 'core2026' | 'tw',
     size: 'medium' | 'large',
@@ -384,6 +412,10 @@ function createShieldPropulsionHarness(
         run: 6,
         jump: large ? 0 : 2,
         umu: large ? 0 : 2,
+        components: [
+            unitComponent(jumpJet, 3, 'LT'),
+            unitComponent(umu, 2, 'RT'),
+        ],
         internalLocations: ['LA', 'RA', 'LT', 'RT', 'LL', 'RL'],
         critSlots: [
             ...armCritSlots('LA'),
@@ -1798,7 +1830,8 @@ describe('MekRules', () => {
         const punchModifiers = rules.getEquipmentToHitModifiers(punchEntry(forceUnit));
         expect(toHitModifierTotal(punchModifiers)).toBe(-1);
         expect(punchModifiers).toEqual([{ label: 'Dedicated Pilot', modifier: -1 }]);
-        expect(rules.PSRTargetRoll()).toBe(4);
+        expect(rules.PSRModifiers().modifier).toBe(-2);
+        expect(rules.PSRTargetRoll()).toBe(3);
     });
 
     it('uses the first active alternate gunner with a modifier when the Tripod dedicated gunnery officer is disabled', () => {
@@ -1856,7 +1889,8 @@ describe('MekRules', () => {
         expect(punchModifiers).toEqual([
             { label: 'Dedicated Pilot disabled', modifier: 2, weakened: true },
         ]);
-        expect(rules.PSRTargetRoll()).toBe(8);
+        expect(rules.PSRModifiers().modifier).toBe(1);
+        expect(rules.PSRTargetRoll()).toBe(7);
     });
 
     it('applies the Tripod dedicated pilot modifier to physical attacks', () => {
@@ -2761,6 +2795,7 @@ describe('MekRules', () => {
                 rulesId,
                 jump: 2,
                 umu: 0,
+                components: [unitComponent(jumpJet, 3, 'LT')],
                 internalLocations: ['LT', 'RT', 'LL', 'RL'],
                 critSlots: [
                     {
@@ -2787,6 +2822,61 @@ describe('MekRules', () => {
             expect(forceUnit.getAvailableMotiveModes(false).map(option => option.mode))
                 .withContext(rulesId)
                 .toContain('jump');
+        }
+    });
+
+    it('restores modular-armor Jump from mounted Improved Jump Jets rather than occupied slots', () => {
+        for (const rulesId of ['core2026', 'tw'] as const) {
+            const modularArmor = miscEquipment(
+                'ISModularArmor',
+                'Modular Armor',
+                ['F_MODULAR_ARMOR'],
+            );
+            const improvedJumpJet = miscEquipment(
+                'ISImprovedJumpJet',
+                'Improved Jump Jet',
+                ['F_JUMP_JET', 'S_IMPROVED'],
+            );
+            const forceUnit = createForceUnitHarness({
+                rulesId,
+                jump: 1,
+                umu: 0,
+                components: [unitComponent(improvedJumpJet, 2, 'LT')],
+                internalLocations: ['LT', 'RT', 'LL', 'RL'],
+                critSlots: [
+                    {
+                        ...crit('Modular Armor', false),
+                        id: 'modular-armor',
+                        loc: 'RT',
+                        slot: 0,
+                        consumed: 10,
+                        eq: modularArmor,
+                    },
+                    ...Array.from({ length: 4 }, (_, index) => ({
+                        ...crit('Improved Jump Jet', false),
+                        id: `improved-jump-jet-${Math.floor(index / 2)}`,
+                        loc: 'LT',
+                        slot: index,
+                        eq: improvedJumpJet,
+                    })),
+                ],
+            });
+
+            expect((forceUnit.rules as MekRules).movementState())
+                .withContext(rulesId)
+                .toEqual(jasmine.objectContaining({ jump: 2, jumpImpaired: false }));
+
+            forceUnit.applyHitToCritSlot(forceUnit.getCritSlot('LT', 0)!);
+            forceUnit.endPhase();
+            expect((forceUnit.rules as MekRules).movementState())
+                .withContext(`${rulesId} first occupied slot`)
+                .toEqual(jasmine.objectContaining({ jump: 1, jumpImpaired: true }));
+
+            forceUnit.applyHitToCritSlot(forceUnit.getCritSlot('LT', 1)!);
+            forceUnit.endPhase();
+            expect((forceUnit.rules as MekRules).movementState())
+                .withContext(`${rulesId} second occupied slot of the same mount`)
+                .toEqual(jasmine.objectContaining({ jump: 1, jumpImpaired: true }));
         }
     });
 
@@ -2960,26 +3050,19 @@ describe('MekRules', () => {
         }
     });
 
-    it('keeps core2026 Meks mobile while a damage-available movement mode remains', () => {
+    it('keeps a Core Mek mobile until damage reduces its canonical ground movement to zero', () => {
         const forceUnit = createForceUnitHarness({
-            internalLocations: ['LL', 'RA', 'RT'],
+            internalLocations: ['HD', 'CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL'],
             committedDestroyedLocations: ['LL'],
+            jump: 0,
+            umu: 0,
         });
 
-        expect(forceUnit.isInternalLocCommittedDestroyed('RA')).toBeFalse();
         expect(forceUnit.rules.hasComputedCondition('immobile')).toBeFalse();
 
-        forceUnit.setLocations(createCommittedLocationState(['LL', 'RT']), true);
+        forceUnit.setLocations(createCommittedLocationState(['LL', 'RL']), true);
 
-        expect(forceUnit.isInternalLocCommittedDestroyed('RA')).toBeTrue();
         expect(forceUnit.rules.hasComputedCondition('immobile')).toBeTrue();
-
-        const twForceUnit = createForceUnitHarness({
-            internalLocations: ['LL', 'RA', 'RT'],
-            committedDestroyedLocations: ['LL', 'RA'],
-            rulesId: 'tw',
-        });
-        expect(twForceUnit.rules.hasComputedCondition('immobile')).toBeTrue();
     });
 
     it('only lets surviving Jump MP prevent Core damage immobility while standing', () => {

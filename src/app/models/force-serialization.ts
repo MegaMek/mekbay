@@ -80,6 +80,7 @@ export interface SerializedPSRChecks {
 }
 
 export interface SerializedTurnState {
+    turnCounter?: number;
     airborne?: boolean;
     moveMode?: MotiveModes;
     moveDistance?: number;
@@ -374,6 +375,7 @@ export interface CriticalSlot {
     consumed?: number; // If is an ammo slot: how much ammo have been consumed. If is a F_MODULAR_ARMOR, is the armor points used
     destroying?: number; // If this location is in the process of being destroyed. Contains the timestamp of when the destruction started
     destroyed?: number; // If this location is destroyed (can be from 0 hits if the structure is completely destroyed). Contains the timestamp of the destruction
+    destroyedTurn?: number; // Per-unit turn counter when this slot was destroyed
     originalName?: string; // saved original name in case we override the current name
     armored?: boolean; // If this critical slot is armored (for locations that can be armored)
     el?: SVGElement;
@@ -438,6 +440,7 @@ function sanitizePSRChecks(value: unknown): SerializedPSRChecks | undefined {
 }
 
 export const TURN_STATE_SCHEMA = Sanitizer.schema<SerializedTurnState>()
+    .custom('turnCounter', sanitizeOptionalNonNegativeInteger)
     .custom('airborne', (value: unknown) => typeof value === 'boolean' ? value : undefined)
     .custom('moveMode', (value: unknown) => MOTIVE_MODE_VALUES.includes(value as MotiveModes) ? value as MotiveModes : undefined)
     .custom('moveDistance', sanitizeOptionalNonNegativeNumber)
@@ -486,6 +489,7 @@ export const CRIT_SLOT_SCHEMA = Sanitizer.schema<CriticalSlot>()
         if (typeof value === 'number') return value;
         return undefined;
     })
+    .custom('destroyedTurn', sanitizeOptionalNonNegativeInteger)
     .string('originalName')
     .boolean('armored')
     .build();
@@ -525,6 +529,11 @@ function sanitizeOptionalNonNegativeNumber(value: unknown): number | undefined {
     if (value === undefined || value === null || value === '') return undefined;
     const parsed = typeof value === 'number' ? value : Number(value);
     return Number.isFinite(parsed) ? Math.max(0, parsed) : undefined;
+}
+
+function sanitizeOptionalNonNegativeInteger(value: unknown): number | undefined {
+    const parsed = sanitizeOptionalNonNegativeNumber(value);
+    return parsed === undefined ? undefined : Math.floor(parsed);
 }
 
 function sanitizeOptionalCover(value: unknown): SerializedUnitCover | undefined {
