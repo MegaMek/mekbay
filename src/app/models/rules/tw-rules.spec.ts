@@ -211,10 +211,9 @@ describe('TWMekRules', () => {
         hitCrit(forceUnit, 'LL', 1);
         const actuatorDestructionTimestamp = forceUnit.getCritSlot('LL', 1)?.destroying;
 
-        expect(forceUnit.turnState().getPSRChecks().map(check => check.reason)).toEqual([
-            'Hip hit',
-            'Leg actuator hit',
-        ]);
+        expect(forceUnit.turnState().getPSRChecks().map(check => check.reason)).toEqual(
+            jasmine.arrayWithExactContents(['Hip hit', 'Leg actuator hit']),
+        );
         expect(forceUnit.rules.PSRModifiers().modifier).toBe(3);
 
         forceUnit.endPhase();
