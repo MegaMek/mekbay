@@ -3,6 +3,7 @@
 // Author: Drake
 
 import type { ASForceUnit } from '../models/as-force-unit.model';
+import type { GameSystem } from '../models/common.model';
 import type { UnitGroup } from '../models/force.model';
 import { getFormationDefinition } from './formation-blueprints';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
@@ -117,20 +118,27 @@ export function resolveFormationSharedPoolLevel(
     }
 }
 
-function getParentFormationDefinition(definition: FormationTypeDefinition): FormationTypeDefinition | null {
+function getParentFormationDefinition(
+    definition: FormationTypeDefinition,
+    gameSystem: GameSystem,
+): FormationTypeDefinition | null {
     return definition.parent
-    ? getFormationDefinition(definition.parent)
+        ? getFormationDefinition(definition.parent, gameSystem)
         : null;
 }
 
-function getFormationEffectChain(definition: FormationTypeDefinition | null | undefined, visited = new Set<string>()): FormationTypeDefinition[] {
+function getFormationEffectChain(
+    definition: FormationTypeDefinition | null | undefined,
+    gameSystem: GameSystem,
+    visited = new Set<string>(),
+): FormationTypeDefinition[] {
     if (!definition || visited.has(definition.id)) {
         return [];
     }
 
     visited.add(definition.id);
     const inheritedParentDefinitions = formationInheritsParentEffects(definition)
-        ? getFormationEffectChain(getParentFormationDefinition(definition), visited)
+        ? getFormationEffectChain(getParentFormationDefinition(definition, gameSystem), gameSystem, visited)
         : [];
 
     return [
@@ -139,8 +147,11 @@ function getFormationEffectChain(definition: FormationTypeDefinition | null | un
     ];
 }
 
-export function getInheritedFormationEffectGroups(definition: FormationTypeDefinition | null | undefined): FormationEffectGroup[] {
-    return getFormationEffectChain(definition).flatMap((sourceDefinition) => sourceDefinition.effectGroups ?? []);
+export function getInheritedFormationEffectGroups(
+    definition: FormationTypeDefinition | null | undefined,
+    gameSystem: GameSystem,
+): FormationEffectGroup[] {
+    return getFormationEffectChain(definition, gameSystem).flatMap((sourceDefinition) => sourceDefinition.effectGroups ?? []);
 }
 
 function orderAbilityIds(abilityIds: readonly string[], preferredOrder: readonly string[]): string[] {
@@ -198,7 +209,7 @@ function hasAutomaticRecipients(group: FormationEffectGroup): boolean {
     }
 }
 
-function getSupportedEffectDescriptors(definition: FormationTypeDefinition | null): {
+function getSupportedEffectDescriptors(definition: FormationTypeDefinition | null, gameSystem: GameSystem): {
     supported: FormationEffectDescriptor[];
     sharedPools: FormationSharedPoolDescriptor[];
     formationWideAbilities: FormationWideAbilityDescriptor[];
@@ -211,7 +222,7 @@ function getSupportedEffectDescriptors(definition: FormationTypeDefinition | nul
     const sharedPools: FormationSharedPoolDescriptor[] = [];
     const formationWideAbilities: FormationWideAbilityDescriptor[] = [];
 
-    for (const sourceDefinition of getFormationEffectChain(definition)) {
+    for (const sourceDefinition of getFormationEffectChain(definition, gameSystem)) {
         const effectGroups = sourceDefinition.effectGroups ?? [];
         effectGroups.forEach((group, index) => {
             if (group.distribution === 'formation-wide') {
@@ -473,7 +484,10 @@ export class FormationAbilityAssignmentUtil {
         options?: FormationAssignmentPreviewOptions,
     ): FormationAssignmentPreview {
         const formation = group.activeFormation();
-        const { supported, sharedPools, formationWideAbilities } = getSupportedEffectDescriptors(formation);
+        const { supported, sharedPools, formationWideAbilities } = getSupportedEffectDescriptors(
+            formation,
+            group.force.gameSystem,
+        );
         const formationUnitCount = group.units().length;
         const filterContext = LanceTypeIdentifierUtil.getRequirementsFilterContextForGroup(group);
         const baseEligibleUnits = (filterContext.filteredUnits as ASForceUnit[] | undefined) ?? group.units();

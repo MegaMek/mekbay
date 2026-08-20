@@ -4,20 +4,21 @@
 
 import { GameSystem } from '../models/common.model';
 import type { FormationTypeDefinition } from './formation-type.model';
-import { getFormationBlueprint } from './formation-blueprints';
+import { getFormationBlueprint, hasFormationBlueprint } from './formation-blueprints';
 import type { FormationCandidatePredicateFilter, FormationConditionalForbiddenPredicate, FormationConstraint, FormationConstraintEvaluation, FormationDeficit, FormationEvaluation, FormationPredicateId, FormationRequirementBlueprint, FormationSearchDecision } from './formation-requirement.model';
 import { evaluateFormationPredicate, getFormationFactValue } from './formation-predicates.util';
 import { compileFormationUnitFacts, type FormationUnitFacts, type FormationUnitLike } from './formation-unit-facts.util';
 
 export class FormationRequirementEngine {
     public static hasBlueprint(formationId: string): boolean {
-        return getFormationBlueprint(formationId) !== null;
+        return hasFormationBlueprint(formationId);
     }
 
     public static getBaseCandidatePredicateFilter(
         definition: Pick<FormationTypeDefinition, 'id'>,
+        gameSystem: GameSystem,
     ): FormationCandidatePredicateFilter {
-        const blueprint = getFormationBlueprint(definition.id);
+        const blueprint = getFormationBlueprint(definition.id, gameSystem);
         if (!blueprint) {
             return this.createCandidatePredicateFilter();
         }
@@ -32,7 +33,7 @@ export class FormationRequirementEngine {
         units: readonly FormationUnitLike[],
         gameSystem: GameSystem,
     ): FormationCandidatePredicateFilter {
-        const blueprint = getFormationBlueprint(definition.id);
+        const blueprint = getFormationBlueprint(definition.id, gameSystem);
         if (!blueprint) {
             return this.createCandidatePredicateFilter();
         }
@@ -51,7 +52,7 @@ export class FormationRequirementEngine {
         units: readonly FormationUnitLike[],
         gameSystem: GameSystem,
     ): FormationEvaluation | null {
-        const blueprint = getFormationBlueprint(definition.id);
+        const blueprint = getFormationBlueprint(definition.id, gameSystem);
         if (!blueprint) {
             return null;
         }
@@ -178,7 +179,7 @@ export class FormationRequirementEngine {
         units: readonly FormationUnitLike[],
         gameSystem: GameSystem,
     ): FormationEvaluation | null {
-        const blueprint = getFormationBlueprint(definition.id);
+        const blueprint = getFormationBlueprint(definition.id, gameSystem);
         if (!blueprint) {
             return null;
         }
@@ -585,9 +586,14 @@ export class FormationRequirementEngine {
         constraint: Extract<FormationConstraint, { kind: 'percent-min' }>,
         unitCount: number,
     ): number {
-        return constraint.rounding === 'strict-majority'
-            ? Math.floor(unitCount / 2) + 1
-            : Math.ceil(unitCount * constraint.ratio);
+        switch (constraint.rounding) {
+            case 'normal':
+                return Math.round(unitCount * constraint.ratio);
+            case 'strict-majority':
+                return Math.floor(unitCount / 2) + 1;
+            case 'ceil':
+                return Math.ceil(unitCount * constraint.ratio);
+        }
     }
 
     private static countMatchedPairs(
@@ -778,12 +784,8 @@ export class FormationRequirementEngine {
         gameSystem: GameSystem,
     ): FormationConstraintEvaluation {
         const matchingCount = facts.filter(unitFacts => evaluateFormationPredicate(constraint.predicate, unitFacts, gameSystem)).length;
-        const required = constraint.rounding === 'strict-majority'
-            ? Math.floor(facts.length / 2) + 1
-            : Math.ceil(facts.length * constraint.ratio);
-        const satisfied = constraint.rounding === 'strict-majority'
-            ? matchingCount * 2 > facts.length
-            : matchingCount >= required;
+        const required = this.getPercentRequiredCount(constraint, facts.length);
+        const satisfied = matchingCount >= required;
 
         return {
             constraintId: constraint.id,

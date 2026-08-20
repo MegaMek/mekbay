@@ -30,6 +30,7 @@ export type FormationPredicateId =
     | 'dogfighter-role'
     | 'ew-equipment'
     | 'fast-assault-move'
+    | 'fire-support-or-dogfighter-role'
     | 'fire-support-role'
     | 'fire-role'
     | 'fire-support-equipment'
@@ -97,6 +98,13 @@ export interface FormationRequirementBlueprint {
     readonly constraints: readonly FormationConstraint[];
 }
 
+/** Authored requirement constraints, separated by game system. */
+export interface FormationRequirementBlueprintSource {
+    readonly id: string;
+    readonly classic: readonly FormationConstraint[];
+    readonly alphaStrike: readonly FormationConstraint[];
+}
+
 export interface FormationConstraintBase {
     readonly id: string;
     readonly label: string;
@@ -135,7 +143,7 @@ export interface FormationPercentConstraint extends FormationConstraintBase {
     readonly kind: 'percent-min';
     readonly predicate: FormationPredicateId;
     readonly ratio: number;
-    readonly rounding: 'ceil' | 'strict-majority';
+    readonly rounding: 'ceil' | 'normal' | 'strict-majority';
 }
 
 export interface FormationSameValueConstraint extends FormationConstraintBase {

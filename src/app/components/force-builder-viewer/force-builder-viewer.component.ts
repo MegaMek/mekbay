@@ -789,15 +789,15 @@ export class ForceBuilderViewerComponent {
         const showParentRequirements = formationInheritsParentEffects(formation) && !!formation.parent;
 
         if (showParentRequirements) {
-            const parent = getFormationDefinition(formation.parent!);
+            const parent = getFormationDefinition(formation.parent!, group.force.gameSystem);
             if (parent?.requirements) {
-                const parentReq = parent.requirements(group.force.gameSystem);
+                const parentReq = parent.requirements;
                 if (parentReq) parts.push(this.buildFormationRequirementTooltipLine(parent.name, parentReq));
             }
         }
 
         if (formation.requirements) {
-            const req = formation.requirements(group.force.gameSystem);
+            const req = formation.requirements;
             if (req) parts.push(this.buildFormationRequirementTooltipLine(showParentRequirements ? formation.name : null, req));
         }
 

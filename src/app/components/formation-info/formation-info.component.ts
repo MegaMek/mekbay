@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { formationInheritsParentEffects, resolveFormationGameSystemText, type FormationTypeDefinition, type FormationEffectGroup, type FormationWideAbility } from '../../utils/formation-type.model';
+import { formationInheritsParentEffects, type FormationTypeDefinition, type FormationEffectGroup, type FormationWideAbility } from '../../utils/formation-type.model';
 import { getFormationDefinition } from '../../utils/formation-blueprints';
 import { type PilotAbility, PILOT_ABILITIES, getAbilityDetails, formatSummaryMovement } from '../../models/pilot-abilities.model';
 import { type CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
@@ -416,7 +416,7 @@ export class FormationInfoComponent {
 
     /** Resolved formation bonus text for the current formation & game system. */
     effectDescriptionText = computed<string | null>(() => {
-        const effectDescription = resolveFormationGameSystemText(this.formation()?.effectDescription, this.gameSystem());
+        const effectDescription = this.formation()?.effectDescription;
         return effectDescription ? formatSummaryMovement(effectDescription, this.optionsService.options().ASUseHex) : null;
     });
 
@@ -424,7 +424,7 @@ export class FormationInfoComponent {
     requirementsText = computed<string | null>(() => {
         const def = this.formation();
         if (!def?.requirements) return null;
-        const requirements = def.requirements(this.gameSystem());
+        const requirements = def.requirements;
         return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
     });
 
@@ -432,14 +432,14 @@ export class FormationInfoComponent {
     private parentFormation = computed<FormationTypeDefinition | null>(() => {
         const def = this.formation();
         if (!formationInheritsParentEffects(def) || !def?.parent) return null;
-        return getFormationDefinition(def.parent);
+        return getFormationDefinition(def.parent, this.gameSystem());
     });
 
     /** Resolved parent requirements text. */
     parentRequirementsText = computed<string | null>(() => {
         const parent = this.parentFormation();
         if (!parent?.requirements) return null;
-        const requirements = parent.requirements(this.gameSystem());
+        const requirements = parent.requirements;
         return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
     });
 
@@ -490,7 +490,7 @@ export class FormationInfoComponent {
 
     resolvedEffectGroups = computed<ResolvedEffectGroup[]>(() => {
         const def = this.formation();
-        const effectGroups = getInheritedFormationEffectGroups(def);
+        const effectGroups = getInheritedFormationEffectGroups(def, this.gameSystem());
         if (effectGroups.length === 0) return [];
 
         return effectGroups.map(group => {

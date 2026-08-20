@@ -345,7 +345,7 @@ export class RenameGroupDialogComponent implements OnDestroy {
   formationDisplayList: FormationDisplayItem[] = (() => {
     const validMatches = FormationNamerUtil.getAvailableFormationDefinitions(this.data.group);
     const validMap = new Map(validMatches.map(m => [m.definition.id, m]));
-    return getFormationDefinitions()
+    return getFormationDefinitions(this.data.group.force.gameSystem)
       .filter(def => FormationRequirementEngine.hasBlueprint(def.id))
       .map(def => {
         const match = validMap.get(def.id);
@@ -427,23 +427,23 @@ export class RenameGroupDialogComponent implements OnDestroy {
   /** Get requirements text for a formation definition. */
   getRequirementsText(formation: FormationTypeDefinition): string | null {
     if (!formation.requirements) return null;
-    const requirements = formation.requirements(this.data.group.force.gameSystem);
+    const requirements = formation.requirements;
     return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
   }
 
   /** Get parent formation requirements text */
   getParentRequirementsText(formation: FormationTypeDefinition): string | null {
     if (!formationInheritsParentEffects(formation) || !formation.parent) return null;
-    const parent = getFormationDefinition(formation.parent);
+    const parent = getFormationDefinition(formation.parent, this.data.group.force.gameSystem);
     if (!parent?.requirements) return null;
-    const requirements = parent.requirements(this.data.group.force.gameSystem);
+    const requirements = parent.requirements;
     return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
   }
 
   /** Get parent formation name */
   getParentFormationName(formation: FormationTypeDefinition): string {
     if (!formationInheritsParentEffects(formation) || !formation.parent) return '';
-    return getFormationDefinition(formation.parent)?.name ?? '';
+    return getFormationDefinition(formation.parent, this.data.group.force.gameSystem)?.name ?? '';
   }
 
   /** Compose a display name for a formation definition */

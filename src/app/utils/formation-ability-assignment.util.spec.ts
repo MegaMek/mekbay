@@ -222,7 +222,7 @@ describe('FormationAbilityAssignmentUtil', () => {
         expect(PILOT_ABILITIES.filter((ability) => ability.levelGroup === 'float_like_a_butterfly').map((ability) => ability.level)).toEqual([1, 2, 3, 4]);
     });
 
-    it('supports fixed command ability assignments with the same recipient limits as pilot abilities', () => {
+    it('uses Alpha Strike half-round-down limits for Anti-Air command ability assignments', () => {
         const formation = getFormation('anti-air-lance');
         const units = [
             createASForceUnit('unit-1', createUnit(1, 'Rifleman', 'Mek', 'BattleMek', 'BM'), {
@@ -244,12 +244,12 @@ describe('FormationAbilityAssignmentUtil', () => {
 
         expect(preview.effectPreviews).toEqual([
             jasmine.objectContaining({
-                recipientLimit: 2,
-                recipientUnitIds: ['unit-1', 'unit-2'],
+                recipientLimit: 1,
+                recipientUnitIds: ['unit-1'],
             }),
         ]);
         expect(preview.assignmentsByUnitId.get('unit-1')).toEqual(['anti_aircraft_specialists']);
-        expect(preview.assignmentsByUnitId.get('unit-2')).toEqual(['anti_aircraft_specialists']);
+        expect(preview.assignmentsByUnitId.get('unit-2')).toEqual([]);
         expect(preview.assignmentsByUnitId.get('unit-3')).toEqual([]);
     });
 
@@ -290,7 +290,7 @@ describe('FormationAbilityAssignmentUtil', () => {
         expect(preview.effectPreviews.every((effect) => !effect.candidateUnitIds.includes(flightUnits[0].id))).toBeTrue();
     });
 
-    it('keeps commander-only bonuses on the commander and strips commander-excluded bonuses from that unit', () => {
+    it('allows the Alpha Strike commander to receive a selected SPA in addition to Tactical Genius', () => {
         const formation = getFormation('command-lance');
         const commander = createASForceUnit('unit-1', createUnit(1, 'Atlas', 'Mek', 'BattleMek', 'BM'), {
             formationAbilities: ['antagonizer', 'tactical_genius'],
@@ -309,7 +309,7 @@ describe('FormationAbilityAssignmentUtil', () => {
 
         FormationAbilityAssignmentUtil.reconcileGroupFormationAssignments(group);
 
-        expect(commander.formationAbilities()).toEqual(['tactical_genius']);
+        expect(commander.formationAbilities()).toEqual(['antagonizer', 'tactical_genius']);
         expect(wingman.formationAbilities()).toEqual(['marksman']);
     });
 
@@ -338,15 +338,15 @@ describe('FormationAbilityAssignmentUtil', () => {
         expect(unitA.commander()).toBeFalse();
         expect(unitB.commander()).toBeTrue();
         expect(unitA.formationAbilities()).toEqual([]);
-        expect(unitB.formationAbilities()).toEqual(['tactical_genius']);
+        expect(unitB.formationAbilities()).toEqual(['marksman', 'tactical_genius']);
     });
 
-    it('automatically assigns all-unit pilot effects without requiring manual selection', () => {
-        const formation = getFormation('light-recon-lance');
+    it('keeps one selected Alpha Strike Recon SPA on every unit', () => {
+        const formation = getFormation('recon-lance');
         const units = [
-            createASForceUnit('unit-1', createUnit(1, 'Locust', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } })),
-            createASForceUnit('unit-2', createUnit(2, 'Stinger', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 14 } } })),
-            createASForceUnit('unit-3', createUnit(3, 'Wasp', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } })),
+            createASForceUnit('unit-1', createUnit(1, 'Locust', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['forward_observer'] }),
+            createASForceUnit('unit-2', createUnit(2, 'Stinger', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 14 } } }), { formationAbilities: ['forward_observer'] }),
+            createASForceUnit('unit-3', createUnit(3, 'Wasp', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['forward_observer'] }),
         ];
         const group = createGroup(
             units,
@@ -363,17 +363,11 @@ describe('FormationAbilityAssignmentUtil', () => {
     });
 
     it('lets an explicit override clear an automatic choose-one selection for all recipients', () => {
-        const formation = getFormation('light-recon-lance');
+        const formation = getFormation('recon-lance');
         const units = [
-            createASForceUnit('unit-1', createUnit(1, 'Locust', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), {
-                formationAbilities: ['eagles_eyes', 'forward_observer'],
-            }),
-            createASForceUnit('unit-2', createUnit(2, 'Stinger', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 14 } } }), {
-                formationAbilities: ['eagles_eyes', 'forward_observer'],
-            }),
-            createASForceUnit('unit-3', createUnit(3, 'Wasp', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), {
-                formationAbilities: ['eagles_eyes', 'forward_observer'],
-            }),
+            createASForceUnit('unit-1', createUnit(1, 'Locust', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('unit-2', createUnit(2, 'Stinger', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 14 } } }), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('unit-3', createUnit(3, 'Wasp', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['eagles_eyes'] }),
         ];
         const group = createGroup(
             units,
@@ -383,26 +377,20 @@ describe('FormationAbilityAssignmentUtil', () => {
         );
 
         const preview = FormationAbilityAssignmentUtil.previewGroupFormationAssignments(group, {
-            abilityOverrides: new Map([['unit-1', ['forward_observer']]]),
+            abilityOverrides: new Map([['unit-1', []]]),
         });
 
-        expect(preview.assignmentsByUnitId.get('unit-1')).toEqual(['forward_observer']);
-        expect(preview.assignmentsByUnitId.get('unit-2')).toEqual(['forward_observer']);
-        expect(preview.assignmentsByUnitId.get('unit-3')).toEqual(['forward_observer']);
+        expect(preview.assignmentsByUnitId.get('unit-1')).toEqual([]);
+        expect(preview.assignmentsByUnitId.get('unit-2')).toEqual([]);
+        expect(preview.assignmentsByUnitId.get('unit-3')).toEqual([]);
     });
 
     it('lets an explicit override replace an automatic choose-one selection for all recipients', () => {
-        const formation = getFormation('light-recon-lance');
+        const formation = getFormation('recon-lance');
         const units = [
-            createASForceUnit('unit-1', createUnit(1, 'Locust', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), {
-                formationAbilities: ['eagles_eyes', 'forward_observer'],
-            }),
-            createASForceUnit('unit-2', createUnit(2, 'Stinger', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 14 } } }), {
-                formationAbilities: ['eagles_eyes', 'forward_observer'],
-            }),
-            createASForceUnit('unit-3', createUnit(3, 'Wasp', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), {
-                formationAbilities: ['eagles_eyes', 'forward_observer'],
-            }),
+            createASForceUnit('unit-1', createUnit(1, 'Locust', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('unit-2', createUnit(2, 'Stinger', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 14 } } }), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('unit-3', createUnit(3, 'Wasp', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['eagles_eyes'] }),
         ];
         const group = createGroup(
             units,
@@ -412,12 +400,33 @@ describe('FormationAbilityAssignmentUtil', () => {
         );
 
         const preview = FormationAbilityAssignmentUtil.previewGroupFormationAssignments(group, {
-            abilityOverrides: new Map([['unit-1', ['maneuvering_ace', 'forward_observer']]]),
+            abilityOverrides: new Map([['unit-1', ['maneuvering_ace']]]),
         });
 
-        expect(preview.assignmentsByUnitId.get('unit-1')).toEqual(['maneuvering_ace', 'forward_observer']);
-        expect(preview.assignmentsByUnitId.get('unit-2')).toEqual(['maneuvering_ace', 'forward_observer']);
-        expect(preview.assignmentsByUnitId.get('unit-3')).toEqual(['maneuvering_ace', 'forward_observer']);
+        expect(preview.assignmentsByUnitId.get('unit-1')).toEqual(['maneuvering_ace']);
+        expect(preview.assignmentsByUnitId.get('unit-2')).toEqual(['maneuvering_ace']);
+        expect(preview.assignmentsByUnitId.get('unit-3')).toEqual(['maneuvering_ace']);
+    });
+
+    it('allows each Alpha Strike Light Recon unit to choose a different SPA', () => {
+        const formation = getFormation('light-recon-lance');
+        const units = [
+            createASForceUnit('unit-1', createUnit(1, 'Locust', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('unit-2', createUnit(2, 'Stinger', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 14 } } }), { formationAbilities: ['forward_observer'] }),
+            createASForceUnit('unit-3', createUnit(3, 'Wasp', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['maneuvering_ace'] }),
+        ];
+        const group = createGroup(
+            units,
+            formation,
+            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getUnit()) })],
+            createFaction('Mercenary', 'Mercenary'),
+        );
+
+        const preview = FormationAbilityAssignmentUtil.previewGroupFormationAssignments(group);
+
+        expect(preview.assignmentsByUnitId.get('unit-1')).toEqual(['eagles_eyes']);
+        expect(preview.assignmentsByUnitId.get('unit-2')).toEqual(['forward_observer']);
+        expect(preview.assignmentsByUnitId.get('unit-3')).toEqual(['maneuvering_ace']);
     });
 
     it('keeps formation-wide Communications Disruption out of unit assignments', () => {

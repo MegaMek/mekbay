@@ -20,7 +20,7 @@ import {
     type FormationEffectPreview,
     type FormationSharedPoolPreview,
 } from './formation-ability-assignment.util';
-import { resolveFormationGameSystemText, type FormationWideAbility } from './formation-type.model';
+import type { FormationWideAbility } from './formation-type.model';
 
 export interface ASPrintFormationApplication {
     abilityNames: string[];
@@ -145,10 +145,7 @@ export function collectASPrintRulesReferenceData(
                 });
             }
 
-            const effectDescription = resolveFormationGameSystemText(
-                formation.effectDescription,
-                GameSystem.ALPHA_STRIKE,
-            );
+            const effectDescription = formation.effectDescription;
             formations.push({
                 groupName,
                 formationName,
