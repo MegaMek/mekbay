@@ -99,7 +99,34 @@ export interface FormationWideEffectGroup extends FormationEffectGroupBase {
     distribution: 'formation-wide';
 }
 
-export type FormationEffectGroup = FormationAssignmentEffectGroup | FormationSharedPoolEffectGroup | FormationWideEffectGroup;
+/**
+ * Copies the SPAs actually granted by another formation in the same force.
+ * The target formation is selected on the owning {@code UnitGroup}; keeping the
+ * target out of the static rule definition lets one definition serve every force.
+ */
+export interface FormationTargetCopyEffectGroup {
+    selection: 'copy';
+    distribution: 'formation-target';
+    /** How many units in the copying formation may receive copied SPAs. */
+    recipientLimit: 'one-per-two-target-recipients' | 'half-self-round-down';
+}
+
+export type FormationEffectGroup = FormationAssignmentEffectGroup
+    | FormationSharedPoolEffectGroup
+    | FormationWideEffectGroup
+    | FormationTargetCopyEffectGroup;
+
+export function isFormationTargetCopyEffectGroup(
+    group: FormationEffectGroup,
+): group is FormationTargetCopyEffectGroup {
+    return group.distribution === 'formation-target';
+}
+
+export function formationHasTargetCopyEffect(
+    definition: FormationTypeDefinition | null | undefined,
+): boolean {
+    return definition?.effectGroups?.some(isFormationTargetCopyEffectGroup) ?? false;
+}
 
 export interface FormationTypeDefinitionCommon {
     id: string;

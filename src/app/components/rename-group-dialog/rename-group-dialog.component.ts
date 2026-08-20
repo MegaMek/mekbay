@@ -9,7 +9,7 @@ import { takeUntilDestroyed, outputToObservable } from '@angular/core/rxjs-inter
 import { OptionsService } from '../../services/options.service';
 import type { UnitGroup } from '../../models/force.model';
 import { formatSummaryMovement } from '../../models/pilot-abilities.model';
-import { formationInheritsParentEffects, type FormationTypeDefinition, isNoFormation, NO_FORMATION, NO_FORMATION_ID } from '../../utils/formation-type.model';
+import { formationHasTargetCopyEffect, formationInheritsParentEffects, type FormationTypeDefinition, isNoFormation, NO_FORMATION, NO_FORMATION_ID } from '../../utils/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AUTOMATIC_FORMATION_KEY, FormationDropdownPanelComponent, type FormationDisplayItem, type FormationDropdownActiveOption, type FormationDropdownActiveTarget, type FormationDropdownPointerHoverEvent } from './formation-dropdown-panel.component';
@@ -17,6 +17,7 @@ import { FormationNamerUtil } from '../../utils/formation-namer.util';
 import { getFormationDefinition, getFormationDefinitions } from '../../utils/formation-blueprints';
 import { FormationRequirementEngine } from '../../utils/formation-requirement-engine.util';
 import { DropdownPointerActivationGuard, nextDropdownTarget, nextDropdownTargetInCurrentLane, scrollActiveOptionIntoView } from '../../utils/dropdown-interaction.utils';
+import { getFormationTargetCandidates, resolveFormationTargetGroup } from '../../utils/formation-target.util';
 
 
 
@@ -29,6 +30,8 @@ export interface RenameGroupDialogResult {
   name: string;
   /** Selected formation definition, or null to clear. */
   formation: FormationTypeDefinition | null;
+  /** Concrete group whose formation bonus is copied, when required by the selected formation. */
+  formationTargetGroupId: string | null;
   action: 'confirm' | 'unset';
 }
 
@@ -105,6 +108,27 @@ export interface RenameGroupDialogResult {
               aria-label="Pick random formation"
             ></button>
           </div>
+          @if (selectedFormationUsesTarget()) {
+            <div class="formation-target-field">
+              <label class="field-label" for="rename-group-formation-target">Supported Formation</label>
+              <select
+                id="rename-group-formation-target"
+                class="bt-select formation-target-select"
+                [value]="selectedFormationTargetGroupId() ?? ''"
+                (change)="onFormationTargetChange($event)"
+              >
+                <option value="" [selected]="!selectedFormationTargetGroupId()">Select a formation</option>
+                @for (option of formationTargetOptions; track option.id) {
+                  <option [value]="option.id" [selected]="option.id === selectedFormationTargetGroupId()">{{ option.label }}</option>
+                }
+              </select>
+              @if (formationTargetOptions.length === 0) {
+                <p class="formation-target-warning">No eligible formation is available in this force.</p>
+              } @else if (!selectedFormationTargetGroupId()) {
+                <p class="formation-target-warning">Select the formation whose assigned abilities this formation copies.</p>
+              }
+            </div>
+          }
           @if (selectedFormation(); as formation) {
             @if (!isNoFormation(formation)) {
             @if (!isSelectedFormationValid()) {
@@ -182,6 +206,23 @@ export interface RenameGroupDialogResult {
 
         .placeholder {
             color: #888;
+        }
+
+        .formation-target-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .formation-target-select {
+            width: 100%;
+        }
+
+        .formation-target-warning {
+            color: var(--bt-orange, #f2a900);
+            font-size: 0.85em;
+            margin: 0;
         }
 
         .random-button {
@@ -332,6 +373,14 @@ export class RenameGroupDialogComponent implements OnDestroy {
   /** Currently selected formation */
   selectedFormation = signal<FormationTypeDefinition | null>(this.data.group.formation());
 
+  /** Eligible concrete formations and the currently restored target selection. */
+  readonly formationTargetOptions = getFormationTargetCandidates(this.data.group).map((candidate) => ({
+    id: candidate.id,
+    label: `${candidate.groupDisplayName()} — ${candidate.activeFormation()!.name}`,
+  }));
+  selectedFormationTargetGroupId = signal<string | null>(resolveFormationTargetGroup(this.data.group)?.id ?? null);
+  selectedFormationUsesTarget = computed(() => formationHasTargetCopyEffect(this.selectedFormation()));
+
   /** Whether the formation dropdown overlay is open. */
   formationDropdownOpen = signal(false);
 
@@ -421,6 +470,15 @@ export class RenameGroupDialogComponent implements OnDestroy {
     }
   }
 
+  onFormationTargetChange(event: Event): void {
+    const targetGroupId = (event.target as HTMLSelectElement).value || null;
+    this.selectedFormationTargetGroupId.set(
+      targetGroupId && this.formationTargetOptions.some((option) => option.id === targetGroupId)
+        ? targetGroupId
+        : null,
+    );
+  }
+
   /** Expose isNoFormation to the template */
   isNoFormation = isNoFormation;
 
@@ -453,11 +511,16 @@ export class RenameGroupDialogComponent implements OnDestroy {
 
   submit(): void {
     const name = this.inputRef().nativeElement.textContent?.trim() || '';
-    this.dialogRef.close({ name, formation: this.selectedFormation(), action: 'confirm' });
+    this.dialogRef.close({
+      name,
+      formation: this.selectedFormation(),
+      formationTargetGroupId: this.selectedFormationUsesTarget() ? this.selectedFormationTargetGroupId() : null,
+      action: 'confirm',
+    });
   }
 
   submitUnset(): void {
-    this.dialogRef.close({ name: '', formation: null, action: 'unset' });
+    this.dialogRef.close({ name: '', formation: null, formationTargetGroupId: null, action: 'unset' });
   }
 
   fillRandomFormation(): void {

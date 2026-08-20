@@ -31,6 +31,7 @@ import {
     resolveASAbilityEffects,
 } from '../utils/as-ability-effect-engine.util';
 import { isAerospace, isAerospaceMovementMode, isGroundMovementMode } from '../utils/as-common.util';
+import { isFormationTargetCopyBonusActive } from '../utils/formation-target.util';
 
 /** Represents either a standard ability (by ID) or a custom ability (object) */
 export type AbilitySelection = string | ASCustomPilotAbility;
@@ -51,6 +52,24 @@ export class ASForceUnit extends ForceUnit {
     readonly pilotSkill = this._pilotSkill.asReadonly();
     readonly manualPilotAbilities = this._pilotAbilities.asReadonly();
     readonly formationAbilities = this._formationAbilities.asReadonly();
+    /**
+     * Formation choices remain serialized as the setup snapshot, but a Support
+     * Formation's copied bonus is inactive while fewer than three of its units
+     * remain active. Keeping this runtime-only also restores the same choices
+     * if the formation later returns to three active units.
+     */
+    readonly activeFormationAbilities = computed<readonly string[]>(() => {
+        const abilities = this._formationAbilities();
+        if (abilities.length === 0) return abilities;
+
+        const owner = this.force.groups().find((group) =>
+            group.units().some((unit) => unit.id === this.id)
+        );
+        if (!owner || isFormationTargetCopyBonusActive(owner)) {
+            return abilities;
+        }
+        return [];
+    });
     readonly pilotAbilities = computed<AbilitySelection[]>(() => {
         const manualAbilities = this._pilotAbilities();
         const mergedAbilities: AbilitySelection[] = [...manualAbilities];
@@ -59,7 +78,7 @@ export class ASForceUnit extends ForceUnit {
                 .filter((ability): ability is string => typeof ability === 'string')
         );
 
-        for (const abilityId of this._formationAbilities()) {
+        for (const abilityId of this.activeFormationAbilities()) {
             if (seenAbilityIds.has(abilityId)) {
                 continue;
             }
@@ -222,7 +241,7 @@ export class ASForceUnit extends ForceUnit {
             }
         }
 
-        for (const abilityId of this._formationAbilities()) {
+        for (const abilityId of this.activeFormationAbilities()) {
             const pilotRef: ASAbilityEffectRef = { source: 'pilot', id: abilityId };
             if (hasRegisteredASAbilityEffect(pilotRef)) {
                 refs.push(pilotRef);

@@ -1042,12 +1042,14 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinitionSource[] = [
         classic: {
             minUnits: 3,
             effectDescription: 'Before play, designate another formation to support. For every two units in the supported formation using a formation bonus, one Support Lance unit receives the same ability. The copied bonus is retained while the Support Lance has at least three active units and is not lost if the supported formation falls below its own retention threshold. If the supported formation offers a choice of SPAs, choose the Support Lance\'s SPAs at setup; those choices may not change during play. When supporting a Command Lance, copy the SPAs actually granted to its non-commander units and assign each copied SPA to a Support Lance unit eligible for it; Tactical Genius is never copied.',
+            effectGroups: [{ selection: 'copy', distribution: 'formation-target', recipientLimit: 'one-per-two-target-recipients' }],
             rulesRef: [{ book: Rulebook.CO, page: 66 }],
             requirements: 'Minimum 3 units. No additional composition requirements.',
         },
         alphaStrike: {
             minUnits: 3,
             effectDescription: 'Before play, designate another formation to support. Half the Support Lance units (round down) receive the same SPAs as the supported formation. The number of copies of each SPA may not exceed the number the supported formation receives at setup. If the supported formation assigns a bonus at the beginning of each turn, choose the Support Lance assignments at setup; they may not be moved during play. The copied bonuses are retained while the Support Lance has at least three active units and are not lost if the supported formation falls below its own retention threshold. When supporting a Command Lance, copy the SPAs actually granted to its non-commander units and assign each copied SPA to an appropriate Support Lance unit; Tactical Genius is never copied.',
+            effectGroups: [{ selection: 'copy', distribution: 'formation-target', recipientLimit: 'half-self-round-down' }],
             rulesRef: [{ book: Rulebook.ASCE, page: 121 }],
             requirements: 'Minimum 3 units. No additional composition requirements.',
         },

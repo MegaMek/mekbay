@@ -70,6 +70,7 @@ function createHarness(formation: FormationTypeDefinition, factions: Faction[]) 
     const forceUnits: ForceUnit[] = [];
     const group = {
         formation: signal<FormationTypeDefinition | null>(null),
+        formationTargetGroupId: signal<string | null>(null),
         formationLock: false,
         formationHistory: new Set<string>(['previous-automatic-match']),
         units: groupUnits,

@@ -27,7 +27,7 @@ function assignmentGroup(
     index = 0,
 ): FormationAssignmentEffectGroup {
     const group = definition(id, gameSystem).effectGroups?.[index];
-    if (!group || group.distribution === 'shared-pool' || group.distribution === 'formation-wide') {
+    if (!group || group.distribution === 'shared-pool' || group.distribution === 'formation-wide' || group.distribution === 'formation-target') {
         throw new Error(`Formation '${id}' effect group ${index} is not assignable.`);
     }
     return group;
@@ -196,9 +196,18 @@ describe('formation blueprint game-system rules', () => {
         expect(alphaStrikeSupport.effectDescription).toContain('Half the Support Lance units (round down)');
         expect(alphaStrikeSupport.effectDescription).toContain('number of copies of each SPA may not exceed');
         expect(alphaStrikeSupport.effectDescription).toContain('they may not be moved during play');
+        expect(classicSupport.effectGroups).toEqual([{
+            selection: 'copy',
+            distribution: 'formation-target',
+            recipientLimit: 'one-per-two-target-recipients',
+        }]);
+        expect(alphaStrikeSupport.effectGroups).toEqual([{
+            selection: 'copy',
+            distribution: 'formation-target',
+            recipientLimit: 'half-self-round-down',
+        }]);
 
         for (const supportDefinition of [classicSupport, alphaStrikeSupport]) {
-            expect(supportDefinition.effectGroups).toBeUndefined();
             expect(supportDefinition.effectDescription).toContain('at least three active units');
             expect(supportDefinition.effectDescription).toContain('not lost if the supported formation falls below its own retention threshold');
             expect(supportDefinition.effectDescription).toContain('SPAs actually granted to its non-commander units');

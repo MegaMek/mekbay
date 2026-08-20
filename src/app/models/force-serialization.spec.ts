@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CBT_SERIALIZED_STATE_SCHEMA, C3_NETWORK_GROUP_SCHEMA, CRIT_SLOT_SCHEMA, FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
+import { AS_SERIALIZED_GROUP_SCHEMA, CBT_SERIALIZED_GROUP_SCHEMA, CBT_SERIALIZED_STATE_SCHEMA, C3_NETWORK_GROUP_SCHEMA, CRIT_SLOT_SCHEMA, FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { C3NetworkType } from './c3-network.model';
 
@@ -41,6 +41,21 @@ describe('C3 network serialization compatibility', () => {
             peerIds: ['alpha', 'bravo'],
             masterCompIndex: 0,
         });
+    });
+});
+
+describe('formation target serialization', () => {
+    it('preserves a string target id in both game-system group schemas', () => {
+        const group = { id: 'support', formationTargetGroupId: 'target', units: [] };
+
+        expect(Sanitizer.sanitize(group, CBT_SERIALIZED_GROUP_SCHEMA).formationTargetGroupId).toBe('target');
+        expect(Sanitizer.sanitize(group, AS_SERIALIZED_GROUP_SCHEMA).formationTargetGroupId).toBe('target');
+    });
+
+    it('drops malformed target ids without changing the schema version', () => {
+        const group = { id: 'support', formationTargetGroupId: 7, units: [] };
+
+        expect(Sanitizer.sanitize(group, AS_SERIALIZED_GROUP_SCHEMA).formationTargetGroupId).toBeUndefined();
     });
 });
 

@@ -131,6 +131,8 @@ export interface SerializedGroup {
     color?: string;
     formationId?: string;
     formationLock?: boolean;
+    /** ID of another group whose formation bonus is copied by this group. */
+    formationTargetGroupId?: string;
     units: SerializedUnit[];
 }
 
@@ -713,6 +715,9 @@ export const CBT_SERIALIZED_GROUP_SCHEMA = Sanitizer.schema<CBTSerializedGroup>(
     .string('color')
     .string('formationId')
     .boolean('formationLock')
+    .custom('formationTargetGroupId', (value: unknown) => (
+        typeof value === 'string' && value.length > 0 ? value : undefined
+    ))
     .custom('units', (value: unknown) => {
         if (!Array.isArray(value)) return [];
         return Sanitizer.sanitizeArray(value, CBT_SERIALIZED_UNIT_SCHEMA);
@@ -884,6 +889,9 @@ export const AS_SERIALIZED_GROUP_SCHEMA = Sanitizer.schema<ASSerializedGroup>()
     .string('color')
     .string('formationId')
     .boolean('formationLock')
+    .custom('formationTargetGroupId', (value: unknown) => (
+        typeof value === 'string' && value.length > 0 ? value : undefined
+    ))
     .custom('units', (value: unknown) => {
         if (!Array.isArray(value)) return [];
         return Sanitizer.sanitizeArray(value, AS_SERIALIZED_UNIT_SCHEMA);

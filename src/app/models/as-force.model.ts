@@ -63,13 +63,13 @@ export class ASForce extends Force<ASForceUnit> {
     ): ASForce {
         const force = new ASForce(data.name ?? 'Unnamed Force', dataService, unitInitializer, injector);
         force.populateFromSerialized(data);
-        force.groups().forEach((group) => FormationAbilityAssignmentUtil.reconcileGroupFormationAssignments(group, { markModified: false }));
+        FormationAbilityAssignmentUtil.reconcileForceFormationAssignments(force, { markModified: false });
         return force;
     }
 
     public override update(data: SerializedForce): void {
         super.update(data);
-        this.groups().forEach((group) => FormationAbilityAssignmentUtil.reconcileGroupFormationAssignments(group, { markModified: false }));
+        FormationAbilityAssignmentUtil.reconcileForceFormationAssignments(this, { markModified: false });
     }
 
     protected override deserializeFrom(serialized: SerializedForce): ASForce {

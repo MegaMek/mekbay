@@ -676,6 +676,17 @@ function describeFormationEffectApplication(effect: FormationEffectPreview): str
     const group = effect.descriptor.group;
     const parts: string[] = [];
 
+    if (effect.descriptor.copiedFromFormationName) {
+        parts.push(`Copied from ${effect.descriptor.copiedFromFormationName}`);
+    }
+
+    const copiedPools = new Set(effect.descriptor.copiedSharedPoolByAbilityId?.values() ?? []);
+    for (const pool of copiedPools) {
+        parts.push(describeSharedPoolApplication(pool)
+            .replace(/^Shared formation pool/, 'Copied source pool')
+            .replace(/\.$/, ''));
+    }
+
     switch (group.selection) {
         case 'choose-one':
             parts.push('Choose one listed ability for every recipient');

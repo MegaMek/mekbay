@@ -34,6 +34,7 @@ export interface ResolvedEffectGroup {
     abilities: ResolvedAbility[];
     selectionLabel: string;
     distributionLabel: string;
+    perTurn: boolean;
 }
 
 @Component({
@@ -122,7 +123,7 @@ export interface ResolvedEffectGroup {
                                     <span class="meta-separator">·</span>
                                 }
                                 <span class="meta-item distribution">{{ eg.distributionLabel }}</span>
-                                @if (eg.group.perTurn) {
+                                @if (eg.perTurn) {
                                     <span class="meta-separator">·</span>
                                     <span class="meta-item per-turn">Per turn</span>
                                 }
@@ -497,7 +498,7 @@ export class FormationInfoComponent {
             const abilities: ResolvedAbility[] = [];
 
             // Resolve pilot abilities
-            if (group.distribution !== 'formation-wide' && group.abilityIds) {
+            if (group.distribution !== 'formation-wide' && 'abilityIds' in group && group.abilityIds) {
                 for (const id of group.abilityIds) {
                     const pilot = PILOT_ABILITIES.find(a => a.id === id);
                     if (pilot) {
@@ -514,7 +515,7 @@ export class FormationInfoComponent {
             }
 
             // Resolve command abilities
-            if (group.distribution !== 'formation-wide' && group.commandAbilityIds) {
+            if (group.distribution !== 'formation-wide' && 'commandAbilityIds' in group && group.commandAbilityIds) {
                 for (const id of group.commandAbilityIds) {
                     const cmd = COMMAND_ABILITIES.find(a => a.id === id);
                     if (cmd) {
@@ -544,6 +545,7 @@ export class FormationInfoComponent {
                 abilities,
                 selectionLabel: this.getSelectionLabel(group),
                 distributionLabel: this.getDistributionLabel(group),
+                perTurn: 'perTurn' in group && group.perTurn === true,
             };
         });
     });
@@ -557,6 +559,7 @@ export class FormationInfoComponent {
             case 'choose-one': return 'Choose one ability for all';
             case 'choose-each': return 'Each recipient chooses';
             case 'all': return 'All listed abilities';
+            case 'copy': return 'Copy assigned SPAs from target';
             default: return '';
         }
     }
@@ -565,6 +568,11 @@ export class FormationInfoComponent {
         const n = this.unitCount();
         switch (group.distribution) {
             case 'formation-wide': return 'Formation-wide';
+            case 'formation-target': {
+                return group.recipientLimit === 'half-self-round-down'
+                    ? (n != null ? `Half this formation (${Math.floor(n / 2)} units)` : 'Half this formation (round down)')
+                    : '1 unit per 2 target bonus recipients';
+            }
             case 'all': return 'All units';
             case 'half-round-down': {
                 const count = n != null ? Math.floor(n / 2) : undefined;
