@@ -4974,8 +4974,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         const { service } = createService(bundle);
         const rulebookOptions = service.advOptions()['rulesRefs']?.options ?? [];
-        expect(rulebookOptions.filter(option => typeof option !== 'number').map(option => option.name).sort())
-            .toEqual(['AAA', 'Core', 'IO:AE', 'Shrap01', 'TM', 'TW']);
+        expect(rulebookOptions.filter(option => typeof option !== 'number').map(option => option.name))
+            .toEqual(['Core', 'TM', 'TW', 'AAA', 'IO:AE', 'Shrap01']);
 
         service.setFilter('rulesRefs', ['Core']);
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit A']);

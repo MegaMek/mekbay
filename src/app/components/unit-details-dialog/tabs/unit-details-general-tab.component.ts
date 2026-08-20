@@ -34,6 +34,7 @@ import {
 import { naturalCompare } from '../../../utils/sort.util';
 import { EquipmentFlag } from '../../../models/equipment-flags.type';
 import { formatBvPv } from '../../../utils/force-viewer-bv-pv-display.util';
+import { BASE_RULES_REFS } from '../../../utils/rules-ref.util';
 import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.util';
 import { GameService } from '../../../services/game.service';
 
@@ -52,7 +53,6 @@ type ComponentLayoutState = {
 const ADDITIONAL_COMPONENT_FLAGS: EquipmentFlag[] = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_JUMP_JET'];
 const CASE_COMPONENT_FLAGS: EquipmentFlag[] = ['F_CASE', 'F_CASE_II'];
 const WEAPON_MODE_MISC_COMPONENT_FLAGS: EquipmentFlag[] = ['F_CLUB', 'F_HAND_WEAPON'];
-const BASE_RULES_REFS = new Set(['BMM', 'Core', 'TM', 'TW']);
 const RULES_REF_COLLAPSED_GROUP_LIMIT = 2;
 
 export interface RulesRefBadge {

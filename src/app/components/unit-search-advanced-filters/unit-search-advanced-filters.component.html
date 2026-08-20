@@ -32,6 +32,7 @@
         <multi-select-dropdown class="dropdown"
             [label]="filterOpts?.label ?? ''"
             [options]="filterOpts?.options ?? []"
+            [optionSection]="conf.key === 'rulesRefs' ? rulesRefOptionSection : null"
             [selected]="filterOpts?.value ?? []"
             [multistate]="conf.multistate ?? false"
             [countable]="conf.countable ?? false"
