@@ -314,7 +314,7 @@ export class SearchForceGeneratorDialogComponent {
     readonly targetFormationSelection = signal<MultiStateSelection>({});
     readonly targetFormationStateCycle = ['or'] as const;
     readonly targetFormationOptions = computed<DropdownOption[]>(() => {
-        const definitions = getFormationDefinitions()
+        const definitions = getFormationDefinitions(this.gameSystem())
             .filter((definition) => FormationRequirementEngine.hasBlueprint(definition.id))
             .filter((definition) => LanceTypeIdentifierUtil.getDefinitionById(definition.id, this.gameSystem()) !== null)
             .filter((definition) => this.isTargetFormationAvailableForSelectedFactions(definition));

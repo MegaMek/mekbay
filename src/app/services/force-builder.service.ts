@@ -30,7 +30,7 @@ import type { SerializedForce } from '../models/force-serialization';
 import { EditPilotDialogComponent, type EditPilotDialogData, type EditPilotResult } from '../components/edit-pilot-dialog/edit-pilot-dialog.component';
 import { EditASPilotDialogComponent, type EditASPilotDialogData, type EditASPilotResult } from '../components/edit-as-pilot-dialog/edit-as-pilot-dialog.component';
 import { ShareForceDialogComponent } from '../components/share-force-dialog/share-force-dialog.component';
-import { FormationInfoDialogComponent, type FormationInfoDialogData } from '../components/formation-info-dialog/formation-info-dialog.component';
+import { FormationInfoDialogComponent, type FormationInfoDialogData, type FormationInfoDialogResult } from '../components/formation-info-dialog/formation-info-dialog.component';
 import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
@@ -50,7 +50,8 @@ import type { ForceSlot, ForceAlignment } from '../models/force-slot.model';
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
-import type { FormationTypeDefinition } from '../utils/formation-type.model';
+import { formationHasTargetCopyEffect, type FormationTypeDefinition } from '../utils/formation-type.model';
+import { clearInvalidFormationTargetSelection, getFormationTargetCandidates, resolveFormationTargetGroup } from '../utils/formation-target.util';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getPositiveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
@@ -1194,8 +1195,12 @@ export class ForceBuilderService {
         }
 
         this.generateFactionAndForceNameIfNeeded(targetForce);
-        if (unitGroup) {
+        if (unitGroup && targetForce.groups().includes(unitGroup)) {
             this.assignFormationIfNeeded(unitGroup);
+        } else {
+            // removeUnit also removes an emptied group and clears target ids;
+            // reconcile the surviving force so copied abilities do not linger.
+            this.reconcileASFormationAssignmentsForForce(targetForce);
         }
     }
 
@@ -1348,15 +1353,21 @@ export class ForceBuilderService {
         try {
             // First, clear any default groups
             newForce.groups.set([]);
+            const convertedGroupBySourceId = new Map<string, UnitGroup>();
 
             // Recreate groups and units - process one group at a time
             for (const sourceGroup of force.groups()) {
                 const newGroup = newForce.addGroup();
+                convertedGroupBySourceId.set(sourceGroup.id, newGroup);
                 newGroup.name.set(sourceGroup.name());
-                newGroup.formation.set(sourceGroup.formation());
-                newGroup.formationLock = sourceGroup.formationLock;
-                if (!newGroup.formationLock && sourceGroup.formation()) {
-                    newGroup.formationHistory.add(sourceGroup.formation()!.id);
+                const sourceFormation = sourceGroup.formation();
+                const convertedFormation = sourceFormation
+                    ? LanceTypeIdentifierUtil.getDefinitionById(sourceFormation.id, newForce.gameSystem)
+                    : null;
+                newGroup.formation.set(convertedFormation);
+                newGroup.formationLock = sourceGroup.formationLock && convertedFormation ? true : undefined;
+                if (!newGroup.formationLock && convertedFormation) {
+                    newGroup.formationHistory.add(convertedFormation.id);
                 }
 
                 for (const sourceUnit of sourceGroup.units()) {
@@ -1383,8 +1394,19 @@ export class ForceBuilderService {
                     });
                 }
 
-                this.assignFormationIfNeeded(newGroup); // we re-evaluate all formations after conversion since unit changes may affect validity
             }
+
+            for (const sourceGroup of force.groups()) {
+                const convertedGroup = convertedGroupBySourceId.get(sourceGroup.id);
+                const sourceTargetId = sourceGroup.formationTargetGroupId();
+                if (convertedGroup && sourceTargetId) {
+                    convertedGroup.formationTargetGroupId.set(convertedGroupBySourceId.get(sourceTargetId)?.id ?? null);
+                }
+            }
+            for (const convertedGroup of convertedGroupBySourceId.values()) {
+                this.assignFormationIfNeeded(convertedGroup);
+            }
+            this.reconcileASFormationAssignmentsForForce(newForce);
 
             // Set a new instance ID and save
             newForce.instanceId.set(uuidv7());
@@ -1625,10 +1647,14 @@ export class ForceBuilderService {
         if (group.units().length === 0) {
             group.formation.set(null);
             group.formationLock = false; // Unlock name so it can update with new formation name
+            group.formationTargetGroupId.set(null);
+            this.reconcileASFormationAssignments(group);
+            group.force.groups().forEach(clearInvalidFormationTargetSelection);
             return;
         }
         if (group.formationLock) {
             this.reconcileASFormationAssignments(group);
+            group.force.groups().forEach(clearInvalidFormationTargetSelection);
             return;
         }
         // Pick the best formation (deterministic, most specific wins),
@@ -1641,6 +1667,7 @@ export class ForceBuilderService {
             }
         }
         this.reconcileASFormationAssignments(group);
+        group.force.groups().forEach(clearInvalidFormationTargetSelection);
     }
 
     private reconcileASFormationAssignments(group: UnitGroup | null | undefined): void {
@@ -1648,7 +1675,13 @@ export class ForceBuilderService {
             return;
         }
 
-        FormationAbilityAssignmentUtil.reconcileGroupFormationAssignments(group as UnitGroup<ASForceUnit>);
+        FormationAbilityAssignmentUtil.reconcileGroupAndDependents(group as UnitGroup<ASForceUnit>);
+    }
+
+    public reconcileASFormationAssignmentsForForce(force: Force): void {
+        if (force.gameSystem === GameSystem.ALPHA_STRIKE) {
+            FormationAbilityAssignmentUtil.reconcileForceFormationAssignments(force as ASForce);
+        }
     }
 
     public showFormationInfo(group: UnitGroup): void {
@@ -1656,17 +1689,48 @@ export class ForceBuilderService {
         if (!targetForce) return;
         const formation = group.activeFormation();
         if (!formation) return;
-        this.dialogsService.createDialog(FormationInfoDialogComponent, {
+        const usesFormationTarget = formationHasTargetCopyEffect(formation);
+        const targetOptions = usesFormationTarget
+            ? getFormationTargetCandidates(group).map((candidate) => ({
+                id: candidate.id,
+                label: `${candidate.groupDisplayName()} — ${candidate.activeFormation()!.name}`,
+            }))
+            : undefined;
+        const currentTargetId = usesFormationTarget ? resolveFormationTargetGroup(group)?.id ?? null : undefined;
+        const ref = this.dialogsService.createDialog<FormationInfoDialogResult | undefined, FormationInfoDialogComponent, FormationInfoDialogData>(FormationInfoDialogComponent, {
             data: {
                 formation,
                 gameSystem: targetForce.gameSystem,
-                formationDisplayName: group.formationDisplayName(),
+                formationDisplayName: group.formationDisplayName() ?? undefined,
                 unitCount: group.units().length,
                 isValid: group.hasValidFormation(),
                 requirementsFiltered: group.isFormationRequirementsFiltered(),
-                requirementsFilterCompositionName: group.formationRequirementsFilterCompositionName(),
-                requirementsFilterNotice: group.formationRequirementsFilterNotice(),
-            } as FormationInfoDialogData
+                requirementsFilterCompositionName: group.formationRequirementsFilterCompositionName() ?? undefined,
+                requirementsFilterNotice: group.formationRequirementsFilterNotice() ?? undefined,
+                formationTargetOptions: targetOptions,
+                formationTargetGroupId: currentTargetId,
+                formationTargetEditable: !targetForce.readOnly(),
+            }
+        });
+        ref.closed.pipe(take(1)).subscribe((result) => {
+            if (targetForce.readOnly()
+                || !result
+                || !targetForce.groups().includes(group)
+                || !formationHasTargetCopyEffect(group.activeFormation())) {
+                return;
+            }
+            const selectedTargetId = result.formationTargetGroupId;
+            const currentCandidateIds = new Set(getFormationTargetCandidates(group).map((candidate) => candidate.id));
+            const validTargetId = selectedTargetId
+                && currentCandidateIds.has(selectedTargetId)
+                ? selectedTargetId
+                : null;
+            if (validTargetId === group.formationTargetGroupId()) {
+                return;
+            }
+            group.formationTargetGroupId.set(validTargetId);
+            this.reconcileASFormationAssignments(group);
+            targetForce.emitChanged();
         });
     }
 
@@ -1711,6 +1775,7 @@ export class ForceBuilderService {
             this.selectedUnit.set(otherUnits[0] ?? null);
         }
         force.removeGroup(group);
+        this.reconcileASFormationAssignmentsForForce(force);
     }
 
     public shareForce(): void {
@@ -2335,13 +2400,19 @@ export class ForceBuilderService {
         let insertedCount = 0;
 
         const newGroups: UnitGroup[] = [];
+        const insertedGroupBySourceId = new Map<string, UnitGroup>();
 
         for (const sourceGroup of sourceGroups) {
             const newGroup = targetForce.addGroup(sourceGroup.name());
-            newGroup.formation.set(sourceGroup.formation());
-            newGroup.formationLock = sourceGroup.formationLock;
-            if (!newGroup.formationLock && sourceGroup.formation()) {
-                newGroup.formationHistory.add(sourceGroup.formation()!.id);
+            insertedGroupBySourceId.set(sourceGroup.id, newGroup);
+            const sourceFormation = sourceGroup.formation();
+            const insertedFormation = sourceFormation
+                ? LanceTypeIdentifierUtil.getDefinitionById(sourceFormation.id, targetForce.gameSystem)
+                : null;
+            newGroup.formation.set(insertedFormation);
+            newGroup.formationLock = sourceGroup.formationLock && insertedFormation ? true : undefined;
+            if (!newGroup.formationLock && insertedFormation) {
+                newGroup.formationHistory.add(insertedFormation.id);
             }
 
             for (const sourceUnit of sourceGroup.units()) {
@@ -2371,10 +2442,19 @@ export class ForceBuilderService {
             newGroups.push(newGroup);
         }
 
+        for (const sourceGroup of sourceGroups) {
+            const newGroup = insertedGroupBySourceId.get(sourceGroup.id);
+            const sourceTargetId = sourceGroup.formationTargetGroupId();
+            if (newGroup && sourceTargetId) {
+                newGroup.formationTargetGroupId.set(insertedGroupBySourceId.get(sourceTargetId)?.id ?? null);
+            }
+        }
+
         this.generateFactionAndForceNameIfNeeded(targetForce);
         for (const group of newGroups) {
             this.assignFormationIfNeeded(group);
         }
+        this.reconcileASFormationAssignmentsForForce(targetForce);
         const systemNote = needsConversion ? ' (units were converted)' : '';
         this.toastService.showToast(
             `Inserted ${insertedCount} unit(s) from "${sourceForce.displayName()}" into "${targetForce.displayName()}"${systemNote}.`,
@@ -3033,6 +3113,7 @@ export class ForceBuilderService {
                 group.formationHistory.clear(); // We unset, we reset!
                 group.formationLock = false;
                 group.formation.set(null);
+                group.formationTargetGroupId.set(null);
                 group.setName(undefined);
                 this.assignFormationIfNeeded(group);
             } else
@@ -3052,7 +3133,12 @@ export class ForceBuilderService {
                     group.setName(result.name);
                 }
                 this.assignFormationIfNeeded(group);
+                group.formationTargetGroupId.set(result.formationTargetGroupId);
+                if (!resolveFormationTargetGroup(group)) {
+                    group.formationTargetGroupId.set(null);
+                }
             }
+            this.reconcileASFormationAssignments(group);
         }
     }
 
@@ -3270,7 +3356,7 @@ export class ForceBuilderService {
         }
 
         if (group) {
-            FormationAbilityAssignmentUtil.reconcileGroupFormationAssignments(group, {
+            FormationAbilityAssignmentUtil.reconcileGroupAndDependents(group, {
                 abilityOverrides: result.formationAbilityOverrides ?? new Map([[unit.id, result.formationAbilities]]),
                 commanderUnitId: result.commander
                     ? unit.id

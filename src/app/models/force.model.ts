@@ -16,6 +16,7 @@ import { LoggerService } from '../services/logger.service';
 import { type Faction } from './factions.model';
 import type { Era } from './eras.model';
 import { type FormationTypeDefinition, type FormationMatch, formationNameMatchesGroupName, isNoFormation, NO_FORMATION } from '../utils/formation-type.model';
+import { clearInvalidFormationTargetSelection, resolveFormationTargetGroup } from '../utils/formation-target.util';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationNamerUtil } from '../utils/formation-namer.util';
 import type { OrgSizeResult } from '../utils/org/org-types';
@@ -200,6 +201,8 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     color?: string;
     formation = signal<FormationTypeDefinition | null>(null);
     formationLock?: boolean; // If true, the formation name will not be upgraded by the random generator (this is unset when we have automatic formation)
+    /** The concrete group whose formation bonus this group copies, when its formation requires one. */
+    formationTargetGroupId = signal<string | null>(null);
     formationHistory = new Set<string>(); // Temporarily stores previously assigned formation IDs for this group
     units: WritableSignal<TUnit[]> = signal([]);
 
@@ -561,6 +564,8 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         const groups = [...this.groups()];
         if (index < 0 || index >= groups.length) return null;
         const [removed] = groups.splice(index, 1);
+        this.clearFormationTargetReferences(groups, new Set([removed.id]));
+        removed.formationTargetGroupId.set(null);
         this.groups.set(groups);
         return removed;
     }
@@ -607,6 +612,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             }
             this._c3Networks.set(networks);
         }
+        this.clearFormationTargetReferences(groups, new Set([removed.id]));
         this.groups.set(groups);
         if (this.instanceId()) this.emitChanged();
     }
@@ -639,9 +645,20 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         const groups = this.groups();
         const nonEmptyGroups = groups.filter(g => g.units().length > 0);
         if (nonEmptyGroups.length === groups.length) return; // No change
+        const removedGroupIds = new Set(groups.filter(g => g.units().length === 0).map(g => g.id));
+        this.clearFormationTargetReferences(nonEmptyGroups, removedGroupIds);
         this.groups.set(nonEmptyGroups);
         if (this.instanceId()) {
             this.emitChanged();
+        }
+    }
+
+    private clearFormationTargetReferences(groups: readonly UnitGroup<TUnit>[], removedGroupIds: ReadonlySet<string>): void {
+        for (const group of groups) {
+            const targetId = group.formationTargetGroupId();
+            if (targetId && removedGroupIds.has(targetId)) {
+                group.formationTargetGroupId.set(null);
+            }
         }
     }
 
@@ -770,12 +787,14 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
         const serializedGroups: SerializedGroup[] = this.groups().filter(g => g.units().length > 0).map(g => {
             const formation = g.activeFormation();
+            const formationTarget = resolveFormationTargetGroup(g);
             return {
                 id: g.id,
                 name: g.name() || undefined,
                 color: g.color,
                 formationId: formation?.id,
                 formationLock: g.formationLock || undefined,
+                formationTargetGroupId: formationTarget?.id,
                 units: g.units().map(u => u.serialize())
             };
         });
@@ -917,10 +936,12 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 group.color = g.color || '';
                 group.formationLock = g.formationLock || undefined;
                 group.formation.set(resolveSerializedFormation(g.formationId, group.formationLock, this.gameSystem));
+                group.formationTargetGroupId.set(g.formationTargetGroupId ?? null);
                 group.units.set(groupUnits);
                 parsedGroups.push(group);
             }
             this.groups.set(parsedGroups);
+            parsedGroups.forEach(clearInvalidFormationTargetSelection);
             this.timestamp = sanitizedData.timestamp ?? null;
             if (sanitizedData.c3Networks) {
                 const sanitizedNetworks = Sanitizer.sanitizeArray(sanitizedData.c3Networks, C3_NETWORK_GROUP_SCHEMA);
@@ -988,6 +1009,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                     group.color = groupData.color;
                     group.formationLock = groupData.formationLock || undefined;
                     group.formation.set(resolveSerializedFormation(groupData.formationId, group.formationLock, this.gameSystem));
+                    group.formationTargetGroupId.set(groupData.formationTargetGroupId ?? null);
                     if (!group.formationLock && groupData.formationId) {
                         group.formationHistory.add(groupData.formationId);
                     }
@@ -1001,6 +1023,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                     group.color = groupData.color;
                     group.formationLock = groupData.formationLock || undefined;
                     group.formation.set(resolveSerializedFormation(groupData.formationId, group.formationLock, this.gameSystem));
+                    group.formationTargetGroupId.set(groupData.formationTargetGroupId ?? null);
                     if (groupData.formationId && !group.formationLock) {
                         group.formationHistory.add(groupData.formationId);
                     }
@@ -1023,6 +1046,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
             this.groups.set(updatedGroups);
             this.removeEmptyGroups();
+            this.groups().forEach(clearInvalidFormationTargetSelection);
 
             // Update C3 networks with sanitization and validation
             if (sanitizedData.c3Networks) {
@@ -1058,16 +1082,24 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     public clone(): Force {
         const serialized = this.serialize();
 
-        // Build old→new unit ID map
+        // Build old→new unit and group ID maps
         const unitIdMap = new Map<string, string>();
+        const groupIdMap = new Map<string, string>();
         serialized.instanceId = uuidv7();
         if (serialized.groups) {
             for (const group of serialized.groups) {
+                const previousGroupId = group.id;
                 group.id = uuidv7();
+                groupIdMap.set(previousGroupId, group.id);
                 for (const unit of group.units) {
                     const newId = uuidv7();
                     unitIdMap.set(unit.id, newId);
                     unit.id = newId;
+                }
+            }
+            for (const group of serialized.groups) {
+                if (group.formationTargetGroupId) {
+                    group.formationTargetGroupId = groupIdMap.get(group.formationTargetGroupId);
                 }
             }
         }

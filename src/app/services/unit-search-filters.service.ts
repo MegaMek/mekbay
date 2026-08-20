@@ -2186,7 +2186,7 @@ export class UnitSearchFiltersService {
         const definitions: FormationTypeDefinition[] = [];
         const seen = new Set<string>();
 
-        for (const definition of getFormationDefinitions()) {
+        for (const definition of getFormationDefinitions(gameSystem)) {
             if (!FormationRequirementEngine.hasBlueprint(definition.id)) {
                 continue;
             }

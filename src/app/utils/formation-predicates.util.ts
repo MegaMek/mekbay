@@ -5,13 +5,37 @@
 import { GameSystem } from '../models/common.model';
 import { isClan } from './org/org-registry.util';
 import type { FormationFactKey, FormationPredicateId } from './formation-requirement.model';
-import { cbtCanDealDamage, cbtHasArtillery, cbtHasAutocannon, type FormationUnitFacts } from './formation-unit-facts.util';
+import { cbtCanDealDamage, cbtHasArtillery, cbtHasAutocannon, cbtHasIndirectFireWeapon, type FormationUnitFacts } from './formation-unit-facts.util';
 
 type FormationPredicate = (facts: FormationUnitFacts, gameSystem: GameSystem) => boolean;
 
-const AEROSPACE_AS_TYPES = new Set(['AF', 'CF', 'SC', 'DS', 'DA', 'WS', 'SS', 'JS']);
-const TRANSPORT_AS_TYPES = new Set(['AF', 'CF', 'SC', 'DS', 'SV', 'DA']);
+const FIGHTER_AS_TYPES = new Set(['AF', 'CF']);
+const TRANSPORT_AS_TYPES = new Set(['AF', 'CF', 'SC', 'DS', 'DA']);
 const EW_SPECIALS = ['PRB', 'AECM', 'BH', 'ECM', 'LPRB', 'LECM', 'LTAG', 'TAG', 'WAT'];
+
+function isClassicFighter(facts: FormationUnitFacts): boolean {
+    return facts.unit.type === 'Aero'
+        && (facts.unit.subtype.includes('Aerospace Fighter')
+            || facts.unit.subtype.includes('Conventional Fighter'));
+}
+
+function isSupportAircraft(facts: FormationUnitFacts): boolean {
+    return facts.unit.subtype.includes('Fixed Wing Support Vehicle');
+}
+
+function isTransportSquadronUnit(facts: FormationUnitFacts, gameSystem: GameSystem): boolean {
+    if (gameSystem === GameSystem.ALPHA_STRIKE) {
+        const asType = facts.asType ?? '';
+        return TRANSPORT_AS_TYPES.has(asType)
+            || (asType === 'SV' && isSupportAircraft(facts));
+    }
+
+    return isClassicFighter(facts)
+        || isSupportAircraft(facts)
+        || (facts.unit.type === 'Aero'
+            && (facts.unit.subtype.includes('Small Craft')
+                || facts.unit.subtype.includes('DropShip')));
+}
 
 function hasAsSpecialPrefix(facts: FormationUnitFacts, prefix: string): boolean {
     return facts.asSpecials.some(special => special.startsWith(prefix));
@@ -46,6 +70,7 @@ export const FORMATION_PREDICATES: Readonly<Record<FormationPredicateId, Formati
     'anvil-weapon': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
         ? hasAnyAsSpecialPrefix(facts, ['AC', 'FLK', 'LRM', 'SRM'])
         : cbtHasAutocannon(facts.unit)
+            || facts.unit.comp?.some(component => component.eq?.hasAnyFlag(['F_LRM', 'F_SRM']) === true) === true
             || facts.unit.comp?.some(component => component.n?.includes('LRM')) === true
             || facts.unit.comp?.some(component => component.n?.includes('SRM')) === true,
     'artillery-equipment': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
@@ -60,10 +85,10 @@ export const FORMATION_PREDICATES: Readonly<Record<FormationPredicateId, Formati
         ? facts.asType === 'AF' || facts.asType === 'BM' || facts.asType === 'BA'
         : facts.unit.type === 'Aero' || facts.unit.type === 'Mek' || facts.unit.subtype === 'Battle Armor',
     'aerospace-unit': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
-        ? AEROSPACE_AS_TYPES.has(facts.asType ?? '')
-        : facts.unit.type === 'Aero',
+        ? FIGHTER_AS_TYPES.has(facts.asType ?? '')
+        : isClassicFighter(facts),
     'aerospace-superiority-role': (facts) => roleIn(facts, ['Interceptor', 'Fast Dogfighter']),
-    'attack-or-dogfighter-role': (facts) => roleIncludes(facts, ['Attack', 'Dogfighter']),
+    'attack-or-dogfighter-role': (facts) => roleIn(facts, ['Attack', 'Attack Fighter', 'Dogfighter']),
     'battle-armor-unit': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
         ? facts.asType === 'BA'
         : facts.unit.subtype === 'Battle Armor',
@@ -83,9 +108,10 @@ export const FORMATION_PREDICATES: Readonly<Record<FormationPredicateId, Formati
         ? hasAnyAsSpecialPrefix(facts, EW_SPECIALS)
         : facts.unit.comp?.some(component => component.eq?.hasAnyFlag(['F_ECM', 'F_BAP', 'F_TAG'])) === true,
     'fast-assault-move': (facts, gameSystem) => asOrCbt(gameSystem, facts.asGroundMove >= 10 || facts.asJumpMove > 0, facts.cbtWalk >= 5 || facts.cbtJump > 0),
+    'fire-support-or-dogfighter-role': (facts) => roleIn(facts, ['Fire Support', 'Dogfighter']),
     'fire-support-equipment': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
         ? hasAsSpecialPrefix(facts, 'IF')
-        : facts.unit.comp?.some(component => component.n?.includes('LRM')) === true || cbtHasArtillery(facts.unit),
+        : cbtHasIndirectFireWeapon(facts.unit),
     'fire-support-role': (facts) => facts.role === 'Fire Support',
     'fire-role': (facts) => roleIn(facts, ['Missile Boat', 'Sniper']),
     'heavy-bm-or-mek': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
@@ -99,7 +125,7 @@ export const FORMATION_PREDICATES: Readonly<Record<FormationPredicateId, Formati
         : facts.unit.type === 'Infantry',
     'indirect-fire-equipment': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
         ? hasAsSpecialPrefix(facts, 'IF')
-        : facts.unit.comp?.some(component => component.n?.includes('LRM')) === true || cbtHasArtillery(facts.unit),
+        : cbtHasIndirectFireWeapon(facts.unit),
     'interceptor-role': (facts) => facts.role === 'Interceptor',
     'jump-or-infantry': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
         ? facts.asJumpMove > 0 || FORMATION_PREDICATES['infantry-unit'](facts, gameSystem)
@@ -156,9 +182,7 @@ export const FORMATION_PREDICATES: Readonly<Record<FormationPredicateId, Formati
     'striker-speed': (facts, gameSystem) => asOrCbt(gameSystem, facts.asGroundMove >= 10 || facts.asJumpMove >= 8, facts.cbtWalk >= 5 || facts.cbtJump >= 4),
     'sweep-move': (facts, gameSystem) => asOrCbt(gameSystem, facts.asAnyGroundOrJumpMove >= 10, facts.cbtWalk >= 5),
     'transport-role': (facts) => roleIncludes(facts, ['Transport']),
-    'transport-squadron-unit': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
-        ? TRANSPORT_AS_TYPES.has(facts.asType ?? '')
-        : facts.unit.type === 'Aero',
+    'transport-squadron-unit': (facts, gameSystem) => isTransportSquadronUnit(facts, gameSystem),
     'very-fast-move': (facts, gameSystem) => asOrCbt(gameSystem, facts.asAnyGroundOrJumpMove >= 12, facts.cbtWalk >= 6),
     'vtol-unit': (facts) => facts.unit.type === 'VTOL',
 };

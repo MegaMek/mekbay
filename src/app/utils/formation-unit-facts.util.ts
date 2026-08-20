@@ -97,7 +97,8 @@ export function cbtCanDealDamage(unit: Unit, minDamage: number, atRange: number)
 
 export function cbtHasAutocannon(unit: Unit): boolean {
     return unit.comp?.some(component => (
-        component.n?.includes('AC/')
+        component.eq?.hasFlag('F_AC') === true
+        || component.n?.includes('AC/')
         || component.n?.includes('LB ')
         || component.n?.includes('LB-')
     )) || false;
@@ -105,6 +106,13 @@ export function cbtHasAutocannon(unit: Unit): boolean {
 
 export function cbtHasArtillery(unit: Unit): boolean {
     return unit.comp?.some(component => component.t === 'A') || false;
+}
+
+export function cbtHasIndirectFireWeapon(unit: Unit): boolean {
+    return unit.comp?.some(component => (
+        component.eq?.hasAnyFlag(['F_INDIRECT_FIRE', 'F_MORTAR_TYPE_INDIRECT']) === true
+        || component.n?.includes('LRM')
+    )) || cbtHasArtillery(unit);
 }
 
 export function compileFormationUnitFacts(forceUnit: FormationUnitLike): FormationUnitFacts {

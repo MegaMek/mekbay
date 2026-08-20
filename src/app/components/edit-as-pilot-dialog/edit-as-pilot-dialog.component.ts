@@ -196,7 +196,9 @@ export class EditASPilotDialogComponent {
 
             cards.set(effect.descriptor.sourceFormationId, {
                 key: effect.descriptor.sourceFormationId,
-                title: effect.descriptor.sourceFormationName,
+                title: effect.descriptor.copiedFromFormationName
+                    ? `${effect.descriptor.sourceFormationName} (copying ${effect.descriptor.copiedFromFormationName})`
+                    : effect.descriptor.sourceFormationName,
                 countLabel: nextCountLabel,
                 effects: [effect],
             });
@@ -649,7 +651,11 @@ export class EditASPilotDialogComponent {
     }
 
     getFormationDropdownDisabledIds(effect: FormationEffectPreview, slot: number): string[] {
-        return effect.descriptor.abilityIds.filter((abilityId) => !this.canSelectFormationAbility(effect, slot, abilityId));
+        return effect.descriptor.abilityIds.filter((abilityId) => {
+            const option = this.getFormationDropdownOptionById(abilityId);
+            return option?.unitTypeRestricted === true
+                || !this.canSelectFormationAbility(effect, slot, abilityId);
+        });
     }
 
     canOpenFormationAbilitySlot(effect: FormationEffectPreview, slot: number): boolean {
@@ -658,7 +664,7 @@ export class EditASPilotDialogComponent {
         }
 
         return this.getFormationDropdownAbilities(effect)
-            .some((ability) => this.canSelectFormationAbility(effect, slot, ability.id));
+            .some((ability) => !ability.unitTypeRestricted && this.canSelectFormationAbility(effect, slot, ability.id));
     }
 
     toggleFormationDropdown(effect: FormationEffectPreview, slot: number, triggerButton: HTMLButtonElement): void {
@@ -828,7 +834,18 @@ export class EditASPilotDialogComponent {
     }
 
     getFormationEffectCountLabel(effect: FormationEffectPreview): string {
-        return `${effect.recipientUnitIds.length}/${effect.recipientLimit ?? effect.candidateUnitIds.length}`;
+        const labels = [`${effect.recipientUnitIds.length}/${effect.recipientLimit ?? effect.candidateUnitIds.length}`];
+        const copiedPools = new Set(effect.descriptor.copiedSharedPoolByAbilityId?.values() ?? []);
+        for (const pool of copiedPools) {
+            if (pool.resolvedLevel !== null) {
+                labels.push(`source pool level ${pool.resolvedLevel}`);
+            } else if (pool.totalUsesPerScenario !== null) {
+                labels.push(`source pool ${pool.totalUsesPerScenario} uses`);
+            } else {
+                labels.push('source shared pool');
+            }
+        }
+        return labels.join(' · ');
     }
 
     getFormationEffectAssignedAbilityIds(effect: FormationEffectPreview): string[] {
@@ -873,6 +890,19 @@ export class EditASPilotDialogComponent {
         const assignedAbilityIds = this.getFormationEffectAssignedAbilityIds(effect);
         if (assignedAbilityIds.includes(abilityId)) {
             return true;
+        }
+
+        const abilityAssignmentLimit = effect.descriptor.maxAssignmentsByAbilityId?.get(abilityId);
+        if (abilityAssignmentLimit !== undefined) {
+            let assignedCount = 0;
+            effect.assignedByUnitId.forEach((unitAbilityIds) => {
+                if (unitAbilityIds.includes(abilityId)) {
+                    assignedCount += 1;
+                }
+            });
+            if (assignedCount >= abilityAssignmentLimit) {
+                return false;
+            }
         }
 
         if (effect.descriptor.group.selection === 'choose-one') {

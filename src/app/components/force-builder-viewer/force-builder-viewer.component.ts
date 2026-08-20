@@ -26,6 +26,7 @@ import { LobbyService } from '../../services/lobby.service';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
 
 
 
@@ -789,15 +790,15 @@ export class ForceBuilderViewerComponent {
         const showParentRequirements = formationInheritsParentEffects(formation) && !!formation.parent;
 
         if (showParentRequirements) {
-            const parent = getFormationDefinition(formation.parent!);
+            const parent = getFormationDefinition(formation.parent!, group.force.gameSystem);
             if (parent?.requirements) {
-                const parentReq = parent.requirements(group.force.gameSystem);
+                const parentReq = parent.requirements;
                 if (parentReq) parts.push(this.buildFormationRequirementTooltipLine(parent.name, parentReq));
             }
         }
 
         if (formation.requirements) {
-            const req = formation.requirements(group.force.gameSystem);
+            const req = formation.requirements;
             if (req) parts.push(this.buildFormationRequirementTooltipLine(showParentRequirements ? formation.name : null, req));
         }
 
@@ -900,6 +901,16 @@ export class ForceBuilderViewerComponent {
             if (!movedGroup) return;
 
             if (crossSystem) {
+                const sourceFormation = movedGroup.formation();
+                const convertedFormation = sourceFormation
+                    ? LanceTypeIdentifierUtil.getDefinitionById(sourceFormation.id, toForce.gameSystem)
+                    : null;
+                movedGroup.formation.set(convertedFormation);
+                if (sourceFormation && !convertedFormation) {
+                    movedGroup.formationLock = undefined;
+                    movedGroup.formationHistory.clear();
+                }
+
                 // Convert all units in the group to the target game system
                 const convertedUnits: ForceUnit[] = [];
                 for (const u of movedGroup.units()) {
@@ -920,6 +931,8 @@ export class ForceBuilderViewerComponent {
             this.forceBuilderService.generateFactionAndForceNameIfNeeded(fromForce);
             this.forceBuilderService.generateFactionAndForceNameIfNeeded(toForce);
             this.forceBuilderService.assignFormationIfNeeded(movedGroup);
+            this.forceBuilderService.reconcileASFormationAssignmentsForForce(fromForce);
+            this.forceBuilderService.reconcileASFormationAssignmentsForForce(toForce);
 
             // Select a unit in the moved group
             const firstUnit = movedGroup.units()[0];
