@@ -215,21 +215,22 @@ describe('unit-search worker', () => {
         }).entries).toEqual([{ unitName: 'Unpublished Non-Canon' }]);
     });
 
-    it('ignores extra rulebook expansions until a baseline is selected in the worker', () => {
+    it('matches a complete rulebook bucket in the worker', () => {
         const unitA = createUnit('Unit A');
-        unitA.rulesRefs = ['BMM', 'Shrap01', 'IO:AE'];
+        unitA.rulesRefs = [['Core'], ['TW', 'IO:AE']];
         const unitB = createUnit('Unit B');
-        unitB.rulesRefs = ['TW', 'Shrap01', 'AAA'];
+        unitB.rulesRefs = [['TW', 'Shrap01', 'AAA'], ['TM', 'Shrap01']];
 
         const runtime = __test__.hydrateCorpus({
             corpusVersion: '1:0',
             units: [unitA, unitB],
             indexes: {
                 rulesRefs: {
-                    BMM: ['Unit A'],
-                    TW: ['Unit B'],
-                    Shrap01: ['Unit A', 'Unit B'],
+                    Core: ['Unit A'],
+                    TW: ['Unit A', 'Unit B'],
+                    TM: ['Unit B'],
                     'IO:AE': ['Unit A'],
+                    Shrap01: ['Unit B'],
                     AAA: ['Unit B'],
                 },
             },
@@ -243,16 +244,13 @@ describe('unit-search worker', () => {
             telemetryQuery: executionQuery,
         }).entries;
 
-        expect(getEntries('rulesRefs=Shrap01')).toEqual([
-            { unitName: 'Unit A' },
-            { unitName: 'Unit B' },
-        ]);
-        expect(getEntries('rulesRefs=Shrap01,AAA')).toEqual([
-            { unitName: 'Unit A' },
-            { unitName: 'Unit B' },
-        ]);
-        expect(getEntries('rulesRefs=TW,Shrap01')).toEqual([]);
+        expect(getEntries('rulesRefs=Core')).toEqual([{ unitName: 'Unit A' }]);
         expect(getEntries('rulesRefs=TW')).toEqual([]);
+        expect(getEntries('rulesRefs=TW,IO:AE')).toEqual([{ unitName: 'Unit A' }]);
+        expect(getEntries('rulesRefs=TW,Shrap01')).toEqual([]);
         expect(getEntries('rulesRefs=TW,Shrap01,AAA')).toEqual([{ unitName: 'Unit B' }]);
+        expect(getEntries('rulesRefs=IO:AE')).toEqual([{ unitName: 'Unit A' }]);
+        expect(getEntries('rulesRefs=Shrap01')).toEqual([{ unitName: 'Unit B' }]);
+        expect(getEntries('rulesRefs=AAA')).toEqual([]);
     });
 });

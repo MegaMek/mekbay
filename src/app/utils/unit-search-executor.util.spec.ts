@@ -211,20 +211,29 @@ describe('unit-search-executor', () => {
             .toEqual(['Dual Typed']);
     });
 
-    it('ignores extra rulebook expansions until a baseline is selected', () => {
-        const unitA = createEmptyUnit({ name: 'Unit A', rulesRefs: ['BMM', 'Shrap01', 'IO:AE'] });
-        const unitB = createEmptyUnit({ name: 'Unit B', rulesRefs: ['TW', 'Shrap01', 'AAA'] });
+    it('matches when the selected rulebooks cover one complete bucket', () => {
+        const unitA = createEmptyUnit({ name: 'Unit A', rulesRefs: [['Core'], ['TW', 'IO:AE']] });
+        const unitB = createEmptyUnit({
+            name: 'Unit B',
+            rulesRefs: [['TW', 'Shrap01', 'AAA'], ['TM', 'Shrap01']],
+        });
         const units = [unitA, unitB];
 
-        expect(executeQuery(units, 'rulesRefs=Shrap01').map(unit => unit.name))
-            .toEqual(['Unit A', 'Unit B']);
-        expect(executeQuery(units, 'rulesRefs=Shrap01,AAA').map(unit => unit.name))
-            .toEqual(['Unit A', 'Unit B']);
-        expect(executeQuery(units, 'rulesRefs=TW,Shrap01').map(unit => unit.name))
-            .toEqual([]);
+        expect(executeQuery(units, 'rulesRefs=Core').map(unit => unit.name))
+            .toEqual(['Unit A']);
         expect(executeQuery(units, 'rulesRefs=TW').map(unit => unit.name))
+            .toEqual([]);
+        expect(executeQuery(units, 'rulesRefs=TW,IO:AE').map(unit => unit.name))
+            .toEqual(['Unit A']);
+        expect(executeQuery(units, 'rulesRefs=TW,Shrap01').map(unit => unit.name))
             .toEqual([]);
         expect(executeQuery(units, 'rulesRefs=TW,Shrap01,AAA').map(unit => unit.name))
             .toEqual(['Unit B']);
+        expect(executeQuery(units, 'rulesRefs=IO:AE').map(unit => unit.name))
+            .toEqual(['Unit A']);
+        expect(executeQuery(units, 'rulesRefs=Shrap01').map(unit => unit.name))
+            .toEqual(['Unit B']);
+        expect(executeQuery(units, 'rulesRefs=AAA').map(unit => unit.name))
+            .toEqual([]);
     });
 });

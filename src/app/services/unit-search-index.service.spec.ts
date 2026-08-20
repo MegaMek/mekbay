@@ -259,8 +259,8 @@ describe('UnitSearchIndexService', () => {
         const service = new UnitSearchIndexService();
 
         service.rebuildIndexes([
-            createUnit({ name: 'Atlas AS7-D', rulesRefs: ['TM', 'TO'] }),
-            createUnit({ name: 'Locust LCT-1V', rulesRefs: ['TM'] }),
+            createUnit({ name: 'Atlas AS7-D', rulesRefs: [['TM', 'TO']] }),
+            createUnit({ name: 'Locust LCT-1V', rulesRefs: [['TM']] }),
             createUnit({ name: 'Legacy Unit' }),
         ], [], []);
 

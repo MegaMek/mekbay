@@ -66,59 +66,58 @@ export function getUnitSourceFilterValues(unit: Pick<Unit, 'source' | 'published
     return Array.from(merged.values());
 }
 
-export const BASELINE_UNIT_RULES_REFS = Object.freeze(['TW', 'TM', 'BMM', 'Core']);
-
-const baselineUnitRulesRefKeys = new Set(BASELINE_UNIT_RULES_REFS.map(value => value.toLowerCase()));
-
-function normalizeUnitRulesRefs(values: unknown): Set<string> {
+function normalizeRulesRefBucket(values: unknown): string[] {
     if (!Array.isArray(values)) {
-        return new Set<string>();
+        return [];
     }
 
-    return new Set(
+    return Array.from(new Set(
         values
             .filter((value): value is string => typeof value === 'string')
             .map(value => value.trim().toLowerCase())
             .filter(value => value.length > 0),
-    );
+    ));
+}
+
+const BASE_RULE_BOOK_KEYS = new Set(['tw', 'tm', 'bmm', 'core']);
+
+function normalizeUnitRulesRefBuckets(values: unknown): string[][] {
+    if (!Array.isArray(values) || values.length === 0) {
+        return [];
+    }
+
+    // Accept the old flat form during the data-format transition.
+    if (values.every(value => typeof value === 'string')) {
+        const bucket = normalizeRulesRefBucket(values);
+        return bucket.length > 0 ? [bucket] : [];
+    }
+
+    return values
+        .map(normalizeRulesRefBucket)
+        .filter(bucket => bucket.length > 0);
 }
 
 /**
- * Matches the specialized Rulebooks filter semantics.
- *
- * Without a selected baseline, expansion references are ordinary OR choices and
- * extra expansion references on a unit are ignored. Once a baseline is selected,
- * a unit must contain any selected baseline and the selected expansions become
- * the complete allowed expansion set. With only baselines selected, units
- * carrying any expansion are excluded.
+ * A selection covers a unit when it contains every book from at least one of the
+ * unit's alternative rules-reference buckets. Extra selected books are harmless.
+ * When no base rulebook is selected, base books are ignored so expansion-only
+ * searches do not need to name the compatible base book as well.
  */
 export function unitMatchesRulesRefsSelection(unitRulesRefs: unknown, selectedRulesRefs: readonly string[]): boolean {
-    const selectedRefs = normalizeUnitRulesRefs(selectedRulesRefs);
+    const selectedRefs = new Set(normalizeRulesRefBucket(selectedRulesRefs));
     if (selectedRefs.size === 0) {
         return true;
     }
 
-    const unitRefs = normalizeUnitRulesRefs(unitRulesRefs);
-    const selectedBaselines = new Set(Array.from(selectedRefs).filter(value => baselineUnitRulesRefKeys.has(value)));
-    const selectedExpansions = new Set(Array.from(selectedRefs).filter(value => !baselineUnitRulesRefKeys.has(value)));
-    const unitBaselines = Array.from(unitRefs).filter(value => baselineUnitRulesRefKeys.has(value));
-    const unitExpansions = Array.from(unitRefs).filter(value => !baselineUnitRulesRefKeys.has(value));
-
-    if (selectedBaselines.size === 0) {
-        return selectedExpansions.size > 0
-            && unitExpansions.some(value => selectedExpansions.has(value));
+    const buckets = normalizeUnitRulesRefBuckets(unitRulesRefs);
+    if (Array.from(selectedRefs).some(rulesRef => BASE_RULE_BOOK_KEYS.has(rulesRef))) {
+        return buckets.some(bucket => bucket.every(rulesRef => selectedRefs.has(rulesRef)));
     }
 
-    if (!unitBaselines.some(value => selectedBaselines.has(value))) {
-        return false;
-    }
-
-    if (selectedExpansions.size === 0) {
-        return unitExpansions.length === 0;
-    }
-
-    return unitExpansions.length > 0
-        && unitExpansions.every(value => selectedExpansions.has(value));
+    return buckets.some(bucket => {
+        const nonBaseBooks = bucket.filter(rulesRef => !BASE_RULE_BOOK_KEYS.has(rulesRef));
+        return nonBaseBooks.length > 0 && nonBaseBooks.every(rulesRef => selectedRefs.has(rulesRef));
+    });
 }
 
 export function getProperty(obj: any, key?: string) {

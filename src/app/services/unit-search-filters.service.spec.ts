@@ -4965,23 +4965,20 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.queryParameters()['filters']).toBe(`as.specials:"${special}"`);
     });
 
-    it('ignores extra rulebook expansions until a baseline is selected', () => {
+    it('matches units when the selected rulebooks cover a complete bucket', () => {
         const bundle = createStandaloneBundle();
         bundle.units.units[0].name = 'Unit A';
-        bundle.units.units[0].rulesRefs = ['BMM', 'Shrap01', 'IO:AE'];
+        bundle.units.units[0].rulesRefs = [['Core'], ['TW', 'IO:AE']];
         bundle.units.units[1].name = 'Unit B';
-        bundle.units.units[1].rulesRefs = ['TW', 'Shrap01', 'AAA'];
+        bundle.units.units[1].rulesRefs = [['TW', 'Shrap01', 'AAA'], ['TM', 'Shrap01']];
 
         const { service } = createService(bundle);
         const rulebookOptions = service.advOptions()['rulesRefs']?.options ?? [];
         expect(rulebookOptions.filter(option => typeof option !== 'number').map(option => option.name).sort())
-            .toEqual(['AAA', 'BMM', 'IO:AE', 'Shrap01', 'TW']);
+            .toEqual(['AAA', 'Core', 'IO:AE', 'Shrap01', 'TM', 'TW']);
 
-        service.setFilter('rulesRefs', ['Shrap01']);
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit A', 'Unit B']);
-
-        service.setFilter('rulesRefs', ['Shrap01', 'AAA']);
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit A', 'Unit B']);
+        service.setFilter('rulesRefs', ['Core']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit A']);
 
         service.setFilter('rulesRefs', ['TW', 'Shrap01']);
         expect(service.filteredUnits().map(unit => unit.name)).toEqual([]);
@@ -4989,8 +4986,20 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.setFilter('rulesRefs', ['TW']);
         expect(service.filteredUnits().map(unit => unit.name)).toEqual([]);
 
+        service.setFilter('rulesRefs', ['TW', 'IO:AE']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit A']);
+
         service.setFilter('rulesRefs', ['TW', 'Shrap01', 'AAA']);
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit B']);
+
+        service.setFilter('rulesRefs', ['IO:AE']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit A']);
+
+        service.setFilter('rulesRefs', ['Shrap01']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit B']);
+
+        service.setFilter('rulesRefs', ['AAA']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual([]);
     });
 
     it('declares indexed dropdown capabilities for rules references, source, faction, and era', () => {
