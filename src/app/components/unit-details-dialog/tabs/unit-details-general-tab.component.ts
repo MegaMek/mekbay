@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Component, ChangeDetectionStrategy, input, inject, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, inject, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { Unit, UnitComponent } from '../../../models/units.model';
 import { weaponTypes } from '../../../utils/equipment.util';
@@ -34,6 +34,7 @@ import {
 import { naturalCompare } from '../../../utils/sort.util';
 import { EquipmentFlag } from '../../../models/equipment-flags.type';
 import { formatBvPv } from '../../../utils/force-viewer-bv-pv-display.util';
+import { BASE_RULES_REFS } from '../../../utils/rules-ref.util';
 import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.util';
 import { GameService } from '../../../services/game.service';
 
@@ -52,6 +53,164 @@ type ComponentLayoutState = {
 const ADDITIONAL_COMPONENT_FLAGS: EquipmentFlag[] = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_JUMP_JET'];
 const CASE_COMPONENT_FLAGS: EquipmentFlag[] = ['F_CASE', 'F_CASE_II'];
 const WEAPON_MODE_MISC_COMPONENT_FLAGS: EquipmentFlag[] = ['F_CLUB', 'F_HAND_WEAPON'];
+const RULES_REF_COLLAPSED_GROUP_LIMIT = 2;
+
+export interface RulesRefBadge {
+    label: string;
+    isBase: boolean;
+}
+
+type BaseRulesRefExpression = string[][];
+
+const compareRulesRefNames = (left: string, right: string): number => left.localeCompare(right);
+
+function normalizeBaseRulesRefExpression(expression: BaseRulesRefExpression): BaseRulesRefExpression {
+    return expression
+        .map(choice => [...new Set(choice)].sort(compareRulesRefNames))
+        .sort((left, right) => compareRulesRefNames(left.join('/'), right.join('/')));
+}
+
+function getBaseRulesRefExpressionKey(expression: BaseRulesRefExpression): string {
+    return expression.map(choice => choice.join('/')).join('\u0000');
+}
+
+function tryMergeBaseRulesRefExpressions(
+    left: BaseRulesRefExpression,
+    right: BaseRulesRefExpression,
+): BaseRulesRefExpression | null {
+    if (left.length !== right.length) return null;
+
+    const unmatchedRight = [...right];
+    const sharedChoices: string[][] = [];
+    const unmatchedLeft: string[][] = [];
+
+    for (const leftChoice of left) {
+        const leftChoiceKey = leftChoice.join('/');
+        const matchingIndex = unmatchedRight.findIndex(rightChoice => rightChoice.join('/') === leftChoiceKey);
+        if (matchingIndex < 0) {
+            unmatchedLeft.push(leftChoice);
+        } else {
+            sharedChoices.push(leftChoice);
+            unmatchedRight.splice(matchingIndex, 1);
+        }
+    }
+
+    if (unmatchedLeft.length !== 1 || unmatchedRight.length !== 1) return null;
+
+    return normalizeBaseRulesRefExpression([
+        ...sharedChoices,
+        [...unmatchedLeft[0], ...unmatchedRight[0]],
+    ]);
+}
+
+function factorBaseRulesRefExpressions(baseRefSets: string[][]): BaseRulesRefExpression[] {
+    let expressions = baseRefSets.map(baseRefs => normalizeBaseRulesRefExpression(
+        baseRefs.map(rulesRef => [rulesRef]),
+    ));
+
+    while (true) {
+        expressions = [...new Map(
+            expressions.map(expression => [getBaseRulesRefExpressionKey(expression), expression]),
+        ).values()].sort((left, right) => compareRulesRefNames(
+            getBaseRulesRefExpressionKey(left),
+            getBaseRulesRefExpressionKey(right),
+        ));
+
+        let mergedPair: [number, number, BaseRulesRefExpression] | null = null;
+        for (let leftIndex = 0; leftIndex < expressions.length && !mergedPair; leftIndex++) {
+            for (let rightIndex = leftIndex + 1; rightIndex < expressions.length; rightIndex++) {
+                const merged = tryMergeBaseRulesRefExpressions(expressions[leftIndex], expressions[rightIndex]);
+                if (merged) {
+                    mergedPair = [leftIndex, rightIndex, merged];
+                    break;
+                }
+            }
+        }
+
+        if (!mergedPair) return expressions;
+
+        const [leftIndex, rightIndex, merged] = mergedPair;
+        expressions = expressions.filter((_, index) => index !== leftIndex && index !== rightIndex);
+        expressions.push(merged);
+    }
+}
+
+export function getRulesRefBuckets(
+    rulesRefs: readonly (readonly string[])[] | readonly string[] | null | undefined,
+): string[][] {
+    if (!rulesRefs?.length) return [];
+
+    const rawBuckets: readonly (readonly string[])[] = rulesRefs.every(rulesRef => typeof rulesRef === 'string')
+        ? [rulesRefs as readonly string[]]
+        : rulesRefs as readonly (readonly string[])[];
+
+    return rawBuckets
+        .map(bucket => [...new Set(bucket.map(rulesRef => rulesRef.trim()).filter(Boolean))])
+        .filter(bucket => bucket.length > 0);
+}
+
+export function getRulesRefBadgeGroups(
+    rulesRefs: readonly (readonly string[])[] | readonly string[] | null | undefined,
+): RulesRefBadge[][] {
+    const groupedByNonBaseRefs = new Map<string, { baseRefSets: string[][]; nonBaseRefs: string[] }>();
+    const displayGroups: Array<{
+        badges: RulesRefBadge[];
+        bookCount: number;
+        hasBaseRefs: boolean;
+    }> = [];
+
+    for (const bucket of getRulesRefBuckets(rulesRefs)) {
+        const baseRefs = bucket.filter(rulesRef => BASE_RULES_REFS.has(rulesRef)).sort(compareRulesRefNames);
+        const nonBaseRefs = bucket.filter(rulesRef => !BASE_RULES_REFS.has(rulesRef)).sort(compareRulesRefNames);
+
+        if (baseRefs.length > 0) {
+            const groupKey = JSON.stringify(nonBaseRefs);
+            const existingGroup = groupedByNonBaseRefs.get(groupKey);
+            if (existingGroup) {
+                existingGroup.baseRefSets.push(baseRefs);
+            } else {
+                groupedByNonBaseRefs.set(groupKey, {
+                    baseRefSets: [baseRefs],
+                    nonBaseRefs,
+                });
+            }
+            continue;
+        }
+
+        displayGroups.push({
+            badges: nonBaseRefs.map(label => ({ label, isBase: false })),
+            bookCount: nonBaseRefs.length,
+            hasBaseRefs: false,
+        });
+    }
+
+    for (const group of groupedByNonBaseRefs.values()) {
+        for (const baseExpression of factorBaseRulesRefExpressions(group.baseRefSets)) {
+            displayGroups.push({
+                badges: [
+                    ...baseExpression.map(choice => ({ label: choice.join('/'), isBase: true })),
+                    ...group.nonBaseRefs.map(label => ({ label, isBase: false })),
+                ],
+                bookCount: baseExpression.length + group.nonBaseRefs.length,
+                hasBaseRefs: true,
+            });
+        }
+    }
+
+    return displayGroups
+        .sort((left, right) => {
+            const countOrder = left.bookCount - right.bookCount;
+            if (countOrder !== 0) return countOrder;
+
+            const typeOrder = Number(right.hasBaseRefs) - Number(left.hasBaseRefs);
+            if (typeOrder !== 0) return typeOrder;
+
+            const leftKey = left.badges.map(badge => badge.label).join('\u0000');
+            const rightKey = right.badges.map(badge => badge.label).join('\u0000');
+            return compareRulesRefNames(leftKey, rightKey);
+        })
+        .map(group => group.badges);
+}
 
 export function shouldShowAdjustedPilotSkills(
     adjustedBv: number | null,
@@ -115,6 +274,21 @@ export class UnitDetailsGeneralTabComponent {
     additionalComponentSummary = computed(() => this.getAdditionalComponentSummary());
     additionalComponentSummaryInteractive = computed(() => !this.showFilteredComponents());
     componentViewModeAvailable = computed(() => this.hasDetailOnlyComponents());
+    rulesRefBadgeGroups = computed(() => getRulesRefBadgeGroups(this.unit().rulesRefs));
+    private expandedRulesRefUnit = signal<Unit | null>(null);
+    rulesRefBadgeGroupsExpanded = computed(() => this.expandedRulesRefUnit() === this.unit());
+    visibleRulesRefBadgeGroups = computed(() => {
+        const groups = this.rulesRefBadgeGroups();
+        return this.rulesRefBadgeGroupsExpanded()
+            ? groups
+            : groups.slice(0, RULES_REF_COLLAPSED_GROUP_LIMIT);
+    });
+    hasHiddenRulesRefBadgeGroups = computed(() => !this.rulesRefBadgeGroupsExpanded()
+        && this.rulesRefBadgeGroups().length > RULES_REF_COLLAPSED_GROUP_LIMIT);
+
+    showAllRulesRefBadgeGroups(): void {
+        this.expandedRulesRefUnit.set(this.unit());
+    }
 
     setComponentViewMode(showDetails: boolean): void {
         if (this.showFilteredComponents() === showDetails) return;

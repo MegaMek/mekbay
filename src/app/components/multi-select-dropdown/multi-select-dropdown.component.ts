@@ -109,6 +109,7 @@ export class MultiSelectDropdownComponent {
     displayText = input<string | undefined>();  // Text to display instead of pills when in semantic-only mode (fallback)
     displayItems = input<{ text: string; state: 'or' | 'and' | 'not' }[] | undefined>();  // Structured display items with state
     options = input<readonly DropdownOption[]>([]);
+    optionSection = input<((option: DropdownOption) => string | null | undefined) | null>(null);
     selected = input<MultiStateSelection | string[]>([]);
     
     selectionChange = output<MultiStateSelection | readonly string[]>();
@@ -217,6 +218,23 @@ export class MultiSelectDropdownComponent {
             return nameFiltered.filter(option => option.available !== false || this.isSelected(option.name));
         }
         return nameFiltered;
+    });
+
+    optionSectionBreakIndexes = computed(() => {
+        const getSection = this.optionSection();
+        const options = this.filteredOptions();
+        const sectionBreakIndexes = new Set<number>();
+        if (!getSection || options.length < 2) return sectionBreakIndexes;
+
+        let previousSection = getSection(options[0]);
+        for (let index = 1; index < options.length; index++) {
+            const currentSection = getSection(options[index]);
+            if (currentSection && previousSection && currentSection !== previousSection) {
+                sectionBreakIndexes.add(index);
+            }
+            previousSection = currentSection;
+        }
+        return sectionBreakIndexes;
     });
 
     useVirtualScroll = computed(() => this.options().length >= this.virtualScrollThreshold);

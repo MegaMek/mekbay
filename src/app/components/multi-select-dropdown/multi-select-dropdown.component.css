@@ -141,6 +141,10 @@
     -webkit-overflow-scrolling: touch;
 }
 
+.option-item.option-section-start {
+    border-top: 1px solid var(--border-color);
+}
+
 .options-viewport .option-item {
     align-items: center;
     height: var(--virtual-option-height);
