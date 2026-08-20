@@ -166,8 +166,6 @@ export class ASPrintUtil {
                 triggerPrint,
                 onMount: () => {
                     appRef.tick();
-                    detachViews();
-                    restoreUnits();
                 },
                 onCleanup: cleanup,
             });
