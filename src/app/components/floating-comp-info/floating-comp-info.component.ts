@@ -7,7 +7,7 @@ import { Component, input, computed, inject, ChangeDetectionStrategy } from '@an
 import type { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import type { Unit } from '../../models/units.model';
-import { AmmoEquipment, type Equipment, WeaponEquipment } from '../../models/equipment.model';
+import { AmmoEquipment, type Equipment, formatEquipmentRulesRefs, WeaponEquipment } from '../../models/equipment.model';
 import { TechDate, TechAdvancementDates, techDateYear, formatTechDate } from '../../models/entity';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 import { CBTGameRulesService } from '../../services/cbt-game-rules.service';
@@ -237,7 +237,7 @@ export class FloatingCompInfoComponent {
                     { label: 'Cost', value: eq.cost },
                     { label: 'Tonnage', value: eq.tonnage },
                     { label: 'Criticals', value: eq.critSlots },
-                    { label: 'Reference', value: eq.rulesRefs }
+                    { label: 'Reference', value: formatEquipmentRulesRefs(eq.rulesRefs) }
                 ]
             },
             {

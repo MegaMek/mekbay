@@ -13,6 +13,12 @@ interface TestPrintLayout {
 }
 
 describe('ASPrintUtil', () => {
+    afterEach(() => {
+        window.dispatchEvent(new Event('afterprint'));
+        document.getElementById('as-multipage-container')?.remove();
+        document.body.classList.remove('as-multipage-container-active');
+    });
+
     it('keeps the standard 2 by 4 layout as the default-size preset', () => {
         const layout = getPrintLayout('standard');
         const styles = getFixedPrintStyles('none', 'standard');
@@ -131,17 +137,74 @@ describe('ASPrintUtil', () => {
         );
 
         expect(renderedHeat).toEqual([0, 0]);
-        expect(unit.update).toHaveBeenCalledWith(serialized);
-        expect(heat).toBe(2);
-        expect(pendingHeat).toBe(1);
-        expect(unit.disabledSaving).toBeFalse();
+        expect(unit.update).not.toHaveBeenCalled();
+        expect(heat).toBe(0);
+        expect(pendingHeat).toBe(0);
+        expect(unit.disabledSaving).toBeTrue();
 
         window.dispatchEvent(new Event('afterprint'));
 
+        expect(unit.update).toHaveBeenCalledWith(serialized);
         expect(unit.update).toHaveBeenCalledTimes(1);
         expect(heat).toBe(2);
         expect(pendingHeat).toBe(1);
         expect(unit.disabledSaving).toBeFalse();
+    });
+
+    it('keeps dynamically rendered card hosts mounted until print cleanup', async () => {
+        const cardHost = document.createElement('alpha-strike-card');
+        const hostView = {};
+        const destroy = jasmine.createSpy('destroy');
+        const createContainer = (options: { componentRefs: unknown[] }) => {
+            const overlay = document.createElement('div');
+            overlay.id = 'as-multipage-container';
+            const cardCell = document.createElement('div');
+            cardCell.className = 'as-card-cell';
+            cardCell.appendChild(cardHost);
+            overlay.appendChild(cardCell);
+            options.componentRefs.push({ hostView, destroy });
+            return overlay;
+        };
+        spyOn<any>(ASPrintUtil, 'createFixedPrintContainer').and.callFake(createContainer);
+        spyOn<any>(ASPrintUtil, 'createFlexPrintContainer').and.callFake(createContainer);
+
+        const detachView = jasmine.createSpy('detachView').and.callFake(() => cardHost.remove());
+        const appRef = {
+            tick: jasmine.createSpy('tick'),
+            detachView,
+        };
+        const unit = {
+            disabledSaving: false,
+            serialize: () => ({ state: 'original' }),
+            update: jasmine.createSpy('update'),
+            repairAll: jasmine.createSpy('repairAll'),
+            getUnit: () => ({ as: { TP: 'BM' } }),
+        };
+        const group = { units: () => [unit] };
+
+        await ASPrintUtil.multipagePrint(
+            appRef as never,
+            {} as never,
+            {} as never,
+            [group] as never,
+            {
+                clean: true,
+                ASPrintPageBreakOnGroups: false,
+                ASPrintCardSize: 'standard',
+                printMargin: 'none',
+            },
+            false,
+        );
+
+        expect(document.querySelector('#as-multipage-container alpha-strike-card')).toBe(cardHost);
+        expect(detachView).not.toHaveBeenCalled();
+        expect(destroy).not.toHaveBeenCalled();
+
+        window.dispatchEvent(new Event('afterprint'));
+
+        expect(detachView).toHaveBeenCalledOnceWith(hostView);
+        expect(destroy).toHaveBeenCalledTimes(1);
+        expect(document.getElementById('as-multipage-container')).toBeNull();
     });
 
     it('restores unit state and removes the overlay when rendering fails', async () => {

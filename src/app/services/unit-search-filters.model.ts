@@ -539,7 +539,7 @@ export const SORT_OPTIONS: SortOption[] = [
     { key: 'name', label: 'Name' },
     ...ADVANCED_FILTERS
         .filter(f => f.type !== AdvFilterType.BOOLEAN)
-        .filter(f => !['era', 'faction', 'availabilityRarity', 'availabilityFrom', 'forcePack', 'componentName', 'weaponType', 'source', '_tags', 'as.specials', 'name', 'chassis', 'model', 'as._motive', 'quirks', 'features'].includes(f.key))
+        .filter(f => !['era', 'faction', 'availabilityRarity', 'availabilityFrom', 'forcePack', 'componentName', 'weaponType', 'source', 'rulesRefs', '_tags', 'as.specials', 'name', 'chassis', 'model', 'as._motive', 'quirks', 'features'].includes(f.key))
         .map(f => ({
             key: f.key,
             label: f.label,
