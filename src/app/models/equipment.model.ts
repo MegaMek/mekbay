@@ -41,6 +41,19 @@ export type WeaponCategory = 'energy' | 'missile' | 'ballistic' | 'artillery' | 
 
 export type WeaponDamageUnit = 'missile' | 'shot' | 'artillery';
 
+/** A rulebook containing rules for an equipment entry, optionally at a specific page. */
+export interface EquipmentRulesReference {
+    readonly book: string;
+    readonly page?: number | null;
+}
+
+/** Formats equipment rule references for display. */
+export function formatEquipmentRulesRefs(references: readonly EquipmentRulesReference[]): string {
+    return references
+        .map(reference => reference.page == null ? reference.book : `${reference.book}, ${reference.page}`)
+        .join('; ');
+}
+
 /** Resolved damage values, using zero when the source has no intrinsic numeric damage. */
 export interface WeaponDamage {
     readonly values: readonly number[];
@@ -306,7 +319,7 @@ export interface EquipmentRawData {
     name: string;
     shortName?: string;
     sortingName?: string;
-    rulesRefs?: string;
+    rulesRefs?: EquipmentRulesReference[];
     aliases?: string[];
     stats?: Partial<EquipmentStats>;
     tech?: Partial<WireEquipmentTechData>;
@@ -432,7 +445,7 @@ export class Equipment {
     readonly name: string;
     readonly shortName: string;
     readonly sortingName: string;
-    readonly rulesRefs: string;
+    readonly rulesRefs: EquipmentRulesReference[];
     readonly aliases: string[];
     protected readonly stats: EquipmentStats;
     readonly tech: TechData;
@@ -446,7 +459,7 @@ export class Equipment {
         this.name = data.name;
         this.shortName = data.shortName ?? data.name;
         this.sortingName = data.sortingName ?? data.name;
-        this.rulesRefs = data.rulesRefs ?? '';
+        this.rulesRefs = Array.isArray(data.rulesRefs) ? data.rulesRefs : [];
         this.aliases = data.aliases ?? [];
         this.type = data.type;
         this.modes = data.modes ?? [];
