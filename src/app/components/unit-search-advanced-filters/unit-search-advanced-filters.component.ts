@@ -17,6 +17,7 @@ import type { FormationSearchTarget } from '../../utils/formation-requirement.mo
 import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import { normalizeUnitSearchRange, rangeFilterAllowsFloatingValues } from '../../utils/unit-search-range-dialog.util';
+import { isBaseRulesRef } from '../../utils/rules-ref.util';
 import { MultiSelectDropdownComponent, type DropdownOption, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { SemanticGuideComponent } from '../semantic-guide/semantic-guide.component';
@@ -56,6 +57,7 @@ export class UnitSearchAdvancedFiltersComponent {
     readonly megaMekAvailabilitySourceSelected = computed(() => this.optionsService.options().availabilitySource === 'megamek');
     readonly gridTemplateColumns = computed(() => this.columnsCount() === 2 ? '1fr 1fr' : '1fr');
     readonly formationTargetOptions = computed<DropdownOption[]>(() => this.filtersService.getFormationTargetOptions(this.filterGameSystem()));
+    readonly rulesRefOptionSection = (option: DropdownOption): string => isBaseRulesRef(option.name) ? 'base' : 'non-base';
     readonly selectedFormationTarget = computed<string[]>(() => {
         const options = this.formationTargetOptions();
         const semanticTargetId = this.filtersService.semanticFormationTargetId();

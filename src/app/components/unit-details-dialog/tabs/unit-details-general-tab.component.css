@@ -432,6 +432,62 @@
     white-space: nowrap;
 }
 
+.rules-ref-badges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+}
+
+.rules-ref-bucket {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.rules-ref-operator {
+    color: var(--text-color-secondary);
+}
+
+.rules-ref-more {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-color-secondary);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.8em;
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+}
+
+.rules-ref-more:hover,
+.rules-ref-more:focus-visible {
+    color: var(--text-color);
+    text-decoration-style: solid;
+}
+
+.rules-ref-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border: 1px solid var(--semantic-color);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--semantic-color) 18%, transparent);
+    color: var(--semantic-color-highlight);
+    font-size: 0.8em;
+    font-weight: bold;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.rules-ref-badge.base-rules-ref {
+    border-color: var(--bt-yellow);
+    background: var(--bt-yellow-background);
+    color: var(--bt-yellow);
+}
+
 .bottom-info .sarna-link {
     display: flex;
     margin-top: 6px;
