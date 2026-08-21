@@ -37,6 +37,10 @@ const CATCH_ALL_FACTIONS: Record<string, string> = {
 const PREFIX_CATCH_ALL = 'Star League General';
 const PREFIX_CATCH_ALL_PREFIX = 'Star League';
 
+function isCatchAllFaction(name: string): boolean {
+    return CATCH_ALL_FACTIONS[name] !== undefined || name === PREFIX_CATCH_ALL;
+}
+
 interface FactionMegaMekAvailability {
     source: MegaMekAvailabilityFrom;
     rarity: typeof MEGAMEK_AVAILABILITY_RARITY_OPTIONS[number];
@@ -101,7 +105,7 @@ export class UnitDetailsFactionTabComponent {
         );
 
         return this.unitAvailabilitySource.useMegaMekAvailability()
-            ? this.buildMegaMekFactionAvailability(allEras, allFactions, megaMekAvailabilityByEraFaction)
+            ? this.buildMegaMekFactionAvailability(u, allEras, allFactions, megaMekAvailabilityByEraFaction)
             : this.buildMulFactionAvailability(u, allEras, allFactions, megaMekAvailabilityByEraFaction);
     });
 
@@ -182,6 +186,7 @@ export class UnitDetailsFactionTabComponent {
     }
 
     private buildMegaMekFactionAvailability(
+        unit: Unit,
         eras: readonly Era[],
         factions: readonly Faction[],
         megaMekAvailabilityByEraFaction: ReadonlyMap<number, ReadonlyMap<number, readonly FactionMegaMekAvailability[]>>,
@@ -195,7 +200,10 @@ export class UnitDetailsFactionTabComponent {
 
             for (const [factionId, details] of eraAvailability.entries()) {
                 const faction = factionById.get(factionId);
-                if (!faction) {
+                if (
+                    !faction
+                    || (isCatchAllFaction(faction.name) && !faction.eras[eraId]?.has(unit.id))
+                ) {
                     continue;
                 }
 
@@ -356,7 +364,7 @@ export class UnitDetailsFactionTabComponent {
 
         for (const faction of matchingFactions) {
             const megaMekTooltip = this.buildFactionMegaMekTooltip(faction);
-            if (CATCH_ALL_FACTIONS[faction.name] || faction.name === PREFIX_CATCH_ALL) {
+            if (isCatchAllFaction(faction.name)) {
                 factions.push({
                     name: faction.name,
                     img: faction.img,
