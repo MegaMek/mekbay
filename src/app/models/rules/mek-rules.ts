@@ -822,7 +822,7 @@ export class MekRules extends UnitTypeRulesBase {
         if (damagedEngineHeat > 0) {
             sources.push({
                 id: 'damaged-engine',
-                label: 'Damaged Engine',
+                label: 'Engine',
                 value: damagedEngineHeat,
                 signature: this.damagedEngineSignature(),
             });
