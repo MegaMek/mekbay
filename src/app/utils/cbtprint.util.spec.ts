@@ -6,6 +6,7 @@ import { CBTPrintUtil } from './cbtprint.util';
 import { WeaponEquipment } from '../models/equipment.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { INVENTORY_CONTROL_MODE_STATE } from './inventory-control.util';
+import { waitForPrintImages } from './print-overlay.util';
 
 describe('CBTPrintUtil', () => {
     it('keeps the injected HTML fluff image visible when it loads successfully', async () => {
@@ -148,39 +149,25 @@ describe('CBTPrintUtil', () => {
         expect(svg.getElementById('bv')?.textContent).toBe('1500 (1000)');
     });
 
-    it('omits both the pilot name and skills from a roster row when pilot data is disabled', () => {
-        const forceUnit = {
-            alias: () => 'Morgan & Co.',
-            gunnerySkill: () => 3,
-            pilotingSkill: () => 4,
-            getBv: () => 1234,
-            getBaseBv: () => 1000,
-            getPreSkillBv: () => 1150,
-            getUnit: () => ({
-                chassis: 'Atlas',
-                model: 'AS7-D',
-                type: 'Mek',
-                subtype: 'Mek',
-                role: 'Juggernaut',
-                bv: 1000,
-                tons: 100,
-                level: 'Standard',
-                comp: []
-            })
-        };
+    it('builds a sheets-only print container', async () => {
+        await generateMultipagePrintContainer(
+            ['<svg xmlns="http://www.w3.org/2000/svg"></svg>'],
+            'none',
+            false,
+        );
 
-        const withoutPilotData = createRosterTableRow(forceUnit, false);
-        const withPilotData = createRosterTableRow(forceUnit, true);
+        const overlay = document.getElementById('multipage-container')!;
+        expect(overlay.querySelectorAll('.svg-container')).toHaveSize(1);
+        expect(overlay.querySelector('.cbt-roster-summary')).toBeNull();
 
-        expect(withoutPilotData).toContain('<div class="cbt-roster-unit-chassis">Atlas</div>');
-        expect(withoutPilotData).toContain('<td class="col-gp is-numeric"></td>');
-        expect(withoutPilotData).not.toContain('Morgan');
-        expect(withoutPilotData).not.toContain('3/4');
-        expect(withoutPilotData).toContain('<td class="col-bv is-numeric is-bold">1,000</td>');
-        expect(withoutPilotData).not.toContain('<td class="col-bv is-numeric is-bold">1,234</td>');
-        expect(withPilotData).toContain('Atlas (Morgan &amp; Co.)');
-        expect(withPilotData).toContain('<td class="col-gp is-numeric">3/4</td>');
-        expect(withPilotData).toContain('<td class="col-bv is-numeric is-bold">1,234</td>');
+        window.dispatchEvent(new Event('click'));
+    });
+
+    it('adds px only to unitless SVG font sizes', () => {
+        expect(normalizeFontSizeUnits('font-size: 12; font-size: 14px; font-size: 75%'))
+            .toBe('font-size: 12px; font-size: 14px; font-size: 75%');
+        expect(normalizeFontSizeUnits('font-size: 10.5'))
+            .toBe('font-size: 10.5px');
     });
 });
 
@@ -211,9 +198,13 @@ function createPilotDataSvg(): SVGSVGElement {
 }
 
 function waitForSvgImagesToLoad(root: ParentNode): Promise<void> {
-    return (CBTPrintUtil as unknown as {
-        waitForSvgImagesToLoad(root: ParentNode): Promise<void>;
-    }).waitForSvgImagesToLoad(root);
+    return waitForPrintImages(root, image => fallbackFluffImageToReferenceTables(image));
+}
+
+function fallbackFluffImageToReferenceTables(image: Element): void {
+    (CBTPrintUtil as unknown as {
+        fallbackFluffImageToReferenceTables(image: Element): void;
+    }).fallbackFluffImageToReferenceTables(image);
 }
 
 function createInventoryEntryWithModes(): SVGElement {
@@ -240,8 +231,22 @@ function applyPilotDataPrintOption(svg: SVGSVGElement, printPilotData: boolean, 
     }).applyPilotDataPrintOption(svg, printPilotData, baseBv);
 }
 
-function createRosterTableRow(forceUnit: unknown, printPilotData: boolean): string {
+function generateMultipagePrintContainer(
+    svgStrings: string[],
+    printMargin: 'none' | 'browserDefined',
+    triggerPrint: boolean,
+): Promise<void> {
     return (CBTPrintUtil as unknown as {
-        createRosterTableRow(forceUnit: unknown, printPilotData: boolean): string;
-    }).createRosterTableRow(forceUnit, printPilotData);
+        generateMultipagePrintContainer(
+            svgStrings: string[],
+            printMargin: 'none' | 'browserDefined',
+            triggerPrint: boolean,
+        ): Promise<void>;
+    }).generateMultipagePrintContainer(svgStrings, printMargin, triggerPrint);
+}
+
+function normalizeFontSizeUnits(style: string): string {
+    return (CBTPrintUtil as unknown as {
+        normalizeFontSizeUnits(style: string): string;
+    }).normalizeFontSizeUnits(style);
 }

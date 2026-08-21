@@ -21,6 +21,7 @@ import { WsService, type ForceUpdateSource } from './ws.service';
 import { ToastService } from './toast.service';
 import { LoggerService } from './logger.service';
 import { OptionsService } from './options.service';
+import { AsAbilityLookupService } from './as-ability-lookup.service';
 import { LoadForceEntry, type LoadForceUnit } from '../models/load-force-entry.model';
 import { ForceLoadDialogComponent, type ForceLoadDialogResult } from '../components/force-load-dialog/force-load-dialog.component';
 import { ForcePackDialogComponent, type ForcePackDialogResult } from '../components/force-pack-dialog/force-pack-dialog.component';
@@ -42,7 +43,9 @@ import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import type { ResolvedPack } from '../utils/force-pack.util';
 import { buildMultiForceQueryParams, parseForceFromUrl, type ForceQueryParams, type ForceUrlUnitLookupMode } from '../utils/force-url.util';
 import { CBTPrintUtil } from '../utils/cbtprint.util';
+import { CBTSummaryPrintUtil } from '../utils/cbt-summary-print.util';
 import { ASPrintUtil } from '../utils/asprint.util';
+import { ASSummaryPrintUtil } from '../utils/as-summary-print.util';
 import type { ForceSlot, ForceAlignment } from '../models/force-slot.model';
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
@@ -1770,13 +1773,23 @@ export class ForceBuilderService {
         const ref = this.dialogsService.createDialog<PrintAllOptions | null>(PrintOptionsDialogComponent, {
             disableClose: false,
             data: {
-                gameSystem: currentForce instanceof CBTForce ? GameSystem.CLASSIC : GameSystem.ALPHA_STRIKE
+                gameSystem: currentForce.gameSystem,
+                printSummary: async (printOptions: PrintAllOptions) => {
+                    if (currentForce instanceof CBTForce) {
+                        await CBTSummaryPrintUtil.print(currentForce, printOptions);
+                    } else if (currentForce instanceof ASForce) {
+                        await ASSummaryPrintUtil.print(
+                            currentForce,
+                            this.injector.get(AsAbilityLookupService),
+                            this.optionsService.options().ASUseHex,
+                            printOptions,
+                        );
+                    }
+                },
             }
         });
         const printOptions = await firstValueFrom(ref.closed);
         if (!printOptions) return;
-
-        // Lazy-inject UI services to avoid circular dependencies
         if (currentForce instanceof CBTForce) {
             await CBTPrintUtil.multipagePrint({
                 dataService: this.dataService,
@@ -1785,7 +1798,7 @@ export class ForceBuilderService {
             }, currentForce.units(), printOptions);
         } else if (currentForce instanceof ASForce) {
             const appRef = this.injector.get(ApplicationRef);
-            await ASPrintUtil.multipagePrint(appRef, this.injector, this.optionsService, currentForce.groups(), printOptions, true, currentForce);
+            await ASPrintUtil.multipagePrint(appRef, this.injector, this.optionsService, currentForce.groups(), printOptions);
         }
     }
 

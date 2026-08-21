@@ -34,6 +34,23 @@ describe('PrintOptionsDialogComponent', () => {
         expect(dialogRef.close).toHaveBeenCalledWith(jasmine.objectContaining({ printPilotData: false }));
     });
 
+    it('shows Classic actions and prints the summary without closing', async () => {
+        const { fixture, dialogRef, optionsService, printSummary } = createComponent(GameSystem.CLASSIC);
+        fixture.detectChanges();
+
+        const buttons = getActionButtons(fixture.nativeElement);
+        expect(buttons.map(button => button.textContent?.trim())).toEqual(['SHEETS', 'SUMMARY', 'DISMISS']);
+        expect(buttons[0].classList).toContain('primary');
+        expect(buttons[1].classList).not.toContain('primary');
+
+        buttons[1].click();
+        await fixture.whenStable();
+
+        expect(optionsService.setOption).toHaveBeenCalledWith('printAllOptions', jasmine.any(Object));
+        expect(printSummary).toHaveBeenCalledWith(jasmine.any(Object));
+        expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
     it('does not show the CBT-only Pilot data option for Alpha Strike', () => {
         const { fixture } = createComponent(GameSystem.ALPHA_STRIKE);
         fixture.detectChanges();
@@ -52,6 +69,50 @@ describe('PrintOptionsDialogComponent', () => {
             'Standard (8 per page)',
             'Enlarged (4 per page)'
         ]);
+    });
+
+    it('shows Alpha Strike actions and prints the summary without closing', async () => {
+        const { fixture, dialogRef, printSummary } = createComponent(GameSystem.ALPHA_STRIKE);
+        fixture.detectChanges();
+
+        const buttons = getActionButtons(fixture.nativeElement);
+        expect(buttons.map(button => button.textContent?.trim())).toEqual(['CARDS', 'SUMMARY', 'DISMISS']);
+        expect(buttons[0].classList).toContain('primary');
+        expect(buttons[1].classList).not.toContain('primary');
+
+        buttons[1].click();
+        await fixture.whenStable();
+
+        expect(printSummary).toHaveBeenCalledWith(jasmine.any(Object));
+        expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    it('ignores repeated print requests while a summary is being prepared', async () => {
+        const { fixture, printSummary } = createComponent(GameSystem.ALPHA_STRIKE);
+        let finishPrinting!: () => void;
+        printSummary.and.returnValue(new Promise<void>(resolve => {
+            finishPrinting = resolve;
+        }));
+        fixture.detectChanges();
+        const summaryButton = getActionButtons(fixture.nativeElement)[1];
+        const component = fixture.componentInstance as unknown as {
+            onPrintSummary(): Promise<void>;
+        };
+
+        const firstPrint = component.onPrintSummary();
+        const repeatedPrint = component.onPrintSummary();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(printSummary).toHaveBeenCalledTimes(1);
+        fixture.detectChanges();
+        expect(summaryButton.disabled).toBeTrue();
+
+        finishPrinting();
+        await Promise.all([firstPrint, repeatedPrint]);
+        fixture.detectChanges();
+        expect(summaryButton.disabled).toBeFalse();
     });
 
     it('returns the enlarged Alpha Strike card size with the print options', async () => {
@@ -98,7 +159,6 @@ describe('PrintOptionsDialogComponent', () => {
         const expected: PrintAllOptions = {
             clean: false,
             printPilotData: true,
-            printRosterSummary: false,
             recordSheetCenterPanelContent: 'clusterTable',
             ASPrintPageBreakOnGroups: true,
             ASPrintCardSize: 'standard',
@@ -116,12 +176,12 @@ function createComponent(
     optionOverrides: { printAllOptions?: Partial<PrintAllOptions> } = {},
 ) {
     const dialogRef = { close: jasmine.createSpy('close') };
+    const printSummary = jasmine.createSpy('printSummary').and.resolveTo();
     const optionsService = {
         options: () => ({
             printAllOptions: {
                 clean: false,
                 printPilotData: true,
-                printRosterSummary: false,
                 recordSheetCenterPanelContent: 'clusterTable',
                 ASPrintPageBreakOnGroups: true,
                 ASPrintCardSize: 'standard',
@@ -136,7 +196,7 @@ function createComponent(
         imports: [PrintOptionsDialogComponent],
         providers: [
             { provide: DialogRef, useValue: dialogRef },
-            { provide: DIALOG_DATA, useValue: { gameSystem } },
+            { provide: DIALOG_DATA, useValue: { gameSystem, printSummary } },
             { provide: OptionsService, useValue: optionsService }
         ]
     });
@@ -144,6 +204,11 @@ function createComponent(
     return {
         fixture: TestBed.createComponent(PrintOptionsDialogComponent),
         dialogRef,
-        optionsService
+        optionsService,
+        printSummary,
     };
+}
+
+function getActionButtons(root: HTMLElement): HTMLButtonElement[] {
+    return Array.from(root.querySelectorAll<HTMLButtonElement>('.wide-dialog-actions .bt-button'));
 }
