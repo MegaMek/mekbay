@@ -97,6 +97,29 @@ describe('buildWorkerExecutionQuery', () => {
         expect(executionQuery).toContain('weaponType&=AE');
         expect(parseSemanticQueryAST(executionQuery, GameSystem.CLASSIC).errors).toEqual([]);
     });
+
+    it('serializes plain rulebook selections for worker execution', () => {
+        const executionQuery = buildWorkerExecutionQuery({
+            effectiveFilterState: {
+                rulesRefs: {
+                    value: ['TW', 'Shrap01', 'AAA'],
+                    interactedWith: true,
+                },
+            },
+            effectiveTextSearch: '',
+            gameSystem: GameSystem.CLASSIC,
+            totalRangesCache: {},
+        });
+
+        expect(executionQuery).toBe('rulesRefs=TW,Shrap01,AAA');
+        expect(parseSemanticQueryAST(executionQuery, GameSystem.CLASSIC).tokens).toEqual([
+            jasmine.objectContaining({
+                field: 'rulesrefs',
+                operator: '=',
+                values: ['TW', 'Shrap01', 'AAA'],
+            }),
+        ]);
+    });
 });
 
 describe('getWorkerCorpusSnapshot', () => {

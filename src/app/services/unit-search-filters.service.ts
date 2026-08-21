@@ -172,6 +172,7 @@ export class UnitSearchFiltersService {
     /** Display name resolvers that need service dependencies (can't be defined in static config) */
     private readonly displayNameFns: Partial<Record<string, (v: string) => string>> = {
         'source': (v) => this.dataService.getSourcebookTitle(v),
+        'rulesRefs': (v) => this.dataService.getSourcebookTitle(v),
     };
 
     private buildIndexedDropdownOptions(
@@ -2185,7 +2186,7 @@ export class UnitSearchFiltersService {
         const definitions: FormationTypeDefinition[] = [];
         const seen = new Set<string>();
 
-        for (const definition of getFormationDefinitions()) {
+        for (const definition of getFormationDefinitions(gameSystem)) {
             if (!FormationRequirementEngine.hasBlueprint(definition.id)) {
                 continue;
             }

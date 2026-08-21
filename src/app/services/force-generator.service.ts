@@ -6568,7 +6568,7 @@ export class ForceGeneratorService implements OnDestroy {
 
             selectionSteps.push(this.createSelectionStep(candidate, rulesetProfile, stepOverrides, preparedSelection));
         };
-        const hasMatchedPairConstraints = this.getMatchedPairConstraintIds(definition.id).size > 0;
+        const hasMatchedPairConstraints = this.getMatchedPairConstraintIds(definition.id, options.gameSystem).size > 0;
         const allowUnlimitedDuplicateUnits = this.canReuseCandidateCopies(preventDuplicateChassis, targetCandidates);
         let candidatePoolStarved = false;
 
@@ -6762,7 +6762,7 @@ export class ForceGeneratorService implements OnDestroy {
             return null;
         }
 
-        const matchedPairConstraintIds = this.getMatchedPairConstraintIds(definition.id);
+        const matchedPairConstraintIds = this.getMatchedPairConstraintIds(definition.id, options.gameSystem);
         if (matchedPairConstraintIds.size === 0) {
             return null;
         }
@@ -6859,9 +6859,9 @@ export class ForceGeneratorService implements OnDestroy {
         return capacity;
     }
 
-    private getMatchedPairConstraintIds(formationId: string): Set<string> {
+    private getMatchedPairConstraintIds(formationId: string, gameSystem: GameSystem): Set<string> {
         const result = new Set<string>();
-        this.collectMatchedPairConstraintIds(getFormationBlueprint(formationId)?.constraints ?? [], result);
+        this.collectMatchedPairConstraintIds(getFormationBlueprint(formationId, gameSystem)?.constraints ?? [], result);
         return result;
     }
 
@@ -7509,7 +7509,7 @@ export class ForceGeneratorService implements OnDestroy {
         return this.filterCandidatesByPredicateFilter(
             candidates,
             options,
-            FormationRequirementEngine.getBaseCandidatePredicateFilter(definition),
+            FormationRequirementEngine.getBaseCandidatePredicateFilter(definition, options.gameSystem),
             false,
         );
     }

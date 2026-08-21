@@ -21,6 +21,7 @@ import {
     getSelectedPositiveDropdownNames,
     getUnitCountableFilterData,
     normalizeMultiStateSelection,
+    unitMatchesRulesRefsSelection,
 } from './unit-search-shared.util';
 import { getUnitVariantGroupKey } from './unit-variant.util';
 import { isCountableBackedDropdown } from './unit-search-filter-config.util';
@@ -279,6 +280,19 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
                 const expectedValue = booleanFilterValue === 'or';
                 results = results.filter(unit => (
                     getBooleanFilterUnitValue(conf, dependencies.getProperty(unit, conf.key)) === expectedValue
+                ));
+            }
+            continue;
+        }
+
+        if (conf.type === AdvFilterType.DROPDOWN && conf.key === 'rulesRefs') {
+            const selectedRulesRefs = Array.isArray(val)
+                ? val.filter((value): value is string => typeof value === 'string')
+                : [];
+            if (selectedRulesRefs.length > 0) {
+                results = results.filter(unit => unitMatchesRulesRefsSelection(
+                    dependencies.getProperty(unit, conf.key),
+                    selectedRulesRefs,
                 ));
             }
             continue;

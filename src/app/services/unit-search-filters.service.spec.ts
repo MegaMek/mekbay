@@ -4965,11 +4965,52 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.queryParameters()['filters']).toBe(`as.specials:"${special}"`);
     });
 
-    it('declares indexed dropdown capabilities for source, faction, and era', () => {
+    it('matches units when the selected rulebooks cover a complete bucket', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].name = 'Unit A';
+        bundle.units.units[0].rulesRefs = [['Core'], ['TW', 'IO:AE']];
+        bundle.units.units[1].name = 'Unit B';
+        bundle.units.units[1].rulesRefs = [['TW', 'Shrap01', 'AAA'], ['TM', 'Shrap01']];
+
+        const { service } = createService(bundle);
+        const rulebookOptions = service.advOptions()['rulesRefs']?.options ?? [];
+        expect(rulebookOptions.filter(option => typeof option !== 'number').map(option => option.name))
+            .toEqual(['Core', 'TM', 'TW', 'AAA', 'IO:AE', 'Shrap01']);
+
+        service.setFilter('rulesRefs', ['Core']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit A']);
+
+        service.setFilter('rulesRefs', ['TW', 'Shrap01']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual([]);
+
+        service.setFilter('rulesRefs', ['TW']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual([]);
+
+        service.setFilter('rulesRefs', ['TW', 'IO:AE']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit A']);
+
+        service.setFilter('rulesRefs', ['TW', 'Shrap01', 'AAA']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit B']);
+
+        service.setFilter('rulesRefs', ['IO:AE']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit A']);
+
+        service.setFilter('rulesRefs', ['Shrap01']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Unit B']);
+
+        service.setFilter('rulesRefs', ['AAA']);
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual([]);
+    });
+
+    it('declares indexed dropdown capabilities for rules references, source, faction, and era', () => {
+        const rulesRefsConfig = getAdvancedFilterConfigByKey('rulesRefs');
         const sourceConfig = getAdvancedFilterConfigByKey('source');
         const factionConfig = getAdvancedFilterConfigByKey('faction');
         const eraConfig = getAdvancedFilterConfigByKey('era');
 
+        expect(rulesRefsConfig?.multistate).toBeFalsy();
+        expect(usesIndexedDropdownUniverse(rulesRefsConfig)).toBeTrue();
+        expect(usesIndexedDropdownAvailability(rulesRefsConfig)).toBeTrue();
         expect(usesIndexedDropdownUniverse(sourceConfig)).toBeTrue();
         expect(usesIndexedDropdownAvailability(sourceConfig)).toBeTrue();
         expect(usesIndexedDropdownUniverse(factionConfig)).toBeTrue();

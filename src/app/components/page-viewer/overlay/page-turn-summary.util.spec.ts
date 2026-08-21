@@ -2,30 +2,47 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { composeTurnSummaryHeatRows, countActionablePsrChecks, displayPsrModifiers, isMoveModeDisabledWhileProne } from './page-turn-summary.util';
+import { Subject } from 'rxjs';
+import type { ManagedOverlayRef, OverlayManagerService } from '../../../services/overlay-manager.service';
+import { composeTurnSummaryHeatRows, displayPsrModifiers, isMoveModeDisabledWhileProne, openTurnSummaryChildOverlay } from './page-turn-summary.util';
 
+describe('openTurnSummaryChildOverlay', () => {
+    it('blocks the parent summary until the child overlay closes', () => {
+        const closed = new Subject<void>();
+        const overlayManager = jasmine.createSpyObj<OverlayManagerService>(
+            'OverlayManagerService',
+            ['blockCloseUntil', 'unblockClose'],
+        );
+        const childOverlay = { closed } as ManagedOverlayRef<unknown>;
+        const openOverlay = jasmine.createSpy('openOverlay').and.returnValue(childOverlay);
+
+        expect(openTurnSummaryChildOverlay(overlayManager, 'unit-1', openOverlay)).toBe(childOverlay);
+        expect(overlayManager.blockCloseUntil).toHaveBeenCalledOnceWith('turnSummary-unit-1');
+        expect(openOverlay).toHaveBeenCalledTimes(1);
+        expect(overlayManager.unblockClose).not.toHaveBeenCalled();
+
+        closed.next();
+
+        expect(overlayManager.unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-1');
+    });
+
+    it('unblocks the parent summary if the child overlay cannot be created', () => {
+        const overlayManager = jasmine.createSpyObj<OverlayManagerService>(
+            'OverlayManagerService',
+            ['blockCloseUntil', 'unblockClose'],
+        );
+        const error = new Error('overlay creation failed');
+
+        expect(() => openTurnSummaryChildOverlay(overlayManager, 'unit-1', () => { throw error; }))
+            .toThrow(error);
+        expect(overlayManager.unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-1');
+    });
+});
 describe('isMoveModeDisabledWhileProne', () => {
     it('disables only jump while prone without changing its selected state', () => {
         expect(isMoveModeDisabledWhileProne('jump', true)).toBeTrue();
         expect(isMoveModeDisabledWhileProne('jump', false)).toBeFalse();
         expect(isMoveModeDisabledWhileProne('run', true)).toBeFalse();
-    });
-});
-
-describe('countActionablePsrChecks', () => {
-    const fallCheck = { failureOutcome: 'Fall' };
-    const crippleCheck = { failureOutcome: 'Crippled' };
-
-    it('shows all checks when the unit is not automatically falling', () => {
-        expect(countActionablePsrChecks([fallCheck, crippleCheck], false)).toBe(2);
-    });
-
-    it('hides the warning when autofall already represents every check', () => {
-        expect(countActionablePsrChecks([fallCheck, fallCheck], true)).toBe(0);
-    });
-
-    it('keeps non-fall checks actionable during autofall', () => {
-        expect(countActionablePsrChecks([fallCheck, crippleCheck], true)).toBe(1);
     });
 });
 

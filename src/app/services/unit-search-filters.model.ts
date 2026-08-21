@@ -19,6 +19,7 @@ import type {
     PvNormalizationSettings,
     UnitSearchBudgetMode,
 } from '../models/unit-search-result.model';
+import { BASE_RULES_REFS } from '../utils/rules-ref.util';
 
 /*
  *
@@ -440,6 +441,7 @@ export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
     { key: 'features', semanticKey: 'features', label: 'Features', multistate: true, game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
     { key: 'quirks', semanticKey: 'quirks', label: 'Quirks', multistate: true, game: GameSystem.CLASSIC, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
     { key: 'source', semanticKey: 'source', label: 'Source', multistate: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
+    { key: 'rulesRefs', semanticKey: 'rulesRefs', label: 'Rulebooks', game: GameSystem.CLASSIC, sortOptions: [...BASE_RULES_REFS, '*'], optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
     { key: 'forcePack', semanticKey: 'pack', label: 'Force Packs', external: true, optionSource: 'external', availabilitySource: 'context', propertyShape: 'scalar' },
     { key: '_tags', semanticKey: 'tags', label: 'Tags', multistate: true, optionSource: 'indexed', availabilitySource: 'indexed', propertyShape: 'array' },
 ]);
@@ -538,7 +540,7 @@ export const SORT_OPTIONS: SortOption[] = [
     { key: 'name', label: 'Name' },
     ...ADVANCED_FILTERS
         .filter(f => f.type !== AdvFilterType.BOOLEAN)
-        .filter(f => !['era', 'faction', 'availabilityRarity', 'availabilityFrom', 'forcePack', 'componentName', 'weaponType', 'source', '_tags', 'as.specials', 'name', 'chassis', 'model', 'as._motive', 'quirks', 'features'].includes(f.key))
+        .filter(f => !['era', 'faction', 'availabilityRarity', 'availabilityFrom', 'forcePack', 'componentName', 'weaponType', 'source', 'rulesRefs', '_tags', 'as.specials', 'name', 'chassis', 'model', 'as._motive', 'quirks', 'features'].includes(f.key))
         .map(f => ({
             key: f.key,
             label: f.label,

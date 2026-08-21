@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { GameSystem, Rulebook, RulesReference } from '../models/common.model';
-import type { ForceUnit } from '../models/force-unit.model';
+import { GameSystem, type RulesReference } from '../models/common.model';
 
 export interface FormationWideAbility {
     readonly id: string;
@@ -100,37 +99,93 @@ export interface FormationWideEffectGroup extends FormationEffectGroupBase {
     distribution: 'formation-wide';
 }
 
-export type FormationEffectGroup = FormationAssignmentEffectGroup | FormationSharedPoolEffectGroup | FormationWideEffectGroup;
+/**
+ * Copies the SPAs actually granted by another formation in the same force.
+ * The target formation is selected on the owning {@code UnitGroup}; keeping the
+ * target out of the static rule definition lets one definition serve every force.
+ */
+export interface FormationTargetCopyEffectGroup {
+    selection: 'copy';
+    distribution: 'formation-target';
+    /** How many units in the copying formation may receive copied SPAs. */
+    recipientLimit: 'one-per-two-target-recipients' | 'half-self-round-down';
+}
 
-export type FormationGameSystemText = string | ((gameSystem: GameSystem) => string);
+export type FormationEffectGroup = FormationAssignmentEffectGroup
+    | FormationSharedPoolEffectGroup
+    | FormationWideEffectGroup
+    | FormationTargetCopyEffectGroup;
 
+export function isFormationTargetCopyEffectGroup(
+    group: FormationEffectGroup,
+): group is FormationTargetCopyEffectGroup {
+    return group.distribution === 'formation-target';
+}
 
-export interface FormationTypeDefinition {
+export function formationHasTargetCopyEffect(
+    definition: FormationTypeDefinition | null | undefined,
+): boolean {
+    return definition?.effectGroups?.some(isFormationTargetCopyEffectGroup) ?? false;
+}
+
+export interface FormationTypeDefinitionCommon {
     id: string;
     parent?: string;
     name: string;
     /** Alternative formation names that should count as a whole-phrase match in custom group names. */
     nameAliases?: string[];
     description: string;
-    /** Human-readable formation bonus text, optionally specialized per game system. */
-    effectDescription?: FormationGameSystemText;
     /** Whether this formation explicitly inherits parent effect groups and parent requirement display. Defaults to false. */
     inheritParentEffects?: boolean;
+    exclusiveFaction?: string[];
+    techBase?: 'Inner Sphere' | 'Clan' | 'Special';
+}
+
+/** Rules and metadata that belong to exactly one game system. */
+export interface FormationTypeGameSystemDefinition {
+    /** Human-readable formation bonus text for this game system. */
+    effectDescription?: string;
     /** Structured SPA distribution rules for this formation's bonus ability. */
     effectGroups?: FormationEffectGroup[];
-    validator?: (units: ForceUnit[], gameSystem: GameSystem) => boolean;
-    /**
-     * Returns a human-readable description of what units/roles/weight classes
-     * are needed to qualify for this formation.
-     */
-    requirements?: (gameSystem: GameSystem) => string;
+    /** Human-readable description of what is needed to qualify for this formation. */
+    requirements?: string;
     idealRole?: string;
-    techBase?: 'Inner Sphere' | 'Clan' | 'Special';
     minUnits: number;
     maxUnits?: number;
-    exclusiveFaction?: string[];
-    /** Multiple rulebook references (e.g. CO p.62, AS:CE p.117). */
+    /** Rulebook references that apply to this game system only. */
     rulesRef?: RulesReference[];
+}
+
+/** Authored formation data: common identity plus explicit rules for both games. */
+export interface FormationTypeDefinitionSource extends FormationTypeDefinitionCommon {
+    classic: FormationTypeGameSystemDefinition;
+    alphaStrike: FormationTypeGameSystemDefinition;
+}
+
+/** A formation definition resolved for one game system. */
+export interface FormationTypeDefinition extends FormationTypeDefinitionCommon, FormationTypeGameSystemDefinition {
+    readonly gameSystem?: GameSystem;
+}
+
+export function getFormationTypeGameSystemDefinition(
+    definition: FormationTypeDefinitionSource,
+    gameSystem: GameSystem,
+): FormationTypeGameSystemDefinition {
+    return gameSystem === GameSystem.CLASSIC
+        ? definition.classic
+        : definition.alphaStrike;
+}
+
+export function resolveFormationTypeDefinition(
+    definition: FormationTypeDefinitionSource,
+    gameSystem: GameSystem,
+): FormationTypeDefinition {
+    const { classic: _classic, alphaStrike: _alphaStrike, ...common } = definition;
+    return {
+        ...common,
+        ...getFormationTypeGameSystemDefinition(definition, gameSystem),
+        gameSystem,
+    };
 }
 
 /**
@@ -197,15 +252,6 @@ export function isNoFormation(def: FormationTypeDefinition | null | undefined): 
 /** Returns `true` when this formation explicitly opts into inheriting parent effects. */
 export function formationInheritsParentEffects(def: FormationTypeDefinition | null | undefined): boolean {
     return def?.inheritParentEffects === true;
-}
-
-export function resolveFormationGameSystemText(
-    text: FormationGameSystemText | null | undefined,
-    gameSystem: GameSystem,
-): string | null {
-    if (!text) return null;
-    const resolvedText = typeof text === 'function' ? text(gameSystem) : text;
-    return resolvedText || null;
 }
 
 /**

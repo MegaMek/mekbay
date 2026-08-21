@@ -66,6 +66,60 @@ export function getUnitSourceFilterValues(unit: Pick<Unit, 'source' | 'published
     return Array.from(merged.values());
 }
 
+function normalizeRulesRefBucket(values: unknown): string[] {
+    if (!Array.isArray(values)) {
+        return [];
+    }
+
+    return Array.from(new Set(
+        values
+            .filter((value): value is string => typeof value === 'string')
+            .map(value => value.trim().toLowerCase())
+            .filter(value => value.length > 0),
+    ));
+}
+
+const BASE_RULE_BOOK_KEYS = new Set(['tw', 'tm', 'bmm', 'core']);
+
+function normalizeUnitRulesRefBuckets(values: unknown): string[][] {
+    if (!Array.isArray(values) || values.length === 0) {
+        return [];
+    }
+
+    // Accept the old flat form during the data-format transition.
+    if (values.every(value => typeof value === 'string')) {
+        const bucket = normalizeRulesRefBucket(values);
+        return bucket.length > 0 ? [bucket] : [];
+    }
+
+    return values
+        .map(normalizeRulesRefBucket)
+        .filter(bucket => bucket.length > 0);
+}
+
+/**
+ * A selection covers a unit when it contains every book from at least one of the
+ * unit's alternative rules-reference buckets. Extra selected books are harmless.
+ * When no base rulebook is selected, base books are ignored so expansion-only
+ * searches do not need to name the compatible base book as well.
+ */
+export function unitMatchesRulesRefsSelection(unitRulesRefs: unknown, selectedRulesRefs: readonly string[]): boolean {
+    const selectedRefs = new Set(normalizeRulesRefBucket(selectedRulesRefs));
+    if (selectedRefs.size === 0) {
+        return true;
+    }
+
+    const buckets = normalizeUnitRulesRefBuckets(unitRulesRefs);
+    if (Array.from(selectedRefs).some(rulesRef => BASE_RULE_BOOK_KEYS.has(rulesRef))) {
+        return buckets.some(bucket => bucket.every(rulesRef => selectedRefs.has(rulesRef)));
+    }
+
+    return buckets.some(bucket => {
+        const nonBaseBooks = bucket.filter(rulesRef => !BASE_RULE_BOOK_KEYS.has(rulesRef));
+        return nonBaseBooks.length > 0 && nonBaseBooks.every(rulesRef => selectedRefs.has(rulesRef));
+    });
+}
+
 export function getProperty(obj: any, key?: string) {
     if (!obj || !key) return undefined;
     if (key === '_tags') {

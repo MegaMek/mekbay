@@ -20,7 +20,7 @@ import {
     type FormationEffectPreview,
     type FormationSharedPoolPreview,
 } from './formation-ability-assignment.util';
-import { resolveFormationGameSystemText, type FormationWideAbility } from './formation-type.model';
+import type { FormationWideAbility } from './formation-type.model';
 
 export interface ASPrintFormationApplication {
     abilityNames: string[];
@@ -145,10 +145,7 @@ export function collectASPrintRulesReferenceData(
                 });
             }
 
-            const effectDescription = resolveFormationGameSystemText(
-                formation.effectDescription,
-                GameSystem.ALPHA_STRIKE,
-            );
+            const effectDescription = formation.effectDescription;
             formations.push({
                 groupName,
                 formationName,
@@ -678,6 +675,17 @@ function collectEffectAssignments(
 function describeFormationEffectApplication(effect: FormationEffectPreview): string {
     const group = effect.descriptor.group;
     const parts: string[] = [];
+
+    if (effect.descriptor.copiedFromFormationName) {
+        parts.push(`Copied from ${effect.descriptor.copiedFromFormationName}`);
+    }
+
+    const copiedPools = new Set(effect.descriptor.copiedSharedPoolByAbilityId?.values() ?? []);
+    for (const pool of copiedPools) {
+        parts.push(describeSharedPoolApplication(pool)
+            .replace(/^Shared formation pool/, 'Copied source pool')
+            .replace(/\.$/, ''));
+    }
 
     switch (group.selection) {
         case 'choose-one':

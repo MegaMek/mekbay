@@ -70,6 +70,7 @@ function createHarness(formation: FormationTypeDefinition, factions: Faction[]) 
     const forceUnits: ForceUnit[] = [];
     const group = {
         formation: signal<FormationTypeDefinition | null>(null),
+        formationTargetGroupId: signal<string | null>(null),
         formationLock: false,
         formationHistory: new Set<string>(['previous-automatic-match']),
         units: groupUnits,
@@ -609,6 +610,7 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
             getActiveNarcWaterLayers: () => ({ aboveWater: false, underwater: false }),
             turnState: () => ({
                 moveMode: signal(null),
+                effectiveMoveMode: signal(null),
                 moveDistance: signal<number | null>(0),
                 airborne: signal<boolean | null>(false),
                 cover: signal<UnitCover | undefined>(cover)

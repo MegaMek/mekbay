@@ -1224,7 +1224,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Vedette', 'Vedette', 'Vedette']);
     });
 
-    it('allows Vehicle Command matched-pair completion when duplicate chassis prevention is enabled', () => {
+    it('builds Vehicle Command from two distinct qualifying vehicles when duplicate chassis prevention is enabled', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Mercenary');
         registerEraAndFaction(era, faction);
@@ -1237,7 +1237,16 @@ describe('ForceGeneratorService', () => {
             role: 'Sniper',
             as: { TP: 'CV', SZ: 2, PV: 60 },
         });
-        const supportVehicles = [2, 3, 4].map((id) => createUnit({
+        const secondCommandVehicle = createUnit({
+            id: 2,
+            name: 'Command Striker',
+            chassis: 'Command Striker',
+            type: 'Tank',
+            subtype: 'Combat Vehicle',
+            role: 'Missile Boat',
+            as: { TP: 'CV', SZ: 2, PV: 60 },
+        });
+        const supportVehicles = [3, 4, 5].map((id) => createUnit({
             id,
             name: `Support Vehicle ${id}`,
             chassis: `Support Vehicle ${id}`,
@@ -1246,14 +1255,14 @@ describe('ForceGeneratorService', () => {
             role: 'Scout',
             as: { TP: 'CV', SZ: 2, PV: 60 },
         }));
-        for (const unit of [commandVehicle, ...supportVehicles]) {
+        for (const unit of [commandVehicle, secondCommandVehicle, ...supportVehicles]) {
             units.push(unit);
             addMegaMekAvailability(unit, faction, era);
         }
         spyOn(Math, 'random').and.returnValue(0);
 
         const preview = service.buildPreview({
-            eligibleUnits: [commandVehicle, ...supportVehicles],
+            eligibleUnits: [commandVehicle, secondCommandVehicle, ...supportVehicles],
             context: createContext(faction, era),
             gameSystem: GameSystem.ALPHA_STRIKE,
             budgetRange: { min: 300, max: 300 },
@@ -1270,10 +1279,10 @@ describe('ForceGeneratorService', () => {
         expect(preview.totalCost).toBe(300);
         expect(preview.units.map((unit) => unit.unit.name)).toEqual([
             'Command Vedette',
-            'Command Vedette',
-            'Support Vehicle 2',
+            'Command Striker',
             'Support Vehicle 3',
             'Support Vehicle 4',
+            'Support Vehicle 5',
         ]);
         expect(preview.explanationLines).toContain('Prevent Duplicate Chassis: on.');
     });

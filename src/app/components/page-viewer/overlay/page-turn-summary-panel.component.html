@@ -7,6 +7,10 @@
     <header id="turn-summary-title" class="panel-header">TURN TRACKER</header>
 
     <section class="summary-section" aria-label="Movement">
+        @if (showImmobileStatus()) {
+            <div class="summary-row immobile-status" role="status">Unit is immobile</div>
+        }
+        @if (showMovementControls()) {
         @if (canSwitchAirborneMode()) {
             <div class="button-row">
                 <button
@@ -26,12 +30,6 @@
             </div>
         }
 
-        @if (prone() && canStandUp()) {
-            <div class="button-row">
-                <button type="button" class="bt-button move-button" (click)="standUp($event)">Stand up!</button>
-            </div>
-        }
-
         @if (canSwitchAirborneMode() === false || airborne() !== null) {
             <div class="summary-row">
                 @for (moveMode of moveModes(); track moveMode.mode) {
@@ -40,9 +38,11 @@
                         type="button"
                         class="bt-button move-button"
                         [class.stationary]="mode === 'stationary'"
+                        [class.stationary-only]="mode === 'stationary' && onlyStationaryMoveMode()"
                         [class.selected]="currentMoveMode() === mode"
                         [class.danger]="moveMode.psr"
                         [disabled]="isMoveModeDisabled(mode)"
+                        [attr.aria-label]="mode === 'stationary' ? 'Stationary' : null"
                         [attr.aria-pressed]="currentMoveMode() === mode"
                         (click)="selectMove(mode)"
                     >
@@ -60,13 +60,35 @@
                 }
             </div>
 
+            @if (prone() && canStandUp()) {
+                <div class="button-row">
+                    <button type="button" class="bt-button move-button" [class.danger]="standUpRequiresPSR()"
+                        (click)="standUp($event)">Stand up!</button>
+                </div>
+            }
+
+            @if (standAttempts() > 0) {
+                <div class="summary-row stand-attempts-summary">
+                    <button
+                        type="button"
+                        class="stand-attempts-link"
+                        aria-haspopup="dialog"
+                        title="Review stand-up attempt details"
+                        (click)="reviewStandAttempts($event)"
+                    >
+                        Stand attempts: {{ standAttempts() }} (&minus;{{ standAttemptMovementPointsSpent() }} MP)
+                    </button>
+                </div>
+            }
+
             @if (currentMoveMode() !== 'stationary' && currentMoveMode() !== null) {
                 <div class="summary-row">
                     <hex-slider
                         class="move-slider"
                         [min]="0"
-                        [max]="moveMax()"
+                        [max]="moveCapacity()"
                         [blockedMin]="moveMin()"
+                        [blockedMax]="moveMax()"
                         [step]="1"
                         [value]="moveDistance()"
                         [ticks]="moveDistanceTicks()"
@@ -129,6 +151,7 @@
                 </div>
             }
         }
+        }
 
         <div class="button-row">
             <button
@@ -136,6 +159,7 @@
                 class="bt-button spotting-button"
                 [class.selected]="spotting()"
                 [attr.aria-pressed]="spotting()"
+                [disabled]="!canSpot()"
                 (click)="toggleSpotting()"
             >
                 <span>Spotting</span>
