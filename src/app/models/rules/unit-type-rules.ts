@@ -29,10 +29,13 @@ import type {
     UnitSystemStatusFacts,
 } from '../equipment-status.model';
 
+export type PSRCheckKind = 'damaged-leg-actuator-movement' | 'damaged-hip-movement';
+
 export interface PSRCheck {
     id?: string;
     fallCheck?: number;
     pilotCheck?: number;
+    kind?: PSRCheckKind;
     reason: string;
     modifierReason?: string;
     failureOutcome?: string;
@@ -255,6 +258,24 @@ export interface UnitTypeRules {
     /** Modifier applied specifically when this unit attempts to stand up. */
     readonly standingUpPSRModifier: number;
 
+    /** Whether this unit can stand up in its current turn state. */
+    canStandUp(turnState: TurnState): boolean;
+
+    /** Whether this unit's current configuration lets it stand without a control roll. */
+    canStandWithoutPSR(turnState: TurnState): boolean;
+
+    /** Whether this rules implementation supports the optional Careful Stand rule. */
+    readonly supportsCarefulStand: boolean;
+
+    /** Whether this unit has at least 3 available Walking MP for a careful stand attempt. */
+    canCarefulStand(turnState: TurnState): boolean;
+
+    /** Movement mode used to classify a stand attempt in the current turn state. */
+    getStandAttemptMovementMode(turnState: TurnState): MotiveModes | null;
+
+    /** Maximum stand attempts permitted this turn, or null when no special limit applies. */
+    getStandAttemptLimit(turnState: TurnState): number | null;
+
     /** Whether current phase damage causes automatic falling or equivalent unit-type failure. */
     readonly autoFall: Signal<boolean>;
 
@@ -368,6 +389,9 @@ export interface UnitTypeRules {
 
     /** Unit-type-specific effective movement distance for turn-state choices. */
     getEffectiveMaxDistanceForMoveMode(moveMode: MotiveModes, turnState: TurnState): number | null;
+
+    /** Movement points already spent on non-translational movement actions. */
+    getMovementPointsSpent(turnState: TurnState): number;
 
     /** Unit-type-specific minimum movement distance override. Return null to use 0. */
     getMinDistanceForMoveMode(moveMode: MotiveModes): number | null;
@@ -650,6 +674,28 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         return [];
     }
 
+    canStandUp(_turnState: TurnState): boolean {
+        return false;
+    }
+
+    canStandWithoutPSR(_turnState: TurnState): boolean {
+        return false;
+    }
+
+    readonly supportsCarefulStand: boolean = false;
+
+    canCarefulStand(_turnState: TurnState): boolean {
+        return false;
+    }
+
+    getStandAttemptMovementMode(turnState: TurnState): MotiveModes | null {
+        return turnState.moveMode();
+    }
+
+    getStandAttemptLimit(_turnState: TurnState): number | null {
+        return null;
+    }
+
     reconcileRuleChecks(): void {
     }
 
@@ -706,6 +752,10 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         return this.getMaxDistanceForMoveMode(moveMode);
     }
 
+    getMovementPointsSpent(_turnState: TurnState): number {
+        return 0;
+    }
+
     getMinDistanceForMoveMode(_moveMode: MotiveModes): number | null {
         return null;
     }
@@ -736,8 +786,8 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
         const entries: UnitModifierBreakdownEntry[] = [];
-        const moveMode = turnState.moveMode();
-        const movementModifier = this.getAttackMovementModifier(turnState.moveMode(), turnState.airborne() ?? false);
+        const moveMode = turnState.effectiveMoveMode();
+        const movementModifier = this.getAttackMovementModifier(moveMode, turnState.airborne() ?? false);
         if (movementModifier !== 0 && moveMode !== null) {
             entries.push({
                 label: getMotiveModeLabel(moveMode, this.unit.getUnit(), turnState.airborne() ?? false),
@@ -756,7 +806,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         if (this.unit.gameRules.supportsSkidding && turnState.unitState.hasCondition('skidding')) {
             entries.push({ label: 'Skidding', modifier: TN_SKIDDING_MODIFIER });
         }
-        const moveMode = turnState.moveMode();
+        const moveMode = turnState.effectiveMoveMode();
         if (moveMode === 'jump') {
             entries.push({ label: 'Jumped', modifier: TN_AIRBORNE_MOVE_TYPE_MODIFIER });
         } else if (turnState.airborne() === true) {
@@ -802,7 +852,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     protected computeChargeDamage(bonusDamage = 0, maxBonusDamage = bonusDamage): ChargeDamage {
         const damagePerTMM = this.unit.getUnit().tons / 5;
-        const moveMode = this.unit.turnState().moveMode();
+        const moveMode = this.unit.turnState().effectiveMoveMode();
         const ramPlates = this.unit.getInventory().filter(entry => entry.equipment?.hasFlag('F_RAM_PLATE'));
         const hasRamPlate = ramPlates.length > 0;
         const hasWorkingRamPlate = ramPlates.some(entry => this.unit.isEquipmentOperational(entry));
