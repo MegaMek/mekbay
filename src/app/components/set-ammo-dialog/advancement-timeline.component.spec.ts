@@ -13,7 +13,7 @@ describe('AdvancementTimelineComponent', () => {
             id,
             name: id,
             type: 'misc',
-            rulesRefs: 'Test Rules',
+            rulesRefs: [{ book: 'Test Rules', page: null }],
             tech,
         });
     }

@@ -26,7 +26,7 @@ function createAmmo(id: string, kgPerShot = 100, ammo: Partial<ConstructorParame
         id,
         name: id,
         type: 'ammo',
-        rulesRefs: '207, TM',
+        rulesRefs: [{ book: 'TM', page: 207 }],
         tech: {
             base: 'Clan',
             rating: 'E',

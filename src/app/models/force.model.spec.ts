@@ -74,6 +74,7 @@ function createStubDeserializedUnit(data: SerializedUnit): ForceUnit {
         update: () => undefined,
         getUnit: () => unit,
         getDisplayName: () => unit.name,
+        getBv: () => 0,
         serialize: () => data,
     } as unknown as ForceUnit;
 }
@@ -113,8 +114,10 @@ class TestForce extends Force<ForceUnit> {
         return data;
     }
 
-    protected override deserializeFrom(_serialized: SerializedForce): Force<ForceUnit> {
-        throw new Error('Not used in TestForce');
+    protected override deserializeFrom(serialized: SerializedForce): Force<ForceUnit> {
+        const force = new TestForce();
+        force.loadSerialized(serialized);
+        return force;
     }
 
     loadSerialized(data: SerializedForce): void {
@@ -236,6 +239,101 @@ describe('Force formation deserialization', () => {
 
         expect(force.groups()[0].formation()).toBe(NO_FORMATION);
         expect(force.groups()[0].formationLock).toBeTrue();
+    });
+
+    it('round-trips the one optional formation target group id', () => {
+        const force = new TestForce();
+        force.loadSerialized(createSerializedForce([
+            {
+                id: 'support',
+                formationId: 'support-lance',
+                formationTargetGroupId: 'recon',
+                units: [createSerializedUnit('support-unit')],
+            },
+            {
+                id: 'recon',
+                formationId: 'recon-lance',
+                units: [createSerializedUnit('recon-unit')],
+            },
+        ]));
+
+        expect(force.groups()[0].formationTargetGroupId()).toBe('recon');
+        expect(force.serialize().groups?.[0].formationTargetGroupId).toBe('recon');
+
+        force.update(createSerializedForce([
+            {
+                id: 'support',
+                formationId: 'support-lance',
+                units: [createSerializedUnit('support-unit')],
+            },
+            {
+                id: 'recon',
+                formationId: 'recon-lance',
+                units: [createSerializedUnit('recon-unit')],
+            },
+        ]));
+        expect(force.groups()[0].formationTargetGroupId()).toBeNull();
+    });
+
+    it('remaps formation target group ids when cloning a force', () => {
+        const force = new TestForce();
+        force.loadSerialized(createSerializedForce([
+            {
+                id: 'support',
+                formationId: 'support-lance',
+                formationTargetGroupId: 'recon',
+                units: [createSerializedUnit('support-unit')],
+            },
+            {
+                id: 'recon',
+                formationId: 'recon-lance',
+                units: [createSerializedUnit('recon-unit')],
+            },
+        ]));
+
+        const clone = force.clone();
+        const clonedSupport = clone.groups().find(group => group.activeFormation()?.id === 'support-lance')!;
+        const clonedRecon = clone.groups().find(group => group.activeFormation()?.id === 'recon-lance')!;
+
+        expect(clonedSupport.id).not.toBe('support');
+        expect(clonedRecon.id).not.toBe('recon');
+        expect(clonedSupport.formationTargetGroupId()).toBe(clonedRecon.id);
+    });
+
+    it('clears formation target references when the target group is removed', () => {
+        const force = new TestForce();
+        force.loadSerialized(createSerializedForce([
+            {
+                id: 'support',
+                formationId: 'support-lance',
+                formationTargetGroupId: 'recon',
+                units: [createSerializedUnit('support-unit')],
+            },
+            {
+                id: 'recon',
+                formationId: 'recon-lance',
+                units: [createSerializedUnit('recon-unit')],
+            },
+        ]));
+
+        force.removeGroup(force.groups()[1]);
+
+        expect(force.groups()[0].formationTargetGroupId()).toBeNull();
+    });
+
+    it('drops an invalid formation target while deserializing', () => {
+        const force = new TestForce();
+        force.loadSerialized(createSerializedForce([
+            {
+                id: 'support',
+                formationId: 'support-lance',
+                formationTargetGroupId: 'missing',
+                units: [createSerializedUnit('support-unit')],
+            },
+        ]));
+
+        expect(force.groups()[0].formationTargetGroupId()).toBeNull();
+        expect(force.serialize().groups?.[0].formationTargetGroupId).toBeUndefined();
     });
 });
 
