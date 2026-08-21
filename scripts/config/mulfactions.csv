@@ -16,7 +16,7 @@ id,name,group
 15,Clan Jade Falcon,IS Clan
 16,Clan Mongoose,HW Clan
 17,Clan Nova Cat,IS Clan
-18,ComStar,Other
+18,ComStar,Inner Sphere
 19,Clan Star Adder,HW Clan
 20,Clan Smoke Jaguar,IS Clan
 21,Clan Snow Raven,IS Clan
@@ -64,14 +64,14 @@ id,name,group
 83,St. Ives Compact,Inner Sphere
 84,Federated Commonwealth,Inner Sphere
 85,HW Clan General,HW Clan
-86,Society,Other
+86,Society,HW Clan
 87,Terran Hegemony,Inner Sphere
 88,Rim Worlds Republic - Terran Corps,Periphery
 89,Free Worlds League (Non-Aligned Worlds),Inner Sphere
 90,Star League General,Other
-91,Scorpion Empire,Other
-92,Escorpión Imperio,Other
-94,Star League in Exile,Other
+91,Scorpion Empire,Periphery
+92,Escorpión Imperio,Periphery
+94,Star League in Exile,HW Clan
 95,Fronc Reaches,Periphery
 96,Star League (Clan Wolf),IS Clan
 97,Star League (Clan Jade Falcon),IS Clan
