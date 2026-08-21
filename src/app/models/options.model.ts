@@ -21,12 +21,25 @@ export const OPTION_VALUES = {
     unitSearchViewMode: ['list', 'card', 'chassis', 'table'],
     forceOverviewViewMode: ['expanded', 'compact', 'table'],
     ASVehiclesCriticalHitTable: ['default', 'scouringSands'],
+    automationMode: ['yes', 'ask', 'no'],
 } as const;
 
 export type AvailabilitySource = typeof OPTION_VALUES.availabilitySource[number];
 export type RecordSheetDoubleTapZoomResetMode = typeof OPTION_VALUES.recordSheetDoubleTapZoomReset[number];
 export type ColorScheme = typeof OPTION_VALUES.colorScheme[number];
 export type UnitSearchViewMode = typeof OPTION_VALUES.unitSearchViewMode[number];
+export type AutomationMode = typeof OPTION_VALUES.automationMode[number];
+
+export interface CBTAutomationOptions {
+    heatAndDissipation: AutomationMode;
+    heatEffects: AutomationMode;
+    pilotHitsAndConsciousness: AutomationMode;
+    internalExplosions: AutomationMode;
+    criticalHitChance: AutomationMode;
+    breachAndFlood: AutomationMode;
+}
+
+export type CBTAutomationKey = keyof CBTAutomationOptions;
 
 export interface SkillRangeOption {
     min: number;
@@ -52,6 +65,7 @@ export interface ForceGeneratorOptions {
         maxDelta: number;
     };
     failureSearchWindowMs: number;
+    ignoreRarityWeight: boolean;
     preventDuplicateChassis: boolean;
     useTaggedQuantities: boolean;
     useUnitTagsAsChassisTags: boolean;
@@ -83,7 +97,7 @@ export interface Options {
     },
     sidebarLipPosition?: string;
     trackPhaseAndTurn: boolean;
-    cbtAutomations: boolean;
+    cbtAutomationOptions: CBTAutomationOptions;
     CBTOptionalRules: CBTOptionalRules;
     CBTRules: typeof OPTION_VALUES.CBTRules[number];
     ASUseHex: boolean;

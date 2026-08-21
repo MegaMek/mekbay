@@ -4,7 +4,7 @@
 
 import { inject, Injectable, signal } from '@angular/core';
 import { DbService } from './db.service';
-import { OPTION_VALUES, type CBTOptionalRules, type ColorScheme, type ForceBudgetOptimizerLastSkills, type ForceGeneratorOptions, type Options } from '../models/options.model';
+import { OPTION_VALUES, type AutomationMode, type CBTAutomationKey, type CBTAutomationOptions, type CBTOptionalRules, type ColorScheme, type ForceBudgetOptimizerLastSkills, type ForceGeneratorOptions, type Options } from '../models/options.model';
 import { PRINT_OPTION_VALUES, type PrintAllOptions } from '../models/print-options.model';
 import { GameSystem, normalizeUnitServerUrl } from '../models/common.model';
 
@@ -43,7 +43,14 @@ const DEFAULT_OPTIONS: Options = {
     recordSheetDoubleTapZoomReset: 'contextual',
     syncZoomBetweenSheets: true,
     trackPhaseAndTurn: true,
-    cbtAutomations: false,
+    cbtAutomationOptions: {
+        heatAndDissipation: 'no',
+        heatEffects: 'ask',
+        pilotHitsAndConsciousness: 'ask',
+        internalExplosions: 'ask',
+        criticalHitChance: 'ask',
+        breachAndFlood: 'ask',
+    },
     CBTOptionalRules: {
         forcedWithdrawal: true,
         extremeRange: false,
@@ -68,6 +75,7 @@ const DEFAULT_OPTIONS: Options = {
             maxDelta: 2,
         },
         failureSearchWindowMs: 300,
+        ignoreRarityWeight: false,
         preventDuplicateChassis: false,
         useTaggedQuantities: false,
         useUnitTagsAsChassisTags: false,
@@ -202,6 +210,7 @@ function resolveForceGeneratorOptions(saved: Options | null | undefined): ForceG
             maxDelta: resolveSavedValue(forceGenerator?.lastSkills?.maxDelta, defaults.lastSkills.maxDelta),
         },
         failureSearchWindowMs: resolveSavedValue(forceGenerator?.failureSearchWindowMs, defaults.failureSearchWindowMs),
+        ignoreRarityWeight: resolveSavedValue(forceGenerator?.ignoreRarityWeight, defaults.ignoreRarityWeight),
         preventDuplicateChassis: resolveSavedValue(forceGenerator?.preventDuplicateChassis, defaults.preventDuplicateChassis),
         useTaggedQuantities: resolveSavedValue(forceGenerator?.useTaggedQuantities, defaults.useTaggedQuantities),
         useUnitTagsAsChassisTags: resolveSavedValue(forceGenerator?.useUnitTagsAsChassisTags, defaults.useUnitTagsAsChassisTags),
@@ -213,6 +222,42 @@ function resolveCBTOptionalRules(saved: Options | null | undefined): CBTOptional
     return {
         forcedWithdrawal: resolveSavedValue(saved?.CBTOptionalRules?.forcedWithdrawal, defaults.forcedWithdrawal),
         extremeRange: resolveSavedValue(saved?.CBTOptionalRules?.extremeRange, defaults.extremeRange),
+    };
+}
+
+function resolveCBTAutomationOptions(saved: Options | null | undefined): CBTAutomationOptions {
+    const defaults = DEFAULT_OPTIONS.cbtAutomationOptions;
+    return {
+        heatAndDissipation: resolveSavedValue(
+            saved?.cbtAutomationOptions?.heatAndDissipation,
+            defaults.heatAndDissipation,
+            OPTION_VALUES.automationMode,
+        ),
+        heatEffects: resolveSavedValue(
+            saved?.cbtAutomationOptions?.heatEffects,
+            defaults.heatEffects,
+            OPTION_VALUES.automationMode,
+        ),
+        pilotHitsAndConsciousness: resolveSavedValue(
+            saved?.cbtAutomationOptions?.pilotHitsAndConsciousness,
+            defaults.pilotHitsAndConsciousness,
+            OPTION_VALUES.automationMode,
+        ),
+        internalExplosions: resolveSavedValue(
+            saved?.cbtAutomationOptions?.internalExplosions,
+            defaults.internalExplosions,
+            OPTION_VALUES.automationMode,
+        ),
+        criticalHitChance: resolveSavedValue(
+            saved?.cbtAutomationOptions?.criticalHitChance,
+            defaults.criticalHitChance,
+            OPTION_VALUES.automationMode,
+        ),
+        breachAndFlood: resolveSavedValue(
+            saved?.cbtAutomationOptions?.breachAndFlood,
+            defaults.breachAndFlood,
+            OPTION_VALUES.automationMode,
+        ),
     };
 }
 
@@ -261,7 +306,7 @@ export class OptionsService {
         printAllOptions: { ...DEFAULT_OPTIONS.printAllOptions },
         recordSheetDoubleTapZoomReset: DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
         trackPhaseAndTurn: DEFAULT_OPTIONS.trackPhaseAndTurn,
-        cbtAutomations: DEFAULT_OPTIONS.cbtAutomations,
+        cbtAutomationOptions: { ...DEFAULT_OPTIONS.cbtAutomationOptions },
         CBTOptionalRules: { ...DEFAULT_OPTIONS.CBTOptionalRules },
         CBTRules: DEFAULT_OPTIONS.CBTRules,
         ASUseHex: DEFAULT_OPTIONS.ASUseHex,
@@ -304,7 +349,7 @@ export class OptionsService {
             lastCanvasState: resolveLastCanvasState(saved?.lastCanvasState),
             sidebarLipPosition: typeof saved?.sidebarLipPosition === 'string' ? saved.sidebarLipPosition : undefined,
             trackPhaseAndTurn: resolveSavedValue(saved?.trackPhaseAndTurn, DEFAULT_OPTIONS.trackPhaseAndTurn),
-            cbtAutomations: resolveSavedValue(saved?.cbtAutomations, DEFAULT_OPTIONS.cbtAutomations),
+            cbtAutomationOptions: resolveCBTAutomationOptions(saved),
             CBTOptionalRules: resolveCBTOptionalRules(saved),
             CBTRules: resolveSavedValue(saved?.CBTRules, DEFAULT_OPTIONS.CBTRules, OPTION_VALUES.CBTRules),
             ASUseHex: resolveSavedValue(saved?.ASUseHex, DEFAULT_OPTIONS.ASUseHex),
@@ -331,6 +376,11 @@ export class OptionsService {
         const updated = { ...this.options(), [key]: value };
         this.options.set(updated);
         await this.dbService.saveOptions(updated);
+    }
+
+    /** Returns the configured mode for one CBT automation. */
+    cbtAutomationMode(key: CBTAutomationKey): AutomationMode {
+        return this.options().cbtAutomationOptions[key];
     }
 
     async updateForceGeneratorOptions(

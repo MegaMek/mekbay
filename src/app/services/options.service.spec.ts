@@ -46,6 +46,37 @@ describe('OptionsService', () => {
         expect(service.options().enableForceSyncConflictDialog).toBeFalse();
     });
 
+    it('defaults heat effects to ask while preserving the established automation defaults', async () => {
+        savedOptions = null;
+
+        const service = await createService();
+
+        expect(service.options().cbtAutomationOptions).toEqual({
+            heatAndDissipation: 'no',
+            heatEffects: 'ask',
+            pilotHitsAndConsciousness: 'ask',
+            internalExplosions: 'ask',
+            criticalHitChance: 'ask',
+            breachAndFlood: 'ask',
+        });
+    });
+
+    it('restores each heat automation policy independently', async () => {
+        savedOptions = {
+            cbtAutomationOptions: {
+                heatAndDissipation: 'yes',
+                heatEffects: 'no',
+            },
+        };
+
+        const service = await createService();
+
+        expect(service.cbtAutomationMode('heatAndDissipation')).toBe('yes');
+        expect(service.cbtAutomationMode('heatEffects')).toBe('no');
+        expect(service.cbtAutomationMode('pilotHitsAndConsciousness')).toBe('ask');
+        expect(service.cbtAutomationMode('criticalHitChance')).toBe('ask');
+    });
+
     it('restores the force sync conflict dialog preference', async () => {
         savedOptions = { enableForceSyncConflictDialog: true };
 
@@ -84,7 +115,6 @@ describe('OptionsService', () => {
             megaMekAvailabilityFiltersUseAllScopedOptions: 1,
             recordSheetDoubleTapZoomReset: 'always',
             trackPhaseAndTurn: 'true',
-            cbtAutomations: 1,
             CBTRules: 'basic',
             ASUseHex: 'false',
             c3NetworkConnectionsAboveNodes: 0,
@@ -116,7 +146,6 @@ describe('OptionsService', () => {
             megaMekAvailabilityFiltersUseAllScopedOptions: true,
             recordSheetDoubleTapZoomReset: 'contextual',
             trackPhaseAndTurn: true,
-            cbtAutomations: false,
             CBTRules: 'tw',
             ASUseHex: false,
             c3NetworkConnectionsAboveNodes: false,
@@ -261,14 +290,6 @@ describe('OptionsService', () => {
             ASPrintCardSize: 'enlarged',
             printMargin: 'none',
         });
-    });
-
-    it('restores a disabled CBT automations preference', async () => {
-        savedOptions = { cbtAutomations: false };
-
-        const service = await createService();
-
-        expect(service.options().cbtAutomations).toBeFalse();
     });
 
     it('uses CBT optional-rule defaults', async () => {
