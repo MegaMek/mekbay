@@ -613,7 +613,7 @@ export class WeaponEquipment extends Equipment {
         } else if (this.hasFlag('F_M_POD') || this.ammoType === 'SBGAUSS') {
             clusterSize = 1;
         }
-        return Math.min(clusterSize, this.rackSize);
+        return clusterSize;
     }
 
     getRapidFireCount(): number {
