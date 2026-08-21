@@ -139,6 +139,7 @@ export interface Unit {
     engineHSType: string | null; // Type of HeatSinks on the engine: "Heat Sink", "Double Heat Sink", "Laser Heat Sink", etc...
     source: string[]; // Sourcebook abbreviations exported from units.json.
     published: string[]; // Record sheet source(s), e.g. "RS:AS".
+    rulesRefs: string[][]; // Alternative rulebook combinations that fully cover the unit, e.g. [["Core"], ["TW", "IO:AUE"]].
     canon: boolean; // True if the unit is canon, false if is not (e.g. alt-universe or april fools units)
     canAntiMech: boolean; // Whether the unit's Anti-Mech skill can be assigned below its restricted default
     role: string;
