@@ -904,22 +904,6 @@ hr {
         width: 100%;
     }
 
-    .random-button {
-        flex: 0 0 32px;
-        width: 32px;
-        height: 32px;
-        border: none;
-        background: transparent url('/images/random.svg') center / 24px 24px no-repeat;
-        cursor: pointer;
-        opacity: 0.8;
-        transition: opacity 0.2s ease-in-out;
-
-        &:hover,
-        &:focus-visible {
-            opacity: 1;
-        }
-    }
-
     .field-input {
         width: 100%;
         flex: 1 1 auto;
@@ -958,6 +942,35 @@ hr {
     select.field-input {
         cursor: pointer;
         text-overflow: ellipsis;
+    }
+}
+
+.random-button,
+.form-fields .random-button {
+    flex: 0 0 32px;
+    width: 24px;
+    height: 32px;
+    border: none;
+    background: transparent url('/images/random.svg') center / 24px 24px no-repeat;
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.2s ease-in-out;
+
+    &.large {
+        flex: 0 0 64px;
+        width: 64px;
+        height: 64px;
+        background-size: 50px 50px;
+    }
+
+    &:hover,
+    &:focus-visible {
+        opacity: 1;
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        opacity: 0.35;
     }
 }
 
