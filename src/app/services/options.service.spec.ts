@@ -51,6 +51,7 @@ describe('OptionsService', () => {
         const service = await createService();
 
         expect(service.options().cbtAutomationOptions).toEqual({
+            pilotSkillCheck: 'ask',
             heatAndDissipation: 'no',
             heatEffects: 'ask',
             pilotHitsAndConsciousness: 'ask',

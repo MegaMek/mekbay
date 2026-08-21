@@ -43,6 +43,7 @@ const DEFAULT_OPTIONS: Options = {
     syncZoomBetweenSheets: true,
     trackPhaseAndTurn: true,
     cbtAutomationOptions: {
+        pilotSkillCheck: 'ask',
         heatAndDissipation: 'no',
         heatEffects: 'ask',
         pilotHitsAndConsciousness: 'ask',
@@ -195,6 +196,11 @@ function resolveCBTOptionalRules(saved: Options | null | undefined): CBTOptional
 function resolveCBTAutomationOptions(saved: Options | null | undefined): CBTAutomationOptions {
     const defaults = DEFAULT_OPTIONS.cbtAutomationOptions;
     return {
+        pilotSkillCheck: resolveSavedValue(
+            saved?.cbtAutomationOptions?.pilotSkillCheck,
+            defaults.pilotSkillCheck,
+            OPTION_VALUES.automationMode,
+        ),
         heatAndDissipation: resolveSavedValue(
             saved?.cbtAutomationOptions?.heatAndDissipation,
             defaults.heatAndDissipation,

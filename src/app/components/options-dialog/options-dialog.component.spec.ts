@@ -79,6 +79,7 @@ describe('OptionsDialogComponent', () => {
             options: () => ({
                 unitServers: [],
                 cbtAutomationOptions: {
+                    pilotSkillCheck: 'ask',
                     heatAndDissipation: 'yes',
                     heatEffects: 'ask',
                     pilotHitsAndConsciousness: 'ask',
@@ -94,6 +95,7 @@ describe('OptionsDialogComponent', () => {
         component.onCbtAutomationModeChange('heatAndDissipation', 'ask');
 
         expect(setOption).toHaveBeenCalledOnceWith('cbtAutomationOptions', {
+            pilotSkillCheck: 'ask',
             heatAndDissipation: 'ask',
             heatEffects: 'ask',
             pilotHitsAndConsciousness: 'ask',

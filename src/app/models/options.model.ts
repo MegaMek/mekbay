@@ -31,6 +31,7 @@ export type UnitSearchViewMode = typeof OPTION_VALUES.unitSearchViewMode[number]
 export type AutomationMode = typeof OPTION_VALUES.automationMode[number];
 
 export interface CBTAutomationOptions {
+    pilotSkillCheck: AutomationMode;
     heatAndDissipation: AutomationMode;
     heatEffects: AutomationMode;
     pilotHitsAndConsciousness: AutomationMode;
