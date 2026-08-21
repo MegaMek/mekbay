@@ -169,6 +169,7 @@ function createRulesHarness(options: {
         gunnerySkill: () => options.gunnery ?? 4,
         turnState: () => ({
             moveMode: () => options.moveMode ?? null,
+            effectiveMoveMode: () => options.moveMode ?? null,
             moveDistance: () => options.moveDistance ?? 0,
             spotting: () => false,
             getAttackMovementModifier: () => rules.getAttackMovementModifier(options.moveMode ?? null),

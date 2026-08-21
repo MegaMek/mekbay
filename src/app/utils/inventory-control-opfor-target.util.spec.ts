@@ -51,6 +51,7 @@ function forceUnit(options: {
             moveDistance,
             airborne,
             moveMode,
+            effectiveMoveMode: moveMode,
             cover,
             isDepth1: () => cover() === 'underwater-depth-1',
         })
