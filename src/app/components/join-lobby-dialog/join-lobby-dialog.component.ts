@@ -129,7 +129,7 @@ export interface JoinLobbyDialogData {
             font-family: monospace;
             font-size: 1.4rem;
             font-weight: 700;
-            text-transform: lowercase;
+            text-transform: uppercase;
         }
 
         .hint {
@@ -163,7 +163,7 @@ export class JoinLobbyDialogComponent {
     readonly generatingName = signal(false);
     readonly joining = signal(false);
     readonly joinError = signal('');
-    readonly isValid = computed(() => /^[a-z0-9]{4}$/.test(this.code()) && normalizeDisplayName(this.displayName()) !== null);
+    readonly isValid = computed(() => /^[a-z0-9]{4}$/i.test(this.code()) && normalizeDisplayName(this.displayName()) !== null);
 
     onCodeInput(event: Event): void {
         const input = event.target as HTMLInputElement;
@@ -194,7 +194,7 @@ export class JoinLobbyDialogComponent {
         event?.stopPropagation();
         if (this.joining()) return;
         const displayName = normalizeDisplayName(this.displayName());
-        if (!displayName || !/^[a-z0-9]{4}$/.test(this.code())) return;
+        if (!displayName || !/^[a-z0-9]{4}$/i.test(this.code())) return;
 
         this.joining.set(true);
         this.joinError.set('');

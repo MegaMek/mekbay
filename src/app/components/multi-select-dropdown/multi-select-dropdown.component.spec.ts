@@ -120,6 +120,28 @@ describe('MultiSelectDropdownComponent', () => {
         expect(overlayContainerElement.querySelector('.options-list')).not.toBeNull();
     });
 
+    it('renders a divider when the visible option section changes', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+
+        fixture.componentRef.setInput('options', [
+            { name: 'BMM', available: true },
+            { name: 'TW', available: true },
+            { name: 'IO:AE', available: true },
+            { name: 'TO:AUE', available: true },
+        ]);
+        fixture.componentRef.setInput('optionSection', (option: DropdownOption) =>
+            ['BMM', 'TW'].includes(option.name) ? 'base' : 'non-base');
+        fixture.componentInstance.isOpen.set(true);
+        fixture.detectChanges();
+
+        const optionItems = Array.from(overlayContainerElement.querySelectorAll('.option-item'));
+        expect(optionItems.length).toBe(4);
+        expect(optionItems[0].classList).not.toContain('option-section-start');
+        expect(optionItems[1].classList).not.toContain('option-section-start');
+        expect(optionItems[2].classList).toContain('option-section-start');
+        expect(optionItems[3].classList).not.toContain('option-section-start');
+    });
+
     it('hides unavailable unselected options by default while keeping selected unavailable ones visible', () => {
         const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
         const options: DropdownOption[] = [

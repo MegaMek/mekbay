@@ -36,7 +36,7 @@ export interface AbilityDropdownOption {
             }
             @for (ability of sortedAbilities(); track ability.id) {
                 @let abilityCost = ability.cost ?? 0;
-                @let isDisabled = disabledIds().includes(ability.id) || abilityCost > remainingCost();
+                @let isDisabled = disabledIds().includes(ability.id) || abilityCost > remainingCost() || !!ability.unitTypeRestricted;
                 <div 
                     class="dropdown-option"
                     [class.disabled]="isDisabled"
@@ -210,7 +210,7 @@ export class AbilityDropdownPanelComponent {
     onSelect(abilityId: string) {
         const ability = this.abilities().find((entry) => entry.id === abilityId);
         if (!ability) return;
-        if (this.disabledIds().includes(abilityId) || (ability.cost ?? 0) > this.remainingCost()) return;
+        if (this.disabledIds().includes(abilityId) || (ability.cost ?? 0) > this.remainingCost() || ability.unitTypeRestricted) return;
         this.selected.emit(abilityId);
     }
 
