@@ -16,7 +16,7 @@ import { LoggerService } from '../../services/logger.service';
 import { GameService } from '../../services/game.service';
 import type { GameSystem } from '../../models/common.model';
 import { normalizeUnitServerUrl } from '../../models/common.model';
-import type { AvailabilitySource, ForceViewerBVPVDisplay, RecordSheetDoubleTapZoomResetMode } from '../../models/options.model';
+import type { AutomationMode, AvailabilitySource, CBTAutomationKey, ForceViewerBVPVDisplay, RecordSheetDoubleTapZoomResetMode } from '../../models/options.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { DataService } from '../../services/data.service';
 import { PublicTagsService } from '../../services/public-tags.service';
@@ -38,6 +38,12 @@ interface OptionsViewDefinition {
     title: string;
     description?: string;
     parentId?: OptionsSectionId;
+}
+
+interface CBTAutomationOptionDefinition {
+    key: CBTAutomationKey;
+    label: string;
+    description: string;
 }
 
 const WIDE_LAYOUT_QUERY = '(min-width: 760px) and (min-height: 560px)';
@@ -93,6 +99,48 @@ const TOP_LEVEL_OPTIONS_VIEWS = OPTIONS_VIEW_DEFINITIONS.filter(view => !view.pa
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS = 300;
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS = 10_000;
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS = 100;
+const CBT_AUTOMATION_MODES: ReadonlyArray<{ value: AutomationMode; label: string }> = [
+    { value: 'yes', label: 'Yes' },
+    { value: 'ask', label: 'Ask' },
+    { value: 'no', label: 'No' },
+];
+const CBT_AUTOMATION_OPTIONS: readonly CBTAutomationOptionDefinition[] = [
+    {
+        key: 'heatAndDissipation',
+        label: 'Heat and dissipation',
+        description: 'Calculate and apply heat and cooling at end of turn.',
+    },
+    {
+        key: 'heatEffects',
+        label: 'Heat effects',
+        description: 'Resolve shutdown, ammunition explosion, life support, and aerospace heat checks after end-turn heat is applied. Pilot damage also follows its own setting.',
+    },
+    {
+        key: 'pilotHitsAndConsciousness',
+        label: 'Pilot hits and consciousness',
+        description: 'Apply pilot injuries from head and heat effects, then resolve consciousness and recovery rolls.',
+    },
+    {
+        key: 'internalExplosions',
+        label: 'Internal explosions',
+        description: 'Resolve explosion effects caused by internal equipment and ammunition.',
+    },
+    {
+        key: 'criticalHitChance',
+        label: 'Critical hit chance',
+        description: 'Resolve checks that can cause critical hits.',
+    },
+    {
+        key: 'breachAndFlood',
+        label: 'Breach and flood',
+        description: 'Resolve armor breaches and flooding effects.',
+    },
+    {
+        key: 'falling',
+        label: 'Falling',
+        description: 'Resolve fall orientation, hit locations, and damage before the seatbelt check.',
+    },
+];
 
 
 @Component({
@@ -136,6 +184,8 @@ export class OptionsDialogComponent {
     forceGenFailureSearchWindowMinMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS;
     forceGenFailureSearchWindowMaxMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS;
     forceGenFailureSearchWindowStepMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS;
+    cbtAutomationModes = CBT_AUTOMATION_MODES;
+    cbtAutomationOptions = CBT_AUTOMATION_OPTIONS;
     forceGenFailureSearchWindowMs = computed(() => this.normalizeForceGenFailureSearchWindowMs(this.optionsService.options().forceGenerator.failureSearchWindowMs));
 
     uuidInput = viewChild<ElementRef<HTMLInputElement>>('uuidInput');
@@ -512,9 +562,11 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('trackPhaseAndTurn', value);
     }
 
-    onCbtAutomationsChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value === 'true';
-        this.optionsService.setOption('cbtAutomations', value);
+    onCbtAutomationModeChange(key: CBTAutomationKey, value: AutomationMode) {
+        this.optionsService.setOption('cbtAutomationOptions', {
+            ...this.optionsService.options().cbtAutomationOptions,
+            [key]: value,
+        });
     }
 
     onCBTOptionalRuleChange(key: 'forcedWithdrawal' | 'extremeRange', event: Event) {

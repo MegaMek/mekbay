@@ -57,6 +57,7 @@ describe('OptionsService', () => {
             internalExplosions: 'ask',
             criticalHitChance: 'ask',
             breachAndFlood: 'ask',
+            falling: 'ask',
         });
     });
 
@@ -74,6 +75,7 @@ describe('OptionsService', () => {
         expect(service.cbtAutomationMode('heatEffects')).toBe('no');
         expect(service.cbtAutomationMode('pilotHitsAndConsciousness')).toBe('ask');
         expect(service.cbtAutomationMode('criticalHitChance')).toBe('ask');
+        expect(service.cbtAutomationMode('falling')).toBe('ask');
     });
 
     it('restores the force sync conflict dialog preference', async () => {

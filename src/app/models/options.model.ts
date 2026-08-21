@@ -37,6 +37,7 @@ export interface CBTAutomationOptions {
     internalExplosions: AutomationMode;
     criticalHitChance: AutomationMode;
     breachAndFlood: AutomationMode;
+    falling: AutomationMode;
 }
 
 export type CBTAutomationKey = keyof CBTAutomationOptions;

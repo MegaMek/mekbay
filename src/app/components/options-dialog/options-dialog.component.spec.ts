@@ -73,16 +73,35 @@ describe('OptionsDialogComponent', () => {
         expect(setOption).toHaveBeenCalledOnceWith('forceViewerBVPVDisplay', 'both');
     });
 
-    it('persists the CBT automations selection as a boolean', () => {
+    it('updates one CBT automation mode without changing the others', () => {
         const setOption = jasmine.createSpy('setOption');
-        const component = configureComponent({ options: () => ({ unitServers: [] }), setOption });
-        const select = document.createElement('select');
-        select.innerHTML = '<option value="true">Enabled</option><option value="false">Disabled</option>';
-        select.value = 'false';
+        const component = configureComponent({
+            options: () => ({
+                unitServers: [],
+                cbtAutomationOptions: {
+                    heatAndDissipation: 'yes',
+                    heatEffects: 'ask',
+                    pilotHitsAndConsciousness: 'ask',
+                    internalExplosions: 'yes',
+                    criticalHitChance: 'no',
+                    breachAndFlood: 'ask',
+                    falling: 'yes',
+                },
+            }),
+            setOption,
+        });
 
-        component.onCbtAutomationsChange({ target: select } as unknown as Event);
+        component.onCbtAutomationModeChange('heatAndDissipation', 'ask');
 
-        expect(setOption).toHaveBeenCalledOnceWith('cbtAutomations', false);
+        expect(setOption).toHaveBeenCalledOnceWith('cbtAutomationOptions', {
+            heatAndDissipation: 'ask',
+            heatEffects: 'ask',
+            pilotHitsAndConsciousness: 'ask',
+            internalExplosions: 'yes',
+            criticalHitChance: 'no',
+            breachAndFlood: 'ask',
+            falling: 'yes',
+        });
     });
 
     it('updates one CBT optional rule without changing the other', () => {

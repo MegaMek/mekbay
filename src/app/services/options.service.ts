@@ -49,6 +49,7 @@ const DEFAULT_OPTIONS: Options = {
         internalExplosions: 'ask',
         criticalHitChance: 'ask',
         breachAndFlood: 'ask',
+        falling: 'ask',
     },
     CBTOptionalRules: {
         forcedWithdrawal: true,
@@ -222,6 +223,11 @@ function resolveCBTAutomationOptions(saved: Options | null | undefined): CBTAuto
         breachAndFlood: resolveSavedValue(
             saved?.cbtAutomationOptions?.breachAndFlood,
             defaults.breachAndFlood,
+            OPTION_VALUES.automationMode,
+        ),
+        falling: resolveSavedValue(
+            saved?.cbtAutomationOptions?.falling,
+            defaults.falling,
             OPTION_VALUES.automationMode,
         ),
     };
