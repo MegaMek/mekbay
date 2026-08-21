@@ -124,12 +124,14 @@
                     [itemSize]="48"
                     [sortDirection]="selectedSortDirection()"
                     [rowTrackBy]="trackByForceUnitId"
+                    [rowClass]="forceTableRowClass"
                     [fullRowTemplate]="tableGroupRow"
                     [isFullRow]="isForceTableGroupRow"
                     [minBufferPx]="720"
                     [maxBufferPx]="1440"
                     (sort)="onForceTableSort($event)"
-                    (rowClick)="onForceTableRowClick($event)">
+                    (rowClick)="onForceTableRowClick($event)"
+                    (rowLongPress)="onForceTableRowLongPress($event)">
                 </mb-data-table>
 
                 <ng-template #tableGroupRow let-row>
@@ -298,12 +300,15 @@
                         } @else {
                             @for (vm of getSortedUnitsForGroup(group); let last = $last; track vm.forceUnit.id) {
                                 <unit-card-expanded
+                                    longPress
                                     [unit]="vm.forceUnit"
                                     [expandedView]="true"
+                                    [isSelected]="isUnitSelected(vm.forceUnit)"
                                     [sortKey]="selectedSort()"
                                     [sortSlotLabel]="selectedSortLabel()"
                                     [useHex]="useHex()"
-                                    (cardClick)="onUnitClick(vm)"
+                                    (shortPress)="onUnitClick(vm, $event)"
+                                    (longPress)="toggleUnitSelection(vm.forceUnit, $event)"
                                     (tagClick)="onTagClick($event)"
                                     (pilotInfoClick)="onPilotClick(vm.forceUnit)">
                                 </unit-card-expanded>
@@ -388,6 +393,16 @@
                 </svg>
             }
         </button>
+        @if (viewMode() !== 'compact' && selectedUnitCount() > 0) {
+            <div class="selection-controls">
+                <button type="button" class="bt-button" (click)="selectAllUnits()">SELECT ALL</button>
+                <button type="button" class="bt-button" (click)="clearUnitSelection()">CLEAR</button>
+                <span class="selected-count" role="status" aria-live="polite"
+                    [attr.aria-label]="selectedUnitCount() + ' of ' + unitCount() + ' units selected'">
+                    {{ selectedUnitCount() }}/{{ unitCount() }} units selected
+                </span>
+            </div>
+        }
         <div class="spanner"></div>
     }
     <button class="modal-btn bt-button" (click)="close()">DISMISS</button>
