@@ -484,7 +484,7 @@ describe('equipment damage types', () => {
             weapon: { ammoType: 'HAG', damage: 'cluster', rackSize: 20 }
         });
 
-        expect(mml3.getClusterSize(null, MML_LRM_PROFILE)).toBe(3);
+        expect(mml3.getClusterSize(null, MML_LRM_PROFILE)).toBe(5);
         expect(mml7.getClusterSize(null, MML_LRM_PROFILE)).toBe(5);
         expect(hag.getClusterSize()).toBe(5);
     });
@@ -516,10 +516,10 @@ describe('equipment damage types', () => {
 
         expect(mml9.getClusterSize(lrmAmmo)).toBe(5);
         expect(mml9.getClusterSize(srmAmmo)).toBe(2);
-        expect(mml3.getClusterSize(lrmAmmo)).toBe(3);
+        expect(mml3.getClusterSize(lrmAmmo)).toBe(5);
         expect(mml3.getClusterSize(srmAmmo)).toBe(2);
         expect(mml9.getClusterSize()).toBe(0);
-        expect(mml3.getClusterSize(null, MML_LRM_PROFILE)).toBe(3);
+        expect(mml3.getClusterSize(null, MML_LRM_PROFILE)).toBe(5);
     });
 
     it('returns the supported rapid-fire shot count', () => {
