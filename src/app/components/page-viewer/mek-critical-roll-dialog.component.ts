@@ -31,7 +31,8 @@ export interface MekCriticalRollDialogData {
     readonly requiredHits: number;
     readonly locationDestroyed?: boolean;
     readonly consolidateImmediately: boolean;
-    readonly pendingCriticalId: string;
+    readonly pendingCriticalId?: string;
+    readonly manual?: boolean;
     readonly caseIICheckRequired?: boolean;
     readonly caseIICheckPassed?: boolean;
     readonly caseIICheckResult?: 'resolve' | 'discard';
@@ -42,6 +43,7 @@ export interface MekCriticalRollDialogData {
 export interface MekCriticalRollDialogResult {
     readonly completed: boolean;
     readonly interruptedForConsciousness?: boolean;
+    readonly remainingHits?: number;
     readonly undoToChance?: true;
 }
 
@@ -271,11 +273,13 @@ interface CriticalExplosionDisplay {
                     type="button"
                     [disabled]="!canUsePrimary()"
                     (click)="primaryAction()">{{ primaryLabel() }}</button>
-                <button class="bt-button critical-sequence-undo" type="button"
-                    [disabled]="!canUndoToChance() || isAnyRolling() || resolving()"
-                    (click)="undoToChance()">UNDO</button>
+                @if (canUndoToChance()) {
+                    <button class="bt-button critical-sequence-undo" type="button"
+                        [disabled]="isAnyRolling() || resolving()"
+                        (click)="undoToChance()">UNDO</button>
+                }
                 <button class="bt-button" type="button" [disabled]="isAnyRolling() || resolving()" (click)="close()">
-                    CANCEL
+                    {{ data.manual ? 'CANCEL' : 'CLOSE' }}
                 </button>
             </div>
         </div>
@@ -313,8 +317,9 @@ export class MekCriticalRollDialogComponent {
     readonly caseIICheckPassed = signal(this.data.caseIICheckPassed ?? false);
     readonly caseIICheckResult = signal<'resolve' | 'discard' | null>(this.data.caseIICheckResult ?? null);
     readonly currentDiscardReason = signal<'case-ii' | 'non-explosive' | null>(null);
-    private readonly restoredRoll = this.data.unit.turnState()
-        .getPendingCriticalHit(this.data.pendingCriticalId)?.roll;
+    private readonly restoredRoll = this.data.pendingCriticalId
+        ? this.data.unit.turnState().getPendingCriticalHit(this.data.pendingCriticalId)?.roll
+        : undefined;
     readonly selectedSlotIndex = signal<number | null>(this.restoredRoll
         ? mekCriticalSlotIndexForRoll(this.targetLocation, this.restoredRoll)
         : null);
@@ -452,10 +457,8 @@ export class MekCriticalRollDialogComponent {
             ? 'discard'
             : 'resolve';
         this.caseIICheckResult.set(result);
-        this.data.unit.turnState().setPendingCriticalCaseIICheckResult(
-            this.data.pendingCriticalId,
-            result,
-        );
+        const pendingId = this.data.pendingCriticalId;
+        if (pendingId) this.data.unit.turnState().setPendingCriticalCaseIICheckResult(pendingId, result);
     }
 
     applyCaseIICheck(result: 'resolve' | 'discard'): void {
@@ -464,7 +467,8 @@ export class MekCriticalRollDialogComponent {
             this.discardCurrentCritical('case-ii');
             return;
         }
-        if (!this.data.unit.turnState().passPendingCriticalCaseIICheck(this.data.pendingCriticalId)) return;
+        const pendingId = this.data.pendingCriticalId;
+        if (pendingId && !this.data.unit.turnState().passPendingCriticalCaseIICheck(pendingId)) return;
         this.caseIICheckPassed.set(true);
         this.caseIICheckResult.set(null);
     }
@@ -482,7 +486,7 @@ export class MekCriticalRollDialogComponent {
         if (this.resolving() || this.complete() || this.pendingResults() || this.outcome()) return;
         const slotIndex = mekCriticalSlotIndexForRoll(this.targetLocation, results);
         if (slotIndex === null) return;
-        if (!this.data.unit.turnState().setPendingCriticalRoll(this.data.pendingCriticalId, results)) return;
+        if (!this.persistRoll(results)) return;
         this.lockManualSlots();
         this.pendingResults.set([...results]);
         this.selectedSlotIndex.set(slotIndex);
@@ -492,7 +496,7 @@ export class MekCriticalRollDialogComponent {
     undoSlotSelection(): void {
         if (this.selectedSlotIndex() === null || !this.pendingResults()
             || this.isAnyRolling() || this.resolving()) return;
-        if (!this.data.unit.turnState().clearPendingCriticalRoll(this.data.pendingCriticalId)) return;
+        if (!this.clearPersistedRoll()) return;
         this.pendingResults.set(null);
         this.selectedSlotIndex.set(null);
         this.automationCancelled.set(false);
@@ -566,7 +570,7 @@ export class MekCriticalRollDialogComponent {
             return;
         }
         if (!this.hasRollableSlot()) {
-            this.data.unit.turnState().discardPendingCriticalHits(this.data.pendingCriticalId);
+            this.discardPersistedHits();
             this.completeDialog();
             return;
         }
@@ -629,17 +633,33 @@ export class MekCriticalRollDialogComponent {
         this.dialogRef.close({ completed: false, undoToChance: true });
     }
 
-    private clearPersistedRoll(): void {
-        this.data.unit.turnState().clearPendingCriticalRoll(this.data.pendingCriticalId);
+    private persistRoll(results: readonly number[]): boolean {
+        const pendingId = this.data.pendingCriticalId;
+        return pendingId === undefined
+            || this.data.unit.turnState().setPendingCriticalRoll(pendingId, results);
     }
 
-    private resolvePersistedHit(): void {
-        this.data.unit.turnState().resolvePendingCriticalHit(this.data.pendingCriticalId);
+    private clearPersistedRoll(): boolean {
+        const pendingId = this.data.pendingCriticalId;
+        return pendingId === undefined
+            || this.data.unit.turnState().clearPendingCriticalRoll(pendingId);
+    }
+
+    private resolvePersistedHit(): boolean {
+        const pendingId = this.data.pendingCriticalId;
+        return pendingId === undefined
+            || this.data.unit.turnState().resolvePendingCriticalHit(pendingId);
+    }
+
+    private discardPersistedHits(): boolean {
+        const pendingId = this.data.pendingCriticalId;
+        return pendingId === undefined
+            || this.data.unit.turnState().discardPendingCriticalHits(pendingId);
     }
 
     discardCurrentCritical(reason: 'case-ii' | 'non-explosive'): void {
         if (this.isAnyRolling() || this.resolving() || this.complete()) return;
-        if (!this.data.unit.turnState().resolvePendingCriticalHit(this.data.pendingCriticalId)) return;
+        if (!this.resolvePersistedHit()) return;
         this.pendingResults.set(null);
         this.caseIICheckPassed.set(false);
         this.caseIICheckResult.set(null);
@@ -679,9 +699,11 @@ export class MekCriticalRollDialogComponent {
 
     close(interruptedForConsciousness = false): void {
         if (this.roller()?.isRolling() || this.caseIIRoller()?.isRolling() || this.resolving()) return;
+        const remainingHits = Math.max(0, this.data.requiredHits - this.resolvedHits());
         this.dialogRef.close({
             completed: this.complete(),
             ...(interruptedForConsciousness ? { interruptedForConsciousness: true } : {}),
+            ...(interruptedForConsciousness && remainingHits > 0 ? { remainingHits } : {}),
         });
     }
 

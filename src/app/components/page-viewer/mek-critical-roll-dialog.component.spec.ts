@@ -25,7 +25,8 @@ describe('MekCriticalRollDialogComponent', () => {
         requiredHits: number;
         consolidateImmediately: boolean;
         locationDestroyed?: boolean;
-        pendingCriticalId: string;
+        pendingCriticalId?: string;
+        manual?: boolean;
         caseIICheckRequired?: boolean;
         caseIICheckPassed?: boolean;
         caseIICheckResult?: 'resolve' | 'discard';
@@ -156,18 +157,71 @@ describe('MekCriticalRollDialogComponent', () => {
         expect(roll).toHaveBeenCalledOnceWith([1, 1]);
     });
 
-    it('keeps a stable three-button footer before a hit is selected', () => {
+    it('omits sequence UNDO when a queued critical has no chance step to return to', () => {
         const actions = fixture.nativeElement.querySelectorAll(
             '.actions .bt-button',
         ) as NodeListOf<HTMLButtonElement>;
 
-        expect(actions).toHaveSize(3);
-        expect(actions[0].textContent).toContain('APPLY');
+        expect(Array.from(actions, action => action.textContent?.trim()))
+            .toEqual(['APPLY', 'CLOSE']);
         expect(actions[0].disabled).toBeTrue();
-        expect(actions[1].textContent).toContain('UNDO');
-        expect(actions[1].disabled).toBeTrue();
-        expect(actions[2].textContent).toContain('CANCEL');
-        expect(actions[2].disabled).toBeFalse();
+        expect(actions[1].disabled).toBeFalse();
+        expect(fixture.nativeElement.querySelector('.critical-sequence-undo')).toBeNull();
+    });
+
+    it('uses CANCEL for a transient manual critical without touching pending events', () => {
+        fixture.destroy();
+        dialogData.manual = true;
+        dialogData.pendingCriticalId = undefined;
+        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture.detectChanges();
+
+        const actions = fixture.nativeElement.querySelectorAll(
+            '.actions .bt-button',
+        ) as NodeListOf<HTMLButtonElement>;
+
+        expect(Array.from(actions, action => action.textContent?.trim()))
+            .toEqual(['APPLY', 'CANCEL']);
+        expect(fixture.nativeElement.querySelector('.critical-sequence-undo')).toBeNull();
+        actions[1].click();
+
+        expect(setPendingCriticalRoll).not.toHaveBeenCalled();
+        expect(clearPendingCriticalRoll).not.toHaveBeenCalled();
+        expect(resolvePendingCriticalHit).not.toHaveBeenCalled();
+        expect(discardPendingCriticalHits).not.toHaveBeenCalled();
+        expect(dialogRef.close).toHaveBeenCalledOnceWith({ completed: false });
+    });
+
+    it('applies a transient manual critical without creating or resolving pending work', async () => {
+        fixture.destroy();
+        dialogData.manual = true;
+        dialogData.pendingCriticalId = undefined;
+        applyRoll.and.resolveTo({
+            cancelled: false,
+            outcome: {
+                applied: true,
+                slotNumber: 1,
+                equipment: 'Medium Laser',
+                armoredAbsorption: false,
+            },
+        });
+        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture.detectChanges();
+
+        fixture.componentInstance.onFinished({ results: [1, 1] });
+        fixture.componentInstance.primaryAction();
+        await fixture.whenStable();
+
+        expect(applyRoll).toHaveBeenCalledOnceWith(
+            dialogData.unit,
+            'LT',
+            [1, 1],
+            true,
+            jasmine.any(Object),
+        );
+        expect(setPendingCriticalRoll).not.toHaveBeenCalled();
+        expect(resolvePendingCriticalHit).not.toHaveBeenCalled();
+        expect(dialogRef.close).toHaveBeenCalledOnceWith({ completed: true });
     });
 
     it('previews explosion damage as soon as a hit target is selected and removes it on local UNDO', () => {
@@ -606,22 +660,26 @@ describe('MekCriticalRollDialogComponent', () => {
             .toContain('rolled hit has not been applied');
     });
 
-    it('offers sequence UNDO only before the first critical is committed', () => {
+    it('offers in-memory sequence UNDO only before the first manual critical is committed', () => {
         fixture.destroy();
+        dialogData.manual = true;
+        dialogData.pendingCriticalId = undefined;
         dialogData.canUndoToChance = true;
         fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
         fixture.detectChanges();
 
         const undo = fixture.nativeElement.querySelector('.critical-sequence-undo') as HTMLButtonElement;
         expect(undo.textContent).toContain('UNDO');
+        expect(undo.classList).not.toContain('danger');
 
         undo.click();
         expect(dialogRef.close).toHaveBeenCalledOnceWith({ completed: false, undoToChance: true });
+        expect(resolvePendingCriticalHit).not.toHaveBeenCalled();
+        expect(discardPendingCriticalHits).not.toHaveBeenCalled();
 
         fixture.componentInstance.appliedHits.set(1);
         fixture.detectChanges();
-        expect((fixture.nativeElement.querySelector('.critical-sequence-undo') as HTMLButtonElement).disabled)
-            .toBeTrue();
+        expect(fixture.nativeElement.querySelector('.critical-sequence-undo')).toBeNull();
     });
 
     it('discards remaining criticals and dismisses when no valid slot remains', () => {

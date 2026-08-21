@@ -42,10 +42,27 @@ export class UnitSvgMekService extends UnitSvgService {
     }
 
     private updateLifeSupportPilotDamageWarning(heat: HeatProfile): void {
-        const warning = this.unit.svg()?.getElementById('lifeSupportPilotDamageWarning');
-        if (!warning) return;
+        const svg = this.unit.svg();
+        if (!svg) return;
 
         const heatHits = this.mekRules.heatLifeSupportPilotHits(heat.next ?? heat.current);
+        const builtInWarning = svg.getElementById('heatLifeSupportWarning');
+        if (builtInWarning) {
+            if (heatHits === 0) {
+                builtInWarning.setAttribute('display', 'none');
+                builtInWarning.removeAttribute('aria-label');
+                builtInWarning.removeAttribute('data-pilot-hits');
+                return;
+            }
+            builtInWarning.setAttribute('aria-label', `${heatHits} Life Support heat pilot hit${heatHits === 1 ? '' : 's'}`);
+            builtInWarning.setAttribute('data-pilot-hits', heatHits.toString());
+            builtInWarning.removeAttribute('display');
+            return;
+        }
+
+        const warning = svg.getElementById('lifeSupportPilotDamageWarning');
+        if (!warning) return;
+
         const oxygenHits = this.mekRules.submergedLifeSupportPilotHits();
         const iconKinds: ('heat' | 'oxygen')[] = [];
         for (let i = 0; i < heatHits; i++) iconKinds.push('heat');
@@ -275,7 +292,9 @@ export class UnitSvgMekService extends UnitSvgService {
         const movement = this.mekRules.movementState();
         if (!movement) return;
 
-        const runWarning = movement.maxRun > 0 ? this.unit.rules.getCommittedDamageMovementModePSRCheck('run') : null;
+        const runWarning = this.unit.rules.isMotiveModeAvailable('run')
+            ? this.unit.rules.getCommittedDamageMovementModePSRCheck('run')
+            : null;
         const jumpWarning = movement.jump > 0 ? this.unit.rules.getCommittedDamageMovementModePSRCheck('jump') : null;
         const jumpMoveElementId = svg.getElementById('mpJump') ? 'mpJump' : (svg.getElementById('mp_2') ? 'mp_2' : null);
 
@@ -289,7 +308,8 @@ export class UnitSvgMekService extends UnitSvgService {
         const warningEl = svg.getElementById(`${moveElementId}-psr-warning`) as SVGTextElement | null;
         if (!warningEl) return;
 
-        const currentMoveMode = this.unit.turnState().moveMode();
+        const turnState = this.unit.turnState();
+        const currentMoveMode = turnState.effectiveMoveMode();
         let selectedMoveElementId: string | null = null;
         if (currentMoveMode === 'walk' || currentMoveMode === 'stationary') {
             selectedMoveElementId = 'mpWalk';
@@ -310,9 +330,12 @@ export class UnitSvgMekService extends UnitSvgService {
         warningEl.style.display = 'block';
         const warningMoveMode = moveElementId === 'mpRun' ? 'run' : 'jump';
         const isCurrentMoveMode = currentMoveMode === warningMoveMode;
-        const moveDistance = this.unit.turnState().moveDistance();
-        const triggersPsr = moveDistance !== null && (warningMoveMode === 'jump' || moveDistance > 0);
-        warningEl.classList.toggle('noPsrCheck', !isCurrentMoveMode || !triggersPsr);
+        const triggersPsr = isCurrentMoveMode
+            && this.unit.rules.getCommittedDamageMovementModePSRCheck(
+                warningMoveMode,
+                turnState.moveDistance(),
+            ) !== null;
+        warningEl.classList.toggle('noPsrCheck', !triggersPsr);
 
         if (!selectedMoveElementId) {
             warningEl.classList.remove('currentMoveMode', 'unusedMoveMode');
@@ -448,7 +471,12 @@ export class UnitSvgMekService extends UnitSvgService {
                 if (!loc || !linkedLoc) return;
                 if (!shieldInfo[loc]) {
                     const d = locations[loc];
-                    shieldInfo[loc] = { committed: d?.armor ?? 0, total: (d?.armor ?? 0) + (d?.pendingArmor ?? 0), idx: 0 };
+                    shieldInfo[loc] = {
+                        committed: this.mekRules.getShieldTrackHits(loc) ?? d?.armor ?? 0,
+                        total: this.mekRules.getShieldTrackHits(loc, true)
+                            ?? (d?.armor ?? 0) + (d?.pendingArmor ?? 0),
+                        idx: 0,
+                    };
                 }
                 const s = shieldInfo[loc];
                 this.updatePip(pip, ++s.idx, s.committed, s.total, initial);
@@ -458,7 +486,13 @@ export class UnitSvgMekService extends UnitSvgService {
             this.unit.locations?.armor.forEach(entry => {
                 const el = svg.querySelector(`.shield:not(.pip)[loc="${entry.loc}"]`);
                 if (!el) return;
-                const shieldExhausted = this.unit.isArmorLocDestroyed('DC' + entry.loc) || this.unit.isArmorLocDestroyed('DA' + entry.loc);
+                const shieldExhausted = ['DA', 'DC'].some(prefix => {
+                    const trackLoc = `${prefix}${entry.loc}`;
+                    const points = this.unit.getArmorPoints(trackLoc);
+                    const hits = this.mekRules.getShieldTrackHits(trackLoc, true)
+                        ?? this.unit.getArmorHits(trackLoc);
+                    return points > 0 && hits >= points;
+                });
                 if (shieldExhausted || this.unit.isInternalLocDestroyed(entry.loc)) {
                     el.classList.add('damaged');
                 } else {

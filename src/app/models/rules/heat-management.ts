@@ -32,6 +32,35 @@ export interface HeatScaleEntry {
     pilotDamage?: number;
 }
 
+export interface ResolvedHeatScaleEffects {
+    moveModifier: number;
+    fireModifier: number;
+    shutdownTarget?: number;
+    ammoExplosionTarget?: number;
+    randomMovementTarget?: number;
+    pilotDamageTarget?: number;
+}
+
+export function resolveHeatScaleEffects(
+    scale: readonly HeatScaleEntry[],
+    heat: number,
+): ResolvedHeatScaleEffects {
+    const effects: ResolvedHeatScaleEffects = {
+        moveModifier: 0,
+        fireModifier: 0,
+    };
+    for (const entry of scale) {
+        if (heat < entry.heat) break;
+        if (entry.move !== undefined) effects.moveModifier = entry.move;
+        if (entry.fire !== undefined) effects.fireModifier = entry.fire;
+        if (entry.shutdown !== undefined) effects.shutdownTarget = entry.shutdown;
+        if (entry.ammoExp !== undefined) effects.ammoExplosionTarget = entry.ammoExp;
+        if (entry.randomMovement !== undefined) effects.randomMovementTarget = entry.randomMovement;
+        if (entry.pilotDamage !== undefined) effects.pilotDamageTarget = entry.pilotDamage;
+    }
+    return effects;
+}
+
 /**
  * Walk a heat scale and return cumulative move/fire modifiers at a given heat level.
  */
@@ -39,14 +68,32 @@ export function getHeatEffects(
     scale: readonly HeatScaleEntry[],
     heat: number,
 ): { moveModifier: number; fireModifier: number } {
-    let moveModifier = 0;
-    let fireModifier = 0;
-    for (const entry of scale) {
-        if (heat < entry.heat) break;
-        if (entry.move !== undefined) moveModifier = entry.move;
-        if (entry.fire !== undefined) fireModifier = entry.fire;
-    }
+    const { moveModifier, fireModifier } = resolveHeatScaleEffects(scale, heat);
     return { moveModifier, fireModifier };
+}
+
+/** Human-readable cumulative roll checks triggered at one heat level. */
+export function describeHeatScaleRollChecks(
+    scale: readonly HeatScaleEntry[],
+    heat: number,
+): string[] {
+    const effects = resolveHeatScaleEffects(scale, heat);
+    const labels: string[] = [];
+    if (effects.shutdownTarget !== undefined) {
+        labels.push(effects.shutdownTarget >= 100
+            ? 'Automatic shutdown'
+            : `Shutdown check ${effects.shutdownTarget}+`);
+    }
+    if (effects.ammoExplosionTarget !== undefined) {
+        labels.push(`Ammo explosion check ${effects.ammoExplosionTarget}+`);
+    }
+    if (effects.randomMovementTarget !== undefined) {
+        labels.push(`Random movement check ${effects.randomMovementTarget}+`);
+    }
+    if (effects.pilotDamageTarget !== undefined) {
+        labels.push(`Pilot damage check ${effects.pilotDamageTarget}+`);
+    }
+    return labels;
 }
 
 // ── Dissipation State ────────────────────────────────────────────────────────

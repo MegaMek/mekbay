@@ -4,8 +4,8 @@
 
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
-import type { MountedEquipment } from '../mounted-equipment.model';
-import { UnitTypeRulesBase, type UnitRuleModifier } from './unit-type-rules';
+import type { MotiveModes } from '../motiveModes.model';
+import { unitConditionControls, UnitTypeRulesBase, type UnitRuleModifier } from './unit-type-rules';
 import {
     type HeatScaleEntry,
     type HeatDissipationState,
@@ -19,8 +19,23 @@ import {
  */
 export class AeroRules extends UnitTypeRulesBase {
 
+    protected override readonly baseConditionControls = unitConditionControls(['shutdown', 'out-of-control', 'random-movement']);
+    protected override readonly immobile = computed<boolean>(() =>
+        this.unit.isLoaded()
+        && !this.hasDroneOperatingSystem()
+        && !this.hasFunctionalCrew());
+
     protected override supportsDroneOperatingSystem(): boolean {
         return true;
+    }
+
+    override hasComputedCondition(condition: string): boolean {
+        if (condition === 'out-of-control' && this.unit.getCondition('shutdown')) return true;
+        return super.hasComputedCondition(condition);
+    }
+
+    override computedConditions(): readonly string[] {
+        return [...super.computedConditions(), 'out-of-control'];
     }
 
     private readonly heatMgmt: HeatManagement;
@@ -60,6 +75,29 @@ export class AeroRules extends UnitTypeRulesBase {
 
     // ── PSR / Control Rolls ──────────────────────────────────────────────────
 
+    override getStandardControlRollTarget(): number {
+        return this.getBasePilotingSkill()
+            + (this.unit.getCrewMember(0)?.getHits() ?? 0)
+            + this.destroyedCriticalBoxes('avionics_hit')
+            + this.destroyedCriticalBoxes('life_support_hit');
+    }
+
+    override isMotiveModeAvailable(moveMode: MotiveModes): boolean {
+        if (moveMode === 'stationary') return true;
+        return !this.unit.getCondition('out-of-control')
+            && !this.unit.getCondition('random-movement');
+    }
+
+    private destroyedCriticalBoxes(idPrefix: string): number {
+        return this.unit.getCritSlots().filter(slot => {
+            const type = slot.el?.getAttribute('type') ?? '';
+            const matchesSystem = slot.id.startsWith(idPrefix)
+                || slot.name?.startsWith(idPrefix) === true
+                || type.startsWith(idPrefix);
+            return matchesSystem && (slot.destroyed !== undefined || slot.destroying !== undefined);
+        }).length;
+    }
+
     // ── Heat Scale ───────────────────────────────────────────────────────────
 
     /**
@@ -86,6 +124,7 @@ export class AeroRules extends UnitTypeRulesBase {
         { heat: 28, ammoExp: 8 },
         { heat: 30, shutdown: 100 },
     ];
+    override readonly heatScale = AeroRules.HEAT_SCALE;
 
     /** Compute heat-based fire modifiers from current heat level */
     static getHeatEffects(heat: number): { moveModifier: number; fireModifier: number } {
@@ -93,13 +132,24 @@ export class AeroRules extends UnitTypeRulesBase {
     }
 
     protected override buildRuleModifiers(): UnitRuleModifier[] {
+        const modifiers: UnitRuleModifier[] = [];
         const heatFireModifier = AeroRules.getHeatEffects(this.unit.getHeat().current).fireModifier;
-        return heatFireModifier === 0 ? [] : [{
-            label: 'Heat - Fire Modifier',
-            values: { ranged: heatFireModifier },
-            weakened: true,
-            kind: 'heat',
-        }];
+        if (heatFireModifier !== 0) {
+            modifiers.push({
+                label: 'Heat - Fire Modifier',
+                values: { ranged: heatFireModifier },
+                weakened: true,
+                kind: 'heat',
+            });
+        }
+        if (this.unit.getCondition('out-of-control')) {
+            modifiers.push({
+                label: 'Out of Control',
+                values: { ranged: 2 },
+                weakened: true,
+            });
+        }
+        return modifiers;
     }
 
     // ── Heat Dissipation ─────────────────────────────────────────────────────

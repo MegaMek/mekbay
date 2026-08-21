@@ -3811,6 +3811,8 @@ describe('MekRules', () => {
         });
         const turnState = forceUnit.turnState();
         forceUnit.setCondition('prone', true);
+        turnState.moveMode.set('run');
+        turnState.moveDistance.set(0);
         turnState.addDmgReceived(20);
         turnState.setPSRCheckState({ hipsHit: new Set(['LL']) });
 
