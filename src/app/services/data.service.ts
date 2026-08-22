@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Injectable, signal, Injector, inject, DestroyRef } from '@angular/core';
-import type { Unit, UnitFluffCatalogEntry } from '../models/units.model';
+import type { UnitSummary, UnitFluffCatalogEntry } from '../models/unit-summary.model';
 import type { Faction, FactionId } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
 import { DbService, type TagData } from './db.service';
@@ -293,20 +293,20 @@ export class DataService {
      * Load tags from storage and apply them to units.
      * Uses TagsService for cached data.
      */
-    private async loadUnitTags(units: Unit[]): Promise<void> {
+    private async loadUnitTags(units: UnitSummary[]): Promise<void> {
         await this.unitRuntimeService.loadUnitTags(units);
         this.tagsVersion.update(v => v + 1);
     }
 
-    public getUnits(): Unit[] {
+    public getUnits(): UnitSummary[] {
         return this.unitsCatalog.getUnits();
     }
 
-    public getUnitByName(name: string): Unit | undefined {
+    public getUnitByName(name: string): UnitSummary | undefined {
         return this.unitRuntimeService.getUnitByName(name);
     }
 
-    public getUnitFluff(unit: Pick<Unit, 'name' | 'fluff' | 'serverHost'>): Promise<UnitFluffCatalogEntry | undefined> {
+    public getUnitFluff(unit: Pick<UnitSummary, 'name' | 'fluff' | 'serverHost'>): Promise<UnitFluffCatalogEntry | undefined> {
         return this.unitsFluffCatalog.getUnitFluff(unit);
     }
 
@@ -397,7 +397,7 @@ export class DataService {
         return this.megaMekAvailabilityCatalog.getRecords();
     }
 
-    public getMegaMekAvailabilityRecordForUnit(unit: Pick<Unit, 'name'>): MegaMekWeightedAvailabilityRecord | undefined {
+    public getMegaMekAvailabilityRecordForUnit(unit: Pick<UnitSummary, 'name'>): MegaMekWeightedAvailabilityRecord | undefined {
         return this.megaMekAvailabilityCatalog.getRecordForUnit(unit);
     }
 
@@ -418,7 +418,7 @@ export class DataService {
         this.lookupKeyToForcePacks = null;
     }
 
-    private rebuildUnitCatalogIndexes(units: Unit[]): void {
+    private rebuildUnitCatalogIndexes(units: UnitSummary[]): void {
         this.invalidateForcePackCaches();
         this.unitRuntimeService.preprocessUnits(units);
     }
@@ -473,7 +473,7 @@ export class DataService {
         this.unitSearchIndexService.rebuildIndexes(this.getUnits(), this.getEras(), this.getFactions(), extinctFaction);
     }
 
-    private applyNoneFactionMemberships(units: readonly Unit[], eras: readonly Era[], factions: readonly Faction[]): void {
+    private applyNoneFactionMemberships(units: readonly UnitSummary[], eras: readonly Era[], factions: readonly Faction[]): void {
         const noneFaction = this.getFactionById(MULFACTION_NONE);
         if (!noneFaction) {
             return;
@@ -513,7 +513,7 @@ export class DataService {
         }
     }
 
-    private isUnitYearValidForEra(unit: Pick<Unit, 'year'>, era: Era): boolean {
+    private isUnitYearValidForEra(unit: Pick<UnitSummary, 'year'>, era: Era): boolean {
         const eraEndYear = era.years.to ?? Number.POSITIVE_INFINITY;
         return unit.year < eraEndYear;
     }
@@ -1772,7 +1772,7 @@ export class DataService {
     /**
     * Check if a unit belongs to a force pack (by variants).
      */
-    public unitBelongsToForcePack(unit: Unit, packName: string): boolean {
+    public unitBelongsToForcePack(unit: UnitSummary, packName: string): boolean {
         if (!this.forcePackToLookupKey) this.buildForcePackCaches();
         const lookupSet = this.forcePackToLookupKey!.get(packName);
         if (!lookupSet) return false;
@@ -1790,7 +1790,7 @@ export class DataService {
     /**
     * Get the sorted list of force pack names that contain a unit's variants.
      */
-    public getForcePacksForUnit(unit: Unit): string[] {
+    public getForcePacksForUnit(unit: UnitSummary): string[] {
         if (!this.lookupKeyToForcePacks) this.buildForcePackCaches();
         return this.lookupKeyToForcePacks!.get(getUnitVariantGroupKey(unit)) ?? [];
     }

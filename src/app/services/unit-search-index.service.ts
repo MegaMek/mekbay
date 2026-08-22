@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Injectable } from '@angular/core';
-import type { Unit, UnitComponent } from '../models/units.model';
+import type { UnitSummary, UnitComponent } from '../models/unit-summary.model';
 import { type Faction } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
 import type { BucketStatSummary, MinMaxStatsRange, UnitSubtypeMaxStats } from './data.service';
@@ -110,7 +110,7 @@ export class UnitSearchIndexService {
     private dropdownOptionUniverse = new Map<string, Array<{ name: string; img?: string }>>();
     private factionEraSnapshot: UnitSearchWorkerFactionEraSnapshot = {};
 
-    public prepareUnits(units: Unit[]): void {
+    public prepareUnits(units: UnitSummary[]): void {
         this.unitSubtypeMaxStats = {};
         this.unitAsTypeMaxStats = {};
 
@@ -143,7 +143,7 @@ export class UnitSearchIndexService {
             gravDecks: createTrackedStatAccumulator(),
         });
 
-        const updateTrackedStats = (stats: ReturnType<typeof createStatsAccumulator>, unit: Unit): void => {
+        const updateTrackedStats = (stats: ReturnType<typeof createStatsAccumulator>, unit: UnitSummary): void => {
             updateTrackedStat(stats.armor, unit.armor || 0);
             updateTrackedStat(stats.internal, unit.internal || 0);
             updateTrackedStat(stats.heat, unit.heat || 0);
@@ -278,7 +278,7 @@ export class UnitSearchIndexService {
         }
     }
 
-    public rebuildIndexes(units: Unit[], eras: Era[], factions: Faction[], extinctFaction?: Faction): void {
+    public rebuildIndexes(units: UnitSummary[], eras: Era[], factions: Faction[], extinctFaction?: Faction): void {
         this.searchFilterIndex = new Map<string, Map<string, Set<string>>>();
         this.componentCountIndex = new Map<string, Map<string, number>>();
         this.searchFilterValues = new Map<string, string[]>();
@@ -307,7 +307,7 @@ export class UnitSearchIndexService {
             this.addSearchIndexValues('quirks', unit.quirks ?? [], unit.name);
             this.addSearchIndexValues('_tags', getMergedTags(unit), unit.name);
             for (const filter of BOOLEAN_FILTERS) {
-                this.addSearchIndexValue(filter.key, getBooleanFilterUnitValue(filter, unit[filter.key as keyof Unit]) ? 'yes' : 'no', unit.name);
+                this.addSearchIndexValue(filter.key, getBooleanFilterUnitValue(filter, unit[filter.key as keyof UnitSummary]) ? 'yes' : 'no', unit.name);
             }
         }
 
@@ -342,7 +342,7 @@ export class UnitSearchIndexService {
         this.factionEraSnapshot = this.createFactionEraSnapshot(unitNamesByMulId, eras, factions);
     }
 
-    public rebuildTagSearchIndex(units: Unit[]): void {
+    public rebuildTagSearchIndex(units: UnitSummary[]): void {
         if (this.searchFilterIndex.size === 0 && this.searchFilterValues.size === 0) {
             return;
         }
@@ -472,7 +472,7 @@ export class UnitSearchIndexService {
         return snapshot;
     }
 
-    private createUnitNamesByMulId(units: Unit[]): Map<number, string[]> {
+    private createUnitNamesByMulId(units: UnitSummary[]): Map<number, string[]> {
         const unitNamesByMulId = new Map<number, string[]>();
 
         for (const unit of units) {
@@ -514,7 +514,7 @@ export class UnitSearchIndexService {
         }
     }
 
-    private addComponentCountValues(unit: Unit): void {
+    private addComponentCountValues(unit: UnitSummary): void {
         for (const component of unit.comp) {
             const normalizedName = component.n.toLowerCase();
             let unitCounts = this.componentCountIndex.get(normalizedName);
@@ -527,7 +527,7 @@ export class UnitSearchIndexService {
         }
     }
 
-    private prepareUnitWeaponTypes(unit: Unit): void {
+    private prepareUnitWeaponTypes(unit: UnitSummary): void {
         const counts: Partial<Record<WeaponType, number>> = {};
 
         const addComponents = (components: readonly UnitComponent[]): void => {
@@ -552,7 +552,7 @@ export class UnitSearchIndexService {
         unit._weaponTypes = WEAPON_TYPES.filter(weaponType => (counts[weaponType] ?? 0) > 0);
     }
 
-    private getASMotiveDisplayNames(unit: Unit): string[] {
+    private getASMotiveDisplayNames(unit: UnitSummary): string[] {
         const movementModes = unit.as?.MVm;
         if (!movementModes) {
             return [];
@@ -590,7 +590,7 @@ export class UnitSearchIndexService {
         components.push({ q: 1, n: id, id, l: location, t: 'HIDDEN', p: -1 });
     }
 
-    private sumWeaponDamageNoPhysical(unit: Unit, components: UnitComponent[], ignoreOneshots = false): number {
+    private sumWeaponDamageNoPhysical(unit: UnitSummary, components: UnitComponent[], ignoreOneshots = false): number {
         let sum = 0;
         for (const weapon of components) {
             if (ignoreOneshots && weapon.os && weapon.os > 0) {

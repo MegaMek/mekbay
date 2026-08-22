@@ -9,7 +9,7 @@ import type { Faction } from '../models/factions.model';
 import { Force, type UnitGroup } from '../models/force.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import { LoadForceEntry } from '../models/load-force-entry.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import type { FormationTypeDefinition } from '../utils/formation-type.model';
 import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
@@ -20,6 +20,8 @@ import type { InventoryControlRuntimeTarget } from '../models/inventory-control-
 import type { SerializedForce } from '../models/force-serialization';
 import type { UnitCover } from '../models/unit-cover.model';
 import { CORE_2026_GAME_RULES } from '../models/rules/game-rules';
+import { Equipment } from '../models/equipment.model';
+import { MountedEquipment } from '../models/mounted-equipment.model';
 
 function createFaction(id: number, name: string): Faction {
     return {
@@ -41,14 +43,14 @@ function createFormation(id: string, exclusiveFaction?: string[]): FormationType
     };
 }
 
-function createUnit(): Unit {
+function createUnit(): UnitSummary {
     return {
         id: 1,
         name: 'Test Mek',
         chassis: 'Test',
         model: 'Mek',
         type: 'BM',
-    } as unknown as Unit;
+    } as unknown as UnitSummary;
 }
 
 function createSerializedForce(overrides: Partial<SerializedForce> = {}): SerializedForce {
@@ -83,7 +85,7 @@ function createHarness(formation: FormationTypeDefinition, factions: Faction[]) 
         eraLock: false,
         units: () => forceUnits,
         groups: () => [group],
-        addUnit: jasmine.createSpy('addUnit').and.callFake((unit: Unit, targetGroup: UnitGroup = group) => {
+        addUnit: jasmine.createSpy('addUnit').and.callFake((unit: UnitSummary, targetGroup: UnitGroup = group) => {
             const forceUnit = {
                 id: `unit-${forceUnits.length + 1}`,
                 force,
@@ -188,11 +190,11 @@ describe('ForceBuilderService formation filter integration', () => {
         const faction = createFaction(1, 'Mercenary');
         const era = { id: 3151, name: 'ilClan', years: {} } as any;
         const firstUnit = createUnit();
-        const secondUnit = { ...createUnit(), id: 2, name: 'Second Mek' } as Unit;
+        const secondUnit = { ...createUnit(), id: 2, name: 'Second Mek' } as UnitSummary;
 
         service.createNewForce = jasmine.createSpy('createNewForce').and.resolveTo(force);
         service.addUnit = jasmine.createSpy('addUnit').and.callFake(async (
-            unit: Unit,
+            unit: UnitSummary,
             _gunnerySkill: number | undefined,
             _pilotingSkill: number | undefined,
             targetGroup: UnitGroup,
@@ -593,9 +595,10 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
         };
     }
 
-    function createEnemyUnit(id: string, name: string, definition: Partial<Unit> = {}, cover?: UnitCover): CBTForceUnit {
+    function createEnemyUnit(id: string, name: string, definition: Partial<UnitSummary> = {}, cover?: UnitCover): CBTForceUnit {
         return {
             id,
+            destroyed: false,
             gameRules: CORE_2026_GAME_RULES,
             getDisplayName: () => name,
             getUnit: () => ({
@@ -605,8 +608,10 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
                 tons: 50,
                 weightClass: 'Medium',
                 ...definition
-            } as Unit),
+            } as UnitSummary),
             getCondition: () => false,
+            getInventory: () => [],
+            isEquipmentOperational: () => true,
             getActiveNarcWaterLayers: () => ({ aboveWater: false, underwater: false }),
             turnState: () => ({
                 moveMode: signal(null),
@@ -616,6 +621,37 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
                 cover: signal<UnitCover | undefined>(cover)
             })
         } as unknown as CBTForceUnit;
+    }
+
+    function createStealthEnemyUnit(id: string, name: string): CBTForceUnit {
+        const unit = createEnemyUnit(id, name);
+        const stealth = new MountedEquipment({
+            owner: unit,
+            id: `${id}-stealth`,
+            name: 'Stealth Armor',
+            equipment: new Equipment({
+                id: 'IS Stealth',
+                name: 'Stealth',
+                type: 'misc',
+                flags: ['F_STEALTH'],
+                modes: ['Off', 'On'],
+            }),
+            states: new Map([['state', 'enabled']]),
+        });
+        const ecm = new MountedEquipment({
+            owner: unit,
+            id: `${id}-ecm`,
+            name: 'ECM Suite',
+            equipment: new Equipment({
+                id: 'IS ECM Suite',
+                name: 'ECM Suite',
+                type: 'misc',
+                flags: ['F_ECM'],
+            }),
+            states: new Map(),
+        });
+        Object.defineProperty(unit, 'getInventory', { value: () => [stealth, ecm] });
+        return unit;
     }
 
     function createAlignedCBTForce(units: CBTForceUnit[] = []): CBTForce {
@@ -778,6 +814,7 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
                 largeTarget: imported.tnCalculator?.largeTarget,
                 skidding: imported.tnCalculator?.skidding,
                 targetMovementBracket: imported.tnCalculator?.targetMovementBracket,
+                targetMovementDistance: imported.tnCalculator?.targetMovementDistance,
                 isAirborne: imported.tnCalculator?.isAirborne,
                 targetHexCover: imported.tnCalculator?.targetHexCover,
                 waterDepth: imported.tnCalculator?.waterDepth,
@@ -798,6 +835,55 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
         (harness.service as any).syncOpforInventoryTargets(harness.force, [enemy]);
 
         expect(harness.force.replaceInventoryControlTargets).toHaveBeenCalledTimes(1);
+    });
+
+    it('converges when an unchanged OPFOR target has a nested stealth profile', () => {
+        const harness = createOpforHarness();
+        const enemy = createStealthEnemyUnit('enemy-1', 'Stealth Atlas');
+
+        (harness.service as any).syncOpforInventoryTargets(harness.force, [enemy]);
+
+        expect(harness.targets()[0].tnCalculator?.stealth).toEqual({
+            short: 0,
+            medium: 1,
+            long: 2,
+            secondaryTargetRestricted: true,
+            conventionalInfantry: { short: 0, medium: 0, long: 0 },
+        });
+        const replacementSpy = harness.force.replaceInventoryControlTargets as jasmine.Spy;
+        replacementSpy.calls.reset();
+
+        (harness.service as any).syncOpforInventoryTargets(harness.force, [enemy]);
+
+        expect(replacementSpy).not.toHaveBeenCalled();
+    });
+
+    it('disables OPFOR and reports target synchronization failures', () => {
+        const harness = createOpforHarness();
+        const showToast = jasmine.createSpy('showToast');
+        const logError = jasmine.createSpy('error');
+        (harness.service as any).toastService = { showToast };
+        (harness.service as any).logger = { error: logError };
+        const manualTarget: InventoryControlRuntimeTarget = {
+            id: 'manual', letter: 'A', name: 'Manual', color: '#000', source: 'manual', distance: 1, tnModifier: 0,
+        };
+        harness.setTargets([
+            manualTarget,
+            { id: 'opfor:stale', letter: 'B', name: 'Stale', color: '#fff', source: 'opfor', distance: 1, tnModifier: 0 },
+        ]);
+        const enemy = createEnemyUnit('enemy-1', 'Broken Target');
+        enemy.getDisplayName = () => { throw new Error('bad target'); };
+
+        (harness.service as any).syncOpforInventoryTargets(harness.force, [enemy]);
+
+        expect(harness.enabled()).toBeFalse();
+        expect(harness.targets()).toEqual([manualTarget]);
+        expect(logError).toHaveBeenCalledWith(jasmine.stringContaining('bad target'));
+        expect(showToast).toHaveBeenCalledOnceWith(
+            'Unable to synchronize OPFOR targets. OPFOR targeting was disabled.',
+            'error',
+            'opfor-target-sync-error'
+        );
     });
 
     it('synchronizes unit cover into linked target state', () => {

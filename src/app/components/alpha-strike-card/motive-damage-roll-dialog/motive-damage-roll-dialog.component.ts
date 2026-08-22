@@ -6,7 +6,7 @@ import { ChangeDetectionStrategy, Component, inject, signal, viewChild, type Aft
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
 import type { ASForceUnit } from '../../../models/as-force-unit.model';
-import type { MoveType } from '../../../models/units.model';
+import type { MoveType } from '../../../models/unit-summary.model';
 
 /*
  *

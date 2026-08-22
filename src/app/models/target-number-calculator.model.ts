@@ -12,7 +12,7 @@ import {
     type UnitWaterDepth,
     type UnitWaterState,
 } from './unit-cover.model';
-import type { UnitHeight } from './units.model';
+import type { UnitHeight } from './unit-summary.model';
 
 export const TN_SKIDDING_MODIFIER = 2;
 export const TN_BATTLE_ARMOR_MODIFIER = 1;
@@ -89,10 +89,79 @@ export type TnInterveningWoods = 'none' | 'light1' | 'light2';
 export type TnTargetHexCover = 'none' | 'light' | 'heavy';
 export type TnAttackDirection = 'front' | 'left' | 'rear' | 'right';
 export type TnSpotterMoveMode = 'stationary' | 'walk' | 'run' | 'jump';
+export type TnRangeBracket = 'short' | 'medium' | 'long' | 'extreme';
+
+export interface TnRangeModifiers {
+    readonly short: number;
+    readonly medium: number;
+    readonly long: number;
+}
+
+export interface TnStealthModifiers extends TnRangeModifiers {
+    /** Active Mek/vehicle stealth armor cannot be selected as a secondary target. */
+    readonly secondaryTargetRestricted?: boolean;
+    /** Conventional infantry use this profile; when omitted, the normal profile applies. */
+    readonly conventionalInfantry?: TnRangeModifiers;
+}
+
+export type TnStealthSystem =
+    | 'stealth-armor'
+    | 'null-signature'
+    | 'chameleon'
+    | 'chameleon-null'
+    | 'ba-basic'
+    | 'ba-standard'
+    | 'ba-improved'
+    | 'mimetic'
+    | 'simple-camo';
+
+export type TnVisualCamoSystem = Extract<TnStealthSystem, 'mimetic' | 'simple-camo'>;
+
+/** Manual targets use `true`; linked units may supply their exact range profile. */
+export type TnStealthState = boolean | TnStealthModifiers;
+
+export const TN_STANDARD_STEALTH_MODIFIERS: TnStealthModifiers = {
+    short: 0,
+    medium: 1,
+    long: 2,
+    secondaryTargetRestricted: true,
+    conventionalInfantry: { short: 0, medium: 0, long: 0 },
+};
+
+export const TN_NULL_SIGNATURE_MODIFIERS: TnStealthModifiers = {
+    short: 0,
+    medium: 1,
+    long: 2,
+    conventionalInfantry: { short: 0, medium: 0, long: 0 },
+};
+
+export const TN_CHAMELEON_MODIFIERS: TnStealthModifiers = {
+    short: 0,
+    medium: 1,
+    long: 2,
+};
+
+export const TN_CHAMELEON_NULL_SIGNATURE_MODIFIERS: TnStealthModifiers = {
+    short: 0,
+    medium: 2,
+    long: 4,
+    conventionalInfantry: TN_CHAMELEON_MODIFIERS,
+};
+
+export function getVisualCamoTnModifiers(
+    system: TnVisualCamoSystem,
+    targetMoveDistance: number,
+): TnStealthModifiers {
+    const stationaryModifier = system === 'mimetic' ? 3 : 2;
+    const modifier = Math.max(0, stationaryModifier - Math.max(0, targetMoveDistance));
+    return { short: modifier, medium: modifier, long: modifier };
+}
 
 export interface TnTargetNumberCalculatorState {
     isAirborne?: boolean;
     targetMovementBracket?: TnTargetMovementBracketId | null;
+    /** Exact distance when known; manual input preserves 0/1/2 for movement-dependent camouflage. */
+    targetMovementDistance?: number | null;
     skidding?: boolean;
     prone?: boolean;
     immobile?: boolean;
@@ -112,6 +181,10 @@ export interface TnTargetNumberCalculatorState {
     narcUnderwater?: boolean;
     tagged?: boolean;
     ecmShielded?: boolean;
+    /** Range-dependent protection supplied by an active stealth system. */
+    stealth?: TnStealthState;
+    /** Identifies the selected system when its profile changes with movement. */
+    stealthSystem?: TnStealthSystem;
     /** Attacker-local delta for rules not represented by the calculator controls. */
     customModifier?: number;
 }
@@ -119,6 +192,10 @@ export interface TnTargetNumberCalculatorState {
 export interface TnTargetNumberCalculationInput extends TnTargetNumberCalculatorState {
     unitType?: TnTargetUnitType;
     range?: number;
+    /** Effective weapon bracket, after any C3 range adjustment. */
+    rangeBracket?: TnRangeBracket;
+    /** Conventional infantry ignore electronic stealth, but not visual camouflage or Chameleon LPS. */
+    attackerIsConventionalInfantry?: boolean;
 }
 
 export interface TnTargetModifierBreakdownEntry {
@@ -149,6 +226,13 @@ export function getTargetUnitTypeModifier(unitType: TnTargetUnitType | null | un
 
 export function isStaticTargetType(unitType: TnTargetUnitType | null | undefined): boolean {
     return unitType === 'terrain' || unitType === 'building';
+}
+
+export function isTnTargetImmobile(
+    unitType: TnTargetUnitType | null | undefined,
+    immobile: boolean | null | undefined,
+): boolean {
+    return isStaticTargetType(unitType) || immobile === true;
 }
 
 export function isTerrainTargetType(unitType: TnTargetUnitType | null | undefined): boolean {
@@ -207,6 +291,27 @@ export function getTargetHexCoverModifier(cover: TnTargetHexCover | null | undef
     }
 }
 
+export function getStealthTnModifier(
+    stealth: TnStealthState | null | undefined,
+    rangeBracket: TnRangeBracket | null | undefined,
+    attackerIsConventionalInfantry = false,
+): number {
+    if (!stealth || !rangeBracket) return 0;
+    const profile = stealth === true ? TN_STANDARD_STEALTH_MODIFIERS : stealth;
+    const effectiveProfile = attackerIsConventionalInfantry
+        ? profile.conventionalInfantry ?? profile
+        : profile;
+    const value = rangeBracket === 'extreme' ? effectiveProfile.long : effectiveProfile[rangeBracket];
+    return Number.isFinite(value) ? value : 0;
+}
+
+export function stealthDisallowsSecondaryTarget(
+    stealth: TnStealthState | null | undefined,
+): boolean {
+    return stealth === true
+        || (!!stealth && typeof stealth === 'object' && stealth.secondaryTargetRestricted === true);
+}
+
 export function getIndirectFireModifier(indirectFire: boolean | null | undefined, spotterMoveMode: TnSpotterMoveMode | null | undefined, spotterDeclaredAttacks: boolean | null | undefined): number {
     if (!indirectFire) return 0;
     return TN_INDIRECT_FIRE_MODIFIER
@@ -236,7 +341,7 @@ export function calculateTargetTnModifierBreakdown(
     const prone = input.prone ?? false;
     const waterState = resolveTnTargetWaterState(input);
     const buildingCoverState = resolveTnTargetBuildingCoverState(input);
-    const immobile = input.immobile ?? (staticTarget && input.prone === undefined);
+    const immobile = isTnTargetImmobile(input.unitType, input.immobile);
     const terrainTarget = isTerrainTargetType(input.unitType);
     const breakdown: TnTargetModifierBreakdownEntry[] = [];
     const add = (
@@ -312,6 +417,11 @@ export function calculateTargetTnModifierBreakdown(
     add('Secondary Target (side/back)', gameRules.supportsSecondaryTargetSideBack && !input.secondaryTarget && input.secondaryTargetSideBack
         ? TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER : 0);
     add('Large Target', gameRules.supportsLargeTarget && input.largeTarget ? TN_LARGE_TARGET_MODIFIER : 0);
+    add('Stealth', getStealthTnModifier(
+        input.stealth,
+        input.rangeBracket,
+        input.attackerIsConventionalInfantry,
+    ));
     add('Custom', normalizeTargetCustomModifier(input.customModifier));
 
     if (input.indirectFire) {

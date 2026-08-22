@@ -8,7 +8,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DragDropModule, type CdkDragDrop, type CdkDragMove } from '@angular/cdk/drag-drop';
 import type { Force, UnitGroup } from '../../models/force.model';
 import type { ForceUnit } from '../../models/force-unit.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { GameSystem } from '../../models/common.model';
 import { LayoutService } from '../../services/layout.service';
 import { DataService } from '../../services/data.service';
@@ -53,7 +53,7 @@ export interface ForceOverviewDialogData {
 /** View model for displaying units in the force */
 interface ForceUnitViewModel {
     forceUnit: ForceUnit;
-    unit: Unit;
+    unit: UnitSummary;
 }
 
 type ForceTableRow =
@@ -912,7 +912,7 @@ export class ForceOverviewDialogComponent {
         return isUnitDataTableSortActive(this.selectedSort(), ...keysOrGroups);
     }
 
-    getTableSortSlot(unit: Unit): string | null {
+    getTableSortSlot(unit: UnitSummary): string | null {
         const sortKey = this.selectedSort();
         if (!sortKey || !this.tableSortSlotHeader()) {
             return null;
@@ -922,11 +922,11 @@ export class ForceOverviewDialogComponent {
     }
 
     /** Format movement value for Alpha Strike table view */
-    formatASMovement(unit: Unit): string {
+    formatASMovement(unit: UnitSummary): string {
         return formatAlphaStrikeUnitMovement(unit, this.useHex());
     }
 
-    formatClassicMovement(unit: Unit): string {
+    formatClassicMovement(unit: UnitSummary): string {
         return formatClassicUnitMovement(unit);
     }
 

@@ -9,7 +9,7 @@ import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
 import type { AvailabilitySource } from '../models/options.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
 import {
     MEGAMEK_AVAILABILITY_RARITY_OPTIONS,
@@ -21,7 +21,7 @@ import { DataService } from './data.service';
 import { OptionsService } from './options.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 
-function createUnit(overrides: TestUnitOverrides): Unit {
+function createUnit(overrides: TestUnitOverrides): UnitSummary {
     return createEmptyUnit(overrides);
 }
 
@@ -31,7 +31,7 @@ describe('UnitAvailabilitySourceService', () => {
     const factionsById = new Map<number, Faction>();
     const megaMekFactionsByMulId = new Map<number, MegaMekFactionRecord[]>();
     const orderedEras: Era[] = [];
-    const units: Unit[] = [];
+    const units: UnitSummary[] = [];
     const megaMekAvailabilityByUnitName = new Map<string, { n?: string; e: Record<string, Record<string, [number, number]>> }>();
     const megaMekAvailabilityRecords: Array<{ n?: string; e: Record<string, Record<string, [number, number]>> }> = [];
     const optionsServiceMock = {
@@ -52,7 +52,7 @@ describe('UnitAvailabilitySourceService', () => {
         getFactions: jasmine.createSpy('getFactions').and.callFake(() => Array.from(factionsById.values())),
         getFactionById: jasmine.createSpy('getFactionById').and.callFake((id: number) => factionsById.get(id) ?? null),
         getMegaMekFactionsByMulId: jasmine.createSpy('getMegaMekFactionsByMulId').and.callFake((mulId: number) => megaMekFactionsByMulId.get(mulId) ?? []),
-        getMegaMekAvailabilityRecordForUnit: jasmine.createSpy('getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        getMegaMekAvailabilityRecordForUnit: jasmine.createSpy('getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return megaMekAvailabilityByUnitName.get(unit.name);
         }),
         getMegaMekAvailabilityRecords: jasmine.createSpy('getMegaMekAvailabilityRecords').and.callFake(() => megaMekAvailabilityRecords),
@@ -953,7 +953,7 @@ describe('UnitAvailabilitySourceService', () => {
             { id: 38, name: 'C79', type: 'Mek', chassis: 'C79', model: 'A', score: 79, rarity: 'Common' },
             { id: 39, name: 'VC80', type: 'Mek', chassis: 'VC80', model: 'A', score: 80, rarity: 'Very Common' },
             { id: 40, name: 'VC100', type: 'Mek', chassis: 'VC100', model: 'A', score: 100, rarity: 'Very Common' },
-        ] as Array<Unit & { score: number; rarity: typeof MEGAMEK_AVAILABILITY_RARITY_OPTIONS[number] }>;
+        ] as Array<UnitSummary & { score: number; rarity: typeof MEGAMEK_AVAILABILITY_RARITY_OPTIONS[number] }>;
 
         units.push(...scoredUnits);
         for (const unit of scoredUnits) {

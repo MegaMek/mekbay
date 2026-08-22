@@ -173,6 +173,28 @@ describe('MultilineDropdownComponent', () => {
         expect(getComputedStyle(panel).fontSize).toBe('13px');
     });
 
+    it('vertically centers the trigger contents without changing the compact chevron', () => {
+        const fixture = TestBed.createComponent(MultilineDropdownComponent);
+        fixture.componentRef.setInput('options', options);
+        fixture.componentRef.setInput('value', 'standard');
+        (fixture.nativeElement as HTMLElement).style.minHeight = '48px';
+        fixture.detectChanges();
+
+        const trigger = fixture.nativeElement.querySelector('.multiline-dropdown-trigger') as HTMLButtonElement;
+        const label = trigger.querySelector('.multiline-dropdown-label') as HTMLElement;
+        const arrow = trigger.querySelector('.multiline-dropdown-arrow') as HTMLElement;
+        const triggerRect = trigger.getBoundingClientRect();
+        const labelRect = label.getBoundingClientRect();
+        const arrowRect = arrow.getBoundingClientRect();
+        const verticalCenter = (rect: DOMRect) => rect.top + rect.height / 2;
+
+        expect(triggerRect.height).toBe(48);
+        expect(Math.abs(verticalCenter(labelRect) - verticalCenter(triggerRect))).toBeLessThan(1);
+        expect(Math.abs(verticalCenter(arrowRect) - verticalCenter(triggerRect))).toBeLessThan(1);
+        expect(arrow.textContent).toBe('\u25be');
+        expect(getComputedStyle(arrow).lineHeight).not.toBe('0px');
+    });
+
     it('renders all option labels into the trigger width measure', () => {
         const fixture = TestBed.createComponent(MultilineDropdownComponent);
         fixture.componentRef.setInput('options', options);
@@ -189,6 +211,7 @@ describe('MultilineDropdownComponent', () => {
             value: 'heavy-gauss',
             label: '[HD] iHeavy Gauss Ammo (4/4)',
             trailingLabel: '(4/4)',
+            modifierLabel: '0/+1/+2',
         }]);
         fixture.componentRef.setInput('value', 'heavy-gauss');
         (fixture.nativeElement as HTMLElement).style.width = '150px';
@@ -216,6 +239,7 @@ describe('MultilineDropdownComponent', () => {
             value: 'heavy-gauss',
             label: '[HD] iHeavy Gauss Ammo (4/4)',
             trailingLabel: '(4/4)',
+            modifierLabel: '0/+1/+2',
         }]);
         fixture.componentRef.setInput('value', 'heavy-gauss');
         fixture.componentRef.setInput('expandPanelToContent', true);
@@ -231,9 +255,21 @@ describe('MultilineDropdownComponent', () => {
         const panelHost = overlayContainerElement.querySelector('multiline-dropdown-panel') as HTMLElement;
         const overlayPane = panelHost.closest('.cdk-overlay-pane') as HTMLElement;
         const optionLabel = panelHost.querySelector('.multiline-dropdown-option-label') as HTMLElement;
+        const optionBadge = panelHost.querySelector('.modifier-badge') as HTMLElement;
+        const triggerBadge = trigger.querySelector('.modifier-badge') as HTMLElement;
         expect(panelHost.classList.contains('expand-to-content')).toBeTrue();
         expect(optionLabel.textContent?.trim()).toBe('[HD] iHeavy Gauss Ammo (4/4)');
+        expect(optionBadge.textContent?.trim()).toBe('0/+1/+2');
+        expect(optionBadge.scrollWidth).toBeLessThanOrEqual(optionBadge.clientWidth);
+        expect(optionBadge.clientWidth).toBeGreaterThan(24);
+        expect(triggerBadge.scrollWidth).toBeLessThanOrEqual(triggerBadge.clientWidth);
+        expect(triggerBadge.clientWidth).toBeGreaterThan(24);
+        expect(overlayPane.style.width).toBe('max-content');
         expect(overlayPane.getBoundingClientRect().width).toBeGreaterThan(trigger.getBoundingClientRect().width);
+
+        const expandedWidth = overlayPane.getBoundingClientRect().width;
+        for (let frame = 0; frame < 6; frame++) await nextAnimationFrame();
+        expect(overlayPane.getBoundingClientRect().width).toBe(expandedWidth);
     });
 
 });

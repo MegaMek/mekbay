@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import type { Force, UnitGroup } from '../models/force.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import { ASForceUnit } from '../models/as-force-unit.model';
@@ -239,11 +239,11 @@ export function generateUnitUrlParams(units: ForceUnit[]): string[] {
 export function parseForceFromUrl(
     force: Force,
     unitsParam: string,
-    allUnits: Unit[],
+    allUnits: UnitSummary[],
     logger?: UrlParseLogger,
     lookupMode: ForceUrlUnitLookupMode = 'name'
 ): ForceUnit[] {
-    const unitMap = new Map<string, Unit>();
+    const unitMap = new Map<string, UnitSummary>();
     for (const unit of allUnits) {
         const key = lookupMode === 'mulId' ? `${unit.id}` : getUnitNameKey(unit.name);
         if (!unitMap.has(key)) {
@@ -323,7 +323,7 @@ export function parseForceFromUrl(
 export function parseUnitUrlParams(
     force: Force,
     unitsStr: string,
-    unitMap: Map<string, Unit>,
+    unitMap: Map<string, UnitSummary>,
     group?: UnitGroup,
     logger?: UrlParseLogger,
     lookupMode: ForceUrlUnitLookupMode = 'name'

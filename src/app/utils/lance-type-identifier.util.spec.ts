@@ -7,7 +7,7 @@ import { type Faction } from '../models/factions.model';
 import { MULFACTION_MERCENARY, type FactionAffinity } from '../models/mulfactions.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { UnitGroup } from '../models/force.model';
-import type { Unit, UnitSubtype } from '../models/units.model';
+import type { UnitSummary, UnitSubtype } from '../models/unit-summary.model';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
 import type { FormationTypeDefinition } from './formation-type.model';
 import { FormationNamerUtil } from './formation-namer.util';
@@ -19,11 +19,11 @@ const NOVA_REQUIREMENTS_FILTER_NOTICE = 'Battle Armor child groups are ignored f
 function createUnit(
     id: number,
     name: string,
-    unitType: Unit['type'],
+    unitType: UnitSummary['type'],
     subtype: UnitSubtype,
-    tp: Unit['as']['TP'],
+    tp: UnitSummary['as']['TP'],
     overrides: TestUnitOverrides = {},
-): Unit {
+): UnitSummary {
     const { as: asOverrides, ...unitOverrides } = overrides;
 
     return createEmptyUnit({
@@ -48,7 +48,7 @@ function createUnit(
     });
 }
 
-function createForceUnit(unit: Unit, gameSystem = GameSystem.ALPHA_STRIKE): ForceUnit {
+function createForceUnit(unit: UnitSummary, gameSystem = GameSystem.ALPHA_STRIKE): ForceUnit {
     const force = {
         faction: () => createFaction('Mercenary', 'Mercenary'),
         era: () => null,
@@ -87,7 +87,7 @@ function createResolvedGroup(overrides: Partial<GroupSizeResult>): GroupSizeResu
 }
 
 function createTestGroup(
-    units: readonly Unit[],
+    units: readonly UnitSummary[],
     resolvedGroups: readonly GroupSizeResult[],
     faction: Faction,
 ): UnitGroup<ForceUnit> {

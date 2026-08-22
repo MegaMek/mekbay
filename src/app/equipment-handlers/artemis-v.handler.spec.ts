@@ -10,6 +10,7 @@ import { EquipmentFlag } from '../models/equipment-flags.type';
 import { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
 import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
 import { createHandlerQueryContext } from '../services/equipment-interaction-registry.service';
+import { createTestEquipmentOwner } from '../testing/unit-test-helpers';
 
 const queryContext = createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY);
 
@@ -103,6 +104,33 @@ describe('ArtemisVHandler', () => {
 
         expect(handler.getToHitAdjustments(artemis, { parent: entry(['F_ARTEMIS_COMPATIBLE']), selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) }, queryContext)).toEqual([{
             kind: 'add', label: 'Unit Jammed', modifier: 0, weakened: true
+        }]);
+    });
+
+    it('does not apply the Artemis V bonus while standard Stealth Armor is active', () => {
+        const { owner } = createTestEquipmentOwner();
+        const mounted = (id: string, flags: EquipmentFlag[], modes: string[] = [], states = new Map<string, string>()) => {
+            const mount = new MountedEquipment({
+                owner,
+                id,
+                name: id,
+                equipment: new Equipment({ id, name: id, type: 'misc', flags, modes }),
+                states,
+            });
+            owner.setInventoryEntry(mount);
+            return mount;
+        };
+        const artemis = mounted('Artemis V', ['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']);
+        const launcher = mounted('Launcher', ['F_ARTEMIS_COMPATIBLE']);
+        mounted('Stealth Armor', ['F_STEALTH'], ['Off', 'On'], new Map([['state', 'enabled']]));
+        mounted('ECM Suite', ['F_ECM']);
+
+        expect(handler.getToHitAdjustments(
+            artemis,
+            { parent: launcher, selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) },
+            queryContext,
+        )).toEqual([{
+            kind: 'add', label: 'Stealth ECM', modifier: 0, weakened: true,
         }]);
     });
 

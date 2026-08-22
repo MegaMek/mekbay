@@ -4,7 +4,7 @@
 
 import { Component, ChangeDetectionStrategy, input, inject, computed, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { Unit } from '../../../models/units.model';
+import type { UnitSummary } from '../../../models/unit-summary.model';
 import { DataService } from '../../../services/data.service';
 import { compareUnitsByName, naturalCompare } from '../../../utils/sort.util';
 import { UnitCardExpandedComponent } from '../../unit-card-expanded/unit-card-expanded.component';
@@ -49,7 +49,7 @@ export class UnitDetailsVariantsTabComponent {
     readonly SORT_OPTIONS = SORT_OPTIONS.filter(opt => opt.key !== '' && !isMegaMekRaritySortKey(opt.key));
 
     /** The current unit to find variants for */
-    unit = input.required<Unit>();
+    unit = input.required<UnitSummary>();
 
     /** Gunnery skill for BV/PV adjustment */
     gunnerySkill = input<number | undefined>(undefined);
@@ -58,10 +58,10 @@ export class UnitDetailsVariantsTabComponent {
     pilotingSkill = input<number | undefined>(undefined);
 
     /** Emitted when a variant card is clicked */
-    variantClick = output<{ variant: Unit, variants: Unit[] }>();
+    variantClick = output<{ variant: UnitSummary, variants: UnitSummary[] }>();
 
     /** Emitted when the info button is clicked on a variant */
-    variantInfoClick = output<Unit>();
+    variantInfoClick = output<UnitSummary>();
 
     /** Emitted when a tag is clicked */
     tagClick = output<TagClickEvent>();
@@ -105,7 +105,7 @@ export class UnitDetailsVariantsTabComponent {
     gameSystem = computed(() => this.gameService.currentGameSystem());
 
     /** All variants of the same chassis (same type, subtype and chassis name) */
-    variants = computed<Unit[]>(() => {
+    variants = computed<UnitSummary[]>(() => {
         const currentUnit = this.unit();
         if (!currentUnit) return [];
 
@@ -149,11 +149,11 @@ export class UnitDetailsVariantsTabComponent {
     }
 
     /** Check if a variant is the current unit */
-    isCurrentUnit(variant: Unit): boolean {
+    isCurrentUnit(variant: UnitSummary): boolean {
         return variant.name === this.unit()?.name;
     }
 
-    onVariantClick(variant: Unit, variants: Unit[]): void {
+    onVariantClick(variant: UnitSummary, variants: UnitSummary[]): void {
         this.variantClick.emit({ variant, variants });
     }
 

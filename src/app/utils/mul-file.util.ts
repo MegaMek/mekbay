@@ -11,7 +11,7 @@ import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../mo
 import type { DataService } from '../services/data.service';
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import type { CriticalSlot, LocationData } from '../models/force-serialization';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { uuidv7 } from './uuid.util';
 
 const DEFAULT_ENTITY_ATTRIBUTES: Record<string, string> = {
@@ -140,7 +140,7 @@ function downloadTextFile(filename: string, content: string, mimeType = 'applica
     URL.revokeObjectURL(url);
 }
 
-function getUnitClanPerson(unit: Unit): boolean {
+function getUnitClanPerson(unit: UnitSummary): boolean {
     return unit.techBase === 'Clan';
 }
 
@@ -234,8 +234,8 @@ function parseBoolean(raw: string | null): boolean {
     return raw === 'true' || raw === '1';
 }
 
-function createUnitLookup(units: readonly Unit[]): Map<string, Unit> {
-    const lookup = new Map<string, Unit>();
+function createUnitLookup(units: readonly UnitSummary[]): Map<string, UnitSummary> {
+    const lookup = new Map<string, UnitSummary>();
     for (const unit of units) {
         const displayKey = getUnitLookupKey(unit.chassis, unit.model);
         const nameKey = normalizeUnitLookup(unit.name);
@@ -325,7 +325,7 @@ function createCrewElement(doc: XMLDocument, unit: CBTForceUnit): Element {
     return pilotElement;
 }
 
-function getCrewType(unit: Unit): MulCrewType {
+function getCrewType(unit: UnitSummary): MulCrewType {
     const type = String(unit.type).toLocaleLowerCase();
     const subtype = String(unit.subtype).toLocaleLowerCase();
     const features = unit.features.map(feature => feature.toLocaleLowerCase());
@@ -859,7 +859,7 @@ function getBaseInternalPoints(forceUnit: CBTForceUnit, loc: string): number {
     return Math.max(0, Math.round(unit.internal / Math.max(1, getApproximateLocationCount(unit))));
 }
 
-function getApproximateLocationCount(unit: Unit): number {
+function getApproximateLocationCount(unit: UnitSummary): number {
     switch (unit.moveType) {
         case 'Biped':
             return 8;

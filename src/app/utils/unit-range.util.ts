@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit, UnitComponent } from '../models/units.model';
+import type { UnitSummary, UnitComponent } from '../models/unit-summary.model';
 
-type WeightedRangeUnit = Pick<Unit, 'subtype' | 'internal' | 'comp'>;
+type WeightedRangeUnit = Pick<UnitSummary, 'subtype' | 'internal' | 'comp'>;
 
 interface WeightedRangeContribution {
     damage: number | null;
@@ -42,7 +42,7 @@ function parseNumericDamage(value: string | undefined): number | null {
     return Number.isFinite(numericValue) ? numericValue : null;
 }
 
-function getComponentDamage(unit: Pick<Unit, 'subtype' | 'internal'>, component: UnitComponent): number | null {
+function getComponentDamage(unit: Pick<UnitSummary, 'subtype' | 'internal'>, component: UnitComponent): number | null {
     const parsedDamage = parseNumericDamage(component.md);
     if (parsedDamage === null) {
         return null;

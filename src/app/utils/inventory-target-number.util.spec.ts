@@ -241,6 +241,82 @@ describe('inventory target number rules profiles', () => {
         expect(c3Disabled.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'ECM' }));
     });
 
+    it('adds active stealth using each weapon\'s effective range bracket', () => {
+        const input = c3LaserInput(15, 12);
+        input.target = {
+            ...input.target!,
+            tnCalculator: {
+                stealth: { short: 0, medium: 1, long: 2, secondaryTargetRestricted: true },
+            },
+        };
+
+        const state = inventoryTargetNumberState(input);
+
+        expect(state.rangeSelection?.range).toBe('medium');
+        expect(state.breakdown?.total).toBe(8);
+        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({
+            label: 'Stealth',
+            value: '+1',
+        }));
+        expect(inventoryTargetEffectiveTnModifier(
+            input.target!,
+            input.entry,
+            undefined,
+            CORE_2026_GAME_RULES,
+            'long',
+        )).toBe(2);
+    });
+
+    it('applies the conventional-infantry exception to electronic stealth only', () => {
+        const input = c3LaserInput(15, 12);
+        Object.assign(input.entry.owner, {
+            getUnit: () => ({ type: 'Infantry', subtype: 'Conventional Infantry' }),
+        });
+        input.target = {
+            ...input.target!,
+            tnCalculator: {
+                stealth: {
+                    short: 0,
+                    medium: 1,
+                    long: 2,
+                    conventionalInfantry: { short: 0, medium: 0, long: 0 },
+                },
+            },
+        };
+
+        expect(inventoryTargetEffectiveTnModifier(
+            input.target,
+            input.entry,
+            undefined,
+            CORE_2026_GAME_RULES,
+            'medium',
+        )).toBe(0);
+
+        input.target.tnCalculator = {
+            stealth: { short: 0, medium: 1, long: 2 },
+        };
+        expect(inventoryTargetEffectiveTnModifier(
+            input.target,
+            input.entry,
+            undefined,
+            CORE_2026_GAME_RULES,
+            'medium',
+        )).toBe(1);
+    });
+
+    it('rejects secondary attacks against active Mek or vehicle stealth armor', () => {
+        const input = c3LaserInput(10, 10);
+        input.target = {
+            ...input.target!,
+            tnCalculator: {
+                secondaryTarget: true,
+                stealth: { short: 0, medium: 1, long: 2, secondaryTargetRestricted: true },
+            },
+        };
+
+        expect(inventoryTargetNumberState(input).text).toBe('X');
+    });
+
     it('does not apply C3 to an indirect-fire target', () => {
         const input = c3LaserInput(15, 7, false, true);
         input.target = {

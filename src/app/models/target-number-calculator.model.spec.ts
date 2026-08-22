@@ -2,7 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { calculateTargetTnModifier, calculateTargetTnModifierBreakdown, getTargetProneModifier, resolveTnTargetWaterState } from './target-number-calculator.model';
+import {
+    calculateTargetTnModifier,
+    calculateTargetTnModifierBreakdown,
+    getTargetProneModifier,
+    resolveTnTargetWaterState,
+    TN_CHAMELEON_MODIFIERS,
+    TN_CHAMELEON_NULL_SIGNATURE_MODIFIERS,
+    TN_NULL_SIGNATURE_MODIFIERS,
+    TN_STANDARD_STEALTH_MODIFIERS,
+} from './target-number-calculator.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
 
 describe('target number calculator rules profiles', () => {
@@ -31,6 +40,55 @@ describe('target number calculator rules profiles', () => {
         expect(calculateTargetTnModifier({ customModifier: Number.NaN })).toBe(0);
         expect(calculateTargetTnModifier({ customModifier: 10 })).toBe(9);
         expect(calculateTargetTnModifier({ customModifier: -10 })).toBe(-9);
+    });
+
+    it('applies stealth from the effective weapon range bracket', () => {
+        expect(calculateTargetTnModifier({
+            stealth: true,
+        })).toBe(0);
+        expect(calculateTargetTnModifier({
+            stealth: TN_STANDARD_STEALTH_MODIFIERS,
+            rangeBracket: 'short',
+        })).toBe(0);
+        expect(calculateTargetTnModifier({
+            stealth: true,
+            rangeBracket: 'medium',
+        })).toBe(1);
+        expect(calculateTargetTnModifier({
+            stealth: TN_STANDARD_STEALTH_MODIFIERS,
+            rangeBracket: 'long',
+        })).toBe(2);
+        expect(calculateTargetTnModifier({
+            stealth: TN_STANDARD_STEALTH_MODIFIERS,
+            rangeBracket: 'extreme',
+        })).toBe(2);
+        expect(calculateTargetTnModifierBreakdown({
+            stealth: { short: 1, medium: 2, long: 3 },
+            rangeBracket: 'medium',
+        })).toContain(jasmine.objectContaining({ label: 'Stealth', modifier: 2 }));
+    });
+
+    it('lets conventional infantry ignore electronic stealth but not Chameleon LPS', () => {
+        expect(calculateTargetTnModifier({
+            stealth: TN_STANDARD_STEALTH_MODIFIERS,
+            rangeBracket: 'long',
+            attackerIsConventionalInfantry: true,
+        })).toBe(0);
+        expect(calculateTargetTnModifier({
+            stealth: TN_NULL_SIGNATURE_MODIFIERS,
+            rangeBracket: 'long',
+            attackerIsConventionalInfantry: true,
+        })).toBe(0);
+        expect(calculateTargetTnModifier({
+            stealth: TN_CHAMELEON_MODIFIERS,
+            rangeBracket: 'long',
+            attackerIsConventionalInfantry: true,
+        })).toBe(2);
+        expect(calculateTargetTnModifier({
+            stealth: TN_CHAMELEON_NULL_SIGNATURE_MODIFIERS,
+            rangeBracket: 'long',
+            attackerIsConventionalInfantry: true,
+        })).toBe(2);
     });
 
     it('applies water partial cover at adjacent range', () => {
@@ -233,27 +291,27 @@ describe('target number calculator rules profiles', () => {
         }, TW_GAME_RULES)).toBe(4);
     });
 
-    it('ignores movement, prone, and cover modifiers for terrain targets while allowing Immobile', () => {
+    it('ignores movement, prone, and cover modifiers while deriving Immobile for terrain targets', () => {
         expect(calculateTargetTnModifier({
             unitType: 'terrain',
             range: 5,
             isAirborne: true,
             targetMovementBracket: '10-17',
             skidding: true,
-            immobile: true,
+            immobile: false,
             targetHexCover: 'heavy',
             partialCover: true,
             interveningWoods: 'light1',
         }, TW_GAME_RULES)).toBe(-3);
     });
 
-    it('permits cover and Immobile but not movement or Prone modifiers for buildings', () => {
+    it('permits cover and derives Immobile but ignores movement and Prone for buildings', () => {
         expect(calculateTargetTnModifier({
             unitType: 'building',
             range: 5,
             isAirborne: true,
             targetMovementBracket: '10-17',
-            immobile: true,
+            immobile: false,
             targetHexCover: 'heavy',
         }, CORE_2026_GAME_RULES)).toBe(-2);
     });

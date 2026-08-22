@@ -9,6 +9,7 @@ import type { ToHitAdjustment } from '../models/rules/game-rules';
 import { isArtemisCompatibleWeapon } from '../models/entity/utils/equipment-link-rules';
 import { EquipmentInteractionHandler, type HandlerCommandContext, type HandlerQueryContext, type ToHitAdjustmentContext } from '../services/equipment-interaction-registry.service';
 import { inventoryControlTargetUsesIndirectFire } from '../models/inventory-control-runtime-state.model';
+import { unitHasActiveC3DisruptingStealth } from '../models/stealth-equipment.model';
 
 export class ArtemisVHandler extends EquipmentInteractionHandler {
     readonly id = 'artemis-v-handler';
@@ -34,8 +35,9 @@ export class ArtemisVHandler extends EquipmentInteractionHandler {
         const status = context.getStatus(equipment);
         const unavailable = status !== 'available';
         const unitJammed = equipment.owner.getCondition('jammed');
+        const stealthEcm = unitHasActiveC3DisruptingStealth(equipment.owner);
         const incompatibleAmmo = selectedAmmo !== undefined && !selectedAmmo?.hasMunitionType('M_ARTEMIS_V_CAPABLE');
-        const weakened = unavailable || unitJammed || incompatibleAmmo;
+        const weakened = unavailable || unitJammed || stealthEcm || incompatibleAmmo;
         const label = equipment.getDisplayName();
         const unavailableLabel = status === 'destroyed'
             ? `${label} Destroyed`
@@ -43,6 +45,8 @@ export class ArtemisVHandler extends EquipmentInteractionHandler {
                 ? `${label} Disabled`
                 : unitJammed
                     ? 'Unit Jammed'
+                    : stealthEcm
+                        ? 'Stealth ECM'
                     : selectedAmmo
                         ? `Incompatible Ammo (${selectedAmmo.shortName})`
                         : 'Artemis V Ammo Not Selected';

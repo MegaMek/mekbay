@@ -9,7 +9,7 @@ import type { Faction } from './factions.model';
 import { Force, buildEraWarningMessage, getEraUnitValidationSummary } from './force.model';
 import type { ForceUnit } from './force-unit.model';
 import type { SerializedForce, SerializedUnit } from './force-serialization';
-import type { Unit } from './units.model';
+import type { UnitSummary } from './unit-summary.model';
 import type { DataService } from '../services/data.service';
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
@@ -17,7 +17,7 @@ import type { ForceAvailabilityContext } from '../utils/force-availability.util'
 import { NO_FORMATION } from '../utils/formation-type.model';
 import { C3NetworkType } from './c3-network.model';
 
-function createUnit(id: number, name: string, year: number): Unit {
+function createUnit(id: number, name: string, year: number): UnitSummary {
     return createEmptyUnit({
         id,
         name,
@@ -27,7 +27,7 @@ function createUnit(id: number, name: string, year: number): Unit {
     });
 }
 
-function createForceUnit(unit: Unit): ForceUnit {
+function createForceUnit(unit: UnitSummary): ForceUnit {
     return {
         getUnit: () => unit,
         getDisplayName: () => unit.name,
@@ -99,7 +99,7 @@ class TestForce extends Force<ForceUnit> {
         super('Test Force', dataService, unitInitializer, injector);
     }
 
-    protected override createForceUnit(_unit: Unit): ForceUnit {
+    protected override createForceUnit(_unit: UnitSummary): ForceUnit {
         throw new Error('Not used in TestForce');
     }
 

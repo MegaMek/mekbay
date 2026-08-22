@@ -4,7 +4,7 @@
 
 import { Component, ChangeDetectionStrategy, input, computed, effect, inject, Injector, signal, type OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { Unit, UnitFluffCatalogEntry, UnitImageFluff } from '../../../models/units.model';
+import type { UnitSummary, UnitFluffCatalogEntry, UnitImageFluff } from '../../../models/unit-summary.model';
 import { getUnitServerHost } from '../../../models/common.model';
 import { DataService } from '../../../services/data.service';
 import { LoadingSpinnerComponent } from '../../loading-spinner/loading-spinner.component';
@@ -23,7 +23,7 @@ interface ManufacturerFactoryDisplay {
     styleUrls: ['./unit-details-intel-tab.component.css']
 })
 export class UnitDetailsIntelTabComponent implements OnInit {
-    unit = input.required<Unit>();
+    unit = input.required<UnitSummary>();
     isSwiping = input<boolean>(false);
 
     private readonly dataService = inject(DataService);

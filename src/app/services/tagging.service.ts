@@ -7,7 +7,7 @@ import { outputToObservable } from '@angular/core/rxjs-interop';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { firstValueFrom, takeUntil } from 'rxjs';
-import type { Unit, PublicTagInfo } from '../models/units.model';
+import type { UnitSummary, PublicTagInfo } from '../models/unit-summary.model';
 import { getChassisTagTargetUnits } from '../utils/chassis-tag-target.util';
 import { collectAllChassisTags, collectAllNameTags } from '../utils/tag-list.util';
 import { DataService } from './data.service';
@@ -85,7 +85,7 @@ export class TaggingService {
      * @param anchorElement Optional element to anchor the popup to. If null, uses centered overlay.
      * @returns Promise that resolves when the tagging operation is complete
      */
-    async openTagSelector(units: Unit[], anchorElement?: HTMLElement | null): Promise<void> {
+    async openTagSelector(units: UnitSummary[], anchorElement?: HTMLElement | null): Promise<void> {
         // Toggle: close if already open, otherwise open
         if (this.overlayManager.has('tagSelector')) {
             this.overlayManager.closeManagedOverlay('tagSelector');
@@ -259,7 +259,7 @@ export class TaggingService {
     /**
      * Calculate which tags are fully assigned (to all units) vs partially assigned (to some units).
      */
-    private calculateTagStates(units: Unit[], tagType: 'name' | 'chassis'): { 
+    private calculateTagStates(units: UnitSummary[], tagType: 'name' | 'chassis'): { 
         fullyAssigned: string[]; 
         partiallyAssigned: string[]; 
     } {
@@ -305,7 +305,7 @@ export class TaggingService {
      * Build a lowercase tag-id keyed map of quantities for selected units.
      * Quantity defaults to 1 when not explicitly stored.
      */
-    private async calculateTagQuantities(units: Unit[], tagType: 'name' | 'chassis'): Promise<Record<string, number>> {
+    private async calculateTagQuantities(units: UnitSummary[], tagType: 'name' | 'chassis'): Promise<Record<string, number>> {
         const result: Record<string, number> = {};
         if (units.length === 0) {
             return result;
@@ -345,7 +345,7 @@ export class TaggingService {
      * Opens the tag selector for a single unit.
      * Convenience wrapper around openTagSelector.
      */
-    async openTagSelectorForUnit(unit: Unit, anchorElement?: HTMLElement | null): Promise<void> {
+    async openTagSelectorForUnit(unit: UnitSummary, anchorElement?: HTMLElement | null): Promise<void> {
         return this.openTagSelector([unit], anchorElement);
     }
 

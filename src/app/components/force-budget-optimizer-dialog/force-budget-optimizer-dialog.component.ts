@@ -10,7 +10,7 @@ import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { GameSystem } from '../../models/common.model';
 import type { Force } from '../../models/force.model';
 import type { ForceUnit } from '../../models/force-unit.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import { getEffectivePilotingSkill } from '../../utils/cbt-common.util';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
@@ -374,7 +374,7 @@ export class ForceBudgetOptimizerDialogComponent {
         return null;
     }
 
-    private getCBTSkillPriorities(unit: Unit): CBTSkillPriorities {
+    private getCBTSkillPriorities(unit: UnitSummary): CBTSkillPriorities {
         const rangedDamage = Math.max(0, unit.dpt || 0);
         const physicalDamage = this.getPhysicalDamagePerTurn(unit);
         const strongerDamage = Math.max(rangedDamage, physicalDamage);
@@ -390,7 +390,7 @@ export class ForceBudgetOptimizerDialogComponent {
         };
     }
 
-    private getAlphaStrikeSkillPriority(unit: Unit): number {
+    private getAlphaStrikeSkillPriority(unit: UnitSummary): number {
         const priorities = this.getCBTSkillPriorities(unit);
         return priorities.gunnery + priorities.piloting;
     }
@@ -402,7 +402,7 @@ export class ForceBudgetOptimizerDialogComponent {
         return gunneryScore + pilotingScore + balanceScore;
     }
 
-    private getPhysicalDamagePerTurn(unit: Unit): number {
+    private getPhysicalDamagePerTurn(unit: UnitSummary): number {
         const physicalWeaponDamage = unit.comp
             .filter(component => component.t === 'P')
             .reduce((total, component) => total + this.parseDamageValue(component.md), 0);
@@ -410,7 +410,7 @@ export class ForceBudgetOptimizerDialogComponent {
         return physicalWeaponDamage + kickDamage;
     }
 
-    private canKick(unit: Unit): boolean {
+    private canKick(unit: UnitSummary): boolean {
         return unit.type === 'Mek';
     }
 

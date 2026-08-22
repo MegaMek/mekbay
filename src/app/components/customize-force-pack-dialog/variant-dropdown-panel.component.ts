@@ -4,7 +4,7 @@
 
 import { ChangeDetectionStrategy, Component, type ElementRef, afterNextRender, inject, input, output, viewChild, type computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import type { GameSystem } from '../../models/common.model';
 import { UnitCardCompactComponent } from '../unit-card-compact/unit-card-compact.component';
 import { TaggingService } from '../../services/tagging.service';
@@ -70,25 +70,25 @@ export class VariantDropdownPanelComponent {
 
     panelContainer = viewChild<ElementRef<HTMLDivElement>>('panelContainer');
 
-    variants = input.required<Unit[]>();
+    variants = input.required<UnitSummary[]>();
     originalUnitName = input<string | null>(null);
     currentUnitName = input<string | null>(null);
     /** Game system override for correct stat display (PV vs BV). */
     gameSystem = input<GameSystem | null>(null);
 
-    selected = output<Unit>();
-    infoRequested = output<Unit>();
+    selected = output<UnitSummary>();
+    infoRequested = output<UnitSummary>();
 
     constructor() {
         // Scroll to current variant after render
         afterNextRender(() => this.scrollToCurrent());
     }
 
-    onSelect(variant: Unit): void {
+    onSelect(variant: UnitSummary): void {
         this.selected.emit(variant);
     }
 
-    onInfo(variant: Unit): void {
+    onInfo(variant: UnitSummary): void {
         this.infoRequested.emit(variant);
     }
 

@@ -841,15 +841,18 @@ export class WeaponTargetsMenuComponent {
     }
 
     targetModifierPills(target: InventoryControlRuntimeTarget): TargetModifierPill[] {
-        const guidancePills = this.targetGuidancePills(target);
+        const statePills = [
+            ...this.targetGuidancePills(target),
+            ...(target.tnCalculator?.stealth ? [{ label: 'Stealth' }] : []),
+        ];
         const calculator = getEffectiveInventoryControlCalculatorState(target);
-        if (!calculator) return guidancePills;
+        if (!calculator) return statePills;
         const breakdown = calculateTargetTnModifierBreakdown({
             ...calculator,
             unitType: target.unitType,
             range: target.distance,
         }, this.gameRules());
-        return [...guidancePills, ...this.targetBreakdownPills(breakdown, calculator)];
+        return [...statePills, ...this.targetBreakdownPills(breakdown, calculator)];
     }
 
     private targetGuidancePills(target: InventoryControlRuntimeTarget): TargetModifierPill[] {

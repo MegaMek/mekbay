@@ -19,7 +19,7 @@ import {
 } from './equipment-tech-codec';
 import { getNumCriticalSlots } from './entity/utils/equipment-helpers';
 import type { MountedEquipment } from './mounted-equipment.model';
-import type { Unit } from './units.model';
+import type { UnitSummary } from './unit-summary.model';
 import type { CBTGameRules } from './rules/game-rules';
 import { AmmoValidityUtil } from '../utils/ammo-validity.util';
 import { resolveAmmoWeaponProfile, type AmmoWeaponProfile } from './ammo-weapon-profile.model';
@@ -940,7 +940,7 @@ export class AmmoEquipment extends Equipment {
         return types.some(type => this.hasMunitionType(type));
     }
 
-    compatibleAmmo(other: AmmoEquipment, unit?: Unit, inventory: readonly MountedEquipment[] = []): boolean {
+    compatibleAmmo(other: AmmoEquipment, unit?: UnitSummary, inventory: readonly MountedEquipment[] = []): boolean {
         return AmmoValidityUtil.isAmmoCompatible(this, other, unit, inventory);
     }
 }

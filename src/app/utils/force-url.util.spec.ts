@@ -5,7 +5,7 @@
 import { GameSystem } from '../models/common.model';
 import type { Force } from '../models/force.model';
 import type { ForceUnit } from '../models/force-unit.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { buildMultiForceQueryParams, parseForceFromUrl } from './force-url.util';
 
@@ -41,7 +41,7 @@ function createMockForce(): Force {
             groups.push(group);
             return group;
         }),
-        addUnit: jasmine.createSpy('addUnit').and.callFake((unit: Unit) => {
+        addUnit: jasmine.createSpy('addUnit').and.callFake((unit: UnitSummary) => {
             const forceUnit = {
                 id: `force-unit-${nextForceUnitId++}`,
                 getUnit: () => unit

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import type { FilterState } from '../services/unit-search-filters.model';
 import { buildUnitSearchQueryParameters, parseAndValidateCompactFiltersFromUrl, parseUnitSearchScalarUrlState, parseUnitSearchViewMode, resolveInitialUnitSearchViewMode } from './unit-search-url-filters.util';
@@ -30,7 +30,7 @@ function createDropdownDependencies(): UnitSearchDropdownValuesDependencies {
         getExternalDropdownValues: (filterKey: string) => {
             return [];
         },
-        units: [] as readonly Unit[],
+        units: [] as readonly UnitSummary[],
         getProperty: () => undefined,
     };
 }

@@ -4,7 +4,7 @@
 
 import { ChangeDetectionStrategy, Component, inject, input, output, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { Unit, UnitComponent } from '../../models/units.model';
+import type { UnitSummary, UnitComponent } from '../../models/unit-summary.model';
 import { ForceUnit } from '../../models/force-unit.model';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
@@ -92,7 +92,7 @@ export class UnitCardExpandedComponent {
      * The unit to display. Can be either a Unit or a ForceUnit.
      * When passing a ForceUnit, alias/gunnery/piloting are automatically extracted.
      */
-    unit = input.required<Unit | ForceUnit>();
+    unit = input.required<UnitSummary | ForceUnit>();
 
     /** Gunnery skill for BV/PV adjustment. Ignored when unit is a ForceUnit. */
     gunneryInput = input(DEFAULT_GUNNERY_SKILL, { alias: 'gunnery' });
@@ -118,12 +118,12 @@ export class UnitCardExpandedComponent {
     enableTagsEditing = input(true);
 
     /** Check if the input is a ForceUnit */
-    protected isForceUnit(u: Unit | ForceUnit): u is ForceUnit {
+    protected isForceUnit(u: UnitSummary | ForceUnit): u is ForceUnit {
         return u instanceof ForceUnit;
     }
 
     /** Resolved Unit - extracts the Unit from ForceUnit if needed */
-    readonly resolvedUnit = computed<Unit>(() => {
+    readonly resolvedUnit = computed<UnitSummary>(() => {
         const u = this.unit();
         return this.isForceUnit(u) ? u.getUnit() : u;
     });
@@ -355,7 +355,7 @@ export class UnitCardExpandedComponent {
     /**
      * Conditional display checks for keys that are only shown when certain conditions are met.
      */
-    private static readonly CONDITIONAL_DISPLAY: Record<string, (unit: Unit) => boolean> = {
+    private static readonly CONDITIONAL_DISPLAY: Record<string, (unit: UnitSummary) => boolean> = {
         // AS conditional fields
         'as.OV': (unit) => unit.as?.usesOV ?? false,
         'as.Th': (unit) => unit.as?.usesTh ?? false,
@@ -449,7 +449,7 @@ export class UnitCardExpandedComponent {
     /**
      * Format AS movement with optional hex conversion.
      */
-    formatASMovement(unit: Unit): string {
+    formatASMovement(unit: UnitSummary): string {
         const mvm = unit.as.MVm;
         if (!mvm) return unit.as.MV ?? '';
 
@@ -511,7 +511,7 @@ export class UnitCardExpandedComponent {
      * Get a sort slot for compact view - shows the sort value if not already displayed.
      * Returns an object with key, value, label, img, alt, and numeric flag.
      */
-    getSortSlotForCompact(unit: Unit): { key: string; value: string; label?: string; alt: string; numeric: boolean } | null {
+    getSortSlotForCompact(unit: UnitSummary): { key: string; value: string; label?: string; alt: string; numeric: boolean } | null {
         const sortKey = this.sortKey();
         if (!sortKey) return null;
         if (this.isSortKeyDisplayedForUnit(sortKey, unit)) return null;
@@ -552,7 +552,7 @@ export class UnitCardExpandedComponent {
     /**
      * Check if a sort key is actually displayed for a specific unit.
      */
-    private isSortKeyDisplayedForUnit(sortKey: string, unit: Unit): boolean {
+    private isSortKeyDisplayedForUnit(sortKey: string, unit: UnitSummary): boolean {
         if (isMegaMekRaritySortKey(sortKey) && this.megaMekAvailability() !== null) {
             return true;
         }

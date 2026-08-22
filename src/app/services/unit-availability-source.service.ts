@@ -23,7 +23,7 @@ import {
 } from '../models/megamek/availability.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import type { AvailabilitySource } from '../models/options.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { createMulForceAvailabilityContext, type ForceAvailabilityContext } from '../utils/force-availability.util';
 import { DataService } from './data.service';
 import { OptionsService } from './options.service';
@@ -217,7 +217,7 @@ export class UnitAvailabilitySourceService {
     }
 
     public createForceAvailabilityContextForUnits(
-        units: readonly Pick<Unit, 'id' | 'name'>[],
+        units: readonly Pick<UnitSummary, 'id' | 'name'>[],
         eras: readonly Era[],
         availabilitySource?: AvailabilitySource,
     ): ForceAvailabilityContext {
@@ -226,7 +226,7 @@ export class UnitAvailabilitySourceService {
             return createMulForceAvailabilityContext();
         }
 
-        const distinctUnitsByKey = new Map<AvailabilityUnitKey, Pick<Unit, 'id' | 'name'>>();
+        const distinctUnitsByKey = new Map<AvailabilityUnitKey, Pick<UnitSummary, 'id' | 'name'>>();
         for (const unit of units) {
             if (!distinctUnitsByKey.has(unit.name)) {
                 distinctUnitsByKey.set(unit.name, unit);
@@ -369,7 +369,7 @@ export class UnitAvailabilitySourceService {
         return this.getFactionEraUnitIds(faction, era, 'mul').size > 0;
     }
 
-    public unitBelongsToEra(unit: Unit, era: Era, availabilitySource?: AvailabilitySource): boolean {
+    public unitBelongsToEra(unit: UnitSummary, era: Era, availabilitySource?: AvailabilitySource): boolean {
         if (!this.useMegaMekAvailability(availabilitySource)) {
             return this.getVisibleEraUnitIds(era, availabilitySource).has(this.getUnitAvailabilityKey(unit, availabilitySource));
         }
@@ -383,7 +383,7 @@ export class UnitAvailabilitySourceService {
     }
 
     public unitBelongsToFaction(
-        unit: Unit,
+        unit: UnitSummary,
         faction: Faction,
         contextEraIds?: ReadonlySet<number>,
         availabilitySource?: AvailabilitySource,
@@ -417,7 +417,7 @@ export class UnitAvailabilitySourceService {
     }
 
     public unitMatchesMegaMekMembership(
-        unit: Pick<Unit, 'id' | 'name'>,
+        unit: Pick<UnitSummary, 'id' | 'name'>,
         context?: MegaMekAvailabilityFilterContext,
     ): boolean {
         this.ensureMulCacheVersion();
@@ -440,12 +440,12 @@ export class UnitAvailabilitySourceService {
         return entries.some((entry) => this.entryHasAnyAvailability(entry));
     }
 
-    public getUnitAvailabilityKey(unit: Pick<Unit, 'id' | 'name'>, availabilitySource?: AvailabilitySource): AvailabilityUnitKey {
+    public getUnitAvailabilityKey(unit: Pick<UnitSummary, 'id' | 'name'>, availabilitySource?: AvailabilitySource): AvailabilityUnitKey {
         return this.useMegaMekAvailability(availabilitySource) ? unit.name : String(unit.id);
     }
 
     public getMegaMekAvailabilityScore(
-        unit: Pick<Unit, 'name'>,
+        unit: Pick<UnitSummary, 'name'>,
         context?: MegaMekAvailabilityFilterContext,
     ): number {
         return this.getMegaMekAvailabilityScoreResolver(context)(unit);
@@ -453,12 +453,12 @@ export class UnitAvailabilitySourceService {
 
     public getMegaMekAvailabilityScoreResolver(
         context?: MegaMekAvailabilityFilterContext,
-    ): (unit: Pick<Unit, 'name'>) => number {
+    ): (unit: Pick<UnitSummary, 'name'>) => number {
         this.ensureMulCacheVersion();
         this.ensureMegaMekIndexes();
 
         if (this.hasEmptyMegaMekScope(context)) {
-            return (unit: Pick<Unit, 'name'>): number => this.megaMekKnownUnitIds.has(unit.name)
+            return (unit: Pick<UnitSummary, 'name'>): number => this.megaMekKnownUnitIds.has(unit.name)
                 ? 0
                 : MEGAMEK_AVAILABILITY_UNKNOWN_SCORE;
         }
@@ -467,7 +467,7 @@ export class UnitAvailabilitySourceService {
             const scoreCache = this.getOrCreateMegaMekScopedUnitScoreCache(context);
             const availabilityFrom = this.getRequestedAvailabilitySources(context);
 
-            return (unit: Pick<Unit, 'name'>): number => {
+            return (unit: Pick<UnitSummary, 'name'>): number => {
                 const cached = scoreCache.get(unit.name);
                 if (cached !== undefined) {
                     return cached;
@@ -482,12 +482,12 @@ export class UnitAvailabilitySourceService {
         const availabilityBlock = this.getMegaMekScopedAvailabilityBlock(context);
         const availabilityFrom = this.getRequestedAvailabilitySources(context);
 
-        return (unit: Pick<Unit, 'name'>): number => {
+        return (unit: Pick<UnitSummary, 'name'>): number => {
             return this.getMegaMekAvailabilityScoreFromBlock(unit.name, availabilityBlock, availabilityFrom);
         };
     }
 
-    public unitHasMegaMekAvailability(unit: Unit): boolean {
+    public unitHasMegaMekAvailability(unit: UnitSummary): boolean {
         this.ensureMulCacheVersion();
         this.ensureMegaMekIndexes();
 
@@ -561,7 +561,7 @@ export class UnitAvailabilitySourceService {
     }
 
     public unitMatchesAvailabilityFrom(
-        unit: Unit,
+        unit: UnitSummary,
         availabilityFromName: string,
         context?: MegaMekAvailabilityFilterContext,
     ): boolean {
@@ -581,7 +581,7 @@ export class UnitAvailabilitySourceService {
     }
 
     public unitMatchesAvailabilityRarity(
-        unit: Unit,
+        unit: UnitSummary,
         rarityName: string,
         context?: MegaMekAvailabilityFilterContext,
     ): boolean {
@@ -598,7 +598,7 @@ export class UnitAvailabilitySourceService {
     }
 
     public collectFastMulUnknownOptionIds(
-        contextUnits: readonly Pick<Unit, 'id' | 'name'>[],
+        contextUnits: readonly Pick<UnitSummary, 'id' | 'name'>[],
         target: 'era' | 'faction',
         selectedEraIds?: ReadonlySet<number>,
         selectedFactionIds?: ReadonlySet<number>,

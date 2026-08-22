@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit, UnitType } from './units.model';
+import type { UnitSummary, UnitType } from './unit-summary.model';
 
 export const SARNA_PAGE_TITLE_LOOKUP_TYPES = [
     'Mek',
@@ -21,7 +21,7 @@ export interface SarnaPageTitlesData {
     titlesByType: SarnaPageTitlesByType;
 }
 
-export type SarnaLookupUnit = Pick<Unit, 'chassis' | 'type'> & Partial<Pick<Unit, 'subtype' | 'omni'>>;
+export type SarnaLookupUnit = Pick<UnitSummary, 'chassis' | 'type'> & Partial<Pick<UnitSummary, 'subtype' | 'omni'>>;
 
 export const SARNA_PAGE_TITLE_LOOKUP_TYPE_BY_UNIT_TYPE: Record<UnitType, SarnaPageTitleLookupType> = {
     Aero: 'Aero',

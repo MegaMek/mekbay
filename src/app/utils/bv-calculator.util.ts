@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from "../models/units.model";
+import type { UnitSummary } from "../models/unit-summary.model";
 import { getEffectivePilotingSkill } from "./cbt-common.util";
 
 
@@ -43,7 +43,7 @@ export class BVCalculatorUtil {
      * @param pilotingSkill - Piloting skill level (0-8+)
      * @returns Adjusted Battle Value rounded to nearest integer
      */
-    static calculateAdjustedBV(unit: Unit, baseBv: number, gunnerySkill: number, pilotingSkill: number): number {
+    static calculateAdjustedBV(unit: UnitSummary, baseBv: number, gunnerySkill: number, pilotingSkill: number): number {
         pilotingSkill = getEffectivePilotingSkill(unit, pilotingSkill);
         const multiplier = this.getSkillMultiplier(gunnerySkill, pilotingSkill);
         if (multiplier === 1.0) {

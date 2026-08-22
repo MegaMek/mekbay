@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Pipe, type PipeTransform } from '@angular/core';
-import type { UnitComponent } from '../models/units.model';
+import type { UnitComponent } from '../models/unit-summary.model';
 
 /**
  * Aggregates and filters unit components for expanded view display.

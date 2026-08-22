@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ASUnitTypeCode, Unit } from '../../models/units.model';
+import type { ASUnitTypeCode, UnitSummary } from '../../models/unit-summary.model';
+import { UnitSummaryTypeGuard } from '../../models/unit-summary-type-guard';
 import type {
     CIMoveClass,
     CIMoveClassBucketValue,
@@ -68,36 +69,12 @@ function createUnitTypeSelectors(): Partial<Record<ASUnitTypeCode, (facts: UnitF
     ) as Partial<Record<ASUnitTypeCode, (facts: UnitFacts) => boolean>>;
 }
 
-function isAero(unit: Unit): boolean {
-    return unit.type === 'Aero';
-}
-
-function isBM(unit: Unit): boolean {
-    return unit.type === 'Mek';
-}
-
-function isCV(unit: Unit): boolean {
-    return unit.type === 'Tank' || unit.type === 'VTOL' || unit.type === 'Naval';
-}
-
-function isBA(unit: Unit): boolean {
-    return unit.type === 'Infantry' && unit.subtype === 'Battle Armor';
-}
-
-function isCI(unit: Unit): boolean {
-    return unit.type === 'Infantry' && unit.subtype !== 'Battle Armor';
-}
-
-function isPM(unit: Unit): boolean {
-    return unit.type === 'ProtoMek';
-}
-
-export function getNormalizedOrgUnitType(unit: Unit): Unit['as']['TP'] {
+export function getNormalizedOrgUnitType(unit: UnitSummary): UnitSummary['as']['TP'] {
     return unit.as.TP;
 }
 
-export function getCIMoveClass(unit: Unit): CIMoveClass | null {
-    if (!isCI(unit)) {
+export function getCIMoveClass(unit: UnitSummary): CIMoveClass | null {
+    if (!UnitSummaryTypeGuard.isConventionalInfantry(unit)) {
         return null;
     }
     
@@ -134,12 +111,12 @@ export function getCIMoveClass(unit: Unit): CIMoveClass | null {
     return 'foot';
 }
 
-function getCIMoveClassTag(unit: Unit): CIMoveClassTag | null {
+function getCIMoveClassTag(unit: UnitSummary): CIMoveClassTag | null {
     const moveClass = getCIMoveClass(unit);
     return moveClass ? `ci:${moveClass}` as CIMoveClassTag : null;
 }
 
-function hasSpecial(unit: Unit, special: string): boolean {
+function hasSpecial(unit: UnitSummary, special: string): boolean {
     return unit.as?.specials?.includes(special) ?? false;
 }
 
@@ -162,18 +139,18 @@ function allocateGroupFactId(): number {
     return groupFactId;
 }
 
-export function getUnitClassKey(unit: Unit): UnitClassKey {
-    if (isBA(unit)) return 'BA';
-    if (isCI(unit)) return unit.subtype === 'Mechanized Conventional Infantry' ? 'CI:mechanized' : 'CI';
-    if (isBM(unit)) return unit.omni === 1 ? 'BM:omni' : 'BM';
-    if (isCV(unit)) return unit.omni === 1 ? 'CV:omni' : 'CV';
-    if (isAero(unit)) return unit.omni === 1 ? 'AF:omni' : 'AF';
-    if (isPM(unit)) return 'PM';
+export function getUnitClassKey(unit: UnitSummary): UnitClassKey {
+    if (UnitSummaryTypeGuard.isBattleArmor(unit)) return 'BA';
+    if (UnitSummaryTypeGuard.isConventionalInfantry(unit)) return unit.subtype === 'Mechanized Conventional Infantry' ? 'CI:mechanized' : 'CI';
+    if (UnitSummaryTypeGuard.isMek(unit)) return unit.omni === 1 ? 'BM:omni' : 'BM';
+    if (UnitSummaryTypeGuard.isVehicle(unit)) return unit.omni === 1 ? 'CV:omni' : 'CV';
+    if (UnitSummaryTypeGuard.isAero(unit)) return unit.omni === 1 ? 'AF:omni' : 'AF';
+    if (UnitSummaryTypeGuard.isProtoMek(unit)) return 'PM';
     return unit.type.toLowerCase() as DerivedUnitClassKey;
 }
 
 function getInfantryTrooperBucketValue(facts: UnitFacts): InfantryTrooperBucketValue {
-    if (isCI(facts.unit)) return `CI:${facts.scalars.troopers}`;
+    if (UnitSummaryTypeGuard.isConventionalInfantry(facts.unit)) return `CI:${facts.scalars.troopers}`;
     return 'not-infantry';
 }
 
@@ -191,7 +168,7 @@ function getCIMoveClassTrooperBucketValue(facts: UnitFacts): CIMoveClassTrooperB
     return `CI:${moveClass}:${facts.scalars.troopers}` as CIMoveClassTrooperBucketValue;
 }
 
-function hasFlightMoveType(unit: Unit): boolean {
+function hasFlightMoveType(unit: UnitSummary): boolean {
     return unit.as.MVm?.['a'] !== undefined || unit.as.MVm?.['v'] !== undefined || unit.as.MVm?.['g'] !== undefined;
 }
 
@@ -267,12 +244,12 @@ function getGroupCIMoveClassBucketValue(facts: GroupFacts): CIMoveClassBucketVal
     return `CI:${moveClassTags[0].slice('ci:'.length)}` as CIMoveClassBucketValue;
 }
 
-export function compileUnitFacts(unit: Unit, index?: number): UnitFacts {
+export function compileUnitFacts(unit: UnitSummary, index?: number): UnitFacts {
     const tags = new Set<UnitFactTag>();
 
     tags.add(getUnitClassKey(unit));
 
-    if (isAero(unit)) tags.add('aero');
+    if (UnitSummaryTypeGuard.isAero(unit)) tags.add('aero');
     if (unit.omni === 1) tags.add('omni');
     if (hasSpecial(unit, 'MEC')) tags.add('transport.mec');
     if (hasSpecial(unit, 'XMEC')) tags.add('transport.xmec');
@@ -291,24 +268,24 @@ export function compileUnitFacts(unit: Unit, index?: number): UnitFacts {
             bv: unit.bv,
             troopers: unit.internal || 0,
             omni: unit.omni === 1,
-            isAero: isAero(unit),
-            isBM: isBM(unit),
-            isCV: isCV(unit),
-            isBA: isBA(unit),
-            isCI: isCI(unit),
-            isPM: isPM(unit),
+            isAero: UnitSummaryTypeGuard.isAero(unit),
+            isBM: UnitSummaryTypeGuard.isMek(unit),
+            isCV: UnitSummaryTypeGuard.isVehicle(unit),
+            isBA: UnitSummaryTypeGuard.isBattleArmor(unit),
+            isCI: UnitSummaryTypeGuard.isConventionalInfantry(unit),
+            isPM: UnitSummaryTypeGuard.isProtoMek(unit),
             hasMEC: hasSpecial(unit, 'MEC'),
             hasXMEC: hasSpecial(unit, 'XMEC'),
         },
     };
 }
 
-export function compileUnitFactsList(units: ReadonlyArray<Unit>): UnitFacts[] {
+export function compileUnitFactsList(units: ReadonlyArray<UnitSummary>): UnitFacts[] {
     return units.map((unit, index) => compileUnitFacts(unit, index));
 }
 
-export function buildUnitFactsMap(units: ReadonlyArray<Unit>): WeakMap<Unit, UnitFacts> {
-    const factsMap = new WeakMap<Unit, UnitFacts>();
+export function buildUnitFactsMap(units: ReadonlyArray<UnitSummary>): WeakMap<UnitSummary, UnitFacts> {
+    const factsMap = new WeakMap<UnitSummary, UnitFacts>();
 
     for (const [index, unit] of units.entries()) {
         factsMap.set(unit, compileUnitFacts(unit, index));
@@ -317,8 +294,8 @@ export function buildUnitFactsMap(units: ReadonlyArray<Unit>): WeakMap<Unit, Uni
     return factsMap;
 }
 
-export function collectGroupUnits(group: GroupSizeResult): Unit[] {
-    const result: Unit[] = [];
+export function collectGroupUnits(group: GroupSizeResult): UnitSummary[] {
+    const result: UnitSummary[] = [];
 
     if (group.unitAllocations) {
         result.push(...group.unitAllocations.map((allocation) => allocation.unit));
@@ -355,11 +332,11 @@ function getGroupProvenance(group: GroupSizeResult): OrgGroupProvenance {
 
 export function compileGroupFacts(
     group: GroupSizeResult,
-    unitFactsMap?: WeakMap<Unit, UnitFacts>,
-    groupUnitCache?: WeakMap<GroupSizeResult, Unit[]>,
+    unitFactsMap?: WeakMap<UnitSummary, UnitFacts>,
+    groupUnitCache?: WeakMap<GroupSizeResult, UnitSummary[]>,
 ): GroupFacts {
     const childTypeCounts = new Map<OrgChildTypeCountKey, number>();
-    const unitTypeCounts = new Map<Unit['as']['TP'], number>();
+    const unitTypeCounts = new Map<UnitSummary['as']['TP'], number>();
     const unitClassCounts = new Map<UnitClassKey, number>();
     const unitTagCounts = new Map<UnitFactTag, number>();
     const unitScalarSums = new Map<UnitNumericScalarName, number>();
@@ -435,8 +412,8 @@ export function compileGroupFacts(
 
 export function compileGroupFactsList(
     groups: ReadonlyArray<GroupSizeResult>,
-    unitFactsMap?: WeakMap<Unit, UnitFacts>,
-    groupUnitCache?: WeakMap<GroupSizeResult, Unit[]>,
+    unitFactsMap?: WeakMap<UnitSummary, UnitFacts>,
+    groupUnitCache?: WeakMap<GroupSizeResult, UnitSummary[]>,
 ): GroupFacts[] {
     return groups.map((group) => compileGroupFacts(group, unitFactsMap, groupUnitCache));
 }
@@ -449,9 +426,9 @@ export function createOrgRuleRegistry(
             all: () => true,
             aero: (facts) => facts.tags.has('aero'),
             flightEligible: (facts) => isFlightEligible(facts),
-            infantry: (facts) => isBA(facts.unit) || isCI(facts.unit),
-            nonInfantry: (facts) => !isBA(facts.unit) && !isCI(facts.unit),
-            nonConventionalInfantry: (facts) => !isCI(facts.unit) && !facts.tags.has('aero'),
+            infantry: (facts) => UnitSummaryTypeGuard.isInfantry(facts.unit),
+            nonInfantry: (facts) => !UnitSummaryTypeGuard.isInfantry(facts.unit),
+            nonConventionalInfantry: (facts) => !UnitSummaryTypeGuard.isConventionalInfantry(facts.unit) && !facts.tags.has('aero'),
             nonAero: (facts) => !facts.tags.has('aero'),
             omni: (facts) => facts.tags.has('omni'),
             transportMec: (facts) => facts.tags.has('transport.mec'),

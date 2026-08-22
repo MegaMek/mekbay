@@ -6,7 +6,7 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { GameSystem } from '../models/common.model';
 import { DataService } from './data.service';
 import { DbService } from './db.service';
@@ -35,7 +35,7 @@ import { MULFACTION_NONE } from '../models/mulfactions.model';
 import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MiscEquipment } from '../models/equipment.model';
 
-function createUnit(name: string): Unit {
+function createUnit(name: string): UnitSummary {
     return createEmptyUnit({ name });
 }
 

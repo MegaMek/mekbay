@@ -4,7 +4,7 @@
 
 import type { GameSystem } from '../models/common.model';
 import type { UnitSearchNormalization } from '../models/unit-search-result.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { filterStateToSemanticText } from './semantic-filter.util';
 import type {
     UnitSearchWorkerCorpusSnapshot,
@@ -54,7 +54,7 @@ export function getWorkerCorpusVersion(searchCorpusVersion: string | number, tag
 export function getWorkerCorpusSnapshot(
     cache: UnitSearchWorkerCorpusCache,
     corpusVersion: string,
-    units: Unit[],
+    units: UnitSummary[],
     indexes: UnitSearchWorkerIndexSnapshot,
     factionEraIndex: UnitSearchWorkerFactionEraSnapshot,
 ): { snapshot: UnitSearchWorkerCorpusSnapshot; cache: UnitSearchWorkerCorpusCache } {

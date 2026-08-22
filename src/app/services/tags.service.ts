@@ -8,7 +8,7 @@ import { WsService } from './ws.service';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import { DialogsService } from './dialogs.service';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 
 /*
@@ -83,7 +83,7 @@ export class TagsService {
      * Generates the chassis tag key for a unit.
      * Format: `${chassis}|${as.TP}|${omni ? 'O' : ''}` to match variant groups.
      */
-    public static getChassisTagKey(unit: Unit): string {
+    public static getChassisTagKey(unit: UnitSummary): string {
         return getUnitVariantGroupKey(unit);
     }
 
@@ -107,7 +107,7 @@ export class TagsService {
         return { tags: {}, timestamp: 0, formatVersion: TAG_FORMAT_VERSION };
     }
 
-    public async migrateChassisTagsToVariantGroups(units: Unit[], tagData?: TagData): Promise<TagData> {
+    public async migrateChassisTagsToVariantGroups(units: UnitSummary[], tagData?: TagData): Promise<TagData> {
         const data = tagData ?? await this.getTagData();
         const migration = this.migrateChassisTagDataToVariantGroups(data, units);
         if (!migration.changed) {
@@ -122,7 +122,7 @@ export class TagsService {
         return data;
     }
 
-    private migrateChassisTagDataToVariantGroups(tagData: TagData, units: Unit[]): { changed: boolean; migratedKeys: boolean } {
+    private migrateChassisTagDataToVariantGroups(tagData: TagData, units: UnitSummary[]): { changed: boolean; migratedKeys: boolean } {
         if (tagData.formatVersion >= TAG_FORMAT_VERSION) {
             return { changed: false, migratedKeys: false };
         }
@@ -242,7 +242,7 @@ export class TagsService {
     /**
      * Removes stale unit-level tag assignments when the same tag is already assigned to that unit's chassis.
      */
-    public async fixNameTagsCoveredByChassis(units: Unit[], tagData?: TagData | null): Promise<void> {
+    public async fixNameTagsCoveredByChassis(units: UnitSummary[], tagData?: TagData | null): Promise<void> {
         if (units.length === 0 || tagData === null) {
             return;
         }
@@ -271,7 +271,7 @@ export class TagsService {
      * @param action 'add' to add the tag, 'remove' to remove it
      */
     public async modifyTag(
-        units: Unit[], 
+        units: UnitSummary[], 
         tag: string, 
         tagType: 'name' | 'chassis',
         action: 'add' | 'remove',
@@ -379,7 +379,7 @@ export class TagsService {
      * Quantity defaults to 1 and is clamped to integer >= 1.
      */
     public async setTagQuantity(
-        units: Unit[],
+        units: UnitSummary[],
         tag: string,
         tagType: 'name' | 'chassis',
         quantity: number
@@ -449,7 +449,7 @@ export class TagsService {
     /**
      * Remove a tag from units. Removes from both name and chassis tags.
      */
-    public async removeTagFromUnits(units: Unit[], tag: string): Promise<void> {
+    public async removeTagFromUnits(units: UnitSummary[], tag: string): Promise<void> {
         const tagData = await this.getTagData();
         const { label: tagLabel, id: tagId } = this.normalizeTag(tag);
         const now = Date.now();
@@ -673,7 +673,7 @@ export class TagsService {
     /**
      * Check if a tag is assigned at the chassis level for any of the given units.
      */
-    public async isChassisTag(units: Unit[], tag: string): Promise<boolean> {
+    public async isChassisTag(units: UnitSummary[], tag: string): Promise<boolean> {
         const tagData = await this.getTagData();
         const { id: tagId } = this.normalizeTag(tag);
 
@@ -690,7 +690,7 @@ export class TagsService {
      * Get the tag type for a specific tag on a unit.
      * Returns 'chassis' if it's a chassis-wide tag, 'name' if unit-specific, or null if not found.
      */
-    public async getTagType(unit: Unit, tag: string): Promise<'chassis' | 'name' | null> {
+    public async getTagType(unit: UnitSummary, tag: string): Promise<'chassis' | 'name' | null> {
         const tagData = await this.getTagData();
         const { id: tagId } = this.normalizeTag(tag);
         const chassisKey = TagsService.getChassisTagKey(unit);
@@ -736,7 +736,7 @@ export class TagsService {
         return quantity > 1 ? { q: quantity } : {};
     }
 
-    private buildLegacyChassisKeyMap(units: Unit[]): Map<string, Set<string>> {
+    private buildLegacyChassisKeyMap(units: UnitSummary[]): Map<string, Set<string>> {
         const result = new Map<string, Set<string>>();
         for (const unit of units) {
             const oldKey = `${unit.chassis}|${unit.type}`;
@@ -824,7 +824,7 @@ export class TagsService {
         }
     }
 
-    private removeNameTagsCoveredByChassis(tagData: TagData, units: Unit[], timestamp: number): TagOp[] {
+    private removeNameTagsCoveredByChassis(tagData: TagData, units: UnitSummary[], timestamp: number): TagOp[] {
         const ops: TagOp[] = [];
         const processedUnitTags = new Set<string>();
 

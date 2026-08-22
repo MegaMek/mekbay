@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { UnitHeight } from './units.model';
+import type { UnitHeight } from './unit-summary.model';
 
 export type UnitWaterDepth = 'underwater-depth-1' | 'underwater-depth-2' | 'underwater-depth-3';
 export type UnitBuildingLevel = 'building-1' | 'building-2' | 'building-3';

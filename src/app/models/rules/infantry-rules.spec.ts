@@ -6,7 +6,7 @@ import type { CBTForceUnit, EquipmentAction } from '../cbt-force-unit.model';
 import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
 import { MountedAmmo, MountedEquipment } from '../mounted-equipment.model';
 import { type LocationData } from '../force-serialization';
-import type { UnitComponent } from '../units.model';
+import type { UnitComponent } from '../unit-summary.model';
 import { InfantryRules } from './infantry-rules';
 
 function weapon(id: string): WeaponEquipment {

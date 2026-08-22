@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Injectable, signal, effect, computed, Injector, inject, untracked, DestroyRef, ApplicationRef } from '@angular/core';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { Force, type UnitGroup, MAX_GROUPS, MAX_UNITS } from '../models/force.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import { DataService } from './data.service';
@@ -99,16 +99,24 @@ function inventoryControlTargetsEqual(
             && current.unitType === next.unitType
             && current.distance === next.distance
             && current.tnModifier === next.tnModifier
-            && shallowRecordsEqual(current.tnCalculator, next.tnCalculator);
+            && recordsEqual(current.tnCalculator, next.tnCalculator);
     });
 }
 
-function shallowRecordsEqual(
+function recordsEqual(
     current: object | undefined,
-    next: object | undefined
+    next: object | undefined,
+    visited = new WeakMap<object, WeakSet<object>>(),
 ): boolean {
     if (current === next) return true;
     if (!current || !next) return false;
+    let comparedWith = visited.get(current);
+    if (comparedWith?.has(next)) return true;
+    if (!comparedWith) {
+        comparedWith = new WeakSet<object>();
+        visited.set(current, comparedWith);
+    }
+    comparedWith.add(next);
     const currentRecord = current as Record<string, unknown>;
     const nextRecord = next as Record<string, unknown>;
     const keys = new Set([...Object.keys(currentRecord), ...Object.keys(nextRecord)]);
@@ -117,7 +125,10 @@ function shallowRecordsEqual(
         const nextValue = nextRecord[key];
         return currentValue === nextValue
             || (currentValue === undefined && nextValue === false)
-            || (currentValue === false && nextValue === undefined);
+            || (currentValue === false && nextValue === undefined)
+            || (typeof currentValue === 'object' && currentValue !== null
+                && typeof nextValue === 'object' && nextValue !== null
+                && recordsEqual(currentValue, nextValue, visited));
     });
 }
 
@@ -252,10 +263,7 @@ export class ForceBuilderService {
             const cbtUnits = cbtForces.flatMap(force => force.units());
 
             for (const unit of cbtUnits) {
-                unit.getCondition('immobile');
-                unit.getCondition('prone');
-                unit.getCondition('skidding');
-                unit.getCondition('tagged');
+                unit.getConditions();
                 unit.getActiveNarcWaterLayers();
                 unit.turnState().moveMode();
                 unit.turnState().moveDistance();
@@ -287,41 +295,60 @@ export class ForceBuilderService {
     }
 
     private syncOpforInventoryTargets(force: CBTForce, enemyUnits: readonly CBTForceUnit[]): void {
-        const currentTargets = force.getInventoryControlTargets();
-        const manualTargets = currentTargets.filter(target => target.source !== 'opfor');
-        if (!force.inventoryControlOpforEnabled() || !this.isInventoryControlOpforAvailable(force)) {
-            if (!this.isInventoryControlOpforAvailable(force)) force.inventoryControlOpforEnabled.set(false);
-            if (currentTargets.length !== manualTargets.length) force.replaceInventoryControlTargets(manualTargets);
-            return;
-        }
+        try {
+            const currentTargets = force.getInventoryControlTargets();
+            const manualTargets = currentTargets.filter(target => target.source !== 'opfor');
+            if (!force.inventoryControlOpforEnabled() || !this.isInventoryControlOpforAvailable(force)) {
+                if (!this.isInventoryControlOpforAvailable(force)) force.inventoryControlOpforEnabled.set(false);
+                if (currentTargets.length !== manualTargets.length) force.replaceInventoryControlTargets(manualTargets);
+                return;
+            }
 
-        const existingById = new Map(currentTargets.map(target => [target.id, target]));
-        const usedLetters = new Set(manualTargets.map(target => target.letter));
-        const opforTargets = enemyUnits.map((enemyUnit, enemyIndex): InventoryControlRuntimeTarget => {
-            const id = getOpforInventoryTargetId(enemyUnit.id);
-            const existing = existingById.get(id);
-            const letter = existing && !usedLetters.has(existing.letter)
-                ? existing.letter
-                : this.getFirstUnusedInventoryTargetLetter(usedLetters);
-            usedLetters.add(letter);
-            const tnCalculator = deriveOpforTargetCalculatorState(enemyUnit, existing?.tnCalculator);
-            const unitType = resolveInventoryTargetUnitType(enemyUnit.getUnit());
-            return {
-                id,
-                letter,
-                name: enemyUnit.getDisplayName(),
-                color: existing?.color ?? INVENTORY_CONTROL_TARGET_COLORS[enemyIndex % INVENTORY_CONTROL_TARGET_COLORS.length],
-                source: 'opfor',
-                readOnly: true,
-                unitType,
-                distance: 1,
-                tnCalculator,
-                tnModifier: 0
-            };
-        });
-        const nextTargets = [...manualTargets, ...opforTargets];
-        if (!inventoryControlTargetsEqual(currentTargets, nextTargets)) {
-            force.replaceInventoryControlTargets(nextTargets);
+            const existingById = new Map(currentTargets.map(target => [target.id, target]));
+            const usedLetters = new Set(manualTargets.map(target => target.letter));
+            const opforTargets = enemyUnits.map((enemyUnit, enemyIndex): InventoryControlRuntimeTarget => {
+                const id = getOpforInventoryTargetId(enemyUnit.id);
+                const existing = existingById.get(id);
+                const letter = existing && !usedLetters.has(existing.letter)
+                    ? existing.letter
+                    : this.getFirstUnusedInventoryTargetLetter(usedLetters);
+                usedLetters.add(letter);
+                const tnCalculator = deriveOpforTargetCalculatorState(enemyUnit, existing?.tnCalculator);
+                const unitType = resolveInventoryTargetUnitType(enemyUnit.getUnit());
+                return {
+                    id,
+                    letter,
+                    name: enemyUnit.getDisplayName(),
+                    color: existing?.color ?? INVENTORY_CONTROL_TARGET_COLORS[enemyIndex % INVENTORY_CONTROL_TARGET_COLORS.length],
+                    source: 'opfor',
+                    readOnly: true,
+                    unitType,
+                    distance: 1,
+                    tnCalculator,
+                    tnModifier: 0
+                };
+            });
+            const nextTargets = [...manualTargets, ...opforTargets];
+            if (!inventoryControlTargetsEqual(currentTargets, nextTargets)) {
+                force.replaceInventoryControlTargets(nextTargets);
+            }
+        } catch (error) {
+            force.inventoryControlOpforEnabled.set(false);
+            try {
+                const currentTargets = force.getInventoryControlTargets();
+                const manualTargets = currentTargets.filter(target => target.source !== 'opfor');
+                if (manualTargets.length !== currentTargets.length) {
+                    force.replaceInventoryControlTargets(manualTargets);
+                }
+            } catch (cleanupError) {
+                this.logger?.error(`Unable to clear stale OPFOR targets: ${cleanupError}`);
+            }
+            this.logger?.error(`Unable to synchronize OPFOR targets: ${error}`);
+            this.toastService?.showToast(
+                'Unable to synchronize OPFOR targets. OPFOR targeting was disabled.',
+                'error',
+                'opfor-target-sync-error'
+            );
         }
     }
 
@@ -984,7 +1011,7 @@ export class ForceBuilderService {
      * @param gunnerySkill Optional gunnery skill to set for the crew
      * @param pilotingSkill Optional piloting skill to set for the crew
      */
-    async addUnit(unit: Unit, gunnerySkill?: number, pilotingSkill?: number, group?: UnitGroup, gameSystemOverride?: GameSystem): Promise<ForceUnit | null> {
+    async addUnit(unit: UnitSummary, gunnerySkill?: number, pilotingSkill?: number, group?: UnitGroup, gameSystemOverride?: GameSystem): Promise<ForceUnit | null> {
         let targetForce = this.smartCurrentForce();
         if (!targetForce) {
             targetForce = await this.createNewForce('', gameSystemOverride);
@@ -1211,7 +1238,7 @@ export class ForceBuilderService {
      * @param newUnitData The new Unit data to replace with
      * @returns The new ForceUnit if successful, null if cancelled
      */
-    async replaceUnit(originalUnit: ForceUnit, newUnitData: Unit): Promise<ForceUnit | null> {
+    async replaceUnit(originalUnit: ForceUnit, newUnitData: UnitSummary): Promise<ForceUnit | null> {
         const targetForce = originalUnit.force;
         if (!targetForce) {
             return null;

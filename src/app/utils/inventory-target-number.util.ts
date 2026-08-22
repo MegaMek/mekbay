@@ -17,8 +17,10 @@ import {
     TN_INDIRECT_FIRE_MODIFIER,
     type TnTargetModifierBreakdownEntry,
     type TnTargetNumberCalculatorState,
+    type TnRangeBracket,
     type TnTargetUnitType,
 } from '../models/target-number-calculator.model';
+import { UnitSummaryTypeGuard } from '../models/unit-summary-type-guard';
 
 type EffectiveTargetModifierBreakdownEntry = TnTargetModifierBreakdownEntry & {
     ignored?: true;
@@ -155,6 +157,7 @@ export function inventoryTargetEffectiveTnModifier(
     entry: MountedEquipment,
     selectedAmmo?: AmmoEquipment | null,
     gameRules: CBTGameRules = CORE_2026_GAME_RULES,
+    rangeBracket?: TnRangeBracket,
 ): number {
     const calculator = getEffectiveInventoryControlCalculatorState(target);
     if (!calculator) return target.tnModifier;
@@ -165,6 +168,7 @@ export function inventoryTargetEffectiveTnModifier(
         entry,
         selectedAmmo,
         gameRules,
+        rangeBracket,
     );
     return target.tnModifier
         + sumTargetModifiers(effectiveBreakdown)
@@ -174,6 +178,8 @@ export function inventoryTargetEffectiveTnModifier(
 function targetCalculatorBreakdown(
     target: InventoryControlRuntimeTarget,
     gameRules: CBTGameRules,
+    rangeBracket?: TnRangeBracket,
+    attackerIsConventionalInfantry = false,
 ): TnTargetModifierBreakdownEntry[] {
     const calculator = getEffectiveInventoryControlCalculatorState(target);
     if (!calculator) return [];
@@ -181,6 +187,8 @@ function targetCalculatorBreakdown(
         ...calculator,
         unitType: target.unitType,
         range: target.distance,
+        rangeBracket,
+        attackerIsConventionalInfantry,
     }, gameRules);
 }
 
@@ -189,9 +197,15 @@ function effectiveTargetCalculatorBreakdown(
     entry: MountedEquipment,
     selectedAmmo: AmmoEquipment | null | undefined,
     gameRules: CBTGameRules,
+    rangeBracket?: TnRangeBracket,
 ): EffectiveTargetModifierBreakdownEntry[] {
     const calculator = getEffectiveInventoryControlCalculatorState(target);
-    let breakdown = targetCalculatorBreakdown(target, gameRules)
+    let breakdown = targetCalculatorBreakdown(
+        target,
+        gameRules,
+        rangeBracket,
+        UnitSummaryTypeGuard.isConventionalInfantry(entry.owner.getUnit?.()),
+    )
         .map(modifier => markTargetModifierIgnored(
             modifier,
             modifier.partialCoverSource === 'water' && !waterPartialCoverApplies(entry),
@@ -317,7 +331,8 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
 }
 
 function isAerospaceWeaponAttack(entry: MountedEquipment): boolean {
-    return entry.owner.getUnit?.().type === 'Aero' && entry.equipment instanceof WeaponEquipment;
+    return UnitSummaryTypeGuard.isAero(entry.owner.getUnit?.())
+        && entry.equipment instanceof WeaponEquipment;
 }
 
 function aerospaceTargetRangeSelection(
@@ -432,6 +447,7 @@ export function inventoryTargetNumberBreakdown(
         input.entry,
         input.selectedAmmo,
         gameRules,
+        rangeSelection.range,
     );
     const terms: TooltipLine[] = [
         { label: skillLabel, value: skill.toString(), priority: SKILL_BREAKDOWN_PRIORITY }
@@ -454,6 +470,7 @@ export function inventoryTargetNumberBreakdown(
             input.entry,
             input.selectedAmmo,
             gameRules,
+            rangeSelection.range,
         ).map(entry => ({
             label: entry.label,
             value: formatInventoryTargetSignedModifier(entry.modifier),

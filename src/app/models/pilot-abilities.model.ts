@@ -4,7 +4,7 @@
 
 import { Rulebook, type RulesReference } from './common.model';
 import { GameSystem } from '../models/common.model';
-import type { ASUnitTypeCode } from './units.model';
+import type { ASUnitTypeCode } from './unit-summary.model';
 import { formatMovement } from '../utils/as-common.util';
 
 function formatMovementPlaceholders(text: string, useHex: boolean): string {

@@ -7,7 +7,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 
 import { GameSystem } from '../../models/common.model';
 import { getForcePreviewResolvedUnits, type ForcePreviewEntry } from '../../models/force-preview.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { DataService, DOES_NOT_TRACK, type MinMaxStatsRange } from '../../services/data.service';
 
 type RadarStatKey =
@@ -41,7 +41,7 @@ interface RadarRing {
 interface RadarAxisDefinition {
     key: RadarStatKey;
     label: string;
-    getContribution: (unit: Unit, bucketStats: MinMaxStatsRange) => RadarContribution;
+    getContribution: (unit: UnitSummary, bucketStats: MinMaxStatsRange) => RadarContribution;
 }
 
 interface RadarAxis {
@@ -209,7 +209,7 @@ function sanitizeStatValue(value: number | undefined | null): number {
     return Math.max(0, value);
 }
 
-function getMobilityContribution(unit: Unit, bucketStats: MinMaxStatsRange): RadarContribution {
+function getMobilityContribution(unit: UnitSummary, bucketStats: MinMaxStatsRange): RadarContribution {
     const runValue = sanitizeStatValue(unit.run2);
     const jumpValue = sanitizeStatValue(unit.jump);
     const runMin = sanitizeStatValue(bucketStats.run2MP.min);
@@ -345,7 +345,7 @@ function buildRadarAxis(
     };
 }
 
-function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem, unit: Unit): MinMaxStatsRange {
+function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem, unit: UnitSummary): MinMaxStatsRange {
     return gameSystem === GameSystem.ALPHA_STRIKE
         ? dataService.getASUnitTypeMaxStats(unit.as?.TP ?? '')
         : dataService.getUnitSubtypeMaxStats(unit.subtype);
@@ -563,12 +563,12 @@ export class ForceRadarPanelComponent {
     readonly renderWidth = RADAR_RENDER_WIDTH;
     readonly renderHeight = RADAR_RENDER_HEIGHT;
     readonly force = input.required<ForcePreviewEntry>();
-    readonly hoveredUnit = input<Unit | null>(null);
+    readonly hoveredUnit = input<UnitSummary | null>(null);
     readonly axisDefinitions = computed(() => this.force().type === GameSystem.ALPHA_STRIKE
         ? ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS
         : CLASSIC_RADAR_AXIS_DEFINITIONS);
 
-    readonly units = computed<Unit[]>(() => getForcePreviewResolvedUnits(this.force()));
+    readonly units = computed<UnitSummary[]>(() => getForcePreviewResolvedUnits(this.force()));
 
     readonly hasUnits = computed(() => this.units().length > 0);
 
@@ -647,7 +647,7 @@ export class ForceRadarPanelComponent {
         return toPointString(this.hoveredUnitAxes().map((axis) => axis.dataPoint));
     });
 
-    private getUnitBucketMaxStats(unit: Unit): MinMaxStatsRange {
+    private getUnitBucketMaxStats(unit: UnitSummary): MinMaxStatsRange {
         return getUnitBucketMaxStats(this.dataService, this.force().type, unit);
     }
 }

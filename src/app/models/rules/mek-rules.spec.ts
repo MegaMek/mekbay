@@ -11,7 +11,7 @@ import { MountedEquipment, MountedWeapon } from '../mounted-equipment.model';
 import { type CriticalSlot, type LocationData } from '../force-serialization';
 import { AmmoEquipment, Equipment, WeaponEquipment, type AmmoType } from '../equipment.model';
 import { EquipmentRegistry } from '../equipment-lookup';
-import type { Unit, UnitComponent, UnitSubtype } from '../units.model';
+import type { UnitSummary, UnitComponent, UnitSubtype } from '../unit-summary.model';
 import { DataService } from '../../services/data.service';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import { UnitInitializerService } from '../../services/unit-initializer.service';
@@ -164,7 +164,7 @@ function createForceUnitHarness(options: {
         comp: options.components ?? [],
     });
 
-    dataService.getUnitByName.and.callFake((name: string): Unit | undefined => name === baseUnit.name ? baseUnit : undefined);
+    dataService.getUnitByName.and.callFake((name: string): UnitSummary | undefined => name === baseUnit.name ? baseUnit : undefined);
     const force = new TestCBTForce('Test Force', dataService, unitInitializer, injector);
     const forceUnit = new CBTForceUnit(baseUnit, force, dataService, unitInitializer, injector);
     const internalLocations = canonicalMekInternalLocations(baseUnit.subtype, options.internalLocations);

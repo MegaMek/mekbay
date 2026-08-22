@@ -4,7 +4,7 @@
 
 import { Component, ChangeDetectionStrategy, DestroyRef, signal, effect, input, inject, viewChild, type ElementRef } from '@angular/core';
 
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { SheetService } from '../../services/sheet.service';
 import { OptionsService } from '../../services/options.service';
 import { LoggerService } from '../../services/logger.service';
@@ -33,7 +33,7 @@ export class SvgViewerLiteComponent {
     private sheetService = inject(SheetService);
     private optionsService = inject(OptionsService);
 
-    unit = input<Unit | null>(null);
+    unit = input<UnitSummary | null>(null);
     zoomable = input<boolean>(false);
 
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');

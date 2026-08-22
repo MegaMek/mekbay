@@ -5,10 +5,10 @@
 import { AmmoEquipment, type Equipment, WeaponEquipment } from '../models/equipment.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { WEAPON_TYPES } from '../models/weapon-types.model';
 
-const SUPPORT_VEHICLE_SUBTYPES = new Set<Unit['subtype']>([
+const SUPPORT_VEHICLE_SUBTYPES = new Set<UnitSummary['subtype']>([
     'Support Vehicle',
     'Support Vehicle Omni',
     'Fixed Wing Support Vehicle',
@@ -78,7 +78,7 @@ export function calculateInventoryName(entry: MountedEquipment): string | null {
     return parts.filter(Boolean).join(' ').trim();
 }
 
-function baseInventoryEquipmentName(equipment: Equipment, unit: Unit | undefined, fallbackName: string): string {
+function baseInventoryEquipmentName(equipment: Equipment, unit: UnitSummary | undefined, fallbackName: string): string {
     const equipmentName = equipment.name?.trim() || equipment.shortName?.trim() || fallbackName.trim();
     let name = equipmentName.length > 20 ? equipment.shortName?.trim() || equipmentName : equipmentName;
     if (unit && !unit.mixed) {
@@ -89,7 +89,7 @@ function baseInventoryEquipmentName(equipment: Equipment, unit: Unit | undefined
 
 function showInventoryTechBase(
     equipment: Equipment,
-    unit: Unit,
+    unit: UnitSummary,
     registry: EquipmentRegistry,
 ): boolean {
     if (!unit.mixed || equipment.techBase === 'All') return false;
@@ -125,7 +125,7 @@ function readBooleanAttribute(element: SVGElement | undefined, name: string): bo
     return value !== '0' && value.toLowerCase() !== 'false';
 }
 
-function isSpheroidSmallCraft(unit: Unit | undefined): boolean {
+function isSpheroidSmallCraft(unit: UnitSummary | undefined): boolean {
     return unit?.subtype.includes('Spheroid') === true;
 }
 

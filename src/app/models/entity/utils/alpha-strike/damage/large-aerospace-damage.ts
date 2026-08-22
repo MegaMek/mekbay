@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { AlphaStrikeArcStats } from '../../../../units.model';
+import type { AlphaStrikeArcStats } from '../../../../unit-summary.model';
 import { WeaponEquipment } from '../../../../equipment.model';
 import type { BaseEntity } from '../../../entities';
 import { JumpShipEntity } from '../../../entities';

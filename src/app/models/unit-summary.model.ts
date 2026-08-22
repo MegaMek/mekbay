@@ -113,7 +113,7 @@ export interface UnitFluffCatalog {
     fluff: Record<string, UnitFluffCatalogEntry>;
 }
 
-export interface Unit {
+export interface UnitSummary {
     uuid: string; // Unique identifier of the unit
     name: string; // Internal unique name
     id: number; // MUL id
@@ -206,7 +206,7 @@ export interface Unit {
 
 export type UnitHeight = 1 | 2 | 3;
 
-export function getUnitHeight(unit: Pick<Unit, 'type' | 'tons'>, prone = false): UnitHeight {
+export function getUnitHeight(unit: Pick<UnitSummary, 'type' | 'tons'>, prone = false): UnitHeight {
     const standingHeight: UnitHeight = unit.type !== 'Mek' ? 1 : unit.tons > 100 ? 3 : 2;
     return prone && standingHeight > 1
         ? (standingHeight - 1) as UnitHeight
@@ -226,7 +226,7 @@ export interface PublicTagInfo {
 export interface Units {
     version: string;
     etag: string;
-    units: Unit[];
+    units: UnitSummary[];
 }
 
 export type ASUnitTypeCode = 'BM' | 'IM' | 'CV' | 'SV' | 'PM' | 'BA' | 'CI' | 'AF' | 'CF' | 'SC' | 'WS' | 'SS' | 'JS' | 'DA' | 'DS' | 'MS' | 'BD' | 'XX';

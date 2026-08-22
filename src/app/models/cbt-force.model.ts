@@ -4,7 +4,7 @@
 
 import { signal, type Injector } from '@angular/core';
 import type { DataService } from '../services/data.service';
-import type { Unit } from "./units.model";
+import type { UnitSummary } from "./unit-summary.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { type CBTSerializedUnit, type CBTSerializedForce, CBT_SERIALIZED_FORCE_SCHEMA, type SerializedForce } from './force-serialization';
 import { GameSystem } from './common.model';
@@ -33,7 +33,7 @@ export class CBTForce extends Force<CBTForceUnit> {
         super(name, dataService, unitInitializer, injector);
     }
 
-    protected override createForceUnit(unit: Unit): CBTForceUnit {
+    protected override createForceUnit(unit: UnitSummary): CBTForceUnit {
         return new CBTForceUnit(unit, this, this.dataService, this.unitInitializer, this.injector);
     }
 

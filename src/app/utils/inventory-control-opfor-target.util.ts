@@ -3,9 +3,10 @@
 // Author: Drake
 
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { getActiveStealthTnModifiers } from '../models/stealth-equipment.model';
 import { getTargetMovementBracketForDistance, type TnTargetNumberCalculatorState, type TnTargetUnitType } from '../models/target-number-calculator.model';
 import { isUnitBuildingLevel, isUnitWaterDepth } from '../models/unit-cover.model';
-import { getUnitHeight, type Unit } from '../models/units.model';
+import { getUnitHeight, type UnitSummary } from '../models/unit-summary.model';
 
 export const OPFOR_INVENTORY_TARGET_ID_PREFIX = 'opfor:';
 
@@ -17,7 +18,7 @@ export function isOpforInventoryTargetId(targetId: string): boolean {
     return targetId.startsWith(OPFOR_INVENTORY_TARGET_ID_PREFIX);
 }
 
-export function resolveInventoryTargetUnitType(unit: Unit): TnTargetUnitType {
+export function resolveInventoryTargetUnitType(unit: UnitSummary): TnTargetUnitType {
     switch (unit.type) {
         case 'Mek':
             if (unit.subtype.includes('Quad') || unit.subtype.includes('QuadVee')) return 'mek-quad';
@@ -33,7 +34,7 @@ export function resolveInventoryTargetUnitType(unit: Unit): TnTargetUnitType {
     }
 }
 
-export function isLargeInventoryTarget(unit: Unit): boolean {
+export function isLargeInventoryTarget(unit: UnitSummary): boolean {
     return getUnitHeight(unit) === 3;
 }
 
@@ -55,6 +56,7 @@ export function deriveOpforTargetCalculatorState(
         ...current,
         isAirborne,
         targetMovementBracket,
+        targetMovementDistance: moveDistance,
         skidding: unit.getCondition('skidding'),
         prone,
         immobile,
@@ -65,6 +67,7 @@ export function deriveOpforTargetCalculatorState(
         narcAboveWater: narcWaterLayers.aboveWater,
         narcUnderwater: narcWaterLayers.underwater,
         tagged: unit.getCondition('tagged'),
-        ecmShielded: unit.getCondition('ecm-shielded')
+        ecmShielded: unit.getCondition('ecm-shielded'),
+        stealth: getActiveStealthTnModifiers(unit),
     };
 }

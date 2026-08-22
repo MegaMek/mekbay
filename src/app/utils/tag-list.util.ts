@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { naturalCompare } from './sort.util';
 
 function sortTags(tags: Set<string>): string[] {
     return Array.from(tags).sort(naturalCompare);
 }
 
-export function collectAllTags(units: Unit[]): string[] {
+export function collectAllTags(units: UnitSummary[]): string[] {
     const tags = new Set<string>();
 
     for (const unit of units) {
@@ -24,7 +24,7 @@ export function collectAllTags(units: Unit[]): string[] {
     return sortTags(tags);
 }
 
-export function collectAllNameTags(units: Unit[]): string[] {
+export function collectAllNameTags(units: UnitSummary[]): string[] {
     const tags = new Set<string>();
 
     for (const unit of units) {
@@ -36,7 +36,7 @@ export function collectAllNameTags(units: Unit[]): string[] {
     return sortTags(tags);
 }
 
-export function collectAllChassisTags(units: Unit[]): string[] {
+export function collectAllChassisTags(units: UnitSummary[]): string[] {
     const tags = new Set<string>();
 
     for (const unit of units) {

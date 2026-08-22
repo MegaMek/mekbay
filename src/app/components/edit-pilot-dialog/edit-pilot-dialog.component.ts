@@ -13,7 +13,7 @@ import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { SkillDropdownPanelComponent, type SkillPreviewEntry } from '../skill-dropdown-panel/skill-dropdown-panel.component';
 import { SkillMatrixPanelComponent, type SkillMatrixCell } from '../skill-dropdown-panel/skill-matrix-panel.component';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import type { Era } from '../../models/eras.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type CrewMemberDetails, type SkillType } from '../../models/crew-member.model';
 import { PilotNameGeneratorService } from '../../services/pilot-name-generator.service';
@@ -38,7 +38,7 @@ export interface EditPilotDialogData {
     /** Pre-skill BV (base + TAG + C3) for BV preview calculation. */
     preSkillBv?: number;
     /** Unit reference for effective piloting skill calculation. */
-    unit?: Unit;
+    unit?: UnitSummary;
 }
 
 export interface EditPilotResult {

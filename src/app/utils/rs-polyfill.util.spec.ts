@@ -148,6 +148,24 @@ describe('RsPolyfillUtil', () => {
         expect(svg.querySelector('.unitConditionBanner[condition="crippled"]')).not.toBeNull();
         expect(svg.querySelector('.unitConditionBanner[condition="disconnected"]')).not.toBeNull();
         expect(svg.querySelector('.unitConditionBanner[condition="spotting"]')).not.toBeNull();
+        const stealthBanner = svg.querySelector('.unitConditionBanner[condition="stealth"]');
+        expect(stealthBanner).not.toBeNull();
+        expect(stealthBanner?.getAttribute('condition-color')).toBe('#226');
+        expect(stealthBanner?.querySelector('.unitConditionBannerText')?.textContent).toBe('STEALTH');
+    });
+
+    it('adds STEALTH banner support to units without manual condition controls', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 612 792');
+        const forceUnit = {
+            rules: { conditionControls: [] },
+            getUnit: () => ({ type: 'Infantry' }),
+        };
+
+        (RsPolyfillUtil as unknown as { addConditionsButtons: (unit: unknown, svg: SVGSVGElement) => void }).addConditionsButtons(forceUnit, svg);
+
+        expect(svg.getElementById('unit_condition_wrapper')).toBeNull();
+        expect(svg.querySelector('.unitConditionBanner[condition="stealth"]')).not.toBeNull();
     });
 
     it('adds only one disconnected banner when disconnected is also a unit condition control', () => {

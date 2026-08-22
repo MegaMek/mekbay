@@ -36,6 +36,7 @@ type ManagedEntry = {
     closeAreaElement?: HTMLElement | null;
     closeBlockUntil?: number;
     matchTriggerWidth?: boolean;
+    expandToContentWidth?: boolean;
     anchorActiveSelector?: string;
     /** Reusable position strategy for anchored-active overlays (avoids allocating a new one per frame). */
     anchorPositionStrategy?: GlobalPositionStrategy;
@@ -125,6 +126,7 @@ export class OverlayManagerService {
             sensitiveAreaReferenceElement?: HTMLElement,
             disableCloseForMs?: number,
             matchTriggerWidth?: boolean,
+            expandToContentWidth?: boolean,
             anchorActiveSelector?: string,
         }
     ): ManagedOverlayRef<T> {
@@ -208,6 +210,7 @@ export class OverlayManagerService {
         entry.closeAreaElement = resolveEl(opts?.sensitiveAreaReferenceElement);
         entry.triggerElement = el ?? undefined;
         entry.matchTriggerWidth = opts?.matchTriggerWidth ?? false;
+        entry.expandToContentWidth = opts?.expandToContentWidth ?? false;
         entry.anchorActiveSelector = opts?.anchorActiveSelector;
 
         if (entry.matchTriggerWidth) {
@@ -449,6 +452,16 @@ export class OverlayManagerService {
         const triggerWidth = entry.triggerElement.getBoundingClientRect().width;
         const maxWidth = Math.max(0, window.innerWidth - OVERLAY_VIEWPORT_MARGIN * 2);
         const minWidth = Math.min(triggerWidth, maxWidth);
+
+        if (entry.expandToContentWidth) {
+            entry.overlayRef.updateSize({
+                width: 'max-content',
+                minWidth: `${minWidth}px`,
+                maxWidth: `${maxWidth}px`,
+            });
+            return;
+        }
+
         const scrollContainer = pane.querySelector<HTMLElement>('[data-scroll-container]');
         const measuredWidth = Math.max(pane.scrollWidth, scrollContainer?.scrollWidth ?? 0);
         const currentWidth = Math.max(pane.clientWidth, scrollContainer?.clientWidth ?? 0);

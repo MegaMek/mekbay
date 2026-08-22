@@ -198,6 +198,24 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         expect(component.targetModifierPills(target)).toEqual([]);
     });
 
+    it('renders active stealth as a target badge without baking in one weapon bracket', () => {
+        const target = {
+            ...TARGET,
+            tnCalculator: {
+                stealth: { short: 0, medium: 1, long: 2, secondaryTargetRestricted: true },
+            },
+        };
+        fixture.componentRef.setInput('targets', [target]);
+        fixture.detectChanges();
+
+        expect(component.targetModifierPills(target)).toEqual([{ label: 'Stealth' }]);
+        const pill = fixture.nativeElement.querySelector(
+            '.target-modifier-pills:not(.target-modifier-pills-fallback) .target-modifier-pill',
+        ) as HTMLElement;
+        expect(pill.querySelector('.modifier-label')?.textContent?.trim()).toBe('Stealth');
+        expect(pill.querySelector('.modifier-badge')).toBeNull();
+    });
+
     it('does not render stale TAG guidance for a TW infantry target', () => {
         fixture.componentRef.setInput('gameRules', TW_GAME_RULES);
         fixture.componentRef.setInput('hasSemiGuidedMissiles', true);
@@ -430,7 +448,9 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
             { label: 'Immobile', modifier: -4 },
             { label: 'Indirect', modifier: 1 },
         ]);
-        expect(component.targetModifierPills(terrainTarget)).toEqual([]);
+        expect(component.targetModifierPills(terrainTarget)).toEqual([
+            { label: 'Immobile', modifier: -4 },
+        ]);
     });
 
     it('does not emit mutations while read-only', () => {

@@ -4,7 +4,7 @@
 
 import { computed, createEnvironmentInjector, effect, type EffectRef, EnvironmentInjector, type Injector, isDevMode, runInInjectionContext, signal, type Signal, untracked, type WritableSignal } from '@angular/core';
 import { DataService } from '../services/data.service';
-import { getUnitHeight, type Unit, type UnitHeight } from "./units.model";
+import { getUnitHeight, type UnitSummary, type UnitHeight } from "./unit-summary.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { MountedAmmo, MountedEquipment, MountedWeapon } from './mounted-equipment.model';
 import { type CriticalSlot, type HeatProfile, type LocationData, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, TURN_STATE_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type RuleCheckOutcome, type SerializedCrewMember, type SerializedRuleCheck, committedConditionData, conditionsForSerialization, conditionsHasActive, conditionsHasCommittedActive, conditionsMapFromSerialization, normalizeConditionData, normalizeConditionKey } from './force-serialization';
@@ -24,7 +24,7 @@ import type { AmmoEquipment as AmmoEquipmentType } from './equipment.model';
 import type { EquipmentFlag } from './equipment-flags.type';
 import type { WeaponType } from './weapon-types.model';
 import { C3Capabilities, type C3Component, C3NetworkType, C3Role } from './c3-network.model';
-import { isC3DisruptingStealthActive } from './stealth-equipment.model';
+import { unitHasActiveC3DisruptingStealth } from './stealth-equipment.model';
 import { getMotiveModeLabel, getMotiveModesOptionsByUnit, type MotiveModeOption, type MotiveModes } from './motiveModes.model';
 import type { TurnState } from './turn-state.model';
 import { Sanitizer } from '../utils/sanitizer.util';
@@ -106,7 +106,7 @@ export class CBTForceUnit extends ForceUnit {
         return pilot?.getName() ?? undefined;
     });
     
-    constructor(unit: Unit,
+    constructor(unit: UnitSummary,
         force: CBTForce,
         dataService: DataService,
         unitInitializer: UnitInitializerService,
@@ -651,8 +651,7 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     private hasActiveC3DisruptingStealth(): boolean {
-        return this.getInventory().some(equipment => this.isEquipmentOperational(equipment)
-            && isC3DisruptingStealthActive(equipment));
+        return unitHasActiveC3DisruptingStealth(this);
     }
 
     override isC3EndpointOperational(componentIndex: number, component?: C3Component): boolean {
@@ -1067,6 +1066,11 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     canPerformEquipmentAction(entry: MountedEquipment, action: EquipmentAction): boolean {
+        if (this.hasActiveC3DisruptingStealth()
+            && (entry.equipment?.flags.has('F_BAP') || entry.equipment?.flags.has('F_BLOODHOUND'))
+            && (action === 'activate' || action === 'change-mode' || action === 'provide-passive-effect')) {
+            return false;
+        }
         if (action === 'configure-network') {
             const component = new C3Capabilities(this).components.find(candidate => candidate.mount === entry);
             if (!component || !this.isC3ComponentOperational(component.index, component)) return false;
@@ -1176,7 +1180,7 @@ export class CBTForceUnit extends ForceUnit {
         return locations;
     }
 
-    private isInventoryComponentForEntry(component: Unit['comp'][number], entry: MountedEquipment): boolean {
+    private isInventoryComponentForEntry(component: UnitSummary['comp'][number], entry: MountedEquipment): boolean {
         return component.eq === entry.equipment
             || component.id === entry.equipment?.internalName
             || component.id === entry.name

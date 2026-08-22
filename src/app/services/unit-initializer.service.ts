@@ -524,7 +524,8 @@ export class UnitInitializerService {
 
     private isCriticalOnlyInventoryExcluded(critSlot: CriticalSlot): boolean {
         const equipment = critSlot.eq;
-        if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) return true;
+        if ((equipment instanceof ArmorEquipment && !equipment.hasFlag('F_STEALTH'))
+            || equipment instanceof StructureEquipment) return true;
         if (equipment && Array.from(equipment.flags).some(flag => CRITICAL_ONLY_INVENTORY_EXCLUDED_FLAGS.has(flag))) return true;
         return [critSlot.id, critSlot.name, equipment?.internalName, equipment?.name]
             .some(value => !!value && CRITICAL_ONLY_INVENTORY_EXCLUDED_EQUIPMENT.has(value));

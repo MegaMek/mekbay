@@ -6,7 +6,7 @@ import { type Force, UnitGroup } from '../../models/force.model';
 import type { Era } from '../../models/eras.model';
 import { type Faction } from '../../models/factions.model';
 import { isForcePreviewEntry, type ForcePreviewEntry, type ForcePreviewGroup } from '../../models/force-preview.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { resolveOrgDefinition } from './org-registry.util';
 import { getAggregatedTier, getDynamicTierForModifier } from './org-tier.util';
 import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
@@ -55,7 +55,7 @@ export function getOrgFromGroup(group: UnitGroup | ForcePreviewGroup, options: O
 		const force = group.force;
 		const resolvedFaction = force.faction() ?? DEFAULT_FACTION;
 		const resolvedEra = force.era();
-		const allUnits = group.units().map((unit) => unit.getUnit()).filter((unit): unit is Unit => unit !== undefined);
+		const allUnits = group.units().map((unit) => unit.getUnit()).filter((unit): unit is UnitSummary => unit !== undefined);
 		const rawGroups = resolveFromUnits(allUnits, resolvedFaction, resolvedEra);
 		return getResolvedOrgResult(rawGroups, resolvedFaction, resolvedEra, resolvedOptions);
 	}
@@ -64,7 +64,7 @@ export function getOrgFromGroup(group: UnitGroup | ForcePreviewGroup, options: O
 	const resolvedFaction = force?.faction ?? DEFAULT_FACTION;
 	const resolvedEra = force?.era ?? null;
 	const units = group.units
-		.filter((unit): unit is typeof unit & { unit: Unit } => unit.unit !== undefined)
+		.filter((unit): unit is typeof unit & { unit: UnitSummary } => unit.unit !== undefined)
 		.map((unit) => unit.unit);
 	const rawGroups = resolveFromUnits(units, resolvedFaction, resolvedEra);
 	return getResolvedOrgResult(rawGroups, resolvedFaction, resolvedEra, resolvedOptions);
@@ -126,7 +126,7 @@ function getGroupResultsFromForcePreviewGroup(
 	era: Era | null | undefined,
 ): GroupSizeResult[] {
 	const units = group.units
-		.filter((entry): entry is typeof entry & { unit: Unit } => entry.unit !== undefined)
+		.filter((entry): entry is typeof entry & { unit: UnitSummary } => entry.unit !== undefined)
 		.map((entry) => entry.unit);
 	return resolveFromUnits(units, faction, era);
 }

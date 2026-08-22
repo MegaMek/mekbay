@@ -11,7 +11,7 @@ import { getMountedOneShotConsumed, MountedAmmo, MountedEquipment } from '../mod
 import { type CriticalSlot, type LocationData } from '../models/force-serialization';
 import type { HandlerCommandContext } from '../services/equipment-interaction-registry.service';
 import type { CBTGameRules } from '../models/rules/game-rules';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { normalizeBattleArmorTrooperLocation } from '../models/battle-armor-location.model';
 import { combineEquipmentStatuses, type EquipmentStatus } from '../models/equipment-status.model';
 
@@ -190,7 +190,7 @@ export function getIntrinsicOneShotAmmoMount(weaponEntry: MountedEquipment): Mou
 export function getCompatibleCatalogAmmo(
     originalAmmo: AmmoEquipment,
     equipmentCatalog: EquipmentRegistry,
-    unit: Unit,
+    unit: UnitSummary,
     inventory: readonly MountedEquipment[],
 ): AmmoEquipment[] {
     return sortCompatibleAmmo(

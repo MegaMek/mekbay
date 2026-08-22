@@ -20,12 +20,12 @@ import type {
     RemoteLoadForceGroup,
     RemoteLoadForceUnit,
 } from './remote-load-force-entry.model';
-import type { Unit } from './units.model';
+import type { UnitSummary } from './unit-summary.model';
 import { uuidv7 } from '../utils/uuid.util';
 import type { CrewMemberDetails } from './crew-member.model';
 
 export interface ForcePreviewUnit {
-    unit: Unit | undefined;
+    unit: UnitSummary | undefined;
     alias?: string;
     destroyed: boolean;
     skill?: number;
@@ -113,7 +113,7 @@ function hasLiveAlphaStrikePilotStats(forceUnit: ForceUnit): forceUnit is LiveAl
 
 function createForcePreviewGroups(
     rawGroups: readonly RemoteLoadForceGroup[] | undefined,
-    getUnitByName: (name: string) => Unit | undefined,
+    getUnitByName: (name: string) => UnitSummary | undefined,
 ): ForcePreviewGroup[] {
     if (!Array.isArray(rawGroups)) {
         return [];
@@ -160,7 +160,7 @@ export function isForcePreviewEntry(value: unknown): value is ForcePreviewEntry 
 
 export function createForcePreviewUnit(
     raw: RemoteLoadForceUnit,
-    getUnitByName: (name: string) => Unit | undefined,
+    getUnitByName: (name: string) => UnitSummary | undefined,
 ): ForcePreviewUnit {
     const previewUnit: ForcePreviewUnit = {
         unit: getUnitByName(raw.unit),
@@ -179,7 +179,7 @@ export function createForcePreviewUnit(
 
 export function createForcePreviewUnitFromSerializedUnit(
     unit: SerializedUnit,
-    getUnitByName: (name: string) => Unit | undefined,
+    getUnitByName: (name: string) => UnitSummary | undefined,
 ): ForcePreviewUnit {
     const resolvedUnit = getUnitByName(unit.unit);
     const previewUnit: ForcePreviewUnit = {
@@ -353,7 +353,7 @@ export function getForcePreviewUnitEntries(forcePreview: ForcePreviewEntry): For
     return forcePreview.groups.flatMap((group) => group.units);
 }
 
-export function getForcePreviewResolvedUnits(forcePreview: ForcePreviewEntry): Unit[] {
+export function getForcePreviewResolvedUnits(forcePreview: ForcePreviewEntry): UnitSummary[] {
     return getForcePreviewUnitEntries(forcePreview)
         .flatMap((entry) => entry.unit ? [entry.unit] : []);
 }

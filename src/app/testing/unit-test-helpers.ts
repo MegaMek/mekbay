@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { getUnitTechBaseDisplay } from '../models/tech.model';
 import { CBTInventoryControlRuntime } from '../models/cbt-inventory-control-runtime.model';
 import type { CBTForceUnit, EquipmentAction, EquipmentStateEdit, EquipmentStatusSource } from '../models/cbt-force-unit.model';
@@ -25,11 +25,11 @@ import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-co
 import { resolveInventoryControlSelectedAmmoType, type InventoryControlDisplayData, type InventoryControlRules } from '../utils/inventory-control.util';
 import { uuidv4 } from '../utils/uuid.util';
 
-type TestAlphaStrikeOverrides = Partial<Omit<Unit['as'], 'dmg'>> & {
-    dmg?: Partial<Unit['as']['dmg']>;
+type TestAlphaStrikeOverrides = Partial<Omit<UnitSummary['as'], 'dmg'>> & {
+    dmg?: Partial<UnitSummary['as']['dmg']>;
 };
 
-export type TestUnitOverrides = Partial<Omit<Unit, 'as'>> & {
+export type TestUnitOverrides = Partial<Omit<UnitSummary, 'as'>> & {
     as?: TestAlphaStrikeOverrides;
 };
 
@@ -40,8 +40,8 @@ type TestInventoryControlRules = InventoryControlRules & {
     ) => ReadonlySet<WeaponType>;
 };
 
-function createEmptyAlphaStrikeStats(overrides: TestAlphaStrikeOverrides = {}): Unit['as'] {
-    const base: Unit['as'] = {
+function createEmptyAlphaStrikeStats(overrides: TestAlphaStrikeOverrides = {}): UnitSummary['as'] {
+    const base: UnitSummary['as'] = {
         TP: 'BM',
         PV: 0,
         SZ: 0,
@@ -78,9 +78,9 @@ function createEmptyAlphaStrikeStats(overrides: TestAlphaStrikeOverrides = {}): 
     };
 }
 
-export function createEmptyUnit(overrides: TestUnitOverrides = {}): Unit {
+export function createEmptyUnit(overrides: TestUnitOverrides = {}): UnitSummary {
     const { as: asOverrides, ...unitOverrides } = overrides;
-    const unit: Unit = {
+    const unit: UnitSummary = {
         uuid: uuidv4(),
         name: 'Test Unit',
         id: -1,

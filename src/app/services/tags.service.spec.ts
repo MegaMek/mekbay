@@ -4,7 +4,7 @@
 
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { DbService, type TagData, type TagOp } from './db.service';
 import { DialogsService } from './dialogs.service';
 import { LoggerService } from './logger.service';
@@ -13,7 +13,7 @@ import { UserStateService } from './userState.service';
 import { WsService } from './ws.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 
-function createUnit(name: string): Unit {
+function createUnit(name: string): UnitSummary {
     return createEmptyUnit({
         name,
         chassis: 'Dasher',

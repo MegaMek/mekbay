@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { WeaponEquipment, type Equipment } from '../models/equipment.model';
 import type { EquipmentFlag } from '../models/equipment-flags.type';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type PhysicalLocationRow } from '../models/rules/game-rules';
@@ -125,7 +125,7 @@ export function referenceTableNotes(
 /**
  * Derives the reference-table data from the unit's native component records.
  */
-export function clusterTableForUnit(unit: Pick<Unit, 'type' | 'subtype' | 'comp'>): ClusterTableData {
+export function clusterTableForUnit(unit: Pick<UnitSummary, 'type' | 'subtype' | 'comp'>): ClusterTableData {
     const equipment = unit.comp.flatMap(collectComponentEquipment);
     const sizes = new Set<number>();
 
@@ -183,7 +183,7 @@ export function clusterTableForUnit(unit: Pick<Unit, 'type' | 'subtype' | 'comp'
     };
 }
 
-function collectComponentEquipment(component: Unit['comp'][number]): Equipment[] {
+function collectComponentEquipment(component: UnitSummary['comp'][number]): Equipment[] {
     return [
         ...(component.eq ? [component.eq] : []),
         ...(component.bay?.flatMap(collectComponentEquipment) ?? []),

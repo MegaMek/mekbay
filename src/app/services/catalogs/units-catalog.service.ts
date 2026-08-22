@@ -6,7 +6,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { REMOTE_HOST, normalizeUnitServerUrl } from '../../models/common.model';
-import type { Unit, Units } from '../../models/units.model';
+import type { UnitSummary, Units } from '../../models/unit-summary.model';
 import { DbService } from '../db.service';
 import { OptionsService } from '../options.service';
 import { UnitRuntimeService } from '../unit-runtime.service';
@@ -14,7 +14,7 @@ import { withServiceWorkerBypass } from '../../utils/service-worker-bypass.util'
 import { CatalogBaseService } from './catalog-base.service';
 import { uuidv7 } from '../../utils/uuid.util';
 
-export function normalizeNullMulUnitIds(units: readonly Unit[]): Unit[] {
+export function normalizeNullMulUnitIds(units: readonly UnitSummary[]): UnitSummary[] {
     let nextNullMulId = -1;
     return units.map((unit) => unit.id > 0
         ? unit
@@ -29,7 +29,7 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
     private readonly unitRuntimeService = inject(UnitRuntimeService);
     private readonly optionsService = inject(OptionsService);
 
-    private units: Unit[] = [];
+    private units: UnitSummary[] = [];
 
     protected override get catalogKey(): string {
         return 'units';
@@ -48,7 +48,7 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
         await this.loadCustomServers();
     }
 
-    public getUnits(): Unit[] {
+    public getUnits(): UnitSummary[] {
         return this.units;
     }
 
@@ -102,7 +102,7 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
         const usedIds = new Set(this.units.map(unit => unit.id));
         let nextSyntheticId = this.units.reduce((min, unit) => Math.min(min, unit.id), 0) - 1;
 
-        const customUnits: Unit[] = [];
+        const customUnits: UnitSummary[] = [];
         for (const server of servers) {
             let data: Units | null = null;
             try {

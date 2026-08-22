@@ -6,6 +6,7 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../models/rules/game-rules';
+import { TN_CHAMELEON_MODIFIERS, TN_STANDARD_STEALTH_MODIFIERS } from '../../models/target-number-calculator.model';
 import { TnCalculatorDialogComponent, type TnCalculatorDialogData, type TnCalculatorDialogResult } from './tn-calculator-dialog.component';
 
 const DATA: TnCalculatorDialogData = {
@@ -104,7 +105,7 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
 
     it('resets editable calculator values to neutral defaults', () => {
         component.selectUnitType('vehicle');
-        component.setTargetMovementBracketIndex(3);
+        component.setTargetMovementSliderIndex(5);
         component.toggleAirborne();
         component.toggleProne();
         component.selectInterveningWoods('light2');
@@ -117,7 +118,7 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         fixture.detectChanges();
 
         expect(component.unitType()).toBe('mek-biped');
-        expect(component.targetMovementBracketIndex()).toBe(0);
+        expect(component.targetMovementDistance()).toBe(0);
         expect(component.isAirborne()).toBeFalse();
         expect(component.prone()).toBeFalse();
         expect(component.interveningWoods()).toBe('none');
@@ -200,15 +201,18 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         const guidanceState = fixture.nativeElement.querySelector('.guidance-state-group') as HTMLElement;
         const tagged = guidanceState.querySelector('.tagged-state') as HTMLButtonElement;
         const narc = guidanceState.querySelector('.narc-above-water-state') as HTMLButtonElement;
+        const stealth = guidanceState.querySelector('.stealth-state') as HTMLElement;
         const ecmShielded = guidanceState.querySelector('.ecm-shielded-state') as HTMLButtonElement;
 
         expect(guidanceState).not.toBeNull();
         expect(tagged.textContent?.trim()).toBe('TAGGED');
         expect(narc.textContent?.trim()).toBe('NARC');
+        expect(stealth.textContent).toContain('Stealth');
         expect(ecmShielded.textContent?.trim()).toBe('ECM SHIELDED');
 
         tagged.click();
         narc.click();
+        component.selectStealth('stealth-armor');
         ecmShielded.click();
         component.apply();
 
@@ -218,7 +222,198 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
             narcAboveWater: true,
             narcUnderwater: false,
             ecmShielded: true,
+            stealth: TN_STANDARD_STEALTH_MODIFIERS,
         }));
+    });
+
+    it('prevents secondary targeting only for standard Stealth Armor', () => {
+        component.toggleSecondaryTarget();
+        expect(component.secondaryTarget()).toBeTrue();
+
+        component.selectStealth('stealth-armor');
+        fixture.detectChanges();
+
+        expect(component.totalModifier()).toBe(0);
+        expect(component.secondaryTarget()).toBeFalse();
+        expect(component.secondaryTargetUnavailable()).toBeTrue();
+        expect((fixture.nativeElement.querySelector('.attack-method-section button') as HTMLButtonElement).disabled).toBeTrue();
+
+        component.toggleSecondaryTarget();
+        expect(component.secondaryTarget()).toBeFalse();
+
+        component.selectStealth('chameleon');
+        fixture.detectChanges();
+
+        expect(component.stealth()).toBe(TN_CHAMELEON_MODIFIERS);
+        expect(component.secondaryTargetUnavailable()).toBeFalse();
+        component.toggleSecondaryTarget();
+        expect(component.secondaryTarget()).toBeTrue();
+    });
+
+    it('offers only stealth systems valid for the selected target type', () => {
+        const optionValues = () => component.stealthDropdownOptions().map(option => option.value);
+
+        expect(component.stealthDropdownOptions()[0]).toEqual(jasmine.objectContaining({
+            value: 'none',
+            label: 'No Stealth',
+        }));
+
+        for (const mekType of ['mek-biped', 'mek-quad', 'mek-tripod']) {
+            component.selectUnitType(mekType);
+            expect(optionValues()).toEqual([
+                'none',
+                'stealth-armor',
+                'null-signature',
+                'chameleon',
+                'chameleon-null',
+            ]);
+            expect(component.stealthDropdownOptions().find(option => option.value === 'stealth-armor')?.label).toBe('Stealth');
+        }
+
+        for (const unitType of ['vehicle', 'vtol', 'aero']) {
+            component.selectUnitType(unitType);
+            expect(optionValues()).toEqual(['none', 'stealth-armor']);
+        }
+
+        component.selectUnitType('battle-armor');
+        expect(optionValues()).toEqual([
+            'none',
+            'ba-basic',
+            'ba-standard',
+            'ba-improved',
+            'mimetic',
+            'simple-camo',
+        ]);
+
+        for (const unitType of ['infantry', 'protoMek', 'terrain', 'building']) {
+            component.selectUnitType(unitType);
+            expect(optionValues()).toEqual(['none']);
+        }
+    });
+
+    it('rejects and clears stealth systems that do not support the selected target type', () => {
+        component.selectStealth('null-signature');
+        component.selectUnitType('vehicle');
+        expect(component.stealthChoice()).toBe('none');
+
+        component.selectStealth('stealth-armor');
+        component.selectUnitType('battle-armor');
+        expect(component.stealthChoice()).toBe('none');
+
+        component.selectStealth('ba-improved');
+        expect(component.stealthChoice()).toBe('ba-improved');
+        component.selectUnitType('mek-biped');
+        expect(component.stealthChoice()).toBe('none');
+
+        component.selectUnitType('vehicle');
+        component.selectStealth('null-signature');
+        expect(component.stealthChoice()).toBe('none');
+    });
+
+    it('offers movement-dependent camouflage only for Battle Armor', () => {
+        component.selectStealth('mimetic');
+        expect(component.stealth()).toBeUndefined();
+
+        component.selectUnitType('battle-armor');
+
+        expect(component.stealthDropdownOptions()).toContain(jasmine.objectContaining({
+            value: 'mimetic',
+            label: 'BA Mimetic',
+            modifierLabel: '+3/+3/+3',
+        }));
+        expect(component.stealthDropdownOptions().some(option => option.label.includes('(moved'))).toBeFalse();
+
+        component.selectStealth('mimetic');
+        component.selectUnitType('vehicle');
+
+        expect(component.stealthChoice()).toBe('none');
+        expect(component.stealthDropdownOptions().some(option => option.value === 'mimetic')).toBeFalse();
+    });
+
+    it('derives visual camouflage from the movement slider', () => {
+        component.selectUnitType('battle-armor');
+        component.selectStealth('mimetic');
+        expect(component.stealth()).toEqual({ short: 3, medium: 3, long: 3 });
+
+        component.setTargetMovementSliderIndex(1);
+        expect(component.targetMovementDistance()).toBe(1);
+        expect(component.targetMovementBracket().id).toBe('0-2');
+        expect(component.stealth()).toEqual({ short: 2, medium: 2, long: 2 });
+
+        component.setTargetMovementSliderIndex(2);
+        expect(component.stealth()).toEqual({ short: 1, medium: 1, long: 1 });
+
+        component.setTargetMovementSliderIndex(3);
+        expect(component.targetMovementDistance()).toBe(3);
+        expect(component.targetMovementBracket().id).toBe('3-4');
+        expect(component.stealth()).toEqual({ short: 0, medium: 0, long: 0 });
+
+        component.selectStealth('simple-camo');
+        component.setTargetMovementSliderIndex(1);
+        expect(component.stealth()).toEqual({ short: 1, medium: 1, long: 1 });
+
+        component.apply();
+        const state = (close.calls.mostRecent().args[0] as TnCalculatorDialogResult).patch.tnCalculator;
+        expect(state).toEqual(jasmine.objectContaining({
+            targetMovementDistance: 1,
+            targetMovementBracket: '0-2',
+            stealthSystem: 'simple-camo',
+        }));
+    });
+
+    it('uses unit-appropriate movement scales and hides movement for static targets', () => {
+        expect(component.movementTickLabels()).toEqual(['0-2', '3-4', '5-6', '7-9', '10-17', '18-24', '25+']);
+        expect(component.targetMovementBracketLabel()).toBe('0-2');
+
+        component.setTargetMovementSliderIndex(1);
+        fixture.detectChanges();
+        const movementThumb = fixture.nativeElement.querySelector('.target-movement-section .hex') as HTMLElement;
+        expect(movementThumb.classList).toContain('value-assigned');
+        expect(movementThumb.querySelector('.modifier-badge')?.textContent?.trim()).toBe('+1');
+
+        component.selectUnitType('infantry');
+        expect(component.movementTickLabels()).toEqual(['0', '1', '2', '3-4', '5-6', '7-9']);
+        component.setTargetMovementSliderIndex(5);
+        expect(component.targetMovementDistance()).toBe(7);
+
+        component.targetMovementDistance.set(25);
+        component.selectUnitType('battle-armor');
+        expect(component.targetMovementDistance()).toBe(9);
+        expect(component.targetMovementSliderIndex()).toBe(5);
+
+        component.selectUnitType('vehicle');
+        expect(component.movementTickLabels()).toEqual(['0-2', '3-4', '5-6', '7-9', '10-17', '18-24', '25+']);
+
+        component.selectUnitType('building');
+        fixture.detectChanges();
+        expect(component.targetMovementDistance()).toBe(0);
+        expect(component.immobile()).toBeFalse();
+        expect(component.totalModifier()).toBe(-4);
+        expect(fixture.nativeElement.querySelector('.target-movement-section')).toBeNull();
+
+        component.selectUnitType('terrain');
+        fixture.detectChanges();
+        expect(component.targetMovementDistance()).toBe(0);
+        expect(component.immobile()).toBeFalse();
+        expect(component.totalModifier()).toBe(-4);
+        expect(fixture.nativeElement.querySelector('.target-movement-section')).toBeNull();
+
+        component.apply();
+        const staticResult = close.calls.mostRecent().args[0] as TnCalculatorDialogResult;
+        expect(staticResult.patch.tnModifier).toBe(-4);
+        expect(staticResult.patch.tnCalculator).toEqual(jasmine.objectContaining({
+            targetMovementBracket: '0-2',
+            targetMovementDistance: 0,
+            immobile: false,
+        }));
+
+        component.selectUnitType('vehicle');
+        fixture.detectChanges();
+        expect(component.immobile()).toBeFalse();
+        expect(component.totalModifier()).toBe(0);
+        const movementButtons = fixture.nativeElement.querySelectorAll('.target-movement-section .move-button') as NodeListOf<HTMLButtonElement>;
+        const immobileButton = [...movementButtons].find(button => button.textContent?.includes('Immobile'))!;
+        expect(immobileButton.classList).not.toContain('selected');
     });
 
     it('clears and disables TAGGED for infantry under Total Warfare rules', () => {
@@ -411,7 +606,7 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
 
     it('resets local choices without clearing synchronized target facts', () => {
         component.isAirborne.set(true);
-        component.targetMovementBracketIndex.set(3);
+        component.targetMovementDistance.set(7);
         component.prone.set(true);
         component.narcAboveWater.set(true);
         component.selectInterveningWoods('light2');
@@ -423,7 +618,7 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
 
         expect(component.unitType()).toBe('battle-armor');
         expect(component.isAirborne()).toBeTrue();
-        expect(component.targetMovementBracketIndex()).toBe(3);
+        expect(component.targetMovementDistance()).toBe(7);
         expect(component.prone()).toBeTrue();
         expect(component.narcAboveWater()).toBeTrue();
         expect(component.interveningWoods()).toBe('none');

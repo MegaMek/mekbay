@@ -99,6 +99,7 @@ interface MultilineDropdownPointerHoverEvent {
             justify-content: space-between;
             gap: 8px;
             width: 100%;
+            box-sizing: border-box;
             padding: 6px;
             border: 0;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -149,12 +150,13 @@ interface MultilineDropdownPointerHoverEvent {
         }
 
         .modifier-badge {
-            flex: 0 0 24px;
-            inline-size: 24px;
+            flex: 0 0 auto;
+            min-inline-size: 24px;
             block-size: 24px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            padding-inline: 4px;
             border: 1px solid var(--border-color);
             background: rgba(0, 0, 0, 0.6);
             color: var(--text-color);
@@ -162,6 +164,7 @@ interface MultilineDropdownPointerHoverEvent {
             font-size: 0.78em;
             font-variant-numeric: tabular-nums;
             line-height: 1;
+            white-space: nowrap;
             box-sizing: border-box;
         }
     `]
@@ -238,24 +241,27 @@ class MultilineDropdownPanelComponent {
     `,
     styles: [`
         :host {
-            display: block;
+            display: flex;
+            align-items: stretch;
             min-width: 0;
             width: max-content;
             max-width: 100%;
         }
 
         .multiline-dropdown {
+            display: flex;
+            align-items: stretch;
+            flex: 1 1 auto;
             min-width: 0;
             width: 100%;
-            height: 100%;
         }
 
         .multiline-dropdown-trigger {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto auto;
             align-items: center;
+            flex: 1 1 auto;
             width: 100%;
-            height: 100%;
             gap: 4px;
             overflow: hidden;
             overflow-wrap: normal;
@@ -323,21 +329,24 @@ class MultilineDropdownPanelComponent {
         .multiline-dropdown-arrow {
             grid-column: 3;
             grid-row: 1;
-            flex: 0 0 auto;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            align-self: center;
             color: inherit;
             font-size: 1.1em;
-            line-height: 0;
+            line-height: 1;
         }
 
         .modifier-badge {
             grid-column: 2;
             grid-row: 1;
-            flex: 0 0 24px;
-            inline-size: 24px;
+            min-inline-size: 24px;
             block-size: 24px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            padding-inline: 4px;
             border: 1px solid var(--border-color);
             background: #000;
             color: var(--text-color);
@@ -345,6 +354,7 @@ class MultilineDropdownPanelComponent {
             font-size: 0.78em;
             font-variant-numeric: tabular-nums;
             line-height: 1;
+            white-space: nowrap;
             box-sizing: border-box;
         }
     `]
@@ -499,6 +509,7 @@ export class MultilineDropdownComponent implements OnDestroy {
                 closeOnOutsideClick: true,
                 panelClass: 'multiline-dropdown-overlay',
                 matchTriggerWidth: true,
+                expandToContentWidth: this.expandPanelToContent(),
                 anchorActiveSelector: '.multiline-dropdown-option.keyboard-active'
             }
         );

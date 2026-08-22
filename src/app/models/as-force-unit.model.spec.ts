@@ -11,7 +11,7 @@ import type { ASForce } from './as-force.model';
 import { ASForceUnit } from './as-force-unit.model';
 import { GameSystem } from './common.model';
 import type { UnitGroup } from './force.model';
-import type { Unit } from './units.model';
+import type { UnitSummary } from './unit-summary.model';
 import { getFormationDefinition } from '../utils/formation-blueprints';
 
 describe('ASForceUnit ability effects', () => {
@@ -24,7 +24,7 @@ describe('ASForceUnit ability effects', () => {
         injector = TestBed.inject(Injector);
     });
 
-    function createForceUnit(unit: Unit = createTestUnit()): ASForceUnit {
+    function createForceUnit(unit: UnitSummary = createTestUnit()): ASForceUnit {
         const force = {
             owned: () => true,
             emitChanged: jasmine.createSpy('emitChanged'),
@@ -40,7 +40,7 @@ describe('ASForceUnit ability effects', () => {
         );
     }
 
-    function createTestUnit(overrides: Parameters<typeof createEmptyUnit>[0] = {}): Unit {
+    function createTestUnit(overrides: Parameters<typeof createEmptyUnit>[0] = {}): UnitSummary {
         const { as: asOverrides, ...unitOverrides } = overrides;
         return createEmptyUnit({
             type: 'Mek',

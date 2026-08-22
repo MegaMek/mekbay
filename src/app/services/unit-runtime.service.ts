@@ -4,7 +4,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import type { Era } from '../models/eras.model';
-import type { Unit, UnitComponent, UnitTagEntry } from '../models/units.model';
+import type { UnitSummary, UnitComponent, UnitTagEntry } from '../models/unit-summary.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { TagData, UnitTagData } from './db.service';
 import { TagsService } from './tags.service';
@@ -20,13 +20,13 @@ export class UnitRuntimeService {
     private readonly publicTagsService = inject(PublicTagsService);
     private readonly unitSearchIndexService = inject(UnitSearchIndexService);
 
-    private unitNameMap = new Map<string, Unit>();
+    private unitNameMap = new Map<string, UnitSummary>();
 
     private static getUnitNameKey(name: string): string {
         return name.toLowerCase();
     }
 
-    public preprocessUnits(units: Unit[]): void {
+    public preprocessUnits(units: UnitSummary[]): void {
         this.unitNameMap.clear();
         for (const unit of units) {
             unit._techBaseDisplay = getUnitTechBaseDisplay(unit);
@@ -35,7 +35,7 @@ export class UnitRuntimeService {
         this.unitSearchIndexService.prepareUnits(units);
     }
 
-    public postprocessUnits(units: Unit[], eras: Era[]): void {
+    public postprocessUnits(units: UnitSummary[], eras: Era[]): void {
         for (const unit of units) {
             unit._era = this.findEraForYear(unit.year, eras);
         }
@@ -43,7 +43,7 @@ export class UnitRuntimeService {
         void this.loadUnitTags(units);
     }
 
-    public linkEquipmentToUnits(units: Unit[], equipmentRegistry: EquipmentRegistry): void {
+    public linkEquipmentToUnits(units: UnitSummary[], equipmentRegistry: EquipmentRegistry): void {
         for (const unit of units) {
             if (!unit.comp) {
                 continue;
@@ -53,13 +53,13 @@ export class UnitRuntimeService {
         }
     }
 
-    public async loadUnitTags(units: Unit[]): Promise<void> {
+    public async loadUnitTags(units: UnitSummary[]): Promise<void> {
         const tagData = await this.tagsService.migrateChassisTagsToVariantGroups(units);
         this.applyTagDataToUnits(units, tagData);
     }
 
     public applyTagDataToUnits(
-        units: Unit[],
+        units: UnitSummary[],
         tagData: TagData | null,
         options?: { rebuildTagSearchIndex?: boolean }
     ): void {
@@ -96,7 +96,7 @@ export class UnitRuntimeService {
         return quantity && quantity > 0 ? quantity : 1;
     }
 
-    public applyPublicTagsToUnits(units: Unit[]): void {
+    public applyPublicTagsToUnits(units: UnitSummary[]): void {
         for (const unit of units) {
             unit._publicTags = this.publicTagsService.getPublicTagsForUnit(unit);
         }
@@ -104,7 +104,7 @@ export class UnitRuntimeService {
         this.unitSearchIndexService.rebuildTagSearchIndex(units);
     }
 
-    public getUnitByName(name: string): Unit | undefined {
+    public getUnitByName(name: string): UnitSummary | undefined {
         return this.unitNameMap.get(UnitRuntimeService.getUnitNameKey(name));
     }
 

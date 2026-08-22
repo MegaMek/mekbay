@@ -48,7 +48,12 @@ function c3BadgeUnit(
         owner: unit,
         id: mount.id,
         name: mount.id,
-        equipment: { flags: new Set([mount.flag]) } as Equipment,
+        equipment: {
+            flags: new Set([mount.flag]),
+            modes: mount.flag === 'F_STEALTH' || mount.flag === 'F_CHAMELEON_SHIELD' || mount.flag === 'F_NULL_SIG'
+                ? ['Off', 'On']
+                : [],
+        } as Equipment,
         states: new Map(),
     }));
     Object.defineProperties(unit, {
@@ -57,6 +62,7 @@ function c3BadgeUnit(
         shutdown: { value: false, writable: true, configurable: true },
         getUnit: { value: () => ({ comp: [] }), configurable: true },
         getInventory: { value: () => inventory, configurable: true },
+        turnState: { value: () => ({ moveDistance: () => 0 }), configurable: true },
         getCrewMember: { value: () => ({ getState: () => 'healthy' }), configurable: true },
         getEquipmentStatus: {
             value: (entry: MountedEquipment) => unavailable.has(entry.id) ? 'destroyed' : 'available',
@@ -70,7 +76,10 @@ function c3BadgeUnit(
             value: rules,
             configurable: true,
         },
-        getCondition: { value: () => false, configurable: true },
+        getCondition: {
+            value: (condition: string) => condition === 'stealth' && rules.hasComputedCondition(condition),
+            configurable: true,
+        },
     });
     return unit;
 }
@@ -168,26 +177,81 @@ describe('CBTForceUnit C3 targeting resolution', () => {
         expect(unit.isC3ComponentOperational(1)).toBeFalse();
     });
 
-    it('disconnects C3 for active stealth except Chameleon LPS', () => {
+    it('disconnects C3 for active Stealth Armor except Chameleon LPS and Null Signature', () => {
         const stealthUnit = c3BadgeUnit('stealth-unit', [
             { id: 'c3', flag: C3_FLAGS.C3M },
             { id: 'stealth', flag: 'F_STEALTH' },
+            { id: 'ecm', flag: 'F_ECM' },
         ], new Set());
         const chameleonUnit = c3BadgeUnit('chameleon-unit', [
             { id: 'c3', flag: C3_FLAGS.C3M },
             { id: 'chameleon', flag: 'F_CHAMELEON_SHIELD' },
         ], new Set());
+        const nullSignatureUnit = c3BadgeUnit('null-signature-unit', [
+            { id: 'c3', flag: C3_FLAGS.C3M },
+            { id: 'null-signature', flag: 'F_NULL_SIG' },
+        ], new Set());
         stealthUnit.getInventory()[1].states.set('state', 'enabled');
         chameleonUnit.getInventory()[1].states.set('state', 'enabled');
+        nullSignatureUnit.getInventory()[1].states.set('state', 'enabled');
 
         expect(stealthUnit.isC3ComponentOperational(0)).toBeFalse();
         expect(chameleonUnit.isC3ComponentOperational(0)).toBeTrue();
+        expect(nullSignatureUnit.isC3ComponentOperational(0)).toBeTrue();
+    });
+
+    it('suppresses probes only while standard Stealth Armor is active', () => {
+        const stealthUnit = c3BadgeUnit('stealth-unit', [
+            { id: 'probe', flag: 'F_BAP' },
+            { id: 'stealth', flag: 'F_STEALTH' },
+            { id: 'ecm', flag: 'F_ECM' },
+        ], new Set());
+        const nullSignatureUnit = c3BadgeUnit('null-signature-unit', [
+            { id: 'probe', flag: 'F_BAP' },
+            { id: 'null-signature', flag: 'F_NULL_SIG' },
+        ], new Set());
+        const [stealthProbe, stealth] = stealthUnit.getInventory();
+        const [nullProbe, nullSignature] = nullSignatureUnit.getInventory();
+
+        expect(stealthUnit.canPerformEquipmentAction(stealthProbe, 'provide-passive-effect')).toBeTrue();
+        stealth.states.set('state', 'enabled');
+        nullSignature.states.set('state', 'enabled');
+
+        expect(stealthUnit.canPerformEquipmentAction(stealthProbe, 'provide-passive-effect')).toBeFalse();
+        expect(nullSignatureUnit.canPerformEquipmentAction(nullProbe, 'provide-passive-effect')).toBeTrue();
+    });
+
+    it('derives the STEALTH banner condition from an effective stealth system', () => {
+        const stealthUnit = c3BadgeUnit('stealth-unit', [
+            { id: 'stealth', flag: 'F_STEALTH' },
+            { id: 'ecm', flag: 'F_ECM' },
+        ], new Set());
+        const chameleonUnit = c3BadgeUnit('chameleon-unit', [
+            { id: 'chameleon', flag: 'F_CHAMELEON_SHIELD' },
+        ], new Set());
+        const brokenEcmUnit = c3BadgeUnit('broken-ecm-unit', [
+            { id: 'stealth', flag: 'F_STEALTH' },
+            { id: 'ecm', flag: 'F_ECM' },
+        ], new Set(['ecm']));
+
+        expect(stealthUnit.rules.isComputedCondition('stealth')).toBeTrue();
+        expect(stealthUnit.rules.computedConditions()).toContain('stealth');
+        expect(stealthUnit.getCondition('stealth')).toBeFalse();
+
+        stealthUnit.getInventory()[0].states.set('state', 'enabled');
+        chameleonUnit.getInventory()[0].states.set('state', 'enabled');
+        brokenEcmUnit.getInventory()[0].states.set('state', 'enabled');
+
+        expect(stealthUnit.getCondition('stealth')).toBeTrue();
+        expect(chameleonUnit.getCondition('stealth')).toBeTrue();
+        expect(brokenEcmUnit.getCondition('stealth')).toBeFalse();
     });
 
     it('uses C3 endpoint availability as the configure-network action authority', () => {
         const unit = c3BadgeUnit('stealth-unit', [
             { id: 'c3', flag: C3_FLAGS.C3M },
             { id: 'stealth', flag: 'F_STEALTH' },
+            { id: 'ecm', flag: 'F_ECM' },
         ], new Set());
         const [c3, stealth] = unit.getInventory();
 
@@ -205,6 +269,7 @@ describe('CBTForceUnit C3 targeting resolution', () => {
         const unit = c3BadgeUnit('damaged-stealth', [
             { id: 'c3', flag: C3_FLAGS.C3M },
             { id: 'stealth', flag: 'F_STEALTH' },
+            { id: 'ecm', flag: 'F_ECM' },
         ], new Set(['stealth']));
         unit.getInventory()[1].states.set('state', 'enabled');
 

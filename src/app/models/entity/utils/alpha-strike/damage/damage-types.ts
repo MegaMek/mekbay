@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { AlphaStrikeArcStats, AlphaStrikeUnitStats } from '../../../../units.model';
+import type { AlphaStrikeArcStats, AlphaStrikeUnitStats } from '../../../../unit-summary.model';
 
 export type AlphaStrikeDamage = AlphaStrikeUnitStats['dmg'];
 export type AlphaStrikeArcName = 'frontArc' | 'leftArc' | 'rightArc' | 'rearArc';

@@ -4,7 +4,7 @@
 
 import type { GameSystem } from '../models/common.model';
 import type { UnitSearchNormalizationMatch } from '../models/unit-search-result.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import type { SearchTelemetrySnapshot } from '../services/unit-search-filters.model';
 import type { UnitSearchWorkerResultMessage } from './unit-search-worker-protocol.util';
 
@@ -19,15 +19,15 @@ interface WorkerResultTelemetryContext {
 }
 
 export interface HydratedWorkerSearchResult {
-    units: Unit[];
+    units: UnitSummary[];
     normalizationMatchesByUnitName: ReadonlyMap<string, UnitSearchNormalizationMatch>;
 }
 
 export function hydrateWorkerSearchResult(
     result: UnitSearchWorkerResultMessage,
-    getUnitByName: (unitName: string) => Unit | undefined,
+    getUnitByName: (unitName: string) => UnitSummary | undefined,
 ): HydratedWorkerSearchResult {
-    const units: Unit[] = [];
+    const units: UnitSummary[] = [];
     const normalizationMatchesByUnitName = new Map<string, UnitSearchNormalizationMatch>();
     const seenUnitNames = new Set<string>();
 
@@ -52,8 +52,8 @@ export function hydrateWorkerSearchResult(
 
 export function hydrateWorkerResultUnits(
     result: UnitSearchWorkerResultMessage,
-    getUnitByName: (unitName: string) => Unit | undefined,
-): Unit[] {
+    getUnitByName: (unitName: string) => UnitSummary | undefined,
+): UnitSummary[] {
     return hydrateWorkerSearchResult(result, getUnitByName).units;
 }
 

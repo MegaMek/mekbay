@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
+import { AmmoEquipment, ArmorEquipment, WeaponEquipment } from '../models/equipment.model';
 import type { WeaponType } from '../models/weapon-types.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { CBTForceUnit, EquipmentAction } from '../models/cbt-force-unit.model';
 import { MountedAmmo, MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { parseInventoryComponentReference } from '../models/inventory-component-reference.model';
 import { type CriticalSlot } from '../models/force-serialization';
-import type { UnitComponent } from '../models/units.model';
+import type { UnitComponent } from '../models/unit-summary.model';
 import { inventoryControlEntryAllowsTarget, resolveInventoryControlSelectedAmmoProfileId, type InventoryControlRuntimeAmmoSelection, type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
 import type { ToHitAdjustment, ToHitModifierBreakdownEntry, ToHitResolution } from '../models/rules/game-rules';
 import { FIELD_GUN_LOCATION, InfantryRules } from '../models/rules/infantry-rules';
@@ -811,9 +811,10 @@ function readTypedEquipmentDisplayData(
     const ranges = weapon && entry.owner.getUnit().type === 'Aero'
         ? STANDARD_AEROSPACE_RANGE_LIMITS
         : weapon?.ranges;
+    const wildcardLocation = equipment instanceof ArmorEquipment;
     return {
         name: displayName,
-        location: normalizeCell(Array.from(entry.locations ?? []).join('/')),
+        location: wildcardLocation ? '*' : normalizeCell(Array.from(entry.locations ?? []).join('/')),
         heat: weapon ? formatInventoryControlHeat(weapon.heat) : '—',
         damage: weapon ? '—' : physicalDamage,
         hit,

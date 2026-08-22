@@ -5,7 +5,7 @@
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
 import { WeaponEquipment } from '../../models/equipment.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { CBTGameRules, CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../models/rules/game-rules';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 import { ClusterTableDialogComponent, shouldCombineReferenceTables } from './cluster-table-dialog.component';
@@ -21,7 +21,7 @@ describe('shouldCombineReferenceTables', () => {
 describe('ClusterTableDialogComponent', () => {
     const close = jasmine.createSpy('close');
 
-    function createFixture(unit: Unit, gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
+    function createFixture(unit: UnitSummary, gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
         TestBed.resetTestingModule();
         TestBed.configureTestingModule({
             imports: [ClusterTableDialogComponent],
@@ -35,7 +35,7 @@ describe('ClusterTableDialogComponent', () => {
         return fixture;
     }
 
-    function unit(overrides: Partial<Unit>): Unit {
+    function unit(overrides: Partial<UnitSummary>): UnitSummary {
         return {
             type: 'Mek',
             subtype: 'BattleMek',
@@ -43,10 +43,10 @@ describe('ClusterTableDialogComponent', () => {
             tons: 50,
             comp: [],
             ...overrides,
-        } as unknown as Unit;
+        } as unknown as UnitSummary;
     }
 
-    function clusterWeaponUnit(overrides: Partial<Unit> = {}): Unit {
+    function clusterWeaponUnit(overrides: Partial<UnitSummary> = {}): UnitSummary {
         const lrm = new WeaponEquipment({
             id: 'lrm-5',
             name: 'LRM 5',

@@ -5,7 +5,7 @@
 import { Component, ChangeDetectionStrategy, input, output, signal, computed, inject, DestroyRef, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { GameService } from '../../services/game.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ToastService } from '../../services/toast.service';
@@ -64,15 +64,15 @@ export class UnitDetailsPanelComponent {
     private dialogsService = inject(DialogsService);
     private keyboardShortcutService = inject(KeyboardShortcutService);
     private destroyRef = inject(DestroyRef);
-    readonly unit = input<Unit | null>(null);
-    readonly prevUnit = input<Unit | null>(null);
-    readonly nextUnit = input<Unit | null>(null);
+    readonly unit = input<UnitSummary | null>(null);
+    readonly prevUnit = input<UnitSummary | null>(null);
+    readonly nextUnit = input<UnitSummary | null>(null);
     readonly gunnerySkill = input<number | undefined>(undefined);
     readonly pilotingSkill = input<number | undefined>(undefined);
     readonly adjustedValueOverride = input<number | undefined>(undefined);
     readonly hasPrev = input<boolean>(false);
     readonly hasNext = input<boolean>(false);
-    readonly add = output<Unit>();
+    readonly add = output<UnitSummary>();
     readonly prev = output<void>();
     readonly next = output<void>();
 
@@ -209,7 +209,7 @@ export class UnitDetailsPanelComponent {
     }
 
     /** Handle variant card click - opens a dialog for that variant */
-    onVariantClick(event: { variant: Unit; variants: Unit[] }): void {
+    onVariantClick(event: { variant: UnitSummary; variants: UnitSummary[] }): void {
         this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: event.variants,

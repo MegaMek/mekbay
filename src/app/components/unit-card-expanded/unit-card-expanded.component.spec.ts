@@ -6,7 +6,7 @@ import { CommonModule } from '@angular/common';
 import { computed, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { GameService } from '../../services/game.service';
@@ -36,7 +36,7 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
         options: signal({ forceViewerBVPVDisplay: 'both' }),
     };
 
-    function createUnit(): Unit {
+    function createUnit(): UnitSummary {
         return createEmptyUnit({
             name: 'Atlas AS7-D',
             as: {

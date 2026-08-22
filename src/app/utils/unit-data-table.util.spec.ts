@@ -5,7 +5,7 @@
 import type { TemplateRef } from '@angular/core';
 import type { DataTableCellContext, DataTableColumn } from '../components/data-table/data-table.component';
 import { GameSystem } from '../models/common.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import {
     buildUnitDataTableColumns,
     getUnitDataTableSortSlotHeader,
@@ -13,7 +13,7 @@ import {
 } from './unit-data-table.util';
 
 interface TestRow {
-    unit: Unit | null;
+    unit: UnitSummary | null;
 }
 
 describe('unit data table utilities', () => {
@@ -70,7 +70,7 @@ describe('unit data table utilities', () => {
             dpt: 13.5,
             c3: '',
             cost: 5_000_000,
-        } as Unit;
+        } as UnitSummary;
         const crewColumn: DataTableColumn<TestRow> = {
             id: 'skill',
             header: 'G/P',

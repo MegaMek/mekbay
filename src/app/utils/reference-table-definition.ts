@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import type { PhysicalLocationRow } from '../models/rules/game-rules';
 import { clusterHits } from './cluster-hit-table';
 import { hitLocationRows, type MekHitLocationTable, type ReferenceTableNote } from './record-sheet-reference-table';
@@ -288,7 +288,7 @@ export function referenceTableGroupForOption(optionId: ReferenceTableOptionId): 
 }
 
 export function defaultReferenceTableOption(
-    unit: Pick<Unit, 'type' | 'subtype'> & Partial<Pick<Unit, 'tons' | 'weightClass'>>,
+    unit: Pick<UnitSummary, 'type' | 'subtype'> & Partial<Pick<UnitSummary, 'tons' | 'weightClass'>>,
 ): ReferenceTableOptionId {
     if (unit.type === 'Mek') {
         if (unit.subtype.startsWith('Tripod')) return 'mek-tripod';
@@ -307,7 +307,7 @@ export function defaultReferenceTableOption(
     return 'cluster-full';
 }
 
-export function hasUnitDefaultReferenceTables(unit: Pick<Unit, 'type'>): boolean {
+export function hasUnitDefaultReferenceTables(unit: Pick<UnitSummary, 'type'>): boolean {
     return unit.type === 'Mek'
         || unit.type === 'Tank'
         || unit.type === 'Naval'
