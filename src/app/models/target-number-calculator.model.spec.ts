@@ -7,6 +7,7 @@ import {
     canTnTargetTypeBeLarge,
     calculateTargetTnModifier,
     calculateTargetTnModifierBreakdown,
+    getTargetAirborneModifier,
     getTargetProneModifier,
     getVisualCamoTnModifiers,
     resolveTnTargetWaterState,
@@ -333,6 +334,8 @@ describe('target number calculator rules profiles', () => {
         }, TW_GAME_RULES);
 
         expect(breakdown.some(entry => entry.adjustmentGroup === 'target-movement')).toBeFalse();
+        expect(getTargetAirborneModifier(true, 'aero')).toBe(0);
+        expect(getTargetAirborneModifier(true, 'vtol')).toBe(1);
     });
 
     it('allows only target kinds that can receive the Large Target modifier', () => {

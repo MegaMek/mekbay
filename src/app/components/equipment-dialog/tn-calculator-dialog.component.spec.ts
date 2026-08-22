@@ -116,6 +116,9 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
     it('retains Large for jumping and airborne non-aerospace targets but suppresses it for airborne Aero', () => {
         const largeTargetButton = () => fixture.nativeElement.querySelector('.large-target-control') as HTMLButtonElement;
         const largeTargetBadge = () => largeTargetButton().querySelector('.modifier-badge')?.textContent?.trim();
+        const airborneButton = () => [...fixture.nativeElement.querySelectorAll('.target-movement-section .move-button')]
+            .find((button: Element) => button.textContent?.includes('Jumped / Airborne')) as HTMLButtonElement;
+        const airborneBadge = () => airborneButton().querySelector('.modifier-badge')?.textContent?.trim();
 
         component.selectUnitType('vtol');
         component.toggleLargeTarget();
@@ -135,6 +138,7 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         expect(largeTargetButton().classList).toContain('selected');
         expect(largeTargetBadge()).toBe('-1');
         expect(largeTargetButton().title).toBe('');
+        expect(airborneBadge()).toBe('+1');
 
         component.toggleAirborne();
         fixture.detectChanges();
@@ -160,6 +164,8 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         expect(component.totalModifier()).toBe(0);
         expect(largeTargetBadge()).toBe('+0');
         expect(largeTargetButton().title).toContain('airborne aerospace');
+        expect(airborneBadge()).toBe('+0');
+        expect(airborneButton().title).toContain('non-aerospace');
     });
 
     it('preserves the stored C3 choice when applying while jammed', () => {

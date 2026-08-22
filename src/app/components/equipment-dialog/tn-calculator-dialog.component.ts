@@ -18,6 +18,7 @@ import {
     canTnTargetTypeBeLarge,
     calculateTargetTnModifier,
     getIndirectFireModifier,
+    getTargetAirborneModifier,
     getTargetMovementBracketForDistance,
     getTargetMovementBracketModifier,
     getTargetUnitTypeModifier,
@@ -258,7 +259,7 @@ export interface TnCalculatorDialogResult {
                                     (valueChange)="setTargetMovementSliderIndex($event)"></hex-slider>
                             </div>
                             <div class="button-row">
-                                <button type="button" class="bt-button move-button" [class.selected]="isAirborne()" [attr.aria-pressed]="isAirborne()" [disabled]="targetStateReadOnly" (click)="toggleAirborne()"><span>Jumped / Airborne</span><span class="modifier-badge">+1</span></button>
+                                <button type="button" class="bt-button move-button" [class.selected]="isAirborne()" [attr.aria-pressed]="isAirborne()" [disabled]="targetStateReadOnly" [attr.title]="airborneTitle()" (click)="toggleAirborne()"><span>Jumped / Airborne</span><span class="modifier-badge">{{ airborneModifierLabel() }}</span></button>
                                 @if (gameRules().supportsSkidding) {
                                     <button type="button" class="bt-button move-button" [class.selected]="skidding()" [attr.aria-pressed]="skidding()" [disabled]="targetStateReadOnly" (click)="toggleSkidding()"><span>Skidding</span><span class="modifier-badge">+2</span></button>
                                 }
@@ -1276,6 +1277,10 @@ export class TnCalculatorDialogComponent {
         }
         return null;
     });
+    readonly airborneModifierLabel = computed(() => this.formatModifier(getTargetAirborneModifier(true, this.unitType())));
+    readonly airborneTitle = computed(() => this.unitType() === 'aero'
+        ? 'The generic +1 Jumped/Airborne modifier applies only to non-aerospace targets'
+        : null);
 
     readonly staticTarget = computed(() => isStaticTargetType(this.unitType()));
     readonly terrainTarget = computed(() => isTerrainTargetType(this.unitType()));

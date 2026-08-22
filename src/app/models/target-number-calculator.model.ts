@@ -189,7 +189,7 @@ export function getVisualCamoTnModifiers(
 }
 
 export interface TnTargetNumberCalculatorState {
-    /** The target jumped or is airborne; applies the +1 target movement modifier. */
+    /** The target jumped or is airborne; non-aerospace targets receive the additional +1 modifier. */
     isAirborne?: boolean;
     targetMovementBracket?: TnTargetMovementBracketId | null;
     /** Exact distance when known; manual input preserves 0/1/2 for movement-dependent camouflage. */
@@ -345,8 +345,12 @@ function resolveTnTargetHeight(
         : standingHeight;
 }
 
-export function getTargetAirborneModifier(isAirborne: boolean | null | undefined): number {
-    return isAirborne ? TN_AIRBORNE_MOVE_TYPE_MODIFIER : 0;
+/** Additional Jumped/Airborne modifier; aerospace targeting uses its own movement rules. */
+export function getTargetAirborneModifier(
+    isAirborne: boolean | null | undefined,
+    unitType?: TnTargetUnitType | null,
+): number {
+    return isAirborne && unitType !== 'aero' ? TN_AIRBORNE_MOVE_TYPE_MODIFIER : 0;
 }
 
 export function getTargetProneModifier(range: number): number {
@@ -437,7 +441,7 @@ export function calculateTargetTnModifierBreakdown(
 
     add('battle-armor', 'Battle Armor', getTargetUnitTypeModifier(input.unitType));
     if (!staticTarget && !aerospaceTarget) {
-        add('airborne', 'Airborne', getTargetAirborneModifier(input.isAirborne), { adjustmentGroup: 'target-movement' });
+        add('airborne', 'Airborne', getTargetAirborneModifier(input.isAirborne, input.unitType), { adjustmentGroup: 'target-movement' });
         const movementBracket = TN_TARGET_MOVEMENT_BRACKETS.find(bracket => bracket.id === input.targetMovementBracket);
         if (movementBracket) add('target-movement', `Moved ${movementBracket.label}`, movementBracket.modifier, { adjustmentGroup: 'target-movement' });
         add('skidding', 'Skidding', gameRules.supportsSkidding && input.skidding ? TN_SKIDDING_MODIFIER : 0, { adjustmentGroup: 'target-movement' });
