@@ -24,6 +24,7 @@ import {
 } from '../models/target-number-calculator.model';
 import { UnitSummaryTypeGuard } from '../models/unit-summary-type-guard';
 import type { WeaponType } from '../models/weapon-types.model';
+import { getInventoryControlDamageTypes } from './inventory-control-damage.util';
 
 export type EffectiveTargetModifierBreakdownEntry = TnTargetModifierBreakdownEntry & {
     ignored?: true;
@@ -34,6 +35,7 @@ const ARTILLERY_CANNON_AMMO_TYPES = new Set<AmmoType>([
     'THUMPER_CANNON',
     'LONG_TOM_CANNON',
 ]);
+const FLAK_TARGET_UNIT_TYPES = new Set<TnTargetUnitType>(['aero', 'vtol']);
 
 export interface TargetGuidanceCapabilities {
     readonly semiGuided: boolean;
@@ -178,7 +180,7 @@ export function inventoryTargetEffectiveTnModifier(
     selectedAmmo?: AmmoEquipment | null,
     gameRules: CBTGameRules = CORE_2026_GAME_RULES,
     rangeBracket?: TnRangeBracket,
-    effectiveDamageTypes: readonly WeaponType[] = [],
+    effectiveDamageTypes?: readonly WeaponType[],
 ): number {
     const calculator = getEffectiveInventoryControlCalculatorState(target);
     if (!calculator) return target.tnModifier;
@@ -258,12 +260,13 @@ export function compileInventoryTargetToHitModifiers(
         selectedAmmo,
         gameRules = CORE_2026_GAME_RULES,
         rangeBracket,
-        effectiveDamageTypes = [],
+        effectiveDamageTypes,
     } = context;
     const calculator = getEffectiveInventoryControlCalculatorState(target);
+    const weaponTypes = effectiveDamageTypes ?? getInventoryControlDamageTypes(entry, selectedAmmo);
     const attacker = entry.owner.getUnit?.();
     const attackKind = entry.isPhysicalWeapon() ? 'physical' : 'ranged';
-    const attackTraits = inventoryTargetAttackTraits(entry, selectedAmmo, effectiveDamageTypes);
+    const attackTraits = inventoryTargetAttackTraits(entry, selectedAmmo, weaponTypes);
     let breakdown = targetCalculatorBreakdown(
         target,
         gameRules,
@@ -278,6 +281,9 @@ export function compileInventoryTargetToHitModifiers(
                 && UnitSummaryTypeGuard.isInfantry(attacker))
             || (modifier.id === 'immobile' && !gameRules.attackBenefitsFromImmobile(attackTraits)),
         ));
+    if (isInventoryTargetFlakAttack(calculator, target.unitType, weaponTypes)) {
+        breakdown.push({ id: 'flak', label: 'Flak', modifier: -2 });
+    }
     if (!calculator || !selectedAmmo) return breakdown;
 
     const guidance = resolveWeaponTargetGuidance(
@@ -325,6 +331,18 @@ export function compileInventoryTargetToHitModifiers(
         guidanceModifiers.push({ id: 'narc', label: 'NARC', modifier: gameRules.narcHomingTargetModifier });
     }
     return [...breakdown, ...guidanceModifiers];
+}
+
+/** HAG and LB-X supply their separate -1 through the existing equipment/ammo to-hit paths. */
+function isInventoryTargetFlakAttack(
+    calculator: TnTargetNumberCalculatorState | undefined,
+    targetUnitType: TnTargetUnitType | undefined,
+    weaponTypes: readonly WeaponType[],
+): boolean {
+    return calculator?.isAirborne === true
+        && targetUnitType !== undefined
+        && FLAK_TARGET_UNIT_TYPES.has(targetUnitType)
+        && weaponTypes.includes('F');
 }
 
 function markTargetModifierIgnored(

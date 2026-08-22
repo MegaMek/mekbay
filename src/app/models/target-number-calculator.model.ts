@@ -252,6 +252,7 @@ export type TnTargetModifierId =
     | 'indirect-fire'
     | 'spotter-movement'
     | 'spotter-declared-attack'
+    | 'flak'
     | 'semi-guided'
     | 'narc';
 
