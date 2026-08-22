@@ -78,7 +78,7 @@ const TN_MEK_TARGET_TYPES: readonly TnTargetUnitType[] = ['mek-biped', 'mek-quad
 const TN_STEALTH_ARMOR_TARGET_TYPES: readonly TnTargetUnitType[] = [
     ...TN_MEK_TARGET_TYPES,
     'vehicle',
-    'vtol',
+    'vtol-wige',
     'aero',
 ];
 const TN_BATTLE_ARMOR_TARGET_TYPES: readonly TnTargetUnitType[] = ['battle-armor'];

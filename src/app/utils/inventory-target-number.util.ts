@@ -35,7 +35,7 @@ const ARTILLERY_CANNON_AMMO_TYPES = new Set<AmmoType>([
     'THUMPER_CANNON',
     'LONG_TOM_CANNON',
 ]);
-const FLAK_TARGET_UNIT_TYPES = new Set<TnTargetUnitType>(['aero', 'vtol']);
+const FLAK_TARGET_UNIT_TYPES = new Set<TnTargetUnitType>(['aero', 'vtol-wige']);
 
 export interface TargetGuidanceCapabilities {
     readonly semiGuided: boolean;

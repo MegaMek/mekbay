@@ -108,7 +108,8 @@ describe('inventory control OPFOR targets', () => {
         expect(resolveInventoryTargetUnitType(unit({ type: 'Infantry', subtype: 'Battle Armor' }))).toBe('battle-armor');
         expect(resolveInventoryTargetUnitType(unit({ type: 'Infantry', subtype: 'Conventional Infantry' }))).toBe('infantry');
         expect(resolveInventoryTargetUnitType(unit({ type: 'ProtoMek', subtype: 'ProtoMek' }))).toBe('protoMek');
-        expect(resolveInventoryTargetUnitType(unit({ type: 'VTOL', subtype: 'Combat Vehicle' }))).toBe('vtol');
+        expect(resolveInventoryTargetUnitType(unit({ type: 'VTOL', subtype: 'Combat Vehicle' }))).toBe('vtol-wige');
+        expect(resolveInventoryTargetUnitType(unit({ type: 'Tank', subtype: 'Combat Vehicle', moveType: 'WiGE' }))).toBe('vtol-wige');
         expect(resolveInventoryTargetUnitType(unit({ type: 'Tank', subtype: 'Combat Vehicle' }))).toBe('vehicle');
         expect(resolveInventoryTargetUnitType(unit({ type: 'Aero', subtype: 'Aerospace Fighter' }))).toBe('aero');
     });

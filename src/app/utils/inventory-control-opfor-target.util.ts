@@ -30,9 +30,9 @@ export function resolveInventoryTargetUnitType(unit: UnitSummary): TnTargetUnitT
             return 'mek-biped';
         case 'Infantry': return unit.subtype === 'Battle Armor' ? 'battle-armor' : 'infantry';
         case 'ProtoMek': return 'protoMek';
-        case 'VTOL': return 'vtol';
+        case 'VTOL': return 'vtol-wige';
         case 'Aero': return 'aero';
-        case 'Tank':
+        case 'Tank': return unit.moveType === 'WiGE' ? 'vtol-wige' : 'vehicle';
         case 'Naval': return 'vehicle';
         default: return 'vehicle';
     }

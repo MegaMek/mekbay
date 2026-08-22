@@ -88,7 +88,7 @@ function aeroInput(
 
 function flakTargetInput(
     weapon: WeaponEquipment,
-    targetUnitType: 'aero' | 'vtol' | 'mek-biped',
+    targetUnitType: 'aero' | 'vtol-wige' | 'mek-biped',
     isAirborne: boolean,
     selectedAmmo: AmmoEquipment | null = null,
 ): InventoryTargetNumberInput {
@@ -246,7 +246,7 @@ function waterPartialCoverInput(
 }
 
 describe('inventory target number rules profiles', () => {
-    it('applies the standard -2 Flak modifier to airborne Aero and VTOL targets', () => {
+    it('applies the standard -2 Flak modifier to airborne Aero and VTOL/WiGE targets', () => {
         const weapon = new WeaponEquipment({
             id: 'ISSilverBulletGauss',
             name: 'Silver Bullet Gauss Rifle',
@@ -255,7 +255,7 @@ describe('inventory target number rules profiles', () => {
             weapon: { ammoType: 'SBGAUSS', damage: 'cluster', ranges: [3, 6, 9, 12] },
         });
 
-        for (const targetUnitType of ['aero', 'vtol'] as const) {
+        for (const targetUnitType of ['aero', 'vtol-wige'] as const) {
             const input = flakTargetInput(weapon, targetUnitType, true);
             expect(input.damageTypes).withContext(targetUnitType).toContain('F');
 
@@ -287,7 +287,7 @@ describe('inventory target number rules profiles', () => {
 
         for (const [targetUnitType, isAirborne] of [
             ['aero', false],
-            ['vtol', false],
+            ['vtol-wige', false],
             ['mek-biped', true],
         ] as const) {
             const input = flakTargetInput(weapon, targetUnitType, isAirborne);
