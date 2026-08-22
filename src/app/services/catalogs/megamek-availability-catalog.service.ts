@@ -4,7 +4,7 @@
 
 import { Injectable, inject } from '@angular/core';
 
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import {
     type MegaMekAvailabilityData,
     type MegaMekWeightedAvailabilityRecord,
@@ -40,12 +40,12 @@ export class MegaMekAvailabilityCatalogService extends CatalogBaseService<MegaMe
         return this.records;
     }
 
-    public getRecordForUnit(unit: Pick<Unit, 'name'>): MegaMekWeightedAvailabilityRecord | undefined {
+    public getRecordForUnit(unit: Pick<UnitSummary, 'name'>): MegaMekWeightedAvailabilityRecord | undefined {
         return this.recordsByUnitName.get(unit.name);
     }
 
     public getAvailabilityForUnit(
-        unit: Pick<Unit, 'name'>,
+        unit: Pick<UnitSummary, 'name'>,
         eraId: number,
         factionId: number,
     ): MegaMekWeightedAvailabilityValue | undefined {

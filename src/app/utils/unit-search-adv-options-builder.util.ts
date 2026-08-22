@@ -4,7 +4,7 @@
 
 import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import type { GameSystem } from '../models/common.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import type { WildcardPattern } from './semantic-filter.util';
 import { getAdvOptionsContextSnapshot, getSnapshotAvailabilityNames, getSnapshotAvailableNames, getSnapshotCountableValues, getSnapshotUnitIds, type AdvOptionsContextSnapshot } from './unit-search-adv-options.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from './unit-filter-kernel.util';
@@ -19,7 +19,7 @@ const AVAILABILITY_CASCADE_FILTER_KEYS = new Set(['era', 'faction', 'availabilit
 interface BuildUnitSearchAdvOptionsRequest {
     advancedFilters: readonly AdvFilterConfig[];
     state: FilterState;
-    units: Unit[];
+    units: UnitSummary[];
     queryText: string;
     textSearch: string;
     isComplexQuery: boolean;
@@ -29,17 +29,17 @@ interface BuildUnitSearchAdvOptionsRequest {
     getUnitFilterKernelDependencies: () => UnitFilterKernelDependencies;
     buildIndexedDropdownOptions: (
         conf: AdvFilterConfig,
-        contextUnits: Unit[],
+        contextUnits: UnitSummary[],
         displayNameFn?: (value: string) => string | undefined,
         contextUnitIds?: ReadonlySet<string>,
     ) => { name: string; img?: string; displayName?: string; available?: boolean }[];
     buildForcePackDropdownOptions: (
         snapshot: AdvOptionsContextSnapshot,
-        contextUnits: Unit[],
+        contextUnits: UnitSummary[],
     ) => { name: string; available: boolean }[];
     buildCustomDropdownOptions?: (
         conf: AdvFilterConfig,
-        contextUnits: Unit[],
+        contextUnits: UnitSummary[],
         state: FilterState,
     ) => { name: string; img?: string; displayName?: string; available?: boolean }[] | null;
     getIndexedUniverseNames: (filterKey: string) => string[];
@@ -52,12 +52,12 @@ interface BuildUnitSearchAdvOptionsRequest {
     ) => Set<string>;
     collectConstrainedMultistateAvailabilityNames: (
         filterKey: string,
-        units: Unit[],
+        units: UnitSummary[],
         selection: MultiStateSelection,
         isComponentFilter: boolean,
     ) => Set<string> | null;
     getAvailableRangeForUnits: (
-        units: Unit[],
+        units: UnitSummary[],
         conf: AdvFilterConfig,
         fallbackRange: [number, number],
     ) => [number, number];
@@ -214,9 +214,9 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
             dependencies: request.getUnitFilterKernelDependencies(),
         });
 
-    const contextUnitsCache = new Map<string, Unit[]>();
-    const contextSnapshotCache = new WeakMap<Unit[], AdvOptionsContextSnapshot>();
-    let availabilityContextUnits: Unit[] | null = null;
+    const contextUnitsCache = new Map<string, UnitSummary[]>();
+    const contextSnapshotCache = new WeakMap<UnitSummary[], AdvOptionsContextSnapshot>();
+    let availabilityContextUnits: UnitSummary[] | null = null;
 
     const pushAdvOptionsTelemetry = (
         conf: AdvFilterConfig,

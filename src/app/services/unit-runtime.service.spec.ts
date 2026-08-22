@@ -4,7 +4,7 @@
 
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import type { TagData } from './db.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
@@ -15,7 +15,7 @@ import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MiscEquipment } from '../models/equipment.model';
 
-function createUnit(name: string, chassis = name): Unit {
+function createUnit(name: string, chassis = name): UnitSummary {
     return createEmptyUnit({ name, chassis, type: 'Mek' });
 }
 
@@ -37,7 +37,7 @@ describe('UnitRuntimeService', () => {
         unitSearchIndexServiceMock.rebuildTagSearchIndex.calls.reset();
         tagsServiceMock.getTagData.calls.reset();
         tagsServiceMock.migrateChassisTagsToVariantGroups.calls.reset();
-        tagsServiceMock.migrateChassisTagsToVariantGroups.and.callFake((_units: Unit[], data?: TagData) => Promise.resolve(data));
+        tagsServiceMock.migrateChassisTagsToVariantGroups.and.callFake((_units: UnitSummary[], data?: TagData) => Promise.resolve(data));
         tagsServiceMock.fixNameTagsCoveredByChassis.calls.reset();
         tagsServiceMock.fixNameTagsCoveredByChassis.and.resolveTo(undefined);
 
@@ -154,7 +154,7 @@ describe('UnitRuntimeService', () => {
             timestamp: 1,
             formatVersion: 4,
         };
-        tagsServiceMock.fixNameTagsCoveredByChassis.and.callFake((units: Unit[], data: TagData | null) => {
+        tagsServiceMock.fixNameTagsCoveredByChassis.and.callFake((units: UnitSummary[], data: TagData | null) => {
             for (const unit of units) {
                 const chassisKey = TagsService.getChassisTagKey(unit);
                 for (const entry of Object.values(data?.tags ?? {})) {

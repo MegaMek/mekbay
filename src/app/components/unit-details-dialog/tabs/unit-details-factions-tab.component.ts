@@ -23,7 +23,7 @@ import {
     type MegaMekWeightedAvailabilityValue,
     MEGAMEK_AVAILABILITY_NOT_AVAILABLE,
 } from '../../../models/megamek/availability.model';
-import type { Unit } from '../../../models/units.model';
+import type { UnitSummary } from '../../../models/unit-summary.model';
 import { DataService } from '../../../services/data.service';
 import { UnitAvailabilitySourceService } from '../../../services/unit-availability-source.service';
 
@@ -36,6 +36,10 @@ const CATCH_ALL_FACTIONS: Record<string, string> = {
 
 const PREFIX_CATCH_ALL = 'Star League General';
 const PREFIX_CATCH_ALL_PREFIX = 'Star League';
+
+function isCatchAllFaction(name: string): boolean {
+    return CATCH_ALL_FACTIONS[name] !== undefined || name === PREFIX_CATCH_ALL;
+}
 
 interface FactionMegaMekAvailability {
     source: MegaMekAvailabilityFrom;
@@ -88,7 +92,7 @@ export class UnitDetailsFactionTabComponent {
     readonly megaMekSalvageIconPath = MEGAMEK_SALVAGE_ICON_PATH;
     readonly megaMekAvailabilitySourceSelected = computed(() => this.unitAvailabilitySource.useMegaMekAvailability());
 
-    unit = input.required<Unit>();
+    unit = input.required<UnitSummary>();
 
     factionAvailability = computed<FactionAvailability[]>(() => {
         const u = this.unit();
@@ -101,7 +105,7 @@ export class UnitDetailsFactionTabComponent {
         );
 
         return this.unitAvailabilitySource.useMegaMekAvailability()
-            ? this.buildMegaMekFactionAvailability(allEras, allFactions, megaMekAvailabilityByEraFaction)
+            ? this.buildMegaMekFactionAvailability(u, allEras, allFactions, megaMekAvailabilityByEraFaction)
             : this.buildMulFactionAvailability(u, allEras, allFactions, megaMekAvailabilityByEraFaction);
     });
 
@@ -151,7 +155,7 @@ export class UnitDetailsFactionTabComponent {
     }
 
     private buildMulFactionAvailability(
-        unit: Unit,
+        unit: UnitSummary,
         eras: readonly Era[],
         factions: readonly Faction[],
         megaMekAvailabilityByEraFaction: ReadonlyMap<number, ReadonlyMap<number, readonly FactionMegaMekAvailability[]>>,
@@ -182,6 +186,7 @@ export class UnitDetailsFactionTabComponent {
     }
 
     private buildMegaMekFactionAvailability(
+        unit: UnitSummary,
         eras: readonly Era[],
         factions: readonly Faction[],
         megaMekAvailabilityByEraFaction: ReadonlyMap<number, ReadonlyMap<number, readonly FactionMegaMekAvailability[]>>,
@@ -195,7 +200,10 @@ export class UnitDetailsFactionTabComponent {
 
             for (const [factionId, details] of eraAvailability.entries()) {
                 const faction = factionById.get(factionId);
-                if (!faction) {
+                if (
+                    !faction
+                    || (isCatchAllFaction(faction.name) && !faction.eras[eraId]?.has(unit.id))
+                ) {
                     continue;
                 }
 
@@ -356,7 +364,7 @@ export class UnitDetailsFactionTabComponent {
 
         for (const faction of matchingFactions) {
             const megaMekTooltip = this.buildFactionMegaMekTooltip(faction);
-            if (CATCH_ALL_FACTIONS[faction.name] || faction.name === PREFIX_CATCH_ALL) {
+            if (isCatchAllFaction(faction.name)) {
                 factions.push({
                     name: faction.name,
                     img: faction.img,

@@ -4,7 +4,7 @@
 
 /// <reference lib="webworker" />
 
-import type { Unit } from './models/units.model';
+import type { UnitSummary } from './models/unit-summary.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './models/crew-member.model';
 import { getForcePacks } from './models/forcepacks.model';
 import {
@@ -32,7 +32,7 @@ import { getUnitVariantGroupKey } from './utils/unit-variant.util';
 
 interface WorkerCorpusRuntime {
     corpusVersion: string;
-    units: Unit[];
+    units: UnitSummary[];
     allUnitNames: ReadonlySet<string>;
     indexedUnitIds: Map<string, Map<string, ReadonlySet<string>>>;
     indexedFilterValues: Map<string, string[]>;
@@ -99,7 +99,7 @@ function addUnitNames(target: Set<string>, source: ReadonlySet<string> | undefin
     }
 }
 
-function buildForcePackIndex(units: Unit[]): Map<string, Set<string>> {
+function buildForcePackIndex(units: UnitSummary[]): Map<string, Set<string>> {
     const unitsByName = new Map(units.map(unit => [getUnitNameKey(unit.name), unit]));
     const result = new Map<string, Set<string>>();
 
@@ -260,20 +260,20 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         bvPvLimit: request.bvPvLimit,
         forceTotalBvPv: request.forceTotalBvPv,
         normalization: request.normalization,
-        getAdjustedBV: (unit: Unit) => {
+        getAdjustedBV: (unit: UnitSummary) => {
             const gunnery = request.pilotGunnerySkill;
             const piloting = request.pilotPilotingSkill;
             return BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
         },
-        getAdjustedPV: (unit: Unit) => {
+        getAdjustedPV: (unit: UnitSummary) => {
             if (request.pilotGunnerySkill === DEFAULT_GUNNERY_SKILL) {
                 return unit.as.PV;
             }
             return adjustPointValueForSkill(unit.as.PV, request.pilotGunnerySkill);
         },
-        unitBelongsToEra: (unit: Unit, eraName: string, scope?: AvailabilityFilterScope) => getScopedEraUnitNames(eraName, scope).has(unit.name),
-        unitBelongsToFaction: (unit: Unit, factionName: string, eraNames?: readonly string[]) => getScopedFactionUnitNames(factionName, eraNames).has(unit.name),
-        unitBelongsToForcePack: (unit: Unit, packName: string) => runtime.forcePackToLookupKey.get(packName)?.has(getUnitVariantGroupKey(unit)) ?? false,
+        unitBelongsToEra: (unit: UnitSummary, eraName: string, scope?: AvailabilityFilterScope) => getScopedEraUnitNames(eraName, scope).has(unit.name),
+        unitBelongsToFaction: (unit: UnitSummary, factionName: string, eraNames?: readonly string[]) => getScopedFactionUnitNames(factionName, eraNames).has(unit.name),
+        unitBelongsToForcePack: (unit: UnitSummary, packName: string) => runtime.forcePackToLookupKey.get(packName)?.has(getUnitVariantGroupKey(unit)) ?? false,
         getAllEraNames: getEraFilterValues,
         getAllFactionNames: getFactionFilterValues,
         getDisplayName: (filterKey: string, value: string) => workerDisplayNameFns.get(filterKey)?.(value),

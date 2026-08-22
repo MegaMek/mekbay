@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { AeroEntity, ConvFighterEntity, DropShipEntity, FixedWingSupportEntity, JumpShipEntity, LamEntity, SmallCraftEntity, VtolEntity, type BaseEntity } from '../../../entities';
-import type { ASUnitTypeCode } from '../../../../units.model';
+import type { ASUnitTypeCode } from '../../../../unit-summary.model';
 import type { AlphaStrikeMovement } from '../foundation/movement';
 import { LARGE_AEROSPACE_TYPES, hasAlphaStrikeVstolCapability } from '../foundation/unit-classification';
 

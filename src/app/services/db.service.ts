@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { inject, Injectable } from '@angular/core';
-import type { UnitFluffCatalog, UnitFluffCatalogEntry, UnitFluffCatalogMetadata, Units } from '../models/units.model';
+import type { UnitFluffCatalog, UnitFluffCatalogEntry, UnitFluffCatalogMetadata, Units } from '../models/unit-summary.model';
 import type { Eras } from '../models/eras.model';
 import type { RawMULFactions } from '../models/mulfactions.model';
 import type { Options } from '../models/options.model';

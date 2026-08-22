@@ -6,7 +6,7 @@ import { computed, signal } from '@angular/core';
 import type { MountedEquipment } from './mounted-equipment.model';
 import type { AmmoEquipment } from './equipment.model';
 import type { CBTGameRules } from './rules/game-rules';
-import { resolveTnTargetWaterState, type TnTargetNumberCalculatorState, type TnTargetUnitType } from './target-number-calculator.model';
+import { isTnTargetImmobile, resolveTnTargetWaterState, stealthDisallowsSecondaryTarget, type TnTargetNumberCalculatorState, type TnTargetUnitType } from './target-number-calculator.model';
 
 export type InventoryControlRuntimeRangeKey = 'short' | 'medium' | 'long' | 'extreme';
 
@@ -19,6 +19,7 @@ export const INVENTORY_CONTROL_NARC_INFANTRY_TARGET_REASON = 'NARC beacons canno
 export const INVENTORY_CONTROL_NARC_BUILDING_TARGET_REASON = 'NARC beacons cannot be fired into buildings';
 export const INVENTORY_CONTROL_BOMBAST_SECONDARY_TARGET_REASON = 'Bombast Lasers cannot fire at secondary targets';
 export const INVENTORY_CONTROL_THUNDER_TERRAIN_TARGET_REASON = 'Thunder missiles can only target terrain';
+export const INVENTORY_CONTROL_STEALTH_SECONDARY_TARGET_REASON = 'Active stealth armor cannot be attacked as a secondary target';
 export const INVENTORY_CONTROL_TARGET_COLORS = [
     '#c0f7ff',
     '#ffebca',
@@ -55,9 +56,13 @@ export interface InventoryControlRuntimeTarget {
 
 /** Calculator-derived modes are inactive while the target TN is manually overridden. */
 export function getEffectiveInventoryControlCalculatorState(
-    target: Pick<InventoryControlRuntimeTarget, 'manualTnModifier' | 'tnCalculator'>
+    target: Pick<InventoryControlRuntimeTarget, 'manualTnModifier' | 'tnCalculator' | 'unitType'>
 ): TnTargetNumberCalculatorState | undefined {
-    return target.manualTnModifier === undefined ? target.tnCalculator : undefined;
+    if (target.manualTnModifier !== undefined || !target.tnCalculator) return undefined;
+    if (target.tnCalculator.immobile === true || !isTnTargetImmobile(target.unitType, false)) {
+        return target.tnCalculator;
+    }
+    return { ...target.tnCalculator, immobile: true };
 }
 
 export function inventoryControlTargetUsesIndirectFire(
@@ -107,6 +112,10 @@ export function inventoryControlEntryTargetDisabledReason(
 
     const calculator = getEffectiveInventoryControlCalculatorState(target);
     if (!calculator) return null;
+    if (stealthDisallowsSecondaryTarget(calculator.stealth)
+        && (calculator.secondaryTarget === true || calculator.secondaryTargetSideBack === true)) {
+        return INVENTORY_CONTROL_STEALTH_SECONDARY_TARGET_REASON;
+    }
     if (calculator.indirectFire && entry.equipment?.hasFlag('F_INDIRECT_FIRE') !== true) {
         return INVENTORY_CONTROL_INDIRECT_FIRE_TARGET_REASON;
     }
@@ -139,17 +148,21 @@ export interface InventoryControlUnitTargetState {
 const SHARED_TARGET_CALCULATOR_KEYS = [
     'isAirborne',
     'targetMovementBracket',
+    'targetMovementDistance',
     'skidding',
     'prone',
     'immobile',
     'targetHexCover',
     'waterDepth',
     'buildingCover',
+    'targetHeight',
     'largeTarget',
     'narcAboveWater',
     'narcUnderwater',
     'tagged',
-    'ecmShielded'
+    'ecmShielded',
+    'stealth',
+    'stealthSystem'
 ] as const satisfies readonly (keyof TnTargetNumberCalculatorState)[];
 
 const SHARED_TARGET_CALCULATOR_KEY_SET = new Set<keyof TnTargetNumberCalculatorState>(SHARED_TARGET_CALCULATOR_KEYS);

@@ -9,7 +9,7 @@ import { parseInventoryComponentReference } from '../inventory-component-referen
 import type { MotiveModes } from '../motiveModes.model';
 import { getTargetUnitTypeModifier } from '../target-number-calculator.model';
 import type { TurnState } from '../turn-state.model';
-import type { UnitComponent } from '../units.model';
+import type { UnitComponent } from '../unit-summary.model';
 import { UnitTypeRulesBase, type UnitModifierBreakdownEntry } from './unit-type-rules';
 
 export const FIELD_GUN_LOCATION = 'FGUN';

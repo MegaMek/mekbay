@@ -6,7 +6,7 @@ import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../models/equipme
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry, type ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryTargetNumberInput } from './inventory-target-number.util';
-import { inventoryTargetEffectiveTnModifier, inventoryTargetNumberBreakdown, inventoryTargetNumberState, inventoryTargetRangeSelection } from './inventory-target-number.util';
+import { compileInventoryTargetToHitModifiers, inventoryTargetEffectiveTnModifier, inventoryTargetModifierGroups, inventoryTargetNumberBreakdown, inventoryTargetNumberState, inventoryTargetRangeSelection } from './inventory-target-number.util';
 
 function toHitResolution(
     value: HitModifier = 0,
@@ -241,6 +241,82 @@ describe('inventory target number rules profiles', () => {
         expect(c3Disabled.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'ECM' }));
     });
 
+    it('adds active stealth using each weapon\'s effective range bracket', () => {
+        const input = c3LaserInput(15, 12);
+        input.target = {
+            ...input.target!,
+            tnCalculator: {
+                stealth: { short: 0, medium: 1, long: 2, secondaryTargetRestricted: true },
+            },
+        };
+
+        const state = inventoryTargetNumberState(input);
+
+        expect(state.rangeSelection?.range).toBe('medium');
+        expect(state.breakdown?.total).toBe(8);
+        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({
+            label: 'Stealth',
+            value: '+1',
+        }));
+        expect(inventoryTargetEffectiveTnModifier(
+            input.target!,
+            input.entry,
+            undefined,
+            CORE_2026_GAME_RULES,
+            'long',
+        )).toBe(2);
+    });
+
+    it('applies the conventional-infantry exception to electronic stealth only', () => {
+        const input = c3LaserInput(15, 12);
+        Object.assign(input.entry.owner, {
+            getUnit: () => ({ type: 'Infantry', subtype: 'Conventional Infantry' }),
+        });
+        input.target = {
+            ...input.target!,
+            tnCalculator: {
+                stealth: {
+                    short: 0,
+                    medium: 1,
+                    long: 2,
+                    conventionalInfantry: { short: 0, medium: 0, long: 0 },
+                },
+            },
+        };
+
+        expect(inventoryTargetEffectiveTnModifier(
+            input.target,
+            input.entry,
+            undefined,
+            CORE_2026_GAME_RULES,
+            'medium',
+        )).toBe(0);
+
+        input.target.tnCalculator = {
+            stealth: { short: 0, medium: 1, long: 2 },
+        };
+        expect(inventoryTargetEffectiveTnModifier(
+            input.target,
+            input.entry,
+            undefined,
+            CORE_2026_GAME_RULES,
+            'medium',
+        )).toBe(1);
+    });
+
+    it('rejects secondary attacks against active Mek or vehicle stealth armor', () => {
+        const input = c3LaserInput(10, 10);
+        input.target = {
+            ...input.target!,
+            tnCalculator: {
+                secondaryTarget: true,
+                stealth: { short: 0, medium: 1, long: 2, secondaryTargetRestricted: true },
+            },
+        };
+
+        expect(inventoryTargetNumberState(input).text).toBe('X');
+    });
+
     it('does not apply C3 to an indirect-fire target', () => {
         const input = c3LaserInput(15, 7, false, true);
         input.target = {
@@ -419,6 +495,109 @@ describe('inventory target number rules profiles', () => {
         expect(inventoryTargetEffectiveTnModifier(intrinsicClub.target!, intrinsicClub.entry)).toBe(1);
         const mountedClub = waterPartialCoverInput('Hatchet', false, true);
         expect(inventoryTargetEffectiveTnModifier(mountedClub.target!, mountedClub.entry)).toBe(1);
+    });
+
+    it('ignores the Battle Armor target modifier only for ranged infantry attacks', () => {
+        const input = c3LaserInput(5, 5);
+        input.target = {
+            ...input.target!,
+            unitType: 'battle-armor',
+            tnModifier: 1,
+            tnCalculator: {},
+        };
+
+        expect(inventoryTargetEffectiveTnModifier(input.target, input.entry)).toBe(1);
+
+        input.entry.owner.getUnit = () => ({
+            type: 'Infantry',
+            subtype: 'Conventional Infantry',
+        }) as never;
+        expect(inventoryTargetEffectiveTnModifier(input.target, input.entry)).toBe(0);
+        expect(compileInventoryTargetToHitModifiers({
+            target: input.target,
+            entry: input.entry,
+        })).toContain(jasmine.objectContaining({
+            id: 'battle-armor',
+            modifier: 1,
+            ignored: true,
+        }));
+
+        input.entry.owner.getUnit = () => ({
+            type: 'Infantry',
+            subtype: 'Battle Armor',
+        }) as never;
+        expect(inventoryTargetEffectiveTnModifier(input.target, input.entry)).toBe(0);
+    });
+
+    it('compiles target-movement groups once for handlers and omits them for a complete override', () => {
+        const input = c3LaserInput(5, 5);
+        input.target = {
+            ...input.target!,
+            tnModifier: 6,
+            tnCalculator: {
+                isAirborne: true,
+                targetMovementBracket: '7-9',
+                skidding: true,
+            },
+        };
+
+        expect(inventoryTargetModifierGroups(input.target, TW_GAME_RULES)).toEqual({
+            'target-movement': 6,
+            terrain: 0,
+            'partial-cover': 0,
+        });
+        expect(inventoryTargetModifierGroups({
+            ...input.target,
+            manualTnModifier: 6,
+        }, TW_GAME_RULES)).toBeUndefined();
+    });
+
+    it('uses profile-specific Immobile eligibility for artillery and artillery cannons', () => {
+        const regularArtillery = artilleryInput(15);
+        regularArtillery.target = {
+            ...regularArtillery.target!,
+            tnModifier: -4,
+            tnCalculator: { immobile: true },
+        };
+
+        expect(inventoryTargetEffectiveTnModifier(
+            regularArtillery.target,
+            regularArtillery.entry,
+            regularArtillery.selectedAmmo,
+            CORE_2026_GAME_RULES,
+            undefined,
+            ['A', 'AE'],
+        )).toBe(0);
+        expect(inventoryTargetEffectiveTnModifier(
+            regularArtillery.target,
+            regularArtillery.entry,
+            regularArtillery.selectedAmmo,
+            TW_GAME_RULES,
+            undefined,
+            ['A', 'AE'],
+        )).toBe(-4);
+
+        regularArtillery.entry.equipment = new WeaponEquipment({
+            id: 'ThumperCannon',
+            name: 'Thumper Cannon',
+            type: 'weapon',
+            flags: ['F_ARTILLERY', 'F_DIRECT_FIRE'],
+            weapon: { ammoType: 'THUMPER_CANNON', ranges: [6, 13, 21, 28] },
+        });
+        regularArtillery.selectedAmmo = new AmmoEquipment({
+            id: 'ThumperCannonAmmo',
+            name: 'Thumper Cannon Ammo',
+            type: 'ammo',
+            ammo: { type: 'THUMPER_CANNON', shots: 10 },
+        });
+        expect(inventoryTargetEffectiveTnModifier(
+            regularArtillery.target,
+            regularArtillery.entry,
+            regularArtillery.selectedAmmo,
+            TW_GAME_RULES,
+            undefined,
+            ['DB', 'F'],
+        )).toBe(0);
     });
 
     it('does not apply water-layer restrictions through a manual TN override', () => {

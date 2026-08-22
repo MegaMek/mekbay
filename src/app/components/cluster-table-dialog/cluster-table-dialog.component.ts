@@ -17,7 +17,7 @@ import {
     viewChildren,
 } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { CBTGameRules, CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
 import { ReferenceTableRollHistoryService } from '../../services/reference-table-roll-history.service';
 import {
@@ -55,7 +55,7 @@ interface ReferenceRollResult {
 }
 
 export interface ClusterTableDialogData {
-    readonly unit: Unit;
+    readonly unit: UnitSummary;
     readonly gameRules?: CBTGameRules;
 }
 

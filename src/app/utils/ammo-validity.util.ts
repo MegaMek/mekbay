@@ -9,7 +9,7 @@ import type { AmmoEquipment, AmmoType, WeaponEquipment } from '../models/equipme
 import type { Era } from '../models/eras.model';
 import { isArtemisCompatibleWeapon } from '../models/entity/utils/equipment-link-rules';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
-import type { Unit, UnitType } from '../models/units.model';
+import type { UnitSummary, UnitType } from '../models/unit-summary.model';
 
 export interface AmmoValidityContext {
     unitType?: UnitType;
@@ -45,7 +45,7 @@ export class AmmoValidityUtil {
             || this.canAeroUse(ammo, !!context.allowAeroArtilleryAlternateMunitions);
     }
 
-    static isAmmoCompatible(originalAmmo: AmmoEquipment, candidateAmmo: AmmoEquipment, unit?: Unit, _inventory: readonly MountedEquipment[] = []): boolean {
+    static isAmmoCompatible(originalAmmo: AmmoEquipment, candidateAmmo: AmmoEquipment, unit?: UnitSummary, _inventory: readonly MountedEquipment[] = []): boolean {
         if (!this.isAmmoValid(candidateAmmo, { unitType: unit?.type })) return false;
         if (originalAmmo.ammoType !== candidateAmmo.ammoType) return false;
         if (!this.hasCompatibleTechBase(originalAmmo, candidateAmmo, unit)) return false;
@@ -71,7 +71,7 @@ export class AmmoValidityUtil {
         return reasons.map(reason => ({ reason, message: AMMO_SELECTION_ISSUE_MESSAGES[reason] }));
     }
 
-    private static hasCompatibleTechBase(originalAmmo: AmmoEquipment, candidateAmmo: AmmoEquipment, unit?: Unit): boolean {
+    private static hasCompatibleTechBase(originalAmmo: AmmoEquipment, candidateAmmo: AmmoEquipment, unit?: UnitSummary): boolean {
         if (originalAmmo.techBase === candidateAmmo.techBase) return true;
         if (!unit) return originalAmmo.techBase === 'All' || candidateAmmo.techBase === 'All';
         if (unit.mixed) return true;

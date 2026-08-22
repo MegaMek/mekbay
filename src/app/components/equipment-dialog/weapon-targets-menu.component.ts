@@ -121,7 +121,7 @@ export interface WeaponTargetCalculatorRequest {
                                             </span>
                                         </div>
                                         <div class="target-number-field">
-                                            <span class="tn-modifier-label" [tooltip]="tnModifierTooltip">TN Modifier <span class="info-notice" aria-hidden="true">i</span></span>
+                                            <span class="tn-modifier-label" [tooltip]="tnModifierTooltipFor(target)">{{ tnModifierLabel(target) }} <span class="info-notice" aria-hidden="true">i</span></span>
                                             <span class="target-stepper">
                                                 <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepTnModifier(target, -1)">-</button>
                                                 <input class="value tn-modifier-value" [class.linked-tn-modifier]="!isTnModifierManual(target)" type="number" step="1" [readOnly]="readOnly()" [value]="target.tnModifier" [attr.aria-label]="tnModifierAriaLabel(target)" [title]="tnModifierTitle(target)" (input)="updateTnModifier(target.id, $any($event.target).value)">
@@ -700,7 +700,7 @@ export interface WeaponTargetCalculatorRequest {
 })
 export class WeaponTargetsMenuComponent {
     readonly jammedConditionColor = JAMMED_CONDITION_COLOR;
-    readonly tnModifierTooltip = 'Target-side TN modifier for this target. Use it for target movement, indirect fire, spotter movement, terrain, cover, stance, and similar target conditions. It is added separately from your unit skill, your movement, range, heat, and weapon modifiers. The calculator can fill it, and you can still override it manually.';
+    readonly tnModifierTooltip = 'Target-side TN modifier for this target. Use it for target movement, indirect fire, spotter movement, terrain, cover, stance, and similar target conditions. It is added separately from your unit skill, your movement, range, heat, and weapon modifiers. Directly editing it creates a complete target-side override.';
     readonly targets = input<InventoryControlRuntimeTarget[]>([]);
     readonly colors = input<readonly string[]>(INVENTORY_CONTROL_TARGET_COLORS);
     readonly maxTargets = input(INVENTORY_CONTROL_TARGET_MAX_COUNT);
@@ -823,15 +823,25 @@ export class WeaponTargetsMenuComponent {
         return target.manualTnModifier !== undefined;
     }
 
+    tnModifierLabel(target: InventoryControlRuntimeTarget): string {
+        return this.isTnModifierManual(target) ? 'TN Override' : 'TN Modifier';
+    }
+
+    tnModifierTooltipFor(target: InventoryControlRuntimeTarget): string {
+        return this.isTnModifierManual(target)
+            ? 'Complete target-side override. Calculator-derived and weapon-specific target effects, including Precision, NARC, and Semi-Guided adjustments, are disabled. Reapply the calculator to restore them.'
+            : this.tnModifierTooltip;
+    }
+
     tnModifierAriaLabel(target: InventoryControlRuntimeTarget): string {
         return this.isTnModifierManual(target)
-            ? 'TN Modifier (manual override)'
+            ? 'TN Modifier (complete manual override)'
             : 'TN Modifier (linked to calculator)';
     }
 
     tnModifierTitle(target: InventoryControlRuntimeTarget): string {
         return this.isTnModifierManual(target)
-            ? 'TN Modifier: manual override'
+            ? 'Complete manual TN override; calculator and weapon-specific target effects are disabled'
             : 'TN Modifier: linked to calculator';
     }
 
@@ -841,15 +851,18 @@ export class WeaponTargetsMenuComponent {
     }
 
     targetModifierPills(target: InventoryControlRuntimeTarget): TargetModifierPill[] {
-        const guidancePills = this.targetGuidancePills(target);
+        const statePills = [
+            ...this.targetGuidancePills(target),
+            ...(target.tnCalculator?.stealth ? [{ label: 'Stealth' }] : []),
+        ];
         const calculator = getEffectiveInventoryControlCalculatorState(target);
-        if (!calculator) return guidancePills;
+        if (!calculator) return statePills;
         const breakdown = calculateTargetTnModifierBreakdown({
             ...calculator,
             unitType: target.unitType,
             range: target.distance,
         }, this.gameRules());
-        return [...guidancePills, ...this.targetBreakdownPills(breakdown, calculator)];
+        return [...statePills, ...this.targetBreakdownPills(breakdown, calculator)];
     }
 
     private targetGuidancePills(target: InventoryControlRuntimeTarget): TargetModifierPill[] {
@@ -889,14 +902,14 @@ export class WeaponTargetsMenuComponent {
         const pills: TargetModifierPill[] = [];
         let spotterModifier = 0;
         for (const entry of breakdown) {
-            if (entry.label.startsWith('Spotter ')) {
+            if (entry.id === 'spotter-movement' || entry.id === 'spotter-declared-attack') {
                 spotterModifier += entry.modifier;
                 continue;
             }
             pills.push({
                 label: this.targetModifierPillLabel(entry, calculator),
                 modifier: entry.modifier,
-                ...(entry.label === 'Custom' && { custom: true }),
+                ...(entry.id === 'custom' && { custom: true }),
             });
         }
         if (spotterModifier !== 0) pills.push({ label: 'Spotter', modifier: spotterModifier });
@@ -910,19 +923,23 @@ export class WeaponTargetsMenuComponent {
         if (entry.partialCoverSource === 'water' && calculator.waterDepth) {
             return `Depth ${unitWaterDepthNumber(calculator.waterDepth)}`;
         }
-        if ((entry.partialCoverSource === 'building' || entry.label === 'Heavy Cover (building)')
+        if ((entry.partialCoverSource === 'building' || entry.id === 'building-cover')
             && calculator.buildingCover) {
             return `Building lv${unitBuildingLevelNumber(calculator.buildingCover)}`;
         }
-        switch (entry.label) {
-            case 'Intervening Woods': return 'LoS';
-            case 'Light Cover': return 'Light Wood';
-            case 'Heavy Cover': return 'Heavy Wood';
-            case 'Secondary Target': return 'Secondary';
-            case 'Secondary Target (side/back)': return 'Secondary (Side/Back)';
-            case 'Large Target': return 'Large';
-            case 'Indirect Fire': return 'Indirect';
-            case 'Prone (adjacent)': return 'Prone';
+        switch (entry.id) {
+            case 'intervening-woods': return 'LoS';
+            case 'target-hex-cover':
+                switch (entry.targetHexCover) {
+                    case 'heavy': return 'Heavy Wood';
+                    case 'light': return 'Light Wood';
+                    default: return entry.label;
+                }
+            case 'secondary-target': return 'Secondary';
+            case 'secondary-target-side-back': return 'Secondary (Side/Back)';
+            case 'large-target': return 'Large';
+            case 'indirect-fire': return 'Indirect';
+            case 'prone': return 'Prone';
             default: return entry.label;
         }
     }

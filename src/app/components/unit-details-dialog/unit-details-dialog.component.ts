@@ -5,7 +5,7 @@
 import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed, type Signal, isSignal, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
 import { ToastService } from '../../services/toast.service';
@@ -39,7 +39,7 @@ import { getNormalizationGunnery, getNormalizationPiloting, type UnitSearchNorma
 
 
 export interface UnitDetailsDialogData {
-    unitList: Unit[] | Signal<ForceUnit[]>;
+    unitList: UnitSummary[] | Signal<ForceUnit[]>;
     unitIndex: number;
     gunnerySkill?: number;
     pilotingSkill?: number;
@@ -54,8 +54,8 @@ export interface UnitDetailsDialogData {
 }
 
 export interface UnitDetailsChangeAction {
-    originalUnit: Unit;
-    apply: (unit: Unit) => boolean | void | Promise<boolean | void>;
+    originalUnit: UnitSummary;
+    apply: (unit: UnitSummary) => boolean | void | Promise<boolean | void>;
     disabled?: () => boolean;
     closeParentOnChange?: boolean;
 }
@@ -84,9 +84,9 @@ export class UnitDetailsDialogComponent {
     private dialogsService = inject(DialogsService);
     private keyboardShortcutService = inject(KeyboardShortcutService);
     private destroyRef = inject(DestroyRef);
-    add = output<Unit>();
-    select = output<Unit>();
-    change = output<{ oldUnit: ForceUnit; newUnit: Unit }>();
+    add = output<UnitSummary>();
+    select = output<UnitSummary>();
+    change = output<{ oldUnit: ForceUnit; newUnit: UnitSummary }>();
     indexChange = output<number>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
     sheetTabRef = viewChild<UnitDetailsSheetTabComponent>(UnitDetailsSheetTabComponent);
@@ -109,16 +109,16 @@ export class UnitDetailsDialogComponent {
     });
     activeTab = signal(this.deriveInitialIsAlphaStrike() ? 'Card' : 'General');
 
-    unitList = computed<Unit[] | ForceUnit[]>(() => {
+    unitList = computed<UnitSummary[] | ForceUnit[]>(() => {
         const input = this.data.unitList;
         return isSignal(input) ? input() : input;
     });
     unitIndex = signal(this.data.unitIndex);
-    prevUnit = computed<Unit | null>(() => {
+    prevUnit = computed<UnitSummary | null>(() => {
         if (!this.hasPrev) return null;
         return this.getUnitAtIndex(this.unitIndex() - 1);
     });
-    nextUnit = computed<Unit | null>(() => {
+    nextUnit = computed<UnitSummary | null>(() => {
         if (!this.hasNext) return null;
         return this.getUnitAtIndex(this.unitIndex() + 1);
     });
@@ -165,7 +165,7 @@ export class UnitDetailsDialogComponent {
 
     // Swipe animation state
     isSwipeAnimating = signal(false);
-    incomingUnit = signal<Unit | null>(null);
+    incomingUnit = signal<UnitSummary | null>(null);
     readonly incomingSearchResultContext = computed<UnitSearchNormalizationMatch | null>(() => {
         const unitName = this.incomingUnit()?.name;
         return unitName ? this.data.searchResultContexts?.get(unitName) ?? null : null;
@@ -217,7 +217,7 @@ export class UnitDetailsDialogComponent {
         return `${getUnitServerHost(unit)}/images/fluff/${unit.fluff.img}`;
     });
 
-    get unit(): Unit {
+    get unit(): UnitSummary {
         const currentUnit = this.unitList()[this.unitIndex()]
         if (currentUnit instanceof ForceUnit) {
             return currentUnit.getUnit();
@@ -309,7 +309,7 @@ export class UnitDetailsDialogComponent {
         return this.unitList() && this.unitIndex() < this.unitList().length - 1;
     }
 
-    private getUnitAtIndex(index: number): Unit {
+    private getUnitAtIndex(index: number): UnitSummary {
         const item = this.unitList()[index];
         if (item instanceof ForceUnit) {
             return item.getUnit();
@@ -553,7 +553,7 @@ export class UnitDetailsDialogComponent {
     }
 
     /** Handle variant card click - opens a new dialog for that variant */
-    onVariantClick(event: { variant: Unit; variants: Unit[] }): void {
+    onVariantClick(event: { variant: UnitSummary; variants: UnitSummary[] }): void {
         if (this.data.selectMode) return;
 
         const changeAction = this.wrapParentClose(this.variantChangeAction());
@@ -590,7 +590,7 @@ export class UnitDetailsDialogComponent {
             originalUnit: originalForceUnit.getUnit(),
             disabled: () => originalForceUnit.readOnly(),
             closeParentOnChange: true,
-            apply: async (selectedUnit: Unit) => {
+            apply: async (selectedUnit: UnitSummary) => {
                 const result = await this.forceBuilderService.replaceUnit(originalForceUnit, selectedUnit);
                 if (!result) return false;
 
@@ -617,7 +617,7 @@ export class UnitDetailsDialogComponent {
         return {
             ...action,
             closeParentOnChange: false,
-            apply: async (unit: Unit) => {
+            apply: async (unit: UnitSummary) => {
                 const result = await action.apply(unit);
                 if (result === false) return false;
 
@@ -799,7 +799,7 @@ export class UnitDetailsDialogComponent {
         setTimeout(() => this.resetSwipeState(), 100);
     }
 
-    private prepareIncomingUnit(unit: Unit): void {
+    private prepareIncomingUnit(unit: UnitSummary): void {
         this.incomingPanelScrollTop.set(this.getIncomingPanelInitialScrollTop());
         this.incomingUnit.set(unit);
         requestAnimationFrame(() => this.syncIncomingPanelScrollTop());

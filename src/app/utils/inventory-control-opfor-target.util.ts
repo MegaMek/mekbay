@@ -3,11 +3,16 @@
 // Author: Drake
 
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { getTargetMovementBracketForDistance, type TnTargetNumberCalculatorState, type TnTargetUnitType } from '../models/target-number-calculator.model';
+import { getActiveStealthTnModifiers } from '../models/stealth-equipment.model';
+import { canTnTargetTypeBeLarge, getTargetMovementBracketForDistance, type TnTargetNumberCalculatorState, type TnTargetUnitType } from '../models/target-number-calculator.model';
 import { isUnitBuildingLevel, isUnitWaterDepth } from '../models/unit-cover.model';
-import { getUnitHeight, type Unit } from '../models/units.model';
+import { getUnitHeight, type UnitSummary, type WeightClass } from '../models/unit-summary.model';
 
 export const OPFOR_INVENTORY_TARGET_ID_PREFIX = 'opfor:';
+const LARGE_TARGET_WEIGHT_CLASSES = new Set<WeightClass>([
+    'Colossal/Super-Heavy',
+    'Large Support Vehicle',
+]);
 
 export function getOpforInventoryTargetId(unitId: string): string {
     return `${OPFOR_INVENTORY_TARGET_ID_PREFIX}${unitId}`;
@@ -17,7 +22,7 @@ export function isOpforInventoryTargetId(targetId: string): boolean {
     return targetId.startsWith(OPFOR_INVENTORY_TARGET_ID_PREFIX);
 }
 
-export function resolveInventoryTargetUnitType(unit: Unit): TnTargetUnitType {
+export function resolveInventoryTargetUnitType(unit: UnitSummary): TnTargetUnitType {
     switch (unit.type) {
         case 'Mek':
             if (unit.subtype.includes('Quad') || unit.subtype.includes('QuadVee')) return 'mek-quad';
@@ -33,8 +38,9 @@ export function resolveInventoryTargetUnitType(unit: Unit): TnTargetUnitType {
     }
 }
 
-export function isLargeInventoryTarget(unit: Unit): boolean {
-    return getUnitHeight(unit) === 3;
+export function isLargeInventoryTarget(unit: UnitSummary): boolean {
+    return canTnTargetTypeBeLarge(resolveInventoryTargetUnitType(unit))
+        && (getUnitHeight(unit) === 3 || LARGE_TARGET_WEIGHT_CLASSES.has(unit.weightClass));
 }
 
 export function deriveOpforTargetCalculatorState(
@@ -50,21 +56,25 @@ export function deriveOpforTargetCalculatorState(
     const targetMovementBracket = moveDistance !== null
         ? getTargetMovementBracketForDistance(moveDistance)?.id ?? null
         : null;
+    const targetUnit = unit.getUnit();
 
     return {
         ...current,
         isAirborne,
         targetMovementBracket,
+        targetMovementDistance: moveDistance,
         skidding: unit.getCondition('skidding'),
         prone,
         immobile,
         targetHexCover: cover === 'light' || cover === 'heavy' ? cover : 'none',
         waterDepth: isUnitWaterDepth(cover) ? cover : undefined,
         buildingCover: isUnitBuildingLevel(cover) ? cover : undefined,
-        largeTarget: unit.gameRules.supportsLargeTarget && isLargeInventoryTarget(unit.getUnit()),
+        targetHeight: getUnitHeight(targetUnit),
+        largeTarget: isLargeInventoryTarget(targetUnit),
         narcAboveWater: narcWaterLayers.aboveWater,
         narcUnderwater: narcWaterLayers.underwater,
         tagged: unit.getCondition('tagged'),
-        ecmShielded: unit.getCondition('ecm-shielded')
+        ecmShielded: unit.getCondition('ecm-shielded'),
+        stealth: getActiveStealthTnModifiers(unit),
     };
 }

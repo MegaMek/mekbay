@@ -8,7 +8,7 @@ import type { CBTForce } from '../models/cbt-force.model';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { CrewMember } from '../models/crew-member.model';
 import type { CriticalSlot } from '../models/force-serialization';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { parseMulForce, sanitizeMulFilename, serializeForceToMul } from './mul-file.util';
 import { CBTGameRulesService } from '../services/cbt-game-rules.service';
@@ -107,14 +107,14 @@ function createFakeClassicForce(unit: CBTForceUnit): CBTForce {
     } as unknown as CBTForce;
 }
 
-async function getSerializedMulEntity(unit: Unit, crewSlots: number): Promise<Element> {
+async function getSerializedMulEntity(unit: UnitSummary, crewSlots: number): Promise<Element> {
     const crewMembers = Array.from({ length: crewSlots }, (_, index) => createFakeCrewMember(index));
     const xml = await serializeForceToMul(createFakeClassicForce(createFakeForceUnit(unit, [], crewMembers)));
     const doc = new DOMParser().parseFromString(xml, 'application/xml');
     return doc.querySelector('entity') as Element;
 }
 
-function createFakeDataService(units: Unit[]) {
+function createFakeDataService(units: UnitSummary[]) {
     return {
         getUnits: () => units,
         getEquipmentRegistry: () => EMPTY_EQUIPMENT_REGISTRY,
@@ -145,7 +145,7 @@ describe('MUL file utilities', () => {
     });
 
     it('writes every MegaMek CrewType token that can be represented by MekBay unit metadata', async () => {
-        const cases: { expected: string; slots: number; overrides: Partial<Unit> }[] = [
+        const cases: { expected: string; slots: number; overrides: Partial<UnitSummary> }[] = [
             { expected: 'single', slots: 1, overrides: { type: 'Mek', subtype: 'BattleMek', moveType: 'Biped', crewSize: 1 } },
             { expected: 'crew', slots: 1, overrides: { type: 'Tank', subtype: 'Combat Vehicle', moveType: 'Tracked', crewSize: 1 } },
             { expected: 'vessel', slots: 1, overrides: { type: 'Aero', subtype: 'Spheroid DropShip', moveType: 'Spheroid', crewSize: 1 } },

@@ -11,7 +11,7 @@ import type { ForceUnit } from '../models/force-unit.model';
 import type { MULFactions } from '../models/mulfactions.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import type { AvailabilitySource, UnitSearchViewMode } from '../models/options.model';
-import type { Unit, Units } from '../models/units.model';
+import type { UnitSummary, Units } from '../models/unit-summary.model';
 import { GameSystem } from '../models/common.model';
 import { DataService } from './data.service';
 import { DbService, type TagData } from './db.service';
@@ -84,7 +84,7 @@ function cloneUnit<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function prepareUnitForSearch(unit: Unit, index: number): Unit {
+function prepareUnitForSearch(unit: UnitSummary, index: number): UnitSummary {
     const clone = cloneUnit(unit);
     clone.id = index + 1;
     clone.name = `${unit.name}__${index}`;
@@ -109,7 +109,7 @@ function buildBenchmarkBundle(payload: BenchmarkBundle, targetCount: number): Be
         };
     }
 
-    const dataset: Unit[] = [];
+    const dataset: UnitSummary[] = [];
     const idExpansion = new Map<number, number[]>();
     for (let index = 0; index < targetCount; index++) {
         const unit = prepareUnitForSearch(prepared[index % prepared.length], index);
@@ -230,7 +230,7 @@ function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
     };
 }
 
-function createTestUnit(overrides: TestUnitOverrides = {}): Unit {
+function createTestUnit(overrides: TestUnitOverrides = {}): UnitSummary {
     const { as: asOverrides, ...unitOverrides } = overrides;
 
     return createEmptyUnit({
@@ -523,7 +523,7 @@ function createStrategicCommandBundle(): BenchmarkBundle {
 }
 
 function createFormationExistingForceUnit(
-    unit: Unit,
+    unit: UnitSummary,
     gameSystem: GameSystem = GameSystem.ALPHA_STRIKE,
     options: { faction?: Faction; pilotSkill?: number; gunnerySkill?: number } = {},
 ): ForceUnit {
@@ -681,7 +681,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             getChassisTags: () => ({}),
             getTagData: async () => ({ tags: {}, timestamp: 0, formatVersion: 3 as const }),
             migrateChassisTagsToVariantGroups: jasmine.createSpy('migrateChassisTagsToVariantGroups')
-                .and.callFake(async (_units: Unit[], tagData?: TagData) => tagData ?? ({ tags: {}, timestamp: 0, formatVersion: 4 as const })),
+                .and.callFake(async (_units: UnitSummary[], tagData?: TagData) => tagData ?? ({ tags: {}, timestamp: 0, formatVersion: 4 as const })),
             fixNameTagsCoveredByChassis: jasmine.createSpy('fixNameTagsCoveredByChassis').and.resolveTo(undefined),
             setRefreshUnitsCallback: jasmine.createSpy('setRefreshUnitsCallback'),
             setNotifyStoreUpdatedCallback: jasmine.createSpy('setNotifyStoreUpdatedCallback'),
@@ -1209,7 +1209,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
         optionsServiceStub.options.set({
@@ -1321,7 +1321,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
         optionsServiceStub.options.set({
@@ -1651,7 +1651,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => (
                 record.n === unit.name
             ));
@@ -1747,7 +1747,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => (
                 record.n === unit.name
             ));
@@ -2028,7 +2028,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => (
                 record.n === unit.name
             ));
@@ -2124,7 +2124,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2226,7 +2226,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2345,7 +2345,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2461,7 +2461,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2581,7 +2581,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2675,7 +2675,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2807,7 +2807,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2872,7 +2872,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => (
                 record.n === unit.name
             ));
@@ -2924,7 +2924,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2972,7 +2972,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3011,7 +3011,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3076,7 +3076,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3138,7 +3138,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3192,7 +3192,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3258,7 +3258,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3331,7 +3331,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3427,7 +3427,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3530,7 +3530,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3625,7 +3625,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3677,7 +3677,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3812,7 +3812,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3948,7 +3948,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4032,7 +4032,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4148,7 +4148,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4254,7 +4254,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4336,7 +4336,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4411,7 +4411,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4464,7 +4464,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4551,7 +4551,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4607,7 +4607,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4750,7 +4750,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -6186,7 +6186,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { dataService, service } = createService(scenario.bundle);
 
         spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue(scenario.availabilityRecords);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return scenario.availabilityRecordsByName.get(unit.name);
         });
 

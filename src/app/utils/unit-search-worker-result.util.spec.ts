@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import type { UnitSearchWorkerResultMessage } from './unit-search-worker-protocol.util';
 import { hydrateWorkerSearchResult } from './unit-search-worker-result.util';
 
@@ -21,8 +21,8 @@ function createResult(entries: UnitSearchWorkerResultMessage['entries']): UnitSe
 }
 
 describe('hydrateWorkerSearchResult', () => {
-    const alpha = { name: 'Alpha' } as Unit;
-    const beta = { name: 'Beta' } as Unit;
+    const alpha = { name: 'Alpha' } as UnitSummary;
+    const beta = { name: 'Beta' } as UnitSummary;
     const units = new Map([[alpha.name, alpha], [beta.name, beta]]);
 
     it('hydrates known units and their matching normalization metadata atomically', () => {

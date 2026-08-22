@@ -4,7 +4,7 @@
 
 import { Component, ChangeDetectionStrategy, input, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { Unit } from '../../../models/units.model';
+import type { UnitSummary } from '../../../models/unit-summary.model';
 import { SvgViewerLiteComponent } from '../../svg-viewer-lite/svg-viewer-lite.component';
 
 @Component({
@@ -15,7 +15,7 @@ import { SvgViewerLiteComponent } from '../../svg-viewer-lite/svg-viewer-lite.co
     styleUrls: ['./unit-details-sheet-tab.component.css']
 })
 export class UnitDetailsSheetTabComponent {
-    unit = input.required<Unit>();
+    unit = input.required<UnitSummary>();
 
     private viewer = viewChild<SvgViewerLiteComponent>(SvgViewerLiteComponent);
 

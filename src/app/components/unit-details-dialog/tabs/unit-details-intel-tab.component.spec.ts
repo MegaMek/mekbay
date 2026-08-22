@@ -5,7 +5,7 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-import type { Unit, UnitFluffCatalogEntry } from '../../../models/units.model';
+import type { UnitSummary, UnitFluffCatalogEntry } from '../../../models/unit-summary.model';
 import { DataService } from '../../../services/data.service';
 import { createEmptyUnit } from '../../../testing/unit-test-helpers';
 import { UnitDetailsIntelTabComponent } from './unit-details-intel-tab.component';

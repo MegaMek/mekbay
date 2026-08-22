@@ -19,7 +19,7 @@ import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
 import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { UnitSvgAeroService } from '../services/unit-svg-aero.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
-import type { Unit } from './units.model';
+import type { UnitSummary } from './unit-summary.model';
 import { createHandlerCommandContext, createHandlerQueryContext, EquipmentInteractionHandler, EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
 import { LaserInsulatorHandler } from '../equipment-handlers/laser-insulator.handler';
 import { RISC_LASER_PULSE_MODE, RiscLaserPulseModuleHandler } from '../equipment-handlers/risc-laser-pulse-module.handler';
@@ -168,7 +168,7 @@ function createEquipment(): EquipmentMap {
     };
 }
 
-function createMekUnit(): Unit {
+function createMekUnit(): UnitSummary {
     return createEmptyUnit({
         name: 'BMTest_MEK-1',
         chassis: 'Test Mek',
@@ -178,7 +178,7 @@ function createMekUnit(): Unit {
     });
 }
 
-function createMekUnitWithDissipation(dissipation: number): Unit {
+function createMekUnitWithDissipation(dissipation: number): UnitSummary {
     const heatSink = new MiscEquipment({
         id: 'test-heat-sink',
         name: 'Test Heat Sink',
@@ -203,7 +203,7 @@ function createMekUnitWithDissipation(dissipation: number): Unit {
     });
 }
 
-function createMekUnitWithCriticalHeatsinks(): { unit: Unit; single: MiscEquipment; double: MiscEquipment } {
+function createMekUnitWithCriticalHeatsinks(): { unit: UnitSummary; single: MiscEquipment; double: MiscEquipment } {
     const single = new MiscEquipment({
         id: 'test-single-heat-sink',
         name: 'Test Single Heat Sink',
@@ -216,7 +216,7 @@ function createMekUnitWithCriticalHeatsinks(): { unit: Unit; single: MiscEquipme
         type: 'misc',
         flags: ['F_DOUBLE_HEAT_SINK'],
     });
-    const component = (id: string, equipment: Equipment, location: string, position: number, quantity = 1): Unit['comp'][number] => ({
+    const component = (id: string, equipment: Equipment, location: string, position: number, quantity = 1): UnitSummary['comp'][number] => ({
         id,
         q: quantity,
         q2: 0,
@@ -243,7 +243,7 @@ function createMekUnitWithCriticalHeatsinks(): { unit: Unit; single: MiscEquipme
     };
 }
 
-function createSelectedHeatUnit(equipment: EquipmentMap, dissipation: number): Unit {
+function createSelectedHeatUnit(equipment: EquipmentMap, dissipation: number): UnitSummary {
     const unit = createMekUnitWithDissipation(dissipation);
     return createEmptyUnit({
         ...unit,
@@ -312,7 +312,7 @@ function expectHeatMarkerAt(
     return marker!;
 }
 
-function createProtoMekUnit(): Unit {
+function createProtoMekUnit(): UnitSummary {
     return createEmptyUnit({
         name: 'PMTest_PROTO-1',
         chassis: 'Test ProtoMek',
@@ -322,7 +322,7 @@ function createProtoMekUnit(): Unit {
     });
 }
 
-function createDroneMekUnit(equipment: EquipmentMap): Unit {
+function createDroneMekUnit(equipment: EquipmentMap): UnitSummary {
     return createEmptyUnit({
         name: 'DroneMek_TEST-1',
         chassis: 'Drone Mek',
@@ -335,7 +335,7 @@ function createDroneMekUnit(equipment: EquipmentMap): Unit {
     });
 }
 
-function createVehicleUnit(equipment: EquipmentMap): Unit {
+function createVehicleUnit(equipment: EquipmentMap): UnitSummary {
     return createEmptyUnit({
         name: 'CVSMTankDestroyer_SM1',
         chassis: 'SM Tank Destroyer',
@@ -385,7 +385,7 @@ function createKamisoriAInventorySvg(): SVGSVGElement {
     `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
 }
 
-function createVariableDamageUnit(equipment: EquipmentMap): Unit {
+function createVariableDamageUnit(equipment: EquipmentMap): UnitSummary {
     return createEmptyUnit({
         name: 'Variable Damage Test Unit',
         chassis: 'Variable Damage Test',
@@ -445,7 +445,7 @@ function createMultiRowVariableDamageSvg(): SVGSVGElement {
     `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
 }
 
-function createLaserInsulatorUnit(equipment: EquipmentMap): Unit {
+function createLaserInsulatorUnit(equipment: EquipmentMap): UnitSummary {
     return createEmptyUnit({
         name: 'Laser Insulator Test Unit',
         chassis: 'Laser Insulator Test',
@@ -484,7 +484,7 @@ function createLaserInsulatorSvg(): SVGSVGElement {
     `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
 }
 
-function createRiscLaserUnit(equipment: EquipmentMap): Unit {
+function createRiscLaserUnit(equipment: EquipmentMap): UnitSummary {
     return createEmptyUnit({
         name: 'RISC Laser Test Unit',
         chassis: 'RISC Laser Test',
@@ -527,7 +527,7 @@ function createRiscLaserSvg(): SVGSVGElement {
     `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
 }
 
-function createMmlUnit(equipment: EquipmentMap): Unit {
+function createMmlUnit(equipment: EquipmentMap): UnitSummary {
     return createEmptyUnit({
         name: 'MML Test Unit',
         chassis: 'MML Test',
@@ -899,7 +899,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         injector = TestBed.inject(Injector);
     });
 
-    function createForceUnit(unit: Unit = createMekUnit()): CBTForceUnit {
+    function createForceUnit(unit: UnitSummary = createMekUnit()): CBTForceUnit {
         dataService.getUnitByName.and.callFake((name: string) => name === unit.name ? unit : undefined);
         const force = new TestCBTForce('Test Force', dataService, unitInitializer, injector);
         return new CBTForceUnit(unit, force, dataService, unitInitializer, injector);

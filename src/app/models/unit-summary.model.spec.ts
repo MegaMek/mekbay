@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { getUnitHeight, type Unit } from './units.model';
+import { getUnitHeight, type UnitSummary } from './unit-summary.model';
 
 describe('unit height', () => {
-    const unit = (type: Unit['type'], tons: number): Pick<Unit, 'type' | 'tons'> => ({ type, tons });
+    const unit = (type: UnitSummary['type'], tons: number): Pick<UnitSummary, 'type' | 'tons'> => ({ type, tons });
 
     it('derives standing height from unit type and superheavy weight', () => {
         expect(getUnitHeight(unit('Mek', 125))).toBe(3);

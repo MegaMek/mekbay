@@ -9,7 +9,7 @@ import type { Era } from '../../../models/eras.model';
 import type { Faction } from '../../../models/factions.model';
 import type { MegaMekWeightedAvailabilityRecord } from '../../../models/megamek/availability.model';
 import { MULFACTION_EXTINCT } from '../../../models/mulfactions.model';
-import type { Unit } from '../../../models/units.model';
+import type { UnitSummary } from '../../../models/unit-summary.model';
 import { DataService } from '../../../services/data.service';
 import { createEmptyUnit } from '../../../testing/unit-test-helpers';
 import { UnitAvailabilitySourceService } from '../../../services/unit-availability-source.service';
@@ -219,6 +219,80 @@ describe('UnitDetailsFactionTabComponent', () => {
             expect(catchAllLabel?.querySelector('.faction-name-head .faction-icon')).toBeTruthy();
         } finally {
             factions.length = originalFactionCount;
+        }
+    });
+
+    it('only groups factions under a catchall that directly contains the unit in factions.json', () => {
+        const originalFactions = [...factions];
+        factions.splice(
+            0,
+            factions.length,
+            {
+                id: 70,
+                name: 'Faction X',
+                group: 'Inner Sphere',
+                img: '',
+                eras: {
+                    3050: new Set([unit.id]),
+                    3151: new Set([unit.id]),
+                },
+            } as Faction,
+            {
+                id: 71,
+                name: 'Faction Y',
+                group: 'Inner Sphere',
+                img: '',
+                eras: {
+                    3050: new Set([unit.id]),
+                    3151: new Set([unit.id]),
+                },
+            } as Faction,
+            {
+                id: 99,
+                name: 'Inner Sphere General',
+                group: 'Inner Sphere',
+                img: '',
+                eras: {
+                    3050: new Set([unit.id]),
+                    3151: new Set<number>(),
+                },
+            } as Faction,
+        );
+        useMegaMekAvailability = true;
+        megaMekAvailabilityRecord = {
+            n: unit.name,
+            e: {
+                '3050': {
+                    '70': [5, 0],
+                    '71': [5, 0],
+                    '99': [5, 0],
+                },
+                '3151': {
+                    '70': [5, 0],
+                    '71': [5, 0],
+                    '99': [5, 0],
+                },
+            },
+        };
+
+        try {
+            const fixture = TestBed.createComponent(UnitDetailsFactionTabComponent);
+            fixture.componentRef.setInput('unit', unit);
+            fixture.detectChanges();
+
+            const viewModel = fixture.componentInstance.factionAvailability();
+            const clanInvasion = viewModel.find((era) => era.eraName === 'Clan Invasion');
+            const ilClan = viewModel.find((era) => era.eraName === 'ilClan');
+
+            expect(clanInvasion?.factions.map((faction) => faction.name)).toEqual(['Inner Sphere General']);
+            expect(clanInvasion?.factions[0].collapsedFactions?.map((faction) => faction.name)).toEqual([
+                'Faction X',
+                'Faction Y',
+            ]);
+            expect(ilClan?.factions.map((faction) => faction.name)).toEqual(['Faction X', 'Faction Y']);
+            expect(ilClan?.factions.some((faction) => faction.isCatchAll)).toBeFalse();
+        } finally {
+            factions.splice(0, factions.length, ...originalFactions);
         }
     });
 

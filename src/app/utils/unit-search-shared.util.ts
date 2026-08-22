@@ -3,7 +3,7 @@
 // Author: Drake
 
 import type { MultiStateOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, type SearchTelemetryStage } from '../services/unit-search-filters.model';
 
 export interface UnitComponentData {
@@ -11,9 +11,9 @@ export interface UnitComponentData {
     counts: Map<string, number>;
 }
 
-const unitComponentCache = new WeakMap<Unit, UnitComponentData>();
+const unitComponentCache = new WeakMap<UnitSummary, UnitComponentData>();
 
-export function getMergedTags(unit: Unit): string[] {
+export function getMergedTags(unit: UnitSummary): string[] {
     const merged = new Set<string>();
     for (const entry of unit._chassisTags ?? []) merged.add(entry.tag);
     for (const entry of unit._nameTags ?? []) merged.add(entry.tag);
@@ -47,7 +47,7 @@ function normalizeSourceValues(value: readonly string[] | null | undefined): str
     return result;
 }
 
-export function getUnitSourceFilterValues(unit: Pick<Unit, 'source' | 'published'>): string[] {
+export function getUnitSourceFilterValues(unit: Pick<UnitSummary, 'source' | 'published'>): string[] {
     const sources = normalizeSourceValues(unit.source);
     const published = normalizeSourceValues(unit.published);
 
@@ -123,16 +123,16 @@ export function unitMatchesRulesRefsSelection(unitRulesRefs: unknown, selectedRu
 export function getProperty(obj: any, key?: string) {
     if (!obj || !key) return undefined;
     if (key === '_tags') {
-        return getMergedTags(obj as Unit);
+        return getMergedTags(obj as UnitSummary);
     }
     if (key === 'source') {
-        return getUnitSourceFilterValues(obj as Unit);
+        return getUnitSourceFilterValues(obj as UnitSummary);
     }
     if (key === 'weaponType') {
-        return (obj as Unit)._weaponTypes ?? [];
+        return (obj as UnitSummary)._weaponTypes ?? [];
     }
     if (key === 'as._motive') {
-        const mvm = (obj as Unit).as?.MVm;
+        const mvm = (obj as UnitSummary).as?.MVm;
         if (!mvm) return [];
 
         const result: string[] = [];
@@ -149,7 +149,7 @@ export function getProperty(obj: any, key?: string) {
         return result;
     }
     if (key === 'as._mv') {
-        const mvm = (obj as Unit).as?.MVm;
+        const mvm = (obj as UnitSummary).as?.MVm;
         if (!mvm) return 0;
         const values = Object.values(mvm);
         return values.length > 0 ? Math.max(...values) : 0;
@@ -292,7 +292,7 @@ export function isCommittedSemanticToken(token: { rawText: string; operator: str
     return !hasUnclosedQuote(rawValueText);
 }
 
-export function getUnitComponentData(unit: Unit): UnitComponentData {
+export function getUnitComponentData(unit: UnitSummary): UnitComponentData {
     let cached = unitComponentCache.get(unit);
     if (!cached) {
         const names = new Set<string>();
@@ -311,7 +311,7 @@ export function getUnitComponentData(unit: Unit): UnitComponentData {
     return cached;
 }
 
-export function getUnitCountableFilterData(unit: Unit, filterKey: string): UnitComponentData | null {
+export function getUnitCountableFilterData(unit: UnitSummary, filterKey: string): UnitComponentData | null {
     if (filterKey === 'componentName') {
         return getUnitComponentData(unit);
     }

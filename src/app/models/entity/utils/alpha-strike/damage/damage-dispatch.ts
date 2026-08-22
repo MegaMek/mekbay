@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ASUnitTypeCode } from '../../../../units.model';
+import type { ASUnitTypeCode } from '../../../../unit-summary.model';
 import {
   BattleArmorEntity,
   type BaseEntity,

@@ -22,7 +22,7 @@ export interface UnitSearchWorkerFactionEraSnapshot {
 
 export interface UnitSearchWorkerCorpusSnapshot {
     corpusVersion: UnitSearchWorkerCorpusVersion;
-    units: import('../models/units.model').Unit[];
+    units: import('../models/unit-summary.model').UnitSummary[];
     indexes: UnitSearchWorkerIndexSnapshot;
     factionEraIndex: UnitSearchWorkerFactionEraSnapshot;
 }

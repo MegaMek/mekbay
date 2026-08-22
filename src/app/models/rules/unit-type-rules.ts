@@ -18,6 +18,7 @@ import {
     TN_SKIDDING_ATTACKER,
     TN_SKIDDING_MODIFIER,
 } from '../target-number-calculator.model';
+import { getActiveStealthTnModifiers } from '../stealth-equipment.model';
 import type { CBTForceUnit, EquipmentAction } from '../cbt-force-unit.model';
 import type { HeatDissipationState, HeatScaleEntry } from './heat-management';
 import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
@@ -159,6 +160,7 @@ export interface UnitConditionDefinition {
     color: string;
     placement?: UnitConditionControlPlacement;
     important?: boolean;
+    computed?: 'derived-only' | 'derived-or-stored';
 }
 
 export type UnitConditionControl = UnitConditionDefinition & { placement: UnitConditionControlPlacement };
@@ -175,11 +177,11 @@ export type CrewStateControlDefinition = CrewStateDefinition & { key: CrewStateC
 
 export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = [
     { key: 'shutdown', important: true, label: 'SHUTDOWN', color: '#840000', placement: 'button' },
-    { key: 'abandoned', important: true, label: 'ABANDONED', color: '#222' },
-    { key: 'disconnected', important: true, label: 'UNLINK', bannerLabel: "DISCONNECTED", bannerFontScaling: 0.8, color: '#455a64', placement: 'button' },
-    { key: 'immobile', label: 'IMMOBILE', color: '#ff8800' },
+    { key: 'abandoned', important: true, label: 'ABANDONED', color: '#222', computed: 'derived-only' },
+    { key: 'disconnected', important: true, label: 'UNLINK', bannerLabel: "DISCONNECTED", bannerFontScaling: 0.8, color: '#455a64', placement: 'button', computed: 'derived-or-stored' },
+    { key: 'immobile', label: 'IMMOBILE', color: '#ff8800', computed: 'derived-only' },
     { key: 'prone', label: 'PRONE', color: '#666', placement: 'button' },
-    { key: 'crippled', label: 'CRIPPLED', color: '#b70000' },
+    { key: 'crippled', label: 'CRIPPLED', color: '#b70000', computed: 'derived-only' },
     { key: 'swarmed', label: 'SWARMED', color: '#46b48e', placement: 'menu' },
     { key: 'tagged', label: 'TAGGED', color: '#3385d7', placement: 'menu' },
     { key: 'ecm-shielded', label: 'ECM SHIELDED', color: '#008f7a', placement: 'menu' },
@@ -187,11 +189,15 @@ export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = [
     { key: 'jammed', label: 'JAMMED', color: '#ff6be6', placement: 'menu' },
     { key: 'out-of-control', important: true, label: 'OUT OF CONTROL', color: '#d46b00', placement: 'menu' },
     { key: 'random-movement', important: true, label: 'RANDOM MOVEMENT', color: '#b56bdb', placement: 'menu' },
-    { key: 'spotting', label: 'SPOTTING', color: '#471fad' },
+    { key: 'spotting', label: 'SPOTTING', color: '#471fad', computed: 'derived-only' },
+    { key: 'stealth', label: 'STEALTH', color: '#226', computed: 'derived-only' },
 ];
 
 const UNIT_CONDITION_BY_KEY = new Map<string, UnitConditionDefinition>(UNIT_CONDITION_DEFINITIONS.map(condition => [condition.key, condition]));
 const UNIT_CONDITION_SORT_INDEX = new Map<string, number>(UNIT_CONDITION_DEFINITIONS.map((condition, index) => [condition.key, index]));
+const COMPUTED_UNIT_CONDITION_KEYS = UNIT_CONDITION_DEFINITIONS
+    .filter(condition => condition.computed !== undefined)
+    .map(condition => condition.key);
 
 export function unitConditionControls(keys: readonly string[]): readonly UnitConditionControl[] {
     return keys.map(key => {
@@ -529,7 +535,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     isComputedCondition(condition: string): boolean {
-        return condition === 'abandoned' || condition === 'immobile' || condition === 'crippled' || condition === 'spotting';
+        return UNIT_CONDITION_BY_KEY.get(condition)?.computed === 'derived-only';
     }
 
     hasComputedCondition(condition: string): boolean {
@@ -542,11 +548,12 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
             return this.immobile() || disconnectedDroneImmobile;
         }
         if (condition === 'crippled') return this.crippled();
+        if (condition === 'stealth') return getActiveStealthTnModifiers(this.unit) !== undefined;
         return false;
     }
 
     computedConditions(): readonly string[] {
-        return ['abandoned', 'immobile', 'crippled', 'disconnected', 'spotting'];
+        return COMPUTED_UNIT_CONDITION_KEYS;
     }
 
     getEquipmentStatusContribution(facts: EquipmentStatusFacts): EquipmentStatus {

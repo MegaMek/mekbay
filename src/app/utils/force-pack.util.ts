@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { getForcePacks } from '../models/forcepacks.model';
 import type { DataService } from '../services/data.service';
 import { getUnitVariantGroupKey } from './unit-variant.util';
@@ -10,7 +10,7 @@ import { getUnitVariantGroupKey } from './unit-variant.util';
 export type PackUnitEntry = {
     chassis: string;
     model?: string;
-    unit?: Unit | null;
+    unit?: UnitSummary | null;
 };
 
 export type ResolvedPack = {

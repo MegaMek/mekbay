@@ -4,9 +4,9 @@
 
 import { Component, input, computed, inject, ChangeDetectionStrategy } from '@angular/core';
 
-import type { UnitComponent } from '../../models/units.model';
+import type { UnitComponent } from '../../models/unit-summary.model';
 import { DataService } from '../../services/data.service';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { AmmoEquipment, type Equipment, formatEquipmentRulesRefs, WeaponEquipment } from '../../models/equipment.model';
 import { TechDate, TechAdvancementDates, techDateYear, formatTechDate } from '../../models/entity';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
@@ -29,7 +29,7 @@ import { formatInventoryControlHeat } from '../../utils/inventory-control-heat.u
 export class FloatingCompInfoComponent {
     private dataService = inject(DataService);
     private rulesService = inject(CBTGameRulesService);
-    unit = input.required<Unit>();
+    unit = input.required<UnitSummary>();
     comp = input<UnitComponent | null>(null);
 
     positioned = false;

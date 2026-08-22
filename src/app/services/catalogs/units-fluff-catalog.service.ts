@@ -8,12 +8,12 @@ import { firstValueFrom } from 'rxjs';
 
 import { REMOTE_HOST } from '../../models/common.model';
 import type {
-    Unit,
+    UnitSummary,
     UnitFluffCatalog,
     UnitFluffCatalogEntry,
     UnitFluffCatalogMetadata,
     UnitImageFluff,
-} from '../../models/units.model';
+} from '../../models/unit-summary.model';
 import { DbService } from '../db.service';
 import { LoggerService } from '../logger.service';
 import { CatalogDownloadTrackerService } from './catalog-base.service';
@@ -45,7 +45,7 @@ export class UnitsFluffCatalogService {
         return `${REMOTE_HOST}/units-fluff.json`;
     }
 
-    public async getUnitFluff(unit: Pick<Unit, 'name' | 'fluff' | 'serverHost'>): Promise<UnitFluffCatalogEntry | undefined> {
+    public async getUnitFluff(unit: Pick<UnitSummary, 'name' | 'fluff' | 'serverHost'>): Promise<UnitFluffCatalogEntry | undefined> {
         try {
             const catalogEntry = unit.serverHost
                 ? await this.getCustomServerUnitFluff(unit.serverHost, unit.name)

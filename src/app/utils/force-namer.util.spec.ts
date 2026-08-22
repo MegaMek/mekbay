@@ -5,12 +5,12 @@
 import type { Era } from '../models/eras.model';
 import { MULFACTION_MERCENARY, MULFACTION_NONE, type MULFaction } from '../models/mulfactions.model';
 import type { ForceUnit } from '../models/force-unit.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { ForceNamerUtil } from './force-namer.util';
 import type { ForceAvailabilityContext } from './force-availability.util';
 
-function createUnit(id: number, year: number): Unit {
+function createUnit(id: number, year: number): UnitSummary {
     return createEmptyUnit({
         id,
         name: `Unit ${id}`,
@@ -20,7 +20,7 @@ function createUnit(id: number, year: number): Unit {
     });
 }
 
-function createForceUnit(unit: Unit): ForceUnit {
+function createForceUnit(unit: UnitSummary): ForceUnit {
     return {
         getUnit: () => unit
     } as ForceUnit;

@@ -7,7 +7,7 @@ import { TestBed } from '@angular/core/testing';
 import { CBTForce } from '../cbt-force.model';
 import { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CriticalSlot } from '../force-serialization';
-import type { Unit } from '../units.model';
+import type { UnitSummary } from '../unit-summary.model';
 import { EquipmentRegistry } from '../equipment-lookup';
 import { DataService } from '../../services/data.service';
 import { UnitInitializerService } from '../../services/unit-initializer.service';
@@ -53,7 +53,7 @@ function createTWForceUnit(critSlots: CriticalSlot[] = []): CBTForceUnit {
         jump: 4,
         engine: 'Fusion',
     });
-    dataService.getUnitByName.and.callFake((name: string): Unit | undefined => name === baseUnit.name ? baseUnit : undefined);
+    dataService.getUnitByName.and.callFake((name: string): UnitSummary | undefined => name === baseUnit.name ? baseUnit : undefined);
     const force = new TestCBTForce('Test Force', dataService, unitInitializer, injector);
     const forceUnit = new CBTForceUnit(baseUnit, force, dataService, unitInitializer, injector);
     forceUnit.locations = {

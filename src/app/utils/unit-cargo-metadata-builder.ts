@@ -4,9 +4,9 @@
 
 import type { EntityTransporter } from '../models/entity/types/transport';
 import { projectRecordSheetBays } from '../models/entity/bays/record-sheet-bay-projection';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 
-type UnitCargo = NonNullable<Unit['cargo']>;
+type UnitCargo = NonNullable<UnitSummary['cargo']>;
 
 function formatCapacity(value: number): string {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 }).format(value);

@@ -12,6 +12,7 @@ describe('inventory control target ownership', () => {
         const result = splitInventoryControlCalculatorState({
             isAirborne: true,
             targetMovementBracket: '7-9',
+            targetMovementDistance: 8,
             skidding: true,
             prone: true,
             targetHexCover: 'heavy',
@@ -21,11 +22,14 @@ describe('inventory control target ownership', () => {
             narcAboveWater: true,
             narcUnderwater: false,
             ecmShielded: true,
+            stealth: { short: 0, medium: 1, long: 2, secondaryTargetRestricted: true },
+            stealthSystem: 'stealth-armor',
         });
 
         expect(result.shared).toEqual({
             isAirborne: true,
             targetMovementBracket: '7-9',
+            targetMovementDistance: 8,
             skidding: true,
             prone: true,
             targetHexCover: 'heavy',
@@ -35,6 +39,8 @@ describe('inventory control target ownership', () => {
             narcAboveWater: true,
             narcUnderwater: false,
             ecmShielded: true,
+            stealth: { short: 0, medium: 1, long: 2, secondaryTargetRestricted: true },
+            stealthSystem: 'stealth-armor',
         });
         expect(result.local).toBeUndefined();
     });

@@ -4,7 +4,7 @@
 
 
 
-import type { Unit, AlphaStrikeArcStats } from '../models/units.model';
+import type { UnitSummary, AlphaStrikeArcStats } from '../models/unit-summary.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { ASForceUnit } from '../models/as-force-unit.model';
@@ -50,7 +50,7 @@ function formatArcDamage(arc: AlphaStrikeArcStats | undefined, type: 'STD' | 'CA
     return `${dmg.dmgS}/${dmg.dmgM}/${dmg.dmgL}/${dmg.dmgE}`;
 }
 
-function getMergedUnitTags(unit: Unit): string {
+function getMergedUnitTags(unit: UnitSummary): string {
     const merged = new Map<string, { label: string; quantity: number }>();
 
     const mergeTag = (tag: string, quantity: number) => {
@@ -81,7 +81,7 @@ function getMergedUnitTags(unit: Unit): string {
 /**
  * Converts units to CBT (Classic BattleTech) export format.
  */
-function unitToCBTRow(unit: Unit): Record<string, unknown> {
+function unitToCBTRow(unit: UnitSummary): Record<string, unknown> {
     return {
         chassis: unit.chassis,
         model: unit.model,
@@ -133,14 +133,14 @@ function unitToCBTRow(unit: Unit): Record<string, unknown> {
     };
 }
 
-function unitsToCBTRows(units: Unit[]): Record<string, unknown>[] {
+function unitsToCBTRows(units: UnitSummary[]): Record<string, unknown>[] {
     return units.map(unitToCBTRow);
 }
 
 /**
  * Converts units to AS (Alpha Strike) export format.
  */
-function unitToASRow(unit: Unit): Record<string, unknown> {
+function unitToASRow(unit: UnitSummary): Record<string, unknown> {
     const as = unit.as;
     return {
         chassis: unit.chassis,
@@ -200,7 +200,7 @@ function unitToASRow(unit: Unit): Record<string, unknown> {
     };
 }
 
-function unitsToASRows(units: Unit[]): Record<string, unknown>[] {
+function unitsToASRows(units: UnitSummary[]): Record<string, unknown>[] {
     return units.map(unitToASRow);
 }
 
@@ -303,7 +303,7 @@ function forceGroupsToRows(
  * @param filename - Optional custom filename (without extension)
  */
 export async function exportUnitsToExcel(
-    units: Unit[],
+    units: UnitSummary[],
     gameSystem: GameSystem,
     filename?: string
 ): Promise<void> {
@@ -353,7 +353,7 @@ export async function exportUnitsToExcel(
  * @param filename - Optional custom filename (without extension)
  */
 export async function exportUnitsToCSV(
-    units: Unit[],
+    units: UnitSummary[],
     gameSystem: GameSystem,
     filename?: string
 ): Promise<void> {

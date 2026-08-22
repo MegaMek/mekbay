@@ -6,7 +6,7 @@ import { BaseEntity } from '../models/entity/base-entity';
 import { InfantryBaseEntity } from '../models/entity/entities/infantry/infantry-base-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
 import { JumpShipEntity } from '../models/entity/entities/largecraft/jumpship-entity';
-import { Unit } from '../models/units.model';
+import { UnitSummary } from '../models/unit-summary.model';
 import { EntityType, MoveType } from '../models/entity/types';
 import { buildUnitCargoMetadata } from './unit-cargo-metadata-builder';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
@@ -34,7 +34,7 @@ export class UnitMetadataBuilder {
    * Returns only the fields that are currently implemented.
    * Use the compare-unit-output script to validate against units.json.
    */
-  build(entity: BaseEntity, unitFile?: string): Partial<Unit> {
+  build(entity: BaseEntity, unitFile?: string): Partial<UnitSummary> {
     const me = entity.mountedEngine();
     const alphaStrikeUnitStats = convertEntityToAlphaStrike(entity);
     return {
@@ -205,7 +205,7 @@ export class UnitMetadataBuilder {
     return !ENGINELESS_EXPORT_TYPES.has(entity.entityType);
   }
 
-  private buildWeightClass(entity: BaseEntity): Unit['weightClass'] {
+  private buildWeightClass(entity: BaseEntity): UnitSummary['weightClass'] {
     switch (entity.weightClass()) {
       case 'Ultra Light': return 'Ultra Light/PA(L)/Exoskeleton';
       case 'Light': return 'Light';
@@ -225,7 +225,7 @@ export class UnitMetadataBuilder {
     }
   }
 
-  private buildCapitalWeightClass(entity: BaseEntity, size: 'Small' | 'Large'): Unit['weightClass'] {
+  private buildCapitalWeightClass(entity: BaseEntity, size: 'Small' | 'Large'): UnitSummary['weightClass'] {
     switch (entity.entityType) {
       case 'WarShip': return `${size} Warship`;
       case 'SpaceStation': return `${size} Space Station`;
@@ -233,7 +233,7 @@ export class UnitMetadataBuilder {
     }
   }
 
-  private buildCapitalData(entity: BaseEntity): Unit['capital'] {
+  private buildCapitalData(entity: BaseEntity): UnitSummary['capital'] {
     if (!(entity instanceof JumpShipEntity)) return undefined;
     return {
       dropshipCapacity: entity.dockingCollarCount(),

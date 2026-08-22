@@ -4,7 +4,7 @@
 
 import { type BaseEntity, AeroEntity, BattleArmorEntity, InfantryEntity, MekEntity } from '../../entities';
 import { WeaponEquipment } from '../../../equipment.model';
-import type { AlphaStrikeUnitStats, ASUnitTypeCode } from '../../../units.model';
+import type { AlphaStrikeUnitStats, ASUnitTypeCode } from '../../../unit-summary.model';
 import {
   CalculationReportBuilder,
   NULL_CALCULATION_REPORT,

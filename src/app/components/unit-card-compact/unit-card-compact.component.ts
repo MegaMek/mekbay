@@ -4,7 +4,7 @@
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
@@ -31,7 +31,7 @@ export class UnitCardCompactComponent {
     gameService = inject(GameService);
 
     /** The unit to display. If null/undefined, shows "NO UNIT" placeholder. */
-    unit = input<Unit | null | undefined>(null);
+    unit = input<UnitSummary | null | undefined>(null);
 
     /** Optional game system override. When provided, determines which stats to display (PV/SZ/TMM vs BV/tons). Falls back to the global game service when null. */
     gameSystem = input<GameSystem | null>(null);

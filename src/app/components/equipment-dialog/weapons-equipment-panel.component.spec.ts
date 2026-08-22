@@ -5,7 +5,7 @@
 import { CdkDragDrop, CdkDragStart } from '@angular/cdk/drag-drop';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { AmmoEquipment, WeaponEquipment, MiscEquipment, type AmmoType, type EquipmentMap } from '../../models/equipment.model';
+import { AmmoEquipment, ArmorEquipment, WeaponEquipment, MiscEquipment, type AmmoType, type EquipmentMap } from '../../models/equipment.model';
 import { INVENTORY_CONTROL_TARGET_COLORS } from '../../models/inventory-control-runtime-state.model';
 import type { UnitModifierBreakdownEntry } from '../../models/rules/unit-type-rules';
 import type { EquipmentAction } from '../../models/cbt-force-unit.model';
@@ -84,7 +84,7 @@ function svgEntry(html: string): SVGElement {
 
 function entry(params: {
     id: string;
-    equipment?: WeaponEquipment | MiscEquipment | AmmoEquipment;
+    equipment?: WeaponEquipment | MiscEquipment | AmmoEquipment | ArmorEquipment;
     intrinsicPhysicalAttack?: boolean;
     destroyed?: boolean;
     el?: SVGElement;
@@ -218,7 +218,7 @@ function createComponent(
     } satisfies EquipmentDialogContext;
     const equipmentRules = registry.inventoryControlRules(context.queryContext);
     unitHarness
-        .setToHitAdjustments((entry, selectedAmmo) => registry.getToHitAdjustments(entry, context.queryContext, selectedAmmo))
+        .setToHitAdjustments((entry, attackContext) => registry.getToHitAdjustments(entry, context.queryContext, attackContext))
         .setInventoryControlRules({
             ...equipmentRules,
             applyDisplayEffects: (entry, display, displayOptions) => {
@@ -430,6 +430,29 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(groups.find(group => group.id === 'physical')?.rows.map(row => row.id)).toEqual(['punch', 'hatchet']);
         expect(groups.find(group => group.id === 'equipment')?.rows.map(row => row.id)).toEqual(['ecm']);
         expect(groups.find(group => group.id === 'ranged')?.rows.find(row => row.id === 'broken')?.destroyed).toBeTrue();
+    });
+
+    it('shows stealth armor in Equipment with a whole-unit location', () => {
+        const armor = new ArmorEquipment({
+            id: 'IS Stealth',
+            name: 'Stealth Armor',
+            type: 'armor',
+            flags: ['F_STEALTH'],
+            modes: ['Off', 'On'],
+            armor: { type: 'STEALTH' },
+        });
+        const stealth = entry({
+            id: 'stealth',
+            equipment: armor,
+            locations: new Set(['LA', 'LT', 'CT', 'RT', 'RA']),
+        });
+        const { unit } = createCBTForceUnitTestHarness({ components: [stealth] });
+
+        const row = getInventoryControlGroups(unit, new EquipmentRegistry({}))
+            .find(group => group.id === 'equipment')?.rows[0];
+
+        expect(row?.entry).toBe(stealth);
+        expect(row?.display.location).toBe('*');
     });
 
     it('excludes ammo in functionally destroyed locations from weapon ammo summaries', () => {
@@ -1974,7 +1997,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.updateInventoryControlTarget('A', {
             unitType: 'terrain',
             tnModifier: -4,
-            tnCalculator: { immobile: true }
+            tnCalculator: { immobile: false }
         });
         unit.setInventoryControlEntryTarget(row.entry, 'A');
 

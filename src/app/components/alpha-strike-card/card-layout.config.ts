@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ASUnitTypeCode } from "../../models/units.model";
+import type { ASUnitTypeCode } from "../../models/unit-summary.model";
 
 /*
  * 

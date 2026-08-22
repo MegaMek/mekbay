@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { GameSystem } from './models/common.model';
-import type { Unit } from './models/units.model';
+import type { UnitSummary } from './models/unit-summary.model';
 import { createEmptyUnit } from './testing/unit-test-helpers';
 import { __test__ } from './unit-search.worker';
 import type {
@@ -11,7 +11,7 @@ import type {
     UnitSearchWorkerQueryRequest,
 } from './utils/unit-search-worker-protocol.util';
 
-function createUnit(name: string): Unit {
+function createUnit(name: string): UnitSummary {
     return createEmptyUnit({
         name,
         chassis: 'Masakari',

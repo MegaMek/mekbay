@@ -4,7 +4,7 @@
 
 import { computed, type Injector, signal, type Signal } from '@angular/core';
 import type { DataService } from '../services/data.service';
-import type { Unit } from "./units.model";
+import type { UnitSummary } from "./unit-summary.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { AsAbilityLookupService } from '../services/as-ability-lookup.service';
 import { type ASSerializedState, type ASSerializedUnit, AS_SERIALIZED_UNIT_SCHEMA } from './force-serialization';
@@ -89,7 +89,7 @@ export class ASForceUnit extends ForceUnit {
         return mergedAbilities;
     });
 
-    constructor(unit: Unit,
+    constructor(unit: UnitSummary,
         force: ASForce,
         dataService: DataService,
         unitInitializer: UnitInitializerService,

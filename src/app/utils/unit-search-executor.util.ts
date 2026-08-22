@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { GameSystem } from '../models/common.model';
 import type { UnitSearchNormalization, UnitSearchNormalizationMatch } from '../models/unit-search-result.model';
 import { getForcePacks } from '../models/forcepacks.model';
@@ -24,7 +24,7 @@ import { findBvNormalizationMatch } from './bv-normalization.util';
 import { findPvNormalizationMatch } from './pv-normalization.util';
 
 export interface UnitSearchExecutionRequest {
-    units: Unit[];
+    units: UnitSummary[];
     parsedQuery: ParseResult;
     searchTokens: SearchTokensGroup[];
     uiOnlyFilterState?: FilterState;
@@ -34,15 +34,15 @@ export interface UnitSearchExecutionRequest {
     sortDirection: 'asc' | 'desc';
     bvPvLimit: number;
     forceTotalBvPv: number;
-    getAdjustedBV: (unit: Unit) => number;
-    getAdjustedPV: (unit: Unit) => number;
+    getAdjustedBV: (unit: UnitSummary) => number;
+    getAdjustedPV: (unit: UnitSummary) => number;
     normalization?: UnitSearchNormalization | null;
-    unitBelongsToEra: (unit: Unit, eraName: string, scope?: AvailabilityFilterScope) => boolean;
-    unitBelongsToFaction: (unit: Unit, factionName: string, eraNames?: readonly string[]) => boolean;
-    unitMatchesAvailabilityFrom?: (unit: Unit, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
-    unitMatchesAvailabilityRarity?: (unit: Unit, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
-    unitBelongsToForcePack: (unit: Unit, packName: string) => boolean;
-    unitMatchesFormationTarget?: (unit: Unit, formationName: string) => boolean;
+    unitBelongsToEra: (unit: UnitSummary, eraName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitBelongsToFaction: (unit: UnitSummary, factionName: string, eraNames?: readonly string[]) => boolean;
+    unitMatchesAvailabilityFrom?: (unit: UnitSummary, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitMatchesAvailabilityRarity?: (unit: UnitSummary, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitBelongsToForcePack: (unit: UnitSummary, packName: string) => boolean;
+    unitMatchesFormationTarget?: (unit: UnitSummary, formationName: string) => boolean;
     getAllEraNames: () => string[];
     getAllFactionNames: () => string[];
     getAllAvailabilityFromNames?: () => string[];
@@ -52,11 +52,11 @@ export interface UnitSearchExecutionRequest {
     getIndexedUnitIds?: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => ReadonlySet<string> | undefined;
     getIndexedFilterValues?: (filterKey: string) => readonly string[];
     availabilitySortScope?: AvailabilityFilterScope;
-    getMegaMekRaritySortScore?: (unit: Unit, scope?: AvailabilityFilterScope) => number;
+    getMegaMekRaritySortScore?: (unit: UnitSummary, scope?: AvailabilityFilterScope) => number;
 }
 
 export interface UnitSearchExecutionResult {
-    results: Unit[];
+    results: UnitSummary[];
     normalizationMatchesByUnitName: ReadonlyMap<string, UnitSearchNormalizationMatch>;
     telemetryStages: SearchTelemetryStage[];
     totalMs: number;
@@ -132,7 +132,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         && ((normalization.kind === 'bv' && request.gameSystem === GameSystem.CLASSIC)
             || (normalization.kind === 'pv' && request.gameSystem === GameSystem.ALPHA_STRIKE));
     const normalizationMatchCache = new Map<string, UnitSearchNormalizationMatch | null>();
-    const resolveNormalizationMatch = (unit: Unit): UnitSearchNormalizationMatch | null => {
+    const resolveNormalizationMatch = (unit: UnitSummary): UnitSearchNormalizationMatch | null => {
         if (!normalizationEnabled) {
             return null;
         }
@@ -145,25 +145,25 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         }
         return normalizationMatchCache.get(unit.name) ?? null;
     };
-    const getContextualAdjustedBV = (unit: Unit): number => {
+    const getContextualAdjustedBV = (unit: UnitSummary): number => {
         return resolveNormalizationMatch(unit)?.adjustedValue ?? request.getAdjustedBV(unit);
     };
-    const getContextualAdjustedPV = (unit: Unit): number => {
+    const getContextualAdjustedPV = (unit: UnitSummary): number => {
         return resolveNormalizationMatch(unit)?.adjustedValue ?? request.getAdjustedPV(unit);
     };
 
     const context: EvaluatorContext = {
         getProperty,
-        getUnitId: (unit: Unit) => unit.name,
+        getUnitId: (unit: UnitSummary) => unit.name,
         getAdjustedBV: getContextualAdjustedBV,
         getAdjustedPV: getContextualAdjustedPV,
         gameSystem: request.gameSystem,
-        matchesText: (unit: Unit, text: string) => {
+        matchesText: (unit: UnitSummary, text: string) => {
             const searchableText = unit._searchKey || `${unit.chassis ?? ''} ${unit.model ?? ''}`.toLowerCase();
             const tokens = parseSearchQuery(text);
             return matchesSearch(searchableText, tokens, true);
         },
-        getCountableValues: (unit: Unit, filterKey: string) => {
+        getCountableValues: (unit: UnitSummary, filterKey: string) => {
             switch (filterKey) {
                 case 'componentName':
                 case 'weaponType':
@@ -184,7 +184,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         getAllAvailabilityRarityNames: request.getAllAvailabilityRarityNames,
         getAllFormationNames: request.getAllFormationNames,
         getAllForcePackNames: () => getForcePacks().map(pack => pack.name),
-        getASMovementValues: (unit: Unit) => {
+        getASMovementValues: (unit: UnitSummary) => {
             const mvm = unit.as?.MVm;
             if (!mvm) return [];
             if (selectedMotiveCodes === null) {
@@ -259,15 +259,15 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
     }
 
     const sorted = [...results];
-    let relevanceScores: WeakMap<Unit, number> | null = null;
-    let megaMekRarityScores: WeakMap<Unit, number> | null = null;
+    let relevanceScores: WeakMap<UnitSummary, number> | null = null;
+    let megaMekRarityScores: WeakMap<UnitSummary, number> | null = null;
     if (request.sortKey === '' && hasTextSearch) {
         relevanceScores = measureStage(
             telemetryStages,
             'relevance-prep',
             sorted.length,
             () => {
-                const scores = new WeakMap<Unit, number>();
+                const scores = new WeakMap<UnitSummary, number>();
 
                 for (const unit of sorted) {
                     const chassis = (unit.chassis ?? '').toLowerCase();
@@ -301,7 +301,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
     }
 
     if (isMegaMekRaritySortKey(request.sortKey) && request.getMegaMekRaritySortScore) {
-        megaMekRarityScores = new WeakMap<Unit, number>();
+        megaMekRarityScores = new WeakMap<UnitSummary, number>();
         for (const unit of sorted) {
             megaMekRarityScores.set(unit, request.getMegaMekRaritySortScore(unit, request.availabilitySortScope));
         }

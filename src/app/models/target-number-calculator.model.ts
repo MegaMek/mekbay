@@ -12,7 +12,7 @@ import {
     type UnitWaterDepth,
     type UnitWaterState,
 } from './unit-cover.model';
-import type { UnitHeight } from './units.model';
+import type { UnitHeight } from './unit-summary.model';
 
 export const TN_SKIDDING_MODIFIER = 2;
 export const TN_BATTLE_ARMOR_MODIFIER = 1;
@@ -65,6 +65,37 @@ export const TN_TARGET_UNIT_TYPE_OPTIONS: readonly TnTargetUnitTypeOption[] = [
     { value: 'building', label: 'Building' },
 ] as const;
 
+const TN_LARGE_TARGET_INELIGIBLE_UNIT_TYPES = new Set<TnTargetUnitType>([
+    'battle-armor',
+    'infantry',
+    'protoMek',
+]);
+
+/**
+ * Whether the selected target kind can be Large. Aero remains eligible for Large Support aircraft,
+ * while terrain and buildings can be designated Large by a mission. Unknown legacy types remain eligible.
+ */
+export function canTnTargetTypeBeLarge(unitType: TnTargetUnitType | null | undefined): boolean {
+    return unitType === null
+        || unitType === undefined
+        || !TN_LARGE_TARGET_INELIGIBLE_UNIT_TYPES.has(unitType);
+}
+
+/**
+ * Whether a Large target receives its to-hit modifier in the current state.
+ *
+ * The calculator's single Jumped/Airborne flag represents two different TW states. Jumping Meks
+ * and airborne non-aerospace units still retain the Large Support/Superheavy modifier; MegaMek's
+ * `Entity.isAirborne()` exclusion applies to airborne aerospace targets.
+ */
+export function canApplyTnLargeTargetModifier(
+    unitType: TnTargetUnitType | null | undefined,
+    isAirborne: boolean | null | undefined,
+): boolean {
+    return canTnTargetTypeBeLarge(unitType)
+        && !(unitType === 'aero' && isAirborne === true);
+}
+
 export type TnTargetMovementBracketId = '0-2' | '3-4' | '5-6' | '7-9' | '10-17' | '18-24' | '25+';
 
 export interface TnTargetMovementBracket {
@@ -89,10 +120,80 @@ export type TnInterveningWoods = 'none' | 'light1' | 'light2';
 export type TnTargetHexCover = 'none' | 'light' | 'heavy';
 export type TnAttackDirection = 'front' | 'left' | 'rear' | 'right';
 export type TnSpotterMoveMode = 'stationary' | 'walk' | 'run' | 'jump';
+export type TnRangeBracket = 'short' | 'medium' | 'long' | 'extreme';
+
+export interface TnRangeModifiers {
+    readonly short: number;
+    readonly medium: number;
+    readonly long: number;
+}
+
+export interface TnStealthModifiers extends TnRangeModifiers {
+    /** Active Mek/vehicle stealth armor cannot be selected as a secondary target. */
+    readonly secondaryTargetRestricted?: boolean;
+    /** Conventional infantry use this profile; when omitted, the normal profile applies. */
+    readonly conventionalInfantry?: TnRangeModifiers;
+}
+
+export type TnStealthSystem =
+    | 'stealth-armor'
+    | 'null-signature'
+    | 'chameleon'
+    | 'chameleon-null'
+    | 'ba-basic'
+    | 'ba-standard'
+    | 'ba-improved'
+    | 'mimetic'
+    | 'simple-camo';
+
+export type TnVisualCamoSystem = Extract<TnStealthSystem, 'mimetic' | 'simple-camo'>;
+
+/** Manual targets use `true`; linked units may supply their exact range profile. */
+export type TnStealthState = boolean | TnStealthModifiers;
+
+export const TN_STANDARD_STEALTH_MODIFIERS: TnStealthModifiers = {
+    short: 0,
+    medium: 1,
+    long: 2,
+    secondaryTargetRestricted: true,
+    conventionalInfantry: { short: 0, medium: 0, long: 0 },
+};
+
+export const TN_NULL_SIGNATURE_MODIFIERS: TnStealthModifiers = {
+    short: 0,
+    medium: 1,
+    long: 2,
+    conventionalInfantry: { short: 0, medium: 0, long: 0 },
+};
+
+export const TN_CHAMELEON_MODIFIERS: TnStealthModifiers = {
+    short: 0,
+    medium: 1,
+    long: 2,
+};
+
+export const TN_CHAMELEON_NULL_SIGNATURE_MODIFIERS: TnStealthModifiers = {
+    short: 0,
+    medium: 2,
+    long: 4,
+    conventionalInfantry: TN_CHAMELEON_MODIFIERS,
+};
+
+export function getVisualCamoTnModifiers(
+    system: TnVisualCamoSystem,
+    targetMoveDistance: number,
+): TnStealthModifiers {
+    const stationaryModifier = system === 'mimetic' ? 3 : 2;
+    const modifier = Math.max(0, stationaryModifier - Math.max(0, targetMoveDistance));
+    return { short: modifier, medium: modifier, long: modifier };
+}
 
 export interface TnTargetNumberCalculatorState {
+    /** The target jumped or is airborne; non-aerospace targets receive the additional +1 modifier. */
     isAirborne?: boolean;
     targetMovementBracket?: TnTargetMovementBracketId | null;
+    /** Exact distance when known; manual input preserves 0/1/2 for movement-dependent camouflage. */
+    targetMovementDistance?: number | null;
     skidding?: boolean;
     prone?: boolean;
     immobile?: boolean;
@@ -105,6 +206,9 @@ export interface TnTargetNumberCalculatorState {
     indirectFire?: boolean;
     secondaryTarget?: boolean;
     secondaryTargetSideBack?: boolean;
+    /** Standing height used only for water/building geometry; prone posture is applied separately. */
+    targetHeight?: UnitHeight;
+    /** Applies the scenario/unit-size Large Target to-hit modifier. */
     largeTarget?: boolean;
     spotterMoveMode?: TnSpotterMoveMode;
     spotterDeclaredAttacks?: boolean;
@@ -112,6 +216,10 @@ export interface TnTargetNumberCalculatorState {
     narcUnderwater?: boolean;
     tagged?: boolean;
     ecmShielded?: boolean;
+    /** Range-dependent protection supplied by an active stealth system. */
+    stealth?: TnStealthState;
+    /** Identifies the selected system when its profile changes with movement. */
+    stealthSystem?: TnStealthSystem;
     /** Attacker-local delta for rules not represented by the calculator controls. */
     customModifier?: number;
 }
@@ -119,15 +227,62 @@ export interface TnTargetNumberCalculatorState {
 export interface TnTargetNumberCalculationInput extends TnTargetNumberCalculatorState {
     unitType?: TnTargetUnitType;
     range?: number;
+    /** Effective weapon bracket, after any C3 range adjustment. */
+    rangeBracket?: TnRangeBracket;
+    /** Conventional infantry ignore electronic stealth, but not visual camouflage or Chameleon LPS. */
+    attackerIsConventionalInfantry?: boolean;
 }
 
+export type TnTargetModifierId =
+    | 'battle-armor'
+    | 'airborne'
+    | 'target-movement'
+    | 'skidding'
+    | 'prone'
+    | 'immobile'
+    | 'intervening-woods'
+    | 'target-hex-cover'
+    | 'building-cover'
+    | 'partial-cover'
+    | 'secondary-target'
+    | 'secondary-target-side-back'
+    | 'large-target'
+    | 'stealth'
+    | 'custom'
+    | 'indirect-fire'
+    | 'spotter-movement'
+    | 'spotter-declared-attack'
+    | 'semi-guided'
+    | 'narc';
+
+export type TnTargetModifierAdjustmentGroup = 'target-movement' | 'terrain' | 'partial-cover';
+
+export type TnTargetModifierGroupTotals = Readonly<Record<TnTargetModifierAdjustmentGroup, number>>;
+
 export interface TnTargetModifierBreakdownEntry {
+    id: TnTargetModifierId;
     label: string;
     modifier: number;
+    targetHexCover?: Exclude<TnTargetHexCover, 'none'>;
     partialCoverSource?: 'manual' | 'water' | 'building';
-    guidanceAdjustment?: 'movement' | 'terrain' | 'partial-cover';
+    adjustmentGroup?: TnTargetModifierAdjustmentGroup;
     ignoredByNarcGuidance?: boolean;
     ignoredBySemiGuidedGuidance?: boolean;
+}
+
+/** Compiles semantic totals once so equipment handlers do not need to inspect display labels or rebuild target rules. */
+export function getTnTargetModifierGroupTotals(
+    breakdown: readonly TnTargetModifierBreakdownEntry[],
+): TnTargetModifierGroupTotals {
+    const totals: Record<TnTargetModifierAdjustmentGroup, number> = {
+        'target-movement': 0,
+        terrain: 0,
+        'partial-cover': 0,
+    };
+    for (const modifier of breakdown) {
+        if (modifier.adjustmentGroup) totals[modifier.adjustmentGroup] += modifier.modifier;
+    }
+    return totals;
 }
 
 export function getTargetMovementDistanceModifier(distance: number | null | undefined): number {
@@ -151,12 +306,19 @@ export function isStaticTargetType(unitType: TnTargetUnitType | null | undefined
     return unitType === 'terrain' || unitType === 'building';
 }
 
+export function isTnTargetImmobile(
+    unitType: TnTargetUnitType | null | undefined,
+    immobile: boolean | null | undefined,
+): boolean {
+    return isStaticTargetType(unitType) || immobile === true;
+}
+
 export function isTerrainTargetType(unitType: TnTargetUnitType | null | undefined): boolean {
     return unitType === 'terrain';
 }
 
 export function resolveTnTargetWaterState(
-    input: Pick<TnTargetNumberCalculatorState, 'waterDepth' | 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
+    input: Pick<TnTargetNumberCalculatorState, 'waterDepth' | 'targetHeight' | 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
 ): UnitWaterState {
     return resolveUnitWaterState(
         input.waterDepth,
@@ -165,7 +327,7 @@ export function resolveTnTargetWaterState(
 }
 
 export function resolveTnTargetBuildingCoverState(
-    input: Pick<TnTargetNumberCalculatorState, 'buildingCover' | 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
+    input: Pick<TnTargetNumberCalculatorState, 'buildingCover' | 'targetHeight' | 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
 ): UnitBuildingCoverState {
     return resolveUnitBuildingCoverState(
         input.buildingCover,
@@ -174,17 +336,21 @@ export function resolveTnTargetBuildingCoverState(
 }
 
 function resolveTnTargetHeight(
-    input: Pick<TnTargetNumberCalculatorState, 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
+    input: Pick<TnTargetNumberCalculatorState, 'targetHeight' | 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
 ): UnitHeight {
     const isMek = input.unitType?.startsWith('mek-') === true;
-    const standingHeight: UnitHeight = !isMek ? 1 : input.largeTarget === true ? 3 : 2;
+    const standingHeight: UnitHeight = input.targetHeight ?? (isMek ? (input.largeTarget ? 3 : 2) : 1);
     return input.prone && standingHeight > 1
         ? (standingHeight - 1) as UnitHeight
         : standingHeight;
 }
 
-export function getTargetAirborneModifier(isAirborne: boolean | null | undefined): number {
-    return isAirborne ? TN_AIRBORNE_MOVE_TYPE_MODIFIER : 0;
+/** Additional Jumped/Airborne modifier; aerospace targeting uses its own movement rules. */
+export function getTargetAirborneModifier(
+    isAirborne: boolean | null | undefined,
+    unitType?: TnTargetUnitType | null,
+): number {
+    return isAirborne && unitType !== 'aero' ? TN_AIRBORNE_MOVE_TYPE_MODIFIER : 0;
 }
 
 export function getTargetProneModifier(range: number): number {
@@ -205,6 +371,27 @@ export function getTargetHexCoverModifier(cover: TnTargetHexCover | null | undef
         case 'heavy': return 2;
         default: return 0;
     }
+}
+
+export function getStealthTnModifier(
+    stealth: TnStealthState | null | undefined,
+    rangeBracket: TnRangeBracket | null | undefined,
+    attackerIsConventionalInfantry = false,
+): number {
+    if (!stealth || !rangeBracket) return 0;
+    const profile = stealth === true ? TN_STANDARD_STEALTH_MODIFIERS : stealth;
+    const effectiveProfile = attackerIsConventionalInfantry
+        ? profile.conventionalInfantry ?? profile
+        : profile;
+    const value = rangeBracket === 'extreme' ? effectiveProfile.long : effectiveProfile[rangeBracket];
+    return Number.isFinite(value) ? value : 0;
+}
+
+export function stealthDisallowsSecondaryTarget(
+    stealth: TnStealthState | null | undefined,
+): boolean {
+    return stealth === true
+        || (!!stealth && typeof stealth === 'object' && stealth.secondaryTargetRestricted === true);
 }
 
 export function getIndirectFireModifier(indirectFire: boolean | null | undefined, spotterMoveMode: TnSpotterMoveMode | null | undefined, spotterDeclaredAttacks: boolean | null | undefined): number {
@@ -236,46 +423,53 @@ export function calculateTargetTnModifierBreakdown(
     const prone = input.prone ?? false;
     const waterState = resolveTnTargetWaterState(input);
     const buildingCoverState = resolveTnTargetBuildingCoverState(input);
-    const immobile = input.immobile ?? (staticTarget && input.prone === undefined);
+    const immobile = isTnTargetImmobile(input.unitType, input.immobile);
     const terrainTarget = isTerrainTargetType(input.unitType);
+    const aerospaceTarget = input.unitType === 'aero';
     const breakdown: TnTargetModifierBreakdownEntry[] = [];
     const add = (
+        id: TnTargetModifierId,
         label: string,
         modifier: number,
-        metadata: Omit<TnTargetModifierBreakdownEntry, 'label' | 'modifier'> = {},
+        metadata: Omit<TnTargetModifierBreakdownEntry, 'id' | 'label' | 'modifier'> = {},
         includeZero = false,
     ) => {
         if (modifier !== 0 || includeZero) {
-            breakdown.push({ label, modifier, ...metadata });
+            breakdown.push({ id, label, modifier, ...metadata });
         }
     };
 
-    add('Battle Armor', getTargetUnitTypeModifier(input.unitType));
-    if (!staticTarget) {
-        add('Airborne', getTargetAirborneModifier(input.isAirborne));
+    add('battle-armor', 'Battle Armor', getTargetUnitTypeModifier(input.unitType));
+    if (!staticTarget && !aerospaceTarget) {
+        add('airborne', 'Airborne', getTargetAirborneModifier(input.isAirborne, input.unitType), { adjustmentGroup: 'target-movement' });
         const movementBracket = TN_TARGET_MOVEMENT_BRACKETS.find(bracket => bracket.id === input.targetMovementBracket);
-        if (movementBracket) add(`Moved ${movementBracket.label}`, movementBracket.modifier, { guidanceAdjustment: 'movement' });
-        add('Skidding', gameRules.supportsSkidding && input.skidding ? TN_SKIDDING_MODIFIER : 0);
+        if (movementBracket) add('target-movement', `Moved ${movementBracket.label}`, movementBracket.modifier, { adjustmentGroup: 'target-movement' });
+        add('skidding', 'Skidding', gameRules.supportsSkidding && input.skidding ? TN_SKIDDING_MODIFIER : 0, { adjustmentGroup: 'target-movement' });
     }
-    add(range <= ADJACENT_RANGE ? 'Prone (adjacent)' : 'Prone', !staticTarget && prone ? getTargetProneModifier(range) : 0);
-    add('Immobile', immobile ? TN_IMMOBILE : 0);
-    add('Intervening Woods', getInterveningWoodsModifier(input.interveningWoods), {
-        guidanceAdjustment: 'terrain',
+    add('prone', range <= ADJACENT_RANGE ? 'Prone (adjacent)' : 'Prone', !staticTarget && prone ? getTargetProneModifier(range) : 0);
+    add('immobile', 'Immobile', immobile ? TN_IMMOBILE : 0);
+    add('intervening-woods', 'Intervening Woods', getInterveningWoodsModifier(input.interveningWoods), {
+        adjustmentGroup: 'terrain',
         ignoredByNarcGuidance: true,
         ignoredBySemiGuidedGuidance: true,
     });
     if (!terrainTarget && !input.waterDepth && !input.buildingCover) {
-        const coverModifier = getTargetHexCoverModifier(input.targetHexCover);
-        add(input.targetHexCover === 'heavy' ? 'Heavy Cover' : 'Light Cover', coverModifier, {
-            guidanceAdjustment: 'terrain',
-            ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
-            ignoredBySemiGuidedGuidance: true,
-        });
+        const targetHexCover = input.targetHexCover === 'light' || input.targetHexCover === 'heavy'
+            ? input.targetHexCover
+            : null;
+        if (targetHexCover) {
+            add('target-hex-cover', targetHexCover === 'heavy' ? 'Heavy Cover' : 'Light Cover', getTargetHexCoverModifier(targetHexCover), {
+                targetHexCover,
+                adjustmentGroup: 'terrain',
+                ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
+                ignoredBySemiGuidedGuidance: true,
+            });
+        }
     }
-    add('Heavy Cover (building)', !staticTarget && buildingCoverState.effect === 'heavy'
+    add('building-cover', 'Heavy Cover (building)', !staticTarget && buildingCoverState.effect === 'heavy'
         ? buildingCoverState.modifier
         : 0, {
-            guidanceAdjustment: 'terrain',
+            adjustmentGroup: 'terrain',
             ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
             ignoredBySemiGuidedGuidance: true,
         });
@@ -302,20 +496,28 @@ export function calculateTargetTnModifierBreakdown(
         water: 'Partial Cover (water)',
         building: 'Partial Cover (building)',
     }[partialCoverSource];
-    add(partialCoverLabel, partialCoverModifier, {
+    add('partial-cover', partialCoverLabel, partialCoverModifier, {
         partialCoverSource,
-        guidanceAdjustment: partialCoverSource === 'manual' ? 'partial-cover' : 'terrain',
+        adjustmentGroup: partialCoverSource === 'manual' ? 'partial-cover' : 'terrain',
         ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
         ignoredBySemiGuidedGuidance: true,
     });
-    add('Secondary Target', input.secondaryTarget ? TN_SECONDARY_TARGET_MODIFIER : 0);
-    add('Secondary Target (side/back)', gameRules.supportsSecondaryTargetSideBack && !input.secondaryTarget && input.secondaryTargetSideBack
+    add('secondary-target', 'Secondary Target', input.secondaryTarget ? TN_SECONDARY_TARGET_MODIFIER : 0);
+    add('secondary-target-side-back', 'Secondary Target (side/back)', gameRules.supportsSecondaryTargetSideBack && !input.secondaryTarget && input.secondaryTargetSideBack
         ? TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER : 0);
-    add('Large Target', gameRules.supportsLargeTarget && input.largeTarget ? TN_LARGE_TARGET_MODIFIER : 0);
-    add('Custom', normalizeTargetCustomModifier(input.customModifier));
+    add('large-target', 'Large Target', input.largeTarget
+        && canApplyTnLargeTargetModifier(input.unitType, input.isAirborne)
+        ? TN_LARGE_TARGET_MODIFIER
+        : 0);
+    add('stealth', 'Stealth', getStealthTnModifier(
+        input.stealth,
+        input.rangeBracket,
+        input.attackerIsConventionalInfantry,
+    ));
+    add('custom', 'Custom', normalizeTargetCustomModifier(input.customModifier));
 
     if (input.indirectFire) {
-        add('Indirect Fire', TN_INDIRECT_FIRE_MODIFIER, {}, true);
+        add('indirect-fire', 'Indirect Fire', TN_INDIRECT_FIRE_MODIFIER, {}, true);
         const spotterMovementModifier = getDefaultAttackerMovementModifier(input.spotterMoveMode ?? 'stationary');
         const spotterMoveLabel = input.spotterMoveMode
             ? `Spotter Moved (${input.spotterMoveMode[0].toUpperCase()}${input.spotterMoveMode.slice(1)})`
@@ -324,8 +526,8 @@ export function calculateTargetTnModifierBreakdown(
             ignoredByNarcGuidance: true,
             ignoredBySemiGuidedGuidance: true,
         } as const;
-        add(spotterMoveLabel, spotterMovementModifier, ignoredSpotterModifier);
-        add('Spotter Declared Attack', input.spotterDeclaredAttacks ? 1 : 0, ignoredSpotterModifier);
+        add('spotter-movement', spotterMoveLabel, spotterMovementModifier, ignoredSpotterModifier);
+        add('spotter-declared-attack', 'Spotter Declared Attack', input.spotterDeclaredAttacks ? 1 : 0, ignoredSpotterModifier);
     }
 
     return breakdown;

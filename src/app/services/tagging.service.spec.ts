@@ -7,7 +7,7 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { TagSelectorComponent } from '../components/tag-selector/tag-selector.component';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import type { TagData } from './db.service';
 import { DataService } from './data.service';
 import { DialogsService } from './dialogs.service';
@@ -18,7 +18,7 @@ import { TaggingService } from './tagging.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 
-function createUnit(name: string, chassis = 'Dasher'): Unit {
+function createUnit(name: string, chassis = 'Dasher'): UnitSummary {
     return createEmptyUnit({
         name,
         chassis,

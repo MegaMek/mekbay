@@ -5,7 +5,7 @@
 import { Component, ChangeDetectionStrategy, computed, input, output, inject } from '@angular/core';
 import { UpperCasePipe } from '@angular/common';
 import type { ForceUnit } from '../../models/force-unit.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { OptionsService } from '../../services/options.service';
 import { CdkMenuModule } from '@angular/cdk/menu';
@@ -56,7 +56,7 @@ export class UnitBlockComponent {
     onRepairUnit = output<MouseEvent>();
     onEditPilot = output<UnitBlockPilotEditEvent>();
 
-    unit = computed<Unit | undefined>(() => {
+    unit = computed<UnitSummary | undefined>(() => {
         return this.forceUnit()?.getUnit();
     });
 

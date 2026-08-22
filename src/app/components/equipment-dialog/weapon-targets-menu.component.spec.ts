@@ -117,6 +117,19 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         ]);
     });
 
+    it('labels a manual TN as a complete override', () => {
+        const manualTarget = { ...TARGET, tnModifier: 3, manualTnModifier: 3 };
+        fixture.componentRef.setInput('targets', [manualTarget]);
+        fixture.detectChanges();
+
+        const label = fixture.nativeElement.querySelector('.tn-modifier-label') as HTMLElement;
+        const input = fixture.nativeElement.querySelector('.tn-modifier-value') as HTMLInputElement;
+        expect(label.textContent).toContain('TN Override');
+        expect(component.tnModifierTooltipFor(manualTarget)).toContain('Complete target-side override');
+        expect(input.getAttribute('aria-label')).toBe('TN Modifier (complete manual override)');
+        expect(input.title).toContain('weapon-specific target effects are disabled');
+    });
+
     it('renders calculator modifier pills (no distance or C3 values)', () => {
         const target = {
             ...TARGET,
@@ -159,6 +172,17 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         expect(pillContainer.textContent).not.toContain('C3');
     });
 
+    it('uses typed target-hex cover metadata for wood pill labels', () => {
+        expect(component.targetModifierPills({
+            ...TARGET,
+            tnCalculator: { targetHexCover: 'light' },
+        })).toEqual([{ label: 'Light Wood', modifier: 1 }]);
+        expect(component.targetModifierPills({
+            ...TARGET,
+            tnCalculator: { targetHexCover: 'heavy' },
+        })).toEqual([{ label: 'Heavy Wood', modifier: 2 }]);
+    });
+
     it('hides calculator modifier pills for manual TN overrides', () => {
         expect(component.targetModifierPills({
             ...TARGET,
@@ -196,6 +220,24 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         fixture.componentRef.setInput('hasSemiGuidedMissiles', false);
         fixture.detectChanges();
         expect(component.targetModifierPills(target)).toEqual([]);
+    });
+
+    it('renders active stealth as a target badge without baking in one weapon bracket', () => {
+        const target = {
+            ...TARGET,
+            tnCalculator: {
+                stealth: { short: 0, medium: 1, long: 2, secondaryTargetRestricted: true },
+            },
+        };
+        fixture.componentRef.setInput('targets', [target]);
+        fixture.detectChanges();
+
+        expect(component.targetModifierPills(target)).toEqual([{ label: 'Stealth' }]);
+        const pill = fixture.nativeElement.querySelector(
+            '.target-modifier-pills:not(.target-modifier-pills-fallback) .target-modifier-pill',
+        ) as HTMLElement;
+        expect(pill.querySelector('.modifier-label')?.textContent?.trim()).toBe('Stealth');
+        expect(pill.querySelector('.modifier-badge')).toBeNull();
     });
 
     it('does not render stale TAG guidance for a TW infantry target', () => {
@@ -430,7 +472,9 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
             { label: 'Immobile', modifier: -4 },
             { label: 'Indirect', modifier: 1 },
         ]);
-        expect(component.targetModifierPills(terrainTarget)).toEqual([]);
+        expect(component.targetModifierPills(terrainTarget)).toEqual([
+            { label: 'Immobile', modifier: -4 },
+        ]);
     });
 
     it('does not emit mutations while read-only', () => {

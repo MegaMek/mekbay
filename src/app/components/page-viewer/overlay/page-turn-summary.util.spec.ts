@@ -98,6 +98,20 @@ describe('composeTurnSummaryHeatRows', () => {
         ]);
     });
 
+    it('combines passive equipment heat into one Equipment row', () => {
+        expect(composeTurnSummaryHeatRows(
+            [
+                { id: 'equipment:null-signature', label: 'Equipment', value: 10 },
+                { id: 'engine', label: 'Engine', value: 5 },
+                { id: 'equipment:chameleon-lps', label: 'Equipment', value: 6 },
+            ],
+            { hasSelection: false, value: 0, entryIds: new Set() }
+        )).toEqual([
+            { id: 'equipment', label: 'Equipment', value: 16 },
+            { id: 'engine', label: 'Engine', value: 5 },
+        ]);
+    });
+
     it('adds extra underwater dissipation as a blue negative source', () => {
         expect(composeTurnSummaryHeatRows(
             [{ id: 'movement', label: 'Movement', value: 2 }],

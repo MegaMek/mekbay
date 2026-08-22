@@ -7,7 +7,7 @@ import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
 import type { Force } from '../../models/force.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { OptionsService } from '../../services/options.service';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { ForceBudgetOptimizerDialogComponent } from './force-budget-optimizer-dialog.component';
@@ -20,9 +20,9 @@ interface ClassicSkillPrioritiesTestApi {
 
 interface ForceBudgetOptimizerDialogTestApi {
     targetBudget(): number;
-    getCBTSkillPriorities(unit: Unit): ClassicSkillPrioritiesTestApi;
+    getCBTSkillPriorities(unit: UnitSummary): ClassicSkillPrioritiesTestApi;
     getCBTSmartScore(priorities: ClassicSkillPrioritiesTestApi, gunnery: number, piloting: number): number;
-    getPhysicalDamagePerTurn(unit: Unit): number;
+    getPhysicalDamagePerTurn(unit: UnitSummary): number;
     selectBestAffordableState(states: readonly OptimizationStateTestApi[], targetBudget: number): OptimizationStateTestApi | null;
 }
 
@@ -81,14 +81,14 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
         expect(component.targetBudget()).toBe(5_000);
     });
 
-    function createUnit(overrides: Partial<Unit>): Unit {
+    function createUnit(overrides: Partial<UnitSummary>): UnitSummary {
         return {
             type: 'Mek',
             tons: 0,
             dpt: 0,
             comp: [],
             ...overrides,
-        } as Unit;
+        } as UnitSummary;
     }
 
     it('uses ranged DPT and physical plus kick damage as comparable Classic skill priorities', async () => {

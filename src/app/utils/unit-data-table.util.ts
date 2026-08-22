@@ -4,7 +4,7 @@
 
 import type { TemplateRef } from '@angular/core';
 import { GameSystem } from '../models/common.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { FormatNumberPipe } from '../pipes/format-number.pipe';
 import type { DataTableCellContext, DataTableColumn } from '../components/data-table/data-table.component';
 import { formatASDamageValue, isASDamageFilterKey } from './as-damage.util';
@@ -56,7 +56,7 @@ export interface UnitDataTableSortSlot<Row> {
 
 export interface UnitDataTableColumnOptions<Row> {
     readonly gameSystem: GameSystem;
-    readonly getUnit: (row: Row) => Unit | null | undefined;
+    readonly getUnit: (row: Row) => UnitSummary | null | undefined;
     readonly isSortActive: (keyOrGroup: string) => boolean;
     readonly templates: UnitDataTableCellTemplates<Row>;
     readonly valueTrack?: number;
@@ -107,9 +107,9 @@ export function isUnitDataTableSortActive(
 
 /** Formats a sort value that is not already represented by a standard table column. */
 export function formatUnitDataTableSortSlotValue(
-    unit: Unit,
+    unit: UnitSummary,
     sortKey: string,
-    resolveRawValue: (unit: Unit, key: string) => unknown = getNestedProperty,
+    resolveRawValue: (unit: UnitSummary, key: string) => unknown = getNestedProperty,
 ): string {
     if (UNIT_DATA_TABLE_SORT_KEY_GROUPS['movement']?.includes(sortKey)) {
         return formatClassicUnitMovement(unit) || '—';
@@ -133,7 +133,7 @@ export function formatUnitDataTableSortSlotValue(
         : String(rawValue);
 }
 
-export function formatClassicUnitMovement(unit: Unit): string {
+export function formatClassicUnitMovement(unit: UnitSummary): string {
     if (!unit.walk) {
         return '';
     }
@@ -152,7 +152,7 @@ export function formatClassicUnitMovement(unit: Unit): string {
     return movement;
 }
 
-export function formatClassicUnitSubtype(unit: Unit): string {
+export function formatClassicUnitSubtype(unit: UnitSummary): string {
     return unit.subtype && unit.subtype !== unit.type ? unit.subtype : '';
 }
 
@@ -175,7 +175,7 @@ export function formatUnitTons(tons: number | undefined): string {
     return `${rounded(tons / 1_000_000)}M`;
 }
 
-export function formatAlphaStrikeUnitMovement(unit: Unit, useHex: boolean): string {
+export function formatAlphaStrikeUnitMovement(unit: UnitSummary, useHex: boolean): string {
     const movementModes = unit.as.MVm;
     if (!movementModes) {
         return unit.as.MV ?? '';
@@ -538,8 +538,8 @@ function appendSortSlot<Row>(
 }
 
 function unitValue<Row>(
-    getUnit: (row: Row) => Unit | null | undefined,
-): (formatter: (unit: Unit) => unknown) => (row: Row) => unknown {
+    getUnit: (row: Row) => UnitSummary | null | undefined,
+): (formatter: (unit: UnitSummary) => unknown) => (row: Row) => unknown {
     return formatter => row => {
         const unit = getUnit(row);
         return unit ? formatter(unit) : '';
@@ -550,7 +550,7 @@ function tableCellClass(base: string, active: boolean): string {
     return active ? `${base} sort-slot` : base;
 }
 
-function getNestedProperty(unit: Unit, key: string): unknown {
+function getNestedProperty(unit: UnitSummary, key: string): unknown {
     if (!key) {
         return undefined;
     }

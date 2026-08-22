@@ -41,7 +41,16 @@ export function composeTurnSummaryHeatRows(
     selection: SelectedInventoryWeaponHeat,
     underwaterBonus = 0,
 ): TurnSummaryHeatRow[] {
-    const rows: TurnSummaryHeatRow[] = sources.map(source => ({ id: source.id, label: source.label, value: source.value }));
+    const rows: TurnSummaryHeatRow[] = [];
+    for (const source of sources) {
+        const rowIndex = rows.findIndex(row => row.label === source.label);
+        if (rowIndex >= 0) {
+            const row = rows[rowIndex];
+            rows[rowIndex] = { ...row, id: row.label.toLowerCase(), value: row.value + source.value };
+        } else {
+            rows.push({ id: source.id, label: source.label, value: source.value });
+        }
+    }
     let result = rows;
 
     if (selection.hasSelection) {

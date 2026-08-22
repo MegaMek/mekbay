@@ -7,7 +7,7 @@ import { GameSystem } from '../models/common.model';
 import { type Faction } from '../models/factions.model';
 import type { ASForceUnit } from '../models/as-force-unit.model';
 import type { UnitGroup } from '../models/force.model';
-import type { Unit, UnitSubtype } from '../models/units.model';
+import type { UnitSummary, UnitSubtype } from '../models/unit-summary.model';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
 import { FormationAbilityAssignmentUtil } from './formation-ability-assignment.util';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
@@ -20,11 +20,11 @@ import { isFormationTargetCopyBonusActive } from './formation-target.util';
 function createUnit(
     id: number,
     name: string,
-    unitType: Unit['type'],
+    unitType: UnitSummary['type'],
     subtype: UnitSubtype,
-    tp: Unit['as']['TP'],
+    tp: UnitSummary['as']['TP'],
     overrides: TestUnitOverrides = {},
-): Unit {
+): UnitSummary {
     const { as: asOverrides, ...unitOverrides } = overrides;
 
     return createEmptyUnit({
@@ -71,7 +71,7 @@ function createResolvedGroup(overrides: Partial<GroupSizeResult>): GroupSizeResu
 
 function createASForceUnit(
     id: string,
-    unit: Unit,
+    unit: UnitSummary,
     options: { formationAbilities?: string[]; commander?: boolean } = {},
 ): ASForceUnit {
     let formationAbilities = [...(options.formationAbilities ?? [])];

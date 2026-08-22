@@ -10,7 +10,7 @@ import { signal } from '@angular/core';
 
 import { REMOTE_HOST } from '../../models/common.model';
 import type { Options } from '../../models/options.model';
-import type { Unit, Units } from '../../models/units.model';
+import type { UnitSummary, Units } from '../../models/unit-summary.model';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { DbService } from '../db.service';
 import { LoggerService } from '../logger.service';
@@ -24,8 +24,8 @@ async function settleMicrotasks(): Promise<void> {
     }
 }
 
-function buildPrimaryUnits(count: number): Unit[] {
-    const units: Unit[] = [];
+function buildPrimaryUnits(count: number): UnitSummary[] {
+    const units: UnitSummary[] = [];
     for (let i = 0; i < count; i += 1) {
         units.push(createEmptyUnit({ id: -1, name: `Primary ${i}` }));
     }
@@ -141,7 +141,7 @@ describe('UnitsCatalogService custom servers', () => {
 
         // preprocessUnits re-run over the merged set.
         expect(preprocessSpy).toHaveBeenCalled();
-        const lastPreprocessArg = preprocessSpy.calls.mostRecent().args[0] as Unit[];
+        const lastPreprocessArg = preprocessSpy.calls.mostRecent().args[0] as UnitSummary[];
         expect(lastPreprocessArg.length).toBe(9003);
     });
 

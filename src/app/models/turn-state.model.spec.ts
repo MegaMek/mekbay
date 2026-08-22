@@ -10,7 +10,7 @@ import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';
 import { MekRules } from './rules/mek-rules';
 import type { UnitTypeRules } from './rules/unit-type-rules';
-import type { Unit } from './units.model';
+import type { UnitSummary } from './unit-summary.model';
 import { calculateHeatProjection, TurnState } from './turn-state.model';
 import { Equipment, MiscEquipment } from './equipment.model';
 import { PpcCapacitorHandler, PPC_CAPACITOR_STATE_KEY } from '../equipment-handlers/ppc-capacitor.handler';
@@ -19,14 +19,14 @@ import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
 import { EquipmentFlag } from './equipment-flags.type';
 import { EMPTY_EQUIPMENT_REGISTRY } from './equipment-lookup';
 import { createHandlerQueryContext } from '../services/equipment-interaction-registry.service';
-import { getUnitHeight } from './units.model';
+import { getUnitHeight } from './unit-summary.model';
 
 interface TurnStateHarnessOptions {
     critSlots?: CriticalSlot[];
     committedDestroyedLegs?: string[];
     currentDestroyedLegs?: string[];
     internalLocations?: string[];
-    unit?: Partial<Unit>;
+    unit?: Partial<UnitSummary>;
     destroyed?: boolean;
     prone?: boolean;
     shutdown?: boolean;
@@ -124,9 +124,13 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
             return true;
         },
         setCondition,
-        getUnit: () => ({ type: 'Mek', comp: [], ...options.unit } as Unit),
+        getUnit: () => ({ type: 'Mek', comp: [], ...options.unit } as UnitSummary),
+        getAvailableMotiveModes: () => [
+            { mode: 'stationary' as const, label: 'Stationary' },
+            { mode: 'walk' as const, label: 'Walk' },
+        ],
         getHeight: () => getUnitHeight(
-            { type: 'Mek', tons: 0, ...options.unit } as Pick<Unit, 'type' | 'tons'>,
+            { type: 'Mek', tons: 0, ...options.unit } as Pick<UnitSummary, 'type' | 'tons'>,
             options.prone ?? false,
         ),
         turnState: () => turnState,

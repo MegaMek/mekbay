@@ -4,7 +4,7 @@
 
 import { Component, ChangeDetectionStrategy, input, inject, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { Unit, UnitComponent } from '../../../models/units.model';
+import type { UnitSummary, UnitComponent } from '../../../models/unit-summary.model';
 import { weaponTypes } from '../../../utils/equipment.util';
 import { DataService } from '../../../services/data.service';
 import { DialogsService } from '../../../services/dialogs.service';
@@ -240,7 +240,7 @@ export class UnitDetailsGeneralTabComponent {
     private gameService = inject(GameService);
 
     // Inputs
-    unit = input.required<Unit>();
+    unit = input.required<UnitSummary>();
     gunnerySkill = input<number | undefined>(undefined);
     pilotingSkill = input<number | undefined>(undefined);
     adjustedValueOverride = input<number | undefined>(undefined);
@@ -275,7 +275,7 @@ export class UnitDetailsGeneralTabComponent {
     additionalComponentSummaryInteractive = computed(() => !this.showFilteredComponents());
     componentViewModeAvailable = computed(() => this.hasDetailOnlyComponents());
     rulesRefBadgeGroups = computed(() => getRulesRefBadgeGroups(this.unit().rulesRefs));
-    private expandedRulesRefUnit = signal<Unit | null>(null);
+    private expandedRulesRefUnit = signal<UnitSummary | null>(null);
     rulesRefBadgeGroupsExpanded = computed(() => this.expandedRulesRefUnit() === this.unit());
     visibleRulesRefBadgeGroups = computed(() => {
         const groups = this.rulesRefBadgeGroups();
@@ -466,7 +466,7 @@ export class UnitDetailsGeneralTabComponent {
         return source.trim().toLowerCase();
     }
 
-    private getPublishedSourceKeys(unit: Unit): Set<string> {
+    private getPublishedSourceKeys(unit: UnitSummary): Set<string> {
         const keys = new Set<string>();
         for (const source of unit.published ?? []) {
             if (typeof source !== 'string') continue;

@@ -11,7 +11,7 @@ import { TestBed } from '@angular/core/testing';
 import { NEVER, Subject, of } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
 import { MEGAMEK_AVAILABILITY_UNKNOWN_SCORE } from '../../models/megamek/availability.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -31,7 +31,7 @@ import { calculateDataTableMinWidth } from '../data-table/data-table.component';
 import { UnitSearchComponent } from './unit-search.component';
 
 describe('UnitSearchComponent card virtualization', () => {
-    const filteredUnitsSignal = signal<Unit[]>([]);
+    const filteredUnitsSignal = signal<UnitSummary[]>([]);
     const currentGameSystemSignal = signal(GameSystem.ALPHA_STRIKE);
     const closePanelsRequestSignal = signal({ requestId: 0, exitExpandedView: false });
     const isSearchSettledSignal = signal(true);
@@ -166,7 +166,7 @@ describe('UnitSearchComponent card virtualization', () => {
         parseAbility: jasmine.createSpy('parseAbility').and.returnValue(null),
     };
 
-    function createUnit(name: string, overrides: TestUnitOverrides = {}): Unit {
+    function createUnit(name: string, overrides: TestUnitOverrides = {}): UnitSummary {
         return createEmptyUnit({ name, ...overrides, as: { PV: 1, ...overrides.as } });
     }
 
@@ -227,7 +227,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.getMegaMekAvailabilityBadges.and.returnValue([]);
         filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(0);
         filtersServiceStub.getSearchResultPilotContext.calls.reset();
-        filtersServiceStub.getSearchResultPilotContext.and.callFake((unit: Unit) => ({
+        filtersServiceStub.getSearchResultPilotContext.and.callFake((unit: UnitSummary) => ({
             kind: 'bv',
             adjustedValue: unit.bv,
             gunnery: filtersServiceStub.pilotGunnerySkill(),

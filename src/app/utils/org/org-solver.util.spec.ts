@@ -5,7 +5,7 @@
 import type { Era } from '../../models/eras.model';
 import type { Faction } from '../../models/factions.model';
 import type { FactionAffinity } from '../../models/mulfactions.model';
-import type { ASUnitTypeCode, MoveType, Unit, UnitSubtype, UnitType } from '../../models/units.model';
+import type { ASUnitTypeCode, MoveType, UnitSummary, UnitSubtype, UnitType } from '../../models/unit-summary.model';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import {
     CC_AUGMENTED_BATTALION,
@@ -90,8 +90,8 @@ import type {
 } from './org-types';
 
 type UnitFixture = {
-    type: Unit['type'];
-    subtype: Unit['subtype'];
+    type: UnitSummary['type'];
+    subtype: UnitSummary['subtype'];
     omni?: boolean;
     specials?: string[];
     internal?: number;
@@ -128,7 +128,7 @@ function resolveOrgDefinition(factionName: string, factionAffinity: FactionAffin
 function evaluateFactionOrgDefinition(
     factionName: string,
     factionAffinity: FactionAffinity,
-    units: readonly Unit[],
+    units: readonly UnitSummary[],
     groups: readonly GroupSizeResult[] = [],
     era?: Era,
 ) {
@@ -136,7 +136,7 @@ function evaluateFactionOrgDefinition(
 }
 
 function resolveFromUnits(
-    units: readonly Unit[],
+    units: readonly UnitSummary[],
     factionName: string,
     factionAffinity: FactionAffinity,
     era?: Era,
@@ -162,7 +162,7 @@ function createUnit(
     internal: number = 1,
     moveType: MoveType = 'Tracked',
     squads?: number,
-): Unit {
+): UnitSummary {
     const alphaStrikeType = (() => {
         if (type === 'Mek') return 'BM';
         if (type === 'ProtoMek') return 'PM';
@@ -233,7 +233,7 @@ function createUn(name: string, unitNames: string[]): GroupSizeResult {
     };
 }
 
-function createContubernium(name: string, tag: 'infantry' | 'non-infantry', units: Unit[]): GroupSizeResult {
+function createContubernium(name: string, tag: 'infantry' | 'non-infantry', units: UnitSummary[]): GroupSizeResult {
     return {
         name,
         type: 'Contubernium',
@@ -245,7 +245,7 @@ function createContubernium(name: string, tag: 'infantry' | 'non-infantry', unit
     };
 }
 
-function createAero(name: string, isOmni = false, specials: string[] = []): Unit {
+function createAero(name: string, isOmni = false, specials: string[] = []): UnitSummary {
     return createUnit(name, 'Aero', isOmni ? 'Aerospace Fighter Omni' : 'Aerospace Fighter', isOmni, specials);
 }
 
@@ -254,8 +254,8 @@ function createFlightEligibleUnit(
     _identity: string,
     alphaStrikeType: ASUnitTypeCode,
     unitType: UnitType,
-    moveProfile: NonNullable<Unit['as']>['MVm'] = {},
-): Unit {
+    moveProfile: NonNullable<UnitSummary['as']>['MVm'] = {},
+): UnitSummary {
     const unit = createUnit(name, unitType, alphaStrikeType === 'CF' ? 'Conventional Fighter' : 'Aerospace Fighter');
 
     return {
@@ -385,7 +385,7 @@ const BLUNDER_BRIGADE_UNIT_FIXTURES: Record<string, UnitFixture> = {
     CVThumperArtilleryVehicle: { type: 'Tank', subtype: 'Combat Vehicle', specials: ['ARTT-1', 'EE', 'REAR0*/-/-', 'SRCH'] },
 };
 
-function createFixtureUnit(name: keyof typeof BLUNDER_BRIGADE_UNIT_FIXTURES): Unit {
+function createFixtureUnit(name: keyof typeof BLUNDER_BRIGADE_UNIT_FIXTURES): UnitSummary {
     const fixture = BLUNDER_BRIGADE_UNIT_FIXTURES[name];
     return createUnit(
         name,
@@ -400,17 +400,17 @@ function buildBlunderBrigadeGroupResults(groupOneMultiplier: number = 1, copies:
     const groupResults: GroupSizeResult[] = [];
 
     for (let copy = 0; copy < copies; copy += 1) {
-        const groupOne: Unit[] = Array.from({ length: groupOneMultiplier }, () =>
+        const groupOne: UnitSummary[] = Array.from({ length: groupOneMultiplier }, () =>
             BLUNDER_BRIGADE_GROUP_ONE_NAMES.map(name => createFixtureUnit(name)),
         ).flat();
-        const groupTwo: Unit[] = [
+        const groupTwo: UnitSummary[] = [
             'BMOstsol_OTL5M',
             'BMNightsky_NGS5S',
             'BMPuma_E',
             'BMPuma_S',
             'BMDasher_H',
         ].map(name => createFixtureUnit(name));
-        const groupThree: Unit[] = [
+        const groupThree: UnitSummary[] = [
             'BMHatchetman_HCT5S',
             'BMHussar_HSR400D',
         ].map(name => createFixtureUnit(name));
@@ -2538,14 +2538,14 @@ describe('org-solver.util', () => {
 
 function createBM(
     name: string,
-    subtype: Unit['subtype'] = 'BattleMek',
+    subtype: UnitSummary['subtype'] = 'BattleMek',
     isOmni: boolean = false,
     specials: string[] = [],
-): Unit {
+): UnitSummary {
     return createUnit(name, 'Mek', subtype, isOmni, specials);
 }
 
-function createCV(name: string, isOmni: boolean = false, specials: string[] = []): Unit {
+function createCV(name: string, isOmni: boolean = false, specials: string[] = []): UnitSummary {
     return createUnit(name, 'Tank', 'Combat Vehicle', isOmni, specials);
 }
 
@@ -2774,7 +2774,7 @@ function getMixedRolePerfRegiments(): readonly GroupSizeResult[] {
 
 describe('org-solver.util resolve parity', () => {
     it('resolves 4 BM in a Lance', () => {
-        const units: Unit[] = [
+        const units: UnitSummary[] = [
             createBM('BM1'),
             createBM('BM2'),
             createBM('BM3'),
@@ -2789,7 +2789,7 @@ describe('org-solver.util resolve parity', () => {
     });
 
     it('resolves 3 BM in a Under-Strength Lance', () => {
-        const units: Unit[] = [
+        const units: UnitSummary[] = [
             createBM('BM1'),
             createBM('BM2'),
             createBM('BM3'),
@@ -3514,7 +3514,7 @@ function createForeignGroup(
     type: GroupSizeResult['type'],
     tier: number,
     countsAsType: GroupSizeResult['countsAsType'] = null,
-    units?: Unit[],
+    units?: UnitSummary[],
 ): GroupSizeResult {
     return {
         name,
@@ -3621,7 +3621,7 @@ describe('org-solver.util aggregation and foreign parity', () => {
     });
 
     it('preserves a real resolved foreign group through the public APIs when crossgrading is disabled', () => {
-        const sourceUnits: Unit[] = [
+        const sourceUnits: UnitSummary[] = [
             createBM('BM1'),
             createBM('BM2'),
             createBM('BM3'),

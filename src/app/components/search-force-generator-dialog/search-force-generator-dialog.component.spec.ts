@@ -9,7 +9,7 @@ import { signal, type WritableSignal } from '@angular/core';
 import { GameSystem } from '../../models/common.model';
 import type { ForcePreviewEntry } from '../../models/force-preview.model';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { SearchForceGeneratorDialogComponent } from './search-force-generator-dialog.component';
 import { DataService } from '../../services/data.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -41,8 +41,8 @@ describe('SearchForceGeneratorDialogComponent', () => {
     let optionsSignal: WritableSignal<any>;
     let advOptionsSignal: WritableSignal<any>;
     let effectiveFilterStateSignal: WritableSignal<any>;
-    let filteredUnitsSignal: WritableSignal<Unit[]>;
-    let forceGeneratorEligibleUnitsSignal: WritableSignal<Unit[]>;
+    let filteredUnitsSignal: WritableSignal<UnitSummary[]>;
+    let forceGeneratorEligibleUnitsSignal: WritableSignal<UnitSummary[]>;
     let gameSystemSignal: WritableSignal<GameSystem>;
     let searchTextSignal: WritableSignal<string>;
 
@@ -157,9 +157,9 @@ describe('SearchForceGeneratorDialogComponent', () => {
         effectiveFilterStateSignal = signal({});
 
         const currentForceSignal = signal<any>(null);
-        filteredUnitsSignal = signal<Unit[]>([]);
-        forceGeneratorEligibleUnitsSignal = signal<Unit[]>([]);
-        const unitsByName = new Map<string, Unit>();
+        filteredUnitsSignal = signal<UnitSummary[]>([]);
+        forceGeneratorEligibleUnitsSignal = signal<UnitSummary[]>([]);
+        const unitsByName = new Map<string, UnitSummary>();
         const factionsByName = new Map<string, any>();
         const dataServiceMock = {
             isDataReady: signal(true),
@@ -306,7 +306,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             createForcePreviewEntry: createForcePreviewEntrySpy,
             createForceEntry: createForceEntrySpy,
             createForceEntryFromPreviewEntry: createForceEntryFromPreviewEntrySpy,
-            getBudgetMetric: (unit: Unit, gameSystem: GameSystem) => {
+            getBudgetMetric: (unit: UnitSummary, gameSystem: GameSystem) => {
                 return gameSystem === GameSystem.ALPHA_STRIKE ? unit.as?.PV ?? 0 : unit.bv ?? 0;
             },
         };

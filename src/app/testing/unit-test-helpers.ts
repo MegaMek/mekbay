@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { getUnitTechBaseDisplay } from '../models/tech.model';
 import { CBTInventoryControlRuntime } from '../models/cbt-inventory-control-runtime.model';
 import type { CBTForceUnit, EquipmentAction, EquipmentStateEdit, EquipmentStatusSource } from '../models/cbt-force-unit.model';
@@ -22,14 +22,14 @@ import {
 import type { WeaponType } from '../models/weapon-types.model';
 import { resolveSelectedInventoryWeaponHeat } from '../utils/inventory-control-heat.util';
 import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-control-physical-damage.util';
-import { resolveInventoryControlSelectedAmmoType, type InventoryControlDisplayData, type InventoryControlRules } from '../utils/inventory-control.util';
+import { resolveInventoryControlSelectedAmmoType, type InventoryControlDisplayData, type InventoryControlRules, type InventoryControlToHitContext } from '../utils/inventory-control.util';
 import { uuidv4 } from '../utils/uuid.util';
 
-type TestAlphaStrikeOverrides = Partial<Omit<Unit['as'], 'dmg'>> & {
-    dmg?: Partial<Unit['as']['dmg']>;
+type TestAlphaStrikeOverrides = Partial<Omit<UnitSummary['as'], 'dmg'>> & {
+    dmg?: Partial<UnitSummary['as']['dmg']>;
 };
 
-export type TestUnitOverrides = Partial<Omit<Unit, 'as'>> & {
+export type TestUnitOverrides = Partial<Omit<UnitSummary, 'as'>> & {
     as?: TestAlphaStrikeOverrides;
 };
 
@@ -40,8 +40,8 @@ type TestInventoryControlRules = InventoryControlRules & {
     ) => ReadonlySet<WeaponType>;
 };
 
-function createEmptyAlphaStrikeStats(overrides: TestAlphaStrikeOverrides = {}): Unit['as'] {
-    const base: Unit['as'] = {
+function createEmptyAlphaStrikeStats(overrides: TestAlphaStrikeOverrides = {}): UnitSummary['as'] {
+    const base: UnitSummary['as'] = {
         TP: 'BM',
         PV: 0,
         SZ: 0,
@@ -78,9 +78,9 @@ function createEmptyAlphaStrikeStats(overrides: TestAlphaStrikeOverrides = {}): 
     };
 }
 
-export function createEmptyUnit(overrides: TestUnitOverrides = {}): Unit {
+export function createEmptyUnit(overrides: TestUnitOverrides = {}): UnitSummary {
     const { as: asOverrides, ...unitOverrides } = overrides;
-    const unit: Unit = {
+    const unit: UnitSummary = {
         uuid: uuidv4(),
         name: 'Test Unit',
         id: -1,
@@ -229,7 +229,7 @@ export class CBTForceUnitTestHarness {
     private inventoryControlRules: TestInventoryControlRules = {};
     private toHitAdjustments: (
         entry: MountedEquipment,
-        selectedAmmo?: AmmoEquipment | null
+        context?: InventoryControlToHitContext,
     ) => readonly ToHitAdjustment[] = () => [];
 
     constructor(readonly options: CBTForceUnitTestHarnessOptions = {}) {
@@ -560,12 +560,12 @@ export class CBTForceUnitTestHarness {
     }
 
     setToHitAdjustments(
-        resolver: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => readonly ToHitAdjustment[]
+        resolver: (entry: MountedEquipment, context?: InventoryControlToHitContext) => readonly ToHitAdjustment[]
     ): this {
         this.toHitAdjustments = resolver;
         this.inventoryControlRules = {
             ...this.inventoryControlRules,
-            resolveToHitAdjustments: (entry, selectedAmmo) => this.toHitAdjustments(entry, selectedAmmo)
+            resolveToHitAdjustments: (entry, context) => this.toHitAdjustments(entry, context)
         };
         return this;
     }

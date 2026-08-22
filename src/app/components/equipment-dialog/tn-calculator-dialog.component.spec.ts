@@ -6,6 +6,7 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../models/rules/game-rules';
+import { TN_CHAMELEON_MODIFIERS, TN_STANDARD_STEALTH_MODIFIERS } from '../../models/target-number-calculator.model';
 import { TnCalculatorDialogComponent, type TnCalculatorDialogData, type TnCalculatorDialogResult } from './tn-calculator-dialog.component';
 
 const DATA: TnCalculatorDialogData = {
@@ -58,6 +59,115 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         expect(fixture.nativeElement.querySelector('.c3-distance-title').textContent.trim()).toBe('C³ Distance (JAMMED)');
     });
 
+
+    it('lays out attack methods according to the available secondary-target choices', () => {
+        component.gameRules.set(CORE_2026_GAME_RULES);
+        fixture.detectChanges();
+
+        const controls = fixture.nativeElement.querySelector('.attack-method-controls') as HTMLElement;
+        let indirectFire = controls.querySelector('.indirect-fire-control') as HTMLButtonElement;
+        let secondaryTarget = controls.querySelector('.secondary-target-control') as HTMLButtonElement;
+
+        expect(controls.querySelector('.secondary-target-side-back-control')).toBeNull();
+        expect(getComputedStyle(indirectFire).gridColumnStart).toBe('1');
+        expect(getComputedStyle(indirectFire).gridRowStart).toBe('1');
+        expect(getComputedStyle(secondaryTarget).gridColumnStart).toBe('2');
+        expect(getComputedStyle(secondaryTarget).gridRowStart).toBe('1');
+
+        component.gameRules.set(TW_GAME_RULES);
+        fixture.detectChanges();
+
+        indirectFire = controls.querySelector('.indirect-fire-control') as HTMLButtonElement;
+        secondaryTarget = controls.querySelector('.secondary-target-control') as HTMLButtonElement;
+        const secondarySideBack = controls.querySelector('.secondary-target-side-back-control') as HTMLButtonElement;
+
+        expect(getComputedStyle(secondaryTarget).gridColumnStart).toBe('1');
+        expect(getComputedStyle(secondaryTarget).gridRowStart).toBe('1');
+        expect(getComputedStyle(secondarySideBack).gridColumnStart).toBe('2');
+        expect(getComputedStyle(secondarySideBack).gridRowStart).toBe('1');
+        expect(getComputedStyle(indirectFire).gridColumnStart).toBe('1');
+        expect(getComputedStyle(indirectFire).gridColumnEnd).toBe('-1');
+        expect(getComputedStyle(indirectFire).gridRowStart).toBe('2');
+    });
+
+    it('disables and clears Large Target for unit types that can never be large', () => {
+        const largeTargetButton = () => fixture.nativeElement.querySelector('.large-target-control') as HTMLButtonElement;
+
+        component.toggleLargeTarget();
+        expect(component.largeTarget()).toBeTrue();
+
+        for (const unitType of ['infantry', 'battle-armor', 'protoMek'] as const) {
+            component.selectUnitType(unitType);
+            fixture.detectChanges();
+
+            expect(component.largeTarget()).withContext(unitType).toBeFalse();
+            expect(largeTargetButton().disabled).withContext(unitType).toBeTrue();
+            component.toggleLargeTarget();
+            expect(component.largeTarget()).withContext(unitType).toBeFalse();
+        }
+
+        for (const unitType of ['mek-biped', 'mek-quad', 'mek-tripod', 'vehicle', 'vtol', 'aero', 'terrain', 'building'] as const) {
+            component.selectUnitType(unitType);
+            fixture.detectChanges();
+            expect(largeTargetButton().disabled).withContext(unitType).toBeFalse();
+        }
+    });
+
+    it('retains Large for jumping and airborne non-aerospace targets but suppresses it for airborne Aero', () => {
+        const largeTargetButton = () => fixture.nativeElement.querySelector('.large-target-control') as HTMLButtonElement;
+        const largeTargetBadge = () => largeTargetButton().querySelector('.modifier-badge')?.textContent?.trim();
+        const airborneButton = () => [...fixture.nativeElement.querySelectorAll('.target-movement-section .move-button')]
+            .find((button: Element) => button.textContent?.includes('Jumped / Airborne')) as HTMLButtonElement;
+        const airborneBadge = () => airborneButton().querySelector('.modifier-badge')?.textContent?.trim();
+
+        component.selectUnitType('vtol');
+        component.toggleLargeTarget();
+        fixture.detectChanges();
+
+        expect(component.largeTarget()).toBeTrue();
+        expect(component.totalModifier()).toBe(-1);
+        expect(largeTargetBadge()).toBe('-1');
+
+        component.toggleAirborne();
+        fixture.detectChanges();
+
+        expect(component.isAirborne()).toBeTrue();
+        expect(component.largeTarget()).toBeTrue();
+        expect(component.totalModifier()).toBe(0);
+        expect(largeTargetButton().disabled).toBeFalse();
+        expect(largeTargetButton().classList).toContain('selected');
+        expect(largeTargetBadge()).toBe('-1');
+        expect(largeTargetButton().title).toBe('');
+        expect(airborneBadge()).toBe('+1');
+
+        component.toggleAirborne();
+        fixture.detectChanges();
+
+        expect(component.isAirborne()).toBeFalse();
+        expect(component.largeTarget()).toBeTrue();
+        expect(component.totalModifier()).toBe(-1);
+        expect(largeTargetBadge()).toBe('-1');
+
+        component.selectUnitType('mek-biped');
+        component.toggleAirborne();
+
+        expect(component.isAirborne()).toBeTrue();
+        expect(component.largeTarget()).toBeTrue();
+        expect(component.totalModifier()).toBe(0);
+        expect(largeTargetBadge()).toBe('-1');
+
+        component.selectUnitType('aero');
+        fixture.detectChanges();
+
+        expect(component.isAirborne()).toBeTrue();
+        expect(component.largeTarget()).toBeTrue();
+        expect(component.totalModifier()).toBe(0);
+        expect(largeTargetBadge()).toBe('+0');
+        expect(largeTargetButton().title).toContain('airborne aerospace');
+        expect(airborneBadge()).toBe('+0');
+        expect(airborneButton().title).toContain('non-aerospace');
+    });
+
     it('preserves the stored C3 choice when applying while jammed', () => {
         component.apply();
 
@@ -104,7 +214,7 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
 
     it('resets editable calculator values to neutral defaults', () => {
         component.selectUnitType('vehicle');
-        component.setTargetMovementBracketIndex(3);
+        component.setTargetMovementSliderIndex(5);
         component.toggleAirborne();
         component.toggleProne();
         component.selectInterveningWoods('light2');
@@ -117,7 +227,7 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         fixture.detectChanges();
 
         expect(component.unitType()).toBe('mek-biped');
-        expect(component.targetMovementBracketIndex()).toBe(0);
+        expect(component.targetMovementDistance()).toBe(0);
         expect(component.isAirborne()).toBeFalse();
         expect(component.prone()).toBeFalse();
         expect(component.interveningWoods()).toBe('none');
@@ -200,15 +310,18 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         const guidanceState = fixture.nativeElement.querySelector('.guidance-state-group') as HTMLElement;
         const tagged = guidanceState.querySelector('.tagged-state') as HTMLButtonElement;
         const narc = guidanceState.querySelector('.narc-above-water-state') as HTMLButtonElement;
+        const stealth = guidanceState.querySelector('.stealth-state') as HTMLElement;
         const ecmShielded = guidanceState.querySelector('.ecm-shielded-state') as HTMLButtonElement;
 
         expect(guidanceState).not.toBeNull();
         expect(tagged.textContent?.trim()).toBe('TAGGED');
         expect(narc.textContent?.trim()).toBe('NARC');
+        expect(stealth.textContent).toContain('Stealth');
         expect(ecmShielded.textContent?.trim()).toBe('ECM SHIELDED');
 
         tagged.click();
         narc.click();
+        component.selectStealth('stealth-armor');
         ecmShielded.click();
         component.apply();
 
@@ -218,7 +331,215 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
             narcAboveWater: true,
             narcUnderwater: false,
             ecmShielded: true,
+            stealth: TN_STANDARD_STEALTH_MODIFIERS,
         }));
+    });
+
+    it('prevents secondary targeting only for standard Stealth Armor', () => {
+        component.toggleSecondaryTarget();
+        expect(component.secondaryTarget()).toBeTrue();
+
+        component.selectStealth('stealth-armor');
+        fixture.detectChanges();
+
+        expect(component.totalModifier()).toBe(0);
+        expect(component.secondaryTarget()).toBeFalse();
+        expect(component.secondaryTargetUnavailable()).toBeTrue();
+        expect((fixture.nativeElement.querySelector('.secondary-target-control') as HTMLButtonElement).disabled).toBeTrue();
+
+        component.toggleSecondaryTarget();
+        expect(component.secondaryTarget()).toBeFalse();
+
+        component.selectStealth('chameleon');
+        fixture.detectChanges();
+
+        expect(component.stealth()).toBe(TN_CHAMELEON_MODIFIERS);
+        expect(component.secondaryTargetUnavailable()).toBeFalse();
+        component.toggleSecondaryTarget();
+        expect(component.secondaryTarget()).toBeTrue();
+    });
+
+    it('offers only stealth systems valid for the selected target type', () => {
+        const optionValues = () => component.stealthDropdownOptions().map(option => option.value);
+
+        expect(component.stealthDropdownOptions()[0]).toEqual(jasmine.objectContaining({
+            value: 'none',
+            label: 'No Stealth',
+        }));
+
+        for (const mekType of ['mek-biped', 'mek-quad', 'mek-tripod']) {
+            component.selectUnitType(mekType);
+            expect(optionValues()).toEqual([
+                'none',
+                'stealth-armor',
+                'null-signature',
+                'chameleon',
+                'chameleon-null',
+            ]);
+            expect(component.stealthDropdownOptions().find(option => option.value === 'stealth-armor')?.label).toBe('Stealth');
+        }
+
+        for (const unitType of ['vehicle', 'vtol', 'aero']) {
+            component.selectUnitType(unitType);
+            expect(optionValues()).toEqual(['none', 'stealth-armor']);
+        }
+
+        component.selectUnitType('battle-armor');
+        expect(optionValues()).toEqual([
+            'none',
+            'ba-basic',
+            'ba-standard',
+            'ba-improved',
+            'mimetic',
+            'simple-camo',
+        ]);
+
+        component.selectUnitType('infantry');
+        expect(component.stealthDropdownOptions()).toEqual([
+            jasmine.objectContaining({ value: 'none', label: 'No Stealth' }),
+            jasmine.objectContaining({ value: 'mimetic', label: 'Camo (Sneak/Dermal)', modifierLabel: '+3/+3/+3' }),
+        ]);
+
+        for (const unitType of ['protoMek', 'terrain', 'building']) {
+            component.selectUnitType(unitType);
+            expect(optionValues()).toEqual(['none']);
+        }
+    });
+
+    it('rejects and clears stealth systems that do not support the selected target type', () => {
+        component.selectStealth('null-signature');
+        component.selectUnitType('vehicle');
+        expect(component.stealthChoice()).toBe('none');
+
+        component.selectStealth('stealth-armor');
+        component.selectUnitType('battle-armor');
+        expect(component.stealthChoice()).toBe('none');
+
+        component.selectStealth('ba-improved');
+        expect(component.stealthChoice()).toBe('ba-improved');
+        component.selectUnitType('mek-biped');
+        expect(component.stealthChoice()).toBe('none');
+
+        component.selectUnitType('vehicle');
+        component.selectStealth('null-signature');
+        expect(component.stealthChoice()).toBe('none');
+    });
+
+    it('offers movement-dependent camouflage for Battle Armor and conventional Infantry', () => {
+        component.selectStealth('mimetic');
+        expect(component.stealth()).toBeUndefined();
+
+        component.selectUnitType('battle-armor');
+
+        expect(component.stealthDropdownOptions()).toContain(jasmine.objectContaining({
+            value: 'mimetic',
+            label: 'BA Mimetic',
+            modifierLabel: '+3/+3/+3',
+        }));
+        expect(component.stealthDropdownOptions().some(option => option.label.includes('(moved'))).toBeFalse();
+
+        component.selectStealth('mimetic');
+        component.selectUnitType('vehicle');
+
+        expect(component.stealthChoice()).toBe('none');
+        expect(component.stealthDropdownOptions().some(option => option.value === 'mimetic')).toBeFalse();
+
+        component.selectUnitType('infantry');
+        expect(component.stealthDropdownOptions()).toContain(jasmine.objectContaining({
+            value: 'mimetic',
+            label: 'Camo (Sneak/Dermal)',
+            modifierLabel: '+3/+3/+3',
+        }));
+        component.selectStealth('mimetic');
+        component.setTargetMovementSliderIndex(2);
+        expect(component.targetMovementDistance()).toBe(2);
+        expect(component.stealth()).toEqual({ short: 1, medium: 1, long: 1 });
+    });
+
+    it('derives visual camouflage from the movement slider', () => {
+        component.selectUnitType('battle-armor');
+        component.selectStealth('mimetic');
+        expect(component.stealth()).toEqual({ short: 3, medium: 3, long: 3 });
+
+        component.setTargetMovementSliderIndex(1);
+        expect(component.targetMovementDistance()).toBe(1);
+        expect(component.targetMovementBracket().id).toBe('0-2');
+        expect(component.stealth()).toEqual({ short: 2, medium: 2, long: 2 });
+
+        component.setTargetMovementSliderIndex(2);
+        expect(component.stealth()).toEqual({ short: 1, medium: 1, long: 1 });
+
+        component.setTargetMovementSliderIndex(3);
+        expect(component.targetMovementDistance()).toBe(3);
+        expect(component.targetMovementBracket().id).toBe('3-4');
+        expect(component.stealth()).toEqual({ short: 0, medium: 0, long: 0 });
+
+        component.selectStealth('simple-camo');
+        component.setTargetMovementSliderIndex(1);
+        expect(component.stealth()).toEqual({ short: 1, medium: 1, long: 1 });
+
+        component.apply();
+        const state = (close.calls.mostRecent().args[0] as TnCalculatorDialogResult).patch.tnCalculator;
+        expect(state).toEqual(jasmine.objectContaining({
+            targetMovementDistance: 1,
+            targetMovementBracket: '0-2',
+            stealthSystem: 'simple-camo',
+        }));
+    });
+
+    it('uses unit-appropriate movement scales and hides movement for static targets', () => {
+        expect(component.movementTickLabels()).toEqual(['0-2', '3-4', '5-6', '7-9', '10-17', '18-24', '25+']);
+        expect(component.targetMovementBracketLabel()).toBe('0-2');
+
+        component.setTargetMovementSliderIndex(1);
+        fixture.detectChanges();
+        const movementThumb = fixture.nativeElement.querySelector('.target-movement-section .hex') as HTMLElement;
+        expect(movementThumb.classList).toContain('value-assigned');
+        expect(movementThumb.querySelector('.modifier-badge')?.textContent?.trim()).toBe('+1');
+
+        component.selectUnitType('infantry');
+        expect(component.movementTickLabels()).toEqual(['0', '1', '2', '3-4', '5-6', '7-9']);
+        component.setTargetMovementSliderIndex(5);
+        expect(component.targetMovementDistance()).toBe(7);
+
+        component.targetMovementDistance.set(25);
+        component.selectUnitType('battle-armor');
+        expect(component.targetMovementDistance()).toBe(9);
+        expect(component.targetMovementSliderIndex()).toBe(5);
+
+        component.selectUnitType('vehicle');
+        expect(component.movementTickLabels()).toEqual(['0-2', '3-4', '5-6', '7-9', '10-17', '18-24', '25+']);
+
+        component.selectUnitType('building');
+        fixture.detectChanges();
+        expect(component.targetMovementDistance()).toBe(0);
+        expect(component.immobile()).toBeFalse();
+        expect(component.totalModifier()).toBe(-4);
+        expect(fixture.nativeElement.querySelector('.target-movement-section')).toBeNull();
+
+        component.selectUnitType('terrain');
+        fixture.detectChanges();
+        expect(component.targetMovementDistance()).toBe(0);
+        expect(component.immobile()).toBeFalse();
+        expect(component.totalModifier()).toBe(-4);
+        expect(fixture.nativeElement.querySelector('.target-movement-section')).toBeNull();
+
+        component.apply();
+        const staticResult = close.calls.mostRecent().args[0] as TnCalculatorDialogResult;
+        expect(staticResult.patch.tnModifier).toBe(-4);
+        expect(staticResult.patch.tnCalculator).toEqual(jasmine.objectContaining({
+            targetMovementBracket: '0-2',
+            targetMovementDistance: 0,
+            immobile: false,
+        }));
+
+        component.selectUnitType('vehicle');
+        fixture.detectChanges();
+        expect(component.immobile()).toBeFalse();
+        expect(component.totalModifier()).toBe(0);
+        const movementButtons = fixture.nativeElement.querySelectorAll('.target-movement-section .move-button') as NodeListOf<HTMLButtonElement>;
+        const immobileButton = [...movementButtons].find(button => button.textContent?.includes('Immobile'))!;
+        expect(immobileButton.classList).not.toContain('selected');
     });
 
     it('clears and disables TAGGED for infantry under Total Warfare rules', () => {
@@ -411,7 +732,7 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
 
     it('resets local choices without clearing synchronized target facts', () => {
         component.isAirborne.set(true);
-        component.targetMovementBracketIndex.set(3);
+        component.targetMovementDistance.set(7);
         component.prone.set(true);
         component.narcAboveWater.set(true);
         component.selectInterveningWoods('light2');
@@ -423,7 +744,7 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
 
         expect(component.unitType()).toBe('battle-armor');
         expect(component.isAirborne()).toBeTrue();
-        expect(component.targetMovementBracketIndex()).toBe(3);
+        expect(component.targetMovementDistance()).toBe(7);
         expect(component.prone()).toBeTrue();
         expect(component.narcAboveWater()).toBeTrue();
         expect(component.interveningWoods()).toBe('none');
@@ -434,6 +755,34 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
 });
 
 describe('TnCalculatorDialogComponent movement and stance', () => {
+    it('uses the synchronized target height in live water and building geometry', async () => {
+        const data: TnCalculatorDialogData = {
+            target: {
+                id: 'A', letter: 'A', name: 'Tall target', color: '#1565C0',
+                unitType: 'vehicle', distance: 5, tnModifier: 0,
+                tnCalculator: { targetHeight: 3 },
+            },
+            gameRules: CORE_2026_GAME_RULES,
+        };
+        await TestBed.configureTestingModule({
+            imports: [TnCalculatorDialogComponent],
+            providers: [
+                { provide: DIALOG_DATA, useValue: data },
+                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
+            ],
+        }).compileComponents();
+        const component = TestBed.createComponent(TnCalculatorDialogComponent).componentInstance;
+
+        component.selectWaterDepth('underwater-depth-2');
+        expect(component.targetWaterState()).toEqual({ partiallyUnderwater: true, submerged: false });
+        expect(component.totalModifier()).toBe(1);
+
+        component.selectBuildingLevel('building-2');
+        expect(component.waterDepth()).toBeUndefined();
+        expect(component.targetBuildingCoverState()).toEqual({ effect: 'partial', modifier: 1 });
+        expect(component.totalModifier()).toBe(1);
+    });
+
     it('stores water depth for an editable non-Mek using shared height geometry', async () => {
         const close = jasmine.createSpy('close');
         const data: TnCalculatorDialogData = {

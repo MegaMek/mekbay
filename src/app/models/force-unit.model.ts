@@ -4,7 +4,7 @@
 
 import { signal, computed, type Injector, type Signal, type WritableSignal } from '@angular/core';
 import type { DataService } from '../services/data.service';
-import type { Unit } from "./units.model";
+import type { UnitSummary } from "./unit-summary.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import type { SerializedUnit } from './force-serialization';
 import type { Force, UnitGroup } from './force.model';
@@ -16,7 +16,7 @@ import type { C3Component } from './c3-network.model';
 
 
 export abstract class ForceUnit {
-    protected unit: Unit; // Original unit data
+    protected unit: UnitSummary; // Original unit data
     private _forceRef = signal<Force>(null!);
     protected readonly _formationCommander = signal<boolean>(false);
     id: string;
@@ -46,7 +46,7 @@ export abstract class ForceUnit {
 
     abstract readonly alias: Signal<string | undefined>;
 
-    constructor(unit: Unit,
+    constructor(unit: UnitSummary,
         force: Force,
         dataService: DataService,
         unitInitializer: UnitInitializerService,
@@ -154,7 +154,7 @@ export abstract class ForceUnit {
         }
     }
 
-    getUnit(): Unit {
+    getUnit(): UnitSummary {
         return this.unit;
     }
 

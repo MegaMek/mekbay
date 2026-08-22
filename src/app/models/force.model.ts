@@ -5,7 +5,7 @@
 import { signal, computed, type WritableSignal, type Injector } from '@angular/core';
 import { Subject } from 'rxjs';
 import type { DataService } from '../services/data.service';
-import type { Unit } from "./units.model";
+import type { UnitSummary } from "./unit-summary.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { type SerializedForce, type SerializedUnit, type SerializedGroup, type SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA, FORCE_NOTE_MAX_LENGTH, sanitizeForceTags } from './force-serialization';
 import type { ForceUnit } from './force-unit.model';
@@ -269,7 +269,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     }
 
     /** Create and add a new unit via the owning Force's factory. */
-    addUnit(unit: Unit): ForceUnit {
+    addUnit(unit: UnitSummary): ForceUnit {
         return this.force.addUnit(unit, this as UnitGroup);
     }
 
@@ -459,7 +459,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     });
 
     techBase = computed((): TechBase => {
-        return getUnitsAverageTechBase(this.units().map(u => u.getUnit()).filter((u): u is Unit => u !== undefined));
+        return getUnitsAverageTechBase(this.units().map(u => u.getUnit()).filter((u): u is UnitSummary => u !== undefined));
     });
 
     eraWarning = computed<string | null>(() => {
@@ -470,13 +470,13 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
      * Factory method to create the appropriate ForceUnit subclass.
      * Must be implemented by subclasses to create CBTForceUnit, ASForceUnit, etc.
      */
-    protected abstract createForceUnit(unit: Unit): TUnit;
+    protected abstract createForceUnit(unit: UnitSummary): TUnit;
 
     /**
      * Creates a ForceUnit compatible with this force's game system,
      * without adding it to any group. Useful for cross-system unit conversion.
      */
-    public createCompatibleUnit(unit: Unit): TUnit {
+    public createCompatibleUnit(unit: UnitSummary): TUnit {
         return this.createForceUnit(unit);
     }
 
@@ -503,7 +503,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         );
     }
 
-    public addUnit(unit: Unit, targetGroup?: UnitGroup<TUnit>): TUnit {
+    public addUnit(unit: UnitSummary, targetGroup?: UnitGroup<TUnit>): TUnit {
         if (this.units().length >= MAX_UNITS) {
             throw new Error(`Cannot add more than ${MAX_UNITS} units to a single force`);
         }
@@ -714,7 +714,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
      * @param newUnitData The new Unit data to create the replacement from
      * @returns Object containing the new ForceUnit and the group it was placed in, or null if failed
      */
-    public replaceUnit(originalUnit: TUnit, newUnitData: Unit): { newUnit: TUnit; group: UnitGroup<TUnit> } | null {
+    public replaceUnit(originalUnit: TUnit, newUnitData: UnitSummary): { newUnit: TUnit; group: UnitGroup<TUnit> } | null {
         // Find the group containing the original unit
         const groups = this.groups();
         let originalGroup: UnitGroup<TUnit> | null = null;

@@ -4,7 +4,7 @@
 
 import type { Injector } from '@angular/core';
 import type { DataService } from '../services/data.service';
-import type { Unit } from "./units.model";
+import type { UnitSummary } from "./unit-summary.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { type ASSerializedUnit, type ASSerializedForce, AS_SERIALIZED_FORCE_SCHEMA, type SerializedForce } from './force-serialization';
 import { GameSystem } from './common.model';
@@ -25,7 +25,7 @@ export class ASForce extends Force<ASForceUnit> {
         super(name, dataService, unitInitializer, injector);
     }
 
-    protected override createForceUnit(unit: Unit): ASForceUnit {
+    protected override createForceUnit(unit: UnitSummary): ASForceUnit {
         return new ASForceUnit(unit, this, this.dataService, this.unitInitializer, this.injector);
     }
 

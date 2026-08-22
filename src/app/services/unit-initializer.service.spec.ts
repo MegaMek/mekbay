@@ -32,6 +32,7 @@ function createEquipment(): EquipmentMap {
     const endoSteel = new StructureEquipment({ id: 'ISEndoSteel', name: 'Endo Steel', type: 'structure', flags: ['F_ENDO_STEEL'], structure: { typeId: 2 } });
     const ferroFibrous = new ArmorEquipment({ id: 'ISFerroFibrous', name: 'Ferro-Fibrous', type: 'armor', armor: { type: 'Ferro-Fibrous' } });
     const hardenedArmor = new ArmorEquipment({ id: 'HardenedArmor', name: 'Hardened Armor', type: 'armor', armor: { type: 'Hardened' } });
+    const stealthArmor = new ArmorEquipment({ id: 'ISStealth', name: 'Stealth Armor', type: 'armor', flags: ['F_STEALTH'], modes: ['Off', 'On'], armor: { type: 'STEALTH' } });
     const doubleHeatSink = new MiscEquipment({ id: 'ISDoubleHeatSink', name: 'Double Heat Sink', type: 'misc', flags: ['F_DOUBLE_HEAT_SINK'] });
     const improvedJumpJet = new MiscEquipment({ id: 'ISImprovedJumpJet', name: 'Improved Jump Jet', type: 'misc', flags: ['F_JUMP_JET'] });
     const mediumLaser = new WeaponEquipment({ id: 'CLMediumLaser', name: 'Medium Laser', type: 'weapon', weapon: { ammoType: 'NA' } });
@@ -43,6 +44,7 @@ function createEquipment(): EquipmentMap {
         [endoSteel.internalName]: endoSteel,
         [ferroFibrous.internalName]: ferroFibrous,
         [hardenedArmor.internalName]: hardenedArmor,
+        [stealthArmor.internalName]: stealthArmor,
         [doubleHeatSink.internalName]: doubleHeatSink,
         [improvedJumpJet.internalName]: improvedJumpJet,
         [mediumLaser.internalName]: mediumLaser,
@@ -134,6 +136,21 @@ describe('UnitInitializerService', () => {
 
         expect(forceUnit.getInventory().map(entry => entry.id)).toEqual(['CLMASC@LT#7']);
         expect(forceUnit.getCritSlots().length).toBe(6);
+    });
+
+    it('synthesizes spreadable stealth armor as one inventory entry', () => {
+        const forceUnit = createForceUnit();
+        const svg = createSvg(`
+            <rect class="critSlot" loc="LA" uid="ISStealth@LA#0" slot="0" name="ISStealth"></rect>
+            <rect class="critSlot" loc="LT" uid="ISStealth@LA#0" slot="1" name="ISStealth"></rect>
+            <rect class="critSlot" loc="RA" uid="ISStealth@LA#0" slot="2" name="ISStealth"></rect>
+        `);
+
+        service.initializeUnitIfNeeded(forceUnit, svg);
+
+        expect(forceUnit.getInventory().length).toBe(1);
+        expect(forceUnit.getInventory()[0].equipment?.hasFlag('F_STEALTH')).toBeTrue();
+        expect(Array.from(forceUnit.getInventory()[0].locations ?? [])).toEqual(['LA', 'LT', 'RA']);
     });
 
     it('preserves existing critical-only entry state when rebuilding synthesized inventory', () => {

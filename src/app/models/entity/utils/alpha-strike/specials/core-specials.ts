@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ASUnitTypeCode } from '../../../../units.model';
+import type { ASUnitTypeCode } from '../../../../unit-summary.model';
 import { ArmorEquipment, WeaponEquipment } from '../../../../equipment.model';
 import { BattleArmorEntity, InfantryEntity, MekEntity, ProtoMekEntity, type BaseEntity, VehicleEntity } from '../../../entities';
 import { isAerospaceElement, isFighter, LARGE_AEROSPACE_TYPES } from '../foundation/unit-classification';

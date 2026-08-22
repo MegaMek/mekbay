@@ -8,7 +8,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DragDropModule, type CdkDragDrop, type CdkDragMove } from '@angular/cdk/drag-drop';
 import type { Force, UnitGroup } from '../../models/force.model';
 import type { ForceUnit } from '../../models/force-unit.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { GameSystem } from '../../models/common.model';
 import { LayoutService } from '../../services/layout.service';
 import { DataService } from '../../services/data.service';
@@ -31,8 +31,9 @@ import { getFormationDefinition } from '../../utils/formation-blueprints';
 import { formationInheritsParentEffects } from '../../utils/formation-type.model';
 import { TaggingService } from '../../services/tagging.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
-import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableSortEvent } from '../data-table/data-table.component';
+import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableRowLongPressEvent, type DataTableSortEvent } from '../data-table/data-table.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
+import { LongPressDirective } from '../../directives/long-press.directive';
 import { FORCE_NOTE_MAX_LENGTH } from '../../models/force-serialization';
 import { naturalCompare } from '../../utils/sort.util';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
@@ -52,7 +53,7 @@ export interface ForceOverviewDialogData {
 /** View model for displaying units in the force */
 interface ForceUnitViewModel {
     forceUnit: ForceUnit;
-    unit: Unit;
+    unit: UnitSummary;
 }
 
 type ForceTableRow =
@@ -96,6 +97,7 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
         UnitIconComponent,
         DataTableComponent,
         TooltipDirective,
+        LongPressDirective,
     ],
     host: {
         class: 'fullscreen-dialog-host fullheight tv-fade'
@@ -135,6 +137,12 @@ export class ForceOverviewDialogComponent {
 
     /** Flag for group drag/reorder */
     readonly isGroupDragging = signal<boolean>(false);
+
+    /** Force-unit ids selected through long press or a modified click. */
+    readonly selectedUnitIds = signal<ReadonlySet<string>>(new Set());
+
+    /** Number of force units currently selected. */
+    readonly selectedUnitCount = computed(() => this.selectedUnitIds().size);
 
     /** Active high-level tab */
     readonly activeTab = signal<ForceOverviewTab>(
@@ -255,6 +263,17 @@ export class ForceOverviewDialogComponent {
             untracked(() => {
                 if (this.viewMode() !== savedViewMode) {
                     this.viewMode.set(savedViewMode);
+                }
+            });
+        });
+        effect(() => {
+            const availableUnitIds = new Set(this.data.force.units().map(unit => unit.id));
+            untracked(() => {
+                const selectedUnitIds = this.selectedUnitIds();
+                if ([...selectedUnitIds].some(id => !availableUnitIds.has(id))) {
+                    this.selectedUnitIds.set(new Set(
+                        [...selectedUnitIds].filter(id => availableUnitIds.has(id))
+                    ));
                 }
             });
         });
@@ -443,7 +462,15 @@ export class ForceOverviewDialogComponent {
             return;
         }
 
-        this.onUnitClick(event.row.vm);
+        this.onUnitClick(event.row.vm, event.event);
+    }
+
+    onForceTableRowLongPress(event: DataTableRowLongPressEvent<ForceTableRow>): void {
+        if (event.row.kind !== 'unit') {
+            return;
+        }
+
+        this.toggleUnitSelection(event.row.vm.forceUnit, event.event);
     }
 
     onPreviewUnitHover(unitEntry: ForcePreviewUnit | null): void {
@@ -471,8 +498,17 @@ export class ForceOverviewDialogComponent {
 
     isForceTableGroupRow = (row: ForceTableRow) => row.kind === 'group';
 
+    readonly forceTableRowClass = (row: ForceTableRow) => ({
+        'is-selected': row.kind === 'unit' && this.isUnitSelected(row.vm.forceUnit),
+    });
+
     /** Handle unit card click - open unit details dialog */
-    onUnitClick(vm: ForceUnitViewModel): void {
+    onUnitClick(vm: ForceUnitViewModel, event?: MouseEvent): void {
+        if (event && (event.ctrlKey || event.metaKey || event.shiftKey)) {
+            this.toggleUnitSelection(vm.forceUnit, event);
+            return;
+        }
+
         const unitList = this.data.force.units();
         const unitIndex = unitList.findIndex(u => u.id === vm.forceUnit.id);
         this.dialogsService.createDialog(UnitDetailsDialogComponent, {
@@ -481,6 +517,33 @@ export class ForceOverviewDialogComponent {
                 unitIndex: unitIndex
             }
         });
+    }
+
+    toggleUnitSelection(forceUnit: ForceUnit, event?: Event): void {
+        event?.preventDefault();
+        event?.stopPropagation();
+
+        const selectedUnitIds = new Set(this.selectedUnitIds());
+        if (selectedUnitIds.has(forceUnit.id)) {
+            selectedUnitIds.delete(forceUnit.id);
+        } else {
+            selectedUnitIds.add(forceUnit.id);
+        }
+        this.selectedUnitIds.set(selectedUnitIds);
+    }
+
+    isUnitSelected(forceUnit: ForceUnit): boolean {
+        return this.selectedUnitIds().has(forceUnit.id);
+    }
+
+    selectAllUnits(): void {
+        this.selectedUnitIds.set(new Set(this.units().map(vm => vm.forceUnit.id)));
+    }
+
+    clearUnitSelection(): void {
+        if (this.selectedUnitCount() > 0) {
+            this.selectedUnitIds.set(new Set());
+        }
     }
 
     async onTagClick({ unit, event }: TagClickEvent): Promise<void> {
@@ -849,7 +912,7 @@ export class ForceOverviewDialogComponent {
         return isUnitDataTableSortActive(this.selectedSort(), ...keysOrGroups);
     }
 
-    getTableSortSlot(unit: Unit): string | null {
+    getTableSortSlot(unit: UnitSummary): string | null {
         const sortKey = this.selectedSort();
         if (!sortKey || !this.tableSortSlotHeader()) {
             return null;
@@ -859,11 +922,11 @@ export class ForceOverviewDialogComponent {
     }
 
     /** Format movement value for Alpha Strike table view */
-    formatASMovement(unit: Unit): string {
+    formatASMovement(unit: UnitSummary): string {
         return formatAlphaStrikeUnitMovement(unit, this.useHex());
     }
 
-    formatClassicMovement(unit: Unit): string {
+    formatClassicMovement(unit: UnitSummary): string {
         return formatClassicUnitMovement(unit);
     }
 
@@ -888,6 +951,9 @@ export class ForceOverviewDialogComponent {
     }
 
     private setViewMode(viewMode: 'expanded' | 'compact' | 'table') {
+        if (viewMode === 'compact') {
+            this.clearUnitSelection();
+        }
         this.viewMode.set(viewMode);
         void this.optionsService.setOption('forceOverviewViewMode', viewMode);
     }

@@ -17,7 +17,7 @@ import { InfantryEntity } from '../models/entity/entities/infantry/infantry-enti
 import { MekEntity, MekWithArmsEntity } from '../models/entity/entities/mek/mek-entity';
 import { EntityMountedEquipment, EntityMountedWeapon } from '../models/entity/types/equipment';
 import { weaponBayEquipmentId } from '../models/entity/utils/implicit-equipment';
-import { UnitComponent } from '../models/units.model';
+import { UnitComponent } from '../models/unit-summary.model';
 import { formatWeaponDamage } from './weapon-damage.util';
 
 type ExportComponent = Omit<UnitComponent, 'l' | 'bay'> & {

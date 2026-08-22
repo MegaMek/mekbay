@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
+import { AmmoEquipment, ArmorEquipment, WeaponEquipment } from '../models/equipment.model';
 import type { WeaponType } from '../models/weapon-types.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { CBTForceUnit, EquipmentAction } from '../models/cbt-force-unit.model';
 import { MountedAmmo, MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { parseInventoryComponentReference } from '../models/inventory-component-reference.model';
 import { type CriticalSlot } from '../models/force-serialization';
-import type { UnitComponent } from '../models/units.model';
+import type { UnitComponent } from '../models/unit-summary.model';
 import { inventoryControlEntryAllowsTarget, resolveInventoryControlSelectedAmmoProfileId, type InventoryControlRuntimeAmmoSelection, type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
 import type { ToHitAdjustment, ToHitModifierBreakdownEntry, ToHitResolution } from '../models/rules/game-rules';
 import { FIELD_GUN_LOCATION, InfantryRules } from '../models/rules/infantry-rules';
@@ -26,6 +26,7 @@ import { formatInventoryControlHeat, resolveInventoryControlHeatEffect, type Inv
 import type { InventoryControlPhysicalDamageEffect } from './inventory-control-physical-damage.util';
 import { ATM_AMMO_PROFILES, MML_AMMO_PROFILES, resolveAmmoWeaponProfile, type AmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
 import { AEROSPACE_RANGE_BRACKETS, STANDARD_AEROSPACE_RANGE_LIMITS, aerospaceAttackValues, aerospaceMaximumDistance, effectiveAerospaceMaximumBracket, isRangeBracketWithinMaximum, type AerospaceAttackValues } from './aerospace-range.util';
+import type { TnTargetModifierGroupTotals } from '../models/target-number-calculator.model';
 
 export const INVENTORY_CONTROL_MODE_STATE = 'inventory_control_mode';
 export const INVENTORY_CONTROL_SORT_STATE = 'inventory_control_sort';
@@ -165,6 +166,13 @@ export type InventoryControlDisplayEffectApplier = (
     options: InventoryControlDisplayEffectOptions
 ) => InventoryControlDisplayData;
 
+/** Weapon-specific context that has already been compiled by the common target solver. */
+export interface InventoryControlToHitContext {
+    readonly selectedAmmo?: AmmoEquipment | null;
+    readonly target?: InventoryControlRuntimeTarget | null;
+    readonly targetModifierGroups?: TnTargetModifierGroupTotals;
+}
+
 export interface InventoryControlRules extends InventoryControlDamageRules, InventoryControlHeatRules {
     applyDisplayEffects?: InventoryControlDisplayEffectApplier;
     applyAerospaceAttackValueEffects?: (
@@ -172,7 +180,7 @@ export interface InventoryControlRules extends InventoryControlDamageRules, Inve
         values: AerospaceAttackValues
     ) => AerospaceAttackValues;
     matchesAmmo?: (entry: MountedEquipment, ammo: AmmoEquipment, mode: string | null) => boolean | null;
-    resolveToHitAdjustments?: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null, target?: InventoryControlRuntimeTarget | null) => readonly ToHitAdjustment[];
+    resolveToHitAdjustments?: (entry: MountedEquipment, context?: InventoryControlToHitContext) => readonly ToHitAdjustment[];
     isSelectable?: (entry: MountedEquipment) => boolean;
     applyPhysicalDamageEffects?: (
         entry: MountedEquipment,
@@ -718,7 +726,7 @@ function resolveInventoryControlHitModifier(
     return entry.owner.gameRules.resolveToHit({
         subject: entry,
         stateModifiers: hitModifierBreakdown,
-        adjustments: rules.resolveToHitAdjustments?.(entry, selectedAmmo)
+        adjustments: rules.resolveToHitAdjustments?.(entry, { selectedAmmo })
     });
 }
 
@@ -811,9 +819,10 @@ function readTypedEquipmentDisplayData(
     const ranges = weapon && entry.owner.getUnit().type === 'Aero'
         ? STANDARD_AEROSPACE_RANGE_LIMITS
         : weapon?.ranges;
+    const wildcardLocation = equipment instanceof ArmorEquipment;
     return {
         name: displayName,
-        location: normalizeCell(Array.from(entry.locations ?? []).join('/')),
+        location: wildcardLocation ? '*' : normalizeCell(Array.from(entry.locations ?? []).join('/')),
         heat: weapon ? formatInventoryControlHeat(weapon.heat) : '—',
         damage: weapon ? '—' : physicalDamage,
         hit,
@@ -1119,7 +1128,7 @@ function applySelectedRangeDisplay(
     selectedRange: InventoryControlRuntimeRangeKey | null,
     hitModifierBreakdown: readonly ToHitModifierBreakdownEntry[],
     selectedAmmo?: AmmoEquipment | null,
-    resolveToHitAdjustments?: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => readonly ToHitAdjustment[]
+    resolveToHitAdjustments?: InventoryControlRules['resolveToHitAdjustments']
 ): InventoryControlDisplayData {
     const hit = selectedRange === null
         ? display.hit
@@ -1127,7 +1136,7 @@ function applySelectedRangeDisplay(
             subject: entry,
             stateModifiers: hitModifierBreakdown,
             range: selectedRange,
-            adjustments: resolveToHitAdjustments?.(entry, selectedAmmo)
+            adjustments: resolveToHitAdjustments?.(entry, { selectedAmmo })
         }).value);
     return hit === display.hit ? display : { ...display, hit };
 }

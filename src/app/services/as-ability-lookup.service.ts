@@ -5,7 +5,7 @@
 import { inject, Injectable } from '@angular/core';
 import { AS_SPECIAL_ABILITIES, type ASSpecialAbility } from '../models/as-abilities.model';
 import { type AlternateMunition, getAlternateMunitionsForAbility } from '../models/as-alternate-munitions.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { LoggerService } from './logger.service';
 
 /**
@@ -380,7 +380,7 @@ export class AsAbilityLookupService {
      * Validates all Alpha Strike abilities from all units and logs any that couldn't be matched.
      * This is called at startup to help identify missing ability definitions.
      */
-    validateAllAbilities(units: Unit[]): void {
+    validateAllAbilities(units: UnitSummary[]): void {
         const unmatchedAbilities = new Map<string, string[]>(); // ability text -> unit names
         let totalAbilities = 0;
         let matchedAbilities = 0;

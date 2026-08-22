@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { Equipment, WeaponEquipment } from '../models/equipment.model';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
 import { UnitSearchIndexService } from './unit-search-index.service';
 
-function createUnit(overrides: TestUnitOverrides): Unit {
+function createUnit(overrides: TestUnitOverrides): UnitSummary {
     const { as: asOverrides, ...unitOverrides } = overrides;
 
     return createEmptyUnit({

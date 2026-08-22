@@ -14,10 +14,15 @@ import { HexSliderComponent } from '../hex-slider/hex-slider.component';
 import { MultilineDropdownComponent, type MultilineDropdownOption } from '../multiline-dropdown/multiline-dropdown.component';
 import { CoverLevelPickerComponent } from '../cover-level-picker/cover-level-picker.component';
 import {
+    canApplyTnLargeTargetModifier,
+    canTnTargetTypeBeLarge,
     calculateTargetTnModifier,
     getIndirectFireModifier,
+    getTargetAirborneModifier,
+    getTargetMovementBracketForDistance,
     getTargetMovementBracketModifier,
     getTargetUnitTypeModifier,
+    getVisualCamoTnModifiers,
     isStaticTargetType,
     isTerrainTargetType,
     normalizeTargetCustomModifier,
@@ -27,9 +32,18 @@ import {
     TN_TARGET_UNIT_TYPE_OPTIONS,
     TN_CUSTOM_MODIFIER_MIN,
     TN_CUSTOM_MODIFIER_MAX,
+    TN_CHAMELEON_MODIFIERS,
+    TN_CHAMELEON_NULL_SIGNATURE_MODIFIERS,
+    TN_NULL_SIGNATURE_MODIFIERS,
+    TN_STANDARD_STEALTH_MODIFIERS,
     ADJACENT_RANGE,
+    stealthDisallowsSecondaryTarget,
     type TnAttackDirection,
     type TnInterveningWoods,
+    type TnStealthState,
+    type TnStealthModifiers,
+    type TnStealthSystem,
+    type TnVisualCamoSystem,
     type TnTargetHexCover,
     type TnTargetNumberCalculatorState,
     type TnTargetUnitType,
@@ -47,6 +61,112 @@ import {
 } from '../../models/unit-cover.model';
 
 const JAMMED_CONDITION_COLOR = getUnitConditionDefinition('jammed')?.color ?? '#ff6be6';
+
+type TnStealthChoiceId = 'none' | 'custom' | TnStealthSystem;
+
+interface TnStealthChoice {
+    readonly id: TnStealthChoiceId;
+    readonly label: string;
+    readonly infantryLabel?: string;
+    readonly profile?: TnStealthModifiers;
+    readonly movementProfile?: TnVisualCamoSystem;
+    readonly targetTypes?: readonly TnTargetUnitType[];
+}
+
+const INFANTRY_IGNORES_STEALTH = { short: 0, medium: 0, long: 0 } as const;
+const TN_MEK_TARGET_TYPES: readonly TnTargetUnitType[] = ['mek-biped', 'mek-quad', 'mek-tripod'];
+const TN_STEALTH_ARMOR_TARGET_TYPES: readonly TnTargetUnitType[] = [
+    ...TN_MEK_TARGET_TYPES,
+    'vehicle',
+    'vtol',
+    'aero',
+];
+const TN_BATTLE_ARMOR_TARGET_TYPES: readonly TnTargetUnitType[] = ['battle-armor'];
+const TN_MIMETIC_CAMO_TARGET_TYPES: readonly TnTargetUnitType[] = ['battle-armor', 'infantry'];
+const TN_STEALTH_CHOICES: readonly TnStealthChoice[] = [
+    { id: 'none', label: 'No Stealth' },
+    { id: 'stealth-armor', label: 'Stealth', profile: TN_STANDARD_STEALTH_MODIFIERS, targetTypes: TN_STEALTH_ARMOR_TARGET_TYPES },
+    { id: 'null-signature', label: 'Null Signature', profile: TN_NULL_SIGNATURE_MODIFIERS, targetTypes: TN_MEK_TARGET_TYPES },
+    { id: 'chameleon', label: 'Chameleon LPS', profile: TN_CHAMELEON_MODIFIERS, targetTypes: TN_MEK_TARGET_TYPES },
+    { id: 'chameleon-null', label: 'Chameleon + Null Signature', profile: TN_CHAMELEON_NULL_SIGNATURE_MODIFIERS, targetTypes: TN_MEK_TARGET_TYPES },
+    { id: 'ba-basic', label: 'BA Stealth (Basic/Prototype)', profile: { short: 0, medium: 1, long: 2, conventionalInfantry: INFANTRY_IGNORES_STEALTH }, targetTypes: TN_BATTLE_ARMOR_TARGET_TYPES },
+    { id: 'ba-standard', label: 'BA Stealth', profile: { short: 1, medium: 1, long: 2, conventionalInfantry: INFANTRY_IGNORES_STEALTH }, targetTypes: TN_BATTLE_ARMOR_TARGET_TYPES },
+    { id: 'ba-improved', label: 'BA Stealth (Improved)', profile: { short: 1, medium: 2, long: 3, conventionalInfantry: INFANTRY_IGNORES_STEALTH }, targetTypes: TN_BATTLE_ARMOR_TARGET_TYPES },
+    { id: 'mimetic', label: 'BA Mimetic', infantryLabel: 'Camo (Sneak/Dermal)', movementProfile: 'mimetic', targetTypes: TN_MIMETIC_CAMO_TARGET_TYPES },
+    { id: 'simple-camo', label: 'Simple Camo', movementProfile: 'simple-camo', targetTypes: TN_BATTLE_ARMOR_TARGET_TYPES },
+];
+
+function stealthChoiceSupportsUnitType(choice: TnStealthChoice, unitType: TnTargetUnitType): boolean {
+    return !choice.targetTypes || choice.targetTypes.includes(unitType);
+}
+
+const TN_STANDARD_TARGET_MOVEMENT_OPTIONS = TN_TARGET_MOVEMENT_BRACKETS.map(bracket => ({
+    distance: bracket.min,
+    label: bracket.label,
+    bracketId: bracket.id,
+}));
+
+const TN_INFANTRY_TARGET_MOVEMENT_OPTIONS = [
+    { distance: 0, label: '0', bracketId: '0-2' },
+    { distance: 1, label: '1', bracketId: '0-2' },
+    { distance: 2, label: '2', bracketId: '0-2' },
+    ...TN_TARGET_MOVEMENT_BRACKETS.slice(1, 4).map(bracket => ({
+        distance: bracket.min,
+        label: bracket.label,
+        bracketId: bracket.id,
+    })),
+];
+
+function stealthChoiceProfile(state: TnStealthState | undefined): TnStealthModifiers | undefined {
+    if (!state) return undefined;
+    return state === true ? TN_STANDARD_STEALTH_MODIFIERS : state;
+}
+
+function sameStealthProfile(left: TnStealthModifiers, right: TnStealthModifiers): boolean {
+    const leftInfantry = left.conventionalInfantry ?? left;
+    const rightInfantry = right.conventionalInfantry ?? right;
+    return left.short === right.short
+        && left.medium === right.medium
+        && left.long === right.long
+        && left.secondaryTargetRestricted === right.secondaryTargetRestricted
+        && leftInfantry.short === rightInfantry.short
+        && leftInfantry.medium === rightInfantry.medium
+        && leftInfantry.long === rightInfantry.long;
+}
+
+function stealthChoiceModifiers(
+    choice: TnStealthChoice | undefined,
+    targetMoveDistance: number,
+): TnStealthModifiers | undefined {
+    if (!choice) return undefined;
+    return choice.movementProfile
+        ? getVisualCamoTnModifiers(choice.movementProfile, targetMoveDistance)
+        : choice.profile;
+}
+
+function stealthChoiceId(
+    state: TnStealthState | undefined,
+    system?: TnStealthSystem,
+): TnStealthChoiceId {
+    if (system && TN_STEALTH_CHOICES.some(choice => choice.id === system)) return system;
+    const profile = stealthChoiceProfile(state);
+    if (!profile) return 'none';
+    const fixedChoice = TN_STEALTH_CHOICES.find(choice => choice.profile && sameStealthProfile(choice.profile, profile));
+    if (fixedChoice) return fixedChoice.id;
+    return profile.short === profile.medium && profile.medium === profile.long
+        ? 'mimetic'
+        : 'custom';
+}
+
+function selectedStealthSystem(choice: TnStealthChoiceId): TnStealthSystem | undefined {
+    return choice === 'none' || choice === 'custom' ? undefined : choice;
+}
+
+function formatStealthProfile(profile: TnStealthModifiers | undefined): string | null {
+    if (!profile) return null;
+    const signed = (value: number) => value > 0 ? `+${value}` : `${value}`;
+    return `${signed(profile.short)}/${signed(profile.medium)}/${signed(profile.long)}`;
+}
 export interface TnCalculatorDialogData {
     target: InventoryControlRuntimeTarget;
     gameRules: CBTGameRules;
@@ -79,27 +199,25 @@ export interface TnCalculatorDialogResult {
                     <section class="tn-section attack-method-section">
 
                         <div class="section-title">Attack Method</div>
-                        <div class="button-row">
-                            <button type="button" class="bt-button move-button" [class.selected]="secondaryTarget()" [attr.aria-pressed]="secondaryTarget()" (click)="toggleSecondaryTarget()">
+                        <div
+                            class="attack-method-controls"
+                            [class.has-secondary-side-back]="gameRules().supportsSecondaryTargetSideBack"
+                            [class.has-indirect-fire]="indirectFireAvailable">
+                            @if (indirectFireAvailable) {
+                                <button type="button" class="bt-button move-button indirect-fire-control" [class.selected]="indirectFire()" [attr.aria-pressed]="indirectFire()" (click)="toggleIndirectFire()">
+                                    <span>Indirect Fire</span>@if (indirectFireModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }
+                                </button>
+                            }
+                            <button type="button" class="bt-button move-button secondary-target-control" [class.selected]="secondaryTarget()" [attr.aria-pressed]="secondaryTarget()" [disabled]="secondaryTargetUnavailable()" [attr.title]="secondaryTargetUnavailable() ? 'Active stealth armor cannot be attacked as a secondary target' : null" (click)="toggleSecondaryTarget()">
                                 <span>Secondary Target</span><span class="modifier-badge">+1</span>
                             </button>
                             @if (gameRules().supportsSecondaryTargetSideBack) {
-                                <button type="button" class="bt-button move-button" [class.selected]="secondaryTargetSideBack()" [attr.aria-pressed]="secondaryTargetSideBack()" (click)="toggleSecondaryTargetSideBack()">
+                                <button type="button" class="bt-button move-button secondary-target-side-back-control" [class.selected]="secondaryTargetSideBack()" [attr.aria-pressed]="secondaryTargetSideBack()" [disabled]="secondaryTargetUnavailable()" [attr.title]="secondaryTargetUnavailable() ? 'Active stealth armor cannot be attacked as a secondary target' : null" (click)="toggleSecondaryTargetSideBack()">
                                     <span>Secondary (S/B)</span><span class="modifier-badge">+2</span>
-                                </button>
-                            } @else if (gameRules().supportsLargeTarget) {
-                                <button type="button" class="bt-button move-button" [class.selected]="largeTarget()" [attr.aria-pressed]="largeTarget()" [disabled]="targetStateReadOnly" (click)="toggleLargeTarget()">
-                                    <span>Large Target</span><span class="modifier-badge">-1</span>
                                 </button>
                             }
                         </div>
-                        @if (indirectFireAvailable) {
-                            <div class="button-row">
-                                <button type="button" class="bt-button move-button" [class.selected]="indirectFire()" [attr.aria-pressed]="indirectFire()" (click)="toggleIndirectFire()">
-                                    <span>Indirect Fire</span>@if (indirectFireModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }
-                                </button>
-                            </div>
-                            @if (indirectFire()) {
+                        @if (indirectFireAvailable && indirectFire()) {
                                 <div class="spotter-section framed-borders muted-frame">
                                     <div class="section-title secondary">Spotter</div>
                                     <div class="button-row spotter-move-row">
@@ -118,39 +236,40 @@ export interface TnCalculatorDialogResult {
                                         </button>
                                     </div>
                                 </div>
-                            }
                         }
                     </section>
 
-                    <section class="tn-section target-movement-section" [class.derived-target-state]="targetStateReadOnly">
-                        <div class="section-title">Target Movement</div>
-                        <div class="row" [class.static-target-disabled]="staticTarget()">
-                            <hex-slider
-                                class="tn-slider"
-                                [min]="MOVEMENT_MIN"
-                                [max]="MOVEMENT_MAX"
-                                [step]="1"
-                                [value]="targetMovementBracketIndex()"
-                                [ticks]="movementTicks"
-                                [tickLabels]="movementTickLabels"
-                                [label]="targetMovementBracketLabel()"
-                                [modifierLabel]="targetMovementModifierLabel()"
-                                [ariaLabel]="'Target movement bracket'"
-                                [valueAssigned]="!staticTarget()"
-                                [compactLabel]="true"
-                                (valueChange)="setTargetMovementBracketIndex($event)"></hex-slider>
-                        </div>
-                        <div class="button-row">
-                            <button type="button" class="bt-button move-button" [class.selected]="isAirborne()" [attr.aria-pressed]="isAirborne()" [disabled]="staticTarget() || targetStateReadOnly" (click)="toggleAirborne()"><span>Jumped / Airborne</span><span class="modifier-badge">+1</span></button>
-                            @if (gameRules().supportsSkidding) {
-                                <button type="button" class="bt-button move-button" [class.selected]="skidding()" [attr.aria-pressed]="skidding()" [disabled]="staticTarget() || targetStateReadOnly" (click)="toggleSkidding()"><span>Skidding</span><span class="modifier-badge">+2</span></button>
-                            }
-                        </div>
-                        <div class="button-row" role="group" aria-label="Target stance">
-                            <button type="button" class="bt-button move-button" [class.selected]="prone()" [attr.aria-pressed]="prone()" [disabled]="staticTarget() || targetStateReadOnly" (click)="toggleProne()"><span>{{ proneLabel() }}</span><span class="modifier-badge">{{ proneModifierLabel() }}</span></button>
-                            <button type="button" class="bt-button move-button" [class.selected]="immobile()" [attr.aria-pressed]="immobile()" [disabled]="staticTarget() || targetStateReadOnly" (click)="toggleImmobile()"><span>Immobile</span><span class="modifier-badge">-4</span></button>
-                        </div>
-                    </section>
+                    @if (!staticTarget()) {
+                        <section class="tn-section target-movement-section" [class.derived-target-state]="targetStateReadOnly">
+                            <div class="section-title">Target Movement</div>
+                            <div class="row">
+                                <hex-slider
+                                    class="tn-slider"
+                                    [min]="MOVEMENT_MIN"
+                                    [max]="movementMax()"
+                                    [step]="1"
+                                    [value]="targetMovementSliderIndex()"
+                                    [ticks]="movementTicks()"
+                                    [tickLabels]="movementTickLabels()"
+                                    [label]="targetMovementBracketLabel()"
+                                    [modifierLabel]="targetMovementModifierLabel()"
+                                    [ariaLabel]="'Target movement bracket'"
+                                    [valueAssigned]="true"
+                                    [compactLabel]="true"
+                                    (valueChange)="setTargetMovementSliderIndex($event)"></hex-slider>
+                            </div>
+                            <div class="button-row">
+                                <button type="button" class="bt-button move-button" [class.selected]="isAirborne()" [attr.aria-pressed]="isAirborne()" [disabled]="targetStateReadOnly" [attr.title]="airborneTitle()" (click)="toggleAirborne()"><span>Jumped / Airborne</span><span class="modifier-badge">{{ airborneModifierLabel() }}</span></button>
+                                @if (gameRules().supportsSkidding) {
+                                    <button type="button" class="bt-button move-button" [class.selected]="skidding()" [attr.aria-pressed]="skidding()" [disabled]="targetStateReadOnly" (click)="toggleSkidding()"><span>Skidding</span><span class="modifier-badge">+2</span></button>
+                                }
+                            </div>
+                            <div class="button-row" role="group" aria-label="Target stance">
+                                <button type="button" class="bt-button move-button" [class.selected]="prone()" [attr.aria-pressed]="prone()" [disabled]="targetStateReadOnly" (click)="toggleProne()"><span>{{ proneLabel() }}</span><span class="modifier-badge">{{ proneModifierLabel() }}</span></button>
+                                <button type="button" class="bt-button move-button" [class.selected]="immobile()" [attr.aria-pressed]="immobile()" [disabled]="targetStateReadOnly" (click)="toggleImmobile()"><span>Immobile</span><span class="modifier-badge">-4</span></button>
+                            </div>
+                        </section>
+                    }
 
                     <section class="tn-section distance-section">
                         <div class="section-title">Distance</div>
@@ -196,8 +315,7 @@ export interface TnCalculatorDialogResult {
                 <div class="tn-column">
                     <section class="tn-section target-identity-section">
                         <div class="section-title">Target Identity</div>
-                        <div class="field-row">
-                            <label for="tnTargetUnitType">Target Type</label>
+                        <div class="target-identity-row">
                             <multiline-dropdown
                                 class="bt-button identity-choice"
                                 [class.selected]="unitTypeSelectedHasModifier()"
@@ -208,6 +326,9 @@ export interface TnCalculatorDialogResult {
                                 [value]="unitType()"
                                 [disabled]="targetStateReadOnly"
                                 (valueChange)="selectUnitType($event)" />
+                            <button type="button" class="bt-button move-button large-target-control" [class.selected]="largeTarget()" [attr.aria-pressed]="largeTarget()" [disabled]="targetStateReadOnly || !largeTargetAvailable()" [attr.title]="largeTargetTitle()" (click)="toggleLargeTarget()">
+                                <span>Large</span><span class="modifier-badge">{{ largeTargetModifierLabel() }}</span>
+                            </button>
                         </div>
                     </section>
 
@@ -286,6 +407,15 @@ export interface TnCalculatorDialogResult {
                                     @if (underwaterNarcAvailable()) {
                                         <button type="button" class="bt-button move-button narc-underwater-state" [class.selected]="narcUnderwater()" [attr.aria-pressed]="narcUnderwater()" (click)="toggleNarcUnderwater()">{{ narcUnderwaterLabel() }}</button>
                                     }
+                                    <multiline-dropdown
+                                        class="bt-button stealth-state"
+                                        [class.selected]="!!stealth()"
+                                        controlId="tnStealthProfile"
+                                        [label]="'Stealth'"
+                                        [options]="stealthDropdownOptions()"
+                                        [value]="stealthChoice()"
+                                        [expandPanelToContent]="true"
+                                        (valueChange)="selectStealth($event)" />
                                     <button type="button" class="bt-button move-button ecm-shielded-state" [class.selected]="ecmShielded()" [attr.aria-pressed]="ecmShielded()" title="Suppress NARC guidance while the attached pod is inside an enemy ECM bubble" (click)="toggleEcmShielded()">ECM SHIELDED</button>
                                 </div>
                             </div>
@@ -453,6 +583,46 @@ export interface TnCalculatorDialogResult {
             flex: 1 1 0;
             min-width: 0;
             box-sizing: border-box;
+        }
+
+        .attack-method-controls {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .attack-method-controls .bt-button {
+            width: 100%;
+            min-width: 0;
+        }
+
+        .attack-method-controls .indirect-fire-control {
+            grid-column: 1;
+            grid-row: 1;
+        }
+
+        .attack-method-controls .secondary-target-control {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        .attack-method-controls.has-secondary-side-back .secondary-target-control {
+            grid-column: 1;
+        }
+
+        .attack-method-controls .secondary-target-side-back-control {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        .attack-method-controls.has-secondary-side-back .indirect-fire-control {
+            grid-column: 1 / -1;
+            grid-row: 2;
+        }
+
+        .attack-method-controls:not(.has-indirect-fire):not(.has-secondary-side-back) .secondary-target-control {
+            grid-column: 1 / -1;
         }
 
         .spotter-move-row {
@@ -740,11 +910,25 @@ export interface TnCalculatorDialogResult {
             min-width: 0;
         }
 
+        .target-identity-row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            align-items: stretch;
+            gap: 4px;
+            min-width: 0;
+        }
+
         .identity-choice {
-            flex: 1 1 auto;
             min-width: 0;
             width: 100%;
             display: flex;
+            box-sizing: border-box;
+        }
+
+        .target-identity-row .large-target-control {
+            min-width: 0;
+            width: 100%;
+            white-space: nowrap;
         }
 
         .toggle-button.selected,
@@ -984,7 +1168,6 @@ export class TnCalculatorDialogComponent {
     readonly jammedConditionColor = JAMMED_CONDITION_COLOR;
     readonly taggedUnavailableReason = INVENTORY_CONTROL_TAG_INFANTRY_TARGET_REASON;
     readonly MOVEMENT_MIN = 0;
-    readonly MOVEMENT_MAX = TN_TARGET_MOVEMENT_BRACKETS.length - 1;
     readonly RANGE_MIN = 0;
     readonly RANGE_MAX = 25;
     readonly CUSTOM_MODIFIER_MIN = TN_CUSTOM_MODIFIER_MIN;
@@ -992,7 +1175,12 @@ export class TnCalculatorDialogComponent {
     private readonly dialogRef = inject(DialogRef<TnCalculatorDialogResult | null>);
     private readonly data = inject<TnCalculatorDialogData>(DIALOG_DATA);
     private readonly initialCalculator = this.data.target.tnCalculator;
+    private readonly initialTargetHeight = this.initialCalculator?.targetHeight;
     private readonly initialUnitType = this.data.target.unitType ?? 'mek-biped';
+    private readonly initialStealthChoice = stealthChoiceId(
+        this.initialCalculator?.stealth,
+        this.initialCalculator?.stealthSystem,
+    );
 
     readonly target = this.data.target;
     readonly indirectFireAvailable = this.data.indirectFireAvailable ?? true;
@@ -1007,16 +1195,29 @@ export class TnCalculatorDialogComponent {
         label: option.label,
         modifierLabel: this.formatNonZeroModifier(getTargetUnitTypeModifier(option.value)),
     })));
-    readonly movementBrackets = TN_TARGET_MOVEMENT_BRACKETS;
-    readonly movementTicks = this.movementBrackets.map((_bracket, index) => index);
-    readonly movementTickLabels = this.movementBrackets.map(bracket => bracket.label);
+    readonly stealthDropdownOptions = computed<readonly MultilineDropdownOption[]>(() => [
+        ...TN_STEALTH_CHOICES
+            .filter(choice => stealthChoiceSupportsUnitType(choice, this.unitType()))
+            .map(choice => ({
+            value: choice.id,
+            label: this.unitType() === 'infantry' ? choice.infantryLabel ?? choice.label : choice.label,
+            modifierLabel: formatStealthProfile(stealthChoiceModifiers(choice, this.targetMovementDistance())),
+            })),
+        ...(this.initialStealthChoice === 'custom' ? [{
+            value: 'custom',
+            label: 'Derived Stealth Profile',
+            modifierLabel: formatStealthProfile(stealthChoiceProfile(this.initialCalculator?.stealth)),
+        }] : []),
+    ]);
     readonly rangeTicks = Array.from({ length: this.RANGE_MAX - this.RANGE_MIN + 1 }, (_value, index) => index + this.RANGE_MIN);
     readonly unitType = signal<TnTargetUnitType>(this.initialUnitType);
     readonly isAirborne = signal<boolean>(this.initialCalculator?.isAirborne ?? false);
-    readonly targetMovementBracketIndex = signal<number>(this.indexFromStoredMovementBracket());
+    readonly targetMovementDistance = signal<number>(this.initialTargetMovementDistance());
     readonly skidding = signal<boolean>(this.initialCalculator?.skidding ?? false);
     readonly prone = signal<boolean>(this.initialCalculator?.prone ?? false);
-    readonly immobile = signal<boolean>(this.initialCalculator?.immobile ?? false);
+    readonly immobile = signal<boolean>(
+        !isStaticTargetType(this.initialUnitType) && (this.initialCalculator?.immobile ?? false),
+    );
     readonly interveningWoods = signal<TnInterveningWoods>(this.normalizeInterveningWoods(this.initialCalculator?.interveningWoods as TnInterveningWoods | 'heavy1' | null | undefined));
     readonly targetHexCover = signal<TnTargetHexCover>(this.initialCalculator?.targetHexCover ?? 'none');
     readonly waterDepth = signal<UnitWaterDepth | undefined>(this.initialCalculator?.waterDepth);
@@ -1032,10 +1233,14 @@ export class TnCalculatorDialogComponent {
             : this.range() > ADJACENT_RANGE));
     readonly attackDirection = signal<TnAttackDirection>(this.initialCalculator?.attackDirection ?? 'front');
     readonly indirectFire = signal<boolean>(this.initialIndirectFire);
-    readonly secondaryTarget = signal<boolean>(this.initialCalculator?.secondaryTarget ?? false);
-    readonly secondaryTargetSideBack = signal<boolean>((this.initialCalculator?.secondaryTargetSideBack ?? false) && !(this.initialCalculator?.secondaryTarget ?? false));
+    readonly secondaryTarget = signal<boolean>((this.initialCalculator?.secondaryTarget ?? false)
+        && !stealthDisallowsSecondaryTarget(this.initialCalculator?.stealth));
+    readonly secondaryTargetSideBack = signal<boolean>((this.initialCalculator?.secondaryTargetSideBack ?? false)
+        && !(this.initialCalculator?.secondaryTarget ?? false)
+        && !stealthDisallowsSecondaryTarget(this.initialCalculator?.stealth));
     readonly largeTarget = signal<boolean>(
-        this.data.gameRules.supportsLargeTarget && (this.initialCalculator?.largeTarget ?? false),
+        (this.initialCalculator?.largeTarget ?? false)
+        && canTnTargetTypeBeLarge(this.initialUnitType),
     );
     readonly spotterMoveMode = signal<TnSpotterMoveMode>(this.initialCalculator?.spotterMoveMode ?? 'stationary');
     readonly spotterDeclaredAttacks = signal<boolean>(this.initialCalculator?.spotterDeclaredAttacks ?? false);
@@ -1046,6 +1251,15 @@ export class TnCalculatorDialogComponent {
         && this.data.gameRules.allowsTagDesignation(this.initialUnitType),
     );
     readonly ecmShielded = signal<boolean>(this.initialCalculator?.ecmShielded ?? false);
+    readonly stealthChoice = signal<TnStealthChoiceId>(this.initialStealthChoice);
+    readonly stealth = computed<TnStealthState | undefined>(() => (
+        this.stealthChoice() === 'custom'
+            ? stealthChoiceProfile(this.initialCalculator?.stealth)
+            : stealthChoiceModifiers(
+                TN_STEALTH_CHOICES.find(choice => choice.id === this.stealthChoice()),
+                this.targetMovementDistance(),
+            )
+    ));
     readonly customModifier = signal<number>(this.normalizeCustomModifier(this.initialCalculator?.customModifier));
     readonly customModifierLabel = computed(() => this.customModifier() > 0
         ? `+${this.customModifier()}`
@@ -1053,14 +1267,38 @@ export class TnCalculatorDialogComponent {
     readonly renderReady = signal(false);
     readonly unitTypeSelectedHasModifier = computed(() => this.unitTypeDropdownOptions().some(option => option.value === this.unitType() && !!option.modifierLabel));
     readonly taggedUnavailable = computed(() => !this.gameRules().allowsTagDesignation(this.unitType()));
+    readonly secondaryTargetUnavailable = computed(() => stealthDisallowsSecondaryTarget(this.stealth()));
+    readonly largeTargetAvailable = computed(() => canTnTargetTypeBeLarge(this.unitType()));
+    readonly largeTargetModifierLabel = computed(() => canApplyTnLargeTargetModifier(this.unitType(), this.isAirborne()) ? '-1' : '+0');
+    readonly largeTargetTitle = computed(() => {
+        if (!this.largeTargetAvailable()) return 'This target type cannot be Large';
+        if (!canApplyTnLargeTargetModifier(this.unitType(), this.isAirborne())) {
+            return 'Large Target is retained; its -1 modifier does not apply to an airborne aerospace target';
+        }
+        return null;
+    });
+    readonly airborneModifierLabel = computed(() => this.formatModifier(getTargetAirborneModifier(true, this.unitType())));
+    readonly airborneTitle = computed(() => this.unitType() === 'aero'
+        ? 'The generic +1 Jumped/Airborne modifier applies only to non-aerospace targets'
+        : null);
 
     readonly staticTarget = computed(() => isStaticTargetType(this.unitType()));
     readonly terrainTarget = computed(() => isTerrainTargetType(this.unitType()));
+    readonly usesInfantryMovementScale = computed(() => (
+        this.unitType() === 'infantry' || this.unitType() === 'battle-armor'
+    ));
+    readonly targetMovementOptions = computed(() => this.usesInfantryMovementScale()
+        ? TN_INFANTRY_TARGET_MOVEMENT_OPTIONS
+        : TN_STANDARD_TARGET_MOVEMENT_OPTIONS);
+    readonly movementMax = computed(() => this.targetMovementOptions().length - 1);
+    readonly movementTicks = computed(() => this.targetMovementOptions().map((_option, index) => index));
+    readonly movementTickLabels = computed(() => this.targetMovementOptions().map(option => option.label));
     readonly waterDepthValue = computed(() => this.waterDepth() ?? '');
     readonly buildingCoverValue = computed(() => this.buildingCover() ?? '');
     readonly targetWaterState = computed(() => resolveTnTargetWaterState({
         unitType: this.unitType(),
         waterDepth: this.waterDepth(),
+        targetHeight: this.initialTargetHeight,
         largeTarget: this.largeTarget(),
         prone: this.prone(),
     }));
@@ -1072,6 +1310,7 @@ export class TnCalculatorDialogComponent {
     readonly targetBuildingCoverState = computed(() => resolveTnTargetBuildingCoverState({
         unitType: this.unitType(),
         buildingCover: this.buildingCover(),
+        targetHeight: this.initialTargetHeight,
         largeTarget: this.largeTarget(),
         prone: this.prone(),
     }));
@@ -1089,8 +1328,23 @@ export class TnCalculatorDialogComponent {
             : 'Partial Cover');
     readonly proneLabel = computed(() => this.range() <= ADJACENT_RANGE ? 'Prone (Adjacent)' : 'Prone');
     readonly proneModifierLabel = computed(() => this.range() <= ADJACENT_RANGE ? '-2' : '+1');
-    readonly targetMovementBracket = computed(() => this.movementBrackets[this.targetMovementBracketIndex()] ?? this.movementBrackets[0]);
-    readonly targetMovementBracketLabel = computed(() => this.targetMovementBracket().label);
+    readonly targetMovementSliderIndex = computed(() => {
+        const distance = this.targetMovementDistance();
+        const bracket = getTargetMovementBracketForDistance(distance) ?? TN_TARGET_MOVEMENT_BRACKETS[0];
+        const options = this.targetMovementOptions();
+        const index = options.findIndex(option => (
+            this.usesInfantryMovementScale() && distance <= 2
+                ? option.distance === distance
+                : option.bracketId === bracket.id
+        ));
+        return index >= 0 ? index : 0;
+    });
+    readonly targetMovementBracket = computed(() => (
+        getTargetMovementBracketForDistance(this.targetMovementDistance()) ?? TN_TARGET_MOVEMENT_BRACKETS[0]
+    ));
+    readonly targetMovementBracketLabel = computed(() => this.usesInfantryMovementScale() && this.targetMovementDistance() <= 2
+        ? `${this.targetMovementDistance()}`
+        : this.targetMovementBracket().label);
     readonly targetMovementModifier = computed(() => getTargetMovementBracketModifier(this.targetMovementBracket().id));
     readonly targetMovementModifierLabel = computed(() => this.formatModifier(this.targetMovementModifier()));
     readonly rangeLabel = computed(() => `${this.range()}`);
@@ -1112,6 +1366,7 @@ export class TnCalculatorDialogComponent {
         partialCover: this.partialCover(),
         waterDepth: this.waterDepth(),
         buildingCover: this.buildingCover(),
+        targetHeight: this.initialTargetHeight,
         attackDirection: this.attackDirection(),
         indirectFire: this.indirectFire(),
         secondaryTarget: this.secondaryTarget(),
@@ -1119,6 +1374,7 @@ export class TnCalculatorDialogComponent {
         largeTarget: this.largeTarget(),
         spotterMoveMode: this.spotterMoveMode(),
         spotterDeclaredAttacks: this.spotterDeclaredAttacks(),
+        stealth: this.stealth(),
         customModifier: this.customModifier(),
     }, this.gameRules()));
     readonly signedTotal = computed(() => this.totalModifier() >= 0 ? `+${this.totalModifier()}` : `${this.totalModifier()}`);
@@ -1162,22 +1418,29 @@ export class TnCalculatorDialogComponent {
     constructor() {
         afterNextRender(() => this.renderReady.set(true));
         this.clearStaticTargetModifiers();
+        this.clampInfantryMovement();
+        this.clearUnavailableStealthChoice();
     }
 
     selectUnitType(value: string): void {
         if (this.targetStateReadOnly) return;
         this.unitType.set(value as TnTargetUnitType);
+        this.clearUnavailableLargeTarget();
         if (this.taggedUnavailable()) this.tagged.set(false);
         this.clearStaticTargetModifiers();
+        this.clampInfantryMovement();
+        this.clearUnavailableStealthChoice();
     }
 
     private normalizeInterveningWoods(value: TnInterveningWoods | 'heavy1' | null | undefined): TnInterveningWoods {
         return value === 'heavy1' ? 'light2' : value ?? 'none';
     }
 
-    setTargetMovementBracketIndex(value: number): void {
+    setTargetMovementSliderIndex(value: number): void {
         if (this.staticTarget() || this.targetStateReadOnly) return;
-        this.targetMovementBracketIndex.set(this.alignToStep(value, this.MOVEMENT_MIN, this.MOVEMENT_MAX));
+        const options = this.targetMovementOptions();
+        const index = this.alignToStep(value, this.MOVEMENT_MIN, this.movementMax());
+        this.targetMovementDistance.set(options[index]?.distance ?? 0);
     }
 
     toggleAirborne(): void {
@@ -1259,6 +1522,7 @@ export class TnCalculatorDialogComponent {
     }
 
     toggleSecondaryTarget(): void {
+        if (this.secondaryTargetUnavailable()) return;
         const next = !this.secondaryTarget();
         this.secondaryTarget.set(next);
         if (next) {
@@ -1267,6 +1531,7 @@ export class TnCalculatorDialogComponent {
     }
 
     toggleSecondaryTargetSideBack(): void {
+        if (this.secondaryTargetUnavailable()) return;
         const next = !this.secondaryTargetSideBack();
         this.secondaryTargetSideBack.set(next);
         if (next) {
@@ -1275,7 +1540,7 @@ export class TnCalculatorDialogComponent {
     }
 
     toggleLargeTarget(): void {
-        if (this.targetStateReadOnly || !this.gameRules().supportsLargeTarget) return;
+        if (this.targetStateReadOnly || !this.largeTargetAvailable()) return;
         this.largeTarget.set(!this.largeTarget());
     }
 
@@ -1307,6 +1572,17 @@ export class TnCalculatorDialogComponent {
         this.ecmShielded.update(value => !value);
     }
 
+    selectStealth(value: string): void {
+        if (this.targetStateReadOnly) return;
+        const choice = TN_STEALTH_CHOICES.find(candidate => candidate.id === value);
+        if (!choice || !stealthChoiceSupportsUnitType(choice, this.unitType())) return;
+        this.stealthChoice.set(value as TnStealthChoiceId);
+        if (this.secondaryTargetUnavailable()) {
+            this.secondaryTarget.set(false);
+            this.secondaryTargetSideBack.set(false);
+        }
+    }
+
     setCustomModifierValue(value: string | number): void {
         this.customModifier.set(this.normalizeCustomModifier(value));
     }
@@ -1331,9 +1607,10 @@ export class TnCalculatorDialogComponent {
 
     apply(): void {
         const state: TnTargetNumberCalculatorState = {
-            isAirborne: this.staticTarget() ? false : this.isAirborne(),
-            targetMovementBracket: !this.staticTarget() ? this.targetMovementBracket().id : null,
-            skidding: this.staticTarget() ? false : this.skidding(),
+            isAirborne: this.isAirborne(),
+            targetMovementBracket: this.targetMovementBracket().id,
+            targetMovementDistance: this.targetMovementDistance(),
+            skidding: this.skidding(),
             prone: this.prone(),
             immobile: this.immobile(),
             interveningWoods: this.interveningWoods(),
@@ -1341,6 +1618,7 @@ export class TnCalculatorDialogComponent {
             partialCover: this.partialCover() && !this.partialCoverDisabled(),
             waterDepth: this.waterDepth(),
             buildingCover: this.buildingCover(),
+            targetHeight: this.initialTargetHeight,
             attackDirection: this.attackDirection(),
             indirectFire: this.indirectFire(),
             secondaryTarget: this.secondaryTarget(),
@@ -1352,6 +1630,8 @@ export class TnCalculatorDialogComponent {
             narcUnderwater: this.underwaterNarcAvailable() && this.narcUnderwater(),
             tagged: !this.taggedUnavailable() && this.tagged(),
             ecmShielded: this.ecmShielded(),
+            stealth: this.stealth(),
+            stealthSystem: selectedStealthSystem(this.stealthChoice()),
             customModifier: this.customModifier() || undefined,
         };
         this.dialogRef.close({
@@ -1387,7 +1667,7 @@ export class TnCalculatorDialogComponent {
         if (this.targetStateReadOnly) return;
 
         this.unitType.set('mek-biped');
-        this.targetMovementBracketIndex.set(0);
+        this.targetMovementDistance.set(0);
         this.isAirborne.set(false);
         this.skidding.set(false);
         this.prone.set(false);
@@ -1400,6 +1680,7 @@ export class TnCalculatorDialogComponent {
         this.narcUnderwater.set(false);
         this.tagged.set(false);
         this.ecmShielded.set(false);
+        this.stealthChoice.set('none');
     }
 
     setRangeValue(value: number): void {
@@ -1418,15 +1699,26 @@ export class TnCalculatorDialogComponent {
 
     private clearStaticTargetModifiers(): void {
         if (!this.staticTarget()) return;
-        this.targetMovementBracketIndex.set(0);
-        this.clearAirborne();
-        this.skidding.set(false);
-        this.prone.set(false);
-        this.immobile.set(true);
+        this.targetMovementDistance.set(0);
         this.partialCover.set(false);
         this.waterDepth.set(undefined);
         this.buildingCover.set(undefined);
         if (this.terrainTarget()) this.targetHexCover.set('none');
+    }
+
+    private clampInfantryMovement(): void {
+        if (this.usesInfantryMovementScale() && this.targetMovementDistance() > 9) {
+            this.targetMovementDistance.set(9);
+        }
+    }
+
+    private clearUnavailableStealthChoice(): void {
+        const choice = TN_STEALTH_CHOICES.find(candidate => candidate.id === this.stealthChoice());
+        if (choice && !stealthChoiceSupportsUnitType(choice, this.unitType())) this.stealthChoice.set('none');
+    }
+
+    private clearUnavailableLargeTarget(): void {
+        if (!this.largeTargetAvailable()) this.largeTarget.set(false);
     }
 
     private clearAirborne(): void {
@@ -1435,11 +1727,14 @@ export class TnCalculatorDialogComponent {
         }
     }
 
-    private indexFromStoredMovementBracket(): number {
+    private initialTargetMovementDistance(): number {
+        const distance = this.initialCalculator?.targetMovementDistance;
+        if (distance !== null && distance !== undefined && Number.isFinite(distance)) {
+            return Math.max(0, Math.round(distance));
+        }
         const bracketId = this.initialCalculator?.targetMovementBracket;
         if (!bracketId) return 0;
-        const index = this.movementBrackets.findIndex(bracket => bracket.id === bracketId);
-        return index >= 0 ? index : 0;
+        return TN_TARGET_MOVEMENT_BRACKETS.find(bracket => bracket.id === bracketId)?.min ?? 0;
     }
 
     private alignToStep(value: number, min: number, max: number): number {

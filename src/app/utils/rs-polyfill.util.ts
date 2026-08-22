@@ -4,8 +4,8 @@
 
 import { getUnitServerHost, heatLevels } from "../models/common.model";
 import type { CBTForceUnit } from "../models/cbt-force-unit.model";
-import { getUnitConditionDefinition, NARC_CONDITION_COLOR, UNIT_CONDITION_DEFINITIONS } from "../models/rules/unit-type-rules";
-import type { Unit, UnitType } from "../models/units.model";
+import { NARC_CONDITION_COLOR, UNIT_CONDITION_DEFINITIONS } from "../models/rules/unit-type-rules";
+import type { UnitSummary, UnitType } from "../models/unit-summary.model";
 
 interface InventoryRangeButtonColumn {
     className: string;
@@ -203,30 +203,16 @@ export class RsPolyfillUtil {
         const buttonWrapper = svg.getElementById('unit_condition_wrapper') as SVGElement | null;
         const hasBannerWrapper = !!svg.getElementById('condition_banner_wrapper');
         const conditionControls = unit.rules.conditionControls;
-        if (conditionControls.length === 0) return;
-
-        const buttons = this.conditionButtons(conditionControls);
-        if (buttonWrapper) {
-            this.syncConditionButtonWrapper(buttonWrapper, buttons);
-        } else {
-            this.createConditionButtonWrapper(buttons, unit, svg);
+        if (conditionControls.length > 0) {
+            const buttons = this.conditionButtons(conditionControls);
+            if (buttonWrapper) {
+                this.syncConditionButtonWrapper(buttonWrapper, buttons);
+            } else {
+                this.createConditionButtonWrapper(buttons, unit, svg);
+            }
         }
 
         if (hasBannerWrapper) return;
-
-        const immobileCondition = getUnitConditionDefinition('immobile');
-        const abandonedCondition = getUnitConditionDefinition('abandoned');
-        const crippledCondition = getUnitConditionDefinition('crippled');
-        const disconnectedCondition = getUnitConditionDefinition('disconnected');
-        const spottingCondition = getUnitConditionDefinition('spotting');
-        const conditions = Array.from(new Map([
-            ...conditionControls,
-            abandonedCondition,
-            immobileCondition,
-            crippledCondition,
-            disconnectedCondition,
-            spottingCondition,
-        ].map(condition => [condition.key, condition])).values());
 
         const bannerWrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         bannerWrapper.setAttribute('id', `condition_banner_wrapper`);
@@ -239,17 +225,16 @@ export class RsPolyfillUtil {
         const bannerY = svgBox.y + 7;
         const defs = this.svgDefs(svg);
         const fadeMaskSequence = ++this.unitConditionBannerFadeMaskSequence;
-        conditions.forEach(condition => {
-            const definition = UNIT_CONDITION_DEFINITIONS.find(def => def.key === condition.key);
-            const bannerWidth = definition?.important
+        UNIT_CONDITION_DEFINITIONS.forEach(condition => {
+            const bannerWidth = condition.important
                 ? this.IMPORTANT_UNIT_CONDITION_BANNER_WIDTH
                 : this.UNIT_CONDITION_BANNER_WIDTH;
-            const bannerHeight = definition?.important
+            const bannerHeight = condition.important
                 ? this.IMPORTANT_UNIT_CONDITION_BANNER_HEIGHT
                 : this.UNIT_CONDITION_BANNER_HEIGHT;
-            const bannerFontSize = (definition?.important
+            const bannerFontSize = (condition.important
                 ? this.IMPORTANT_UNIT_CONDITION_BANNER_FONT_SIZE
-                : this.UNIT_CONDITION_BANNER_FONT_SIZE) * (definition?.bannerFontScaling || 1);
+                : this.UNIT_CONDITION_BANNER_FONT_SIZE) * (condition.bannerFontScaling || 1);
             const maskId = `unit_condition_banner_fade_${fadeMaskSequence}_${condition.key}`;
             this.addUnitConditionBannerFadeMask(defs, maskId, bannerX, bannerY, bannerWidth, bannerHeight);
             const bannerGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -277,7 +262,7 @@ export class RsPolyfillUtil {
             text.setAttribute('font-family', 'Roboto, sans-serif');
             text.setAttribute('font-size', bannerFontSize.toString());
             text.setAttribute('font-weight', 'bold');
-            text.setAttribute('fill', definition?.bannerTextColor ?? '#fff');
+            text.setAttribute('fill', condition.bannerTextColor ?? '#fff');
             text.textContent = condition.bannerLabel ?? condition.label;
 
             bannerGroup.appendChild(rect);
@@ -323,7 +308,7 @@ export class RsPolyfillUtil {
         unitDataPanelEl.appendChild(buttonWrapper);
     }
 
-    private static addLifeSupportPilotDamageWarning(unit: Unit, svg: SVGSVGElement): void {
+    private static addLifeSupportPilotDamageWarning(unit: UnitSummary, svg: SVGSVGElement): void {
         if (unit.type !== 'Mek'
             || svg.getElementById('heatLifeSupportWarning')
             || svg.getElementById('lifeSupportPilotDamageWarning')) return;
@@ -656,7 +641,7 @@ export class RsPolyfillUtil {
         });
     }
 
-    private static addVtolRotorHitsCounter(unit: Unit, svg: SVGSVGElement): void {
+    private static addVtolRotorHitsCounter(unit: UnitSummary, svg: SVGSVGElement): void {
         if (unit.type !== 'VTOL' || svg.getElementById('rotor_hits_group')) return;
 
         const rotorArmorText = svg.getElementById('textArmor_RO') as SVGTextElement | null;
@@ -917,7 +902,7 @@ export class RsPolyfillUtil {
      * Adds crew damage hit boxes to the svg.
      * Creates transparent rectangles above crew damage text elements.
      */
-    private static addCrewDamageClasses(unit: Unit, svg: SVGSVGElement): boolean {
+    private static addCrewDamageClasses(unit: UnitSummary, svg: SVGSVGElement): boolean {
         // First number: crew index (0-4)
         for (let crewId = 0; crewId <= 4; crewId++) {
             // Second number: hit index (1-10)
@@ -1351,7 +1336,7 @@ export class RsPolyfillUtil {
         return value.length > 0 && value !== '—';
     }
 
-    private static adjustArmorPips(unit: Unit, svg: SVGSVGElement): void {
+    private static adjustArmorPips(unit: UnitSummary, svg: SVGSVGElement): void {
         if (unit.armorType === 'Hardened') {
             const armorPips = svg.querySelectorAll<SVGElement>('.pip.armor');
             armorPips.forEach(pip => {
@@ -1517,7 +1502,7 @@ export class RsPolyfillUtil {
         }
     }
 
-    private static injectFluffImage(unit: Unit, svg: SVGSVGElement) {
+    private static injectFluffImage(unit: UnitSummary, svg: SVGSVGElement) {
         const fluffImage = unit?.fluff?.img;
         if (!fluffImage) return; // no fluff image to inject
         if (fluffImage.endsWith('hud.png')) return; // default fluff image, we skip
@@ -1596,7 +1581,7 @@ export class RsPolyfillUtil {
         svg.appendChild(fo);
     }
 
-    private static addTurnStateClasses(unit: Unit, svg: SVGSVGElement): void {
+    private static addTurnStateClasses(unit: UnitSummary, svg: SVGSVGElement): void {
         const mpWalkEl = svg.getElementById('mpWalk') as SVGElement | null;
         const mpRunEl = svg.getElementById('mpRun') as SVGElement | null;
         const mpJumpEl = svg.getElementById('mpJump') as SVGElement | null;
@@ -1661,7 +1646,7 @@ export class RsPolyfillUtil {
         this.addMovementPsrWarningText(unit, svg, mpJumpEl ?? (svg.querySelector('#mp_2') as SVGElement | null));
     }
 
-    private static addMovementPsrWarningText(unit: Unit, svg: SVGSVGElement, moveEl: SVGElement | null): void {
+    private static addMovementPsrWarningText(unit: UnitSummary, svg: SVGSVGElement, moveEl: SVGElement | null): void {
         if (!moveEl) return;
 
         const warningId = `${moveEl.id}-psr-warning`;
@@ -1796,7 +1781,7 @@ export class RsPolyfillUtil {
     }
 
     
-    private static addCriticalSectionsButtons(unit: Unit, svg: SVGSVGElement): void {
+    private static addCriticalSectionsButtons(unit: UnitSummary, svg: SVGSVGElement): void {
         if (unit.type !== 'Mek') return;
 
         svg.querySelectorAll<SVGElement>('.critGroup').forEach(critGroup => {

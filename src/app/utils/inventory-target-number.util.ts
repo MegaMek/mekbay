@@ -3,10 +3,10 @@
 // Author: Drake
 
 import type { MountedEquipment } from '../models/mounted-equipment.model';
-import { WeaponEquipment, type AmmoEquipment } from '../models/equipment.model';
+import { isBombEquipment, WeaponEquipment, type AmmoEquipment, type AmmoType } from '../models/equipment.model';
 import { resolveAmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
 import { getEffectiveInventoryControlCalculatorState, inventoryControlEntryAllowsTarget, inventoryControlTargetUsesIndirectFire, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
-import { CORE_2026_GAME_RULES, separateHeatFireModifier, SKILL_BREAKDOWN_PRIORITY, type C3DegradationSource, type CBTGameRules, type ToHitResolution } from '../models/rules/game-rules';
+import { CORE_2026_GAME_RULES, separateHeatFireModifier, SKILL_BREAKDOWN_PRIORITY, type C3DegradationSource, type CBTGameRules, type TargetAttackTraits, type ToHitResolution } from '../models/rules/game-rules';
 import { modifierTooltipLines, orderHitTargetTooltipLines } from './hit-target-tooltip.util';
 import type { UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
 import type { InventoryControlDisplayData, InventoryControlGroupId, InventoryRangeKey } from './inventory-control.util';
@@ -14,15 +14,26 @@ import type { TooltipLine } from '../components/tooltip/tooltip.component';
 import { aerospaceRangeBracket, aerospaceRangeLimits, effectiveAerospaceMaximumBracket, isRangeBracketWithinMaximum } from './aerospace-range.util';
 import {
     calculateTargetTnModifierBreakdown,
+    getTnTargetModifierGroupTotals,
     TN_INDIRECT_FIRE_MODIFIER,
     type TnTargetModifierBreakdownEntry,
+    type TnTargetModifierGroupTotals,
     type TnTargetNumberCalculatorState,
+    type TnRangeBracket,
     type TnTargetUnitType,
 } from '../models/target-number-calculator.model';
+import { UnitSummaryTypeGuard } from '../models/unit-summary-type-guard';
+import type { WeaponType } from '../models/weapon-types.model';
 
-type EffectiveTargetModifierBreakdownEntry = TnTargetModifierBreakdownEntry & {
+export type EffectiveTargetModifierBreakdownEntry = TnTargetModifierBreakdownEntry & {
     ignored?: true;
 };
+
+const ARTILLERY_CANNON_AMMO_TYPES = new Set<AmmoType>([
+    'SNIPER_CANNON',
+    'THUMPER_CANNON',
+    'LONG_TOM_CANNON',
+]);
 
 export interface TargetGuidanceCapabilities {
     readonly semiGuided: boolean;
@@ -124,6 +135,8 @@ export interface InventoryTargetNumberInput {
     extremeRange?: number | null;
     allowExtremeRange?: boolean;
     selectedAmmo?: AmmoEquipment | null;
+    /** Effective types after equipment handlers and the selected ammunition are resolved. */
+    damageTypes?: readonly WeaponType[];
     target: InventoryControlRuntimeTarget | null;
     gunnerySkill: number;
     pilotingSkill: number;
@@ -135,6 +148,15 @@ export interface InventoryTargetNumberInput {
 }
 
 export type InventoryTargetDisplay = Pick<InventoryControlDisplayData, InventoryRangeKey | 'min'>;
+
+export interface InventoryTargetToHitModifierContext {
+    readonly target: InventoryControlRuntimeTarget;
+    readonly entry: MountedEquipment;
+    readonly selectedAmmo?: AmmoEquipment | null;
+    readonly gameRules?: CBTGameRules;
+    readonly rangeBracket?: TnRangeBracket;
+    readonly effectiveDamageTypes?: readonly WeaponType[];
+}
 
 export function inventoryTargetCategory(entry: MountedEquipment): InventoryControlGroupId {
     if (entry.isPhysicalWeapon()) return 'physical';
@@ -155,17 +177,21 @@ export function inventoryTargetEffectiveTnModifier(
     entry: MountedEquipment,
     selectedAmmo?: AmmoEquipment | null,
     gameRules: CBTGameRules = CORE_2026_GAME_RULES,
+    rangeBracket?: TnRangeBracket,
+    effectiveDamageTypes: readonly WeaponType[] = [],
 ): number {
     const calculator = getEffectiveInventoryControlCalculatorState(target);
     if (!calculator) return target.tnModifier;
 
     const rawBreakdown = targetCalculatorBreakdown(target, gameRules);
-    const effectiveBreakdown = effectiveTargetCalculatorBreakdown(
+    const effectiveBreakdown = compileInventoryTargetToHitModifiers({
         target,
         entry,
         selectedAmmo,
         gameRules,
-    );
+        rangeBracket,
+        effectiveDamageTypes,
+    });
     return target.tnModifier
         + sumTargetModifiers(effectiveBreakdown)
         - sumTargetModifiers(rawBreakdown);
@@ -174,6 +200,8 @@ export function inventoryTargetEffectiveTnModifier(
 function targetCalculatorBreakdown(
     target: InventoryControlRuntimeTarget,
     gameRules: CBTGameRules,
+    rangeBracket?: TnRangeBracket,
+    attackerIsConventionalInfantry = false,
 ): TnTargetModifierBreakdownEntry[] {
     const calculator = getEffectiveInventoryControlCalculatorState(target);
     if (!calculator) return [];
@@ -181,20 +209,74 @@ function targetCalculatorBreakdown(
         ...calculator,
         unitType: target.unitType,
         range: target.distance,
+        rangeBracket,
+        attackerIsConventionalInfantry,
     }, gameRules);
 }
 
-function effectiveTargetCalculatorBreakdown(
+/** Compiles semantic target groups for equipment handlers; manual TN overrides intentionally have none. */
+export function inventoryTargetModifierGroups(
     target: InventoryControlRuntimeTarget,
+    gameRules: CBTGameRules = CORE_2026_GAME_RULES,
+): TnTargetModifierGroupTotals | undefined {
+    if (!getEffectiveInventoryControlCalculatorState(target)) return undefined;
+    return getTnTargetModifierGroupTotals(targetCalculatorBreakdown(target, gameRules));
+}
+
+/** Converts equipment, ammunition, mode-derived types, and munition state into rules-profile input. */
+export function inventoryTargetAttackTraits(
     entry: MountedEquipment,
-    selectedAmmo: AmmoEquipment | null | undefined,
-    gameRules: CBTGameRules,
+    selectedAmmo?: AmmoEquipment | null,
+    effectiveDamageTypes: readonly WeaponType[] = [],
+): TargetAttackTraits {
+    const weapon = entry.equipment instanceof WeaponEquipment ? entry.equipment : null;
+    const artilleryCannon = weapon !== null && (
+        ARTILLERY_CANNON_AMMO_TYPES.has(weapon.ammoType)
+        || (weapon.hasFlag('F_ARTILLERY') && weapon.hasFlag('F_DIRECT_FIRE'))
+    );
+    const artillery = weapon?.hasFlag('F_ARTILLERY') === true
+        || selectedAmmo?.category === 'Artillery';
+    const bomb = (weapon !== null && isBombEquipment(weapon))
+        || (selectedAmmo !== null && selectedAmmo !== undefined && isBombEquipment(selectedAmmo));
+    const mekMortarAirburst = weapon?.hasFlag('F_MEK_MORTAR') === true
+        && selectedAmmo?.hasMunitionType('M_AIRBURST') === true;
+    const areaEffect = effectiveDamageTypes.includes('AE')
+        || weapon?.getWeaponTypes().includes('AE') === true
+        || selectedAmmo?.getWeaponTypes().includes('AE') === true
+        || artillery
+        || bomb
+        || mekMortarAirburst;
+    return { areaEffect, artillery, artilleryCannon, bomb, mekMortarAirburst };
+}
+
+export function compileInventoryTargetToHitModifiers(
+    context: InventoryTargetToHitModifierContext,
 ): EffectiveTargetModifierBreakdownEntry[] {
+    const {
+        target,
+        entry,
+        selectedAmmo,
+        gameRules = CORE_2026_GAME_RULES,
+        rangeBracket,
+        effectiveDamageTypes = [],
+    } = context;
     const calculator = getEffectiveInventoryControlCalculatorState(target);
-    let breakdown = targetCalculatorBreakdown(target, gameRules)
+    const attacker = entry.owner.getUnit?.();
+    const attackKind = entry.isPhysicalWeapon() ? 'physical' : 'ranged';
+    const attackTraits = inventoryTargetAttackTraits(entry, selectedAmmo, effectiveDamageTypes);
+    let breakdown = targetCalculatorBreakdown(
+        target,
+        gameRules,
+        rangeBracket,
+        UnitSummaryTypeGuard.isConventionalInfantry(attacker),
+    )
         .map(modifier => markTargetModifierIgnored(
             modifier,
-            modifier.partialCoverSource === 'water' && !waterPartialCoverApplies(entry),
+            (modifier.partialCoverSource === 'water' && !waterPartialCoverApplies(entry))
+            || (modifier.id === 'battle-armor'
+                && attackKind === 'ranged'
+                && UnitSummaryTypeGuard.isInfantry(attacker))
+            || (modifier.id === 'immobile' && !gameRules.attackBenefitsFromImmobile(attackTraits)),
         ));
     if (!calculator || !selectedAmmo) return breakdown;
 
@@ -215,15 +297,18 @@ function effectiveTargetCalculatorBreakdown(
     if (guidance.semiGuided && !calculator.indirectFire && gameRules.semiGuidedIgnoresCover) {
         breakdown = breakdown.map(modifier => markTargetModifierIgnored(
             modifier,
-            modifier.guidanceAdjustment === 'partial-cover',
+            modifier.adjustmentGroup === 'partial-cover',
         ));
     }
 
     const guidanceModifiers: EffectiveTargetModifierBreakdownEntry[] = [];
     if (guidance.semiGuided) {
-        const adjustment = (['movement', 'terrain'] as const).reduce((total, source) => {
+        const adjustment = ([
+            { source: 'movement', group: 'target-movement' },
+            { source: 'terrain', group: 'terrain' },
+        ] as const).reduce((total, { source, group }) => {
             const modifierValue = breakdown
-                .filter(modifier => modifier.ignored !== true && modifier.guidanceAdjustment === source)
+                .filter(modifier => modifier.ignored !== true && modifier.adjustmentGroup === group)
                 .reduce((sum, modifier) => sum + modifier.modifier, 0);
             return total + gameRules.getSemiGuidedAdjustment(modifierValue, source);
         }, 0);
@@ -233,11 +318,11 @@ function effectiveTargetCalculatorBreakdown(
             : 0;
         const semiGuidedModifier = -(adjustment + indirectFireAdjustment);
         if (semiGuidedModifier !== 0) {
-            guidanceModifiers.push({ label: 'Semi-Guided', modifier: semiGuidedModifier });
+            guidanceModifiers.push({ id: 'semi-guided', label: 'Semi-Guided', modifier: semiGuidedModifier });
         }
     }
     if (guidance.narc && !calculator.indirectFire && gameRules.narcHomingTargetModifier !== 0) {
-        guidanceModifiers.push({ label: 'NARC', modifier: gameRules.narcHomingTargetModifier });
+        guidanceModifiers.push({ id: 'narc', label: 'NARC', modifier: gameRules.narcHomingTargetModifier });
     }
     return [...breakdown, ...guidanceModifiers];
 }
@@ -317,7 +402,8 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
 }
 
 function isAerospaceWeaponAttack(entry: MountedEquipment): boolean {
-    return entry.owner.getUnit?.().type === 'Aero' && entry.equipment instanceof WeaponEquipment;
+    return UnitSummaryTypeGuard.isAero(entry.owner.getUnit?.())
+        && entry.equipment instanceof WeaponEquipment;
 }
 
 function aerospaceTargetRangeSelection(
@@ -432,6 +518,8 @@ export function inventoryTargetNumberBreakdown(
         input.entry,
         input.selectedAmmo,
         gameRules,
+        rangeSelection.range,
+        input.damageTypes,
     );
     const terms: TooltipLine[] = [
         { label: skillLabel, value: skill.toString(), priority: SKILL_BREAKDOWN_PRIORITY }
@@ -449,12 +537,14 @@ export function inventoryTargetNumberBreakdown(
     );
     if (calculator) {
         terms.push({ label: `Target ${target.letter}`, value: formatInventoryTargetSignedModifier(targetModifier), isHeader: true });
-        terms.push(...effectiveTargetCalculatorBreakdown(
+        terms.push(...compileInventoryTargetToHitModifiers({
             target,
-            input.entry,
-            input.selectedAmmo,
+            entry: input.entry,
+            selectedAmmo: input.selectedAmmo,
             gameRules,
-        ).map(entry => ({
+            rangeBracket: rangeSelection.range,
+            effectiveDamageTypes: input.damageTypes,
+        }).map(entry => ({
             label: entry.label,
             value: formatInventoryTargetSignedModifier(entry.modifier),
             nested: true,

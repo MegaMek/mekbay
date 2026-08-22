@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, type ComponentRef, Injector } from '@angular/core';
-import type { ASUnitTypeCode, Unit } from '../../models/units.model';
+import type { ASUnitTypeCode, UnitSummary } from '../../models/unit-summary.model';
 import type { ASForceUnit, AbilitySelection } from '../../models/as-force-unit.model';
 import { COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import { PILOT_ABILITIES, type ASCustomPilotAbility } from '../../models/pilot-abilities.model';
@@ -61,7 +61,7 @@ export class AlphaStrikeCardComponent {
     /** Optional: provide the stateful AS unit wrapper (preferred when available). */
     forceUnit = input<ASForceUnit | undefined>(undefined);
     /** Optional: provide a plain Unit (used when no forceUnit is available). */
-    unit = input<Unit | undefined>(undefined);
+    unit = input<UnitSummary | undefined>(undefined);
     useHex = input<boolean>(false);
     cardStyle = input<ColorScheme>('default');
     isSelected = input<boolean>(false);
@@ -93,7 +93,7 @@ export class AlphaStrikeCardComponent {
     }
     
     /** Effective Unit for rendering: forceUnit.getUnit() wins, otherwise the plain unit input. */
-    resolvedUnit = computed<Unit | undefined>(() => this.forceUnit()?.getUnit() ?? this.unit());
+    resolvedUnit = computed<UnitSummary | undefined>(() => this.forceUnit()?.getUnit() ?? this.unit());
     
     /** Get the Alpha Strike unit type (BM, IM, CV, CI, WS, etc.) */
     unitType = computed<ASUnitTypeCode>(() => this.resolvedUnit()?.as.TP || 'BM');

@@ -7,7 +7,7 @@ import { WsService } from './ws.service';
 import { UserStateService } from './userState.service';
 import { DbService, type PublicTagData, type TagEntry, type TagOp } from './db.service';
 import { LoggerService } from './logger.service';
-import type { Unit, PublicTagInfo } from '../models/units.model';
+import type { UnitSummary, PublicTagInfo } from '../models/unit-summary.model';
 import { TagsService } from './tags.service';
 import { DialogsService } from './dialogs.service';
 import { naturalCompare } from '../utils/sort.util';
@@ -584,7 +584,7 @@ export class PublicTagsService {
     /**
      * Get public tag info for a specific unit
      */
-    public getPublicTagsForUnit(unit: Unit): PublicTagInfo[] {
+    public getPublicTagsForUnit(unit: UnitSummary): PublicTagInfo[] {
         const result: PublicTagInfo[] = [];
         const chassisKey = TagsService.getChassisTagKey(unit);
 

@@ -4,7 +4,7 @@
 
 import { GameSystem } from '../models/common.model';
 import { type Faction } from '../models/factions.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { type FormationTypeDefinition, type FormationMatch, getFormationNameMatchStrings, NO_FORMATION, NO_FORMATION_ID } from './formation-type.model';
 import { getFormationDefinition, getFormationDefinitionSource, getFormationDefinitions } from './formation-blueprints';
 import { FormationRequirementEngine } from './formation-requirement-engine.util';
@@ -93,8 +93,8 @@ export class LanceTypeIdentifierUtil {
     private static collectIgnoredUnits(
         group: GroupSizeResult,
         formationMatching: OrgFormationMatchingSpec,
-    ): Set<Unit> {
-        const ignoredUnits = new Set<Unit>(group.formationMatchingIgnoredUnits ?? []);
+    ): Set<UnitSummary> {
+        const ignoredUnits = new Set<UnitSummary>(group.formationMatchingIgnoredUnits ?? []);
 
         if (!formationMatching.ignoredChildRoles || formationMatching.ignoredChildRoles.length === 0) {
             return ignoredUnits;

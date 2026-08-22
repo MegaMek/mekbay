@@ -29,6 +29,7 @@ import { BombastLaserHandler } from './bombast-laser.handler';
 import { TwBombastLaserHandler } from './tw-bombast-laser.handler';
 import { C3EmergencyMasterHandler } from './c3-emergency-master.handler';
 import { FlamerHandler } from './flamer.handler';
+import { PrecisionAmmoHandler } from './precision-ammo.handler';
 
 /**
  * Register all equipment handlers.
@@ -61,6 +62,7 @@ export function registerAllHandlers(registryService: EquipmentInteractionRegistr
     registry.register(new BombastLaserHandler());
     registry.register(new TwBombastLaserHandler());
     registry.register(new FlamerHandler());
+    registry.register(new PrecisionAmmoHandler());
     registry.register(new UACFiringModeHandler());
     registry.register(new UACJammingHandler());
     registry.register(new C3Handler());

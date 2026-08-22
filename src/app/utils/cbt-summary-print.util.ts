@@ -5,7 +5,7 @@
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { PrintAllOptions } from '../models/print-options.model';
-import type { Unit, UnitComponent } from '../models/units.model';
+import type { UnitSummary, UnitComponent } from '../models/unit-summary.model';
 import { printInOverlay } from './print-overlay.util';
 import {
     createPrintRosterHeader,
@@ -142,7 +142,7 @@ export class CBTSummaryPrintUtil {
         `;
     }
 
-    private static createYearValue(unit: Unit): string {
+    private static createYearValue(unit: UnitSummary): string {
         const year = unit.year ? this.escapeHtml(String(unit.year)) : '—';
         if (!unit._era?.img) {
             return year;
@@ -164,7 +164,7 @@ export class CBTSummaryPrintUtil {
         return printPilotData ? forceUnit.getBv() : forceUnit.getBaseBv();
     }
 
-    private static formatMovement(unit: Unit): string {
+    private static formatMovement(unit: UnitSummary): string {
         const parts: string[] = [];
         if (unit.walk) {
             let ground = `${unit.walk}/${unit.run}`;
@@ -182,17 +182,17 @@ export class CBTSummaryPrintUtil {
         return parts.join('/');
     }
 
-    private static formatTechBase(techBase: Unit['techBase'], mixed: boolean): string {
+    private static formatTechBase(techBase: UnitSummary['techBase'], mixed: boolean): string {
         if (!techBase) return '';
         const tech = techBase === 'Inner Sphere' ? 'IS' : 'Clan';
         return mixed ? `Mixed (${tech})` : tech;
     }
 
-    private static formatArmorStructure(unit: Unit): string {
+    private static formatArmorStructure(unit: UnitSummary): string {
         return `${this.formatNumber(unit.armor) || '0'}/${this.formatNumber(unit.internal) || '0'}`;
     }
 
-    private static formatEquipmentSummary(unit: Unit): string {
+    private static formatEquipmentSummary(unit: UnitSummary): string {
         const equipment = this.getExpandedComponents(unit.comp).map(comp => this.formatComponentText(comp));
         const caseLocations = this.getCaseLocations(unit);
         const ammo = this.getAmmoComponents(unit.comp, caseLocations).map(comp => {
@@ -275,7 +275,7 @@ export class CBTSummaryPrintUtil {
         return `${quantity}×${component.n}${secondary}`;
     }
 
-    private static getCaseLocations(unit: Unit): Set<string> {
+    private static getCaseLocations(unit: UnitSummary): Set<string> {
         const result = new Set<string>();
         for (const component of unit.comp ?? []) {
             if (!component.eq || !component.l) continue;

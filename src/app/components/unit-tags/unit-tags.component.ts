@@ -4,14 +4,14 @@
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { Unit, PublicTagInfo, UnitTagEntry } from '../../models/units.model';
+import type { UnitSummary, PublicTagInfo, UnitTagEntry } from '../../models/unit-summary.model';
 import { PublicTagsService } from '../../services/public-tags.service';
 import { TagsService } from '../../services/tags.service';
 import { naturalCompare } from '../../utils/sort.util';
 
 /** Event data emitted when the tag button is clicked */
 export interface TagClickEvent {
-    unit: Unit;
+    unit: UnitSummary;
     event: MouseEvent;
 }
 
@@ -32,7 +32,7 @@ export interface TagClickEvent {
 export class UnitTagsComponent {
     private publicTagsService = inject(PublicTagsService);
     private tagsService = inject(TagsService);
-    unit = input.required<Unit>();
+    unit = input.required<UnitSummary>();
 
     /** 
      * Display mode:

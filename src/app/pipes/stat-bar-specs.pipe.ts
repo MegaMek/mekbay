@@ -4,7 +4,7 @@
 
 import { inject, Pipe, type PipeTransform } from "@angular/core";
 import { DataService, DOES_NOT_TRACK, type MinMaxStatsRange } from "../services/data.service";
-import type { Unit } from "../models/units.model";
+import type { UnitSummary } from "../models/unit-summary.model";
 
 
 interface statBarSpec {
@@ -32,7 +32,7 @@ interface StatBarDefinition {
 export class StatBarSpecsPipe implements PipeTransform {
     private dataService = inject(DataService);
 
-    transform(unit: Unit): statBarSpec[] {
+    transform(unit: UnitSummary): statBarSpec[] {
         const bucketStats = this.dataService.getUnitSubtypeMaxStats(unit.subtype);
         // const armorLabel = unit.armorType ? `Armor (${unit.armorType.replace(/armor/i,'').trim()})` : 'Armor';
         const armorLabel = 'Armor';

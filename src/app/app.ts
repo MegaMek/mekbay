@@ -9,7 +9,7 @@ import { PageViewerComponent } from './components/page-viewer/page-viewer.compon
 import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
 import { DataService } from './services/data.service';
 import { ForceBuilderService } from './services/force-builder.service';
-import type { Unit } from './models/units.model';
+import type { UnitSummary } from './models/unit-summary.model';
 import { LayoutService } from './services/layout.service';
 import { LayoutModule } from '@angular/cdk/layout';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from './components/unit-details-dialog/unit-details-dialog.component';
@@ -605,7 +605,7 @@ export class App {
         this.homeActionsPanelOpen.set(false);
     }
 
-    showSingleUnitDetails(unit: Unit, tab?: string) {
+    showSingleUnitDetails(unit: UnitSummary, tab?: string) {
         const ref = this.dialogService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: [unit],

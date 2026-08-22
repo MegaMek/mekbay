@@ -16,10 +16,10 @@ import type { HeatDissipationState } from '../../models/rules/heat-management';
 import { LayoutService } from '../../services/layout.service';
 import { MultilineDropdownComponent, type MultilineDropdownOption } from '../multiline-dropdown/multiline-dropdown.component';
 import { WeaponTargetChoiceMenuComponent } from '../equipment-dialog/weapon-target-choice-menu.component';
-import { getEffectiveInventoryControlCalculatorState, inventoryControlEntryAllowsTarget, inventoryControlEntryTargetDisabledReason, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+import { inventoryControlEntryAllowsTarget, inventoryControlEntryTargetDisabledReason, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
-import { formatInventoryTargetSignedModifier, inventoryTargetNumberState, inventoryTargetRangeSelection, type InventoryTargetNumberInput, type InventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
+import { formatInventoryTargetSignedModifier, inventoryTargetModifierGroups, inventoryTargetNumberState, inventoryTargetRangeSelection, type InventoryTargetNumberInput, type InventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
 import { SKILL_BREAKDOWN_PRIORITY, type C3DegradationSource, type ToHitResolution } from '../../models/rules/game-rules';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import {
@@ -36,7 +36,6 @@ import {
 } from '../../utils/inventory-control.util';
 import { inventoryControlDamageRange, resolveInventoryControlDamageText } from '../../utils/inventory-control-damage.util';
 import { EscalatingFailureHandler } from '../../equipment-handlers/escalatingfailure.handler';
-import { TN_IMMOBILE } from '../../models/target-number-calculator.model';
 import { orderedModifierTooltipLines } from '../../utils/hit-target-tooltip.util';
 import { STANDARD_AEROSPACE_RANGE_LIMITS, aerospaceRangeCaptions } from '../../utils/aerospace-range.util';
 import { calculateHeatProjection } from '../../models/turn-state.model';
@@ -467,7 +466,11 @@ export class WeaponsEquipmentPanelComponent {
             subject: row.entry,
             stateModifiers: row.hitModifierBreakdown,
             range,
-            adjustments: rules.resolveToHitAdjustments?.(row.entry, selectedAmmo, target)
+            adjustments: rules.resolveToHitAdjustments?.(row.entry, {
+                selectedAmmo,
+                target,
+                ...(target && { targetModifierGroups: inventoryTargetModifierGroups(target, this.unit().gameRules) }),
+            })
         });
     }
 
@@ -604,6 +607,7 @@ export class WeaponsEquipmentPanelComponent {
             extremeRange: row.extremeRange,
             allowExtremeRange: this.unit().allowsExtremeRangeAttacks(),
             selectedAmmo,
+            damageTypes: row.damageTypes,
             target,
             gunnerySkill: this.unit().rules.getBaseGunnerySkill(),
             pilotingSkill: this.unit().rules.getBasePilotingSkill(),
@@ -624,7 +628,7 @@ export class WeaponsEquipmentPanelComponent {
         const c3Resolution = target
             ? this.unit().resolveC3Targeting(target)
             : { target: null, degradationSource: 'none' as const };
-        const calculationTarget = this.targetForTargetNumber(row, c3Resolution.target);
+        const calculationTarget = c3Resolution.target;
         const selectedAmmo = this.resolvedSelectedAmmoOption(row)?.ammo ?? null;
         const selectedAmmoProfile = selectedAmmo
             ? null
@@ -690,17 +694,6 @@ export class WeaponsEquipmentPanelComponent {
     private resolveTargetForRow(row: InventoryControlRow): InventoryControlRuntimeTarget | null {
         const targetId = this.unit().getInventoryControlEntryTargetId(row.id);
         return targetId ? this.targets().find(target => target.id === targetId) ?? null : null;
-    }
-
-    private targetForTargetNumber(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): InventoryControlRuntimeTarget | null {
-        if (!target) return null;
-        const ignoreImmobileModifier = row.damageTypes.includes('AE')
-            && getEffectiveInventoryControlCalculatorState(target)?.immobile === true;
-        if (!ignoreImmobileModifier) return target;
-        return {
-            ...target,
-            tnModifier: target.tnModifier - TN_IMMOBILE
-        };
     }
 
     private targetForWeaponRange(target: InventoryControlRuntimeTarget | null): InventoryControlRuntimeTarget | null {
