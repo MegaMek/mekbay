@@ -59,6 +59,37 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         expect(fixture.nativeElement.querySelector('.c3-distance-title').textContent.trim()).toBe('C³ Distance (JAMMED)');
     });
 
+
+    it('lays out attack methods according to the available secondary-target choices', () => {
+        component.gameRules.set(CORE_2026_GAME_RULES);
+        fixture.detectChanges();
+
+        const controls = fixture.nativeElement.querySelector('.attack-method-controls') as HTMLElement;
+        let indirectFire = controls.querySelector('.indirect-fire-control') as HTMLButtonElement;
+        let secondaryTarget = controls.querySelector('.secondary-target-control') as HTMLButtonElement;
+
+        expect(controls.querySelector('.secondary-target-side-back-control')).toBeNull();
+        expect(getComputedStyle(indirectFire).gridColumnStart).toBe('1');
+        expect(getComputedStyle(indirectFire).gridRowStart).toBe('1');
+        expect(getComputedStyle(secondaryTarget).gridColumnStart).toBe('2');
+        expect(getComputedStyle(secondaryTarget).gridRowStart).toBe('1');
+
+        component.gameRules.set(TW_GAME_RULES);
+        fixture.detectChanges();
+
+        indirectFire = controls.querySelector('.indirect-fire-control') as HTMLButtonElement;
+        secondaryTarget = controls.querySelector('.secondary-target-control') as HTMLButtonElement;
+        const secondarySideBack = controls.querySelector('.secondary-target-side-back-control') as HTMLButtonElement;
+
+        expect(getComputedStyle(secondaryTarget).gridColumnStart).toBe('1');
+        expect(getComputedStyle(secondaryTarget).gridRowStart).toBe('1');
+        expect(getComputedStyle(secondarySideBack).gridColumnStart).toBe('2');
+        expect(getComputedStyle(secondarySideBack).gridRowStart).toBe('1');
+        expect(getComputedStyle(indirectFire).gridColumnStart).toBe('1');
+        expect(getComputedStyle(indirectFire).gridColumnEnd).toBe('-1');
+        expect(getComputedStyle(indirectFire).gridRowStart).toBe('2');
+    });
+
     it('preserves the stored C3 choice when applying while jammed', () => {
         component.apply();
 
@@ -236,7 +267,7 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         expect(component.totalModifier()).toBe(0);
         expect(component.secondaryTarget()).toBeFalse();
         expect(component.secondaryTargetUnavailable()).toBeTrue();
-        expect((fixture.nativeElement.querySelector('.attack-method-section button') as HTMLButtonElement).disabled).toBeTrue();
+        expect((fixture.nativeElement.querySelector('.secondary-target-control') as HTMLButtonElement).disabled).toBeTrue();
 
         component.toggleSecondaryTarget();
         expect(component.secondaryTarget()).toBeFalse();
@@ -285,7 +316,13 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
             'simple-camo',
         ]);
 
-        for (const unitType of ['infantry', 'protoMek', 'terrain', 'building']) {
+        component.selectUnitType('infantry');
+        expect(component.stealthDropdownOptions()).toEqual([
+            jasmine.objectContaining({ value: 'none', label: 'No Stealth' }),
+            jasmine.objectContaining({ value: 'mimetic', label: 'Camo (Sneak/Dermal)', modifierLabel: '+3/+3/+3' }),
+        ]);
+
+        for (const unitType of ['protoMek', 'terrain', 'building']) {
             component.selectUnitType(unitType);
             expect(optionValues()).toEqual(['none']);
         }
@@ -310,7 +347,7 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         expect(component.stealthChoice()).toBe('none');
     });
 
-    it('offers movement-dependent camouflage only for Battle Armor', () => {
+    it('offers movement-dependent camouflage for Battle Armor and conventional Infantry', () => {
         component.selectStealth('mimetic');
         expect(component.stealth()).toBeUndefined();
 
@@ -328,6 +365,17 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
 
         expect(component.stealthChoice()).toBe('none');
         expect(component.stealthDropdownOptions().some(option => option.value === 'mimetic')).toBeFalse();
+
+        component.selectUnitType('infantry');
+        expect(component.stealthDropdownOptions()).toContain(jasmine.objectContaining({
+            value: 'mimetic',
+            label: 'Camo (Sneak/Dermal)',
+            modifierLabel: '+3/+3/+3',
+        }));
+        component.selectStealth('mimetic');
+        component.setTargetMovementSliderIndex(2);
+        expect(component.targetMovementDistance()).toBe(2);
+        expect(component.stealth()).toEqual({ short: 1, medium: 1, long: 1 });
     });
 
     it('derives visual camouflage from the movement slider', () => {

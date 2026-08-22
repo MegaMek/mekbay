@@ -198,11 +198,37 @@ export interface TnTargetNumberCalculationInput extends TnTargetNumberCalculator
     attackerIsConventionalInfantry?: boolean;
 }
 
+export type TnTargetModifierId =
+    | 'battle-armor'
+    | 'airborne'
+    | 'target-movement'
+    | 'skidding'
+    | 'prone'
+    | 'immobile'
+    | 'intervening-woods'
+    | 'target-hex-cover'
+    | 'building-cover'
+    | 'partial-cover'
+    | 'secondary-target'
+    | 'secondary-target-side-back'
+    | 'large-target'
+    | 'stealth'
+    | 'custom'
+    | 'indirect-fire'
+    | 'spotter-movement'
+    | 'spotter-declared-attack'
+    | 'semi-guided'
+    | 'narc';
+
+export type TnTargetModifierAdjustmentGroup = 'target-movement' | 'terrain' | 'partial-cover';
+
 export interface TnTargetModifierBreakdownEntry {
+    id: TnTargetModifierId;
     label: string;
     modifier: number;
+    targetHexCover?: Exclude<TnTargetHexCover, 'none'>;
     partialCoverSource?: 'manual' | 'water' | 'building';
-    guidanceAdjustment?: 'movement' | 'terrain' | 'partial-cover';
+    adjustmentGroup?: TnTargetModifierAdjustmentGroup;
     ignoredByNarcGuidance?: boolean;
     ignoredBySemiGuidedGuidance?: boolean;
 }
@@ -343,44 +369,51 @@ export function calculateTargetTnModifierBreakdown(
     const buildingCoverState = resolveTnTargetBuildingCoverState(input);
     const immobile = isTnTargetImmobile(input.unitType, input.immobile);
     const terrainTarget = isTerrainTargetType(input.unitType);
+    const aerospaceTarget = input.unitType === 'aero';
     const breakdown: TnTargetModifierBreakdownEntry[] = [];
     const add = (
+        id: TnTargetModifierId,
         label: string,
         modifier: number,
-        metadata: Omit<TnTargetModifierBreakdownEntry, 'label' | 'modifier'> = {},
+        metadata: Omit<TnTargetModifierBreakdownEntry, 'id' | 'label' | 'modifier'> = {},
         includeZero = false,
     ) => {
         if (modifier !== 0 || includeZero) {
-            breakdown.push({ label, modifier, ...metadata });
+            breakdown.push({ id, label, modifier, ...metadata });
         }
     };
 
-    add('Battle Armor', getTargetUnitTypeModifier(input.unitType));
-    if (!staticTarget) {
-        add('Airborne', getTargetAirborneModifier(input.isAirborne));
+    add('battle-armor', 'Battle Armor', getTargetUnitTypeModifier(input.unitType));
+    if (!staticTarget && !aerospaceTarget) {
+        add('airborne', 'Airborne', getTargetAirborneModifier(input.isAirborne), { adjustmentGroup: 'target-movement' });
         const movementBracket = TN_TARGET_MOVEMENT_BRACKETS.find(bracket => bracket.id === input.targetMovementBracket);
-        if (movementBracket) add(`Moved ${movementBracket.label}`, movementBracket.modifier, { guidanceAdjustment: 'movement' });
-        add('Skidding', gameRules.supportsSkidding && input.skidding ? TN_SKIDDING_MODIFIER : 0);
+        if (movementBracket) add('target-movement', `Moved ${movementBracket.label}`, movementBracket.modifier, { adjustmentGroup: 'target-movement' });
+        add('skidding', 'Skidding', gameRules.supportsSkidding && input.skidding ? TN_SKIDDING_MODIFIER : 0, { adjustmentGroup: 'target-movement' });
     }
-    add(range <= ADJACENT_RANGE ? 'Prone (adjacent)' : 'Prone', !staticTarget && prone ? getTargetProneModifier(range) : 0);
-    add('Immobile', immobile ? TN_IMMOBILE : 0);
-    add('Intervening Woods', getInterveningWoodsModifier(input.interveningWoods), {
-        guidanceAdjustment: 'terrain',
+    add('prone', range <= ADJACENT_RANGE ? 'Prone (adjacent)' : 'Prone', !staticTarget && prone ? getTargetProneModifier(range) : 0);
+    add('immobile', 'Immobile', immobile ? TN_IMMOBILE : 0);
+    add('intervening-woods', 'Intervening Woods', getInterveningWoodsModifier(input.interveningWoods), {
+        adjustmentGroup: 'terrain',
         ignoredByNarcGuidance: true,
         ignoredBySemiGuidedGuidance: true,
     });
     if (!terrainTarget && !input.waterDepth && !input.buildingCover) {
-        const coverModifier = getTargetHexCoverModifier(input.targetHexCover);
-        add(input.targetHexCover === 'heavy' ? 'Heavy Cover' : 'Light Cover', coverModifier, {
-            guidanceAdjustment: 'terrain',
-            ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
-            ignoredBySemiGuidedGuidance: true,
-        });
+        const targetHexCover = input.targetHexCover === 'light' || input.targetHexCover === 'heavy'
+            ? input.targetHexCover
+            : null;
+        if (targetHexCover) {
+            add('target-hex-cover', targetHexCover === 'heavy' ? 'Heavy Cover' : 'Light Cover', getTargetHexCoverModifier(targetHexCover), {
+                targetHexCover,
+                adjustmentGroup: 'terrain',
+                ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
+                ignoredBySemiGuidedGuidance: true,
+            });
+        }
     }
-    add('Heavy Cover (building)', !staticTarget && buildingCoverState.effect === 'heavy'
+    add('building-cover', 'Heavy Cover (building)', !staticTarget && buildingCoverState.effect === 'heavy'
         ? buildingCoverState.modifier
         : 0, {
-            guidanceAdjustment: 'terrain',
+            adjustmentGroup: 'terrain',
             ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
             ignoredBySemiGuidedGuidance: true,
         });
@@ -407,25 +440,27 @@ export function calculateTargetTnModifierBreakdown(
         water: 'Partial Cover (water)',
         building: 'Partial Cover (building)',
     }[partialCoverSource];
-    add(partialCoverLabel, partialCoverModifier, {
+    add('partial-cover', partialCoverLabel, partialCoverModifier, {
         partialCoverSource,
-        guidanceAdjustment: partialCoverSource === 'manual' ? 'partial-cover' : 'terrain',
+        adjustmentGroup: partialCoverSource === 'manual' ? 'partial-cover' : 'terrain',
         ...(gameRules.narcIndirectFireIgnoresAllTerrain && { ignoredByNarcGuidance: true }),
         ignoredBySemiGuidedGuidance: true,
     });
-    add('Secondary Target', input.secondaryTarget ? TN_SECONDARY_TARGET_MODIFIER : 0);
-    add('Secondary Target (side/back)', gameRules.supportsSecondaryTargetSideBack && !input.secondaryTarget && input.secondaryTargetSideBack
+    add('secondary-target', 'Secondary Target', input.secondaryTarget ? TN_SECONDARY_TARGET_MODIFIER : 0);
+    add('secondary-target-side-back', 'Secondary Target (side/back)', gameRules.supportsSecondaryTargetSideBack && !input.secondaryTarget && input.secondaryTargetSideBack
         ? TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER : 0);
-    add('Large Target', gameRules.supportsLargeTarget && input.largeTarget ? TN_LARGE_TARGET_MODIFIER : 0);
-    add('Stealth', getStealthTnModifier(
+    add('large-target', 'Large Target', input.largeTarget
+        ? TN_LARGE_TARGET_MODIFIER
+        : 0);
+    add('stealth', 'Stealth', getStealthTnModifier(
         input.stealth,
         input.rangeBracket,
         input.attackerIsConventionalInfantry,
     ));
-    add('Custom', normalizeTargetCustomModifier(input.customModifier));
+    add('custom', 'Custom', normalizeTargetCustomModifier(input.customModifier));
 
     if (input.indirectFire) {
-        add('Indirect Fire', TN_INDIRECT_FIRE_MODIFIER, {}, true);
+        add('indirect-fire', 'Indirect Fire', TN_INDIRECT_FIRE_MODIFIER, {}, true);
         const spotterMovementModifier = getDefaultAttackerMovementModifier(input.spotterMoveMode ?? 'stationary');
         const spotterMoveLabel = input.spotterMoveMode
             ? `Spotter Moved (${input.spotterMoveMode[0].toUpperCase()}${input.spotterMoveMode.slice(1)})`
@@ -434,8 +469,8 @@ export function calculateTargetTnModifierBreakdown(
             ignoredByNarcGuidance: true,
             ignoredBySemiGuidedGuidance: true,
         } as const;
-        add(spotterMoveLabel, spotterMovementModifier, ignoredSpotterModifier);
-        add('Spotter Declared Attack', input.spotterDeclaredAttacks ? 1 : 0, ignoredSpotterModifier);
+        add('spotter-movement', spotterMoveLabel, spotterMovementModifier, ignoredSpotterModifier);
+        add('spotter-declared-attack', 'Spotter Declared Attack', input.spotterDeclaredAttacks ? 1 : 0, ignoredSpotterModifier);
     }
 
     return breakdown;

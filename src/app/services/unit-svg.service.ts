@@ -1282,6 +1282,7 @@ export class UnitSvgService {
             extremeRange: row.extremeRange,
             allowExtremeRange: this.unit.allowsExtremeRangeAttacks(),
             selectedAmmo: this.inventoryTargetSelectedAmmo(entry),
+            damageTypes: row.damageTypes,
             target: c3Resolution.target,
             gunnerySkill: this.unit.rules.getBaseGunnerySkill(),
             pilotingSkill: this.unit.rules.getBasePilotingSkill(),

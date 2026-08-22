@@ -15,14 +15,16 @@ import { aerospaceRangeBracket, aerospaceRangeLimits, effectiveAerospaceMaximumB
 import {
     calculateTargetTnModifierBreakdown,
     TN_INDIRECT_FIRE_MODIFIER,
+    type TnTargetModifierAdjustmentGroup,
     type TnTargetModifierBreakdownEntry,
     type TnTargetNumberCalculatorState,
     type TnRangeBracket,
     type TnTargetUnitType,
 } from '../models/target-number-calculator.model';
 import { UnitSummaryTypeGuard } from '../models/unit-summary-type-guard';
+import type { WeaponType } from '../models/weapon-types.model';
 
-type EffectiveTargetModifierBreakdownEntry = TnTargetModifierBreakdownEntry & {
+export type EffectiveTargetModifierBreakdownEntry = TnTargetModifierBreakdownEntry & {
     ignored?: true;
 };
 
@@ -126,6 +128,8 @@ export interface InventoryTargetNumberInput {
     extremeRange?: number | null;
     allowExtremeRange?: boolean;
     selectedAmmo?: AmmoEquipment | null;
+    /** Effective types after equipment handlers and the selected ammunition are resolved. */
+    damageTypes?: readonly WeaponType[];
     target: InventoryControlRuntimeTarget | null;
     gunnerySkill: number;
     pilotingSkill: number;
@@ -137,6 +141,15 @@ export interface InventoryTargetNumberInput {
 }
 
 export type InventoryTargetDisplay = Pick<InventoryControlDisplayData, InventoryRangeKey | 'min'>;
+
+export interface InventoryTargetToHitModifierContext {
+    readonly target: InventoryControlRuntimeTarget;
+    readonly entry: MountedEquipment;
+    readonly selectedAmmo?: AmmoEquipment | null;
+    readonly gameRules?: CBTGameRules;
+    readonly rangeBracket?: TnRangeBracket;
+    readonly effectiveDamageTypes?: readonly WeaponType[];
+}
 
 export function inventoryTargetCategory(entry: MountedEquipment): InventoryControlGroupId {
     if (entry.isPhysicalWeapon()) return 'physical';
@@ -158,18 +171,20 @@ export function inventoryTargetEffectiveTnModifier(
     selectedAmmo?: AmmoEquipment | null,
     gameRules: CBTGameRules = CORE_2026_GAME_RULES,
     rangeBracket?: TnRangeBracket,
+    effectiveDamageTypes: readonly WeaponType[] = [],
 ): number {
     const calculator = getEffectiveInventoryControlCalculatorState(target);
     if (!calculator) return target.tnModifier;
 
     const rawBreakdown = targetCalculatorBreakdown(target, gameRules);
-    const effectiveBreakdown = effectiveTargetCalculatorBreakdown(
+    const effectiveBreakdown = compileInventoryTargetToHitModifiers({
         target,
         entry,
         selectedAmmo,
         gameRules,
         rangeBracket,
-    );
+        effectiveDamageTypes,
+    });
     return target.tnModifier
         + sumTargetModifiers(effectiveBreakdown)
         - sumTargetModifiers(rawBreakdown);
@@ -192,23 +207,44 @@ function targetCalculatorBreakdown(
     }, gameRules);
 }
 
-function effectiveTargetCalculatorBreakdown(
+/** Returns one semantic portion of a calculator-derived target modifier. */
+export function inventoryTargetModifierGroupTotal(
     target: InventoryControlRuntimeTarget,
-    entry: MountedEquipment,
-    selectedAmmo: AmmoEquipment | null | undefined,
-    gameRules: CBTGameRules,
-    rangeBracket?: TnRangeBracket,
+    group: TnTargetModifierAdjustmentGroup,
+    gameRules: CBTGameRules = CORE_2026_GAME_RULES,
+): number {
+    return targetCalculatorBreakdown(target, gameRules)
+        .filter(modifier => modifier.adjustmentGroup === group)
+        .reduce((total, modifier) => total + modifier.modifier, 0);
+}
+
+export function compileInventoryTargetToHitModifiers(
+    context: InventoryTargetToHitModifierContext,
 ): EffectiveTargetModifierBreakdownEntry[] {
+    const {
+        target,
+        entry,
+        selectedAmmo,
+        gameRules = CORE_2026_GAME_RULES,
+        rangeBracket,
+        effectiveDamageTypes = [],
+    } = context;
     const calculator = getEffectiveInventoryControlCalculatorState(target);
+    const attacker = entry.owner.getUnit?.();
+    const attackKind = entry.isPhysicalWeapon() ? 'physical' : 'ranged';
     let breakdown = targetCalculatorBreakdown(
         target,
         gameRules,
         rangeBracket,
-        UnitSummaryTypeGuard.isConventionalInfantry(entry.owner.getUnit?.()),
+        UnitSummaryTypeGuard.isConventionalInfantry(attacker),
     )
         .map(modifier => markTargetModifierIgnored(
             modifier,
-            modifier.partialCoverSource === 'water' && !waterPartialCoverApplies(entry),
+            (modifier.partialCoverSource === 'water' && !waterPartialCoverApplies(entry))
+            || (modifier.id === 'battle-armor'
+                && attackKind === 'ranged'
+                && UnitSummaryTypeGuard.isInfantry(attacker))
+            || (modifier.id === 'immobile' && effectiveDamageTypes.includes('AE')),
         ));
     if (!calculator || !selectedAmmo) return breakdown;
 
@@ -229,15 +265,18 @@ function effectiveTargetCalculatorBreakdown(
     if (guidance.semiGuided && !calculator.indirectFire && gameRules.semiGuidedIgnoresCover) {
         breakdown = breakdown.map(modifier => markTargetModifierIgnored(
             modifier,
-            modifier.guidanceAdjustment === 'partial-cover',
+            modifier.adjustmentGroup === 'partial-cover',
         ));
     }
 
     const guidanceModifiers: EffectiveTargetModifierBreakdownEntry[] = [];
     if (guidance.semiGuided) {
-        const adjustment = (['movement', 'terrain'] as const).reduce((total, source) => {
+        const adjustment = ([
+            { source: 'movement', group: 'target-movement' },
+            { source: 'terrain', group: 'terrain' },
+        ] as const).reduce((total, { source, group }) => {
             const modifierValue = breakdown
-                .filter(modifier => modifier.ignored !== true && modifier.guidanceAdjustment === source)
+                .filter(modifier => modifier.ignored !== true && modifier.adjustmentGroup === group)
                 .reduce((sum, modifier) => sum + modifier.modifier, 0);
             return total + gameRules.getSemiGuidedAdjustment(modifierValue, source);
         }, 0);
@@ -247,11 +286,11 @@ function effectiveTargetCalculatorBreakdown(
             : 0;
         const semiGuidedModifier = -(adjustment + indirectFireAdjustment);
         if (semiGuidedModifier !== 0) {
-            guidanceModifiers.push({ label: 'Semi-Guided', modifier: semiGuidedModifier });
+            guidanceModifiers.push({ id: 'semi-guided', label: 'Semi-Guided', modifier: semiGuidedModifier });
         }
     }
     if (guidance.narc && !calculator.indirectFire && gameRules.narcHomingTargetModifier !== 0) {
-        guidanceModifiers.push({ label: 'NARC', modifier: gameRules.narcHomingTargetModifier });
+        guidanceModifiers.push({ id: 'narc', label: 'NARC', modifier: gameRules.narcHomingTargetModifier });
     }
     return [...breakdown, ...guidanceModifiers];
 }
@@ -448,6 +487,7 @@ export function inventoryTargetNumberBreakdown(
         input.selectedAmmo,
         gameRules,
         rangeSelection.range,
+        input.damageTypes,
     );
     const terms: TooltipLine[] = [
         { label: skillLabel, value: skill.toString(), priority: SKILL_BREAKDOWN_PRIORITY }
@@ -465,13 +505,14 @@ export function inventoryTargetNumberBreakdown(
     );
     if (calculator) {
         terms.push({ label: `Target ${target.letter}`, value: formatInventoryTargetSignedModifier(targetModifier), isHeader: true });
-        terms.push(...effectiveTargetCalculatorBreakdown(
+        terms.push(...compileInventoryTargetToHitModifiers({
             target,
-            input.entry,
-            input.selectedAmmo,
+            entry: input.entry,
+            selectedAmmo: input.selectedAmmo,
             gameRules,
-            rangeSelection.range,
-        ).map(entry => ({
+            rangeBracket: rangeSelection.range,
+            effectiveDamageTypes: input.damageTypes,
+        }).map(entry => ({
             label: entry.label,
             value: formatInventoryTargetSignedModifier(entry.modifier),
             nested: true,

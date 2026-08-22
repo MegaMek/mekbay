@@ -6,6 +6,7 @@ import {
     calculateTargetTnModifier,
     calculateTargetTnModifierBreakdown,
     getTargetProneModifier,
+    getVisualCamoTnModifiers,
     resolveTnTargetWaterState,
     TN_CHAMELEON_MODIFIERS,
     TN_CHAMELEON_NULL_SIGNATURE_MODIFIERS,
@@ -34,6 +35,7 @@ describe('target number calculator rules profiles', () => {
             customModifier: -2,
         })).toBe(-1);
         expect(calculateTargetTnModifierBreakdown({ customModifier: 3 })).toEqual([{
+            id: 'custom',
             label: 'Custom',
             modifier: 3,
         }]);
@@ -68,7 +70,7 @@ describe('target number calculator rules profiles', () => {
         })).toContain(jasmine.objectContaining({ label: 'Stealth', modifier: 2 }));
     });
 
-    it('lets conventional infantry ignore electronic stealth but not Chameleon LPS', () => {
+    it('lets conventional infantry ignore electronic stealth but not visual camouflage or Chameleon LPS', () => {
         expect(calculateTargetTnModifier({
             stealth: TN_STANDARD_STEALTH_MODIFIERS,
             rangeBracket: 'long',
@@ -79,6 +81,11 @@ describe('target number calculator rules profiles', () => {
             rangeBracket: 'long',
             attackerIsConventionalInfantry: true,
         })).toBe(0);
+        expect(calculateTargetTnModifier({
+            stealth: getVisualCamoTnModifiers('mimetic', 1),
+            rangeBracket: 'short',
+            attackerIsConventionalInfantry: true,
+        })).toBe(2);
         expect(calculateTargetTnModifier({
             stealth: TN_CHAMELEON_MODIFIERS,
             rangeBracket: 'long',
@@ -140,13 +147,13 @@ describe('target number calculator rules profiles', () => {
             range: 5,
             largeTarget: true,
             waterDepth: 'underwater-depth-1',
-        }, TW_GAME_RULES)).toBe(0);
+        }, TW_GAME_RULES)).toBe(-1);
         expect(calculateTargetTnModifier({
             unitType: 'mek-biped',
             range: 5,
             largeTarget: true,
             waterDepth: 'underwater-depth-2',
-        }, TW_GAME_RULES)).toBe(1);
+        }, TW_GAME_RULES)).toBe(0);
     });
 
     it('resolves non-Mek water state from target height', () => {
@@ -188,27 +195,27 @@ describe('target number calculator rules profiles', () => {
             range: 5,
             largeTarget: true,
             buildingCover: 'building-1',
-        }, TW_GAME_RULES)).toBe(0);
+        }, TW_GAME_RULES)).toBe(-1);
         expect(calculateTargetTnModifier({
             unitType: 'mek-biped',
             range: 5,
             largeTarget: true,
             buildingCover: 'building-2',
-        }, TW_GAME_RULES)).toBe(1);
+        }, TW_GAME_RULES)).toBe(0);
         expect(calculateTargetTnModifier({
             unitType: 'mek-biped',
             range: 5,
             prone: true,
             largeTarget: true,
             buildingCover: 'building-1',
-        }, TW_GAME_RULES)).toBe(2);
+        }, TW_GAME_RULES)).toBe(1);
         expect(calculateTargetTnModifier({
             unitType: 'mek-biped',
             range: 5,
             prone: true,
             largeTarget: true,
             buildingCover: 'building-2',
-        }, TW_GAME_RULES)).toBe(3);
+        }, TW_GAME_RULES)).toBe(2);
     });
 
     it('retains building partial cover for adjacent and indirect attacks', () => {
@@ -240,14 +247,30 @@ describe('target number calculator rules profiles', () => {
         expect(waterCover).toContain(jasmine.objectContaining({
             label: 'Partial Cover (water)',
             partialCoverSource: 'water',
-            guidanceAdjustment: 'terrain',
+            adjustmentGroup: 'terrain',
             ignoredBySemiGuidedGuidance: true,
         }));
         expect(manualCover).toContain(jasmine.objectContaining({
             label: 'Partial Cover',
             partialCoverSource: 'manual',
-            guidanceAdjustment: 'partial-cover',
+            adjustmentGroup: 'partial-cover',
             ignoredBySemiGuidedGuidance: true,
+        }));
+    });
+
+    it('identifies target-hex cover levels independently of their display labels', () => {
+        const lightCover = calculateTargetTnModifierBreakdown({ targetHexCover: 'light' });
+        const heavyCover = calculateTargetTnModifierBreakdown({ targetHexCover: 'heavy' });
+
+        expect(lightCover).toContain(jasmine.objectContaining({
+            id: 'target-hex-cover',
+            modifier: 1,
+            targetHexCover: 'light',
+        }));
+        expect(heavyCover).toContain(jasmine.objectContaining({
+            id: 'target-hex-cover',
+            modifier: 2,
+            targetHexCover: 'heavy',
         }));
     });
 
@@ -263,14 +286,37 @@ describe('target number calculator rules profiles', () => {
 
         expect(fullBuildingCover).toContain(jasmine.objectContaining({
             label: 'Heavy Cover (building)',
-            guidanceAdjustment: 'terrain',
+            adjustmentGroup: 'terrain',
             ignoredBySemiGuidedGuidance: true,
         }));
         expect(partialBuildingCover).toContain(jasmine.objectContaining({
             label: 'Partial Cover (building)',
-            guidanceAdjustment: 'terrain',
+            adjustmentGroup: 'terrain',
             ignoredBySemiGuidedGuidance: true,
         }));
+    });
+
+    it('groups every represented ground target-movement modifier semantically', () => {
+        const movement = calculateTargetTnModifierBreakdown({
+            unitType: 'mek-biped',
+            isAirborne: true,
+            targetMovementBracket: '7-9',
+            skidding: true,
+        }, TW_GAME_RULES).filter(entry => entry.adjustmentGroup === 'target-movement');
+
+        expect(movement.map(entry => entry.id)).toEqual(['airborne', 'target-movement', 'skidding']);
+        expect(movement.reduce((total, entry) => total + entry.modifier, 0)).toBe(6);
+    });
+
+    it('does not apply ground target movement to aerospace targets', () => {
+        const breakdown = calculateTargetTnModifierBreakdown({
+            unitType: 'aero',
+            isAirborne: true,
+            targetMovementBracket: '10-17',
+            skidding: true,
+        }, TW_GAME_RULES);
+
+        expect(breakdown.some(entry => entry.adjustmentGroup === 'target-movement')).toBeFalse();
     });
 
     it('uses Large Target and ignores removed modifiers in core2026', () => {
@@ -282,13 +328,25 @@ describe('target number calculator rules profiles', () => {
         }, CORE_2026_GAME_RULES)).toBe(-1);
     });
 
-    it('uses Skidding and Side/Back Secondary while ignoring Large Target in TW', () => {
+    it('uses Large Target, Skidding, and Side/Back Secondary for TW ranged targeting', () => {
         expect(calculateTargetTnModifier({
             range: 5,
-            largeTarget: true, // ignored, -1
-            skidding: true, // used, +1
+            largeTarget: true, // used, -1
+            skidding: true, // used, +2
             secondaryTargetSideBack: true, // used, +2
-        }, TW_GAME_RULES)).toBe(4);
+        }, TW_GAME_RULES)).toBe(3);
+    });
+
+    it('uses the same Large Target modifier in both profiles, including airborne targets', () => {
+        for (const gameRules of [CORE_2026_GAME_RULES, TW_GAME_RULES]) {
+            const breakdown = calculateTargetTnModifierBreakdown({
+                unitType: 'mek-biped',
+                isAirborne: true,
+                largeTarget: true,
+            }, gameRules);
+            expect(breakdown).withContext(gameRules.id)
+                .toContain(jasmine.objectContaining({ id: 'large-target', modifier: -1 }));
+        }
     });
 
     it('ignores movement, prone, and cover modifiers while deriving Immobile for terrain targets', () => {

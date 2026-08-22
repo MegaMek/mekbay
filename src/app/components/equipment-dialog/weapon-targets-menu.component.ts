@@ -892,14 +892,14 @@ export class WeaponTargetsMenuComponent {
         const pills: TargetModifierPill[] = [];
         let spotterModifier = 0;
         for (const entry of breakdown) {
-            if (entry.label.startsWith('Spotter ')) {
+            if (entry.id === 'spotter-movement' || entry.id === 'spotter-declared-attack') {
                 spotterModifier += entry.modifier;
                 continue;
             }
             pills.push({
                 label: this.targetModifierPillLabel(entry, calculator),
                 modifier: entry.modifier,
-                ...(entry.label === 'Custom' && { custom: true }),
+                ...(entry.id === 'custom' && { custom: true }),
             });
         }
         if (spotterModifier !== 0) pills.push({ label: 'Spotter', modifier: spotterModifier });
@@ -913,19 +913,23 @@ export class WeaponTargetsMenuComponent {
         if (entry.partialCoverSource === 'water' && calculator.waterDepth) {
             return `Depth ${unitWaterDepthNumber(calculator.waterDepth)}`;
         }
-        if ((entry.partialCoverSource === 'building' || entry.label === 'Heavy Cover (building)')
+        if ((entry.partialCoverSource === 'building' || entry.id === 'building-cover')
             && calculator.buildingCover) {
             return `Building lv${unitBuildingLevelNumber(calculator.buildingCover)}`;
         }
-        switch (entry.label) {
-            case 'Intervening Woods': return 'LoS';
-            case 'Light Cover': return 'Light Wood';
-            case 'Heavy Cover': return 'Heavy Wood';
-            case 'Secondary Target': return 'Secondary';
-            case 'Secondary Target (side/back)': return 'Secondary (Side/Back)';
-            case 'Large Target': return 'Large';
-            case 'Indirect Fire': return 'Indirect';
-            case 'Prone (adjacent)': return 'Prone';
+        switch (entry.id) {
+            case 'intervening-woods': return 'LoS';
+            case 'target-hex-cover':
+                switch (entry.targetHexCover) {
+                    case 'heavy': return 'Heavy Wood';
+                    case 'light': return 'Light Wood';
+                    default: return entry.label;
+                }
+            case 'secondary-target': return 'Secondary';
+            case 'secondary-target-side-back': return 'Secondary (Side/Back)';
+            case 'large-target': return 'Large';
+            case 'indirect-fire': return 'Indirect';
+            case 'prone': return 'Prone';
             default: return entry.label;
         }
     }

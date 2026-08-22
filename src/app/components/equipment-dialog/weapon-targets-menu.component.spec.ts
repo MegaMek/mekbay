@@ -159,6 +159,17 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         expect(pillContainer.textContent).not.toContain('C3');
     });
 
+    it('uses typed target-hex cover metadata for wood pill labels', () => {
+        expect(component.targetModifierPills({
+            ...TARGET,
+            tnCalculator: { targetHexCover: 'light' },
+        })).toEqual([{ label: 'Light Wood', modifier: 1 }]);
+        expect(component.targetModifierPills({
+            ...TARGET,
+            tnCalculator: { targetHexCover: 'heavy' },
+        })).toEqual([{ label: 'Heavy Wood', modifier: 2 }]);
+    });
+
     it('hides calculator modifier pills for manual TN overrides', () => {
         expect(component.targetModifierPills({
             ...TARGET,

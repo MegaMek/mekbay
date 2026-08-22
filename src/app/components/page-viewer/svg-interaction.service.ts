@@ -1487,6 +1487,7 @@ export class SvgInteractionService {
             extremeRange: row.extremeRange,
             allowExtremeRange: unit.allowsExtremeRangeAttacks(),
             selectedAmmo,
+            damageTypes: row.damageTypes,
             target: effectiveTarget,
             gunnerySkill: unit.rules.getBaseGunnerySkill(),
             pilotingSkill: unit.rules.getBasePilotingSkill(),

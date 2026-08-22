@@ -64,6 +64,7 @@ type TnStealthChoiceId = 'none' | 'custom' | TnStealthSystem;
 interface TnStealthChoice {
     readonly id: TnStealthChoiceId;
     readonly label: string;
+    readonly infantryLabel?: string;
     readonly profile?: TnStealthModifiers;
     readonly movementProfile?: TnVisualCamoSystem;
     readonly targetTypes?: readonly TnTargetUnitType[];
@@ -78,6 +79,7 @@ const TN_STEALTH_ARMOR_TARGET_TYPES: readonly TnTargetUnitType[] = [
     'aero',
 ];
 const TN_BATTLE_ARMOR_TARGET_TYPES: readonly TnTargetUnitType[] = ['battle-armor'];
+const TN_MIMETIC_CAMO_TARGET_TYPES: readonly TnTargetUnitType[] = ['battle-armor', 'infantry'];
 const TN_STEALTH_CHOICES: readonly TnStealthChoice[] = [
     { id: 'none', label: 'No Stealth' },
     { id: 'stealth-armor', label: 'Stealth', profile: TN_STANDARD_STEALTH_MODIFIERS, targetTypes: TN_STEALTH_ARMOR_TARGET_TYPES },
@@ -87,7 +89,7 @@ const TN_STEALTH_CHOICES: readonly TnStealthChoice[] = [
     { id: 'ba-basic', label: 'BA Stealth (Basic/Prototype)', profile: { short: 0, medium: 1, long: 2, conventionalInfantry: INFANTRY_IGNORES_STEALTH }, targetTypes: TN_BATTLE_ARMOR_TARGET_TYPES },
     { id: 'ba-standard', label: 'BA Stealth', profile: { short: 1, medium: 1, long: 2, conventionalInfantry: INFANTRY_IGNORES_STEALTH }, targetTypes: TN_BATTLE_ARMOR_TARGET_TYPES },
     { id: 'ba-improved', label: 'BA Stealth (Improved)', profile: { short: 1, medium: 2, long: 3, conventionalInfantry: INFANTRY_IGNORES_STEALTH }, targetTypes: TN_BATTLE_ARMOR_TARGET_TYPES },
-    { id: 'mimetic', label: 'BA Mimetic', movementProfile: 'mimetic', targetTypes: TN_BATTLE_ARMOR_TARGET_TYPES },
+    { id: 'mimetic', label: 'BA Mimetic', infantryLabel: 'Camo (Sneak/Dermal)', movementProfile: 'mimetic', targetTypes: TN_MIMETIC_CAMO_TARGET_TYPES },
     { id: 'simple-camo', label: 'Simple Camo', movementProfile: 'simple-camo', targetTypes: TN_BATTLE_ARMOR_TARGET_TYPES },
 ];
 
@@ -194,27 +196,25 @@ export interface TnCalculatorDialogResult {
                     <section class="tn-section attack-method-section">
 
                         <div class="section-title">Attack Method</div>
-                        <div class="button-row">
-                            <button type="button" class="bt-button move-button" [class.selected]="secondaryTarget()" [attr.aria-pressed]="secondaryTarget()" [disabled]="secondaryTargetUnavailable()" [attr.title]="secondaryTargetUnavailable() ? 'Active stealth armor cannot be attacked as a secondary target' : null" (click)="toggleSecondaryTarget()">
+                        <div
+                            class="attack-method-controls"
+                            [class.has-secondary-side-back]="gameRules().supportsSecondaryTargetSideBack"
+                            [class.has-indirect-fire]="indirectFireAvailable">
+                            @if (indirectFireAvailable) {
+                                <button type="button" class="bt-button move-button indirect-fire-control" [class.selected]="indirectFire()" [attr.aria-pressed]="indirectFire()" (click)="toggleIndirectFire()">
+                                    <span>Indirect Fire</span>@if (indirectFireModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }
+                                </button>
+                            }
+                            <button type="button" class="bt-button move-button secondary-target-control" [class.selected]="secondaryTarget()" [attr.aria-pressed]="secondaryTarget()" [disabled]="secondaryTargetUnavailable()" [attr.title]="secondaryTargetUnavailable() ? 'Active stealth armor cannot be attacked as a secondary target' : null" (click)="toggleSecondaryTarget()">
                                 <span>Secondary Target</span><span class="modifier-badge">+1</span>
                             </button>
                             @if (gameRules().supportsSecondaryTargetSideBack) {
-                                <button type="button" class="bt-button move-button" [class.selected]="secondaryTargetSideBack()" [attr.aria-pressed]="secondaryTargetSideBack()" [disabled]="secondaryTargetUnavailable()" [attr.title]="secondaryTargetUnavailable() ? 'Active stealth armor cannot be attacked as a secondary target' : null" (click)="toggleSecondaryTargetSideBack()">
+                                <button type="button" class="bt-button move-button secondary-target-side-back-control" [class.selected]="secondaryTargetSideBack()" [attr.aria-pressed]="secondaryTargetSideBack()" [disabled]="secondaryTargetUnavailable()" [attr.title]="secondaryTargetUnavailable() ? 'Active stealth armor cannot be attacked as a secondary target' : null" (click)="toggleSecondaryTargetSideBack()">
                                     <span>Secondary (S/B)</span><span class="modifier-badge">+2</span>
-                                </button>
-                            } @else if (gameRules().supportsLargeTarget) {
-                                <button type="button" class="bt-button move-button" [class.selected]="largeTarget()" [attr.aria-pressed]="largeTarget()" [disabled]="targetStateReadOnly" (click)="toggleLargeTarget()">
-                                    <span>Large Target</span><span class="modifier-badge">-1</span>
                                 </button>
                             }
                         </div>
-                        @if (indirectFireAvailable) {
-                            <div class="button-row">
-                                <button type="button" class="bt-button move-button" [class.selected]="indirectFire()" [attr.aria-pressed]="indirectFire()" (click)="toggleIndirectFire()">
-                                    <span>Indirect Fire</span>@if (indirectFireModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }
-                                </button>
-                            </div>
-                            @if (indirectFire()) {
+                        @if (indirectFireAvailable && indirectFire()) {
                                 <div class="spotter-section framed-borders muted-frame">
                                     <div class="section-title secondary">Spotter</div>
                                     <div class="button-row spotter-move-row">
@@ -233,7 +233,6 @@ export interface TnCalculatorDialogResult {
                                         </button>
                                     </div>
                                 </div>
-                            }
                         }
                     </section>
 
@@ -313,8 +312,7 @@ export interface TnCalculatorDialogResult {
                 <div class="tn-column">
                     <section class="tn-section target-identity-section">
                         <div class="section-title">Target Identity</div>
-                        <div class="field-row">
-                            <label for="tnTargetUnitType">Target Type</label>
+                        <div class="target-identity-row">
                             <multiline-dropdown
                                 class="bt-button identity-choice"
                                 [class.selected]="unitTypeSelectedHasModifier()"
@@ -325,6 +323,9 @@ export interface TnCalculatorDialogResult {
                                 [value]="unitType()"
                                 [disabled]="targetStateReadOnly"
                                 (valueChange)="selectUnitType($event)" />
+                            <button type="button" class="bt-button move-button large-target-control" [class.selected]="largeTarget()" [attr.aria-pressed]="largeTarget()" [disabled]="targetStateReadOnly" (click)="toggleLargeTarget()">
+                                <span>Large</span><span class="modifier-badge">-1</span>
+                            </button>
                         </div>
                     </section>
 
@@ -579,6 +580,46 @@ export interface TnCalculatorDialogResult {
             flex: 1 1 0;
             min-width: 0;
             box-sizing: border-box;
+        }
+
+        .attack-method-controls {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .attack-method-controls .bt-button {
+            width: 100%;
+            min-width: 0;
+        }
+
+        .attack-method-controls .indirect-fire-control {
+            grid-column: 1;
+            grid-row: 1;
+        }
+
+        .attack-method-controls .secondary-target-control {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        .attack-method-controls.has-secondary-side-back .secondary-target-control {
+            grid-column: 1;
+        }
+
+        .attack-method-controls .secondary-target-side-back-control {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        .attack-method-controls.has-secondary-side-back .indirect-fire-control {
+            grid-column: 1 / -1;
+            grid-row: 2;
+        }
+
+        .attack-method-controls:not(.has-indirect-fire):not(.has-secondary-side-back) .secondary-target-control {
+            grid-column: 1 / -1;
         }
 
         .spotter-move-row {
@@ -866,11 +907,25 @@ export interface TnCalculatorDialogResult {
             min-width: 0;
         }
 
+        .target-identity-row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            align-items: stretch;
+            gap: 4px;
+            min-width: 0;
+        }
+
         .identity-choice {
-            flex: 1 1 auto;
             min-width: 0;
             width: 100%;
             display: flex;
+            box-sizing: border-box;
+        }
+
+        .target-identity-row .large-target-control {
+            min-width: 0;
+            width: 100%;
+            white-space: nowrap;
         }
 
         .toggle-button.selected,
@@ -1141,7 +1196,7 @@ export class TnCalculatorDialogComponent {
             .filter(choice => stealthChoiceSupportsUnitType(choice, this.unitType()))
             .map(choice => ({
             value: choice.id,
-            label: choice.label,
+            label: this.unitType() === 'infantry' ? choice.infantryLabel ?? choice.label : choice.label,
             modifierLabel: formatStealthProfile(stealthChoiceModifiers(choice, this.targetMovementDistance())),
             })),
         ...(this.initialStealthChoice === 'custom' ? [{
@@ -1179,9 +1234,7 @@ export class TnCalculatorDialogComponent {
     readonly secondaryTargetSideBack = signal<boolean>((this.initialCalculator?.secondaryTargetSideBack ?? false)
         && !(this.initialCalculator?.secondaryTarget ?? false)
         && !stealthDisallowsSecondaryTarget(this.initialCalculator?.stealth));
-    readonly largeTarget = signal<boolean>(
-        this.data.gameRules.supportsLargeTarget && (this.initialCalculator?.largeTarget ?? false),
-    );
+    readonly largeTarget = signal<boolean>(this.initialCalculator?.largeTarget ?? false);
     readonly spotterMoveMode = signal<TnSpotterMoveMode>(this.initialCalculator?.spotterMoveMode ?? 'stationary');
     readonly spotterDeclaredAttacks = signal<boolean>(this.initialCalculator?.spotterDeclaredAttacks ?? false);
     readonly narcAboveWater = signal<boolean>(this.initialCalculator?.narcAboveWater ?? false);
@@ -1463,7 +1516,7 @@ export class TnCalculatorDialogComponent {
     }
 
     toggleLargeTarget(): void {
-        if (this.targetStateReadOnly || !this.gameRules().supportsLargeTarget) return;
+        if (this.targetStateReadOnly) return;
         this.largeTarget.set(!this.largeTarget());
     }
 

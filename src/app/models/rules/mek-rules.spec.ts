@@ -3178,15 +3178,12 @@ describe('MekRules', () => {
             umu: 0,
         });
 
-        expect(forceUnit.gameRules.supportsLargeTarget).toBeTrue();
         expect(forceUnit.rules.hasComputedCondition('immobile')).toBeTrue();
 
         optionsService.options.update(options => ({ ...options, CBTRules: 'tw' }));
-        expect(forceUnit.gameRules.supportsLargeTarget).toBeTrue();
 
         const twForceUnit = createForceUnitHarness({ rulesId: 'tw' });
         expect(twForceUnit.rules instanceof TWMekRules).toBeTrue();
-        expect(twForceUnit.gameRules.supportsLargeTarget).toBeFalse();
     });
 
     it('uses the core2026 fixed 1/2 movement profile for one destroyed biped or tripod leg', () => {

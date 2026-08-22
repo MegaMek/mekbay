@@ -6,7 +6,7 @@ import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../models/equipme
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry, type ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryTargetNumberInput } from './inventory-target-number.util';
-import { inventoryTargetEffectiveTnModifier, inventoryTargetNumberBreakdown, inventoryTargetNumberState, inventoryTargetRangeSelection } from './inventory-target-number.util';
+import { compileInventoryTargetToHitModifiers, inventoryTargetEffectiveTnModifier, inventoryTargetNumberBreakdown, inventoryTargetNumberState, inventoryTargetRangeSelection } from './inventory-target-number.util';
 
 function toHitResolution(
     value: HitModifier = 0,
@@ -495,6 +495,38 @@ describe('inventory target number rules profiles', () => {
         expect(inventoryTargetEffectiveTnModifier(intrinsicClub.target!, intrinsicClub.entry)).toBe(1);
         const mountedClub = waterPartialCoverInput('Hatchet', false, true);
         expect(inventoryTargetEffectiveTnModifier(mountedClub.target!, mountedClub.entry)).toBe(1);
+    });
+
+    it('ignores the Battle Armor target modifier only for ranged infantry attacks', () => {
+        const input = c3LaserInput(5, 5);
+        input.target = {
+            ...input.target!,
+            unitType: 'battle-armor',
+            tnModifier: 1,
+            tnCalculator: {},
+        };
+
+        expect(inventoryTargetEffectiveTnModifier(input.target, input.entry)).toBe(1);
+
+        input.entry.owner.getUnit = () => ({
+            type: 'Infantry',
+            subtype: 'Conventional Infantry',
+        }) as never;
+        expect(inventoryTargetEffectiveTnModifier(input.target, input.entry)).toBe(0);
+        expect(compileInventoryTargetToHitModifiers({
+            target: input.target,
+            entry: input.entry,
+        })).toContain(jasmine.objectContaining({
+            id: 'battle-armor',
+            modifier: 1,
+            ignored: true,
+        }));
+
+        input.entry.owner.getUnit = () => ({
+            type: 'Infantry',
+            subtype: 'Battle Armor',
+        }) as never;
+        expect(inventoryTargetEffectiveTnModifier(input.target, input.entry)).toBe(0);
     });
 
     it('does not apply water-layer restrictions through a manual TN override', () => {

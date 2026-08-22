@@ -113,11 +113,12 @@ describe('inventory control OPFOR targets', () => {
         expect(resolveInventoryTargetUnitType(unit({ type: 'Aero', subtype: 'Aerospace Fighter' }))).toBe('aero');
     });
 
-    it('recognizes only Meks above 100 tons as large targets', () => {
+    it('recognizes superheavy Meks, superheavy vehicles, and Large Support Vehicles as large targets', () => {
         expect(isLargeInventoryTarget(unit({ tons: 100 }))).toBeFalse();
         expect(isLargeInventoryTarget(unit({ tons: 101 }))).toBeTrue();
         expect(isLargeInventoryTarget(unit({ type: 'Tank', tons: 150, weightClass: 'Assault' }))).toBeFalse();
-        expect(isLargeInventoryTarget(unit({ type: 'Tank', tons: 200, weightClass: 'Colossal/Super-Heavy' }))).toBeFalse();
+        expect(isLargeInventoryTarget(unit({ type: 'Tank', tons: 200, weightClass: 'Colossal/Super-Heavy' }))).toBeTrue();
+        expect(isLargeInventoryTarget(unit({ type: 'Tank', tons: 150, weightClass: 'Large Support Vehicle' }))).toBeTrue();
     });
 
     it('derives movement, airborne, skidding, and large state', () => {
@@ -203,7 +204,7 @@ describe('inventory control OPFOR targets', () => {
         }));
     });
 
-    it('derives superheavy large-target state only under Core rules', () => {
+    it('derives the same superheavy large-target state under Core and TW rules', () => {
         expect(deriveOpforTargetCalculatorState(forceUnit({
             definition: { tons: 120 },
             gameRules: CORE_2026_GAME_RULES,
@@ -211,7 +212,7 @@ describe('inventory control OPFOR targets', () => {
         expect(deriveOpforTargetCalculatorState(forceUnit({
             definition: { tons: 120 },
             gameRules: TW_GAME_RULES,
-        })).largeTarget).toBeFalse();
+        })).largeTarget).toBeTrue();
     });
 
     it('derives NARC, TAG, and ECM guidance state', () => {

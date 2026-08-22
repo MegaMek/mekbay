@@ -183,7 +183,6 @@ export abstract class CBTGameRules {
     abstract readonly usesUacJamming: boolean;
     abstract readonly supportsSkidding: boolean;
     abstract readonly supportsSecondaryTargetSideBack: boolean;
-    abstract readonly supportsLargeTarget: boolean;
     abstract readonly artilleryFlatRangeModifier: number | null;
     abstract readonly supportsApolloSaturationMode: boolean;
     abstract readonly supportsBombastLaserRules: boolean;
@@ -493,7 +492,6 @@ export class GameRules extends CBTGameRules {
     readonly usesUacJamming = false;
     readonly supportsSkidding = false;
     readonly supportsSecondaryTargetSideBack = false;
-    readonly supportsLargeTarget = true;
     readonly artilleryFlatRangeModifier = 4;
     readonly supportsApolloSaturationMode = true;
     readonly supportsBombastLaserRules = true;
@@ -621,7 +619,6 @@ export class TWGameRules extends CBTGameRules {
     readonly usesUacJamming = true;
     readonly supportsSkidding = true;
     readonly supportsSecondaryTargetSideBack = true;
-    readonly supportsLargeTarget = false;
     readonly artilleryFlatRangeModifier = null;
     readonly supportsApolloSaturationMode = false;
     readonly supportsBombastLaserRules = false;
