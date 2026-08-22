@@ -108,7 +108,7 @@ const CBT_AUTOMATION_OPTIONS: readonly CBTAutomationOptionDefinition[] = [
     {
         key: 'pilotSkillCheck',
         label: 'Piloting skill checks',
-        description: 'Resolve end-of-phase Piloting Skill Rolls. No keeps the warnings available but skips them when the phase closes.',
+        description: 'Resolve end-of-phase Piloting Skill Rolls. "No" keeps the warnings available but skips them when the phase closes.',
     },
     {
         key: 'heatAndDissipation',
