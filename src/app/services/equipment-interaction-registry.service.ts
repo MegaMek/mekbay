@@ -9,7 +9,7 @@ import type { Toast, ToastService } from './toast.service';
 import type { DialogsService } from './dialogs.service';
 import type { AmmoEquipment } from '../models/equipment.model';
 import type { WeaponType } from '../models/weapon-types.model';
-import type { InventoryControlAmmoMatcher, InventoryControlDisplayData, InventoryControlDisplayEffectOptions, InventoryControlRules } from '../utils/inventory-control.util';
+import type { InventoryControlAmmoMatcher, InventoryControlDisplayData, InventoryControlDisplayEffectOptions, InventoryControlRules, InventoryControlToHitContext } from '../utils/inventory-control.util';
 import type { WeaponDamage } from '../models/equipment.model';
 import type { InventoryControlDamageContext } from '../utils/inventory-control-damage.util';
 import type { TurnState } from '../models/turn-state.model';
@@ -23,7 +23,6 @@ import type { Force } from '../models/force.model';
 import type { EquipmentAction, EquipmentStateEdit } from '../models/cbt-force-unit.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { EquipmentStatus } from '../models/equipment-status.model';
-import type { InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import type { HeatDissipationState } from '../models/rules/heat-management';
 
 export interface HandlerQueryContext {
@@ -126,10 +125,8 @@ export interface HandlerChoice extends PickerChoice {
     failureTarget?: number;
 }
 
-export interface ToHitAdjustmentContext {
+export interface ToHitAdjustmentContext extends InventoryControlToHitContext {
     parent?: MountedEquipment;
-    selectedAmmo?: AmmoEquipment | null;
-    target?: InventoryControlRuntimeTarget | null;
 }
 
 /**
@@ -588,13 +585,9 @@ export class EquipmentInteractionRegistry {
     getToHitAdjustments(
         equipment: MountedEquipment,
         context: HandlerQueryContext,
-        selectedAmmo?: AmmoEquipment | null,
-        target?: InventoryControlRuntimeTarget | null
+        attackContext: InventoryControlToHitContext = {},
     ): ToHitAdjustment[] {
-        const adjustmentContext: ToHitAdjustmentContext = {
-            selectedAmmo,
-            ...(target !== undefined && { target })
-        };
+        const adjustmentContext: ToHitAdjustmentContext = { ...attackContext };
         const adjustments = this.getHandlers(equipment)
             .flatMap(handler => handler.getToHitAdjustments?.(equipment, adjustmentContext, context) ?? []);
         for (const linked of equipment.linkedWith ?? []) {
@@ -626,7 +619,7 @@ export class EquipmentInteractionRegistry {
             applyHeatEffects: (equipment, heat) => this.applyInventoryControlHeatEffects(equipment, heat, context),
             applyWeaponTypes: (equipment, types) => this.applyWeaponTypes(equipment, types, context),
             matchesAmmo: (equipment, ammo, mode) => this.matchesInventoryAmmo(equipment, ammo, mode, context),
-            resolveToHitAdjustments: (equipment, selectedAmmo, target) => this.getToHitAdjustments(equipment, context, selectedAmmo, target),
+            resolveToHitAdjustments: (equipment, attackContext) => this.getToHitAdjustments(equipment, context, attackContext),
             isSelectable: equipment => this.isInventoryControlSelectable(equipment, context)
         };
     }

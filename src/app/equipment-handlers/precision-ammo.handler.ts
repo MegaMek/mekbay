@@ -13,7 +13,6 @@ import {
     type HandlerQueryContext,
     type ToHitAdjustmentContext,
 } from '../services/equipment-interaction-registry.service';
-import { inventoryTargetModifierGroupTotal } from '../utils/inventory-target-number.util';
 
 const PRECISION_AMMO_TYPES = new Set<AmmoType>(['AC', 'LAC', 'AC_IMP', 'PAC']);
 
@@ -55,11 +54,7 @@ export class PrecisionAmmoHandler extends EquipmentInteractionHandler {
             return [];
         }
 
-        const targetMovementModifier = inventoryTargetModifierGroupTotal(
-            target,
-            'target-movement',
-            equipment.owner.gameRules,
-        );
+        const targetMovementModifier = adjustmentContext.targetModifierGroups?.['target-movement'] ?? 0;
         const adjustment = Math.min(2, Math.max(0, targetMovementModifier));
         return adjustment > 0
             ? [{ kind: 'add', label: 'Precision', modifier: -adjustment }]

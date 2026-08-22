@@ -14,6 +14,8 @@ import { HexSliderComponent } from '../hex-slider/hex-slider.component';
 import { MultilineDropdownComponent, type MultilineDropdownOption } from '../multiline-dropdown/multiline-dropdown.component';
 import { CoverLevelPickerComponent } from '../cover-level-picker/cover-level-picker.component';
 import {
+    canApplyTnLargeTargetModifier,
+    canTnTargetTypeBeLarge,
     calculateTargetTnModifier,
     getIndirectFireModifier,
     getTargetMovementBracketForDistance,
@@ -323,8 +325,8 @@ export interface TnCalculatorDialogResult {
                                 [value]="unitType()"
                                 [disabled]="targetStateReadOnly"
                                 (valueChange)="selectUnitType($event)" />
-                            <button type="button" class="bt-button move-button large-target-control" [class.selected]="largeTarget()" [attr.aria-pressed]="largeTarget()" [disabled]="targetStateReadOnly" (click)="toggleLargeTarget()">
-                                <span>Large</span><span class="modifier-badge">-1</span>
+                            <button type="button" class="bt-button move-button large-target-control" [class.selected]="largeTarget()" [attr.aria-pressed]="largeTarget()" [disabled]="targetStateReadOnly || !largeTargetAvailable()" [attr.title]="largeTargetTitle()" (click)="toggleLargeTarget()">
+                                <span>Large</span><span class="modifier-badge">{{ largeTargetModifierLabel() }}</span>
                             </button>
                         </div>
                     </section>
@@ -1172,6 +1174,7 @@ export class TnCalculatorDialogComponent {
     private readonly dialogRef = inject(DialogRef<TnCalculatorDialogResult | null>);
     private readonly data = inject<TnCalculatorDialogData>(DIALOG_DATA);
     private readonly initialCalculator = this.data.target.tnCalculator;
+    private readonly initialTargetHeight = this.initialCalculator?.targetHeight;
     private readonly initialUnitType = this.data.target.unitType ?? 'mek-biped';
     private readonly initialStealthChoice = stealthChoiceId(
         this.initialCalculator?.stealth,
@@ -1234,7 +1237,10 @@ export class TnCalculatorDialogComponent {
     readonly secondaryTargetSideBack = signal<boolean>((this.initialCalculator?.secondaryTargetSideBack ?? false)
         && !(this.initialCalculator?.secondaryTarget ?? false)
         && !stealthDisallowsSecondaryTarget(this.initialCalculator?.stealth));
-    readonly largeTarget = signal<boolean>(this.initialCalculator?.largeTarget ?? false);
+    readonly largeTarget = signal<boolean>(
+        (this.initialCalculator?.largeTarget ?? false)
+        && canTnTargetTypeBeLarge(this.initialUnitType),
+    );
     readonly spotterMoveMode = signal<TnSpotterMoveMode>(this.initialCalculator?.spotterMoveMode ?? 'stationary');
     readonly spotterDeclaredAttacks = signal<boolean>(this.initialCalculator?.spotterDeclaredAttacks ?? false);
     readonly narcAboveWater = signal<boolean>(this.initialCalculator?.narcAboveWater ?? false);
@@ -1261,6 +1267,15 @@ export class TnCalculatorDialogComponent {
     readonly unitTypeSelectedHasModifier = computed(() => this.unitTypeDropdownOptions().some(option => option.value === this.unitType() && !!option.modifierLabel));
     readonly taggedUnavailable = computed(() => !this.gameRules().allowsTagDesignation(this.unitType()));
     readonly secondaryTargetUnavailable = computed(() => stealthDisallowsSecondaryTarget(this.stealth()));
+    readonly largeTargetAvailable = computed(() => canTnTargetTypeBeLarge(this.unitType()));
+    readonly largeTargetModifierLabel = computed(() => canApplyTnLargeTargetModifier(this.unitType(), this.isAirborne()) ? '-1' : '+0');
+    readonly largeTargetTitle = computed(() => {
+        if (!this.largeTargetAvailable()) return 'This target type cannot be Large';
+        if (!canApplyTnLargeTargetModifier(this.unitType(), this.isAirborne())) {
+            return 'Large Target is retained; its -1 modifier does not apply to an airborne aerospace target';
+        }
+        return null;
+    });
 
     readonly staticTarget = computed(() => isStaticTargetType(this.unitType()));
     readonly terrainTarget = computed(() => isTerrainTargetType(this.unitType()));
@@ -1278,6 +1293,7 @@ export class TnCalculatorDialogComponent {
     readonly targetWaterState = computed(() => resolveTnTargetWaterState({
         unitType: this.unitType(),
         waterDepth: this.waterDepth(),
+        targetHeight: this.initialTargetHeight,
         largeTarget: this.largeTarget(),
         prone: this.prone(),
     }));
@@ -1289,6 +1305,7 @@ export class TnCalculatorDialogComponent {
     readonly targetBuildingCoverState = computed(() => resolveTnTargetBuildingCoverState({
         unitType: this.unitType(),
         buildingCover: this.buildingCover(),
+        targetHeight: this.initialTargetHeight,
         largeTarget: this.largeTarget(),
         prone: this.prone(),
     }));
@@ -1344,6 +1361,7 @@ export class TnCalculatorDialogComponent {
         partialCover: this.partialCover(),
         waterDepth: this.waterDepth(),
         buildingCover: this.buildingCover(),
+        targetHeight: this.initialTargetHeight,
         attackDirection: this.attackDirection(),
         indirectFire: this.indirectFire(),
         secondaryTarget: this.secondaryTarget(),
@@ -1402,6 +1420,7 @@ export class TnCalculatorDialogComponent {
     selectUnitType(value: string): void {
         if (this.targetStateReadOnly) return;
         this.unitType.set(value as TnTargetUnitType);
+        this.clearUnavailableLargeTarget();
         if (this.taggedUnavailable()) this.tagged.set(false);
         this.clearStaticTargetModifiers();
         this.clampInfantryMovement();
@@ -1516,7 +1535,7 @@ export class TnCalculatorDialogComponent {
     }
 
     toggleLargeTarget(): void {
-        if (this.targetStateReadOnly) return;
+        if (this.targetStateReadOnly || !this.largeTargetAvailable()) return;
         this.largeTarget.set(!this.largeTarget());
     }
 
@@ -1594,6 +1613,7 @@ export class TnCalculatorDialogComponent {
             partialCover: this.partialCover() && !this.partialCoverDisabled(),
             waterDepth: this.waterDepth(),
             buildingCover: this.buildingCover(),
+            targetHeight: this.initialTargetHeight,
             attackDirection: this.attackDirection(),
             indirectFire: this.indirectFire(),
             secondaryTarget: this.secondaryTarget(),
@@ -1690,6 +1710,10 @@ export class TnCalculatorDialogComponent {
     private clearUnavailableStealthChoice(): void {
         const choice = TN_STEALTH_CHOICES.find(candidate => candidate.id === this.stealthChoice());
         if (choice && !stealthChoiceSupportsUnitType(choice, this.unitType())) this.stealthChoice.set('none');
+    }
+
+    private clearUnavailableLargeTarget(): void {
+        if (!this.largeTargetAvailable()) this.largeTarget.set(false);
     }
 
     private clearAirborne(): void {

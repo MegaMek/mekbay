@@ -16,7 +16,7 @@ import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { formatGunneryDisplay, formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS, unitConditionSortIndex, type ChargeDamage, type UnitHeatSource } from '../models/rules/unit-type-rules';
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
-import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../utils/inventory-target-number.util';
+import { inventoryTargetCategory, inventoryTargetModifierGroups, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../utils/inventory-target-number.util';
 import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, isInventoryControlEntryActionUnavailable, isInventoryControlSelectableEntry, readInventoryControlDisplayData, syncSvgMode, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
 import { inventoryControlDamageRange, resolveInventoryControlDamageText } from '../utils/inventory-control-damage.util';
 import { formatInventoryControlHeat, resolveHeatSummarySources, resolveInventoryControlHeatEffect, resolveSelectedWeaponPreviewHeatSources } from '../utils/inventory-control-heat.util';
@@ -1264,7 +1264,11 @@ export class UnitSvgService {
             subject: entry,
             stateModifiers,
             range,
-            adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo, target)
+            adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, {
+                selectedAmmo,
+                target,
+                ...(target && { targetModifierGroups: inventoryTargetModifierGroups(target, this.unit.gameRules) }),
+            })
         });
     }
 

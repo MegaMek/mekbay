@@ -31,7 +31,7 @@ import type { EquipmentDialogContext, EquipmentDialogData, EquipmentDialogTab } 
 import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dialog/weapon-target-choice-menu.component';
 import { getInventoryControlGroups, getInventoryControlModeAmmoSummary, getInventoryControlModes, getSelectedInventoryControlMode, inventoryControlEntryAction, INVENTORY_CONTROL_MODE_STATE, isInventoryControlSelectableEntry, resolveInventoryControlSelectedAmmoOption, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
 import { inventoryControlEntryAllowsTarget, inventoryControlEntryTargetDisabledReason, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
-import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
+import { inventoryTargetCategory, inventoryTargetModifierGroups, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
 import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
@@ -1477,7 +1477,11 @@ export class SvgInteractionService {
             subject: entry,
             stateModifiers,
             range: weaponRangeSelection?.range ?? null,
-            adjustments: rules.resolveToHitAdjustments?.(entry, selectedAmmo, target)
+            adjustments: rules.resolveToHitAdjustments?.(entry, {
+                selectedAmmo,
+                target,
+                targetModifierGroups: inventoryTargetModifierGroups(target, gameRules),
+            })
         });
         const missingMovementModifier = unit.turnState().missingAttackMovementModifier();
         return inventoryTargetNumberText({

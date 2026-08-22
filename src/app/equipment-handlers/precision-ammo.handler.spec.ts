@@ -63,6 +63,11 @@ function target(
 }
 
 const queryContext = createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY);
+const targetModifierGroups = (movement: number) => ({
+    'target-movement': movement,
+    terrain: 0,
+    'partial-cover': 0,
+} as const);
 
 describe('PrecisionAmmoHandler', () => {
     const handler = new PrecisionAmmoHandler();
@@ -74,11 +79,13 @@ describe('PrecisionAmmoHandler', () => {
         expect(handler.getToHitAdjustments(weapon, {
             selectedAmmo: precisionAmmo,
             target: target({ targetMovementBracket: '3-4' }),
+            targetModifierGroups: targetModifierGroups(1),
         }, queryContext)).toEqual([{ kind: 'add', label: 'Precision', modifier: -1 }]);
 
         expect(handler.getToHitAdjustments(weapon, {
             selectedAmmo: precisionAmmo,
             target: target({ targetMovementBracket: '5-6', isAirborne: true, skidding: true }),
+            targetModifierGroups: targetModifierGroups(5),
         }, queryContext)).toEqual([{ kind: 'add', label: 'Precision', modifier: -2 }]);
     });
 
@@ -89,6 +96,7 @@ describe('PrecisionAmmoHandler', () => {
         expect(handler.getToHitAdjustments(weapon, {
             selectedAmmo: precisionAmmo,
             target: target({ targetMovementBracket: '7-9', immobile: true }),
+            targetModifierGroups: targetModifierGroups(3),
         }, queryContext)).toEqual([{ kind: 'add', label: 'Precision', modifier: -2 }]);
     });
 
@@ -99,6 +107,7 @@ describe('PrecisionAmmoHandler', () => {
         expect(handler.getToHitAdjustments(weapon, {
             selectedAmmo: precisionAmmo,
             target: target({ targetMovementBracket: '0-2' }),
+            targetModifierGroups: targetModifierGroups(0),
         }, queryContext)).toEqual([]);
         expect(handler.getToHitAdjustments(weapon, {
             selectedAmmo: precisionAmmo,

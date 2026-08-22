@@ -19,7 +19,7 @@ import { WeaponTargetChoiceMenuComponent } from '../equipment-dialog/weapon-targ
 import { inventoryControlEntryAllowsTarget, inventoryControlEntryTargetDisabledReason, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
-import { formatInventoryTargetSignedModifier, inventoryTargetNumberState, inventoryTargetRangeSelection, type InventoryTargetNumberInput, type InventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
+import { formatInventoryTargetSignedModifier, inventoryTargetModifierGroups, inventoryTargetNumberState, inventoryTargetRangeSelection, type InventoryTargetNumberInput, type InventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
 import { SKILL_BREAKDOWN_PRIORITY, type C3DegradationSource, type ToHitResolution } from '../../models/rules/game-rules';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import {
@@ -466,7 +466,11 @@ export class WeaponsEquipmentPanelComponent {
             subject: row.entry,
             stateModifiers: row.hitModifierBreakdown,
             range,
-            adjustments: rules.resolveToHitAdjustments?.(row.entry, selectedAmmo, target)
+            adjustments: rules.resolveToHitAdjustments?.(row.entry, {
+                selectedAmmo,
+                target,
+                ...(target && { targetModifierGroups: inventoryTargetModifierGroups(target, this.unit().gameRules) }),
+            })
         });
     }
 

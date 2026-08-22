@@ -117,6 +117,19 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         ]);
     });
 
+    it('labels a manual TN as a complete override', () => {
+        const manualTarget = { ...TARGET, tnModifier: 3, manualTnModifier: 3 };
+        fixture.componentRef.setInput('targets', [manualTarget]);
+        fixture.detectChanges();
+
+        const label = fixture.nativeElement.querySelector('.tn-modifier-label') as HTMLElement;
+        const input = fixture.nativeElement.querySelector('.tn-modifier-value') as HTMLInputElement;
+        expect(label.textContent).toContain('TN Override');
+        expect(component.tnModifierTooltipFor(manualTarget)).toContain('Complete target-side override');
+        expect(input.getAttribute('aria-label')).toBe('TN Modifier (complete manual override)');
+        expect(input.title).toContain('weapon-specific target effects are disabled');
+    });
+
     it('renders calculator modifier pills (no distance or C3 values)', () => {
         const target = {
             ...TARGET,

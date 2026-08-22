@@ -3,6 +3,8 @@
 // Author: Drake
 
 import {
+    canApplyTnLargeTargetModifier,
+    canTnTargetTypeBeLarge,
     calculateTargetTnModifier,
     calculateTargetTnModifierBreakdown,
     getTargetProneModifier,
@@ -154,6 +156,20 @@ describe('target number calculator rules profiles', () => {
             largeTarget: true,
             waterDepth: 'underwater-depth-2',
         }, TW_GAME_RULES)).toBe(0);
+    });
+
+    it('treats a Large superheavy Mek as height 3, or height 2 while prone', () => {
+        expect(resolveTnTargetWaterState({
+            unitType: 'mek-biped',
+            largeTarget: true,
+            waterDepth: 'underwater-depth-2',
+        })).toEqual({ partiallyUnderwater: true, submerged: false });
+        expect(resolveTnTargetWaterState({
+            unitType: 'mek-biped',
+            largeTarget: true,
+            prone: true,
+            waterDepth: 'underwater-depth-2',
+        })).toEqual({ partiallyUnderwater: false, submerged: true });
     });
 
     it('resolves non-Mek water state from target height', () => {
@@ -319,8 +335,24 @@ describe('target number calculator rules profiles', () => {
         expect(breakdown.some(entry => entry.adjustmentGroup === 'target-movement')).toBeFalse();
     });
 
+    it('allows only target kinds that can receive the Large Target modifier', () => {
+        for (const unitType of ['mek-biped', 'mek-quad', 'mek-tripod', 'vehicle', 'vtol', 'aero', 'terrain', 'building'] as const) {
+            expect(canTnTargetTypeBeLarge(unitType)).withContext(unitType).toBeTrue();
+        }
+        for (const unitType of ['battle-armor', 'infantry', 'protoMek'] as const) {
+            expect(canTnTargetTypeBeLarge(unitType)).withContext(unitType).toBeFalse();
+        }
+        expect(canTnTargetTypeBeLarge(undefined)).toBeTrue();
+        expect(canApplyTnLargeTargetModifier('vtol', false)).toBeTrue();
+        expect(canApplyTnLargeTargetModifier('vtol', true)).toBeTrue();
+        expect(canApplyTnLargeTargetModifier('mek-biped', true)).toBeTrue();
+        expect(canApplyTnLargeTargetModifier('aero', false)).toBeTrue();
+        expect(canApplyTnLargeTargetModifier('aero', true)).toBeFalse();
+    });
+
     it('uses Large Target and ignores removed modifiers in core2026', () => {
         expect(calculateTargetTnModifier({
+            unitType: 'vehicle',
             range: 5,
             largeTarget: true, // used, -1
             skidding: true, // ignored, +1
@@ -330,6 +362,7 @@ describe('target number calculator rules profiles', () => {
 
     it('uses Large Target, Skidding, and Side/Back Secondary for TW ranged targeting', () => {
         expect(calculateTargetTnModifier({
+            unitType: 'vehicle',
             range: 5,
             largeTarget: true, // used, -1
             skidding: true, // used, +2
@@ -337,15 +370,44 @@ describe('target number calculator rules profiles', () => {
         }, TW_GAME_RULES)).toBe(3);
     });
 
-    it('uses the same Large Target modifier in both profiles, including airborne targets', () => {
+    it('uses the same grounded Large Target modifier in both profiles', () => {
         for (const gameRules of [CORE_2026_GAME_RULES, TW_GAME_RULES]) {
             const breakdown = calculateTargetTnModifierBreakdown({
                 unitType: 'mek-biped',
-                isAirborne: true,
                 largeTarget: true,
             }, gameRules);
             expect(breakdown).withContext(gameRules.id)
                 .toContain(jasmine.objectContaining({ id: 'large-target', modifier: -1 }));
+        }
+    });
+
+    it('suppresses Large Target only for airborne aerospace targets', () => {
+        const jumping = calculateTargetTnModifierBreakdown({
+            unitType: 'mek-biped',
+            isAirborne: true,
+            largeTarget: true,
+        }, TW_GAME_RULES);
+        const airborne = calculateTargetTnModifierBreakdown({
+            unitType: 'vtol',
+            isAirborne: true,
+            largeTarget: true,
+        }, TW_GAME_RULES);
+        const airborneAero = calculateTargetTnModifierBreakdown({
+            unitType: 'aero',
+            isAirborne: true,
+            largeTarget: true,
+        }, TW_GAME_RULES);
+
+        expect(jumping).toContain(jasmine.objectContaining({ id: 'large-target', modifier: -1 }));
+        expect(airborne).toContain(jasmine.objectContaining({ id: 'large-target', modifier: -1 }));
+        expect(airborneAero.some(entry => entry.id === 'large-target')).toBeFalse();
+    });
+
+    it('rejects stale Large Target state for unit kinds that can never be large', () => {
+        for (const unitType of ['battle-armor', 'infantry', 'protoMek'] as const) {
+            expect(calculateTargetTnModifierBreakdown({ unitType, largeTarget: true }))
+                .withContext(unitType)
+                .not.toContain(jasmine.objectContaining({ id: 'large-target' }));
         }
     });
 

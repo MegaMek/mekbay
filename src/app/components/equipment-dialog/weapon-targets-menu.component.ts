@@ -121,7 +121,7 @@ export interface WeaponTargetCalculatorRequest {
                                             </span>
                                         </div>
                                         <div class="target-number-field">
-                                            <span class="tn-modifier-label" [tooltip]="tnModifierTooltip">TN Modifier <span class="info-notice" aria-hidden="true">i</span></span>
+                                            <span class="tn-modifier-label" [tooltip]="tnModifierTooltipFor(target)">{{ tnModifierLabel(target) }} <span class="info-notice" aria-hidden="true">i</span></span>
                                             <span class="target-stepper">
                                                 <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepTnModifier(target, -1)">-</button>
                                                 <input class="value tn-modifier-value" [class.linked-tn-modifier]="!isTnModifierManual(target)" type="number" step="1" [readOnly]="readOnly()" [value]="target.tnModifier" [attr.aria-label]="tnModifierAriaLabel(target)" [title]="tnModifierTitle(target)" (input)="updateTnModifier(target.id, $any($event.target).value)">
@@ -700,7 +700,7 @@ export interface WeaponTargetCalculatorRequest {
 })
 export class WeaponTargetsMenuComponent {
     readonly jammedConditionColor = JAMMED_CONDITION_COLOR;
-    readonly tnModifierTooltip = 'Target-side TN modifier for this target. Use it for target movement, indirect fire, spotter movement, terrain, cover, stance, and similar target conditions. It is added separately from your unit skill, your movement, range, heat, and weapon modifiers. The calculator can fill it, and you can still override it manually.';
+    readonly tnModifierTooltip = 'Target-side TN modifier for this target. Use it for target movement, indirect fire, spotter movement, terrain, cover, stance, and similar target conditions. It is added separately from your unit skill, your movement, range, heat, and weapon modifiers. Directly editing it creates a complete target-side override.';
     readonly targets = input<InventoryControlRuntimeTarget[]>([]);
     readonly colors = input<readonly string[]>(INVENTORY_CONTROL_TARGET_COLORS);
     readonly maxTargets = input(INVENTORY_CONTROL_TARGET_MAX_COUNT);
@@ -823,15 +823,25 @@ export class WeaponTargetsMenuComponent {
         return target.manualTnModifier !== undefined;
     }
 
+    tnModifierLabel(target: InventoryControlRuntimeTarget): string {
+        return this.isTnModifierManual(target) ? 'TN Override' : 'TN Modifier';
+    }
+
+    tnModifierTooltipFor(target: InventoryControlRuntimeTarget): string {
+        return this.isTnModifierManual(target)
+            ? 'Complete target-side override. Calculator-derived and weapon-specific target effects, including Precision, NARC, and Semi-Guided adjustments, are disabled. Reapply the calculator to restore them.'
+            : this.tnModifierTooltip;
+    }
+
     tnModifierAriaLabel(target: InventoryControlRuntimeTarget): string {
         return this.isTnModifierManual(target)
-            ? 'TN Modifier (manual override)'
+            ? 'TN Modifier (complete manual override)'
             : 'TN Modifier (linked to calculator)';
     }
 
     tnModifierTitle(target: InventoryControlRuntimeTarget): string {
         return this.isTnModifierManual(target)
-            ? 'TN Modifier: manual override'
+            ? 'Complete manual TN override; calculator and weapon-specific target effects are disabled'
             : 'TN Modifier: linked to calculator';
     }
 

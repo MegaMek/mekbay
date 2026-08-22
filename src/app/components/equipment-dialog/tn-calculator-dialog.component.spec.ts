@@ -90,6 +90,78 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
         expect(getComputedStyle(indirectFire).gridRowStart).toBe('2');
     });
 
+    it('disables and clears Large Target for unit types that can never be large', () => {
+        const largeTargetButton = () => fixture.nativeElement.querySelector('.large-target-control') as HTMLButtonElement;
+
+        component.toggleLargeTarget();
+        expect(component.largeTarget()).toBeTrue();
+
+        for (const unitType of ['infantry', 'battle-armor', 'protoMek'] as const) {
+            component.selectUnitType(unitType);
+            fixture.detectChanges();
+
+            expect(component.largeTarget()).withContext(unitType).toBeFalse();
+            expect(largeTargetButton().disabled).withContext(unitType).toBeTrue();
+            component.toggleLargeTarget();
+            expect(component.largeTarget()).withContext(unitType).toBeFalse();
+        }
+
+        for (const unitType of ['mek-biped', 'mek-quad', 'mek-tripod', 'vehicle', 'vtol', 'aero', 'terrain', 'building'] as const) {
+            component.selectUnitType(unitType);
+            fixture.detectChanges();
+            expect(largeTargetButton().disabled).withContext(unitType).toBeFalse();
+        }
+    });
+
+    it('retains Large for jumping and airborne non-aerospace targets but suppresses it for airborne Aero', () => {
+        const largeTargetButton = () => fixture.nativeElement.querySelector('.large-target-control') as HTMLButtonElement;
+        const largeTargetBadge = () => largeTargetButton().querySelector('.modifier-badge')?.textContent?.trim();
+
+        component.selectUnitType('vtol');
+        component.toggleLargeTarget();
+        fixture.detectChanges();
+
+        expect(component.largeTarget()).toBeTrue();
+        expect(component.totalModifier()).toBe(-1);
+        expect(largeTargetBadge()).toBe('-1');
+
+        component.toggleAirborne();
+        fixture.detectChanges();
+
+        expect(component.isAirborne()).toBeTrue();
+        expect(component.largeTarget()).toBeTrue();
+        expect(component.totalModifier()).toBe(0);
+        expect(largeTargetButton().disabled).toBeFalse();
+        expect(largeTargetButton().classList).toContain('selected');
+        expect(largeTargetBadge()).toBe('-1');
+        expect(largeTargetButton().title).toBe('');
+
+        component.toggleAirborne();
+        fixture.detectChanges();
+
+        expect(component.isAirborne()).toBeFalse();
+        expect(component.largeTarget()).toBeTrue();
+        expect(component.totalModifier()).toBe(-1);
+        expect(largeTargetBadge()).toBe('-1');
+
+        component.selectUnitType('mek-biped');
+        component.toggleAirborne();
+
+        expect(component.isAirborne()).toBeTrue();
+        expect(component.largeTarget()).toBeTrue();
+        expect(component.totalModifier()).toBe(0);
+        expect(largeTargetBadge()).toBe('-1');
+
+        component.selectUnitType('aero');
+        fixture.detectChanges();
+
+        expect(component.isAirborne()).toBeTrue();
+        expect(component.largeTarget()).toBeTrue();
+        expect(component.totalModifier()).toBe(0);
+        expect(largeTargetBadge()).toBe('+0');
+        expect(largeTargetButton().title).toContain('airborne aerospace');
+    });
+
     it('preserves the stored C3 choice when applying while jammed', () => {
         component.apply();
 
@@ -677,6 +749,34 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
 });
 
 describe('TnCalculatorDialogComponent movement and stance', () => {
+    it('uses the synchronized target height in live water and building geometry', async () => {
+        const data: TnCalculatorDialogData = {
+            target: {
+                id: 'A', letter: 'A', name: 'Tall target', color: '#1565C0',
+                unitType: 'vehicle', distance: 5, tnModifier: 0,
+                tnCalculator: { targetHeight: 3 },
+            },
+            gameRules: CORE_2026_GAME_RULES,
+        };
+        await TestBed.configureTestingModule({
+            imports: [TnCalculatorDialogComponent],
+            providers: [
+                { provide: DIALOG_DATA, useValue: data },
+                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
+            ],
+        }).compileComponents();
+        const component = TestBed.createComponent(TnCalculatorDialogComponent).componentInstance;
+
+        component.selectWaterDepth('underwater-depth-2');
+        expect(component.targetWaterState()).toEqual({ partiallyUnderwater: true, submerged: false });
+        expect(component.totalModifier()).toBe(1);
+
+        component.selectBuildingLevel('building-2');
+        expect(component.waterDepth()).toBeUndefined();
+        expect(component.targetBuildingCoverState()).toEqual({ effect: 'partial', modifier: 1 });
+        expect(component.totalModifier()).toBe(1);
+    });
+
     it('stores water depth for an editable non-Mek using shared height geometry', async () => {
         const close = jasmine.createSpy('close');
         const data: TnCalculatorDialogData = {

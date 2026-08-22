@@ -6,7 +6,7 @@ import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../models/equipme
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry, type ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryTargetNumberInput } from './inventory-target-number.util';
-import { compileInventoryTargetToHitModifiers, inventoryTargetEffectiveTnModifier, inventoryTargetNumberBreakdown, inventoryTargetNumberState, inventoryTargetRangeSelection } from './inventory-target-number.util';
+import { compileInventoryTargetToHitModifiers, inventoryTargetEffectiveTnModifier, inventoryTargetModifierGroups, inventoryTargetNumberBreakdown, inventoryTargetNumberState, inventoryTargetRangeSelection } from './inventory-target-number.util';
 
 function toHitResolution(
     value: HitModifier = 0,
@@ -527,6 +527,77 @@ describe('inventory target number rules profiles', () => {
             subtype: 'Battle Armor',
         }) as never;
         expect(inventoryTargetEffectiveTnModifier(input.target, input.entry)).toBe(0);
+    });
+
+    it('compiles target-movement groups once for handlers and omits them for a complete override', () => {
+        const input = c3LaserInput(5, 5);
+        input.target = {
+            ...input.target!,
+            tnModifier: 6,
+            tnCalculator: {
+                isAirborne: true,
+                targetMovementBracket: '7-9',
+                skidding: true,
+            },
+        };
+
+        expect(inventoryTargetModifierGroups(input.target, TW_GAME_RULES)).toEqual({
+            'target-movement': 6,
+            terrain: 0,
+            'partial-cover': 0,
+        });
+        expect(inventoryTargetModifierGroups({
+            ...input.target,
+            manualTnModifier: 6,
+        }, TW_GAME_RULES)).toBeUndefined();
+    });
+
+    it('uses profile-specific Immobile eligibility for artillery and artillery cannons', () => {
+        const regularArtillery = artilleryInput(15);
+        regularArtillery.target = {
+            ...regularArtillery.target!,
+            tnModifier: -4,
+            tnCalculator: { immobile: true },
+        };
+
+        expect(inventoryTargetEffectiveTnModifier(
+            regularArtillery.target,
+            regularArtillery.entry,
+            regularArtillery.selectedAmmo,
+            CORE_2026_GAME_RULES,
+            undefined,
+            ['A', 'AE'],
+        )).toBe(0);
+        expect(inventoryTargetEffectiveTnModifier(
+            regularArtillery.target,
+            regularArtillery.entry,
+            regularArtillery.selectedAmmo,
+            TW_GAME_RULES,
+            undefined,
+            ['A', 'AE'],
+        )).toBe(-4);
+
+        regularArtillery.entry.equipment = new WeaponEquipment({
+            id: 'ThumperCannon',
+            name: 'Thumper Cannon',
+            type: 'weapon',
+            flags: ['F_ARTILLERY', 'F_DIRECT_FIRE'],
+            weapon: { ammoType: 'THUMPER_CANNON', ranges: [6, 13, 21, 28] },
+        });
+        regularArtillery.selectedAmmo = new AmmoEquipment({
+            id: 'ThumperCannonAmmo',
+            name: 'Thumper Cannon Ammo',
+            type: 'ammo',
+            ammo: { type: 'THUMPER_CANNON', shots: 10 },
+        });
+        expect(inventoryTargetEffectiveTnModifier(
+            regularArtillery.target,
+            regularArtillery.entry,
+            regularArtillery.selectedAmmo,
+            TW_GAME_RULES,
+            undefined,
+            ['DB', 'F'],
+        )).toBe(0);
     });
 
     it('does not apply water-layer restrictions through a manual TN override', () => {

@@ -113,15 +113,19 @@ describe('inventory control OPFOR targets', () => {
         expect(resolveInventoryTargetUnitType(unit({ type: 'Aero', subtype: 'Aerospace Fighter' }))).toBe('aero');
     });
 
-    it('recognizes superheavy Meks, superheavy vehicles, and Large Support Vehicles as large targets', () => {
+    it('recognizes only eligible superheavy and Large Support units as large targets', () => {
         expect(isLargeInventoryTarget(unit({ tons: 100 }))).toBeFalse();
         expect(isLargeInventoryTarget(unit({ tons: 101 }))).toBeTrue();
         expect(isLargeInventoryTarget(unit({ type: 'Tank', tons: 150, weightClass: 'Assault' }))).toBeFalse();
         expect(isLargeInventoryTarget(unit({ type: 'Tank', tons: 200, weightClass: 'Colossal/Super-Heavy' }))).toBeTrue();
         expect(isLargeInventoryTarget(unit({ type: 'Tank', tons: 150, weightClass: 'Large Support Vehicle' }))).toBeTrue();
+        expect(isLargeInventoryTarget(unit({ type: 'VTOL', tons: 60, weightClass: 'Colossal/Super-Heavy' }))).toBeTrue();
+        expect(isLargeInventoryTarget(unit({ type: 'Aero', weightClass: 'Large Support Vehicle' }))).toBeTrue();
+        expect(isLargeInventoryTarget(unit({ type: 'ProtoMek', weightClass: 'Colossal/Super-Heavy' }))).toBeFalse();
+        expect(isLargeInventoryTarget(unit({ type: 'Infantry', subtype: 'Battle Armor', weightClass: 'Large Support Vehicle' }))).toBeFalse();
     });
 
-    it('derives movement, airborne, skidding, and large state', () => {
+    it('derives airborne movement, size, and height state without clearing Large identity', () => {
         const state = deriveOpforTargetCalculatorState(forceUnit({
             definition: { tons: 120 },
             conditions: ['skidding'],
@@ -134,6 +138,7 @@ describe('inventory control OPFOR targets', () => {
             targetMovementDistance: 8,
             isAirborne: true,
             skidding: true,
+            targetHeight: 3,
             largeTarget: true
         }));
     });
@@ -156,14 +161,16 @@ describe('inventory control OPFOR targets', () => {
         }));
     });
 
-    it('treats jump movement as airborne without an explicit airborne flag', () => {
+    it('treats jump movement as a movement modifier without suppressing a superheavy target', () => {
         const state = deriveOpforTargetCalculatorState(forceUnit({
+            definition: { tons: 120 },
             moveMode: 'jump',
             airborne: false,
             distance: 5
         }));
 
         expect(state.isAirborne).toBeTrue();
+        expect(state.largeTarget).toBeTrue();
         expect(state.targetMovementBracket).toBe('5-6');
         expect(state.targetMovementDistance).toBe(5);
     });

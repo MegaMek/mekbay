@@ -65,6 +65,37 @@ export const TN_TARGET_UNIT_TYPE_OPTIONS: readonly TnTargetUnitTypeOption[] = [
     { value: 'building', label: 'Building' },
 ] as const;
 
+const TN_LARGE_TARGET_INELIGIBLE_UNIT_TYPES = new Set<TnTargetUnitType>([
+    'battle-armor',
+    'infantry',
+    'protoMek',
+]);
+
+/**
+ * Whether the selected target kind can be Large. Aero remains eligible for Large Support aircraft,
+ * while terrain and buildings can be designated Large by a mission. Unknown legacy types remain eligible.
+ */
+export function canTnTargetTypeBeLarge(unitType: TnTargetUnitType | null | undefined): boolean {
+    return unitType === null
+        || unitType === undefined
+        || !TN_LARGE_TARGET_INELIGIBLE_UNIT_TYPES.has(unitType);
+}
+
+/**
+ * Whether a Large target receives its to-hit modifier in the current state.
+ *
+ * The calculator's single Jumped/Airborne flag represents two different TW states. Jumping Meks
+ * and airborne non-aerospace units still retain the Large Support/Superheavy modifier; MegaMek's
+ * `Entity.isAirborne()` exclusion applies to airborne aerospace targets.
+ */
+export function canApplyTnLargeTargetModifier(
+    unitType: TnTargetUnitType | null | undefined,
+    isAirborne: boolean | null | undefined,
+): boolean {
+    return canTnTargetTypeBeLarge(unitType)
+        && !(unitType === 'aero' && isAirborne === true);
+}
+
 export type TnTargetMovementBracketId = '0-2' | '3-4' | '5-6' | '7-9' | '10-17' | '18-24' | '25+';
 
 export interface TnTargetMovementBracket {
@@ -158,6 +189,7 @@ export function getVisualCamoTnModifiers(
 }
 
 export interface TnTargetNumberCalculatorState {
+    /** The target jumped or is airborne; applies the +1 target movement modifier. */
     isAirborne?: boolean;
     targetMovementBracket?: TnTargetMovementBracketId | null;
     /** Exact distance when known; manual input preserves 0/1/2 for movement-dependent camouflage. */
@@ -174,6 +206,9 @@ export interface TnTargetNumberCalculatorState {
     indirectFire?: boolean;
     secondaryTarget?: boolean;
     secondaryTargetSideBack?: boolean;
+    /** Standing height used only for water/building geometry; prone posture is applied separately. */
+    targetHeight?: UnitHeight;
+    /** Applies the scenario/unit-size Large Target to-hit modifier. */
     largeTarget?: boolean;
     spotterMoveMode?: TnSpotterMoveMode;
     spotterDeclaredAttacks?: boolean;
@@ -222,6 +257,8 @@ export type TnTargetModifierId =
 
 export type TnTargetModifierAdjustmentGroup = 'target-movement' | 'terrain' | 'partial-cover';
 
+export type TnTargetModifierGroupTotals = Readonly<Record<TnTargetModifierAdjustmentGroup, number>>;
+
 export interface TnTargetModifierBreakdownEntry {
     id: TnTargetModifierId;
     label: string;
@@ -231,6 +268,21 @@ export interface TnTargetModifierBreakdownEntry {
     adjustmentGroup?: TnTargetModifierAdjustmentGroup;
     ignoredByNarcGuidance?: boolean;
     ignoredBySemiGuidedGuidance?: boolean;
+}
+
+/** Compiles semantic totals once so equipment handlers do not need to inspect display labels or rebuild target rules. */
+export function getTnTargetModifierGroupTotals(
+    breakdown: readonly TnTargetModifierBreakdownEntry[],
+): TnTargetModifierGroupTotals {
+    const totals: Record<TnTargetModifierAdjustmentGroup, number> = {
+        'target-movement': 0,
+        terrain: 0,
+        'partial-cover': 0,
+    };
+    for (const modifier of breakdown) {
+        if (modifier.adjustmentGroup) totals[modifier.adjustmentGroup] += modifier.modifier;
+    }
+    return totals;
 }
 
 export function getTargetMovementDistanceModifier(distance: number | null | undefined): number {
@@ -266,7 +318,7 @@ export function isTerrainTargetType(unitType: TnTargetUnitType | null | undefine
 }
 
 export function resolveTnTargetWaterState(
-    input: Pick<TnTargetNumberCalculatorState, 'waterDepth' | 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
+    input: Pick<TnTargetNumberCalculatorState, 'waterDepth' | 'targetHeight' | 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
 ): UnitWaterState {
     return resolveUnitWaterState(
         input.waterDepth,
@@ -275,7 +327,7 @@ export function resolveTnTargetWaterState(
 }
 
 export function resolveTnTargetBuildingCoverState(
-    input: Pick<TnTargetNumberCalculatorState, 'buildingCover' | 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
+    input: Pick<TnTargetNumberCalculatorState, 'buildingCover' | 'targetHeight' | 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
 ): UnitBuildingCoverState {
     return resolveUnitBuildingCoverState(
         input.buildingCover,
@@ -284,10 +336,10 @@ export function resolveTnTargetBuildingCoverState(
 }
 
 function resolveTnTargetHeight(
-    input: Pick<TnTargetNumberCalculatorState, 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
+    input: Pick<TnTargetNumberCalculatorState, 'targetHeight' | 'largeTarget' | 'prone'> & { unitType?: TnTargetUnitType },
 ): UnitHeight {
     const isMek = input.unitType?.startsWith('mek-') === true;
-    const standingHeight: UnitHeight = !isMek ? 1 : input.largeTarget === true ? 3 : 2;
+    const standingHeight: UnitHeight = input.targetHeight ?? (isMek ? (input.largeTarget ? 3 : 2) : 1);
     return input.prone && standingHeight > 1
         ? (standingHeight - 1) as UnitHeight
         : standingHeight;
@@ -450,6 +502,7 @@ export function calculateTargetTnModifierBreakdown(
     add('secondary-target-side-back', 'Secondary Target (side/back)', gameRules.supportsSecondaryTargetSideBack && !input.secondaryTarget && input.secondaryTargetSideBack
         ? TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER : 0);
     add('large-target', 'Large Target', input.largeTarget
+        && canApplyTnLargeTargetModifier(input.unitType, input.isAirborne)
         ? TN_LARGE_TARGET_MODIFIER
         : 0);
     add('stealth', 'Stealth', getStealthTnModifier(

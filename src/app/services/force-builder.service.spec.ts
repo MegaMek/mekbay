@@ -812,6 +812,7 @@ describe('ForceBuilderService OPFOR inventory target synchronization', () => {
             distance: imported.distance,
             tnCalculator: {
                 largeTarget: imported.tnCalculator?.largeTarget,
+                targetHeight: imported.tnCalculator?.targetHeight,
                 skidding: imported.tnCalculator?.skidding,
                 targetMovementBracket: imported.tnCalculator?.targetMovementBracket,
                 targetMovementDistance: imported.tnCalculator?.targetMovementDistance,

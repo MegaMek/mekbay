@@ -155,6 +155,7 @@ const SHARED_TARGET_CALCULATOR_KEYS = [
     'targetHexCover',
     'waterDepth',
     'buildingCover',
+    'targetHeight',
     'largeTarget',
     'narcAboveWater',
     'narcUnderwater',

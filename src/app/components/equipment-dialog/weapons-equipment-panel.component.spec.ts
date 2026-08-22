@@ -218,7 +218,7 @@ function createComponent(
     } satisfies EquipmentDialogContext;
     const equipmentRules = registry.inventoryControlRules(context.queryContext);
     unitHarness
-        .setToHitAdjustments((entry, selectedAmmo) => registry.getToHitAdjustments(entry, context.queryContext, selectedAmmo))
+        .setToHitAdjustments((entry, attackContext) => registry.getToHitAdjustments(entry, context.queryContext, attackContext))
         .setInventoryControlRules({
             ...equipmentRules,
             applyDisplayEffects: (entry, display, displayOptions) => {

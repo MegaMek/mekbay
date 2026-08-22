@@ -22,7 +22,7 @@ import {
 import type { WeaponType } from '../models/weapon-types.model';
 import { resolveSelectedInventoryWeaponHeat } from '../utils/inventory-control-heat.util';
 import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-control-physical-damage.util';
-import { resolveInventoryControlSelectedAmmoType, type InventoryControlDisplayData, type InventoryControlRules } from '../utils/inventory-control.util';
+import { resolveInventoryControlSelectedAmmoType, type InventoryControlDisplayData, type InventoryControlRules, type InventoryControlToHitContext } from '../utils/inventory-control.util';
 import { uuidv4 } from '../utils/uuid.util';
 
 type TestAlphaStrikeOverrides = Partial<Omit<UnitSummary['as'], 'dmg'>> & {
@@ -229,7 +229,7 @@ export class CBTForceUnitTestHarness {
     private inventoryControlRules: TestInventoryControlRules = {};
     private toHitAdjustments: (
         entry: MountedEquipment,
-        selectedAmmo?: AmmoEquipment | null
+        context?: InventoryControlToHitContext,
     ) => readonly ToHitAdjustment[] = () => [];
 
     constructor(readonly options: CBTForceUnitTestHarnessOptions = {}) {
@@ -560,12 +560,12 @@ export class CBTForceUnitTestHarness {
     }
 
     setToHitAdjustments(
-        resolver: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => readonly ToHitAdjustment[]
+        resolver: (entry: MountedEquipment, context?: InventoryControlToHitContext) => readonly ToHitAdjustment[]
     ): this {
         this.toHitAdjustments = resolver;
         this.inventoryControlRules = {
             ...this.inventoryControlRules,
-            resolveToHitAdjustments: (entry, selectedAmmo) => this.toHitAdjustments(entry, selectedAmmo)
+            resolveToHitAdjustments: (entry, context) => this.toHitAdjustments(entry, context)
         };
         return this;
     }

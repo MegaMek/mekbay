@@ -4,7 +4,7 @@
 
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { getActiveStealthTnModifiers } from '../models/stealth-equipment.model';
-import { getTargetMovementBracketForDistance, type TnTargetNumberCalculatorState, type TnTargetUnitType } from '../models/target-number-calculator.model';
+import { canTnTargetTypeBeLarge, getTargetMovementBracketForDistance, type TnTargetNumberCalculatorState, type TnTargetUnitType } from '../models/target-number-calculator.model';
 import { isUnitBuildingLevel, isUnitWaterDepth } from '../models/unit-cover.model';
 import { getUnitHeight, type UnitSummary, type WeightClass } from '../models/unit-summary.model';
 
@@ -39,7 +39,8 @@ export function resolveInventoryTargetUnitType(unit: UnitSummary): TnTargetUnitT
 }
 
 export function isLargeInventoryTarget(unit: UnitSummary): boolean {
-    return getUnitHeight(unit) === 3 || LARGE_TARGET_WEIGHT_CLASSES.has(unit.weightClass);
+    return canTnTargetTypeBeLarge(resolveInventoryTargetUnitType(unit))
+        && (getUnitHeight(unit) === 3 || LARGE_TARGET_WEIGHT_CLASSES.has(unit.weightClass));
 }
 
 export function deriveOpforTargetCalculatorState(
@@ -55,6 +56,7 @@ export function deriveOpforTargetCalculatorState(
     const targetMovementBracket = moveDistance !== null
         ? getTargetMovementBracketForDistance(moveDistance)?.id ?? null
         : null;
+    const targetUnit = unit.getUnit();
 
     return {
         ...current,
@@ -67,7 +69,8 @@ export function deriveOpforTargetCalculatorState(
         targetHexCover: cover === 'light' || cover === 'heavy' ? cover : 'none',
         waterDepth: isUnitWaterDepth(cover) ? cover : undefined,
         buildingCover: isUnitBuildingLevel(cover) ? cover : undefined,
-        largeTarget: isLargeInventoryTarget(unit.getUnit()),
+        targetHeight: getUnitHeight(targetUnit),
+        largeTarget: isLargeInventoryTarget(targetUnit),
         narcAboveWater: narcWaterLayers.aboveWater,
         narcUnderwater: narcWaterLayers.underwater,
         tagged: unit.getCondition('tagged'),

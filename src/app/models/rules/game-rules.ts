@@ -158,6 +158,15 @@ export interface NarcBeaconAttackContext {
     readonly targetIsInfantry: boolean;
 }
 
+/** Attack-family facts needed to decide whether the target's Immobile modifier applies. */
+export interface TargetAttackTraits {
+    readonly areaEffect: boolean;
+    readonly artillery: boolean;
+    readonly artilleryCannon: boolean;
+    readonly bomb: boolean;
+    readonly mekMortarAirburst: boolean;
+}
+
 export function separateHeatFireModifier(resolution: ToHitResolution): ToHitHeatSeparation {
     const heatFireModifier = resolution.modifierBreakdown.reduce(
         (total, entry) => total + (entry.kind === 'heat' ? entry.modifier : 0),
@@ -200,6 +209,7 @@ export abstract class CBTGameRules {
     abstract getSemiGuidedAdjustment(modifierValue: number, source: SemiGuidedAdjustmentSource): number;
     abstract getNarcBeaconAttackRestriction(context: NarcBeaconAttackContext): NarcBeaconAttackRestriction | null;
     abstract allowsTagDesignation(targetType: TnTargetUnitType | undefined): boolean;
+    abstract attackBenefitsFromImmobile(traits: TargetAttackTraits): boolean;
     abstract getExplosiveWeaponDamage(weapon: WeaponEquipment, mountedCriticalSlots: number): number;
     abstract resolveMekExplosionDamage(context: MekExplosionDamageContext): MekExplosionDamageResolution;
     abstract getMekExplosionProtectionNote(protection: MekExplosionProtection): string | null;
@@ -476,6 +486,10 @@ export class GameRules extends CBTGameRules {
         'dfa [talons]': 'Vs',
         'airmech ram': 'Vs',
     } as const;
+
+    override attackBenefitsFromImmobile(traits: TargetAttackTraits): boolean {
+        return !traits.areaEffect;
+    }
     readonly escalatingFailureTargets = [3, 5, 7, 10, 11] as const;
     readonly radicalHeatSinkFailureTargets = this.escalatingFailureTargets;
     // Blue Shield's first five uses are safe; Core starts escalating-failure checks on use six.
@@ -600,6 +614,10 @@ export class TWGameRules extends CBTGameRules {
         'dfa [talons]': 'Vs',
         'airmech ram': 'Vs',
     } as const;
+
+    override attackBenefitsFromImmobile(traits: TargetAttackTraits): boolean {
+        return !traits.artilleryCannon && !traits.bomb && !traits.mekMortarAirburst;
+    }
     readonly escalatingFailureTargets = [3, 5, 7, 11, ESCALATING_FAILURE_AUTO_FAIL_TARGET] as const;
     readonly radicalHeatSinkFailureTargets = [3, 5, 7, 10, 11, ESCALATING_FAILURE_AUTO_FAIL_TARGET] as const;
     // TO:AUE: six safe cumulative uses, then the avoid number rises by one until automatic failure.
