@@ -2211,7 +2211,18 @@ export class UnitSearchComponent {
         this.closeViewModeMenu();
     }
 
-    toggleExpandedView() {
+    openExpandedSearch(event: MouseEvent): void {
+        if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+            return;
+        }
+
+        event.preventDefault();
+        if (!this.expandedView()) {
+            this.toggleExpandedView();
+        }
+    }
+
+    toggleExpandedView(): void {
         const isExpanded = this.expandedView();
 
         if (isExpanded) {

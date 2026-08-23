@@ -60,6 +60,7 @@ export class SeoService {
         const query = queryStart === -1 ? '' : urlWithoutFragment.slice(queryStart + 1);
         const path = rawPath.replace(/\/+$/, '') || '/';
         const isUnitSearch = path === '/' && new URLSearchParams(query).get('expanded') === 'true';
+        const isNonIndexableWorkspace = path === '/collection' || path === '/toe';
         const seo = path === '/forcegenerator'
             ? FORCE_GENERATOR_SEO
             : isUnitSearch
@@ -73,6 +74,11 @@ export class SeoService {
         this.meta.updateTag({ property: 'og:url', content: seo.canonicalUrl });
         this.meta.updateTag({ name: 'twitter:title', content: seo.title });
         this.meta.updateTag({ name: 'twitter:description', content: seo.description });
+        if (isNonIndexableWorkspace) {
+            this.meta.updateTag({ name: 'robots', content: 'noindex, follow' });
+        } else {
+            this.meta.removeTag('name="robots"');
+        }
 
         let canonical = this.document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
         if (!canonical) {
