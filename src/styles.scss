@@ -707,14 +707,28 @@ hr {
         }
     }
 
-    &.primary {
-        --btn-text-color: #ddddff;
-        --btn-border-color: #9a9aff; // rgb(58, 58, 255);
+    &.muted {
+        &.selected {
+            background-color: #666;
+            color: #fff;
+        }
+    }
 
-        &:hover {
-            background-color: #003;
-            --btn-text-color: #fff;
-            --btn-border-color: #c6c6ff; // rgb(81, 81, 255);
+    &.primary {
+        &.selected {
+            background-color: #9a9aff;
+            color: #fff;
+        }
+
+        &:not(.selected) {
+            --btn-text-color: #ddddff;
+            --btn-border-color: #9a9aff; // rgb(58, 58, 255);
+
+            &:hover {
+                background-color: #003;
+                --btn-text-color: #fff;
+                --btn-border-color: #c6c6ff; // rgb(81, 81, 255);
+            }
         }
     }
 
