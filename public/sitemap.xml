@@ -3,4 +3,10 @@
   <url>
     <loc>https://mekbay.com/</loc>
   </url>
+  <url>
+    <loc>https://mekbay.com/forcegenerator</loc>
+  </url>
+  <url>
+    <loc>https://mekbay.com/?expanded=true</loc>
+  </url>
 </urlset>
