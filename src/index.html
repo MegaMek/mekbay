@@ -33,6 +33,7 @@
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
+      "@id": "https://mekbay.com/#webapplication",
       "name": "MekBay",
       "url": "https://mekbay.com/",
       "description": "Build and manage BattleTech forces for Classic and Alpha Strike. Search units, balance BV/PV, generate forces, and use interactive or printable record sheets.",
@@ -48,8 +49,13 @@
       "image": "https://mekbay.com/images/ogimage.jpg",
       "author": {
         "@type": "Organization",
-        "name": "The MegaMek Team",
+        "@id": "https://megamek.org/#organization",
+        "name": "MegaMek",
+        "alternateName": "The MegaMek Team",
         "url": "https://megamek.org/"
+      },
+      "publisher": {
+        "@id": "https://megamek.org/#organization"
       },
       "sameAs": [
         "https://github.com/MegaMek/mekbay",
