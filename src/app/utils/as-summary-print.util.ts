@@ -226,7 +226,6 @@ export class ASSummaryPrintUtil {
                 }
 
                 @page {
-                    size: landscape;
                     margin: ${printMargin === 'none' ? '0in' : '0.25in'} !important;
                 }
             }

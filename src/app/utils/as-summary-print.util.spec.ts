@@ -6,12 +6,6 @@ import type { PrintAllOptions } from '../models/print-options.model';
 import { ASSummaryPrintUtil } from './as-summary-print.util';
 
 describe('ASSummaryPrintUtil', () => {
-    it('prints the summary packet in landscape', () => {
-        const styles = getPrintStyles('none');
-
-        expect(styles).toContain('size: landscape');
-    });
-
     it('builds a summary-only print container with its rules reference', async () => {
         const unit = {
             id: 'u1',
