@@ -742,12 +742,6 @@ hr {
         background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
     }
 
-    &[disabled],
-    &.disabled {
-        cursor: not-allowed;
-        --btn-text-color: #444;
-    }
-
     &.square {
         display: flex;
         flex-shrink: 0;
@@ -778,6 +772,13 @@ hr {
     &.borderless {
         border: none;
         background: none;
+    }
+
+    &[disabled],
+    &.disabled {
+        cursor: not-allowed !important;
+        --btn-text-color: #444 !important;
+        --btn-border-color: #444 !important;
     }
 }
 
