@@ -30,7 +30,7 @@ export interface MekCriticalChanceDialogData {
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
-            <div class="header">Critical Chance · {{ data.locationLabel }}</div>
+            <div class="header">Critical Chance: {{ data.locationLabel }}</div>
             <div class="body">
                 <div class="critical-dialog-body">
                     <div class="roll-details critical-roll-details" aria-label="Critical chance modifiers">

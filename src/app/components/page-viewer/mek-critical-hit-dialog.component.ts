@@ -19,13 +19,13 @@ import {
     randomValidMekCriticalRoll,
     type MekCriticalHitPreview,
     type MekExplosionLocationDamage,
-    type MekCriticalRollOptions,
+    type MekCriticalHitOptions,
     type MekCriticalRollOutcome,
 } from '../../utils/mek-critical-hit.util';
 import { MekCriticalHitAutomationService } from '../../services/mek-critical-hit-automation.service';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 
-export interface MekCriticalRollDialogData {
+export interface MekCriticalHitDialogData {
     readonly unit: CBTForceUnit;
     readonly location: string;
     readonly targetLocation?: string;
@@ -42,7 +42,7 @@ export interface MekCriticalRollDialogData {
     readonly canUndoToChance?: boolean;
 }
 
-export interface MekCriticalRollDialogResult {
+export interface MekCriticalHitDialogResult {
     readonly completed: boolean;
     readonly interruptedForConsciousness?: boolean;
     readonly remainingHits?: number;
@@ -72,13 +72,13 @@ interface CriticalExplosionDisplay {
 }
 
 @Component({
-    selector: 'mek-critical-roll-dialog',
+    selector: 'mek-critical-hit-dialog',
     standalone: true,
     imports: [DiceRollerComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
-            <div class="header">Critical Roll · {{ locationLabel }}</div>
+            <div class="header">Critical Hit: {{ locationLabel }}</div>
             <div class="body">
                 <div class="critical-dialog-body">
                     <div class="guided-progress">
@@ -334,13 +334,13 @@ interface CriticalExplosionDisplay {
         './mek-critical-dialog.component.scss',
     ],
 })
-export class MekCriticalRollDialogComponent {
-    private readonly dialogRef = inject(DialogRef<MekCriticalRollDialogResult>);
+export class MekCriticalHitDialogComponent {
+    private readonly dialogRef = inject(DialogRef<MekCriticalHitDialogResult>);
     private readonly criticalHitAutomation = inject(MekCriticalHitAutomationService);
-    readonly data = inject<MekCriticalRollDialogData>(DIALOG_DATA);
+    readonly data = inject<MekCriticalHitDialogData>(DIALOG_DATA);
     readonly roller = viewChild<DiceRollerComponent>('roller');
     readonly caseIIRoller = viewChild<DiceRollerComponent>('caseIIRoller');
-    readonly criticalRollOptions: MekCriticalRollOptions = {
+    readonly criticalRollOptions: MekCriticalHitOptions = {
         transfer: false,
         ...(this.data.locationDestroyed && { explosiveSlotsOnly: true }),
         ...(this.data.pilotDamageGroup

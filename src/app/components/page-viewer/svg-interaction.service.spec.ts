@@ -381,7 +381,7 @@ describe('SvgInteractionService', () => {
         expect(criticalOpenManualChance).toHaveBeenCalledOnceWith(unit, 'LA', false);
     });
 
-    it('opens a manual critical roll without queueing it', () => {
+    it('opens a manual critical hit without queueing it', () => {
         const unit = createSvgInteractionUnit({});
 
         service.openMekCriticalRollDialog(unit, 'LT');

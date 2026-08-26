@@ -11,10 +11,10 @@ import type { CriticalSlot, SerializedPendingUnitCheck } from '../../models/forc
 import type { MountedEquipment } from '../../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../models/rules/game-rules';
 import { MekCriticalHitAutomationService } from '../../services/mek-critical-hit-automation.service';
-import { MekCriticalRollDialogComponent } from './mek-critical-roll-dialog.component';
+import { MekCriticalHitDialogComponent } from './mek-critical-hit-dialog.component';
 
-describe('MekCriticalRollDialogComponent', () => {
-    let fixture: ComponentFixture<MekCriticalRollDialogComponent>;
+describe('MekCriticalHitDialogComponent', () => {
+    let fixture: ComponentFixture<MekCriticalHitDialogComponent>;
     let caseIISlot: CriticalSlot;
     let criticalSlots: CriticalSlot[];
     let inventoryEntries: MountedEquipment[];
@@ -128,7 +128,7 @@ describe('MekCriticalRollDialogComponent', () => {
         };
 
         await TestBed.configureTestingModule({
-            imports: [MekCriticalRollDialogComponent],
+            imports: [MekCriticalHitDialogComponent],
             providers: [
                 provideZonelessChangeDetection(),
                 { provide: DialogRef, useValue: dialogRef },
@@ -136,7 +136,7 @@ describe('MekCriticalRollDialogComponent', () => {
                 { provide: DIALOG_DATA, useValue: dialogData },
             ],
         }).compileComponents();
-        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture = TestBed.createComponent(MekCriticalHitDialogComponent);
         fixture.detectChanges();
     });
 
@@ -199,7 +199,7 @@ describe('MekCriticalRollDialogComponent', () => {
         dialogData.manual = true;
         dialogData.pendingCriticalId = undefined;
         dialogData.canUndoToChance = true;
-        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture = TestBed.createComponent(MekCriticalHitDialogComponent);
         fixture.detectChanges();
 
         expect(fixture.componentInstance.selectedSlotIndex()).toBe(0);
@@ -217,7 +217,7 @@ describe('MekCriticalRollDialogComponent', () => {
         slotsVersion.update(version => version + 1);
         dialogData.manual = true;
         dialogData.pendingCriticalId = undefined;
-        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture = TestBed.createComponent(MekCriticalHitDialogComponent);
         fixture.detectChanges();
 
         expect(fixture.componentInstance.selectedSlotIndex()).toBeNull();
@@ -234,7 +234,7 @@ describe('MekCriticalRollDialogComponent', () => {
         fixture.destroy();
         dialogData.manual = true;
         dialogData.pendingCriticalId = undefined;
-        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture = TestBed.createComponent(MekCriticalHitDialogComponent);
         fixture.detectChanges();
 
         const actions = fixture.nativeElement.querySelectorAll(
@@ -266,7 +266,7 @@ describe('MekCriticalRollDialogComponent', () => {
                 armoredAbsorption: false,
             },
         });
-        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture = TestBed.createComponent(MekCriticalHitDialogComponent);
         fixture.detectChanges();
 
         fixture.componentInstance.onFinished({ results: [1, 1] });
@@ -441,7 +441,7 @@ describe('MekCriticalRollDialogComponent', () => {
         previewSlot.and.callFake((_unit: CBTForceUnit, slot: CriticalSlot) =>
             slot.id === 'laser@LT' ? { explosion: {} } : null);
         fixture.destroy();
-        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture = TestBed.createComponent(MekCriticalHitDialogComponent);
         fixture.detectChanges();
 
         const choices = fixture.nativeElement.querySelectorAll(
@@ -465,7 +465,7 @@ describe('MekCriticalRollDialogComponent', () => {
             getDisplayName,
         } as unknown as MountedEquipment];
         fixture.destroy();
-        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture = TestBed.createComponent(MekCriticalHitDialogComponent);
         fixture.detectChanges();
 
         const firstSlotName = fixture.nativeElement.querySelector(
@@ -486,7 +486,7 @@ describe('MekCriticalRollDialogComponent', () => {
         }));
         slotsVersion.update(version => version + 1);
         fixture.destroy();
-        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture = TestBed.createComponent(MekCriticalHitDialogComponent);
         fixture.detectChanges();
 
         const blocks = fixture.nativeElement.querySelectorAll(
@@ -513,7 +513,7 @@ describe('MekCriticalRollDialogComponent', () => {
                 armoredAbsorption: false,
             },
         });
-        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture = TestBed.createComponent(MekCriticalHitDialogComponent);
         fixture.detectChanges();
 
         let hitButtons = fixture.nativeElement.querySelectorAll(
@@ -730,7 +730,7 @@ describe('MekCriticalRollDialogComponent', () => {
     it('offers physical CASE II outcomes before exposing critical slots', () => {
         fixture.destroy();
         dialogData.caseIICheckRequired = true;
-        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture = TestBed.createComponent(MekCriticalHitDialogComponent);
         fixture.detectChanges();
 
         const options = fixture.nativeElement.querySelectorAll(
@@ -753,7 +753,7 @@ describe('MekCriticalRollDialogComponent', () => {
     it('persists a virtual CASE II result until it is explicitly applied', () => {
         fixture.destroy();
         dialogData.caseIICheckRequired = true;
-        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture = TestBed.createComponent(MekCriticalHitDialogComponent);
         fixture.detectChanges();
 
         fixture.componentInstance.onCaseIIFinished({ results: [4, 4] });
@@ -775,7 +775,7 @@ describe('MekCriticalRollDialogComponent', () => {
         fixture.destroy();
         dialogData.caseIICheckResult = 'discard';
         dialogData.caseIICheckRoll = [4, 4];
-        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture = TestBed.createComponent(MekCriticalHitDialogComponent);
         fixture.detectChanges();
 
         expect(fixture.componentInstance.caseIIRoller()!.diceResults()).toEqual([4, 4]);
@@ -786,7 +786,7 @@ describe('MekCriticalRollDialogComponent', () => {
         fixture.destroy();
         dialogData.caseIICheckRequired = true;
         dialogData.requiredHits = 2;
-        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture = TestBed.createComponent(MekCriticalHitDialogComponent);
         fixture.detectChanges();
 
         fixture.componentInstance.applyCaseIICheck('discard');
@@ -830,7 +830,7 @@ describe('MekCriticalRollDialogComponent', () => {
             remainingHits: 1,
             roll: [3, 4],
         });
-        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture = TestBed.createComponent(MekCriticalHitDialogComponent);
         fixture.detectChanges();
 
         expect(fixture.componentInstance.primaryLabel()).toBe('APPLY');
@@ -843,7 +843,7 @@ describe('MekCriticalRollDialogComponent', () => {
         dialogData.manual = true;
         dialogData.pendingCriticalId = undefined;
         dialogData.canUndoToChance = true;
-        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture = TestBed.createComponent(MekCriticalHitDialogComponent);
         fixture.detectChanges();
 
         const undo = fixture.nativeElement.querySelector('.critical-sequence-undo') as HTMLButtonElement;
