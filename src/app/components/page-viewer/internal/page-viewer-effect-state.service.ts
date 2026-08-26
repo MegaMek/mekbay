@@ -5,14 +5,14 @@
 import { Injectable } from '@angular/core';
 
 import type { ViewportTransform } from '../../../models/force-serialization';
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import { PageViewerStateService } from './page-viewer-state.service';
+import type { PageViewerMember } from './types';
 
 @Injectable()
 export class PageViewerEffectStateService {
     syncViewerState(options: {
         state: PageViewerStateService;
-        forceUnits: CBTForceUnit[];
+        forceUnits: PageViewerMember[];
         selectedUnitId: string | null;
         visiblePageCount: number;
         maxVisiblePageCount: number;

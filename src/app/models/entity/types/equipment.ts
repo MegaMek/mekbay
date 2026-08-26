@@ -160,6 +160,29 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
     return this.placements?.length ?? 0;
   }
 
+  /** Canonical user-facing name for this installed equipment mount. */
+  displayName(): string {
+    const name = this.equipment?.shortName || this.equipment?.name || this.equipmentId;
+    const modifiers: string[] = [];
+    if (this.rearMounted) modifiers.push('R');
+
+    const turret = this.turretType === 'sponson'
+      ? 'S'
+      : this.turretType === 'pintle'
+        ? 'P'
+        : this.turretMounted || this.turretType === 'standard'
+          ? 'T'
+          : null;
+    if (turret !== null) modifiers.push(turret);
+
+    if (this.baMountLocation === 'Body') modifiers.push('Body');
+    else if (this.baMountLocation === 'Turret' && !modifiers.includes('T')) modifiers.push('T');
+    if (this.isSSWM) modifiers.push('SSW: Trooper 1');
+    if (this.isDWP) modifiers.push('DWP');
+
+    return modifiers.length === 0 ? name : `${name} (${modifiers.join(', ')})`;
+  }
+
   withAddedPlacement(placement: MountPlacement, primaryLocation = this.location): EntityMountedEquipment {
     if (this.allocation.kind !== 'location') {
       throw new Error(`Cannot add a critical placement to ${this.allocation.kind}-allocated equipment`);

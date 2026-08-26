@@ -11,7 +11,7 @@ const {
 } = require('./lib/script-paths') as typeof import('./lib/script-paths');
 
 const {
-    writeFileWithContentTimestamp,
+    writeDeterministicFile,
 } = require('./lib/deterministic-output') as typeof import('./lib/deterministic-output');
 
 interface DateRange {
@@ -101,7 +101,7 @@ interface HashNode<T> {
 
 const APP_ROOT = path.resolve(__dirname, '..');
 const OUTPUT_FILE_NAME = 'ratgenerator.csv';
-const DEFAULT_OUTPUT_FILE = path.join(APP_ROOT, 'public', 'assets', OUTPUT_FILE_NAME);
+const DEFAULT_OUTPUT_FILE = path.join(APP_ROOT, 'public', 'online-assets', 'generated', OUTPUT_FILE_NAME);
 const GENERAL_FACTION = 'General';
 
 loadOptionalEnvFile(APP_ROOT, { logPrefix: 'ratgenerator' });
@@ -1430,7 +1430,7 @@ export async function buildRatGeneratorCsv(options: BuildOptions = {}): Promise<
     const csv = builder.buildCsv();
 
     fs.mkdirSync(path.dirname(outputFilePath), { recursive: true });
-    writeFileWithContentTimestamp(outputFilePath, csv, 'utf8');
+    writeDeterministicFile(outputFilePath, csv, 'utf8');
 
     return {
         csv,

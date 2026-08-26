@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ordinaryVehicleArmorLocations } from './blk-constants';
+import { ordinaryVehicleArmorLocations, SUPERHEAVY_ARMOR_LOCS } from './blk-constants';
 
 describe('ordinary vehicle BLK armor locations', () => {
   it('keeps turretless armor in hull order', () => {
@@ -18,5 +18,9 @@ describe('ordinary vehicle BLK armor locations', () => {
   it('maps dual-turret armor in MegaMek rear-then-front order', () => {
     expect(ordinaryVehicleArmorLocations(6).slice(0, 6))
       .toEqual(['Front', 'Right', 'Left', 'Rear', 'Rear Turret', 'Front Turret']);
+  });
+
+  it('keeps the same rear-then-front order for superheavy turret armor', () => {
+    expect(SUPERHEAVY_ARMOR_LOCS.slice(-2)).toEqual(['Rear Turret', 'Front Turret']);
   });
 });

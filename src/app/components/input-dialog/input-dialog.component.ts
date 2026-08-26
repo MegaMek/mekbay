@@ -15,6 +15,11 @@ export interface InputDialogData {
     placeholder?: string;
     defaultValue?: string | number;
     hint?: string;
+    inputLabel?: string;
+    minimumLength?: number;
+    maximumLength?: number;
+    pattern?: string;
+    centerInput?: boolean;
     buttons?: { label: string; value: 'ok' | 'cancel'; class?: string }[];
 }
 
@@ -31,13 +36,19 @@ export interface InputDialogData {
         <h2 class="wide-dialog-title">{{ data.title }}</h2>
         <div class="wide-dialog-body">
             <p class="message">{{ data.message }}</p>
-            <div class="form-fields">
+            <div class="form-fields" [class.center-input]="data.centerInput">
                 <input
                     #inputRef
                     class="field-input"
                     [type]="data.inputType || 'text'"
                     [placeholder]="data.placeholder ?? ''"
                     [value]="data.defaultValue ?? ''"
+                    [attr.aria-label]="data.inputLabel ?? data.title"
+                    [attr.minlength]="data.minimumLength ?? null"
+                    [attr.maxlength]="data.maximumLength ?? null"
+                    [attr.pattern]="data.pattern ?? null"
+                    [attr.autocapitalize]="data.centerInput ? 'none' : null"
+                    [attr.spellcheck]="data.centerInput ? 'false' : null"
                     autocomplete="off"
                     [attr.min]="data.inputType === 'number' ? (data.minimumValue ?? 0) : null"
                     [attr.max]="data.inputType === 'number' && data.maximumValue !== undefined ? data.maximumValue : null"
@@ -85,6 +96,21 @@ export interface InputDialogData {
             align-items: center;
         }
 
+        .form-fields.center-input .field-input {
+            width: min(9rem, 100%);
+            flex: 0 0 auto;
+            text-align: center;
+            text-transform: lowercase;
+            font-family: monospace;
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: 0;
+        }
+
+        .form-fields.center-input .hint {
+            text-align: center;
+        }
+
         input[type="number"].field-input::-webkit-outer-spin-button,
         input[type="number"].field-input::-webkit-inner-spin-button {
             -webkit-appearance: none;
@@ -115,14 +141,19 @@ export class InputDialogComponent {
     }
 
     isInputValid(): boolean {
-        const value = this.inputValue();
+        const value = this.inputValue().trim();
         if (this.data.inputType === 'number') {
-            return value.trim().length > 0 && !isNaN(Number(value));
+            return value.length > 0 && !isNaN(Number(value));
         }
-        return value.trim().length > 0;
+        if (!value) return false;
+        if (this.data.minimumLength !== undefined && value.length < this.data.minimumLength) return false;
+        if (this.data.maximumLength !== undefined && value.length > this.data.maximumLength) return false;
+        if (this.data.pattern && !new RegExp(this.data.pattern).test(value)) return false;
+        return true;
     }
 
     submit() {
+        if (!this.isInputValid()) return;
         const value = this.inputRef().nativeElement.value;
         if (this.data.inputType === 'number') {
             const num = Number(value);

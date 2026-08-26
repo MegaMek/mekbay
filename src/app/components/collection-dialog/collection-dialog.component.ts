@@ -6,7 +6,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { DialogRef } from '@angular/cdk/dialog';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { LoadOrganizationEntry } from '../../models/organization.model';
-import type { Unit, UnitTagEntry } from '../../models/units.model';
+import type { UnitSummary, UnitTagEntry } from '../../models/unit-summary.model';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { GameService } from '../../services/game.service';
@@ -35,7 +35,7 @@ interface CollectionTagEntry extends UnitTagEntry {
 interface CollectionRow {
     key: string;
     rowType: CollectionRowType;
-    unit: Unit;
+    unit: UnitSummary;
     title: string;
     subtitle: string;
     tags: CollectionTagEntry[];
@@ -45,19 +45,19 @@ interface ChassisOption {
     label: string;
     inputLabel: string;
     key: string;
-    unit: Unit;
+    unit: UnitSummary;
     unitCount: number;
 }
 
 interface ModelOption {
     label: string;
     key: string;
-    unit: Unit;
+    unit: UnitSummary;
 }
 
 interface QuickAddTarget {
     rowType: CollectionRowType;
-    unit: Unit;
+    unit: UnitSummary;
     label: string;
 }
 
@@ -65,7 +65,7 @@ interface PendingRemovedTag {
     key: string;
     rowKey: string;
     rowType: CollectionRowType;
-    unit: Unit;
+    unit: UnitSummary;
     title: string;
     subtitle: string;
     tag: string;
@@ -935,8 +935,8 @@ export class CollectionDialogComponent {
         return this.filteredRows().filter(row => selected.has(row.key));
     }
 
-    private groupRowsByType(rows: CollectionRow[]): Map<CollectionRowType, Unit[]> {
-        const grouped = new Map<CollectionRowType, Unit[]>();
+    private groupRowsByType(rows: CollectionRow[]): Map<CollectionRowType, UnitSummary[]> {
+        const grouped = new Map<CollectionRowType, UnitSummary[]>();
         for (const row of rows) {
             const units = grouped.get(row.rowType) ?? [];
             units.push(row.unit);
@@ -1189,7 +1189,7 @@ export class CollectionDialogComponent {
         this.selectedQuickAddTargetType.set(null);
     }
 
-    private getRowKey(rowType: CollectionRowType, unit: Unit): string {
+    private getRowKey(rowType: CollectionRowType, unit: UnitSummary): string {
         if (rowType === 'chassis') {
             return `chassis:${TagsService.getChassisTagKey(unit)}`;
         }
@@ -1209,7 +1209,7 @@ export class CollectionDialogComponent {
         return row.unit._searchKey || `${row.unit.chassis ?? ''} ${row.unit.model ?? ''}`;
     }
 
-    private getQuickAddModelSearchText(unit: Unit): string {
+    private getQuickAddModelSearchText(unit: UnitSummary): string {
         return `${unit.chassis ?? ''} ${unit.model ?? ''} ${unit.name ?? ''}`;
     }
 
@@ -1226,30 +1226,30 @@ export class CollectionDialogComponent {
         return removeAccents(value.trim().toLowerCase());
     }
 
-    private getChassisUnitList(unit: Unit): Unit[] {
+    private getChassisUnitList(unit: UnitSummary): UnitSummary[] {
         const chassisKey = TagsService.getChassisTagKey(unit);
         return this.dataService.getUnits()
             .filter(candidate => TagsService.getChassisTagKey(candidate) === chassisKey)
             .sort((left, right) => (left.year ?? 0) - (right.year ?? 0) || compareUnitsByName(left, right));
     }
 
-    private getUnitDisplayName(unit: Unit): string {
+    private getUnitDisplayName(unit: UnitSummary): string {
         return unit.model ? `${unit.chassis} ${unit.model}` : unit.chassis;
     }
 
-    private getQuickAddUnitDisplayName(unit: Unit): string {
+    private getQuickAddUnitDisplayName(unit: UnitSummary): string {
         return unit.model ? this.getUnitDisplayName(unit) : `${unit.chassis} (Standard)`;
     }
 
-    private getVariantGroupChassis(unit: Unit): string {
+    private getVariantGroupChassis(unit: UnitSummary): string {
         return getUnitVariantGroupIdentity(unit).chassis;
     }
 
-    private getVariantGroupInputLabel(unit: Unit): string {
+    private getVariantGroupInputLabel(unit: UnitSummary): string {
         return `${this.getVariantGroupChassis(unit)} [${unit.as.TP}${unit.omni ? ' omni' : ''}]`;
     }
 
-    private toModelOption(unit: Unit, includeChassis: boolean): ModelOption {
+    private toModelOption(unit: UnitSummary, includeChassis: boolean): ModelOption {
         return {
             label: includeChassis ? this.getQuickAddUnitDisplayName(unit) : (unit.model || '(Standard)'),
             key: unit.name,
@@ -1330,12 +1330,12 @@ export class CollectionDialogComponent {
         return [tag, ...tags];
     }
 
-    private findChassisTag(unit: Unit, tag: string): UnitTagEntry | null {
+    private findChassisTag(unit: UnitSummary, tag: string): UnitTagEntry | null {
         const lowerTag = tag.trim().toLowerCase();
         return (unit._chassisTags ?? []).find(entry => entry.tag.trim().toLowerCase() === lowerTag) ?? null;
     }
 
-    private findNameTag(unit: Unit, tag: string): UnitTagEntry | null {
+    private findNameTag(unit: UnitSummary, tag: string): UnitTagEntry | null {
         const lowerTag = tag.trim().toLowerCase();
         return (unit._nameTags ?? []).find(entry => entry.tag.trim().toLowerCase() === lowerTag) ?? null;
     }

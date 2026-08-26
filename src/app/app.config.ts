@@ -9,9 +9,10 @@ import { provideRouter } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 import { routes } from './app.routes';
 import { LoggerService } from './services/logger.service';
-import { EquipmentInteractionRegistryService } from './services/equipment-interaction-registry.service';
 import { WakeLockService } from './services/wake-lock.service';
-import { registerAllHandlers } from './equipment-handlers';
+import { EquipmentInteractionRegistryService } from './services/equipment-interaction-registry.service';
+import { registerAllEquipmentBehaviors } from './models/runtime/equipment-behaviors';
+import { provideCoreCatalogWorkers } from './utils/core-catalog-worker-browser.providers';
 
 
 export const appConfig: ApplicationConfig = {
@@ -24,9 +25,10 @@ export const appConfig: ApplicationConfig = {
         provideBrowserGlobalErrorListeners(),
         provideRouter(routes),
         provideHttpClient(),
+        provideCoreCatalogWorkers(),
         provideAppInitializer(() => {
             const registryService = inject(EquipmentInteractionRegistryService);
-            registerAllHandlers(registryService);
+            registerAllEquipmentBehaviors(registryService);
         }),
         provideAppInitializer(() => {
             inject(WakeLockService);

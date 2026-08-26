@@ -136,7 +136,7 @@ export type ASTNode = FilterASTNode | TextASTNode | GroupASTNode;
 export interface ParseResult {
     ast: GroupASTNode;      // Root is always a group
     textSearch: string;     // Extracted text portions
-    tokens: SemanticToken[]; // Flat list of all filter tokens (for compatibility)
+    tokens: SemanticToken[]; // Flat filter-token projection consumed by search state.
     errors: ParseError[];
 }
 

@@ -12,7 +12,7 @@ import {
     MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS,
 } from '../models/megamek/availability.model';
 import { normalizeWeaponType, WEAPON_TYPES, WEAPON_TYPE_DISPLAY_NAMES } from '../models/weapon-types.model';
-import { CBT_WEIGHT_CLASSES } from '../models/units.model';
+import { CBT_WEIGHT_CLASSES } from '../models/unit-summary.model';
 import type { SemanticFilterState } from '../utils/semantic-filter.util';
 import type {
     BvNormalizationSettings,
@@ -508,7 +508,7 @@ export const SEMANTIC_FILTERS: readonly SemanticFilterConfig[] = Object.freeze([
     { key: 'model', semanticKey: 'model', label: 'Model' },
 ]);
 
-/** Combined ADVANCED_FILTERS for backwards compatibility and semantic parsing */
+/** One combined registry used by semantic parsing, filtering, and sort options. */
 export const ADVANCED_FILTERS: AdvFilterConfig[] = [
     ...BOOLEAN_FILTERS.map(f => ({ ...f, type: AdvFilterType.BOOLEAN as const })),
     ...DROPDOWN_FILTERS.map(f => ({ ...f, type: AdvFilterType.DROPDOWN as const })),

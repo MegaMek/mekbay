@@ -1,40 +1,65 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { buildRatGeneratorCsv } from './ratgenerator_build_table';
 
 const APP_ROOT = path.resolve(__dirname, '..');
-const FIXTURE_PATH = path.join(APP_ROOT, 'scripts', 'fixtures', 'ratgenerator_reference.csv');
+const ORACLE_PATH = path.join(APP_ROOT, 'scripts', 'oracles', 'ratgenerator-reference.json');
 
-function findFirstDiffLine(expected: string, actual: string): string {
-    const expectedLines = expected.split('\n');
-    const actualLines = actual.split('\n');
-    const max = Math.max(expectedLines.length, actualLines.length);
-    for (let index = 0; index < max; index += 1) {
-        if (expectedLines[index] !== actualLines[index]) {
-            return `line ${index + 1}\nexpected: ${expectedLines[index] ?? '<missing>'}\nactual:   ${actualLines[index] ?? '<missing>'}`;
-        }
-    }
-    return 'unknown diff';
+interface RatGeneratorOracle {
+    readonly schemaVersion: 1;
+    readonly sha256: string;
+    readonly bytes: number;
+    readonly lines: number;
+    readonly rows: number;
+    readonly warnings: {
+        readonly count: number;
+        readonly sha256: string;
+    };
+    readonly sentinels: readonly {
+        readonly index: number;
+        readonly value: string;
+    }[];
 }
 
 async function main(): Promise<void> {
-    const expected = fs.readFileSync(FIXTURE_PATH, 'utf8').replace(/\r\n/g, '\n');
+    const oracle = JSON.parse(fs.readFileSync(ORACLE_PATH, 'utf8')) as RatGeneratorOracle;
+    assert.equal(oracle.schemaVersion, 1, 'Unsupported RAT generator oracle schema');
+    assert.match(oracle.sha256, /^[0-9a-f]{64}$/u, 'Invalid RAT generator oracle digest');
     const outputFilePath = path.join(APP_ROOT, 'tmp', 'ratgenerator.test.csv');
-    const { csv } = await buildRatGeneratorCsv({ outputFilePath });
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+    let csv: string;
+    try {
+        ({ csv } = await buildRatGeneratorCsv({ outputFilePath }));
+    } finally {
+        console.warn = originalWarn;
+    }
     const actual = csv.replace(/\r\n/g, '\n');
+    const lines = actual.split('\n');
+    const rows = lines.at(-1) === '' ? lines.length - 2 : lines.length - 1;
 
-    assert.equal(
-        actual,
-        expected,
-        `Generated CSV differs from fixture at ${findFirstDiffLine(expected, actual)}`,
+    assert.equal(Buffer.byteLength(actual, 'utf8'), oracle.bytes, 'Generated CSV byte count changed');
+    assert.equal(lines.length, oracle.lines, 'Generated CSV line count changed');
+    assert.equal(rows, oracle.rows, 'Generated CSV data-row count changed');
+    for (const sentinel of oracle.sentinels) {
+        assert.equal(lines[sentinel.index], sentinel.value, `Generated CSV sentinel line ${sentinel.index + 1} changed`);
+    }
+    const digest = createHash('sha256').update(actual, 'utf8').digest('hex');
+    assert.equal(digest, oracle.sha256, `Generated CSV digest changed (actual ${digest})`);
+    const warningDigest = createHash('sha256').update(warnings.join('\n'), 'utf8').digest('hex');
+    assert.equal(warnings.length, oracle.warnings.count, 'Generated warning count changed');
+    assert.equal(warningDigest, oracle.warnings.sha256, `Generated warning digest changed (actual ${warningDigest})`);
+
+    console.log(
+        `[ratgenerator] compact oracle parity passed (${oracle.rows} data rows, ${oracle.warnings.count} reviewed warnings)`,
     );
-
-    console.log('[ratgenerator] fixture parity passed');
 }
 
 main().catch((error: unknown) => {
-    console.error('[ratgenerator] fixture parity failed', error);
+    console.error('[ratgenerator] compact oracle parity failed', error);
     process.exitCode = 1;
 });

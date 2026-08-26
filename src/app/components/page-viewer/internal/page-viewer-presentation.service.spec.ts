@@ -5,13 +5,20 @@
 import { TestBed } from '@angular/core/testing';
 
 import { PageViewerPresentationService } from './page-viewer-presentation.service';
+import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
 
 describe('PageViewerPresentationService', () => {
     let service: PageViewerPresentationService;
 
     beforeEach(() => {
         TestBed.configureTestingModule({
-            providers: [PageViewerPresentationService]
+            providers: [
+                PageViewerPresentationService,
+                {
+                    provide: PageViewerSheetSourceService,
+                    useValue: { svg: (unit: { svg(): SVGSVGElement | null }) => unit.svg() },
+                },
+            ]
         });
 
         service = TestBed.inject(PageViewerPresentationService);

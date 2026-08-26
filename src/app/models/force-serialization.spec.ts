@@ -2,7 +2,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CBT_SERIALIZED_STATE_SCHEMA, C3_NETWORK_GROUP_SCHEMA, FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
+import {
+    AS_SERIALIZED_GROUP_SCHEMA,
+    CBT_SERIALIZED_GROUP_SCHEMA,
+    CBT_SERIALIZED_STATE_SCHEMA,
+    C3_NETWORK_GROUP_SCHEMA,
+    CRIT_SLOT_SCHEMA,
+    FORCE_TAG_MAX_COUNT,
+    HEAT_SCHEMA,
+    sanitizeForceTagLabels,
+    sanitizeForceTags,
+    TURN_STATE_SCHEMA,
+} from './force-serialization';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { C3NetworkType } from './c3-network.model';
 
@@ -41,6 +52,15 @@ describe('C3 network serialization compatibility', () => {
             peerIds: ['alpha', 'bravo'],
             masterCompIndex: 0,
         });
+    });
+});
+
+describe('production V1 formation-target serialization', () => {
+    it('preserves a string target id in both game-system group schemas', () => {
+        const group = { id: 'support', formationTargetGroupId: 'target', units: [] };
+
+        expect(Sanitizer.sanitize(group, CBT_SERIALIZED_GROUP_SCHEMA).formationTargetGroupId).toBe('target');
+        expect(Sanitizer.sanitize(group, AS_SERIALIZED_GROUP_SCHEMA).formationTargetGroupId).toBe('target');
     });
 });
 
@@ -99,6 +119,73 @@ describe('heat state sanitization', () => {
         });
         expect(Sanitizer.sanitize({ heatDissipationConsumed: -2 }, TURN_STATE_SCHEMA)).toEqual({
             heatDissipationConsumed: 0,
+        });
+    });
+
+    it('imports the latest V1 turn chronology, cover, stand, and critical timestamp fields', () => {
+        expect(Sanitizer.sanitize({
+            turnCounter: 4.9,
+            endTurnCheckpoint: 'heat-staged',
+            standAttempts: 2,
+            carefulStand: true,
+            cover: 3,
+        }, TURN_STATE_SCHEMA)).toEqual({
+            turnCounter: 4,
+            endTurnCheckpoint: 'heat-staged',
+            standAttempts: 2,
+            carefulStand: true,
+            cover: 3,
+        });
+        expect(Sanitizer.sanitize({ id: 'crit', destroyedTurn: 7.8 }, CRIT_SLOT_SCHEMA))
+            .toEqual({ id: 'crit', destroyedTurn: 7 });
+    });
+
+    it('imports the latest V1 pending-event union without obsolete UI fields', () => {
+        expect(Sanitizer.sanitize({
+            pendingEvents: [
+                {
+                    type: 'unit-check',
+                    id: ' check:1 ',
+                    kind: 'consciousness',
+                    pilotDamageGroup: ' P ',
+                    crewId: 2,
+                    target: 7,
+                    result: { kind: 'roll', dice: [3, 2] },
+                    description: 'not persisted',
+                },
+                {
+                    type: 'mek-critical-hit',
+                    id: 'critical:1',
+                    location: ' LT ',
+                    targetLocation: ' CT ',
+                    remainingHits: 2,
+                    chanceOrigin: {},
+                    caseII: { status: 'passed' },
+                    roll: [3, 4],
+                },
+            ],
+        }, TURN_STATE_SCHEMA)).toEqual({
+            pendingEvents: [
+                {
+                    type: 'unit-check',
+                    id: 'check:1',
+                    kind: 'consciousness',
+                    pilotDamageGroup: 'P',
+                    crewId: 2,
+                    target: 7,
+                    result: { kind: 'roll', dice: [3, 2] },
+                },
+                {
+                    type: 'mek-critical-hit',
+                    id: 'critical:1',
+                    location: 'LT',
+                    targetLocation: 'CT',
+                    remainingHits: 2,
+                    chanceOrigin: {},
+                    caseII: { status: 'passed' },
+                    roll: [3, 4],
+                },
+            ],
         });
     });
 

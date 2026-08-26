@@ -6,6 +6,13 @@ import { Component, computed, Injector, type ElementRef, effect, inject, ChangeD
 import { CommonModule } from '@angular/common';
 import type { Subscription } from 'rxjs';
 import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { ForceDialogsService } from '../../services/force-dialogs.service';
+import { ForceRemoteSyncService } from '../../services/force-remote-sync.service';
+import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
+import { ASForceUnit } from '../../models/as-force-unit.model';
+import { ForceFormationService } from '../../services/force-formation.service';
+import { ForcePilotEditorService } from '../../services/force-pilot-editor.service';
 import { LayoutService } from '../../services/layout.service';
 import { OptionsService } from '../../services/options.service';
 import { buildEraWarningMessage, type Force, UnitGroup } from '../../models/force.model';
@@ -24,7 +31,16 @@ import { DataService } from '../../services/data.service';
 import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
-import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import {
+    forceMemberSummary,
+    isCBTForceMember,
+    isCBTMekForceMember,
+    type CBTForceMember,
+    type CBTMekForceMember,
+    type ForceMember,
+} from '../../models/force-member.model';
+import { CBTForce } from '../../models/cbt-force.model';
+import { ForceMemberValueComponent } from './force-member-value.component';
 
 
 
@@ -32,12 +48,19 @@ import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
     selector: 'force-builder-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, DragDropModule, UnitBlockComponent, TooltipDirective],
+    imports: [CommonModule, DragDropModule, UnitBlockComponent, TooltipDirective, ForceMemberValueComponent],
     templateUrl: './force-builder-viewer.component.html',
     styleUrls: ['./force-builder-viewer.component.scss']
 })
 export class ForceBuilderViewerComponent {
     protected forceBuilderService = inject(ForceBuilderService);
+    protected readonly forceWorkspace = inject(ForceWorkspaceStateService);
+    private readonly forceDialogs = inject(ForceDialogsService);
+    private readonly remoteSync = inject(ForceRemoteSyncService);
+
+    protected readonly forceCommands = inject(ForceWorkspaceCommandsService);
+    private readonly formations = inject(ForceFormationService);
+    private readonly pilotEditor = inject(ForcePilotEditorService);
     protected toastService = inject(ToastService);
     protected layoutService = inject(LayoutService);
     compactModeService = inject(CompactModeService);
@@ -53,7 +76,7 @@ export class ForceBuilderViewerComponent {
 
     miniMode = input<boolean>(false);
 
-    loadedSlots = computed(() => this.forceBuilderService.filteredLoadedForces());
+    loadedSlots = computed(() => this.forceWorkspace.filteredLoadedForces());
 
     compactMode = computed(() => {
         return this.compactModeService.compactMode();
@@ -66,7 +89,7 @@ export class ForceBuilderViewerComponent {
      * Uses unfiltered loadedForces so coloring persists even when filtering by alignment.
      */
     // showAlignmentStyling = computed<boolean>(() => {
-    //     const slots = this.forceBuilderService.loadedForces();
+    //     const slots = this.forceWorkspace.loadedForces();
     //     if (slots.length < 2) return false;
     //     const hasOwned = slots.some(s => !s.force.readOnly());
     //     if (hasOwned) return true;
@@ -74,18 +97,19 @@ export class ForceBuilderViewerComponent {
     //     return alignments.has('friendly') && alignments.has('enemy');
     // });
 
-    hasOwnedForce = computed<boolean>(() => this.forceBuilderService.loadedForces().some(s => !s.force.readOnly()));
+    hasOwnedForce = computed<boolean>(() => this.forceWorkspace.loadedForces().some(s => !s.force.readOnly()));
 
     forceEraWarning(force: Force): string | null {
         const eras = this.dataService.getEras();
+        const summaries = force.members().map(forceMemberSummary);
         const availabilityContext = this.unitAvailabilitySource.createForceAvailabilityContextForUnits(
-            force.units().map((unit) => unit.getUnit()),
+            summaries,
             eras,
         );
         const extinctFaction = this.dataService.getFactionById(MULFACTION_EXTINCT) ?? null;
 
         return buildEraWarningMessage(
-            force.units(),
+            summaries,
             force.era(),
             force.faction(),
             eras,
@@ -100,30 +124,15 @@ export class ForceBuilderViewerComponent {
     private blinkTimeouts = new Map<Force, ReturnType<typeof setTimeout>>();
     private remoteUpdateSub: Subscription | null = null;
 
-    /** Combined BV/PV totals across all visible loaded forces. */
-    combinedTotals = computed(() => {
-        const slots = this.loadedSlots();
-        const bvUnits = slots.filter(slot => slot.force.gameSystem !== 'as').flatMap(slot => slot.force.units());
-        const pvUnits = slots.filter(slot => slot.force.gameSystem === 'as').flatMap(slot => slot.force.units());
-        const mode = this.optionsService.options().forceViewerBVPVDisplay;
-        return {
-            totalBV: this.displayedBvPv(bvUnits, mode),
-            totalPV: this.displayedBvPv(pvUnits, mode),
-            hasBV: bvUnits.length > 0,
-            hasPV: pvUnits.length > 0,
-        };
-    });
+    /** Combined Classic members across all visible loaded forces. */
+    combinedBvMembers = computed(() => this.loadedSlots()
+            .filter(slot => slot.force.gameSystem !== 'as')
+            .flatMap(slot => slot.force.members()));
 
-    displayedBvPv(
-        units: readonly ForceUnit[],
-        mode = this.optionsService.options().forceViewerBVPVDisplay,
-    ): string {
-        return formatBvPv(
-            units.reduce((total, unit) => total + unit.getBv(), 0),
-            units.reduce((total, unit) => total + unit.getPreSkillBv(), 0),
-            mode,
-        );
-    }
+    /** Combined Alpha Strike members across all visible loaded forces. */
+    combinedPvMembers = computed(() => this.loadedSlots()
+            .filter(slot => slot.force.gameSystem === 'as')
+            .flatMap(slot => slot.force.members()));
 
     // --- Collapsed/Expanded State ---
     /** Set of group IDs that are currently collapsed. */
@@ -184,9 +193,9 @@ export class ForceBuilderViewerComponent {
         let pendingScrollRef: { destroy: () => void } | null = null;
         
         effect(() => {
-            const selected = this.forceBuilderService.selectedUnit();
+            const selected = this.forceWorkspace.selectedUnit();
             // Also track filter changes so we scroll even when the unit stays the same
-            this.forceBuilderService.alignmentFilter();
+            this.forceWorkspace.alignmentFilter();
             // Cancel any previous pending scroll callback
             pendingScrollRef?.destroy();
             pendingScrollRef = null;
@@ -206,9 +215,9 @@ export class ForceBuilderViewerComponent {
         });
 
         // Subscribe to remote force updates for header blink
-        this.remoteUpdateSub = this.forceBuilderService.remoteForceUpdated$.subscribe(({ force, alignment }) => {
-            if (!this.forceBuilderService.hasMixedAlignments()) return;
-            const filter = this.forceBuilderService.alignmentFilter();
+        this.remoteUpdateSub = this.remoteSync.remoteForceUpdated$.subscribe(({ force, alignment }) => {
+            if (!this.forceWorkspace.hasMixedAlignments()) return;
+            const filter = this.forceWorkspace.alignmentFilter();
             // Blink header when the updated force IS visible (filter matches or filter is 'all')
             const isVisible = filter === 'all' || filter === alignment;
             if (isVisible) {
@@ -254,13 +263,13 @@ export class ForceBuilderViewerComponent {
     onUnitKeydown(event: KeyboardEvent, _index: number) {
         // Build a flat list of all visible units across all filtered forces
         const slots = this.loadedSlots();
-        const allUnits: ForceUnit[] = [];
+        const allUnits: ForceMember[] = [];
         for (const slot of slots) {
-            allUnits.push(...slot.force.units());
+            allUnits.push(...slot.force.members());
         }
         if (allUnits.length === 0) return;
 
-        const selected = this.forceBuilderService.selectedUnit();
+        const selected = this.forceWorkspace.selectedUnit();
         const currentIdx = selected ? allUnits.findIndex(u => u.id === selected.id) : -1;
         const items = this.forceUnitItems();
 
@@ -279,43 +288,45 @@ export class ForceBuilderViewerComponent {
         }
     }
 
-    selectUnit(unit: ForceUnit) {
-        this.forceBuilderService.selectUnit(unit);
+    selectUnit(unit: ForceMember) {
+        this.forceWorkspace.selectUnit(unit);
         if (this.layoutService.isMobile()) {
             this.layoutService.closeMenu();
         }
     }
 
-    async removeUnit(event: MouseEvent, unit: ForceUnit) {
+    async removeUnit(event: MouseEvent, unit: ForceMember) {
         event.stopPropagation();
-        await this.forceBuilderService.removeUnit(unit, event.ctrlKey);
+        await this.forceCommands.removeUnit(unit, event.ctrlKey);
         // If this was the last unit, close the menu (offcanvas OFF mode)
-        if (!this.forceBuilderService.hasForces()) {
+        if (!this.forceWorkspace.hasForces()) {
             this.layoutService.closeMenu();
         }
     }
 
-    async cloneUnit(event: MouseEvent, unit: ForceUnit) {
+    async cloneUnit(event: MouseEvent, unit: ForceMember) {
         event.stopPropagation();
-        await this.forceBuilderService.cloneUnit(unit);
+        await this.forceCommands.cloneUnit(unit);
     }
 
-    async repairUnit(event: MouseEvent, unit: ForceUnit) {
+    async repairUnit(event: MouseEvent, unit: ForceMember) {
         event.stopPropagation();
-        const confirmed = await this.dialogsService.requestConfirmation(
-            `Are you sure you want to repair the unit "${unit.getUnit()?.chassis} ${unit.getUnit()?.model}"? This will reset all damage and status effects.`,
-            `Repair ${unit.getUnit()?.chassis}`,
-            'info');
-        if (confirmed) {
-            unit.repairAll();
-            this.toastService.showToast(`Repaired unit ${unit.getUnit()?.chassis} ${unit.getUnit()?.model}.`, 'success');
-            return true;
-        };
-        return false;
+        return this.forceCommands.repairUnit(unit);
     }
 
-    showUnitInfo(event: MouseEvent, unit: ForceUnit) {
+    showUnitInfo(event: MouseEvent, unit: ForceMember) {
         event.stopPropagation();
+        if (isCBTForceMember(unit)) {
+            this.dialogsService.createDialog(UnitDetailsDialogComponent, {
+                data: <UnitDetailsDialogData>{
+                    unitList: [unit.summary],
+                    unitIndex: 0,
+                    hideAddButton: true,
+                    gameSystem: unit.force.gameSystem,
+                },
+            });
+            return;
+        }
         const force = unit.force;
         const unitList = force.units();
         if (!unitList) return;
@@ -329,15 +340,22 @@ export class ForceBuilderViewerComponent {
 
     }
 
-    async openC3Network(event: MouseEvent, unit: ForceUnit) {
+    async openC3Network(event: MouseEvent, unit: ForceMember) {
         event.stopPropagation();
-        await this.forceBuilderService.openC3Network(unit.force, unit.readOnly());
+        await this.forceDialogs.openC3Network(
+            unit.force,
+            isCBTForceMember(unit) ? unit.force.readOnly() : unit.readOnly(),
+        );
     }
 
-    async editPilot({ event }: UnitBlockPilotEditEvent, unit: ForceUnit) {
-        if (unit.readOnly()) return;
+    async editPilot({ event }: UnitBlockPilotEditEvent, unit: ForceMember) {
+        if (unit.force.readOnly()) return;
         event.stopPropagation();
-        await this.forceBuilderService.editPilotOfUnit(unit);
+        if (isCBTForceMember(unit)) {
+            await this.pilotEditor.editClassicMember(unit.force, unit.id);
+        } else if (unit instanceof ASForceUnit) {
+            await this.pilotEditor.editAlphaStrikeUnit(unit);
+        }
     }
 
 
@@ -489,7 +507,7 @@ export class ForceBuilderViewerComponent {
         }
     }
 
-    async drop(event: CdkDragDrop<ForceUnit[]>) {
+    async drop(event: CdkDragDrop<ForceMember[]>) {
         const groupIdFromContainer = (id?: string) => id && id.startsWith('group-') ? id.substring('group-'.length) : null;
 
         const fromGroupId = groupIdFromContainer(event.previousContainer?.id);
@@ -513,6 +531,39 @@ export class ForceBuilderViewerComponent {
             return;
         }
 
+        const movingMember = this.membersInGroup(fromForce, fromGroup)[event.previousIndex];
+        if (isCBTForceMember(movingMember)) {
+            if (!(fromForce instanceof CBTForce)) return;
+            if (!(toForce instanceof CBTForce)) {
+                this.toastService.showToast(
+                    'Converting a live Classic unit to Alpha Strike is not supported yet.',
+                    'error',
+                );
+                return;
+            }
+            if (fromForce !== toForce) {
+                if (fromForce.readOnly() || !await this.confirmEmptyForceAfterTransfer(fromForce)) return;
+                await this.transferMemberBetweenForces(
+                    movingMember,
+                    fromForce,
+                    fromGroup,
+                    toForce,
+                    toGroup,
+                    event.currentIndex,
+                );
+                return;
+            }
+            const moved = await fromForce.moveMember(movingMember.id, toGroup.id, event.currentIndex);
+            if (!moved.accepted) {
+                this.toastService.showToast(`Could not move unit: ${moved.reason}`, 'error');
+                return;
+            }
+            await this.formations.assignFormationIfNeeded(fromGroup);
+            if (fromGroup !== toGroup) await this.formations.assignFormationIfNeeded(toGroup);
+            this.forceWorkspace.selectUnit(fromForce.getClassicMember(movingMember.id));
+            return;
+        }
+
         if (fromForce === toForce) {
             // Same force: reorder within or between groups
             let movedUnit: ForceUnit | undefined;
@@ -522,15 +573,15 @@ export class ForceBuilderViewerComponent {
             } else {
                 movedUnit = fromGroup.moveUnitTo(event.previousIndex, toGroup, event.currentIndex) ?? undefined;
                 if (!movedUnit) return;
-                this.forceBuilderService.assignFormationIfNeeded(fromGroup);
-                this.forceBuilderService.assignFormationIfNeeded(toGroup);
+                await this.formations.assignFormationIfNeeded(fromGroup);
+                await this.formations.assignFormationIfNeeded(toGroup);
             }
             fromForce.removeEmptyGroups();
             if (fromForce.instanceId()) {
                 fromForce.emitChanged();
             }
             // Re-trigger selection so downstream views (e.g. alpha-strike-viewer) refocus
-            if (movedUnit) this.forceBuilderService.selectUnit(movedUnit);
+            if (movedUnit) this.forceWorkspace.selectUnit(movingMember);
         } else {
             // Cross-force move: remove from source force, add to target force
             if (fromForce.readOnly()) return; // can't remove from read-only
@@ -563,33 +614,43 @@ export class ForceBuilderViewerComponent {
                 if (answer === 'cancel') return;
             }
 
-            const moved = fromGroup.removeUnitAt(event.previousIndex);
-            if (!moved) return;
-
-            // Convert unit if different game systems
-            let unitToInsert: ForceUnit;
-            if (crossSystem) {
-                const converted = this.forceBuilderService.convertUnitForForce(moved, fromForce, toForce);
-                if (!converted) {
-                    this.toastService.showToast(`Could not convert unit: not found in the database.`, 'error');
-                    return;
-                }
-                moved.destroy();
-                unitToInsert = converted;
-            } else {
-                unitToInsert = moved;
+            // Conversion may be rejected by the CBT mechanics admission gate.
+            // Build it before removing anything so a rejected drag is lossless.
+            const sourceUnitToConvert = fromGroup.units()[event.previousIndex];
+            const preparedConversion = crossSystem
+                ? await this.prepareCrossSystemConversion(
+                    sourceUnitToConvert,
+                    fromForce,
+                    toForce,
+                )
+                : null;
+            if (crossSystem && !preparedConversion) return;
+            if (fromGroup.units()[event.previousIndex] !== sourceUnitToConvert) {
+                preparedConversion?.destroy();
+                return;
             }
 
-            toGroup.insertUnit(unitToInsert, event.currentIndex);
-            this.forceBuilderService.generateFactionAndForceNameIfNeeded(fromForce);
-            this.forceBuilderService.generateFactionAndForceNameIfNeeded(toForce);
-            this.forceBuilderService.assignFormationIfNeeded(fromGroup);
-            this.forceBuilderService.assignFormationIfNeeded(toGroup);
+            const unitToInsert = fromGroup.transferUnitTo(
+                event.previousIndex,
+                toGroup,
+                event.currentIndex,
+                crossSystem ? preparedConversion! : undefined,
+            );
+            if (!unitToInsert) {
+                preparedConversion?.destroy();
+                return;
+            }
+            this.formations.generateFactionAndForceNameIfNeeded(fromForce);
+            this.formations.generateFactionAndForceNameIfNeeded(toForce);
+            await this.formations.assignFormationIfNeeded(fromGroup);
+            await this.formations.assignFormationIfNeeded(toGroup);
             toForce.deduplicateIds();
             fromForce.removeEmptyGroups();
 
             // Select the inserted unit
-            this.forceBuilderService.selectUnit(unitToInsert);
+            this.forceWorkspace.selectUnit(
+                toForce.members().find(member => member.id === unitToInsert.id) ?? null,
+            );
 
             if (wouldEmptyForce) {
                 if (toForce.instanceId()) toForce.emitChanged();
@@ -601,11 +662,46 @@ export class ForceBuilderViewerComponent {
         }
     }
 
-    /**
-     * Finds a group and its owning force across all loaded forces.
-     */
+    private async confirmEmptyForceAfterTransfer(source: CBTForce): Promise<boolean> {
+        if (source.members().length !== 1) return true;
+        return await this.dialogsService.choose(
+            'Remove Empty Force',
+            `Moving this unit will leave "${source.displayName()}" empty. The empty force will be removed. Continue?`,
+            [
+                { label: 'CONFIRM', value: 'confirm' },
+                { label: 'CANCEL', value: 'cancel' },
+            ],
+            'cancel',
+        ) === 'confirm';
+    }
+
+    private async transferMemberBetweenForces(
+        member: CBTForceMember,
+        source: CBTForce,
+        sourceGroup: UnitGroup,
+        target: CBTForce,
+        targetGroup: UnitGroup,
+        atIndex: number,
+    ): Promise<boolean> {
+        const removeEmptySource = source.members().length === 1;
+        const transferred = await source.transferMemberTo(target, member.id, targetGroup.id, atIndex);
+        if (!transferred.accepted) {
+            this.toastService.showToast(`Could not move unit: ${transferred.reason}`, 'error');
+            return false;
+        }
+
+        this.formations.generateFactionAndForceNameIfNeeded(target);
+        if (!removeEmptySource) this.formations.generateFactionAndForceNameIfNeeded(source);
+        await this.formations.assignFormationIfNeeded(sourceGroup);
+        await this.formations.assignFormationIfNeeded(targetGroup);
+        this.forceWorkspace.selectUnit(target.getClassicMember(member.id));
+        if (removeEmptySource) await this.forceBuilderService.deleteAndRemoveForce(source);
+        return true;
+    }
+
+    /** Finds a group and its owning force across all loaded forces. */
     private findGroupAndForce(groupId: string): { force: Force; group: UnitGroup } | null {
-        for (const slot of this.forceBuilderService.loadedForces()) {
+        for (const slot of this.forceWorkspace.loadedForces()) {
             const group = slot.force.groups().find(g => g.id === groupId);
             if (group) return { force: slot.force, group };
         }
@@ -613,7 +709,7 @@ export class ForceBuilderViewerComponent {
     }
 
     groupsDragDisabled = computed(() => {
-        const forces = this.forceBuilderService.filteredLoadedForces();
+        const forces = this.forceWorkspace.filteredLoadedForces();
         // Allow group dragging if there's more than one force, or if the single loaded force has multiple groups (otherwise there's no point in dragging)
         return (forces.length === 1 && forces[0].force.groups().length < 2);
     });
@@ -622,7 +718,7 @@ export class ForceBuilderViewerComponent {
         const ids: string[] = [];
         const collapsed = this.collapsedGroups();
         const showDropzones = !this.compactMode() && !this.miniMode() && !this.isGroupDragging();
-        for (const slot of this.forceBuilderService.filteredLoadedForces()) {
+        for (const slot of this.forceWorkspace.filteredLoadedForces()) {
             if (slot.force.readOnly()) continue; // exclude read-only forces from drop targets
             for (const g of slot.force.groups()) {
                 if (collapsed.has(g.id)) continue; // collapsed groups have no cdkDropList in DOM
@@ -641,7 +737,7 @@ export class ForceBuilderViewerComponent {
         const prefix = 'new-group-dropzone-';
         if (!containerId.startsWith(prefix)) return;
         const forceKey = containerId.substring(prefix.length);
-        const targetSlot = this.forceBuilderService.loadedForces().find(s =>
+        const targetSlot = this.forceWorkspace.loadedForces().find(s =>
             (s.force.instanceId() || s.force.name) === forceKey
         );
         if (!targetSlot || targetSlot.force.readOnly()) return;
@@ -654,6 +750,43 @@ export class ForceBuilderViewerComponent {
         const sourceResult = this.findGroupAndForce(sourceGroupId);
         if (!sourceResult) return;
         const { force: sourceForce, group: sourceGroup } = sourceResult;
+
+        const movingMember = this.membersInGroup(sourceForce, sourceGroup)[event.previousIndex];
+        if (isCBTForceMember(movingMember)) {
+            if (!(sourceForce instanceof CBTForce)) return;
+            if (!(targetForce instanceof CBTForce)) {
+                this.toastService.showToast(
+                    'Converting a live Classic unit to Alpha Strike is not supported yet.',
+                    'error',
+                );
+                return;
+            }
+            if (sourceForce !== targetForce
+                && (sourceForce.readOnly() || !await this.confirmEmptyForceAfterTransfer(sourceForce))) return;
+            const newGroup = await targetForce.addGroup();
+            if (sourceForce !== targetForce) {
+                const transferred = await this.transferMemberBetweenForces(
+                    movingMember,
+                    sourceForce,
+                    sourceGroup,
+                    targetForce,
+                    newGroup,
+                    0,
+                );
+                if (!transferred) await targetForce.removeGroup(newGroup);
+                return;
+            }
+            const moved = await sourceForce.moveMember(movingMember.id, newGroup.id, 0);
+            if (!moved.accepted) {
+                await targetForce.removeGroup(newGroup);
+                this.toastService.showToast(`Could not move unit: ${moved.reason}`, 'error');
+                return;
+            }
+            await this.formations.assignFormationIfNeeded(sourceGroup);
+            await this.formations.assignFormationIfNeeded(newGroup);
+            this.forceWorkspace.selectUnit(sourceForce.getClassicMember(movingMember.id));
+            return;
+        }
 
         const crossForce = sourceForce !== targetForce;
         const crossSystem = crossForce && sourceForce.gameSystem !== targetForce.gameSystem;
@@ -685,41 +818,49 @@ export class ForceBuilderViewerComponent {
             if (answer === 'cancel') return;
         }
 
-        // Create a new group on the target force
-        const newGroup = targetForce.addGroup();
+        // As above, prepare before creating a group or removing the source.
+        const sourceUnitToConvert = sourceGroup.units()[event.previousIndex];
+        const preparedConversion = crossSystem
+            ? await this.prepareCrossSystemConversion(
+                sourceUnitToConvert,
+                sourceForce,
+                targetForce,
+            )
+            : null;
+        if (crossSystem && !preparedConversion) return;
+        if (sourceGroup.units()[event.previousIndex] !== sourceUnitToConvert) {
+            preparedConversion?.destroy();
+            return;
+        }
+
+        // Create the destination group first, then use the atomic two-owner
+        // transfer seam so a stale target cannot lose the source unit.
+        const newGroup = await targetForce.addGroup();
         if (!newGroup) return;
-
-        // Move the unit from source
-        const moved = sourceGroup.removeUnitAt(event.previousIndex);
-        if (!moved) return;
-
-        // Convert unit if different game systems
-        let unitToInsert: ForceUnit;
-        if (crossSystem) {
-            const converted = this.forceBuilderService.convertUnitForForce(moved, sourceForce, targetForce);
-            if (!converted) {
-                this.toastService.showToast(`Could not convert unit: not found in the database.`, 'error');
-                targetForce.removeEmptyGroups();
-                return;
-            }
-            moved.destroy();
-            unitToInsert = converted;
-        } else {
-            unitToInsert = moved;
+        const unitToInsert = sourceGroup.transferUnitTo(
+            event.previousIndex,
+            newGroup,
+            undefined,
+            crossSystem ? preparedConversion! : undefined,
+        );
+        if (!unitToInsert) {
+            await targetForce.removeGroup(newGroup);
+            preparedConversion?.destroy();
+            return;
         }
-
-        newGroup.insertUnit(unitToInsert);
         if (crossForce) {
-            this.forceBuilderService.generateFactionAndForceNameIfNeeded(targetForce);
-            this.forceBuilderService.generateFactionAndForceNameIfNeeded(sourceForce);
+            this.formations.generateFactionAndForceNameIfNeeded(targetForce);
+            this.formations.generateFactionAndForceNameIfNeeded(sourceForce);
         }
-        this.forceBuilderService.assignFormationIfNeeded(sourceGroup);
-        this.forceBuilderService.assignFormationIfNeeded(newGroup);
+        await this.formations.assignFormationIfNeeded(sourceGroup);
+        await this.formations.assignFormationIfNeeded(newGroup);
         sourceForce.removeEmptyGroups();
         if (crossForce) targetForce.deduplicateIds();
 
         // Select the moved unit
-        this.forceBuilderService.selectUnit(unitToInsert);
+        this.forceWorkspace.selectUnit(
+            targetForce.members().find(member => member.id === unitToInsert.id) ?? null,
+        );
 
         if (wouldEmptyForce) {
             if (targetForce.instanceId()) targetForce.emitChanged();
@@ -728,6 +869,53 @@ export class ForceBuilderViewerComponent {
             if (sourceForce.instanceId()) sourceForce.emitChanged();
             if (crossForce && targetForce.instanceId()) targetForce.emitChanged();
         }
+    }
+
+    membersInGroup(force: Force, group: UnitGroup): ForceMember[] {
+        return force.membersInGroup(group);
+    }
+
+    groupMemberCount(force: Force, group: UnitGroup): number {
+        return this.membersInGroup(force, group).length;
+    }
+
+    private async prepareCrossSystemConversion(
+        sourceUnit: ForceUnit | undefined,
+        sourceForce: Force,
+        targetForce: Force,
+    ): Promise<ASForceUnit | null> {
+        if (!(sourceUnit instanceof ASForceUnit)) return null;
+        try {
+            const converted = await this.forceCommands.convertUnitForForce(sourceUnit, sourceForce, targetForce);
+            if (!converted) {
+                this.toastService.showToast('Could not convert unit: not found in the database.', 'error');
+            }
+            return converted;
+        } catch (error) {
+            this.toastService.showToast(
+                error instanceof Error ? error.message : 'Could not convert unit.',
+                'error',
+            );
+            return null;
+        }
+    }
+
+    private async prepareCrossSystemConversions(
+        sourceUnits: readonly ForceUnit[],
+        sourceForce: Force,
+        targetForce: Force,
+    ): Promise<ASForceUnit[] | null> {
+        const convertedUnits: ASForceUnit[] = [];
+        for (const sourceUnit of sourceUnits) {
+            const converted = await this.prepareCrossSystemConversion(sourceUnit, sourceForce, targetForce);
+            if (converted) {
+                convertedUnits.push(converted);
+                continue;
+            }
+            convertedUnits.forEach(unit => unit.destroy());
+            return null;
+        }
+        return convertedUnits;
     }
 
     private scrollToUnit(id: string) {
@@ -765,17 +953,17 @@ export class ForceBuilderViewerComponent {
 
     promptChangeForceName(force: Force) {
         if (force.readOnly()) return;
-        this.forceBuilderService.promptChangeForceName(force);
+        void this.forceDialogs.promptChangeForceName(force);
     }
 
     promptChangeGroupName(group: UnitGroup) {
         if (group.force.readOnly()) return;
-        this.forceBuilderService.promptChangeGroupName(group);
+        void this.forceDialogs.promptChangeGroupName(group);
     }
 
     showFormationInfo(event: MouseEvent, group: UnitGroup) {
         event.stopPropagation();
-        this.forceBuilderService.showFormationInfo(group);
+        this.formations.showFormationInfo(group);
     }
 
     /** Build tooltip HTML for a mismatched formation, including formatted requirements if available. */
@@ -810,26 +998,35 @@ export class ForceBuilderViewerComponent {
     }
 
     shareForce() {
-        this.forceBuilderService.shareForce();
+        this.forceDialogs.shareForce(this.forceWorkspace.currentForce());
     }
 
     onEmptyGroupClick(group: UnitGroup) {
         const result = this.findGroupAndForce(group.id);
         if (!result || result.force.readOnly()) return;
-        if (group.units().length === 0) {
-            this.forceBuilderService.removeGroup(group);
+        if (group.formationUnits().length === 0) {
+            this.forceCommands.removeGroup(group);
+        }
+    }
+
+    async addGroup(force: Force): Promise<void> {
+        try {
+            await force.addGroup();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.toastService.showToast(`Could not add group: ${message}`, 'error');
         }
     }
 
     removeGroup(event: MouseEvent, group: UnitGroup) {
         event.stopPropagation();
-        this.forceBuilderService.removeGroup(group);
+        this.forceCommands.removeGroup(group);
     }
 
     /** Connected group drop list IDs for group drag-drop (only non-readonly forces) */
     connectedGroupDropLists(): string[] {
         const ids: string[] = [];
-        for (const slot of this.forceBuilderService.filteredLoadedForces()) {
+        for (const slot of this.forceWorkspace.filteredLoadedForces()) {
             if (slot.force.readOnly()) continue;
             ids.push(`force-groups-${slot.force.instanceId() || slot.force.name}`);
         }
@@ -842,7 +1039,7 @@ export class ForceBuilderViewerComponent {
         const toForceId = event.container.id;
 
         const findForceByContainerId = (containerId: string): Force | undefined => {
-            for (const slot of this.forceBuilderService.loadedForces()) {
+            for (const slot of this.forceWorkspace.loadedForces()) {
                 const id = `force-groups-${slot.force.instanceId() || slot.force.name}`;
                 if (id === containerId) return slot.force;
             }
@@ -856,13 +1053,20 @@ export class ForceBuilderViewerComponent {
 
         if (fromForce === toForce) {
             // Reorder groups within the same force
-            fromForce.reorderGroup(event.previousIndex, event.currentIndex);
+            await fromForce.reorderGroup(event.previousIndex, event.currentIndex);
             // Re-trigger selection so downstream views refocus
-            const selected = this.forceBuilderService.selectedUnit();
-            if (selected) this.forceBuilderService.selectUnit(selected);
+            const selected = this.forceWorkspace.selectedUnit();
+            if (selected) this.forceWorkspace.selectUnit(selected);
         } else {
             // Move group between forces
             if (fromForce.readOnly()) return;
+            if (fromForce instanceof CBTForce || toForce instanceof CBTForce) {
+                this.toastService.showToast(
+                    'Moving a live Classic group between forces is not supported yet.',
+                    'error',
+                );
+                return;
+            }
 
             // Cross-game-system check: confirm conversion before any mutation
             const crossSystem = fromForce.gameSystem !== toForce.gameSystem;
@@ -894,34 +1098,47 @@ export class ForceBuilderViewerComponent {
                 if (answer === 'cancel') return;
             }
 
-            const movedGroup = fromForce.detachGroupAt(event.previousIndex);
-            if (!movedGroup) return;
-
-            if (crossSystem) {
-                // Convert all units in the group to the target game system
-                const convertedUnits: ForceUnit[] = [];
-                for (const u of movedGroup.units()) {
-                    const converted = this.forceBuilderService.convertUnitForForce(u, fromForce, toForce);
-                    if (converted) {
-                        convertedUnits.push(converted);
-                    } else {
-                        this.toastService.showToast(`Could not convert "${u.getUnit()?.chassis}": unit data not found.`, 'error');
-                    }
-                    u.destroy();
-                }
-                movedGroup.units.set(convertedUnits);
+            const sourceUnits = [...(groupToMove?.units() ?? [])];
+            const preparedConversions = crossSystem
+                ? await this.prepareCrossSystemConversions(sourceUnits, fromForce, toForce)
+                : null;
+            if (crossSystem && !preparedConversions) return;
+            const groupStillCurrent = fromForce.groups()[event.previousIndex] === groupToMove;
+            const unitsStillCurrent = groupToMove?.units().length === sourceUnits.length
+                && groupToMove.units().every((unit, index) => unit === sourceUnits[index]);
+            if (!groupStillCurrent || !unitsStillCurrent) {
+                preparedConversions?.forEach(unit => unit.destroy());
+                return;
             }
 
-            toForce.adoptGroup(movedGroup, event.currentIndex);
+            if (!groupToMove) {
+                preparedConversions?.forEach(unit => unit.destroy());
+                return;
+            }
+            try {
+                toForce.adoptGroup(
+                    groupToMove,
+                    event.currentIndex,
+                    crossSystem ? preparedConversions! : undefined,
+                );
+            } catch {
+                preparedConversions?.forEach(unit => unit.destroy());
+                return;
+            }
+            const movedGroup = groupToMove;
 
             // Re-evaluate the formation for the moved group
-            this.forceBuilderService.generateFactionAndForceNameIfNeeded(fromForce);
-            this.forceBuilderService.generateFactionAndForceNameIfNeeded(toForce);
-            this.forceBuilderService.assignFormationIfNeeded(movedGroup);
+            this.formations.generateFactionAndForceNameIfNeeded(fromForce);
+            this.formations.generateFactionAndForceNameIfNeeded(toForce);
+            await this.formations.assignFormationIfNeeded(movedGroup);
 
             // Select a unit in the moved group
             const firstUnit = movedGroup.units()[0];
-            if (firstUnit) this.forceBuilderService.selectUnit(firstUnit);
+            if (firstUnit) {
+                this.forceWorkspace.selectUnit(
+                    toForce.members().find(member => member.id === firstUnit.id) ?? null,
+                );
+            }
 
             if (wouldEmptyForce) {
                 if (toForce.instanceId()) toForce.emitChanged();
@@ -935,7 +1152,7 @@ export class ForceBuilderViewerComponent {
 
     // --- Force-level drag-drop ---
     forceDragDisabled = computed(() => {
-        return this.forceBuilderService.filteredLoadedForces().length < 2;
+        return this.forceWorkspace.filteredLoadedForces().length < 2;
     });
 
     onForceDragStart() {
@@ -954,8 +1171,8 @@ export class ForceBuilderViewerComponent {
     dropForce(event: CdkDragDrop<ForceSlot[]>) {
         if (event.previousIndex === event.currentIndex) return;
         // Map filtered indices to the full loadedForces array indices
-        const filtered = this.forceBuilderService.filteredLoadedForces();
-        const all = this.forceBuilderService.loadedForces();
+        const filtered = this.forceWorkspace.filteredLoadedForces();
+        const all = this.forceWorkspace.loadedForces();
         const movedSlot = filtered[event.previousIndex];
         const targetSlot = filtered[event.currentIndex];
         if (!movedSlot || !targetSlot) return;
@@ -974,7 +1191,7 @@ export class ForceBuilderViewerComponent {
             'danger'
         );
         if (confirmed) {
-            this.forceBuilderService.removeLoadedForce(force);
+            await this.forceBuilderService.removeLoadedForce(force);
         }
     }
 }

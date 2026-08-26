@@ -5,6 +5,7 @@
 import { AeroEntity } from '../entities/aero/aero-entity';
 import { ConvFighterEntity } from '../entities/aero/conv-fighter-entity';
 import { FixedWingSupportEntity } from '../entities/aero/fixed-wing-support-entity';
+import { isVstolEquipment } from '../../chassis-equipment.model';
 import {
   AERO_EQUIP_LOCATIONS,
   requireArmorEquipment,
@@ -17,6 +18,7 @@ import {
   writeBlkPreamble,
   writeEngine,
   writeEquipmentByLocation,
+  writeEmbeddedImages,
   writeFluffBlocks,
   writeInternalType,
   writeManualBV,
@@ -117,12 +119,14 @@ export function writeBlkAero(entity: AeroEntity): string {
     w.addBlock('baseChassisFireConWeight', Number.isInteger(fcw) ? fcw.toFixed(1) : String(fcw));
   }
 
-  return w.toString();
+  writeEmbeddedImages(w, entity);
+
+  return w.toString(entity.nativeSourceTrailingNewlines || 2);
 }
 
 /** Mirrors BLKFile's conventional-fighter type-flag and Aero.isVSTOL condition. */
 function writesVstolBlock(entity: AeroEntity): boolean {
   if (entity instanceof ConvFighterEntity) return entity.vstol();
   return entity instanceof FixedWingSupportEntity
-    && entity.equipment().some(mount => mount.equipment?.hasFlag('F_VSTOL_CHASSIS'));
+    && entity.equipment().some(mount => isVstolEquipment(mount.equipment));
 }

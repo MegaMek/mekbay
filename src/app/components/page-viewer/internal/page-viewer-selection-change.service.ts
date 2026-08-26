@@ -4,11 +4,11 @@
 
 import { Injectable } from '@angular/core';
 
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
+import type { PageViewerMember } from './types';
 
 export interface PageViewerSelectionChangePlan {
-    unitToSave: CBTForceUnit | null;
-    nextPreviousUnit: CBTForceUnit | null;
+    unitToSave: PageViewerMember | null;
+    nextPreviousUnit: PageViewerMember | null;
     shouldUpdateHighlight: boolean;
     shouldDisplay: boolean;
     nextViewStartIndex: number | null;
@@ -19,10 +19,10 @@ export interface PageViewerSelectionChangePlan {
 @Injectable()
 export class PageViewerSelectionChangeService {
     buildPlan(options: {
-        previousUnit: CBTForceUnit | null;
-        currentUnit: CBTForceUnit | null;
-        displayedUnits: readonly CBTForceUnit[];
-        allUnits: readonly CBTForceUnit[];
+        previousUnit: PageViewerMember | null;
+        currentUnit: PageViewerMember | null;
+        displayedUnits: readonly PageViewerMember[];
+        allUnits: readonly PageViewerMember[];
         selectionRedisplaySuppressed: boolean;
     }): PageViewerSelectionChangePlan {
         const {

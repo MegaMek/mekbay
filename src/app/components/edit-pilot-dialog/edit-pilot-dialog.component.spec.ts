@@ -9,7 +9,7 @@ import {
     EditPilotDialogComponent,
     getSyntheticCrewSkill,
 } from './edit-pilot-dialog.component';
-import type { CrewMemberDetails } from '../../models/crew-member.model';
+import type { CrewMemberDetails } from '../../models/crew.model';
 
 const CREW: CrewMemberDetails[] = [
     { id: 0, name: 'Pilot', gunnery: 4, piloting: 2 },
@@ -160,7 +160,7 @@ describe('Classic multi-crew pilot dialog logic', () => {
             ],
             pilotNameGenerator: { generate },
             logger: { warn: jasmine.createSpy('warn') },
-            data: { group: null },
+            data: { factionId: null },
             selectedGroupCommander: () => false,
         };
 
@@ -175,5 +175,21 @@ describe('Classic multi-crew pilot dialog logic', () => {
         harness.crew[1].generatingName.set(true);
         await EditPilotDialogComponent.prototype.fillRandomName.call(harness as never, 1);
         expect(generate).toHaveBeenCalledTimes(1);
+    });
+
+    it('confirms commander replacement using only detached dialog context', async () => {
+        const selected = signal(false);
+        const requestConfirmation = jasmine.createSpy('requestConfirmation').and.resolveTo(true);
+        const harness = {
+            commanderSelectionRequestId: 0,
+            selectedGroupCommander: selected,
+            data: { commanderContext: { conflictingCommanderDisplayName: 'Marauder (Kara)' } },
+            dialogsService: { requestConfirmation },
+        };
+
+        await EditPilotDialogComponent.prototype.setGroupCommanderSelected.call(harness as never, true);
+
+        expect(requestConfirmation).toHaveBeenCalledTimes(1);
+        expect(selected()).toBeTrue();
     });
 });

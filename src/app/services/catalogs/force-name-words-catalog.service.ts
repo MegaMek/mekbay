@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 
-import { DbService } from '../db.service';
 import { createEmptyForceNameWords, type ForceNameWords, type ForceNameWordsData } from '../../models/force-name-words.model';
 import { CatalogBaseService } from './catalog-base.service';
 
 type ForceNameWordsRemoteBody = ForceNameWordsData | ForceNameWords;
 
 function isForceNameWordsData(data: ForceNameWordsRemoteBody): data is ForceNameWordsData {
-    return 'etag' in data && 'words' in data;
+    return 'assetHash' in data && 'words' in data;
 }
 
 function normalizeWords(rawWords: Partial<ForceNameWords> | undefined): ForceNameWords {
@@ -30,16 +29,16 @@ function normalizeStringArray(value: unknown): string[] {
         : [];
 }
 
-function normalizeData(data: ForceNameWordsRemoteBody, etag: string): ForceNameWordsData {
+function normalizeData(data: ForceNameWordsRemoteBody, assetHash: string): ForceNameWordsData {
     if (isForceNameWordsData(data)) {
         return {
-            etag: data.etag || etag,
+            assetHash: data.assetHash || assetHash,
             words: normalizeWords(data.words),
         };
     }
 
     return {
-        etag,
+        assetHash,
         words: normalizeWords(data),
     };
 }
@@ -64,8 +63,6 @@ function hasAllWordLists(words: ForceNameWords): boolean {
     providedIn: 'root'
 })
 export class ForceNameWordsCatalogService extends CatalogBaseService<ForceNameWordsRemoteBody, ForceNameWordsData, ForceNameWordsRemoteBody> {
-    private readonly dbService = inject(DbService);
-
     private words = createEmptyForceNameWords();
 
     protected override get catalogKey(): string {
@@ -73,8 +70,10 @@ export class ForceNameWordsCatalogService extends CatalogBaseService<ForceNameWo
     }
 
     protected override get remoteUrl(): string {
-        return 'assets/force-name-words.json';
+        return 'online-assets/generated/force-name-words.json';
     }
+
+    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
     public getWords(): ForceNameWords {
         return this.words;
@@ -84,22 +83,14 @@ export class ForceNameWordsCatalogService extends CatalogBaseService<ForceNameWo
         return hasAllWordLists(this.words);
     }
 
-    protected override async loadFromCache(): Promise<ForceNameWordsData | undefined> {
-        return await this.dbService.getForceNameWords() ?? undefined;
-    }
-
-    protected override saveToCache(data: ForceNameWordsData): Promise<void> {
-        return this.dbService.saveForceNameWords(data);
-    }
-
     protected override hydrate(data: ForceNameWordsRemoteBody): void {
-        const wrappedData = normalizeData(data, isForceNameWordsData(data) ? data.etag : '');
+        const wrappedData = normalizeData(data, isForceNameWordsData(data) ? data.assetHash : '');
         this.words = wrappedData.words;
-        this.etag = wrappedData.etag;
+        this.transportRevision = wrappedData.assetHash;
     }
 
-    protected override normalizeFetchedData(data: ForceNameWordsRemoteBody, etag: string): ForceNameWordsData {
-        return normalizeData(data, etag);
+    protected override normalizeFetchedData(data: ForceNameWordsRemoteBody, assetHash: string): ForceNameWordsData {
+        return normalizeData(data, assetHash);
     }
 
     protected override getDatasetSize(data: ForceNameWordsRemoteBody): number {

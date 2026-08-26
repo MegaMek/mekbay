@@ -70,6 +70,21 @@ describe('UnitStateDropdownComponent', () => {
 
         expect(cancelled).toBe(1);
     });
+
+    it('renders command choices as actions instead of toggle states', () => {
+        const selected: string[] = [];
+        fixture.componentInstance.selected.subscribe(key => selected.push(key));
+        fixture.componentRef.setInput('choices', [{
+            key: 'critical-roll', label: 'Critical Roll', color: '#444', active: false, action: true,
+        }]);
+        fixture.detectChanges();
+
+        const button = fixture.nativeElement.querySelector('[data-unit-state-key="critical-roll"]') as HTMLButtonElement;
+        expect(button.classList.contains('action')).toBeTrue();
+        expect(button.getAttribute('aria-checked')).toBeNull();
+        button.click();
+        expect(selected).toEqual(['critical-roll']);
+    });
 });
 
 function createPointerEvent(type: string, init: PointerEventInit): PointerEvent {

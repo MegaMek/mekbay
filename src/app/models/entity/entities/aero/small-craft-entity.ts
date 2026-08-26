@@ -17,11 +17,17 @@ import {
   StandardTransportBayType,
   WeightClass,
 } from '../../types';
+import { smallCraftArmorPointsPerTon } from '../../utils/large-craft-armor';
 import { LargeAeroEntity } from './large-aero-entity';
 import type { UnitSubtype } from '../../types';
 import type { TechRatingSource } from '../../types';
 import { getSmallCraftConstructionTech } from '../../components';
 import type { Equipment } from '../../../equipment.model';
+import { isEcmEquipment } from '../../../ecm-mode.model';
+import { isDroneOperatingSystemEquipment } from '../../../drone-operating-system.model';
+import { supportEquipmentCrewContribution } from '../../../support-equipment.model';
+import { sensorEquipmentCrewContribution } from '../../../sensor-equipment.model';
+import { aerospaceSupportCrewContribution } from '../../../aerospace-support-equipment.model';
 
 const MINIMUM_CREW_AND_QUARTERS_THRESHOLD_TONS = 25;
 const INFANTRY_PERSONNEL: Readonly<Record<InfantryTransportType, { IS: number; Clan: number }>> = {
@@ -75,7 +81,7 @@ export class SmallCraftEntity extends LargeAeroEntity {
     const implicit = [...super.computeImplicitSystemEquipment()];
     if (this.entityType !== 'SmallCraft'
       || !this.isMilitary()
-      || this.equipment().some(mount => mount.equipment?.hasFlag('F_ECM'))) {
+      || this.equipment().some(mount => isEcmEquipment(mount.equipment))) {
       return implicit;
     }
 
@@ -153,7 +159,7 @@ export class SmallCraftEntity extends LargeAeroEntity {
   }
 
   private calculateRequiredGunners(): number {
-    if (this.equipment().some(mount => mount.equipment?.hasFlag('F_DRONE_OPERATING_SYSTEM'))) return 0;
+    if (this.equipment().some(mount => isDroneOperatingSystemEquipment(mount.equipment))) return 0;
 
     let capitalWeapons = 0;
     let standardWeapons = 0;
@@ -190,14 +196,10 @@ export class SmallCraftEntity extends LargeAeroEntity {
     return this.equipment().reduce((total, mount) => {
       const equipment = mount.equipment;
       if (!(equipment instanceof MiscEquipment)) return total;
-      if (equipment.hasFlag('F_MOBILE_FIELD_BASE')) return total + 5;
-      if (equipment.hasFlag('F_MASH')) return total + 5 * Math.trunc(mount.size ?? 1);
-      if (equipment.hasFlag('F_FIELD_KITCHEN')) return total + 3;
-      if (equipment.hasFlag('F_COMMUNICATIONS')) return total + Math.trunc(mount.getTonnage(this) ?? 0);
-      if (equipment.hasFlag('F_MOBILE_HPG')) return total + (equipment.hasFlag('F_TANK_EQUIPMENT') ? 1 : 10);
-      if (equipment.hasFlag('F_SMALL_COMM_SCANNER_SUITE')) return total + 6;
-      if (equipment.hasFlag('F_LARGE_COMM_SCANNER_SUITE')) return total + 12;
-      return total;
+      return total
+        + supportEquipmentCrewContribution(this, mount)
+        + aerospaceSupportCrewContribution(equipment)
+        + sensorEquipmentCrewContribution(equipment);
     }, 0);
   }
 
@@ -215,7 +217,9 @@ export class SmallCraftEntity extends LargeAeroEntity {
   protected override computeMaximumArmorPoints(): number {
     const mountedArmor = this.uniformArmor();
     const isSpheroid = this.motiveType() === 'Spheroid';
-    const pointsPerTon = 16 * (mountedArmor?.armor.pptMultiplier ?? 1);
+    const pointsPerTon = mountedArmor
+      ? smallCraftArmorPointsPerTon(this.tonnage(), isSpheroid, mountedArmor.armor)
+      : 16;
     const armorWeightFactor = isSpheroid ? 3.6 : 4.5;
     const maximumArmorWeight = Math.floor(this.structuralIntegrity() * armorWeightFactor * 2) / 2;
     const siBonus = 4 * this.structuralIntegrity();

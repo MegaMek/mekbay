@@ -6,6 +6,9 @@ import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, Weapo
 import type { MekEntity } from '../../entities/mek/mek-entity';
 import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import { ceilToHalfTon, ceilToWholeTon } from './weight-rounding';
+import { flamerRequiresPower } from '../../../flamer-mode.model';
+import { isPpcCapacitorEquipment, isPpcEquipment } from '../../../ppc-capacitor.model';
+import { isConstructionSystemEquipment } from '../../../construction-equipment.model';
 
 export interface MekWeightBreakdown {
   readonly engine: number;
@@ -37,18 +40,6 @@ const HYBRID_STRUCTURE_FRACTIONS: Readonly<Record<string, number>> = {
   HD: 0.05, CT: 0.25, RT: 0.15, LT: 0.15,
   RA: 0.1, LA: 0.1, RL: 0.1, LL: 0.1,
 };
-
-const SYSTEM_MISC_FLAGS = [
-  'F_ENDO_STEEL', 'F_ENDO_COMPOSITE', 'F_ENDO_STEEL_PROTO', 'F_COMPOSITE',
-  'F_INDUSTRIAL_STRUCTURE', 'F_REINFORCED', 'F_FERRO_FIBROUS',
-  'F_FERRO_FIBROUS_PROTO', 'F_FERRO_LAMELLOR', 'F_LIGHT_FERRO',
-  'F_HEAVY_FERRO', 'F_REACTIVE', 'F_REFLECTIVE', 'F_HARDENED_ARMOR',
-  'F_PRIMITIVE_ARMOR', 'F_COMMERCIAL_ARMOR', 'F_INDUSTRIAL_ARMOR',
-  'F_HEAVY_INDUSTRIAL_ARMOR', 'F_ANTI_PENETRATIVE_ABLATIVE',
-  'F_HEAT_DISSIPATING', 'F_IMPACT_RESISTANT', 'F_BALLISTIC_REINFORCED',
-  'F_ELECTRIC_DISCHARGE_ARMOR', 'F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK',
-  'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE', 'F_COMPACT_HEAT_SINK',
-] as const;
 
 export function calculateMekEffectiveTonnage(entity: MekEntity): number {
   return calculateMekWeightBreakdown(entity).rounded;
@@ -134,7 +125,7 @@ function calculateMekEquipmentWeight(entity: MekEntity): number {
     const equipment = mount.equipment;
     if (!equipment) throw new Error(`Unresolved equipment ${mount.equipmentId} on ${entity.displayName()}`);
     if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) return total;
-    if (equipment instanceof MiscEquipment && equipment.hasAnyFlag([...SYSTEM_MISC_FLAGS])) return total;
+    if (equipment instanceof MiscEquipment && isConstructionSystemEquipment(equipment)) return total;
     if (equipment instanceof AmmoEquipment && mount.allocation.kind === 'unallocated') return total;
     return total + requireMountTonnage(entity, mount);
   }, 0);
@@ -146,12 +137,17 @@ function calculateMekPowerAmplifierWeight(entity: MekEntity): number {
   const poweredWeight = entity.equipment().reduce((total, mount) => {
     const equipment = mount.equipment;
     if (!(equipment instanceof WeaponEquipment)) return total;
-    const requiresPower = equipment.hasAnyFlag(['F_LASER', 'F_PPC', 'F_PLASMA', 'F_PLASMA_MFUK'])
-      || (equipment.hasFlag('F_FLAMER') && equipment.ammoType === 'NA');
+    const requiresPower = equipment.hasWeaponTrait('laser')
+      || equipment.hasWeaponTrait('plasma')
+      || equipment.hasWeaponTrait('plasma-mfuk')
+      || isPpcEquipment(equipment)
+      || flamerRequiresPower(equipment);
     if (!requiresPower) return total;
     const capacitor = entity.getLinkingMount(mount);
     return total + requireMountTonnage(entity, mount)
-      + (capacitor?.equipment?.hasFlag('F_PPC_CAPACITOR') ? requireMountTonnage(entity, capacitor) : 0);
+      + (capacitor && isPpcCapacitorEquipment(capacitor.equipment)
+        ? requireMountTonnage(entity, capacitor)
+        : 0);
   }, 0);
   return ceilToHalfTon(poweredWeight / 10);
 }

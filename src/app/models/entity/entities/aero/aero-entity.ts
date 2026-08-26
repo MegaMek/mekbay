@@ -5,18 +5,25 @@
 import { Signal, computed, signal } from '@angular/core';
 import { BaseEntity } from '../../base-entity';
 import { AERO_COCKPIT_TECH } from '../../components';
+import { modularArmorMovementPenalty } from '../../../modular-armor.model';
+import {
+  isEmergencyCoolantSystemEquipment,
+  isRadicalHeatSinkEquipment,
+} from '../../../escalating-equipment.model';
 import {
   type UnitType,
   type UnitSubtype,
   type MovementCalculationOptions,
   type TechRatingSource,
   type EntityFeature,
+  type EntityDamageLocation,
   AeroCockpitType,
   ASF_WEIGHT_LIMITS,
   EntityType,
   EntityValidationMessage,
   HeatSinkType,
   MotiveType,
+  locationArmor,
   resolveWeightClass,
   WeightClass,
 } from '../../types';
@@ -44,6 +51,18 @@ export abstract class AeroEntity extends BaseEntity {
 
   override unitType(): UnitType {
     return 'Aero';
+  }
+
+  override damageLocations(): readonly EntityDamageLocation[] {
+    return [
+      ...super.damageLocations().map(location => ({ ...location, internalPoints: 0 })),
+      {
+        code: 'SI',
+        sheetCode: 'SI',
+        internalPoints: this.structuralIntegrity(),
+        armor: locationArmor(0),
+      },
+    ];
   }
 
   abstract override unitSubtype(): UnitSubtype;
@@ -94,10 +113,10 @@ export abstract class AeroEntity extends BaseEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   override computeWalkMP(options: MovementCalculationOptions): number {
-    const modularArmorPenalty = !options.ignoreModularArmor
-      && this.equipment().some(
-        mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'),
-      ) ? 1 : 0;
+    const modularArmorPenalty = modularArmorMovementPenalty(
+      this.equipment(),
+      options.ignoreModularArmor,
+    );
     return Math.max(0, this.originalWalkMP() - modularArmorPenalty);
   }
 
@@ -124,7 +143,7 @@ export abstract class AeroEntity extends BaseEntity {
   protected override computeHeatDissipation(includeRadical: boolean): number {
     const sinks = this.heatSinkCount();
     let capacity = sinks * (this.heatSinkType() === 'Double' ? 2 : 1);
-    if (includeRadical && this.hasEquipmentFlag('F_RADICAL_HEATSINK')) {
+    if (includeRadical && this.equipment().some(mount => isRadicalHeatSinkEquipment(mount.equipment))) {
       capacity += Math.ceil(sinks * 0.4);
     }
     return capacity;
@@ -133,10 +152,10 @@ export abstract class AeroEntity extends BaseEntity {
   protected override computeMaximumHeatDissipation(normal: number): number {
     const sinks = this.heatSinkCount();
     let maximum = normal;
-    if (this.hasEquipmentFlag('F_RADICAL_HEATSINK')) maximum += sinks;
+    if (this.equipment().some(mount => isRadicalHeatSinkEquipment(mount.equipment))) maximum += sinks;
     if (this.hasCoolantPod()) maximum += sinks;
     maximum += this.equipment().filter(
-      mount => mount.equipment?.hasFlag('F_EMERGENCY_COOLANT_SYSTEM'),
+      mount => isEmergencyCoolantSystemEquipment(mount.equipment),
     ).length * 6;
     return maximum;
   }

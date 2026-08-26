@@ -4,7 +4,14 @@
 
 import { type BaseEntity, AeroEntity, BattleArmorEntity, InfantryEntity, MekEntity } from '../../entities';
 import { WeaponEquipment } from '../../../equipment.model';
-import type { AlphaStrikeUnitStats, ASUnitTypeCode } from '../../../units.model';
+import {
+  alphaStrikeSignatureHeat,
+  hasStealthFlag,
+  isChameleonShieldEquipment,
+  isSignatureSystemEquipment,
+} from '../../../stealth-equipment.model';
+import { isJumpJetEquipment, jumpJetKind } from '../../../jump-equipment.model';
+import type { AlphaStrikeUnitStats, ASUnitTypeCode } from '../../../unit-summary.model';
 import {
   CalculationReportBuilder,
   NULL_CALCULATION_REPORT,
@@ -310,14 +317,16 @@ function applyHeatAdjustment(
       runHeat: entity.mountedEngine().movementHeat.run,
     });
     const hasStealthArmor = [...entity.armorByLocation().values()].some(armor =>
-      armor.armor.hasFlag('F_STEALTH') || armor.armor.armorType === 'STEALTH');
+      hasStealthFlag(armor.armor) || armor.armor.armorType === 'STEALTH');
     const hasSignature = hasStealthArmor || entity.equipment().some(mount =>
-      mount.equipment?.hasAnyFlag(['F_STEALTH', 'F_VOID_SIG', 'F_NULL_SIG']));
-    signatureHeat = (hasSignature ? 10 : 0) + (entity.equipment().some(mount =>
-      mount.equipment?.hasFlag('F_CHAMELEON_SHIELD')) ? 6 : 0);
+      isSignatureSystemEquipment(mount.equipment));
+    signatureHeat = alphaStrikeSignatureHeat(
+      hasSignature,
+      entity.equipment().some(mount => isChameleonShieldEquipment(mount.equipment)),
+    );
   } else if (entity instanceof AeroEntity && entity.equipment().some(mount =>
-    mount.equipment?.hasFlag('F_STEALTH'))) {
-    signatureHeat = 10;
+    hasStealthFlag(mount.equipment))) {
+    signatureHeat = alphaStrikeSignatureHeat(true, false);
   }
   const baseCapacity = Math.max(0, entity instanceof MekEntity
     ? entity.alphaStrikeBaseHeatCapacity()
@@ -353,16 +362,13 @@ function applyHeatAdjustment(
 
 function countsForAlphaStrikeLongRangeHeat(weapon: WeaponEquipment): boolean {
   return baseBattleForceDamageForWeapon(weapon, 2) > 0
-    || (weapon.techBase === 'Clan' && weapon.hasFlag('F_PLASMA') && weapon.damage === 'variable');
+    || (weapon.techBase === 'Clan' && weapon.hasWeaponTrait('plasma')
+      && weapon.damage === 'variable');
 }
 
 function alphaStrikeJumpSystem(entity: MekEntity): AlphaStrikeJumpSystem {
-  const jumpJet = entity.equipment().find(mount => mount.equipment?.hasFlag('F_JUMP_JET'))?.equipment;
-  if (!jumpJet) return 'none';
-  if (jumpJet.hasFlag('S_IMPROVED') && jumpJet.hasFlag('S_PROTOTYPE')) return 'prototype-improved';
-  return jumpJet.hasFlag('S_IMPROVED') ? 'improved' : 'standard';
+  const jumpJet = entity.equipment().find(mount => isJumpJetEquipment(mount.equipment))?.equipment;
+  return jumpJetKind(jumpJet) ?? 'none';
 }
-
-
 
 

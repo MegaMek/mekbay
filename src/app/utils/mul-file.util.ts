@@ -6,15 +6,39 @@ import type { Injector } from '@angular/core';
 import { APP_VERSION_STRING } from '../build-meta';
 import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
-import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
+import {
+    hasNonMekRuntime,
+    hasMekRuntime,
+    type CBTUnitSnapshot,
+} from '../models/cbt-unit-snapshot';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew.model';
+import type { UnitSummary } from '../models/unit-summary.model';
+import type { ArmorFaceId, LocationId } from '../models/entity/entity-identifiers';
 import type { DataService } from '../services/data.service';
-import type { UnitInitializerService } from '../services/unit-initializer.service';
-import type { CriticalSlot, LocationData } from '../models/force-serialization';
-import type { Unit } from '../models/units.model';
+import { ForceUnitAdmissionService } from '../services/force-unit-admission.service';
+import {
+    isCBTForceMember,
+    isCBTMekForceMember,
+    type CBTForceMember,
+    type CBTMekForceMember,
+} from '../models/force-member.model';
+import type {
+    MekRecordSheetCriticalSlot,
+    MekRecordSheetCrewPosition,
+    MekRecordSheetLocation,
+    MekRecordSheetSnapshot,
+} from '../models/runtime/mek-record-sheet';
+import { createCommandId } from '../models/runtime/runtime-state';
+import type {
+    NonMekUnitCommand,
+    NonMekUnitRuntimeState,
+} from '../models/runtime/non-mek-unit-instance';
+import type { NonMekRuntimeIndex } from '../models/runtime/non-mek-runtime-index';
+import type { CBTUnitCommand } from '../models/runtime/unit-instance';
+import { getEffectivePilotingSkill } from './cbt-common.util';
 import { uuidv7 } from './uuid.util';
 
-const DEFAULT_ENTITY_ATTRIBUTES: Record<string, string> = {
+const DEFAULT_ENTITY_ATTRIBUTES: Readonly<Record<string, string>> = Object.freeze({
     offboard: 'false',
     hidden: 'false',
     deployment: '0',
@@ -26,96 +50,66 @@ const DEFAULT_ENTITY_ATTRIBUTES: Record<string, string> = {
     deploymentZoneAnySEx: '-1',
     deploymentZoneAnySEy: '-1',
     neverDeployed: 'true',
-};
+});
 
-const LOCATION_INDEX_BY_LOC = new Map<string, number>([
-    ['HD', 0],
-    ['NOS', 0],
-    ['BODY', 0],
-    ['CT', 1],
-    ['RT', 2],
-    ['LT', 3],
-    ['RA', 4],
-    ['LA', 5],
-    ['RL', 6],
-    ['LL', 7],
-    ['CL', 8],
-    ['FRL', 9],
-    ['FLL', 10],
-    ['RRL', 11],
-    ['RLL', 12],
-    ['TROOP', 0],
-    ['SI', 0],
+const LOCATION_INDEX_BY_CODE = new Map<string, number>([
+    ['HD', 0], ['NOS', 0], ['BODY', 0], ['CT', 1], ['RT', 2], ['LT', 3],
+    ['RA', 4], ['LA', 5], ['RL', 6], ['LL', 7], ['CL', 8], ['FRL', 9],
+    ['FLL', 10], ['RRL', 11], ['RLL', 12], ['TROOP', 0], ['SI', 0],
 ]);
 
-const LOC_BY_LOCATION_INDEX = new Map<number, string>([
-    [0, 'HD'],
-    [1, 'CT'],
-    [2, 'RT'],
-    [3, 'LT'],
-    [4, 'RA'],
-    [5, 'LA'],
-    [6, 'RL'],
-    [7, 'LL'],
-    [8, 'CL'],
-    [9, 'FRL'],
-    [10, 'FLL'],
-    [11, 'RRL'],
-    [12, 'RLL'],
+const CODE_BY_LOCATION_INDEX = new Map<number, string>([
+    [0, 'HD'], [1, 'CT'], [2, 'RT'], [3, 'LT'], [4, 'RA'], [5, 'LA'],
+    [6, 'RL'], [7, 'LL'], [8, 'CL'], [9, 'FRL'], [10, 'FLL'], [11, 'RRL'], [12, 'RLL'],
 ]);
 
 export interface MulParseIssue {
-    severity: 'warning' | 'error';
-    message: string;
+    readonly severity: 'warning' | 'error';
+    readonly message: string;
 }
 
 export interface MulParseResult {
-    force: CBTForce;
-    issues: MulParseIssue[];
+    readonly force: CBTForce;
+    readonly issues: readonly MulParseIssue[];
 }
 
 interface ParsedMulCrewMember {
-    id: number;
-    name: string;
-    gunnerySkill: number;
-    pilotingSkill: number;
-    hits: number;
-    state: number;
+    readonly id: number;
+    readonly name: string;
+    readonly gunnerySkill: number;
+    readonly pilotingSkill: number;
+    readonly hits: number;
+    readonly ejected: boolean;
 }
 
 interface ParsedMulSlot {
-    loc: string;
-    slot: number;
-    type: string;
-    shots?: number;
-    damageTaken?: number;
-    armorHit?: boolean;
-    hit: boolean;
-    destroyed: boolean;
-    repairable?: boolean;
+    readonly loc: string;
+    readonly slot: number;
+    readonly type: string;
+    readonly shots?: number;
+    readonly armorHit?: boolean;
+    readonly hit: boolean;
+    readonly destroyed: boolean;
 }
 
 interface ParsedMulLocation {
-    loc: string;
-    destroyed: boolean;
+    readonly index: number;
+    readonly loc: string;
+    readonly destroyed: boolean;
     armor?: number | 'Destroyed';
     rearArmor?: number | 'Destroyed';
     internal?: number | 'Destroyed';
     slots: ParsedMulSlot[];
 }
 
-type MulCrewType =
-    | 'single'
-    | 'crew'
-    | 'vessel'
-    | 'tripod'
-    | 'superheavy_tripod'
-    | 'quadvee'
-    | 'dual'
-    | 'command_console'
-    | 'infantry_crew'
-    | 'building'
-    | 'none';
+type MulCrewType = 'single' | 'tripod' | 'superheavy_tripod' | 'quadvee' | 'dual' | 'command_console';
+type CommandWithoutEnvelope<T> = T extends unknown ? Omit<T, 'commandId' | 'expectedRevision'> : never;
+type MulUnitCommand = CommandWithoutEnvelope<CBTUnitCommand>;
+type MulEntityCommand = CommandWithoutEnvelope<NonMekUnitCommand>;
+type EntityRuntimeSnapshot = CBTUnitSnapshot & Readonly<{
+    index: NonMekRuntimeIndex;
+    state: NonMekUnitRuntimeState;
+}>;
 
 export function sanitizeMulFilename(name: string | null | undefined): string {
     return (name || 'mekbay-force')
@@ -128,142 +122,751 @@ export function sanitizeMulFilename(name: string | null | undefined): string {
         .slice(0, 80) || 'mekbay-force';
 }
 
-function downloadTextFile(filename: string, content: string, mimeType = 'application/xml'): void {
-    const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
+export async function serializeForceToMul(force: CBTForce): Promise<string> {
+    if (force.gameSystem !== GameSystem.CLASSIC) {
+        throw new Error('MUL export is only available for Classic BattleTech forces.');
+    }
+    const roster = force.queryCanonicalRoster();
+    if (roster.kind !== 'available') throw new Error(roster.message);
+
+    const doc = document.implementation.createDocument('', 'unit');
+    const root = doc.documentElement;
+    setAttributes(root, { version: `mekbay-${APP_VERSION_STRING}` });
+    let index = 0;
+    for (const rosterMember of roster.snapshot.structural.members) {
+        const member = force.getClassicMember(rosterMember.instanceId);
+        if (!member) throw new Error(`MUL export requires ready runtime ${rosterMember.instanceId}`);
+        const sheet = force.getMekRecordSheetSnapshot(member.id);
+        const snapshot = force.getUnitSnapshot(member.id);
+        let element: Element | null = null;
+        if (sheet && snapshot && hasMekRuntime(snapshot)) {
+            element = createMekEntityElement(
+                doc,
+                sheet,
+                snapshot.entity.quirks().map(({ quirk, value }) => ({
+                    key: quirk.key,
+                    ...(value === undefined ? {} : { value }),
+                })),
+                rosterMember.commander === true,
+                member.id,
+                index,
+            );
+        } else if (snapshot && hasNonMekRuntime(snapshot)) {
+            element = createEntityRuntimeElement(
+                doc,
+                member,
+                snapshot,
+                rosterMember.commander === true,
+                index,
+            );
+        }
+        if (!element) throw new Error(`MUL export cannot project runtime ${member.id}`);
+        appendIndented(root, doc, element, '\t');
+        root.appendChild(doc.createTextNode('\n'));
+        index += 1;
+    }
+    appendClosingIndent(root, doc, '');
+    return `<?xml version="1.0" encoding="UTF-8"?>\n\n${new XMLSerializer().serializeToString(doc)}`;
+}
+
+export async function exportForceToMul(force: CBTForce): Promise<void> {
+    const content = await serializeForceToMul(force);
+    const blob = new Blob([content], { type: 'application/xml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = filename;
+    anchor.download = `${sanitizeMulFilename(force.name)}.mul`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
 }
 
-function getUnitClanPerson(unit: Unit): boolean {
-    return unit.techBase === 'Clan';
+export async function parseMulForce(
+    xmlText: string,
+    forceName: string,
+    dataService: DataService,
+    injector: Injector,
+): Promise<MulParseResult> {
+    const doc = parseMulDocument(xmlText);
+    const issues: MulParseIssue[] = [];
+    const unitLookup = createUnitLookup(dataService.getUnits());
+    const force = new CBTForce(forceName || 'Imported MUL Force', dataService, injector);
+    const admission = injector.get(ForceUnitAdmissionService);
+    const group = force.groups()[0] ?? await force.addGroup();
+
+    for (const entity of getMulEntityElements(doc)) {
+        const chassis = entity.getAttribute('chassis') ?? '';
+        const model = entity.getAttribute('model') ?? '';
+        const summary = unitLookup.get(unitLookupKey(chassis, model));
+        if (!summary) {
+            issues.push({ severity: 'error', message: `Unit "${[chassis, model].filter(Boolean).join(' ')}" was not found.` });
+            continue;
+        }
+        const crew = parseEntityCrew(entity);
+        let admitted: CBTForceMember | null = null;
+        try {
+            const member = await admission.admit({
+                force,
+                summary,
+                group,
+                rosterGroupId: group.id,
+                gunnerySkill: crew[0]?.gunnerySkill ?? DEFAULT_GUNNERY_SKILL,
+                pilotingSkill: crew[0]?.pilotingSkill ?? DEFAULT_PILOTING_SKILL,
+                commander: parseBoolean(entity.getAttribute('commander')),
+                instanceId: entity.getAttribute('externalId') || undefined,
+            });
+            if (!isCBTForceMember(member)) throw new Error('MUL admission did not create a canonical Classic unit');
+            admitted = member;
+            await applyMulCrew(force, member, crew);
+            await applyMulLocations(force, member, parseEntityLocations(entity), issues);
+        } catch (error) {
+            if (admitted) await force.removeClassicMember(admitted.id);
+            issues.push({ severity: 'error', message: `Could not import ${summary.name}: ${errorMessage(error)}` });
+        }
+    }
+    if (force.getRuntimeInstanceIds().length === 0) {
+        throw new Error(issues.find(issue => issue.severity === 'error')?.message || 'The MUL file did not contain any loadable units.');
+    }
+    return Object.freeze({ force, issues: Object.freeze(issues.map(issue => Object.freeze(issue))) });
 }
 
-function getMulVersion(): string {
-    return `mekbay-${APP_VERSION_STRING}`;
+function createMekEntityElement(
+    doc: XMLDocument,
+    sheet: MekRecordSheetSnapshot,
+    quirks: readonly { readonly key: string; readonly value?: string }[],
+    commander: boolean,
+    instanceId: string,
+    index: number,
+): Element {
+    const entity = doc.createElement('entity');
+    setAttributes(entity, {
+        chassis: sheet.identity.baseChassis,
+        model: sheet.identity.model,
+        type: sheet.movement.motiveType,
+        commander,
+        ...DEFAULT_ENTITY_ATTRIBUTES,
+        externalId: instanceId,
+        quirks: quirks.length === 0 ? undefined : quirks.map(quirk => quirk.value ? `${quirk.key}=${quirk.value}` : quirk.key).join('::'),
+    });
+    appendIndented(entity, doc, createCrewElement(doc, sheet), '\t\t');
+    for (const location of createLocationElements(doc, sheet)) appendIndented(entity, doc, location, '\t\t');
+    const game = doc.createElement('Game');
+    setAttributes(game, { id: index + 1 });
+    appendIndented(entity, doc, game, '\t\t');
+    appendClosingIndent(entity, doc, '\t');
+    return entity;
 }
 
-function getLocationIndex(loc: string): number {
-    return LOCATION_INDEX_BY_LOC.get(loc) ?? 0;
+function createEntityRuntimeElement(
+    doc: XMLDocument,
+    member: CBTForceMember,
+    snapshot: EntityRuntimeSnapshot,
+    commander: boolean,
+    index: number,
+): Element {
+    if (snapshot.state.components.size > 0 || snapshot.state.ammo.size > 0) {
+        throw new Error(
+            `MUL export cannot safely map component state for ${member.summary.name} without family slot rules`,
+        );
+    }
+    const quirks = snapshot.entity.quirks();
+    const entity = doc.createElement('entity');
+    setAttributes(entity, {
+        chassis: member.summary.chassis,
+        model: member.summary.model,
+        type: snapshot.entity.motiveType(),
+        commander,
+        ...DEFAULT_ENTITY_ATTRIBUTES,
+        externalId: member.id,
+        quirks: quirks.length === 0
+            ? undefined
+            : quirks.map(({ quirk, value }) => value ? `${quirk.key}=${value}` : quirk.key).join('::'),
+    });
+    appendIndented(entity, doc, createEntityRuntimeCrewElement(doc, member, snapshot), '\t\t');
+    for (const location of createNonMekRuntimeLocationElements(doc, snapshot)) {
+        appendIndented(entity, doc, location, '\t\t');
+    }
+    const game = doc.createElement('Game');
+    setAttributes(game, { id: index + 1 });
+    appendIndented(entity, doc, game, '\t\t');
+    appendClosingIndent(entity, doc, '\t');
+    return entity;
 }
 
-function getLocationName(loc: string): string {
-    switch (loc) {
-        case 'HD': return 'Head';
-        case 'CT': return 'Center Torso';
-        case 'RT': return 'Right Torso';
-        case 'LT': return 'Left Torso';
-        case 'RA': return 'Right Arm';
-        case 'LA': return 'Left Arm';
-        case 'RL': return 'Right Leg';
-        case 'LL': return 'Left Leg';
-        case 'CL': return 'Center Leg';
-        case 'FRL': return 'Front Right Leg';
-        case 'FLL': return 'Front Left Leg';
-        case 'RRL': return 'Rear Right Leg';
-        case 'RLL': return 'Rear Left Leg';
-        case 'TROOP': return 'Troopers';
-        case 'SI': return 'Structural Integrity';
-        default: return loc;
+function createEntityRuntimeCrewElement(
+    doc: XMLDocument,
+    member: CBTForceMember,
+    snapshot: EntityRuntimeSnapshot,
+): Element {
+    const assignment = member.force.getUnitCrewAssignment(member.id);
+    if (!assignment) throw new Error(`Missing crew assignment for ${member.id}`);
+    const positions = assignment.positions.map(position => {
+        const state = snapshot.state.crew.get(position.positionId);
+        return Object.freeze({
+            ...position,
+            wounds: state?.wounds ?? 0,
+            ejected: state?.ejected ?? false,
+        });
+    });
+    const position = positions[0];
+    const pilot = doc.createElement('pilot');
+    setAttributes(pilot, {
+        size: Math.max(1, positions.length),
+        name: position?.name ?? '',
+        nick: '',
+        gender: 'RANDOMIZE',
+        clanperson: snapshot.entity.techBase() === 'Clan',
+        gunnery: position?.gunnery ?? DEFAULT_GUNNERY_SKILL,
+        piloting: position?.piloting ?? DEFAULT_PILOTING_SKILL,
+        hits: position?.wounds || undefined,
+        ejected: position?.ejected ?? false,
+        externalId: uuidv7(),
+        edge: '',
+        autoeject: true,
+    });
+    return pilot;
+}
+
+function createNonMekRuntimeLocationElements(
+    doc: XMLDocument,
+    snapshot: EntityRuntimeSnapshot,
+): Element[] {
+    const destroyed = snapshot.query.destroyed();
+    return [...snapshot.index.locations.values()].flatMap((location, index) => {
+        const current = snapshot.state.locations.get(location.id);
+        if (!destroyed && !current) return [];
+        const internalRemaining = destroyed
+            ? 0
+            : Math.max(0, location.internalPoints - (current?.internalDamage ?? 0));
+        const changedArmor = location.armorFaceIds.flatMap(faceId => {
+            const face = snapshot.index.armorFaces.get(faceId);
+            if (!face) return [];
+            const damage = destroyed
+                ? face.maximumPoints
+                : current?.armorDamage.find(value => value.faceId === faceId)?.damage ?? 0;
+            return damage === 0 ? [] : [{ face, remaining: Math.max(0, face.maximumPoints - damage) }];
+        });
+        const internalChanged = internalRemaining < location.internalPoints;
+        if (!internalChanged && changedArmor.length === 0) return [];
+        const element = doc.createElement('location');
+        setAttributes(element, {
+            index,
+            isDestroyed: internalRemaining <= 0 || undefined,
+        });
+        element.appendChild(doc.createTextNode(` ${location.code}`));
+        for (const { face, remaining } of changedArmor) {
+            const row = doc.createElement('armor');
+            setAttributes(row, {
+                points: remaining <= 0 ? 'Destroyed' : remaining,
+                type: face.face === 'rear' ? 'Rear' : undefined,
+            });
+            appendIndented(element, doc, row, '\t\t\t');
+        }
+        if (internalChanged) {
+            const row = doc.createElement('armor');
+            setAttributes(row, {
+                points: internalRemaining <= 0 ? 'Destroyed' : internalRemaining,
+                type: 'Internal',
+            });
+            appendIndented(element, doc, row, '\t\t\t');
+        }
+        appendClosingIndent(element, doc, '\t\t');
+        return [element];
+    });
+}
+
+function createCrewElement(doc: XMLDocument, sheet: MekRecordSheetSnapshot): Element {
+    const crewType = getCrewType(sheet);
+    const clanPerson = sheet.identity.techBase === 'Clan';
+    if (crewType !== 'single') {
+        const element = doc.createElement('crew');
+        setAttributes(element, { crewType, ejected: false, edge: '', autoeject: true });
+        for (const member of sheet.crew) {
+            const row = doc.createElement('crewMember');
+            setAttributes(row, {
+                slot: member.occurrence,
+                name: member.name,
+                nick: '',
+                gender: 'RANDOMIZE',
+                clanperson: clanPerson,
+                gunnery: member.gunnery,
+                piloting: member.piloting,
+                hits: member.state.wounds || undefined,
+                ejected: member.state.ejected || undefined,
+                externalId: uuidv7(),
+            });
+            appendIndented(element, doc, row, '\t\t\t');
+        }
+        appendClosingIndent(element, doc, '\t\t');
+        return element;
+    }
+    const member = sheet.crew[0];
+    const element = doc.createElement('pilot');
+    setAttributes(element, {
+        size: 1,
+        name: member?.name ?? '',
+        nick: '',
+        gender: 'RANDOMIZE',
+        clanperson: clanPerson,
+        gunnery: member?.gunnery ?? DEFAULT_GUNNERY_SKILL,
+        piloting: member?.piloting ?? DEFAULT_PILOTING_SKILL,
+        hits: member?.state.wounds || undefined,
+        ejected: member?.state.ejected ?? false,
+        externalId: uuidv7(),
+        edge: '',
+        autoeject: true,
+    });
+    return element;
+}
+
+function createLocationElements(doc: XMLDocument, sheet: MekRecordSheetSnapshot): Element[] {
+    return [...sheet.locations]
+        .sort((a, b) => locationIndex(a.code) - locationIndex(b.code) || a.code.localeCompare(b.code))
+        .flatMap(location => {
+            const slots = sheet.criticalSlots.filter(slot => slot.locationId === location.locationId && slotHasPersistentState(slot));
+            const armor = location.armor.filter(face => face.committedRemaining < face.maximum);
+            const internalChanged = location.committedRemainingInternal < location.maximumInternal;
+            if (!internalChanged && armor.length === 0 && slots.length === 0) return [];
+            const element = doc.createElement('location');
+            setAttributes(element, {
+                index: locationIndex(location.code),
+                isDestroyed: location.committedRemainingInternal <= 0 || undefined,
+            });
+            element.appendChild(doc.createTextNode(` ${locationName(location.code)}`));
+            for (const face of armor) {
+                const row = doc.createElement('armor');
+                setAttributes(row, {
+                    points: face.committedRemaining <= 0 ? 'Destroyed' : face.committedRemaining,
+                    type: face.face === 'rear' ? 'Rear' : undefined,
+                });
+                appendIndented(element, doc, row, '\t\t\t');
+            }
+            if (internalChanged) {
+                const row = doc.createElement('armor');
+                setAttributes(row, {
+                    points: location.committedRemainingInternal <= 0 ? 'Destroyed' : location.committedRemainingInternal,
+                    type: 'Internal',
+                });
+                appendIndented(element, doc, row, '\t\t\t');
+            }
+            for (const slot of slots.sort((a, b) => a.slotIndex - b.slotIndex)) {
+                const component = slot.components[0];
+                const row = doc.createElement('slot');
+                setAttributes(row, {
+                    index: slot.slotIndex + 1,
+                    type: component?.label ?? component?.system ?? 'System',
+                    shots: component?.ammo && component.ammo.remaining < component.ammo.capacity
+                        ? component.ammo.remaining
+                        : undefined,
+                    armorHit: slot.armored && slot.committedHits > 0 ? true : undefined,
+                    isHit: slot.committedHits >= (slot.armored ? 2 : 1) ? true : undefined,
+                    isDestroyed: slot.components.some(value => value.status === 'destroyed') || undefined,
+                });
+                appendIndented(element, doc, row, '\t\t\t');
+            }
+            appendClosingIndent(element, doc, '\t\t');
+            return [element];
+        });
+}
+
+async function applyMulCrew(
+    force: CBTForce,
+    member: CBTForceMember,
+    imported: readonly ParsedMulCrewMember[],
+): Promise<void> {
+    const current = force.getUnitCrewProfile(member.id);
+    if (!current) return;
+    const byOccurrence = new Map(imported.map(value => [value.id, value] as const));
+    const positions = current.positions.map((position, index) => {
+        const value = byOccurrence.get(index);
+        return value ? {
+            ...position,
+            name: value.name,
+            gunnery: value.gunnerySkill,
+            piloting: getEffectivePilotingSkill(member.summary, value.pilotingSkill),
+        } : position;
+    });
+    const replaced = await force.replaceUnitCrewProfile(member.id, {
+        expectedRevision: current.revision,
+        positions,
+    });
+    if (!replaced?.accepted) throw new Error('Crew profile changed while the MUL crew was applied');
+    if (isCBTMekForceMember(member)) {
+        const sheet = requiredSheet(force, member);
+        for (const position of sheet.crew) {
+            const value = byOccurrence.get(position.occurrence);
+            if (!value || (value.hits === 0 && !value.ejected)) continue;
+            await dispatchMek(force, member, {
+                type: 'set-crew-state',
+                positionId: position.positionId,
+                wounds: Math.max(0, Math.min(6, value.hits)),
+                unconscious: false,
+                ejected: value.ejected,
+            });
+        }
+        return;
+    }
+    const snapshot = requiredEntitySnapshot(force, member);
+    for (const position of snapshot.index.crewPositions.values()) {
+        const value = byOccurrence.get(position.occurrence);
+        if (!value || (value.hits === 0 && !value.ejected)) continue;
+        await dispatchEntity(force, member, {
+            kind: 'set-crew-state',
+            positionId: position.id,
+            wounds: Math.max(0, Math.min(6, value.hits)),
+            unconscious: false,
+            ejected: value.ejected,
+        });
     }
 }
 
-function getArmorLocationKey(loc: string, rear: boolean): string {
-    return rear ? `${loc}-rear` : loc;
-}
-
-function getRemainingPoints(total: number | undefined, hits: number | undefined): number | null {
-    if (total === undefined || total <= 0) {
-        return null;
+async function applyMulLocations(
+    force: CBTForce,
+    member: CBTForceMember,
+    locations: readonly ParsedMulLocation[],
+    issues: MulParseIssue[],
+): Promise<void> {
+    if (!isCBTMekForceMember(member)) {
+        await applyMulEntityLocations(force, member, locations, issues);
+        return;
     }
-    const remaining = Math.max(0, total - (hits ?? 0));
-    return remaining < total ? remaining : null;
-}
-
-function formatMulArmor(points: number | null): string | null {
-    if (points === null) {
-        return null;
+    for (const imported of locations) {
+        const sheet = requiredSheet(force, member);
+        const location = sheet.locations.find(value => value.code === imported.loc);
+        if (!location) {
+            issues.push({ severity: 'warning', message: `MUL location ${imported.loc} does not exist on ${sheet.identity.displayName}.` });
+            continue;
+        }
+        await applyRemainingArmor(force, member, location, 'front', imported.destroyed ? 'Destroyed' : imported.armor);
+        await applyRemainingArmor(force, member, location, 'rear', imported.destroyed ? 'Destroyed' : imported.rearArmor);
+        await applyRemainingInternal(force, member, location, imported.destroyed ? 'Destroyed' : imported.internal);
+        for (const importedSlot of imported.slots) {
+            const current = requiredSheet(force, member);
+            const slot = current.criticalSlots.find(value => value.locationCode === importedSlot.loc && value.slotIndex === importedSlot.slot);
+            if (!slot) {
+                issues.push({ severity: 'warning', message: `MUL slot ${importedSlot.loc} #${importedSlot.slot + 1} (${importedSlot.type}) did not match a published critical slot on ${current.identity.displayName}.` });
+                continue;
+            }
+            const labels = slot.components.flatMap(value => [value.label, value.system]).filter((value): value is string => !!value);
+            if (labels.length > 0 && !labels.includes(importedSlot.type)) {
+                issues.push({ severity: 'warning', message: `MUL slot ${importedSlot.loc} #${importedSlot.slot + 1} has type "${importedSlot.type}"; using published component "${labels[0]}".` });
+            }
+            const desiredHits = importedSlot.armorHit ? (importedSlot.hit ? 2 : 1) : importedSlot.hit ? 1 : 0;
+            if (desiredHits > slot.committedHits) {
+                await dispatchMek(force, member, {
+                    type: 'hit-critical', slotId: slot.slotId, hits: desiredHits - slot.committedHits, target: 'committed',
+                });
+            }
+            const ammo = slot.components.find(value => value.ammo)?.ammo;
+            const ammoComponent = slot.components.find(value => value.ammo);
+            if (ammo && ammoComponent && importedSlot.shots !== undefined) {
+                await dispatchMek(force, member, {
+                    type: 'configure-ammo-source',
+                    componentId: ammoComponent.componentId,
+                    munitionKey: ammo.munitionKey,
+                    remaining: Math.max(0, Math.min(ammo.capacity, importedSlot.shots)),
+                });
+            }
+            if (importedSlot.destroyed) {
+                for (const component of slot.components.filter(value => value.status !== 'destroyed')) {
+                    await dispatchMek(force, member, {
+                        type: 'set-component-status',
+                        componentId: component.componentId,
+                        status: 'destroyed',
+                        target: 'committed',
+                    });
+                }
+            }
+        }
     }
-    return points <= 0 ? 'Destroyed' : String(points);
 }
 
-function getConsumedAmmoFromRemaining(totalAmmo: number | undefined, shots: number | undefined): number | undefined {
-    if (totalAmmo === undefined || totalAmmo <= 0 || shots === undefined || shots < 0) {
-        return undefined;
+async function applyMulEntityLocations(
+    force: CBTForce,
+    member: CBTForceMember,
+    locations: readonly ParsedMulLocation[],
+    issues: MulParseIssue[],
+): Promise<void> {
+    for (const imported of locations) {
+        const snapshot = requiredEntitySnapshot(force, member);
+        const location = [...snapshot.index.locations.values()][imported.index];
+        if (!location) {
+            issues.push({
+                severity: 'warning',
+                message: `MUL location index ${imported.index} does not exist on ${member.summary.name}.`,
+            });
+            continue;
+        }
+        const front = location.armorFaceIds
+            .map(id => snapshot.index.armorFaces.get(id))
+            .find(face => face?.face === 'front');
+        const rear = location.armorFaceIds
+            .map(id => snapshot.index.armorFaces.get(id))
+            .find(face => face?.face === 'rear');
+        const destroyed = imported.destroyed ? 'Destroyed' as const : undefined;
+        if (front) {
+            await applyEntityRemainingArmor(
+                force,
+                member,
+                front.id,
+                front.maximumPoints,
+                destroyed ?? imported.armor,
+            );
+        }
+        if (rear) {
+            await applyEntityRemainingArmor(
+                force,
+                member,
+                rear.id,
+                rear.maximumPoints,
+                destroyed ?? imported.rearArmor,
+            );
+        }
+        await applyEntityRemainingInternal(
+            force,
+            member,
+            location.id,
+            location.internalPoints,
+            destroyed ?? imported.internal,
+        );
+        if (imported.slots.length > 0) {
+            issues.push({
+                severity: 'warning',
+                message: `MUL critical slots for ${member.summary.name} ${location.code} require family slot rules and were not applied.`,
+            });
+        }
     }
-    return Math.max(0, totalAmmo - shots);
 }
 
-function isModularArmorCrit(crit: CriticalSlot): boolean {
-    return crit.eq?.flags?.has('F_MODULAR_ARMOR') === true;
+async function applyEntityRemainingArmor(
+    force: CBTForce,
+    member: CBTForceMember,
+    faceId: ArmorFaceId,
+    maximum: number,
+    remaining: number | 'Destroyed' | undefined,
+): Promise<void> {
+    if (remaining === undefined) return;
+    const desired = remaining === 'Destroyed' ? 0 : Math.max(0, Math.min(maximum, remaining));
+    await dispatchEntity(force, member, {
+        kind: 'set-armor-damage',
+        faceId,
+        damage: maximum - desired,
+    });
 }
 
-function hasArmorHitToSave(crit: CriticalSlot): boolean {
-    return crit.armored === true && (crit.hits ?? 0) > 0;
+async function applyEntityRemainingInternal(
+    force: CBTForce,
+    member: CBTForceMember,
+    locationId: LocationId,
+    maximum: number,
+    remaining: number | 'Destroyed' | undefined,
+): Promise<void> {
+    if (remaining === undefined) return;
+    const desired = remaining === 'Destroyed' ? 0 : Math.max(0, Math.min(maximum, remaining));
+    await dispatchEntity(force, member, {
+        kind: 'set-internal-damage',
+        locationId,
+        damage: maximum - desired,
+    });
 }
 
-function hasSlotHitToSave(crit: CriticalSlot): boolean {
-    return crit.armored === true ? (crit.hits ?? 0) >= 2 : (crit.hits ?? 0) > 0;
+async function applyRemainingArmor(
+    force: CBTForce,
+    member: CBTMekForceMember,
+    location: MekRecordSheetLocation,
+    face: 'front' | 'rear',
+    remaining: number | 'Destroyed' | undefined,
+): Promise<void> {
+    if (remaining === undefined) return;
+    const target = location.armor.find(value => value.face === face);
+    if (!target) return;
+    const desired = remaining === 'Destroyed' ? 0 : Math.max(0, Math.min(target.maximum, remaining));
+    const amount = target.committedRemaining - desired;
+    if (amount > 0) await dispatchMek(force, member, { type: 'damage-armor', faceId: target.faceId, amount, target: 'committed' });
 }
 
-function parseArmorPoints(raw: string | null): number | 'Destroyed' | undefined {
-    if (!raw) {
-        return undefined;
+async function applyRemainingInternal(
+    force: CBTForce,
+    member: CBTMekForceMember,
+    location: MekRecordSheetLocation,
+    remaining: number | 'Destroyed' | undefined,
+): Promise<void> {
+    if (remaining === undefined) return;
+    const desired = remaining === 'Destroyed' ? 0 : Math.max(0, Math.min(location.maximumInternal, remaining));
+    const amount = location.committedRemainingInternal - desired;
+    if (amount > 0) await dispatchMek(force, member, { type: 'damage-internal', locationId: location.locationId, amount, target: 'committed' });
+}
+
+async function dispatchMek(
+    force: CBTForce,
+    member: CBTMekForceMember,
+    command: MulUnitCommand,
+): Promise<void> {
+    const snapshot = force.getUnitSnapshot(member.id);
+    if (!snapshot || !hasMekRuntime(snapshot)) {
+        throw new Error(`Missing canonical runtime ${member.id}`);
     }
-    if (raw.toLocaleLowerCase() === 'destroyed') {
-        return 'Destroyed';
+    const result = await force.dispatchMekUnitCommand(member.id, {
+        ...command,
+        commandId: createCommandId(),
+        expectedRevision: snapshot.state.stateRevision,
+    } as CBTUnitCommand);
+    if (!result.accepted) throw new Error(`MUL command ${command.type} was rejected: ${result.reason}`);
+}
+
+async function dispatchEntity(
+    force: CBTForce,
+    member: CBTForceMember,
+    command: MulEntityCommand,
+): Promise<void> {
+    const snapshot = requiredEntitySnapshot(force, member);
+    const result = await force.dispatchNonMekUnitCommand(member.id, {
+        ...command,
+        expectedRevision: snapshot.state.stateRevision,
+    } as NonMekUnitCommand);
+    if (!result.accepted) {
+        throw new Error(`MUL command ${command.kind} was rejected: ${result.reason}`);
     }
-    const value = Number.parseInt(raw, 10);
-    return Number.isFinite(value) ? value : undefined;
 }
 
-function parseNumber(raw: string | null, fallback: number): number {
-    if (raw === null || raw === '') {
-        return fallback;
+function requiredSheet(force: CBTForce, member: CBTMekForceMember): MekRecordSheetSnapshot {
+    const sheet = force.getMekRecordSheetSnapshot(member.id);
+    if (!sheet) throw new Error(`Missing canonical record-sheet projection ${member.id}`);
+    return sheet;
+}
+
+function requiredEntitySnapshot(
+    force: CBTForce,
+    member: CBTForceMember,
+): EntityRuntimeSnapshot {
+    const snapshot = force.getUnitSnapshot(member.id);
+    if (!snapshot || !hasNonMekRuntime(snapshot)) {
+        throw new Error(`Missing canonical Entity runtime ${member.id}`);
     }
-    const value = Number.parseInt(raw, 10);
-    return Number.isFinite(value) ? value : fallback;
+    return snapshot;
 }
 
-function parseBoolean(raw: string | null): boolean {
-    return raw === 'true' || raw === '1';
+function slotHasPersistentState(slot: MekRecordSheetCriticalSlot): boolean {
+    return slot.committedHits > 0 || slot.components.some(component =>
+        component.status !== 'available' || (component.ammo !== undefined && component.ammo.remaining < component.ammo.capacity));
 }
 
-function createUnitLookup(units: readonly Unit[]): Map<string, Unit> {
-    const lookup = new Map<string, Unit>();
+function getCrewType(sheet: MekRecordSheetSnapshot): MulCrewType {
+    const cockpit = sheet.identity.cockpit.toLowerCase();
+    if (cockpit.includes('command console')) return 'command_console';
+    if (cockpit.includes('dual')) return 'dual';
+    if (sheet.identity.form === 'quadvee') return 'quadvee';
+    if (sheet.identity.form === 'tripod') return sheet.identity.massTons >= 100 ? 'superheavy_tripod' : 'tripod';
+    return 'single';
+}
+
+function parseMulDocument(xmlText: string): XMLDocument {
+    const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+    const parserError = doc.querySelector('parsererror');
+    if (parserError) throw new Error(parserError.textContent?.trim() || 'Invalid MUL XML file.');
+    if (!doc.documentElement || (doc.documentElement.tagName !== 'unit' && doc.documentElement.tagName !== 'record')) {
+        throw new Error('Invalid MUL file: missing <unit> or <record> root.');
+    }
+    return doc;
+}
+
+function getMulEntityElements(doc: XMLDocument): Element[] {
+    const root = doc.documentElement;
+    const rows = root.tagName === 'record'
+        ? ['survivors', 'salvage'].flatMap(section => Array.from(root.querySelectorAll(`:scope > ${section} > entity`)))
+        : Array.from(root.querySelectorAll(':scope > entity'));
+    return rows.filter(entity => entity.getAttribute('chassis') !== 'Pilot');
+}
+
+function parseEntityCrew(entity: Element): ParsedMulCrewMember[] {
+    const crew = entity.querySelector(':scope > crew');
+    const rows = crew
+        ? Array.from(crew.querySelectorAll(':scope > crewMember'))
+        : [entity.querySelector(':scope > pilot')].filter((value): value is Element => value !== null);
+    if (rows.length === 0) return [{ id: 0, name: '', gunnerySkill: 4, pilotingSkill: 5, hits: 0, ejected: false }];
+    return rows.map((row, index) => ({
+        id: parseNumber(row.getAttribute('slot'), index),
+        name: row.getAttribute('name') ?? '',
+        gunnerySkill: parseNumber(row.getAttribute('gunnery'), DEFAULT_GUNNERY_SKILL),
+        pilotingSkill: parseNumber(row.getAttribute('piloting'), DEFAULT_PILOTING_SKILL),
+        hits: parseNumber(row.getAttribute('hits'), 0),
+        ejected: parseBoolean(row.getAttribute('ejected')),
+    }));
+}
+
+function parseEntityLocations(entity: Element): ParsedMulLocation[] {
+    return Array.from(entity.querySelectorAll(':scope > location')).map(location => {
+        const index = Math.max(0, parseNumber(location.getAttribute('index'), 0));
+        const parsed: ParsedMulLocation = {
+            index,
+            loc: CODE_BY_LOCATION_INDEX.get(index) ?? '',
+            destroyed: parseBoolean(location.getAttribute('isDestroyed')),
+            slots: [],
+        };
+        for (const armor of Array.from(location.querySelectorAll(':scope > armor'))) {
+            const points = parseArmorPoints(armor.getAttribute('points'));
+            if (armor.getAttribute('type') === 'Rear') parsed.rearArmor = points;
+            else if (armor.getAttribute('type') === 'Internal') parsed.internal = points;
+            else parsed.armor = points;
+        }
+        parsed.slots = Array.from(location.querySelectorAll(':scope > slot')).map(slot => ({
+            loc: parsed.loc,
+            slot: Math.max(0, parseNumber(slot.getAttribute('index'), 1) - 1),
+            type: slot.getAttribute('type') ?? 'System',
+            shots: slot.hasAttribute('shots') ? parseNumber(slot.getAttribute('shots'), 0) : undefined,
+            armorHit: slot.hasAttribute('armorHit') ? parseBoolean(slot.getAttribute('armorHit')) : undefined,
+            hit: parseBoolean(slot.getAttribute('isHit')),
+            destroyed: parseBoolean(slot.getAttribute('isDestroyed')),
+        }));
+        return parsed;
+    });
+}
+
+function createUnitLookup(units: readonly UnitSummary[]): Map<string, UnitSummary> {
+    const result = new Map<string, UnitSummary>();
     for (const unit of units) {
-        const displayKey = getUnitLookupKey(unit.chassis, unit.model);
-        const nameKey = normalizeUnitLookup(unit.name);
-        if (!lookup.has(displayKey)) {
-            lookup.set(displayKey, unit);
-        }
-        if (!lookup.has(nameKey)) {
-            lookup.set(nameKey, unit);
+        for (const key of [unitLookupKey(unit.chassis, unit.model), normalizeUnitLookup(unit.name)]) {
+            if (!result.has(key)) result.set(key, unit);
         }
     }
-    return lookup;
+    return result;
 }
 
-function getUnitLookupKey(chassis: string, model: string): string {
+function unitLookupKey(chassis: string, model: string): string {
     return normalizeUnitLookup(`${chassis} ${model}`.trim());
 }
 
 function normalizeUnitLookup(value: string): string {
-    return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+    return value.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
-function setAttributes(element: Element, attributes: Record<string, string | number | boolean | null | undefined>): void {
-    for (const [name, value] of Object.entries(attributes)) {
-        if (value === undefined || value === null) {
-            continue;
-        }
-        element.setAttribute(name, String(value));
-    }
+function parseArmorPoints(value: string | null): number | 'Destroyed' | undefined {
+    if (!value) return undefined;
+    if (value.toLowerCase() === 'destroyed') return 'Destroyed';
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseNumber(value: string | null, fallback: number): number {
+    const parsed = value === null || value === '' ? Number.NaN : Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseBoolean(value: string | null): boolean {
+    return value === 'true' || value === '1';
+}
+
+function locationIndex(code: string): number {
+    return LOCATION_INDEX_BY_CODE.get(code) ?? 0;
+}
+
+function locationName(code: string): string {
+    return ({ HD: 'Head', CT: 'Center Torso', RT: 'Right Torso', LT: 'Left Torso', RA: 'Right Arm', LA: 'Left Arm', RL: 'Right Leg', LL: 'Left Leg', CL: 'Center Leg', FRL: 'Front Right Leg', FLL: 'Front Left Leg', RRL: 'Rear Right Leg', RLL: 'Rear Left Leg' } as Record<string, string>)[code] ?? code;
+}
+
+function setAttributes(element: Element, attributes: Readonly<Record<string, string | number | boolean | null | undefined>>): void {
+    for (const [name, value] of Object.entries(attributes)) if (value !== undefined && value !== null) element.setAttribute(name, String(value));
 }
 
 function appendIndented(parent: Node, doc: XMLDocument, child: Node, indent: string): void {
@@ -275,599 +878,6 @@ function appendClosingIndent(parent: Node, doc: XMLDocument, indent: string): vo
     parent.appendChild(doc.createTextNode(`\n${indent}`));
 }
 
-function createCrewElement(doc: XMLDocument, unit: CBTForceUnit): Element {
-    const baseUnit = unit.getUnit();
-    const crew = unit.getCrewMembers();
-    const crewType = getCrewType(baseUnit);
-    const clanPerson = getUnitClanPerson(baseUnit);
-    if (crewType !== 'single') {
-        const crewElement = doc.createElement('crew');
-        setAttributes(crewElement, {
-            crewType,
-            ejected: false,
-            edge: '',
-            autoeject: true,
-        });
-        const expectedCrewSlots = getExpectedCrewSlots(crewType);
-        for (const crewMember of crew.filter(member => member.getId() < expectedCrewSlots)) {
-            const crewMemberElement = doc.createElement('crewMember');
-            setAttributes(crewMemberElement, {
-                slot: crewMember.getId(),
-                name: crewMember.getName(),
-                nick: '',
-                gender: 'RANDOMIZE',
-                clanperson: clanPerson,
-                gunnery: crewMember.getSkill('gunnery'),
-                piloting: crewMember.getSkill('piloting'),
-                externalId: uuidv7(),
-            });
-            appendIndented(crewElement, doc, crewMemberElement, '\t\t\t');
-        }
-        appendClosingIndent(crewElement, doc, '\t\t');
-        return crewElement;
-    }
-
-    const pilot = crew[0];
-    const pilotElement = doc.createElement('pilot');
-    setAttributes(pilotElement, {
-        size: 1,
-        name: pilot?.getName() ?? '',
-        nick: '',
-        gender: 'RANDOMIZE',
-        clanperson: clanPerson,
-        gunnery: pilot?.getSkill('gunnery') ?? DEFAULT_GUNNERY_SKILL,
-        piloting: pilot?.getSkill('piloting') ?? DEFAULT_PILOTING_SKILL,
-        externalId: uuidv7(),
-        ejected: false,
-        edge: '',
-        autoeject: true,
-    });
-    return pilotElement;
-}
-
-function getCrewType(unit: Unit): MulCrewType {
-    const type = String(unit.type).toLocaleLowerCase();
-    const subtype = String(unit.subtype).toLocaleLowerCase();
-    const features = unit.features.map(feature => feature.toLocaleLowerCase());
-    const components = unit.comp.map(component => `${component.id} ${component.n}`.toLocaleLowerCase());
-
-    if (unit.crewSize <= 0 || unit.type === 'Handheld Weapon' || subtype === 'handheld weapon') {
-        return 'none';
-    }
-    if (type.includes('building') || subtype.includes('building')) {
-        return 'building';
-    }
-    if (features.some(feature => feature.includes('command console'))
-        || components.some(component => component.includes('command console'))) {
-        return 'command_console';
-    }
-    if (subtype.includes('quadvee')) {
-        return 'quadvee';
-    }
-    if (unit.moveType === 'Tripod' || subtype.includes('tripod')) {
-        if (unit.tons >= 100) {
-            return 'superheavy_tripod';
-        }
-        return 'tripod';
-    }
-    if (features.some(feature => feature.includes('dual cockpit'))
-        || components.some(component => component.includes('dual cockpit'))) {
-        return 'dual';
-    }
-    if (unit.type === 'Infantry') {
-        return 'infantry_crew';
-    }
-    if (subtype.includes('dropship') || subtype.includes('small craft') || subtype.includes('jumpship')
-        || subtype.includes('warship') || subtype.includes('space station')) {
-        return 'vessel';
-    }
-    if (unit.type === 'Tank' || unit.type === 'VTOL' || unit.type === 'Naval'
-        || subtype.includes('support vehicle') || subtype.includes('combat vehicle')
-        || subtype.includes('hovercraft') || subtype.includes('submarine') || subtype.includes('naval vessel')) {
-        return 'crew';
-    }
-    if (unit.crewSize === 2) {
-        return 'dual';
-    }
-    return 'single';
-}
-
-function getExpectedCrewSlots(crewType: MulCrewType): number {
-    switch (crewType) {
-        case 'tripod':
-        case 'quadvee':
-        case 'dual':
-        case 'command_console':
-            return 2;
-        case 'superheavy_tripod':
-            return 3;
-        case 'none':
-            return 0;
-        default:
-            return 1;
-    }
-}
-
-function createLocationElements(doc: XMLDocument, unit: CBTForceUnit): Element[] {
-    const elements: Element[] = [];
-    const baseUnit = unit.getUnit();
-    const locations = unit.getLocations();
-    const crits = unit.getCritSlots();
-    const groupedCrits = new Map<string, CriticalSlot[]>();
-    for (const crit of crits) {
-        if (!crit.loc || crit.slot === undefined) {
-            continue;
-        }
-        const meaningful = !!crit.destroyed || (crit.hits ?? 0) > 0 || (crit.consumed ?? 0) > 0;
-        if (!meaningful) {
-            continue;
-        }
-        const locCrits = groupedCrits.get(crit.loc) ?? [];
-        locCrits.push(crit);
-        groupedCrits.set(crit.loc, locCrits);
-    }
-
-    const locs = new Set<string>();
-    for (const key of Object.keys(locations)) {
-        locs.add(key.replace(/-rear$/, ''));
-    }
-    for (const loc of groupedCrits.keys()) {
-        locs.add(loc);
-    }
-
-    for (const loc of Array.from(locs).sort((a, b) => getLocationIndex(a) - getLocationIndex(b) || a.localeCompare(b))) {
-        const locationElement = doc.createElement('location');
-        setAttributes(locationElement, { index: getLocationIndex(loc) });
-        locationElement.appendChild(doc.createTextNode(` ${getLocationName(loc)}`));
-        const armorInfo = unit.locations?.armor.get(loc);
-        const rearArmorInfo = unit.locations?.armor.get(`${loc}-rear`);
-        const internalInfo = unit.locations?.internal.get(loc);
-        const armorPoints = formatMulArmor(getRemainingPoints(armorInfo?.points, locations[getArmorLocationKey(loc, false)]?.armor));
-        const rearArmorPoints = formatMulArmor(getRemainingPoints(rearArmorInfo?.points, locations[getArmorLocationKey(loc, true)]?.armor));
-        const internalPoints = formatMulArmor(getRemainingPoints(internalInfo?.points, locations[loc]?.internal));
-
-        if (internalPoints === 'Destroyed') {
-            setAttributes(locationElement, { isDestroyed: true });
-        }
-
-        if (armorPoints !== null) {
-            const armorElement = doc.createElement('armor');
-            setAttributes(armorElement, { points: armorPoints });
-            appendIndented(locationElement, doc, armorElement, '\t\t\t');
-        }
-        if (rearArmorPoints !== null) {
-            const armorElement = doc.createElement('armor');
-            setAttributes(armorElement, { points: rearArmorPoints, type: 'Rear' });
-            appendIndented(locationElement, doc, armorElement, '\t\t\t');
-        }
-        if (internalPoints !== null) {
-            const armorElement = doc.createElement('armor');
-            setAttributes(armorElement, { points: internalPoints, type: 'Internal' });
-            appendIndented(locationElement, doc, armorElement, '\t\t\t');
-        }
-
-        for (const crit of (groupedCrits.get(loc) ?? []).sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0))) {
-            const type = crit.originalName || crit.name || 'System';
-            const slotElement = doc.createElement('slot');
-            setAttributes(slotElement, {
-                index: (crit.slot ?? 0) + 1,
-                type,
-            });
-            if (crit.totalAmmo !== undefined) {
-                const remainingAmmo = Math.max(0, crit.totalAmmo - (crit.consumed ?? 0));
-                setAttributes(slotElement, { shots: remainingAmmo });
-            }
-            if (isModularArmorCrit(crit) && (crit.consumed ?? 0) > 0) {
-                setAttributes(slotElement, { damageTaken: Math.max(0, crit.consumed ?? 0) });
-            }
-            if (hasArmorHitToSave(crit)) {
-                setAttributes(slotElement, { armorHit: true });
-            }
-            if (hasSlotHitToSave(crit)) {
-                setAttributes(slotElement, { isHit: true });
-            }
-            if (crit.destroyed) {
-                setAttributes(slotElement, { isDestroyed: true });
-            }
-            appendIndented(locationElement, doc, slotElement, '\t\t\t');
-        }
-
-        if (locationElement.childElementCount === 0) {
-            continue;
-        }
-
-        appendClosingIndent(locationElement, doc, '\t\t');
-        elements.push(locationElement);
-    }
-
-    return elements;
-}
-
-function createEntityElement(doc: XMLDocument, forceUnit: CBTForceUnit, index: number): Element {
-    const unit = forceUnit.getUnit();
-    const entityElement = doc.createElement('entity');
-    setAttributes(entityElement, {
-        chassis: unit.chassis,
-        model: unit.model,
-        type: unit.moveType,
-        commander: forceUnit.commander(),
-        ...DEFAULT_ENTITY_ATTRIBUTES,
-        externalId: forceUnit.id,
-        quirks: unit.quirks.length > 0 ? unit.quirks.join('::') : undefined,
-    });
-
-    appendIndented(entityElement, doc, createCrewElement(doc, forceUnit), '\t\t');
-    const locationElements = createLocationElements(doc, forceUnit);
-    if (locationElements.length > 0) {
-        entityElement.appendChild(doc.createTextNode('\n\t\tThe first slot in a location is at index="1".'));
-        for (const locationElement of locationElements) {
-            appendIndented(entityElement, doc, locationElement, '\t\t');
-        }
-    }
-
-    const gameElement = doc.createElement('Game');
-    setAttributes(gameElement, { id: index + 1 });
-    appendIndented(entityElement, doc, gameElement, '\t\t');
-    appendClosingIndent(entityElement, doc, '\t');
-    return entityElement;
-}
-
-export async function serializeForceToMul(force: CBTForce): Promise<string> {
-    if (force.gameSystem !== GameSystem.CLASSIC) {
-        throw new Error('MUL export is only available for Classic BattleTech forces.');
-    }
-
-    for (const unit of force.units()) {
-        await unit.load();
-    }
-
-    const doc = document.implementation.createDocument('', 'unit');
-    const root = doc.documentElement;
-    setAttributes(root, { version: getMulVersion() });
-
-    force.units().forEach((forceUnit, index) => {
-        appendIndented(root, doc, createEntityElement(doc, forceUnit, index), '\t');
-        root.appendChild(doc.createTextNode('\n'));
-    });
-    appendClosingIndent(root, doc, '');
-
-    return `<?xml version="1.0" encoding="UTF-8"?>\n\n${new XMLSerializer().serializeToString(doc)}`;
-}
-
-export async function exportForceToMul(force: CBTForce): Promise<void> {
-    const xml = await serializeForceToMul(force);
-    downloadTextFile(`${sanitizeMulFilename(force.name)}.mul`, xml);
-}
-
-function parseMulDocument(xmlText: string): XMLDocument {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(xmlText, 'application/xml');
-    const parserError = doc.querySelector('parsererror');
-    if (parserError) {
-        throw new Error(parserError.textContent?.trim() || 'Invalid MUL XML file.');
-    }
-
-    const root = doc.documentElement;
-    if (!root || (root.tagName !== 'unit' && root.tagName !== 'record')) {
-        throw new Error('Invalid MUL file: missing <unit> or <record> root.');
-    }
-    return doc;
-}
-
-function getMulEntityElements(doc: XMLDocument): Element[] {
-    const root = doc.documentElement;
-    const entities = root.tagName === 'record'
-        ? ['survivors', 'salvage'].flatMap(section => Array.from(root.querySelectorAll(`:scope > ${section} > entity`)))
-        : Array.from(root.querySelectorAll(':scope > entity'));
-    return entities.filter(entity => entity.getAttribute('chassis') !== 'Pilot');
-}
-
-export async function parseMulForce(
-    xmlText: string,
-    forceName: string,
-    dataService: DataService,
-    unitInitializer: UnitInitializerService,
-    injector: Injector,
-): Promise<MulParseResult> {
-    const doc = parseMulDocument(xmlText);
-    const issues: MulParseIssue[] = [];
-    const unitLookup = createUnitLookup(dataService.getUnits());
-    const force = new CBTForce(forceName || 'Imported MUL Force', dataService, unitInitializer, injector);
-    const entities = getMulEntityElements(doc);
-
-    force.loading = true;
-    try {
-        for (const entity of entities) {
-            const chassis = entity.getAttribute('chassis') ?? '';
-            const model = entity.getAttribute('model') ?? '';
-            const unit = unitLookup.get(getUnitLookupKey(chassis, model));
-            if (!unit) {
-                issues.push({ severity: 'error', message: `Unit "${[chassis, model].filter(Boolean).join(' ')}" was not found.` });
-                continue;
-            }
-
-            const forceUnit = force.addUnit(unit);
-            forceUnit.id = entity.getAttribute('externalId') || forceUnit.id;
-            await forceUnit.load();
-            const disabledSaving = forceUnit.disabledSaving;
-            const parsedLocations = parseEntityLocations(entity);
-            forceUnit.disabledSaving = true;
-            try {
-                forceUnit.setFormationCommander(parseBoolean(entity.getAttribute('commander')), false);
-                applyMulCrewToUnit(forceUnit, parseEntityCrew(entity));
-                applyMulSlotsToCritSlots(forceUnit, parsedLocations, issues);
-                forceUnit.setLocations(createLocationsFromMul(forceUnit, parsedLocations), true);
-                forceUnit.svgService?.forceRepaint(); // Force SVG update to reflect changes
-            } finally {
-                forceUnit.disabledSaving = disabledSaving;
-            }
-        }
-    } finally {
-        force.loading = false;
-    }
-    if (force.units().length === 0) {
-        throw new Error(issues.find(issue => issue.severity === 'error')?.message || 'The MUL file did not contain any loadable units.');
-    }
-    return {
-        force,
-        issues,
-    };
-}
-
-function parseEntityCrew(entity: Element): ParsedMulCrewMember[] {
-    const crewElement = entity.querySelector(':scope > crew');
-    if (crewElement) {
-        const members = Array.from(crewElement.querySelectorAll(':scope > crewMember'));
-        return members.map((member, index) => ({
-            id: parseNumber(member.getAttribute('slot'), index),
-            name: member.getAttribute('name') ?? '',
-            gunnerySkill: parseNumber(member.getAttribute('gunnery'), DEFAULT_GUNNERY_SKILL),
-            pilotingSkill: parseNumber(member.getAttribute('piloting'), DEFAULT_PILOTING_SKILL),
-            hits: parseNumber(member.getAttribute('hits'), 0),
-            state: parseBoolean(member.getAttribute('ejected')) ? 1 : 0,
-        }));
-    }
-
-    const pilot = entity.querySelector(':scope > pilot');
-    if (!pilot) {
-        return [{ id: 0, name: '', gunnerySkill: DEFAULT_GUNNERY_SKILL, pilotingSkill: DEFAULT_PILOTING_SKILL, hits: 0, state: 0 }];
-    }
-
-    return [{
-        id: 0,
-        name: pilot.getAttribute('name') ?? '',
-        gunnerySkill: parseNumber(pilot.getAttribute('gunnery'), DEFAULT_GUNNERY_SKILL),
-        pilotingSkill: parseNumber(pilot.getAttribute('piloting'), DEFAULT_PILOTING_SKILL),
-        hits: parseNumber(pilot.getAttribute('hits'), 0),
-        state: parseBoolean(pilot.getAttribute('ejected')) ? 1 : 0,
-    }];
-}
-
-function parseEntityLocations(entity: Element): ParsedMulLocation[] {
-    return Array.from(entity.querySelectorAll(':scope > location')).map(location => {
-        const loc = LOC_BY_LOCATION_INDEX.get(parseNumber(location.getAttribute('index'), 0)) ?? '';
-        const parsed: ParsedMulLocation = { loc, destroyed: parseBoolean(location.getAttribute('isDestroyed')), slots: [] };
-        for (const armor of Array.from(location.querySelectorAll(':scope > armor'))) {
-            const type = armor.getAttribute('type');
-            const points = parseArmorPoints(armor.getAttribute('points'));
-            if (type === 'Rear') {
-                parsed.rearArmor = points;
-            } else if (type === 'Internal') {
-                parsed.internal = points;
-            } else {
-                parsed.armor = points;
-            }
-        }
-        parsed.slots = Array.from(location.querySelectorAll(':scope > slot')).map(slot => ({
-            loc,
-            slot: Math.max(0, parseNumber(slot.getAttribute('index'), 1) - 1),
-            type: slot.getAttribute('type') ?? 'System',
-            shots: slot.hasAttribute('shots') ? parseNumber(slot.getAttribute('shots'), 0) : undefined,
-            damageTaken: slot.hasAttribute('damageTaken') ? parseNumber(slot.getAttribute('damageTaken'), 0) : undefined,
-            armorHit: slot.hasAttribute('armorHit') ? parseBoolean(slot.getAttribute('armorHit')) : undefined,
-            hit: parseBoolean(slot.getAttribute('isHit')),
-            destroyed: parseBoolean(slot.getAttribute('isDestroyed')),
-            repairable: slot.hasAttribute('isRepairable') ? parseBoolean(slot.getAttribute('isRepairable')) : undefined,
-        }));
-        return parsed;
-    }).filter(location => location.loc);
-}
-
-function applyMulCrewToUnit(unit: CBTForceUnit, crew: readonly ParsedMulCrewMember[]): void {
-    for (const member of crew) {
-        const existing = unit.getCrewMember(member.id);
-        if (existing) {
-            existing.update(member);
-            unit.setCrewMember(member.id, existing);
-            continue;
-        }
-        unit.setCrewMember(member.id, CrewMember.deserialize(member, unit));
-    }
-}
-
-function applyMulSlotsToCritSlots(
-    unit: CBTForceUnit,
-    parsedLocations: readonly ParsedMulLocation[],
-    issues: MulParseIssue[],
-): void {
-    const crits = [...unit.getCritSlots()];
-    const now = Date.now();
-    let changed = false;
-
-    for (const parsedLocation of parsedLocations) {
-        for (const slot of parsedLocation.slots) {
-            const crit = crits.find(candidate => candidate.loc === slot.loc && candidate.slot === slot.slot);
-            if (!crit) {
-                issues.push({
-                    severity: 'warning',
-                    message: `MUL slot ${slot.loc} #${slot.slot + 1} (${slot.type}) did not match a critical slot on ${unit.getUnit().chassis} ${unit.getUnit().model}.`,
-                });
-                continue;
-            }
-
-            warnOnMulSlotTypeMismatch(unit, slot, crit, issues);
-            changed = applyMulSlotToCritSlot(crit, slot, now) || changed;
-        }
-    }
-
-    if (changed) {
-        unit.setCritSlots(crits, true);
-    }
-}
-
-function warnOnMulSlotTypeMismatch(
-    unit: CBTForceUnit,
-    slot: ParsedMulSlot,
-    crit: CriticalSlot,
-    issues: MulParseIssue[],
-): void {
-    const candidates = [crit.name, crit.originalName, crit.eq?.id]
-        .filter((value): value is string => typeof value === 'string' && value.length > 0);
-    if (candidates.length === 0 || candidates.includes(slot.type)) {
-        return;
-    }
-    issues.push({
-        severity: 'warning',
-        message: `MUL slot ${slot.loc} #${slot.slot + 1} has type "${slot.type}", but ${unit.getUnit().chassis} ${unit.getUnit().model} has "${candidates[0]}" there. Using the catalog critical slot.`,
-    });
-}
-
-function applyMulSlotToCritSlot(crit: CriticalSlot, slot: ParsedMulSlot, timestamp: number): boolean {
-    let changed = false;
-
-    if (slot.armorHit) {
-        changed = setCriticalSlotValue(crit, 'armored', true) || changed;
-        changed = setCriticalSlotValue(crit, 'hits', slot.hit ? 2 : 1) || changed;
-    } else if (slot.hit) {
-        changed = setCriticalSlotValue(crit, 'hits', 1) || changed;
-    }
-    if (slot.destroyed) {
-        changed = setCriticalSlotValue(crit, 'destroyed', timestamp) || changed;
-    }
-
-    if (isModularArmorCrit(crit)) {
-        changed = setCriticalSlotValue(crit, 'consumed', Math.max(0, slot.damageTaken ?? 0)) || changed;
-        return changed;
-    }
-
-    const totalAmmo = getCriticalSlotTotalAmmo(crit);
-    const consumed = getConsumedAmmoFromRemaining(totalAmmo, slot.shots);
-    if (totalAmmo !== undefined) {
-        changed = setCriticalSlotValue(crit, 'totalAmmo', totalAmmo) || changed;
-    }
-    if (consumed !== undefined) {
-        changed = setCriticalSlotValue(crit, 'consumed', consumed) || changed;
-    }
-    return changed;
-}
-
-function getCriticalSlotTotalAmmo(crit: CriticalSlot): number | undefined {
-    if (crit.totalAmmo !== undefined && crit.totalAmmo > 0) {
-        return crit.totalAmmo;
-    }
-    const totalAmmo = parseNumber(crit.el?.getAttribute('totalAmmo') ?? null, 0);
-    return totalAmmo > 0 ? totalAmmo : undefined;
-}
-
-function setCriticalSlotValue<K extends keyof CriticalSlot>(crit: CriticalSlot, key: K, value: CriticalSlot[K]): boolean {
-    if (crit[key] === value) {
-        return false;
-    }
-    crit[key] = value;
-    return true;
-}
-
-function createLocationsFromMul(
-    forceUnit: CBTForceUnit,
-    parsedLocations: readonly ParsedMulLocation[]
-): Record<string, LocationData> {
-    const locations: Record<string, LocationData> = {};
-    for (const parsedLocation of parsedLocations) {
-        if (parsedLocation.destroyed) {
-            applyLocationDamage(locations, parsedLocation.loc, false, 'Destroyed', forceUnit);
-            applyLocationDamage(locations, parsedLocation.loc, true, 'Destroyed', forceUnit);
-            applyInternalDamage(locations, parsedLocation.loc, 'Destroyed', forceUnit);
-        }
-        applyLocationDamage(locations, parsedLocation.loc, false, parsedLocation.armor, forceUnit);
-        applyLocationDamage(locations, parsedLocation.loc, true, parsedLocation.rearArmor, forceUnit);
-        applyInternalDamage(locations, parsedLocation.loc, parsedLocation.internal, forceUnit);
-    }
-    return locations;
-}
-
-function applyLocationDamage(
-    locations: Record<string, LocationData>,
-    loc: string,
-    rear: boolean,
-    remainingPoints: number | 'Destroyed' | undefined,
-    forceUnit: CBTForceUnit,
-): void {
-    if (remainingPoints === undefined) {
-        return;
-    }
-    const key = getArmorLocationKey(loc, rear);
-    const total = getBaseArmorPoints(forceUnit, loc, rear);
-    const damage = remainingPoints === 'Destroyed' ? Math.max(total, 1) : Math.max(0, total - remainingPoints);
-    if (damage <= 0) {
-        return;
-    }
-    locations[key] = { ...(locations[key] ?? {}), armor: damage };
-}
-
-function applyInternalDamage(
-    locations: Record<string, LocationData>,
-    loc: string,
-    remainingPoints: number | 'Destroyed' | undefined,
-    forceUnit: CBTForceUnit,
-): void {
-    if (remainingPoints === undefined) {
-        return;
-    }
-    const total = getBaseInternalPoints(forceUnit, loc);
-    const damage = remainingPoints === 'Destroyed' ? Math.max(total, 1) : Math.max(0, total - remainingPoints);
-    if (damage <= 0) {
-        return;
-    }
-    locations[loc] = { ...(locations[loc] ?? {}), internal: damage };
-}
-
-function getBaseArmorPoints(forceUnit: CBTForceUnit, loc: string, rear: boolean): number {
-    const locKey = getArmorLocationKey(loc, rear);
-    const loadedTotal = forceUnit?.locations?.armor.get(locKey)?.points;
-    if (loadedTotal !== undefined) {
-        return loadedTotal;
-    }
-    if (rear) {
-        return 0;
-    }
-    const unit = forceUnit.getUnit();
-    if (loc === 'TROOP') {
-        return unit.squads && unit.squadSize ? unit.squads * unit.squadSize : unit.internal;
-    }
-    return Math.max(0, Math.round(unit.armor / Math.max(1, getApproximateLocationCount(unit))));
-}
-
-function getBaseInternalPoints(forceUnit: CBTForceUnit, loc: string): number {
-    const loadedTotal = forceUnit?.locations?.internal.get(loc)?.points;
-    if (loadedTotal !== undefined) {
-        return loadedTotal;
-    }
-    const unit = forceUnit.getUnit();
-    if (loc === 'TROOP') {
-        return unit.squads && unit.squadSize ? unit.squads * unit.squadSize : unit.internal;
-    }
-    return Math.max(0, Math.round(unit.internal / Math.max(1, getApproximateLocationCount(unit))));
-}
-
-function getApproximateLocationCount(unit: Unit): number {
-    switch (unit.moveType) {
-        case 'Biped':
-            return 8;
-        case 'Tripod':
-            return 9;
-        case 'Quad':
-            return 11;
-        default:
-            return 5;
-    }
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }

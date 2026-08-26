@@ -6,21 +6,31 @@ import type { BaseEntity } from '../../base-entity';
 import { WeaponEquipment } from '../../../equipment.model';
 import type { EntityMountedEquipment } from '../../types/equipment';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
-import { getFireControlWeaponCost } from '../fire-control';
-import { getTargetingComputerRelevantWeight } from '../targeting-computer';
-import { nextHalfTon } from './common';
-
-const POWER_GENERATOR_BASE_COST: Readonly<Record<string, number>> = {
-  STEAM: 4000,
-  SOLAR: 8000,
-  FISSION: 15000,
-  FUSION: 10000,
-  COMBUSTION_LIQUID: 5000,
-  COMBUSTION_SOLID: 5000,
-  FUEL_CELL: 7000,
-  EXTERNAL_PCMT: 5000,
-  EXTERNAL: 5000,
-};
+import { fireControlVariableCost, getFireControlWeaponCost } from '../fire-control';
+import {
+  getTargetingComputerRelevantWeight,
+  targetingComputerVariableCost,
+} from '../targeting-computer';
+import {
+  isBattleArmorMyomerBoosterEquipment,
+  isJetBoosterEquipment,
+  isMascEquipment,
+  isSuperchargerEquipment,
+} from '../../../escalating-equipment.model';
+import {
+  isPartialWingEquipment,
+  jumpBoosterVariableCost,
+} from '../../../jump-equipment.model';
+import { isActuatorEnhancementSystem } from '../../../myomer-equipment.model';
+import { isDroneOperatingSystemEquipment } from '../../../drone-operating-system.model';
+import { isRamPlateEquipment, isSpikesEquipment } from '../../../physical-augmentation.model';
+import { physicalEquipmentVariableCost } from '../physical-weapon';
+import { chassisEquipmentVariableCost } from '../../../chassis-equipment.model';
+import { largeCraftEquipmentVariableCost } from '../../../large-craft-equipment.model';
+import { supportEquipmentVariableCost } from '../../../support-equipment.model';
+import { turretEquipmentVariableCost } from '../../../turret-equipment.model';
+import { isAntiMekGearEquipment } from '../../../infantry-equipment.model';
+import { isDamageInterruptCircuitEquipment } from '../../../utility-equipment.model';
 
 /** Resolves one mount's database-backed fixed or entity-dependent variable cost. */
 export function getEquipmentCost(
@@ -38,125 +48,66 @@ export function getEquipmentCost(
   }
 
   const tonnage = entity.tonnage();
+  const physicalCost = physicalEquipmentVariableCost(equipment, tonnage);
+  const chassisCost = chassisEquipmentVariableCost(equipment, {
+    entityTonnage: tonnage,
+    entityIsMek: entity.entityType === 'Mek',
+    engineRating: entity.mountedEngine().rating,
+    equipmentTonnage: () => mount.getTonnage(entity),
+  });
+  const jumpBoosterCost = jumpBoosterVariableCost(equipment, entity.weightClass());
+  const targetingComputerCost = targetingComputerVariableCost(
+    equipment,
+    () => getTargetingComputerRelevantWeight(entity),
+  );
+  const fireControlCost = fireControlVariableCost(equipment, () => getFireControlWeaponCost(entity));
+  const largeCraftCost = largeCraftEquipmentVariableCost(entity, mount);
+  const supportCost = supportEquipmentVariableCost(entity, mount);
+  const turretCost = turretEquipmentVariableCost(entity, mount);
   let cost: number | undefined;
-  if (equipment.hasFlag('F_POWER_GENERATOR')) {
-    const generatorType = equipment.id.slice(0, -' PowerGenerator'.length);
-    const baseCost = POWER_GENERATOR_BASE_COST[generatorType];
-    cost = baseCost === undefined ? undefined : baseCost * (mount.size ?? 1);
-  } else if (equipment.hasFlag('F_CARGO_LIFTER')) {
-    return 250 * Math.ceil((mount.size ?? 1) * 2);
-  } else if (equipment.hasFlag('F_DRONE_CARRIER_CONTROL') || equipment.hasFlag('F_MASH')) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 10000;
-  } else if (equipment.hasFlag('F_MASC') && equipment.hasFlag('F_BA_EQUIPMENT')) {
+  if (supportCost !== null) {
+    cost = supportCost;
+  } else if (isBattleArmorMyomerBoosterEquipment(equipment)) {
     cost = entity.runMP() * 75000;
-  } else if (equipment.hasFlag('F_FLOTATION_HULL')
-    || equipment.hasFlag('F_OFF_ROAD')
-    || (equipment.hasFlag('F_ENVIRONMENTAL_SEALING') && entity.entityType !== 'Mek')) {
-    cost = 0;
-  } else if (equipment.hasFlag('F_JET_BOOSTER') || equipment.hasFlag('S_SUPERCHARGER')) {
+  } else if (chassisCost !== null) {
+    cost = chassisCost;
+  } else if (isJetBoosterEquipment(equipment) || isSuperchargerEquipment(equipment)) {
     cost = entity.isSupportVehicle()
       ? getEquipmentEngineWeight(entity) * 10000
       : entity.mountedEngine().rating * 10000;
-  } else if (equipment.hasFlag('F_MASC') && entity.entityType === 'ProtoMek') {
+  } else if (isMascEquipment(equipment) && entity.entityType === 'ProtoMek') {
     cost = Math.round(entity.mountedEngine().rating * 1000 * tonnage * 0.025);
-  } else if (equipment.hasFlag('F_MASC')) {
+  } else if (isMascEquipment(equipment)) {
     const mascTonnage = Math.round(tonnage / (equipment.techBase === 'Clan' ? 25 : 20));
     cost = entity.mountedEngine().rating * mascTonnage * 1000;
-  } else if (equipment.hasFlag('F_TARGETING_COMPUTER')) {
-    const relevantWeight = getTargetingComputerRelevantWeight(entity);
-    const divider = equipment.techBase === 'IS' ? 4 : 5;
-    cost = relevantWeight === undefined ? undefined : 10000 * Math.ceil(relevantWeight / divider);
-  } else if (equipment.hasFlag('F_ARMORED_MOTIVE_SYSTEM')) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 100000;
-  } else if (equipment.hasFlag('F_ENVIRONMENTAL_SEALING')) {
-    cost = entity.entityType === 'Mek' ? 225 * tonnage : 0;
-  } else if (equipment.hasFlag('F_LIMITED_AMPHIBIOUS') || equipment.hasFlag('F_FULLY_AMPHIBIOUS')) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 10000;
-  } else if (equipment.hasFlag('F_DUNE_BUGGY')) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : 10 * equipmentTonnage * equipmentTonnage;
-  } else if (equipment.hasFlag('F_DRONE_OPERATING_SYSTEM')) {
+  } else if (targetingComputerCost !== null) {
+    cost = targetingComputerCost;
+  } else if (isDroneOperatingSystemEquipment(equipment)) {
     const equipmentTonnage = mount.getTonnage(entity);
     cost = equipmentTonnage === undefined ? undefined : (equipmentTonnage * 10000) + 5000;
-  } else if (equipment.hasAnyFlag(['F_HEAD_TURRET', 'F_SHOULDER_TURRET', 'F_QUAD_TURRET'])) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 10000;
-  } else if (equipment.hasFlag('F_SPONSON_TURRET')) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 4000;
-  } else if (equipment.hasFlag('F_PINTLE_TURRET')) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 1000;
-  } else if (equipment.hasFlag('F_CLUB') && equipment.hasFlag('S_HATCHET')) {
-    cost = Math.ceil(tonnage / 15) * 5000;
-  } else if (equipment.hasFlag('F_CLUB') && equipment.hasFlag('S_SWORD')) {
-    cost = nextHalfTon(tonnage / 20) * 10000;
-  } else if (equipment.hasFlag('F_CLUB') && equipment.hasFlag('S_RETRACTABLE_BLADE')) {
-    cost = (1 + Math.ceil(tonnage / 20)) * 10000;
-  } else if (equipment.hasFlag('F_TRACKS')) {
-    const multiplier = equipment.hasFlag('S_QUADVEE_WHEELS') ? 750 : 500;
-    cost = Math.ceil((multiplier * entity.mountedEngine().rating * tonnage) / 75);
-  } else if (equipment.hasFlag('F_TALON')) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : Math.ceil(equipmentTonnage * 300);
-  } else if (equipment.hasFlag('F_SPIKES')) {
+  } else if (turretCost !== null) {
+    cost = turretCost;
+  } else if (physicalCost !== null) {
+    cost = physicalCost;
+  } else if (isSpikesEquipment(equipment)) {
     cost = Math.ceil(tonnage * 50);
-  } else if (equipment.hasFlag('F_PARTIAL_WING')) {
+  } else if (isPartialWingEquipment(equipment)) {
     const equipmentTonnage = mount.getTonnage(entity);
     cost = equipmentTonnage === undefined ? undefined : Math.ceil(equipmentTonnage * 50000);
-  } else if (equipment.hasFlag('F_ACTUATOR_ENHANCEMENT_SYSTEM')) {
+  } else if (isActuatorEnhancementSystem(equipment)) {
     cost = Math.ceil(tonnage * (entity.locationIsLeg(mount.location) ? 700 : 500));
-  } else if (equipment.hasFlag('F_HAND_WEAPON') && equipment.hasFlag('S_CLAW')) {
-    cost = Math.ceil(tonnage * 200);
-  } else if (equipment.hasFlag('F_CLUB') && equipment.hasFlag('S_LANCE')) {
-    cost = Math.ceil(tonnage * 150);
-  } else if (equipment.hasFlag('F_MECHANICAL_JUMP_BOOSTER')) {
-    if (entity.weightClass() === 'Assault') cost = 300000;
-    else if (entity.weightClass() === 'Heavy') cost = 150000;
-    else if (entity.weightClass() === 'Medium') cost = 75000;
-    else cost = 50000;
-  } else if (equipment.hasFlag('F_LADDER')) {
-    cost = (mount.size ?? 1) * 5;
-  } else if (equipment.hasFlag('F_COMMUNICATIONS')) {
-    cost = (mount.size ?? 1) * 10000;
-  } else if (equipment.hasFlag('F_BASIC_FIRE_CONTROL') || equipment.hasFlag('F_ADVANCED_FIRE_CONTROL')) {
-    const weaponCost = getFireControlWeaponCost(entity);
-    cost = weaponCost === undefined
-      ? undefined
-      : weaponCost * (equipment.hasFlag('F_BASIC_FIRE_CONTROL') ? 0.05 : 0.1);
-  } else if (equipment.hasFlag('F_LIGHT_SAIL')) {
+  } else if (jumpBoosterCost !== null) {
+    cost = jumpBoosterCost;
+  } else if (fireControlCost !== null) {
+    cost = fireControlCost;
+  } else if (largeCraftCost !== null) {
+    cost = largeCraftCost;
+  } else if (isRamPlateEquipment(equipment)) {
     const equipmentTonnage = mount.getTonnage(entity);
     cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 10000;
-  } else if (equipment.hasFlag('F_NAVAL_C3')) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 100000;
-  } else if (equipment.hasFlag('F_SRCS')) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : (equipmentTonnage * 10000) + 5000;
-  } else if (equipment.hasFlag('F_SASRCS')) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : (equipmentTonnage * 12500) + 6250;
-  } else if (equipment.hasFlag('F_CASPAR')) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : (equipmentTonnage * 50000) + 500000;
-  } else if (equipment.hasFlag('F_CASPAR_II')) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : (equipmentTonnage * 20000) + 50000;
-  } else if (equipment.hasFlag('F_ATAC')) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 100000;
-  } else if (equipment.hasFlag('F_DTAC')) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 50000;
-  } else if (equipment.hasFlag('F_RAM_PLATE')) {
-    const equipmentTonnage = mount.getTonnage(entity);
-    cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 10000;
-  } else if (equipment.hasFlag('F_DAMAGE_INTERRUPT_CIRCUIT')) {
+  } else if (isDamageInterruptCircuitEquipment(equipment)) {
     cost = 150 * Math.max(1, entity.crewSlotCount());
-  } else if (equipment.hasFlag('F_ANTI_MEK_GEAR')) {
+  } else if (isAntiMekGearEquipment(equipment)) {
     // Anti-Mek training is represented by Infantry's price multiplier;
     // the equipment marker has no independent additive cost.
     cost = 0;

@@ -3,13 +3,14 @@
 // Author: Drake
 
 import { provideZonelessChangeDetection } from '@angular/core';
-import { HttpHeaders, provideHttpClient } from '@angular/common/http';
+import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 
 import type { SarnaPageTitlesData } from '../../models/sarna-page-titles.model';
-import { DbService } from '../db.service';
 import { LoggerService } from '../logger.service';
+import { CatalogStorage } from './catalog-storage.service';
+import { RepositoryAssetManifestService } from './repository-asset-manifest.service';
 import { SarnaPageTitlesCatalogService } from './sarna-page-titles-catalog.service';
 
 async function settleMicrotasks(): Promise<void> {
@@ -21,13 +22,13 @@ async function settleMicrotasks(): Promise<void> {
 describe('SarnaPageTitlesCatalogService', () => {
     let service: SarnaPageTitlesCatalogService;
     let httpMock: HttpTestingController;
-    let dbServiceMock: {
-        getSarnaPageTitles: jasmine.Spy;
-        saveSarnaPageTitles: jasmine.Spy;
+    let catalogStorageMock: {
+        get: jasmine.Spy;
+        put: jasmine.Spy;
     };
 
     const cachedTitles: SarnaPageTitlesData = {
-        etag: 'etag-1',
+        assetHash: 'asset-hash-1',
         titlesByType: {
             Mek: [
                 'Avatar (BattleMech)',
@@ -53,9 +54,9 @@ describe('SarnaPageTitlesCatalogService', () => {
     beforeEach(() => {
         TestBed.resetTestingModule();
 
-        dbServiceMock = {
-            getSarnaPageTitles: jasmine.createSpy('getSarnaPageTitles').and.resolveTo(cachedTitles),
-            saveSarnaPageTitles: jasmine.createSpy('saveSarnaPageTitles').and.resolveTo(undefined),
+        catalogStorageMock = {
+            get: jasmine.createSpy('get').and.resolveTo(cachedTitles),
+            put: jasmine.createSpy('put').and.resolveTo(undefined),
         };
 
         TestBed.configureTestingModule({
@@ -64,7 +65,15 @@ describe('SarnaPageTitlesCatalogService', () => {
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 SarnaPageTitlesCatalogService,
-                { provide: DbService, useValue: dbServiceMock },
+                { provide: CatalogStorage, useValue: catalogStorageMock },
+                {
+                    provide: RepositoryAssetManifestService,
+                    useValue: {
+                        descriptor: jasmine.createSpy('descriptor').and.resolveTo({
+                            hash: cachedTitles.assetHash,
+                        }),
+                    },
+                },
                 { provide: LoggerService, useValue: { info: jasmine.createSpy('info'), warn: jasmine.createSpy('warn'), error: jasmine.createSpy('error') } },
             ],
         });
@@ -78,16 +87,8 @@ describe('SarnaPageTitlesCatalogService', () => {
     });
 
     async function initializeFromCache(): Promise<void> {
-        const initializePromise = service.initialize();
+        await service.initialize();
         await settleMicrotasks();
-
-        const headRequest = httpMock.expectOne('assets/sarna-page-titles.json');
-        expect(headRequest.request.method).toBe('HEAD');
-        headRequest.flush('', {
-            headers: new HttpHeaders({ ETag: 'etag-1' }),
-        });
-
-        await initializePromise;
     }
 
     it('uses the omni flag to prefer omni Sarna pages for ambiguous chassis names', async () => {

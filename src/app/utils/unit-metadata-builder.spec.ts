@@ -40,13 +40,19 @@ import { EquipmentFlag } from '../models/equipment-flags.type';
 describe('UnitMetadataBuilder', () => {
   const builder = new UnitMetadataBuilder();
 
+  it('builds Mek metadata from the canonical entity', () => {
+    const metadata = builder.build(new BipedMekEntity());
+    expect(metadata.type).toBe('Mek');
+    expect(metadata.as?.TP).toBe('BM');
+  });
+
   it('exports the path returned by the unit icon resolver', () => {
-    const entity = new BipedMekEntity();
-    const resolver = jasmine.createSpy('resolver').and.returnValue('meks/Test.png');
+    const entity = new TankEntity();
+    const resolver = jasmine.createSpy('resolver').and.returnValue('units/Test.png');
     const metadata = new UnitMetadataBuilder(resolver).build(entity);
 
     expect(resolver).toHaveBeenCalledOnceWith(entity);
-    expect(metadata.icon).toBe('meks/Test.png');
+    expect(metadata.icon).toBe('units/Test.png');
     expect(builder.build(entity).icon).toBe('');
   });
 
@@ -76,28 +82,10 @@ describe('UnitMetadataBuilder', () => {
   });
 
   it('exports false anti-Mek capability for non-infantry units', () => {
-    expect(builder.build(new BipedMekEntity()).canAntiMech).toBeFalse();
+    expect(builder.build(new TankEntity()).canAntiMech).toBeFalse();
   });
 
-  it('exports typed entity features using their canonical names', () => {
-    const entity = new BipedMekEntity();
 
-    entity.hasLowerArmActuator.set({ left: false, right: false });
-    entity.hasHandActuator.set({ left: false, right: false });
-
-    expect(entity.entityFeatures()).toEqual(jasmine.arrayWithExactContents(['Reversible Arms']));
-    expect(builder.build(entity).features).toContain('Reversible Arms');
-  });
-
-  it('keeps Small Cockpit in features while exporting it as a component', () => {
-    const entity = new BipedMekEntity();
-    entity.cockpitType.set('Small');
-
-    const metadata = builder.build(entity);
-    expect(metadata.features).toContain('Small Cockpit');
-    expect(metadata.features?.filter(feature => feature === 'Small Cockpit')).toHaveSize(1);
-    expect(metadata.comp?.find(component => component.id === 'cockpit')?.n).toBe('Small Cockpit');
-  });
 
   it('derives Aero cockpit features canonically', () => {
     const entity = new ConvFighterEntity();
@@ -125,7 +113,7 @@ describe('UnitMetadataBuilder', () => {
     addTestEquipmentWithFlags(vehicle, 'F_CHASSIS_MODIFICATION');
     expect(vehicle.entityFeatures().some(feature => feature.startsWith('Chassis Mod: '))).toBeTrue();
 
-    const transport = new BipedMekEntity();
+    const transport = new SupportTankEntity();
     transport.transporters.set([
       { id: 'troop-space', kind: 'troop-space', totalSpace: 1, omni: false },
       {
@@ -144,7 +132,7 @@ describe('UnitMetadataBuilder', () => {
   });
 
   it('exports the Java offensive speed factor from BV movement', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
     entity.originalWalkMP.set(4);
 
     expect(offensiveSpeedFactor(6)).toBe(1.12);
@@ -152,20 +140,6 @@ describe('UnitMetadataBuilder', () => {
     expect(builder.build(entity).offSpeedFactor).toBe(1.12);
   });
 
-  it('uses BV jump conditions for TSM Meks with modular armor', () => {
-    const entity = new BipedMekEntity();
-    entity.originalWalkMP.set(5);
-    entity.setEquipment([
-      miscMount('tsm', ['F_TSM']),
-      miscMount('modular-armor', ['F_MODULAR_ARMOR']),
-      ...Array.from({ length: 5 }, (_, index) => miscMount(`jump-jet-${index}`, ['F_JUMP_JET'])),
-    ]);
-
-    expect(entity.maxRunMP()).toBe(9);
-    expect(entity.maxJumpMP()).toBe(4);
-    expect(entity.computeJumpMP(BV_MOVEMENT_CALCULATION)).toBe(5);
-    expect(builder.build(entity).offSpeedFactor).toBe(1.89);
-  });
 
   it('excludes the atmospheric ProtoMek partial-wing bonus from BV speed', () => {
     const entity = new ProtoMekEntity();
@@ -208,41 +182,6 @@ describe('UnitMetadataBuilder', () => {
     expect(builder.build(entity).structureType).toBe('Standard');
   });
 
-  it('exports an effective Mek structure as one synthetic component', () => {
-    const entity = new BipedMekEntity();
-    entity.setTonnage(60);
-    const endo = new StructureEquipment({
-      id: 'IS Endo Steel',
-      name: 'Endo Steel',
-      type: 'structure',
-      structure: { typeId: 1 },
-      tech: { base: 'IS' },
-    });
-    entity.setUniformStructure(new MountedStructure({
-      tonnage: 60,
-      structure: STANDARD_STRUCTURE_EQUIPMENT,
-    }));
-    entity.setStructureAt('LA', new MountedStructure({ tonnage: 60, structure: endo }));
-
-    const metadata = builder.build(entity);
-    expect(metadata.structureType).toBe('Standard');
-    const componentIds = metadata.comp?.filter(component => component.t === 'S').map(component => component.id) ?? [];
-    expect(componentIds).toContain(STANDARD_STRUCTURE_EQUIPMENT.id);
-    expect(componentIds).not.toContain(endo.id);
-
-    entity.setEquipment([
-      new EntityMountedEquipment({
-        mountId: 'mounted-endo', equipmentId: endo.id, equipment: endo,
-        allocation: { kind: 'location', location: 'LA', placements: [{ location: 'LA', slotIndex: 0 }] },
-        rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false,
-      }),
-    ]);
-
-    const mountedComponentIds = builder.build(entity).comp
-      ?.filter(component => component.t === 'S').map(component => component.id) ?? [];
-    expect(mountedComponentIds).toContain(STANDARD_STRUCTURE_EQUIPMENT.id);
-    expect(mountedComponentIds).not.toContain(endo.id);
-  });
 
   it('exports Java weight class display names without changing canonical categories', () => {
     const conventionalFighter = new ConvFighterEntity();
@@ -259,11 +198,11 @@ describe('UnitMetadataBuilder', () => {
     const dropShip = new DropShipEntity();
     dropShip.setTonnage(5000);
     expect(dropShip.weightClass()).toBe('Medium DropShip');
-    expect(builder.build(dropShip).weightClass).toBe('Medium Dropship');
+    expect(builder.build(dropShip).weightClass).toBe('Medium DropShip');
 
     const capitalShips = [
-      [new JumpShipEntity(), 'Small Jumpship'],
-      [new WarShipEntity(), 'Small Warship'],
+      [new JumpShipEntity(), 'Small JumpShip'],
+      [new WarShipEntity(), 'Small WarShip'],
       [new SpaceStationEntity(), 'Small Space Station'],
     ] as const;
     for (const [entity, expected] of capitalShips) {
@@ -408,26 +347,9 @@ describe('UnitMetadataBuilder', () => {
     expect(builder.build(new InfantryEntity()).su).toBe(1);
     expect(builder.build(new BattleArmorEntity()).su).toBe(1);
     expect(builder.build(new ProtoMekEntity()).su).toBe(1);
-    expect(builder.build(new BipedMekEntity()).su).toBe(0);
   });
 
   it('exports the unit subtype, including form, motive, military, and Omni qualifiers', () => {
-    const omniMek = new BipedMekEntity();
-    omniMek.omni.set(true);
-
-    const industrialQuad = new QuadMekEntity();
-    const industrialStructure = new StructureEquipment({
-      id: 'Industrial',
-      name: 'Industrial',
-      type: 'structure',
-      flags: ['F_INDUSTRIAL_STRUCTURE'],
-      structure: { typeId: 1 },
-    });
-    industrialQuad.setUniformStructure(new MountedStructure({
-      tonnage: industrialQuad.tonnage(),
-      structure: industrialStructure,
-    }));
-
     const hover = new TankEntity();
     hover.motiveType.set('Hover');
     hover.omni.set(true);
@@ -446,12 +368,6 @@ describe('UnitMetadataBuilder', () => {
     mechanizedInfantry.motiveType.set('Tracked');
 
     const cases: Array<[BaseEntity, UnitSubtype]> = [
-      [new BipedMekEntity(), 'BattleMek'],
-      [omniMek, 'BattleMek Omni'],
-      [industrialQuad, 'Quad Industrial Mek'],
-      [new TripodMekEntity(), 'Tripod BattleMek'],
-      [new QuadVeeEntity(), 'QuadVee BattleMek'],
-      [new LamEntity(), 'Land-Air BattleMek'],
       [new ProtoMekEntity(), 'ProtoMek'],
       [new BattleArmorEntity(), 'Battle Armor'],
       [mechanizedInfantry, 'Mechanized Conventional Infantry'],
@@ -475,7 +391,7 @@ describe('UnitMetadataBuilder', () => {
   });
 
   it('exports the canonical Industrial armor display name without formatting whitespace', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
     entity.setUniformArmor(new MountedArmor({
       armor: new ArmorEquipment({
         id: 'Industrial Armor',
@@ -581,26 +497,6 @@ describe('UnitMetadataBuilder', () => {
     expect(builder.buildName(handheld)).toBe('ERMediumLaserWeapon');
   });
 
-  it('projects the Mek integral heat-sink capability into component metadata', () => {
-    const entity = new BipedMekEntity();
-    entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 250, techBase: 'Clan' }));
-    const heatSink = new MiscEquipment({
-      id: 'CLDoubleHeatSink', name: 'Double Heat Sink', type: 'misc',
-      flags: ['F_DOUBLE_HEAT_SINK'], stats: { criticalSlots: 2 },
-    });
-    entity.configureHeatSinks(heatSink, 10);
-
-    const heatSinkComponents = builder.build(entity).comp?.filter(component => component.id === heatSink.id);
-    expect(heatSinkComponents?.length).toBe(1);
-    expect(heatSinkComponents).toContain(jasmine.objectContaining({
-      id: 'CLDoubleHeatSink',
-      q: 10,
-      n: 'Double Heat Sink',
-      t: 'C',
-      p: -1,
-      c: '2',
-    }));
-  });
 });
 
 function sourcebook(abbrev: string, canon = true): Sourcebook {

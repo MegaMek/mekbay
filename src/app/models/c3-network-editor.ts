@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ForceUnit } from './force-unit.model';
 import type { SerializedC3NetworkGroup } from './force-serialization';
 import {
     type C3Component,
@@ -10,6 +9,7 @@ import {
     C3Network,
     C3NetworkType,
     type C3Node,
+    type C3UnitView,
     C3Role,
     C3_MAX_NETWORK_DEPTH,
     C3_MAX_NETWORK_TOTAL,
@@ -169,7 +169,7 @@ export class C3NetworkEditor {
         return selected;
     }
 
-    static clean(networks: SerializedC3NetworkGroup[], unitsById: ReadonlyMap<string, ForceUnit>): SerializedC3NetworkGroup[] {
+    static clean(networks: SerializedC3NetworkGroup[], unitsById: ReadonlyMap<string, C3UnitView>): SerializedC3NetworkGroup[] {
         if (!networks?.length) return [];
         const capabilities = new Map<string, C3Capabilities>();
         for (const [id, unit] of unitsById) capabilities.set(id, new C3Capabilities(unit));

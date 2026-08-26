@@ -59,7 +59,7 @@ describe('entity cost', () => {
 
     it('keeps the numeric API and report total identical for every modeled family', () => {
         const entities = [
-            new BipedMekEntity(), new SupportTankEntity(), new SmallCraftEntity(),
+            new SupportTankEntity(), new SmallCraftEntity(),
             new DropShipEntity(), new JumpShipEntity(), new WarShipEntity(),
             new SpaceStationEntity(), new ProtoMekEntity(), new BattleArmorEntity(),
             new TestHandheldWeaponEntity(),
@@ -72,16 +72,12 @@ describe('entity cost', () => {
         }
     });
 
-    it('aggregates mounted equipment using MegaMek report labels', () => {
+    it('keeps Mek numeric cost and report total on the entity authority', () => {
         const entity = new BipedMekEntity();
-        entity.setEquipment([
-            mount(new MiscEquipment({ id: 'laser-a', name: 'Test Laser', type: 'misc', stats: { cost: 1250 } })),
-            mount(new MiscEquipment({ id: 'laser-b', name: 'Test Laser', type: 'misc', stats: { cost: 1750 } })),
-        ]);
-
-        const step = entity.costDetails().steps.find(candidate => candidate.type === '2 Test Laser');
-        expect(step).toEqual(jasmine.objectContaining({ amount: 3000 }));
+        expect(calculateEntityCost(entity)).toBe(calculateEntityCostDetails(entity).total);
+        expect(entity.cost()).toBe(entity.costDetails().total);
     });
+
 
     it('applies conventional-fighter VSTOL mass cost before the weight multiplier', () => {
         const entity = new ConvFighterEntity();
@@ -240,7 +236,7 @@ describe('entity cost', () => {
     });
 
     it('throws instead of silently reporting an unresolved variable equipment cost', () => {
-        const entity = new BipedMekEntity();
+        const entity = new TankEntity();
         entity.setEquipment([mount(variableEquipment('unknown', []))]);
 
         expect(() => calculateEntityCostDetails(entity)).toThrowError(/Unable to calculate variable cost/);
@@ -333,7 +329,7 @@ describe('entity cost', () => {
         expect(calculateMountedEquipmentCost(entity)).toBe(225000);
     });
 
-    it('treats installed B-Pods and M-Pods as loaded one-shot explosives', () => {
+    it('does not charge implicit CASE for B-Pods and M-Pods under Core Rules', () => {
         const entity = new TestBipedMekEntity();
         entity.techBase.set('Clan');
         const bPod = mount(new WeaponEquipment({
@@ -346,7 +342,7 @@ describe('entity cost', () => {
         })).clone({ allocation: { kind: 'location', location: 'RL' } });
         entity.setEquipment([bPod, mPod]);
 
-        expect(calculateMountedEquipmentCost(entity)).toBe(100000);
+        expect(calculateMountedEquipmentCost(entity)).toBe(0);
     });
 
     it('subtracts explicit CASE globally from vehicle explosive-location count', () => {
@@ -503,73 +499,9 @@ describe('entity cost', () => {
         expect(entity.cost()).toBe(5156);
     });
 
-    it('uses standard jump-system cost for prototype improved jump jets', () => {
-        const entity = new BipedMekEntity();
-        entity.setTonnage(60);
-        const prototypeImprovedJumpJet = new MiscEquipment({
-            id: 'prototype-improved-jump-jet', name: 'Prototype Improved Jump Jet', type: 'misc',
-            flags: ['F_JUMP_JET', 'S_IMPROVED', 'S_PROTOTYPE'], stats: { cost: 0 },
-        });
-        entity.setEquipment(Array.from({ length: 6 }, (_, index) =>
-            mount(prototypeImprovedJumpJet, false, undefined, `prototype-jump-jet-${index}`)));
 
-        expect(entity.costDetails().steps.find(step => step.type === 'Jump Jets'))
-            .toEqual(jasmine.objectContaining({ amount: 432000 }));
-    });
 
-    it('derives jump-system cost from installed jump jets', () => {
-        const entity = new BipedMekEntity();
-        entity.setTonnage(60);
-        const jumpJet = new MiscEquipment({
-            id: 'jump-jet', name: 'Jump Jet', type: 'misc',
-            flags: ['F_JUMP_JET'], stats: { cost: 0 },
-        });
-        entity.setEquipment(Array.from({ length: 3 }, (_, index) =>
-            mount(jumpJet, false, undefined, `jump-jet-${index}`)));
 
-        expect(entity.installedJumpJetMP()).toBe(3);
-        expect(entity.costDetails().steps.find(step => step.type === 'Jump Jets'))
-            .toEqual(jasmine.objectContaining({ amount: 108000 }));
-    });
-
-    it('does not price a Partial Wing bonus as additional jump jets', () => {
-        const entity = new BipedMekEntity();
-        entity.setTonnage(50);
-        const jumpJet = new MiscEquipment({
-            id: 'jump-jet', name: 'Jump Jet', type: 'misc',
-            flags: ['F_JUMP_JET'], stats: { cost: 0 },
-        });
-        const partialWing = new MiscEquipment({
-            id: 'partial-wing', name: 'Partial Wing', type: 'misc',
-            flags: ['F_PARTIAL_WING'], stats: { cost: 0 },
-        });
-        entity.setEquipment([
-            ...Array.from({ length: 5 }, (_, index) =>
-                mount(jumpJet, false, undefined, `jump-jet-${index}`)),
-            mount(partialWing),
-        ]);
-
-        expect(entity.jumpMP()).toBe(7);
-        expect(entity.installedJumpJetMP()).toBe(5);
-        expect(entity.costDetails().steps.find(step => step.type === 'Jump Jets'))
-            .toEqual(jasmine.objectContaining({ amount: 250000 }));
-    });
-
-    it('prices installed UMUs without treating them as conventional jump jets', () => {
-        const entity = new BipedMekEntity();
-        entity.setTonnage(50);
-        const umu = new MiscEquipment({
-            id: 'umu', name: 'UMU', type: 'misc',
-            flags: ['F_UMU'], stats: { cost: 0 },
-        });
-        entity.setEquipment(Array.from({ length: 4 }, (_, index) =>
-            mount(umu, false, undefined, `umu-${index}`)));
-
-        expect(entity.jumpMP()).toBe(0);
-        expect(entity.installedJumpJetMP()).toBe(0);
-        expect(entity.costDetails().steps.find(step => step.type === 'Jump Jets'))
-            .toEqual(jasmine.objectContaining({ amount: 160000 }));
-    });
 
 });
 

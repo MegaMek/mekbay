@@ -3,7 +3,11 @@
 // Author: Drake
 
 import { Pipe, type PipeTransform } from '@angular/core';
-import type { UnitComponent } from '../models/units.model';
+import type { UnitComponent } from '../models/unit-summary.model';
+import type { Equipment } from '../models/equipment.model';
+import { isJumpJetEquipment } from '../models/jump-equipment.model';
+import { isHeatSinkEquipment } from '../models/heat-equipment.model';
+import { isCaseEquipment } from '../models/case-equipment.model';
 
 /**
  * Aggregates and filters unit components for expanded view display.
@@ -17,7 +21,10 @@ import type { UnitComponent } from '../models/units.model';
     pure: true
 })
 export class ExpandedComponentsPipe implements PipeTransform {
-    transform(components: UnitComponent[]): UnitComponent[] {
+    transform(
+        components: UnitComponent[],
+        resolveEquipment?: (internalName: string) => Equipment | undefined,
+    ): UnitComponent[] {
         if (!components) return [];
         if (components.length === 0) return [];
         const aggregated = new Map<string, UnitComponent>();
@@ -25,10 +32,11 @@ export class ExpandedComponentsPipe implements PipeTransform {
             if (comp.t === 'HIDDEN') continue; // Hide hidden components
             if (comp.t === 'S') continue; // Hide Structural components
             if (comp.t === 'C') {
+                const equipment = comp.eq ?? resolveEquipment?.(comp.id);
                 // Hide components that are of no relevant information
-                if (comp.eq?.hasAnyFlag(['F_HEAT_SINK','F_DOUBLE_HEAT_SINK'])) continue; // Hide heatsinks
-                if (comp.eq?.hasAnyFlag(['F_CASE','F_CASE_II'])) continue; // Hide CASE components
-                if (comp.eq?.hasAnyFlag(['F_JUMP_JET'])) continue; // Hide Jump Jets
+                if (isHeatSinkEquipment(equipment)) continue; // Hide heat sinks
+                if (isCaseEquipment(equipment)) continue; // Hide CASE components
+                if (isJumpJetEquipment(equipment)) continue; // Hide Jump Jets
             }; 
             if (comp.t === 'X') continue; // Hide Ammo
             const key = `${comp.n || ''}::${comp.rear ? 'rear' : 'front'}`;

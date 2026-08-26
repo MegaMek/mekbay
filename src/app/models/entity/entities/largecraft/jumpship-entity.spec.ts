@@ -13,7 +13,7 @@ describe('JumpShipEntity implicit equipment', () => {
     const laserBay = createEquipment({ id: 'Laser Bay', name: 'Laser Bay', type: 'misc' });
     const laser = createEquipment({
       id: 'Large Laser', name: 'Large Laser', type: 'weapon', flags: ['F_ENERGY'],
-      weapon: { damage: 8, ranges: [5, 10, 15, 20] },
+      weapon: { damage: 8, ranges: [5, 10, 15, 20], atClass: 'LASER' },
     }) as WeaponEquipment;
     const entity = new JumpShipEntity(createTestEquipmentRegistry({
       [laserBay.id]: laserBay,

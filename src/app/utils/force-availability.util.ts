@@ -5,13 +5,13 @@
 import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
 import type { AvailabilitySource } from '../models/options.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 
 export type ForceAvailabilityKey = string;
 
 export interface ForceAvailabilityContext {
     source: AvailabilitySource;
-    getUnitKey(unit: Pick<Unit, 'id' | 'name'>): ForceAvailabilityKey;
+    getUnitKey(unit: Pick<UnitSummary, 'id' | 'name'>): ForceAvailabilityKey;
     getVisibleEraUnitIds(era: Era): ReadonlySet<ForceAvailabilityKey>;
     getFactionUnitIds(faction: Faction, contextEraIds?: ReadonlySet<number>): ReadonlySet<ForceAvailabilityKey>;
     getFactionEraUnitIds(faction: Faction, era: Era): ReadonlySet<ForceAvailabilityKey>;
@@ -31,7 +31,7 @@ function normalizeMembershipUnitIds(unitIds: number[] | Set<number> | undefined)
 
 const MUL_FORCE_AVAILABILITY_CONTEXT: ForceAvailabilityContext = {
     source: 'mul',
-    getUnitKey(unit: Pick<Unit, 'id' | 'name'>): ForceAvailabilityKey {
+    getUnitKey(unit: Pick<UnitSummary, 'id' | 'name'>): ForceAvailabilityKey {
         return String(unit.id);
     },
     getVisibleEraUnitIds(era: Era): ReadonlySet<ForceAvailabilityKey> {

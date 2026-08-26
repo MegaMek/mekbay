@@ -6,6 +6,7 @@ import { inject, Injectable, signal } from '@angular/core';
 import { DbService } from './db.service';
 import type { CBTOptionalRules, ColorScheme, ForceBudgetOptimizerLastSkills, ForceGeneratorOptions, Options } from '../models/options.model';
 import { GameSystem } from '../models/common.model';
+import { isCBTRuleset } from '../models/cbt-ruleset.model';
 
 
 
@@ -23,6 +24,7 @@ const DEFAULT_OPTIONS: Options = {
     unitSearchViewMode: 'list',
     forceOverviewViewMode: 'compact',
     printRosterSummary: false,
+    printPaperSize: 'letter',
     printMargin: 'browserDefined',
     performanceMode: false,
     enableForceSyncConflictDialog: false,
@@ -33,6 +35,7 @@ const DEFAULT_OPTIONS: Options = {
     pickerStyle: 'default',
     swipeToNextSheet: 'horizontal',
     recordSheetCenterPanelContent: 'clusterTable',
+    usePreGeneratedRecordSheets: false,
     recordSheetDoubleTapZoomReset: 'contextual',
     syncZoomBetweenSheets: true,
     trackPhaseAndTurn: true,
@@ -42,7 +45,7 @@ const DEFAULT_OPTIONS: Options = {
         extremeRange: false,
     },
     allowMultipleActiveSheets: false,
-    CBTRules: 'tw',
+    CBTRules: 'total-warfare',
 
     // Alpha Strike
     ASUseHex: false,
@@ -178,6 +181,7 @@ export class OptionsService {
         forceViewerBVPVDisplay: DEFAULT_OPTIONS.forceViewerBVPVDisplay,
         megaMekAvailabilityFiltersUseAllScopedOptions: DEFAULT_OPTIONS.megaMekAvailabilityFiltersUseAllScopedOptions,
         recordSheetCenterPanelContent: DEFAULT_OPTIONS.recordSheetCenterPanelContent,
+        usePreGeneratedRecordSheets: DEFAULT_OPTIONS.usePreGeneratedRecordSheets,
         recordSheetDoubleTapZoomReset: DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
         trackPhaseAndTurn: DEFAULT_OPTIONS.trackPhaseAndTurn,
         cbtAutomations: DEFAULT_OPTIONS.cbtAutomations,
@@ -196,6 +200,7 @@ export class OptionsService {
         ASUseAutomations: DEFAULT_OPTIONS.ASUseAutomations,
         ASUnifiedDamagePicker: DEFAULT_OPTIONS.ASUnifiedDamagePicker,
         printRosterSummary: DEFAULT_OPTIONS.printRosterSummary,
+        printPaperSize: DEFAULT_OPTIONS.printPaperSize,
         printMargin: DEFAULT_OPTIONS.printMargin,
         performanceMode: DEFAULT_OPTIONS.performanceMode,
         enableForceSyncConflictDialog: DEFAULT_OPTIONS.enableForceSyncConflictDialog,
@@ -222,13 +227,14 @@ export class OptionsService {
             forceViewerBVPVDisplay: saved?.forceViewerBVPVDisplay ?? DEFAULT_OPTIONS.forceViewerBVPVDisplay,
             megaMekAvailabilityFiltersUseAllScopedOptions: saved?.megaMekAvailabilityFiltersUseAllScopedOptions ?? DEFAULT_OPTIONS.megaMekAvailabilityFiltersUseAllScopedOptions,
             recordSheetCenterPanelContent: saved?.recordSheetCenterPanelContent ?? DEFAULT_OPTIONS.recordSheetCenterPanelContent,
+            usePreGeneratedRecordSheets: saved?.usePreGeneratedRecordSheets ?? DEFAULT_OPTIONS.usePreGeneratedRecordSheets,
             recordSheetDoubleTapZoomReset: saved?.recordSheetDoubleTapZoomReset ?? DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
             lastCanvasState: saved?.lastCanvasState,
             sidebarLipPosition: saved?.sidebarLipPosition,
             trackPhaseAndTurn: saved?.trackPhaseAndTurn ?? DEFAULT_OPTIONS.trackPhaseAndTurn,
             cbtAutomations: saved?.cbtAutomations ?? DEFAULT_OPTIONS.cbtAutomations,
             CBTOptionalRules: resolveCBTOptionalRules(saved),
-            CBTRules: saved?.CBTRules ?? DEFAULT_OPTIONS.CBTRules,
+            CBTRules: isCBTRuleset(saved?.CBTRules) ? saved.CBTRules : DEFAULT_OPTIONS.CBTRules,
             ASUseHex: saved?.ASUseHex ?? DEFAULT_OPTIONS.ASUseHex,
             ASPrintPageBreakOnGroups: saved?.ASPrintPageBreakOnGroups ?? DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
             c3NetworkConnectionsAboveNodes: saved?.c3NetworkConnectionsAboveNodes ?? DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
@@ -242,6 +248,7 @@ export class OptionsService {
             ASUseAutomations: saved?.ASUseAutomations ?? DEFAULT_OPTIONS.ASUseAutomations,
             ASUnifiedDamagePicker: saved?.ASUnifiedDamagePicker ?? DEFAULT_OPTIONS.ASUnifiedDamagePicker,
             printRosterSummary: saved?.printRosterSummary ?? DEFAULT_OPTIONS.printRosterSummary,
+            printPaperSize: saved?.printPaperSize ?? DEFAULT_OPTIONS.printPaperSize,
             printMargin: saved?.printMargin ?? DEFAULT_OPTIONS.printMargin,
             performanceMode: saved?.performanceMode ?? DEFAULT_OPTIONS.performanceMode,
             enableForceSyncConflictDialog: saved?.enableForceSyncConflictDialog ?? DEFAULT_OPTIONS.enableForceSyncConflictDialog,

@@ -17,6 +17,7 @@ import {
 
 } from '../types';
 import { WeaponEquipment } from '../../equipment.model';
+import { isStandardCaseEquipment } from '../../case-equipment.model';
 import {
   encodeMtfArmor,
   encodeMtfEngine,
@@ -105,7 +106,8 @@ const ARMOR_ORDER_TRIPOD: ArmorOutputEntry[] = [
  * and the structured `armorValues` (LocationArmor) for armor output.
  */
 export function writeMtf(entity: MekEntity): string {
-  const lines: string[] = [];
+  // MegaMek keeps one blank row between its ignored license header and MTF data.
+  const lines: string[] = [''];
   const isQuad = entity instanceof QuadMekEntity;
   const isTripod = entity instanceof TripodMekEntity;
 
@@ -119,7 +121,8 @@ export function writeMtf(entity: MekEntity): string {
   writeCriticals(entity, lines, isQuad, isTripod);
   writeFluff(entity, lines);
 
-  return lines.join('\n');
+  while (lines.at(-1) === '') lines.pop();
+  return `${lines.join('\n')}${'\n'.repeat(entity.nativeSourceTrailingNewlines || 1)}`;
 }
 
 // ============================================================================
@@ -212,14 +215,14 @@ function writeMovement(entity: MekEntity, lines: string[]): void {
     if (!eq) return false;
     if (eq.type !== 'misc') return false;
     if (eq.critSlots !== 0) return false;
-    if (eq.hasFlag('F_CASE')) return false;
+    if (isStandardCaseEquipment(eq)) return false;
     return true;
   });
   for (const m of nocritMounts) {
     lines.push(`nocrit:${m.equipmentId}:${m.location}`);
   }
   lines.push(`walk mp:${entity.originalWalkMP()}`);
-  lines.push(`jump mp:${entity.installedJumpJetMP()}`);
+  lines.push(`jump mp:${entity.originalJumpMP()}`);
   lines.push('');
 }
 
@@ -327,9 +330,7 @@ function writeQuirks(entity: MekEntity, lines: string[]): void {
   for (const wq of entity.weaponQuirks()) {
     lines.push(`weaponquirk:${wq.name}:${wq.location}:${wq.slot}:${wq.weaponName}`);
   }
-  if (entity.quirks().length > 0 || entity.weaponQuirks().length > 0) {
-    lines.push('');
-  }
+  lines.push('');
 }
 
 function writeFluff(entity: MekEntity, lines: string[]): void {
@@ -432,6 +433,6 @@ function facingLabel(facing: number): string {
     case 3: return 'R';
     case 4: return 'RL';
     case 5: return 'RR';
-    default: return '';
+    default: throw new Error(`Invalid equipment facing: ${facing}`);
   }
 }

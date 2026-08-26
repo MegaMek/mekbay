@@ -4,8 +4,8 @@
 
 import { Injectable, inject } from '@angular/core';
 
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import { PageViewerDisplayWindowService } from './page-viewer-display-window.service';
+import type { PageViewerMember } from './types';
 
 export interface PageViewerForceChangeActionPlan {
     shouldClearPages: boolean;
@@ -22,8 +22,8 @@ export class PageViewerForceChangeService {
     private readonly pageViewerDisplayWindow = inject(PageViewerDisplayWindowService);
 
     buildActionPlan(options: {
-        allUnits: readonly CBTForceUnit[];
-        displayedUnits: readonly CBTForceUnit[];
+        allUnits: readonly PageViewerMember[];
+        displayedUnits: readonly PageViewerMember[];
         selectedUnitId: string | null;
         visibleCount: number;
         previousUnitCount: number;

@@ -8,7 +8,23 @@ import type { ArmorType } from "../types/armor";
 import { isQuadMekConfig } from "../types/mek";
 import { weightClassCode } from "../types/weight";
 import { isAeroEntity, isMekEntity, isVehicleEntity } from "./entity-type-guards";
-import { getTargetingComputerRelevantWeight } from "./targeting-computer";
+import {
+    getTargetingComputerRelevantWeight,
+    targetingComputerCriticalSlots,
+} from "./targeting-computer";
+import { isBlueShieldEquipment, isMascEquipment } from "../../escalating-equipment.model";
+import { isActuatorEnhancementSystem } from "../../myomer-equipment.model";
+import {
+    armorConstructionKind,
+    structureConstructionKind,
+} from "../../construction-equipment.model";
+import {
+    isTalonEquipment,
+    physicalEquipmentCriticalSlots,
+} from "./physical-weapon";
+import { jumpBoosterCriticalSlots } from "../../jump-equipment.model";
+import { isTracksEquipment } from "../../chassis-equipment.model";
+import { supportEquipmentCriticalSlots } from "../../support-equipment.model";
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  VARIABLE CRIT-SLOT RESOLUTION
@@ -46,45 +62,38 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
     const weight = entity.tonnage();
     const isQuad = isMekEntity(entity) && isQuadMekConfig(entity.chassisConfig);
     const isAero = isAeroEntity(entity);
+    const armorKind = armorConstructionKind(eq);
+    const structureKind = structureConstructionKind(eq);
+    const physicalSlots = physicalEquipmentCriticalSlots(eq, weight);
+    const boosterSlots = jumpBoosterCriticalSlots(eq, isQuad);
+    const targetingComputerSlots = targetingComputerCriticalSlots(
+        eq,
+        () => getTargetingComputerRelevantWeight(entity),
+    );
+    const supportSlots = supportEquipmentCriticalSlots(entity, eq, size);
 
-    // ── Melee weapons (F_CLUB) ──────────────────────────────────────
-    if (eq.hasFlag('F_CLUB')) {
-        if (eq.hasAnyFlag(['S_HATCHET', 'S_SWORD'])) return Math.ceil(weight / 15);
-        if (eq.hasFlag('S_LANCE')) return Math.ceil(weight / 20);
-        if (eq.hasFlag('S_MACE')) return Math.ceil(weight / 10);
-        if (eq.hasFlag('S_RETRACTABLE_BLADE')) return 1 + Math.ceil(weight / 20);
-    }
-
-    // ── Hand weapons ────────────────────────────────────────────────
-    if (eq.hasFlag('F_HAND_WEAPON') && eq.hasFlag('S_CLAW')) {
-        return Math.ceil(weight / 15);
-    }
+    if (physicalSlots !== null) return physicalSlots;
 
     // ── MASC ────────────────────────────────────────────────────────
-    if (eq.hasFlag('F_MASC')) {
+    if (isMascEquipment(eq)) {
         return eq.techBase === 'Clan'
             ? Math.max(Math.round(weight / 25), 1)
             : Math.max(Math.round(weight / 20), 1);
     }
 
     // ── Aero armor (no crit slots) ──────────────────────────────────
-    if (isAero && eq.hasAnyFlag([
-        'F_REACTIVE', 'F_REFLECTIVE', 'F_ANTI_PENETRATIVE_ABLATIVE',
-        'F_BALLISTIC_REINFORCED', 'F_FERRO_LAMELLOR',
-    ])) {
+    if (isAero && armorKind !== null && [
+        'reactive', 'reflective', 'anti-penetrative-ablative',
+        'ballistic-reinforced', 'ferro-lamellor',
+    ].includes(armorKind)) {
         return 0;
     }
 
     // ── Targeting Computer ──────────────────────────────────────────
-    if (eq.hasFlag('F_TARGETING_COMPUTER')) {
-        const relevantWeight = getTargetingComputerRelevantWeight(entity);
-        return relevantWeight === undefined
-            ? undefined
-            : Math.ceil(relevantWeight / (eq.techBase === 'Clan' ? 5 : 4));
-    }
+    if (targetingComputerSlots !== null) return targetingComputerSlots;
 
     // ── Ferro-Fibrous / Reactive ────────────────────────────────────
-    if (eq.hasFlag('F_FERRO_FIBROUS') || eq.hasFlag('F_REACTIVE')) {
+    if (armorKind === 'ferro-fibrous' || armorKind === 'reactive') {
         const mountedArmor = entity.uniformArmor();
         if (!mountedArmor) {
             return getPatchworkArmorSlots(
@@ -99,7 +108,7 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
     }
 
     // ── Reflective ──────────────────────────────────────────────────
-    if (eq.hasFlag('F_REFLECTIVE')) {
+    if (armorKind === 'reflective') {
         const mountedArmor = entity.uniformArmor();
         if (!mountedArmor) {
             return getPatchworkArmorSlots(
@@ -114,46 +123,44 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
     }
 
     // ── Light Ferro-Fibrous ─────────────────────────────────────────
-    if (eq.hasFlag('F_LIGHT_FERRO')) {
+    if (armorKind === 'light-ferro') {
         const patchworkSlots = getPatchworkArmorSlots(entity, ['LIGHT_FERRO'], () => 1);
         return patchworkSlots ?? (isSuperHeavyMek ? 4 : 7);
     }
 
     // ── Heavy Ferro-Fibrous ─────────────────────────────────────────
-    if (eq.hasFlag('F_HEAVY_FERRO')) {
+    if (armorKind === 'heavy-ferro') {
         const patchworkSlots = getPatchworkArmorSlots(entity, ['HEAVY_FERRO'], () => 3);
         return patchworkSlots ?? (isSuperHeavyMek ? 11 : 21);
     }
 
     // ── Ferro-Lamellor ──────────────────────────────────────────────
-    if (eq.hasFlag('F_FERRO_LAMELLOR')) {
+    if (armorKind === 'ferro-lamellor') {
         const patchworkSlots = getPatchworkArmorSlots(entity, ['FERRO_LAMELLOR'], () => 2);
         return patchworkSlots ?? (isSuperHeavyMek ? 6 : 12);
     }
 
     // ── Ferro-Fibrous Prototype ─────────────────────────────────────
-    if (eq.hasFlag('F_FERRO_FIBROUS_PROTO')) {
+    if (armorKind === 'ferro-fibrous-prototype') {
         const patchworkSlots = getPatchworkArmorSlots(entity, ['FERRO_FIBROUS_PROTO'], () => 2);
         return patchworkSlots ?? (isSuperHeavyMek ? 8 : 16);
     }
 
     // ── Anti-Penetrative Ablative / Heat-Dissipating ────────────────
-    if (eq.hasFlag('F_ANTI_PENETRATIVE_ABLATIVE') || eq.hasFlag('F_HEAT_DISSIPATING')) {
+    if (armorKind === 'anti-penetrative-ablative' || armorKind === 'heat-dissipating') {
         return isSuperHeavyMek ? 3 : 6;
     }
 
     // ── Ballistic-Reinforced / Impact-Resistant ─────────────────────
-    if (eq.hasFlag('F_BALLISTIC_REINFORCED') || eq.hasFlag('F_IMPACT_RESISTANT')) {
+    if (armorKind === 'ballistic-reinforced' || armorKind === 'impact-resistant') {
         return isSuperHeavyMek ? 5 : 10;
     }
 
     // ── Jump Booster / Talons ───────────────────────────────────────
-    if (eq.hasFlag('F_JUMP_BOOSTER') || eq.hasFlag('F_TALON')) {
-        return isQuad ? 8 : 4;
-    }
+    if (boosterSlots !== null || isTalonEquipment(eq)) return boosterSlots ?? (isQuad ? 8 : 4);
 
     // ── Tracks ──────────────────────────────────────────────────────
-    if (eq.hasFlag('F_TRACKS')) {
+    if (isTracksEquipment(eq)) {
         if (isQuad) return 4;
         if (isMekEntity(entity)
             && (entity.chassisConfig === 'Biped' || entity.chassisConfig === 'LAM')) {
@@ -162,7 +169,7 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
     }
 
     // ── Actuator Enhancement System ─────────────────────────────────
-    if (eq.hasFlag('F_ACTUATOR_ENHANCEMENT_SYSTEM')) {
+    if (isActuatorEnhancementSystem(eq)) {
         const wc = entity.weightClass();
         if (wc === 'Light') return 1;
         if (wc === 'Medium') return 2;
@@ -172,46 +179,28 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
     }
 
     // ── Blue Shield ─────────────────────────────────────────────────
-    if (eq.hasFlag('F_BLUE_SHIELD')) {
+    if (isBlueShieldEquipment(eq)) {
         return isAero ? 4 : entity.locationOrder.length - 1;
     }
 
     // ── Endo Steel ──────────────────────────────────────────────────
-    if (eq.hasFlag('F_ENDO_STEEL')) {
+    if (structureKind === 'endo-steel') {
         const base = eq.techBase === 'Clan' ? 7 : 14;
         return isSuperHeavyEntity ? Math.ceil(base / 2) : base;
     }
 
     // ── Endo Steel Prototype ────────────────────────────────────────
-    if (eq.hasFlag('F_ENDO_STEEL_PROTO')) {
+    if (structureKind === 'endo-steel-prototype') {
         return isSuperHeavyEntity ? 8 : 16;
     }
 
     // ── Endo-Composite ──────────────────────────────────────────────
-    if (eq.hasFlag('F_ENDO_COMPOSITE')) {
+    if (structureKind === 'endo-composite') {
         const base = eq.techBase === 'Clan' ? 4 : 7;
         return isSuperHeavyEntity ? Math.ceil(base / 2) : base;
     }
 
-    // ── Fuel ────────────────────────────────────────────────────────
-    if (eq.hasFlag('F_FUEL')) {
-        if (!entity.mountedEngine().installed) return 0;
-        const usesTankEngine = entity.entityType === 'Tank'
-            || entity.entityType === 'Naval'
-            || entity.entityType === 'VTOL';
-        const rawTonnage = entity.mountedEngine().getWeight({ tank: usesTankEngine }) * 0.1;
-        return Math.ceil(roundStandard(rawTonnage, entity));
-    }
-
-    // ── Cargo ───────────────────────────────────────────────────────
-    if (eq.hasFlag('F_CARGO')) {
-        return isAero ? 0 : Math.ceil(size);
-    }
-
-    // ── Liquid Cargo / Communications ───────────────────────────────
-    if (eq.hasFlag('F_LIQUID_CARGO') || eq.hasFlag('F_COMMUNICATIONS')) {
-        return Math.ceil(size);
-    }
+    if (supportSlots !== null) return supportSlots;
 
     // MegaMek logs an error and assumes one slot for an unrecognized formula.
     return 1;
@@ -233,13 +222,4 @@ function getPatchworkArmorSlots(
     return isMekEntity(entity) && entity.isSuperHeavy()
         ? Math.ceil(slots / 2)
         : slots;
-}
-
-function roundStandard(tonnage: number, entity: BaseEntity): number {
-    const usesKilograms = entity.entityType === 'ProtoMek'
-        || entity.entityType === 'BattleArmor'
-        || (entity.isSupportVehicle() && entity.weightClass() === 'Small Support');
-    return usesKilograms
-        ? Math.ceil(tonnage * 1000) / 1000
-        : Math.ceil(tonnage * 2) / 2;
 }

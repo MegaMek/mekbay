@@ -8,10 +8,10 @@ import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { LayoutService } from '../../services/layout.service';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { UrlService } from '../../services/url.service';
@@ -73,7 +73,7 @@ describe('ForceOrgDialogComponent', () => {
                 { provide: DialogRef, useValue: dialogRefStub },
                 { provide: DataService, useValue: dataServiceStub },
                 { provide: DialogsService, useValue: dialogsServiceStub },
-                { provide: ForceBuilderService, useValue: forceBuilderServiceStub },
+                { provide: ForceWorkspaceStateService, useValue: forceBuilderServiceStub },
                 { provide: LayoutService, useValue: layoutServiceStub },
                 { provide: UrlService, useValue: urlServiceStub },
             ],
@@ -114,7 +114,7 @@ describe('ForceOrgDialogComponent', () => {
         } as any;
     }
 
-    function createBattleMek(name: string): Unit {
+    function createBattleMek(name: string): UnitSummary {
         return createEmptyUnit({
             name,
             chassis: `Chassis ${name}`,
@@ -128,7 +128,7 @@ describe('ForceOrgDialogComponent', () => {
 
     function createLoadForce(
         instanceId: string,
-        units: Unit[],
+        units: UnitSummary[],
         overrides: { bv?: number; pv?: number; type?: GameSystem } = {},
     ): LoadForceEntry {
         return new LoadForceEntry({

@@ -1,19 +1,21 @@
 <!-- Intel Tab Content -->
 <div class="tab-content">
     <div class="fluff-content allow-select" [class.image-only]="isImageOnlyIntel()">
-        @if (isFluffLoading()) {
-            <loading-spinner class="intel-loading-spinner" message="Loading intel..." ariaLabel="Loading intel"></loading-spinner>
+        <!-- Artwork is resolved independently from native prose. -->
+        @if (fluffImageUrl()) {
+            <div class="fluff-image-container">
+                <img [src]="fluffImageUrl()" class="fluff-image"
+                    alt="{{ unit().chassis }} {{ unit().model }}" />
+            </div>
         }
 
-        @if (fluff(); as fluff) {
-
-            <!-- Fluff Image -->
-            @if (fluffImageUrl()) {
-                <div class="fluff-image-container">
-                    <img [src]="fluffImageUrl()" class="fluff-image"
-                        alt="{{ unit().chassis }} {{ unit().model }}" />
-                </div>
-            }
+        @if (loading()) {
+            <div class="intel-status" role="status">Loading intel…</div>
+        } @else if (loadError()) {
+            <div class="intel-status intel-error" role="alert">
+                Intel could not be loaded from this unit's native source.
+            </div>
+        } @else if (fluff(); as fluff) {
 
             @if (fluff.systems && fluff.systems.length > 0) {
                 <div class="fluff-section">
@@ -93,7 +95,7 @@
                     <div class="fluff-text">{{ sanitizeFluffHtml(fluff.notes) }}</div>
                 </div>
             }
-        } @else {
+        } @else if (!fluffImageUrl()) {
             <div class="no-fluff">
                 No intel available for this unit.
             </div>

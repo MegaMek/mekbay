@@ -2,33 +2,42 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 
-import { REMOTE_HOST } from '../../models/common.model';
 import { MULFACTION_NONE, type FactionEraMembership, type MULFaction, type MULFactions, type RawFactionEraMembership, type RawMULFactions } from '../../models/mulfactions.model';
 import { normalizeLooseText } from '../../utils/string.util';
 import { naturalCompare } from '../../utils/sort.util';
-import { DbService } from '../db.service';
-import { CatalogBaseService } from './catalog-base.service';
+import {
+    CatalogBaseService,
+    type PreparedCatalogTransport,
+} from './catalog-base.service';
+
+export interface PreparedFactionsCatalog {
+    readonly transport: PreparedCatalogTransport<RawMULFactions>;
+    readonly factions: MULFaction[];
+    readonly factionNameMap: ReadonlyMap<string, MULFaction>;
+    readonly normalizedFactionNameMap: ReadonlyMap<string, MULFaction>;
+    readonly factionIdMap: ReadonlyMap<number, MULFaction>;
+}
 
 @Injectable({
     providedIn: 'root'
 })
 export class FactionsCatalogService extends CatalogBaseService<MULFactions | RawMULFactions, RawMULFactions, RawMULFactions> {
-    private readonly dbService = inject(DbService);
-
     private factions: MULFaction[] = [];
-    private factionNameMap = new Map<string, MULFaction>();
-    private normalizedFactionNameMap = new Map<string, MULFaction>();
-    private factionIdMap = new Map<number, MULFaction>();
+    private factionNameMap: ReadonlyMap<string, MULFaction> = new Map();
+    private normalizedFactionNameMap: ReadonlyMap<string, MULFaction> = new Map();
+    private factionIdMap: ReadonlyMap<number, MULFaction> = new Map();
 
     protected override get catalogKey(): string {
         return 'factions';
     }
 
     protected override get remoteUrl(): string {
-        return `${REMOTE_HOST}/factions.json`;
+        return 'online-assets/generated/factions.json';
     }
+
+    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
     public getFactions(): MULFaction[] {
         return this.factions;
@@ -43,57 +52,101 @@ export class FactionsCatalogService extends CatalogBaseService<MULFactions | Raw
         return this.factionIdMap.get(id);
     }
 
+    public async prepareCachedCatalog(): Promise<PreparedFactionsCatalog | undefined> {
+        const transport = await this.prepareCachedTransport();
+        return transport ? this.prepareCatalog(transport) : undefined;
+    }
+
+    public async prepareRemoteCatalog(
+        previous?: PreparedFactionsCatalog,
+        signal?: AbortSignal,
+    ): Promise<PreparedFactionsCatalog> {
+        return this.prepareCatalog(await this.prepareRemoteTransport(previous?.transport, signal));
+    }
+
+    /** Rebuilds exact runtime state from an immutable application bundle. */
+    public prepareBundledCatalog(data: RawMULFactions): PreparedFactionsCatalog {
+        return this.prepareCatalog({ source: 'bundle', data: this.normalizeRawFactions(data) });
+    }
+
+    public commitPreparedCatalog(candidate: PreparedFactionsCatalog): void {
+        this.factions = candidate.factions;
+        this.factionNameMap = candidate.factionNameMap;
+        this.normalizedFactionNameMap = candidate.normalizedFactionNameMap;
+        this.factionIdMap = candidate.factionIdMap;
+        this.markPreparedCatalogCommitted(candidate.transport.data);
+    }
+
     protected override hasHydratedData(): boolean {
         return this.factions.length > 0;
     }
 
-    protected override async loadFromCache(): Promise<MULFactions | RawMULFactions | undefined> {
-        return await this.dbService.getFactions() ?? undefined;
-    }
-
-    protected override saveToCache(data: RawMULFactions): Promise<void> {
-        return this.dbService.saveFactions(data);
-    }
-
     protected override hydrate(data: MULFactions | RawMULFactions): void {
-        const rawFactions = data.factions.some((faction) => faction.id === MULFACTION_NONE)
-            ? [...data.factions]
-            : [...data.factions, this.createNoneFaction()];
+        const prepared = this.prepareCatalog({ source: 'cache', data: this.normalizeRawFactions(data) });
+        this.factions = prepared.factions;
+        this.factionNameMap = new Map(prepared.factionNameMap);
+        this.normalizedFactionNameMap = new Map(prepared.normalizedFactionNameMap);
+        this.factionIdMap = new Map(prepared.factionIdMap);
+        this.transportRevision = data.assetHash || '';
+    }
+
+    protected override normalizeCachedData(data: MULFactions | RawMULFactions): RawMULFactions {
+        return this.normalizeRawFactions(data);
+    }
+
+    private prepareCatalog(transport: PreparedCatalogTransport<RawMULFactions>): PreparedFactionsCatalog {
+        const rawFactions = transport.data.factions.some((faction) => faction.id === MULFACTION_NONE)
+            ? [...transport.data.factions]
+            : [...transport.data.factions, this.createNoneFaction()];
+        const ids = new Set<number>();
+        const names = new Set<string>();
         const factions = rawFactions
             .sort((left, right) => naturalCompare(left.name, right.name))
-            .map((faction) => ({
-                ...faction,
-                eras: Object.fromEntries(
-                    Object.entries(faction.eras).map(([eraId, units]) => [
-                        Number(eraId),
-                        this.hydrateEraMembership(units),
-                    ])
-                ) as Record<number, FactionEraMembership>,
-            }));
-
-        this.factions = factions;
-        this.factionNameMap.clear();
-        this.normalizedFactionNameMap.clear();
-        this.factionIdMap.clear();
-
+            .map((faction) => {
+                if (!faction?.name || !Number.isSafeInteger(faction.id)
+                    || ids.has(faction.id) || names.has(faction.name)) {
+                    throw new Error(`Invalid or duplicate faction catalog entry: ${faction?.id ?? '<missing>'}`);
+                }
+                ids.add(faction.id);
+                names.add(faction.name);
+                return {
+                    ...faction,
+                    eras: Object.fromEntries(
+                        Object.entries(faction.eras).map(([eraId, units]) => [
+                            Number(eraId),
+                            this.hydrateEraMembership(units),
+                        ]),
+                    ) as Record<number, FactionEraMembership>,
+                };
+            });
+        const factionNameMap = new Map<string, MULFaction>();
+        const normalizedFactionNameMap = new Map<string, MULFaction>();
+        const factionIdMap = new Map<number, MULFaction>();
         for (const faction of factions) {
-            this.factionNameMap.set(faction.name, faction);
+            factionNameMap.set(faction.name, faction);
 
             const normalizedName = normalizeLooseText(faction.name);
-            if (normalizedName && !this.normalizedFactionNameMap.has(normalizedName)) {
-                this.normalizedFactionNameMap.set(normalizedName, faction);
+            if (normalizedName && !normalizedFactionNameMap.has(normalizedName)) {
+                normalizedFactionNameMap.set(normalizedName, faction);
             }
 
-            this.factionIdMap.set(faction.id, faction);
+            factionIdMap.set(faction.id, faction);
         }
-
-        this.etag = data.etag || '';
+        if (factions.length === 0) throw new Error('Faction catalog prepared to an empty array');
+        return Object.freeze({
+            transport,
+            factions,
+            factionNameMap,
+            normalizedFactionNameMap,
+            factionIdMap,
+        });
     }
 
-    protected override normalizeFetchedData(data: RawMULFactions, etag: string): RawMULFactions {
+    protected override normalizeFetchedData(data: RawMULFactions, assetHash: string): RawMULFactions {
         return {
-            ...data,
-            etag,
+            version: String(data.version),
+            assetHash,
+            factions: data.factions,
         };
     }
 
@@ -116,6 +169,22 @@ export class FactionsCatalogService extends CatalogBaseService<MULFactions | Raw
             group: 'Other',
             img: '/images/factions/none.png',
             eras: {},
+        };
+    }
+
+    private normalizeRawFactions(data: MULFactions | RawMULFactions): RawMULFactions {
+        return {
+            version: data.version,
+            assetHash: data.assetHash,
+            factions: data.factions.map(faction => ({
+                ...faction,
+                eras: Object.fromEntries(
+                    Object.entries(faction.eras).map(([eraId, units]) => [
+                        Number(eraId),
+                        Array.from(units),
+                    ]),
+                ),
+            })),
         };
     }
 }

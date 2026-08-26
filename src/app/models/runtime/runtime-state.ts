@@ -1,0 +1,327 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import type {
+    ArmorFaceId,
+    ComponentId,
+    CrewPositionId,
+    CriticalSlotId,
+    LocationId,
+} from '../entity/entity-identifiers';
+import type { SavedEntityIdentity } from '../persisted-unit-state';
+import type { CBTRuleset } from '../cbt-ruleset.model';
+import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
+import type { EquipmentStatus } from '../equipment-status.model';
+import {
+    canonicalizeMekTurnStateV2,
+    createPristineMekTurnStateV2,
+    type MekTurnStateV2,
+} from './mek-turn-state-v2';
+import {
+    canonicalizeMekHeatStateV2,
+    createPristineMekHeatStateV2,
+    type MekHeatStateV2,
+} from './mek-heat-state-v2';
+import {
+    freezeRuleChecks,
+    type MekRuleChecksV2,
+} from './mek-destruction-state-v2';
+import {
+    canonicalizeMekMovementPsrStateV2,
+    createPristineMekMovementPsrStateV2,
+    type MekMovementPsrStateV2,
+} from './mek-movement-psr-v2';
+import { uuidv4 } from '../../utils/uuid.util';
+import {
+    createPristineAttackerTargetingState,
+    freezeAttackerTargetingState,
+    type AttackerTargetingState,
+} from './attacker-targeting-state';
+import type { SparseMekGaussPowerState } from './mek-gauss-power';
+import {
+    freezeEquipmentRowOrder,
+    type EquipmentRowOrderState,
+} from './equipment-row-order';
+import type {
+    ClassicCrewRuntimeState,
+    ClassicLocationRuntimeState,
+    ClassicUnitRuntimeState,
+} from './classic-unit-runtime';
+
+declare const runtimeBrand: unique symbol;
+type RuntimeBrand<T, Name extends string> = T & { readonly [runtimeBrand]: Name };
+
+export type UnitInstanceId = RuntimeBrand<string, 'UnitInstanceId'>;
+export type CommandId = RuntimeBrand<string, 'CommandId'>;
+export type StateRevision = RuntimeBrand<number, 'StateRevision'>;
+
+/** A sixth wound is fatal under the supported Mek rules profile. */
+export const MAX_MEK_CREW_WOUNDS = 6;
+
+/** Closed Mek location state vocabulary owned by the runtime contract. */
+export const MEK_LOCATION_CONDITION_KEYS = Object.freeze([
+    'blown-off',
+    'flooded',
+    'narc',
+] as const);
+export type MekLocationConditionKey = typeof MEK_LOCATION_CONDITION_KEYS[number];
+export const MAX_MEK_LOCATION_CONDITION_VALUE = 1_000_000;
+
+export interface InitialStateProfileRef {
+    readonly schemaVersion: 1;
+    readonly initializerRevision: number;
+    readonly profileId: string;
+}
+
+export interface InstanceBaselineRef {
+    readonly entity: SavedEntityIdentity;
+    readonly ruleset: CBTRuleset;
+    readonly initialStateProfile: InitialStateProfileRef;
+}
+
+export interface LocationRuntimeState extends ClassicLocationRuntimeState {
+    /** Sparse positive values. Boolean conditions use one; NARC uses its marker count. */
+    readonly conditions: ReadonlyMap<MekLocationConditionKey, number>;
+}
+
+export interface CriticalSlotRuntimeState {
+    readonly hits: number;
+    /** Omitted means the slot is available or became unavailable on turn zero. */
+    readonly destroyedTurn?: number;
+}
+
+export type EscalatingFailureSequence = number;
+
+/** Sparse component-local lifecycle state. Absence means sequence zero and inactive. */
+export interface EscalatingFailureRuntimeState {
+    readonly sequence: EscalatingFailureSequence;
+    readonly active?: true;
+}
+
+export type PpcCapacitorChargeState = 'charging' | 'charged';
+
+/** Sparse pair-local state stored on the capacitor and bound to one exact PPC. */
+export interface PpcCapacitorRuntimeState {
+    readonly weaponId: ComponentId;
+    readonly chargeState?: PpcCapacitorChargeState;
+    readonly firedThisTurn?: true;
+}
+
+export type BombastLaserChargeState = 'charging' | 'charged';
+
+/** Sparse component-local Bombast lifecycle. Charge and fired are mutually exclusive. */
+export interface BombastLaserRuntimeState {
+    readonly chargeState?: BombastLaserChargeState;
+    readonly firedThisTurn?: true;
+}
+
+export type C3EmergencyMasterModeOverride = 'on' | 'off';
+export type C3EmergencyMasterOperatingTurns = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+/** Sparse component-local request/operating lifecycle. Absence means auto with zero turns. */
+export interface C3EmergencyMasterRuntimeState {
+    readonly mode?: C3EmergencyMasterModeOverride;
+    readonly operatingTurns?: C3EmergencyMasterOperatingTurns;
+}
+
+/** Sparse combat damage stored on a physical shield; critical/actuator losses are derived. */
+export interface MekShieldDamageRuntimeState {
+    readonly absorptionDamage: number;
+    readonly capacityDamage: number;
+}
+
+export interface ComponentRuntimeState {
+    readonly statusOverride?: Exclude<EquipmentStatus, 'available'>;
+    readonly mode?: string;
+    readonly jammed?: boolean;
+    readonly escalatingFailure?: EscalatingFailureRuntimeState;
+    readonly ppcCapacitor?: PpcCapacitorRuntimeState;
+    readonly bombastLaser?: BombastLaserRuntimeState;
+    readonly c3EmergencyMaster?: C3EmergencyMasterRuntimeState;
+    /** Independent from the weapon mode (notably HAG Standard/Flak). Absence means powered up. */
+    readonly gaussPower?: SparseMekGaussPowerState;
+    readonly shieldDamage?: MekShieldDamageRuntimeState;
+    /** Damage absorbed by this 10-point Modular Armor panel. */
+    readonly modularArmorDamage?: number;
+}
+
+export interface AmmoRuntimeState {
+    readonly shotsSpent: number;
+    readonly munitionOverride?: string;
+}
+
+export type CrewRuntimeState = ClassicCrewRuntimeState;
+
+export interface PendingCombatOverlay {
+    readonly locationInternalDamage: ReadonlyMap<LocationId, number>;
+    readonly armorDamage: ReadonlyMap<ArmorFaceId, number>;
+    readonly criticalHits: ReadonlyMap<CriticalSlotId, number>;
+    /** Explicit `available` represents a pending repair over a committed override. */
+    readonly componentStatus: ReadonlyMap<ComponentId, EquipmentStatus>;
+    /** Signed preview deltas over committed shield combat damage. */
+    readonly shieldDamage: ReadonlyMap<ComponentId, MekShieldDamageRuntimeState>;
+    /** Signed preview deltas over committed Modular Armor panel damage. */
+    readonly modularArmorDamage: ReadonlyMap<ComponentId, number>;
+    /**
+     * Exact preview replacement values by stable location. Zero is an explicit
+     * pending removal; committed location state remains sparse and positive.
+     */
+    readonly locationConditions: ReadonlyMap<
+        LocationId,
+        ReadonlyMap<MekLocationConditionKey, number>
+    >;
+}
+
+export interface MekUnitRuntimeState extends ClassicUnitRuntimeState {
+    readonly schemaVersion: 7;
+    readonly stateRevision: StateRevision;
+    /** Exact committed legacy unit-destruction fact; false is the pristine baseline. */
+    readonly destroyed: boolean;
+    readonly locations: ReadonlyMap<LocationId, LocationRuntimeState>;
+    readonly slots: ReadonlyMap<CriticalSlotId, CriticalSlotRuntimeState>;
+    readonly components: ReadonlyMap<ComponentId, ComponentRuntimeState>;
+    readonly ammo: ReadonlyMap<ComponentId, AmmoRuntimeState>;
+    /** Sparse deviations from the healthy/conscious crew baseline. */
+    readonly crew: ReadonlyMap<CrewPositionId, CrewRuntimeState>;
+    readonly heat: MekHeatStateV2;
+    readonly conditions: ReadonlySet<string>;
+    readonly family: { readonly kind: 'mek' };
+    /** Persistent typed outcomes; required even when empty in runtime schema V4. */
+    readonly ruleChecks: MekRuleChecksV2;
+    /** Sole typed owner of Mek movement declarations, phase damage, and pilot checks. */
+    readonly movementPsr: MekMovementPsrStateV2;
+    /** Sole unit-local owner of weapon selection, ammo preference, and attacker-relative target facts. */
+    readonly attackerTargeting: AttackerTargetingState;
+    /** Optional presentation-only permutations; Entity component topology remains canonical. */
+    readonly equipmentRowOrder?: EquipmentRowOrderState;
+    readonly turn: MekTurnStateV2;
+    readonly pendingCombat: PendingCombatOverlay;
+}
+
+export function asUnitInstanceId(value: string): UnitInstanceId {
+    if (!value.trim() || value.includes('\0')) throw new Error('Invalid unit instance ID');
+    return value as UnitInstanceId;
+}
+
+export function createUnitInstanceId(): UnitInstanceId {
+    return asUnitInstanceId(`unit:${uuidv4()}`);
+}
+
+export function asCommandId(value: string): CommandId {
+    if (!value.trim() || value.length > 256 || value.includes('\0')) throw new Error('Invalid command ID');
+    return value as CommandId;
+}
+
+export function createCommandId(): CommandId {
+    return asCommandId(`command:${uuidv4()}`);
+}
+
+export function asStateRevision(value: number): StateRevision {
+    if (!Number.isSafeInteger(value) || value < 0) throw new Error(`Invalid state revision: ${value}`);
+    return value as StateRevision;
+}
+
+export function emptyPendingCombatOverlay(): PendingCombatOverlay {
+    return Object.freeze({
+        locationInternalDamage: new ImmutableIndex<LocationId, number>([]),
+        armorDamage: new ImmutableIndex<ArmorFaceId, number>([]),
+        criticalHits: new ImmutableIndex<CriticalSlotId, number>([]),
+        componentStatus: new ImmutableIndex<ComponentId, EquipmentStatus>([]),
+        shieldDamage: new ImmutableIndex<ComponentId, MekShieldDamageRuntimeState>([]),
+        modularArmorDamage: new ImmutableIndex<ComponentId, number>([]),
+        locationConditions: new ImmutableIndex<
+            LocationId,
+            ReadonlyMap<MekLocationConditionKey, number>
+        >([]),
+    });
+}
+
+export function createPristineMekState(): MekUnitRuntimeState {
+    return freezeRuntimeState({
+        schemaVersion: 7,
+        stateRevision: asStateRevision(0),
+        destroyed: false,
+        locations: new ImmutableIndex<LocationId, LocationRuntimeState>([]),
+        slots: new ImmutableIndex<CriticalSlotId, CriticalSlotRuntimeState>([]),
+        components: new ImmutableIndex<ComponentId, ComponentRuntimeState>([]),
+        ammo: new ImmutableIndex<ComponentId, AmmoRuntimeState>([]),
+        crew: new ImmutableIndex<CrewPositionId, CrewRuntimeState>([]),
+        heat: createPristineMekHeatStateV2(),
+        conditions: new ImmutableSet([]),
+        family: Object.freeze({ kind: 'mek' }),
+        ruleChecks: new ImmutableIndex([]),
+        movementPsr: createPristineMekMovementPsrStateV2(),
+        attackerTargeting: createPristineAttackerTargetingState(),
+        turn: createPristineMekTurnStateV2(),
+        pendingCombat: emptyPendingCombatOverlay(),
+    });
+}
+
+export function freezeRuntimeState(state: MekUnitRuntimeState): MekUnitRuntimeState {
+    const { equipmentRowOrder: rawEquipmentRowOrder, ...values } = state;
+    const equipmentRowOrder = freezeEquipmentRowOrder(rawEquipmentRowOrder);
+    return Object.freeze({
+        ...values,
+        locations: new ImmutableIndex([...state.locations].map(([id, value]) => [
+            id,
+            Object.freeze({
+                ...value,
+                armorDamage: Object.freeze(value.armorDamage.map(entry => Object.freeze({ ...entry }))),
+                conditions: new ImmutableIndex(value.conditions),
+            }),
+        ] as const)),
+        slots: new ImmutableIndex(state.slots),
+        components: new ImmutableIndex([...state.components].map(([id, value]) => [
+            id,
+            Object.freeze({
+                ...value,
+                ...(value.escalatingFailure === undefined
+                    ? {}
+                    : { escalatingFailure: Object.freeze({ ...value.escalatingFailure }) }),
+                ...(value.ppcCapacitor === undefined
+                    ? {}
+                    : { ppcCapacitor: Object.freeze({ ...value.ppcCapacitor }) }),
+                ...(value.bombastLaser === undefined
+                    ? {}
+                    : { bombastLaser: Object.freeze({ ...value.bombastLaser }) }),
+                ...(value.c3EmergencyMaster === undefined
+                    ? {}
+                    : { c3EmergencyMaster: Object.freeze({ ...value.c3EmergencyMaster }) }),
+                ...(value.shieldDamage === undefined
+                    ? {}
+                    : { shieldDamage: Object.freeze({ ...value.shieldDamage }) }),
+            }),
+        ] as const)),
+        ammo: new ImmutableIndex([...state.ammo].map(([id, value]) => [
+            id,
+            Object.freeze({ ...value }),
+        ] as const)),
+        crew: new ImmutableIndex([...state.crew].map(([id, value]) => [
+            id,
+            Object.freeze({ ...value }),
+        ] as const)),
+        heat: canonicalizeMekHeatStateV2(state.heat),
+        conditions: new ImmutableSet(state.conditions),
+        ruleChecks: freezeRuleChecks(state.ruleChecks),
+        movementPsr: canonicalizeMekMovementPsrStateV2(state.movementPsr),
+        attackerTargeting: freezeAttackerTargetingState(state.attackerTargeting),
+        ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
+        turn: canonicalizeMekTurnStateV2(state.turn),
+        pendingCombat: Object.freeze({
+            locationInternalDamage: new ImmutableIndex(state.pendingCombat.locationInternalDamage),
+            armorDamage: new ImmutableIndex(state.pendingCombat.armorDamage),
+            criticalHits: new ImmutableIndex(state.pendingCombat.criticalHits),
+            componentStatus: new ImmutableIndex(state.pendingCombat.componentStatus),
+            shieldDamage: new ImmutableIndex([...state.pendingCombat.shieldDamage].map(([id, value]) => [
+                id,
+                Object.freeze({ ...value }),
+            ] as const)),
+            modularArmorDamage: new ImmutableIndex(state.pendingCombat.modularArmorDamage),
+            locationConditions: new ImmutableIndex([...state.pendingCombat.locationConditions]
+                .map(([locationId, conditions]) => [
+                    locationId,
+                    new ImmutableIndex(conditions),
+                ] as const)),
+        }),
+    });
+}

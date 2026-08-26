@@ -278,9 +278,10 @@ export class VariableSizeVirtualScrollDirective implements OnDestroy {
 
     private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
     private readonly zone = inject(NgZone);
-    private readonly rowResizeObserver = new ResizeObserver(() => this.scheduleMeasurement());
+    private readonly measuredRowHeights = new WeakMap<HTMLElement, number>();
+    private readonly rowResizeObserver = new ResizeObserver(entries => this.onRowsResized(entries));
     private readonly viewportResizeObserver = new ResizeObserver(entries => this.onViewportResize(entries));
-    private readonly mutationObserver = new MutationObserver(() => this.scheduleMeasurement());
+    private readonly mutationObserver = new MutationObserver(records => this.onRowsMutated(records));
     private readonly observedRows = new Set<HTMLElement>();
     private measurementFrame: number | null = null;
     private estimatedItemSizeValue = DEFAULT_ESTIMATED_ITEM_SIZE;
@@ -349,6 +350,31 @@ export class VariableSizeVirtualScrollDirective implements OnDestroy {
         this.scheduleMeasurement();
     }
 
+    private onRowsResized(entries: ResizeObserverEntry[]): void {
+        let changed = false;
+        for (const entry of entries) {
+            const row = entry.target;
+            if (!(row instanceof HTMLElement) || !row.classList.contains('variable-virtual-scroll-item')) continue;
+            const height = row.getBoundingClientRect().height;
+            const previous = this.measuredRowHeights.get(row);
+            if (previous !== undefined && Math.abs(previous - height) < SIZE_EPSILON_PX) continue;
+            this.measuredRowHeights.set(row, height);
+            changed = true;
+        }
+        if (changed) this.scheduleMeasurement();
+    }
+
+    private onRowsMutated(records: MutationRecord[]): void {
+        const changesRenderedRows = records.some(record => (
+            [...record.addedNodes, ...record.removedNodes].some(node => (
+                node instanceof Element
+                && (node.classList.contains('variable-virtual-scroll-item')
+                    || node.querySelector('.variable-virtual-scroll-item') !== null)
+            ))
+        ));
+        if (changesRenderedRows) this.scheduleMeasurement();
+    }
+
     private scheduleMeasurement(): void {
         if (this.destroyed || this.measurementFrame !== null) return;
         this.measurementFrame = requestAnimationFrame(() => {
@@ -372,9 +398,10 @@ export class VariableSizeVirtualScrollDirective implements OnDestroy {
         }
 
         const rangeStart = this.scrollStrategy.getRenderedRange().start;
-        this.scrollStrategy.updateItemSizes(rows.map((row, localIndex) => ({
-            index: rangeStart + localIndex,
-            size: row.getBoundingClientRect().height,
-        })));
+        this.scrollStrategy.updateItemSizes(rows.map((row, localIndex) => {
+            const size = row.getBoundingClientRect().height;
+            this.measuredRowHeights.set(row, size);
+            return { index: rangeStart + localIndex, size };
+        }));
     }
 }

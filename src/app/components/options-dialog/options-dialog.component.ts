@@ -29,6 +29,8 @@ import type { AvailableAuthProvider, LinkedOAuthProvider, OAuthProvider } from '
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { naturalCompare } from '../../utils/sort.util';
 import { AppUpdateService } from '../../services/app-update.service';
+import { CatalogStorage } from '../../services/catalogs/catalog-storage.service';
+import { deleteUnitCatalogDatabase } from '../../services/unit-catalog/unit-catalog-database';
 
 type OptionsSectionId = 'General' | 'Search' | 'Account' | 'Tags' | 'Classic BattleTech' | 'Alpha Strike' | 'Advanced' | 'Logs';
 
@@ -107,6 +109,7 @@ export class OptionsDialogComponent {
     optionsService = inject(OptionsService);
     gameSystem = inject(GameService);
     dbService = inject(DbService);
+    private readonly catalogStorage = inject(CatalogStorage);
     dialogRef = inject(DialogRef<OptionsDialogComponent>);
     userStateService = inject(UserStateService);
     dialogsService = inject(DialogsService);
@@ -377,7 +380,7 @@ export class OptionsDialogComponent {
 
     async onCBTRulesChange(event: Event) {
         const select = event.target as HTMLSelectElement;
-        const value = select.value as 'core2026' | 'tw';
+        const value = select.value as 'core-2026' | 'total-warfare';
         const currentValue = this.optionsService.options().CBTRules;
         const confirmed = await this.dialogsService.requestConfirmation(
             'Changing the rules system will reload the application. Any uncommitted changes may be lost.',
@@ -395,6 +398,11 @@ export class OptionsDialogComponent {
     onRecordSheetCenterPanelContentChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'fluffImage' | 'clusterTable';
         this.optionsService.setOption('recordSheetCenterPanelContent', value);
+    }
+
+    onUsePreGeneratedRecordSheetsChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('usePreGeneratedRecordSheets', value);
     }
 
     onRecordSheetDoubleTapZoomResetChange(event: Event) {
@@ -623,7 +631,11 @@ export class OptionsDialogComponent {
         );
 
         if (confirmed) {
-            await this.dbService.clearCatalogCaches();
+            await Promise.all([
+                this.dbService.clearCatalogCaches(),
+                this.catalogStorage.clear(),
+                deleteUnitCatalogDatabase(),
+            ]);
             window.location.reload();
         }
     }

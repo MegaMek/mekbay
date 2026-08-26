@@ -11,11 +11,13 @@ import { TestBed } from '@angular/core/testing';
 import { NEVER, Subject, of } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
 import { MEGAMEK_AVAILABILITY_UNKNOWN_SCORE } from '../../models/megamek/availability.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceImportService } from '../../services/force-import.service';
+import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { GameService } from '../../services/game.service';
 import { LayoutService } from '../../services/layout.service';
 import { LongPressDirective } from '../../directives/long-press.directive';
@@ -31,10 +33,11 @@ import { calculateDataTableMinWidth } from '../data-table/data-table.component';
 import { UnitSearchComponent } from './unit-search.component';
 
 describe('UnitSearchComponent card virtualization', () => {
-    const filteredUnitsSignal = signal<Unit[]>([]);
+    const filteredUnitsSignal = signal<UnitSummary[]>([]);
     const currentGameSystemSignal = signal(GameSystem.ALPHA_STRIKE);
     const closePanelsRequestSignal = signal({ requestId: 0, exitExpandedView: false });
     const isSearchSettledSignal = signal(true);
+    const interactionReadySignal = signal(true);
     const advOptionsSignal = signal<Record<string, any>>({});
     const budgetModeSignal = signal<'force-limit' | 'bv-normalization' | null>(null);
     const classicBvNormalizationSettingsSignal = signal({
@@ -75,6 +78,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filteredUnits: () => filteredUnitsSignal(),
         isSearchSettled: () => isSearchSettledSignal(),
         isDataReady: () => true,
+        isInteractionReady: () => interactionReadySignal(),
         searchTokens: () => [],
         isComplexQuery: () => false,
         filterState: () => ({}),
@@ -115,9 +119,12 @@ describe('UnitSearchComponent card virtualization', () => {
         getSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
     };
 
-    const forceBuilderServiceStub = {
+    const forceWorkspaceStub = {
         smartCurrentForce: () => null,
         hasForces: () => false,
+    };
+
+    const forceCommandsStub = {
         addUnit: jasmine.createSpy('addUnit').and.resolveTo(true),
     };
 
@@ -166,7 +173,7 @@ describe('UnitSearchComponent card virtualization', () => {
         parseAbility: jasmine.createSpy('parseAbility').and.returnValue(null),
     };
 
-    function createUnit(name: string, overrides: TestUnitOverrides = {}): Unit {
+    function createUnit(name: string, overrides: TestUnitOverrides = {}): UnitSummary {
         return createEmptyUnit({ name, ...overrides, as: { PV: 1, ...overrides.as } });
     }
 
@@ -178,6 +185,12 @@ describe('UnitSearchComponent card virtualization', () => {
         });
         window.dispatchEvent(event);
         return event;
+    }
+
+    async function waitForDialogOpen(): Promise<void> {
+        for (let attempt = 0; attempt < 20 && dialogsServiceStub.createDialog.calls.count() === 0; attempt += 1) {
+            await new Promise<void>(resolve => setTimeout(resolve, 0));
+        }
     }
 
     beforeEach(async () => {
@@ -195,6 +208,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.searchText.set('');
         advOptionsSignal.set({});
         isSearchSettledSignal.set(true);
+        interactionReadySignal.set(true);
         filtersServiceStub.budgetMode.set(null);
         filtersServiceStub.classicBvNormalizationSettings.set({
             targetBv: { min: 0, max: 999_999 },
@@ -216,8 +230,8 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.unsetFilter.calls.reset();
         filtersServiceStub.setBudgetMode.calls.reset();
         filtersServiceStub.setBvNormalizationSettings.calls.reset();
-        forceBuilderServiceStub.addUnit.calls.reset();
-        forceBuilderServiceStub.addUnit.and.resolveTo(true);
+        forceCommandsStub.addUnit.calls.reset();
+        forceCommandsStub.addUnit.and.resolveTo(true);
         dataServiceStub.getUnitByName.calls.reset();
         dataServiceStub.getUnitByName.and.returnValue(undefined);
         filtersServiceStub.setSearchText.and.callFake((text: string) => {
@@ -227,7 +241,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.getMegaMekAvailabilityBadges.and.returnValue([]);
         filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(0);
         filtersServiceStub.getSearchResultPilotContext.calls.reset();
-        filtersServiceStub.getSearchResultPilotContext.and.callFake((unit: Unit) => ({
+        filtersServiceStub.getSearchResultPilotContext.and.callFake((unit: UnitSummary) => ({
             kind: 'bv',
             adjustedValue: unit.bv,
             gunnery: filtersServiceStub.pilotGunnerySkill(),
@@ -248,7 +262,12 @@ describe('UnitSearchComponent card virtualization', () => {
                 provideZonelessChangeDetection(),
                 { provide: UnitSearchFiltersService, useValue: filtersServiceStub },
                 { provide: LayoutService, useValue: layoutServiceStub },
-                { provide: ForceBuilderService, useValue: forceBuilderServiceStub },
+                { provide: ForceWorkspaceStateService, useValue: forceWorkspaceStub },
+                { provide: ForceWorkspaceCommandsService, useValue: forceCommandsStub },
+                {
+                    provide: ForceImportService,
+                    useValue: { showSearchForceGeneratorDialog: jasmine.createSpy('showSearchForceGeneratorDialog') },
+                },
                 { provide: GameService, useValue: gameServiceStub },
                 { provide: OptionsService, useValue: optionsServiceStub },
                 { provide: SavedSearchesService, useValue: savedSearchesServiceStub },
@@ -266,6 +285,9 @@ describe('UnitSearchComponent card virtualization', () => {
                     imports: [CommonModule, ScrollingModule, LongPressDirective, UnitCardExpandedComponent],
                     template: `
                         <div #resultsDropdown class="results-dropdown" style="width: 920px;" [hidden]="!resultsVisible()">
+                            @if (resultsLoading()) {
+                            <div class="results-status loading-results">Loading results...</div>
+                            }
                             @if (viewMode() === 'card' && gameService.isAlphaStrike()) {
                             <cdk-virtual-scroll-viewport
                                 class="results-dropdown-viewport card-view-viewport"
@@ -452,7 +474,7 @@ describe('UnitSearchComponent card virtualization', () => {
 
         await component.addSelectedUnits();
 
-        expect(forceBuilderServiceStub.addUnit.calls.allArgs()).toEqual([
+        expect(forceCommandsStub.addUnit.calls.allArgs()).toEqual([
             [first, 4, 5],
             [second, 4, 5],
         ]);
@@ -467,13 +489,13 @@ describe('UnitSearchComponent card virtualization', () => {
         const second = createUnit('Second');
         filteredUnitsSignal.set([first, second]);
         dataServiceStub.getUnitByName.and.callFake((name: string) => name === first.name ? first : second);
-        forceBuilderServiceStub.addUnit.and.resolveTo(false);
+        forceCommandsStub.addUnit.and.resolveTo(false);
         fixture.detectChanges();
         component.selectedUnits.set(new Set([first.name, second.name]));
 
         await component.addSelectedUnits();
 
-        expect(forceBuilderServiceStub.addUnit).toHaveBeenCalledOnceWith(first, 4, 5);
+        expect(forceCommandsStub.addUnit).toHaveBeenCalledOnceWith(first, 4, 5);
         expect(dataServiceStub.getUnitByName).toHaveBeenCalledOnceWith(first.name);
         expect(component.selectedUnits().size).toBe(0);
     });
@@ -489,7 +511,7 @@ describe('UnitSearchComponent card virtualization', () => {
         await component.addSelectedUnits();
 
         expect(dataServiceStub.getUnitByName).toHaveBeenCalledOnceWith(missing.name);
-        expect(forceBuilderServiceStub.addUnit).not.toHaveBeenCalled();
+        expect(forceCommandsStub.addUnit).not.toHaveBeenCalled();
         expect(component.selectedUnits().size).toBe(0);
     });
 
@@ -519,6 +541,25 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.resultsVisible()).toBeTrue();
         expect(cdkViewport.getViewportSize()).toBe(4000);
         expect(renderedRange.end - renderedRange.start).toBeGreaterThanOrEqual(minimumVisibleRows);
+    });
+
+    it('shows a loading result body in expanded view until the initial worker result is ready', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        filtersServiceStub.expandedView.set(true);
+        interactionReadySignal.set(false);
+        fixture.detectChanges();
+
+        expect(component.resultsVisible()).toBeTrue();
+        expect(component.resultsLoading()).toBeTrue();
+        expect(fixture.nativeElement.querySelector('.loading-results')?.textContent.trim()).toBe('Loading results...');
+
+        interactionReadySignal.set(true);
+        fixture.detectChanges();
+
+        expect(component.resultsVisible()).toBeTrue();
+        expect(component.resultsLoading()).toBeFalse();
+        expect(fixture.nativeElement.querySelector('.loading-results')).toBeNull();
     });
 
     for (const budgetMode of ['force-limit', 'bv-normalization'] as const) {
@@ -580,6 +621,24 @@ describe('UnitSearchComponent card virtualization', () => {
             expect(filtersServiceStub.setBudgetMode).toHaveBeenCalledTimes(3);
         });
     }
+
+    it('enables budget-mode transitions only after panel interaction and resets them on close', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        fixture.detectChanges();
+
+        expect(component.budgetModeSwitchTransitionsEnabled()).toBeFalse();
+
+        filtersServiceStub.advOpen.set(true);
+        expect(component.budgetModeSwitchTransitionsEnabled()).toBeFalse();
+
+        component.toggleSearchBudgetMode('force-limit');
+        expect(component.budgetModeSwitchTransitionsEnabled()).toBeTrue();
+
+        filtersServiceStub.advOpen.set(false);
+        fixture.detectChanges();
+        expect(component.budgetModeSwitchTransitionsEnabled()).toBeFalse();
+    });
 
     it('keeps compact results hidden without search input, filters, or a BV mode', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
@@ -1013,7 +1072,7 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(scrollToMakeVisible).toHaveBeenCalledWith(1, 'auto');
     });
 
-    it('uses instant scrolling for unit details dialog navigation', () => {
+    it('uses instant scrolling for unit details dialog navigation', async () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
         const scrollToMakeVisible = spyOn<any>(component, 'scrollToMakeVisible');
@@ -1032,7 +1091,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filteredUnitsSignal.set(units);
         fixture.detectChanges();
 
-        component.showUnitDetails(units[0]);
+        await component.showUnitDetails(units[0]);
         indexChange.next(2);
 
         expect(component.activeIndex()).toBe(2);
@@ -1040,7 +1099,7 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(scrollToMakeVisible).toHaveBeenCalledWith(2, 'auto');
     });
 
-    it('queues Enter until a debounced search commits before opening a result', () => {
+    it('queues Enter until a debounced search commits before opening a result', async () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
         const previousUnit = createUnit('Atlas');
@@ -1055,6 +1114,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.searchText.set('atlas');
         filteredUnitsSignal.set([previousUnit]);
         fixture.detectChanges();
+        await import('../unit-details-dialog/unit-details-dialog.component');
 
         component.setSearch('catapult');
         const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
@@ -1066,6 +1126,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filteredUnitsSignal.set([nextUnit]);
         isSearchSettledSignal.set(true);
         fixture.detectChanges();
+        await waitForDialogOpen();
 
         expect(filtersServiceStub.setSearchText).toHaveBeenCalledWith('catapult');
         expect(dialogsServiceStub.createDialog).toHaveBeenCalledTimes(1);
@@ -1074,7 +1135,7 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(dialogConfig.data.unitIndex).toBe(0);
     });
 
-    it('queues Enter until worker results settle before opening a result', () => {
+    it('queues Enter until worker results settle before opening a result', async () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
         const previousUnit = createUnit('Atlas');
@@ -1085,6 +1146,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filteredUnitsSignal.set([previousUnit]);
         isSearchSettledSignal.set(false);
         fixture.detectChanges();
+        await import('../unit-details-dialog/unit-details-dialog.component');
 
         const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
         component.onKeydown(event);
@@ -1095,6 +1157,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filteredUnitsSignal.set([nextUnit]);
         isSearchSettledSignal.set(true);
         fixture.detectChanges();
+        await waitForDialogOpen();
 
         expect(dialogsServiceStub.createDialog).toHaveBeenCalledTimes(1);
         const dialogConfig = dialogsServiceStub.createDialog.calls.mostRecent().args[1] as any;

@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { AlphaStrikeArcStats } from '../../../../units.model';
+import type { AlphaStrikeArcStats } from '../../../../unit-summary.model';
 import { WeaponEquipment } from '../../../../equipment.model';
 import type { BaseEntity } from '../../../entities';
 import { JumpShipEntity } from '../../../entities';
 import type { EntityMountedWeapon } from '../../../types/equipment';
-import { blocksExplosiveNullification } from '../specials/explosive-components';
+import { isExplosive } from '../specials/explosive-components';
 import { alphaStrikeRoundUp, dualRoundedNormalDamage, dualRoundedUpDamage, roundUpToTenth, toStandardDamage } from './damage-rounding';
 import { alphaStrikeWeaponHeatForConversion } from './heat-adjustment';
 import { alphaStrikeHeatCapacityForEntity } from './heat-capacity';
+import { SIGNATURE_SYSTEM_HEAT, hasStealthFlag } from '../../../../stealth-equipment.model';
 import { LARGE_AEROSPACE_ARCS, largeAerospaceArcMultiplier } from './large-aerospace-location-mapper';
 import { ZERO_DAMAGE, type AlphaStrikeArcName, type AlphaStrikeDamage, type RawDamageVector } from './damage-types';
 import {
@@ -19,6 +20,10 @@ import {
   type AlphaStrikePrimaryDamageClass,
   type AlphaStrikeRangeIndex,
 } from './weapon-damage-profile';
+import {
+  entityHasTargetingComputer,
+  targetingComputerDamageMultiplier,
+} from '../../targeting-computer';
 
 const PRIMARY_CLASSES: readonly AlphaStrikePrimaryDamageClass[] = ['STD', 'CAP', 'SCAP', 'MSL'];
 
@@ -33,8 +38,7 @@ export interface LargeAerospaceDamageResult {
 export function calculateLargeAerospaceDamage(entity: BaseEntity): LargeAerospaceDamageResult {
   const weapons = entity.rangedWeapons();
   const heatAdjustmentFactor = largeAerospaceHeatAdjustmentFactor(entity, weapons);
-  const targetingComputer = entity.equipment().some(mount =>
-    mount.equipment?.hasFlag('F_TARGETING_COMPUTER'));
+  const targetingComputer = entityHasTargetingComputer(entity);
   const arcs = Object.fromEntries(LARGE_AEROSPACE_ARCS.map(arc => [arc,
     calculateArc(entity, arc, weapons, heatAdjustmentFactor, targetingComputer),
   ])) as Record<AlphaStrikeArcName, AlphaStrikeArcStats>;
@@ -47,7 +51,9 @@ export function largeAerospaceHeatAdjustmentFactor(
 ): number {
   const equipment = entity.equipment();
   const capacity = alphaStrikeHeatCapacityForEntity(entity, entity.heatCapacity(false));
-  const signatureHeat = equipment.some(mount => mount.equipment?.hasFlag('F_STEALTH')) ? 10 : 0;
+  const signatureHeat = equipment.some(mount => hasStealthFlag(mount.equipment))
+    ? SIGNATURE_SYSTEM_HEAT
+    : 0;
   const weaponHeat = weapons.reduce((sum, mount) => {
     const weapon = mount.equipment;
     // ASArcedDamageConverter counts one-shot weapon heat.
@@ -82,12 +88,12 @@ function calculateArc(
     if (metadata.arcSUA) weaponArcSUAs.add(metadata.arcSUA);
     let damageMultiplier = locationMultiplier;
     if (weapon.oneShotCount === 1) damageMultiplier *= 0.1;
-    if (targetingComputer && weapon.hasFlag('F_DIRECT_FIRE')) damageMultiplier *= 1.1;
+    damageMultiplier *= targetingComputerDamageMultiplier(targetingComputer, weapon);
     const damage = damageForMount(entity, mount, damageMultiplier * heatFactor);
     if (metadata.primaryClass) addDamage(vectors.get(metadata.primaryClass)!, damage);
     if (metadata.flak) addDamage(vectors.get('FLK')!, damage);
     if (metadata.pointDefense) {
-      addDamage(vectors.get('PNT')!, weapon.hasFlag('F_AMS')
+      addDamage(vectors.get('PNT')!, weapon.hasWeaponTrait('anti-missile')
         ? [0.3 * damageMultiplier * heatFactor, 0, 0, 0]
         : damage);
     }
@@ -116,7 +122,7 @@ function calculateArc(
 }
 
 function hasExplosiveArcComponent(entity: BaseEntity, arc: AlphaStrikeArcName): boolean {
-  return entity.equipment().some(mount => blocksExplosiveNullification(entity, mount)
+  return entity.equipment().some(mount => isExplosive(entity, mount)
     && largeAerospaceArcMultiplier(entity, arc, mount as EntityMountedWeapon) > 0);
 }
 

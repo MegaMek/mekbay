@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from './units.model';
+import type { UnitSummary } from './unit-summary.model';
 
 export type ASAbilityEffectSourceKind = 'pilot' | 'command' | 'special';
 export type ASAbilityEffectMode = 'committed' | 'preview' | 'previewNoHeat';
@@ -14,7 +14,7 @@ export interface ASAbilityEffectRef {
 
 export interface ASAbilityEffectContext {
     readonly mode: ASAbilityEffectMode;
-    readonly unit: Unit;
+    readonly unit: UnitSummary;
     readonly abilityRefs: readonly ASAbilityEffectRef[];
 }
 

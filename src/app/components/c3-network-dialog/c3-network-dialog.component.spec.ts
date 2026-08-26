@@ -5,17 +5,19 @@
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { provideZonelessChangeDetection, signal, type Signal, type WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import type { Equipment } from '../../models/equipment.model';
+import { Subject } from 'rxjs';
 import type { Force } from '../../models/force.model';
-import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import type { SerializedC3NetworkGroup } from '../../models/force-serialization';
-import { MountedEquipment } from '../../models/mounted-equipment.model';
 import {
     C3Capabilities,
     C3_FLAGS,
     C3Network,
     C3NetworkType,
+    C3Role,
+    type C3Component,
     type C3Node,
+    type C3UnitView,
 } from '../../models/c3-network.model';
 import { GameSystem } from '../../models/common.model';
 import { DialogsService } from '../../services/dialogs.service';
@@ -41,6 +43,7 @@ interface C3NetworkDialogTestApi {
     getPinNetworkColor(node: C3Node, compIndex: number): string | null;
     getPinRoleLabel(node: C3Node, compIndex: number): string;
     removeNetwork(network: SerializedC3NetworkGroup): void;
+    saveAndClose(): void;
     connectionLines: Signal<ConnectionLineTestApi[]>;
     nodeRuntimeStatuses: Signal<Map<string, readonly ('OFFLINE' | 'JAMMED' | 'DEGRADED')[]>>;
     emergencySidebarNetworks: Signal<readonly {
@@ -53,11 +56,21 @@ interface C3NetworkDialogTestApi {
     }[]>;
 }
 
+interface TestC3Unit extends C3UnitView {
+    setC3Position(position: Readonly<{ x: number; y: number }> | null): void;
+    getBaseBv(): number;
+    tagBV(): number;
+    externalStoresBv(): number;
+    gunnerySkill(): number;
+    pilotingSkill(): number;
+}
+
 interface TestUnitState {
-    unit: CBTForceUnit;
+    unit: TestC3Unit;
     jammed: WritableSignal<boolean>;
     destroyedComponents: WritableSignal<ReadonlySet<number>>;
     actionUnavailableComponents: WritableSignal<ReadonlySet<number>>;
+    setC3Position: jasmine.Spy;
 }
 
 function c3Unit(id: string, flags: readonly string[]): TestUnitState {
@@ -68,45 +81,56 @@ function c3UnitWithComponents(id: string, componentFlags: readonly (readonly str
     const jammed = signal(false);
     const destroyedComponents = signal<ReadonlySet<number>>(new Set());
     const actionUnavailableComponents = signal<ReadonlySet<number>>(new Set());
-    let inventory: MountedEquipment[] = [];
-    const unit = {
+    const setC3Position = jasmine.createSpy('setC3Position');
+    const components = componentFlags.map((flags, index) => c3Component(flags, index));
+    const unit: TestC3Unit = {
         id,
-        destroyed: false,
         alias: () => '',
-        getUnit: () => ({ chassis: id, model: '', comp: [] }),
+        getSummary: () => ({ name: id, chassis: id, model: '' }) as UnitSummary,
+        c3Components: components,
         getBaseBv: () => 0,
         tagBV: () => 0,
         externalStoresBv: () => 0,
         gunnerySkill: () => 4,
         pilotingSkill: () => 5,
-        getInventory: () => inventory,
-        isC3EndpointOperational: (index: number) => index < inventory.length
+        isC3EndpointOperational: (index: number) => index < components.length
             && !destroyedComponents().has(index)
             && !actionUnavailableComponents().has(index),
         isC3Jammed: () => jammed(),
-        canPerformEquipmentAction: (entry: MountedEquipment) => {
-            const index = inventory.indexOf(entry);
-            return index < 0 || !destroyedComponents().has(index) && !actionUnavailableComponents().has(index);
-        },
-        getEquipmentStatus: (entry: MountedEquipment) => (
-            destroyedComponents().has(inventory.indexOf(entry)) ? 'destroyed' : 'available'
-        ),
-        isEquipmentOperational: (entry: MountedEquipment) => {
-            const index = inventory.indexOf(entry);
-            return index >= 0 && !destroyedComponents().has(index);
-        },
-        rules: {
-            calculateC3Tax: () => 0,
-        },
-    } as unknown as CBTForceUnit;
-    inventory = componentFlags.map((flags, index) => new MountedEquipment({
-        owner: unit,
-        id: `${id}-c3-${index}`,
-        name: `${id} C3 ${index}`,
-        equipment: { flags: new Set(flags) } as Equipment,
-        states: new Map(),
-    }));
-    return { unit, jammed, destroyedComponents, actionUnavailableComponents };
+        c3Position: () => null,
+        setC3Position,
+    };
+    return { unit, jammed, destroyedComponents, actionUnavailableComponents, setC3Position };
+}
+
+function c3Component(flags: readonly string[], index: number): C3Component {
+    if (flags.includes(C3_FLAGS.C3M) || flags.includes(C3_FLAGS.C3MBS)) {
+        return {
+            networkType: C3NetworkType.C3,
+            role: C3Role.MASTER,
+            boosted: flags.includes(C3_FLAGS.C3MBS),
+            index,
+        };
+    }
+    if (flags.includes(C3_FLAGS.C3S)
+        || flags.includes(C3_FLAGS.C3SBS)
+        || flags.includes(C3_FLAGS.C3EM)) {
+        return {
+            networkType: C3NetworkType.C3,
+            role: C3Role.SLAVE,
+            boosted: flags.includes(C3_FLAGS.C3SBS),
+            emergency: flags.includes(C3_FLAGS.C3EM),
+            index,
+        };
+    }
+    const flag = flags.find(candidate => candidate !== C3_FLAGS.ANY_C3);
+    if (flag === C3_FLAGS.NOVA) {
+        return { networkType: C3NetworkType.NOVA, role: C3Role.PEER, boosted: false, index };
+    }
+    if (flag === C3_FLAGS.NAVAL_C3) {
+        return { networkType: C3NetworkType.NAVAL, role: C3Role.PEER, boosted: false, index };
+    }
+    return { networkType: C3NetworkType.C3I, role: C3Role.PEER, boosted: false, index };
 }
 
 function node(state: TestUnitState, x: number, y: number): C3Node {
@@ -128,20 +152,25 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
         component: C3NetworkDialogTestApi;
         fixture: ComponentFixture<C3NetworkDialogComponent>;
         requestConfirmation: jasmine.Spy;
+        close: jasmine.Spy;
     }> {
         const requestConfirmation = jasmine.createSpy('requestConfirmation').and.resolveTo(false);
+        const close = jasmine.createSpy('close');
+        const members = signal(units.map(state => state.unit));
         const force = {
             gameSystem: GameSystem.CLASSIC,
-            units: signal(units.map(state => state.unit)),
+            units: members,
+            members,
             c3Networks: signal([]),
             groups: signal([]),
+            changed: new Subject<void>(),
         } as unknown as Force;
 
         await TestBed.configureTestingModule({
             imports: [C3NetworkDialogComponent],
             providers: [
                 provideZonelessChangeDetection(),
-                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
+                { provide: DialogRef, useValue: { close } },
                 { provide: DIALOG_DATA, useValue: { force, readOnly } },
                 { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
                 { provide: DialogsService, useValue: { requestConfirmation } },
@@ -159,8 +188,30 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
             component: fixture.componentInstance as unknown as C3NetworkDialogTestApi,
             fixture,
             requestConfirmation,
+            close,
         };
     }
+
+    it('returns detached positions without mutating live units before the owner commit', async () => {
+        const first = c3Unit('first', [C3_FLAGS.C3I]);
+        const second = c3Unit('second', [C3_FLAGS.C3I]);
+        const { component, close } = await createComponent([first, second], false);
+        component.nodes.set([node(first, 10, 20), node(second, 30, 40)]);
+        component.networks.set([{
+            id: 'network', type: C3NetworkType.C3I, color: '#abc', peerIds: ['first', 'second'],
+        }]);
+
+        component.saveAndClose();
+
+        expect(first.setC3Position).not.toHaveBeenCalled();
+        expect(second.setC3Position).not.toHaveBeenCalled();
+        expect(close).toHaveBeenCalledWith(jasmine.objectContaining({
+            positions: [
+                { unitId: 'first', x: 10, y: 20 },
+                { unitId: 'second', x: 30, y: 40 },
+            ],
+        }));
+    });
 
     it('does not auto-connect an unused internal Master endpoint', async () => {
         const naginata = c3UnitWithComponents('naginata', [[C3_FLAGS.C3M], [C3_FLAGS.C3M]]);

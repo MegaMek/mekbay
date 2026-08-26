@@ -6,6 +6,8 @@ import { GameSystem } from '../models/common.model';
 import { isClan } from './org/org-registry.util';
 import type { FormationFactKey, FormationPredicateId } from './formation-requirement.model';
 import { cbtCanDealDamage, cbtHasArtillery, cbtHasAutocannon, type FormationUnitFacts } from './formation-unit-facts.util';
+import { isEcmEquipment } from '../models/ecm-mode.model';
+import { isBapEquipment } from '../models/bap-equipment.model';
 
 type FormationPredicate = (facts: FormationUnitFacts, gameSystem: GameSystem) => boolean;
 
@@ -81,7 +83,9 @@ export const FORMATION_PREDICATES: Readonly<Record<FormationPredicateId, Formati
     'dogfighter-role': (facts) => roleIncludes(facts, ['Dogfighter']),
     'ew-equipment': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
         ? hasAnyAsSpecialPrefix(facts, EW_SPECIALS)
-        : facts.unit.comp?.some(component => component.eq?.hasAnyFlag(['F_ECM', 'F_BAP', 'F_TAG'])) === true,
+        : facts.unit.comp?.some(component => isEcmEquipment(component.eq)
+            || isBapEquipment(component.eq)
+            || component.eq?.hasWeaponTrait('tag') === true) === true,
     'fast-assault-move': (facts, gameSystem) => asOrCbt(gameSystem, facts.asGroundMove >= 10 || facts.asJumpMove > 0, facts.cbtWalk >= 5 || facts.cbtJump > 0),
     'fire-support-equipment': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
         ? hasAsSpecialPrefix(facts, 'IF')

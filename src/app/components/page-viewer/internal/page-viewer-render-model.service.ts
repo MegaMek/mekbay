@@ -7,8 +7,7 @@ import { Injectable, computed, inject } from '@angular/core';
 import { PAGE_GAP, PAGE_WIDTH } from '../page-viewer-zoom-pan.service';
 import { PageViewerStateService } from './page-viewer-state.service';
 import { PageViewerShadowService } from './page-viewer-shadow.service';
-import type { PageViewerOverlayMode, PageViewerPageDescriptor, PageViewerShadowDescriptor } from './types';
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
+import type { PageViewerMember, PageViewerOverlayMode, PageViewerPageDescriptor, PageViewerShadowDescriptor } from './types';
 
 @Injectable()
 export class PageViewerRenderModelService {
@@ -71,7 +70,7 @@ export class PageViewerRenderModelService {
     });
 
     buildSteadyStateShadowPages(options: {
-        units: readonly CBTForceUnit[];
+        units: readonly PageViewerMember[];
         startIndex: number;
         visibleCount: number;
         scale: number;

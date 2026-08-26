@@ -17,16 +17,15 @@ import type { SupportVehicle } from '../entities/support-vehicle';
 import { VehicleEntity } from '../entities/vehicle/vehicle-entity';
 import {
   ArmorType,
-  EntityFluff,
   EntityMountedEquipment,
   EntityQuirk,
   EntityTechBase,
   EntityWeaponQuirk,
+  factionFromAbbr,
   HeatSinkType,
   LocationArmor,
   VALID_TECH_BASE_STRINGS,
   locationArmor,
-  normalizeSystemManufacturerKey,
   requireArmorEquipment,
   resolveArmorEquipment,
 } from '../types';
@@ -45,6 +44,7 @@ import { BuildingBlock } from './building-block';
 import { parseEquipmentLine, type EquipmentLineProfile } from './equipment-resolver';
 import { parseTransporterLines } from './transporter-codec';
 import { ParseContext } from './parse-context';
+import { parseBlkEntityFluff } from './entity-fluff-parser';
 
 /**
  * Common BLK parsing - reads universal blocks that apply to all unit types.
@@ -101,6 +101,9 @@ export function parseBaseBlk(
   }
   if (bb.exists('published')) {
     entity.published.set(parseMetadataList(bb.getDataAsString('published')).map(source => ctx.resolveSourcebook(source)));
+  }
+  if (bb.exists('faction')) {
+    entity.faction.set(factionFromAbbr(bb.getFirstString('faction')));
   }
   if (bb.exists('omni')) {
     entity.omni.set(bb.getFirstString('omni').toLowerCase() === 'true' || bb.getFirstInt('omni') === 1);
@@ -169,65 +172,7 @@ export function parseBaseBlk(
   }
 
   // ── Fluff ──
-  const fluff: EntityFluff = {};
-  if (bb.exists('overview')) fluff.overview = bb.getDataAsString('overview').join('\n');
-  if (bb.exists('capabilities')) fluff.capabilities = bb.getDataAsString('capabilities').join('\n');
-  if (bb.exists('deployment')) fluff.deployment = bb.getDataAsString('deployment').join('\n');
-  if (bb.exists('history')) fluff.history = bb.getDataAsString('history').join('\n');
-  if (bb.exists('manufacturer')) fluff.manufacturer = bb.getDataAsString('manufacturer').join('\n');
-  if (bb.exists('primaryFactory')) fluff.primaryFactory = bb.getFirstString('primaryFactory');
-  if (bb.exists('notes')) fluff.notes = bb.getDataAsString('notes').join('\n');
-  if (bb.exists('fluffDate')) fluff.fluffDate = bb.getFirstString('fluffDate');
-  if (bb.exists('use')) fluff.use = bb.getFirstString('use');
-  if (bb.exists('length')) fluff.length = bb.getFirstString('length');
-  if (bb.exists('width')) fluff.width = bb.getFirstString('width');
-  if (bb.exists('height')) fluff.height = bb.getFirstString('height');
-
-  // System manufacturers
-  {
-    const sysMfrs: Record<string, string> = {};
-    // Format 1: unified block
-    if (bb.exists('systemManufacturers')) {
-      const sysLines = bb.getDataAsString('systemManufacturers');
-      for (const line of sysLines) {
-        const colonIdx = line.indexOf(':');
-        if (colonIdx > 0) {
-          const rawKey = line.substring(0, colonIdx);
-          const canonical = normalizeSystemManufacturerKey(rawKey);
-          if (!canonical) {
-            ctx.warn('systemManufacturers', `Unknown system manufacturer key: "${rawKey}"`);
-          }
-          sysMfrs[canonical ?? rawKey] = line.substring(colonIdx + 1);
-        }
-      }
-    }
-    if (Object.keys(sysMfrs).length > 0) {
-      fluff.systemManufacturers = sysMfrs;
-    }
-  }
-
-  {
-    const sysModels: Record<string, string> = {};
-    if (bb.exists('systemModels')) {
-      const modelLines = bb.getDataAsString('systemModels');
-      for (const line of modelLines) {
-        const colonIdx = line.indexOf(':');
-        if (colonIdx > 0) {
-          const rawKey = line.substring(0, colonIdx);
-          const canonical = normalizeSystemManufacturerKey(rawKey);
-          if (!canonical) {
-            ctx.warn('systemModels', `Unknown system model key: "${rawKey}"`);
-          }
-          sysModels[canonical ?? rawKey] = line.substring(colonIdx + 1);
-        }
-      }
-    }
-    if (Object.keys(sysModels).length > 0) {
-      fluff.systemModels = sysModels;
-    }
-  }
-
-  entity.fluff.set(fluff);
+  entity.fluff.set(parseBlkEntityFluff(bb, (field, message) => ctx.warn(field, message)));
 
   // ── BV override ──
   if (bb.exists('bv')) {

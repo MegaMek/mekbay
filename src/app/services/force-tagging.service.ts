@@ -17,7 +17,7 @@ import { InputDialogComponent, type InputDialogData } from '../components/input-
 import { sanitizeForceTagLabels, sanitizeForceTags } from '../models/force-serialization';
 import { DataService } from './data.service';
 import { DialogsService } from './dialogs.service';
-import { ForceBuilderService } from './force-builder.service';
+import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { OverlayManagerService } from './overlay-manager.service';
 import { naturalCompare } from '../utils/sort.util';
 
@@ -42,7 +42,7 @@ const FORCE_TAG_SELECTOR_OVERLAY_KEY = 'forceTagSelector';
 })
 export class ForceTaggingService {
     private dataService = inject(DataService);
-    private forceBuilderService = inject(ForceBuilderService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private overlayManager = inject(OverlayManagerService);
     private dialogsService = inject(DialogsService);
     private overlay = inject(Overlay);
@@ -192,6 +192,7 @@ export class ForceTaggingService {
                     inputType: 'text',
                     defaultValue: '',
                     placeholder: 'Enter tag...',
+                    centerInput: true,
                 } as InputDialogData
             });
 
@@ -272,7 +273,7 @@ export class ForceTaggingService {
             const normalizedTags = updateResult.tags;
             force.tags = normalizedTags.length > 0 ? normalizedTags : undefined;
 
-            for (const loadedForce of this.forceBuilderService.loadedForces()) {
+            for (const loadedForce of this.forceWorkspace.loadedForces()) {
                 if (loadedForce.force.instanceId() === force.instanceId) {
                     loadedForce.force.setTags(normalizedTags, false);
                 }

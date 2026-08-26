@@ -2,11 +2,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
-import { MountedEquipment } from '../models/mounted-equipment.model';
+import { AmmoEquipment } from '../models/equipment.model';
+import { asComponentId } from '../models/entity/entity-identifiers';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry, type ToHitResolution } from '../models/rules/game-rules';
-import type { InventoryTargetNumberInput } from './inventory-target-number.util';
+import type { InventoryTargetNumberAerospaceWeaponFacts, InventoryTargetNumberComponentFacts, InventoryTargetNumberInput } from './inventory-target-number.util';
 import { inventoryTargetNumberBreakdown, inventoryTargetNumberState, inventoryTargetRangeSelection } from './inventory-target-number.util';
+
+function targetNumberFacts(
+    componentId: string,
+    physical = false,
+    aerospaceWeapon: InventoryTargetNumberAerospaceWeaponFacts | null = null,
+): InventoryTargetNumberComponentFacts {
+    return Object.freeze({
+        componentId: asComponentId(componentId),
+        physical,
+        aerospaceWeapon: aerospaceWeapon === null ? null : Object.freeze(aerospaceWeapon),
+    });
+}
 
 function toHitResolution(
     value: HitModifier = 0,
@@ -22,24 +34,14 @@ function toHitResolution(
 }
 
 function artilleryInput(distance: number, gameRules: CBTGameRules = CORE_2026_GAME_RULES): InventoryTargetNumberInput {
-    const owner = {} as never;
-    const equipment = new WeaponEquipment({
-        id: 'ArrowIV',
-        name: 'Arrow IV',
-        type: 'weapon',
-        weapon: { ammoType: 'ARROW_IV', ranges: [10, 20, 30, 40] },
-    });
     const selectedAmmo = new AmmoEquipment({
         id: 'ArrowIVAmmo',
         name: 'Arrow IV Ammo',
         type: 'ammo',
         ammo: { type: 'ARROW_IV', shots: 5 },
     });
-    const entry = new MountedEquipment({ owner, id: 'arrow', name: 'Arrow IV', equipment });
-
     return {
-        entry,
-        category: 'ranged',
+        targetNumberFacts: targetNumberFacts('arrow'),
         display: { min: '—', short: '10', medium: '20', long: '30' },
         selectedAmmo,
         target: { id: 'A', letter: 'A', name: 'Target', color: '#000', distance, tnModifier: 0 },
@@ -53,30 +55,12 @@ function artilleryInput(distance: number, gameRules: CBTGameRules = CORE_2026_GA
 
 function aeroInput(
     distance: number,
-    maxRangeBracket: WeaponEquipment['maxRangeBracket'] = 'extreme',
+    maxRangeBracket: InventoryTargetNumberAerospaceWeaponFacts['maxRangeBracket'] = 'extreme',
     targetUnitType: 'aero' | 'mek-biped' = 'aero',
     capital = false
 ): InventoryTargetNumberInput {
-    const owner = {
-        getUnit: () => ({ type: 'Aero' }),
-    } as never;
-    const equipment = new WeaponEquipment({
-        id: 'AeroWeapon',
-        name: 'Aero Weapon',
-        type: 'weapon',
-        weapon: {
-            ammoType: 'NA',
-            ranges: [7, 14, 21, 28],
-            av: [8, 8, 8, 8],
-            maxRangeBracket,
-            capital
-        }
-    });
-    const entry = new MountedEquipment({ owner, id: 'aero-weapon', name: 'Aero Weapon', equipment });
-
     return {
-        entry,
-        category: 'ranged',
+        targetNumberFacts: targetNumberFacts('aero-weapon', false, { capital, maxRangeBracket }),
         display: { min: '—', short: '6', medium: '12', long: '20' },
         target: { id: 'A', letter: 'A', name: 'Target', color: '#000', unitType: targetUnitType, distance, tnModifier: 0 },
         gunnerySkill: 4,
@@ -87,17 +71,8 @@ function aeroInput(
 }
 
 function c3LaserInput(actualDistance: number, c3Distance: number, allowExtremeRange = false): InventoryTargetNumberInput {
-    const owner = {} as never;
-    const equipment = new WeaponEquipment({
-        id: 'ERLargeLaser',
-        name: 'ER Large Laser',
-        type: 'weapon',
-        weapon: { ammoType: 'NA', ranges: [7, 14, 19, 25] },
-    });
-    const entry = new MountedEquipment({ owner, id: 'er-large-laser', name: equipment.internalName, equipment });
     return {
-        entry,
-        category: 'ranged',
+        targetNumberFacts: targetNumberFacts('er-large-laser'),
         display: { min: '—', short: '7', medium: '14', long: '19' },
         extremeRange: 25,
         target: { id: 'A', letter: 'A', name: 'Target', color: '#000', distance: actualDistance, c3Distance, useC3: true, tnModifier: 0 },
@@ -317,6 +292,31 @@ describe('inventory target number rules profiles', () => {
         const outOfRangeInput = aeroInput(21, 'long');
         outOfRangeInput.target = { ...outOfRangeInput.target!, useC3: true, c3Distance: 5 };
         expect(inventoryTargetRangeSelection(outOfRangeInput)?.outOfRange).toBeTrue();
+    });
+
+    it('uses detached physical facts for Piloting and ignores weapon range and firing heat', () => {
+        const input: InventoryTargetNumberInput = {
+            ...artilleryInput(99),
+            targetNumberFacts: targetNumberFacts('punch', true),
+            selectedAmmo: null,
+            gunnerySkill: 2,
+            pilotingSkill: 5,
+            hitResolution: toHitResolution(2, [
+                { label: 'Heat - Fire Modifier', modifier: 2, weakened: true, kind: 'heat' },
+            ]),
+        };
+
+        const state = inventoryTargetNumberState(input);
+
+        expect(state.rangeSelection).toEqual(jasmine.objectContaining({
+            range: 'short',
+            maximumRange: 'short',
+            outOfRange: false,
+        }));
+        expect(state.breakdown?.total).toBe(5);
+        expect(state.breakdown?.lines).toContain(jasmine.objectContaining({ label: 'Piloting', value: '5' }));
+        expect(state.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'Range (Short)' }));
+        expect(state.breakdown?.lines).not.toContain(jasmine.objectContaining({ label: 'Heat - Fire Modifier' }));
     });
 
     it('counts Aero out-of-range to Long as two C3 bracket improvements', () => {

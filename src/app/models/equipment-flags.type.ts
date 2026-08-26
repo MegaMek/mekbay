@@ -291,6 +291,7 @@ export type EquipmentFlag =
     | "F_SDS_JAMMER"
     | "F_SEARCHLIGHT"
     | "F_SENSOR_DISPENSER"
+    | "F_SHIELD"
     | "F_SHOULDER_TURRET"
     | "F_SINGLE_HEX_ECM"
     | "F_SMALL_COMM_SCANNER_SUITE"

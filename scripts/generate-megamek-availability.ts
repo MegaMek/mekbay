@@ -15,7 +15,7 @@ const {
 } = require('./lib/script-paths') as typeof import('./lib/script-paths');
 
 const {
-    writeFileWithContentTimestamp,
+    writeDeterministicFile,
 } = require('./lib/deterministic-output') as typeof import('./lib/deterministic-output');
 
 type JsonObject = Record<string, unknown>;
@@ -276,7 +276,7 @@ const UNIT_FILES_ROOT = path.join(MM_DATA_ROOT, 'data', 'mekfiles');
 const NAME_CHANGES_FILE_PATH = path.join(UNIT_FILES_ROOT, 'name_changes.txt');
 const FACTIONS_MM_TO_MUL_PATH = path.join(APP_ROOT, 'scripts', 'config', 'factions-mm-to-mul.csv');
 const MM_FACTIONS_IMAGE_DIR = path.join(APP_ROOT, 'public', 'images', 'mmfactions');
-const OUTPUT_DIR = path.join(APP_ROOT, 'public', 'assets');
+const OUTPUT_DIR = path.join(APP_ROOT, 'public', 'online-assets', 'generated');
 
 const xmlParser = new XMLParser({
     ignoreAttributes: false,
@@ -791,7 +791,7 @@ function loadUniverseFactions(
         const existingFaction = result[id];
         if (existingFaction) {
             console.warn(
-                `[MegaMek] duplicate faction key ${id} in ${fileName}; already defined by ${existingFaction.filename}`,
+                `[MegaMek Availability] duplicate faction key ${id} in ${fileName}; already defined by ${existingFaction.filename}`,
             );
             continue;
         }
@@ -838,7 +838,7 @@ function mergeUniverseFactionRecords(
             const existingFaction = factions[factionKey];
             if (existingFaction) {
                 console.warn(
-                    `[MegaMek] duplicate faction key ${factionKey} in ${faction.filename}; already defined by ${existingFaction.filename}`,
+                    `[MegaMek Availability] duplicate faction key ${factionKey} in ${faction.filename}; already defined by ${existingFaction.filename}`,
                 );
                 continue;
             }
@@ -859,13 +859,13 @@ function buildFactionAliasMap(factions: Record<string, UniverseFactionRecord>): 
     for (const faction of Object.values(factions)) {
         for (const alias of faction.aliases) {
             if (alias !== faction.id && Object.prototype.hasOwnProperty.call(factions, alias)) {
-                console.warn(`[MegaMek] faction alias ${alias} for ${faction.id} collides with faction key ${alias}`);
+                console.warn(`[MegaMek Availability] faction alias ${alias} for ${faction.id} collides with faction key ${alias}`);
                 continue;
             }
 
             const existingCanonical = aliases.get(alias);
             if (existingCanonical && existingCanonical !== faction.id) {
-                console.warn(`[MegaMek] faction alias ${alias} is used by both ${existingCanonical} and ${faction.id}`);
+                console.warn(`[MegaMek Availability] faction alias ${alias} is used by both ${existingCanonical} and ${faction.id}`);
                 continue;
             }
             aliases.set(alias, faction.id);
@@ -1031,7 +1031,7 @@ function warnOnInvalidXmlUnitType(unitType: string, sourceLabel: string): void {
         return;
     }
 
-    console.warn(`[MegaMek] unexpected unit type "${unitType}" in ${sourceLabel}`);
+    console.warn(`[MegaMek Availability] unexpected unit type "${unitType}" in ${sourceLabel}`);
 }
 
 function compileXmlUnitType(unitType: string, sourceLabel: string): UnitType {
@@ -1040,7 +1040,7 @@ function compileXmlUnitType(unitType: string, sourceLabel: string): UnitType {
         return compiledUnitType;
     }
 
-    console.warn(`[MegaMek] could not compile unit type "${unitType}" in ${sourceLabel}; keeping original value`);
+    console.warn(`[MegaMek Availability] could not compile unit type "${unitType}" in ${sourceLabel}; keeping original value`);
     return unitType as UnitType;
 }
 
@@ -1371,7 +1371,7 @@ function normalizeExplicitAvailabilityByRating(
     for (const [ratingName, value] of Object.entries(byRating)) {
         const canonical = ratingMap.get(normalizeRatingName(ratingName));
         if (!canonical) {
-            console.warn(`[MegaMek] bad ! rating "${ratingName}" for ${factionKey} in ${sourceLabel}`);
+            console.warn(`[MegaMek Availability] bad ! rating "${ratingName}" for ${factionKey} in ${sourceLabel}`);
             continue;
         }
 
@@ -1451,7 +1451,7 @@ function addCompactAvailability(
 
         const eraKey = findEraKey(eras, availabilityYear);
         if (eraKey === undefined) {
-            // console.log(`[MegaMek] skipping availability for ${availability.factionKey} in year ${availabilityYear} (${sourceLabel}) due to undefined era`);
+            // console.log(`[MegaMek Availability] skipping availability for ${availability.factionKey} in year ${availabilityYear} (${sourceLabel}) due to undefined era`);
             continue;
         }
 
@@ -1494,7 +1494,7 @@ function mergeCompactAvailabilityValue(
     }
 
     console.warn(
-        `[MegaMek] merging mixed availability values ${JSON.stringify(current)} and ${JSON.stringify(incoming)} by rating`,
+        `[MegaMek Availability] merging mixed availability values ${JSON.stringify(current)} and ${JSON.stringify(incoming)} by rating`,
     );
     return mergeCompactAvailabilityByRating(
         expandAvailabilityValueToByRating(current),
@@ -2373,7 +2373,7 @@ function resolveModelMetadataByKey(
     for (const [modelKey, modelRecord] of Object.entries(models)) {
         const metadata = findUnitMetadata(unitMetadataIndex, modelRecord.t, modelRecord.c, modelRecord.m);
         if (!metadata) {
-            console.warn(`[MegaMek] missing unit metadata for weighted availability model ${modelKey}`);
+            console.warn(`[MegaMek Availability] missing unit metadata for weighted availability model ${modelKey}`);
             continue;
         }
 
@@ -2893,7 +2893,7 @@ function writeJsonFile(filePath: string, data: unknown): void {
     const contents = BEAUTIFY_OUTPUT
         ? formatJsonValue(data) ?? ''
         : JSON.stringify(data);
-    writeFileWithContentTimestamp(filePath, `${contents}\n`, 'utf8');
+    writeDeterministicFile(filePath, `${contents}\n`, 'utf8');
 }
 
 function mergeCompactEraAvailabilityForWrite(
@@ -2961,7 +2961,7 @@ function compileCompactAvailabilityRecords<TRecord extends CompactAvailabilityRe
             if (!originalTypes.has(record.t) && originalTypes.size > 0) {
                 const collidedTypes = [...originalTypes, record.t].sort((left, right) => left.localeCompare(right));
                 console.warn(
-                    `[MegaMek] ${sourceLabel} collision after unit type compilation for ${compiledKey}: ${collidedTypes.join(', ')}`,
+                    `[MegaMek Availability] ${sourceLabel} collision after unit type compilation for ${compiledKey}: ${collidedTypes.join(', ')}`,
                 );
             }
 
@@ -3042,12 +3042,12 @@ function remapWeightedEraAvailabilityToMulIds(
             && !faction
             && !LOGGED_MISSING_UNIVERSE_FACTION_KEYS.has(factionKey)
         ) {
-            console.warn(`[MegaMek] missing Universe faction entry for ${factionKey}; using direct CSV MUL mapping`);
+            console.warn(`[MegaMek Availability] missing Universe faction entry for ${factionKey}; using direct CSV MUL mapping`);
             LOGGED_MISSING_UNIVERSE_FACTION_KEYS.add(factionKey);
         }
 
         if (factionKey !== GENERAL_FACTION_KEY && skippedFactions.has(factionKey)) {
-            // console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to explicit -1 CSV mapping`);
+            // console.log(`[MegaMek Availability] skipping MUL remap for faction ${factionKey} due to explicit -1 CSV mapping`);
             continue;
         }
 
@@ -3055,7 +3055,7 @@ function remapWeightedEraAvailabilityToMulIds(
             ? [...(factionMulIds.get(factionKey) ?? [])]
             : resolveFactionMulIds(factions, factionKey, skippedFactions);
         if (resolvedMulIds.length === 0 && !LOGGED_MISSING_MUL_MAPPING_KEYS.has(factionKey)) {
-            console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to missing CSV mapping`);
+            console.log(`[MegaMek Availability] skipping MUL remap for faction ${factionKey} due to missing CSV mapping`);
             LOGGED_MISSING_MUL_MAPPING_KEYS.add(factionKey);
         }
         if (resolvedMulIds.length === 0) {
@@ -3140,16 +3140,17 @@ function run(): void {
     );
 
     writeJsonFile(path.join(OUTPUT_DIR, 'factions-lite.json'), lightFactions);
-    writeJsonFile(
-        path.join(OUTPUT_DIR, 'availability_weighted.json'),
-        compactWeightedRecordsToArrayForWrite(weightedAvailability),
-    );
+    // DEBUG ONLY
+    // writeJsonFile(
+    //     path.join(OUTPUT_DIR, 'availability_weighted.json'),
+    //     compactWeightedRecordsToArrayForWrite(weightedAvailability),
+    // );
     writeJsonFile(
         path.join(OUTPUT_DIR, 'mulized_availability_weighted.json'),
         compactWeightedRecordsToArrayForWrite(mulizedWeightedAvailability),
     );
 
-    console.log('[MegaMek] Wrote factions-lite.json, availability_weighted.json, and mulized_availability_weighted.json');
+    console.log('[MegaMek Availability] Wrote factions-lite.json and mulized_availability_weighted.json');
 }
 
 run();

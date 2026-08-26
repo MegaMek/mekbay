@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { WeaponEquipment } from '../models/equipment.model';
+import type { ComponentId } from '../models/entity/entity-identifiers';
 import type { InventoryControlRuntimeEntryState } from '../models/inventory-control-runtime-state.model';
-import type { MountedEquipment } from '../models/mounted-equipment.model';
-import type { UnitHeatSource } from '../models/rules/unit-type-rules';
+import type { UnitHeatSource } from '../models/unit-heat-source';
 
 export interface InventoryControlHeatEffect {
     readonly value: number;
@@ -13,9 +12,15 @@ export interface InventoryControlHeatEffect {
     readonly suffix?: '*';
 }
 
+/** Immutable component-local input for inventory firing-heat projection. */
+export interface InventoryControlHeatComponentFacts {
+    readonly componentId: ComponentId;
+    readonly baseWeaponHeat: number | null;
+}
+
 export interface InventoryControlHeatRules {
-    resolveHeatEffect?: (entry: MountedEquipment) => InventoryControlHeatEffect | null;
-    applyHeatEffects?: (entry: MountedEquipment, effect: InventoryControlHeatEffect) => InventoryControlHeatEffect;
+    readonly resolveHeatEffect?: (componentId: ComponentId) => InventoryControlHeatEffect | null;
+    readonly applyHeatEffects?: (componentId: ComponentId, effect: InventoryControlHeatEffect) => InventoryControlHeatEffect;
 }
 
 export interface SelectedInventoryWeaponHeat {
@@ -26,41 +31,41 @@ export interface SelectedInventoryWeaponHeat {
 
 export const SELECTED_WEAPONS_HEAT_SOURCE_ID = 'selected-weapons';
 
-/** Resolves weapon firing heat from typed model data and equipment effects. */
+/** Resolves firing heat from detached component facts and effect callbacks. */
 export function resolveInventoryControlHeat(
-    entry: MountedEquipment,
+    component: InventoryControlHeatComponentFacts,
     rules: InventoryControlHeatRules = {}
 ): number | null {
-    return resolveInventoryControlHeatEffect(entry, rules)?.value ?? null;
+    return resolveInventoryControlHeatEffect(component, rules)?.value ?? null;
 }
 
 export function resolveInventoryControlHeatEffect(
-    entry: MountedEquipment,
+    component: InventoryControlHeatComponentFacts,
     rules: InventoryControlHeatRules = {}
 ): InventoryControlHeatEffect | null {
-    const baseEffect = !entry.isPhysicalWeapon() && entry.equipment instanceof WeaponEquipment
-        ? { value: entry.equipment.heat, weakened: false }
-        : rules.resolveHeatEffect?.(entry) ?? null;
+    const baseEffect = component.baseWeaponHeat === null
+        ? rules.resolveHeatEffect?.(component.componentId) ?? null
+        : { value: component.baseWeaponHeat, weakened: false };
     if (!baseEffect) return null;
-    const effect = rules.applyHeatEffects?.(entry, baseEffect) ?? baseEffect;
+    const effect = rules.applyHeatEffects?.(component.componentId, baseEffect) ?? baseEffect;
     return Number.isFinite(effect.value)
         ? { ...effect, value: Math.max(0, effect.value) }
         : null;
 }
 
-/** Resolves the effective firing heat of all selected non-physical weapons. */
+/** Resolves the effective firing heat of all selected heat-producing components. */
 export function resolveSelectedInventoryWeaponHeat(
-    inventory: readonly MountedEquipment[],
+    inventory: readonly InventoryControlHeatComponentFacts[],
     entryStates: ReadonlyMap<string, Readonly<InventoryControlRuntimeEntryState>>,
     rules: InventoryControlHeatRules = {}
 ): SelectedInventoryWeaponHeat {
     const entryIds = new Set<string>();
     let value = 0;
-    for (const entry of inventory) {
-        if (!entryStates.get(entry.id)?.selected) continue;
-        const effect = resolveInventoryControlHeatEffect(entry, rules);
+    for (const component of inventory) {
+        if (!entryStates.get(component.componentId)?.selected) continue;
+        const effect = resolveInventoryControlHeatEffect(component, rules);
         if (!effect) continue;
-        entryIds.add(entry.id);
+        entryIds.add(component.componentId);
         value += effect.value;
     }
     return { hasSelection: entryIds.size > 0, value, entryIds };

@@ -8,6 +8,7 @@ import { toStandardDamage } from './damage-rounding';
 import { type AlphaStrikeStandardDamageResult, ZERO_DAMAGE } from './damage-types';
 import { sumAlphaStrikeWeaponDamage } from './weapon-damage-aggregation';
 import { alphaStrikeTroopFactor } from './troop-factor';
+import { isFlamerEquipment } from '../../../../flamer-mode.model';
 
 /** Converts conventional infantry and field-gun standard damage plus HT. */
 export function calculateConventionalInfantryDamage(
@@ -60,7 +61,8 @@ function heatSpecial(
   const eligibleWeapons = fieldGuns.length > 0
     ? fieldGuns.map(mount => mount.equipment)
     : [entity.rangeWeapon()];
-  const hasHeatWeapon = eligibleWeapons.some(weapon => weapon?.hasAnyFlag(['F_FLAMER', 'F_PLASMA']));
+  const hasHeatWeapon = eligibleWeapons.some(weapon =>
+    isFlamerEquipment(weapon) || weapon?.hasWeaponTrait('plasma') === true);
   const shortDamage = Number.parseInt(standard.dmgS, 10) || 0;
   if (!hasHeatWeapon || shortDamage < 1) return [];
   const heatDamage = Math.min(2, shortDamage);

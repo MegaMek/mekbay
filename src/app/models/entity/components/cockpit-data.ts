@@ -31,6 +31,25 @@ export type CockpitCrewType =
   | 'Superheavy Tripod'
   | 'QuadVee';
 
+/** Canonical Mek crew-position count for one cockpit crew configuration. */
+export function crewPositionCountForCockpitCrewType(crewType: CockpitCrewType): number {
+  switch (crewType) {
+    case 'Superheavy Tripod': return 3;
+    case 'Dual':
+    case 'Command Console':
+    case 'Tripod':
+    case 'QuadVee': return 2;
+    case 'Single': return 1;
+  }
+}
+
+/** Resolve and validate the canonical crew-position count for a published Mek cockpit. */
+export function crewPositionCountForMekCockpit(cockpitType: string): number {
+  const cockpit = COCKPIT_DATA[cockpitType as CockpitType];
+  if (!cockpit) throw new Error(`Unknown Mek cockpit type: ${cockpitType}`);
+  return crewPositionCountForCockpitCrewType(cockpit.crewType);
+}
+
 // ============================================================================
 // Head layout type
 // ============================================================================

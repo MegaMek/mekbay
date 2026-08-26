@@ -3,17 +3,42 @@
 // Author: Drake
 
 import type { MultiStateOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, type SearchTelemetryStage } from '../services/unit-search-filters.model';
+import {
+    MM_DATA_UNIT_PROVIDER_ID,
+    type UnitProviderId,
+} from '../services/unit-catalog/unit-catalog.types';
+
+type SearchIdentityUnit = Pick<UnitSummary, 'uuid'> & { readonly provider?: UnitProviderId };
+type CompactSearchUnit = UnitSummary & {
+    readonly _componentNameCounts?: Readonly<Record<string, number>>;
+    readonly _searchTags?: readonly string[];
+};
+
+/**
+ * Collision-free search/index identity. Unit names remain presentation data and
+ * may legitimately be shared by and custom providers.
+ *
+ * The length-prefixed representation matches the canonical catalog design-key
+ * encoding while still admitting legacy/test Units whose UUID predates UUIDv7.
+ */
+export function getUnitSearchIdentityKey(unit: SearchIdentityUnit): string {
+    const provider = unit.provider ?? MM_DATA_UNIT_PROVIDER_ID;
+    return `${provider.length}:${provider}${unit.uuid.length}:${unit.uuid}`;
+}
 
 export interface UnitComponentData {
     names: Set<string>;
     counts: Map<string, number>;
 }
 
-const unitComponentCache = new WeakMap<Unit, UnitComponentData>();
+const unitComponentCache = new WeakMap<UnitSummary, UnitComponentData>();
 
-export function getMergedTags(unit: Unit): string[] {
+export function getMergedTags(unit: UnitSummary): string[] {
+    const projected = (unit as CompactSearchUnit)._searchTags;
+    if (projected) return [...projected];
+
     const merged = new Set<string>();
     for (const entry of unit._chassisTags ?? []) merged.add(entry.tag);
     for (const entry of unit._nameTags ?? []) merged.add(entry.tag);
@@ -47,7 +72,7 @@ function normalizeSourceValues(value: readonly string[] | null | undefined): str
     return result;
 }
 
-export function getUnitSourceFilterValues(unit: Pick<Unit, 'source' | 'published'>): string[] {
+export function getUnitSourceFilterValues(unit: Pick<UnitSummary, 'source' | 'published'>): string[] {
     const sources = normalizeSourceValues(unit.source);
     const published = normalizeSourceValues(unit.published);
 
@@ -69,16 +94,16 @@ export function getUnitSourceFilterValues(unit: Pick<Unit, 'source' | 'published
 export function getProperty(obj: any, key?: string) {
     if (!obj || !key) return undefined;
     if (key === '_tags') {
-        return getMergedTags(obj as Unit);
+        return getMergedTags(obj as UnitSummary);
     }
     if (key === 'source') {
-        return getUnitSourceFilterValues(obj as Unit);
+        return getUnitSourceFilterValues(obj as UnitSummary);
     }
     if (key === 'weaponType') {
-        return (obj as Unit)._weaponTypes ?? [];
+        return (obj as UnitSummary)._weaponTypes ?? [];
     }
     if (key === 'as._motive') {
-        const mvm = (obj as Unit).as?.MVm;
+        const mvm = (obj as UnitSummary).as?.MVm;
         if (!mvm) return [];
 
         const result: string[] = [];
@@ -95,7 +120,7 @@ export function getProperty(obj: any, key?: string) {
         return result;
     }
     if (key === 'as._mv') {
-        const mvm = (obj as Unit).as?.MVm;
+        const mvm = (obj as UnitSummary).as?.MVm;
         if (!mvm) return 0;
         const values = Object.values(mvm);
         return values.length > 0 ? Math.max(...values) : 0;
@@ -238,16 +263,24 @@ export function isCommittedSemanticToken(token: { rawText: string; operator: str
     return !hasUnclosedQuote(rawValueText);
 }
 
-export function getUnitComponentData(unit: Unit): UnitComponentData {
+export function getUnitComponentData(unit: UnitSummary): UnitComponentData {
     let cached = unitComponentCache.get(unit);
     if (!cached) {
         const names = new Set<string>();
         const counts = new Map<string, number>();
 
-        for (const component of unit.comp) {
-            const name = component.n.toLowerCase();
-            names.add(name);
-            counts.set(name, (counts.get(name) || 0) + component.q);
+        const projectedCounts = (unit as CompactSearchUnit)._componentNameCounts;
+        if (projectedCounts) {
+            for (const [name, count] of Object.entries(projectedCounts)) {
+                names.add(name);
+                counts.set(name, count);
+            }
+        } else {
+            for (const component of unit.comp) {
+                const name = component.n.toLowerCase();
+                names.add(name);
+                counts.set(name, (counts.get(name) || 0) + component.q);
+            }
         }
 
         cached = { names, counts };
@@ -257,7 +290,7 @@ export function getUnitComponentData(unit: Unit): UnitComponentData {
     return cached;
 }
 
-export function getUnitCountableFilterData(unit: Unit, filterKey: string): UnitComponentData | null {
+export function getUnitCountableFilterData(unit: UnitSummary, filterKey: string): UnitComponentData | null {
     if (filterKey === 'componentName') {
         return getUnitComponentData(unit);
     }

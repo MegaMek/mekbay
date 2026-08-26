@@ -4,13 +4,14 @@
 
 import { Component, input, computed, inject, ChangeDetectionStrategy } from '@angular/core';
 
-import type { UnitComponent } from '../../models/units.model';
+import type { UnitComponent } from '../../models/unit-summary.model';
 import { DataService } from '../../services/data.service';
-import type { Unit } from '../../models/units.model';
-import { AmmoEquipment, type Equipment, WeaponEquipment } from '../../models/equipment.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
+import { AmmoEquipment, type Equipment, formatEquipmentRulesRefs, WeaponEquipment } from '../../models/equipment.model';
 import { TechDate, TechAdvancementDates, techDateYear, formatTechDate } from '../../models/entity';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
-import { CBTGameRulesService } from '../../services/cbt-game-rules.service';
+import { OptionsService } from '../../services/options.service';
+import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../models/rules/game-rules';
 import { resolveDefaultWeaponDamageText } from '../../utils/inventory-control-damage.util';
 import { formatInventoryControlHeat } from '../../utils/inventory-control-heat.util';
 
@@ -29,8 +30,8 @@ import { formatInventoryControlHeat } from '../../utils/inventory-control-heat.u
 })
 export class FloatingCompInfoComponent {
     private dataService = inject(DataService);
-    private rulesService = inject(CBTGameRulesService);
-    unit = input.required<Unit>();
+    private optionsService = inject(OptionsService);
+    unit = input.required<UnitSummary>();
     comp = input<UnitComponent | null>(null);
 
     positioned = false;
@@ -82,7 +83,10 @@ export class FloatingCompInfoComponent {
         const equipment = this.equipment() ?? this.comp()?.eq;
         if (!equipment) return null;
 
-        const modifierValues = this.rulesService.gameRules().resolveToHit({ subject: equipment }).profile;
+        const rules = this.optionsService.options().CBTRules === 'total-warfare'
+            ? TW_GAME_RULES
+            : CORE_2026_GAME_RULES;
+        const modifierValues = rules.resolveToHit({ subject: equipment }).profile;
         if (modifierValues.every(value => value === 0)) return null;
         return modifierValues.map(value => this.formatToHitModifier(value)).join('/');
     }
@@ -237,7 +241,7 @@ export class FloatingCompInfoComponent {
                     { label: 'Cost', value: eq.cost },
                     { label: 'Tonnage', value: eq.tonnage },
                     { label: 'Criticals', value: eq.critSlots },
-                    { label: 'Reference', value: eq.rulesRefs }
+                    { label: 'Reference', value: formatEquipmentRulesRefs(eq.rulesRefs) }
                 ]
             },
             {

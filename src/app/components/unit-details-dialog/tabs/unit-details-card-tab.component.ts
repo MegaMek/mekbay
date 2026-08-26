@@ -4,7 +4,7 @@
 
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import type { Unit } from '../../../models/units.model';
+import type { UnitSummary } from '../../../models/unit-summary.model';
 import { AlphaStrikeCardComponent } from '../../alpha-strike-card/alpha-strike-card.component';
 import { getCardCountForUnitType } from '../../alpha-strike-card/card-layout.config';
 import { OptionsService } from '../../../services/options.service';
@@ -18,7 +18,7 @@ import { OptionsService } from '../../../services/options.service';
 })
 export class UnitDetailsCardTabComponent {
     optionsService = inject(OptionsService);
-    unit = input.required<Unit>();
+    unit = input.required<UnitSummary>();
 
     readonly unitType = computed(() => this.unit().as?.TP ?? '');
     readonly cardIndices = computed<number[]>(() => {

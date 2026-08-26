@@ -20,7 +20,11 @@ describe('PageViewerOverlayService', () => {
     type OverlayRefStub = {
         location: { nativeElement: HTMLElement };
         hostView: unknown;
-        instance: { closeAllOverlays: jasmine.Spy | (() => void) };
+        instance: {
+            closeAllOverlays: jasmine.Spy | (() => void);
+            openTurnSummary: jasmine.Spy;
+            openWeaponEquipmentDialog: jasmine.Spy;
+        };
         setInput: jasmine.Spy;
         destroy: jasmine.Spy | (() => void);
     };
@@ -39,7 +43,9 @@ describe('PageViewerOverlayService', () => {
             location: { nativeElement },
             hostView: {},
             instance: {
-                closeAllOverlays: options.closeAllOverlays ?? jasmine.createSpy('closeAllOverlays')
+                closeAllOverlays: options.closeAllOverlays ?? jasmine.createSpy('closeAllOverlays'),
+                openTurnSummary: jasmine.createSpy('openTurnSummary'),
+                openWeaponEquipmentDialog: jasmine.createSpy('openWeaponEquipmentDialog'),
             },
             setInput: jasmine.createSpy('setInput'),
             destroy: options.onDestroy ?? jasmine.createSpy('destroy')
@@ -87,5 +93,40 @@ describe('PageViewerOverlayService', () => {
         expect(interactionRef.instance.closeAllOverlays).toHaveBeenCalled();
 
         service.cleanupInteractionOverlays(appRef as never);
+    });
+
+    it('refreshes member and force inputs when an interaction overlay is reused', () => {
+        const serviceAccess = service as unknown as OverlayServiceTestAccess;
+        const ref = createOverlayRef(document.createElement('div'));
+        const pageWrapper = document.createElement('div');
+        const member = { id: 'unit-a' };
+        const force = { id: 'force-a' };
+        serviceAccess.interactionOverlayRefs.set(member.id, ref);
+        serviceAccess.interactionOverlayModes.set(member.id, 'page');
+
+        service.getOrCreateInteractionOverlay({
+            appRef: createAppRefSpy() as never,
+            injector: {} as never,
+            pageWrapper,
+            fixedOverlayContainer: document.createElement('div'),
+            unit: member as never,
+            force: force as never,
+            mode: 'page',
+        });
+
+        expect(ref.setInput).toHaveBeenCalledWith('member', member);
+        expect(ref.setInput).toHaveBeenCalledWith('force', force);
+        expect(pageWrapper.lastElementChild).toBe(ref.location.nativeElement);
+    });
+
+    it('forwards the authored sheet equipment control to its requested dialog tab', () => {
+        const serviceAccess = service as unknown as OverlayServiceTestAccess;
+        const ref = createOverlayRef(document.createElement('div'));
+        const event = new MouseEvent('click');
+        serviceAccess.interactionOverlayRefs.set('unit-a', ref);
+
+        service.openEquipment('unit-a', event, 'ammo');
+
+        expect(ref.instance.openWeaponEquipmentDialog).toHaveBeenCalledOnceWith(event, 'ammo');
     });
 });

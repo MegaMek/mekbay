@@ -213,8 +213,8 @@
                             @if (unitDisplayName() === 'chassisModel'
                             || unitDisplayName() === 'both'
                             || !node.unit.alias()) {
-                            <div class="unit-model">{{ node.unit.getUnit().model }}</div>
-                            <div class="unit-chassis">{{ node.unit.getUnit().chassis }}</div>
+                            <div class="unit-model">{{ node.unit.getSummary().model }}</div>
+                            <div class="unit-chassis">{{ node.unit.getSummary().chassis }}</div>
                             }
                             @if (unitDisplayName() === 'alias' || unitDisplayName() === 'both') {
                             <div class="unit-alias">{{ node.unit.alias() }}</div>
@@ -432,9 +432,9 @@
                             <span class="internal-connection-badge" title="Internal connection">internal link</span>
                         } @else if (member.node) {
                             <span class="name">
-                                {{ member.node.unit.getUnit().chassis }}
-                                @if (member.node.unit.getUnit().model) {
-                                    - {{ member.node.unit.getUnit().model }}
+                                {{ member.node.unit.getSummary().chassis }}
+                                @if (member.node.unit.getSummary().model) {
+                                    - {{ member.node.unit.getSummary().model }}
                                 }
                             </span>
                         } @else {
@@ -470,9 +470,9 @@
                             <span class="internal-connection-badge" title="Internal connection">internal link</span>
                         } @else if (member.node) {
                             <span class="name">
-                                {{ member.node.unit.getUnit().chassis }}
-                                @if (member.node.unit.getUnit().model) {
-                                    - {{ member.node.unit.getUnit().model }}
+                                {{ member.node.unit.getSummary().chassis }}
+                                @if (member.node.unit.getSummary().model) {
+                                    - {{ member.node.unit.getSummary().model }}
                                 }
                             </span>
                         } @else {

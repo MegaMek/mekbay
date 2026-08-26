@@ -7,7 +7,7 @@ import { type Faction } from '../models/factions.model';
 import { MULFACTION_MERCENARY, type FactionAffinity } from '../models/mulfactions.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { UnitGroup } from '../models/force.model';
-import type { Unit, UnitSubtype } from '../models/units.model';
+import type { UnitSummary, UnitSubtype } from '../models/unit-summary.model';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
 import type { FormationTypeDefinition } from './formation-type.model';
 import { FormationNamerUtil } from './formation-namer.util';
@@ -19,11 +19,11 @@ const NOVA_REQUIREMENTS_FILTER_NOTICE = 'Battle Armor child groups are ignored f
 function createUnit(
     id: number,
     name: string,
-    unitType: Unit['type'],
+    unitType: UnitSummary['type'],
     subtype: UnitSubtype,
-    tp: Unit['as']['TP'],
+    tp: UnitSummary['as']['TP'],
     overrides: TestUnitOverrides = {},
-): Unit {
+): UnitSummary {
     const { as: asOverrides, ...unitOverrides } = overrides;
 
     return createEmptyUnit({
@@ -48,7 +48,7 @@ function createUnit(
     });
 }
 
-function createForceUnit(unit: Unit, gameSystem = GameSystem.ALPHA_STRIKE): ForceUnit {
+function createForceUnit(unit: UnitSummary, gameSystem = GameSystem.ALPHA_STRIKE): ForceUnit {
     const force = {
         faction: () => createFaction('Mercenary', 'Mercenary'),
         era: () => null,
@@ -58,7 +58,7 @@ function createForceUnit(unit: Unit, gameSystem = GameSystem.ALPHA_STRIKE): Forc
 
     return {
         force,
-        getUnit: () => unit,
+        getSummary: () => unit,
         getBv: () => 0,
         pilotSkill: () => 4,
         gunnerySkill: () => 4,
@@ -87,7 +87,7 @@ function createResolvedGroup(overrides: Partial<GroupSizeResult>): GroupSizeResu
 }
 
 function createTestGroup(
-    units: readonly Unit[],
+    units: readonly UnitSummary[],
     resolvedGroups: readonly GroupSizeResult[],
     faction: Faction,
 ): UnitGroup<ForceUnit> {
@@ -100,7 +100,7 @@ function createTestGroup(
 
     const forceUnits = units.map((unit) => ({
         force,
-        getUnit: () => unit,
+        getSummary: () => unit,
         getBv: () => 0,
         pilotSkill: () => 4,
         gunnerySkill: () => 4,
@@ -304,6 +304,28 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
 });
 
 describe('LanceTypeIdentifierUtil CBT weight-class validation', () => {
+    it('uses direct formation members when the legacy group graph is empty', () => {
+        const definition = LanceTypeIdentifierUtil.getDefinitionById('medium-battle-lance', GameSystem.CLASSIC);
+        const units = [1, 2, 3].map(index => createForceUnit(createUnit(
+            index,
+            `Medium-${index}`,
+            'Mek',
+            'BattleMek',
+            'BM',
+            { weightClass: 'Medium' },
+        ), GameSystem.CLASSIC));
+        const group = {
+            force: units[0].force,
+            units: () => [],
+            formationUnits: () => units,
+            formationHistory: new Set<string>(),
+            organizationalResult: () => ({ name: '', tier: 0, groups: [] }),
+        } as unknown as UnitGroup<ForceUnit>;
+
+        expect(definition).not.toBeNull();
+        expect(LanceTypeIdentifierUtil.isFormationValidForGroup(definition!, group)).not.toBeNull();
+    });
+
     it('matches medium battle lance for classic medium meks without requiring vehicles', () => {
         const definition = LanceTypeIdentifierUtil.getDefinitionById('medium-battle-lance', GameSystem.CLASSIC);
 

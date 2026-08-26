@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { encodeEquipmentLine } from '../writers/equipment-encoder';
+import {
+  encodeEquipmentLine,
+  UnrepresentableEquipmentConfigurationError,
+} from '../writers/equipment-encoder';
 import { EntityMountedEquipment } from '../types/equipment';
 import { parseEquipmentLine } from './equipment-resolver';
 
@@ -115,4 +118,43 @@ describe('parseEquipmentLine', () => {
       }),
     );
   });
+
+  it('round trips every explicit VGL facing without collapsing forward to front-left', () => {
+    const suffixes = ['(FL)', '(FR)', '(F)', '(R)', '(RL)', '(RR)'];
+
+    suffixes.forEach((suffix, facing) => {
+      expect(parseEquipmentLine(`Test VGL${suffix}`).facing).toBe(facing);
+      expect(encodeEquipmentLine(mount({ facing }))).toBe(`Test VGL${suffix}`);
+    });
+  });
+
+  it('fails closed when native syntax cannot represent shots and size together', () => {
+    expect(() => encodeEquipmentLine(mount({ shotsCount: 6, size: 4 }), {
+      shotsFormat: 'large-craft',
+    })).toThrowError(UnrepresentableEquipmentConfigurationError);
+  });
+
+  it('does not silently discard a shot count when no grammar is selected', () => {
+    expect(() => encodeEquipmentLine(mount({ shotsCount: 6 })))
+      .toThrowError(UnrepresentableEquipmentConfigurationError);
+  });
+
+  it('fails closed for a facing outside the native grammar', () => {
+    expect(() => encodeEquipmentLine(mount({ facing: 6 }))).toThrowError(
+      'Invalid equipment facing: 6',
+    );
+  });
 });
+
+function mount(overrides: Partial<ConstructorParameters<typeof EntityMountedEquipment>[0]> = {}): EntityMountedEquipment {
+  return new EntityMountedEquipment({
+    mountId: 'test-vgl',
+    equipmentId: 'Test VGL',
+    allocation: { kind: 'location', location: 'Front' },
+    rearMounted: false,
+    turretMounted: false,
+    omniPodMounted: false,
+    armored: false,
+    ...overrides,
+  });
+}

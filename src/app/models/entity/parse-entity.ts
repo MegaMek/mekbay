@@ -5,9 +5,8 @@
 import { EquipmentRegistry } from '../equipment-lookup';
 import { BaseEntity } from './base-entity';
 import { BuildingBlock } from './parsers/building-block';
-import { ParseContext, ParseContextOptions, ParseDiagnostic } from './parsers/parse-context';
+import { ParseContext, ParseContextOptions, EntityLoadIssue } from './parsers/parse-context';
 import { parseMtf } from './parsers/mtf-parser';
-import { parseBlkMek } from './parsers/blk-mek-parser';
 import { parseBlkAero } from './parsers/blk-aero-parser';
 import { parseBlkSmallCraft } from './parsers/blk-smallcraft-parser';
 import { parseBlkVehicle } from './parsers/blk-vehicle-parser';
@@ -17,18 +16,34 @@ import { parseBlkProtoMek } from './parsers/blk-protomek-parser';
 import { parseBlkDropShip } from './parsers/blk-dropship-parser';
 import { parseBlkLargeCraft } from './parsers/blk-largecraft-parser';
 import { parseBlkHandheld } from './parsers/blk-handheld-parser';
+import { parseBlkStaticEmplacement } from './parsers/blk-static-emplacement-parser';
+import { nativeCapabilityForUnitTypeAlias } from './codec-capabilities';
 
 /** Result of parsing a unit file. */
 export interface ParseResult {
   entity: BaseEntity;
-  diagnostics: ParseDiagnostic[];
+  diagnostics: readonly EntityLoadIssue[];
+}
+
+/** Stable failure for a unit encoded in a format its family never uses. */
+export class UnsupportedNativeFormatError extends Error {
+  readonly code = 'UNSUPPORTED_NATIVE_FORMAT' as const;
+
+  constructor(
+    readonly format: 'mtf' | 'blk',
+    readonly unitType: string,
+  ) {
+    super(`${unitType} units cannot be encoded as ${format.toUpperCase()}`);
+    this.name = 'UnsupportedNativeFormatError';
+  }
 }
 
 /**
  * Unified entry point for parsing any MegaMek unit file (.mtf or .blk).
  *
  * Dispatches to the appropriate parser based on file extension and, for BLK
- * files, the `<UnitType>` block inside the file.
+ * files, the `<UnitType>` block inside the file. Meks are categorically MTF;
+ * every non-Mek family is categorically BLK.
  *
  * @param content  Raw file content as a string
  * @param fileName File name (used to determine format by extension)
@@ -52,7 +67,7 @@ export function parseEntity(
   if (lowerName.endsWith('.mtf')) {
     entity = parseMtf(content, ctx);
   }
-  // ── BLK format (all types) ──
+  // ── BLK format (non-Mek types only) ──
   else if (lowerName.endsWith('.blk')) {
     const bb = new BuildingBlock(content);
     entity = parseBlk(bb, ctx);
@@ -60,8 +75,10 @@ export function parseEntity(
     throw new Error(`Unsupported file format: ${fileName}`);
   }
 
+  entity.nativeSourceTrailingNewlines = content.replace(/\r\n?/gu, '\n').match(/\n+$/u)?.[0].length ?? 0;
   entity.reconcileEquipmentRelationships();
-  return { entity, diagnostics: ctx.diagnostics };
+  entity.setLoadIssues(ctx.diagnostics);
+  return { entity, diagnostics: entity.loadIssues() };
 }
 
 /**
@@ -70,66 +87,42 @@ export function parseEntity(
  */
 function parseBlk(bb: BuildingBlock, ctx: ParseContext): BaseEntity {
   const unitType = bb.getFirstString('UnitType').trim();
+  const capability = nativeCapabilityForUnitTypeAlias(unitType);
 
-  switch (unitType) {
-    // ── Mek ──
-    case 'BipedMek':
-    case 'TripodMek':
-    case 'QuadMek':
-    case 'QuadVee':
-    case 'LAM':
-      return parseBlkMek(bb, ctx);
+  if (!capability || !capability.recognizeSyntax || !capability.decodeEntity) {
+    throw new Error(`Unsupported BLK UnitType: "${unitType}"`);
+  }
+  if (capability.format !== 'blk') {
+    throw new UnsupportedNativeFormatError('blk', unitType);
+  }
 
-    // ── Aero fighters ──
-    case 'Aero':
-    case 'AeroSpaceFighter':
-    case 'ConvFighter':
-    case 'FixedWingSupport':
+  switch (capability.family) {
+    case 'aero':
       return parseBlkAero(bb, ctx);
-
-    // ── SmallCraft ──
-    case 'SmallCraft':
+    case 'small-craft':
       return parseBlkSmallCraft(bb, ctx);
-
-    // ── DropShip ──
-    case 'DropShip':
-    case 'Dropship':
+    case 'drop-ship':
       return parseBlkDropShip(bb, ctx);
-
-    // ── Vehicle family ──
-    case 'Tank':
-    case 'Naval':
-    case 'VTOL':
-    case 'SupportTank':
-    case 'SupportVTOL':
-    case 'LargeSupportTank':
+    case 'vehicle':
       return parseBlkVehicle(bb, ctx);
-
-    // ── Infantry ──
-    case 'Infantry':
+    case 'infantry':
       return parseBlkInfantry(bb, ctx);
-
-    // ── BattleArmor ──
-    case 'BattleArmor':
+    case 'battle-armor':
       return parseBlkBA(bb, ctx);
-
-    // ── ProtoMek ──
-    case 'ProtoMek':
+    case 'protomek':
       return parseBlkProtoMek(bb, ctx);
-
-    // ── JumpShip / WarShip / SpaceStation ──
-    case 'JumpShip':
-    case 'Jumpship':
-    case 'WarShip':
-    case 'Warship':
-    case 'SpaceStation':
+    case 'large-craft':
       return parseBlkLargeCraft(bb, ctx);
-
-    // ── HandheldWeapon ──
-    case 'HandheldWeapon':
+    case 'handheld-weapon':
       return parseBlkHandheld(bb, ctx);
-
-    default:
-      throw new Error(`Unsupported BLK UnitType: "${unitType}"`);
+    case 'static-emplacement':
+      return parseBlkStaticEmplacement(
+        bb,
+        ctx,
+        unitType === 'BuildingEntity' ? 'BuildingEntity' : 'GunEmplacement',
+      );
+    case 'mek':
+      // Guarded above by the categorical format check.
+      throw new UnsupportedNativeFormatError('blk', unitType);
   }
 }

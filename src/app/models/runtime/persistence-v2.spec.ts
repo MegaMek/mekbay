@@ -1,0 +1,891 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import {
+    type JsonObject,
+    type DeferredUnitSource,
+} from '../persisted-unit-state';
+import { asSourceHash, asUnitProviderId, asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { asComponentId } from '../entity/entity-identifiers';
+import {
+    asStateRevision,
+    asUnitInstanceId,
+} from './runtime-state';
+import {
+    ForceEnvelopeValidationError,
+    CBT_FORCE_MINIMUM_WRITER_VERSION,
+    CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
+    CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
+    CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
+    asForceId,
+    asSavedTargetRef,
+    createSavedTargetRef,
+    emptyRuntimeHistory,
+    validateSerializedCBTForceV2,
+    encounterNetworkFactId,
+    encounterTargetFactId,
+    type ForceEnvelopeValidationCode,
+    type SerializedCBTUnitV2,
+    type SerializedForceUnitEntryV2,
+    type SerializedCBTForceV2,
+} from './persistence-v2';
+import { MAX_MEK_TURN_COLLECTION_ENTRIES } from './mek-turn-state-v2';
+import {
+    MAX_MEK_HEATSINKS_OFF_V2,
+    MAX_MEK_HEAT_VALUE_V2,
+} from './mek-heat-state-v2';
+import { prepareCBTForceRosterMutationPlan } from './cbt-force-roster-owner';
+import { isSerializedNonMekUnit } from './non-mek-unit-persistence';
+
+const DIGEST = asSourceHash('A'.repeat(27));
+const UUID_A = asUnitUuid('01890e02-93bd-7b31-b5fa-4b56e92b1234');
+const UUID_B = asUnitUuid('01890e02-93bd-7b31-b5fa-4b56e92b1235');
+const UUID_C = asUnitUuid('01890e02-93bd-7b31-b5fa-4b56e92b1236');
+const PROVIDER = asUnitProviderId('mm-data');
+
+describe('V2 force persistence', () => {
+    it('uses compact target prefixes without length framing', () => {
+        expect(createSavedTargetRef('location', 'lt', 'internal')).toBe('i:lt');
+        expect(createSavedTargetRef('location', 'lt', 'front-armor')).toBe('f:lt');
+        expect(createSavedTargetRef('location', 'lt', 'rear-armor')).toBe('r:lt');
+        expect(createSavedTargetRef('slot', 'ra:3')).toBe('s:ra:3');
+    });
+
+    it('round-trips one ready Mek and two deferred entries canonically', async () => {
+        const sealed = await validateSerializedCBTForceV2(mixedForce());
+        const restored = await validateSerializedCBTForceV2(JSON.parse(JSON.stringify(sealed)));
+
+        expect(restored.units.map(entry => entry.kind)).toEqual(['ready', 'deferred', 'deferred']);
+        expect(restored.units[2].kind).toBe('deferred');
+        if (restored.units[2].kind === 'deferred') {
+            expect(restored.units[2].source.identity.kind).toBe('unresolved');
+        }
+        const mek = restored.units[0];
+        expect(mek.kind === 'ready' && !isSerializedNonMekUnit(mek.unit)
+            ? mek.unit.pendingCombat?.locationDamage?.[0].damage
+            : undefined).toBe(-1);
+        expect(Object.isFrozen(restored.roster)).toBeTrue();
+        expect(Object.isFrozen(restored.roster.groups[0].members)).toBeTrue();
+        expect(restored.roster.groups[0]).toEqual({
+            groupId: 'group:test',
+            order: 0,
+            name: 'Test Lance',
+            color: '#123456',
+            formationId: 'formation:line',
+            formationLock: true,
+            members: [
+                { kind: 'ready', instanceId: asUnitInstanceId('unit:mek'), order: 0 },
+                {
+                    kind: 'deferred',
+                    instanceId: asUnitInstanceId('unit:vehicle'),
+                    order: 1,
+                    commander: true,
+                },
+                { kind: 'deferred', instanceId: asUnitInstanceId('unit:ambiguous'), order: 2 },
+            ],
+        });
+    });
+
+    it('snapshots force validation before any async mutation window', async () => {
+        const body = clone(mixedForce());
+        const unit = body.units.find((entry: any) => entry.kind === 'ready').unit;
+        unit.restoration = {
+            schemaVersion: 1,
+            algorithmVersion: CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
+            fromBaseline: unit.baselineRefAtSave,
+            sourceChanged: false,
+            warnings: [],
+            unresolved: [],
+            acceptedAliases: [],
+        };
+        const sealed = await validateSerializedCBTForceV2(asForce(body));
+        const mutable = clone(sealed);
+        const validationPending = validateSerializedCBTForceV2(mutable);
+        const invalid = clone(sealed);
+        invalid.units.find((entry: any) => entry.kind === 'ready')
+            .unit.restoration.algorithmVersion = 1;
+        for (const key of Object.keys(mutable)) delete mutable[key];
+        Object.assign(mutable, invalid);
+
+        const validated = await validationPending;
+        const validatedUnit = validated.units.find(entry => entry.kind === 'ready');
+        expect(validatedUnit?.kind === 'ready' && !isSerializedNonMekUnit(validatedUnit.unit)
+            ? validatedUnit.unit.restoration?.algorithmVersion
+            : undefined).toBe(CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2);
+        expect(mutable.units.find((entry: any) => entry.kind === 'ready')
+            .unit.restoration.algorithmVersion).toBe(1);
+    });
+
+    it('fails closed on duplicate, orphaned, missing, cross-kind, or misordered roster rows', async () => {
+        const duplicateGroup = clone(mixedForce());
+        duplicateGroup.roster.groups.push({
+            ...duplicateGroup.roster.groups[0],
+            members: [],
+        });
+        await expectCode(validateSerializedCBTForceV2(asForce(duplicateGroup)), 'DUPLICATE_ROSTER_GROUP_ID');
+
+        const duplicateMember = clone(mixedForce());
+        duplicateMember.roster.groups.push({
+            groupId: 'group:duplicate-member',
+            order: 1,
+            members: [{ ...duplicateMember.roster.groups[0].members[0], order: 0 }],
+        });
+        await expectCode(validateSerializedCBTForceV2(asForce(duplicateMember)), 'DUPLICATE_ROSTER_MEMBER_ID');
+
+        const orphan = clone(mixedForce());
+        orphan.roster.groups[0].members[0].instanceId = 'unit:orphan';
+        await expectCode(validateSerializedCBTForceV2(asForce(orphan)), 'DANGLING_ROSTER_MEMBER_ID');
+
+        const missing = clone(mixedForce());
+        missing.roster.groups[0].members.pop();
+        await expectCode(validateSerializedCBTForceV2(asForce(missing)), 'MISSING_ROSTER_MEMBER_ID');
+
+        const crossKind = clone(mixedForce());
+        crossKind.roster.groups[0].members[0].kind = 'deferred';
+        await expectCode(validateSerializedCBTForceV2(asForce(crossKind)), 'ROSTER_KIND_MISMATCH');
+
+        const groupOrder = clone(mixedForce());
+        groupOrder.roster.groups[0].order = 1;
+        await expectCode(validateSerializedCBTForceV2(asForce(groupOrder)), 'ROSTER_ORDER_MISMATCH');
+
+        const memberOrder = clone(mixedForce());
+        memberOrder.roster.groups[0].members[1].order = 0;
+        await expectCode(validateSerializedCBTForceV2(asForce(memberOrder)), 'ROSTER_ORDER_MISMATCH');
+
+        const duplicateCommander = clone(mixedForce());
+        duplicateCommander.roster.groups[0].members[0].commander = true;
+        await expectCode(
+            validateSerializedCBTForceV2(asForce(duplicateCommander)),
+            'ROSTER_COMMANDER_CONFLICT',
+            /may contain at most one commander/u,
+        );
+
+        const paddedName = clone(mixedForce());
+        paddedName.roster.groups[0].name = ' Test Lance';
+        await expectCode(validateSerializedCBTForceV2(asForce(paddedName)), 'INVALID_SHAPE');
+
+        const oversizedColor = clone(mixedForce());
+        oversizedColor.roster.groups[0].color = 'x'.repeat(513);
+        await expectCode(validateSerializedCBTForceV2(asForce(oversizedColor)), 'INVALID_SHAPE');
+
+        const falseLock = clone(mixedForce());
+        falseLock.roster.groups[0].formationLock = false;
+        await expectCode(validateSerializedCBTForceV2(asForce(falseLock)), 'INVALID_SHAPE');
+
+        const falseCommander = clone(mixedForce());
+        falseCommander.roster.groups[0].members[1].commander = false;
+        await expectCode(validateSerializedCBTForceV2(asForce(falseCommander)), 'INVALID_SHAPE');
+
+        const duplicateAliasAuthority = clone(mixedForce());
+        duplicateAliasAuthority.roster.groups[0].members[1].alias = 'must-remain-unit-owned';
+        await expectCode(validateSerializedCBTForceV2(asForce(duplicateAliasAuthority)), 'INVALID_SHAPE');
+
+        const decoratedUnassigned = clone(mixedForce());
+        decoratedUnassigned.roster.groups[0].groupId = 'cbt:unassigned';
+        await expectCode(validateSerializedCBTForceV2(asForce(decoratedUnassigned)), 'INVALID_SHAPE');
+
+        const missingFormationTarget = clone(mixedForce());
+        missingFormationTarget.roster.groups[0].formationTargetGroupId = 'group:missing';
+        await expectCode(validateSerializedCBTForceV2(asForce(missingFormationTarget)), 'INVALID_SHAPE');
+
+        const selfFormationTarget = clone(mixedForce());
+        selfFormationTarget.roster.groups[0].formationTargetGroupId = 'group:test';
+        await expectCode(validateSerializedCBTForceV2(asForce(selfFormationTarget)), 'INVALID_SHAPE');
+    });
+
+    it('accepts canonical zero/one commander rosters and seals owner-planner output', async () => {
+        const oneCommander = mixedForce();
+        await expectAsync(validateSerializedCBTForceV2(oneCommander)).toBeResolved();
+
+        const zeroCommanders = clone(mixedForce());
+        delete zeroCommanders.roster.groups[0].members[1].commander;
+        await expectAsync(validateSerializedCBTForceV2(asForce(zeroCommanders))).toBeResolved();
+
+        const formationTarget = clone(mixedForce());
+        formationTarget.roster.groups[0].formationTargetGroupId = 'group:target';
+        formationTarget.roster.groups.push({ groupId: 'group:target', order: 1, members: [] });
+        const sealedFormationTarget = await validateSerializedCBTForceV2(asForce(formationTarget));
+        expect(sealedFormationTarget.roster.groups[0].formationTargetGroupId).toBe('group:target');
+
+        const plannedForce = clone(mixedForce());
+        const result = prepareCBTForceRosterMutationPlan({
+            roster: plannedForce.roster,
+            command: {
+                kind: 'set-commander',
+                instanceId: asUnitInstanceId('unit:mek'),
+                commander: true,
+            },
+        });
+        expect(result.kind).toBe('ready');
+        if (result.kind !== 'ready') return;
+        plannedForce.roster = result.plan.nextRoster;
+        const sealed = await validateSerializedCBTForceV2(asForce(plannedForce));
+        expect(sealed.roster.groups[0].members.map(member => member.commander)).toEqual([
+            true, undefined, undefined,
+        ]);
+    });
+
+    it('fails closed on duplicate and mismatched instance IDs and revisions', async () => {
+        const duplicate = clone(mixedForce());
+        duplicate.units = [duplicate.units[0], duplicate.units[0]];
+        await expectCode(validateSerializedCBTForceV2(asForce(duplicate)), 'DUPLICATE_INSTANCE_ID');
+
+        const wrongId = clone(mixedForce());
+        wrongId.units[0].instanceId = 'unit:wrong';
+        await expectCode(validateSerializedCBTForceV2(asForce(wrongId)), 'INSTANCE_ID_MISMATCH');
+
+        const wrongUnitRevision = clone(mixedForce());
+        wrongUnitRevision.units[0].stateRevision = 99;
+        await expectCode(validateSerializedCBTForceV2(asForce(wrongUnitRevision)), 'REVISION_MISMATCH');
+
+        const wrongEncounterRevision = clone(mixedForce());
+        wrongEncounterRevision.encounter.encounterRevision = 1;
+        await expectCode(validateSerializedCBTForceV2(asForce(wrongEncounterRevision)), 'REVISION_MISMATCH');
+
+        const missingEncounter = clone(mixedForce());
+        delete missingEncounter.encounter;
+        await expectCode(validateSerializedCBTForceV2(asForce(missingEncounter)), 'INVALID_SHAPE');
+    });
+
+    it('validates compact retained-turn history groups and message tuples', async () => {
+        const valid = clone(mixedForce());
+        valid.history = { u: ['unit:test'], t: [{ n: 1, p: [[[2, 0, 'face:test', 1, 'pending']]] }] };
+        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
+
+        const badOrder = clone(valid);
+        badOrder.history.t = [
+            { n: 2, p: [[[1, 'later']]] },
+            { n: 1, p: [[[1, 'earlier']]] },
+        ];
+        await expectCode(validateSerializedCBTForceV2(asForce(badOrder)), 'INVALID_SHAPE');
+
+        const tooManyTurns = clone(valid);
+        tooManyTurns.history.t = [1, 2, 3].map(n => ({
+            n,
+            p: [[[1, `turn-${n}`]]],
+        }));
+        await expectCode(validateSerializedCBTForceV2(asForce(tooManyTurns)), 'INVALID_SHAPE');
+
+        const emptyPhase = clone(valid);
+        emptyPhase.history.t[0].p = [[]];
+        await expectCode(validateSerializedCBTForceV2(asForce(emptyPhase)), 'INVALID_SHAPE');
+
+        const unknownMessage = clone(valid);
+        unknownMessage.history.t[0].p[0][0][0] = 99;
+        await expectCode(validateSerializedCBTForceV2(asForce(unknownMessage)), 'INVALID_SHAPE');
+    });
+
+    it('fails closed on the older crew-less deployment payload instead of inventing a profile', async () => {
+        const oldDeployment = clone(mixedForce());
+        oldDeployment.units[0].unit.deployment = {
+            schemaVersion: 1,
+            values: { id: 'default' },
+        };
+        await expectCode(validateSerializedCBTForceV2(asForce(oldDeployment)), 'INVALID_SHAPE');
+
+        const missingAssignment = clone(mixedForce());
+        delete missingAssignment.units[0].unit.deployment.values.crewAssignment;
+        await expectCode(validateSerializedCBTForceV2(asForce(missingAssignment)), 'INVALID_SHAPE');
+    });
+
+    it('round-trips compact V1 conversion diagnostics without raw legacy state', async () => {
+        const valid = clone(mixedForce());
+        const unit = valid.units[0].unit;
+        unit.restoration = {
+            schemaVersion: 1,
+            algorithmVersion: CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
+            fromBaseline: {
+                kind: 'legacy-v1',
+                coordinateProfileVersion: 1,
+            },
+            sourceChanged: false,
+            warnings: [{ code: 'LEGACY_FACT_RETAINED', message: 'One opaque fact was retained.' }],
+            unresolved: [],
+            acceptedAliases: [],
+        };
+
+        const sealed = await validateSerializedCBTForceV2(asForce(valid));
+        const restored = sealed.units[0];
+        const warnings = restored.kind === 'ready' && !isSerializedNonMekUnit(restored.unit)
+            ? restored.unit.restoration?.warnings
+            : undefined;
+        expect(warnings).toEqual([{
+            code: 'LEGACY_FACT_RETAINED',
+            message: 'One opaque fact was retained.',
+        }]);
+
+        const rawLegacy = clone(valid);
+        rawLegacy.units[0].unit.restoration.legacyEvidence = { raw: true };
+        await expectCode(validateSerializedCBTForceV2(asForce(rawLegacy)), 'INVALID_SHAPE');
+    });
+
+    it('validates bounded canonical nonmovement turn payloads and rejects duplicate movement authority', async () => {
+        const valid = clone(mixedForce());
+        valid.units[0].unit.turn = {
+            schemaVersion: 1,
+            acknowledgedHeatSources: [
+                { sourceId: 'movement', signature: '[2,null,null]' },
+                { sourceId: 'weapons', signature: '[6,null,null]' },
+            ],
+            spotting: true,
+        };
+        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
+
+        const unsorted = clone(valid);
+        unsorted.units[0].unit.turn.acknowledgedHeatSources.reverse();
+        await expectCode(validateSerializedCBTForceV2(asForce(unsorted)), 'INVALID_SHAPE');
+
+        const duplicateMovement = clone(valid);
+        duplicateMovement.units[0].unit.turn.moveMode = 'run';
+        duplicateMovement.units[0].unit.turn.moveDistance = 5;
+        await expectCode(validateSerializedCBTForceV2(asForce(duplicateMovement)), 'INVALID_SHAPE');
+
+        const oversized = clone(valid);
+        oversized.units[0].unit.turn.acknowledgedHeatSources = Array.from(
+            { length: MAX_MEK_TURN_COLLECTION_ENTRIES + 1 },
+            (_, index) => ({ sourceId: `source:${index.toString().padStart(3, '0')}`, signature: '[]' }),
+        );
+        await expectCode(validateSerializedCBTForceV2(asForce(oversized)), 'INVALID_SHAPE');
+
+        const unknown = clone(valid);
+        unknown.units[0].unit.turn.future = true;
+        await expectCode(validateSerializedCBTForceV2(asForce(unknown)), 'INVALID_SHAPE');
+    });
+
+    it('validates the complete bounded Mek heat wire before sealing', async () => {
+        const valid = clone(mixedForce());
+        valid.units[0].unit.heat = {
+            heat: 5,
+            previous: 3,
+            pendingOverride: 0,
+            heatsinksOff: MAX_MEK_HEATSINKS_OFF_V2,
+        };
+        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
+
+        for (const mutate of [
+            (candidate: typeof valid) => { candidate.units[0].unit.heat.heat = MAX_MEK_HEAT_VALUE_V2 + 1; },
+            (candidate: typeof valid) => { candidate.units[0].unit.heat.previous = 0; },
+            (candidate: typeof valid) => { candidate.units[0].unit.heat.pendingOverride = -1; },
+            (candidate: typeof valid) => {
+                candidate.units[0].unit.heat.heatsinksOff = MAX_MEK_HEATSINKS_OFF_V2 + 1;
+            },
+        ]) {
+            const hostile = clone(valid);
+            mutate(hostile);
+            await expectCode(validateSerializedCBTForceV2(asForce(hostile)), 'INVALID_SHAPE');
+        }
+    });
+
+    it('validates the closed, canonical committed and pending Mek location-condition wire', async () => {
+        const valid = clone(mixedForce());
+        const unit = valid.units[0].unit;
+        const target = unit.locationState[0].target;
+        unit.locationConditions = [
+            { target, condition: 'blown-off', value: 1 },
+            { target, condition: 'flooded', value: 1 },
+            { target, condition: 'narc', value: 2 },
+        ];
+        unit.pendingCombat.locationConditions = [
+            { target, condition: 'flooded', value: 0 },
+            { target, condition: 'narc', value: 3 },
+        ];
+        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
+
+        for (const mutation of [
+            (candidate: typeof valid) => { candidate.units[0].unit.locationConditions[0].condition = 'future'; },
+            (candidate: typeof valid) => { candidate.units[0].unit.locationConditions[0].value = 2; },
+            (candidate: typeof valid) => { candidate.units[0].unit.locationConditions[0].value = 0; },
+            (candidate: typeof valid) => { candidate.units[0].unit.locationConditions[2].value = 1_000_001; },
+            (candidate: typeof valid) => { candidate.units[0].unit.locationConditions.reverse(); },
+            (candidate: typeof valid) => {
+                candidate.units[0].unit.locationConditions.push(
+                    clone(candidate.units[0].unit.locationConditions[2]),
+                );
+            },
+            (candidate: typeof valid) => { candidate.units[0].unit.locationConditions[0].future = true; },
+            (candidate: typeof valid) => {
+                candidate.units[0].unit.pendingCombat.locationConditions[0].condition = 'future';
+            },
+        ]) {
+            const hostile = clone(valid);
+            mutation(hostile);
+            await expectCode(validateSerializedCBTForceV2(asForce(hostile)), 'INVALID_SHAPE');
+        }
+    });
+
+    it('accepts only sparse true unit-destroyed state', async () => {
+        const valid = clone(mixedForce());
+        valid.units[0].unit.destroyed = true;
+        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
+
+        const nonCanonical = clone(valid);
+        nonCanonical.units[0].unit.destroyed = false;
+        await expectCode(validateSerializedCBTForceV2(asForce(nonCanonical)), 'INVALID_SHAPE');
+    });
+
+    it('validates sparse PPC capacitor pair state as an exact nested persistence shape', async () => {
+        const valid = clone(mixedForce());
+        const unit = valid.units[0].unit;
+        const capacitorTarget = asSavedTargetRef('component:ppc-capacitor');
+        unit.blueprintReferences.targets = {
+            [capacitorTarget]: {
+                kind: 'component',
+                savedComponentId: 'component:ppc-capacitor',
+                equipmentName: 'PPC Capacitor',
+                locations: ['RA'],
+                criticalSlots: [],
+            },
+            ...unit.blueprintReferences.targets,
+        };
+        unit.componentState = [{
+            target: capacitorTarget,
+            ppcCapacitor: { weaponId: asComponentId('component:ppc'), chargeState: 'charged' },
+        }];
+        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
+
+        for (const lifecycle of [
+            {},
+            { weaponId: 'component:ppc' },
+            { weaponId: 'component:ppc', chargeState: 'charged', firedThisTurn: true },
+            { weaponId: 'component:ppc', firedThisTurn: false },
+            { weaponId: 'component:ppc', chargeState: 'charging', future: true },
+        ]) {
+            const hostile = clone(valid);
+            hostile.units[0].unit.componentState[0].ppcCapacitor = lifecycle;
+            await expectCode(validateSerializedCBTForceV2(asForce(hostile)), 'INVALID_SHAPE');
+        }
+    });
+
+    it('validates sparse Bombast lifecycle state as an exact nested persistence shape', async () => {
+        const valid = clone(mixedForce());
+        const unit = valid.units[0].unit;
+        const bombastTarget = asSavedTargetRef('component:bombast');
+        unit.blueprintReferences.targets = {
+            [bombastTarget]: {
+                kind: 'component',
+                savedComponentId: 'component:bombast',
+                equipmentName: 'Bombast Laser',
+                locations: ['RA'],
+                criticalSlots: [],
+            },
+            ...unit.blueprintReferences.targets,
+        };
+        unit.componentState = [{
+            target: bombastTarget,
+            bombastLaser: { chargeState: 'charged' },
+        }];
+        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
+
+        for (const lifecycle of [
+            {},
+            { chargeState: 'broken' },
+            { chargeState: 'charged', firedThisTurn: true },
+            { firedThisTurn: false },
+            { chargeState: 'charging', future: true },
+        ]) {
+            const hostile = clone(valid);
+            hostile.units[0].unit.componentState[0].bombastLaser = lifecycle;
+            await expectCode(validateSerializedCBTForceV2(asForce(hostile)), 'INVALID_SHAPE');
+        }
+    });
+
+    it('validates sparse C3 Emergency Master state as an exact nested persistence shape', async () => {
+        const valid = clone(mixedForce());
+        const unit = valid.units[0].unit;
+        const c3emTarget = asSavedTargetRef('component:c3em');
+        unit.blueprintReferences.targets = {
+            [c3emTarget]: {
+                kind: 'component',
+                savedComponentId: 'component:c3em',
+                equipmentName: 'C3 Emergency Master',
+                locations: ['CT'],
+                criticalSlots: [],
+            },
+            ...unit.blueprintReferences.targets,
+        };
+        unit.componentState = [{
+            target: c3emTarget,
+            c3EmergencyMaster: { mode: 'on', operatingTurns: 4 },
+        }];
+        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
+
+        for (const lifecycle of [
+            {},
+            { mode: 'auto' },
+            { mode: 'broken' },
+            { operatingTurns: 0 },
+            { operatingTurns: 8 },
+            { operatingTurns: 1.5 },
+            { mode: 'off', operatingTurns: 7, future: true },
+        ]) {
+            const hostile = clone(valid);
+            hostile.units[0].unit.componentState[0].c3EmergencyMaster = lifecycle;
+            await expectCode(validateSerializedCBTForceV2(asForce(hostile)), 'INVALID_SHAPE');
+        }
+    });
+
+    it('accepts only non-default sparse Gauss power states', async () => {
+        const valid = clone(mixedForce());
+        const unit = valid.units[0].unit;
+        const gaussTarget = asSavedTargetRef('component:gauss');
+        unit.blueprintReferences.targets = {
+            [gaussTarget]: {
+                kind: 'component',
+                savedComponentId: 'component:gauss',
+                equipmentName: 'Gauss Rifle',
+                locations: ['RA'],
+                criticalSlots: [],
+            },
+            ...unit.blueprintReferences.targets,
+        };
+        unit.componentState = [{ target: gaussTarget, gaussPower: 'Powered Down' }];
+        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
+
+        for (const gaussPower of ['Powered Up', 'broken', '', false]) {
+            const hostile = clone(valid);
+            hostile.units[0].unit.componentState[0].gaussPower = gaussPower;
+            await expectCode(validateSerializedCBTForceV2(asForce(hostile)), 'INVALID_SHAPE');
+        }
+    });
+
+    it('validates unresolved pending repairs as signed typed facts', async () => {
+        const valid = clone(mixedForce());
+        const unit = valid.units[0].unit;
+        const [targetRef, sourceTarget] = Object.entries(unit.blueprintReferences.targets)[0];
+        unit.restoration = {
+            schemaVersion: 1,
+            algorithmVersion: CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
+            fromBaseline: unit.baselineRefAtSave,
+            sourceChanged: false,
+            warnings: [],
+            unresolved: [{
+                recoveryId: 'recovery:pending-location',
+                sourceTargetRef: asSavedTargetRef(targetRef),
+                sourceTarget,
+                fact: { kind: 'pending-location-damage', damage: -1 },
+                reason: 'LOCATION_NOT_FOUND',
+            }],
+            acceptedAliases: [],
+            heatRecovery: {
+                schemaVersion: 1,
+                sourceReferences: unit.blueprintReferences,
+                targetTranslation: { [targetRef]: targetRef },
+                currentReferences: unit.blueprintReferences,
+            },
+            ignoredRecovery: [{
+                recoveryId: 'recovery:ignored-location',
+                algorithmVersion: CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
+            }],
+        };
+        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
+
+        const missingHeatAuthority = clone(valid);
+        delete missingHeatAuthority.units[0].unit.restoration.heatRecovery;
+        await expectCode(validateSerializedCBTForceV2(asForce(missingHeatAuthority)), 'INVALID_SHAPE', undefined, 'missing heat authority');
+
+        const substitutedCurrentTable = clone(valid);
+        substitutedCurrentTable.units[0].unit.restoration.heatRecovery.currentReferences.targets = {};
+        await expectCode(validateSerializedCBTForceV2(asForce(substitutedCurrentTable)), 'INVALID_SHAPE', undefined, 'substituted current table');
+
+        const forgedTranslation = clone(valid);
+        forgedTranslation.units[0].unit.restoration.heatRecovery.targetTranslation[targetRef] =
+            'target:forged-current-ref';
+        await expectCode(validateSerializedCBTForceV2(asForce(forgedTranslation)), 'DANGLING_TARGET_REF');
+
+        const zero = clone(valid);
+        zero.units[0].unit.restoration.unresolved[0].fact.damage = 0;
+        await expectCode(validateSerializedCBTForceV2(asForce(zero)), 'INVALID_SHAPE', undefined, 'zero pending damage');
+
+        const wrongKind = clone(valid);
+        wrongKind.units[0].unit.restoration.unresolved[0] = {
+            recoveryId: 'recovery:wrong-kind',
+            sourceTargetRef: asSavedTargetRef(targetRef),
+            sourceTarget,
+            fact: { kind: 'pending-component-status', status: 'available' },
+            reason: 'COMPONENT_NOT_FOUND',
+        };
+        await expectCode(validateSerializedCBTForceV2(asForce(wrongKind)), 'TARGET_KIND_MISMATCH');
+
+        const duplicateIgnored = clone(valid);
+        duplicateIgnored.units[0].unit.restoration.ignoredRecovery.push(
+            clone(duplicateIgnored.units[0].unit.restoration.ignoredRecovery[0]),
+        );
+        await expectCode(validateSerializedCBTForceV2(asForce(duplicateIgnored)), 'INVALID_SHAPE');
+
+        const activeOverlap = clone(valid);
+        activeOverlap.units[0].unit.restoration.ignoredRecovery[0].recoveryId = 'recovery:pending-location';
+        await expectCode(validateSerializedCBTForceV2(asForce(activeOverlap)), 'INVALID_SHAPE');
+
+        const unsupportedAlgorithmOverlap = clone(activeOverlap);
+        unsupportedAlgorithmOverlap.units[0].unit.restoration.ignoredRecovery[0].algorithmVersion = 1;
+        await expectCode(validateSerializedCBTForceV2(asForce(unsupportedAlgorithmOverlap)), 'INVALID_SHAPE');
+        expect(targetRef).toBeTruthy();
+    });
+
+    it('retains historical aliases without requiring their old target ref in the current table', async () => {
+        const historical = clone(mixedForce());
+        const unit = historical.units[0].unit;
+        const [rawSourceRef, sourceTarget] = Object.entries(unit.blueprintReferences.targets)[0] as [
+            string,
+            Record<string, unknown>,
+        ];
+        const sourceTargetRef = asSavedTargetRef(rawSourceRef);
+        const historicalEntity = clone(unit.baselineRefAtSave.entity);
+        historicalEntity.sourceHashAtSave = asSourceHash(`${'H'.repeat(26)}A`);
+        unit.restoration = {
+            schemaVersion: 1,
+            algorithmVersion: CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
+            fromBaseline: unit.baselineRefAtSave,
+            sourceChanged: true,
+            warnings: [],
+            unresolved: [{
+                recoveryId: 'recovery:historical-alias',
+                sourceTargetRef,
+                sourceTarget,
+                fact: { kind: 'location-damage', damage: 1 },
+                reason: 'HISTORICAL_ALIAS_TARGET',
+            }],
+            acceptedAliases: [{
+                sourceTargetRef,
+                targetEntity: historicalEntity,
+                target: 'component:historical-only',
+                algorithmVersion: CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
+            }],
+            heatRecovery: {
+                schemaVersion: 1,
+                sourceReferences: unit.blueprintReferences,
+                targetTranslation: { [sourceTargetRef]: sourceTargetRef },
+                currentReferences: unit.blueprintReferences,
+            },
+        };
+        await expectAsync(validateSerializedCBTForceV2(asForce(historical))).toBeResolved();
+
+        const danglingCurrent = clone(historical);
+        danglingCurrent.units[0].unit.restoration.acceptedAliases[0].targetEntity =
+            clone(danglingCurrent.units[0].unit.baselineRefAtSave.entity);
+        await expectCode(validateSerializedCBTForceV2(asForce(danglingCurrent)), 'DANGLING_TARGET_REF');
+    });
+
+    it('rejects sealed encounter candidates whose target source and read-only ownership disagree', async () => {
+        const targetFact = (source: 'manual' | 'opfor', readOnly: boolean) => ({
+            kind: 'target',
+            factId: encounterTargetFactId('target:origin-policy'),
+            target: {
+                id: 'target:origin-policy',
+                letter: 'A',
+                name: 'Origin policy target',
+                color: '#fff',
+                source,
+                readOnly,
+            },
+        });
+        for (const [source, readOnly] of [
+            ['opfor', false],
+            ['manual', true],
+        ] as const) {
+            const tampered = clone(mixedForce());
+            tampered.encounter.state.facts = [targetFact(source, readOnly)];
+            await expectCode(validateSerializedCBTForceV2(asForce(tampered)), 'INVALID_SHAPE');
+        }
+
+        const valid = clone(mixedForce());
+        valid.encounter.state.facts = [targetFact('opfor', true)];
+        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
+
+        valid.encounter.state.facts[0].target.tnCalculator = {
+            targetMovementDistance: 2,
+            targetHeight: 3,
+            stealth: {
+                short: 0,
+                medium: 1,
+                long: 2,
+                conventionalInfantry: { short: 0, medium: 0, long: 0 },
+                secondaryTargetRestricted: true,
+            },
+            stealthSystem: 'stealth-armor',
+        };
+        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
+
+        const invalidStealth = clone(valid);
+        invalidStealth.encounter.state.facts[0].target.tnCalculator.stealthSystem = 'unknown';
+        await expectCode(validateSerializedCBTForceV2(asForce(invalidStealth)), 'INVALID_SHAPE');
+    });
+
+    it('validates C3 structure without requiring copied component topology', async () => {
+        const valid = clone(mixedForce());
+        const unit = valid.units[0].unit;
+        const targetFact = {
+            kind: 'target',
+            factId: encounterTargetFactId('target:alpha'),
+            target: { id: 'target:alpha', letter: 'A', name: 'Alpha', color: '#fff' },
+        };
+        const networkFact = {
+            kind: 'network',
+            factId: encounterNetworkFactId('network:alpha'),
+            network: {
+                id: 'network:alpha', networkType: 'c3', color: '#123456',
+                endpoints: [
+                    { instanceId: unit.instanceId, componentId: asComponentId('component:c3-master'), role: 'master' },
+                    { instanceId: unit.instanceId, componentId: asComponentId('component:c3-slave'), role: 'member' },
+                ],
+            },
+        };
+        valid.encounter.state.facts = [networkFact, targetFact];
+        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
+
+        const entityValidated = clone(valid);
+        entityValidated.encounter.state.facts[0].network.endpoints[1].componentId = 'component:loaded-later';
+        await expectAsync(validateSerializedCBTForceV2(asForce(entityValidated))).toBeResolved();
+
+        const localRange = clone(valid);
+        localRange.encounter.state.facts[1].target.distance = 7;
+        await expectCode(validateSerializedCBTForceV2(asForce(localRange)), 'INVALID_SHAPE');
+
+        const dualAuthority = clone(valid);
+        dualAuthority.encounter.recovery.c3Networks = [{ id: 'legacy-index-network' }];
+        await expectCode(validateSerializedCBTForceV2(asForce(dualAuthority)), 'INVALID_SHAPE');
+    });
+});
+
+function mixedForce(): SerializedCBTForceV2 {
+    const vehicleKey = 'vehicle:1';
+    const ambiguousKey = 'ambiguous:1';
+    const mek = v2Entry('unit:mek', UUID_A);
+    const vehicleId = asUnitInstanceId('unit:vehicle');
+    const ambiguousId = asUnitInstanceId('unit:ambiguous');
+    return {
+        schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
+        minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
+        forceId: asForceId('force:test'),
+        forceRevision: asStateRevision(4),
+        scenarioRules: { schemaVersion: 1, values: {} },
+        history: emptyRuntimeHistory(),
+        units: [
+            mek,
+            { kind: 'deferred', instanceId: vehicleId, stateRevision: asStateRevision(2), source: legacyBridge(vehicleKey, 'Vedette', 'resolved') },
+            { kind: 'deferred', instanceId: ambiguousId, stateRevision: asStateRevision(0), source: legacyBridge(ambiguousKey, 'Unknown Mek', 'ambiguous') },
+        ],
+        roster: {
+            schemaVersion: 1,
+            groups: [{
+                groupId: 'group:test',
+                order: 0,
+                name: 'Test Lance',
+                color: '#123456',
+                formationId: 'formation:line',
+                formationLock: true,
+                members: [
+                    { kind: 'ready', instanceId: mek.instanceId, order: 0 },
+                    { kind: 'deferred', instanceId: vehicleId, order: 1, commander: true },
+                    { kind: 'deferred', instanceId: ambiguousId, order: 2 },
+                ],
+            }],
+        },
+        encounter: {
+            encounterRevision: asStateRevision(0),
+            state: { schemaVersion: 2, encounterRevision: asStateRevision(0), facts: [] },
+            recovery: {
+                schemaVersion: 1,
+                c3Networks: [],
+            },
+        },
+        restoration: {
+            schemaVersion: 2,
+            unresolvedEncounter: [],
+        },
+    };
+}
+
+function v2Entry(instance: string, uuid: typeof UUID_A): SerializedForceUnitEntryV2 & { kind: 'ready' } {
+    const instanceId = asUnitInstanceId(instance);
+    return {
+        kind: 'ready',
+        instanceId,
+        stateRevision: asStateRevision(3),
+        unit: v2Unit(instanceId, uuid),
+    };
+}
+
+function v2Unit(instanceId: ReturnType<typeof asUnitInstanceId>, uuid: typeof UUID_A): SerializedCBTUnitV2 {
+    const target = asSavedTargetRef('location:ct:internal');
+    const entity = {
+        origin: 'megamek' as const,
+        provider: PROVIDER,
+        uuid,
+        sourceHashAtSave: DIGEST,
+        sourceFormat: 'mtf' as const,
+    };
+    return {
+        schemaVersion: CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
+        instanceId,
+        entity: { origin: 'megamek', provider: PROVIDER, uuid, sourceHashAtSave: DIGEST, sourceFormat: 'mtf' },
+        baselineRefAtSave: {
+            entity,
+            ruleset: 'core-2026',
+            initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine' },
+        },
+        blueprintReferences: {
+            schemaVersion: 1,
+            targets: { [target]: { kind: 'location-section', location: 'CT', section: 'internal' } },
+        },
+        deployment: {
+            schemaVersion: 2,
+            values: { id: 'default', crewAssignment: { schemaVersion: 1, positions: [] } },
+        },
+        stateRevision: asStateRevision(3),
+        ruleChecks: { schemaVersion: 1, entries: [] },
+        movementPsr: { schemaVersion: 2 },
+        attackerTargeting: { schemaVersion: 1, components: [], actions: [], targets: [] },
+        locationState: [{ target, damage: 2 }],
+        crew: { schemaVersion: 1, positions: [] },
+        family: { kind: 'mek' },
+        conditions: { values: ['prone'] },
+        turn: { schemaVersion: 1 },
+        pendingCombat: { locationDamage: [{ target, damage: -1 }] },
+    };
+}
+
+function legacyBridge(key: string, name: string, identity: 'resolved' | 'ambiguous'): DeferredUnitSource {
+    const payload: JsonObject = {
+        id: key,
+        unit: name,
+        state: { name },
+        ...(key === 'vehicle:1' ? { commander: true } : {}),
+    };
+    return {
+        payload,
+        identity: identity === 'resolved'
+            ? { kind: 'resolved', savedIdentity: { origin: 'megamek', provider: PROVIDER, uuid: UUID_B, sourceHashAtSave: DIGEST, sourceFormat: 'blk' } }
+            : {
+                kind: 'unresolved', rawLegacyName: name, reason: 'ambiguous',
+                candidates: [{ provider: PROVIDER, uuid: UUID_B }, { provider: PROVIDER, uuid: UUID_C }],
+            },
+    };
+}
+
+async function expectCode(
+    promise: Promise<unknown>,
+    code: ForceEnvelopeValidationCode,
+    message?: RegExp,
+    context?: string,
+): Promise<void> {
+    try {
+        await promise;
+        fail(`Expected rejection with ${code}${context ? ` (${context})` : ''}`);
+    } catch (error) {
+        expect(error instanceof ForceEnvelopeValidationError).toBeTrue();
+        if (error instanceof ForceEnvelopeValidationError) {
+            expect(error.code).toBe(code);
+            if (message) expect(error.message).toMatch(message);
+        }
+    }
+}
+
+function clone<T>(value: T): any {
+    return JSON.parse(JSON.stringify(value));
+}
+
+function asForce(value: unknown): SerializedCBTForceV2 {
+    return value as SerializedCBTForceV2;
+}
+

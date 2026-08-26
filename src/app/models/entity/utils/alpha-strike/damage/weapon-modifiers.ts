@@ -13,7 +13,8 @@ export function alphaStrikeAmmoDamageMultiplier(
   ammunition: readonly ReturnType<BaseEntity['equipment']>[number][],
   battleArmor = false,
 ): number {
-  if (weapon.ammoType === 'NA' || weapon.oneShotCount || battleArmor && !weapon.hasFlag('F_MISSILE')) return 1;
+  if (weapon.ammoType === 'NA' || weapon.oneShotCount
+    || battleArmor && !weapon.hasWeaponTrait('missile')) return 1;
   const weaponCount = weapons.filter(mount =>
     mount.equipment.id === weapon.id && !mount.equipment.oneShotCount).length;
   const shots = ammunition.reduce((total, mount) => mount.equipment instanceof AmmoEquipment

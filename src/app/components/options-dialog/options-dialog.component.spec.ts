@@ -79,6 +79,18 @@ describe('OptionsDialogComponent', () => {
         expect(setOption).toHaveBeenCalledOnceWith('cbtAutomations', false);
     });
 
+    it('persists the pre-generated record-sheet compatibility selection as a boolean', () => {
+        const setOption = jasmine.createSpy('setOption');
+        const component = configureComponent({ options: () => ({ unitServers: [] }), setOption });
+        const select = document.createElement('select');
+        select.innerHTML = '<option value="true">Pre-generated</option><option value="false">Generated</option>';
+        select.value = 'true';
+
+        component.onUsePreGeneratedRecordSheetsChange({ target: select } as unknown as Event);
+
+        expect(setOption).toHaveBeenCalledOnceWith('usePreGeneratedRecordSheets', true);
+    });
+
     it('updates one CBT optional rule without changing the other', () => {
         const setOption = jasmine.createSpy('setOption');
         const component = configureComponent({

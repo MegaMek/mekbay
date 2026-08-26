@@ -1,0 +1,585 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import type { BaseEntity } from '../entity/base-entity';
+import {
+    isAeroEntity,
+    isInfantryFamilyEntity,
+    isProtoMekEntity,
+    isVehicleEntity,
+} from '../entity/utils/entity-type-guards';
+import { asComponentId, asLocationId, type ComponentId } from '../entity/entity-identifiers';
+import type { EntityMountedEquipment, EntityWeaponHitModifier } from '../entity/types';
+import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
+import type { CBTRuleset } from '../cbt-ruleset.model';
+import { isWeaponEnhancementEquipment } from '../entity/utils/equipment-link-rules';
+import { isTargetingComputerEquipment } from '../entity/utils/targeting-computer';
+import type { CrewAssignment } from './crew-assignment';
+import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
+import type { NonMekUnitRuntimeState } from './non-mek-unit-instance';
+import {
+    entityAmmoLoadout,
+    entityAmmoLoadouts,
+    weaponAcceptsAmmo,
+    type AmmoLoadout,
+} from './mek-ammo';
+import {
+    projectEquipmentTargets,
+    projectWeaponTargetDisabledReasons,
+    projectEquipmentPanelHit,
+    projectEquipmentPanelWeaponDamage,
+    equipmentPanelWeaponTypes,
+    selectedAmmoEquipment,
+    type EquipmentPanelTarget,
+    EquipmentPanelAmmoLoadout,
+    EquipmentPanelAmmoSource,
+    EquipmentPanelComponent,
+    EquipmentPanelSnapshot,
+    type MekPhysicalAttackRow,
+} from './equipment-panel';
+import type { TargetRegistrySnapshot } from './encounter-runtime';
+import {
+    gameRulesFor,
+    type ComponentToHitTargetingComputerFacts,
+    type ComponentToHitSubject,
+    type ToHitModifierBreakdownEntry,
+} from '../rules/game-rules';
+import {
+    projectVehicleRuntimeRules,
+    type VehicleRuntimeRulesProjection,
+} from '../rules/vehicle-runtime-rules';
+import {
+    projectProtoMekRuntimeRules,
+    type ProtoMekRuntimeRulesProjection,
+} from '../rules/protomek-runtime-rules';
+import {
+    projectInfantryRuntimeRules,
+    type InfantryRuntimeRulesProjection,
+} from '../rules/infantry-runtime-rules';
+import {
+    projectAeroRuntimeRules,
+    type AeroRuntimeRulesProjection,
+} from '../rules/aero-runtime-rules';
+import { attackerActionSelection } from './attacker-targeting-state';
+import {
+    projectNonMekComponentStatuses,
+    type NonMekComponentStatuses,
+} from './non-mek-component-status';
+import { resolveAmmoWeaponProfile } from '../ammo-weapon-profile.model';
+import {
+    aerospaceAttackValues,
+    aerospaceRangeLimits,
+    effectiveAerospaceMaximumBracket,
+} from '../../utils/aerospace-range.util';
+import { bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
+import { isLaserInsulatorEquipment } from '../laser-insulator.model';
+
+/**
+ * Equipment-dialog projection for non-Mek entities. The entity supplies the
+ * installed definitions; the sparse runtime supplies only mutable state.
+ */
+export function projectNonMekEquipmentPanel(
+    entity: BaseEntity,
+    index: NonMekRuntimeIndex,
+    ruleset: CBTRuleset,
+    state: NonMekUnitRuntimeState,
+    crew: CrewAssignment,
+    registry: TargetRegistrySnapshot,
+): EquipmentPanelSnapshot {
+    if (entity.entityType === 'Mek') throw new Error('Meks require the Mek equipment projection');
+    const targets = projectEquipmentTargets(state.attackerTargeting, registry);
+    const vehicleRules = isVehicleEntity(entity)
+        ? projectVehicleRuntimeRules(entity, index, state, ruleset)
+        : null;
+    const protoMekRules = isProtoMekEntity(entity)
+        ? projectProtoMekRuntimeRules(entity, index, state, ruleset)
+        : null;
+    const infantryRules = isInfantryFamilyEntity(entity)
+        ? projectInfantryRuntimeRules(entity, index, state)
+        : null;
+    const aeroRules = isAeroEntity(entity)
+        ? projectAeroRuntimeRules(entity, index, state, ruleset)
+        : null;
+    const entityStatuses = projectNonMekComponentStatuses(index, state);
+    const targetingComputer = installedTargetingComputer(index, vehicleRules, entityStatuses);
+    const components = Object.freeze([...index.components.values()]
+        .map(component => projectComponent(
+            entity,
+            index,
+            ruleset,
+            state,
+            component.id,
+            targets,
+            vehicleRules,
+            protoMekRules,
+            infantryRules,
+            aeroRules,
+            entityStatuses,
+            targetingComputer,
+        )));
+    const firstCrew = crew.positions[0];
+    return Object.freeze({
+        entityUuid: entity.uuid(),
+        ruleset,
+        stateRevision: state.stateRevision,
+        targetRegistryRevision: registry.revision,
+        displayName: entity.displayName(),
+        unitType: entity.unitType(),
+        tracksHeat: entity.tracksHeat(),
+        heat: Object.freeze({
+            current: aeroRules?.heat.current ?? 0,
+            pending: aeroRules?.heat.pending ?? null,
+            sinksOff: aeroRules?.heat.heatsinksOff ?? 0,
+        }),
+        crew: Object.freeze({
+            gunnery: firstCrew?.gunnery ?? 4,
+            piloting: firstCrew?.piloting ?? 5,
+        }),
+        components,
+        physicalAttacks: vehicleRules !== null
+            ? Object.freeze([projectVehicleCharge(entity, state, vehicleRules, ruleset)])
+            : protoMekRules !== null
+                ? Object.freeze([projectProtoMekFrenzy(entity, state, protoMekRules, ruleset)])
+                : Object.freeze([]),
+        ...(state.equipmentRowOrder === undefined
+            ? {}
+            : { equipmentRowOrder: state.equipmentRowOrder }),
+        physicalAttackBlockers: Object.freeze([]),
+        targets,
+    });
+}
+
+function projectComponent(
+    entity: BaseEntity,
+    index: NonMekRuntimeIndex,
+    ruleset: CBTRuleset,
+    state: NonMekUnitRuntimeState,
+    componentId: ComponentId,
+    targets: readonly EquipmentPanelTarget[],
+    vehicleRules: VehicleRuntimeRulesProjection | null,
+    protoMekRules: ProtoMekRuntimeRulesProjection | null,
+    infantryRules: InfantryRuntimeRulesProjection | null,
+    aeroRules: AeroRuntimeRulesProjection | null,
+    entityStatuses: NonMekComponentStatuses,
+    targetingComputer: ComponentToHitTargetingComputerFacts | null,
+): EquipmentPanelComponent {
+    const component = index.components.get(componentId);
+    if (!component) throw new Error(`Unknown non-Mek component ${componentId}`);
+    const mount = component.mount;
+    const equipment = mount.equipment;
+    const componentState = state.components.get(componentId);
+    const status = vehicleRules?.componentStatuses.get(componentId)
+        ?? entityStatuses.committed.get(componentId)
+        ?? 'available';
+    const previewStatus = vehicleRules?.previewComponentStatuses.get(componentId)
+        ?? entityStatuses.preview.get(componentId)
+        ?? status;
+    const mode = componentState?.mode ?? equipment?.modes[0];
+    const locations = mount.getOccupiedLocations().map(code => {
+        const location = [...index.locations.values()].find(candidate => candidate.code === code);
+        return Object.freeze({
+            locationId: location?.id ?? asLocationId(`location:${code}`),
+            code: entity.componentLocationLabel(code),
+            status: previewStatus,
+            exposed: location?.armorFaceIds.some(faceId => {
+                const face = index.armorFaces.get(faceId);
+                if (!face || face.maximumPoints === 0) return false;
+                const committed = state.locations.get(location.id)?.armorDamage
+                    .find(row => row.faceId === faceId)?.damage ?? 0;
+                const pending = state.pendingCombat.armorDamage.get(faceId) ?? 0;
+                return committed + pending >= face.maximumPoints;
+            }) ?? false,
+        });
+    });
+    const loadouts = entityAmmoLoadouts(entity, mount, ruleset);
+    const ammo = loadouts.length === 0
+        ? undefined
+        : projectAmmo(entity, mount, ruleset, state, componentId, loadouts);
+    const targeting = state.attackerTargeting.components.get(componentId);
+    const ammoSources = equipment instanceof WeaponEquipment && !mount.isPhysicalWeapon()
+        ? compatibleAmmoSources(
+            entity,
+            index,
+            ruleset,
+            state,
+            equipment,
+            componentState?.mode,
+            vehicleRules,
+            entityStatuses,
+        )
+        : Object.freeze([]);
+    const selectedAmmo = selectedAmmoEquipment(ammoSources, targeting?.ammo);
+    const ammoProfile = resolveAmmoWeaponProfile(selectedAmmo);
+    const aerospace = equipment instanceof WeaponEquipment
+        && !mount.isPhysicalWeapon()
+        && entity.unitType() === 'Aero'
+        ? projectAerospaceWeapon(equipment, selectedAmmo, ruleset, mode)
+        : undefined;
+    const stateModifiers = Object.freeze([
+        ...(aeroRules?.modifiers.ranged ?? []),
+        ...(vehicleRules === null ? [] : [
+            ...vehicleRules.modifiers.ranged,
+            ...(vehicleRules.stabilizerAffectedComponentIds.has(componentId)
+                ? [Object.freeze({
+                    label: 'Stabilizer Hit',
+                    modifier: vehicleRules.attackMovementModifier,
+                    weakened: true,
+                })]
+                : []),
+        ]),
+    ] satisfies readonly ToHitModifierBreakdownEntry[]);
+    const rules = gameRulesFor(ruleset);
+    const hit = equipment instanceof WeaponEquipment && !mount.isPhysicalWeapon()
+        ? projectEquipmentPanelHit(rules, {
+            subject: installedWeaponToHitSubject(
+                componentId,
+                mount.getOccupiedLocations().map(location => entity.componentLocationLabel(location)),
+                equipment,
+                selectedAmmo,
+                targetingComputer,
+            ),
+            stateModifiers,
+        })
+        : null;
+    const bombast = bombastLaserEquipmentProfile(equipment, ruleset, mode);
+    const effectiveDamage = equipment instanceof WeaponEquipment
+        ? bombast?.damage ?? equipment.damage
+        : 0;
+    const effectiveWeaponTypes = equipment instanceof WeaponEquipment
+        ? Object.freeze(equipmentPanelWeaponTypes(equipment, selectedAmmo))
+        : Object.freeze([]);
+    const damage = equipment instanceof WeaponEquipment && !mount.isPhysicalWeapon()
+        ? projectEquipmentPanelWeaponDamage(
+            entity.getEquipmentRegistry(),
+            componentId,
+            equipment,
+            selectedAmmo,
+            effectiveDamage,
+            effectiveWeaponTypes,
+        )
+        : null;
+    const linkedEnhancement = entity.getLinkingMount(mount);
+    const linkedEnhancementId = linkedEnhancement === undefined
+        ? undefined
+        : asComponentId(linkedEnhancement.mountId);
+    const linkedEnhancementStatus = linkedEnhancementId === undefined
+        ? 'available'
+        : vehicleRules?.componentStatuses.get(linkedEnhancementId)
+            ?? entityStatuses.committed.get(linkedEnhancementId)
+            ?? 'available';
+    const linkedEnhancementEquipment = linkedEnhancement?.equipment;
+    const modifiers = linkedEnhancementEquipment !== undefined
+        && isWeaponEnhancementEquipment(linkedEnhancementEquipment)
+        ? Object.freeze([Object.freeze({
+            name: linkedEnhancementEquipment.shortName || linkedEnhancementEquipment.name,
+            ...(linkedEnhancementStatus === 'available'
+                ? {}
+                : { status: linkedEnhancementStatus as 'destroyed' | 'disabled' }),
+        })])
+        : Object.freeze([]);
+    const weapon = equipment instanceof WeaponEquipment && !mount.isPhysicalWeapon()
+        ? Object.freeze({
+            heat: equipment.heat,
+            firingHeat: equipment.heat,
+            selectable: !(vehicleRules?.destroyed
+                ?? protoMekRules?.destroyed
+                ?? infantryRules?.destroyed
+                ?? aeroRules?.destroyed
+                ?? state.explicitlyDestroyed)
+                && status === 'available'
+                && componentState?.jammed !== true
+                && vehicleRules?.fireBlockedComponentIds.has(componentId) !== true
+                && infantryRules?.fireBlockedComponentIds.has(componentId) !== true,
+            damage: effectiveDamage,
+            damageText: damage!.default,
+            damageTextByRange: damage!.byRange,
+            hit: hit!,
+            toHitModifier: hit!.default.profile.length === 1
+                ? hit!.default.profile[0]!
+                : Object.freeze([...hit!.default.profile]),
+            hitModifierBreakdown: Object.freeze([...hit!.default.modifierBreakdown]),
+            ranges: Object.freeze([...(ammoProfile?.ranges ?? equipment.ranges)]),
+            minimumRange: ammoProfile?.minimumRange ?? equipment.minimumRange,
+            ...(aerospace === undefined ? {} : { aerospace }),
+            ...(targeting?.selection === undefined ? {} : { selection: targeting.selection }),
+            ...(targeting?.ammo === undefined ? {} : { ammoSelection: targeting.ammo }),
+            ammoSources,
+            underwater: false,
+            attackerSubmerged: false,
+            effectiveWeaponTypes,
+            ...(entity.unitType() === 'Infantry' && entity.unitSubtype() !== 'Battle Armor'
+                ? { attackerIsConventionalInfantry: true as const }
+                : {}),
+            disabledTargetReasons: projectWeaponTargetDisabledReasons(
+                equipment,
+                selectedAmmo,
+                ruleset,
+                targets,
+                false,
+            ),
+        })
+        : undefined;
+    return Object.freeze({
+        componentId,
+        label: mount.displayName(),
+        ...(equipment === undefined ? {} : { equipment }),
+        locations: Object.freeze(locations),
+        status,
+        previewStatus,
+        modes: Object.freeze([...(equipment?.modes ?? [])]),
+        ...(equipment?.modes[0] === undefined ? {} : { defaultMode: equipment.modes[0] }),
+        ...(mode === undefined ? {} : { mode }),
+        jammed: componentState?.jammed === true,
+        ...(isLaserInsulatorEquipment(linkedEnhancement?.equipment)
+            ? { heatWeakened: linkedEnhancementStatus !== 'available' }
+            : {}),
+        ...(modifiers.length === 0 ? {} : { modifiers }),
+        ...(weapon === undefined ? {} : { weapon }),
+        ...(ammo === undefined ? {} : { ammo }),
+    });
+}
+
+function projectAerospaceWeapon(
+    equipment: WeaponEquipment,
+    selectedAmmo: AmmoEquipment | null,
+    ruleset: CBTRuleset,
+    mode: string | undefined,
+): NonNullable<EquipmentPanelComponent['weapon']>['aerospace'] {
+    const ammoProfile = resolveAmmoWeaponProfile(selectedAmmo);
+    const maximumBracket = effectiveAerospaceMaximumBracket(equipment, ammoProfile);
+    const baseValues = aerospaceAttackValues(equipment, ammoProfile);
+    const bombast = ruleset === 'total-warfare'
+        ? bombastLaserEquipmentProfile(equipment, ruleset, mode)
+        : null;
+    const attackValues = bombast === null
+        ? baseValues
+        : baseValues.map(value => value > 0 ? bombast.damage : 0) as [number, number, number, number];
+    return Object.freeze({
+        attackValues: Object.freeze([...attackValues]) as readonly [number, number, number, number],
+        rangeLimits: aerospaceRangeLimits(equipment),
+        maximumBracket,
+        capital: equipment.capital,
+    });
+}
+
+function projectProtoMekFrenzy(
+    entity: BaseEntity,
+    state: NonMekUnitRuntimeState,
+    rules: ProtoMekRuntimeRulesProjection,
+    ruleset: CBTRuleset,
+): MekPhysicalAttackRow {
+    const action = entity.intrinsicWeapons().find(candidate => candidate.kind === 'frenzy');
+    if (!action || action.damage.kind !== 'fixed') {
+        throw new Error(`${entity.displayName()} has no fixed-damage non-Mek Frenzy action`);
+    }
+    const target = Object.freeze({ kind: 'intrinsic' as const, actionId: action.id });
+    const resolution = gameRulesFor(ruleset).resolveToHit({
+        subject: Object.freeze({
+            kind: 'component' as const,
+            componentId: asComponentId(action.id),
+            source: Object.freeze({ kind: 'intrinsic' as const, actionKind: action.kind }),
+            locations: action.locations,
+            targetingComputerWeapon: null,
+            targetingComputer: null,
+        }),
+    });
+    const hitModifiers: EntityWeaponHitModifier[] = resolution.value === 'Vs'
+        ? ['versus']
+        : typeof resolution.value === 'number' ? [resolution.value] : [];
+    const available = !rules.destroyed
+        && !rules.computedConditions.includes('immobile');
+    const selection = attackerActionSelection(state.attackerTargeting, target);
+    return Object.freeze({
+        target,
+        label: action.name,
+        locationIds: Object.freeze([]),
+        locationCodes: Object.freeze([]),
+        hitModifiers: Object.freeze(hitModifiers),
+        hitModifierBreakdown: Object.freeze([...resolution.modifierBreakdown]),
+        available,
+        selectable: available,
+        effect: Object.freeze({
+            kind: 'damage' as const,
+            damage: action.damage.value,
+            maximumDamage: action.damage.value,
+            baseDamage: action.damage.value,
+            weakened: false,
+            boosted: false,
+        }),
+        ...(selection === undefined ? {} : { selection }),
+    });
+}
+
+function projectVehicleCharge(
+    entity: BaseEntity,
+    state: NonMekUnitRuntimeState,
+    rules: VehicleRuntimeRulesProjection,
+    ruleset: CBTRuleset,
+): MekPhysicalAttackRow {
+    const action = entity.intrinsicWeapons().find(candidate => candidate.kind === 'charge');
+    if (!action) throw new Error(`${entity.displayName()} has no non-Mek Charge action`);
+    const target = Object.freeze({ kind: 'intrinsic' as const, actionId: action.id });
+    const resolution = gameRulesFor(ruleset).resolveToHit({
+        subject: Object.freeze({
+            kind: 'component' as const,
+            componentId: asComponentId(action.id),
+            source: Object.freeze({ kind: 'intrinsic' as const, actionKind: action.kind }),
+            locations: action.locations,
+            targetingComputerWeapon: null,
+            targetingComputer: null,
+        }),
+        stateModifiers: rules.modifiers.physical,
+    });
+    const hitModifiers: EntityWeaponHitModifier[] = resolution.value === 'Vs'
+        ? ['versus']
+        : typeof resolution.value === 'number' ? [resolution.value] : [];
+    if (resolution.value === 'Vs') {
+        const modifier = resolution.modifierBreakdown.reduce((sum, item) => sum + item.modifier, 0);
+        if (modifier !== 0) hitModifiers.push(modifier);
+    }
+    const movementMode = state.turn.movement?.mode ?? null;
+    const available = !rules.destroyed
+        && !state.conditions.has('prone')
+        && movementMode !== 'stationary'
+        && movementMode !== 'jump';
+    const selection = attackerActionSelection(state.attackerTargeting, target);
+    return Object.freeze({
+        target,
+        label: action.name,
+        locationIds: Object.freeze([]),
+        locationCodes: Object.freeze([]),
+        hitModifiers: Object.freeze(hitModifiers),
+        hitModifierBreakdown: Object.freeze([...resolution.modifierBreakdown]),
+        available,
+        selectable: available,
+        effect: Object.freeze({
+            kind: 'damage' as const,
+            ...rules.chargeDamage,
+            boosted: false,
+            movementDistance: state.turn.movement?.distance ?? 0,
+        }),
+        ...(selection === undefined ? {} : { selection }),
+    });
+}
+
+function compatibleAmmoSources(
+    entity: BaseEntity,
+    index: NonMekRuntimeIndex,
+    ruleset: CBTRuleset,
+    state: NonMekUnitRuntimeState,
+    weapon: WeaponEquipment,
+    selectedMode: string | undefined,
+    vehicleRules: VehicleRuntimeRulesProjection | null,
+    entityStatuses: NonMekComponentStatuses,
+): readonly EquipmentPanelAmmoSource[] {
+    return Object.freeze([...index.components.values()].flatMap(component => {
+        const loadouts = entityAmmoLoadouts(entity, component.mount, ruleset)
+            .filter(loadout => weaponAcceptsAmmo(weapon, loadout.equipment, selectedMode));
+        if (loadouts.length === 0) return [];
+        const runtime = state.ammo.get(component.id);
+        const current = entityAmmoLoadout(
+            entity,
+            component.mount,
+            ruleset,
+            runtime?.munitionOverride,
+        );
+        if (!current) return [];
+        const committedStatus = vehicleRules?.componentStatuses.get(component.id)
+            ?? entityStatuses.committed.get(component.id)
+            ?? 'available';
+        return [Object.freeze({
+            componentId: component.id,
+            label: current.equipment.shortName || current.equipment.name,
+            location: component.mount.location,
+            status: committedStatus,
+            munitionKey: current.munitionKey,
+            remaining: committedStatus === 'available'
+                ? Math.max(0, current.capacity - (runtime?.shotsSpent ?? 0))
+                : 0,
+            capacity: current.capacity,
+            loadouts: freezeLoadouts(loadouts),
+        })];
+    }).sort((left, right) => compareText(left.componentId, right.componentId)));
+}
+
+function installedTargetingComputer(
+    index: NonMekRuntimeIndex,
+    vehicleRules: VehicleRuntimeRulesProjection | null,
+    entityStatuses: NonMekComponentStatuses,
+): ComponentToHitTargetingComputerFacts | null {
+    for (const component of index.components.values()) {
+        const equipment = component.mount.equipment;
+        if (!equipment || !isTargetingComputerEquipment(equipment)) continue;
+        return Object.freeze({
+            label: equipment.name,
+            status: vehicleRules?.componentStatuses.get(component.id)
+                ?? entityStatuses.committed.get(component.id)
+                ?? 'available',
+        });
+    }
+    return null;
+}
+
+function installedWeaponToHitSubject(
+    componentId: ComponentId,
+    locations: readonly string[],
+    equipment: WeaponEquipment,
+    selectedAmmo: AmmoEquipment | null,
+    targetingComputer: ComponentToHitTargetingComputerFacts | null,
+): ComponentToHitSubject {
+    return Object.freeze({
+        kind: 'component',
+        componentId,
+        source: Object.freeze({
+            kind: 'equipment',
+            equipment,
+            physical: false,
+            parentEquipment: null,
+        }),
+        locations: Object.freeze([...locations]),
+        targetingComputerWeapon: Object.freeze({
+            equipment,
+            effectiveWeaponTypes: Object.freeze([
+                ...equipmentPanelWeaponTypes(equipment, selectedAmmo),
+            ]),
+        }),
+        targetingComputer,
+    });
+}
+
+function projectAmmo(
+    entity: BaseEntity,
+    component: EntityMountedEquipment,
+    ruleset: CBTRuleset,
+    state: NonMekUnitRuntimeState,
+    componentId: ComponentId,
+    loadouts: readonly AmmoLoadout[],
+): NonNullable<EquipmentPanelComponent['ammo']> {
+    if (!(component.equipment instanceof AmmoEquipment)) {
+        throw new Error(`Non-Mek ammunition source ${componentId} is unavailable`);
+    }
+    const runtime = state.ammo.get(componentId);
+    const current = entityAmmoLoadout(entity, component, ruleset, runtime?.munitionOverride);
+    if (!current) throw new Error(`Non-Mek ammunition source ${componentId} has no valid loadout`);
+    return Object.freeze({
+        defaultMunitionKey: component.equipment.internalName,
+        munitionKey: current.munitionKey,
+        displayName: current.equipment.shortName || current.equipment.name,
+        remaining: Math.max(0, current.capacity - (runtime?.shotsSpent ?? 0)),
+        capacity: current.capacity,
+        loadouts: freezeLoadouts(loadouts),
+    });
+}
+
+function freezeLoadouts(loadouts: readonly AmmoLoadout[]): readonly EquipmentPanelAmmoLoadout[] {
+    return Object.freeze(loadouts.map(loadout => Object.freeze({
+        munitionKey: loadout.munitionKey,
+        displayName: loadout.equipment.shortName || loadout.equipment.name,
+        capacity: loadout.capacity,
+        equipment: loadout.equipment,
+    })));
+}
+
+function compareText(left: string, right: string): number {
+    return left < right ? -1 : left > right ? 1 : 0;
+}

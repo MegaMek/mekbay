@@ -137,7 +137,9 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   }
 
   // ── Extra seats ──
-  if (bb.exists('extraSeats')) {
+  if (bb.exists('extra_seats')) {
+    entity.extraSeats.set(bb.getFirstInt('extra_seats'));
+  } else if (bb.exists('extraSeats')) {
     entity.extraSeats.set(bb.getFirstInt('extraSeats'));
   }
 
@@ -167,7 +169,8 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
         entity.hasTurret.set(true);
       }
     } else if (entity.isSuperHeavy() && !(entity instanceof VtolEntity)) {
-      // Superheavy Tank: Front, Front Right, Front Left, Rear Right, Rear Left, Rear[, Turret[, Rear Turret]]
+      // Superheavy Tank: Front, Front Right, Front Left, Rear Right, Rear Left,
+      // Rear[, Rear Turret[, Front Turret]] (MegaMek's rear-then-front order).
       for (let i = 0; i < SUPERHEAVY_ARMOR_LOCS.length && i < ints.length; i++) {
         armorMap.set(SUPERHEAVY_ARMOR_LOCS[i], locationArmor(ints[i]));
       }
@@ -205,7 +208,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
       sv.engineTechRating.set(bb.getFirstInt('engine_tech_rating'));
     }
     if (bb.exists('fuel')) {
-      sv.fuel.set(parseFloat(bb.getDataAsString('fuel')[0] || '0'));
+      sv.fuel.set(bb.getFirstDouble('fuel'));
     }
   }
 

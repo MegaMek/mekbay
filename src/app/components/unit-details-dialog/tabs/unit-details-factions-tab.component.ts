@@ -23,7 +23,7 @@ import {
     type MegaMekWeightedAvailabilityValue,
     MEGAMEK_AVAILABILITY_NOT_AVAILABLE,
 } from '../../../models/megamek/availability.model';
-import type { Unit } from '../../../models/units.model';
+import type { UnitSummary } from '../../../models/unit-summary.model';
 import { DataService } from '../../../services/data.service';
 import { UnitAvailabilitySourceService } from '../../../services/unit-availability-source.service';
 
@@ -88,7 +88,7 @@ export class UnitDetailsFactionTabComponent {
     readonly megaMekSalvageIconPath = MEGAMEK_SALVAGE_ICON_PATH;
     readonly megaMekAvailabilitySourceSelected = computed(() => this.unitAvailabilitySource.useMegaMekAvailability());
 
-    unit = input.required<Unit>();
+    unit = input.required<UnitSummary>();
 
     factionAvailability = computed<FactionAvailability[]>(() => {
         const u = this.unit();
@@ -151,7 +151,7 @@ export class UnitDetailsFactionTabComponent {
     }
 
     private buildMulFactionAvailability(
-        unit: Unit,
+        unit: UnitSummary,
         eras: readonly Era[],
         factions: readonly Faction[],
         megaMekAvailabilityByEraFaction: ReadonlyMap<number, ReadonlyMap<number, readonly FactionMegaMekAvailability[]>>,

@@ -24,7 +24,7 @@ const {
 } = require('./lib/script-paths') as typeof import('./lib/script-paths');
 
 const {
-    writeFileWithContentTimestamp,
+    writeDeterministicFile,
 } = require('./lib/deterministic-output') as typeof import('./lib/deterministic-output');
 
 interface WordListSource {
@@ -41,8 +41,8 @@ const RANDOM_COMPANY_NAME_GENERATOR_PATH = path.join(
     'backgrounds',
     'randomCompanyNameGenerator'
 );
-const OUTPUT_PATH = path.join(APP_ROOT, 'public', 'assets', 'force-name-words.json');
-const PILOT_NAMES_OUTPUT_PATH = path.join(APP_ROOT, 'public', 'assets', 'pilot-names.json');
+const OUTPUT_PATH = path.join(APP_ROOT, 'public', 'online-assets', 'generated', 'force-name-words.json');
+const PILOT_NAMES_OUTPUT_PATH = path.join(APP_ROOT, 'public', 'online-assets', 'generated', 'pilot-names.json');
 const NAMES_PATH = path.join('data', 'names');
 const BLOODNAMES_PATH = path.join(NAMES_PATH, 'bloodnames');
 const BLOODNAME_PHENOTYPES: Record<SourceBloodnamePhenotype, BloodnamePhenotype> = {
@@ -558,9 +558,9 @@ function main(): void {
         bloodnames: bloodnameData.bloodnames,
     };
 
-    writeFileWithContentTimestamp(OUTPUT_PATH, `${JSON.stringify(wordsByKey)}\n`);
+    writeDeterministicFile(OUTPUT_PATH, `${JSON.stringify(wordsByKey)}\n`);
     console.log(`[Force Name Words] Generated ${OUTPUT_PATH}`);
-    writeFileWithContentTimestamp(PILOT_NAMES_OUTPUT_PATH, `${JSON.stringify(compactPilotNameCatalog(pilotNames, ethnicityCount))}\n`);
+    writeDeterministicFile(PILOT_NAMES_OUTPUT_PATH, `${JSON.stringify(compactPilotNameCatalog(pilotNames, ethnicityCount))}\n`);
     console.log(`[Force Name Words] Generated ${PILOT_NAMES_OUTPUT_PATH}`);
 }
 

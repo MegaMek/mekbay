@@ -4,13 +4,12 @@
 
 import type { Era } from '../models/eras.model';
 import { MULFACTION_MERCENARY, MULFACTION_NONE, type MULFaction } from '../models/mulfactions.model';
-import type { ForceUnit } from '../models/force-unit.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { ForceNamerUtil } from './force-namer.util';
 import type { ForceAvailabilityContext } from './force-availability.util';
 
-function createUnit(id: number, year: number): Unit {
+function createUnit(id: number, year: number): UnitSummary {
     return createEmptyUnit({
         id,
         name: `Unit ${id}`,
@@ -18,12 +17,6 @@ function createUnit(id: number, year: number): Unit {
         model: 'Unit',
         year,
     });
-}
-
-function createForceUnit(unit: Unit): ForceUnit {
-    return {
-        getUnit: () => unit
-    } as ForceUnit;
 }
 
 function createEra(id: number, from: number, to: number): Era {
@@ -56,7 +49,7 @@ describe('ForceNamerUtil.pickRandomFaction', () => {
         const selectedEra = createEra(3025, 3025, 3049);
         const laterEra = createEra(3050, 3050, 3061);
         const unit = createUnit(101, 3055);
-        const forceUnits = [createForceUnit(unit)];
+        const forceUnits = [unit];
         const selectedEraFaction = createFaction(10, 'Selected Era Faction', { 3025: [101] });
         const laterEraFaction = createFaction(11, 'Later Era Faction', { 3050: [101] });
 
@@ -73,7 +66,7 @@ describe('ForceNamerUtil.pickRandomFaction', () => {
     it('falls back to factions that exist in the selected era when no composition match exists', () => {
         const selectedEra = createEra(3025, 3025, 3049);
         const unit = createUnit(101, 3055);
-        const forceUnits = [createForceUnit(unit)];
+        const forceUnits = [unit];
         const selectedEraFaction = createFaction(10, 'Selected Era Faction', { 3025: [202] });
         const outOfEraMercenary = createFaction(MULFACTION_MERCENARY, 'Mercenary', { 3050: [101] });
 
@@ -92,7 +85,7 @@ describe('ForceNamerUtil.pickRandomFaction', () => {
     it('does not pick the synthetic None faction from composition matches', () => {
         const selectedEra = createEra(3025, 3025, 3049);
         const unit = createUnit(101, 3025);
-        const forceUnits = [createForceUnit(unit)];
+        const forceUnits = [unit];
         const noneFaction = createFaction(MULFACTION_NONE, 'None', { 3025: [101] });
         const mercenary = createFaction(MULFACTION_MERCENARY, 'Mercenary', { 3025: [202] });
 
@@ -108,7 +101,7 @@ describe('ForceNamerUtil.pickRandomFaction', () => {
     it('does not pick the synthetic None faction from selected-era fallback choices', () => {
         const selectedEra = createEra(3025, 3025, 3049);
         const unit = createUnit(101, 3025);
-        const forceUnits = [createForceUnit(unit)];
+        const forceUnits = [unit];
         const noneFaction = createFaction(MULFACTION_NONE, 'None', { 3025: [202] });
         const selectedEraFaction = createFaction(10, 'Selected Era Faction', { 3025: [303] });
 
@@ -130,7 +123,7 @@ describe('ForceNamerUtil.buildFactionDisplayList', () => {
         const selectedEra = createEra(3025, 3025, 3049);
         const laterEra = createEra(3050, 3050, 3061);
         const unit = createUnit(101, 3055);
-        const forceUnits = [createForceUnit(unit)];
+        const forceUnits = [unit];
         const selectedEraFaction = createFaction(10, 'Selected Era Faction', { 3025: [101] });
         const laterEraFaction = createFaction(11, 'Later Era Faction', { 3050: [101] });
 
@@ -151,7 +144,7 @@ describe('ForceNamerUtil.buildFactionDisplayList', () => {
         const earlierEra = createEra(3025, 3025, 3049);
         const eligibleEra = createEra(3050, 3050, 3061);
         const unit = createUnit(101, 3055);
-        const forceUnits = [createForceUnit(unit)];
+        const forceUnits = [unit];
         const earlierFaction = createFaction(10, 'Earlier Era Faction', { 3025: [101] });
         const eligibleFaction = createFaction(11, 'Eligible Era Faction', { 3050: [101] });
 
@@ -170,7 +163,7 @@ describe('ForceNamerUtil.buildFactionDisplayList', () => {
         const selectedEra = createEra(3025, 3025, 3049);
         const unit = createUnit(101, 3055);
         unit.name = 'Shadow Hawk SHD-2H';
-        const forceUnits = [createForceUnit(unit)];
+        const forceUnits = [unit];
         const rawFaction = createFaction(10, 'Raw Faction', { 3025: [101] });
         const contextFaction = createFaction(11, 'Context Faction', { 3025: [] });
 
@@ -198,7 +191,7 @@ describe('ForceNamerUtil.buildFactionDisplayList', () => {
     it('filters the synthetic None faction out of the selector list', () => {
         const selectedEra = createEra(3025, 3025, 3049);
         const unit = createUnit(101, 3025);
-        const forceUnits = [createForceUnit(unit)];
+        const forceUnits = [unit];
         const noneFaction = createFaction(MULFACTION_NONE, 'None', { 3025: [101] });
         const regularFaction = createFaction(10, 'Regular Faction', { 3025: [101] });
 
@@ -218,7 +211,7 @@ describe('ForceNamerUtil.pickBestFaction', () => {
         const selectedEra = createEra(3025, 3025, 3049);
         const unit = createUnit(101, 3025);
         unit.name = 'Phoenix Hawk PXH-1';
-        const forceUnits = [createForceUnit(unit)];
+        const forceUnits = [unit];
         const rawFaction = createFaction(10, 'Raw Faction', { 3025: [101] });
         const contextFaction = createFaction(11, 'Context Faction', { 3025: [] });
 

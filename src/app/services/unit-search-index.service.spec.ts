@@ -2,12 +2,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
+import type { Era } from '../models/eras.model';
+import type { Faction } from '../models/factions.model';
 import { Equipment, WeaponEquipment } from '../models/equipment.model';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
+import {
+    asUnitProviderId,
+    MM_DATA_UNIT_PROVIDER_ID,
+    type UnitProviderId,
+} from './unit-catalog/unit-catalog.types';
+import { getUnitSearchIdentityKey } from '../utils/unit-search-shared.util';
 import { UnitSearchIndexService } from './unit-search-index.service';
 
-function createUnit(overrides: TestUnitOverrides): Unit {
+function createUnit(overrides: TestUnitOverrides): UnitSummary {
     const { as: asOverrides, ...unitOverrides } = overrides;
 
     return createEmptyUnit({
@@ -38,12 +46,13 @@ describe('UnitSearchIndexService', () => {
     it('indexes mixed and nonmixed units as distinct tech-base filter values', () => {
         const service = new UnitSearchIndexService();
 
-        service.rebuildIndexes([
+        const units = [
             createUnit({ name: 'Inner Sphere Unit', techBase: 'Inner Sphere', mixed: false }),
             createUnit({ name: 'Clan Unit', techBase: 'Clan', mixed: false }),
             createUnit({ name: 'Mixed Inner Sphere Unit', techBase: 'Inner Sphere', mixed: true }),
             createUnit({ name: 'Mixed Clan Unit', techBase: 'Clan', mixed: true }),
-        ], [], []);
+        ];
+        service.rebuildIndexes(units, [], []);
 
         expect(service.getIndexedFilterValues('_techBaseDisplay')).toEqual([
             'Clan',
@@ -51,10 +60,10 @@ describe('UnitSearchIndexService', () => {
             'Mixed (Clan)',
             'Mixed (Inner Sphere)',
         ]);
-        expect(service.getIndexedUnitIds('_techBaseDisplay', 'Inner Sphere')).toEqual(new Set(['Inner Sphere Unit']));
-        expect(service.getIndexedUnitIds('_techBaseDisplay', 'Clan')).toEqual(new Set(['Clan Unit']));
-        expect(service.getIndexedUnitIds('_techBaseDisplay', 'Mixed (Inner Sphere)')).toEqual(new Set(['Mixed Inner Sphere Unit']));
-        expect(service.getIndexedUnitIds('_techBaseDisplay', 'Mixed (Clan)')).toEqual(new Set(['Mixed Clan Unit']));
+        expect(service.getIndexedUnitIds('_techBaseDisplay', 'Inner Sphere')).toEqual(new Set([getUnitSearchIdentityKey(units[0])]));
+        expect(service.getIndexedUnitIds('_techBaseDisplay', 'Clan')).toEqual(new Set([getUnitSearchIdentityKey(units[1])]));
+        expect(service.getIndexedUnitIds('_techBaseDisplay', 'Mixed (Inner Sphere)')).toEqual(new Set([getUnitSearchIdentityKey(units[2])]));
+        expect(service.getIndexedUnitIds('_techBaseDisplay', 'Mixed (Clan)')).toEqual(new Set([getUnitSearchIdentityKey(units[3])]));
         expect(service.getIndexedFilterValues('techBase')).toEqual([]);
         expect(service.getIndexedUnitIds('techBase', 'Clan')).toBeUndefined();
     });
@@ -245,8 +254,8 @@ describe('UnitSearchIndexService', () => {
         service.rebuildIndexes([unit], [], []);
 
         expect(service.getIndexedFilterValues('source')).toEqual(['RS:Gothic', 'RSFP:Wave 2', 'TR:3039', 'TR:SW']);
-        expect(service.getIndexedUnitIds('source', 'TR:3039')).toEqual(new Set(['Atlas AS7-D']));
-        expect(service.getIndexedUnitIds('source', 'RS:Gothic')).toEqual(new Set(['Atlas AS7-D']));
+        expect(service.getIndexedUnitIds('source', 'TR:3039')).toEqual(new Set([getUnitSearchIdentityKey(unit)]));
+        expect(service.getIndexedUnitIds('source', 'RS:Gothic')).toEqual(new Set([getUnitSearchIdentityKey(unit)]));
         expect(service.getDropdownOptionUniverse('source')).toEqual([
             { name: 'RS:Gothic' },
             { name: 'RSFP:Wave 2' },
@@ -258,17 +267,16 @@ describe('UnitSearchIndexService', () => {
     it('indexes canon and published status as yes/no values', () => {
         const service = new UnitSearchIndexService();
 
-        service.rebuildIndexes([
-            createUnit({ name: 'Canon Published', canon: true, published: ['RS:3050'] }),
-            createUnit({ name: 'Non-Canon Unpublished', canon: false, published: [] }),
-        ], [], []);
+        const publishedCanon = createUnit({ name: 'Canon Published', canon: true, published: ['RS:3050'] });
+        const unpublishedNonCanon = createUnit({ name: 'Non-Canon Unpublished', canon: false, published: [] });
+        service.rebuildIndexes([publishedCanon, unpublishedNonCanon], [], []);
 
         expect(service.getIndexedFilterValues('canon')).toEqual(['no', 'yes']);
-        expect(service.getIndexedUnitIds('canon', 'yes')).toEqual(new Set(['Canon Published']));
-        expect(service.getIndexedUnitIds('canon', 'no')).toEqual(new Set(['Non-Canon Unpublished']));
+        expect(service.getIndexedUnitIds('canon', 'yes')).toEqual(new Set([getUnitSearchIdentityKey(publishedCanon)]));
+        expect(service.getIndexedUnitIds('canon', 'no')).toEqual(new Set([getUnitSearchIdentityKey(unpublishedNonCanon)]));
         expect(service.getIndexedFilterValues('published')).toEqual(['no', 'yes']);
-        expect(service.getIndexedUnitIds('published', 'yes')).toEqual(new Set(['Canon Published']));
-        expect(service.getIndexedUnitIds('published', 'no')).toEqual(new Set(['Non-Canon Unpublished']));
+        expect(service.getIndexedUnitIds('published', 'yes')).toEqual(new Set([getUnitSearchIdentityKey(publishedCanon)]));
+        expect(service.getIndexedUnitIds('published', 'no')).toEqual(new Set([getUnitSearchIdentityKey(unpublishedNonCanon)]));
     });
 
     it('indexes mounted quantities for every intrinsic weapon type', () => {
@@ -292,8 +300,36 @@ describe('UnitSearchIndexService', () => {
         expect(unit._weaponTypes).toEqual(['AE', 'AI', 'DB']);
         expect(unit._weaponTypeCounts).toEqual({ AE: 3, AI: 3, DB: 3 });
         expect(service.getIndexedFilterValues('weaponType')).toEqual(['AE', 'AI', 'DB']);
-        expect(service.getIndexedUnitIds('weaponType', 'AI')).toEqual(new Set(['Typed Unit']));
+        expect(service.getIndexedUnitIds('weaponType', 'AI')).toEqual(new Set([getUnitSearchIdentityKey(unit)]));
         expect(service.getDropdownOptionUniverse('weaponType')).toEqual([{ name: 'AE' }, { name: 'AI' }, { name: 'DB' }]);
+    });
+
+    it('includes component indexes in the atomically prepared catalog', () => {
+        const service = new UnitSearchIndexService();
+        const antiInfantryWeapon = new WeaponEquipment({
+            id: 'test-mg',
+            name: 'Test MG',
+            type: 'weapon',
+            flags: ['F_MG'],
+        });
+        const unit = createUnit({
+            name: 'Deferred Unit',
+            comp: [
+                { id: 'test-mg', q: 2, n: 'Test MG', t: 'B', p: 1, l: 'RA', eq: antiInfantryWeapon },
+            ],
+        });
+
+        const prepared = service.prepareCatalogIndexes([unit], [], []);
+
+        expect(prepared.searchFilterIndex.has('componentName')).toBeTrue();
+        expect(prepared.searchFilterIndex.has('weaponType')).toBeTrue();
+        expect(unit._weaponTypes).toEqual(['AI', 'DB']);
+        expect(prepared.preparationTimings.componentIndexesMs).toBeGreaterThanOrEqual(0);
+
+        service.commitPreparedCatalogIndexes(prepared);
+        expect(unit._weaponTypeCounts).toEqual({ AI: 2, DB: 2 });
+        expect(service.getIndexedUnitIds('componentName', 'Test MG'))
+            .toEqual(new Set([getUnitSearchIdentityKey(unit)]));
     });
 
     it('counts bay weapons without counting wrappers and ignores non-weapons', () => {
@@ -337,5 +373,54 @@ describe('UnitSearchIndexService', () => {
         expect(unit._weaponTypes).toEqual([]);
         expect(unit._weaponTypeCounts).toEqual({});
         expect(service.getIndexedFilterValues('weaponType')).toEqual([]);
+    });
+
+    it('keeps same-name and custom filter, tag, and faction-era membership distinct', () => {
+        const service = new UnitSearchIndexService();
+        const unitSummary = createUnit({
+            id: 101,
+            name: 'Shared Name',
+            type: 'Mek',
+            _nameTags: [],
+        }) as UnitSummary & { provider: UnitProviderId };
+        unitSummary.provider = MM_DATA_UNIT_PROVIDER_ID;
+        const custom = createUnit({
+            id: 202,
+            name: 'Shared Name',
+            type: 'Tank',
+            _nameTags: [{ tag: 'custom-only', quantity: 1 }],
+        }) as UnitSummary & { provider: UnitProviderId };
+        custom.provider = asUnitProviderId('custom:test');
+        const era = {
+            id: 1,
+            name: 'Test Era',
+            units: new Set([unitSummary.id]),
+        } as unknown as Era;
+        const faction = {
+            id: 7,
+            name: 'Test Faction',
+            eras: { [era.id]: new Set([unitSummary.id]) },
+        } as unknown as Faction;
+
+        service.rebuildIndexes([unitSummary, custom], [era], [faction]);
+        service.rebuildTagSearchIndex([unitSummary, custom]);
+
+        const unitKey = getUnitSearchIdentityKey(unitSummary);
+        const customKey = getUnitSearchIdentityKey(custom);
+        expect(unitKey).not.toBe(customKey);
+        expect(service.getIndexedUnitIds('type', 'Mek')).toEqual(new Set([unitKey]));
+        expect(service.getIndexedUnitIds('type', 'Tank')).toEqual(new Set([customKey]));
+        expect(service.getIndexedUnitIds('_tags', 'custom-only')).toEqual(new Set([customKey]));
+        expect(service.getIndexedUnitIds('era', era.name)).toEqual(new Set([unitKey]));
+        expect(service.getIndexedUnitIds('faction', faction.name)).toEqual(new Set([unitKey]));
+        expect(service.getSearchWorkerFactionEraSnapshot()).toEqual({
+            unitIdentityKeysByMulId: {
+                [String(unitSummary.id)]: [unitKey],
+                [String(custom.id)]: [customKey],
+            },
+            referenceIdsByEraAndFaction: {
+                [era.name]: { [faction.name]: [unitSummary.id] },
+            },
+        });
     });
 });

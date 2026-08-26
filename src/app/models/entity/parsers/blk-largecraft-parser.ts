@@ -6,7 +6,7 @@ import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
 import { WarShipEntity } from '../entities/largecraft/warship-entity';
 import { SpaceStationEntity } from '../entities/largecraft/space-station-entity';
 import {
-  LARGE_CRAFT_LOCATIONS,
+  LARGE_CRAFT_BLK_ARMOR_LOCATIONS,
 } from '../types';
 import { BuildingBlock } from './building-block';
 import { decodeBlkAeroDesignType, decodeBlkDriveCoreType } from './blk-codec';
@@ -67,7 +67,7 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
 
   // ── Armor ──
   parseBlkArmor(bb, entity, ctx, { remapStandardTo: 'AEROSPACE' });
-  parseBlkArmorValues(bb, entity, LARGE_CRAFT_LOCATIONS);
+  parseBlkArmorValues(bb, entity, LARGE_CRAFT_BLK_ARMOR_LOCATIONS);
 
   // ── Equipment per location ──
   const equipTags = entity instanceof WarShipEntity

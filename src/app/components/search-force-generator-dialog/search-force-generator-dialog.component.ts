@@ -14,7 +14,7 @@ import { MAX_UNITS as FORCE_MAX_UNITS } from '../../models/force.model';
 import { createForcePreviewEntryFromForce, getForcePreviewUnitEntries, type ForcePreviewEntry, type ForcePreviewUnit } from '../../models/force-preview.model';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { AvailabilitySource } from '../../models/options.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { BOOLEAN_FILTERS, DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { ForcePreviewPanelComponent, type ForcePreviewUnitMenuActionEvent, type ForcePreviewUnitMenuItem } from '../force-preview-panel/force-preview-panel.component';
@@ -27,7 +27,7 @@ import { SwipeDirective, type SwipeEndEvent } from '../../directives/swipe.direc
 import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
 import { ThousandsIntegerInputComponent } from '../thousands-integer-input/thousands-integer-input.component';
 import { DataService } from '../../services/data.service';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import {
     DEFAULT_FORCE_GENERATION_MAX_CBT_SKILL_DELTA,
     FORCE_GENERATION_MAX_PILOT_SKILL,
@@ -138,7 +138,7 @@ export class SearchForceGeneratorDialogComponent {
     private readonly dialogRef = inject(DialogRef<SearchForceGeneratorDialogResult | null>);
     private readonly dialogData = inject(DIALOG_DATA, { optional: true }) as SearchForceGeneratorDialogData | null;
     readonly dataService = inject(DataService);
-    private readonly forceBuilderService = inject(ForceBuilderService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private readonly forceGeneratorService = inject(ForceGeneratorService);
     private readonly gameService = inject(GameService);
     private readonly optionsService = inject(OptionsService);
@@ -308,8 +308,11 @@ export class SearchForceGeneratorDialogComponent {
             ? tokenizeForHighlight(text, this.gameSystem())
             : [];
     });
-    readonly currentForce = this.forceBuilderService.smartCurrentForce;
-    readonly canImportCurrentForce = computed(() => (this.currentForce()?.units().length ?? 0) > 0);
+    readonly currentForce = this.forceWorkspace.smartCurrentForce;
+    readonly canImportCurrentForce = computed(() => {
+        const force = this.currentForce();
+        return force !== null && force.members().length > 0;
+    });
     readonly targetFormationSelection = signal<MultiStateSelection>({});
     readonly targetFormationStateCycle = ['or'] as const;
     readonly targetFormationOptions = computed<DropdownOption[]>(() => {
@@ -370,7 +373,7 @@ export class SearchForceGeneratorDialogComponent {
     ));
     private readonly lockedUnits = signal<GeneratedForceUnit[]>([]);
     private readonly chassisOnlyLockVariantGroupByLockKey = signal<ReadonlyMap<string, string>>(new Map<string, string>());
-    private readonly rejectedUnits = signal<readonly Unit[]>([]);
+    private readonly rejectedUnits = signal<readonly UnitSummary[]>([]);
     readonly lockedUnitKeys = computed(() => {
         return new Set(
             this.lockedUnits()
@@ -424,7 +427,7 @@ export class SearchForceGeneratorDialogComponent {
     readonly previewLockToggle = (unitEntry: ForcePreviewUnit): void => {
         this.togglePreviewUnitLock(unitEntry);
     };
-    readonly previewVariantChange = (unitEntry: ForcePreviewUnit, variant: Unit): void => {
+    readonly previewVariantChange = (unitEntry: ForcePreviewUnit, variant: UnitSummary): void => {
         this.changePreviewUnitVariant(unitEntry, variant);
     };
     readonly hoveredPreviewUnit = signal<ForcePreviewUnit | null>(null);
@@ -924,7 +927,7 @@ export class SearchForceGeneratorDialogComponent {
         this.clearHoveredPreviewUnit();
         this.clearSelectedPreviewUnit();
 
-        const importedPreviewEntry = createForcePreviewEntryFromForce(currentForce);
+        const importedPreviewEntry = createForcePreviewEntryFromForce(currentForce, currentForce.members());
         const importedUnits = getForcePreviewUnitEntries(importedPreviewEntry)
             .map((unitEntry) => this.toLockedGeneratedUnit(unitEntry))
             .filter((unit): unit is GeneratedForceUnit => unit !== null);
@@ -1667,7 +1670,7 @@ export class SearchForceGeneratorDialogComponent {
         });
     }
 
-    private changePreviewUnitVariant(unitEntry: ForcePreviewUnit, variant: Unit): void {
+    private changePreviewUnitVariant(unitEntry: ForcePreviewUnit, variant: UnitSummary): void {
         if (!unitEntry.unit || unitEntry.unit.name === variant.name) {
             return;
         }
@@ -1763,7 +1766,7 @@ export class SearchForceGeneratorDialogComponent {
         this.replacePreviewGeneratedUnit(unitEntry, replacementPreviewUnit);
     }
 
-    private pickPreviewSlotRerollUnit(unitEntry: ForcePreviewUnit): Unit | null {
+    private pickPreviewSlotRerollUnit(unitEntry: ForcePreviewUnit): UnitSummary | null {
         const lockKey = unitEntry.lockKey;
         const preview = this.preview();
         const previewUnitIndex = this.findPreviewUnitIndex(preview.units, unitEntry);
@@ -1833,7 +1836,7 @@ export class SearchForceGeneratorDialogComponent {
         return pickedCandidate; 
     }
 
-    private getPreviewSlotRerollUnitCandidates(unitEntry: ForcePreviewUnit, preview: ForceGenerationPreview): Unit[] {
+    private getPreviewSlotRerollUnitCandidates(unitEntry: ForcePreviewUnit, preview: ForceGenerationPreview): UnitSummary[] {
         const lockKey = unitEntry.lockKey;
         const chassisOnlyVariantGroupKey = lockKey
             ? this.chassisOnlyLockVariantGroupByLockKey().get(lockKey)
@@ -1857,7 +1860,7 @@ export class SearchForceGeneratorDialogComponent {
 
     private createPreviewSlotPilotRerollCandidates(
         original: GeneratedForceUnit,
-        unit: Unit,
+        unit: UnitSummary,
         gameSystem: GameSystem,
     ): GeneratedForceUnit[] {
         if (gameSystem === GameSystem.ALPHA_STRIKE) {
@@ -2056,7 +2059,6 @@ export class SearchForceGeneratorDialogComponent {
                             : 'Piloting Skill',
                     disablePiloting: getFixedPilotingSkill(unit) !== null,
                     commander: unitEntry.commander ?? false,
-                    group: null,
                     factionId: this.preview().faction?.id ?? null,
                     isAerospace: unit.type === 'Aero',
                     era: this.preview().era,
@@ -2073,7 +2075,10 @@ export class SearchForceGeneratorDialogComponent {
 
         const normalizedResultCrew = normalizeGeneratedClassicCrew(
             unit,
-            result.crew,
+            result.crew.flatMap(member => typeof member.id === 'number' ? [{
+                ...member,
+                id: member.id,
+            }] : []),
             initialGunnery,
             initialPiloting,
             result.crew[0]?.name,
@@ -2183,7 +2188,7 @@ export class SearchForceGeneratorDialogComponent {
 
     private createReplacementPreviewUnit(
         original: GeneratedForceUnit,
-        variant: Unit,
+        variant: UnitSummary,
         gameSystem: GameSystem,
     ): GeneratedForceUnit {
         const defaultGunnery = this.gunnerySkillRange()[0];
@@ -2262,7 +2267,7 @@ export class SearchForceGeneratorDialogComponent {
         };
     }
 
-    private formatUnitLabel(unit: Unit): string {
+    private formatUnitLabel(unit: UnitSummary): string {
         return `${unit.chassis} ${unit.model}`.trim();
     }
 }

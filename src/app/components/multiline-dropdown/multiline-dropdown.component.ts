@@ -13,6 +13,8 @@ import { DropdownPointerActivationGuard, scrollActiveOptionIntoView } from '../.
 export interface MultilineDropdownOption {
     value: string;
     label: string;
+    /** A trailing part of label that must remain visible when the closed trigger truncates. */
+    trailingLabel?: string | null;
     modifierLabel?: string | null;
     disabled?: boolean;
     destroyed?: boolean;
@@ -29,7 +31,8 @@ interface MultilineDropdownPointerHoverEvent {
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
-        '[style.font-size]': 'fontSize() || null'
+        '[style.font-size]': 'fontSize() || null',
+        '[class.expand-to-content]': 'expandToContent()',
     },
     template: `
         <div
@@ -70,6 +73,19 @@ interface MultilineDropdownPointerHoverEvent {
             min-height: 0;
         }
 
+        :host(.expand-to-content) {
+            box-sizing: border-box;
+            width: max-content;
+            min-width: 100%;
+            max-width: calc(100dvw - 8px);
+        }
+
+        :host(.expand-to-content) .multiline-dropdown-options {
+            width: max-content;
+            min-width: 100%;
+            max-width: calc(100dvw - 8px);
+        }
+
         .multiline-dropdown-options {
             box-sizing: border-box;
             width: 100%;
@@ -83,6 +99,7 @@ interface MultilineDropdownPointerHoverEvent {
             justify-content: space-between;
             gap: 8px;
             width: 100%;
+            box-sizing: border-box;
             padding: 6px;
             border: 0;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -133,12 +150,13 @@ interface MultilineDropdownPointerHoverEvent {
         }
 
         .modifier-badge {
-            flex: 0 0 24px;
-            inline-size: 24px;
+            flex: 0 0 auto;
+            min-inline-size: 24px;
             block-size: 24px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            padding-inline: 4px;
             border: 1px solid var(--border-color);
             background: rgba(0, 0, 0, 0.6);
             color: var(--text-color);
@@ -146,6 +164,7 @@ interface MultilineDropdownPointerHoverEvent {
             font-size: 0.78em;
             font-variant-numeric: tabular-nums;
             line-height: 1;
+            white-space: nowrap;
             box-sizing: border-box;
         }
     `]
@@ -158,6 +177,7 @@ class MultilineDropdownPanelComponent {
     readonly activeOptionId = input('');
     readonly activeIndex = input(0);
     readonly fontSize = input('');
+    readonly expandToContent = input(false);
 
     readonly selected = output<MultilineDropdownOption>();
     readonly pointerHovered = output<MultilineDropdownPointerHoverEvent>();
@@ -195,12 +215,18 @@ class MultilineDropdownPanelComponent {
                 [attr.aria-controls]="optionsId()"
                 [attr.aria-expanded]="open()"
                 [attr.aria-label]="label()"
+                [attr.title]="selectedLabel()"
                 [disabled]="disabled() || options().length === 0"
                 [class.destroyed]="selectedOption()?.destroyed"
                 (click)="toggle()"
                 (keydown)="onTriggerKeydown($event)"
             >
-                <span class="multiline-dropdown-label">{{ selectedLabel() }}</span>
+                <span class="multiline-dropdown-label">
+                    <span class="multiline-dropdown-label-text">{{ selectedLeadingLabel() }}</span>
+                    @if (selectedTrailingLabel(); as trailingLabel) {
+                        <span class="multiline-dropdown-trailing-label">{{ trailingLabel }}</span>
+                    }
+                </span>
                 @if (selectedOption()?.modifierLabel; as modifierLabel) {
                     <span class="modifier-badge">{{ modifierLabel }}</span>
                 }
@@ -215,29 +241,39 @@ class MultilineDropdownPanelComponent {
     `,
     styles: [`
         :host {
-            display: block;
+            display: flex;
+            align-items: stretch;
             min-width: 0;
             width: max-content;
             max-width: 100%;
         }
 
         .multiline-dropdown {
+            display: flex;
+            align-items: stretch;
+            flex: 1 1 auto;
             min-width: 0;
             width: 100%;
-            height: 100%;
         }
 
         .multiline-dropdown-trigger {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto auto;
             align-items: center;
+            flex: 1 1 auto;
             width: 100%;
-            height: 100%;
             gap: 4px;
+            overflow: hidden;
+            overflow-wrap: normal;
+            word-break: normal;
+            white-space: nowrap;
             text-align: left;
+            cursor: pointer;
+        }
+
+        .multiline-dropdown-trigger {
             background: transparent;
             border: 0;
-            cursor: pointer;
             color: inherit;
             font-weight: inherit;
         }
@@ -249,11 +285,27 @@ class MultilineDropdownPanelComponent {
         .multiline-dropdown-label {
             grid-column: 1;
             grid-row: 1;
-            flex: 1 1 auto;
+            display: flex;
+            align-items: center;
+            gap: 0.3em;
             min-width: 0;
-            white-space: normal;
+            overflow: hidden;
             overflow-wrap: normal;
             word-break: normal;
+            white-space: nowrap;
+        }
+
+        .multiline-dropdown-label-text {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .multiline-dropdown-trailing-label {
+            flex: 0 0 auto;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
         }
 
         .multiline-dropdown-measure {
@@ -277,21 +329,24 @@ class MultilineDropdownPanelComponent {
         .multiline-dropdown-arrow {
             grid-column: 3;
             grid-row: 1;
-            flex: 0 0 auto;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            align-self: center;
             color: inherit;
             font-size: 1.1em;
-            line-height: 0;
+            line-height: 1;
         }
 
         .modifier-badge {
             grid-column: 2;
             grid-row: 1;
-            flex: 0 0 24px;
-            inline-size: 24px;
+            min-inline-size: 24px;
             block-size: 24px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            padding-inline: 4px;
             border: 1px solid var(--border-color);
             background: #000;
             color: var(--text-color);
@@ -299,6 +354,7 @@ class MultilineDropdownPanelComponent {
             font-size: 0.78em;
             font-variant-numeric: tabular-nums;
             line-height: 1;
+            white-space: nowrap;
             box-sizing: border-box;
         }
     `]
@@ -320,6 +376,7 @@ export class MultilineDropdownComponent implements OnDestroy {
     readonly placeholder = input('Select');
     readonly controlId = input(this.instanceId);
     readonly disabled = input(false);
+    readonly expandPanelToContent = input(false);
 
     readonly valueChange = output<string>();
     readonly optionSelected = output<MultilineDropdownOption>();
@@ -330,6 +387,21 @@ export class MultilineDropdownComponent implements OnDestroy {
     readonly activeOptionId = computed(() => this.optionId(this.activeIndex()));
     readonly selectedOption = computed(() => this.options().find(option => option.value === this.value()) ?? null);
     readonly selectedLabel = computed(() => this.selectedOption()?.label ?? this.placeholder());
+    readonly selectedTrailingLabel = computed(() => {
+        const option = this.selectedOption();
+        const trailingLabel = option?.trailingLabel?.trim();
+        return option && trailingLabel && option.label.trimEnd().endsWith(trailingLabel)
+            ? trailingLabel
+            : null;
+    });
+    readonly selectedLeadingLabel = computed(() => {
+        const option = this.selectedOption();
+        if (!option) return this.placeholder();
+        const trailingLabel = this.selectedTrailingLabel();
+        return trailingLabel
+            ? option.label.trimEnd().slice(0, -trailingLabel.length).trimEnd()
+            : option.label;
+    });
 
     optionId(index: number): string {
         return `${this.optionsId()}-${index}`;
@@ -437,7 +509,8 @@ export class MultilineDropdownComponent implements OnDestroy {
                 closeOnOutsideClick: true,
                 panelClass: 'multiline-dropdown-overlay',
                 matchTriggerWidth: true,
-                anchorActiveSelector: '.multiline-dropdown-option.active'
+                expandToContentWidth: this.expandPanelToContent(),
+                anchorActiveSelector: '.multiline-dropdown-option.keyboard-active'
             }
         );
 
@@ -462,6 +535,7 @@ export class MultilineDropdownComponent implements OnDestroy {
         panelRef.setInput('activeOptionId', this.activeOptionId());
         panelRef.setInput('activeIndex', this.activeIndex());
         panelRef.setInput('fontSize', this.triggerFontSize());
+        panelRef.setInput('expandToContent', this.expandPanelToContent());
         panelRef.changeDetectorRef.detectChanges();
         if (scrollActiveIntoView) {
             this.scrollActiveOptionIntoView(panelRef.location.nativeElement as HTMLElement);

@@ -9,6 +9,9 @@ import { InputDialogComponent, type InputDialogData } from '../components/input-
 import { Dialog, type DialogRef as CdkDialogRef, type DIALOG_DATA } from '@angular/cdk/dialog';
 import type { ComponentType } from '@angular/cdk/portal';
 
+export type PromptOptions = Pick<InputDialogData,
+    'buttons' | 'centerInput' | 'inputLabel' | 'maximumLength' | 'minimumLength' | 'pattern' | 'placeholder'>;
+
 
 export interface DialogRef<T = any, R = any> {
     componentInstance: T;
@@ -115,7 +118,13 @@ export class DialogsService {
         await firstValueFrom(ref.closed);
     }
 
-    async prompt(message: string, title: string, defaultValue = '', hint = ''): Promise<string | null> {
+    async prompt(
+        message: string,
+        title: string,
+        defaultValue = '',
+        hint = '',
+        options: PromptOptions = {},
+    ): Promise<string | null> {
         const ref = this.createDialog<string | null>(InputDialogComponent, {
             disableClose: true,
             autoFocus: 'first-tabbable',
@@ -124,7 +133,8 @@ export class DialogsService {
                 message,
                 inputType: 'text',
                 defaultValue,
-                hint: hint || undefined
+                hint: hint || undefined,
+                ...options,
             }
         });
         const result = await firstValueFrom(ref.closed);

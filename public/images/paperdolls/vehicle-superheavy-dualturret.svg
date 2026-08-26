@@ -1,0 +1,247 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="13 41 164 288">
+  <g transform="matrix(1.038 0 0 1.038 4.955 11.250)" id="g296" xmlns="http://www.w3.org/2000/svg">
+    <g id="armor_diagram_superheavy_vee_dualturret" transform="translate(-400.802,-35.489748)">
+      <polyline style="fill:#c7c8ca" id="polyline4675" points="550.61,80.237 540.885,73.429 531.158,81.275 447.205,81.275 437.479,73.429 427.753,80.237    418.027,214.696 418.027,311.868 427.753,335.466 438.951,335.466 438.951,333.6 478.986,333.6 478.986,335.466 499.878,335.466    499.878,333.6 539.914,333.6 539.914,335.466 550.61,335.466 560.336,311.868 560.336,214.696 550.61,80.237  " />
+      <g visibility="hidden" id="tracks">
+        <g transform="matrix(1.0036484,0,0,-0.91895928,398.93461,538.2507)">
+          <path style="fill:#c7c7c7;stroke:none;stroke-width:1" d="M30,253 h-16.8         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v3.744 h1.792 v3.04 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8 Z" />
+          <path style="fill:#c7c7c7;stroke:#000000;stroke-width:1" d="M27,256 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v3.744 h1.792 v3.04 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8 Z" />
+        </g>
+        <g transform="matrix(-1.0036484,0,0,-0.91895928,573.73433,538.2507)">
+          <path style="fill:#c7c7c7;stroke:none;stroke-width:1" d="M24,253 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v3.744 h1.792 v3.04 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8 Z" />
+          <path style="fill:#c7c7c7;stroke:#000000;stroke-width:1" d="M27,256 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v3.744 h1.792 v3.04 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v4.543 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8 Z" />
+        </g>
+      </g>
+      <g visibility="hidden" id="wheels">
+        <g transform="matrix(0.99906329,0,0,-1.3057043,399.52609,631.12319)">
+          <path style="fill:#c7c7c7;stroke:none;stroke-width:1" d="M30,248 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+          <path style="fill:#c7c7c7;stroke:none;stroke-width:1" d="M30,278 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+          <path style="fill:#c7c7c7;stroke:none;stroke-width:1" d="M30,357 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+          <path style="fill:#c7c7c7;stroke:none;stroke-width:1" d="M30,387 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+          <path style="fill:#c7c7c7;stroke:#000000;stroke-width:1" d="M27,251 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+          <path style="fill:#c7c7c7;stroke:#000000;stroke-width:1" d="M27,281 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+          <path style="fill:#c7c7c7;stroke:#000000;stroke-width:1" d="M27,360 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+          <path style="fill:#c7c7c7;stroke:#000000;stroke-width:1" d="M27,390 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+        </g>
+        <g transform="matrix(-0.99906329,0,0,-1.3057043,573.92624,631.12367)">
+          <path style="fill:#c7c7c7;stroke:none;stroke-width:1" d="M24,248 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+          <path style="fill:#c7c7c7;stroke:none;stroke-width:1" d="M24,278 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+          <path style="fill:#c7c7c7;stroke:none;stroke-width:1" d="M24,357 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+          <path style="fill:#c7c7c7;stroke:none;stroke-width:1" d="M24,387 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+          <path style="fill:#c7c7c7;stroke:#000000;stroke-width:1" d="M27,251 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+          <path style="fill:#c7c7c7;stroke:#000000;stroke-width:1" d="M27,281 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+          <path style="fill:#c7c7c7;stroke:#000000;stroke-width:1" d="M27,360 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+          <path style="fill:#c7c7c7;stroke:#000000;stroke-width:1" d="M27,390 l-16.8,0         v1.176 h1.792 v1.448 h-1.792         v2.184 h1.792 v2.072 h-1.792         v6.055 h1.792 v3.04 h-1.792         v3.744 h1.792 v2.072 h-1.792         v2.184 h1.792 v1.448 h-1.792         v1.176 h16.8,0 Z" />
+        </g>
+      </g>
+      <polyline style="fill:#ffffff" id="polyline4679" points="547.693,77.32 537.967,70.511 528.241,78.356 444.288,78.356 434.563,70.511 424.836,77.32    415.11,211.778 415.11,308.951 424.836,332.549 436.033,332.549 436.033,330.683 476.068,330.683 476.068,332.549 496.96,332.549    496.96,330.683 536.995,330.683 536.995,332.549 547.693,332.549 557.419,308.951 557.419,211.778 547.693,77.32  " />
+      <polygon style="fill:none;stroke:#000000;stroke-width:1.45899999" points="528.241,78.356 444.288,78.356 434.563,70.511 424.836,77.32 415.11,211.778 415.11,308.951 424.836,332.548 436.034,332.548 436.034,330.682 476.068,330.682 476.068,332.548 496.961,332.548 496.961,330.682 536.996,330.682 536.996,332.548 547.693,332.548 557.419,308.951 557.419,211.778 547.693,77.32 537.967,70.511 " />
+      <polyline style="fill:#c7c8ca" id="polyline4683" points="454.201,110.795 448.164,136.728 435.521,211.218 447.192,277.889 457.422,310.791    515.15,310.791 525.336,277.889 537.007,211.218 525.336,138.674 518.328,110.795 454.201,110.795  " />
+      <line y2="211.056" id="line4687" style="fill:none;stroke:#000000;stroke-width:0.97299999" x1="415.65201" x2="557.328" y1="211.056" />
+      <g transform="matrix(0.150006,0,0,-0.1277768,-103.78733,853.2521)">
+        <path style="fill:none;stroke:#000000;stroke-width:7.88224983;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none" d="m 3941.37,4470.53 0,1105.55" />
+      </g>
+      <polyline style="fill:none;stroke:#000000;stroke-width:0.97299999" id="polyline4689" points="557.328,309.774 523.448,284.507 449.25,284.507    415.49,310.098  " />
+      <line y2="136.67999" id="line4691" style="fill:none;stroke:#000000;stroke-width:0.97299999" x1="448.255" x2="524.86298" y1="136.604" />
+      <line y2="110.488" id="line4693" style="fill:none;stroke:#000000;stroke-width:0.97299999;stroke-linecap:round" x1="424.56699" x2="453.91101" y1="77.485001" />
+      <line y2="77.646004" id="line4695" style="fill:none;stroke:#000000;stroke-width:0.97299999;stroke-linecap:round" x1="518.375" x2="547.76398" y1="110.488" />
+      <polyline style="fill:#ffffff" id="polyline4697" points="522.104,204.5 520.727,207.257 451.801,207.257 450.424,204.5 461.451,139.711 462.832,138.333    472.479,138.333 472.479,131.441 484.884,125.926 484.884,124.548 486.264,124.548 487.643,120.413 489.021,119.034    487.643,117.655 489.021,113.521 494.535,113.521 495.914,117.655 494.535,119.034 495.914,120.413 497.293,124.548    498.67,124.548 498.672,131.441 500.05,131.441 500.05,138.333 509.697,138.333 511.077,139.711 522.104,204.5  " />
+      <polygon style="fill:none;stroke:#000000;stroke-width:0.97299999" points="435.521,211.218 447.19,277.889 457.421,310.792 515.15,310.792 525.336,277.889 537.007,211.218 525.336,138.674 518.327,110.795 454.201,110.795 448.164,136.728 " />
+      <polygon style="fill:none;stroke:#000000;stroke-width:0.97299999" points="451.801,207.257 450.425,204.5 461.453,139.711 462.832,138.333 472.479,138.333 472.479,131.441 484.884,125.926 484.884,124.547 486.264,124.547 487.644,120.413 489.021,119.034 487.644,117.654 489.021,113.52 494.535,113.52 495.914,117.654 494.535,119.034 495.914,120.413 497.293,124.547 498.671,124.547 498.672,131.441 500.05,131.441 500.05,138.333 509.697,138.333 511.077,139.711 522.104,204.5 520.727,207.257 " />
+      <line x1="489.021" x2="494.534" y1="119.034" y2="119.034" style="fill:none;stroke:#ffffff;stroke-width:0;stroke-miterlimit:10" id="line4713" stroke-miterlimit="10" />
+      <polyline style="fill:#ffffff" id="polyline4715" points="489.021,119.034 494.534,119.034 489.021,119.034  " />
+      <line y2="119.034" id="line4717" style="fill:none;stroke:#000000;stroke-width:0.97299999" x1="489.021" x2="494.535" y1="119.034" />
+      <line x1="472.479" x2="484.884" y1="131.44099" y2="131.44099" style="fill:none;stroke:#ffffff;stroke-width:0;stroke-miterlimit:10" id="line4719" stroke-miterlimit="10" />
+      <polyline style="fill:#ffffff" id="polyline4721" points="472.479,131.441 484.885,131.441 472.479,131.441  " />
+      <line y2="131.44099" id="line4723" style="fill:none;stroke:#000000;stroke-width:0.97299999" x1="472.48001" x2="484.88501" y1="131.44099" />
+      <polyline style="fill:#c7c8ca" id="polyline4761" points="513.497,162.356 459.031,162.356 462.922,139.895 509.606,139.895 513.497,162.356  " />
+      <polygon style="fill:none;stroke:#000000;stroke-width:0.97299999" points="462.922,139.896 509.606,139.896 513.497,162.356 459.031,162.356 " />
+      <polyline style="fill:#ffffff" id="polyline4765" points="450.424,218.4 451.801,215.645 520.726,215.645 522.104,218.4 511.076,283.189 509.697,284.567    500.05,284.567 500.05,291.461 487.644,296.975 487.644,298.354 486.264,298.354 484.885,302.489 483.508,303.868 484.885,305.247    483.508,309.38 477.993,309.38 476.613,305.247 477.993,303.868 476.613,302.489 475.234,298.354 473.858,298.354 473.856,291.461    472.479,291.461 472.479,284.567 462.83,284.567 461.451,283.189 450.424,218.4  " />
+      <polygon style="fill:none;stroke:#000000;stroke-width:0.97299999" points="520.726,215.645 522.104,218.4 511.075,283.189 509.696,284.567 500.049,284.567 500.049,291.459 487.644,296.975 487.644,298.353 486.264,298.353 484.884,302.488 483.508,303.868 484.884,305.245 483.508,309.38 477.992,309.38 476.613,305.245 477.992,303.868 476.613,302.488 475.234,298.353 473.857,298.353 473.856,291.459 472.479,291.459 472.479,284.567 462.829,284.567 461.45,283.189 450.424,218.4 451.8,215.645 " />
+      <line x1="477.992" x2="483.508" y1="303.86801" y2="303.86801" style="fill:none;stroke:#ffffff;stroke-width:0;stroke-miterlimit:10" id="line4781" stroke-miterlimit="10" />
+      <polyline style="fill:#ffffff" id="polyline4783" points="477.992,303.868 483.508,303.868 477.992,303.868  " />
+      <line y2="303.86801" id="line4785" style="fill:none;stroke:#000000;stroke-width:0.97299999" x1="483.508" x2="477.992" y1="303.86801" />
+      <line x1="487.64301" x2="500.04901" y1="291.45901" y2="291.45901" style="fill:none;stroke:#ffffff;stroke-width:0;stroke-miterlimit:10" id="line4787" stroke-miterlimit="10" />
+      <polyline style="fill:#ffffff" id="polyline4789" points="487.643,291.459 500.047,291.459 487.643,291.459  " />
+      <line y2="291.461" id="line4791" style="fill:none;stroke:#000000;stroke-width:0.97299999" x1="500.047" x2="487.642" y1="291.461" />
+      <polyline style="fill:#c7c8ca" id="polyline4829" points="459.031,260.545 513.497,260.545 509.606,283.005 462.922,283.005 459.031,260.545  " />
+      <polygon style="fill:none;stroke:#000000;stroke-width:0.97299999" points="509.606,283.007 462.922,283.007 459.031,260.545 513.497,260.545 " />
+    </g>
+    <g fill="none" id="armorPips" transform="translate(1.2,-0.2)">
+      <g transform="translate(84.035,38.68)" class="paperdoll-pip-profile">
+        <rect x="-55.47" width="110.94" y="0" height="6.8" style="mml-gap:-48.67,48.67" data-fill="armor" data-location="FR" />
+        <rect x="-54.57" width="109.14" y="3.4" height="6.8" style="mml-gap:-44.61,44.61" data-fill="armor" data-location="FR" />
+        <rect x="-49.77" width="99.54" y="6.8" height="6.8" data-fill="armor" data-location="FR" />
+        <rect x="-44.07" width="88.14" y="13.6" height="6.8" data-fill="armor" data-location="FR" />
+        <rect x="-38.37" width="76.74" y="20.4" height="6.8" data-fill="armor" data-location="FR" />
+        <rect x="-32.67" width="65.34" y="27.2" height="6.8" data-fill="armor" data-location="FR" />
+      </g>
+      <g transform="translate(105.55,51.634)" class="paperdoll-pip-profile">
+        <rect x="32" width="6.8" y="0" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="25.78" width="14.23" y="6.8" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="19.55" width="20.49" y="13.6" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="13.33" width="27.64" y="20.4" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="14.33" width="26.6" y="27.2" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="15.63" width="25.64" y="34.0" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="17.97" width="24.35" y="40.8" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="18.83" width="23.37" y="47.6" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="19.94" width="22.77" y="54.4" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="21.05" width="22.17" y="61.2" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="22.16" width="21.57" y="68" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="23.27" width="20.97" y="74.8" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="24.38" width="20.37" y="81.6" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="25.48" width="19.77" y="88.4" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="26.59" width="19.17" y="95.2" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="27.7" width="18.57" y="102" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="28.81" width="17.97" y="108.8" height="6.8" data-fill="armor" data-location="FRRS" />
+        <rect x="29.92" width="17.37" y="115.6" height="6.8" data-fill="armor" data-location="FRRS" />
+      </g>
+      <g transform="matrix(-1,0,0,1,61.807,51.634)" class="paperdoll-pip-profile">
+        <rect x="32" width="6.8" y="0" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="25.78" width="11.73" y="6.8" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="19.55" width="19.69" y="13.6" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="13.33" width="27.64" y="20.4" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="14.33" width="26.6" y="27.2" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="15.63" width="25.64" y="34.0" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="17.97" width="24.35" y="40.8" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="18.83" width="23.37" y="47.6" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="19.94" width="22.77" y="54.4" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="21.05" width="22.17" y="61.2" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="22.16" width="21.57" y="68" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="23.27" width="20.97" y="74.8" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="24.38" width="20.37" y="81.6" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="25.48" width="19.77" y="88.4" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="26.59" width="19.17" y="95.2" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="27.7" width="18.57" y="102" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="28.81" width="17.97" y="108.8" height="6.8" data-fill="armor" data-location="FRLS" />
+        <rect x="29.92" width="17.37" y="115.6" height="6.8" data-fill="armor" data-location="FRLS" />
+      </g>
+      <g transform="translate(109.15,177.834)" class="paperdoll-pip-profile">
+        <rect x="26.49" width="18.13" y="0" height="6.8" data-fill="armor" data-location="RRRS" />
+        <rect x="25.27" width="19.39" y="6.8" height="6.8" data-fill="armor" data-location="RRRS" />
+        <rect x="24.05" width="20.66" y="13.6" height="6.8" data-fill="armor" data-location="RRRS" />
+        <rect x="22.83" width="21.92" y="20.4" height="6.8" data-fill="armor" data-location="RRRS" />
+        <rect x="21.61" width="23.18" y="27.2" height="6.8" data-fill="armor" data-location="RRRS" />
+        <rect x="20.4" width="24.45" y="34.0" height="6.8" data-fill="armor" data-location="RRRS" />
+        <rect x="19.18" width="25.71" y="40.8" height="6.8" data-fill="armor" data-location="RRRS" />
+        <rect x="17.96" width="26.97" y="47.6" height="6.8" data-fill="armor" data-location="RRRS" />
+        <rect x="16.74" width="28.23" y="54.4" height="6.8" data-fill="armor" data-location="RRRS" />
+        <rect x="15.52" width="29.5" y="61.2" height="6.8" data-fill="armor" data-location="RRRS" />
+        <rect x="18.54" width="25.59" y="68" height="6.8" data-fill="armor" data-location="RRRS" />
+        <rect x="27.16" width="17.18" y="74.8" height="6.8" data-fill="armor" data-location="RRRS" />
+        <rect x="35.78" width="8.77" y="81.6" height="6.8" data-fill="armor" data-location="RRRS" />
+      </g>
+      <g transform="matrix(-1,0,0,1,59.207,177.834)" class="paperdoll-pip-profile">
+        <rect x="26.49" width="18.13" y="0" height="6.8" data-fill="armor" data-location="RRLS" />
+        <rect x="25.27" width="19.39" y="6.8" height="6.8" data-fill="armor" data-location="RRLS" />
+        <rect x="24.05" width="20.66" y="13.6" height="6.8" data-fill="armor" data-location="RRLS" />
+        <rect x="22.83" width="21.92" y="20.4" height="6.8" data-fill="armor" data-location="RRLS" />
+        <rect x="21.61" width="23.18" y="27.2" height="6.8" data-fill="armor" data-location="RRLS" />
+        <rect x="20.4" width="24.45" y="34.0" height="6.8" data-fill="armor" data-location="RRLS" />
+        <rect x="19.18" width="25.71" y="40.8" height="6.8" data-fill="armor" data-location="RRLS" />
+        <rect x="17.96" width="26.97" y="47.6" height="6.8" data-fill="armor" data-location="RRLS" />
+        <rect x="16.74" width="28.23" y="54.4" height="6.8" data-fill="armor" data-location="RRLS" />
+        <rect x="15.52" width="29.5" y="61.2" height="6.8" data-fill="armor" data-location="RRLS" />
+        <rect x="18.54" width="25.59" y="68" height="6.8" data-fill="armor" data-location="RRLS" />
+        <rect x="27.16" width="17.18" y="74.8" height="6.8" data-fill="armor" data-location="RRLS" />
+        <rect x="35.78" width="8.77" y="81.6" height="6.8" data-fill="armor" data-location="RRLS" />
+      </g>
+      <g transform="translate(84.035,255.78)" class="paperdoll-pip-profile">
+        <rect x="-44.47" width="88.94" y="0" height="6.44" style="mml-gap:-35.28,35.28" data-fill="armor" data-location="RR" />
+        <rect x="-53.76" width="107.52" y="6.44" height="6.44" style="mml-gap:-34.29,34.29" data-fill="armor" data-location="RR" />
+        <rect x="-61.85" width="123.7" y="12.88" height="6.44" style="mml-gap:-32.3,32.3" data-fill="armor" data-location="RR" />
+        <rect x="-66.48" width="132.96" y="19.32" height="6.44" data-fill="armor" data-location="RR" />
+        <rect x="-63.58" width="127.16" y="25.76" height="6.44" data-fill="armor" data-location="RR" />
+        <rect x="-61.18" width="122.36" y="32.2" height="6.44" data-fill="armor" data-location="RR" />
+      </g>
+      <g transform="matrix(1,0,0,-0.95,84.06,224.06)" class="paperdoll-pip-profile">
+        <rect x="-27.37" width="54.74" y="0" height="6.44" data-fill="armor" data-location="TU" />
+        <rect x="-28.55" width="57.1" y="6.44" height="6.44" data-fill="armor" data-location="TU" />
+        <rect x="-29.73" width="59.46" y="12.88" height="6.44" data-fill="armor" data-location="TU" />
+        <rect x="-30.91" width="61.82" y="19.32" height="6.44" data-fill="armor" data-location="TU" />
+        <rect x="-32.08" width="64.16" y="25.76" height="6.44" data-fill="armor" data-location="TU" />
+        <rect x="-33.26" width="66.52" y="32.2" height="6.44" data-fill="armor" data-location="TU" />
+        <rect x="-34.44" width="68.88" y="38.64" height="6.44" data-fill="armor" data-location="TU" />
+      </g>
+      <g transform="matrix(1,0,0,0.95,84.06,127.88)" class="paperdoll-pip-profile">
+        <rect x="-27.37" width="54.74" y="0" height="6.44" data-fill="armor" data-location="FT" />
+        <rect x="-28.55" width="57.1" y="6.44" height="6.44" data-fill="armor" data-location="FT" />
+        <rect x="-29.73" width="59.46" y="12.88" height="6.44" data-fill="armor" data-location="FT" />
+        <rect x="-30.91" width="61.82" y="19.32" height="6.44" data-fill="armor" data-location="FT" />
+        <rect x="-32.08" width="64.16" y="25.76" height="6.44" data-fill="armor" data-location="FT" />
+        <rect x="-33.26" width="66.52" y="32.2" height="6.44" data-fill="armor" data-location="FT" />
+        <rect x="-34.44" width="68.88" y="38.64" height="6.44" data-fill="armor" data-location="FT" />
+      </g>
+    </g>
+    <g fill="none" id="structurePips" transform="translate(1.2,-0.2)">
+      <g transform="translate(84.035,77.68)" class="paperdoll-pip-profile">
+        <rect x="-31.11" width="62.22" y="0" height="6.8" style="mml-gap:0,11.4" data-fill="structure" data-location="FR" />
+        <rect x="-32.87" width="65.74" y="6.8" height="6.8" style="mml-gap:-4.7,14" data-fill="structure" data-location="FR" />
+        <rect x="-34.62" width="69.24" y="13.6" height="6.8" style="mml-gap:-15.56,15.9" data-fill="structure" data-location="FR" />
+      </g>
+      <g transform="translate(111.1,103.48)" class="paperdoll-pip-profile">
+        <rect x="0" width="11" y="0" height="6.8" data-fill="structure" data-location="FRRS" />
+        <rect x="1.09" width="11" y="6.8" height="6.8" data-fill="structure" data-location="FRRS" />
+        <rect x="2.17" width="11" y="13.6" height="6.8" data-fill="structure" data-location="FRRS" />
+        <rect x="3.26" width="11" y="20.4" height="6.8" data-fill="structure" data-location="FRRS" />
+        <rect x="4.35" width="11" y="27.2" height="6.8" data-fill="structure" data-location="FRRS" />
+        <rect x="5.43" width="11" y="34.0" height="6.8" data-fill="structure" data-location="FRRS" />
+        <rect x="6.52" width="11" y="40.8" height="6.8" data-fill="structure" data-location="FRRS" />
+        <rect x="7.61" width="11" y="47.6" height="6.8" data-fill="structure" data-location="FRRS" />
+        <rect x="8.69" width="11" y="54.4" height="6.8" data-fill="structure" data-location="FRRS" />
+        <rect x="9.68" width="11" y="61.2" height="6.8" data-fill="structure" data-location="FRRS" />
+      </g>
+      <g transform="matrix(-1,0,0,1,57.26,103.48)" class="paperdoll-pip-profile">
+        <rect x="0" width="11" y="0" height="6.8" data-fill="structure" data-location="FRLS" />
+        <rect x="1.09" width="11" y="6.8" height="6.8" data-fill="structure" data-location="FRLS" />
+        <rect x="2.17" width="11" y="13.6" height="6.8" data-fill="structure" data-location="FRLS" />
+        <rect x="3.26" width="11" y="20.4" height="6.8" data-fill="structure" data-location="FRLS" />
+        <rect x="4.35" width="11" y="27.2" height="6.8" data-fill="structure" data-location="FRLS" />
+        <rect x="5.43" width="11" y="34.0" height="6.8" data-fill="structure" data-location="FRLS" />
+        <rect x="6.52" width="11" y="40.8" height="6.8" data-fill="structure" data-location="FRLS" />
+        <rect x="7.61" width="11" y="47.6" height="6.8" data-fill="structure" data-location="FRLS" />
+        <rect x="8.69" width="11" y="54.4" height="6.8" data-fill="structure" data-location="FRLS" />
+        <rect x="9.68" width="11" y="61.2" height="6.8" data-fill="structure" data-location="FRLS" />
+      </g>
+      <g transform="translate(108.7,178.58)" class="paperdoll-pip-profile">
+        <rect x="12.4" width="11" y="0" height="6.8" data-fill="structure" data-location="RRRS" />
+        <rect x="11.25" width="11" y="6.8" height="6.8" data-fill="structure" data-location="RRRS" />
+        <rect x="10.09" width="11" y="13.6" height="6.8" data-fill="structure" data-location="RRRS" />
+        <rect x="8.94" width="11" y="20.4" height="6.8" data-fill="structure" data-location="RRRS" />
+        <rect x="7.78" width="11" y="27.2" height="6.8" data-fill="structure" data-location="RRRS" />
+        <rect x="6.63" width="11" y="34.0" height="6.8" data-fill="structure" data-location="RRRS" />
+        <rect x="5.47" width="11" y="40.8" height="6.8" data-fill="structure" data-location="RRRS" />
+        <rect x="4.32" width="11" y="47.6" height="6.8" data-fill="structure" data-location="RRRS" />
+        <rect x="3.16" width="11" y="54.4" height="6.8" data-fill="structure" data-location="RRRS" />
+        <rect x="2.01" width="11" y="61.2" height="6.8" data-fill="structure" data-location="RRRS" />
+      </g>
+      <g transform="matrix(-1,0,0,1,59.06,178.58)" class="paperdoll-pip-profile">
+        <rect x="12.4" width="11" y="0" height="6.8" data-fill="structure" data-location="RRLS" />
+        <rect x="11.25" width="11" y="6.8" height="6.8" data-fill="structure" data-location="RRLS" />
+        <rect x="10.09" width="11" y="13.6" height="6.8" data-fill="structure" data-location="RRLS" />
+        <rect x="8.94" width="11" y="20.4" height="6.8" data-fill="structure" data-location="RRLS" />
+        <rect x="7.78" width="11" y="27.2" height="6.8" data-fill="structure" data-location="RRLS" />
+        <rect x="6.63" width="11" y="34.0" height="6.8" data-fill="structure" data-location="RRLS" />
+        <rect x="5.47" width="11" y="40.8" height="6.8" data-fill="structure" data-location="RRLS" />
+        <rect x="4.32" width="11" y="47.6" height="6.8" data-fill="structure" data-location="RRLS" />
+        <rect x="3.16" width="11" y="54.4" height="6.8" data-fill="structure" data-location="RRLS" />
+        <rect x="2.01" width="11" y="61.2" height="6.8" data-fill="structure" data-location="RRLS" />
+      </g>
+      <g transform="translate(84.035,252.08)" class="paperdoll-pip-profile">
+        <rect x="-32.8" width="65.6" y="0" height="6.8" style="mml-gap:-15.9,15.56" data-fill="structure" data-location="RR" />
+        <rect x="-30.73" width="59.46" y="6.8" height="6.8" style="mml-gap:-14,4.7" data-fill="structure" data-location="RR" />
+        <rect x="-28.66" width="57.32" y="13.6" height="6.8" style="mml-gap:-11.4,0" data-fill="structure" data-location="RR" />
+      </g>
+      <g transform="translate(84.06,226.4)" class="paperdoll-pip-profile">
+        <rect x="-25.22" width="50.44" y="0" height="6.8" data-fill="structure" data-location="TU" />
+        <rect x="-23.94" width="47.87" y="6.8" height="6.8" data-fill="structure" data-location="TU" />
+        <rect x="-22.65" width="45.3" y="13.6" height="6.8" data-fill="structure" data-location="TU" />
+      </g>
+      <g transform="translate(84.06,105)" class="paperdoll-pip-profile">
+        <rect x="-22.65" width="45.3" y="0" height="6.8" data-fill="structure" data-location="FT" />
+        <rect x="-23.94" width="47.87" y="6.8" height="6.8" data-fill="structure" data-location="FT" />
+        <rect x="-25.22" width="50.44" y="13.6" height="6.8" data-fill="structure" data-location="FT" />
+      </g>
+    </g>
+  </g>
+</svg>

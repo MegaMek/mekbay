@@ -6,6 +6,7 @@ import {
   type Equipment,
   type RawEquipmentData,
 } from '../src/app/models/equipment.model';
+import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import type { BaseEntity } from '../src/app/models/entity/base-entity';
 import { MountedEngine } from '../src/app/models/entity/components';
 import { DropShipEntity } from '../src/app/models/entity/entities/aero/dropship-entity';
@@ -18,6 +19,9 @@ import { EntityMountedEquipment } from '../src/app/models/entity/types/equipment
 
 const fixturePath = path.join(__dirname, 'fixtures', 'equipment2.json');
 const rawData: RawEquipmentData = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+const equipmentRegistry = new EquipmentRegistry(Object.fromEntries(
+  Object.entries(rawData.equipment).map(([id, raw]) => [id, createEquipment(raw)]),
+));
 const variableEquipment = Object.entries(rawData.equipment)
   .filter(([, raw]) => raw.stats?.tonnage === 'variable');
 
@@ -46,36 +50,36 @@ console.log(`Variable-tonnage parity: ${variableEquipment.length}/${variableEqui
 
 function createRepresentativeEntity(equipment: Equipment): BaseEntity {
   if (equipment.hasFlag('F_JET_BOOSTER')) {
-    const entity = new SupportVtolEntity();
-    entity.tonnage.set(4);
+    const entity = new SupportVtolEntity(equipmentRegistry);
+    entity.setTonnage(4);
     entity.originalWalkMP.set(3);
     entity.engineTechRating.set(3);
     entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 20, techBase: 'IS' }));
     return entity;
   }
   if (equipment.hasFlag('F_PROTOMEK_EQUIPMENT')) {
-    const entity = new ProtoMekEntity();
-    entity.tonnage.set(6);
+    const entity = new ProtoMekEntity(equipmentRegistry);
+    entity.setTonnage(6);
     return entity;
   }
   if (equipment.hasFlag('F_BA_EQUIPMENT') || equipment.hasFlag('F_BA_MISSION_EQUIPMENT')) {
-    const entity = new BattleArmorEntity();
-    entity.tonnage.set(1);
+    const entity = new BattleArmorEntity(equipmentRegistry);
+    entity.setTonnage(1);
     return entity;
   }
   if (equipment.hasAnyFlag(['F_SRCS', 'F_SASRCS', 'F_CASPAR', 'F_CASPAR_II'])) {
-    const entity = new DropShipEntity();
-    entity.tonnage.set(1000);
+    const entity = new DropShipEntity(equipmentRegistry);
+    entity.setTonnage(1000);
     return entity;
   }
   if (equipment.hasFlag('F_SPONSON_TURRET') || equipment.hasFlag('F_PINTLE_TURRET')) {
-    const entity = new TankEntity();
-    entity.tonnage.set(50);
+    const entity = new TankEntity(equipmentRegistry);
+    entity.setTonnage(50);
     return entity;
   }
 
-  const entity = new BipedMekEntity();
-  entity.tonnage.set(75);
+  const entity = new BipedMekEntity(equipmentRegistry);
+  entity.setTonnage(75);
   entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 300, techBase: 'IS' }));
   return entity;
 }
@@ -86,7 +90,7 @@ function createMount(equipment: Equipment): EntityMountedEquipment {
     mountId: equipment.id,
     equipmentId: equipment.id,
     equipment,
-    location,
+    allocation: { kind: 'location', location },
     rearMounted: false,
     turretMounted: false,
     omniPodMounted: false,
@@ -114,12 +118,12 @@ function seedAggregateEquipment(
     mountId: weapon.id,
     equipmentId: weapon.id,
     equipment: weapon,
-    location: mount.location,
+    allocation: { kind: 'location', location: mount.location },
     rearMounted: false,
     turretMounted: equipment.hasAnyFlag(['F_QUAD_TURRET', 'F_SHOULDER_TURRET', 'F_HEAD_TURRET']),
     turretType,
     omniPodMounted: false,
     armored: false,
   });
-  entity.equipment.set([mount, weaponMount]);
+  entity.setEquipment([mount, weaponMount]);
 }

@@ -5,7 +5,7 @@
 import { ApplicationRef, Injectable, Injector, createComponent, type ComponentRef } from '@angular/core';
 
 import type { CBTForce } from '../../../models/cbt-force.model';
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
+import type { PageViewerMember } from './types';
 import { PAGE_HEIGHT, PAGE_WIDTH } from '../page-viewer-zoom-pan.service';
 import { PageCanvasOverlayComponent } from '../canvas';
 import { PageInteractionOverlayComponent } from '../overlay';
@@ -29,12 +29,13 @@ export class PageViewerOverlayService {
         appRef: ApplicationRef;
         injector: Injector;
         pageWrapper: HTMLDivElement;
-        unit: CBTForceUnit;
-        onDrawingStarted: (unit: CBTForceUnit) => void;
+        unit: PageViewerMember;
+        onDrawingStarted: (unit: PageViewerMember) => void;
     }): ComponentRef<PageCanvasOverlayComponent> {
         const { appRef, injector, pageWrapper, unit, onDrawingStarted } = options;
         const existingRef = this.canvasOverlayRefs.get(unit.id);
         if (existingRef) {
+            existingRef.setInput('unit', unit);
             const canvasElement = existingRef.location.nativeElement as HTMLElement;
             pageWrapper.appendChild(canvasElement);
             return existingRef;
@@ -50,7 +51,7 @@ export class PageViewerOverlayService {
         componentRef.setInput('height', PAGE_HEIGHT);
 
         const subscription = componentRef.instance.drawingStarted.subscribe((drawnUnit) => {
-            onDrawingStarted(drawnUnit as CBTForceUnit);
+            onDrawingStarted(drawnUnit as PageViewerMember);
         });
 
         this.canvasOverlaySubscriptions.set(unit.id, subscription);
@@ -99,7 +100,7 @@ export class PageViewerOverlayService {
         injector: Injector;
         pageWrapper: HTMLDivElement;
         fixedOverlayContainer: HTMLDivElement;
-        unit: CBTForceUnit;
+        unit: PageViewerMember;
         force: CBTForce | null;
         mode: 'fixed' | 'page';
     }): ComponentRef<PageInteractionOverlayComponent> {
@@ -109,6 +110,8 @@ export class PageViewerOverlayService {
         const existingMode = this.interactionOverlayModes.get(unit.id);
 
         if (existingRef) {
+            existingRef.setInput('member', unit);
+            existingRef.setInput('force', force);
             if (existingMode !== mode) {
                 existingRef.setInput('mode', mode);
                 this.interactionOverlayModes.set(unit.id, mode);
@@ -125,7 +128,7 @@ export class PageViewerOverlayService {
             elementInjector: injector
         });
 
-        componentRef.setInput('unit', unit);
+        componentRef.setInput('member', unit);
         componentRef.setInput('force', force);
         componentRef.setInput('mode', mode);
 
@@ -170,6 +173,10 @@ export class PageViewerOverlayService {
         this.interactionOverlayRefs.forEach((ref) => {
             ref.instance.closeAllOverlays();
         });
+    }
+
+    openEquipment(unitId: string, event: Event, tab: 'weapons' | 'ammo'): void {
+        this.interactionOverlayRefs.get(unitId)?.instance.openWeaponEquipmentDialog(event, tab);
     }
 
     getCanvasOverlayElements(unitIds: readonly string[]): HTMLElement[] {

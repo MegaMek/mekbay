@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { MiscEquipment, WeaponEquipment } from '../models/equipment.model';
-import { MountedEquipment } from '../models/mounted-equipment.model';
-import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { asComponentId } from '../models/entity/entity-identifiers';
 import {
     formatInventoryControlHeat,
     resolveHeatSummarySources,
@@ -13,46 +11,31 @@ import {
     resolveSelectedInventoryWeaponHeat,
     resolveSelectedWeaponFiringHeatSources,
     resolveSelectedWeaponPreviewHeatSources,
+    type InventoryControlHeatComponentFacts,
 } from './inventory-control-heat.util';
 
 describe('inventory-control heat resolution', () => {
     it('resolves model heat and applies typed effects once', () => {
-        const entry = weapon(3);
+        const entry = component(3);
         const applyHeatEffects = jasmine.createSpy('applyHeatEffects').and.returnValue({ value: 5, weakened: true });
 
         expect(resolveInventoryControlHeat(entry, { applyHeatEffects })).toBe(5);
         expect(resolveInventoryControlHeatEffect(entry, { applyHeatEffects })).toEqual({ value: 5, weakened: true });
-        expect(applyHeatEffects).toHaveBeenCalledWith(entry, { value: 3, weakened: false });
+        expect(applyHeatEffects).toHaveBeenCalledWith(entry.componentId, { value: 3, weakened: false });
     });
 
     it('clamps negative effects and rejects non-finite effects', () => {
-        expect(resolveInventoryControlHeat(weapon(3), { applyHeatEffects: () => ({ value: -1, weakened: false }) })).toBe(0);
-        expect(resolveInventoryControlHeat(weapon(3), { applyHeatEffects: () => ({ value: Number.NaN, weakened: false }) })).toBeNull();
+        expect(resolveInventoryControlHeat(component(3), { applyHeatEffects: () => ({ value: -1, weakened: false }) })).toBe(0);
+        expect(resolveInventoryControlHeat(component(3), { applyHeatEffects: () => ({ value: Number.NaN, weakened: false }) })).toBeNull();
     });
 
-    it('returns null for non-weapon equipment', () => {
-        const entry = new MountedEquipment({
-            owner: {} as CBTForceUnit,
-            id: 'misc',
-            name: 'Misc',
-            equipment: new MiscEquipment({ id: 'misc', name: 'Misc', type: 'misc' })
-        });
-
-        expect(resolveInventoryControlHeat(entry)).toBeNull();
-    });
-
-    it('returns null when mounted equipment data is missing', () => {
-        const entry = new MountedEquipment({
-            owner: {} as CBTForceUnit,
-            id: 'missing',
-            name: 'Missing'
-        });
-
-        expect(resolveInventoryControlHeat(entry)).toBeNull();
+    it('returns null when detached facts have no base or handler-provided heat', () => {
+        expect(resolveInventoryControlHeat(component(null, 'misc'))).toBeNull();
+        expect(resolveInventoryControlHeat(component(null, 'missing'))).toBeNull();
     });
 
     it('accepts zero heat from equipment data', () => {
-        expect(resolveInventoryControlHeat(weapon(0))).toBe(0);
+        expect(resolveInventoryControlHeat(component(0))).toBe(0);
     });
 
     it('formats integer, fractional, and typed suffixed heat without presentation parsing', () => {
@@ -65,12 +48,12 @@ describe('inventory-control heat resolution', () => {
     });
 
     it('aggregates selected weapon heat with typed effects', () => {
-        const first = weapon(3, 'first');
-        const second = weapon(2, 'second');
+        const first = component(3, 'first');
+        const second = component(2, 'second');
         const selection = resolveSelectedInventoryWeaponHeat(
             [first, second],
             selectedStates(first, second),
-            { applyHeatEffects: (entry, effect) => ({ ...effect, value: entry.id === 'first' ? 1 : 4 }) }
+            { applyHeatEffects: (componentId, effect) => ({ ...effect, value: componentId === 'first' ? 1 : 4 }) }
         );
 
         expect(selection.hasSelection).toBeTrue();
@@ -79,14 +62,8 @@ describe('inventory-control heat resolution', () => {
     });
 
     it('ignores selected non-weapons and physical weapons without a typed heat effect', () => {
-        const misc = new MountedEquipment({
-            owner: {} as CBTForceUnit,
-            id: 'misc',
-            name: 'Misc',
-            equipment: new MiscEquipment({ id: 'misc', name: 'Misc', type: 'misc' })
-        });
-        const physical = weapon(3, 'physical');
-        spyOn(physical, 'isPhysicalWeapon').and.returnValue(true);
+        const misc = component(null, 'misc');
+        const physical = component(null, 'physical');
 
         expect(resolveSelectedInventoryWeaponHeat(
             [misc, physical],
@@ -99,12 +76,7 @@ describe('inventory-control heat resolution', () => {
     });
 
     it('includes handler-provided physical heat in selected firing heat', () => {
-        const physical = new MountedEquipment({
-            owner: {} as CBTForceUnit,
-            id: 'vibroblade',
-            name: 'Vibroblade',
-            equipment: new MiscEquipment({ id: 'vibroblade', name: 'Vibroblade', type: 'misc', flags: ['F_CLUB'] })
-        });
+        const physical = component(null, 'vibroblade');
 
         const selection = resolveSelectedInventoryWeaponHeat(
             [physical],
@@ -205,21 +177,10 @@ describe('inventory-control heat resolution', () => {
     });
 });
 
-function weapon(heat: number, id = 'laser'): MountedEquipment {
-    const equipment = new WeaponEquipment({
-        id,
-        name: 'Laser',
-        type: 'weapon',
-        weapon: { heat }
-    });
-    return new MountedEquipment({
-        owner: {} as CBTForceUnit,
-        id: equipment.id,
-        name: equipment.name,
-        equipment
-    });
+function component(baseWeaponHeat: number | null, id = 'laser'): InventoryControlHeatComponentFacts {
+    return Object.freeze({ componentId: asComponentId(id), baseWeaponHeat });
 }
 
-function selectedStates(...entries: MountedEquipment[]) {
-    return new Map(entries.map(entry => [entry.id, { selected: true }]));
+function selectedStates(...components: InventoryControlHeatComponentFacts[]) {
+    return new Map(components.map(component => [component.componentId, { selected: true }]));
 }

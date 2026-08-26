@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { SpriteAssignments } from '../services/sprite-storage.service';
+import type { UnitSpriteAssignments } from './unit-sprite-assignment-resolver';
 import {
   TestAeroSpaceFighterEntity as AeroEntity,
   TestBattleArmorEntity as BattleArmorEntity,
@@ -18,7 +18,7 @@ import {
 } from '../models/entity/testing/test-entities';
 import { getDefaultSpriteAssignmentKey, resolveUnitSpritePath } from './unit-sprite-resolver';
 
-const assignments: SpriteAssignments = {
+const assignments: UnitSpriteAssignments = {
   exact: {
     'ATLAS AS7-D': 'meks/Atlas_D.png',
     'DEFAULT_MEDIUM': 'defaults/default_medium.png',
@@ -77,7 +77,7 @@ describe('unit sprite resolver', () => {
     entity.chassis.set('Mad Cat');
     entity.clanName.set('Timber Wolf');
     entity.model.set('Prime');
-    const clanAssignments: SpriteAssignments = {
+    const clanAssignments: UnitSpriteAssignments = {
       exact: { 'MAD CAT (TIMBER WOLF) PRIME': 'meks/TimberWolfPrime.png' },
       chassis: { 'MAD CAT (TIMBER WOLF)': 'meks/TimberWolf.png' },
     };

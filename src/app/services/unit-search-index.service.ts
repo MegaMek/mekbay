@@ -3,13 +3,13 @@
 // Author: Drake
 
 import { Injectable } from '@angular/core';
-import type { Unit, UnitComponent } from '../models/units.model';
+import type { UnitSummary, UnitComponent } from '../models/unit-summary.model';
 import { type Faction } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
 import type { BucketStatSummary, MinMaxStatsRange, UnitSubtypeMaxStats } from './data.service';
 import { removeAccents } from '../utils/string.util';
 import { naturalCompare } from '../utils/sort.util';
-import { getMergedTags, getUnitSourceFilterValues } from '../utils/unit-search-shared.util';
+import { getMergedTags, getUnitSearchIdentityKey, getUnitSourceFilterValues } from '../utils/unit-search-shared.util';
 import { calculateWeightedMaxRange, getMaxRangeFromComponents } from '../utils/unit-range.util';
 import { parseASDamageValue } from '../utils/as-damage.util';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, BOOLEAN_FILTERS, getBooleanFilterUnitValue } from './unit-search-filters.model';
@@ -17,9 +17,43 @@ import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot 
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import { WeaponEquipment } from '../models/equipment.model';
 import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
+import type { EquipmentRegistry } from '../models/equipment-lookup';
 
 interface ASUnitTypeMaxStats {
     [asUnitType: string]: MinMaxStatsRange;
+}
+
+/**
+ * Fully built search state for one exact Units/dependency activation.
+ *
+ * All maps and statistics are allocated while the activation is still
+ * invisible. The final catalog switch only assigns these references, so a
+ * failed or superseded build cannot expose a partially rebuilt index.
+ */
+export interface PreparedUnitSearchIndexes {
+    readonly unitSubtypeMaxStats: UnitSubtypeMaxStats;
+    readonly unitAsTypeMaxStats: ASUnitTypeMaxStats;
+    readonly searchFilterIndex: Map<string, Map<string, Set<string>>>;
+    readonly componentCountIndex: Map<string, Map<string, number>>;
+    readonly searchFilterValues: Map<string, string[]>;
+    readonly dropdownOptionUniverse: Map<string, Array<{ name: string; img?: string }>>;
+    readonly unitIdentityKeysByName: Map<string, readonly string[]>;
+    readonly factionEraSnapshot: UnitSearchWorkerFactionEraSnapshot;
+    readonly preparationTimings: {
+        readonly unitDerivativesMs: number;
+        readonly filterIndexesMs: number;
+        readonly identityMapMs: number;
+        readonly unitFiltersMs: number;
+        readonly componentIndexesMs: number;
+        readonly eraMembershipsMs: number;
+        readonly factionMembershipsMs: number;
+        readonly finalizationMs: number;
+    };
+    readonly indexStats: {
+        readonly filterKeys: number;
+        readonly filterValues: number;
+        readonly memberships: number;
+    };
 }
 
 interface TrackedStatAccumulator {
@@ -108,9 +142,90 @@ export class UnitSearchIndexService {
     private componentCountIndex = new Map<string, Map<string, number>>();
     private searchFilterValues = new Map<string, string[]>();
     private dropdownOptionUniverse = new Map<string, Array<{ name: string; img?: string }>>();
-    private factionEraSnapshot: UnitSearchWorkerFactionEraSnapshot = {};
+    private unitIdentityKeysByName = new Map<string, readonly string[]>();
+    private indexStats: PreparedUnitSearchIndexes['indexStats'] = Object.freeze({
+        filterKeys: 0,
+        filterValues: 0,
+        memberships: 0,
+    });
+    private filterIndexTimings: Pick<
+        PreparedUnitSearchIndexes['preparationTimings'],
+        'identityMapMs' | 'unitFiltersMs' | 'componentIndexesMs' | 'eraMembershipsMs' | 'factionMembershipsMs' | 'finalizationMs'
+    > = Object.freeze({
+        identityMapMs: 0,
+        unitFiltersMs: 0,
+        componentIndexesMs: 0,
+        eraMembershipsMs: 0,
+        factionMembershipsMs: 0,
+        finalizationMs: 0,
+    });
+    private factionEraSnapshot: UnitSearchWorkerFactionEraSnapshot = Object.freeze({
+        unitIdentityKeysByMulId: Object.freeze({}),
+        referenceIdsByEraAndFaction: Object.freeze({}),
+    });
+    /**
+     * Pure-build every search/index derivative without touching live state.
+     * A detached service instance is safe here because this builder has no
+     * injected collaborators; its only inputs are the exact candidate arrays.
+     */
+    public prepareCatalogIndexes(
+        units: UnitSummary[],
+        eras: Era[],
+        factions: Faction[],
+        extinctFaction?: Faction,
+        equipmentRegistry?: EquipmentRegistry,
+    ): PreparedUnitSearchIndexes {
+        const builder = new UnitSearchIndexService();
+        const unitDerivativesStartedAt = Date.now();
+        builder.prepareUnits(units);
+        const unitDerivativesMs = Math.max(0, Date.now() - unitDerivativesStartedAt);
+        const filterIndexesStartedAt = Date.now();
+        builder.rebuildIndexes(
+            units,
+            eras,
+            factions,
+            extinctFaction,
+            equipmentRegistry,
+        );
+        const filterIndexesMs = Math.max(0, Date.now() - filterIndexesStartedAt);
+        const prepared = builder.capturePreparedIndexes({
+            unitDerivativesMs,
+            filterIndexesMs,
+            ...builder.filterIndexTimings,
+        });
+        return prepared;
+    }
 
-    public prepareUnits(units: Unit[]): void {
+    /** Final no-build switch. Angular observers cannot interleave the assignments. */
+    public commitPreparedCatalogIndexes(candidate: PreparedUnitSearchIndexes): void {
+        this.unitSubtypeMaxStats = candidate.unitSubtypeMaxStats;
+        this.unitAsTypeMaxStats = candidate.unitAsTypeMaxStats;
+        this.searchFilterIndex = candidate.searchFilterIndex;
+        this.componentCountIndex = candidate.componentCountIndex;
+        this.searchFilterValues = candidate.searchFilterValues;
+        this.dropdownOptionUniverse = candidate.dropdownOptionUniverse;
+        this.unitIdentityKeysByName = candidate.unitIdentityKeysByName;
+        this.factionEraSnapshot = candidate.factionEraSnapshot;
+    }
+
+    private capturePreparedIndexes(
+        preparationTimings: PreparedUnitSearchIndexes['preparationTimings'],
+    ): PreparedUnitSearchIndexes {
+        return Object.freeze({
+            unitSubtypeMaxStats: this.unitSubtypeMaxStats,
+            unitAsTypeMaxStats: this.unitAsTypeMaxStats,
+            searchFilterIndex: this.searchFilterIndex,
+            componentCountIndex: this.componentCountIndex,
+            searchFilterValues: this.searchFilterValues,
+            dropdownOptionUniverse: this.dropdownOptionUniverse,
+            unitIdentityKeysByName: this.unitIdentityKeysByName,
+            factionEraSnapshot: this.factionEraSnapshot,
+            preparationTimings: Object.freeze(preparationTimings),
+            indexStats: this.indexStats,
+        });
+    }
+
+    public prepareUnits(units: UnitSummary[]): void {
         this.unitSubtypeMaxStats = {};
         this.unitAsTypeMaxStats = {};
 
@@ -143,7 +258,7 @@ export class UnitSearchIndexService {
             gravDecks: createTrackedStatAccumulator(),
         });
 
-        const updateTrackedStats = (stats: ReturnType<typeof createStatsAccumulator>, unit: Unit): void => {
+        const updateTrackedStats = (stats: ReturnType<typeof createStatsAccumulator>, unit: UnitSummary): void => {
             updateTrackedStat(stats.armor, unit.armor || 0);
             updateTrackedStat(stats.internal, unit.internal || 0);
             updateTrackedStat(stats.heat, unit.heat || 0);
@@ -161,9 +276,9 @@ export class UnitSearchIndexService {
             updateTrackedStat(stats.asTmm, unit.as?.TMM || 0);
             updateTrackedStat(stats.asArm, unit.as?.Arm || 0);
             updateTrackedStat(stats.asStr, unit.as?.Str || 0);
-            updateTrackedStat(stats.asDmgS, unit.as?.dmg._dmgS || 0);
-            updateTrackedStat(stats.asDmgM, unit.as?.dmg._dmgM || 0);
-            updateTrackedStat(stats.asDmgL, unit.as?.dmg._dmgL || 0);
+            updateTrackedStat(stats.asDmgS, parseASDamageValue(unit.as?.dmg.dmgS) ?? 0);
+            updateTrackedStat(stats.asDmgM, parseASDamageValue(unit.as?.dmg.dmgM) ?? 0);
+            updateTrackedStat(stats.asDmgL, parseASDamageValue(unit.as?.dmg.dmgL) ?? 0);
 
             if (unit.capital) {
                 updateTrackedStat(stats.dropshipCapacity, unit.capital.dropshipCapacity || 0);
@@ -211,6 +326,7 @@ export class UnitSearchIndexService {
             const chassis = removeAccents(unit.chassis?.toLowerCase() || '');
             const model = removeAccents(unit.model?.toLowerCase() || '');
             unit._searchKey = `${chassis} ${model}`;
+            unit._searchKeyAlphanumeric = unit._searchKey.replace(/[^a-z0-9]/g, '');
             unit._displayType = this.formatUnitType(unit.type);
             unit._mdSumNoPhysical = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp) : 0;
             unit._mdSumNoPhysicalNoOneshots = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp, true) : 0;
@@ -219,42 +335,15 @@ export class UnitSearchIndexService {
             unit._dissipationEfficiency = (unit.heat && unit.dissipation) ? unit.dissipation - unit.heat : 0;
 
             if (unit.as) {
-                if (unit.as.dmg) {
-                    unit.as.dmg._dmgS = parseASDamageValue(unit.as.dmg.dmgS) ?? 0;
-                    unit.as.dmg._dmgM = parseASDamageValue(unit.as.dmg.dmgM) ?? 0;
-                    unit.as.dmg._dmgL = parseASDamageValue(unit.as.dmg.dmgL) ?? 0;
-                    unit.as.dmg._dmgE = parseASDamageValue(unit.as.dmg.dmgE) ?? 0;
-                }
-
-                if (unit.as.MVm && unit.as.MVm['j'] !== undefined && unit.as.MVm[''] === undefined) {
+                unit.as.dmg._dmgS = parseASDamageValue(unit.as.dmg.dmgS) ?? 0;
+                unit.as.dmg._dmgM = parseASDamageValue(unit.as.dmg.dmgM) ?? 0;
+                unit.as.dmg._dmgL = parseASDamageValue(unit.as.dmg.dmgL) ?? 0;
+                unit.as.dmg._dmgE = parseASDamageValue(unit.as.dmg.dmgE) ?? 0;
+                if (unit.as.MVm['j'] !== undefined && unit.as.MVm[''] === undefined) {
                     const mvmKeys = Object.keys(unit.as.MVm);
                     if (unit.as.TP === 'BM' || (mvmKeys.length === 1 && mvmKeys[0] === 'j')) {
                         unit.as.MVm = { '': unit.as.MVm['j'], ...unit.as.MVm };
                     }
-                }
-            }
-
-            if (unit.comp) {
-                if (unit.armorType) {
-                    let armorName = unit.armorType;
-                    if (!armorName.endsWith(' Armor')) {
-                        armorName += ' Armor';
-                    }
-                    this.ensureSyntheticComponent(unit.comp, armorName, 'Armor');
-                }
-                if (unit.structureType) {
-                    let structureName = unit.structureType;
-                    if (!structureName.endsWith(' Structure')) {
-                        structureName += ' Structure';
-                    }
-                    this.ensureSyntheticComponent(unit.comp, structureName, 'Structure');
-                }
-                if (unit.engine) {
-                    let engineName = unit.engine;
-                    if (!engineName.endsWith(' Engine')) {
-                        engineName += ' Engine';
-                    }
-                    this.ensureSyntheticComponent(unit.comp, engineName, 'Engine');
                 }
             }
 
@@ -278,70 +367,113 @@ export class UnitSearchIndexService {
         }
     }
 
-    public rebuildIndexes(units: Unit[], eras: Era[], factions: Faction[], extinctFaction?: Faction): void {
+    public rebuildIndexes(
+        units: UnitSummary[],
+        eras: Era[],
+        factions: Faction[],
+        extinctFaction?: Faction,
+        equipmentRegistry?: EquipmentRegistry,
+    ): void {
         this.searchFilterIndex = new Map<string, Map<string, Set<string>>>();
         this.componentCountIndex = new Map<string, Map<string, number>>();
         this.searchFilterValues = new Map<string, string[]>();
+        const identityMapStartedAt = Date.now();
+        const {
+            identityKeys,
+            unitIdentityKeysByMulId,
+            unitIdentityKeysByName,
+        } = this.createUnitIdentityIndexes(units);
+        const identityMapMs = Math.max(0, Date.now() - identityMapStartedAt);
 
-        const unitNamesByMulId = this.createUnitNamesByMulId(units);
-
-        for (const unit of units) {
-            this.addSearchIndexValue('type', unit.type, unit.name);
-            this.addSearchIndexValue('subtype', unit.subtype, unit.name);
-            this.addSearchIndexValue('_techBaseDisplay', unit._techBaseDisplay, unit.name);
-            this.addSearchIndexValue('role', unit.role, unit.name);
-            this.addSearchIndexValue('weightClass', unit.weightClass, unit.name);
-            this.addSearchIndexValue('level', String(unit.level), unit.name);
-            this.addSearchIndexValue('c3', unit.c3, unit.name);
-            this.addSearchIndexValue('moveType', unit.moveType, unit.name);
-            this.addSearchIndexValue('as.TP', unit.as?.TP, unit.name);
-            this.addSearchIndexValues('as.specials', unit.as?.specials ?? [], unit.name);
-            this.addSearchIndexValues('as._motive', this.getASMotiveDisplayNames(unit), unit.name);
-            this.addSearchIndexValues('source', getUnitSourceFilterValues(unit), unit.name);
-            this.addSearchIndexValues('componentName', unit.comp.map(component => component.n), unit.name);
-            this.addComponentCountValues(unit);
-            this.prepareUnitWeaponTypes(unit);
-            this.addSearchIndexValues('weaponType', unit._weaponTypes ?? [], unit.name);
-            this.addSearchIndexValues('features', unit.features ?? [], unit.name);
-            this.addSearchIndexValues('quirks', unit.quirks ?? [], unit.name);
-            this.addSearchIndexValues('_tags', getMergedTags(unit), unit.name);
+        const unitFiltersStartedAt = Date.now();
+        for (let unitIndex = 0; unitIndex < units.length; unitIndex++) {
+            const unit = units[unitIndex];
+            const unitIdentityKey = identityKeys[unitIndex];
+            this.addSearchIndexValue('type', unit.type, unitIdentityKey);
+            this.addSearchIndexValue('subtype', unit.subtype, unitIdentityKey);
+            this.addSearchIndexValue('_techBaseDisplay', unit._techBaseDisplay, unitIdentityKey);
+            this.addSearchIndexValue('role', unit.role, unitIdentityKey);
+            this.addSearchIndexValue('weightClass', unit.weightClass, unitIdentityKey);
+            this.addSearchIndexValue('level', String(unit.level), unitIdentityKey);
+            this.addSearchIndexValue('c3', unit.c3, unitIdentityKey);
+            this.addSearchIndexValue('moveType', unit.moveType, unitIdentityKey);
+            this.addSearchIndexValue('as.TP', unit.as?.TP, unitIdentityKey);
+            this.addSearchIndexValues('as.specials', unit.as?.specials ?? [], unitIdentityKey);
+            this.addSearchIndexValues('as._motive', this.getASMotiveDisplayNames(unit), unitIdentityKey);
+            this.addSearchIndexValues('source', getUnitSourceFilterValues(unit), unitIdentityKey);
+            this.addSearchIndexValues('features', unit.features ?? [], unitIdentityKey);
+            this.addSearchIndexValues('quirks', unit.quirks ?? [], unitIdentityKey);
+            this.addSearchIndexValues('_tags', getMergedTags(unit), unitIdentityKey);
             for (const filter of BOOLEAN_FILTERS) {
-                this.addSearchIndexValue(filter.key, getBooleanFilterUnitValue(filter, unit[filter.key as keyof Unit]) ? 'yes' : 'no', unit.name);
+                this.addSearchIndexValue(filter.key, getBooleanFilterUnitValue(filter, unit[filter.key as keyof UnitSummary]) ? 'yes' : 'no', unitIdentityKey);
             }
         }
+        const unitFiltersMs = Math.max(0, Date.now() - unitFiltersStartedAt);
 
+        const componentIndexesStartedAt = Date.now();
+        for (let unitIndex = 0; unitIndex < units.length; unitIndex++) {
+            this.prepareUnitComponentIndexes(units[unitIndex], identityKeys[unitIndex], equipmentRegistry);
+        }
+        const componentIndexesMs = Math.max(0, Date.now() - componentIndexesStartedAt);
+
+        const eraMembershipsStartedAt = Date.now();
         for (const era of eras) {
             const extinctReferenceIdsForEra = extinctFaction?.id === MULFACTION_EXTINCT
                 ? extinctFaction.eras[era.id] as Set<number> | undefined
                 : undefined;
             for (const referenceId of era.units as Set<number>) {
                 if (!extinctReferenceIdsForEra?.has(referenceId)) {
-                    for (const unitName of unitNamesByMulId.get(referenceId) ?? []) {
-                        this.addSearchIndexValue('era', era.name, unitName);
+                    for (const unitIdentityKey of unitIdentityKeysByMulId.get(referenceId) ?? []) {
+                        this.addSearchIndexValue('era', era.name, unitIdentityKey);
                     }
                 }
             }
         }
+        const eraMembershipsMs = Math.max(0, Date.now() - eraMembershipsStartedAt);
 
+        const factionMembershipsStartedAt = Date.now();
         for (const faction of factions) {
             for (const referenceIds of Object.values(faction.eras) as Set<number>[]) {
                 for (const referenceId of referenceIds) {
-                    for (const unitName of unitNamesByMulId.get(referenceId) ?? []) {
-                        this.addSearchIndexValue('faction', faction.name, unitName);
+                    for (const unitIdentityKey of unitIdentityKeysByMulId.get(referenceId) ?? []) {
+                        this.addSearchIndexValue('faction', faction.name, unitIdentityKey);
                     }
                 }
             }
         }
+        const factionMembershipsMs = Math.max(0, Date.now() - factionMembershipsStartedAt);
 
+        const finalizationStartedAt = Date.now();
+        let filterValues = 0;
+        let memberships = 0;
         for (const [filterKey, values] of this.searchFilterIndex.entries()) {
+            filterValues += values.size;
+            for (const identityKeys of values.values()) {
+                memberships += identityKeys.size;
+            }
             this.searchFilterValues.set(filterKey, Array.from(values.keys()).sort((left, right) => naturalCompare(left, right)));
         }
+        this.indexStats = Object.freeze({
+            filterKeys: this.searchFilterIndex.size,
+            filterValues,
+            memberships,
+        });
 
         this.rebuildDropdownOptionUniverse(eras, factions);
-        this.factionEraSnapshot = this.createFactionEraSnapshot(unitNamesByMulId, eras, factions);
+        this.unitIdentityKeysByName = unitIdentityKeysByName;
+        this.factionEraSnapshot = this.createFactionEraSnapshot(unitIdentityKeysByMulId, eras, factions);
+        const finalizationMs = Math.max(0, Date.now() - finalizationStartedAt);
+        this.filterIndexTimings = Object.freeze({
+            identityMapMs,
+            unitFiltersMs,
+            componentIndexesMs,
+            eraMembershipsMs,
+            factionMembershipsMs,
+            finalizationMs,
+        });
     }
 
-    public rebuildTagSearchIndex(units: Unit[]): void {
+    public rebuildTagSearchIndex(units: UnitSummary[]): void {
         if (this.searchFilterIndex.size === 0 && this.searchFilterValues.size === 0) {
             return;
         }
@@ -354,7 +486,7 @@ export class UnitSearchIndexService {
                     unitIds = new Set<string>();
                     tagIndex.set(tag, unitIds);
                 }
-                unitIds.add(unit.name);
+                unitIds.add(getUnitSearchIdentityKey(unit));
             }
         }
 
@@ -379,13 +511,17 @@ export class UnitSearchIndexService {
         return this.searchFilterValues.get(filterKey) ?? [];
     }
 
+    public getUnitIdentityKeysByName(unitName: string): readonly string[] {
+        return this.unitIdentityKeysByName.get(unitName) ?? [];
+    }
+
     public getSearchWorkerIndexSnapshot(): UnitSearchWorkerIndexSnapshot {
         const snapshot: UnitSearchWorkerIndexSnapshot = {};
 
         for (const [filterKey, valueMap] of this.searchFilterIndex.entries()) {
             snapshot[filterKey] = {};
-            for (const [value, unitNames] of valueMap.entries()) {
-                snapshot[filterKey][value] = Array.from(unitNames);
+            for (const [value, unitIdentityKeys] of valueMap.entries()) {
+                snapshot[filterKey][value] = Array.from(unitIdentityKeys);
             }
         }
 
@@ -393,9 +529,7 @@ export class UnitSearchIndexService {
     }
 
     public getSearchWorkerFactionEraSnapshot(): UnitSearchWorkerFactionEraSnapshot {
-        return Object.fromEntries(
-            Object.entries(this.factionEraSnapshot).map(([eraName, factionMap]) => [eraName, { ...factionMap }])
-        );
+        return this.factionEraSnapshot;
     }
 
     public getDropdownOptionUniverse(filterKey: string): Array<{ name: string; img?: string }> {
@@ -435,19 +569,24 @@ export class UnitSearchIndexService {
             'quirks',
             '_tags',
         ]) {
-            this.dropdownOptionUniverse.set(filterKey, this.getIndexedFilterValues(filterKey).map(name => ({ name })));
+            const values = this.searchFilterValues.get(filterKey) ?? [];
+            this.dropdownOptionUniverse.set(filterKey, values.map(name => ({ name })));
         }
 
         this.dropdownOptionUniverse.set('era', eras.map(era => ({ name: era.name, img: era.img })));
         this.dropdownOptionUniverse.set('faction', factions.map(faction => ({ name: faction.name, img: faction.img })));
     }
 
-    private createFactionEraSnapshot(unitNamesByMulId: Map<number, string[]>, eras: Era[], factions: Faction[]): UnitSearchWorkerFactionEraSnapshot {
-        const snapshot: UnitSearchWorkerFactionEraSnapshot = {};
+    private createFactionEraSnapshot(
+        unitIdentityKeysByMulId: Map<number, string[]>,
+        eras: Era[],
+        factions: Faction[],
+    ): UnitSearchWorkerFactionEraSnapshot {
+        const referenceIdsByEraAndFaction: Record<string, Record<string, readonly number[]>> = {};
         const erasById = new Map<number, Era>(eras.map(era => [era.id, era]));
 
         for (const era of eras) {
-            snapshot[era.name] = {};
+            referenceIdsByEraAndFaction[era.name] = {};
         }
 
         for (const faction of factions) {
@@ -457,35 +596,60 @@ export class UnitSearchIndexService {
                     continue;
                 }
 
-                const unitNames: string[] = [];
-                for (const referenceId of referenceIds) {
-                    unitNames.push(...(unitNamesByMulId.get(referenceId) ?? []));
-                }
-
-                snapshot[era.name] ??= {};
-                snapshot[era.name][faction.name] = unitNames;
+                referenceIdsByEraAndFaction[era.name] ??= {};
+                referenceIdsByEraAndFaction[era.name][faction.name] = Object.freeze(Array.from(referenceIds));
             }
         }
 
-        return snapshot;
+        const frozenMemberships = Object.freeze(Object.fromEntries(
+            Object.entries(referenceIdsByEraAndFaction).map(([eraName, factionMap]) => [
+                eraName,
+                Object.freeze(factionMap),
+            ]),
+        ));
+        const frozenIdentityKeys = Object.freeze(Object.fromEntries(
+            Array.from(unitIdentityKeysByMulId, ([mulId, identityKeys]) => [
+                String(mulId),
+                Object.freeze([...identityKeys]),
+            ]),
+        ));
+        return Object.freeze({
+            unitIdentityKeysByMulId: frozenIdentityKeys,
+            referenceIdsByEraAndFaction: frozenMemberships,
+        });
     }
 
-    private createUnitNamesByMulId(units: Unit[]): Map<number, string[]> {
-        const unitNamesByMulId = new Map<number, string[]>();
+    private createUnitIdentityIndexes(units: UnitSummary[]): {
+        identityKeys: string[];
+        unitIdentityKeysByMulId: Map<number, string[]>;
+        unitIdentityKeysByName: Map<string, string[]>;
+    } {
+        const identityKeys: string[] = [];
+        const unitIdentityKeysByMulId = new Map<number, string[]>();
+        const unitIdentityKeysByName = new Map<string, string[]>();
 
         for (const unit of units) {
-            const names = unitNamesByMulId.get(unit.id);
-            if (names) {
-                names.push(unit.name);
+            const identityKey = getUnitSearchIdentityKey(unit);
+            identityKeys.push(identityKey);
+            const mulIdentityKeys = unitIdentityKeysByMulId.get(unit.id);
+            if (mulIdentityKeys) {
+                mulIdentityKeys.push(identityKey);
             } else {
-                unitNamesByMulId.set(unit.id, [unit.name]);
+                unitIdentityKeysByMulId.set(unit.id, [identityKey]);
+            }
+
+            const nameIdentityKeys = unitIdentityKeysByName.get(unit.name);
+            if (nameIdentityKeys) {
+                nameIdentityKeys.push(identityKey);
+            } else {
+                unitIdentityKeysByName.set(unit.name, [identityKey]);
             }
         }
 
-        return unitNamesByMulId;
+        return { identityKeys, unitIdentityKeysByMulId, unitIdentityKeysByName };
     }
 
-    private addSearchIndexValue(filterKey: string, value: string | undefined, unitName: string): void {
+    private addSearchIndexValue(filterKey: string, value: string | undefined, unitIdentityKey: string): void {
         if (!value) {
             return;
         }
@@ -503,54 +667,67 @@ export class UnitSearchIndexService {
             filterIndex.set(normalizedValue, unitIds);
         }
 
-        unitIds.add(unitName);
+        unitIds.add(unitIdentityKey);
     }
 
-    private addSearchIndexValues(filterKey: string, values: Iterable<string>, unitName: string): void {
+    private addSearchIndexValues(filterKey: string, values: Iterable<string>, unitIdentityKey: string): void {
         for (const value of values) {
-            this.addSearchIndexValue(filterKey, value, unitName);
+            this.addSearchIndexValue(filterKey, value, unitIdentityKey);
         }
     }
 
-    private addComponentCountValues(unit: Unit): void {
-        for (const component of unit.comp) {
-            const normalizedName = component.n.toLowerCase();
-            let unitCounts = this.componentCountIndex.get(normalizedName);
-            if (!unitCounts) {
-                unitCounts = new Map<string, number>();
-                this.componentCountIndex.set(normalizedName, unitCounts);
-            }
-
-            unitCounts.set(unit.name, (unitCounts.get(unit.name) || 0) + component.q);
-        }
-    }
-
-    private prepareUnitWeaponTypes(unit: Unit): void {
+    private prepareUnitComponentIndexes(
+        unit: UnitSummary,
+        unitIdentityKey: string,
+        equipmentRegistry?: EquipmentRegistry,
+    ): void {
         const counts: Partial<Record<WeaponType, number>> = {};
 
-        const addComponents = (components: readonly UnitComponent[]): void => {
+        const addWeaponTypes = (components: readonly UnitComponent[]): void => {
             for (const component of components) {
                 if (component.bay?.length) {
-                    addComponents(component.bay);
+                    addWeaponTypes(component.bay);
                     continue;
                 }
 
-                if (!(component.eq instanceof WeaponEquipment) || !Number.isFinite(component.q) || component.q <= 0) {
+                const equipment = component.eq ?? equipmentRegistry?.findEquipment(component.id) ?? undefined;
+                if (!(equipment instanceof WeaponEquipment) || !Number.isFinite(component.q) || component.q <= 0) {
                     continue;
                 }
 
-                for (const weaponType of component.eq.getWeaponTypes()) {
+                for (const weaponType of equipment.getWeaponTypes()) {
                     counts[weaponType] = (counts[weaponType] ?? 0) + component.q;
                 }
             }
         };
 
-        addComponents(unit.comp);
+        for (const component of unit.comp) {
+            this.addSearchIndexValue('componentName', component.n, unitIdentityKey);
+            this.addComponentUnitCount(component.n, unit.name, component.q);
+        }
+        for (const name of this.getSyntheticComponentNames(unit)) {
+            this.addSearchIndexValue('componentName', name, unitIdentityKey);
+            this.addComponentUnitCount(name, unit.name, 1);
+        }
+
+        addWeaponTypes(unit.comp);
         unit._weaponTypeCounts = counts;
         unit._weaponTypes = WEAPON_TYPES.filter(weaponType => (counts[weaponType] ?? 0) > 0);
+        this.addSearchIndexValues('weaponType', unit._weaponTypes, unitIdentityKey);
     }
 
-    private getASMotiveDisplayNames(unit: Unit): string[] {
+    private addComponentUnitCount(name: string, unitName: string, quantity: number): void {
+        const normalizedName = name.toLowerCase();
+        let unitCounts = this.componentCountIndex.get(normalizedName);
+        if (!unitCounts) {
+            unitCounts = new Map<string, number>();
+            this.componentCountIndex.set(normalizedName, unitCounts);
+        }
+
+        unitCounts.set(unitName, (unitCounts.get(unitName) || 0) + quantity);
+    }
+
+    private getASMotiveDisplayNames(unit: UnitSummary): string[] {
         const movementModes = unit.as?.MVm;
         if (!movementModes) {
             return [];
@@ -580,15 +757,17 @@ export class UnitSearchIndexService {
         return type;
     }
 
-    private ensureSyntheticComponent(components: UnitComponent[], id: string, location: string): void {
-        if (components.some(component => component.id === id && component.t === 'HIDDEN' && component.l === location && component.p === -1)) {
-            return;
+    private getSyntheticComponentNames(unit: UnitSummary): string[] {
+        const names: string[] = [];
+        if (unit.armorType) names.push(unit.armorType.endsWith(' Armor') ? unit.armorType : `${unit.armorType} Armor`);
+        if (unit.structureType) {
+            names.push(unit.structureType.endsWith(' Structure') ? unit.structureType : `${unit.structureType} Structure`);
         }
-
-        components.push({ q: 1, n: id, id, l: location, t: 'HIDDEN', p: -1 });
+        if (unit.engine) names.push(unit.engine.endsWith(' Engine') ? unit.engine : `${unit.engine} Engine`);
+        return names;
     }
 
-    private sumWeaponDamageNoPhysical(unit: Unit, components: UnitComponent[], ignoreOneshots = false): number {
+    private sumWeaponDamageNoPhysical(unit: UnitSummary, components: UnitComponent[], ignoreOneshots = false): number {
         let sum = 0;
         for (const weapon of components) {
             if (ignoreOneshots && weapon.os && weapon.os > 0) {

@@ -12,6 +12,7 @@ import {
     ElementRef,
     DestroyRef,
     effect,
+    signal,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
@@ -21,21 +22,30 @@ import { OptionsService } from '../../../services/options.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { LoggerService } from '../../../services/logger.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
-import { DataService } from '../../../services/data.service';
-import { createHandlerCommandContext, createHandlerQueryContext, EquipmentInteractionRegistryService } from '../../../services/equipment-interaction-registry.service';
-import { ForceBuilderService } from '../../../services/force-builder.service';
 import { ToastService } from '../../../services/toast.service';
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import type { CBTForce } from '../../../models/cbt-force.model';
-import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
+import type { PageViewerMember } from '../internal/types';
+import { isCBTForceMember, isCBTMekForceMember } from '../../../models/force-member.model';
+import { createCommandId } from '../../../models/runtime/runtime-state';
+import { hasPendingNonMekChanges } from '../../../models/runtime/non-mek-unit-instance';
 import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';
-import { countActionablePsrChecks } from './page-turn-summary.util';
+import { PageRuntimeHistoryPanelComponent } from './page-runtime-history-panel.component';
 import { PageViewerStateService } from '../internal/page-viewer-state.service';
+import { ForceWorkspaceStateService } from '../../../services/force-workspace-state.service';
 import { EquipmentDialogComponent } from '../../equipment-dialog/equipment-dialog.component';
-import type { EquipmentDialogContext, EquipmentDialogData } from '../../equipment-dialog/equipment-dialog.model';
+import type { EquipmentDialogData } from '../../equipment-dialog/equipment-dialog.model';
 import { WeaponTargetsOverlayController } from '../../equipment-dialog/weapon-targets-overlay.controller';
+import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
+import {
+    isMekTurnPanelDirty,
+    isMekTurnPanelDirtyPhase,
+    mekTurnPanelPhase,
+} from '../../../models/runtime/mek-turn-panel';
+import { actionableMekPilotChecks } from './page-turn-summary.util';
+import { hasNonMekRuntime } from '../../../models/cbt-unit-snapshot';
 
 const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
+const PAGE_RUNTIME_HISTORY_OVERLAY_PREFIX = 'page-viewer-runtime-history';
 
 /*
  * 
@@ -64,9 +74,7 @@ export class PageInteractionOverlayComponent {
     private overlay = inject(Overlay);
     private host = inject(ElementRef<HTMLElement>);
     private pageViewerState = inject(PageViewerStateService);
-    private dataService = inject(DataService);
-    private equipmentRegistryService = inject(EquipmentInteractionRegistryService);
-    private forceBuilderService = inject(ForceBuilderService);
+    private forceWorkspace = inject(ForceWorkspaceStateService);
     private toastService = inject(ToastService);
     private targetsOverlay = new WeaponTargetsOverlayController({
         overlay: this.overlay,
@@ -76,13 +84,45 @@ export class PageInteractionOverlayComponent {
     });
 
     // Inputs
-    unit = input<CBTForceUnit | null>(null);
+    member = input<PageViewerMember | null>(null);
     force = input<CBTForce | null>(null);
+    private readonly runtimeVersion = signal(0);
+    readonly isMek = computed(() => isCBTMekForceMember(this.member()));
+    readonly supportsTargeting = computed(() => {
+        this.runtimeVersion();
+        const member = this.member();
+        return member !== null && member.force.getAttackerTargeting(member.id) !== null;
+    });
+    canUndo(): boolean {
+        return this.force()?.getRuntimeUndoState().canUndo === true
+            && this.force()?.readOnly() !== true;
+    }
+
+    canRedo(): boolean {
+        return this.force()?.getRuntimeUndoState().canRedo === true
+            && this.force()?.readOnly() !== true;
+    }
+    private readonly turn = computed(() => {
+        this.runtimeVersion();
+        const member = this.member();
+        return isCBTMekForceMember(member) ? member.force.getMekTurnPanelSnapshot(
+            member.id,
+            this.optionsService.options().cbtAutomations ? 'automatic' : 'manual',
+        ) : null;
+    });
+    private readonly entityTurn = computed(() => {
+        this.runtimeVersion();
+        const member = this.member();
+        if (!member || isCBTMekForceMember(member)) return null;
+        const snapshot = member.force.getUnitSnapshot(member.id);
+        return snapshot && hasNonMekRuntime(snapshot) ? snapshot : null;
+    });
+    readonly supportsTurnTracker = computed(() => this.turn() !== null || this.entityTurn() !== null);
     
     /**
      * When 'fixed', the overlay is bound to the container and stays stable during zoom/pan.
      * When 'page', the overlay is bound to the page-wrapper and moves with zoom/pan.
-     * Default is 'page' for backwards compatibility and multi-page mode.
+     * Page mode is the normal multi-page layout; fixed mode is opt-in.
      */
     mode = input<'fixed' | 'page'>('page');
     
@@ -91,56 +131,83 @@ export class PageInteractionOverlayComponent {
     }
 
     dirty = computed(() => {
-        const unit = this.unit();
-        if (!unit) return false;
-        return unit.turnState().dirty();
-    });
-
-    dirtyPhase = computed(() => {
-        const unit = this.unit();
-        if (!unit) return false;
-        return unit.turnState().dirtyPhase();
-    });
-
-    falling = computed(() => {
-        const unit = this.unit();
-        if (!unit) return false;
-        return unit.turnState().autoFall();
-    });
-
-    private pendingPSRChecks = computed(() => {
-        const unit = this.unit();
-        if (!unit) return [];
-        const turnState = unit.turnState();
-        return turnState.getPSRChecks().filter(check =>
-            check.fallCheck !== undefined
-            && check.id !== undefined
-            && turnState.getPSROutcome(check.id) === undefined
+        const turn = this.turn();
+        if (turn !== null) return isMekTurnPanelDirty(turn);
+        const entity = this.entityTurn()?.state;
+        const member = this.member();
+        return entity !== undefined && (
+            hasPendingNonMekChanges(entity)
+            || entity.turn.airborne !== null
+            || entity.turn.movement !== null
+            || member?.force.hasRuntimeHistoryForUnitTurn(
+                member.id,
+                entity.turn.turnCounter + 1,
+            ) === true
         );
     });
 
+    dirtyPhase = computed(() => {
+        const turn = this.turn();
+        if (turn !== null) return isMekTurnPanelDirtyPhase(turn);
+        const entity = this.entityTurn();
+        return entity !== null && entity !== undefined && hasPendingNonMekChanges(entity.state);
+    });
+
+    falling = computed(() => (this.turn()?.movementState.automaticFalls.length ?? 0) > 0);
+
     actionablePSRCount = computed<number>(() => {
-        return countActionablePsrChecks(this.pendingPSRChecks(), this.falling());
+        const turn = this.turn();
+        if (!turn) return 0;
+        return actionableMekPilotChecks(
+            turn.movementState.checks,
+            turn.movementState.automaticFalls.length > 0,
+        ).filter(check => check.status === 'pending').length;
     });
 
     hasActionablePSRChecks = computed(() => this.actionablePSRCount() > 0);
 
     currentPhase = computed(() => {
-        const unit = this.unit();
-        if (!unit) return '';
-        return unit.turnState().currentPhase();
+        const turn = this.turn();
+        return turn ? mekTurnPanelPhase(turn) : this.entityTurn() ? 'T' : '';
     });
 
-    endTurnButtonVisible = computed(() => {
+    endTurnButtonVisible(): boolean {
         const force = this.force();
         if (!force) return false;
-        const units = force.units();
-        return units.some(u => u.turnState().dirty());
-    });
+        const policy = this.optionsService.options().cbtAutomations ? 'automatic' : 'manual';
+        return force.members().some(member => {
+            if (isCBTMekForceMember(member)) {
+                const snapshot = force.getMekTurnPanelSnapshot(member.id, policy);
+                return snapshot !== null && isMekTurnPanelDirty(snapshot);
+            }
+            if (!isCBTForceMember(member)) return false;
+            const snapshot = force.getUnitSnapshot(member.id);
+            const entity = snapshot && hasNonMekRuntime(snapshot) ? snapshot.state : undefined;
+            return entity !== undefined && (
+                hasPendingNonMekChanges(entity)
+                || entity.turn.airborne !== null
+                || entity.turn.movement !== null
+                || force.hasRuntimeHistoryForUnitTurn(
+                    member.id,
+                    entity.turn.turnCounter + 1,
+                )
+            );
+        });
+    }
 
     turnTrackerVisible = computed(() => !this.pageViewerState.inventoryDialogOpen());
 
     constructor() {
+        effect(onCleanup => {
+            const member = this.member();
+            if (!member) return;
+            const subscription = member.force.changed.subscribe(changedUnitIds => {
+                if (changedUnitIds?.includes(member.id) ?? true) {
+                    this.runtimeVersion.update(value => value + 1);
+                }
+            });
+            onCleanup(() => subscription.unsubscribe());
+        });
         effect(() => {
             if (this.pageViewerState.inventoryDialogOpen()) {
                 this.closeAllOverlays();
@@ -148,12 +215,13 @@ export class PageInteractionOverlayComponent {
         });
     }
 
-    openTurnSummary(event: MouseEvent) {
+    openTurnSummary(event: Event): void {
         event.stopPropagation();
         if (!this.turnTrackerVisible()) return;
 
-        const unitId = this.unit()?.id;
-        const overlayKey = `turnSummary-${unitId}`;
+        const member = this.member();
+        if (!member || !this.supportsTurnTracker()) return;
+        const overlayKey = `turnSummary-${member.id}`;
 
         // Toggle: close if already open
         if (this.overlayManager.has(overlayKey)) {
@@ -165,15 +233,7 @@ export class PageInteractionOverlayComponent {
 
         const target = event.currentTarget as HTMLElement || (event.target as HTMLElement);
 
-        // Create a custom injector that provides this component as the parent
-        const customInjector = Injector.create({
-            providers: [
-                { provide: PageInteractionOverlayComponent, useValue: this }
-            ],
-            parent: this.injector
-        });
-
-        const portal = new ComponentPortal(PageTurnSummaryPanelComponent, null, customInjector);
+        const portal = new ComponentPortal(PageTurnSummaryPanelComponent, null, this.injector);
 
         const { componentRef } = this.overlayManager.createManagedOverlay<PageTurnSummaryPanelComponent>(overlayKey, target, portal, {
             hasBackdrop: false,
@@ -185,6 +245,7 @@ export class PageInteractionOverlayComponent {
         });
 
         if (componentRef) {
+            componentRef.setInput('member', member);
             componentRef.setInput('endTurnForAllButtonVisible', this.endTurnButtonVisible());
             outputToObservable(componentRef.instance.endTurnForAllClicked).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
                 this.endTurnForAll();
@@ -195,17 +256,24 @@ export class PageInteractionOverlayComponent {
     openPsrWarning(event: MouseEvent): void {
         event.stopPropagation();
         if (!this.turnTrackerVisible()) return;
-        togglePsrWarningOverlay(this, this.overlayManager, this.injector, this.overlay, () => this.closeAllOverlays());
+        const member = this.member();
+        togglePsrWarningOverlay(
+            isCBTMekForceMember(member) ? member : null,
+            this.overlayManager,
+            this.injector,
+            this.overlay,
+            () => this.closeAllOverlays(),
+        );
     }
 
     openTargets(event: MouseEvent): void {
         event.stopPropagation();
         if (!this.turnTrackerVisible()) return;
 
-        const unit = this.unit();
-        if (!unit) return;
+        const member = this.member();
+        if (!member || !this.supportsTargeting()) return;
 
-        const overlayKey = this.targetsOverlayKey(unit.id);
+        const overlayKey = this.targetsOverlayKey(member.id);
         if (this.targetsOverlay.has(overlayKey)) {
             this.targetsOverlay.close(overlayKey);
             return;
@@ -217,36 +285,77 @@ export class PageInteractionOverlayComponent {
         this.targetsOverlay.open({
             overlayKey,
             target,
-            unit,
-            sensitiveAreaReferenceElement: this.nativeElement,
-            afterTargetUpdate: updatedUnit => updatedUnit.syncInventoryControlSelectionSvg()
+            member,
+            sensitiveAreaReferenceElement: this.nativeElement
         });
     }
 
-    openWeaponEquipmentDialog(event: MouseEvent): void {
+    openRuntimeHistory(event: MouseEvent): void {
+        event.stopPropagation();
+        if (!this.turnTrackerVisible()) return;
+        const force = this.force();
+        if (!force) return;
+        const overlayKey = `${PAGE_RUNTIME_HISTORY_OVERLAY_PREFIX}-${force.instanceId() ?? 'force'}`;
+        if (this.overlayManager.has(overlayKey)) {
+            this.overlayManager.closeManagedOverlay(overlayKey);
+            return;
+        }
+        this.closeAllOverlays();
+        const portal = new ComponentPortal(PageRuntimeHistoryPanelComponent, null, this.injector);
+        const { componentRef } = this.overlayManager.createManagedOverlay<PageRuntimeHistoryPanelComponent>(
+            overlayKey,
+            event.currentTarget as HTMLElement,
+            portal,
+            {
+                hasBackdrop: false,
+                panelClass: 'runtime-history-overlay-panel',
+                closeOnOutsideClick: false,
+                closeOnOutsideClickOnly: true,
+                sensitiveAreaReferenceElement: this.nativeElement,
+                scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            },
+        );
+        componentRef?.setInput('force', force);
+        componentRef?.setInput('activeUnitId', this.member()?.id ?? null);
+        componentRef?.setInput('selectUnit', (instanceId: string) => {
+            const unit = force.members().find(candidate => candidate.id === instanceId);
+            if (unit) this.forceWorkspace.selectUnit(unit);
+        });
+        componentRef?.setInput('close', () => this.overlayManager.closeManagedOverlay(overlayKey));
+    }
+
+    async undoRuntimeCommand(event: MouseEvent): Promise<void> {
+        event.stopPropagation();
+        const force = this.force();
+        if (!force || !this.canUndo()) return;
+        const result = await force.undoRuntimeCommand();
+        if (!result.accepted) this.toastService.showToast(`Undo failed: ${result.reason}`, 'error');
+    }
+
+    async redoRuntimeCommand(event: MouseEvent): Promise<void> {
+        event.stopPropagation();
+        const force = this.force();
+        if (!force || !this.canRedo()) return;
+        const result = await force.redoRuntimeCommand();
+        if (!result.accepted) this.toastService.showToast(`Redo failed: ${result.reason}`, 'error');
+    }
+
+    openWeaponEquipmentDialog(event: Event, initialTab: 'weapons' | 'ammo' = 'weapons'): void {
         event.stopPropagation();
         if (!this.turnTrackerVisible()) return;
 
-        const unit = this.unit();
-        if (!unit) return;
+        const member = this.member();
+        if (!member) return;
 
         this.closeAllOverlays();
-        const unitList = this.pageViewerState.forceUnits().length > 0 ? this.pageViewerState.forceUnits() : [unit];
-        const equipmentCatalog = this.dataService.getEquipmentRegistry();
-        const context: EquipmentDialogContext = {
-            registry: this.equipmentRegistryService.getRegistry(),
-            queryContext: createHandlerQueryContext(equipmentCatalog),
-            commandContext: createHandlerCommandContext(equipmentCatalog, this.toastService, this.dialogsService),
-        };
         this.pageViewerState.beginInventoryDialog();
         const ref = this.dialogsService.createDialog<void>(EquipmentDialogComponent, {
+            panelClass: 'fullscreen-dialog',
             data: {
-                unitList,
-                unitIndex: Math.max(0, unitList.findIndex(candidate => candidate.id === unit.id)),
-                onUnitChange: (selectedUnit) => this.forceBuilderService.selectUnit(selectedUnit),
-                context,
-                initialTab: 'weapons'
-            } as EquipmentDialogData,
+                member,
+                initialTab,
+                onMemberChange: selected => this.forceWorkspace.selectUnit(selected),
+            } satisfies EquipmentDialogData,
         });
         ref.closed.subscribe(() => this.pageViewerState.endInventoryDialog());
     }
@@ -255,28 +364,92 @@ export class PageInteractionOverlayComponent {
         return `${PAGE_TARGETS_OVERLAY_PREFIX}-${unitId}`;
     }
 
-    async endTurnForAll() {
+    async endTurnForAll(): Promise<void> {
+        const force = this.force();
+        if (!force) return;
         const confirm = await this.dialogsService.requestConfirmation(
             'Are you sure you want to end the turn for all units?',
             'End Turn',
             'info'
         );
         if (!confirm) return;
-        const force = this.force();
-        if (!force) return;
-        force.units().forEach(unit => {
-            unit.endTurn();
-        });
+        try {
+            const result = await force.endTurnForAllUnits();
+            if (result.accepted) return;
+            const failures = result.results
+                .filter(row => !row.accepted)
+                .map(row => `${row.instanceId}: ${(row.reason ?? 'command rejected').replaceAll('_', ' ').toLowerCase()}`);
+            const detail = failures.length > 0 ? failures.join('; ') : 'the force owner rejected the command';
+            this.toastService.showToast(
+                result.changed
+                    ? `End turn completed only partially: ${detail}.`
+                    : `Could not end turn for all units: ${detail}.`,
+                'error',
+            );
+        } catch (error) {
+            this.toastService.showToast(
+                `Could not end turn for all units: ${error instanceof Error ? error.message : 'unexpected error'}.`,
+                'error',
+            );
+        }
     }
 
     async endPhase(event: MouseEvent) {
         event.stopPropagation();
-        this.unit()?.endPhase();
+        await this.dispatchTurnBoundary('end-phase');
     }
 
     async endTurn(event: MouseEvent) {
         event.stopPropagation();
-        this.unit()?.endTurn();
+        await this.dispatchTurnBoundary('end-turn');
+    }
+
+    private async dispatchTurnBoundary(type: 'end-phase' | 'end-turn'): Promise<void> {
+        const member = this.member();
+        const snapshot = this.turn();
+        if (!member) return;
+        try {
+            const result = isCBTMekForceMember(member) && snapshot
+                ? await member.force.dispatchMekUnitCommand(member.id, type === 'end-turn'
+                    ? {
+                        type,
+                        policy: this.optionsService.options().cbtAutomations ? 'automatic' : 'manual',
+                        commandId: createCommandId(),
+                        expectedRevision: snapshot.stateRevision,
+                    }
+                    : {
+                        type,
+                        commandId: createCommandId(),
+                        expectedRevision: snapshot.stateRevision,
+                    })
+                : type === 'end-phase'
+                    ? await this.dispatchEntityTurnBoundary(member, 'end-phase')
+                    : await this.dispatchEntityTurnBoundary(member, 'end-turn');
+            if (result === null) return;
+            if (!result.accepted) {
+                const message = result.reason === 'PENDING_PILOT_CHECKS'
+                    ? `Resolve pending Piloting Skill Rolls before ending the ${type === 'end-phase' ? 'phase' : 'turn'}.`
+                    : `Turn action rejected: ${result.reason}`;
+                this.toastService.showToast(message, 'error');
+            }
+        } catch (error) {
+            this.toastService.showToast(
+                `Turn action failed: ${error instanceof Error ? error.message : 'unexpected error'}`,
+                'error',
+            );
+        }
+    }
+
+    private dispatchEntityTurnBoundary(
+        member: PageViewerMember,
+        kind: 'end-phase' | 'end-turn',
+    ) {
+        const snapshot = member.force.getUnitSnapshot(member.id);
+        if (!snapshot || !hasNonMekRuntime(snapshot)) return Promise.resolve(null);
+        return member.force.dispatchNonMekUnitCommand(member.id, {
+            kind,
+            expectedRevision: snapshot.state.stateRevision,
+        });
     }
 
     /**

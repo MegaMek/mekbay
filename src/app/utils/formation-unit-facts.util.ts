@@ -3,7 +3,7 @@
 // Author: Drake
 
 import type { Faction } from '../models/factions.model';
-import { CBT_WEIGHT_CLASS_ORDINALS, type Unit } from '../models/units.model';
+import { CBT_WEIGHT_CLASS_ORDINALS, type UnitSummary } from '../models/unit-summary.model';
 import { isGroundMovementMode } from './as-common.util';
 
 const CBT_LIGHT_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Light') ?? 1;
@@ -13,7 +13,7 @@ const CBT_ASSAULT_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Assault') ?? 4;
 
 export interface FormationUnitFacts {
     readonly forceUnit: FormationUnitLike;
-    readonly unit: Unit;
+    readonly unit: UnitSummary;
     readonly name: string;
     readonly chassis: string;
     readonly role: string;
@@ -47,12 +47,12 @@ export interface FormationUnitForceContext {
 
 export interface FormationUnitLike {
     readonly force: FormationUnitForceContext;
-    getUnit(): Unit;
+    getSummary(): UnitSummary;
     pilotSkill?(): number;
     gunnerySkill?(): number;
 }
 
-export function asGetMaxGroundMove(unit: Unit): number {
+export function asGetMaxGroundMove(unit: UnitSummary): number {
     const movementModes = unit.as?.MVm;
     if (!movementModes) return 0;
 
@@ -65,11 +65,11 @@ export function asGetMaxGroundMove(unit: Unit): number {
     return maxMove;
 }
 
-export function asGetJumpMove(unit: Unit): number {
+export function asGetJumpMove(unit: UnitSummary): number {
     return unit.as?.MVm?.['j'] ?? 0;
 }
 
-export function cbtCanDealDamage(unit: Unit, minDamage: number, atRange: number): boolean {
+export function cbtCanDealDamage(unit: UnitSummary, minDamage: number, atRange: number): boolean {
     if (!unit.comp || unit.comp.length === 0) return false;
 
     let totalDamageAtRange = 0;
@@ -95,7 +95,7 @@ export function cbtCanDealDamage(unit: Unit, minDamage: number, atRange: number)
     return false;
 }
 
-export function cbtHasAutocannon(unit: Unit): boolean {
+export function cbtHasAutocannon(unit: UnitSummary): boolean {
     return unit.comp?.some(component => (
         component.n?.includes('AC/')
         || component.n?.includes('LB ')
@@ -103,12 +103,12 @@ export function cbtHasAutocannon(unit: Unit): boolean {
     )) || false;
 }
 
-export function cbtHasArtillery(unit: Unit): boolean {
+export function cbtHasArtillery(unit: UnitSummary): boolean {
     return unit.comp?.some(component => component.t === 'A') || false;
 }
 
 export function compileFormationUnitFacts(forceUnit: FormationUnitLike): FormationUnitFacts {
-    const unit = forceUnit.getUnit();
+    const unit = forceUnit.getSummary();
     const cbtWeightClass = CBT_WEIGHT_CLASS_ORDINALS.get(unit.weightClass) ?? -1;
     const pilotSkill = forceUnit.pilotSkill?.();
     const gunnerySkill = forceUnit.gunnerySkill?.();

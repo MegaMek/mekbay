@@ -59,6 +59,16 @@
         <div class="swipe-container" [class.animating]="isSwipeAnimating()" [class.swiping]="isSwiping()">
             <!-- Current unit view -->
             <div #currentPanel class="swipe-panel current-panel" [style.--current-offset]="currentPanelOffset()">
+                @if (unit.loadIssues.length) {
+                <section class="unit-load-issues" role="alert">
+                    <strong>Unit data issues</strong>
+                    @for (issue of unit.loadIssues; track $index) {
+                    <div class="unit-load-issue" [class.error]="issue.severity === 'error'">
+                        <span>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}:</span> {{ issue.message }}
+                    </div>
+                    }
+                </section>
+                }
                 @if (activeTab() === 'General') {
                 <unit-details-general-tab [unit]="unit" [gunnerySkill]="gunnerySkill()"
                     [pilotingSkill]="pilotingSkill()" [adjustedValueOverride]="searchResultContext()?.adjustedValue">
@@ -96,6 +106,16 @@
             @if (incomingUnit()) {
             <div #incomingPanel class="swipe-panel incoming-panel" [style.--incoming-offset]="incomingPanelOffset()"
                 [scrollTop]="incomingPanelScrollTop()">
+                @if (incomingUnit()!.loadIssues.length) {
+                <section class="unit-load-issues" role="alert">
+                    <strong>Unit data issues</strong>
+                    @for (issue of incomingUnit()!.loadIssues; track $index) {
+                    <div class="unit-load-issue" [class.error]="issue.severity === 'error'">
+                        <span>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}:</span> {{ issue.message }}
+                    </div>
+                    }
+                </section>
+                }
                 @if (activeTab() === 'General') {
                 <unit-details-general-tab [unit]="incomingUnit()!"
                     [gunnerySkill]="incomingGunnerySkill()"
@@ -148,13 +168,13 @@
         @if (data.selectMode) {
         <button class="modal-btn bt-button" (click)="onSelect()">SELECT</button>
         } @else if (!data.hideAddButton) {
-        <div class="modal-btn bt-split-button" [class.disabled]="this.forceBuilderService.smartCurrentForce()?.readOnly()">
+        <div class="modal-btn bt-split-button" [class.disabled]="forceWorkspace.smartCurrentForce()?.readOnly()">
             <button class="bt-split-part split-main"
-                [disabled]="this.forceBuilderService.smartCurrentForce()?.readOnly()"
+                [disabled]="forceWorkspace.smartCurrentForce()?.readOnly()"
                 longPress (shortPress)="onAdd($event)" (longPress)="onAddLongPress()"
                 [longPressDuration]=1000 title="Hold to add without closing">ADD</button>
             <button class="bt-split-part split-extra"
-                [disabled]="this.forceBuilderService.smartCurrentForce()?.readOnly()"
+                [disabled]="forceWorkspace.smartCurrentForce()?.readOnly()"
                 (click)="onAddMultiple()" title="Add multiple copies">+</button>
         </div>
         }

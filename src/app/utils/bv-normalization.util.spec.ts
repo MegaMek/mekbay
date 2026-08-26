@@ -6,7 +6,7 @@ import {
     DEFAULT_CLASSIC_BV_NORMALIZATION_MAX,
     type BvNormalizationSettings,
 } from '../models/unit-search-result.model';
-import type { Unit, UnitSubtype, UnitType } from '../models/units.model';
+import type { UnitSummary, UnitSubtype, UnitType } from '../models/unit-summary.model';
 import { BVCalculatorUtil } from './bv-calculator.util';
 import {
     findBvNormalizationMatch,
@@ -15,7 +15,7 @@ import {
 } from './bv-normalization.util';
 import { isValidNormalizationSkillRange, updateNumericRangeBound } from './unit-search-normalization-range.util';
 
-function createUnit(overrides: Partial<Unit> = {}): Unit {
+function createUnit(overrides: Partial<UnitSummary> = {}): UnitSummary {
     return {
         name: 'Test Unit',
         bv: 1000,
@@ -23,7 +23,7 @@ function createUnit(overrides: Partial<Unit> = {}): Unit {
         subtype: '' as UnitSubtype,
         canAntiMech: true,
         ...overrides,
-    } as Unit;
+    } as UnitSummary;
 }
 
 function settings(

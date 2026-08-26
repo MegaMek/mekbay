@@ -1,4 +1,9 @@
-<div class="weapons-equipment-panel" [class.hide-actions-column]="!hasActionsColumn()" [class.hide-heat-column]="!tracksHeat()" [class.has-targets]="hasTargets()" [class.aero-ranges]="usesAerospaceWeaponValues()" [class.ground-extreme-ranges]="showsGroundExtremeRange()">
+<div class="weapons-equipment-panel"
+    [class.hide-actions-column]="!hasActionsColumn()"
+    [class.hide-heat-column]="!tracksHeat()"
+    [class.has-targets]="hasTargets()"
+    [class.aero-ranges]="usesAerospaceWeaponValues()"
+    [class.ground-extreme-ranges]="showsGroundExtremeRange()">
     <div class="weapon-equipment-grid">
             @for (group of groups(); track group.id) {
                 <section class="weapon-equipment-section">
@@ -25,6 +30,7 @@
                                         [class.target-selected]="!!selectedGroupTarget"
                                         [class.target-mixed]="groupSomeTargetRowsSelected(group)"
                                         [style.background]="selectedGroupTarget?.color ?? null"
+                                        [disabled]="readOnly()"
                                         aria-label="Select target for all ranged weapons"
                                         (click)="onGroupTargetSelectorClick($event, group)">
                                         {{ selectedGroupTarget?.letter ?? '' }}
@@ -36,6 +42,7 @@
                                         aria-label="Select all ranged weapons"
                                         [checked]="groupAllSelectableRowsSelected(group)"
                                         [indeterminate]="groupSomeSelectableRowsSelected(group)"
+                                        [disabled]="readOnly()"
                                         (change)="toggleGroupSelectableRows(group)">
                                 }
                             }
@@ -94,12 +101,13 @@
                                                     type="button"
                                                     [class.target-selected]="!!rowTarget.target"
                                                     [style.background]="rowTarget.target?.color ?? null"
+                                                    [disabled]="readOnly()"
                                                     [attr.aria-label]="rowTarget.target ? 'Selected target ' + rowTarget.target.letter : 'No selected target'"
                                                     (click)="onRowTargetSelectorClick($event, row)">
                                                     {{ rowTarget.target?.letter ?? '' }}
                                                 </button>
                                             } @else {
-                                                <input type="checkbox" class="bt-checkbox" [checked]="isSelected(row)" (change)="toggleSelected(row)">
+                                                <input type="checkbox" class="bt-checkbox" [checked]="isSelected(row)" [disabled]="readOnly() || (!isSelected(row) && (row.disabled || row.destroyed))" (change)="toggleSelected(row)">
                                             }
                                         }
                                     </div>
@@ -186,6 +194,7 @@
                                                             [options]="ammoDropdownOptions(row)"
                                                             [value]="ammo.selectedOptionId"
                                                             [disabled]="readOnly()"
+                                                            [expandPanelToContent]="true"
                                                             (valueChange)="selectAmmoOption(row, $event)"
                                                         />
                                                     } @else {

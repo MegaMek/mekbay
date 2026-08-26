@@ -6,7 +6,7 @@ import { ChangeDetectionStrategy, Component, inject, signal, viewChild, type Aft
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
 import type { ASForceUnit } from '../../../models/as-force-unit.model';
-import type { MoveType } from '../../../models/units.model';
+import type { MoveType } from '../../../models/unit-summary.model';
 
 /*
  *
@@ -289,7 +289,7 @@ export class MotiveDamageRollDialogComponent implements AfterViewInit {
     private readonly mainRoller = viewChild<DiceRollerComponent>('mainRoller');
 
     private readonly forceUnit = this.data.forceUnit;
-    readonly moveType = this.forceUnit.getUnit().moveType;
+    readonly moveType = this.forceUnit.getSummary().moveType;
 
     readonly result = signal<MotiveDamageResult | null>(null);
 
@@ -304,7 +304,7 @@ export class MotiveDamageRollDialogComponent implements AfterViewInit {
 
     /** Display name combining chassis, model, and optional alias */
     readonly unitDisplayName = computed(() => {
-        const unit = this.forceUnit.getUnit();
+        const unit = this.forceUnit.getSummary();
         const chassisModel = `${unit.chassis} ${unit.model}`;
         const alias = this.forceUnit.alias();
         return alias ? `${chassisModel} (${alias})` : chassisModel;

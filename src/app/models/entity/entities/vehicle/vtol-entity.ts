@@ -15,7 +15,7 @@ export class VtolEntity extends VehicleEntity {
   override readonly entityType: EntityType = 'VTOL';
 
   override componentLocationOrder(): readonly string[] {
-    return ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Rotor'];
+    return ['Body', 'Front', 'Right', 'Left', 'Rear', 'Rotor', 'Turret'];
   }
 
   override unitType(): UnitType {

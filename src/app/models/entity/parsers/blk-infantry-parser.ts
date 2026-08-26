@@ -15,13 +15,13 @@ import {
   InfantrySpecialization,
   MotiveType,
 } from '../types';
-import { BuildingBlock } from './building-block';
+import { BuildingBlock, parseExactFiniteNumber, parseExactInteger } from './building-block';
 import { parseBaseBlk, parseBlkEquipment } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 import { decodeMotiveType } from './motive-type-codec';
 
 // ============================================================================
-// Predefined beast mounts (loaded from inline data matching infantry-mounts.json)
+// Canonical predefined beast mounts from MegaMek InfantryMount.
 // ============================================================================
 
 const PREDEFINED_MOUNTS: ReadonlyMap<string, InfantryMount> = new Map([
@@ -66,15 +66,15 @@ function parseInfantryMotionType(raw: string, entity: InfantryEntity, ctx: Parse
         entity.mount.set({
           name: fields[0],
           size,
-          weight: parseFloat(fields[2]) || 0,
-          movementPoints: parseInt(fields[3], 10) || 0,
+          weight: parseCustomBeastNumber(fields[2], 'weight', ctx, false, 0),
+          movementPoints: parseCustomBeastNumber(fields[3], 'movement points', ctx, true, 0),
           movementMode: decodeMotiveType(fields[4]),
-          burstDamage: parseInt(fields[5], 10) || 0,
-          vehicleDamage: parseInt(fields[6], 10) || 0,
-          damageDivisor: parseFloat(fields[7]) || 1,
-          maxWaterDepth: parseInt(fields[8], 10) || 0,
-          secondaryGroundMP: parseInt(fields[9], 10) || 0,
-          uwEndurance: parseInt(fields[10], 10) || 0,
+          burstDamage: parseCustomBeastNumber(fields[5], 'burst damage', ctx, true, 0),
+          vehicleDamage: parseCustomBeastNumber(fields[6], 'vehicle damage', ctx, true, 0),
+          damageDivisor: parseCustomBeastNumber(fields[7], 'damage divisor', ctx, false, 1),
+          maxWaterDepth: parseCustomBeastNumber(fields[8], 'water depth', ctx, true, 0),
+          secondaryGroundMP: parseCustomBeastNumber(fields[9], 'secondary ground MP', ctx, true, 0),
+          uwEndurance: parseCustomBeastNumber(fields[10], 'underwater endurance', ctx, true, 0),
           custom: true,
         });
       } else {
@@ -124,6 +124,21 @@ function parseInfantryMotionType(raw: string, entity: InfantryEntity, ctx: Parse
 
   // ── Simple motive types ───────────────────────────────────────────
   entity.motiveType.set(decodeMotiveType(trimmed));
+}
+
+function parseCustomBeastNumber(
+  value: string,
+  label: string,
+  ctx: ParseContext,
+  integer: boolean,
+  fallback: number,
+): number {
+  const parsed = integer ? parseExactInteger(value) : parseExactFiniteNumber(value);
+  if (Number.isNaN(parsed)) {
+    ctx.warn('motion_type', `Invalid custom beast ${label}: "${value}"`);
+    return fallback;
+  }
+  return parsed;
 }
 
 // ============================================================================

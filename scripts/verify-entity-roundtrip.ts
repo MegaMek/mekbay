@@ -28,24 +28,8 @@ import * as path from 'path';
 import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
-import { writeEntity } from '../src/app/models/entity/write-entity';
-import { MekEntity } from '../src/app/models/entity/entities/mek/mek-entity';
+import { encodeNativeEntity } from '../src/app/models/entity/write-entity';
 import { loadQuirkResolver } from './quirk-fixture';
-
-/**
- * UnitTypes explicitly skipped - these entity types are not yet supported.
- * Files with these types are counted separately and do NOT count as failures.
- */
-const SKIPPED_UNIT_TYPES = new Set([
-  'BuildingEntity',
-  'GunEmplacement',
-]);
-
-/** Extract the UnitType string from a raw BLK file without full parsing. */
-function peekBlkUnitType(content: string): string | null {
-  const match = content.match(/<UnitType>\s*([^<\r\n]+)/i);
-  return match ? match[1].trim() : null;
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLI argument parsing
@@ -59,7 +43,7 @@ function getArg(name: string, defaultValue: string): string {
 const hasFlag = (name: string) => args.includes(`--${name}`);
 
 const INPUT_DIR = path.resolve(getArg('input', String.raw`..\..\mm-data\data\mekfiles`));
-const OUTPUT_DIR = path.resolve(getArg('input', String.raw`..\..\tmp\roundtrip`));
+const OUTPUT_DIR = path.resolve(getArg('output', String.raw`..\..\tmp\roundtrip`));
 const TYPE_FILTER = getArg('type', '');
 const FAIL_FAST = hasFlag('fail-fast');
 const PROFILE = hasFlag('profile');
@@ -192,6 +176,7 @@ interface VerifyResult {
   write1?: string;
   write2?: string;
   timings?: VerifyTimings;
+  diagnostics?: string[];
 }
 
 interface VerifyTimings {
@@ -203,50 +188,81 @@ interface VerifyTimings {
   normalise: number;
 }
 
-function verifyFile(filePath: string, content: string, equipmentRegistry: EquipmentRegistry): VerifyResult {
+async function verifyFile(
+  filePath: string,
+  content: string,
+  equipmentRegistry: EquipmentRegistry,
+): Promise<VerifyResult> {
   const timings: VerifyTimings = { read: 0, parse1: 0, write1: 0, parse2: 0, write2: 0, normalise: 0 };
   let phaseStart = performance.now();
   const fileName = path.basename(filePath);
-  const ext = path.extname(fileName).toLowerCase();
-
-  // Determine write format
-  const isMtf = ext === '.mtf';
+  const diagnostics: string[] = [];
 
   // ── Pass 1: Parse original ──
   let entity1;
   try {
     phaseStart = performance.now();
-    entity1 = parseEntity(content, fileName, equipmentRegistry, { quirkResolver }).entity;
+    const parsed = parseEntity(content, fileName, equipmentRegistry, { quirkResolver });
+    entity1 = parsed.entity;
+    diagnostics.push(...parsed.diagnostics.map(diagnostic =>
+      `pass1 ${diagnostic.severity} ${diagnostic.field}: ${diagnostic.message}`));
+    if (parsed.diagnostics.some(diagnostic => diagnostic.severity === 'error')) {
+      return {
+        file: filePath,
+        status: 'parse-error',
+        entityType: entity1.entityType,
+        error: 'Pass1 produced parser errors',
+        diagnostics,
+        timings,
+      };
+    }
     timings.parse1 = performance.now() - phaseStart;
-  } catch (e: any) {
-    return { file: filePath, status: 'parse-error', error: `Pass1 parse: ${e.message}`, timings };
+  } catch (caught) {
+    return {
+      file: filePath,
+      status: 'parse-error',
+      error: `Pass1 parse: ${errorMessage(caught)}`,
+      diagnostics,
+      timings,
+    };
   }
 
   // ── Pass 1: Write ──
   let written1: string;
   try {
     phaseStart = performance.now();
-    const format = isMtf && entity1 instanceof MekEntity ? 'mtf' : 'blk';
-    written1 = writeEntity(entity1, format);
+    written1 = encodeNativeEntity(entity1);
     timings.write1 = performance.now() - phaseStart;
-  } catch (e: any) {
+  } catch (caught) {
     return {
       file: filePath, status: 'write-error', entityType: entity1.entityType,
-      error: `Pass1 write: ${e.message}`, timings,
+      error: `Pass1 write: ${errorMessage(caught)}`, diagnostics, timings,
     };
   }
-
   // ── Pass 2: Parse the written output ──
   let entity2;
   try {
     phaseStart = performance.now();
-    const pass2Name = isMtf && entity1 instanceof MekEntity ? fileName : fileName.replace(/\.mtf$/i, '.blk');
-    entity2 = parseEntity(written1, pass2Name, equipmentRegistry, { quirkResolver }).entity;
+    const parsed = parseEntity(written1, fileName, equipmentRegistry, { quirkResolver });
+    entity2 = parsed.entity;
+    diagnostics.push(...parsed.diagnostics.map(diagnostic =>
+      `pass2 ${diagnostic.severity} ${diagnostic.field}: ${diagnostic.message}`));
+    if (parsed.diagnostics.some(diagnostic => diagnostic.severity === 'error')) {
+      return {
+        file: filePath,
+        status: 'parse-error',
+        entityType: entity1.entityType,
+        error: 'Pass2 produced parser errors',
+        write1: written1,
+        diagnostics,
+        timings,
+      };
+    }
     timings.parse2 = performance.now() - phaseStart;
-  } catch (e: any) {
+  } catch (caught) {
     return {
       file: filePath, status: 'parse-error', entityType: entity1.entityType,
-      error: `Pass2 parse: ${e.message}`, write1: written1, timings,
+      error: `Pass2 parse: ${errorMessage(caught)}`, write1: written1, diagnostics, timings,
     };
   }
 
@@ -254,16 +270,14 @@ function verifyFile(filePath: string, content: string, equipmentRegistry: Equipm
   let written2: string;
   try {
     phaseStart = performance.now();
-    const format = isMtf && entity2 instanceof MekEntity ? 'mtf' : 'blk';
-    written2 = writeEntity(entity2, format);
+    written2 = encodeNativeEntity(entity2);
     timings.write2 = performance.now() - phaseStart;
-  } catch (e: any) {
+  } catch (caught) {
     return {
       file: filePath, status: 'write-error', entityType: entity2.entityType,
-      error: `Pass2 write: ${e.message}`, write1: written1, timings,
+      error: `Pass2 write: ${errorMessage(caught)}`, write1: written1, diagnostics, timings,
     };
   }
-
   // ── Compare ──
   phaseStart = performance.now();
   const norm1 = normalise(written1);
@@ -271,12 +285,13 @@ function verifyFile(filePath: string, content: string, equipmentRegistry: Equipm
   timings.normalise = performance.now() - phaseStart;
 
   if (norm1 === norm2) {
-    return { file: filePath, status: 'pass', entityType: entity1.entityType, timings };
+    return { file: filePath, status: 'pass', entityType: entity1.entityType, diagnostics, timings };
   }
 
   return {
     file: filePath, status: 'diff', entityType: entity1.entityType,
     write1: written1, write2: written2, timings,
+    diagnostics,
   };
 }
 
@@ -295,6 +310,13 @@ function writeDiffFiles(result: VerifyResult): void {
   if (result.write1) fs.writeFileSync(base + '.pass1', result.write1, 'utf-8');
   if (result.write2) fs.writeFileSync(base + '.pass2', result.write2, 'utf-8');
   if (result.error) fs.writeFileSync(base + '.error', result.error, 'utf-8');
+  if (result.diagnostics?.length) {
+    fs.writeFileSync(base + '.diagnostics', result.diagnostics.join('\n') + '\n', 'utf-8');
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -335,7 +357,7 @@ async function main(): Promise<void> {
     parseError: 0,
     writeError: 0,
     diff: 0,
-    skipped: 0,
+    diagnostics: 0,
   };
 
   const byType = new Map<string, { pass: number; fail: number }>();
@@ -356,19 +378,8 @@ async function main(): Promise<void> {
       const content = batchContents[batchIndex];
       stats.total++;
 
-      // ── Skip unsupported UnitTypes before parsing ──
-      if (file.toLowerCase().endsWith('.blk')) {
-        const unitType = peekBlkUnitType(content);
-        if (unitType && SKIPPED_UNIT_TYPES.has(unitType)) {
-          stats.skipped++;
-          if (VERBOSE) {
-            console.log(`  ⊘ SKIP   ${path.relative(INPUT_DIR, file)} (${unitType})`);
-          }
-          continue;
-        }
-      }
-
-      const result = verifyFile(file, content, equipmentRegistry);
+      const result = await verifyFile(file, content, equipmentRegistry);
+      stats.diagnostics += result.diagnostics?.length ?? 0;
       if (result.timings) {
         for (const phase of Object.keys(profileTotals) as (keyof VerifyTimings)[]) {
           profileTotals[phase] += result.timings[phase];
@@ -384,6 +395,9 @@ async function main(): Promise<void> {
           byType.get(typeKey)!.pass++;
           if (VERBOSE) {
             console.log(`  ✓ ${path.relative(INPUT_DIR, file)}`);
+            for (const diagnostic of result.diagnostics ?? []) {
+              console.log(`      ! ${diagnostic}`);
+            }
           }
           break;
         case 'parse-error':
@@ -428,20 +442,21 @@ async function main(): Promise<void> {
   console.log('\n═══════════════════════════════════════════════════════════════');
   console.log('  Summary');
   console.log('═══════════════════════════════════════════════════════════════');
-  const tested = stats.total - stats.skipped;
   console.log(`  Total:        ${stats.total}`);
-  console.log(`  Skipped:      ${stats.skipped}`);
-  console.log(`  Tested:       ${tested}`);
   console.log(`  Pass:         ${stats.pass}`);
   console.log(`  Parse errors: ${stats.parseError}`);
   console.log(`  Write errors: ${stats.writeError}`);
   console.log(`  Diff (unstable): ${stats.diff}`);
+  console.log(`  Parser diagnostics retained: ${stats.diagnostics}`);
   console.log(`  Time:         ${elapsed}s`);
-  console.log(`  Pass rate:    ${tested > 0 ? ((stats.pass / tested) * 100).toFixed(1) : 0}%`);
+  console.log(`  Pass rate:    ${stats.total > 0 ? ((stats.pass / stats.total) * 100).toFixed(1) : 0}%`);
 
   // ── Per-type breakdown ──
-  console.log('\n  By Entity Type:');
-  for (const [type, counts] of [...byType.entries()].sort()) {
+  const testedTypes = [...byType.entries()]
+    .filter(([, counts]) => counts.pass + counts.fail > 0)
+    .sort();
+  if (testedTypes.length > 0) console.log('\n  By Entity Type:');
+  for (const [type, counts] of testedTypes) {
     const total = counts.pass + counts.fail;
     const pct = total > 0 ? ((counts.pass / total) * 100).toFixed(1) : '0.0';
     const icon = counts.fail === 0 ? '✓' : '✗';

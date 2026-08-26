@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { UnitComponent } from '../../../models/units.model';
+import type { UnitComponent } from '../../../models/unit-summary.model';
 import {
     buildComponentMatrixLayout,
     createComponentMatrixAreas,

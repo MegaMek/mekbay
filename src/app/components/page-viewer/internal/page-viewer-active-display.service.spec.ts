@@ -7,6 +7,7 @@ import { TestBed } from '@angular/core/testing';
 import { PageViewerActiveDisplayService } from './page-viewer-active-display.service';
 import { PageViewerDisplayWindowService } from './page-viewer-display-window.service';
 import { PageViewerInPlaceUpdateService } from './page-viewer-in-place-update.service';
+import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
 
 function createUnit(id: string, hasSvg: boolean = true) {
     return {
@@ -23,7 +24,11 @@ describe('PageViewerActiveDisplayService', () => {
             providers: [
                 PageViewerDisplayWindowService,
                 PageViewerInPlaceUpdateService,
-                PageViewerActiveDisplayService
+                PageViewerActiveDisplayService,
+                {
+                    provide: PageViewerSheetSourceService,
+                    useValue: { svg: (unit: { svg(): SVGSVGElement | null }) => unit.svg() },
+                },
             ]
         });
 

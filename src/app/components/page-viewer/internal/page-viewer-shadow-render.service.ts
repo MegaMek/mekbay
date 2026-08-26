@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import { PAGE_GAP, PAGE_WIDTH } from '../page-viewer-zoom-pan.service';
-import type { PageViewerShadowDescriptor } from './types';
+import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
+import type { PageViewerMember, PageViewerShadowDescriptor } from './types';
 
 @Injectable()
 export class PageViewerShadowRenderService {
+    private readonly sheetSource = inject(PageViewerSheetSourceService);
     private readonly shadowBindings = new WeakMap<HTMLDivElement, {
         descriptor: PageViewerShadowDescriptor;
         onShadowClick: (descriptor: PageViewerShadowDescriptor, wrapper: HTMLDivElement, event: MouseEvent) => void;
@@ -66,7 +67,7 @@ export class PageViewerShadowRenderService {
             setPromotedShadowState(wrapper, false);
             applyWrapperLayout(wrapper, { originalLeft: descriptor.originalLeft, scale });
 
-            const sourceSvg = descriptor.unit.svg();
+            const sourceSvg = this.sheetSource.svg(descriptor.unit);
             const existingSvg = wrapper.querySelector(':scope > svg');
             const currentBinding = this.shadowBindings.get(wrapper);
             const canReuseExistingSvg =
@@ -136,7 +137,7 @@ export class PageViewerShadowRenderService {
         pagesToMove: number;
         scale: number;
         showFluff: boolean;
-        allUnits: CBTForceUnit[];
+        allUnits: PageViewerMember[];
         shadowPageElements: readonly HTMLDivElement[];
         activeUnitIds: ReadonlySet<string>;
         getShadowKey: (unitIndex: number, direction: 'left' | 'right') => string;
@@ -181,7 +182,7 @@ export class PageViewerShadowRenderService {
             const positionOffset = direction === 'right' ? index : -index;
             const incomingPosition = clickedShadowLeft + positionOffset * scaledPageStep;
 
-            unit.load().then(() => {
+            this.sheetSource.load(unit).then(() => {
                 if (!isRequestCurrent() || !clickedShadow.isConnected) {
                     return;
                 }

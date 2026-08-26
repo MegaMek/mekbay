@@ -4,11 +4,20 @@
 
 import { TestBed } from '@angular/core/testing';
 
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
+import type { CBTMekForceMember } from '../../../models/force-member.model';
+import { asUnitInstanceId } from '../../../models/runtime/runtime-state';
 import { PageViewerViewStateService } from './page-viewer-view-state.service';
 
-function createUnit(id: string): CBTForceUnit {
-    return { id, viewState: null } as unknown as CBTForceUnit;
+function createUnit(id: string): CBTMekForceMember {
+    const summary = {} as CBTMekForceMember['summary'];
+    return {
+        kind: 'cbt',
+        id: asUnitInstanceId(id),
+        force: {} as CBTMekForceMember['force'],
+        summary,
+        rosterGroupId: 'group:test',
+        getSummary: () => summary,
+    } as unknown as CBTMekForceMember;
 }
 
 describe('PageViewerViewStateService', () => {

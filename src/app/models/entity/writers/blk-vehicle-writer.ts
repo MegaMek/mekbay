@@ -13,6 +13,7 @@ import {
   writeBlkPreamble,
   writeEngine,
   writeEquipmentByLocation,
+  writeEmbeddedImages,
   writeFluffBlocks,
   writeInternalType,
   writeManualBV,
@@ -180,12 +181,12 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
   // 18. Omni chassis weights (after tonnage, only for Omni vehicles)
   if (entity.omni()) {
     if (entity.baseChassisTurretWeight() >= 0) {
-      const tw = entity.baseChassisTurretWeight();
-      w.addBlock('baseChassisTurretWeight', Number.isInteger(tw) ? tw.toFixed(1) : String(tw));
+      const turretWeight = entity.baseChassisTurretWeight();
+      w.addBlock('baseChassisTurretWeight', Number.isInteger(turretWeight) ? turretWeight.toFixed(1) : String(turretWeight));
     }
     if (entity.baseChassisTurret2Weight() >= 0) {
-      const tw2 = entity.baseChassisTurret2Weight();
-      w.addBlock('baseChassisTurret2Weight', Number.isInteger(tw2) ? tw2.toFixed(1) : String(tw2));
+      const turretWeight2 = entity.baseChassisTurret2Weight();
+      w.addBlock('baseChassisTurret2Weight', Number.isInteger(turretWeight2) ? turretWeight2.toFixed(1) : String(turretWeight2));
     }
   }
 
@@ -219,5 +220,7 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
     w.addBlock('extra_seats', entity.extraSeats());
   }
 
-  return w.toString();
+  writeEmbeddedImages(w, entity);
+
+  return w.toString(entity.nativeSourceTrailingNewlines || 2);
 }

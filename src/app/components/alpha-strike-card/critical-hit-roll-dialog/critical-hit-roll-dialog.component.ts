@@ -6,7 +6,7 @@ import { ChangeDetectionStrategy, Component, inject, signal, viewChild, type Aft
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
 import type { ASForceUnit } from '../../../models/as-force-unit.model';
-import type { ASUnitTypeCode } from '../../../models/units.model';
+import type { ASUnitTypeCode } from '../../../models/unit-summary.model';
 import { OptionsService } from '../../../services/options.service';
 
 /*
@@ -414,7 +414,7 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
         const res = this.result();
         if (!res || res.critType !== 'Ammo Hit' || !this.forceUnit) return 'none';
 
-        const specials = this.forceUnit.getUnit().as.specials;
+        const specials = this.forceUnit.getSummary().as.specials;
         if (!specials) return 'none';
 
         // CASEII or ENE = complete immunity
@@ -429,7 +429,7 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
     /** Display name combining chassis, model, and optional alias */
     readonly unitDisplayName = computed(() => {
         if (!this.forceUnit) return null;
-        const unit = this.forceUnit.getUnit();
+        const unit = this.forceUnit.getSummary();
         const chassisModel = `${unit.chassis} ${unit.model}`;
         const alias = this.forceUnit.alias();
         return alias ? `${chassisModel} (${alias})` : chassisModel;

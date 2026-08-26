@@ -2,395 +2,162 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
-import type { Force, UnitGroup } from '../models/force.model';
-import type { ForceUnit } from '../models/force-unit.model';
 import { ASForceUnit } from '../models/as-force-unit.model';
-import { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
+import { CBTForce } from '../models/cbt-force.model';
 import type { GameSystem } from '../models/common.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew.model';
+import type { FactionId } from '../models/factions.model';
 import type { ForceSlot } from '../models/force-slot.model';
-import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
-import { FactionId } from '../models/factions.model';
+import type { Force } from '../models/force.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 
-/**
- * Minimal logger interface for URL parsing warnings.
- */
-export interface UrlParseLogger {
-    warn(message: string): void;
-}
+export interface UrlParseLogger { warn(message: string): void; }
 
-function getUnitNameKey(name: string): string {
-    return name.toLowerCase();
-}
-
-/**
- * Parameters derived from a Force (or set of forces) for URL serialization.
- * For multi-force support, `instance` may contain comma-separated IDs.
- */
 export interface ForceQueryParams {
-    gs: GameSystem | null;
-    units: string | null;
-    name: string | null;
-    instance: string | null;
-    operation: string | null;
-    factionId: FactionId | null;
-    eraId: number | null;
+    readonly gs: GameSystem | null;
+    readonly units: string | null;
+    readonly name: string | null;
+    readonly instance: string | null;
+    readonly operation: string | null;
+    readonly factionId: FactionId | null;
+    readonly eraId: number | null;
 }
 
-export interface UnitShareLinks {
-    httpsUrl: string;
-    appUrl: string;
-}
-
+export interface UnitShareLinks { readonly httpsUrl: string; readonly appUrl: string; }
 export type ForceUrlUnitLookupMode = 'name' | 'mulId';
 
-export function buildUnitShareLinks(
-    origin: string,
-    pathname: string,
-    gameSystem: GameSystem,
-    unitName: string,
-    tab: string,
-): UnitShareLinks {
-    const params = new URLSearchParams({
-        gs: gameSystem,
-        shareUnit: unitName,
-        tab,
-    });
-
-    const httpsUrl = `${origin}${pathname}?${params.toString()}`;
-    const appUrl = `web+mekbay://share?${params.toString()}`;
-
-    return { httpsUrl, appUrl };
+export interface ParsedForceUrlUnit {
+    readonly summary: UnitSummary;
+    readonly gunnerySkill?: number;
+    readonly pilotingSkill?: number;
 }
 
-/**
- * Builds URL query parameters from a Force's current state.
- */
+export interface ParsedForceUrlGroup {
+    readonly name: string | null;
+    readonly formationId: string | null;
+    readonly units: readonly ParsedForceUrlUnit[];
+}
+
+export function buildUnitShareLinks(origin: string, pathname: string, gameSystem: GameSystem, unitName: string, tab: string): UnitShareLinks {
+    const params = new URLSearchParams({ gs: gameSystem, shareUnit: unitName, tab });
+    return { httpsUrl: `${origin}${pathname}?${params.toString()}`, appUrl: `web+mekbay://share?${params.toString()}` };
+}
+
 export function buildForceQueryParams(force: Force | null): ForceQueryParams {
-    if (!force) {
-        return { gs: null, units: null, name: null, instance: null, operation: null, factionId: null, eraId: null };
-    }
-    const instanceId = force.instanceId();
-    const groups = force.groups() || [];
-    const units = force.units() || [];
-    let forceName: string | undefined = force.name;
-    if (units.length === 0) {
-        forceName = undefined;
-    }
-    const groupParams = generateGroupUrlParams(groups);
+    if (!force) return emptyQueryParams();
+    const groups = encodeForceGroups(force);
     return {
         gs: force.gameSystem,
-        units: groupParams.length > 0 ? groupParams.join('|') : null,
-        name: forceName || null,
-        instance: instanceId || null,
+        units: groups.length > 0 ? groups.join('|') : null,
+        name: groups.length > 0 ? force.name || null : null,
+        instance: force.instanceId() || null,
         operation: null,
         factionId: force.faction()?.id ?? null,
-        eraId: force.era()?.id ?? null
+        eraId: force.era()?.id ?? null,
     };
 }
 
-/**
- * Builds URL query parameters representing ALL loaded forces.
- *
- * - Saved forces (with instanceId) are combined into a comma-separated `instance` param.
- *   Enemy forces are prefixed with `enemy:` (friendly is the default, no prefix).
- *   Example: `instance=UUID1,enemy:UUID2,UUID3`
- * - At most one unsaved force (without instanceId) is serialized via `gs`, `units`, `name`.
- *   Unsaved forces are always friendly (our own force).
- */
-export function buildMultiForceQueryParams(slots: ForceSlot[]): ForceQueryParams {
-    if (slots.length === 0) {
-        return { gs: null, units: null, name: null, instance: null, operation: null, factionId: null, eraId: null };
-    }
-
-    // Collect instance IDs from saved forces, with alignment prefix
-    const instanceEntries: string[] = [];
-    let unsavedForce: Force | null = null;
-
+export function buildMultiForceQueryParams(slots: readonly ForceSlot[]): ForceQueryParams {
+    if (slots.length === 0) return emptyQueryParams();
+    const ids: string[] = [];
+    let unsaved: Force | null = null;
     for (const slot of slots) {
         const id = slot.force.instanceId();
-        if (id) {
-            instanceEntries.push(slot.alignment === 'enemy' ? `enemy:${id}` : id);
-        } else if (!unsavedForce) {
-            // Only the first unsaved force is serialized (constraint: max one unsaved)
-            unsavedForce = slot.force;
-        }
+        if (id) ids.push(slot.alignment === 'enemy' ? `enemy:${id}` : id);
+        else if (!unsaved) unsaved = slot.force;
     }
-
-    // Build unsaved force params (gs/units/name/factionId)
-    let gs: GameSystem | null = null;
-    let units: string | null = null;
-    let name: string | null = null;
-    let factionId: FactionId | null = null;
-    let eraId: number | null = null;
-
-    if (unsavedForce) {
-        gs = unsavedForce.gameSystem;
-        const groups = unsavedForce.groups() || [];
-        const groupParams = generateGroupUrlParams(groups);
-        units = groupParams.length > 0 ? groupParams.join('|') : null;
-        const forceName = unsavedForce.units().length > 0 ? unsavedForce.name : undefined;
-        name = forceName || null;
-        factionId = unsavedForce.faction()?.id ?? null;
-        eraId = unsavedForce.era()?.id ?? null;
-    }
-
+    const groups = unsaved ? encodeForceGroups(unsaved) : [];
     return {
-        gs,
-        units,
-        name,
-        instance: instanceEntries.length > 0 ? instanceEntries.join(',') : null,
+        gs: unsaved?.gameSystem ?? null,
+        units: groups.length > 0 ? groups.join('|') : null,
+        name: groups.length > 0 ? unsaved?.name || null : null,
+        instance: ids.length > 0 ? ids.join(',') : null,
         operation: null,
-        factionId,
-        eraId
+        factionId: unsaved?.faction()?.id ?? null,
+        eraId: unsaved?.era()?.id ?? null,
     };
 }
 
-/**
- * Generates URL parameters for all groups in a force.
- * Format: groupName;formationId~unit1,unit2|groupName2~unit3,unit4
- *
- * The group prefix before `~` encodes an optional name and optional formation ID
- * separated by `;`.  Examples:
- *   - `Alpha;battle-lance~unit1,unit2`  (name + formation)
- *   - `;battle-lance~unit1,unit2`        (no name, formation only)
- *   - `Alpha~unit1,unit2`               (name only, no formation)
- *   - `unit1,unit2`                     (no name, no formation)
- */
-export function generateGroupUrlParams(groups: UnitGroup[]): string[] {
-    return groups.filter(g => g.units().length > 0).map(group => {
-        const unitParams = generateUnitUrlParams(group.units());
-        const groupName = group.name() || '';
-        const formation = group.activeFormation();
-        const formationId = formation?.id || '';
-
-        // Build prefix: name;formationId (either part may be empty)
-        if (groupName || formationId) {
-            const prefix = formationId ? `${groupName};${formationId}` : groupName;
-            return `${prefix}~${unitParams.join(',')}`;
-        } else {
-            return unitParams.join(','); // No group name or formation, just return units
-        }
-    });
-}
-
-/**
- * Generates URL parameters for units within a group.
- *
- * Format for CBT: unitName:gunnery:piloting (skills omitted if all defaults)
- * Format for AS:  unitName:skill (skill omitted if default 4)
- */
-export function generateUnitUrlParams(units: ForceUnit[]): string[] {
-    return units.map(fu => {
-        const unit = fu.getUnit();
-        let unitParam = unit.name;
-
-        // Handle Alpha Strike units (single pilot skill)
-        if (fu instanceof ASForceUnit) {
-            const skill = fu.pilotSkill();
-            // Only include skill if not default (4)
-            if (skill !== DEFAULT_GUNNERY_SKILL) {
-                unitParam += `:${skill}`;
-            }
-            return unitParam;
-        }
-
-        // Handle CBT units (crew members with gunnery/piloting)
-        if (fu instanceof CBTForceUnit) {
-            const crewMembers = fu.getCrewMembers();
-            if (crewMembers.length > 0) {
-                // Check if any crew member has non-default skills
-                const hasNonDefaultSkills = crewMembers.some(crew =>
-                    crew.getSkill('gunnery') !== DEFAULT_GUNNERY_SKILL ||
-                    crew.getSkill('piloting') !== DEFAULT_PILOTING_SKILL
-                );
-
-                if (hasNonDefaultSkills) {
-                    const crewSkills: string[] = [];
-                    for (const crew of crewMembers) {
-                        const gunnery = crew.getSkill('gunnery');
-                        const piloting = crew.getSkill('piloting');
-                        crewSkills.push(`${gunnery}`, `${piloting}`);
-                    }
-                    if (crewSkills.length > 0) {
-                        unitParam += ':' + crewSkills.join(':');
-                    }
-                }
-            }
-        }
-
-        return unitParam;
-    });
-}
-
-/**
- * Parses units from a URL parameter string, creating groups and adding units
- * to the provided force.
- *
- * Supports two formats:
- * - New format: `groupName~unit1,unit2|groupName2~unit3,unit4`
- * - Legacy format: `unit1,unit2,unit3`
- *
- * **Note:** This function _mutates_ the provided force by calling
- * `force.addGroup()` and `force.addUnit()`.
- */
-export function parseForceFromUrl(
-    force: Force,
+/** Pure decoder. Runtime creation belongs exclusively to ForceUnitAdmissionService. */
+export function parseForceUrl(
     unitsParam: string,
-    allUnits: Unit[],
+    allUnits: readonly UnitSummary[],
     logger?: UrlParseLogger,
-    lookupMode: ForceUrlUnitLookupMode = 'name'
-): ForceUnit[] {
-    const unitMap = new Map<string, Unit>();
+    lookupMode: ForceUrlUnitLookupMode = 'name',
+): readonly ParsedForceUrlGroup[] {
+    const lookup = new Map<string, UnitSummary>();
     for (const unit of allUnits) {
-        const key = lookupMode === 'mulId' ? `${unit.id}` : getUnitNameKey(unit.name);
-        if (!unitMap.has(key)) {
-            unitMap.set(key, unit);
-        }
+        const key = lookupMode === 'mulId' ? String(unit.id) : unit.name.toLowerCase();
+        if (!lookup.has(key)) lookup.set(key, unit);
     }
-    const allForceUnits: ForceUnit[] = [];
-
-    // Check if it's the new group format (contains '|' or '~')
-    const hasGroups = unitsParam.includes('|') || unitsParam.includes('~');
-
-    if (hasGroups) {
-        // New format with groups
-        const groupParams = unitsParam.split('|');
-        for (const groupParam of groupParams) {
-            if (!groupParam.trim()) continue;
-
-            let groupName: string | null = null;
-            let formationId: string | null = null;
-            let unitsStr: string;
-
-            // Check if group has a name/formation prefix (format: name;formationId~units)
-            if (groupParam.includes('~')) {
-                const [prefixPart, unitsPart] = groupParam.split('~', 2);
-                unitsStr = unitsPart || '';
-
-                // Parse prefix: may be "name;formationId", ";formationId", or just "name"
-                if (prefixPart.includes(';')) {
-                    const [nameSeg, formationSeg] = prefixPart.split(';', 2);
-                    groupName = nameSeg || null;
-                    formationId = formationSeg || null;
-                } else {
-                    groupName = prefixPart || null;
-                }
-            } else {
-                unitsStr = groupParam;
+    const sourceGroups = unitsParam.includes('|') || unitsParam.includes('~') ? unitsParam.split('|') : [unitsParam];
+    const result: ParsedForceUrlGroup[] = [];
+    for (const source of sourceGroups) {
+        if (!source.trim()) continue;
+        const separator = source.indexOf('~');
+        const prefix = separator >= 0 ? source.slice(0, separator) : '';
+        const unitText = separator >= 0 ? source.slice(separator + 1) : source;
+        const [rawName = '', rawFormation = ''] = prefix.includes(';') ? prefix.split(';', 2) : [prefix, ''];
+        const units: ParsedForceUrlUnit[] = [];
+        for (const encoded of unitText.split(',')) {
+            if (!encoded.trim()) continue;
+            const parts = encoded.split(':');
+            const key = lookupMode === 'mulId' ? parts[0] : parts[0].toLowerCase();
+            const summary = lookup.get(key);
+            if (!summary) {
+                logger?.warn(`Unit with ${lookupMode === 'mulId' ? 'MUL ID' : 'name'} "${parts[0]}" not found in data`);
+                continue;
             }
-
-            // Create or get group
-            const group = force.addGroup();
-            if (groupName) {
-                group.name.set(groupName);
-            }
-            if (formationId) {
-                const definition = LanceTypeIdentifierUtil.getDefinitionById(formationId, force.gameSystem);
-                if (definition) {
-                    group.formation.set(definition);
-                    group.formationLock = true;
-                } else {
-                    logger?.warn(`Formation "${formationId}" not found`);
-                }
-            }
-
-            // Parse units for this group
-            const groupUnits = parseUnitUrlParams(force, unitsStr, unitMap, group, logger, lookupMode);
-            allForceUnits.push(...groupUnits);
+            const gunnery = parseOptionalSkill(parts[1]);
+            const piloting = parseOptionalSkill(parts[2]);
+            units.push(Object.freeze({
+                summary,
+                ...(gunnery === undefined ? {} : { gunnerySkill: gunnery }),
+                ...(piloting === undefined ? {} : { pilotingSkill: piloting }),
+            }));
         }
-    } else {
-        // Legacy format without groups: all units in default group
-        const groupUnits = parseUnitUrlParams(force, unitsParam, unitMap, undefined, logger, lookupMode);
-        allForceUnits.push(...groupUnits);
+        result.push(Object.freeze({ name: rawName || null, formationId: rawFormation || null, units: Object.freeze(units) }));
     }
-
-    return allForceUnits;
+    return Object.freeze(result);
 }
 
-/**
- * Parses individual unit parameters from a comma-separated string
- * and adds them to the force.
- *
- * Format for CBT: `unitName[:gunnery:piloting]` (skills optional, defaults to 4/5)
- * Format for AS:  `unitName[:skill]` (skill optional, defaults to 4)
- *
- * **Note:** This function _mutates_ the force by calling `force.addUnit()`
- * and modifying group membership / crew skills.
- */
-export function parseUnitUrlParams(
-    force: Force,
-    unitsStr: string,
-    unitMap: Map<string, Unit>,
-    group?: UnitGroup,
-    logger?: UrlParseLogger,
-    lookupMode: ForceUrlUnitLookupMode = 'name'
-): ForceUnit[] {
-    if (!unitsStr.trim()) return [];
-
-    const unitParams = unitsStr.split(',');
-    const forceUnits: ForceUnit[] = [];
-
-    for (const unitParam of unitParams) {
-        if (!unitParam.trim()) continue;
-
-        const parts = unitParam.split(':');
-        const lookupValue = lookupMode === 'mulId' ? parts[0] : getUnitNameKey(parts[0]);
-        const unit = unitMap.get(lookupValue);
-
-        if (!unit) {
-            const lookupLabel = lookupMode === 'mulId' ? 'MUL ID' : 'name';
-            logger?.warn(`Unit with ${lookupLabel} "${lookupValue}" not found in data`);
-            continue;
-        }
-
-        const forceUnit = force.addUnit(unit);
-
-        // Move unit to the specified group if provided
-        if (group) {
-            // Remove from default group and add to specified group
-            const defaultGroup = force.groups().find(g => g.units().some(u => u.id === forceUnit.id));
-            if (defaultGroup && defaultGroup.id !== group.id) {
-                defaultGroup.units.set(defaultGroup.units().filter(u => u.id !== forceUnit.id));
-                group.units.set([...group.units(), forceUnit]);
-            }
-        }
-
-        // Parse skills if present
-        if (parts.length > 1) {
-            forceUnit.disabledSaving = true;
-
-            // Handle Alpha Strike units
-            if (forceUnit instanceof ASForceUnit) {
-                const skill = parseInt(parts[1]);
-                if (!isNaN(skill)) {
-                    forceUnit.setPilotSkill(skill);
-                }
-            }
-            // Handle CBT units (crew members with gunnery/piloting)
-            else if (forceUnit instanceof CBTForceUnit) {
-                const crewSkills = parts.slice(1);
-                const crewMembers = forceUnit.getCrewMembers();
-
-                // Process crew skills in pairs (gunnery, piloting)
-                for (let i = 0; i < crewSkills.length && i < crewMembers.length * 2; i += 2) {
-                    const crewIndex = Math.floor(i / 2);
-                    const gunnery = parseInt(crewSkills[i]);
-                    const piloting = parseInt(crewSkills[i + 1]);
-
-                    if (!isNaN(gunnery) && !isNaN(piloting) && crewMembers[crewIndex]) {
-                        crewMembers[crewIndex].setSkill('gunnery', gunnery);
-                        crewMembers[crewIndex].setSkill('piloting', piloting);
-                    }
-                }
-            }
-
-            forceUnit.disabledSaving = false;
-        }
-
-        forceUnits.push(forceUnit);
+function encodeForceGroups(force: Force): string[] {
+    if (force instanceof CBTForce) {
+        const roster = force.queryCanonicalRoster();
+        if (roster.kind !== 'available') return [];
+        return roster.snapshot.structural.groups.flatMap(group => {
+            const rows = roster.snapshot.structural.members.filter(member => member.groupId === group.groupId).flatMap(member => {
+                const sheet = force.getMekRecordSheetSnapshot(member.instanceId);
+                if (!sheet) return [];
+                const pilot = sheet.crew[0];
+                let text = sheet.identity.displayName;
+                if (pilot && (pilot.gunnery !== DEFAULT_GUNNERY_SKILL || pilot.piloting !== DEFAULT_PILOTING_SKILL)) text += `:${pilot.gunnery}:${pilot.piloting}`;
+                return [text];
+            });
+            if (rows.length === 0) return [];
+            const prefix = group.formationId ? `${group.name ?? ''};${group.formationId}` : group.name ?? '';
+            return [prefix ? `${prefix}~${rows.join(',')}` : rows.join(',')];
+        });
     }
+    return force.groups().filter(group => group.units().length > 0).map(group => {
+        const rows = group.units().map(unit => {
+            let text = unit.getSummary().name;
+            if (unit instanceof ASForceUnit && unit.pilotSkill() !== DEFAULT_GUNNERY_SKILL) text += `:${unit.pilotSkill()}`;
+            return text;
+        });
+        const formationId = group.activeFormation()?.id ?? '';
+        const name = group.name() || '';
+        const prefix = formationId ? `${name};${formationId}` : name;
+        return prefix ? `${prefix}~${rows.join(',')}` : rows.join(',');
+    });
+}
 
-    return forceUnits;
+function parseOptionalSkill(value: string | undefined): number | undefined {
+    if (value === undefined) return undefined;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function emptyQueryParams(): ForceQueryParams {
+    return { gs: null, units: null, name: null, instance: null, operation: null, factionId: null, eraId: null };
 }

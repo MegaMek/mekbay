@@ -45,7 +45,7 @@ const FACING_MAP: Record<string, number> = {
   '(FR)': 1,
   '(RL)': 4,
   '(RR)': 5,
-  '(F)': 0,
+  '(F)': 2,
   '(R)': 3,
 };
 

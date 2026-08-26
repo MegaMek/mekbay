@@ -10,15 +10,58 @@ import {
   StructureEquipment,
   WeaponEquipment,
 } from '../models/equipment.model';
+import { hasMekOrTankApplicability, isBattleArmorAmmo } from '../models/equipment-platform.model';
 import { BaseEntity } from '../models/entity/base-entity';
 import { AeroEntity } from '../models/entity/entities/aero/aero-entity';
 import { BattleArmorEntity } from '../models/entity/entities/infantry/battle-armor-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
 import { MekEntity, MekWithArmsEntity } from '../models/entity/entities/mek/mek-entity';
+import { VehicleEntity } from '../models/entity/entities/vehicle/vehicle-entity';
 import { EntityMountedEquipment, EntityMountedWeapon } from '../models/entity/types/equipment';
 import { weaponBayEquipmentId } from '../models/entity/utils/implicit-equipment';
-import { UnitComponent } from '../models/units.model';
+import { isShieldEquipment } from '../models/entity/utils/physical-weapon';
+import { UnitComponent } from '../models/unit-summary.model';
 import { formatWeaponDamage } from './weapon-damage.util';
+import { isApolloEquipment } from '../models/apollo-mode.model';
+import { isSingleHexEcmEquipment } from '../models/ecm-mode.model';
+import { isSupportVehicleBarArmor } from '../models/construction-equipment.model';
+import {
+  isBackhoeEquipment,
+  isTalonEquipment,
+} from '../models/entity/utils/physical-weapon';
+import { isAnyJumpBoosterEquipment } from '../models/jump-equipment.model';
+import { isArtemisEquipment } from '../models/artemis-equipment.model';
+import {
+  isChainDrapeEquipment,
+  isEnvironmentalSealingEquipment,
+  isTracksEquipment,
+} from '../models/chassis-equipment.model';
+import { isBlueShieldEquipment, isMascEquipment } from '../models/escalating-equipment.model';
+import {
+  isChameleonShieldEquipment,
+  isNullSignatureEquipment,
+  isStealthEquipment,
+  isVoidSignatureEquipment,
+} from '../models/stealth-equipment.model';
+import {
+  isBattleArmorStructuralUtility,
+  isMastMountEquipment,
+} from '../models/utility-equipment.model';
+import {
+  isAntiPersonnelMountEquipment,
+  isBattleArmorManipulatorEquipment,
+  isDetachableWeaponPackEquipment,
+  isElectronicInterfaceEquipment,
+  isModularWeaponMountEquipment,
+} from '../models/battle-armor-equipment.model';
+import {
+  isJumpJetEquipment,
+  isPartialWingEquipment,
+  isSuperCooledMyomerEquipment,
+  isUmuEquipment,
+} from '../models/jump-equipment.model';
+import { tripleStrengthMyomerKind } from '../models/myomer-equipment.model';
+import { isRamPlateEquipment } from '../models/physical-augmentation.model';
 
 type ExportComponent = Omit<UnitComponent, 'l' | 'bay'> & {
   l?: string;
@@ -33,10 +76,12 @@ export function buildUnitComponentMetadata(entity: BaseEntity): UnitComponent[] 
   addSyntheticStructure(components, entity);
   addSyntheticArmor(components, entity);
   addMekSystems(components, entity);
+  addImplicitSmallCraftEcm(components, entity);
 
   if (usesWeaponBays(entity)) addWeaponBays(components, entity);
   else addOrdinaryEquipment(components, entity);
 
+  addImplicitClanCase(components, entity);
   addIntegralHeatSinks(components, entity);
   return [...components.values()] as UnitComponent[];
 }
@@ -71,7 +116,7 @@ function skipWeapon(entity: BaseEntity, mount: EntityMountedEquipment, equipment
 }
 
 function skipMisc(entity: BaseEntity, mount: EntityMountedEquipment, equipment: MiscEquipment): boolean {
-  if (entity instanceof MekEntity && entity.chassisConfig === 'QuadVee' && equipment.hasFlag('F_TRACKS')) return true;
+  if (entity instanceof MekEntity && entity.chassisConfig === 'QuadVee' && isTracksEquipment(equipment)) return true;
   return skipUnallocatedBattleArmorEquipment(entity, mount);
 }
 
@@ -107,9 +152,57 @@ function addSyntheticInfantryWeapon(
   components.set(key, {
     ...baseComponent(equipment, quantity, 0, 'Troop', weaponCategory(equipment), ''),
     r: String(equipment.infantry?.range ?? 0), m: '0',
-    d: String(damage), md: String(damage),
+    d: formatDecimal(damage), md: formatDecimal(damage),
   });
   delete components.get(key)?.c;
+}
+
+/** Exports the entity-selected internal structure once, independently of critical-slot mounts. */
+function addSyntheticStructure(components: Map<string, ExportComponent>, entity: BaseEntity): void {
+  const structures = entity.structureByLocation();
+  if (structures.size === 0) return;
+
+  const mounted = entity.uniformStructureMaterial();
+  if (!mounted) {
+    components.set('Standard__structure', {
+      id: 'Standard', q: 1, q2: 0, n: 'Standard Structure', t: 'S', p: -1, c: '0', os: 0,
+    });
+    return;
+  }
+
+  const structure = mounted.structure;
+  const id = entity.techBase() === 'Clan'
+    ? structure.id.replace(/^IS /, 'Clan ')
+    : structure.id.replace(/^Clan /, 'IS ');
+
+  components.set(`${structure.id}__structure`, {
+    ...baseComponent(structure, 1, -1, undefined, 'S', criticals(structure, entity)),
+    id,
+    n: withMaterialSuffix(structure.shortName, 'Structure'),
+  });
+}
+
+/** Exports each effective armor material that MegaMek's name lookup can resolve. */
+function addSyntheticArmor(components: Map<string, ExportComponent>, entity: BaseEntity): void {
+  const armorByLocation = entity.armorByLocation();
+  if (armorByLocation.size === 0) return;
+
+  const materials = new Map<string, ArmorEquipment>();
+  for (const mountedArmor of armorByLocation.values()) {
+    if (!isExportableArmor(
+      mountedArmor.armor,
+      mountedArmor.techBase,
+      mountedArmor.technology.scope,
+    )) continue;
+    const key = `${mountedArmor.armor.id}:${mountedArmor.techBase}`;
+    materials.set(key, mountedArmor.armor);
+  }
+  for (const [key, armor] of materials) {
+    components.set(`${armor.id}__armor_${key}`, {
+      ...baseComponent(armor, 1, -1, undefined, 'S', criticals(armor, entity)),
+      n: withMaterialSuffix(armor.shortName, 'Armor'),
+    });
+  }
 }
 
 function addMekSystems(components: Map<string, ExportComponent>, entity: BaseEntity): void {
@@ -161,51 +254,6 @@ function addMekSystem(
   });
 }
 
-/** Exports the entity-selected internal structure once, independently of critical-slot mounts. */
-function addSyntheticStructure(components: Map<string, ExportComponent>, entity: BaseEntity): void {
-  const structure = entity.uniformStructureMaterial()?.structure
-    ?? entity.structureByLocation().get(entity.locationOrder[0])?.structure;
-  if (!structure) return;
-
-  components.set(`${structure.id}__structure`, {
-    ...baseComponent(structure, 1, -1, undefined, 'S', criticals(structure, entity)),
-    n: withMaterialSuffix(structure.shortName, 'Structure'),
-  });
-}
-
-/** Exports effective armor once per material, retaining Patchwork as a configuration marker. */
-function addSyntheticArmor(components: Map<string, ExportComponent>, entity: BaseEntity): void {
-  const armorByLocation = entity.armorByLocation();
-  if (armorByLocation.size === 0) return;
-
-  if (entity.hasPatchworkArmor()) {
-    const patchwork = new ArmorEquipment({
-      id: 'Patchwork Armor', name: 'Patchwork', shortName: 'Patchwork', type: 'armor',
-      armor: { type: 'PATCHWORK' },
-    });
-    components.set(`${patchwork.id}__patchwork`, {
-      ...baseComponent(patchwork, 1, -1, undefined, 'S', criticals(patchwork, entity)),
-      n: withMaterialSuffix(patchwork.shortName, 'Armor'),
-    });
-  }
-
-  const materials = new Map<string, ArmorEquipment>();
-  for (const mountedArmor of armorByLocation.values()) {
-    const key = `${mountedArmor.armor.id}:${mountedArmor.techBase}`;
-    materials.set(key, mountedArmor.armor);
-  }
-  for (const [key, armor] of materials) {
-    components.set(`${armor.id}__armor_${key}`, {
-      ...baseComponent(armor, 1, -1, undefined, 'S', criticals(armor, entity)),
-      n: withMaterialSuffix(armor.shortName, 'Armor'),
-    });
-  }
-}
-
-function withMaterialSuffix(name: string, suffix: 'Armor' | 'Structure'): string {
-  return name.endsWith(suffix) ? name : `${name} ${suffix}`;
-}
-
 function addActuator(
   components: Map<string, ExportComponent>,
   entity: BaseEntity,
@@ -217,6 +265,33 @@ function addActuator(
     id, n: name, t: 'S', q: 1, q2: 0,
     p: locationId(entity, location), l: location, c: '1', os: 0,
   });
+}
+
+function addImplicitSmallCraftEcm(
+  components: Map<string, ExportComponent>,
+  entity: BaseEntity,
+): void {
+  if (entity.entityType !== 'SmallCraft') return;
+  const ecm = entity.implicitSystemEquipment().find(equipment =>
+    equipment instanceof MiscEquipment && isSingleHexEcmEquipment(equipment));
+  if (!(ecm instanceof MiscEquipment)) return;
+  components.set(`${ecm.id}_NOS_C`, baseComponent(ecm, 1, 0, 'NOS', 'C', criticals(ecm, entity)));
+}
+
+function isExportableArmor(
+  armor: ArmorEquipment,
+  mountedTechBase: string,
+  technologyScope: string,
+): boolean {
+  if (isSupportVehicleBarArmor(armor)) return false;
+  if (armor.techBase === 'All') return true;
+  const clanLookup = technologyScope === 'Clan'
+    || (technologyScope === 'Unknown' && mountedTechBase === 'Clan');
+  return armor.techBase === (clanLookup ? 'Clan' : 'IS');
+}
+
+function withMaterialSuffix(name: string, suffix: 'Armor' | 'Structure'): string {
+  return name.endsWith(suffix) ? name : `${name} ${suffix}`;
 }
 
 function addWeapon(
@@ -246,6 +321,7 @@ function weaponComponent(
   const equipment = mount.equipment;
   const aero = entity instanceof AeroEntity;
   const damage = entity.resolveMountedWeaponDamage(mount);
+  const variableDamage = equipment.weapon.damage === 'variable';
   const entry = baseComponent(
     equipment, quantity, position, location, weaponCategory(equipment), criticalSlots,
   );
@@ -253,12 +329,42 @@ function weaponComponent(
   entry.r = aero ? aeroRange(equipment) : equipment.isInfantryWeapon()
     ? String(equipment.infantry.range) : equipment.ranges.slice(0, 3).join('/');
   entry.m = aero ? '-' : String(equipment.minimumRange);
-  entry.d = aero ? aeroDamage(equipment) : formatWeaponDamage(damage, {
-    showZero: true,
-  });
-  entry.md = formatDecimal(aero ? maximumAeroDamage(equipment) : damage?.maximum ?? 0);
+  entry.d = aero ? aeroDamage(equipment)
+    : variableDamage ? '0'
+    : equipment.weapon.damage === 'special' || equipment.ammoType === 'MEK_MORTAR' ? 'Special'
+      : equipment.ammoType === 'BA_TUBE' ? 'Cluster'
+        : equipment.ammoType === 'IATM' && equipment.weapon.damage === 'cluster' ? '1/Msl'
+        : equipment.isInfantryWeapon() && damage.values.length === 1
+          ? formatDecimal(damage.values[0] ?? 0)
+          : formatWeaponDamage(damage, { showZero: true, shotSuffix: '/Shot' });
+  entry.md = formatDecimal(aero ? maximumAeroDamage(equipment)
+    : variableDamage ? 0
+      : maximumWeaponDamage(entity, equipment, damage.maximum));
   entry.os = equipment.oneShotCount ?? 0;
   return entry;
+}
+
+function maximumWeaponDamage(
+  entity: BaseEntity,
+  weapon: WeaponEquipment,
+  resolvedMaximum: number,
+): number {
+  if (weapon.weapon.damage === 'special' || weapon.hasWeaponTrait('machine-gun-array')) return 0;
+  if (weapon.ammoType === 'MEK_MORTAR') return weapon.rackSize;
+  if (weapon.weapon.damage !== 'cluster') return resolvedMaximum;
+  if (weapon.ammoType === 'MML') return weapon.rackSize * 2;
+  if (weapon.ammoType === 'ATM' || weapon.ammoType === 'IATM') {
+    const damagePerMissile = entity.equipment().reduce((maximum, mount) => {
+      const ammo = mount.equipment;
+      if (!(ammo instanceof AmmoEquipment)
+        || ammo.ammoType !== weapon.ammoType
+        || ammo.rackSize !== weapon.rackSize
+        || isBattleArmorAmmo(ammo) !== weapon.hasWeaponTrait('battle-armor-weapon')) return maximum;
+      return Math.max(maximum, ammo.damagePerShot);
+    }, 2);
+    return weapon.rackSize * damagePerMissile;
+  }
+  return resolvedMaximum;
 }
 
 function addAmmo(
@@ -288,6 +394,13 @@ function addMisc(
   const type: ComponentType = structural ? 'S' : 'C';
 
   if (equipment.isSpreadable && mount.placements?.length) {
+    if (isFixedLocationSpreadEquipment(equipment)) {
+      const location = spreadComponentLocation(entity, mount);
+      addMiscAtLocation(
+        components, entity, mount, equipment, type, location.name, 1, location.position,
+      );
+      return;
+    }
     const countByLocation = new Map<string, number>();
     for (const placement of mount.placements) {
       countByLocation.set(placement.location, (countByLocation.get(placement.location) ?? 0) + 1);
@@ -307,13 +420,10 @@ function addPhysicalEquipment(
   mount: EntityMountedEquipment, equipment: Equipment,
 ): void {
   if (equipment.isSpreadable && mount.placements?.length) {
-    const countByLocation = new Map<string, number>();
-    for (const placement of mount.placements) {
-      countByLocation.set(placement.location, (countByLocation.get(placement.location) ?? 0) + 1);
-    }
-    for (const [location, count] of countByLocation) {
-      addPhysicalEquipmentAtLocation(components, entity, mount, equipment, location, count);
-    }
+    const location = spreadComponentLocation(entity, mount);
+    addPhysicalEquipmentAtLocation(
+      components, entity, mount, equipment, location.name, 1, location.position,
+    );
     return;
   }
 
@@ -334,7 +444,7 @@ function addPhysicalEquipmentAtLocation(
     ...baseComponent(
       equipment, quantity, position, displayLocation, 'P', criticals(equipment, entity, mount),
     ),
-    ...physicalDamage(mount),
+    ...(isShieldEquipment(equipment) ? {} : physicalDamage(entity, mount, equipment)),
   });
 }
 
@@ -352,16 +462,6 @@ function addMiscAtLocation(
     equipment, quantity, position, displayLocation, type, criticals(equipment, entity, mount),
   );
   components.set(key, entry);
-}
-
-function addIntegralHeatSinks(components: Map<string, ExportComponent>, entity: BaseEntity): void {
-  if (!(entity instanceof MekEntity)) return;
-  const heatSinks = entity.integralHeatSinks();
-  if (!heatSinks) return;
-  const entry = baseComponent(
-    heatSinks.equipment, heatSinks.count, -1, undefined, 'C', criticals(heatSinks.equipment, entity),
-  );
-  components.set(`${heatSinks.equipment.shortName}__C`, entry);
 }
 
 function usesWeaponBays(entity: BaseEntity): boolean {
@@ -419,6 +519,33 @@ function componentLocation(entity: BaseEntity, mount: EntityMountedEquipment): {
   };
 }
 
+function spreadComponentLocation(
+  entity: BaseEntity,
+  mount: EntityMountedEquipment,
+): { position: number; name: string } {
+  const locations = [...primaryFirstLocations(mount)]
+    .sort((left, right) => locationId(entity, left) - locationId(entity, right));
+  return {
+    position: Math.max(locationId(entity, mount.location), ...locations.map(location => locationId(entity, location))),
+    name: joinSpreadLocations(entity, locations),
+  };
+}
+
+function joinSpreadLocations(entity: BaseEntity, locations: readonly string[]): string {
+  const labels = locations.map(location => locationAbbreviation(entity, location)).filter(Boolean);
+  if (labels.length <= 2) return labels.join('/');
+  if (labels.every(location => location.endsWith('T'))) {
+    return `${labels.map(location => location.slice(0, -1)).join('/')}T`;
+  }
+  if (entity instanceof MekEntity) {
+    const legs = entity.chassisConfig === 'Tripod' ? ['RL', 'LL', 'CL']
+      : entity.chassisConfig === 'Quad' || entity.chassisConfig === 'QuadVee'
+        ? ['FRL', 'FLL', 'RRL', 'RLL'] : [];
+    if (labels.length === legs.length && labels.every(location => legs.includes(location))) return 'Legs';
+  }
+  return '*';
+}
+
 function primaryFirstLocations(mount: EntityMountedEquipment): readonly string[] {
   const occupied = mount.getOccupiedLocations();
   return mount.allocation.kind !== 'location' || occupied[0] === mount.location
@@ -427,10 +554,43 @@ function primaryFirstLocations(mount: EntityMountedEquipment): readonly string[]
 }
 
 function locationId(entity: BaseEntity, location: string): number {
+  if (entity instanceof BattleArmorEntity) {
+    const trooper = /^Trooper (\d+)$/.exec(location);
+    if (trooper) return Number(trooper[1]);
+  }
   return entity.componentLocationOrder().indexOf(location);
 }
 
+function addIntegralHeatSinks(components: Map<string, ExportComponent>, entity: BaseEntity): void {
+  if (!(entity instanceof MekEntity)) return;
+  const heatSinks = entity.integralHeatSinks();
+  if (!heatSinks) return;
+  const entry = baseComponent(
+    heatSinks.equipment, heatSinks.count, -1, undefined, 'C', criticals(heatSinks.equipment, entity),
+  );
+  components.set(`${heatSinks.equipment.shortName}__C`, entry);
+}
+
+function addImplicitClanCase(
+  components: Map<string, ExportComponent>,
+  entity: BaseEntity,
+): void {
+  if (!(entity instanceof MekEntity)) return;
+  const clanCase = entity.getEquipmentRegistry().findForTechBase('CLCASE', 'Clan');
+  if (!(clanCase instanceof MiscEquipment)) return;
+
+  for (const location of entity.automaticClanCaseLocations()) {
+    const label = locationAbbreviation(entity, location);
+    components.set(`implicit:CLCASE:${label}`, baseComponent(
+      clanCase, 1, locationId(entity, location), label, 'C', criticals(clanCase, entity),
+    ));
+  }
+}
+
 function locationAbbreviation(entity: BaseEntity, location: string): string {
+  if (entity instanceof BattleArmorEntity && location === 'Squad' && entity.techBase() === 'Clan') {
+    return 'Point';
+  }
   return entity.componentLocationLabel(location);
 }
 
@@ -438,9 +598,26 @@ function criticals(
   equipment: Equipment, entity: BaseEntity, mount?: EntityMountedEquipment,
 ): string {
   if (!equipment.hasFixedCriticalSlots() && (entity instanceof MekEntity || entity.isSupportVehicle())) return 'V';
-  const slots = equipment.getNumCriticalSlots(entity, mount?.size ?? 1) ?? 0;
-  if (entity.entityType === 'ProtoMek') return String(slots > 0 ? 1 : 0);
-  return String(slots);
+  if (entity.entityType === 'ProtoMek') return String(protoMekRequiresSlot(equipment) ? 1 : 0);
+  if (entity instanceof MekEntity) return String(equipment.critSlots);
+  if (entity.isSupportVehicle()) {
+    return String(equipment.svSlots >= 0 ? equipment.svSlots : equipment.critSlots);
+  }
+  if (entity instanceof VehicleEntity) {
+    return String(equipment instanceof MiscEquipment && isBlueShieldEquipment(equipment)
+      ? entity.locationOrder.length
+      : equipment.tankSlots);
+  }
+  return String(equipment.getNumCriticalSlots(entity, mount?.size ?? 1) ?? 0);
+}
+
+function protoMekRequiresSlot(equipment: Equipment): boolean {
+  if (equipment instanceof AmmoEquipment) return false;
+  return !(equipment instanceof MiscEquipment)
+    || (!isMascEquipment(equipment)
+      && !isUmuEquipment(equipment)
+      && !isJumpJetEquipment(equipment)
+      && !isElectronicInterfaceEquipment(equipment));
 }
 
 function weaponCategory(equipment: WeaponEquipment): ComponentType {
@@ -462,14 +639,25 @@ function bayCategory(id: string): ComponentType {
 function isStructuralMisc(entity: BaseEntity, equipment: MiscEquipment): boolean {
   if (equipment.isArmorKit) return true;
   if (!(entity instanceof BattleArmorEntity)) return false;
-  return equipment.hasAnyFlag([
-    'F_FIRE_RESISTANT', 'F_ARTEMIS', 'F_ARTEMIS_V', 'F_APOLLO', 'F_HARJEL', 'F_MASS',
-    'F_DETACHABLE_WEAPON_PACK', 'F_MODULAR_WEAPON_MOUNT',
-  ]) || (equipment.hasFlag('F_AP_MOUNT') && !equipment.hasFlag('F_BA_MANIPULATOR'));
+  return isApolloEquipment(equipment)
+    || isDetachableWeaponPackEquipment(equipment)
+    || isModularWeaponMountEquipment(equipment)
+    || isBattleArmorStructuralUtility(equipment)
+    || isArtemisEquipment(equipment)
+    || (isAntiPersonnelMountEquipment(equipment)
+      && !isBattleArmorManipulatorEquipment(equipment));
 }
 
-function physicalDamage(mount: EntityMountedEquipment): Pick<ExportComponent, 'd' | 'md'> {
-  const damage = mount.getPhysicalWeaponDamage()?.value ?? 0;
+function physicalDamage(
+  entity: BaseEntity,
+  mount: EntityMountedEquipment,
+  equipment: Equipment,
+): Pick<ExportComponent, 'd' | 'md'> {
+  let damage = mount.getPhysicalWeaponDamage()?.value ?? 0;
+  if (isBackhoeEquipment(equipment)
+    && entity.equipment().some(candidate => tripleStrengthMyomerKind(candidate.equipment) === 'industrial')) {
+    damage *= 2;
+  }
   return { d: String(damage), md: String(damage) };
 }
 
@@ -484,6 +672,24 @@ function aeroDamage(equipment: WeaponEquipment): string {
 
 function maximumAeroDamage(equipment: WeaponEquipment): number {
   return Math.max(0, ...activeAeroValues(equipment));
+}
+
+function isFixedLocationSpreadEquipment(equipment: Equipment): boolean {
+  if (isStealthEquipment(equipment) && hasMekOrTankApplicability(equipment)) return true;
+  return isBlueShieldEquipment(equipment)
+    || isNullSignatureEquipment(equipment)
+    || isVoidSignatureEquipment(equipment)
+    || isChameleonShieldEquipment(equipment)
+    || isPartialWingEquipment(equipment)
+    || isSuperCooledMyomerEquipment(equipment)
+    || isRamPlateEquipment(equipment)
+    || isTalonEquipment(equipment)
+    || isAnyJumpBoosterEquipment(equipment)
+    || isEnvironmentalSealingEquipment(equipment)
+    || isTracksEquipment(equipment)
+    || isChainDrapeEquipment(equipment)
+    || isBattleArmorManipulatorEquipment(equipment)
+    || isMastMountEquipment(equipment);
 }
 
 function activeAeroValues(equipment: WeaponEquipment): number[] {

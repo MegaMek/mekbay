@@ -3,15 +3,25 @@
 // Author: Drake
 
 import { GameSystem } from './models/common.model';
-import type { Unit } from './models/units.model';
+import type { UnitSummary } from './models/unit-summary.model';
 import { createEmptyUnit } from './testing/unit-test-helpers';
 import { __test__ } from './unit-search.worker';
+import { asUnitProviderId, MM_DATA_UNIT_PROVIDER_ID, type UnitProviderId } from './services/unit-catalog/unit-catalog.types';
+import { getUnitSearchIdentityKey } from './utils/unit-search-shared.util';
 import type {
     UnitSearchWorkerCorpusSnapshot,
+    UnitSearchWorkerFactionEraSnapshot,
     UnitSearchWorkerQueryRequest,
+    UnitSearchWorkerUnit,
 } from './utils/unit-search-worker-protocol.util';
+import { projectUnitSearchWorkerUnit } from './utils/unit-search-worker-request.util';
 
-function createUnit(name: string): Unit {
+const EMPTY_FACTION_ERA_INDEX: UnitSearchWorkerFactionEraSnapshot = {
+    unitIdentityKeysByMulId: {},
+    referenceIdsByEraAndFaction: {},
+};
+
+function createUnit(name: string): UnitSummary {
     return createEmptyUnit({
         name,
         chassis: 'Masakari',
@@ -60,28 +70,55 @@ function createUnit(name: string): Unit {
     });
 }
 
+function workerUnit(unit: UnitSummary): UnitSearchWorkerUnit {
+    return projectUnitSearchWorkerUnit(unit, {
+        tags: [
+            ...(unit._nameTags ?? []).map(entry => entry.tag),
+            ...(unit._chassisTags ?? []).map(entry => entry.tag),
+        ],
+        weaponTypes: unit._weaponTypes ?? [],
+        weaponTypeCounts: unit._weaponTypeCounts ?? {},
+        ...(unit.serverHost ? { serverHost: unit.serverHost } : {}),
+    });
+}
+
+function resultEntry(unit: { provider?: UnitProviderId; uuid: string; name: string }) {
+    return {
+        provider: MM_DATA_UNIT_PROVIDER_ID,
+        uuid: unit.uuid,
+        unitName: unit.name,
+    };
+}
+
 function createSnapshot(): UnitSearchWorkerCorpusSnapshot {
     const unitName = 'Masakari Prime';
+    const unit = createUnit(unitName);
+    const unitIdentityKey = getUnitSearchIdentityKey(unit);
 
     return {
         corpusVersion: '1:0',
-        units: [createUnit(unitName)],
+        units: [workerUnit(unit)],
         indexes: {
             era: {
-                'Clan Invasion': [unitName],
-                ilClan: [unitName],
+                'Clan Invasion': [unitIdentityKey],
+                ilClan: [unitIdentityKey],
             },
             faction: {
-                'Clan Jade Falcon': [unitName],
-                'Clan Wolf': [unitName],
+                'Clan Jade Falcon': [unitIdentityKey],
+                'Clan Wolf': [unitIdentityKey],
             },
         },
         factionEraIndex: {
-            'Clan Invasion': {
-                'Clan Jade Falcon': [unitName],
+            unitIdentityKeysByMulId: {
+                [String(unit.id)]: [unitIdentityKey],
             },
-            ilClan: {
-                'Clan Wolf': [unitName],
+            referenceIdsByEraAndFaction: {
+                'Clan Invasion': {
+                    'Clan Jade Falcon': [unit.id],
+                },
+                ilClan: {
+                    'Clan Wolf': [unit.id],
+                },
             },
         },
     };
@@ -113,14 +150,14 @@ describe('unit-search worker', () => {
 
         const runtime = __test__.hydrateCorpus({
             corpusVersion: '1:0',
-            units: [mixedClan, nonmixedClan],
+            units: [workerUnit(mixedClan), workerUnit(nonmixedClan)],
             indexes: {
                 _techBaseDisplay: {
-                    'Mixed (Clan)': ['Mixed Clan Unit'],
-                    Clan: ['Clan Unit'],
+                    'Mixed (Clan)': [getUnitSearchIdentityKey(mixedClan)],
+                    Clan: [getUnitSearchIdentityKey(nonmixedClan)],
                 },
             },
-            factionEraIndex: {},
+            factionEraIndex: EMPTY_FACTION_ERA_INDEX,
         });
         const baseRequest = createRequest();
 
@@ -128,12 +165,12 @@ describe('unit-search worker', () => {
             ...baseRequest,
             executionQuery: 'tech="Mixed (Clan)"',
             telemetryQuery: 'tech="Mixed (Clan)"',
-        }).entries).toEqual([{ unitName: 'Mixed Clan Unit' }]);
+        }).entries).toEqual([resultEntry(mixedClan)]);
         expect(__test__.buildResultMessage(runtime, {
             ...baseRequest,
             executionQuery: 'tech=Clan',
             telemetryQuery: 'tech=Clan',
-        }).entries).toEqual([{ unitName: 'Clan Unit' }]);
+        }).entries).toEqual([resultEntry(nonmixedClan)]);
     });
 
     it('requires faction membership in every selected multistate era', () => {
@@ -143,13 +180,32 @@ describe('unit-search worker', () => {
         expect(result.entries).toEqual([]);
     });
 
+    it('hydrates compact faction-era ids without eagerly expanding identity sets', () => {
+        const snapshot = createSnapshot();
+        const identityKey = getUnitSearchIdentityKey(snapshot.units[0]!);
+        expect(JSON.stringify(snapshot.factionEraIndex).split(identityKey).length - 1).toBe(1);
+
+        const runtime = __test__.hydrateCorpus(snapshot);
+        expect(runtime.factionEraUnitIds.size).toBe(0);
+
+        const result = __test__.buildResultMessage(runtime, {
+            ...createRequest(),
+            executionQuery: 'era="Clan Invasion" faction="Clan Jade Falcon"',
+            telemetryQuery: 'era="Clan Invasion" faction="Clan Jade Falcon"',
+        });
+        expect(result.entries).toEqual([resultEntry(snapshot.units[0]!)]);
+        expect(runtime.factionEraUnitIds.get('Clan Invasion')?.get('Clan Jade Falcon')).toEqual(
+            new Set([identityKey]),
+        );
+    });
+
     it('emits normalization metadata only in canonical result entries', () => {
         const unit = createUnit('Normalized Unit');
         const runtime = __test__.hydrateCorpus({
             corpusVersion: '1:0',
-            units: [unit],
+            units: [workerUnit(unit)],
             indexes: {},
-            factionEraIndex: {},
+            factionEraIndex: EMPTY_FACTION_ERA_INDEX,
         });
         const result = __test__.buildResultMessage(runtime, {
             ...createRequest(),
@@ -167,7 +223,7 @@ describe('unit-search worker', () => {
         });
 
         expect(result.entries).toEqual([{
-            unitName: 'Normalized Unit',
+            ...resultEntry(unit),
             match: { kind: 'bv', adjustedValue: 1000, gunnery: 4, piloting: 5 },
         }]);
     });
@@ -183,18 +239,18 @@ describe('unit-search worker', () => {
 
         const runtime = __test__.hydrateCorpus({
             corpusVersion: '1:0',
-            units: [publishedCanon, unpublishedNonCanon],
+            units: [workerUnit(publishedCanon), workerUnit(unpublishedNonCanon)],
             indexes: {
                 canon: {
-                    yes: ['Published Canon'],
-                    no: ['Unpublished Non-Canon'],
+                    yes: [getUnitSearchIdentityKey(publishedCanon)],
+                    no: [getUnitSearchIdentityKey(unpublishedNonCanon)],
                 },
                 published: {
-                    yes: ['Published Canon'],
-                    no: ['Unpublished Non-Canon'],
+                    yes: [getUnitSearchIdentityKey(publishedCanon)],
+                    no: [getUnitSearchIdentityKey(unpublishedNonCanon)],
                 },
             },
-            factionEraIndex: {},
+            factionEraIndex: EMPTY_FACTION_ERA_INDEX,
         });
         const baseRequest = createRequest();
 
@@ -202,16 +258,73 @@ describe('unit-search worker', () => {
             ...baseRequest,
             executionQuery: 'published:yes',
             telemetryQuery: 'published:yes',
-        }).entries).toEqual([{ unitName: 'Published Canon' }]);
+        }).entries).toEqual([resultEntry(publishedCanon)]);
         expect(__test__.buildResultMessage(runtime, {
             ...baseRequest,
             executionQuery: 'published:no',
             telemetryQuery: 'published:no',
-        }).entries).toEqual([{ unitName: 'Unpublished Non-Canon' }]);
+        }).entries).toEqual([resultEntry(unpublishedNonCanon)]);
         expect(__test__.buildResultMessage(runtime, {
             ...baseRequest,
             executionQuery: 'canon:no',
             telemetryQuery: 'canon:no',
-        }).entries).toEqual([{ unitName: 'Unpublished Non-Canon' }]);
+        }).entries).toEqual([resultEntry(unpublishedNonCanon)]);
+    });
+
+    it('filters same-name and custom units by exact filter, tag, and faction-era identity', () => {
+        const unitSummary = createUnit('Shared Name') as UnitSummary & { provider: UnitProviderId };
+        unitSummary.provider = MM_DATA_UNIT_PROVIDER_ID;
+        unitSummary.id = 101;
+        unitSummary.canon = true;
+        unitSummary._nameTags = [{ tag: 'example-tag', quantity: 1 }];
+        const custom = createUnit('Shared Name') as UnitSummary & { provider: UnitProviderId };
+        custom.provider = asUnitProviderId('custom:test');
+        custom.id = 202;
+        custom.canon = false;
+        custom._nameTags = [{ tag: 'custom-only', quantity: 1 }];
+        const unitKey = getUnitSearchIdentityKey(unitSummary);
+        const customKey = getUnitSearchIdentityKey(custom);
+        const runtime = __test__.hydrateCorpus({
+            corpusVersion: '1:0',
+            units: [workerUnit(unitSummary), workerUnit(custom)],
+            indexes: {
+                canon: { yes: [unitKey], no: [customKey] },
+                _tags: { 'example-tag': [unitKey], 'custom-only': [customKey] },
+                era: { 'Test Era': [unitKey] },
+                faction: { 'Test Faction': [unitKey] },
+            },
+            factionEraIndex: {
+                unitIdentityKeysByMulId: {
+                    [String(unitSummary.id)]: [unitKey],
+                    [String(custom.id)]: [customKey],
+                },
+                referenceIdsByEraAndFaction: {
+                    'Test Era': { 'Test Faction': [unitSummary.id] },
+                },
+            },
+        });
+
+        const baseRequest = {
+            ...createRequest(),
+            executionQuery: '',
+            telemetryQuery: '',
+        };
+        expect(__test__.buildResultMessage(runtime, baseRequest).entries).toEqual([
+            resultEntry(unitSummary),
+            { provider: custom.provider, uuid: custom.uuid, unitName: custom.name },
+        ]);
+        expect(__test__.buildResultMessage(runtime, {
+            ...baseRequest, executionQuery: 'canon:yes', telemetryQuery: 'canon:yes',
+        }).entries).toEqual([resultEntry(unitSummary)]);
+        expect(__test__.buildResultMessage(runtime, {
+            ...baseRequest, executionQuery: 'tags=custom-only', telemetryQuery: 'tags=custom-only',
+        }).entries).toEqual([
+            { provider: custom.provider, uuid: custom.uuid, unitName: custom.name },
+        ]);
+        expect(__test__.buildResultMessage(runtime, {
+            ...baseRequest,
+            executionQuery: 'era="Test Era" faction="Test Faction"',
+            telemetryQuery: 'era="Test Era" faction="Test Faction"',
+        }).entries).toEqual([resultEntry(unitSummary)]);
     });
 });

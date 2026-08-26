@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
-import type { PageViewerPageDescriptor } from './types';
+import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
+import type { PageViewerMember, PageViewerPageDescriptor } from './types';
 
 export interface PageViewerActiveRenderFinalizePlan {
     shouldApplyCurrentTransform: boolean;
@@ -18,6 +18,7 @@ export interface PageViewerActiveRenderFinalizePlan {
 
 @Injectable()
 export class PageViewerActiveRenderService {
+    private readonly sheetSource = inject(PageViewerSheetSourceService);
     pruneOverlappingShadows(options: {
         shadowPageElements: readonly HTMLDivElement[];
         activeUnitIds: ReadonlySet<string>;
@@ -41,14 +42,14 @@ export class PageViewerActiveRenderService {
     }
 
     bindActivePageWrapper(options: {
-        unit: CBTForceUnit;
+        unit: PageViewerMember;
         wrapper: HTMLDivElement;
         slotIndex: number;
         descriptor: PageViewerPageDescriptor | undefined;
         setWrapperSelectedState: (wrapper: HTMLDivElement, isSelected: boolean) => void;
         applyWrapperLayout: (wrapper: HTMLDivElement, options: { originalLeft: number; scale?: number }) => void;
         attachSvgToWrapper: (options: { wrapper: HTMLDivElement; svg: SVGSVGElement; scale?: number; setAsCurrent?: boolean }) => void;
-        bindWrapperInteractiveLayers: (wrapper: HTMLDivElement, unit: CBTForceUnit, svg: SVGSVGElement, overlayMode: 'fixed' | 'page') => void;
+        bindWrapperInteractiveLayers: (wrapper: HTMLDivElement, unit: PageViewerMember, svg: SVGSVGElement, overlayMode: 'fixed' | 'page') => void;
     }): boolean {
         const {
             unit,
@@ -61,7 +62,7 @@ export class PageViewerActiveRenderService {
             bindWrapperInteractiveLayers
         } = options;
 
-        const svg = unit.svg();
+        const svg = this.sheetSource.svg(unit);
         if (!svg || !descriptor) {
             return false;
         }

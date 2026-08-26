@@ -2,17 +2,36 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Equipment } from './equipment.model';
 import { Sanitizer } from '../utils/sanitizer.util';
-import type { GameSystem } from './common.model';
+import { GameSystem } from './common.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import type { C3NetworkType } from './c3-network.model';
 import type { MotiveModes } from './motiveModes.model';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew.model';
+import { deserializeUnitCover, serializeUnitCover, type SerializedUnitCover } from './unit-cover.model';
+import type { MekExplosionProtection } from './rules/game-rules';
+import {
+    cloneAsJson,
+    sanitizeSavedEntityIdentity,
+    type JsonObject,
+    type SavedEntityIdentity,
+} from './persisted-unit-state';
+import type { SerializedCBTForceV2 } from './runtime/persistence-v2';
 
 export const FORCE_NOTE_MAX_LENGTH = 2000;
 export const FORCE_TAG_MAX_LENGTH = 48;
 export const FORCE_TAG_MAX_COUNT = 32;
+
+function preserveEntityIdentityForDeferredResolution(value: unknown): SavedEntityIdentity | undefined {
+    if (value === undefined || value === null) return undefined;
+    try {
+        return sanitizeSavedEntityIdentity(value);
+    } catch {
+        // Do not turn a malformed identity into an unsafe name fallback. The UUID-first
+        // resolver receives the original JSON and converts the unit to a deferred record.
+        return cloneAsJson(value) as unknown as SavedEntityIdentity;
+    }
+}
 
 export function sanitizeForceTagLabel(rawTag: unknown): string | null {
     if (typeof rawTag !== 'string') {
@@ -78,16 +97,165 @@ export interface SerializedPSRChecks {
     shutdown?: boolean;
 }
 
+export type SerializedMekCriticalChanceResult = 'none' | 'blown-off' | 1 | 2 | 3 | 4;
+
+export const PENDING_UNIT_CHECK_KINDS = [
+    'heat-shutdown',
+    'heat-ammo-explosion',
+    'heat-random-movement',
+    'heat-pilot-damage',
+    'heat-life-support',
+    'life-support-drowning',
+    'aero-control-recovery',
+    'seatbelt',
+    'consciousness',
+    'consciousness-recovery',
+] as const;
+
+export type PendingUnitCheckKind = typeof PENDING_UNIT_CHECK_KINDS[number];
+
+interface SerializedPendingEventBase {
+    readonly id: string;
+}
+
+interface SerializedPendingMekCriticalBase extends SerializedPendingEventBase {
+    readonly location: string;
+    readonly locationDestroyed?: true;
+    readonly consolidateImmediately?: true;
+    readonly pilotDamageGroup?: string;
+}
+
+export interface SerializedPendingMekCriticalChance extends SerializedPendingMekCriticalBase {
+    readonly type: 'mek-critical-chance';
+    readonly explosionProtection?: MekExplosionProtection;
+    readonly hardenedArmorApplies?: boolean;
+    readonly result?: SerializedMekCriticalChanceResult;
+}
+
+export interface SerializedPendingMekCriticalChanceOrigin {
+    readonly explosionProtection?: MekExplosionProtection;
+    readonly hardenedArmorApplies?: boolean;
+}
+
+export type SerializedPendingMekCriticalCaseII =
+    | { readonly status: 'pending'; readonly result?: 'resolve' | 'discard' }
+    | { readonly status: 'passed' };
+
+export interface SerializedPendingMekCritical extends SerializedPendingMekCriticalBase {
+    readonly type: 'mek-critical-hit';
+    readonly targetLocation: string;
+    readonly remainingHits: number;
+    readonly chanceOrigin?: SerializedPendingMekCriticalChanceOrigin;
+    readonly caseII?: SerializedPendingMekCriticalCaseII;
+    readonly roll?: readonly number[];
+}
+
+export type CBTMekFallSource = 'psr' | 'stand-attempt';
+
+export interface SerializedPendingMekFall extends SerializedPendingEventBase {
+    readonly type: 'mek-fall';
+    readonly source: CBTMekFallSource;
+    readonly levelsFallen: number;
+}
+
+export type SerializedPendingCheckResult =
+    | { readonly kind: 'manual'; readonly outcome: RuleCheckOutcome }
+    | { readonly kind: 'automatic'; readonly outcome: RuleCheckOutcome }
+    | { readonly kind: 'roll'; readonly dice: readonly [number, number] };
+
+type SerializedPendingCheckResolution =
+    | {
+        readonly target: number;
+        readonly result?: Exclude<SerializedPendingCheckResult, { readonly kind: 'automatic' }>;
+    }
+    | {
+        readonly target?: never;
+        readonly result: Extract<SerializedPendingCheckResult, { readonly kind: 'automatic' }>;
+    };
+
+interface SerializedPendingUnitCheckBase extends SerializedPendingEventBase {
+    readonly type: 'unit-check';
+    readonly pilotDamageGroup?: string;
+}
+
+type SerializedPendingBasicUnitCheckKind = 'heat-shutdown' | 'heat-random-movement';
+type SerializedPendingBasicUnitCheck = {
+    [K in SerializedPendingBasicUnitCheckKind]: SerializedPendingUnitCheckBase
+        & SerializedPendingCheckResolution
+        & { readonly kind: K };
+}[SerializedPendingBasicUnitCheckKind];
+
+type SerializedPendingAmmoExplosionCheck = SerializedPendingUnitCheckBase & SerializedPendingCheckResolution & {
+    readonly kind: 'heat-ammo-explosion';
+    readonly selectionId?: string;
+};
+
+type SerializedPendingPilotDamageCheckKind = 'heat-pilot-damage' | 'heat-life-support' | 'life-support-drowning';
+type SerializedPendingPilotDamageCheck = {
+    [K in SerializedPendingPilotDamageCheckKind]: SerializedPendingUnitCheckBase
+        & SerializedPendingCheckResolution
+        & { readonly kind: K; readonly hits: number };
+}[SerializedPendingPilotDamageCheckKind];
+
+type SerializedPendingAeroRecoveryCheck = SerializedPendingUnitCheckBase & SerializedPendingCheckResolution & {
+    readonly kind: 'aero-control-recovery';
+    readonly readyTurn: number;
+    readonly cause?: 'heat-random-movement';
+};
+
+type SerializedPendingSeatbeltCheck = SerializedPendingUnitCheckBase & SerializedPendingCheckResolution & {
+    readonly kind: 'seatbelt';
+    readonly crewId: number;
+};
+
+type SerializedPendingConsciousnessCheck = SerializedPendingUnitCheckBase & SerializedPendingCheckResolution & {
+    readonly kind: 'consciousness';
+    readonly pilotDamageGroup: string;
+    readonly crewId: number;
+};
+
+type SerializedPendingConsciousnessRecoveryCheck = SerializedPendingUnitCheckBase & SerializedPendingCheckResolution & {
+    readonly kind: 'consciousness-recovery';
+    readonly crewId: number;
+    readonly readyTurn: number;
+};
+
+export type SerializedPendingUnitCheck =
+    | SerializedPendingBasicUnitCheck
+    | SerializedPendingAmmoExplosionCheck
+    | SerializedPendingPilotDamageCheck
+    | SerializedPendingAeroRecoveryCheck
+    | SerializedPendingSeatbeltCheck
+    | SerializedPendingConsciousnessCheck
+    | SerializedPendingConsciousnessRecoveryCheck;
+
+export type SerializedPendingEvent =
+    | SerializedPendingMekCriticalChance
+    | SerializedPendingMekCritical
+    | SerializedPendingMekFall
+    | SerializedPendingUnitCheck;
+
+export type PendingEventInput<T extends SerializedPendingEvent> =
+    T extends SerializedPendingEvent ? Omit<T, 'type'> : never;
+
+export type SerializedEndTurnCheckpoint = 'phase-ended' | 'heat-staged';
+
 export interface SerializedTurnState {
+    turnCounter?: number;
+    endTurnCheckpoint?: SerializedEndTurnCheckpoint;
     airborne?: boolean;
     moveMode?: MotiveModes;
     moveDistance?: number;
+    standAttempts?: number;
+    carefulStand?: boolean;
+    cover?: SerializedUnitCover;
     dmgReceived?: number;
     weaponsHeat?: number;
     acknowledgedHeatSources?: Record<string, string>;
     heatDissipationConsumed?: number;
     psrOutcomes?: Record<string, RuleCheckOutcome>;
     psrChecks?: SerializedPSRChecks;
+    pendingEvents?: SerializedPendingEvent[];
     applyMovePSR?: boolean;
     spotting?: boolean;
     equipmentStateChanged?: boolean;
@@ -110,9 +278,23 @@ export interface SerializedForce {
     owned?: boolean;
     groups?: SerializedGroup[];
     c3Networks?: SerializedC3NetworkGroup[];
+    /** Complete Classic BattleTech force state. V1 inputs are converted to this on load. */
+    cbt?: SerializedCBTForceV2;
+}
+
+/** Current Classic force wire record. Legacy groups never enter the live model. */
+export interface SerializedClassicForce extends SerializedForce {
+    version: 2;
+    type: GameSystem.CLASSIC;
+    cbt: SerializedCBTForceV2;
+    groups?: never;
+    c3Networks?: never;
 }
 
 export interface CBTSerializedForce extends SerializedForce {
+    version: 1;
+    type: GameSystem.CLASSIC;
+    cbt?: never;
     groups?: CBTSerializedGroup[];
 }
 
@@ -126,6 +308,7 @@ export interface SerializedGroup {
     color?: string;
     formationId?: string;
     formationLock?: boolean;
+    formationTargetGroupId?: string;
     units: SerializedUnit[];
 }
 
@@ -144,6 +327,8 @@ export interface SerializedUnit {
     alias?: string;
     commander?: boolean;
     updatedTs?: number;
+    /** UUID/provider identity plus optional source-revision witnesses at save time. */
+    entityIdentity?: SavedEntityIdentity;
     state: SerializedState;
 }
 export interface ASSerializedUnit extends SerializedUnit {
@@ -328,7 +513,7 @@ export interface SerializedCrewMember {
 
 export interface CBTSerializedState extends SerializedState {
     crew: SerializedCrewMember[];
-    crits: CriticalSlot[];
+    crits: SerializedLegacyCriticalSlotV1[];
     locations: Record<string, LocationData>;
     heat: HeatProfile;
     inventory?: SerializedInventory[];
@@ -357,7 +542,8 @@ export interface SerializedInventory {
     totalAmmo?: number;
 }
 
-export interface CriticalSlot {
+/** Exact persisted V1 bridge row. It is decoded only by the V1-to-V2 converter. */
+export interface SerializedLegacyCriticalSlotV1 {
     id: string; // Identifier for the critical slot on the sheet. Format is internalName@loc#slot
     name?: string; // Name, if loc/slot are null, this is the name of the critical point (example: engine)
     loc?: string; // Location of the critical slot (HD, LT, RT, ...)
@@ -367,13 +553,12 @@ export interface CriticalSlot {
     hitTimestamps?: number[]; // Committed hit timestamps for count-based criticals that need chronological application
     pendingHitTimestamps?: number[]; // Pending addition timestamps for count-based criticals
     totalAmmo?: number; // If is an ammo slot: how much total ammo is in this slot.
-    consumed?: number; // If is an ammo slot: how much ammo have been consumed. If is a F_MODULAR_ARMOR, is the armor points used
+    consumed?: number; // Ammo expended, or modular-armor points already absorbed.
     destroying?: number; // If this location is in the process of being destroyed. Contains the timestamp of when the destruction started
     destroyed?: number; // If this location is destroyed (can be from 0 hits if the structure is completely destroyed). Contains the timestamp of the destruction
+    destroyedTurn?: number;
     originalName?: string; // saved original name in case we override the current name
     armored?: boolean; // If this critical slot is armored (for locations that can be armored)
-    el?: SVGElement;
-    eq?: Equipment;
 }
 
 /**
@@ -433,10 +618,239 @@ function sanitizePSRChecks(value: unknown): SerializedPSRChecks | undefined {
     return Object.keys(checks).length > 0 ? checks : undefined;
 }
 
+function sanitizePendingString(value: unknown, maxLength: number): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const normalized = value.trim();
+    return normalized.length > 0 && normalized.length <= maxLength ? normalized : undefined;
+}
+
+function sanitizePendingInteger(value: unknown, min: number, max: number): number | undefined {
+    return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max
+        ? value
+        : undefined;
+}
+
+function sanitizeD6Roll(value: unknown, lengths: readonly number[]): readonly number[] | undefined {
+    return Array.isArray(value)
+        && lengths.includes(value.length)
+        && value.every(die => Number.isInteger(die) && die >= 1 && die <= 6)
+        ? [...value] as number[]
+        : undefined;
+}
+
+function sanitizePendingCriticalBase(record: Record<string, unknown>): SerializedPendingMekCriticalBase | null {
+    const id = sanitizePendingString(record['id'], 256);
+    const location = sanitizePendingString(record['location'], 32);
+    if (!id || !location) return null;
+    const pilotDamageGroup = sanitizePendingString(record['pilotDamageGroup'], 80);
+    return {
+        id,
+        location,
+        ...(record['locationDestroyed'] === true ? { locationDestroyed: true } : {}),
+        ...(record['consolidateImmediately'] === true ? { consolidateImmediately: true } : {}),
+        ...(pilotDamageGroup ? { pilotDamageGroup } : {}),
+    };
+}
+
+function sanitizePendingCriticalChanceFacts(
+    record: Record<string, unknown>,
+): SerializedPendingMekCriticalChanceOrigin | null {
+    const explosionProtection = record['explosionProtection'];
+    if (explosionProtection !== undefined
+        && explosionProtection !== 'none'
+        && explosionProtection !== 'case'
+        && explosionProtection !== 'case-ii') return null;
+    if (record['hardenedArmorApplies'] !== undefined
+        && typeof record['hardenedArmorApplies'] !== 'boolean') return null;
+    return {
+        ...(explosionProtection !== undefined ? { explosionProtection } : {}),
+        ...(typeof record['hardenedArmorApplies'] === 'boolean'
+            ? { hardenedArmorApplies: record['hardenedArmorApplies'] }
+            : {}),
+    };
+}
+
+function sanitizePendingCheckResolution(record: Record<string, unknown>): SerializedPendingCheckResolution | null {
+    const target = sanitizePendingInteger(record['target'], 2, 12);
+    const rawResult = record['result'];
+    if (target !== undefined) {
+        if (rawResult === undefined) return { target };
+        if (!rawResult || typeof rawResult !== 'object' || Array.isArray(rawResult)) return null;
+        const result = rawResult as Record<string, unknown>;
+        if (result['kind'] === 'manual'
+            && (result['outcome'] === 'success' || result['outcome'] === 'failed')) {
+            return { target, result: { kind: 'manual', outcome: result['outcome'] } };
+        }
+        const dice = result['kind'] === 'roll' ? sanitizeD6Roll(result['dice'], [2]) : undefined;
+        return dice
+            ? { target, result: { kind: 'roll', dice: dice as readonly [number, number] } }
+            : null;
+    }
+
+    if (!rawResult || typeof rawResult !== 'object' || Array.isArray(rawResult)) return null;
+    const result = rawResult as Record<string, unknown>;
+    return result['kind'] === 'automatic'
+        && (result['outcome'] === 'success' || result['outcome'] === 'failed')
+        ? { result: { kind: 'automatic', outcome: result['outcome'] } }
+        : null;
+}
+
+function sanitizePendingUnitCheck(record: Record<string, unknown>): SerializedPendingUnitCheck | null {
+    const id = sanitizePendingString(record['id'], 256);
+    const rawKind = record['kind'];
+    const resolution = sanitizePendingCheckResolution(record);
+    if (!id || !PENDING_UNIT_CHECK_KINDS.includes(rawKind as PendingUnitCheckKind) || !resolution) return null;
+    const kind = rawKind as PendingUnitCheckKind;
+    const pilotDamageGroup = sanitizePendingString(record['pilotDamageGroup'], 80);
+    const base = {
+        type: 'unit-check' as const,
+        id,
+        ...resolution,
+        ...(pilotDamageGroup ? { pilotDamageGroup } : {}),
+    };
+    switch (kind) {
+        case 'heat-shutdown':
+        case 'heat-random-movement':
+            return { ...base, kind };
+        case 'heat-ammo-explosion': {
+            const selectionId = sanitizePendingString(record['selectionId'], 256);
+            return { ...base, kind, ...(selectionId ? { selectionId } : {}) };
+        }
+        case 'heat-pilot-damage':
+        case 'heat-life-support':
+        case 'life-support-drowning': {
+            const hits = sanitizePendingInteger(record['hits'], 1, 100);
+            return hits === undefined ? null : { ...base, kind, hits };
+        }
+        case 'aero-control-recovery': {
+            const readyTurn = sanitizePendingInteger(record['readyTurn'], 0, Number.MAX_SAFE_INTEGER);
+            const cause = record['cause'];
+            if (readyTurn === undefined || (cause !== undefined && cause !== 'heat-random-movement')) return null;
+            return { ...base, kind, readyTurn, ...(cause ? { cause } : {}) };
+        }
+        case 'seatbelt': {
+            const crewId = sanitizePendingInteger(record['crewId'], 0, 255);
+            return crewId !== undefined ? { ...base, kind, crewId } : null;
+        }
+        case 'consciousness': {
+            const crewId = sanitizePendingInteger(record['crewId'], 0, 255);
+            return crewId !== undefined && pilotDamageGroup
+                ? { ...base, kind, crewId, pilotDamageGroup }
+                : null;
+        }
+        case 'consciousness-recovery': {
+            const crewId = sanitizePendingInteger(record['crewId'], 0, 255);
+            const readyTurn = sanitizePendingInteger(record['readyTurn'], 0, Number.MAX_SAFE_INTEGER);
+            return crewId !== undefined && readyTurn !== undefined
+                ? { ...base, kind, crewId, readyTurn }
+                : null;
+        }
+    }
+}
+
+function sanitizePendingEvent(record: Record<string, unknown>): SerializedPendingEvent | null {
+    switch (record['type']) {
+        case 'mek-critical-chance': {
+            const base = sanitizePendingCriticalBase(record);
+            const chanceFacts = sanitizePendingCriticalChanceFacts(record);
+            if (!base || !chanceFacts) return null;
+            const result = record['result'];
+            const validResult = result === 'none' || result === 'blown-off'
+                || result === 1 || result === 2 || result === 3 || result === 4;
+            if (result !== undefined && !validResult) return null;
+            return {
+                ...base,
+                type: 'mek-critical-chance',
+                ...chanceFacts,
+                ...(validResult ? { result: result as SerializedMekCriticalChanceResult } : {}),
+            };
+        }
+        case 'mek-critical-hit': {
+            const base = sanitizePendingCriticalBase(record);
+            const targetLocation = sanitizePendingString(record['targetLocation'], 32);
+            const remainingHits = sanitizePendingInteger(record['remainingHits'], 1, 4);
+            if (!base || !targetLocation || remainingHits === undefined) return null;
+            let chanceOrigin: SerializedPendingMekCriticalChanceOrigin | undefined;
+            if (record['chanceOrigin'] !== undefined) {
+                if (!record['chanceOrigin'] || typeof record['chanceOrigin'] !== 'object'
+                    || Array.isArray(record['chanceOrigin'])) return null;
+                const sanitizedOrigin = sanitizePendingCriticalChanceFacts(
+                    record['chanceOrigin'] as Record<string, unknown>,
+                );
+                if (!sanitizedOrigin) return null;
+                chanceOrigin = sanitizedOrigin;
+            }
+            let caseII: SerializedPendingMekCriticalCaseII | undefined;
+            if (record['caseII'] !== undefined) {
+                if (!record['caseII'] || typeof record['caseII'] !== 'object' || Array.isArray(record['caseII'])) return null;
+                const rawCaseII = record['caseII'] as Record<string, unknown>;
+                if (rawCaseII['status'] === 'passed') {
+                    caseII = { status: 'passed' };
+                } else if (rawCaseII['status'] === 'pending'
+                    && (rawCaseII['result'] === undefined
+                        || rawCaseII['result'] === 'resolve'
+                        || rawCaseII['result'] === 'discard')) {
+                    caseII = {
+                        status: 'pending',
+                        ...(rawCaseII['result']
+                            ? { result: rawCaseII['result'] as 'resolve' | 'discard' }
+                            : {}),
+                    };
+                } else {
+                    return null;
+                }
+            }
+            const roll = record['roll'] === undefined ? undefined : sanitizeD6Roll(record['roll'], [1, 2]);
+            if ((record['roll'] !== undefined && !roll) || (roll && caseII?.status === 'pending')) return null;
+            return {
+                ...base,
+                type: 'mek-critical-hit',
+                targetLocation,
+                remainingHits,
+                ...(chanceOrigin ? { chanceOrigin } : {}),
+                ...(caseII ? { caseII } : {}),
+                ...(roll ? { roll } : {}),
+            };
+        }
+        case 'mek-fall': {
+            const id = sanitizePendingString(record['id'], 256);
+            const levelsFallen = sanitizePendingInteger(record['levelsFallen'], 0, 100);
+            const source = record['source'];
+            return id && levelsFallen !== undefined && (source === 'psr' || source === 'stand-attempt')
+                ? { type: 'mek-fall', id, source, levelsFallen }
+                : null;
+        }
+        case 'unit-check':
+            return sanitizePendingUnitCheck(record);
+        default:
+            return null;
+    }
+}
+
+function sanitizePendingEvents(value: unknown): SerializedPendingEvent[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const seenIds = new Set<string>();
+    const events: SerializedPendingEvent[] = [];
+    for (const candidate of value.slice(0, 256)) {
+        if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue;
+        const event = sanitizePendingEvent(candidate as JsonObject);
+        if (!event || seenIds.has(event.id)) continue;
+        seenIds.add(event.id);
+        events.push(event);
+    }
+    return events.length > 0 ? events : undefined;
+}
+
 export const TURN_STATE_SCHEMA = Sanitizer.schema<SerializedTurnState>()
+    .custom('turnCounter', sanitizeOptionalNonNegativeInteger)
+    .custom('endTurnCheckpoint', (value: unknown) =>
+        value === 'phase-ended' || value === 'heat-staged' ? value : undefined)
     .custom('airborne', (value: unknown) => typeof value === 'boolean' ? value : undefined)
     .custom('moveMode', (value: unknown) => MOTIVE_MODE_VALUES.includes(value as MotiveModes) ? value as MotiveModes : undefined)
     .custom('moveDistance', sanitizeOptionalNonNegativeNumber)
+    .custom('standAttempts', sanitizeOptionalNonNegativeNumber)
+    .custom('carefulStand', (value: unknown) => typeof value === 'boolean' ? value : undefined)
+    .custom('cover', sanitizeOptionalCover)
     .custom('dmgReceived', sanitizeOptionalNonNegativeNumber)
     .custom('weaponsHeat', sanitizeOptionalNonNegativeNumber)
     .custom('acknowledgedHeatSources', sanitizeStringRecord)
@@ -449,6 +863,7 @@ export const TURN_STATE_SCHEMA = Sanitizer.schema<SerializedTurnState>()
         return Object.keys(outcomes).length > 0 ? outcomes : undefined;
     })
     .custom('psrChecks', sanitizePSRChecks)
+    .custom('pendingEvents', sanitizePendingEvents)
     .custom('applyMovePSR', (value: unknown) => typeof value === 'boolean' ? value : undefined)
     .custom('spotting', (value: unknown) => typeof value === 'boolean' ? value : undefined)
     .custom('equipmentStateChanged', (value: unknown) => value === true ? true : undefined)
@@ -462,7 +877,7 @@ export const LOCATION_SCHEMA = Sanitizer.schema<LocationData>()
     .custom('conditions', sanitizeConditions)
     .build();
 
-export const CRIT_SLOT_SCHEMA = Sanitizer.schema<CriticalSlot>()
+export const CRIT_SLOT_SCHEMA = Sanitizer.schema<SerializedLegacyCriticalSlotV1>()
     .string('id')
     .string('name')
     .string('loc')
@@ -479,6 +894,7 @@ export const CRIT_SLOT_SCHEMA = Sanitizer.schema<CriticalSlot>()
         if (typeof value === 'number') return value;
         return undefined;
     })
+    .custom('destroyedTurn', sanitizeOptionalNonNegativeInteger)
     .string('originalName')
     .boolean('armored')
     .build();
@@ -518,6 +934,16 @@ function sanitizeOptionalNonNegativeNumber(value: unknown): number | undefined {
     if (value === undefined || value === null || value === '') return undefined;
     const parsed = typeof value === 'number' ? value : Number(value);
     return Number.isFinite(parsed) ? Math.max(0, parsed) : undefined;
+}
+
+function sanitizeOptionalNonNegativeInteger(value: unknown): number | undefined {
+    const parsed = sanitizeOptionalNonNegativeNumber(value);
+    return parsed === undefined ? undefined : Math.floor(parsed);
+}
+
+function sanitizeOptionalCover(value: unknown): SerializedUnitCover | undefined {
+    const cover = deserializeUnitCover(value);
+    return cover === undefined ? undefined : serializeUnitCover(cover);
 }
 
 function sanitizeNumberRecord(value: unknown): Record<string, number> | undefined {
@@ -605,7 +1031,7 @@ export const CREW_MEMBER_SCHEMA = Sanitizer.schema<SerializedCrewMember>()
     .number('pilotingSkill', { default: DEFAULT_PILOTING_SKILL, min: 0, max: 8 })
     .number('asfGunnerySkill')
     .number('asfPilotingSkill')
-    .number('hits', { default: 0, min: 0 })
+    .number('hits', { default: 0, min: 0, max: 6 })
     .number('state', { default: 0, min: 0, max: 2 })
     .build();
 
@@ -675,6 +1101,7 @@ export const CBT_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<CBTSerializedUnit>()
     .string('alias')
     .boolean('commander')
     .number('updatedTs')
+    .custom('entityIdentity', preserveEntityIdentityForDeferredResolution)
     .custom('state', (value: unknown) => {
         if (!value || typeof value !== 'object') {
             return Sanitizer.sanitize({}, CBT_SERIALIZED_STATE_SCHEMA);
@@ -692,6 +1119,9 @@ export const CBT_SERIALIZED_GROUP_SCHEMA = Sanitizer.schema<CBTSerializedGroup>(
     .string('color')
     .string('formationId')
     .boolean('formationLock')
+    .custom('formationTargetGroupId', (value: unknown) => (
+        typeof value === 'string' && value.length > 0 ? value : undefined
+    ))
     .custom('units', (value: unknown) => {
         if (!Array.isArray(value)) return [];
         return Sanitizer.sanitizeArray(value, CBT_SERIALIZED_UNIT_SCHEMA);
@@ -699,7 +1129,7 @@ export const CBT_SERIALIZED_GROUP_SCHEMA = Sanitizer.schema<CBTSerializedGroup>(
     .build();
 
 /**
- * Schema for CBTSerializedForce
+ * Exact V1 Classic ingress schema. Current Classic records use `SerializedClassicForce`.
  */
 export const CBT_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<CBTSerializedForce>()
     .number('version', { default: 1 })
@@ -829,6 +1259,7 @@ export const AS_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<ASSerializedUnit>()
     .string('chassis')
     .string('alias')
     .number('updatedTs')
+    .custom('entityIdentity', preserveEntityIdentityForDeferredResolution)
     .number('skill', { default: DEFAULT_GUNNERY_SKILL, min: 0, max: 8 })
     .custom('abilities', (value: unknown) => {
         if (!Array.isArray(value)) return [];
@@ -863,6 +1294,9 @@ export const AS_SERIALIZED_GROUP_SCHEMA = Sanitizer.schema<ASSerializedGroup>()
     .string('color')
     .string('formationId')
     .boolean('formationLock')
+    .custom('formationTargetGroupId', (value: unknown) => (
+        typeof value === 'string' && value.length > 0 ? value : undefined
+    ))
     .custom('units', (value: unknown) => {
         if (!Array.isArray(value)) return [];
         return Sanitizer.sanitizeArray(value, AS_SERIALIZED_UNIT_SCHEMA);
@@ -873,7 +1307,7 @@ export const AS_SERIALIZED_GROUP_SCHEMA = Sanitizer.schema<ASSerializedGroup>()
  * Schema for ASSerializedForce
  */
 export const AS_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<ASSerializedForce>()
-    .number('version', { default: 1 })
+    .number('version', { default: 2 })
     .string('timestamp')
     .string('instanceId')
     .string('type')

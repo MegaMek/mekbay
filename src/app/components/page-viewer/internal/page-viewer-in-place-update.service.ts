@@ -4,13 +4,12 @@
 
 import { Injectable } from '@angular/core';
 
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
-import type { PageViewerInPlaceUpdatePlan } from './types';
+import type { PageViewerInPlaceUpdatePlan, PageViewerMember } from './types';
 
 @Injectable()
 export class PageViewerInPlaceUpdateService {
     buildPlan(options: {
-        expectedUnits: readonly CBTForceUnit[];
+        expectedUnits: readonly PageViewerMember[];
         currentWrapperUnitIds: readonly string[];
         preserveSelectedUnitId: string;
     }): PageViewerInPlaceUpdatePlan {

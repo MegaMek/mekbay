@@ -3,6 +3,8 @@
 // Author: Drake
 
 import type { ForceViewerBVPVDisplay } from '../models/options.model';
+import type { ForceMember } from '../models/force-member.model';
+import { forceMemberAdjustedValue, forceMemberBaseValue } from '../models/force-member.model';
 import { FormatNumberPipe } from '../pipes/format-number.pipe';
 
 export function formatBvPv(
@@ -15,4 +17,15 @@ export function formatBvPv(
     if (mode === 'base') return format(base);
     if (mode === 'both' && adjusted !== base) return `${format(adjusted)} (${format(base)})`;
     return format(adjusted);
+}
+
+export function formatForceMembersBvPv(
+    members: readonly ForceMember[],
+    mode: ForceViewerBVPVDisplay,
+): string {
+    return formatBvPv(
+        members.reduce((total, member) => total + forceMemberAdjustedValue(member), 0),
+        members.reduce((total, member) => total + forceMemberBaseValue(member), 0),
+        mode,
+    );
 }

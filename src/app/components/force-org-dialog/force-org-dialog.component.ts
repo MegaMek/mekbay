@@ -20,7 +20,7 @@ import { LoadForceEntry } from '../../models/load-force-entry.model';
 import { sanitizeForceTags } from '../../models/force-serialization';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { LayoutService } from '../../services/layout.service';
 import { UrlService } from '../../services/url.service';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
@@ -35,6 +35,7 @@ import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org/org-
 import { Faction, FactionId, getFactionImg } from '../../models/factions.model';
 import { naturalCompare } from '../../utils/sort.util';
 import { CompactFilterMenuComponent } from '../compact-filter-menu/compact-filter-menu.component';
+import { uuidv4 } from '../../utils/uuid.util';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
@@ -236,7 +237,7 @@ class OrgGroup {
         zIndex: number;
         parentGroupId?: string | null;
     }) {
-        this.id = params.id ?? crypto.randomUUID();
+        this.id = params.id ?? uuidv4();
         this.name = signal(params.name ?? '');
         this.x = signal(params.x ?? 0);
         this.y = signal(params.y ?? 0);
@@ -282,7 +283,7 @@ export class ForceOrgDialogComponent {
     private dialogRef = inject(DialogRef<void>);
     private dataService = inject(DataService);
     private dialogsService = inject(DialogsService);
-    private forceBuilderService = inject(ForceBuilderService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private destroyRef = inject(DestroyRef);
     private urlService = inject(UrlService);
     protected layoutService = inject(LayoutService);
@@ -305,16 +306,16 @@ export class ForceOrgDialogComponent {
 
     getFactionImg = getFactionImg;
 
-    /** Instance ID of the currently selected force in ForceBuilderService. */
+    /** Instance ID of the currently selected workspace force. */
     protected selectedForceInstanceId = computed(() => {
-        const unit = this.forceBuilderService.selectedUnit();
+        const unit = this.forceWorkspace.selectedUnit();
         return unit?.force?.instanceId() ?? null;
     });
 
     /** Map of loaded force instanceId → alignment ('friendly' | 'enemy'). */
     protected loadedForceAlignments = computed<Map<string, 'friendly' | 'enemy'>>(() => {
         const map = new Map<string, 'friendly' | 'enemy'>();
-        for (const slot of this.forceBuilderService.loadedForces()) {
+        for (const slot of this.forceWorkspace.loadedForces()) {
             const id = slot.force.instanceId();
             if (id) map.set(id, slot.alignment);
         }
@@ -960,7 +961,7 @@ export class ForceOrgDialogComponent {
             for (const force of collection) {
                 if (!force.instanceId) continue;
                 const existing = forceMap.get(force.instanceId);
-                if (!existing || this.getLoadForceTimestamp(force) >= this.getLoadForceTimestamp(existing)) {
+                if (!existing || this.getLoadForceTimestamp(force) > this.getLoadForceTimestamp(existing)) {
                     forceMap.set(force.instanceId, force);
                 }
             }
@@ -987,7 +988,7 @@ export class ForceOrgDialogComponent {
     ): PlacedForce {
         const placementId = params.placementId?.trim();
         return {
-            placementId: placementId && placementId.length > 0 ? placementId : crypto.randomUUID(),
+            placementId: placementId && placementId.length > 0 ? placementId : uuidv4(),
             force,
             x: signal(snapToGrid(params.x)),
             y: signal(snapToGrid(params.y)),
@@ -3019,7 +3020,7 @@ export class ForceOrgDialogComponent {
         if (this.readOnly() || this.saving()) return;
         this.saving.set(true);
         try {
-            const orgId = this.organizationId() ?? crypto.randomUUID();
+            const orgId = this.organizationId() ?? uuidv4();
             this.organizationId.set(orgId);
 
             const serialized: SerializedOrganization = {

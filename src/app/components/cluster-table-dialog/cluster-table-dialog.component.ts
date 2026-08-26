@@ -4,10 +4,8 @@
 
 import { afterNextRender, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import type { Unit } from '../../models/units.model';
 import { CBTGameRules, CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
 import {
-    clusterTableForUnit,
     clusterTableRows,
     hitLocationRows,
     referenceTableNotes,
@@ -15,6 +13,7 @@ import {
     type PhysicalLocationColumn,
     type PhysicalLocationRow,
     type ReferenceTableNote,
+    type ClusterTableData,
 } from '../../utils/record-sheet-reference-table';
 import { clusterHits } from '../../utils/cluster-hit-table';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
@@ -38,7 +37,7 @@ interface ReferenceRollResult {
 }
 
 export interface ClusterTableDialogData {
-    readonly unit: Unit;
+    readonly table: ClusterTableData;
     readonly gameRules?: CBTGameRules;
 }
 
@@ -64,7 +63,7 @@ export class ClusterTableDialogComponent {
     private selectedColumn: ReferenceTableColumn | null = null;
     readonly data = inject<ClusterTableDialogData>(DIALOG_DATA);
     readonly gameRules = this.data.gameRules ?? CORE_2026_GAME_RULES;
-    readonly table = clusterTableForUnit(this.data.unit);
+    readonly table = this.data.table;
     readonly locationRows: readonly HitLocationRow[] = this.table.hitLocationTable
         ? hitLocationRows(this.table.hitLocationTable)
         : [];

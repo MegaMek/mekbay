@@ -9,10 +9,7 @@ import type { WarShipEntity } from '../../entities/largecraft/warship-entity';
 import type { EntityTransportBay } from '../../types';
 import { calculateSmallCraftFuelSystemWeight, nextHalfTon } from './common';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
-
-const SPHEROID_DROPSHIP_THRESHOLDS = [12500, 20000, 35000, 50000, 65000] as const;
-const AERODYNE_DROPSHIP_THRESHOLDS = [6000, 9500, 12500, 17500, 25000] as const;
-const CAPITAL_THRESHOLDS = [150000, 250000] as const;
+import { capitalCraftArmorPointsPerTon, smallCraftArmorPointsPerTon } from '../large-craft-armor';
 
 type CapitalCraft = JumpShipEntity | WarShipEntity | SpaceStationEntity;
 
@@ -231,26 +228,10 @@ function calculateLargeCraftArmorCost(entity: CapitalCraft | DropShipEntity): nu
   const siBonus = entity.entityType === 'DropShip'
     ? 4 * entity.structuralIntegrity()
     : 6 * Math.round(entity.structuralIntegrity() / 10);
-  const pointsPerTon = resolveLargeCraftPointsPerTon(entity, armor.pptMultiplier,
-    armor.pptDropship, armor.pptCapital);
+  const pointsPerTon = entity.entityType === 'DropShip'
+    ? smallCraftArmorPointsPerTon(entity.tonnage(), entity.motiveType() === 'Spheroid', armor)
+    : capitalCraftArmorPointsPerTon(entity.tonnage(), armor);
   return nextHalfTon((rawArmor - siBonus) / pointsPerTon) * armor.cost;
-}
-
-function resolveLargeCraftPointsPerTon(
-  entity: CapitalCraft | DropShipEntity,
-  multiplier: number,
-  dropshipPpt: readonly number[],
-  capitalPpt: readonly number[],
-): number {
-  const thresholds = entity.entityType === 'DropShip'
-    ? (entity.motiveType() === 'Spheroid' ? SPHEROID_DROPSHIP_THRESHOLDS : AERODYNE_DROPSHIP_THRESHOLDS)
-    : CAPITAL_THRESHOLDS;
-  const values = entity.entityType === 'DropShip' ? dropshipPpt : capitalPpt;
-  if (values.length > thresholds.length) {
-    const index = thresholds.findIndex(threshold => entity.tonnage() < threshold);
-    return values[index < 0 ? values.length - 1 : index];
-  }
-  return 16 * multiplier;
 }
 
 function heatSinkCost(entity: CapitalCraft | DropShipEntity): number {

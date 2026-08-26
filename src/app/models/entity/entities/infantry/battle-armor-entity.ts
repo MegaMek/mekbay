@@ -3,14 +3,22 @@
 // Author: Drake
 
 import { Signal, computed, signal } from '@angular/core';
+import { isMascEquipment } from '../../../escalating-equipment.model';
+import {
+  isJumpBoosterEquipment,
+  isMechanicalJumpBoosterEquipment,
+  isPartialWingEquipment,
+} from '../../../jump-equipment.model';
 import {
   type MovementCalculationOptions,
+  type EntityDamageLocation,
   type UnitSubtype,
   EntityType,
   EntityValidationMessage,
   requireArmorEquipment,
   TechRatingSource,
   WeightClass,
+  locationArmor,
 } from '../../types';
 import {
   getBattleArmorConstructionTech,
@@ -18,6 +26,12 @@ import {
 } from '../../components';
 import { InfantryBaseEntity } from './infantry-base-entity';
 import { EquipmentRegistry } from '../../../equipment-lookup';
+import { isMagneticClampEquipment } from '../../../chassis-equipment.model';
+import {
+  isArmoredGloveEquipment,
+  isBasicManipulatorEquipment,
+  isBattleClawEquipment,
+} from '../../../battle-armor-equipment.model';
 
 // ============================================================================
 // BattleArmorEntity - powered-armor squads (Elemental, etc.)
@@ -75,16 +89,16 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   readonly mechanizedCapable = computed(() => {
     if (this.chassisType() === 'Quad') return false;
 
-    const count = (flag: 'F_MAGNETIC_CLAMP' | 'F_BASIC_MANIPULATOR' | 'F_ARMORED_GLOVE' | 'F_BATTLE_CLAW') =>
-      this.equipment().filter(mount => mount.equipment?.hasFlag(flag)).length;
-    if (count('F_MAGNETIC_CLAMP') > 0) return true;
+    const count = (predicate: typeof isArmoredGloveEquipment) =>
+      this.equipment().filter(mount => predicate(mount.equipment)).length;
+    if (this.equipment().some(mount => isMagneticClampEquipment(mount.equipment))) return true;
 
-    const hasBasicManipulator = count('F_BASIC_MANIPULATOR') > 0;
-    const hasBattleClaw = count('F_BATTLE_CLAW') > 0;
+    const hasBasicManipulator = count(isBasicManipulatorEquipment) > 0;
+    const hasBattleClaw = count(isBattleClawEquipment) > 0;
     switch (this.weightClass()) {
       case 'Ultra Light':
       case 'Light':
-        return count('F_ARMORED_GLOVE') > 1 || hasBasicManipulator || hasBattleClaw;
+        return count(isArmoredGloveEquipment) > 1 || hasBasicManipulator || hasBattleClaw;
       case 'Medium':
       case 'Heavy':
         return hasBasicManipulator || hasBattleClaw;
@@ -109,15 +123,15 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   private hasAntiMekManipulators(): boolean {
     if (this.chassisType().toLowerCase().includes('quad')) return false;
 
-    const count = (flag: 'F_BASIC_MANIPULATOR' | 'F_ARMORED_GLOVE' | 'F_BATTLE_CLAW') =>
-      this.equipment().filter(mount => mount.equipment?.hasFlag(flag)).length;
-    const basicManipulators = count('F_BASIC_MANIPULATOR');
-    const battleClaws = count('F_BATTLE_CLAW');
+    const count = (predicate: typeof isArmoredGloveEquipment) =>
+      this.equipment().filter(mount => predicate(mount.equipment)).length;
+    const basicManipulators = count(isBasicManipulatorEquipment);
+    const battleClaws = count(isBattleClawEquipment);
 
     switch (this.weightClass()) {
       case 'Ultra Light':
       case 'Light':
-        return count('F_ARMORED_GLOVE') > 1 || basicManipulators > 1 || battleClaws > 0;
+        return count(isArmoredGloveEquipment) > 1 || basicManipulators > 1 || battleClaws > 0;
       case 'Medium':
         return basicManipulators > 1 || battleClaws > 0;
       default:
@@ -147,12 +161,12 @@ export class BattleArmorEntity extends InfantryBaseEntity {
     const equipment = this.equipment();
     const weightClass = this.weightClass();
     let walkMP = this.originalWalkMP();
-    const hasMyomerBooster = equipment.some(mount => mount.equipment?.hasFlag('F_MASC'));
+    const hasMyomerBooster = equipment.some(mount => isMascEquipment(mount.equipment));
 
     if (hasMyomerBooster && !options.ignoreMyomerBooster) {
       walkMP += weightClass === 'Heavy' || weightClass === 'Assault' ? 1 : 2;
     } else if (!hasMyomerBooster
-      && equipment.some(mount => mount.equipment?.hasFlag('F_MECHANICAL_JUMP_BOOSTER'))) {
+      && equipment.some(mount => isMechanicalJumpBoosterEquipment(mount.equipment))) {
       walkMP++;
     }
 
@@ -170,13 +184,13 @@ export class BattleArmorEntity extends InfantryBaseEntity {
     if (!options.ignoreDWP && equipment.some(mount => mount.isDWP)) return 0;
 
     let jumpMP = this.baseJumpMP();
-    if (jumpMP === 0 && equipment.some(mount => mount.equipment?.hasFlag('F_MECHANICAL_JUMP_BOOSTER'))) {
+    if (jumpMP === 0 && equipment.some(mount => isMechanicalJumpBoosterEquipment(mount.equipment))) {
       jumpMP = 1;
     }
-    if (jumpMP > 0 && equipment.some(mount => mount.equipment?.hasFlag('F_PARTIAL_WING'))) {
+    if (jumpMP > 0 && equipment.some(mount => isPartialWingEquipment(mount.equipment))) {
       jumpMP++;
     }
-    if (jumpMP > 0 && equipment.some(mount => mount.equipment?.hasFlag('F_JUMP_BOOSTER'))) {
+    if (jumpMP > 0 && equipment.some(mount => isJumpBoosterEquipment(mount.equipment))) {
       jumpMP++;
     }
     return jumpMP;
@@ -212,6 +226,17 @@ export class BattleArmorEntity extends InfantryBaseEntity {
 
   override get validLocations(): ReadonlySet<string> {
     return new Set(this.locationOrder);
+  }
+
+  override damageLocations(): readonly EntityDamageLocation[] {
+    const armor = this.armorValues().get('Squad') ?? locationArmor(0);
+    return Array.from({ length: this.trooperCount() }, (_, index) => ({
+      code: `Trooper ${index + 1}`,
+      sheetCode: `T${index + 1}`,
+      internalPoints: 1,
+      armor,
+      combinedPips: true,
+    }));
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

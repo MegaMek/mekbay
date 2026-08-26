@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { readMegaMekUnitFileMetadata } from './lib/megamek-unit-file-metadata.js';
+import { readMegaMekUnitFileMetadata } from './lib/megamek-unit-file-metadata';
 
 const {
     loadOptionalEnvFile,
     resolveExistingPath,
     resolveMmDataRoot,
-} = require('./lib/script-paths.js') as typeof import('./lib/script-paths.js');
+} = require('./lib/script-paths') as typeof import('./lib/script-paths');
 
 interface SvgExportUnitRecord {
     name: string;

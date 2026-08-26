@@ -3,7 +3,15 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+import type { InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+
+/** Detached presentation row shared by legacy and Entity/runtime target surfaces. */
+export interface WeaponTargetChoiceRow {
+    readonly id: InventoryControlRuntimeTargetId;
+    readonly letter: string;
+    readonly name: string;
+    readonly color: string;
+}
 
 @Component({
     selector: 'weapon-target-choice-menu',
@@ -28,11 +36,14 @@ import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } f
                         class="target-choice"
                         type="button"
                         [class.selected-choice]="selectedTargetId() === target.id"
+                        [disabled]="targetDisabledReason(target.id) !== null"
                         [attr.aria-label]="targetAriaLabel(target)"
-                        [title]="target.name"
+                        [title]="targetDisabledReason(target.id) ?? target.name"
                         (click)="selected.emit(target.id)">
                         <span class="target-choice-token" [style.background]="target.color">{{ target.letter }}</span>
-                        @if (targetNumberText(target.id) === 'X') {
+                        @if (targetDisabledReason(target.id); as disabledReason) {
+                            <span class="target-choice-tn square out-of-range" [title]="disabledReason">X</span>
+                        } @else if (targetNumberText(target.id) === 'X') {
                             <span class="target-choice-tn square out-of-range" title="Out of range">X</span>
                         } @else if (targetNumberText(target.id)) {
                             <span class="target-choice-tn square">{{ targetNumberText(target.id) }}</span>
@@ -77,8 +88,13 @@ import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } f
             text-align: start;
             cursor: pointer;
 
-            &:hover {
+            &:not(:disabled):hover {
                 background: var(--hover-bg-color, rgba(255, 255, 255, 0.08));
+            }
+
+            &:disabled {
+                opacity: 0.65;
+                cursor: not-allowed;
             }
         }
 
@@ -108,7 +124,7 @@ import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } f
             justify-content: center;
             inline-size: 28px;
             color: var(--text-color);
-            font-size: 10px;
+            font-size: 1.3em;
             font-weight: 700;
             line-height: 1;
             white-space: nowrap;
@@ -117,11 +133,9 @@ import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } f
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                inline-size: 16px;
-                block-size: 16px;
+                inline-size: 24px;
+                block-size: 24px;
                 border: 1px solid var(--text-color-secondary);
-                font-size: 10px;
-                font-weight: 700;
             }
 
             &.out-of-range {
@@ -140,17 +154,24 @@ import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } f
     `]
 })
 export class WeaponTargetChoiceMenuComponent {
-    readonly targets = input<InventoryControlRuntimeTarget[]>([]);
+    readonly targets = input<readonly WeaponTargetChoiceRow[]>([]);
     readonly selectedTargetId = input<InventoryControlRuntimeTargetId | null>(null);
     readonly targetNumberTexts = input<Readonly<Record<InventoryControlRuntimeTargetId, string>>>({});
+    readonly disabledTargetReasons = input<Readonly<Record<InventoryControlRuntimeTargetId, string>>>({});
     readonly selected = output<InventoryControlRuntimeTargetId | null>();
 
     targetNumberText(targetId: InventoryControlRuntimeTargetId): string {
         return this.targetNumberTexts()[targetId] ?? '';
     }
 
-    targetAriaLabel(target: InventoryControlRuntimeTarget): string {
+    targetDisabledReason(targetId: InventoryControlRuntimeTargetId): string | null {
+        return this.disabledTargetReasons()[targetId] ?? null;
+    }
+
+    targetAriaLabel(target: WeaponTargetChoiceRow): string {
         const targetNumber = this.targetNumberText(target.id);
+        const disabledReason = this.targetDisabledReason(target.id);
+        if (disabledReason) return `${target.name}, unavailable: ${disabledReason}`;
         return targetNumber ? `${target.name}, TN ${targetNumber}` : target.name;
     }
 }

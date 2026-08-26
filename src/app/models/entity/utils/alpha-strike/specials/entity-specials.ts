@@ -3,9 +3,12 @@
 // Author: Drake
 
 import { AeroEntity, ConvFighterEntity, DropShipEntity, FixedWingSupportEntity, JumpShipEntity, LamEntity, SmallCraftEntity, VtolEntity, type BaseEntity } from '../../../entities';
-import type { ASUnitTypeCode } from '../../../../units.model';
+import type { ASUnitTypeCode } from '../../../../unit-summary.model';
 import type { AlphaStrikeMovement } from '../foundation/movement';
 import { LARGE_AEROSPACE_TYPES, hasAlphaStrikeVstolCapability } from '../foundation/unit-classification';
+import { isEcmEquipment } from '../../../../ecm-mode.model';
+import { isBombBayEquipment } from '../../../../aerospace-support-equipment.model';
+import { isLamFuelTankEquipment } from '../../../../chassis-equipment.model';
 
 /** Converts special abilities intrinsic to a unit's chassis, class, and crew. */
 export function alphaStrikeEntitySpecials(
@@ -32,7 +35,7 @@ export function alphaStrikeEntitySpecials(
   }
   if (entity instanceof SmallCraftEntity && entity.entityType === 'SmallCraft'
     && entity.isMilitary()
-    && !entity.equipment().some(mount => mount.equipment?.hasFlag('F_ECM'))) {
+    && !entity.equipment().some(mount => isEcmEquipment(mount.equipment))) {
     specials.push('LECM');
   }
   if (entity instanceof JumpShipEntity) {
@@ -57,17 +60,17 @@ function addLamSpecials(
   specials: string[],
 ): void {
   const additionalFuelTanks = entity.equipment()
-    .filter(mount => mount.equipment?.hasFlag('F_LAM_FUEL_TANK')).length;
+    .filter(mount => isLamFuelTankEquipment(mount.equipment)).length;
   specials.push(`FUEL${4 * (1 + additionalFuelTanks)}`);
 
   const airMovement = movement.values['a'] ?? 0;
   if (entity.lamType().toLowerCase() === 'bimodal') {
     specials.push(`BIM(${airMovement}a)`);
   } else {
-    specials.push(`LAM(${movement.values['g'] ?? 0}\"g/${airMovement}a)`);
+    specials.push(`LAM(${movement.values['g'] ?? 0}"g/${airMovement}a)`);
   }
 
   const bombBays = entity.equipment()
-    .filter(mount => mount.equipment?.hasFlag('F_BOMB_BAY')).length;
+    .filter(mount => isBombBayEquipment(mount.equipment)).length;
   if (bombBays > 0) specials.push(`BOMB${Math.ceil(bombBays / 5)}`);
 }

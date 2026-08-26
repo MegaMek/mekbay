@@ -21,7 +21,8 @@ import { PageViewerCanvasService } from './page-viewer-canvas.service';
 import { OptionsService } from '../../../services/options.service';
 import { DbService } from '../../../services/db.service';
 import { LoggerService } from '../../../services/logger.service';
-import type { ForceUnit } from '../../../models/force-unit.model';
+import { isCBTForceMember } from '../../../models/force-member.model';
+import type { PageCanvasMember } from '../internal/types';
 import type { GameSystem } from '../../../models/common.model';
 
 /*
@@ -145,12 +146,12 @@ export class PageCanvasOverlayComponent {
     canvasRef = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
 
     // Inputs
-    unit = input<ForceUnit | null>(null);
+    unit = input<PageCanvasMember | null>(null);
     width = input(612); // PAGE_WIDTH
     height = input(792); // PAGE_HEIGHT
 
     // Outputs
-    drawingStarted = output<ForceUnit>();
+    drawingStarted = output<PageCanvasMember>();
 
     // Computed canvas dimensions (internal scale for higher resolution)
     canvasHeight = computed(() => this.height() * this.INTERNAL_SCALE);
@@ -452,7 +453,7 @@ export class PageCanvasOverlayComponent {
         if (!blob) return;
 
         this.dbService.saveCanvasData(this.unitCanvasId(), blob);
-        if (!unit.modified) {
+        if (!isCBTForceMember(unit) && !unit.modified) {
             unit.setModified();
         }
     }

@@ -4,24 +4,31 @@
 
 import { signal, computed, type Injector, type Signal, type WritableSignal } from '@angular/core';
 import type { DataService } from '../services/data.service';
-import type { Unit } from "./units.model";
-import type { UnitInitializerService } from '../services/unit-initializer.service';
+import type { UnitSummary } from "./unit-summary.model";
 import type { SerializedUnit } from './force-serialization';
 import type { Force, UnitGroup } from './force.model';
 import type { ForceUnitState } from './force-unit-state.model';
 import type { ConditionData } from './force-unit-state.model';
-import type { CrewMember } from './crew-member.model';
 import { uuidv7 } from '../utils/uuid.util';
 import type { C3Component } from './c3-network.model';
+import type { UnitDefinitionResolutionWitness } from './persisted-unit-state';
+import type { UnitTagEcmCapabilitySummary } from './unit-capability-summary.model';
+import {
+    cloneNativeUnitSourceHandle,
+    type NativeUnitSourceHandle,
+} from './native-unit-source-handle';
 
 
 export abstract class ForceUnit {
-    protected unit: Unit; // Original unit data
+    protected unit: UnitSummary; // Original unit data
     private _forceRef = signal<Force>(null!);
     protected readonly _formationCommander = signal<boolean>(false);
+    private nativeSource: NativeUnitSourceHandle | null = null;
     id: string;
     updatedTs: number = 0;
     initialized = false;
+    /** Compatibility witness from UUID-first catalog resolution; source drift is diagnostic, never rejection. */
+    definitionResolution?: UnitDefinitionResolutionWitness;
 
     /**
      * The force this unit belongs to.
@@ -33,7 +40,6 @@ export abstract class ForceUnit {
 
     // Dependencies for deferred loading
     protected dataService: DataService;
-    protected unitInitializer: UnitInitializerService;
     protected injector: Injector;
     isLoaded: WritableSignal<boolean> = signal(false);
     public disabledSaving: boolean = false;
@@ -41,15 +47,16 @@ export abstract class ForceUnit {
 
     protected abstract state: ForceUnitState;
 
-    readOnly = computed(() => this.force.owned() === false);
+    readOnly = computed(() => typeof this.force.readOnly === 'function'
+        ? this.force.readOnly()
+        : this.force.owned() === false);
     readonly commander = this._formationCommander.asReadonly();
 
     abstract readonly alias: Signal<string | undefined>;
 
-    constructor(unit: Unit,
+    constructor(unit: UnitSummary,
         force: Force,
         dataService: DataService,
-        unitInitializer: UnitInitializerService,
         injector: Injector
     ) {
         this.id = uuidv7();
@@ -57,14 +64,40 @@ export abstract class ForceUnit {
         this.unit = unit;
 
         this.dataService = dataService;
-        this.unitInitializer = unitInitializer;
         this.injector = injector;
     }
 
     destroy() {
+        this.nativeSource = null;
     }
 
     public abstract load(): Promise<void>;
+
+    /** Exact detached MTF/BLK bytes retained for this loaded force-unit owner. */
+    getNativeSource(): NativeUnitSourceHandle | null {
+        return this.nativeSource ? cloneNativeUnitSourceHandle(this.nativeSource) : null;
+    }
+
+    protected async ensureNativeSourceLoaded(): Promise<NativeUnitSourceHandle | null> {
+        if (this.nativeSource) return this.nativeSource;
+        if (this.unit.origin !== 'megamek') return null;
+        const format = this.unit.entityType === 'Mek' ? 'mtf' : 'blk';
+
+        const source = await this.dataService.readNativeUnitSource(this.unit.provider, this.unit.uuid);
+        if (!source) {
+            throw new Error(`Native ${format.toUpperCase()} source for "${this.unit.name}" is unavailable`);
+        }
+        if (source.format !== format || source.hash !== this.unit.hash) {
+            throw new Error(`Native source for "${this.unit.name}" does not match its catalog publication`);
+        }
+        this.nativeSource = cloneNativeUnitSourceHandle({
+            file: source.file,
+            sourceHash: source.hash,
+            format: source.format,
+            bytes: source.bytes,
+        });
+        return this.nativeSource;
+    }
 
     getDisplayName() {
         return (this.unit.chassis + ' ' + this.unit.model).trim();
@@ -139,8 +172,31 @@ export abstract class ForceUnit {
         return this.state.c3Position;
     }
 
-    setC3Position(pos: { x: number; y: number } | null) {
-        this.state.c3Position.set(pos);
+    /**
+     * Applies a standalone visual-layout edit through the owning Force. A
+     * shared or retired unit must not be mutated first and merely have the
+     * eventual Force emission rejected.
+     */
+    setC3Position(pos: { x: number; y: number } | null): boolean {
+        const next = pos === null ? null : { x: pos.x, y: pos.y };
+        const current = this.state.c3Position();
+        if ((current === null && next === null)
+            || (current !== null && next !== null
+                && current.x === next.x && current.y === next.y)) return false;
+        if (this.disabledSaving
+            || this.readOnly()
+            || !this.force.groups().some(group =>
+                group.force === this.force && group.units().some(unit => unit === this))) return false;
+        this.state.c3Position.set(next);
+        this.state.modified.set(true);
+        this.updatedTs = Date.now();
+        this.force.emitChanged();
+        return true;
+    }
+
+    /** @internal Exact Force-owned multi-unit C3 transaction only. */
+    protected applyC3PositionFromOwnerTransaction(pos: { x: number; y: number } | null): void {
+        this.state.c3Position.set(pos === null ? null : { x: pos.x, y: pos.y });
     }
 
     setFormationCommander(value: boolean, markModified: boolean = true): void {
@@ -154,9 +210,12 @@ export abstract class ForceUnit {
         }
     }
 
-    getUnit(): Unit {
+    getSummary(): UnitSummary {
         return this.unit;
     }
+
+    /** Immutable capability projection; concrete authority stays behind this query. */
+    abstract getTagEcmCapabilitySummary(): UnitTagEcmCapabilitySummary;
 
     getGroup(): UnitGroup<ForceUnit> | null {
         return this.force.groups().find(group => 
@@ -173,9 +232,6 @@ export abstract class ForceUnit {
 
     abstract getPilotStats: Signal<any>;
 
-    /** Get crew members - abstract, must be implemented by subclasses */
-    abstract getCrewMembers: Signal<CrewMember[]>;
-
     abstract repairAll(): void;
 
     abstract update(data: SerializedUnit): void;
@@ -187,7 +243,6 @@ export abstract class ForceUnit {
         _data: SerializedUnit,
         _force: Force,
         _dataService: DataService,
-        _unitInitializer: UnitInitializerService,
         _injector: Injector
     ): ForceUnit {
         throw new Error('ForceUnit.deserialize must be implemented by subclass');

@@ -78,8 +78,9 @@
         }
     </div>
 
-    <ng-template
-        cdkConnectedOverlay
+    @if (isOpen()) {
+        <ng-template
+            cdkConnectedOverlay
         [cdkConnectedOverlayOrigin]="overlayOrigin"
         [cdkConnectedOverlayOpen]="isOpen()"
         [cdkConnectedOverlayPositions]="overlayPositions()"
@@ -289,5 +290,6 @@
             </div>
         }
         </div>
-    </ng-template>
+        </ng-template>
+    }
 </div>

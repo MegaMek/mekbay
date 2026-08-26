@@ -1,0 +1,206 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 26 193 328">
+  <g transform="matrix(1.006 0 0 1.006 3.363 11.250)" id="g302" xmlns="http://www.w3.org/2000/svg">
+    <g id="armor_diagram_superheavy_vtol_chinturret" transform="translate(-398.4775,-13.05)">
+      <polyline fill="#C7C8CA" points="452.202,210.75 446.632,210.75 446.632,206.257 450.686,206.257 " id="polyline30" />
+      <polyline fill="none" id="polyline32" stroke-width="1.003" points="452.202,210.75 446.632,210.75 446.632,206.257   450.686,206.257 " stroke="#C7C8CA" />
+      <path fill="#C7C8CA" d="M440.669,197.273v40.43c0,1.656,1.337,3,2.984,3s2.981-1.344,2.981-3v-40.43" />
+      <path fill="none" stroke-width="1.504" d="M440.669,197.273v40.43c0,1.656,1.337,3,2.984,3s2.981-1.344,2.981-3  v-40.43" stroke="#C7C8CA" />
+      <polyline fill="#C7C8CA" points="531.381,206.257 533.365,206.257 533.365,210.75 530.638,210.75 " id="polyline38" />
+      <polyline fill="none" id="polyline40" stroke-width="1.003" points="531.381,206.257 533.365,206.257 533.365,210.75   530.638,210.75 " stroke="#C7C8CA" />
+      <path fill="#C7C8CA" d="M533.891,197.273l-0.529,40.43c0,1.656,1.335,3,2.982,3c1.648,0,2.985-1.344,2.985-3l0.528-40.43" />
+      <path fill="none" stroke-width="1.504" d="M533.891,197.273l-0.529,40.43c0,1.656,1.335,3,2.982,3  c1.648,0,2.985-1.344,2.985-3l0.528-40.43" stroke="#C7C8CA" />
+      <path fill="#C7C8CA" d="M446.19,193.109c0,0,7.444,48.016,14.642,60.992l16.83-2.725l2.729,2.725l1.931,92.993  c0,3.702,4.401,6.704,8.473,6.704c4.07,0,8.475-3.002,8.475-6.704l2.04-92.993l2.73-2.725l15.953,2.725  c11.417-31.945,14.18-60.992,14.18-60.992" />
+      <path fill="none" stroke-width="1.504" d="M446.19,193.109c0,0,7.444,48.016,14.642,60.992l16.83-2.725  l2.729,2.725l1.931,92.993c0,3.702,4.401,6.704,8.473,6.704c4.07,0,8.475-3.002,8.475-6.704l2.04-92.993l2.73-2.725l15.953,2.725  c11.417-31.945,14.18-60.992,14.18-60.992" stroke="#C7C8CA" />
+      <path fill="#C7C8CA" d="M539.858,184.913v-40.431c0-1.657-1.336-3-2.984-3c-1.647,0-2.983,1.343-2.983,3v40.431" />
+      <path fill="none" stroke-width="1.504" d="M539.858,184.913v-40.431c0-1.657-1.336-3-2.984-3  c-1.647,0-2.983,1.343-2.983,3v40.431" stroke="#C7C8CA" />
+      <path fill="#C7C8CA" d="M446.637,184.913v-40.431c0-1.657-1.336-3-2.983-3c-1.649,0-2.983,1.343-2.983,3v40.431" />
+      <path fill="none" stroke-width="1.504" d="M446.637,184.913v-40.431c0-1.657-1.336-3-2.983-3  c-1.649,0-2.983,1.343-2.983,3v40.431" stroke="#C7C8CA" />
+      <polyline fill="#C7C8CA" points="479.658,254.416 500.658,254.416 500.066,281.698 481.138,281.698 479.658,254.416 " id="polyline58" />
+      <polyline fill="none" id="polyline60" stroke-width="1.003" points="479.658,254.416 500.657,254.416 500.065,281.696   481.138,281.696 479.658,254.416 " stroke="#C7C8CA" />
+      <path fill="#C7C8CA" d="M445.32,184.546c-3.475-33.193,0-44.922,0-44.922c2.481-5.99,7.197-4.992,7.197-4.992h-0.026  c0-15.106,17.909-75.097,37.804-75.097c19.897,0,38.37,59.991,38.37,75.097h-0.15c0,0,4.715-0.999,7.196,4.992  c0,0,2.979,12.977-0.496,46.169" />
+      <path fill="none" stroke-width="1.504" d="M445.32,184.546c-3.475-33.193,0-44.922,0-44.922  c2.481-5.99,7.197-4.992,7.197-4.992h-0.026c0-15.106,17.909-75.097,37.804-75.097c19.897,0,38.37,59.991,38.37,75.097h-0.15  c0,0,4.715-0.999,7.196,4.992c0,0,2.979,12.977-0.496,46.169" stroke="#C7C8CA" />
+      <polyline fill="#C7C8CA" points="478.322,197.293 479.427,197.293 481.907,194.796 499.279,194.796 501.484,197.015   503.414,197.293 503.414,252.198 500.657,254.416 481.08,254.416 478.322,252.752 478.322,197.293 " id="polyline66" />
+      <polyline fill="none" id="polyline68" stroke-width="1.003" points="478.322,197.293 479.425,197.293 481.907,194.796   499.278,194.796 501.484,197.015 503.414,197.293 503.414,252.198 500.657,254.417 481.08,254.417 478.322,252.753 478.322,197.293   " stroke="#C7C8CA" />
+      <path fill="#C7C8CA" d="M490.51,194.778v59.646 M478.35,197.273v54.906l2.73,2.245h19.604l2.606-2.621v-54.53" />
+      <path fill="none" stroke-width="1.003" d="M490.51,194.778v59.646 M478.35,197.273v54.906l2.73,2.245h19.604  l2.606-2.621v-54.53" stroke="#C7C8CA" />
+      <path fill="#C7C8CA" d="M502.916,155.471l25.42-20.839 M452.339,134.632l26.011,20.714" />
+      <path fill="none" stroke-width="1.003" d="M502.916,155.471l25.42-20.839 M452.339,134.632l26.011,20.714" stroke="#C7C8CA" />
+      <line fill="none" x1="480.169" x2="501.486" y1="281.22" y2="281.22" id="line78" stroke="#C7C8CA" stroke-miterlimit="10" />
+      <polyline fill="#C7C8CA" points="480.169,281.22 501.486,281.22 480.169,281.22 " id="polyline80" />
+      <line fill="none" x1="480.169" x2="501.486" y1="281.22" y2="281.22" id="line82" stroke="#C7C8CA" stroke-width="1.003" />
+      <polyline fill="#C7C8CA" points="478.846,184.296 481.824,186.292 498.699,186.292 501.18,184.296 502.918,183.981 502.918,155.345   478.35,155.345 478.35,183.981 " id="polyline84" />
+      <polyline fill="none" id="polyline86" stroke-width="1.003" points="478.846,184.296 481.824,186.292 498.699,186.292   501.18,184.296 502.918,183.981 502.918,155.345 478.35,155.345 478.35,183.981 " stroke="#C7C8CA" />
+      <polyline fill="#C7C8CA" points="478.846,184.296 481.824,186.292 498.699,186.292 501.18,184.296 502.918,183.981 502.918,155.345   478.35,155.345 478.35,183.981 " id="polyline88" />
+      <polyline fill="none" id="polyline90" stroke-width="1.003" points="478.846,184.296 481.824,186.292 498.699,186.292   501.18,184.296 502.918,183.981 502.918,155.345 478.35,155.345 478.35,183.981 " stroke="#C7C8CA" />
+      <path fill="#C7C8CA" d="M446.19,193.109c0,0,7.444,48.016,14.642,60.992l16.83-2.725l2.729,2.725l1.931,92.993  c0,3.702,4.401,6.704,8.473,6.704c4.07,0,8.475-3.002,8.475-6.704l2.04-92.993l2.73-2.725l15.953,2.725  c11.417-31.945,14.18-60.992,14.18-60.992" />
+      <path fill="none" stroke-width="1.504" d="M446.19,193.109c0,0,7.444,48.016,14.642,60.992l16.83-2.725  l2.729,2.725l1.931,92.993c0,3.702,4.401,6.704,8.473,6.704c4.07,0,8.475-3.002,8.475-6.704l2.04-92.993l2.73-2.725l15.953,2.725  c11.417-31.945,14.18-60.992,14.18-60.992" stroke="#C7C8CA" />
+      <polyline fill="#C7C8CA" points="401.914,184.296 401.914,197.273 479.343,197.273 481.824,194.777 499.195,194.777   501.429,197.273 579.105,197.273 579.105,184.296 501.182,184.296 498.698,186.292 481.824,186.292 478.846,184.296   401.914,184.296 " id="polyline96" />
+      <polyline fill="none" id="polyline98" stroke-width="1.003" points="401.914,184.296 401.914,197.271 479.343,197.271   481.824,194.777 499.195,194.777 501.429,197.271 579.105,197.271 579.105,184.296 501.18,184.296 498.698,186.292 481.824,186.292   478.846,184.296 401.914,184.296 " stroke="#C7C8CA" />
+      <polyline fill="#C7C8CA" points="401.914,184.296 401.914,197.273 479.343,197.273 481.824,194.777 499.195,194.777   501.429,197.273 579.105,197.273 579.105,184.296 501.182,184.296 498.698,186.292 481.824,186.292 478.846,184.296   401.914,184.296 " id="polyline108" />
+      <polygon fill="none" stroke-width="1.003" points="401.914,184.296 401.914,197.271 479.343,197.271   481.824,194.777 499.195,194.777 501.429,197.271 579.105,197.271 579.105,184.296 501.18,184.296 498.698,186.292 481.824,186.292   478.846,184.296 " stroke="#C7C8CA" />
+      <polyline fill="#C7C8CA" points="513.075,70.945 506.711,96.469 473.965,96.469 467.6,70.945 478.006,53.154 481.646,53.154   481.646,48.606 489.83,44.968 489.83,44.058 490.741,44.058 491.649,41.329 492.56,40.42 491.649,39.51 492.56,36.782   496.197,36.782 497.107,39.51 496.197,40.42 497.107,41.329 498.017,44.058 498.927,44.058 498.928,48.606 499.836,48.606   499.836,53.154 502.566,53.154 513.075,70.945 " id="polyline120" />
+      <polygon fill="none" stroke-width="1.003" points="513.075,70.945 506.711,96.469 473.965,96.469 467.6,70.945   478.006,53.154 481.644,53.154 481.644,48.606 489.83,44.968 489.83,44.058 490.74,44.058 491.649,41.329 492.56,40.42   491.649,39.51 492.56,36.782 496.197,36.782 497.105,39.51 496.197,40.42 497.105,41.329 498.017,44.058 498.927,44.058   498.928,48.606 499.836,48.606 499.836,53.154 502.566,53.154 " stroke="#C7C8CA" />
+      <line fill="none" x1="493.98" x2="497.619" y1="41.741" y2="41.741" id="line136" stroke="#C7C8CA" stroke-miterlimit="10" />
+      <polyline fill="#C7C8CA" points="493.98,41.741 497.619,41.741 493.98,41.741 " id="polyline138" />
+      <line fill="none" x1="493.98" x2="497.619" y1="41.741" y2="41.741" id="line140" stroke="#C7C8CA" stroke-width="1.003" />
+      <line fill="none" x1="481.646" x2="489.832" y1="48.605" y2="48.605" id="line142" stroke="#C7C8CA" stroke-miterlimit="10" />
+      <polyline fill="#C7C8CA" points="481.646,48.605 489.832,48.605 481.646,48.605 " id="polyline144" />
+      <line fill="none" x1="481.646" x2="489.832" y1="48.605" y2="48.605" id="line146" stroke="#C7C8CA" stroke-width="1.003" />
+      <polyline fill="#C7C8CA" points="506.711,96.469 510.608,80.838 470.066,80.838 473.967,96.469 506.711,96.469 " id="polyline184" />
+      <polygon fill="none" stroke-width="1.003" points="506.711,96.469 510.607,80.838 470.066,80.838 473.967,96.469   " stroke="#C7C8CA" />
+      <polyline fill="#FFFFFF" points="449.268,207.908 443.697,207.908 443.697,203.416 447.751,203.416 " id="polyline188" />
+      <polyline fill="none" id="polyline190" stroke-width="1.003" points="449.268,207.908 443.697,207.908 443.697,203.416   447.751,203.416 " stroke="#000000" />
+      <path fill="#FFFFFF" d="M437.734,194.431v40.431c0,1.656,1.336,3,2.984,3c1.646,0,2.983-1.344,2.983-3v-40.431" />
+      <path fill="none" stroke-width="1.504" d="M437.734,194.431v40.431c0,1.656,1.336,3,2.984,3  c1.646,0,2.983-1.344,2.983-3v-40.431" stroke="#000000" />
+      <polyline fill="#FFFFFF" points="528.446,203.415 530.432,203.415 530.432,207.907 527.703,207.907 " id="polyline196" />
+      <polyline fill="none" id="polyline198" stroke-width="1.003" points="528.446,203.415 530.432,203.415 530.432,207.907   527.703,207.907 " stroke="#000000" />
+      <path fill="#FFFFFF" d="M530.957,194.431l-0.53,40.431c0,1.656,1.336,3,2.982,3c1.649,0,2.986-1.344,2.986-3l0.527-40.431" />
+      <path fill="none" stroke-width="1.504" d="M530.957,194.431l-0.53,40.431c0,1.656,1.336,3,2.982,3  c1.649,0,2.986-1.344,2.986-3l0.527-40.431" stroke="#000000" />
+      <path fill="#FFFFFF" d="M443.257,190.266c0,0,7.445,48.016,14.643,60.992l16.83-2.725l2.729,2.725l1.931,92.993  c0,3.704,4.402,6.705,8.474,6.705c4.069,0,8.475-3.001,8.475-6.705l2.04-92.993l2.729-2.725l15.954,2.725  c11.417-31.945,14.18-60.992,14.18-60.992" />
+      <path fill="none" stroke-width="1.504" d="M443.257,190.266c0,0,7.445,48.016,14.643,60.992l16.83-2.725  l2.729,2.725l1.931,92.993c0,3.704,4.402,6.705,8.474,6.705c4.069,0,8.475-3.001,8.475-6.705l2.04-92.993l2.729-2.725l15.954,2.725  c11.417-31.945,14.18-60.992,14.18-60.992" stroke="#000000" />
+      <path fill="#FFFFFF" d="M536.925,182.071v-40.431c0-1.656-1.337-3-2.985-3c-1.646,0-2.982,1.344-2.982,3v40.431" />
+      <path fill="none" stroke-width="1.504" d="M536.925,182.071v-40.431c0-1.656-1.337-3-2.985-3  c-1.646,0-2.982,1.344-2.982,3v40.431" stroke="#000000" />
+      <path fill="#FFFFFF" d="M443.702,182.071v-40.431c0-1.656-1.335-3-2.983-3s-2.984,1.344-2.984,3v40.431" />
+      <path fill="none" stroke-width="1.504" d="M443.702,182.071v-40.431c0-1.656-1.335-3-2.983-3s-2.984,1.344-2.984,3  v40.431" stroke="#000000" />
+      <polyline fill="#C7C8CA" points="476.726,251.574 497.724,251.574 497.133,278.855 478.203,278.855 476.726,251.574 " id="polyline216" />
+      <path fill="#FFFFFF" d="M442.386,181.704c-3.474-33.193,0-44.922,0-44.922c2.481-5.991,7.196-4.992,7.196-4.992h-0.024  c0-15.105,17.908-75.097,37.803-75.097c19.897,0,38.37,59.992,38.37,75.097h-0.149c0,0,4.715-0.999,7.196,4.992  c0,0,2.979,12.977-0.497,46.168" />
+      <path fill="none" stroke-width="1.504" d="M442.386,181.704c-3.474-33.193,0-44.922,0-44.922  c2.481-5.991,7.196-4.992,7.196-4.992h-0.024c0-15.105,17.908-75.097,37.803-75.097c19.897,0,38.37,59.992,38.37,75.097h-0.149  c0,0,4.715-0.999,7.196,4.992c0,0,2.979,12.977-0.497,46.168" stroke="#000000" />
+      <polyline fill="#C7C8CA" points="475.39,194.45 476.492,194.45 478.973,191.953 496.344,191.953 498.551,194.173 500.481,194.45   500.481,249.355 497.723,251.574 478.146,251.574 475.39,249.911 475.39,194.45 " id="polyline222" />
+      <path fill="none" stroke-width="1.003" d="M487.577,191.937v59.646 M475.417,194.431v54.906l2.73,2.245h19.603  l2.606-2.621v-54.531" stroke="#000000" />
+      <path fill="none" stroke-width="1.003" d="M499.982,152.629l25.421-20.839 M449.404,131.79l26.012,20.714" stroke="#000000" />
+      <line fill="none" x1="477.235" x2="498.552" y1="278.378" y2="278.378" id="line228" stroke="#000000" stroke-width="1.003" />
+      <polyline fill="#C7C8CA" points="475.911,181.455 478.89,183.45 495.766,183.45 498.246,181.455 499.983,181.14 499.983,152.503   475.416,152.503 475.416,181.14 " id="polyline230" />
+      <polyline fill="none" id="polyline232" stroke-width="1.003" points="475.911,181.455 478.89,183.45 495.766,183.45   498.246,181.455 499.983,181.14 499.983,152.503 475.416,152.503 475.416,181.14 " stroke="#000000" />
+      <path fill="none" stroke-width="1.504" d="M443.257,190.266c0,0,7.445,48.016,14.643,60.992l16.83-2.725  l2.729,2.725l1.931,92.993c0,3.704,4.402,6.705,8.474,6.705c4.069,0,8.475-3.001,8.475-6.705l2.04-92.993l2.729-2.725l15.954,2.725  c11.417-31.945,14.18-60.992,14.18-60.992" stroke="#000000" />
+      <polyline fill="#C7C8CA" points="398.979,181.455 398.979,194.43 476.408,194.43 478.89,191.935 496.263,191.935 498.494,194.43   576.172,194.43 576.172,181.455 498.247,181.455 495.765,183.449 478.89,183.449 475.911,181.455 398.979,181.455 " id="polyline236" />
+      <polyline fill="none" id="polyline238" stroke-width="1.003" points="398.979,181.455 398.979,194.43 476.408,194.43   478.89,191.935 496.261,191.935 498.494,194.43 576.172,194.43 576.172,181.455 498.246,181.455 495.765,183.45 478.89,183.45   475.911,181.455 398.979,181.455 " stroke="#000000" />
+      <polygon fill="none" stroke-width="1.003" points="398.979,181.455 398.979,194.43 476.408,194.43 478.89,191.935   496.261,191.935 498.494,194.43 576.172,194.43 576.172,181.455 498.246,181.455 495.765,183.45 478.89,183.45 475.911,181.455 " stroke="#000000" />
+      <polyline fill="#FFFFFF" points="510.142,68.104 503.776,93.627 471.033,93.627 464.665,68.104 475.071,50.313 478.711,50.313   478.711,45.763 486.897,42.126 486.897,41.215 487.808,41.215 488.716,38.486 489.625,37.578 488.716,36.667 489.625,33.939   493.264,33.939 494.173,36.667 493.264,37.578 494.173,38.486 495.083,41.215 495.993,41.215 495.993,45.763 496.902,45.763   496.902,50.313 499.632,50.313 510.142,68.104 " id="polyline254" />
+      <polygon fill="none" stroke-width="1.003" points="510.142,68.104 503.776,93.627 471.032,93.627 464.664,68.104   475.071,50.313 478.71,50.313 478.71,45.763 486.896,42.126 486.896,41.215 487.806,41.215 488.716,38.486 489.624,37.578   488.716,36.668 489.624,33.939 493.264,33.939 494.173,36.668 493.264,37.578 494.173,38.486 495.083,41.215 495.992,41.215   495.993,45.763 496.902,45.763 496.902,50.313 499.632,50.313 " stroke="#000000" />
+      <line fill="none" x1="489.625" x2="493.265" y1="37.577" y2="37.577" id="line270" stroke="#FFFFFF" stroke-miterlimit="10" />
+      <polyline fill="#FFFFFF" points="489.625,37.577 493.265,37.577 489.625,37.577 " id="polyline272" />
+      <line fill="none" x1="489.625" x2="493.265" y1="37.577" y2="37.577" id="line274" stroke="#000000" stroke-width="1.003" />
+      <line fill="none" x1="478.712" x2="486.897" y1="45.763" y2="45.763" id="line276" stroke="#FFFFFF" stroke-miterlimit="10" />
+      <polyline fill="#FFFFFF" points="478.712,45.763 486.897,45.763 478.712,45.763 " id="polyline278" />
+      <line fill="none" x1="478.712" x2="486.897" y1="45.763" y2="45.763" id="line280" stroke="#000000" stroke-width="1.003" />
+      <polyline fill="#C7C8CA" points="503.776,93.627 507.675,77.995 467.134,77.995 471.033,93.627 503.776,93.627 " id="polyline318" />
+      <polygon fill="none" stroke-width="1.003" points="503.776,93.627 507.673,77.995 467.133,77.995 471.032,93.627   " stroke="#000000" />
+      <path fill="#FFFFFF" d="M409.31,190.282c1.411,0,2.552-1.143,2.552-2.552c0-1.41-1.141-2.554-2.552-2.554  c-1.41,0-2.554,1.144-2.554,2.554C406.756,189.139,407.899,190.282,409.31,190.282" />
+      <g fill="none" id="armorPips">
+        <g transform="translate(487.3355,94.98)" class="paperdoll-pip-profile">
+          <rect x="-27.77" width="55.54" y="0" height="6.8" data-fill="armor" data-location="FR" />
+          <rect x="-28.95" width="57.9" y="3.4" height="6.8" data-fill="armor" data-location="FR" />
+          <rect x="-30.11" width="60.22" y="6.8" height="6.8" data-fill="armor" data-location="FR" />
+          <rect x="-30.93" width="61.86" y="10.2" height="6.8" data-fill="armor" data-location="FR" />
+          <rect x="-32.29" width="64.58" y="13.6" height="6.8" data-fill="armor" data-location="FR" />
+          <rect x="-32.98" width="65.96" y="17.4" height="6.8" data-fill="armor" data-location="FR" />
+          <rect x="-34.14" width="68.28" y="20.4" height="6.8" data-fill="armor" data-location="FR" />
+          <rect x="-35.45" width="70.9" y="27.2" height="6.8" data-fill="armor" data-location="FR" />
+          <rect x="-32.16" width="64.32" y="34.0" height="6.8" data-fill="armor" data-location="FR" />
+          <rect x="-23" width="46" y="40.8" height="6.8" data-fill="armor" data-location="FR" />
+          <rect x="-14.93" width="29.86" y="47.6" height="6.8" data-fill="armor" data-location="FR" />
+        </g>
+        <g style="mml-multisection:true" transform="translate(501.3005,135.434)" class="paperdoll-pip-profile">
+          <g id="armorPipsRS_section01">
+            <rect x="21.19" width="8.75" y="0" height="6.8" data-fill="armor" data-location="RS" />
+            <rect x="12.65" width="18.2" y="6.8" height="6.8" data-fill="armor" data-location="RS" />
+            <rect x="3.25" width="27.59" y="13.6" height="6.8" data-fill="armor" data-location="RS" />
+            <rect x="0" width="30.96" y="20.4" height="6.8" data-fill="armor" data-location="RS" />
+            <rect x="0" width="30.96" y="27.2" height="6.8" data-fill="armor" data-location="RS" />
+            <rect x="0" width="29.96" y="34.0" height="6.8" data-fill="armor" data-location="RS" />
+            <rect x="0" width="29.91" y="39.6" height="6.8" data-fill="armor" data-location="RS" />
+          </g>
+          <g id="armorPipsRS_section02">
+            <rect x="0" width="26.68" y="61.2" height="6.8" data-fill="armor" data-location="RS" />
+            <rect x="0" width="25.38" y="68" height="6.8" data-fill="armor" data-location="RS" />
+            <rect x="0" width="23.74" y="74.8" height="6.8" data-fill="armor" data-location="RS" />
+            <rect x="0" width="22.12" y="81.6" height="6.8" data-fill="armor" data-location="RS" />
+            <rect x="0" width="20.88" y="88.4" height="6.8" data-fill="armor" data-location="RS" />
+            <rect x="0" width="18.68" y="95.2" height="6.8" data-fill="armor" data-location="RS" />
+            <rect x="0" width="16.5" y="102" height="6.8" data-fill="armor" data-location="RS" />
+          </g>
+        </g>
+        <g style="mml-multisection:true" transform="matrix(-1,0,0,1,473.6595,135.434)" class="paperdoll-pip-profile">
+          <g id="armorPipsLS_section01">
+            <rect x="21.19" width="8.75" y="0" height="6.8" data-fill="armor" data-location="LS" />
+            <rect x="12.65" width="18.2" y="6.8" height="6.8" data-fill="armor" data-location="LS" />
+            <rect x="3.25" width="27.59" y="13.6" height="6.8" data-fill="armor" data-location="LS" />
+            <rect x="0" width="30.96" y="20.4" height="6.8" data-fill="armor" data-location="LS" />
+            <rect x="0" width="30.96" y="27.2" height="6.8" data-fill="armor" data-location="LS" />
+            <rect x="0" width="29.96" y="34.0" height="6.8" data-fill="armor" data-location="LS" />
+            <rect x="0" width="29.91" y="39.6" height="6.8" data-fill="armor" data-location="LS" />
+          </g>
+          <g id="armorPipsLS_section02">
+            <rect x="0" width="26.68" y="61.2" height="6.8" data-fill="armor" data-location="LS" />
+            <rect x="0" width="25.38" y="68" height="6.8" data-fill="armor" data-location="LS" />
+            <rect x="0" width="23.74" y="74.8" height="6.8" data-fill="armor" data-location="LS" />
+            <rect x="0" width="22.12" y="81.6" height="6.8" data-fill="armor" data-location="LS" />
+            <rect x="0" width="20.88" y="88.4" height="6.8" data-fill="armor" data-location="LS" />
+            <rect x="0" width="18.68" y="95.2" height="6.8" data-fill="armor" data-location="LS" />
+            <rect x="0" width="16.5" y="102" height="6.8" data-fill="armor" data-location="LS" />
+          </g>
+        </g>
+        <g transform="translate(487.8295,280.58)" class="paperdoll-pip-profile">
+          <rect x="-7.3" width="14.6" y="0" height="6.3" data-fill="armor" data-location="RR" />
+          <rect x="-7.11" width="14.22" y="6.3" height="6.3" data-fill="armor" data-location="RR" />
+          <rect x="-6.91" width="13.82" y="12.6" height="6.3" data-fill="armor" data-location="RR" />
+          <rect x="-6.72" width="13.44" y="18.9" height="6.3" data-fill="armor" data-location="RR" />
+          <rect x="-6.53" width="13.06" y="25.2" height="6.3" data-fill="armor" data-location="RR" />
+          <rect x="-6.33" width="12.66" y="31.5" height="6.3" data-fill="armor" data-location="RR" />
+          <rect x="-6.14" width="12.28" y="37.8" height="6.3" data-fill="armor" data-location="RR" />
+          <rect x="-5.95" width="11.9" y="44.1" height="6.3" data-fill="armor" data-location="RR" />
+          <rect x="-5.75" width="11.5" y="50.4" height="6.3" data-fill="armor" data-location="RR" />
+          <rect x="-5.56" width="11.12" y="56.7" height="6.3" data-fill="armor" data-location="RR" />
+        </g>
+        <g transform="translate(487.3295,184.18)" class="paperdoll-pip-profile">
+          <rect x="-87.3" width="174.6" y="0" height="6.8" style="mml-gap:-71,71" data-fill="armor" data-location="RO" />
+        </g>
+        <g transform="translate(487.3355,51.18)" class="paperdoll-pip-profile">
+          <rect x="-11.63" width="23.26" y="0" height="6.44" data-fill="armor" data-location="TU" />
+          <rect x="-15.35" width="30.7" y="6.44" height="6.44" data-fill="armor" data-location="TU" />
+          <rect x="-19.32" width="38.64" y="12.88" height="6.44" data-fill="armor" data-location="TU" />
+          <rect x="-19.32" width="38.64" y="19.32" height="6.44" data-fill="armor" data-location="TU" />
+        </g>
+      </g>
+      <g fill="none" id="structurePips">
+        <g transform="translate(487.5305,155.4)" class="paperdoll-pip-profile">
+          <rect x="-11" width="22" y="0" height="6.8" data-fill="structure" data-location="FR" />
+          <rect x="-11" width="22" y="6.8" height="6.8" data-fill="structure" data-location="FR" />
+          <rect x="-11" width="22" y="13.6" height="6.8" data-fill="structure" data-location="FR" />
+        </g>
+        <g transform="translate(488.8295,194.88)" class="paperdoll-pip-profile">
+          <rect x="0" width="9.8" y="0" height="6.8" data-fill="structure" data-location="RS" />
+          <rect x="0" width="9.8" y="6.8" height="6.8" data-fill="structure" data-location="RS" />
+          <rect x="0" width="9.8" y="13.6" height="6.8" data-fill="structure" data-location="RS" />
+          <rect x="0" width="9.8" y="20.4" height="6.8" data-fill="structure" data-location="RS" />
+          <rect x="0" width="9.8" y="27.2" height="6.8" data-fill="structure" data-location="RS" />
+          <rect x="0" width="9.8" y="34.0" height="6.8" data-fill="structure" data-location="RS" />
+          <rect x="0" width="9.8" y="40.8" height="6.8" data-fill="structure" data-location="RS" />
+          <rect x="0" width="9.8" y="47.6" height="6.8" data-fill="structure" data-location="RS" />
+        </g>
+        <g transform="matrix(-1,0,0,1,486.2995,194.88)" class="paperdoll-pip-profile">
+          <rect x="0" width="9.8" y="0" height="6.8" data-fill="structure" data-location="LS" />
+          <rect x="0" width="9.8" y="6.8" height="6.8" data-fill="structure" data-location="LS" />
+          <rect x="0" width="9.8" y="13.6" height="6.8" data-fill="structure" data-location="LS" />
+          <rect x="0" width="9.8" y="20.4" height="6.8" data-fill="structure" data-location="LS" />
+          <rect x="0" width="9.8" y="27.2" height="6.8" data-fill="structure" data-location="LS" />
+          <rect x="0" width="9.8" y="34.0" height="6.8" data-fill="structure" data-location="LS" />
+          <rect x="0" width="9.8" y="40.8" height="6.8" data-fill="structure" data-location="LS" />
+          <rect x="0" width="9.8" y="47.6" height="6.8" data-fill="structure" data-location="LS" />
+        </g>
+        <g transform="translate(487.7305,254.18)" class="paperdoll-pip-profile">
+          <rect x="-8.65" width="17.3" y="0" height="6.8" data-fill="structure" data-location="RR" />
+          <rect x="-8.65" width="17.3" y="6.8" height="6.8" data-fill="structure" data-location="RR" />
+          <rect x="-8.65" width="17.3" y="13.6" height="6.8" data-fill="structure" data-location="RR" />
+        </g>
+        <g transform="translate(487.3295,184.8)" class="paperdoll-pip-profile">
+          <rect x="-66.8" width="133.6" y="0" height="5.6" data-fill="structure" data-location="RO" />
+        </g>
+        <g transform="translate(487.3355,78.8)" class="paperdoll-pip-profile">
+          <rect x="-17.42" width="34.84" y="0" height="6.8" data-fill="structure" data-location="TU" />
+          <rect x="-15.92" width="31.84" y="6.8" height="6.8" data-fill="structure" data-location="TU" />
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

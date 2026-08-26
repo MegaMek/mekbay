@@ -12,6 +12,7 @@ describe('createLoadForceEntry', () => {
     const resolvedEra = { id: 3025, name: 'Succession Wars' } as any;
     const resolver = {
         getUnitByName: (name: string) => name === 'Atlas AS7-D' ? resolvedUnit : undefined,
+        getUnitByIdentity: () => resolvedUnit,
         getFactionById: (id: number) => id === 1 ? resolvedFaction : undefined,
         getEraById: (id: number) => id === 3025 ? resolvedEra : undefined,
     };
@@ -72,11 +73,12 @@ describe('createLoadForceEntryFromSerializedForce', () => {
     const resolvedEra = { id: 3025, name: 'Succession Wars' } as any;
     const resolver = {
         getUnitByName: (name: string) => name === 'Atlas AS7-D' ? resolvedUnit : undefined,
+        getUnitByIdentity: () => resolvedUnit,
         getFactionById: (id: number) => id === 1 ? resolvedFaction : undefined,
         getEraById: (id: number) => id === 3025 ? resolvedEra : undefined,
     };
 
-    it('wraps serialized force data in a saved entry and preserves unit crew stats', () => {
+    it('rejects V1 data that bypassed the one persistence-ingress converter', () => {
         const serializedUnit: CBTSerializedUnit = {
             id: 'cbt-1',
             unit: 'Atlas AS7-D',
@@ -117,25 +119,7 @@ describe('createLoadForceEntryFromSerializedForce', () => {
             }],
         } as SerializedForce;
 
-        const result = createLoadForceEntryFromSerializedForce(raw, resolver, { local: true });
-
-        expect(result instanceof LoadForceEntry).toBe(true);
-        expect(result.local).toBe(true);
-        expect(result.cloud).toBe(false);
-        expect(result.bv).toBe(1400);
-        expect(result.note).toBe('House guard detachment.');
-        expect(result.tags).toEqual(['Guard', '3025']);
-        expect(result.groups[0]).toEqual(jasmine.objectContaining({
-            name: 'Command Lance',
-            formationId: 'command-lance',
-            force: result,
-        }));
-        expect(result.groups[0].units[0]).toEqual(jasmine.objectContaining({
-            unit: resolvedUnit,
-            gunnery: 3,
-            piloting: 4,
-        }));
-        expect(result.faction).toBe(resolvedFaction);
-        expect(result.era).toBe(resolvedEra);
+        expect(() => createLoadForceEntryFromSerializedForce(raw, resolver, { local: true }))
+            .toThrowError(/normalized current persistence/u);
     });
 });

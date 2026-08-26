@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Component, ChangeDetectionStrategy, input, computed, effect, inject, Injector, signal, type OnInit } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, input, computed, effect, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { Unit, UnitFluffCatalogEntry, UnitImageFluff } from '../../../models/units.model';
-import { getUnitServerHost } from '../../../models/common.model';
-import { DataService } from '../../../services/data.service';
-import { LoadingSpinnerComponent } from '../../loading-spinner/loading-spinner.component';
+import type { UnitSummary } from '../../../models/unit-summary.model';
+import type { UnitFluff } from '../../../models/unit-fluff.model';
+import { UnitFluffImageService } from '../../../services/catalogs/unit-fluff-image.service';
+import { NativeUnitFluffService } from '../../../services/catalogs/native-unit-fluff.service';
 
 interface ManufacturerFactoryDisplay {
     pairedText: string;
@@ -18,64 +18,57 @@ interface ManufacturerFactoryDisplay {
 @Component({
     selector: 'unit-details-intel-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, LoadingSpinnerComponent],
+    imports: [CommonModule],
     templateUrl: './unit-details-intel-tab.component.html',
     styleUrls: ['./unit-details-intel-tab.component.css']
 })
-export class UnitDetailsIntelTabComponent implements OnInit {
-    unit = input.required<Unit>();
+export class UnitDetailsIntelTabComponent {
+    unit = input.required<UnitSummary>();
     isSwiping = input<boolean>(false);
 
-    private readonly dataService = inject(DataService);
-    private readonly injector = inject(Injector);
-    private fluffRequestId = 0;
+    private readonly fluffImages = inject(UnitFluffImageService);
+    private readonly nativeFluff = inject(NativeUnitFluffService);
 
-    fluff = signal<UnitFluffCatalogEntry | undefined>(undefined);
-    isFluffLoading = signal(false);
+    fluffImageUrl = computed(() => this.fluffImages.resolveUrl(this.unit()));
+    fluff = signal<UnitFluff | undefined>(undefined);
+    loading = signal(true);
+    loadError = signal(false);
 
-    ngOnInit(): void {
-        effect(() => {
+    constructor() {
+        inject(DestroyRef).onDestroy(() => {
+            // Do not retain native prose after the structurally-created Intel
+            // tab leaves the view. The root service itself is stateless.
+            this.fluff.set(undefined);
+        });
+        effect((onCleanup) => {
             const unit = this.unit();
-            const requestId = ++this.fluffRequestId;
+            let current = true;
+            this.fluff.set(undefined);
+            this.loading.set(true);
+            this.loadError.set(false);
 
-            this.fluff.set(this.getUnitImageFallback(unit.fluff));
-            this.isFluffLoading.set(true);
-
-            void this.dataService.getUnitFluff(unit)
-                .then((fluff) => {
-                    if (requestId !== this.fluffRequestId) return;
-                    this.fluff.set(fluff);
-                })
-                .catch(() => {
-                    if (requestId !== this.fluffRequestId) return;
-                    this.fluff.set(this.getUnitImageFallback(unit.fluff));
-                })
-                .finally(() => {
-                    if (requestId !== this.fluffRequestId) return;
-                    this.isFluffLoading.set(false);
-                });
-        }, { injector: this.injector });
+            void this.nativeFluff.load(unit).then(fluff => {
+                if (!current) return;
+                this.fluff.set(fluff);
+                this.loading.set(false);
+            }).catch(() => {
+                if (!current) return;
+                this.fluff.set(undefined);
+                this.loading.set(false);
+                this.loadError.set(true);
+            });
+            onCleanup(() => { current = false; });
+        });
     }
 
     private hasValue(text: string | undefined): boolean {
         return !!text?.trim();
     }
 
-    fluffImageUrl = computed(() => {
-        const fluff = this.fluff();
-
-        if (fluff?.img) {
-            if (fluff.img.endsWith('hud.png')) return; // Ignore HUD images
-            return `${getUnitServerHost(this.unit())}/images/fluff/${fluff.img}`;
-        }
-        return null;
-    });
-
     isImageOnlyIntel = computed(() => {
-        if (this.isFluffLoading()) return false;
-
         const fluff = this.fluff();
-        if (!fluff || !this.fluffImageUrl()) return false;
+        if (this.loading() || this.loadError() || !this.fluffImageUrl()) return false;
+        if (!fluff) return true;
 
         const hasSystems = !!(fluff.systems && fluff.systems.length > 0);
         const hasTextContent = [
@@ -90,11 +83,6 @@ export class UnitDetailsIntelTabComponent implements OnInit {
 
         return !hasSystems && !hasTextContent;
     });
-
-    private getUnitImageFallback(fluff: UnitImageFluff | undefined): UnitFluffCatalogEntry | undefined {
-        const image = fluff?.img?.trim();
-        return image ? { img: image } : undefined;
-    }
 
     sanitizeFluffHtml(text: string | undefined): string {
         if (!text) return '';

@@ -3,24 +3,11 @@
 // Author: Drake
 
 import { inject, Injectable } from '@angular/core';
-import type { UnitFluffCatalog, UnitFluffCatalogEntry, UnitFluffCatalogMetadata, Units } from '../models/units.model';
-import type { Eras } from '../models/eras.model';
-import type { RawMULFactions } from '../models/mulfactions.model';
 import type { Options } from '../models/options.model';
-import type { Quirks } from '../models/quirks.model';
-import type { Sourcebooks } from '../models/sourcebook.model';
-import type { MegaMekFactionsData } from '../models/megamek/factions.model';
-import type { MegaMekAvailabilityData } from '../models/megamek/availability.model';
-import type { MegaMekRulesetsData } from '../models/megamek/rulesets.model';
-import type { SarnaPageTitlesData } from '../models/sarna-page-titles.model';
-import type { ForceNameWordsData } from '../models/force-name-words.model';
-import type { PilotNameCatalogData } from '../models/pilot-name-catalog.model';
-import type { RawEquipmentData } from '../models/equipment.model';
 import type { SerializedForce } from '../models/force-serialization';
 import { DialogsService } from './dialogs.service';
 import type { SerializedSearchFilter } from './unit-search-filters.model';
 import {
-    createLoadForceEntryFromSerializedForce,
     LoadForceEntry,
 } from '../models/load-force-entry.model';
 import type { ForceEntryResolver } from '../models/force-entry-resolver.model';
@@ -28,16 +15,25 @@ import { LoggerService } from './logger.service';
 import type { SerializedOperation } from '../models/operation.model';
 import type { SerializedOrganization } from '../models/organization.model';
 import type { LinkedOAuthProvider } from '../models/account-auth.model';
+import {
+    decodeForceFromStorage,
+    encodeForceForStorage,
+    type StoredForceRecord,
+} from '../models/runtime/force-storage-codec';
+
+interface PersistedForceEntryResolver extends ForceEntryResolver {
+    createLoadForceEntryFromPersistedForce(
+        raw: SerializedForce,
+        options?: { cloud?: boolean; local?: boolean },
+    ): Promise<LoadForceEntry>;
+}
 
 
 
 const DB_NAME = 'mekbay';
-const DB_VERSION = 13;
+const DB_VERSION = 18;
 const DB_STORE = 'store';
-const UNITS_KEY = 'units';
-const UNITS_FLUFF_METADATA_KEY = 'unitsFluff';
 const CUSTOM_UNITS_KEY_PREFIX = 'units:server:';
-const CUSTOM_UNITS_FLUFF_KEY_PREFIX = 'units-fluff:server:';
 const EQUIPMENT_KEY = 'equipment';
 const FACTIONS_KEY = 'factions';
 const MEGAMEK_FACTIONS_KEY = 'megamekFactions';
@@ -47,7 +43,6 @@ const ERAS_KEY = 'eras';
 const SOURCEBOOKS_KEY = 'sourcebooks';
 const SHEETS_STORE = 'sheetsStore';
 const CANVAS_STORE = 'canvasStore';
-const UNIT_FLUFF_STORE = 'unitFluffStore';
 const OPERATIONS_STORE = 'operationsStore';
 const FORCE_STORE = 'forceStore';
 const TAGS_STORE = 'tagsStore';
@@ -62,8 +57,6 @@ const FORCE_NAME_WORDS_KEY = 'forceNameWords';
 const PILOT_NAMES_KEY = 'pilotNames';
 
 const CATALOG_GENERAL_STORE_KEYS = [
-    UNITS_KEY,
-    UNITS_FLUFF_METADATA_KEY,
     EQUIPMENT_KEY,
     FACTIONS_KEY,
     MEGAMEK_FACTIONS_KEY,
@@ -78,6 +71,14 @@ const CATALOG_GENERAL_STORE_KEYS = [
 ] as const;
 
 const MAX_SHEET_CACHE_COUNT = 5000; // Max number of sheets to cache
+
+class IndexedDbUpgradeBlockedError extends Error {
+    constructor() {
+        super('The local database upgrade is blocked by another MekBay tab. '
+            + 'Close the other tab, then retry or reload this one.');
+        this.name = 'IndexedDbUpgradeBlockedError';
+    }
+}
 
 export interface StoredSheet {
     key: string;
@@ -259,6 +260,10 @@ export class DbService {
      * Handle database initialization failure with user options.
      */
     private async handleDbInitFailure(error: unknown): Promise<IDBDatabase | null> {
+        const blockedGuidance = error instanceof IndexedDbUpgradeBlockedError
+            ? '<p><strong>Another MekBay tab is blocking the database upgrade.</strong> '
+                + 'Close every other MekBay tab before retrying.</p>'
+            : '<p>Failed to open the local database. This may be due to storage corruption or browser issues.</p>';
         const choice = await this.dialogsService.choose<'retry' | 'reset' | 'continue'>(
             'Database Error',
             '',
@@ -271,7 +276,7 @@ export class DbService {
             {
                 panelClass: 'danger',
                 messageHtml: `
-                    <p>Failed to open the local database. This may be due to storage corruption or browser issues.</p>
+                    ${blockedGuidance}
                     <p style="margin-top: 1em;"><strong>Your options:</strong></p>
                     <ul style="margin: 0.5em 0 1.5em 1.5em; padding: 0;">
                         <li><strong>RETRY</strong> – Try opening the database again</li>
@@ -330,6 +335,12 @@ export class DbService {
     private initIndexedDb(): Promise<IDBDatabase> {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
+            let settled = false;
+            const rejectOnce = (error: unknown): void => {
+                if (settled) return;
+                settled = true;
+                reject(error);
+            };
 
             request.onupgradeneeded = (event) => {
                 const db = (event.target as IDBOpenDBRequest).result;
@@ -340,18 +351,67 @@ export class DbService {
                 this.createStoreIfMissing(db, transaction, TAGS_STORE);
                 this.createStoreIfMissing(db, transaction, SAVED_SEARCHES_STORE);
                 this.createStoreIfMissing(db, transaction, CANVAS_STORE);
-                this.createStoreIfMissing(db, transaction, UNIT_FLUFF_STORE);
                 this.createStoreIfMissing(db, transaction, PUBLIC_TAGS_STORE);
                 this.createStoreIfMissing(db, transaction, OPERATIONS_STORE);
                 this.createStoreIfMissing(db, transaction, ORGANIZATIONS_STORE);
+
+                if (db.objectStoreNames.contains('forceV2Store')) {
+                    // Schema 18 stores one complete force object. The V1 copy in
+                    // forceStore remains sufficient for one-way load conversion.
+                    db.deleteObjectStore('forceV2Store');
+                }
+
+                // Schema 14 removes the pre-generated units-fluff.json cache. Prose is
+                // read from the native MTF/BLK only while Intel is open; art is resolved
+                // independently through images.json.
+                if (db.objectStoreNames.contains('unitFluffStore')) {
+                    db.deleteObjectStore('unitFluffStore');
+                }
+                if (transaction && db.objectStoreNames.contains(DB_STORE)) {
+                    const generalStore = transaction.objectStore(DB_STORE);
+                    generalStore.delete('unitsFluff');
+                    // Schema 15 removes the obsolete units.json snapshot.
+                    // Provider-specific legacy caches use a different prefix and are preserved.
+                    generalStore.delete('units');
+                    if (event.oldVersion < 17) {
+                        // Catalog caches are disposable application data. Do not
+                        // migrate old-webapp payloads into the user-data database.
+                        for (const key of CATALOG_GENERAL_STORE_KEYS) {
+                            generalStore.delete(key);
+                        }
+                    }
+                    const legacyCursor = generalStore.openKeyCursor();
+                    legacyCursor.onsuccess = () => {
+                        const cursor = legacyCursor.result;
+                        if (!cursor) return;
+                        if (typeof cursor.key === 'string') {
+                            const isLegacyFluff = cursor.key.startsWith('units-fluff:server:');
+                            const isLegacyCatalog = event.oldVersion < 17
+                                && cursor.key.startsWith(CUSTOM_UNITS_KEY_PREFIX);
+                            if (isLegacyFluff || isLegacyCatalog) generalStore.delete(cursor.key);
+                        }
+                        cursor.continue();
+                    };
+                }
             };
 
-            request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
-            request.onerror = (event) => reject((event.target as IDBOpenDBRequest).error);
-            request.onblocked = async () => {
-                await this.dialogsService.showError('Database upgrade blocked. Please close other tabs of this app and reload.', 'Database Upgrade Blocked');
-                reject('IndexedDB upgrade blocked');
+            request.onsuccess = (event) => {
+                const db = (event.target as IDBOpenDBRequest).result;
+                if (settled) {
+                    db.close();
+                    return;
+                }
+                settled = true;
+                db.onversionchange = () => {
+                    this.logger.warn('IndexedDB schema changed in another tab; closing this stale connection.');
+                    db.close();
+                };
+                resolve(db);
             };
+            request.onerror = (event) => rejectOnce((event.target as IDBOpenDBRequest).error);
+            // Reject the open before any recovery UI is awaited. The outer
+            // recovery path owns exactly one actionable dialog.
+            request.onblocked = () => rejectOnce(new IndexedDbUpgradeBlockedError());
         });
     }
 
@@ -476,121 +536,6 @@ export class DbService {
         });
     }
 
-    public async getUnits(): Promise<Units | null> {
-        return await this.getDataFromGeneralStore<Units>(UNITS_KEY);
-    }
-
-    public async saveEquipment(equipmentData: RawEquipmentData): Promise<void> {
-        return await this.saveDataFromGeneralStore(equipmentData, EQUIPMENT_KEY);
-    }
-
-    public async getEquipments(): Promise<RawEquipmentData | null> {
-        return await this.getDataFromGeneralStore<RawEquipmentData>(EQUIPMENT_KEY);
-    }
-
-    public async saveUnits(unitsData: Units): Promise<void> {
-        return await this.saveDataFromGeneralStore(unitsData, UNITS_KEY);
-    }
-
-    private static customUnitsKey(serverUrl: string): string {
-        return `${CUSTOM_UNITS_KEY_PREFIX}${serverUrl}`;
-    }
-
-    public async getCustomServerUnits(serverUrl: string): Promise<Units | null> {
-        return await this.getDataFromGeneralStore<Units>(DbService.customUnitsKey(serverUrl));
-    }
-
-    public async saveCustomServerUnits(serverUrl: string, unitsData: Units): Promise<void> {
-        return await this.saveDataFromGeneralStore(unitsData, DbService.customUnitsKey(serverUrl));
-    }
-
-    private static customFluffKey(serverUrl: string): string {
-        return `${CUSTOM_UNITS_FLUFF_KEY_PREFIX}${serverUrl}`;
-    }
-
-    public async getCustomServerFluff(serverUrl: string): Promise<UnitFluffCatalog | null> {
-        return await this.getDataFromGeneralStore<UnitFluffCatalog>(DbService.customFluffKey(serverUrl));
-    }
-
-    public async saveCustomServerFluff(serverUrl: string, fluffData: UnitFluffCatalog): Promise<void> {
-        return await this.saveDataFromGeneralStore(fluffData, DbService.customFluffKey(serverUrl));
-    }
-
-    public async getUnitFluffCatalogMetadata(): Promise<UnitFluffCatalogMetadata | null> {
-        return await this.getDataFromGeneralStore<UnitFluffCatalogMetadata>(UNITS_FLUFF_METADATA_KEY);
-    }
-
-    public async getUnitFluff(name: string): Promise<UnitFluffCatalogEntry | null> {
-        return await this.getDataFromStore<UnitFluffCatalogEntry>(name, UNIT_FLUFF_STORE);
-    }
-
-    public async saveUnitsFluff(unitsFluffData: UnitFluffCatalog): Promise<void> {
-        const db = await this.dbPromise;
-        if (!db) return; // Degraded mode - caller may keep an in-memory copy
-
-        const entries = Object.entries(unitsFluffData.fluff ?? {});
-        const metadata: UnitFluffCatalogMetadata = {
-            version: unitsFluffData.version,
-            etag: unitsFluffData.etag || '',
-            count: entries.length,
-        };
-
-        return new Promise<void>((resolve, reject) => {
-            const transaction = db.transaction([DB_STORE, UNIT_FLUFF_STORE], 'readwrite');
-            const generalStore = transaction.objectStore(DB_STORE);
-            const unitFluffStore = transaction.objectStore(UNIT_FLUFF_STORE);
-
-            unitFluffStore.clear();
-            for (const [name, fluff] of entries) {
-                unitFluffStore.put(fluff, name);
-            }
-            generalStore.put(metadata, UNITS_FLUFF_METADATA_KEY);
-
-            transaction.oncomplete = () => resolve();
-            transaction.onerror = () => reject(transaction.error);
-        });
-    }
-
-    public async getFactions(): Promise<RawMULFactions | null> {
-        return await this.getDataFromGeneralStore<RawMULFactions>(FACTIONS_KEY);
-    }
-
-    public async saveFactions(factionsData: RawMULFactions): Promise<void> {
-        return await this.saveDataFromGeneralStore(factionsData, FACTIONS_KEY);
-    }
-
-    public async getMegaMekFactions(): Promise<MegaMekFactionsData | null> {
-        return await this.getDataFromGeneralStore<MegaMekFactionsData>(MEGAMEK_FACTIONS_KEY);
-    }
-
-    public async saveMegaMekFactions(factionsData: MegaMekFactionsData): Promise<void> {
-        return await this.saveDataFromGeneralStore(factionsData, MEGAMEK_FACTIONS_KEY);
-    }
-
-    public async getMegaMekAvailability(): Promise<MegaMekAvailabilityData | null> {
-        return await this.getDataFromGeneralStore<MegaMekAvailabilityData>(MEGAMEK_AVAILABILITY_KEY);
-    }
-
-    public async saveMegaMekAvailability(availabilityData: MegaMekAvailabilityData): Promise<void> {
-        return await this.saveDataFromGeneralStore(availabilityData, MEGAMEK_AVAILABILITY_KEY);
-    }
-
-    public async getMegaMekRulesets(): Promise<MegaMekRulesetsData | null> {
-        return await this.getDataFromGeneralStore<MegaMekRulesetsData>(MEGAMEK_RULESETS_KEY);
-    }
-
-    public async saveMegaMekRulesets(rulesetsData: MegaMekRulesetsData): Promise<void> {
-        return await this.saveDataFromGeneralStore(rulesetsData, MEGAMEK_RULESETS_KEY);
-    }
-
-    public async getEras(): Promise<Eras | null> {
-        return await this.getDataFromGeneralStore<Eras>(ERAS_KEY);
-    }
-
-    public async saveEras(erasData: Eras): Promise<void> {
-        return await this.saveDataFromGeneralStore(erasData, ERAS_KEY);
-    }
-
     public async getOptions(): Promise<Options | null> {
         return await this.getDataFromGeneralStore<Options>(OPTIONS_KEY);
     }
@@ -605,46 +550,6 @@ export class DbService {
 
     public async saveUserData(userData: UserData): Promise<void> {
         return await this.saveDataFromGeneralStore(userData, USER_KEY);
-    }
-
-    public async getQuirks(): Promise<Quirks | null> {
-        return await this.getDataFromGeneralStore<Quirks>(QUIRKS_KEY);
-    }
-
-    public async saveQuirks(quirksData: Quirks): Promise<void> {
-        return await this.saveDataFromGeneralStore(quirksData, QUIRKS_KEY);
-    }
-
-    public async getSourcebooks(): Promise<Sourcebooks | null> {
-        return await this.getDataFromGeneralStore<Sourcebooks>(SOURCEBOOKS_KEY);
-    }
-
-    public async saveSourcebooks(sourcebooksData: Sourcebooks): Promise<void> {
-        return await this.saveDataFromGeneralStore(sourcebooksData, SOURCEBOOKS_KEY);
-    }
-
-    public async getSarnaPageTitles(): Promise<SarnaPageTitlesData | null> {
-        return await this.getDataFromGeneralStore<SarnaPageTitlesData>(SARNA_PAGE_TITLES_KEY);
-    }
-
-    public async saveSarnaPageTitles(data: SarnaPageTitlesData): Promise<void> {
-        return await this.saveDataFromGeneralStore(data, SARNA_PAGE_TITLES_KEY);
-    }
-
-    public async getForceNameWords(): Promise<ForceNameWordsData | null> {
-        return await this.getDataFromGeneralStore<ForceNameWordsData>(FORCE_NAME_WORDS_KEY);
-    }
-
-    public async saveForceNameWords(data: ForceNameWordsData): Promise<void> {
-        return await this.saveDataFromGeneralStore(data, FORCE_NAME_WORDS_KEY);
-    }
-
-    public async getPilotNames(): Promise<PilotNameCatalogData | null> {
-        return await this.getDataFromGeneralStore<PilotNameCatalogData>(PILOT_NAMES_KEY);
-    }
-
-    public async savePilotNames(data: PilotNameCatalogData): Promise<void> {
-        return await this.saveDataFromGeneralStore(data, PILOT_NAMES_KEY);
     }
 
     /**
@@ -978,7 +883,18 @@ export class DbService {
     }
 
     public async getForce(instanceId: string): Promise<SerializedForce | null> {
-        return await this.getDataFromStore<SerializedForce>(instanceId, FORCE_STORE);
+        const db = await this.dbPromise;
+        if (!db) return null;
+        return new Promise<SerializedForce | null>((resolve, reject) => {
+            const transaction = db.transaction(FORCE_STORE, 'readonly');
+            const request = transaction.objectStore(FORCE_STORE).get(instanceId);
+            transaction.oncomplete = () => {
+                const stored = request.result as StoredForceRecord | undefined;
+                resolve(stored === undefined ? null : decodeForceFromStorage(stored));
+            };
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Force read was aborted'));
+        });
     }
 
     public async countForces(): Promise<number> {
@@ -994,11 +910,64 @@ export class DbService {
         });
     }
 
-    public async saveForce(force: SerializedForce): Promise<void> {
+    public async saveForce(
+        force: SerializedForce,
+        options: { readonly allowRevisionOverride?: boolean } = {},
+    ): Promise<void> {
         if (!force.instanceId) {
             throw new Error('Force instance ID is required for saving.');
         }
-        return await this.saveDataToStore(force, force.instanceId, FORCE_STORE);
+        if (force.version !== 2) {
+            throw new Error('Only V2 force records may be saved.');
+        }
+        const db = await this.dbPromise;
+        if (!db) return;
+        return new Promise<void>((resolve, reject) => {
+            const transaction = db.transaction(FORCE_STORE, 'readwrite');
+            const store = transaction.objectStore(FORCE_STORE);
+            const existingRequest = store.get(force.instanceId);
+            let guardError: Error | null = null;
+            existingRequest.onsuccess = () => {
+                const existingStored = existingRequest.result as StoredForceRecord | undefined;
+                if (force.cbt === undefined && existingStored?.['cbt'] !== undefined) {
+                    guardError = new Error('Refusing to overwrite a CBT force with a grouped record');
+                    transaction.abort();
+                    return;
+                }
+                let existing: SerializedForce | undefined;
+                if (existingStored !== undefined) {
+                    try {
+                        existing = decodeForceFromStorage(existingStored);
+                    } catch {
+                        // Intermediate development records are intentionally unsupported.
+                        // A current writer may replace them; production V1 still decodes.
+                    }
+                }
+                if (!options.allowRevisionOverride
+                    && force.cbt !== undefined
+                    && existing?.cbt !== undefined
+                    && JSON.stringify(force.cbt) !== JSON.stringify(existing.cbt)) {
+                    if (force.cbt.forceRevision <= existing.cbt.forceRevision) {
+                        guardError = new Error('Refusing a stale CBT V2 force overwrite');
+                        transaction.abort();
+                        return;
+                    }
+                }
+                try {
+                    store.put(encodeForceForStorage(force), force.instanceId);
+                } catch (error) {
+                    guardError = error instanceof Error ? error : new Error(String(error));
+                    transaction.abort();
+                }
+            };
+            existingRequest.onerror = () => {
+                guardError = existingRequest.error ?? new Error('Unable to inspect existing force data');
+                transaction.abort();
+            };
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(guardError ?? transaction.error);
+            transaction.onabort = () => reject(guardError ?? transaction.error ?? new Error('Force save was aborted'));
+        });
     }
 
     public async updateForceTags(instanceId: string, tags: readonly string[]): Promise<SerializedForce | null> {
@@ -1012,11 +981,10 @@ export class DbService {
             let updatedForce: SerializedForce | null = null;
 
             request.onsuccess = () => {
-                const force = request.result as SerializedForce | undefined;
-                if (!force) {
-                    return;
-                }
-
+                const stored = request.result as StoredForceRecord | undefined;
+                // Loaded force ownership must reseal V2 records.
+                if (!stored || stored['cbt'] !== undefined) return;
+                const force = decodeForceFromStorage(stored);
                 updatedForce = { ...force };
                 if (tags.length > 0) {
                     updatedForce.tags = [...tags];
@@ -1024,12 +992,7 @@ export class DbService {
                     delete updatedForce.tags;
                 }
                 updatedForce.timestamp = new Date().toISOString();
-
-                store.put(updatedForce, instanceId);
-            };
-
-            request.onerror = () => {
-                reject(request.error);
+                store.put(encodeForceForStorage(updatedForce), instanceId);
             };
 
             transaction.oncomplete = () => {
@@ -1045,14 +1008,14 @@ export class DbService {
     /**
      * Retrieves all forces from IndexedDB, sorted by timestamp descending.
      */
-    public async listForces(dataService: ForceEntryResolver): Promise<LoadForceEntry[]> {
+    public async listForces(dataService: PersistedForceEntryResolver): Promise<LoadForceEntry[]> {
         const db = await this.dbPromise;
         if (!db) return []; // Degraded mode
         return new Promise<LoadForceEntry[]>((resolve, reject) => {
             const transaction = db.transaction(FORCE_STORE, 'readonly');
             const store = transaction.objectStore(FORCE_STORE);
             // Use index if available, otherwise iterate and sort manually
-            let forces: any[] = [];
+            const forces: unknown[] = [];
             let request: IDBRequest;
             if (store.indexNames.contains('timestamp')) {
                 const index = store.index('timestamp');
@@ -1061,7 +1024,7 @@ export class DbService {
             } else {
                 request = store.openCursor();
             }
-            request.onsuccess = () => {
+            request.onsuccess = async () => {
                 const cursor = request.result;
                 if (cursor) {
                     forces.push(cursor.value);
@@ -1069,16 +1032,20 @@ export class DbService {
                 } else {
                     // If not using index, sort manually
                     if (!store.indexNames.contains('timestamp')) {
-                        forces.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+                        forces.sort((left, right) => forceTimestamp(right).localeCompare(forceTimestamp(left)));
                     }
-                    // Deserialize each force
-                    try {
-                        resolve(
-                            forces.map((raw) => createLoadForceEntryFromSerializedForce(raw as SerializedForce, dataService, { local: true })),
-                        );
-                    } catch (err) {
-                        reject(err);
+                    const entries: LoadForceEntry[] = [];
+                    for (const raw of forces) {
+                        try {
+                            entries.push(await dataService.createLoadForceEntryFromPersistedForce(
+                                decodeForceFromStorage(raw),
+                                { local: true },
+                            ));
+                        } catch (error) {
+                            this.logger.warn(`Skipping unreadable saved force: ${error instanceof Error ? error.message : String(error)}`);
+                        }
                     }
+                    resolve(entries);
                 }
             };
             request.onerror = () => {
@@ -1087,24 +1054,25 @@ export class DbService {
         });
     }
 
-    private async deleteForceCanvasData(instanceId: string): Promise<void> {
-        const force = await this.getForce(instanceId);
-        if (!force) return;
-        if (force.groups) {
-            for (const group of force.groups) {
-                const unitIds = group.units.map(unit => unit.id).filter(id => id);
-                await Promise.all(unitIds.map(id => this.deleteCanvasData(id)));
-            }
-        }
+    private async deleteForceCanvasData(unitIds: readonly string[]): Promise<void> {
+        await Promise.all(unitIds.map(unitId => this.deleteCanvasData(unitId)));
     }
 
     public async deleteCanvasData(unitId: string): Promise<void> {
         await this.deleteDataFromStore(unitId, CANVAS_STORE);
     }
 
-    public async deleteForce(instanceId: string): Promise<void> {
-        await this.deleteForceCanvasData(instanceId);
-        await this.deleteDataFromStore(instanceId, FORCE_STORE);
+    public async deleteForce(instanceId: string, unitIds: readonly string[] = []): Promise<void> {
+        await this.deleteForceCanvasData(unitIds);
+        const db = await this.dbPromise;
+        if (!db) return;
+        await new Promise<void>((resolve, reject) => {
+            const transaction = db.transaction(FORCE_STORE, 'readwrite');
+            transaction.objectStore(FORCE_STORE).delete(instanceId);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Force deletion was aborted'));
+        });
     }
 
     /* ----------------------------------------------------------
@@ -1207,7 +1175,10 @@ export class DbService {
     public async getSheetMeta(key: string): Promise<{ timestamp: number; etag: string } | null> {
         const storedData = await this.getDataFromStore<StoredSheet>(key, SHEETS_STORE);
         if (!storedData) return null;
-        return { timestamp: storedData.timestamp, etag: storedData.etag };
+        return {
+            timestamp: storedData.timestamp,
+            etag: storedData.etag,
+        };
     }
 
     /**
@@ -1242,7 +1213,11 @@ export class DbService {
         }
     }
 
-    public async saveSheet(key: string, sheet: SVGSVGElement, etag: string): Promise<void> {
+    public async saveSheet(
+        key: string,
+        sheet: SVGSVGElement,
+        etag: string,
+    ): Promise<void> {
         // Skip saving if blob storage is unavailable
         if (this.blobStorageUnavailable) return;
         
@@ -1298,7 +1273,7 @@ export class DbService {
         if (!db) return; // Degraded mode
 
         return new Promise<void>((resolve, reject) => {
-            const transaction = db.transaction([DB_STORE, UNIT_FLUFF_STORE], 'readwrite');
+            const transaction = db.transaction(DB_STORE, 'readwrite');
             const store = transaction.objectStore(DB_STORE);
 
             for (const key of CATALOG_GENERAL_STORE_KEYS) {
@@ -1310,14 +1285,11 @@ export class DbService {
             cursorRequest.onsuccess = () => {
                 const cursor = cursorRequest.result;
                 if (!cursor) return;
-                if (typeof cursor.key === 'string'
-                    && (cursor.key.startsWith(CUSTOM_UNITS_KEY_PREFIX) || cursor.key.startsWith(CUSTOM_UNITS_FLUFF_KEY_PREFIX))) {
+                if (typeof cursor.key === 'string' && cursor.key.startsWith(CUSTOM_UNITS_KEY_PREFIX)) {
                     store.delete(cursor.key);
                 }
                 cursor.continue();
             };
-
-            transaction.objectStore(UNIT_FLUFF_STORE).clear();
 
             transaction.oncomplete = () => resolve();
             transaction.onerror = () => reject(transaction.error);
@@ -1332,9 +1304,7 @@ export class DbService {
         const db = await this.dbPromise;
         if (!db) return; // Degraded mode
 
-        const storesToClear = Array.from(db.objectStoreNames).filter(
-            storeName => storeName !== DB_STORE && storeName !== UNIT_FLUFF_STORE,
-        );
+        const storesToClear = Array.from(db.objectStoreNames).filter(storeName => storeName !== DB_STORE);
         const transactionStores = [DB_STORE, ...storesToClear];
 
         return new Promise<void>((resolve, reject) => {
@@ -1432,4 +1402,10 @@ export class DbService {
         };
     }
 
+}
+
+function forceTimestamp(value: unknown): string {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return '';
+    const timestamp = (value as Record<string, unknown>)['timestamp'];
+    return typeof timestamp === 'string' ? timestamp : '';
 }

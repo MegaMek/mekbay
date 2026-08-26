@@ -447,8 +447,8 @@
                         <label for="CBTRules">Rules:</label>
                         <select id="CBTRules" class="bt-select" [value]="optionsService.options().CBTRules"
                             (change)="onCBTRulesChange($event)">
-                            <option value="tw">Total Warfare (default)</option>
-                            <option value="core2026">Core 2026</option>
+                            <option value="total-warfare">Total Warfare (default)</option>
+                            <option value="core-2026">Core 2026</option>
                         </select>
                     </div>
                     <div class="description">
@@ -483,10 +483,9 @@
                         </select>
                     </div>
                     <div class="description">
-                        <p>Shows the calculated heat projection and lets <strong>APPLY HEAT</strong> register it
-                            automatically.</p>
-                        <p>When enabled, ending the turn also applies any pending calculated heat. When disabled, heat
-                            must be entered and applied manually.</p>
+                        <p>Shows the calculated heat projection and applies it automatically when the turn ends.</p>
+                        <p><strong>APPLY HEAT</strong> appears only after selecting a heat value and sets the current heat
+                            directly as a manual correction. When disabled, heat must be entered and applied manually.</p>
                     </div>
                 </div>
                 <div class="option-row">
@@ -497,6 +496,21 @@
                         <option value="clusterTable">Hit location and cluster table (default)</option>
                         <option value="fluffImage">Artwork</option>
                     </select>
+                </div>
+                <div class="option-col">
+                    <div class="option-row">
+                        <label for="usePreGeneratedRecordSheets">Record sheet source:</label>
+                        <select id="usePreGeneratedRecordSheets" class="bt-select"
+                            [value]="optionsService.options().usePreGeneratedRecordSheets"
+                            (change)="onUsePreGeneratedRecordSheetsChange($event)">
+                            <option value="false">Self-generated (default)</option>
+                            <option value="true">Pre-generated (compatibility)</option>
+                        </select>
+                    </div>
+                    <div class="description">
+                        <p>Compatibility mode downloads the MegaMekLab SVGs listed in <code>sheets.json</code>.
+                            Self-generated sheets support adaptable page geometry and compact multi-unit pages.</p>
+                    </div>
                 </div>
                 <div class="option-row">
                     <label for="syncZoomBetweenSheets">Sync zoom/pan:</label>
@@ -857,7 +871,7 @@
                 @for (section of topLevelViews; track section.id) {
                 <button type="button" class="mobile-settings-item" role="listitem"
                     (click)="openMobileSection(section.id)">
-                    <span class="mobile-settings-copy">
+                    <span class="mobile-settings-text">
                         <span class="mobile-settings-label">{{ section.title }}</span>
                         <span class="mobile-settings-description">{{ section.description }}</span>
                     </span>

@@ -65,6 +65,34 @@ describe('PageViewerUiGlueService', () => {
         });
     });
 
+    it('does not schedule impossible shadow work for an empty viewer', () => {
+        expect(service.buildResizePlan({
+            previousVisibleCount: 1,
+            nextVisibleCount: 1,
+            hasCurrentUnit: false,
+            initialRenderComplete: true,
+            shadowPagesEnabled: true,
+            totalUnits: 0,
+            renderedShadowCount: 0
+        })).toEqual({
+            shouldRedisplay: false,
+            shouldCloseInteractionOverlays: false,
+            shouldScheduleShadowRender: false
+        });
+    });
+
+    it('schedules one cleanup when stale shadows remain without a current unit', () => {
+        expect(service.buildResizePlan({
+            previousVisibleCount: 1,
+            nextVisibleCount: 1,
+            hasCurrentUnit: false,
+            initialRenderComplete: true,
+            shadowPagesEnabled: true,
+            totalUnits: 0,
+            renderedShadowCount: 1
+        }).shouldScheduleShadowRender).toBeTrue();
+    });
+
     it('resolves a clicked visible unit only when the gesture is a real page click', () => {
         const wrapper = document.createElement('div');
         wrapper.className = 'page-wrapper';

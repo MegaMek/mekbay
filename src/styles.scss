@@ -38,9 +38,14 @@
     --primary-focus-color-highlight: rgb(174, 174, 255);
 
     --highlight-color: #8885;
+    --equipment-hover-secondary-color: #8883;
 
     --disabled-color: #888;
     --damage-color: #F00;
+    --pip-pending-damage-color: orange;
+    --pip-pending-repair-color: #03a9f4;
+    --pip-fresh-damage-color: #FF0;
+    --success: #7dcc80;
     --danger: #F00;
     --undamaged-highlight-color: #FEE;
     --undamaged-night-highlight-color: #300;
@@ -251,12 +256,8 @@ hr {
     max-height: 100%;
 
     &.fullheight {
-        height: 100vh;
-        height: 100dvh;
-        min-height: 100vh;
-        min-height: 100dvh;
-        max-height: 100vh;
-        max-height: 100dvh;
+        width: 100%;
+        height: 100%;
     }
 
     &.nopadding {
@@ -267,6 +268,46 @@ hr {
         display: block;
         max-width: 600px;
         padding: 16px;
+    }
+}
+
+.cdk-overlay-pane:has(.fullscreen-dialog-host.fullheight) {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+
+    // CDK's dialog container otherwise keeps an auto height. A 100%-height
+    // dialog host can then resolve against the browser viewport instead of
+    // MekBay's smaller application viewport above the background-task row.
+    .cdk-dialog-container {
+        width: 100%;
+        height: 100%;
+        max-width: 100%;
+        max-height: 100%;
+        box-sizing: border-box;
+    }
+}
+
+// The CDK overlay is deliberately reparented into `.application-viewport` so
+// the persistent background-task row remains outside modal dialogs. CDK's
+// global wrapper/backdrop use `position: fixed`; once reparented they must be
+// anchored to that local container or they continue to size against `body`.
+.application-viewport > .cdk-overlay-container {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+
+    .cdk-global-overlay-wrapper,
+    .cdk-overlay-backdrop {
+        position: fixed !important;
+        inset: auto !important;
+        left: var(--mekbay-overlay-left, 0) !important;
+        top: var(--mekbay-overlay-top, 0) !important;
+        width: var(--mekbay-overlay-width, 100vw) !important;
+        height: var(--mekbay-overlay-height, 100vh) !important;
+        margin: 0 !important;
     }
 }
 
@@ -1826,6 +1867,12 @@ hr.divider {
         }
 
         .critSlot {
+            &.equipment-hover-secondary>.critSlot-bg-rect {
+                fill: var(--equipment-hover-secondary-color);
+                stroke: var(--equipment-hover-secondary-color);
+                stroke-width: 0.35px;
+            }
+
             text {
                 pointer-events: none;
             }
@@ -2050,23 +2097,23 @@ hr.divider {
         }
 
         .pip.fresh:not(.damaged) {
-            stroke: #03a9f4 !important;
+            stroke: var(--pip-pending-repair-color) !important;
             stroke-width: 1.5px;
         }
 
         .pip.damaged.fresh {
-            fill: #FF0 !important;
+            fill: var(--pip-fresh-damage-color) !important;
             stroke: var(--damage-color) !important;
-            stroke-width: 1.5px;
-            paint-order: stroke fill;
+            stroke-width: 2.5px;
+            paint-order: fill stroke;
         }
 
         .pip.damaged.pending:not(.fresh) {
-            fill: orange !important;
+            fill: var(--pip-pending-damage-color) !important;
         }
 
         .pip.pending:not(.damaged):not(.fresh) {
-            fill: #03a9f4 !important;
+            fill: var(--pip-pending-repair-color) !important;
         }
 
         .soldierPip.fresh {
@@ -2086,6 +2133,10 @@ hr.divider {
         }
 
         .inventoryEntry {
+            &.equipment-hover-secondary>.inventoryEntryButton {
+                fill: var(--equipment-hover-secondary-color);
+            }
+
             &:hover>.inventoryEntryButton {
                 fill: var(--highlight-color);
             }
@@ -2542,20 +2593,20 @@ hr.divider {
         }
 
         .pip.fresh:not(.damaged) {
-            stroke: #03a9f4 !important;
+            stroke: var(--pip-pending-repair-color) !important;
         }
 
         .pip.damaged.fresh {
-            fill: #FF0 !important;
+            fill: var(--pip-fresh-damage-color) !important;
             stroke: var(--damage-color) !important;
         }
 
         .pip.damaged.pending:not(.fresh) {
-            fill: orange !important;
+            fill: var(--pip-pending-damage-color) !important;
         }
 
         .pip.pending:not(.damaged):not(.fresh) {
-            fill: #03a9f4 !important;
+            fill: var(--pip-pending-repair-color) !important;
         }
 
         .soldierPip.damaged {

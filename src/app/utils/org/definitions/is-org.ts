@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ASUnitTypeCode } from '../../../models/units.model';
+import { ASUnitTypeCode } from '../../../models/unit-summary.model';
 import { DEFAULT_ORG_RULE_REGISTRY } from '../org-facts.util';
 import type {
     OrgCIFormationRule,

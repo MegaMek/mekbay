@@ -1,324 +1,170 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
-import { EquipmentFlag } from '../models/equipment-flags.type';
-import { MiscEquipment } from '../models/equipment.model';
-import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
-import { MountedEquipment } from '../models/mounted-equipment.model';
-import { CORE_2026_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
-import { ENTRY_DISABLED_STATE_KEY } from '../models/rules/unit-type-rules';
-import type { DialogsService } from '../services/dialogs.service';
+import {
+    canUseEscalatingFailure,
+    componentEscalatingFailureFacts,
+    componentEscalatingFailureDefinition,
+    createComponentEscalatingFailureDefinition,
+    selectComponentEscalatingFailureSequence,
+} from '../models/runtime/component-escalating-failure';
+import { asComponentId } from '../models/entity/entity-identifiers';
+import { asCommandId } from '../models/runtime/runtime-state';
+import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import type { CBTRuleset } from '../models/cbt-ruleset.model';
 import {
     createHandlerCommandContext,
     createHandlerQueryContext,
-    EquipmentInteractionRegistry,
-    type HandlerQueryContext,
+    type HandlerDialogsService,
+    type HandlerToastService,
 } from '../services/equipment-interaction-registry.service';
-import type { ToastService } from '../services/toast.service';
-import { createTestEquipmentOwner } from '../testing/unit-test-helpers';
 import {
-    MASC_ACTIVE_STATE_KEY,
-    MASC_SEQUENCE_STATE_KEY,
+    ESCALATING_FAILURE_DISABLED_CHOICE_VALUE,
     MascHandler,
-} from './masc.handler';
+} from '../models/runtime/component-escalating-failure';
 
-function owner(
-    airborne: boolean | null = null,
-    turnStateOverrides: Record<string, unknown> = {},
-    gameRules: CBTGameRules = CORE_2026_GAME_RULES
-) {
-    const turnState = {
-        airborne: () => airborne,
-        ...turnStateOverrides,
-    };
-    const { owner } = createTestEquipmentOwner({ gameRules });
-    Object.assign(owner, {
-        getNotificationDisplayName: () => 'Atlas AS7-D (Natasha Kerensky)',
-        turnState: () => turnState,
-    });
-    spyOn(owner, 'setInventoryEntry').and.callThrough();
-    return owner;
-}
-
-function mascEntry(
-    flags: EquipmentFlag[] = ['F_MASC'],
-    airborne: boolean | null = null,
-    turnStateOverrides: Record<string, unknown> = {},
-    gameRules: CBTGameRules = CORE_2026_GAME_RULES
-): MountedEquipment {
-    return new MountedEquipment({
-        owner: owner(airborne, turnStateOverrides, gameRules),
-        id: 'masc',
-        name: 'MASC',
-        equipment: new MiscEquipment({ id: 'masc', name: 'MASC', type: 'misc', flags })
-    });
-}
-
-function queryContext(choiceSurface: HandlerQueryContext['choiceSurface'] = 'turn-summary'): HandlerQueryContext {
-    return createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY, choiceSurface);
-}
-
-const commandContext = createHandlerCommandContext(
-    EMPTY_EQUIPMENT_REGISTRY,
-    jasmine.createSpyObj<ToastService>('ToastService', ['showToast']),
-    jasmine.createSpyObj<DialogsService>('DialogsService', ['createDialog']),
-);
-
-describe('MascHandler', () => {
-    const handler = new MascHandler();
-
-    it('starts with only the first sequence button clickable', () => {
-        const choices = handler.getChoices(mascEntry(), queryContext());
-
-        expect(choices.slice(0, 5).map(choice => ({ label: choice.label, disabled: choice.disabled, active: choice.active, displayType: choice.displayType }))).toEqual([
-            { label: '3+', disabled: false, active: false, displayType: 'toggle' },
-            { label: '5+', disabled: true, active: false, displayType: 'toggle' },
-            { label: '7+', disabled: true, active: false, displayType: 'toggle' },
-            { label: '10+', disabled: true, active: false, displayType: 'toggle' },
-            { label: '11+', disabled: true, active: false, displayType: 'toggle' },
-        ]);
-        expect(choices[5]).toEqual(jasmine.objectContaining({ label: '✖', shortLabel: '✖' }));
-    });
-
-    it('uses the Core2026 sequence progression for Core2026 units', () => {
-        const choices = handler.getChoices(mascEntry(['F_MASC'], null, {}, CORE_2026_GAME_RULES), queryContext());
-
-        expect(choices.slice(0, 5).map(choice => choice.label)).toEqual(['3+', '5+', '7+', '10+', '11+']);
-        expect(choices[4].colors).toEqual(jasmine.objectContaining({ selected: 'var(--bt-yellow)' }));
-    });
-
-    it('advances one step at a time and unlocks the next button', () => {
-        const entry = mascEntry();
-
-        handler.handleSelection(entry, handler.getChoices(entry, queryContext())[0], commandContext);
-
-        expect(MascHandler.getSequenceState(entry)).toBe(1);
-        expect(handler.isActive(entry)).toBeTrue();
-        expect(handler.getChoices(entry, queryContext()).slice(0, 5).map(choice => ({ disabled: choice.disabled, active: choice.active }))).toEqual([
-            { disabled: false, active: true },
-            { disabled: false, active: false },
-            { disabled: true, active: false },
-            { disabled: true, active: false },
-            { disabled: true, active: false },
-        ]);
-        expect(handler.getChoices(entry, queryContext()).slice(0, 5).map(choice => choice.selectionTone)).toEqual(['selected', 'muted', 'muted', 'muted', 'muted']);
-    });
-
-    it('uses muted tone for previous buttons and inactive current button', () => {
-        const entry = mascEntry();
-        MascHandler.setSequenceState(entry, 3);
-
-        expect(handler.getChoices(entry, queryContext()).slice(0, 5).map(choice => ({ active: choice.active, tone: choice.selectionTone }))).toEqual([
-            { active: true, tone: 'muted' },
-            { active: true, tone: 'muted' },
-            { active: true, tone: 'muted' },
-            { active: false, tone: 'muted' },
-            { active: false, tone: 'muted' },
-        ]);
-
-        entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
-
-        expect(handler.getChoices(entry, queryContext()).slice(0, 5).map(choice => ({ active: choice.active, tone: choice.selectionTone }))).toEqual([
-            { active: true, tone: 'muted' },
-            { active: true, tone: 'muted' },
-            { active: true, tone: 'selected' },
-            { active: false, tone: 'muted' },
-            { active: false, tone: 'muted' },
-        ]);
-    });
-
-    it('turns off active state when the current sequence button is clicked again', () => {
-        const entry = mascEntry();
-        MascHandler.setSequenceState(entry, 3);
-        entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
-
-        handler.handleSelection(entry, handler.getChoices(entry, queryContext())[2], commandContext);
-
-        expect(MascHandler.getSequenceState(entry)).toBe(3);
-        expect(handler.isActive(entry)).toBeFalse();
-    });
-
-    it('truncates the sequence and clears active state when a previous button is clicked', () => {
-        const entry = mascEntry();
-        MascHandler.setSequenceState(entry, 3);
-        entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
-
-        handler.handleSelection(entry, handler.getChoices(entry, queryContext())[0], commandContext);
-
-        expect(MascHandler.getSequenceState(entry)).toBe(1);
-        expect(handler.isActive(entry)).toBeFalse();
-    });
-
-    it('hides Jet Booster choices when the unit is not airborne', () => {
-        const entry = mascEntry(['F_MASC', 'F_JET_BOOSTER'], false);
-
-        expect(MascHandler.canUseHandler(entry)).toBeFalse();
-        expect(handler.getChoices(entry, queryContext())).toEqual([]);
-    });
-
-    it('allows Jet Booster choices when the unit is airborne', () => {
-        const entry = mascEntry(['F_MASC', 'F_JET_BOOSTER'], true);
-
-        expect(MascHandler.canUseHandler(entry)).toBeTrue();
-        expect(handler.getChoices(entry, queryContext()).length).toBe(6);
-    });
-
-    it('ignores Jet Booster selections when the unit is not airborne', () => {
-        const entry = mascEntry(['F_MASC', 'F_JET_BOOSTER'], false);
-
-        handler.handleSelection(entry, { label: '3+', value: 0, displayType: 'toggle' }, commandContext);
-
-        expect(MascHandler.getSequenceState(entry)).toBe(0);
-        expect(handler.isActive(entry)).toBeFalse();
-    });
-
-    it('adds a run movement multiplier bonus while active', () => {
-        const entry = mascEntry();
-
-        expect(handler.getRunMovementMultiplierBonus(entry, entry.owner.turnState(), queryContext())).toBe(0);
-
-        entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
-
-        expect(handler.getRunMovementMultiplierBonus(entry, entry.owner.turnState(), queryContext())).toBe(0.5);
-    });
-
-    it('adds Jet Booster run movement bonus only while airborne', () => {
-        const groundedEntry = mascEntry(['F_MASC', 'F_JET_BOOSTER'], false);
-        const airborneEntry = mascEntry(['F_MASC', 'F_JET_BOOSTER'], true);
-        groundedEntry.setState(MASC_ACTIVE_STATE_KEY, 'true');
-        airborneEntry.setState(MASC_ACTIVE_STATE_KEY, 'true');
-
-        expect(handler.getRunMovementMultiplierBonus(groundedEntry, groundedEntry.owner.turnState(), queryContext())).toBe(0);
-        expect(handler.getRunMovementMultiplierBonus(airborneEntry, airborneEntry.owner.turnState(), queryContext())).toBe(0.5);
-    });
-
-    it('does not add a movement bonus while disabled', () => {
-        const entry = mascEntry();
-        entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
-        entry.setState(ENTRY_DISABLED_STATE_KEY, 'true');
-
-        expect(handler.getRunMovementMultiplierBonus(entry, entry.owner.turnState(), queryContext())).toBe(0);
-    });
-
-    it('uses canonical passive-effect permission instead of raw failure state', () => {
-        const entry = mascEntry();
-        entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
-        entry.owner.canPerformEquipmentAction = () => { throw new Error('owner permission must not be queried'); };
-        const canProvidePassiveEffect = jasmine.createSpy('canProvidePassiveEffect').and.returnValue(false);
-        const context = { ...queryContext(), canProvidePassiveEffect };
-
-        expect(entry.states.has(ENTRY_DISABLED_STATE_KEY)).toBeFalse();
-        expect(handler.getRunMovementMultiplierBonus(entry, entry.owner.turnState(), context)).toBe(0);
-        expect(canProvidePassiveEffect).toHaveBeenCalledOnceWith(entry);
-    });
-
-    it('resets active state at end turn without changing sequence state', () => {
-        const entry = mascEntry();
-        MascHandler.setSequenceState(entry, 2);
-        entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
-
-        handler.onEndTurn(entry, jasmine.createSpyObj<ToastService>('ToastService', ['showToast']));
-
-        expect(MascHandler.getSequenceState(entry)).toBe(2);
-        expect(handler.isActive(entry)).toBeFalse();
-        expect(entry.states.has(MASC_SEQUENCE_STATE_KEY)).toBeTrue();
-    });
-
-    it('reduces the sequence at end turn when it was not active', () => {
-        const entry = mascEntry();
-        MascHandler.setSequenceState(entry, 2);
-        const toastService = jasmine.createSpyObj<ToastService>('ToastService', ['showToast']);
-
-        handler.onEndTurn(entry, toastService);
-
-        expect(MascHandler.getSequenceState(entry)).toBe(1);
-        expect(handler.isActive(entry)).toBeFalse();
-        expect(entry.owner.setInventoryEntry).toHaveBeenCalledWith(entry);
-        expect(toastService.showToast).toHaveBeenCalledWith(
-            'Atlas AS7-D (Natasha Kerensky): MASC sequence reduced to 1',
-            'info'
+describe('MascHandler direct V2 runtime', () => {
+    it('uses the Core sequence and advances only through unlocked choices', () => {
+        const setup = directMascSetup('core-2026');
+        const initial = setup.handler.getComponentEscalatingFailureChoices(
+            setup.runtime, setup.definition, setup.queryContext,
         );
-    });
 
-    it('does not reduce the sequence below zero at end turn', () => {
-        const entry = mascEntry();
-
-        handler.onEndTurn(entry, jasmine.createSpyObj<ToastService>('ToastService', ['showToast']));
-
-        expect(MascHandler.getSequenceState(entry)).toBe(0);
-        expect(entry.owner.setInventoryEntry).not.toHaveBeenCalled();
-    });
-
-    it('uses text labels normally and an icon in the turn summary', () => {
-        const entry = mascEntry();
-
-        expect(handler.getChoices(entry, queryContext('inventory')).at(-1)).toEqual(jasmine.objectContaining({
-            label: 'Operational',
-            value: 'escalating-failure-disabled',
-            stateEdit: 'disable',
-        }));
-        expect(handler.getChoices(entry, queryContext('turn-summary'))).toHaveSize(6);
-        expect(handler.getChoices(entry, queryContext('turn-summary')).at(-1)).toEqual(jasmine.objectContaining({
-            label: '✖',
-            value: 'escalating-failure-disabled',
-        }));
-
-        entry.setState(ENTRY_DISABLED_STATE_KEY, 'true');
-
-        expect(handler.getChoices(entry, queryContext('inventory')).at(-1)).toEqual(jasmine.objectContaining({
-            label: 'Malfunctioning',
-            stateEdit: 'enable',
-        }));
-        expect(handler.getChoices(entry, queryContext('turn-summary')).at(-1)?.colors).toEqual(
-            jasmine.objectContaining({ selectedText: '#fff' })
+        expect(initial.slice(0, 5).map(choice => ({
+            label: choice.label,
+            disabled: choice.disabled,
+            active: choice.active,
+        }))).toEqual([
+            { label: '3+', disabled: false, active: false },
+            { label: '5+', disabled: true, active: false },
+            { label: '7+', disabled: true, active: false },
+            { label: '10+', disabled: true, active: false },
+            { label: '11+', disabled: true, active: false },
+        ]);
+        setup.handler.handleComponentEscalatingFailureSelection(
+            setup.runtime, setup.definition, initial[2], setup.commandContext,
         );
+        expect(componentEscalatingFailureFacts(setup.runtime, setup.definition).sequence).toBe(0);
+
+        expect(setup.handler.handleComponentEscalatingFailureSelection(
+            setup.runtime, setup.definition, initial[0], setup.commandContext,
+        )).toBeTrue();
+        expect(componentEscalatingFailureFacts(setup.runtime, setup.definition))
+            .toEqual(jasmine.objectContaining({ sequence: 1, active: true }));
+        expect(setup.handler.getComponentEscalatingFailureRunMovementMultiplierBonus(
+            setup.runtime, setup.definition, null, true,
+        )).toBe(0.5);
+        const advanced = setup.handler.getComponentEscalatingFailureChoices(
+            setup.runtime, setup.definition, setup.queryContext,
+        );
+        expect(advanced.slice(0, 2).map(choice => ({ disabled: choice.disabled, active: choice.active })))
+            .toEqual([
+                { disabled: false, active: true },
+                { disabled: false, active: false },
+            ]);
     });
 
-    it('prevents state changes and end-turn decay while disabled', () => {
-        const entry = mascEntry();
-        MascHandler.setSequenceState(entry, 2);
-        entry.setState(ENTRY_DISABLED_STATE_KEY, 'true');
+    it('uses Total Warfare escalation labels without changing the entity owner model', () => {
+        const setup = directMascSetup('total-warfare');
+        const choices = setup.handler.getComponentEscalatingFailureChoices(
+            setup.runtime, setup.definition, setup.queryContext,
+        );
 
-        handler.handleSelection(entry, { label: '5+', value: 1, displayType: 'toggle' }, commandContext);
-        handler.onEndTurn(entry, jasmine.createSpyObj<ToastService>('ToastService', ['showToast']));
-
-        expect(MascHandler.getSequenceState(entry)).toBe(2);
-        expect(handler.isActive(entry)).toBeFalse();
+        expect(choices.slice(0, 5).map(choice => choice.label))
+            .toEqual(['3+', '5+', '7+', '11+', '!!']);
+        expect(choices[4].colors).toEqual(jasmine.objectContaining({ selected: '#f00' }));
+        expect(setup.fixture.index.components.get(setup.component.id)).toBe(setup.component);
     });
 
-    it('disables and re-enables escalating failure equipment', () => {
-        const entry = mascEntry();
-        const inventoryQueryContext = queryContext('inventory');
-        entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
-        const disableChoice = handler.getChoices(entry, inventoryQueryContext).at(-1)!;
+    it('settles active and inactive sequences in the one whole-unit end-turn command', () => {
+        const active = directMascSetup('core-2026');
+        expect(selectComponentEscalatingFailureSequence(active.runtime, active.definition, 0).accepted).toBeTrue();
+        expect(active.runtime.dispatch({
+            type: 'end-turn', commandId: asCommandId('masc:end-active'),
+            expectedRevision: active.runtime.revision(), policy: 'automatic',
+        }).accepted).toBeTrue();
+        expect(componentEscalatingFailureFacts(active.runtime, active.definition))
+            .toEqual(jasmine.objectContaining({ sequence: 1, active: false }));
 
-        handler.handleSelection(entry, disableChoice, commandContext);
-
-        expect(entry.states.get(ENTRY_DISABLED_STATE_KEY)).toBe('true');
-        expect(handler.isActive(entry)).toBeFalse();
-
-        handler.handleSelection(entry, handler.getChoices(entry, inventoryQueryContext).at(-1)!, commandContext);
-
-        expect(entry.states.has(ENTRY_DISABLED_STATE_KEY)).toBeFalse();
+        const inactive = directMascSetup('core-2026');
+        expect(selectComponentEscalatingFailureSequence(inactive.runtime, inactive.definition, 0).accepted).toBeTrue();
+        expect(selectComponentEscalatingFailureSequence(inactive.runtime, inactive.definition, 0).accepted).toBeTrue();
+        expect(componentEscalatingFailureFacts(inactive.runtime, inactive.definition))
+            .toEqual(jasmine.objectContaining({ sequence: 1, active: false }));
+        expect(inactive.runtime.dispatch({
+            type: 'end-turn', commandId: asCommandId('masc:end-inactive'),
+            expectedRevision: inactive.runtime.revision(), policy: 'automatic',
+        }).accepted).toBeTrue();
+        expect(componentEscalatingFailureFacts(inactive.runtime, inactive.definition))
+            .toEqual(jasmine.objectContaining({ sequence: 0, active: false }));
     });
 
-    it('ignores locked buttons', () => {
-        const entry = mascEntry();
+    it('disables and re-enables MASC through sparse component status', () => {
+        const setup = directMascSetup('core-2026');
+        expect(selectComponentEscalatingFailureSequence(setup.runtime, setup.definition, 0).accepted).toBeTrue();
+        const disable = setup.handler.getComponentEscalatingFailureChoices(
+            setup.runtime, setup.definition, setup.queryContext,
+        ).at(-1)!;
+        expect(disable.value).toBe(ESCALATING_FAILURE_DISABLED_CHOICE_VALUE);
 
-        handler.handleSelection(entry, handler.getChoices(entry, queryContext())[2], commandContext);
+        expect(setup.handler.handleComponentEscalatingFailureSelection(
+            setup.runtime, setup.definition, disable, setup.commandContext,
+        )).toBeTrue();
+        expect(componentEscalatingFailureFacts(setup.runtime, setup.definition))
+            .toEqual(jasmine.objectContaining({ status: 'disabled', active: false }));
+        expect(setup.handler.getComponentEscalatingFailureRunMovementMultiplierBonus(
+            setup.runtime, setup.definition, null, false,
+        )).toBe(0);
 
-        expect(MascHandler.getSequenceState(entry)).toBe(0);
+        const enable = setup.handler.getComponentEscalatingFailureChoices(
+            setup.runtime, setup.definition, setup.queryContext,
+        ).at(-1)!;
+        expect(setup.handler.handleComponentEscalatingFailureSelection(
+            setup.runtime, setup.definition, enable, setup.commandContext,
+        )).toBeTrue();
+        expect(componentEscalatingFailureFacts(setup.runtime, setup.definition).status).toBe('available');
     });
 
-    it('disables every button when the equipment is unavailable', () => {
-        const entry = mascEntry();
-        entry.setCommittedDestroyed(true);
-        const registry = new EquipmentInteractionRegistry();
-        registry.register(handler);
+    it('allows jet boosters only while airborne', () => {
+        const definition = createComponentEscalatingFailureDefinition({
+            componentId: asComponentId('component:jet-booster'),
+            displayName: 'Jet Booster', flags: ['F_MASC', 'F_JET_BOOSTER'],
+            ruleset: 'core-2026',
+        });
 
-        const rawChoices = handler.getChoices(entry, queryContext());
-        expect(rawChoices.at(-1)).toEqual(jasmine.objectContaining({ stateEdit: 'disable', active: false }));
-        expect(registry.getChoices(entry, queryContext()).every(choice => choice.disabled)).toBeTrue();
+        expect(canUseEscalatingFailure(definition, false)).toBeFalse();
+        expect(canUseEscalatingFailure(definition, null)).toBeFalse();
+        expect(canUseEscalatingFailure(definition, true)).toBeTrue();
     });
 });
+
+function directMascSetup(ruleset: CBTRuleset) {
+    const fixture = createDirectMekRuntimeFixture(ruleset);
+    const component = [...fixture.index.components.values()].find(candidate =>
+        candidate.kind === 'equipment' && candidate.mount.equipmentId === 'Test MASC');
+    if (!component || component.kind !== 'equipment') throw new Error('Missing direct MASC fixture component');
+    const runtime = fixture.instance;
+    const definition = componentEscalatingFailureDefinition(fixture.index, component.id, ruleset);
+    const toast = toastService();
+    return {
+        fixture,
+        component,
+        runtime,
+        definition,
+        handler: new MascHandler(),
+        queryContext: createHandlerQueryContext(fixture.equipment, 'inventory'),
+        commandContext: createHandlerCommandContext(fixture.equipment, toast, dialogsService()),
+    };
+}
+
+function toastService(): HandlerToastService {
+    return { showToast: jasmine.createSpy('showToast'), toasts: () => [] };
+}
+
+function dialogsService(): HandlerDialogsService {
+    return {
+        createDialog: jasmine.createSpy('createDialog'),
+        showError: jasmine.createSpy('showError'),
+        showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
+    };
+}

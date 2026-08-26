@@ -28,6 +28,23 @@
     background-color: var(--bt-yellow-background-transparent);
 }
 
+.load-issue-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    box-sizing: border-box;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #b83a3a;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    vertical-align: middle;
+}
+
 .no-unit {
     display: flex;
     align-items: center;

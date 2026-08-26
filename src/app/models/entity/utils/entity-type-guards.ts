@@ -4,8 +4,12 @@
 
 import type { BaseEntity } from '../base-entity';
 import type { AeroEntity } from '../entities/aero/aero-entity';
+import type { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
+import type { InfantryBaseEntity } from '../entities/infantry/infantry-base-entity';
+import type { InfantryEntity } from '../entities/infantry/infantry-entity';
 import type { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
 import type { MekEntity } from '../entities/mek/mek-entity';
+import type { ProtoMekEntity } from '../entities/protomek/protomek-entity';
 import type { VehicleEntity } from '../entities/vehicle/vehicle-entity';
 
 export function isMekEntity(entity: BaseEntity): entity is MekEntity {
@@ -35,4 +39,20 @@ export function isAeroEntity(entity: BaseEntity): entity is AeroEntity {
 
 export function isJumpShipEntity(entity: BaseEntity): entity is JumpShipEntity {
     return entity.entityType === 'JumpShip';
+}
+
+export function isProtoMekEntity(entity: BaseEntity): entity is ProtoMekEntity {
+    return entity.entityType === 'ProtoMek';
+}
+
+export function isInfantryEntity(entity: BaseEntity): entity is InfantryEntity {
+    return entity.entityType === 'Infantry';
+}
+
+export function isBattleArmorEntity(entity: BaseEntity): entity is BattleArmorEntity {
+    return entity.entityType === 'BattleArmor';
+}
+
+export function isInfantryFamilyEntity(entity: BaseEntity): entity is InfantryBaseEntity {
+    return isInfantryEntity(entity) || isBattleArmorEntity(entity);
 }

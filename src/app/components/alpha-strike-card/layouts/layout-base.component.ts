@@ -5,7 +5,7 @@
 import { Directive, input, output, computed, inject, signal } from '@angular/core';
 import type { ASForceUnit, AbilitySelection } from '../../../models/as-force-unit.model';
 import type { ColorScheme } from '../../../models/options.model';
-import type { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
+import type { AlphaStrikeUnitStats, UnitSummary } from '../../../models/unit-summary.model';
 import type { Era } from '../../../models/eras.model';
 import { DataService } from '../../../services/data.service';
 import { AsAbilityLookupService } from '../../../services/as-ability-lookup.service';
@@ -16,7 +16,7 @@ import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.uti
 import { formatMovement, formatMovementWithAlternate } from '../../../utils/as-common.util';
 import { FormationAbilityAssignmentUtil } from '../../../utils/formation-ability-assignment.util';
 import type { SpecialAbilityState } from '../../../models/as-special-ability-state.model';
-import { DEFAULT_GUNNERY_SKILL } from '../../../models/crew-member.model';
+import { DEFAULT_GUNNERY_SKILL } from '../../../models/crew.model';
 
 /*
  *
@@ -56,7 +56,7 @@ export abstract class AsLayoutBaseComponent {
 
     // Common inputs
     forceUnit = input<ASForceUnit>();
-    unit = input.required<Unit>();
+    unit = input.required<UnitSummary>();
     useHex = input<boolean>(false);
     cardStyle = input<ColorScheme>('default');
     imageUrl = input<string>('');

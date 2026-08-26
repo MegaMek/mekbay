@@ -7,7 +7,8 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { Options } from '../../models/options.model';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { ForceImportService } from '../../services/force-import.service';
 import { ToastService } from '../../services/toast.service';
 import { type ForceAddModePickerData, ForceAddModePickerDialogComponent, type ForceAddModePickerResult } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 import { firstValueFrom } from 'rxjs';
@@ -39,7 +40,8 @@ export class ForceEntryPreviewDialogComponent {
     private dialogRef = inject(DialogRef<void>);
     private data: ForceEntryPreviewDialogData = inject(DIALOG_DATA);
     private dialogsService = inject(DialogsService);
-    private forceBuilderService = inject(ForceBuilderService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
+    private forceImportService = inject(ForceImportService);
     private toastService = inject(ToastService);
     readonly displayMode = this.data.unitDisplayNameOverride ?? null;
     force: LoadForceEntry;
@@ -50,17 +52,17 @@ export class ForceEntryPreviewDialogComponent {
     constructor() {
         this.force = this.data.force;
         this.isForceLoaded.set(
-            this.forceBuilderService.loadedForces().some(s => s.force.instanceId() === this.force.instanceId)
+            this.forceWorkspace.loadedForces().some(s => s.force.instanceId() === this.force.instanceId)
         );
     }
 
     async onLoad(): Promise<void> {
-        const loaded = await this.forceBuilderService.loadForceEntry(this.force, 'load');
+        const loaded = await this.forceImportService.loadForceEntry(this.force, 'load');
         if (loaded) this.close();
     }
 
     async onAdd(): Promise<void> {
-        const currentForce = this.forceBuilderService.smartCurrentForce();
+        const currentForce = this.forceWorkspace.smartCurrentForce();
         const showInsert = !!currentForce && currentForce.owned();
         const ref = this.dialogsService.createDialog<ForceAddModePickerResult>(
             ForceAddModePickerDialogComponent,
@@ -74,13 +76,13 @@ export class ForceEntryPreviewDialogComponent {
         const result = await firstValueFrom(ref.closed);
         if (!result) return;
         if (result === 'insert') {
-            const inserted = await this.forceBuilderService.loadForceEntry(this.force, 'insert');
+            const inserted = await this.forceImportService.loadForceEntry(this.force, 'insert');
             if (inserted) {
                 this.toastService.showToast(`"${this.force.name}" inserted into "${currentForce!.name}".`, 'success');
                 this.close();
             }
         } else {
-            const added = await this.forceBuilderService.loadForceEntry(this.force, 'add', result, { activate: false });
+            const added = await this.forceImportService.loadForceEntry(this.force, 'add', result, { activate: false });
             if (added) {
                 this.isForceLoaded.set(true);
                 this.toastService.showToast(`"${this.force.name}" added to loaded forces.`, 'success');

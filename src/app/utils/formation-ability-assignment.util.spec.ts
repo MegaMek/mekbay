@@ -6,7 +6,7 @@ import { GameSystem } from '../models/common.model';
 import { type Faction } from '../models/factions.model';
 import type { ASForceUnit } from '../models/as-force-unit.model';
 import type { UnitGroup } from '../models/force.model';
-import type { Unit, UnitSubtype } from '../models/units.model';
+import type { UnitSummary, UnitSubtype } from '../models/unit-summary.model';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
 import { FormationAbilityAssignmentUtil } from './formation-ability-assignment.util';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
@@ -17,11 +17,11 @@ import { MULFACTION_MERCENARY, type FactionAffinity } from '../models/mulfaction
 function createUnit(
     id: number,
     name: string,
-    unitType: Unit['type'],
+    unitType: UnitSummary['type'],
     subtype: UnitSubtype,
-    tp: Unit['as']['TP'],
+    tp: UnitSummary['as']['TP'],
     overrides: TestUnitOverrides = {},
-): Unit {
+): UnitSummary {
     const { as: asOverrides, ...unitOverrides } = overrides;
 
     return createEmptyUnit({
@@ -68,7 +68,7 @@ function createResolvedGroup(overrides: Partial<GroupSizeResult>): GroupSizeResu
 
 function createASForceUnit(
     id: string,
-    unit: Unit,
+    unit: UnitSummary,
     options: { formationAbilities?: string[]; commander?: boolean } = {},
 ): ASForceUnit {
     let formationAbilities = [...(options.formationAbilities ?? [])];
@@ -76,7 +76,7 @@ function createASForceUnit(
 
     return {
         id,
-        getUnit: () => unit,
+        getSummary: () => unit,
         formationAbilities: () => formationAbilities,
         commander: () => commander,
         setFormationAbilities: (next: string[]) => {
@@ -131,7 +131,7 @@ describe('FormationAbilityAssignmentUtil', () => {
         const group = createGroup(
             units,
             formation,
-            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getUnit()) })],
+            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getSummary()) })],
             createFaction('Mercenary', 'Mercenary'),
         );
 
@@ -153,7 +153,7 @@ describe('FormationAbilityAssignmentUtil', () => {
         const group = createGroup(
             units,
             formation,
-            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getUnit()) })],
+            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getSummary()) })],
             createFaction('Mercenary', 'Mercenary'),
         );
 
@@ -177,7 +177,7 @@ describe('FormationAbilityAssignmentUtil', () => {
         const group = createGroup(
             units,
             formation,
-            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getUnit()) })],
+            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getSummary()) })],
             createFaction('Mercenary', 'Mercenary'),
         );
 
@@ -214,8 +214,8 @@ describe('FormationAbilityAssignmentUtil', () => {
                 countsAsType: 'Lance',
                 tier: 1.5,
                 children: [
-                    createResolvedGroup({ name: 'Flight', type: 'Flight', tier: 1, units: flightUnits.map((unit) => unit.getUnit()) }),
-                    createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: bmUnits.map((unit) => unit.getUnit()) }),
+                    createResolvedGroup({ name: 'Flight', type: 'Flight', tier: 1, units: flightUnits.map((unit) => unit.getSummary()) }),
+                    createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: bmUnits.map((unit) => unit.getSummary()) }),
                 ],
             })],
             createFaction('Mercenary', 'Mercenary'),
@@ -244,7 +244,7 @@ describe('FormationAbilityAssignmentUtil', () => {
         const group = createGroup(
             [commander, wingman, support],
             formation,
-            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: [commander.getUnit(), wingman.getUnit(), support.getUnit()] })],
+            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: [commander.getSummary(), wingman.getSummary(), support.getSummary()] })],
             createFaction('Mercenary', 'Mercenary'),
         );
 
@@ -267,7 +267,7 @@ describe('FormationAbilityAssignmentUtil', () => {
         const group = createGroup(
             [unitA, unitB, unitC],
             formation,
-            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: [unitA.getUnit(), unitB.getUnit(), unitC.getUnit()] })],
+            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: [unitA.getSummary(), unitB.getSummary(), unitC.getSummary()] })],
             createFaction('Mercenary', 'Mercenary'),
         );
 
@@ -292,7 +292,7 @@ describe('FormationAbilityAssignmentUtil', () => {
         const group = createGroup(
             units,
             formation,
-            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getUnit()) })],
+            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getSummary()) })],
             createFaction('Mercenary', 'Mercenary'),
         );
 
@@ -319,7 +319,7 @@ describe('FormationAbilityAssignmentUtil', () => {
         const group = createGroup(
             units,
             formation,
-            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getUnit()) })],
+            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getSummary()) })],
             createFaction('Mercenary', 'Mercenary'),
         );
 
@@ -348,7 +348,7 @@ describe('FormationAbilityAssignmentUtil', () => {
         const group = createGroup(
             units,
             formation,
-            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getUnit()) })],
+            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: units.map((unit) => unit.getSummary()) })],
             createFaction('Mercenary', 'Mercenary'),
         );
 
@@ -374,7 +374,7 @@ describe('FormationAbilityAssignmentUtil', () => {
         const group = createGroup(
             units,
             formation,
-            [createResolvedGroup({ name: 'Squadron', type: 'Squadron', tier: 1, units: units.map((unit) => unit.getUnit()) })],
+            [createResolvedGroup({ name: 'Squadron', type: 'Squadron', tier: 1, units: units.map((unit) => unit.getSummary()) })],
             createFaction('Mercenary', 'Mercenary'),
         );
 
@@ -394,7 +394,7 @@ describe('FormationAbilityAssignmentUtil', () => {
         const group = createGroup(
             [unit],
             null,
-            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: [unit.getUnit()] })],
+            [createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: [unit.getSummary()] })],
             createFaction('Mercenary', 'Mercenary'),
         );
 

@@ -6,13 +6,13 @@ import { AmmoEquipment, EquipmentMap, StructureEquipment, WeaponEquipment, type 
 import { EquipmentRegistry } from '../models/equipment-lookup';
 import type { EquipmentFlag } from '../models/equipment-flags.type';
 import type { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
-import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
-import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { asComponentId } from '../models/entity/entity-identifiers';
 import {
     inventoryControlDamageRange,
     resolveDefaultWeaponDamageText,
     resolveInventoryControlDamageText,
     resolveInventoryControlWeaponDamage,
+    type InventoryControlDamageComponentFacts,
 } from './inventory-control-damage.util';
 import { MML_LRM_PROFILE, MML_SRM_PROFILE } from '../models/ammo-weapon-profile.model';
 
@@ -21,8 +21,11 @@ function catalog(equipment: EquipmentMap = {}): EquipmentRegistry {
 }
 
 describe('inventory-control damage resolution', () => {
-    const mount = (weapon: WeaponEquipment) =>
-        new MountedWeapon({ owner: {} as CBTForceUnit, id: weapon.id, name: weapon.name, equipment: weapon });
+    const component = (weapon: WeaponEquipment): InventoryControlDamageComponentFacts => ({
+        componentId: asComponentId(weapon.id),
+        physical: false,
+        weapon,
+    });
 
     it('resolves range damage and applies damage modifiers once', () => {
         const weapon = new WeaponEquipment({
@@ -38,7 +41,7 @@ describe('inventory-control damage resolution', () => {
             maximum: damage.maximum + 1,
         }));
 
-        expect(resolveInventoryControlDamageText(mount(weapon), {
+        expect(resolveInventoryControlDamageText(component(weapon), {
             selectedRange: 'medium',
             selectedAmmo: null,
             equipmentCatalog: catalog(),
@@ -62,7 +65,7 @@ describe('inventory-control damage resolution', () => {
             weapon: { damage: [10, 8, 5] },
         });
 
-        expect(resolveInventoryControlDamageText(mount(weapon), {
+        expect(resolveInventoryControlDamageText(component(weapon), {
             selectedRange: 'extreme',
             selectedAmmo: null,
             equipmentCatalog: catalog(),
@@ -105,7 +108,7 @@ describe('inventory-control damage resolution', () => {
     it('applies Extreme reductions after equipment damage effects', () => {
         const weapon = directWeapon('ModifiedLaser', 'Modified Laser', 8, ['F_ENERGY']);
 
-        expect(resolveInventoryControlDamageText(mount(weapon), {
+        expect(resolveInventoryControlDamageText(component(weapon), {
             selectedRange: 'extreme',
             selectedAmmo: null,
             equipmentCatalog: catalog(),
@@ -149,7 +152,7 @@ describe('inventory-control damage resolution', () => {
 
         expect(resolveDefaultWeaponDamageText(plasmaCannon, catalog())).toBe('[DE,H]');
 
-        const resolution = resolveInventoryControlWeaponDamage(mount(plasmaCannon), {
+        const resolution = resolveInventoryControlWeaponDamage(component(plasmaCannon), {
             selectedRange: null,
             selectedAmmo: null,
             equipmentCatalog: catalog(),
@@ -170,7 +173,7 @@ describe('inventory-control damage resolution', () => {
         });
 
         expect(resolveDefaultWeaponDamageText(specialWeapon, catalog())).toBe('4 [DE]');
-        expect(resolveInventoryControlDamageText(mount(specialWeapon), {
+        expect(resolveInventoryControlDamageText(component(specialWeapon), {
             selectedRange: null,
             selectedAmmo: null,
             equipmentCatalog: catalog(),
@@ -204,7 +207,7 @@ describe('inventory-control damage resolution', () => {
         const weapon = missile('ATM6', 'ATM', 6);
         const ammo = ammunition('ATM6HE', 'ATM', 6, 3, ['M_HIGH_EXPLOSIVE']);
 
-        const resolution = resolveInventoryControlWeaponDamage(mount(weapon), {
+        const resolution = resolveInventoryControlWeaponDamage(component(weapon), {
             selectedRange: null,
             selectedAmmo: ammo,
             equipmentCatalog: catalog(),
@@ -212,7 +215,7 @@ describe('inventory-control damage resolution', () => {
 
         expect(resolution?.text).toBe('3/Msl [C6,M,S]');
         expect(resolution?.damageTypes).toEqual(['C', 'M', 'S']);
-        expect(resolveInventoryControlDamageText(mount(weapon), {
+        expect(resolveInventoryControlDamageText(component(weapon), {
             selectedRange: null,
             selectedAmmo: ammo,
             equipmentCatalog: catalog(),
@@ -223,7 +226,7 @@ describe('inventory-control damage resolution', () => {
         const weapon = missile('ATM6', 'ATM', 6);
         const standard = ammunition('ATM6Standard', 'ATM', 6, 2, ['M_STANDARD']);
 
-        expect(resolveInventoryControlDamageText(mount(weapon), {
+        expect(resolveInventoryControlDamageText(component(weapon), {
             selectedRange: null,
             selectedAmmo: null,
             equipmentCatalog: catalog({ [standard.id]: standard }),
@@ -235,7 +238,7 @@ describe('inventory-control damage resolution', () => {
         const wrongRack = ammunition('ATM3HE', 'ATM', 3, 9, ['M_HIGH_EXPLOSIVE']);
         const standard = ammunition('ATM6Standard', 'ATM', 6, 2, ['M_STANDARD']);
 
-        expect(resolveInventoryControlDamageText(mount(weapon), {
+        expect(resolveInventoryControlDamageText(component(weapon), {
             selectedRange: null,
             selectedAmmo: wrongRack,
             equipmentCatalog: catalog({ [standard.id]: standard }),
@@ -248,13 +251,13 @@ describe('inventory-control damage resolution', () => {
         const srm = ammunition('MML9SRM', 'MML', 9, 2, ['M_STANDARD'], ['F_MML_SRM']);
         const equipmentCatalog = catalog({ [lrm.id]: lrm, [srm.id]: srm });
 
-        expect(resolveInventoryControlDamageText(mount(weapon), {
+        expect(resolveInventoryControlDamageText(component(weapon), {
             selectedRange: null,
             selectedAmmo: null,
             equipmentCatalog,
             ammoProfile: MML_LRM_PROFILE,
         })).toBe('1/Msl [C5,M,S]');
-        expect(resolveInventoryControlDamageText(mount(weapon), {
+        expect(resolveInventoryControlDamageText(component(weapon), {
             selectedRange: null,
             selectedAmmo: null,
             equipmentCatalog,
@@ -266,7 +269,7 @@ describe('inventory-control damage resolution', () => {
         const weapon = missile('MML9', 'MML', 9);
         const srmAmmo = ammunition('MML9SRMAmmo', 'MML', 9, 4, ['M_STANDARD'], ['F_MML_SRM']);
 
-        expect(resolveInventoryControlDamageText(mount(weapon), {
+        expect(resolveInventoryControlDamageText(component(weapon), {
             selectedRange: null,
             selectedAmmo: srmAmmo,
             equipmentCatalog: catalog(),
@@ -293,9 +296,11 @@ describe('inventory-control damage resolution', () => {
 
     it('returns null for non-weapon entries', () => {
         const equipment = new StructureEquipment({ id: 'structure', name: 'Structure', type: 'structure' });
-        const mounted = new MountedEquipment({ owner: {} as CBTForceUnit, id: equipment.id, name: equipment.name, equipment });
-
-        expect(resolveInventoryControlDamageText(mounted, {
+        expect(resolveInventoryControlDamageText({
+            componentId: asComponentId(equipment.id),
+            physical: false,
+            weapon: null,
+        }, {
             selectedRange: null,
             selectedAmmo: null,
             equipmentCatalog: catalog(),
@@ -358,13 +363,11 @@ function damageTextAtRange(
     weapon: WeaponEquipment,
     selectedRange: 'short' | 'medium' | 'long' | 'extreme',
 ): string | null {
-    const mounted = new MountedWeapon({
-        owner: {} as CBTForceUnit,
-        id: weapon.id,
-        name: weapon.name,
-        equipment: weapon,
-    });
-    return resolveInventoryControlDamageText(mounted, {
+    return resolveInventoryControlDamageText({
+        componentId: asComponentId(weapon.id),
+        physical: false,
+        weapon,
+    }, {
         selectedRange,
         selectedAmmo: null,
         equipmentCatalog: catalog(),

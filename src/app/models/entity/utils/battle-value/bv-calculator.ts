@@ -2,13 +2,53 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EquipmentFlag } from '../../../equipment-flags.type';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
+import type { Equipment } from '../../../equipment.model';
+import { CORE_2026_GAME_RULES, type CBTGameRules } from '../../../rules/game-rules';
 import type { BaseEntity } from '../../base-entity';
+import type { EntityStateView } from '../../entity-state-view';
 import { BV_MOVEMENT_CALCULATION, type EntityMountedEquipment } from '../../types';
-import { getOffensiveSpeedFactor } from '../battle-value';
+import { getOffensiveSpeedFactor, offensiveSpeedFactor } from '../battle-value';
 import { getPpcCapacitorBV } from '../equipment-bv';
-import { ammoKey, armorBVMultiplier, targetMovementModifier } from './rules';
+import {
+  fireControlBattleValueModifier,
+} from '../fire-control';
+import {
+  isDirectFireEquipment,
+  isTargetingComputerEquipment,
+} from '../targeting-computer';
+import { ammoKey, armorBVMultiplier, mekArmorBarFactor, targetMovementModifier } from './rules';
+import { isModularArmorEquipment } from '../../../modular-armor.model';
+import { isApolloEquipment } from '../../../apollo-mode.model';
+import { isRiscLaserPulseModule } from '../../../risc-laser-mode.model';
+import { isPpcCapacitorEquipment, isPpcEquipment } from '../../../ppc-capacitor.model';
+import { isEcmEquipment } from '../../../ecm-mode.model';
+import { isBapEquipment } from '../../../bap-equipment.model';
+import { isShieldEquipment } from '../physical-weapon';
+import {
+  BLUE_SHIELD_BV_BONUS,
+  isBlueShieldEquipment,
+  isViralJammerEquipment,
+} from '../../../escalating-equipment.model';
+import {
+  DRONE_FIRE_CONTROL_BV_MULTIPLIER,
+  DRONE_WEAPON_BV_MULTIPLIER,
+  isDroneOperatingSystemEquipment,
+} from '../../../drone-operating-system.model';
+import { isSpikesEquipment } from '../../../physical-augmentation.model';
+import { artemisBattleValueMultiplier } from '../../../artemis-equipment.model';
+import {
+  isElectricDischargeArmor,
+  structureBattleValueMultiplier,
+} from '../../../construction-equipment.model';
+import { getVibrobladeProfile } from '../../../rules/vibroblade-rules';
+import {
+  harJelArmorMultiplier,
+  isDefensiveBattleValueUtility,
+  isOffensiveBattleValueExcludedUtility,
+} from '../../../utility-equipment.model';
+import { isWatchdogEquipment } from '../../../sensor-equipment.model';
+import { isMagnetClawEquipment } from '../../../battle-armor-equipment.model';
 
 export interface BattleValueBreakdown {
   readonly defensive: number;
@@ -27,9 +67,8 @@ export interface BattleValueDetail {
 }
 
 /**
- * Template-method port of MegaMek BVCalculator for pristine canonical entities.
- * Runtime-only state (damage, modes, game/C3/TAG, crew implants and bombs) is
- * intentionally absent rather than inferred from construction data.
+ * Template-method port of MegaMek BVCalculator. The entity owns the formula;
+ * an optional runtime view supplies current damage/status facts.
  */
 export class BVCalculator {
   protected defensiveValue = 0;
@@ -42,15 +81,20 @@ export class BVCalculator {
   private report: BattleValueDetail[] = [];
   private reportTarget: 'defensive' | 'offensive' = 'defensive';
 
-  constructor(readonly entity: BaseEntity) {}
+  constructor(
+    readonly entity: BaseEntity,
+    protected readonly state?: EntityStateView,
+    protected readonly gameRules: CBTGameRules = CORE_2026_GAME_RULES,
+  ) {}
 
   protected isExplosive(mount: EntityMountedEquipment): boolean {
     const equipment = mount.equipment;
     if (!equipment) return false;
-    if (equipment instanceof WeaponEquipment && equipment.hasFlag('F_PPC')) {
-      return this.entity.getLinkingMount(mount)?.equipment?.hasFlag('F_PPC_CAPACITOR') === true;
+    if (equipment instanceof MiscEquipment && isRiscLaserPulseModule(equipment)) {
+      const linkedWeapon = this.entity.getLinkedMount(mount);
+      return linkedWeapon !== undefined && this.isWorking(linkedWeapon);
     }
-    return equipment.isExplosive();
+    return this.entity.isMountedEquipmentExplosive(mount);
   }
 
   calculateBaseBV(): number {
@@ -58,6 +102,14 @@ export class BVCalculator {
   }
 
   calculate(): BattleValueBreakdown {
+    if (this.state?.destroyed) {
+      return {
+        defensive: 0,
+        offensive: 0,
+        base: 0,
+        details: [{ type: 'Battle Value', calculation: 'Destroyed', total: 0, delta: 0 }],
+      };
+    }
     this.prepare();
     this.addReportLine('Effective MP', `R: ${this.runMP}, J: ${this.jumpMP}, U: ${this.umuMP}`);
     this.reportTarget = 'defensive';
@@ -86,9 +138,9 @@ export class BVCalculator {
     this.frontDecided = false;
     this.switchRearAndFront = false;
     this.report = [];
-    this.runMP = this.entity.maxRunMP();
-    this.jumpMP = this.entity.computeJumpMP(BV_MOVEMENT_CALCULATION);
-    this.umuMP = this.entity.umuMP();
+    this.runMP = this.state?.movement.run ?? this.entity.maxRunMP();
+    this.jumpMP = this.state?.movement.jump ?? this.entity.computeJumpMP(BV_MOVEMENT_CALCULATION);
+    this.umuMP = this.state?.movement.umu ?? this.entity.umuMP();
   }
 
   protected processDefensiveValue(): void {
@@ -113,22 +165,27 @@ export class BVCalculator {
   protected processArmor(): void {
     const before = this.defensiveValue;
     let armorBV = 0;
-    for (const [location, value] of this.entity.armorValues()) {
+    for (const [location, maximum] of this.entity.armorValues()) {
+      const value = this.state ? {
+        front: this.state.armorRemaining(location, 'front'),
+        rear: this.state.armorRemaining(location, 'rear'),
+      } : maximum;
       const armor = this.entity.armorByLocation().get(location)?.armor;
       const bar = this.entity.isSupportVehicle()
         ? this.entity.barRating() / 10
-        : this.entity.entityType === 'Mek' && armor?.armorType === 'COMMERCIAL' ? 0.5 : 1;
+        : this.entity.entityType === 'Mek' ? mekArmorBarFactor(armor?.armorType) : 1;
       const modularArmor = this.entity.equipment()
         .filter(mount => mount.location === location && mount.equipment instanceof MiscEquipment
-          && mount.equipment.hasFlag('F_MODULAR_ARMOR'))
+          && isModularArmorEquipment(mount.equipment) && this.isWorking(mount))
         .reduce((sum, mount) => sum + (mount.equipment as MiscEquipment).baseDamageCapacity, 0);
       const mountsAtLocation = this.entity.equipment()
-        .filter(mount => mount.getOccupiedLocations().includes(location));
-      const harjelMultiplier = (mountsAtLocation.some(mount => mount.equipment?.hasFlag('F_HARJEL_II')) ? 1.1 : 1)
-        * (mountsAtLocation.some(mount => mount.equipment?.hasFlag('F_HARJEL_III')) ? 1.2 : 1);
+        .filter(mount => mount.getOccupiedLocations().includes(location) && this.isWorking(mount));
+      const harjelMultiplier = harJelArmorMultiplier(
+        mountsAtLocation.map(mount => mount.equipment),
+      );
       const supplementalArmor = this.supplementalArmorAt(location, value);
       armorBV += Math.max(0, value.front + value.rear + modularArmor + supplementalArmor)
-        * (armorBVMultiplier(armor) + (this.has('F_BLUE_SHIELD') ? 0.2 : 0))
+        * (armorBVMultiplier(armor) + (this.hasEquipment(isBlueShieldEquipment) ? BLUE_SHIELD_BV_BONUS : 0))
         * bar * harjelMultiplier;
     }
     this.defensiveValue += armorBV * this.armorFactor();
@@ -146,14 +203,16 @@ export class BVCalculator {
     const before = this.defensiveValue;
     let multiplier = 1;
     const structures = [...this.entity.structureByLocation().values()];
-    if (structures.length > 0 && structures.every(s => s.structure.hasAnyFlag([
-      'F_INDUSTRIAL_STRUCTURE', 'F_COMPOSITE',
-    ]))) multiplier = 0.5;
-    else if (structures.length > 0 && structures.every(s => s.structure.hasFlag('F_REINFORCED'))) multiplier = 2;
-    if (this.has('F_BLUE_SHIELD')) multiplier += 0.2;
-    this.defensiveValue += this.entity.totalInternalPoints() * 1.5 * multiplier;
+    if (structures.length > 0) {
+      const structureMultipliers = structures.map(s => structureBattleValueMultiplier(s.structure));
+      if (structureMultipliers.every(value => value === 0.5)) multiplier = 0.5;
+      else if (structureMultipliers.every(value => value === 2)) multiplier = 2;
+    }
+    if (this.hasEquipment(isBlueShieldEquipment)) multiplier += BLUE_SHIELD_BV_BONUS;
+    const internal = this.currentInternalPoints();
+    this.defensiveValue += internal * 1.5 * multiplier;
     const modifier = multiplier === 1 ? '' : ` x ${this.format(multiplier)}`;
-    this.addValueLine('Internal Structure', `+ ${this.entity.totalInternalPoints()} x 1.5${modifier}`, before);
+    this.addValueLine('Internal Structure', `+ ${internal} x 1.5${modifier}`, before);
   }
 
   protected processDefensiveEquipment(): void {
@@ -169,7 +228,7 @@ export class BVCalculator {
     let screenAmmo = 0;
     for (const mount of this.entity.equipment()) {
       const equipment = mount.equipment;
-      if (!equipment) continue;
+      if (!equipment || !this.notDestroyed(mount)) continue;
       if (equipment instanceof AmmoEquipment) {
         const value = this.ammoBV(mount);
         if (equipment.ammoType === 'AMS' || equipment.ammoType === 'APDS') amsAmmo += value;
@@ -181,7 +240,7 @@ export class BVCalculator {
       const before = this.defensiveValue;
       this.defensiveValue += value;
       this.addValueLine(this.equipmentDescriptor(mount), `${value >= 0 ? '+' : '-'} ${this.format(Math.abs(value))}`, before);
-      if (equipment instanceof WeaponEquipment && equipment.hasFlag('F_AMS')
+      if (equipment instanceof WeaponEquipment && equipment.hasWeaponTrait('anti-missile')
         && ['AMS', 'APDS'].includes(equipment.ammoType)) amsWeapons += value;
       if (equipment instanceof WeaponEquipment && equipment.ammoType === 'SCREEN_LAUNCHER') screenWeapons += value;
     }
@@ -200,16 +259,18 @@ export class BVCalculator {
   }
 
   protected countsAsDefensiveEquipment(mount: EntityMountedEquipment): boolean {
+    if (!this.notDestroyed(mount)) return false;
     const equipment = mount.equipment;
     if (equipment instanceof WeaponEquipment) {
-      return equipment.hasAnyFlag(['F_AMS', 'F_M_POD', 'F_B_POD']) || equipment.ammoType === 'SCREEN_LAUNCHER';
+      return equipment.hasWeaponTrait('anti-missile')
+        || equipment.hasWeaponTrait('m-pod')
+        || equipment.hasWeaponTrait('b-pod')
+        || equipment.ammoType === 'SCREEN_LAUNCHER';
     }
-    return equipment instanceof MiscEquipment && (equipment.isShield || equipment.hasAnyFlag([
-      'F_ECM', 'F_BAP', 'F_VIRAL_JAMMER_DECOY', 'F_VIRAL_JAMMER_HOMING', 'F_AP_POD',
-      'F_MASS', 'F_HEAVY_BRIDGE_LAYER', 'F_MEDIUM_BRIDGE_LAYER', 'F_LIGHT_BRIDGE_LAYER',
-      'F_BULLDOZER', 'F_CHAFF_POD', 'F_SPIKES',
-      'F_HARJEL_II', 'F_HARJEL_III', 'F_MINESWEEPER',
-    ]));
+    return equipment instanceof MiscEquipment && (isShieldEquipment(equipment)
+      || isEcmEquipment(equipment) || isBapEquipment(equipment)
+      || isViralJammerEquipment(equipment) || isSpikesEquipment(equipment)
+      || isDefensiveBattleValueUtility(equipment));
   }
 
   protected processTypeModifier(): void {}
@@ -267,14 +328,18 @@ export class BVCalculator {
   }
 
   protected countsAsOffensiveWeapon(mount: EntityMountedEquipment): boolean {
+    if (!this.isWorking(mount)) return false;
     const equipment = mount.equipment;
     if (equipment instanceof WeaponEquipment) {
-      return !equipment.hasAnyFlag(['F_AMS', 'F_B_POD', 'F_M_POD'])
+      return !equipment.hasWeaponTrait('anti-missile')
+        && !equipment.hasWeaponTrait('b-pod')
+        && !equipment.hasWeaponTrait('m-pod')
         && equipment.ammoType !== 'SCREEN_LAUNCHER'
-        && (mount.getBV(this.entity) > 0 || equipment.hasFlag('F_MGA'));
+        && (mount.getBV(this.entity) > 0 || equipment.hasWeaponTrait('machine-gun-array'));
     }
     return equipment instanceof MiscEquipment
-      && equipment.hasAnyFlag(['F_VIBROCLAW', 'F_MAGNET_CLAW', 'S_VIBRO_SMALL', 'S_VIBRO_MEDIUM', 'S_VIBRO_LARGE'])
+      && (equipment.hasWeaponTrait('vibroclaw') || isMagnetClawEquipment(equipment)
+        || getVibrobladeProfile(equipment) !== null)
       && mount.getBV(this.entity) > 0;
   }
 
@@ -287,7 +352,7 @@ export class BVCalculator {
     const equipment = mount.equipment;
     if (!equipment) return 0;
     let value = mount.getBV(this.entity);
-    if (equipment.hasFlag('F_MGA')) {
+    if (equipment.hasWeaponTrait('machine-gun-array')) {
       const bay = this.entity.equipmentBays()
         .find(candidate => candidate.kind === 'machine-gun-array' && candidate.controller === mount);
       if (bay) value = bay.mounts.reduce((sum, member) => sum + member.getBV(this.entity), 0) * 0.67;
@@ -295,21 +360,20 @@ export class BVCalculator {
     value *= weaponCount;
     value *= this.weaponMountModifier(mount) * weaponFactor;
     if (applyRear && this.frontDecided && this.isNominalRear(mount)) value *= 0.5;
-    if (this.has('F_DRONE_OPERATING_SYSTEM')) value *= 0.8;
+    if (this.hasEquipment(isDroneOperatingSystemEquipment)) value *= DRONE_WEAPON_BV_MULTIPLIER;
     if (equipment instanceof WeaponEquipment) {
       const linkedBy = this.entity.getLinkingMount(mount);
-      if (linkedBy?.equipment instanceof MiscEquipment) {
+      if (linkedBy?.equipment instanceof MiscEquipment && this.isWorking(linkedBy)) {
         const system = linkedBy.equipment;
-        if (equipment.hasFlag('F_PPC') && system.hasFlag('F_PPC_CAPACITOR')) {
+        if (isPpcEquipment(equipment) && isPpcCapacitorEquipment(system)) {
           value += getPpcCapacitorBV(mount);
         }
-        if (system.hasFlag('F_ARTEMIS')) value *= 1.2;
-        else if (system.hasFlag('F_ARTEMIS_PROTO')) value *= 1.1;
-        else if (system.hasFlag('F_ARTEMIS_V')) value *= 1.3;
-        else if (system.hasAnyFlag(['F_RISC_LASER_PULSE_MODULE', 'F_APOLLO'])) value *= 1.15;
+        const artemisMultiplier = artemisBattleValueMultiplier(system);
+        if (artemisMultiplier !== 1) value *= artemisMultiplier;
+        else if (isRiscLaserPulseModule(system) || isApolloEquipment(system)) value *= 1.15;
       }
-      if (equipment.hasFlag('F_DIRECT_FIRE') && this.has('F_TARGETING_COMPUTER')) value *= 1.25;
-      else if (!equipment.hasFlag('F_INFANTRY')) value *= this.fireControlModifier();
+      if (isDirectFireEquipment(equipment) && this.hasEquipment(isTargetingComputerEquipment)) value *= 1.25;
+      else if (!equipment.hasWeaponTrait('infantry-weapon')) value *= this.fireControlModifier();
     }
     return value;
   }
@@ -323,7 +387,7 @@ export class BVCalculator {
     const ammoBV = new Map<string, number>();
     for (const mount of this.entity.equipment()) {
       const equipment = mount.equipment;
-      if (equipment instanceof WeaponEquipment && this.weaponUsesAmmo(equipment)) {
+      if (equipment instanceof WeaponEquipment && this.isWorking(mount) && this.weaponUsesAmmo(equipment)) {
         const key = ammoKey(equipment.ammoType, equipment.rackSize);
         weaponBV.set(key, (weaponBV.get(key) ?? 0) + mount.getBV(this.entity));
       } else if (equipment instanceof AmmoEquipment && this.ammoCounts(mount)) {
@@ -346,43 +410,49 @@ export class BVCalculator {
   }
 
   protected weaponUsesAmmo(weapon: WeaponEquipment): boolean {
-    return weapon.ammoType !== 'NA' && !weapon.hasAnyFlag(['F_ONE_SHOT', 'F_INFANTRY'])
-      && !(weapon.hasFlag('F_ENERGY') && !['PLASMA', 'VEHICLE_FLAMER', 'HEAVY_FLAMER', 'CHEMICAL_LASER'].includes(weapon.ammoType));
+    return weapon.ammoType !== 'NA'
+      && !weapon.hasWeaponTrait('one-shot')
+      && !weapon.hasWeaponTrait('infantry-weapon')
+      && !(weapon.hasWeaponTrait('energy')
+        && !['PLASMA', 'VEHICLE_FLAMER', 'HEAVY_FLAMER', 'CHEMICAL_LASER'].includes(weapon.ammoType));
   }
 
   protected ammoCounts(mount: EntityMountedEquipment): boolean {
     const ammo = mount.equipment;
-    return ammo instanceof AmmoEquipment && (mount.getAmmoShots() ?? 0) > 0
+    return ammo instanceof AmmoEquipment && this.isWorking(mount) && this.ammoShots(mount) > 0
       && !['AMS', 'APDS', 'SCREEN_LAUNCHER'].includes(ammo.ammoType);
   }
 
   protected ammoBV(mount: EntityMountedEquipment): number {
-    const ammo = mount.equipment;
-    if (!(ammo instanceof AmmoEquipment)) return 0;
-    const shots = mount.getAmmoShots() ?? ammo.shots;
-    const ratio = ammo.shots > 0 ? Math.max(1, Math.trunc(shots / ammo.shots)) : 1;
-    return mount.getBV(this.entity) * ratio;
+    const ammo = this.ammoEquipment(mount);
+    if (!(ammo instanceof AmmoEquipment) || !this.isWorking(mount)) return 0;
+    const shots = this.ammoShots(mount);
+    if (shots <= 0) return 0;
+    const binShots = this.gameRules.getAmmoShots(ammo, this.entity.getEquipmentRegistry());
+    const ratio = binShots > 0 ? Math.max(1, Math.trunc(shots / binShots)) : 1;
+    const bv = this.gameRules.getAmmoBV(ammo, this.entity.getEquipmentRegistry());
+    return (typeof bv === 'number' ? bv : 0) * ratio;
   }
 
   protected processOffensiveEquipment(): void {
     const before = this.offensiveValue;
     const details = this.captureDetails(() => {
-    const excluded: EquipmentFlag[] = [
-      'F_AP_POD', 'F_VIRAL_JAMMER_DECOY', 'F_VIRAL_JAMMER_HOMING',
-      'F_LIGHT_BRIDGE_LAYER', 'F_MEDIUM_BRIDGE_LAYER', 'F_HEAVY_BRIDGE_LAYER',
-      'F_CHAFF_POD', 'F_BULLDOZER', 'F_BAP', 'F_TARGETING_COMPUTER', 'F_SPIKES',
-      'F_MINESWEEPER', 'F_MINE', 'F_HARJEL_II', 'F_HARJEL_III', 'F_MASS',
-    ];
     for (const mount of this.entity.equipment()) {
       const equipment = mount.equipment;
       const isOffensiveArmor = equipment instanceof ArmorEquipment
-        && equipment.hasFlag('F_ELECTRIC_DISCHARGE_ARMOR');
-      if (!(equipment instanceof MiscEquipment || isOffensiveArmor) || equipment.hasAnyFlag(excluded)
-        || (equipment instanceof MiscEquipment && equipment.isShield)
-        || (equipment.hasFlag('F_ECM') && !equipment.hasFlag('F_WATCHDOG'))
+        && isElectricDischargeArmor(equipment);
+      if (!this.notDestroyed(mount)
+        || !(equipment instanceof MiscEquipment || isOffensiveArmor)
+        || isOffensiveBattleValueExcludedUtility(equipment)
+        || (equipment instanceof MiscEquipment && isShieldEquipment(equipment))
+        || isBapEquipment(equipment)
+        || isViralJammerEquipment(equipment)
+        || isSpikesEquipment(equipment)
+        || isTargetingComputerEquipment(equipment)
+        || (isEcmEquipment(equipment) && !isWatchdogEquipment(equipment))
         || this.countsAsOffensiveWeapon(mount)) continue;
       let value = mount.getBV(this.entity);
-      if (equipment.hasFlag('F_WATCHDOG')) value = 7;
+      if (isWatchdogEquipment(equipment)) value = 7;
       value *= this.offensiveEquipmentModifier(mount);
       const itemBefore = this.offensiveValue;
       this.offensiveValue += value;
@@ -396,24 +466,30 @@ export class BVCalculator {
 
   protected fireControlModifier(): number {
     if (!this.entity.isSupportVehicle()) return 1;
-    if (this.has('F_BASIC_FIRE_CONTROL')) return 0.9;
-    return this.has('F_ADVANCED_FIRE_CONTROL') ? 1 : 0.8;
+    return fireControlBattleValueModifier(this.entity.equipment()
+      .filter(mount => this.isWorking(mount))
+      .map(mount => mount.equipment));
   }
 
   protected processWeight(): void {}
   protected processOffensiveTypeModifier(): void {}
 
   protected summarize(value: number): number {
-    return value * (this.has('F_DRONE_OPERATING_SYSTEM') ? 0.95 : 1);
+    return value * (this.hasEquipment(isDroneOperatingSystemEquipment) ? DRONE_FIRE_CONTROL_BV_MULTIPLIER : 1);
   }
 
-  protected has(flag: EquipmentFlag): boolean {
-    return this.entity.equipment().some(mount => mount.equipment?.hasFlag(flag));
+  protected hasEquipment(predicate: (equipment: Equipment) => boolean): boolean {
+    return this.entity.equipment().some(mount => {
+      const equipment = mount.equipment;
+      return equipment !== undefined && this.isWorking(mount) && predicate(equipment);
+    });
   }
 
   protected processSpeedFactor(): void {
     const before = this.offensiveValue;
-    const factor = getOffensiveSpeedFactor(this.entity);
+    const factor = this.state
+      ? offensiveSpeedFactor(this.currentOffensiveSpeedFactorMP())
+      : getOffensiveSpeedFactor(this.entity);
     this.offensiveValue *= factor;
     this.addValueLine('Speed Factor', `${this.format(before)} x ${this.format(factor)}`, before);
   }
@@ -458,6 +534,43 @@ export class BVCalculator {
       return `${equipment.shortName}${mount.location === 'Unallocated' ? '' : ` (${mount.location})`}`;
     }
     return equipment.shortName;
+  }
+
+  protected isWorking(mount: EntityMountedEquipment): boolean {
+    return this.state?.equipmentStatus(mount.mountId) !== 'disabled'
+      && this.state?.equipmentStatus(mount.mountId) !== 'destroyed';
+  }
+
+  protected notDestroyed(mount: EntityMountedEquipment): boolean {
+    return this.state?.equipmentStatus(mount.mountId) !== 'destroyed';
+  }
+
+  protected ammoShots(mount: EntityMountedEquipment): number {
+    if (this.state) return this.state.ammoRemaining(mount.mountId);
+    const ammo = mount.equipment;
+    if (!(ammo instanceof AmmoEquipment)) return 0;
+    return mount.shotsCount
+      ?? this.gameRules.getAmmoShots(ammo, this.entity.getEquipmentRegistry());
+  }
+
+  protected ammoEquipment(mount: EntityMountedEquipment): AmmoEquipment | null {
+    if (this.state) return this.state.ammoEquipment(mount.mountId);
+    return mount.equipment instanceof AmmoEquipment ? mount.equipment : null;
+  }
+
+  protected ammoKgPerShot(ammo: AmmoEquipment): number {
+    return this.gameRules.getAmmoKgPerShot(ammo, this.entity.getEquipmentRegistry());
+  }
+
+  protected currentInternalPoints(): number {
+    if (!this.state) return this.entity.totalInternalPoints();
+    return this.entity.damageLocations()
+      .reduce((sum, location) => sum + this.state!.structureRemaining(location.code), 0);
+  }
+
+  /** Family calculators may override special current-movement formulas. */
+  protected currentOffensiveSpeedFactorMP(): number {
+    return this.runMP + Math.round(Math.max(this.jumpMP, this.umuMP) / 2);
   }
 
   private currentValue(): number {

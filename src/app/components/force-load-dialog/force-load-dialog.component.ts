@@ -26,7 +26,9 @@ import { OpPreviewComponent } from '../op-preview/op-preview.component';
 import { OptionsService } from '../../services/options.service';
 import { GameService } from '../../services/game.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { UnitInitializerService } from '../../services/unit-initializer.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { ForceDialogsService } from '../../services/force-dialogs.service';
+import { ForceOperationService } from '../../services/force-operation.service';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { type ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
@@ -128,8 +130,10 @@ export class ForceLoadDialogComponent {
     private injector = inject(Injector);
     private sessionPersistenceService = inject(SessionPersistenceService);
     private forceTaggingService = inject(ForceTaggingService);
-    private unitInitializer = inject(UnitInitializerService);
     forceBuilderService = inject(ForceBuilderService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
+    private readonly forceDialogs = inject(ForceDialogsService);
+    operationService = inject(ForceOperationService);
     optionsService = inject(OptionsService);
     gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
@@ -238,7 +242,7 @@ export class ForceLoadDialogComponent {
     isSelectedForceLoaded = computed<boolean>(() => {
         const sel = this.selectedForce();
         if (!sel?.instanceId) return false;
-        return this.forceBuilderService.loadedForces().some(s => s.force.instanceId() === sel.instanceId);
+        return this.forceWorkspace.loadedForces().some(s => s.force.instanceId() === sel.instanceId);
     });
     gameTypeFilter = signal<'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE>('all');
     hangarTagFilter = signal<string>(this.getStoredHangarTagFilter());
@@ -460,14 +464,14 @@ export class ForceLoadDialogComponent {
     });
 
     canCreateOperation = computed<boolean>(() =>
-        this.forceBuilderService.loadedForces().length >= 2 && !this.operationCreateBusy()
+        this.forceWorkspace.loadedForces().length >= 2 && !this.operationCreateBusy()
     );
 
     newOperationTitle = computed<string>(() => {
         if (this.operationCreateBusy()) {
             return 'Saving operation...';
         }
-        const forceCount = this.forceBuilderService.loadedForces().length;
+        const forceCount = this.forceWorkspace.loadedForces().length;
         if (forceCount >= 2) {
             return 'Create operation from deployed forces';
         }
@@ -1333,6 +1337,10 @@ export class ForceLoadDialogComponent {
         return formationName;
     }
 
+    getForceUnitCount(force: LoadForceEntry): number {
+        return force.groups.reduce((sum, group) => sum + group.units.length, 0);
+    }
+
     private matchesGameTypeFilter(item: { type?: GameSystem }, typeFilter: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE): boolean {
         const itemType = item.type || GameSystem.CLASSIC;
         return typeFilter === 'all' || itemType === typeFilter;
@@ -1536,11 +1544,10 @@ export class ForceLoadDialogComponent {
             const text = await file.text();
             const { parseMulForce } = await import('../../utils/mul-file.util');
             const forceName = file.name.replace(/\.mul$/i, '').trim() || 'Imported MUL Force';
-            const { force, issues } = await parseMulForce(text, forceName, this.dataService, this.unitInitializer, this.injector);
-            force.instanceId.set(null);
+            const { force, issues } = await parseMulForce(text, forceName, this.dataService, this.injector);
 
             const warningCount = issues.filter(issue => issue.severity === 'warning').length;
-            const loadedCount = force.units().length;
+            const loadedCount = force.members().length;
             this.toastService.showToast(
                 warningCount > 0
                     ? `Loaded ${loadedCount} units from MUL with ${warningCount} warning${warningCount === 1 ? '' : 's'}.`
@@ -1559,7 +1566,7 @@ export class ForceLoadDialogComponent {
     }
 
     private async onLoadForce(force: Force): Promise<void> {
-        if (this.forceBuilderService.loadedForces().length > 0) {
+        if (this.forceWorkspace.loadedForces().length > 0) {
             const ref = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
                 disableClose: true,
                 data: <ConfirmDialogData<string>>{
@@ -1593,7 +1600,7 @@ export class ForceLoadDialogComponent {
             return;
         }
         // If forces are already loaded, ask the user whether to replace or append
-        if (this.forceBuilderService.loadedForces().length > 0) {
+        if (this.forceWorkspace.loadedForces().length > 0) {
             const ref = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
                 disableClose: true,
                 data: <ConfirmDialogData<string>>{
@@ -1622,7 +1629,7 @@ export class ForceLoadDialogComponent {
     }
 
     private async onAddForce(force?: Force): Promise<void> {
-        const currentForce = this.forceBuilderService.smartCurrentForce();
+        const currentForce = this.forceWorkspace.smartCurrentForce();
         const showInsert = !!currentForce && currentForce.owned();
         const ref = this.dialogsService.createDialog<ForceAddModePickerResult>(
             ForceAddModePickerDialogComponent,
@@ -1660,9 +1667,9 @@ export class ForceLoadDialogComponent {
         if (!this.canCreateOperation()) return;
         this.operationCreateBusy.set(true);
         try {
-            const saved = await this.forceBuilderService.saveOperation();
+            const saved = await this.operationService.saveOperation();
             if (!saved) return;
-            const operationId = this.forceBuilderService.currentOperation()?.operationId;
+            const operationId = this.operationService.currentOperation()?.operationId;
             if (operationId) {
                 await this.loadOperations(operationId);
             }
@@ -1786,9 +1793,8 @@ export class ForceLoadDialogComponent {
             'danger'
         );
         if (confirmed) {
-            if (force.instanceId) {
-                await this.dataService.deleteForce(force.instanceId);
-            }
+            const deleted = await this.forceBuilderService.deleteForceByInstanceId(force.instanceId);
+            if (!deleted) return;
             this.forces.update(forces => forces.filter(f => f !== force));
             this.ensureHangarTagFilterIsValid();
             this.selectedForce.set(null);
@@ -1838,12 +1844,12 @@ export class ForceLoadDialogComponent {
     async onOpenOrganization() {
         const org = this.selectedOrganization();
         if (!org) return;
-        const ref = await this.forceBuilderService.showForceOrgDialog(org.organizationId);
+        const ref = await this.forceDialogs.showForceOrgDialog(org.organizationId);
         await this.awaitOrgDialogOrForceLoad(ref);
     }
 
     async onNewOrganization() {
-        const ref = await this.forceBuilderService.showForceOrgDialog();
+        const ref = await this.forceDialogs.showForceOrgDialog();
         await this.awaitOrgDialogOrForceLoad(ref);
     }
 

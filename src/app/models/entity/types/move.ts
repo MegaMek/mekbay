@@ -48,6 +48,7 @@ export interface MovementCalculationOptions {
   readonly ignoreOptionalRules: boolean;
   readonly ignoreConversion: boolean;
   readonly forceTSM: boolean;
+  readonly ignoreShield: boolean;
   /** Include Mek alternate jump systems, such as mechanical jump boosters. */
   readonly includeAlternateJumpSystems: boolean;
 }
@@ -69,6 +70,7 @@ export const STANDARD_MOVEMENT_CALCULATION: MovementCalculationOptions = {
   ignoreOptionalRules: false,
   ignoreConversion: false,
   forceTSM: false,
+  ignoreShield: false,
   includeAlternateJumpSystems: false,
 };
 
@@ -96,6 +98,7 @@ export const BV_MOVEMENT_CALCULATION: MovementCalculationOptions = {
   ignoreOptionalRules: true,
   ignoreConversion: true,
   forceTSM: true,
+  ignoreShield: true,
   includeAlternateJumpSystems: true,
 };
 

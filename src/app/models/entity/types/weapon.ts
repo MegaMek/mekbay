@@ -10,7 +10,8 @@ interface IntrinsicWeaponBase {
   readonly id: string;
   readonly name: string;
   readonly locations: readonly string[];
-  readonly hitModifiers: readonly EntityWeaponHitModifier[];
+  /** Construction-only adjustment. The selected ruleset supplies the base modifier. */
+  readonly hitModifierAdjustment: EntityWeaponHitModifier;
 }
 
 export type FixedPhysicalDamage = {

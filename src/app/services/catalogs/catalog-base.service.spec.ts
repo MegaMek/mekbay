@@ -3,18 +3,21 @@
 // Author: Drake
 
 import { provideZonelessChangeDetection, Injectable } from '@angular/core';
-import { HttpHeaders, provideHttpClient } from '@angular/common/http';
+import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 
 import { LoggerService } from '../logger.service';
-import { CatalogBaseService, CatalogDownloadTrackerService } from './catalog-base.service';
+import {
+    CatalogBaseService,
+    CatalogDownloadTrackerService,
+} from './catalog-base.service';
 
 const TEST_CATALOG_URL = 'https://catalog.example/test-catalog.json?ngsw-bypass=true';
 
 interface TestCatalogData {
     items?: number[];
-    etag?: string;
+    assetHash?: string;
 }
 
 async function settleMicrotasks(): Promise<void> {
@@ -56,13 +59,13 @@ class TestCatalogService extends CatalogBaseService<TestCatalogData, TestCatalog
 
     protected override hydrate(data: TestCatalogData): void {
         this.items = Array.isArray(data.items) ? [...data.items] : [];
-        this.etag = data.etag || '';
+        this.transportRevision = data.assetHash || '';
     }
 
-    protected override normalizeFetchedData(data: TestCatalogData, etag: string): TestCatalogData {
+    protected override normalizeFetchedData(data: TestCatalogData, assetHash: string): TestCatalogData {
         return {
             ...data,
-            etag,
+            assetHash,
         };
     }
 
@@ -117,30 +120,39 @@ describe('CatalogBaseService', () => {
         httpMock.verify();
     });
 
-    it('refetches when the cached dataset is invalid even if the ETag matches', async () => {
-        service.cachedData = { etag: 'etag-1', items: [] };
+    it('hydrates saved data without network work and reuses that read during full initialization', async () => {
+        const body = { items: [1, 2, 3, 4, 5, 6], assetHash: 'revision-a' };
+        service.cachedData = { ...body };
+        const loadFromCache = spyOn<any>(service, 'loadFromCache').and.callThrough();
+
+        expect(await service.hydrateFromCache()).toBeTrue();
+        expect(service.getItems()).toEqual([1, 2, 3, 4, 5, 6]);
+        httpMock.expectNone(TEST_CATALOG_URL);
+
+        const initialization = service.initialize();
+        await settleMicrotasks();
+        httpMock.expectOne(TEST_CATALOG_URL).flush(body);
+        await initialization;
+
+        expect(loadFromCache).toHaveBeenCalledTimes(1);
+        expect(service.savedData).toEqual([]);
+    });
+
+    it('refetches when the cached dataset is invalid', async () => {
+        service.cachedData = { assetHash: 'cached-hash', items: [] };
 
         const initializePromise = service.initialize();
         await settleMicrotasks();
 
-        const headRequest = httpMock.expectOne(TEST_CATALOG_URL);
-        expect(headRequest.request.method).toBe('HEAD');
-        headRequest.flush('', {
-            headers: new HttpHeaders({ ETag: 'etag-1' }),
-        });
-        await settleMicrotasks();
-
         const getRequest = httpMock.expectOne(TEST_CATALOG_URL);
         expect(getRequest.request.method).toBe('GET');
-        getRequest.flush({ items: [1, 2, 3, 4, 5, 6] }, {
-            headers: new HttpHeaders({ ETag: 'etag-1' }),
-        });
+        getRequest.flush({ items: [1, 2, 3, 4, 5, 6], assetHash: 'revision-a' });
 
         await initializePromise;
 
         expect(service.getItems()).toEqual([1, 2, 3, 4, 5, 6]);
         expect(service.savedData).toEqual([
-            { etag: 'etag-1', items: [1, 2, 3, 4, 5, 6] },
+            jasmine.objectContaining({ assetHash: jasmine.any(String), items: [1, 2, 3, 4, 5, 6] }),
         ]);
         expect(logger.warn).toHaveBeenCalledWith(jasmine.stringMatching(/Ignoring invalid cache test_catalog dataset/));
     });
@@ -151,18 +163,10 @@ describe('CatalogBaseService', () => {
         const initializePromise = service.initialize();
         await settleMicrotasks();
 
-        const headRequest = httpMock.expectOne(TEST_CATALOG_URL);
-        headRequest.flush('', {
-            headers: new HttpHeaders({ ETag: 'etag-1' }),
-        });
-        await settleMicrotasks();
-
         const getRequest = httpMock.expectOne(TEST_CATALOG_URL);
         expect(downloadTracker.isDownloading()).toBeTrue();
 
-        getRequest.flush({ items: [1, 2, 3, 4, 5, 6] }, {
-            headers: new HttpHeaders({ ETag: 'etag-1' }),
-        });
+        getRequest.flush({ items: [1, 2, 3, 4, 5, 6], assetHash: 'revision-a' });
 
         await initializePromise;
 
@@ -170,15 +174,17 @@ describe('CatalogBaseService', () => {
     });
 
     it('shares concurrent initialization and memoizes success', async () => {
-        service.cachedData = { etag: 'etag-1', items: [1, 2, 3, 4, 5, 6] };
+        const body = { items: [1, 2, 3, 4, 5, 6], assetHash: 'revision-a' };
+        service.cachedData = { ...body };
 
         const firstInitialization = service.initialize();
         const secondInitialization = service.initialize();
         expect(secondInitialization).toBe(firstInitialization);
         await settleMicrotasks();
 
-        const headRequest = httpMock.expectOne(TEST_CATALOG_URL);
-        headRequest.flush('', { headers: new HttpHeaders({ ETag: 'etag-1' }) });
+        const request = httpMock.expectOne(TEST_CATALOG_URL);
+        expect(request.request.method).toBe('GET');
+        request.flush(body);
         await Promise.all([firstInitialization, secondInitialization]);
 
         await service.initialize();
@@ -190,15 +196,11 @@ describe('CatalogBaseService', () => {
         await settleMicrotasks();
 
         httpMock.expectOne(TEST_CATALOG_URL).flush('offline', { status: 503, statusText: 'Unavailable' });
-        await settleMicrotasks();
-        httpMock.expectOne(TEST_CATALOG_URL).flush('offline', { status: 503, statusText: 'Unavailable' });
         await expectAsync(failedInitialization).toBeRejected();
 
         const retry = service.initialize();
         await settleMicrotasks();
-        httpMock.expectOne(TEST_CATALOG_URL).flush('offline', { status: 503, statusText: 'Unavailable' });
-        await settleMicrotasks();
-        httpMock.expectOne(TEST_CATALOG_URL).flush({ items: [1, 2, 3, 4, 5, 6] });
+        httpMock.expectOne(TEST_CATALOG_URL).flush({ items: [1, 2, 3, 4, 5, 6], assetHash: 'revision-a' });
         await retry;
     });
 
@@ -226,23 +228,14 @@ describe('CatalogBaseService', () => {
     });
 
     it('preserves the previous dataset when the remote update is empty', async () => {
-        service.cachedData = { etag: 'etag-old', items: [1, 2, 3, 4, 5, 6] };
+        service.cachedData = { assetHash: 'cached-hash', items: [1, 2, 3, 4, 5, 6] };
 
         const initializePromise = service.initialize();
         await settleMicrotasks();
 
-        const headRequest = httpMock.expectOne(TEST_CATALOG_URL);
-        expect(headRequest.request.method).toBe('HEAD');
-        headRequest.flush('', {
-            headers: new HttpHeaders({ ETag: 'etag-new' }),
-        });
-        await settleMicrotasks();
-
         const getRequest = httpMock.expectOne(TEST_CATALOG_URL);
         expect(getRequest.request.method).toBe('GET');
-        getRequest.flush({ items: [] }, {
-            headers: new HttpHeaders({ ETag: 'etag-new' }),
-        });
+        getRequest.flush({ items: [], assetHash: 'revision-b' });
 
         await expectAsync(initializePromise).toBeRejectedWithError(/Rejected test_catalog update/);
 
@@ -253,25 +246,16 @@ describe('CatalogBaseService', () => {
 
     it('rejects suspiciously shrunken remote datasets and keeps the previous data', async () => {
         service.cachedData = {
-            etag: 'etag-old',
+            assetHash: 'cached-hash',
             items: Array.from({ length: 20 }, (_, index) => index),
         };
 
         const initializePromise = service.initialize();
         await settleMicrotasks();
 
-        const headRequest = httpMock.expectOne(TEST_CATALOG_URL);
-        expect(headRequest.request.method).toBe('HEAD');
-        headRequest.flush('', {
-            headers: new HttpHeaders({ ETag: 'etag-new' }),
-        });
-        await settleMicrotasks();
-
         const getRequest = httpMock.expectOne(TEST_CATALOG_URL);
         expect(getRequest.request.method).toBe('GET');
-        getRequest.flush({ items: [1, 2, 3, 4, 5] }, {
-            headers: new HttpHeaders({ ETag: 'etag-new' }),
-        });
+        getRequest.flush({ items: [1, 2, 3, 4, 5], assetHash: 'revision-b' });
 
         await expectAsync(initializePromise).toBeRejectedWithError(/Rejected test_catalog update/);
 

@@ -1,2 +1,3 @@
 /testdata
-/benchmarks
+/benchmarks/*
+!/benchmarks/convergence-pre-deletion-baseline.json

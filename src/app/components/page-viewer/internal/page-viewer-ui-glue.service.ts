@@ -4,7 +4,7 @@
 
 import { Injectable } from '@angular/core';
 
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
+import type { PageViewerMember } from './types';
 
 export interface PageViewerResizePlan {
     shouldRedisplay: boolean;
@@ -49,19 +49,18 @@ export class PageViewerUiGlueService {
             };
         }
 
-        const shouldShowShadows = shadowPagesEnabled && totalUnits > nextVisibleCount;
-        if (shouldShowShadows && renderedShadowCount === 0 && hasCurrentUnit) {
-            return {
-                shouldRedisplay: false,
-                shouldCloseInteractionOverlays: false,
-                shouldScheduleShadowRender: true
-            };
-        }
+        const shouldShowShadows = hasCurrentUnit
+            && shadowPagesEnabled
+            && totalUnits > nextVisibleCount;
 
         return {
             shouldRedisplay: false,
             shouldCloseInteractionOverlays: false,
-            shouldScheduleShadowRender: true
+            // A resize only needs shadow work when shadows can actually be
+            // displayed, or when existing shadows must be removed. Scheduling
+            // a clear for an already-empty viewer creates a render/resize
+            // feedback loop while a new force has no selected unit.
+            shouldScheduleShadowRender: shouldShowShadows || renderedShadowCount > 0
         };
     }
 
@@ -70,9 +69,9 @@ export class PageViewerUiGlueService {
         pointerMoved: boolean;
         isPanning: boolean;
         isSwiping: boolean;
-        displayedUnits: readonly CBTForceUnit[];
+        displayedUnits: readonly PageViewerMember[];
         currentUnitId: string | null;
-    }): CBTForceUnit | null {
+    }): PageViewerMember | null {
         const { eventTarget, pointerMoved, isPanning, isSwiping, displayedUnits, currentUnitId } = options;
 
         if (pointerMoved || isPanning || isSwiping || displayedUnits.length <= 1) {

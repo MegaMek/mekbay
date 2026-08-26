@@ -10,6 +10,7 @@ import {
   writeBlkPreamble,
   writeEngine,
   writeEquipmentByLocation,
+  writeEmbeddedImages,
   writeFluffBlocks,
   writeInternalType,
   writeSource,
@@ -84,6 +85,8 @@ export function writeBlkProtoMek(entity: ProtoMekEntity): string {
   writeFluffBlocks(w, entity.fluff());
   writeSource(w, entity);
   writeTonnage(w, entity);
+
+  writeEmbeddedImages(w, entity);
   
-  return w.toString();
+  return w.toString(entity.nativeSourceTrailingNewlines || 2);
 }

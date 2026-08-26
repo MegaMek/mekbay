@@ -7,6 +7,7 @@ import { INFANTRY_SPECIALIZATION_TO_BIT } from '../types';
 import {
   BuildingBlockWriter,
   writeFluffBlocks,
+  writeEmbeddedImages,
   writeSource,
   writeBlkPreamble,
 } from './building-block-writer';
@@ -125,5 +126,7 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
 
   // NOTE: No tonnage block for conventional infantry - matches Java reference output
 
-  return w.toString();
+  writeEmbeddedImages(w, entity);
+
+  return w.toString(entity.nativeSourceTrailingNewlines || 2);
 }

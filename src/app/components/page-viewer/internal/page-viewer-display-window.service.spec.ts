@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { TestBed } from '@angular/core/testing';
+import { asUnitInstanceId } from '../../../models/runtime/runtime-state';
 
 import { PageViewerDisplayWindowService } from './page-viewer-display-window.service';
 
@@ -24,13 +25,16 @@ describe('PageViewerDisplayWindowService', () => {
 
     it('resolves the displayed unit window from the current start index', () => {
         const result = service.resolveDisplayedUnits([
-            { id: 'a' },
-            { id: 'b' },
-            { id: 'c' }
+            { id: asUnitInstanceId('a') },
+            { id: asUnitInstanceId('b') },
+            { id: asUnitInstanceId('c') }
         ] as never[], 2, 1);
 
         expect(result.startIndex).toBe(1);
-        expect(result.units.map((unit) => unit.id)).toEqual(['b', 'c']);
+        expect(result.units.map((unit) => unit.id)).toEqual([
+            asUnitInstanceId('b'),
+            asUnitInstanceId('c'),
+        ]);
     });
 
     it('builds a force-change plan that follows the selected slot across reorder', () => {

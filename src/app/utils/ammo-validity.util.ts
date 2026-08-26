@@ -4,18 +4,25 @@
 
 import { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
 import { effectiveTechDateYear, TechAdvancementDates } from '../models/entity/types/tech';
-import { EquipmentFlag } from '../models/equipment-flags.type';
-import type { AmmoEquipment, AmmoType, WeaponEquipment } from '../models/equipment.model';
+import type { AmmoEquipment, AmmoType } from '../models/equipment.model';
+import { isBattleArmorAmmo } from '../models/equipment-platform.model';
 import type { Era } from '../models/eras.model';
-import { isArtemisCompatibleWeapon } from '../models/entity/utils/equipment-link-rules';
-import type { MountedEquipment } from '../models/mounted-equipment.model';
-import type { Unit, UnitType } from '../models/units.model';
+import type { UnitSummary, UnitType } from '../models/unit-summary.model';
+
+/** Minimum immutable unit facts needed for construction-time ammo compatibility. */
+export type AmmoCompatibilityUnitFacts = Pick<UnitSummary, 'type' | 'mixed' | 'techBase'>;
+
+/** Immutable, mount-free facts needed to explain guided-ammo selection. */
+export interface AmmoSelectionCompatibilityFacts {
+    readonly artemisIV: readonly string[];
+    readonly artemisV: readonly string[];
+}
 
 export interface AmmoValidityContext {
-    unitType?: UnitType;
-    era?: Era | null;
-    inventory?: readonly MountedEquipment[];
-    allowAeroArtilleryAlternateMunitions?: boolean; // unofficial rules, this comes from MegaMek's AmmoType canAeroUse()
+    readonly unitType?: UnitType;
+    readonly era?: Era | null;
+    readonly compatibilityFacts?: AmmoSelectionCompatibilityFacts;
+    readonly allowAeroArtilleryAlternateMunitions?: boolean; // unofficial rules, this comes from MegaMek's AmmoType canAeroUse()
 }
 
 export type AmmoSelectionIssueReason = 'not-yet-existing-in-era'
@@ -45,12 +52,16 @@ export class AmmoValidityUtil {
             || this.canAeroUse(ammo, !!context.allowAeroArtilleryAlternateMunitions);
     }
 
-    static isAmmoCompatible(originalAmmo: AmmoEquipment, candidateAmmo: AmmoEquipment, unit?: Unit, _inventory: readonly MountedEquipment[] = []): boolean {
+    static isAmmoCompatible(
+        originalAmmo: AmmoEquipment,
+        candidateAmmo: AmmoEquipment,
+        unit?: AmmoCompatibilityUnitFacts,
+    ): boolean {
         if (!this.isAmmoValid(candidateAmmo, { unitType: unit?.type })) return false;
         if (originalAmmo.ammoType !== candidateAmmo.ammoType) return false;
         if (!this.hasCompatibleTechBase(originalAmmo, candidateAmmo, unit)) return false;
         if (originalAmmo.hasMunitionType('M_CASELESS') !== candidateAmmo.hasMunitionType('M_CASELESS')) return false;
-        if (originalAmmo.hasFlag('F_BATTLEARMOR') !== candidateAmmo.hasFlag('F_BATTLEARMOR')) return false;
+        if (isBattleArmorAmmo(originalAmmo) !== isBattleArmorAmmo(candidateAmmo)) return false;
 
         if (originalAmmo.ammoType === 'AR10') return true;
         if (originalAmmo.rackSize !== candidateAmmo.rackSize) return false;
@@ -66,12 +77,16 @@ export class AmmoValidityUtil {
     static getAmmoSelectionIssues(ammo: AmmoEquipment, context: AmmoValidityContext = {}): AmmoSelectionIssue[] {
         const reasons = [
             ...this.getEraSelectionIssueReasons(ammo, context.era ?? null),
-            ...this.getArtemisSelectionIssueReasons(ammo, context.inventory ?? []),
+            ...this.getArtemisSelectionIssueReasons(ammo, context.compatibilityFacts),
         ];
         return reasons.map(reason => ({ reason, message: AMMO_SELECTION_ISSUE_MESSAGES[reason] }));
     }
 
-    private static hasCompatibleTechBase(originalAmmo: AmmoEquipment, candidateAmmo: AmmoEquipment, unit?: Unit): boolean {
+    private static hasCompatibleTechBase(
+        originalAmmo: AmmoEquipment,
+        candidateAmmo: AmmoEquipment,
+        unit?: AmmoCompatibilityUnitFacts,
+    ): boolean {
         if (originalAmmo.techBase === candidateAmmo.techBase) return true;
         if (!unit) return originalAmmo.techBase === 'All' || candidateAmmo.techBase === 'All';
         if (unit.mixed) return true;
@@ -80,76 +95,21 @@ export class AmmoValidityUtil {
         return true;
     }
 
-    private static getArtemisSelectionIssueReasons(ammo: AmmoEquipment, inventory: readonly MountedEquipment[]): AmmoSelectionIssueReason[] {
+    private static getArtemisSelectionIssueReasons(
+        ammo: AmmoEquipment,
+        facts?: AmmoSelectionCompatibilityFacts,
+    ): AmmoSelectionIssueReason[] {
         const reasons: AmmoSelectionIssueReason[] = [];
 
-        if (ammo.hasMunitionType('M_ARTEMIS_CAPABLE') && !this.hasArtemisMunitionSupport(ammo, inventory, ['F_ARTEMIS', 'F_ARTEMIS_PROTO'])) {
+        if (ammo.hasMunitionType('M_ARTEMIS_CAPABLE') && !facts?.artemisIV.includes(ammo.internalName)) {
             reasons.push('missing-artemis-iv-component');
         }
 
-        if (ammo.hasMunitionType('M_ARTEMIS_V_CAPABLE') && !this.hasArtemisMunitionSupport(ammo, inventory, ['F_ARTEMIS_V'])) {
+        if (ammo.hasMunitionType('M_ARTEMIS_V_CAPABLE') && !facts?.artemisV.includes(ammo.internalName)) {
             reasons.push('missing-artemis-v-component');
         }
 
         return reasons;
-    }
-
-    private static hasArtemisMunitionSupport(ammo: AmmoEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly EquipmentFlag[]): boolean {
-        return inventory.some(entry => this.isArtemisSupportedWeaponEntry(entry, ammo, inventory, artemisFlags));
-    }
-
-    private static isArtemisSupportedWeaponEntry(entry: MountedEquipment, ammo: AmmoEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly EquipmentFlag[]): boolean {
-        const equipment = entry.equipment;
-        return this.isWeaponEquipment(equipment)
-            && isArtemisCompatibleWeapon(equipment)
-            && this.weaponUsesAmmo(equipment, ammo)
-            && this.hasArtemisEnhancementForWeapon(entry, inventory, artemisFlags);
-    }
-
-    private static isWeaponEquipment(equipment: unknown): equipment is WeaponEquipment {
-        return !!equipment
-            && (equipment as { type?: unknown }).type === 'weapon'
-            && typeof (equipment as { ammoType?: unknown }).ammoType === 'string';
-    }
-
-    private static weaponUsesAmmo(weapon: WeaponEquipment, ammo: AmmoEquipment): boolean {
-        if (weapon.ammoType === 'NA') return false;
-        if (!weapon.rackSize || weapon.rackSize <= 0) return weapon.ammoType === ammo.ammoType;
-        return weapon.ammoType === ammo.ammoType && weapon.rackSize === ammo.rackSize;
-    }
-
-    private static hasArtemisEnhancementForWeapon(weaponEntry: MountedEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly EquipmentFlag[]): boolean {
-        if (weaponEntry.linkedWith?.some(entry => this.isArtemisEnhancement(entry, artemisFlags))) return true;
-
-        const weaponLocations = this.getMountedLocations(weaponEntry);
-        if (weaponLocations.size === 0) return false;
-
-        return inventory.some(entry => {
-            if (entry.parent === weaponEntry && this.isArtemisEnhancement(entry, artemisFlags)) return true;
-            if (!this.isArtemisEnhancement(entry, artemisFlags)) return false;
-            return this.locationsOverlap(weaponLocations, this.getMountedLocations(entry));
-        });
-    }
-
-    private static isArtemisEnhancement(entry: MountedEquipment, artemisFlags: readonly EquipmentFlag[]): boolean {
-        return !!entry.equipment?.hasFlag('F_WEAPON_ENHANCEMENT')
-            && artemisFlags.some(flag => entry.equipment?.hasFlag(flag));
-    }
-
-    private static getMountedLocations(entry: MountedEquipment): Set<string> {
-        const locations = new Set<string>();
-        entry.locations?.forEach(location => this.addLocations(locations, location));
-        entry.critSlots?.forEach(slot => this.addLocations(locations, slot.loc));
-        this.addLocations(locations, entry.id.match(/@([^#]+)#/)?.[1]);
-        return locations;
-    }
-
-    private static addLocations(locations: Set<string>, locationText: string | null | undefined): void {
-        locationText?.split('/').map(location => location.trim()).filter(Boolean).forEach(location => locations.add(location));
-    }
-
-    private static locationsOverlap(first: Set<string>, second: Set<string>): boolean {
-        return Array.from(first).some(location => second.has(location));
     }
 
     private static canAeroUse(ammo: AmmoEquipment, allowAlternateArtilleryMunitions: boolean): boolean {

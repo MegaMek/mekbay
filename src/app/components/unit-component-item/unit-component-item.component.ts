@@ -4,7 +4,7 @@
 
 import { CommonModule } from '@angular/common';
 import { Component, ChangeDetectionStrategy, input, inject, computed, type ElementRef, viewChild } from '@angular/core';
-import type { Unit, UnitComponent } from '../../models/units.model';
+import type { UnitSummary, UnitComponent } from '../../models/unit-summary.model';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
 
@@ -22,7 +22,7 @@ type ComponentDisplayStyle = 'normal' | 'small' | 'tiny' | 'text' | 'additional'
 })
 export class UnitComponentItemComponent {
     public floatingOverlayService = inject(FloatingOverlayService);
-    unit = input.required<Unit>();
+    unit = input.required<UnitSummary>();
     damaged = input<boolean>(false);
     comp = input<UnitComponent | null>(null);
     displayStyle = input<ComponentDisplayStyle>('normal');

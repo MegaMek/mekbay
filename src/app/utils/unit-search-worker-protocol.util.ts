@@ -3,26 +3,109 @@
 // Author: Drake
 
 import type { GameSystem } from '../models/common.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import type { UnitSearchNormalization, UnitSearchNormalizationMatch } from '../models/unit-search-result.model';
 import type { SearchTelemetryStage } from '../services/unit-search-filters.model';
+import type { UnitProviderId } from '../services/unit-catalog/unit-catalog.types';
 
 export type UnitSearchWorkerCorpusVersion = string;
 
+/** Search-only projection transferred to the worker instead of the runtime Unit graph. */
+export interface UnitSearchWorkerUnit {
+    readonly uuid: UnitSummary['uuid'];
+    readonly provider?: UnitProviderId;
+    readonly name: UnitSummary['name'];
+    readonly id: UnitSummary['id'];
+    readonly chassis: UnitSummary['chassis'];
+    readonly model: UnitSummary['model'];
+    readonly year: UnitSummary['year'];
+    readonly weightClass: UnitSummary['weightClass'];
+    readonly tons: UnitSummary['tons'];
+    readonly bv: UnitSummary['bv'];
+    readonly cost: UnitSummary['cost'];
+    readonly level: UnitSummary['level'];
+    readonly type: UnitSummary['type'];
+    readonly subtype: UnitSummary['subtype'];
+    readonly omni: UnitSummary['omni'];
+    readonly source: string[];
+    readonly published: string[];
+    readonly canon: UnitSummary['canon'];
+    readonly canAntiMech: UnitSummary['canAntiMech'];
+    readonly role: UnitSummary['role'];
+    readonly armor: UnitSummary['armor'];
+    readonly armorPer: UnitSummary['armorPer'];
+    readonly internal: UnitSummary['internal'];
+    readonly heat: UnitSummary['heat'];
+    readonly dissipation: UnitSummary['dissipation'];
+    readonly moveType: UnitSummary['moveType'];
+    readonly walk: UnitSummary['walk'];
+    readonly run: UnitSummary['run'];
+    readonly jump: UnitSummary['jump'];
+    readonly umu: UnitSummary['umu'];
+    readonly c3: UnitSummary['c3'];
+    readonly dpt: UnitSummary['dpt'];
+    readonly quirks: string[];
+    readonly features: string[];
+    readonly serverHost?: string;
+    readonly _searchKey: string;
+    readonly _techBaseDisplay: string;
+    readonly _maxRange: number;
+    readonly _dissipationEfficiency: number;
+    readonly _mdSumNoPhysical: number;
+    readonly _weaponTypes: string[];
+    readonly _weaponTypeCounts: Readonly<Record<string, number>>;
+    readonly _componentNameCounts: Readonly<Record<string, number>>;
+    readonly _searchTags: string[];
+    readonly as: {
+        readonly TP: UnitSummary['as']['TP'];
+        readonly PV: UnitSummary['as']['PV'];
+        readonly SZ: UnitSummary['as']['SZ'];
+        readonly TMM: UnitSummary['as']['TMM'];
+        readonly OV: UnitSummary['as']['OV'];
+        readonly MVm: Record<string, number>;
+        readonly Th: UnitSummary['as']['Th'];
+        readonly Arm: UnitSummary['as']['Arm'];
+        readonly Str: UnitSummary['as']['Str'];
+        readonly specials: string[];
+        readonly dmg: {
+            readonly _dmgS?: number;
+            readonly _dmgM?: number;
+            readonly _dmgL?: number;
+            readonly _dmgE?: number;
+        };
+    };
+}
+
 export interface UnitSearchWorkerIndexSnapshot {
     [filterKey: string]: {
+        /** Exact provider+UUID search identity keys, never display names. */
         [value: string]: string[];
     };
 }
 
+/**
+ * Compact exact availability authority for the search worker.
+ *
+ * Do not expand every faction/era membership to provider+UUID strings on the
+ * main thread. That representation repeats long identity strings millions of
+ * times for the full catalog and is then duplicated again by structured clone.
+ * The worker resolves MUL ids lazily for only the faction/era pairs a query
+ * actually touches.
+ */
 export interface UnitSearchWorkerFactionEraSnapshot {
-    [eraName: string]: {
-        [factionName: string]: string[];
+    readonly unitIdentityKeysByMulId: {
+        readonly [mulId: string]: readonly string[];
+    };
+    readonly referenceIdsByEraAndFaction: {
+        readonly [eraName: string]: {
+            readonly [factionName: string]: readonly number[];
+        };
     };
 }
 
 export interface UnitSearchWorkerCorpusSnapshot {
     corpusVersion: UnitSearchWorkerCorpusVersion;
-    units: import('../models/units.model').Unit[];
+    units: UnitSearchWorkerUnit[];
     indexes: UnitSearchWorkerIndexSnapshot;
     factionEraIndex: UnitSearchWorkerFactionEraSnapshot;
 }
@@ -43,6 +126,9 @@ export interface UnitSearchWorkerQueryRequest {
 }
 
 export interface UnitSearchWorkerResultEntry {
+    /** Durable catalog identity. Names are presentation only and are not unique across providers. */
+    provider: UnitProviderId;
+    uuid: string;
     unitName: string;
     match?: UnitSearchNormalizationMatch;
 }
@@ -55,6 +141,14 @@ export interface UnitSearchWorkerInitMessage {
 export interface UnitSearchWorkerReadyMessage {
     type: 'ready';
     corpusVersion: UnitSearchWorkerCorpusVersion;
+}
+
+export interface UnitSearchWorkerProgressMessage {
+    type: 'progress';
+    corpusVersion: UnitSearchWorkerCorpusVersion;
+    completed: number;
+    total: number;
+    detail: string;
 }
 
 export interface UnitSearchWorkerExecuteMessage {
@@ -86,6 +180,7 @@ export type UnitSearchWorkerRequestMessage =
     | UnitSearchWorkerExecuteMessage;
 
 export type UnitSearchWorkerResponseMessage =
+    | UnitSearchWorkerProgressMessage
     | UnitSearchWorkerReadyMessage
     | UnitSearchWorkerResultMessage
     | UnitSearchWorkerErrorMessage;

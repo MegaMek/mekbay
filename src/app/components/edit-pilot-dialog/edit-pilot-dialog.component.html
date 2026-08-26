@@ -1,6 +1,6 @@
 <div class="wide-dialog">
     <h2 class="wide-dialog-title">Warrior Data</h2>
-    @if (data.group && selectedGroupCommander()) {
+    @if (data.commanderContext && selectedGroupCommander()) {
     <div class="group-commander-status" role="status">
         This unit is the group commander.
     </div>
@@ -8,7 +8,7 @@
     <div class="wide-dialog-body">
         <div class="form-row commander-layout">
             <div class="commander-name-row">
-                @if (data.group) {
+                @if (data.commanderContext) {
                 <button
                     type="button"
                     class="group-commander-toggle bt-button square"

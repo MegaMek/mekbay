@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ForceUnit } from '../models/force-unit.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { type MULFaction, MULFACTION_EXTINCT, MULFACTION_MERCENARY, MULFACTION_NONE } from '../models/mulfactions.model';
 import type { Era } from '../models/eras.model';
 import type { ForceNameWords } from '../models/force-name-words.model';
@@ -104,9 +104,9 @@ function randomOrdinal(): string {
     return `${n}th`;
 }
 
-function getReferenceYear(units: ForceUnit[]): number | null {
-    if (!units?.length) return null;
-    return units.reduce((max, unit) => Math.max(max, unit.getUnit().year), Number.NEGATIVE_INFINITY);
+function getReferenceYear(units: readonly UnitSummary[]): number | null {
+    if (!units.length) return null;
+    return units.reduce((max, unit) => Math.max(max, unit.year), Number.NEGATIVE_INFINITY);
 }
 
 function getEraStartYear(era: Era): number {
@@ -126,7 +126,7 @@ function getEligibleEras(eras: Era[], referenceYear: number | null): Era[] {
     return eras.filter(era => getEraEndYear(era) >= referenceYear);
 }
 
-function getCandidateEras(eras: Era[], units: ForceUnit[], selectedEra: Era | null = null): Era[] {
+function getCandidateEras(eras: Era[], units: readonly UnitSummary[], selectedEra: Era | null = null): Era[] {
     if (selectedEra) return [selectedEra];
     return getEligibleEras(eras, getReferenceYear(units));
 }
@@ -271,7 +271,7 @@ export class ForceNamerUtil {
      *                      Pass 0 to include all factions with any match.
      */
     public static getAvailableFactions(
-        units: ForceUnit[],
+        units: readonly UnitSummary[],
         factions: Faction[],
         eras: Era[],
         minPercentage = MIN_UNITS_PERCENTAGE,
@@ -283,7 +283,7 @@ export class ForceNamerUtil {
         if (eligibleEras.length === 0) return null;
 
         const resolvedAvailability = resolveAvailabilityContext(availabilityContext);
-        const unitKeys = units.map((unit) => resolvedAvailability.getUnitKey(unit.getUnit()));
+        const unitKeys = units.map(unit => resolvedAvailability.getUnitKey(unit));
         const totalUnits = units.length;
         const results: Map<Faction, number> = new Map();
 
@@ -310,7 +310,7 @@ export class ForceNamerUtil {
      * Returns null only if the factions array itself is empty.
      */
     public static pickRandomFaction(
-        units: ForceUnit[],
+        units: readonly UnitSummary[],
         factions: Faction[],
         eras: Era[],
         selectedEra: Era | null = null,
@@ -352,7 +352,7 @@ export class ForceNamerUtil {
     }
 
     public static pickBestFaction(
-        units: ForceUnit[],
+        units: readonly UnitSummary[],
         factions: Faction[],
         eras: Era[],
         currentFaction: Faction | null,
@@ -393,7 +393,7 @@ export class ForceNamerUtil {
      * Excludes MULFACTION_EXTINCT.
      */
     public static buildFactionDisplayList(
-        units: ForceUnit[],
+        units: readonly UnitSummary[],
         allFactions: Faction[],
         eras: Era[],
         selectedEra: Era | null = null,
@@ -403,7 +403,7 @@ export class ForceNamerUtil {
         const referenceYear = getReferenceYear(units);
         const displayEras = getCandidateEras(eras, units, selectedEra);
         const resolvedAvailability = resolveAvailabilityContext(availabilityContext);
-        const unitKeys = units.map((unit) => resolvedAvailability.getUnitKey(unit.getUnit()));
+        const unitKeys = units.map(unit => resolvedAvailability.getUnitKey(unit));
         const totalUnits = units.length;
 
         for (const faction of allFactions) {
@@ -455,7 +455,7 @@ export class ForceNamerUtil {
      * Word lists adapted from MekHQ's RandomCompanyNameGenerator.
      */
     static generateForceName(
-        units: ForceUnit[],
+        units: readonly UnitSummary[],
         faction: Faction | null,
         factions: Faction[],
         eras: Era[],

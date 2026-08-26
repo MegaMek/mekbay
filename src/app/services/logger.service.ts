@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, signal } from "@angular/core";
+import { Injectable, signal } from '@angular/core';
 
 type LogType = 'INFO' | 'WARN' | 'ERROR';
 
-interface LogEntry {
+export interface LogEntry {
     timestamp: Date;
     type: LogType;
     message: string;
@@ -15,34 +15,55 @@ interface LogEntry {
 @Injectable({ providedIn: 'root' })
 export class LoggerService {
     private readonly MAX_LOGS = 1000;
-    public readonly logs = signal<LogEntry[]>([]);
-    
-    constructor() {}
+    private readonly logsState = signal<readonly LogEntry[]>([]);
+    public readonly logs = this.logsState.asReadonly();
+    private pendingLogs: LogEntry[] = [];
+    private flushScheduled = false;
 
-    private log(type: LogType, message: string) {
+    private log(type: LogType, message: string): void {
         const timestamp = new Date();
-        this.logs.update(currentLogs => {
-            const nextLogs = [...currentLogs, { timestamp, type, message }];
-            if (nextLogs.length > this.MAX_LOGS) {
-                return nextLogs.slice(nextLogs.length - this.MAX_LOGS);
-            }
-            return nextLogs;
-        });
+        this.pendingLogs.push({ timestamp, type, message });
+        this.scheduleFlush();
+
         const timestampStr = '[' + timestamp.toISOString() + ']';
         if (type === 'INFO') console.log(timestampStr, message);
         else if (type === 'WARN') console.warn(timestampStr, message);
         else if (type === 'ERROR') console.error(timestampStr, message);
     }
 
-    public error(message: string) {
+    private scheduleFlush(): void {
+        if (this.flushScheduled) return;
+        this.flushScheduled = true;
+        queueMicrotask(() => this.flushPendingLogs());
+    }
+
+    private flushPendingLogs(): void {
+        this.flushScheduled = false;
+        if (this.pendingLogs.length === 0) return;
+
+        const pending = this.pendingLogs;
+        this.pendingLogs = [];
+        this.logsState.update(currentLogs => {
+            const pendingTail = pending.length > this.MAX_LOGS
+                ? pending.slice(-this.MAX_LOGS)
+                : pending;
+            const retainedCount = this.MAX_LOGS - pendingTail.length;
+            const retainedLogs = retainedCount > 0
+                ? currentLogs.slice(-retainedCount)
+                : [];
+            return [...retainedLogs, ...pendingTail];
+        });
+    }
+
+    public error(message: string): void {
         this.log('ERROR', message);
     }
 
-    public warn(message: string) {
+    public warn(message: string): void {
         this.log('WARN', message);
     }
 
-    public info(message: string) {
+    public info(message: string): void {
         this.log('INFO', message);
     }
 
@@ -52,7 +73,8 @@ export class LoggerService {
         console.trace(error);
     }
 
-    public clear() {
-        this.logs.set([]);
+    public clear(): void {
+        this.pendingLogs = [];
+        this.logsState.set([]);
     }
 }

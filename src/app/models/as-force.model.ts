@@ -4,11 +4,10 @@
 
 import type { Injector } from '@angular/core';
 import type { DataService } from '../services/data.service';
-import type { Unit } from "./units.model";
-import type { UnitInitializerService } from '../services/unit-initializer.service';
+import type { UnitSummary } from "./unit-summary.model";
 import { type ASSerializedUnit, type ASSerializedForce, AS_SERIALIZED_FORCE_SCHEMA, type SerializedForce } from './force-serialization';
 import { GameSystem } from './common.model';
-import { Force } from './force.model';
+import { Force, type UnitGroup } from './force.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { ASForceUnit } from './as-force-unit.model';
 import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
@@ -20,13 +19,21 @@ export class ASForce extends Force<ASForceUnit> {
 
     constructor(name: string,
         dataService: DataService,
-        unitInitializer: UnitInitializerService,
         injector: Injector) {
-        super(name, dataService, unitInitializer, injector);
+        super(name, dataService, injector);
     }
 
-    protected override createForceUnit(unit: Unit): ASForceUnit {
-        return new ASForceUnit(unit, this, this.dataService, this.unitInitializer, this.injector);
+    protected override createForceUnit(unit: UnitSummary): ASForceUnit {
+        return new ASForceUnit(unit, this, this.dataService, this.injector);
+    }
+
+    protected override projectMembers(): ASForceUnit[] {
+        return [...this.units()];
+    }
+
+    protected override projectMembersInGroup(group: UnitGroup): ASForceUnit[] {
+        const ownedGroup = this.groups().find(candidate => candidate === group);
+        return ownedGroup ? [...ownedGroup.units()] : [];
     }
 
     /**
@@ -47,7 +54,7 @@ export class ASForce extends Force<ASForceUnit> {
     }
 
     protected override deserializeForceUnit(data: ASSerializedUnit): ASForceUnit {
-        return ASForceUnit.deserialize(data, this, this.dataService, this.unitInitializer, this.injector);
+        return ASForceUnit.deserialize(data, this, this.dataService, this.injector);
     }
 
     protected override sanitizeForceData(data: SerializedForce): SerializedForce {
@@ -58,24 +65,18 @@ export class ASForce extends Force<ASForceUnit> {
     public static override deserialize(
         data: ASSerializedForce,
         dataService: DataService,
-        unitInitializer: UnitInitializerService,
         injector: Injector
     ): ASForce {
-        const force = new ASForce(data.name ?? 'Unnamed Force', dataService, unitInitializer, injector);
+        const force = new ASForce(data.name ?? 'Unnamed Force', dataService, injector);
         force.populateFromSerialized(data);
         force.groups().forEach((group) => FormationAbilityAssignmentUtil.reconcileGroupFormationAssignments(group, { markModified: false }));
         return force;
     }
 
-    public override update(data: SerializedForce): void {
-        super.update(data);
-        this.groups().forEach((group) => FormationAbilityAssignmentUtil.reconcileGroupFormationAssignments(group, { markModified: false }));
-    }
-
     protected override deserializeFrom(serialized: SerializedForce): ASForce {
         return ASForce.deserialize(
             serialized as ASSerializedForce,
-            this.dataService, this.unitInitializer, this.injector
+            this.dataService, this.injector
         );
     }
 }

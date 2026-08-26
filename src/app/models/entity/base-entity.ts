@@ -4,6 +4,7 @@
 
 import { Signal, computed, signal } from '@angular/core';
 import {
+  armoredComponentStaticTechLevel,
   MountedEngine,
   MIXED_TECH,
   OMNI_TECH,
@@ -28,6 +29,23 @@ import {
   WeaponEquipment,
 } from '../equipment.model';
 import { SourcebookReference } from '../sourcebook.model';
+import { isLaserInsulatorEquipment } from '../laser-insulator.model';
+import { isBombastLaserEquipment } from '../bombast-laser-mode.model';
+import { isRiscLaserPulseModule } from '../risc-laser-mode.model';
+import {
+  PPC_CAPACITOR_HEAT_BONUS,
+  isPpcCapacitorEquipment,
+  isPpcEquipment,
+} from '../ppc-capacitor.model';
+import {
+  isCaseIIEquipment,
+  isStandardCaseEquipment,
+} from '../case-equipment.model';
+import { isChassisSystemEquipment } from '../chassis-equipment.model';
+import { isBlueShieldEquipment } from '../escalating-equipment.model';
+import { c3SystemTypeForEquipment } from '../c3-network.model';
+import { resolveShieldSize } from './utils/physical-weapon';
+import { isJumpJetEquipment, isUmuEquipment } from '../jump-equipment.model';
 import { EquipmentRelationships, type EquipmentBayInput } from './equipment-relationships';
 import {
   STANDARD_MOVEMENT_CALCULATION,
@@ -52,6 +70,7 @@ import {
   EntityMountedEquipment,
   EntityMountedEquipmentInput,
   EntityMountedWeapon,
+  EntityDamageLocation,
   EntityLocationMetadata,
   IntrinsicWeapon,
   PhysicalWeapon,
@@ -88,6 +107,9 @@ import { reconcileEquipmentRelationships } from './utils/equipment-relationship-
 import { canLinkEquipment as isCompatibleEquipmentLink } from './utils/equipment-link-rules';
 import { calculateEntityEffectiveTonnage } from './utils/weight/entity-weight';
 import { EquipmentFlag } from '../equipment-flags.type';
+import type { EntityLoadIssue } from './parsers/parse-context';
+import type { EntityStateView } from './entity-state-view';
+import { CORE_2026_RULESET, type CBTRuleset } from '../cbt-ruleset.model';
 
 export interface AddEquipmentOptions {
   /** Enhancement target. The newly installed enhancement becomes the link source. */
@@ -133,6 +155,8 @@ export interface MixedTechResult {
  *    ingress; all other code uses canonical IDs only.
  */
 export abstract class BaseEntity implements EntityTechnology {
+  private parsedLoadIssues: readonly EntityLoadIssue[] = [];
+
   constructor(protected readonly equipmentRegistry: EquipmentRegistry) {
     this.setUniformArmor(new MountedArmor({
       armor: requireArmorEquipment('STANDARD', false, equipmentRegistry),
@@ -160,6 +184,14 @@ export abstract class BaseEntity implements EntityTechnology {
 
   getEquipmentRegistry(): EquipmentRegistry {
     return this.equipmentRegistry;
+  }
+
+  loadIssues(): readonly EntityLoadIssue[] {
+    return this.parsedLoadIssues;
+  }
+
+  setLoadIssues(issues: readonly EntityLoadIssue[]): void {
+    this.parsedLoadIssues = Object.freeze(issues.map(issue => Object.freeze({ ...issue })));
   }
 
   protected withOmniSubtype(subtype: string): UnitSubtype {
@@ -314,6 +346,8 @@ export abstract class BaseEntity implements EntityTechnology {
   readonly published = signal<SourcebookReference[]>([]);
   readonly canon = computed(() => [...this.source(), ...this.published()].some(source => source.canon));
   generator?: string; // software who created the file
+  /** Native text formatting needed only for exact parse/write round trips. */
+  nativeSourceTrailingNewlines = 0;
 
   /** Tech faction code (e.g. "DC", "FW", "TH"). 'None' = unset. */
   faction = signal<FactionCode>('None');
@@ -330,6 +364,8 @@ export abstract class BaseEntity implements EntityTechnology {
   motiveType = signal<MotiveType>('None');
   /** Construction walk MP, corresponding to MegaMek's Entity.walkMP field.  */
   originalWalkMP = signal<number>(0);
+  /** Jump MP declared by the native source, retained for lossless serialization. */
+  originalJumpMP = signal<number>(0);
 
   /**
    * The motive type as a BLK-compatible string, or `null` if the
@@ -425,14 +461,14 @@ export abstract class BaseEntity implements EntityTechnology {
     if (!this.allowsImplicitClanCase()) return BaseEntity.#NO_IMPLICIT_CLAN_CASE;
 
     const protectedLocations = new Set(this.equipment()
-      .filter(mount => mount.equipment?.hasFlag('F_CASE') || mount.equipment?.hasFlag('F_CASE_II'))
+      .filter(mount => isStandardCaseEquipment(mount.equipment) || isCaseIIEquipment(mount.equipment))
       .flatMap(mount => mount.getOccupiedLocations()));
     const optedOut = this.clanCaseOptOutLocations();
     const locations = new Set<string>();
     for (const mount of this.equipment()) {
       const equipment = mount.equipment;
-      if (!equipment || equipment.hasFlag('F_CASE') || equipment.hasFlag('F_CASE_II')) continue;
-      if (!equipment.isExplosive()) continue;
+      if (!equipment || isStandardCaseEquipment(equipment) || isCaseIIEquipment(equipment)) continue;
+      if (!this.isMountedEquipmentExplosive(mount)) continue;
       for (const location of mount.getOccupiedLocations()) {
         if (location !== 'Unallocated' && !protectedLocations.has(location) && !optedOut.has(location)) {
           locations.add(location);
@@ -442,6 +478,27 @@ export abstract class BaseEntity implements EntityTechnology {
     return locations;
   });
 
+  /** Static mounted-equipment explosiveness used by BV and implicit Clan CASE. */
+  isMountedEquipmentExplosive(mount: EntityMountedEquipment): boolean {
+    const equipment = mount.equipment;
+    if (!equipment || equipment.hasWeaponTrait('b-pod') || equipment.hasWeaponTrait('m-pod')) return false;
+    if (equipment instanceof WeaponEquipment && isBombastLaserEquipment(equipment)) return false;
+    if (equipment instanceof WeaponEquipment && isPpcEquipment(equipment)) {
+      return isPpcCapacitorEquipment(this.getLinkingMount(mount)?.equipment);
+    }
+    if (equipment instanceof MiscEquipment && isPpcCapacitorEquipment(equipment)) {
+      return isPpcEquipment(this.getLinkedMount(mount)?.equipment);
+    }
+    if (equipment instanceof MiscEquipment && isRiscLaserPulseModule(equipment)) {
+      return this.getLinkedMount(mount)?.equipment instanceof WeaponEquipment;
+    }
+    if (equipment instanceof WeaponEquipment && [
+      'AC_ROTARY', 'AC', 'LAC', 'AC_IMP', 'PAC',
+    ].includes(equipment.ammoType)) return false;
+    if (equipment instanceof MiscEquipment && isBlueShieldEquipment(equipment)) return false;
+    return equipment.isExplosive();
+  }
+
   readonly implicitClanCaseLocations = computed<ReadonlySet<string>>(() => {
     if (!this.allowsImplicitClanCase()) {
       return BaseEntity.#NO_IMPLICIT_CLAN_CASE;
@@ -450,8 +507,8 @@ export abstract class BaseEntity implements EntityTechnology {
     const optedOut = this.clanCaseOptOutLocations();
     for (const mount of this.equipment()) {
       const equipment = mount.equipment;
-      if (!equipment || equipment.hasFlag('F_CASE')) continue;
-      if (!equipment.isExplosive()) continue;
+      if (!equipment || isStandardCaseEquipment(equipment)) continue;
+      if (!this.isMountedEquipmentExplosive(mount)) continue;
       for (const location of mount.getOccupiedLocations()) {
         if (location !== 'Unallocated' && !optedOut.has(location)) locations.add(location);
       }
@@ -485,6 +542,21 @@ export abstract class BaseEntity implements EntityTechnology {
   /** Structured, Java-export-shaped details computed from canonical entity state. */
   readonly battleValueDetails = computed(() => this.#battleValueCalculation().details);
 
+  /** Current BV from this same entity calculator plus an external runtime state view. */
+  battleValueFor(state: EntityStateView, ruleset: CBTRuleset = CORE_2026_RULESET): number {
+    return this.battleValueBreakdownFor(state, ruleset).base;
+  }
+
+  /** Current BV report from this same entity calculator plus an external runtime state view. */
+  battleValueDetailsFor(state: EntityStateView, ruleset: CBTRuleset = CORE_2026_RULESET) {
+    return this.battleValueBreakdownFor(state, ruleset).details;
+  }
+
+  /** One current-state traversal supplies the value, split totals, and report. */
+  battleValueBreakdownFor(state: EntityStateView, ruleset: CBTRuleset = CORE_2026_RULESET) {
+    return calculateBattleValueDetails(this, state, ruleset);
+  }
+
   setLocationMetadata(location: string, metadata: EntityLocationMetadata): void {
     if (!this.locationOrder.includes(location)) {
       throw new Error(`Unknown location "${location}"`);
@@ -512,7 +584,7 @@ export abstract class BaseEntity implements EntityTechnology {
   locationHasCaseProtection(location: string): boolean {
     return this.implicitClanCaseLocations().has(location)
       || this.equipment().some(mount => mount.getOccupiedLocations().includes(location)
-        && mount.equipment?.hasFlag('F_CASE'));
+        && isStandardCaseEquipment(mount.equipment));
   }
 
   reconcileEquipmentRelationships(): void {
@@ -559,10 +631,7 @@ export abstract class BaseEntity implements EntityTechnology {
   readonly staticTechLevel = computed(() => {
     const componentLevel = calculateCompositeStaticTechLevel(this.staticTechLevelSources());
     return this.equipment().some(mount => mount.armored)
-      ? calculateCompositeStaticTechLevel([
-        { rating: 'E', level: componentLevel, availability: ['X', 'X', 'X', 'X'] },
-        { rating: 'E', level: 'Advanced', availability: ['X', 'X', 'F', 'E'] },
-      ])
+      ? armoredComponentStaticTechLevel(componentLevel)
       : componentLevel;
   });
   /** All Weapons installed on the entity. */
@@ -626,20 +695,7 @@ export abstract class BaseEntity implements EntityTechnology {
   });
 
   c3System = computed<C3SystemType>(() => {
-    const equipment = this.equipment().map(mount => mount.equipment);
-    if (equipment.some(item => item?.type === 'weapon'
-      && item.hasAnyFlag(['F_C3M', 'F_C3MBS']))) {
-      return 'C3';
-    }
-
-    for (const item of equipment) {
-      if (item?.type !== 'misc') continue;
-      if (item.hasAnyFlag(['F_C3S', 'F_C3SBS', 'F_C3EM'])) return 'C3';
-      if (item.hasFlag('F_C3I')) return 'C3i';
-      if (item.hasFlag('F_NAVAL_C3')) return 'Naval C3';
-      if (item.hasFlag('F_NOVA')) return 'Nova CEWS';
-    }
-    return 'None';
+    return c3SystemTypeForEquipment(this.equipment().map(mount => mount.equipment));
   });
 
   /**
@@ -782,12 +838,12 @@ export abstract class BaseEntity implements EntityTechnology {
 
   /** Installed underwater maneuvering units, derived from canonical equipment mounts. */
   readonly installedUmuMP = computed(() => this.equipment().filter(
-    mount => mount.equipment?.hasFlag('F_UMU'),
+    mount => isUmuEquipment(mount.equipment),
   ).length);
 
   /** Usable UMU movement; large shields prevent mounted UMUs from functioning. */
   readonly umuMP = computed(() => this.equipment().some(
-    mount => mount.equipment?.hasFlag('S_SHIELD_LARGE'),
+    mount => resolveShieldSize(mount.equipment) === 'large',
   ) ? 0 : this.installedUmuMP());
 
   /** Whether this construction uses the heat scale. */
@@ -810,8 +866,8 @@ export abstract class BaseEntity implements EntityTechnology {
         heat += mount.equipment.heat * multiplier;
       } else if (mount.equipment instanceof MiscEquipment) {
         heat += mount.equipment.operatingHeat;
-        if (mount.equipment.hasFlag('F_PPC_CAPACITOR')) heat += 5;
-        if (mount.equipment.hasFlag('F_LASER_INSULATOR')) heat -= 1;
+        if (isPpcCapacitorEquipment(mount.equipment)) heat += PPC_CAPACITOR_HEAT_BONUS;
+        if (isLaserInsulatorEquipment(mount.equipment)) heat -= 1;
       }
     }
     const armor = this.uniformArmor()?.armor;
@@ -870,7 +926,7 @@ export abstract class BaseEntity implements EntityTechnology {
   }
 
   computeJumpMP(_options: MovementCalculationOptions): number {
-    return this.equipment().filter(e => e.equipment?.hasFlag?.('F_JUMP_JET')).length;
+    return this.equipment().filter(mount => isJumpJetEquipment(mount.equipment)).length;
   }
 
   /** Effective tonnage per location. */
@@ -1013,6 +1069,18 @@ export abstract class BaseEntity implements EntityTechnology {
     return location === 'None' ? '' : location;
   }
 
+  /** Canonical damage topology consumed by the sparse runtime and record sheet. */
+  damageLocations(): readonly EntityDamageLocation[] {
+    const structure = this.structureValues();
+    const armor = this.armorValues();
+    return this.locationOrder.map(code => ({
+      code,
+      sheetCode: this.componentLocationLabel(code),
+      internalPoints: structure.get(code) ?? 0,
+      armor: armor.get(code) ?? locationArmor(0),
+    }));
+  }
+
   /** Locations that carry armor material. Override when locationOrder contains non-armor locations. */
   get armorLocations(): readonly string[] {
     return this.locationOrder;
@@ -1089,7 +1157,7 @@ export abstract class BaseEntity implements EntityTechnology {
     const features = new Set<EntityFeature>();
     for (const mount of this.equipment()) {
       const equipment = mount.equipment;
-      if (equipment?.hasFlag('F_CHASSIS_MODIFICATION')) {
+      if (equipment && isChassisSystemEquipment(equipment)) {
         features.add(`Chassis Mod: ${equipment.shortName}` as EntityFeature);
       }
     }

@@ -5,9 +5,7 @@
 import type { SmallCraftEntity } from '../../entities/aero/small-craft-entity';
 import { calculateSmallCraftFuelSystemWeight, nextHalfTon } from './common';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
-
-const SPHEROID_THRESHOLDS = [12500, 20000, 35000, 50000, 65000] as const;
-const AERODYNE_THRESHOLDS = [6000, 9500, 12500, 17500, 25000] as const;
+import { smallCraftArmorPointsPerTon } from '../large-craft-armor';
 
 /** Mirrors MegaMek's SmallCraftCostCalculator for non-DropShip Small Craft. */
 export function calculateSmallCraftCost(entity: SmallCraftEntity, equipmentCost: number): number {
@@ -49,11 +47,9 @@ function calculateSmallCraftArmorCost(entity: SmallCraftEntity, primitive: boole
   if (!armor.hasFixedCost()) throw new Error(`Unable to calculate armor cost for ${armor.id}`);
   let rawArmor = entity.totalArmorPoints();
   if (primitive) rawArmor = Math.ceil(rawArmor / 0.66);
-  const thresholds = entity.motiveType() === 'Spheroid' ? SPHEROID_THRESHOLDS : AERODYNE_THRESHOLDS;
-  const index = thresholds.findIndex(threshold => entity.tonnage() < threshold);
-  const pointsPerTon = armor.pptDropship.length > thresholds.length
-    ? armor.pptDropship[index < 0 ? armor.pptDropship.length - 1 : index]
-    : 16 * armor.pptMultiplier;
+  const pointsPerTon = smallCraftArmorPointsPerTon(
+    entity.tonnage(), entity.motiveType() === 'Spheroid', armor,
+  );
   return nextHalfTon((rawArmor - 4 * entity.structuralIntegrity()) / pointsPerTon) * armor.cost;
 }
 

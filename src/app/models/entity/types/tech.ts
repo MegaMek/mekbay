@@ -383,6 +383,7 @@ export interface TechData {
     readonly level: ComponentTechLevel;
     readonly availability: TechAvailability;
     readonly advancement: SplitTechDates;
+    readonly factions?: TechFactions;
 }
 
 /** Type guard: is the dates value a per-tech-base split? */

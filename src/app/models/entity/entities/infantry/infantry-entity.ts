@@ -11,15 +11,21 @@ import {
 } from '../../../equipment.model';
 import {
   type UnitSubtype,
+  type EntityDamageLocation,
   type MovementCalculationOptions,
   type TechRatingSource,
   EntityType,
   EntityValidationMessage,
   InfantryMount,
   InfantrySpecialization,
+  locationArmor,
   MotiveType,
   WeightClass,
 } from '../../types';
+import {
+  infantryArmorKitProfile,
+  isAntiMekGearEquipment,
+} from '../../../infantry-equipment.model';
 import { InfantryBaseEntity } from './infantry-base-entity';
 import { getInfantryTonnage } from '../../utils/infantry-tonnage';
 import {
@@ -111,27 +117,27 @@ export class InfantryEntity extends InfantryBaseEntity {
   });
   readonly effectiveEncumberingArmor = computed(() => {
     const armorKit = this.armorKit();
-    return armorKit ? armorKit.hasFlag('S_ENCUMBERING') : this.encumberingArmor();
+    return infantryArmorKitProfile(armorKit)?.encumbering ?? this.encumberingArmor();
   });
   readonly effectiveSpaceSuit = computed(() => {
     const armorKit = this.armorKit();
-    return armorKit ? armorKit.hasFlag('S_SPACE_SUIT') : this.spaceSuit();
+    return infantryArmorKitProfile(armorKit)?.spaceSuit ?? this.spaceSuit();
   });
   readonly effectiveDEST = computed(() => {
     const armorKit = this.armorKit();
-    return armorKit ? armorKit.hasFlag('S_DEST') : this.hasDEST();
+    return infantryArmorKitProfile(armorKit)?.dest ?? this.hasDEST();
   });
   readonly effectiveSneakCamo = computed(() => {
     const armorKit = this.armorKit();
-    return armorKit ? armorKit.hasFlag('S_SNEAK_CAMO') : this.sneakCamo();
+    return infantryArmorKitProfile(armorKit)?.sneakCamo ?? this.sneakCamo();
   });
   readonly effectiveSneakIR = computed(() => {
     const armorKit = this.armorKit();
-    return armorKit ? armorKit.hasFlag('S_SNEAK_IR') : this.sneakIR();
+    return infantryArmorKitProfile(armorKit)?.sneakIr ?? this.sneakIR();
   });
   readonly effectiveSneakECM = computed(() => {
     const armorKit = this.armorKit();
-    return armorKit ? armorKit.hasFlag('S_SNEAK_ECM') : this.sneakECM();
+    return infantryArmorKitProfile(armorKit)?.sneakEcm ?? this.sneakECM();
   });
 
   // Manei Domini augmentations (pilot option names)
@@ -192,7 +198,7 @@ export class InfantryEntity extends InfantryBaseEntity {
     return this.secondaryCount() > 1
       && !this.augmentations().some(augmentation => augmentation === 'tsm_implant' || augmentation === 'dermal_armor')
       && !this.specializations().has('tag-troops')
-      && !!this.secondaryWeapon()?.hasFlag('F_INF_SUPPORT');
+      && !!this.secondaryWeapon()?.hasWeaponTrait('infantry-support');
   }
 
   private hasFieldArtillery(): boolean {
@@ -204,7 +210,7 @@ export class InfantryEntity extends InfantryBaseEntity {
   }
 
   override readonly canAntiMech = computed(() =>
-    this.equipment().some(mounted => mounted.equipment?.hasFlag('F_ANTI_MEK_GEAR')),
+    this.equipment().some(mounted => isAntiMekGearEquipment(mounted.equipment)),
   );
 
   /**
@@ -255,6 +261,15 @@ export class InfantryEntity extends InfantryBaseEntity {
 
   get validLocations(): ReadonlySet<string> {
     return new Set(['Infantry', 'Field Guns']);
+  }
+
+  override damageLocations(): readonly EntityDamageLocation[] {
+    return [{
+      code: 'Infantry',
+      internalPoints: this.structureValues().get('Infantry') ?? 0,
+      armor: locationArmor(0),
+      soldierPips: true,
+    }];
   }
 
   protected override computeWeightClass(): WeightClass {

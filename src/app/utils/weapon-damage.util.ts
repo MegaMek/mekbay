@@ -8,7 +8,7 @@ export type WeaponDamageRange = 'short' | 'medium' | 'long' | 'extreme';
 
 export interface WeaponDamageFormat {
     readonly showZero?: boolean;
-    readonly shotSuffix?: '/Shot' | '/Sht';
+    readonly shotSuffix?: '/Sht' | '/Shot';
 }
 
 /** Formats resolved damage without adding weapon classification labels. */
@@ -22,7 +22,7 @@ export function formatWeaponDamage(
 
     if (!value) return '';
     if (damage.unit === 'missile') return `${value}/Msl`;
-    if (damage.unit === 'shot') return `${value}${options.shotSuffix ?? '/Shot'}`;
+    if (damage.unit === 'shot') return `${value}${options.shotSuffix ?? '/Sht'}`;
     if (damage.unit === 'artillery') return `${value}A`;
     return value;
 }

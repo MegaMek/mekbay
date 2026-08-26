@@ -4,7 +4,7 @@
 
 import { Component, ElementRef, computed, input, signal, output, inject, ChangeDetectionStrategy, viewChild, afterNextRender, Injector, effect, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { CdkConnectedOverlay, Overlay, OverlayModule, type ConnectedOverlayPositionChange, type ConnectedPosition } from '@angular/cdk/overlay';
+import { CdkConnectedOverlay, Overlay, OverlayModule, type ConnectedOverlayPositionChange, type ConnectedPosition, type ScrollStrategy } from '@angular/cdk/overlay';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { LayoutService } from '../../services/layout.service';
 import { highlightMatches, matchesSearch, parseSearchQuery } from '../../utils/search.util';
@@ -81,7 +81,7 @@ export class MultiSelectDropdownComponent {
     private injector = inject(Injector);
     private layoutService = inject(LayoutService);
     private destroyRef = inject(DestroyRef);
-    private overlay = inject(Overlay);
+    private repositionScrollStrategyValue: ScrollStrategy | null = null;
     private destroyed = false;
     private lastPointerType = '';
     private lastOptionsPointerType = '';
@@ -137,7 +137,10 @@ export class MultiSelectDropdownComponent {
     readonly virtualScrollThreshold = 150;
     readonly optionItemSize = 44;
     readonly overlayWidth = computed(() => this.overlayMinWidth() || this.measureOverlayWidth());
-    readonly repositionScrollStrategy = this.overlay.scrollStrategies.reposition();
+    get repositionScrollStrategy(): ScrollStrategy {
+        return this.repositionScrollStrategyValue
+            ??= this.injector.get(Overlay).scrollStrategies.reposition();
+    }
     readonly overlayPlacement = signal<'above' | 'below'>('below');
     readonly overlayPositions = computed(() => this.preferredOverlayPlacement() === 'above'
         ? MultiSelectDropdownComponent.ABOVE_OVERLAY_POSITIONS
@@ -270,17 +273,13 @@ export class MultiSelectDropdownComponent {
     };
 
     constructor() {
+        document.addEventListener('multi-select-dropdown-open', this.openListener as EventListener);
         this.destroyRef.onDestroy(() => {
             this.destroyed = true;
             this.stopAnchorFollowLoop();
             this.cancelScheduledOverlayRefresh();
             this.isOpen.set(false);
-        });
-        effect((cleanup) => {
-            document.addEventListener('multi-select-dropdown-open', this.openListener as EventListener);
-            cleanup(() => {
-                document.removeEventListener('multi-select-dropdown-open', this.openListener as EventListener);
-            });
+            document.removeEventListener('multi-select-dropdown-open', this.openListener as EventListener);
         });
 
         effect((cleanup) => {

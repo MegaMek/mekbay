@@ -7,7 +7,9 @@ import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card
 import { OptionsService } from '../../services/options.service';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { ASForce } from '../../models/as-force.model';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { ForceDialogsService } from '../../services/force-dialogs.service';
+import { ForcePilotEditorService } from '../../services/force-pilot-editor.service';
 import { getLayoutForUnitType } from '../alpha-strike-card/card-layout.config';
 import { PageViewerCanvasControlsComponent } from '../page-viewer/canvas/page-viewer-canvas-controls.component';
 import { PageCanvasOverlayComponent } from '../page-viewer/canvas/page-canvas-overlay.component';
@@ -62,13 +64,15 @@ interface Point {
 })
 export class AlphaStrikeViewerComponent {
     private readonly optionsService = inject(OptionsService);
-    private readonly forceBuilder = inject(ForceBuilderService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
+    private readonly forceDialogs = inject(ForceDialogsService);
+    private readonly pilotEditor = inject(ForcePilotEditorService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly dbService = inject(DbService);
     private readonly canvasService = inject(PageViewerCanvasService);
 
     readonly unit = computed(() => {
-        const selectedUnit = this.forceBuilder.selectedUnit();
+        const selectedUnit = this.forceWorkspace.selectedUnit();
         if (selectedUnit instanceof ASForceUnit) {
             return selectedUnit;
         }
@@ -155,7 +159,7 @@ export class AlphaStrikeViewerComponent {
      * Get the number of cards for a given unit type.
      */
     getCardCount(forceUnit: ASForceUnit): number {
-        const unitType = forceUnit.getUnit().as.TP;
+        const unitType = forceUnit.getSummary().as.TP;
         return getLayoutForUnitType(unitType).cards.length;
     }
     
@@ -216,7 +220,7 @@ export class AlphaStrikeViewerComponent {
      * Handle print request from controls
      */
     onPrintRequested(): void {
-        this.forceBuilder.printAll();
+        void this.forceDialogs.printAll(this.forceWorkspace.currentForce());
     }
 
     private setupEffects(): void {
@@ -341,7 +345,7 @@ export class AlphaStrikeViewerComponent {
     onCardCellClick(event: MouseEvent, unit: ASForceUnit): void {
         // Mark as internal selection to prevent the effect from scrolling
         this.internalSelectionInProgress = true;
-        this.forceBuilder.selectUnit(unit);
+        this.forceWorkspace.selectUnit(unit);
         
         // Scroll to the clicked card cell
         const cardCell = (event.currentTarget as HTMLElement);
@@ -349,7 +353,7 @@ export class AlphaStrikeViewerComponent {
     }
 
     onEditPilot(unit: ASForceUnit): void {
-        this.forceBuilder.editPilotOfUnit(unit);
+        void this.pilotEditor.editAlphaStrikeUnit(unit);
     }
     
     toggleHexMode(): void {

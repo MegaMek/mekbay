@@ -11,10 +11,12 @@ import {
   type EntityFeature,
   WeightClass,
 } from '../../types';
+import { isExternalStoresHardpointEquipment } from '../../../aerospace-support-equipment.model';
 import { AeroEntity } from './aero-entity';
 import type { UnitSubtype } from '../../types';
 import type { TechRatingSource } from '../../types';
 import { getFixedWingSupportConstructionTech } from '../../components';
+import { isVstolEquipment } from '../../../chassis-equipment.model';
 
 /** Fixed Wing Support vehicle - uses BAR rating and tech ratings. */
 export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle {
@@ -39,7 +41,7 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
 
   protected override computeAeroFeatures(): readonly EntityFeature[] {
     const features = [...super.computeAeroFeatures()];
-    if (this.equipment().some(mount => mount.equipment?.hasFlag('F_VSTOL_CHASSIS'))) {
+    if (this.equipment().some(mount => isVstolEquipment(mount.equipment))) {
       features.push('VSTOL Equipment');
     }
     return features;
@@ -56,7 +58,7 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
   /** Maximum bomb payload, derived from external hardpoints and Internal Bomb Bay cargo space. */
   readonly maxBombPoints = computed(() => {
     const externalHardpoints = this.equipment().filter(mount =>
-      mount.equipment?.hasFlag('F_EXTERNAL_STORES_HARDPOINT')).length;
+      isExternalStoresHardpointEquipment(mount.equipment)).length;
     if (!this.quirks().some(({ quirk }) => quirk.key === 'internal_bomb')) return externalHardpoints;
     const internalCapacity = this.transporters().reduce((total, transporter) =>
       total + (transporter.kind === 'bay' && transporter.configuration.type === 'cargo'

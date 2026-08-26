@@ -8,6 +8,10 @@
     gap: 4px 16px;
 }
 
+.filter-row {
+    min-width: 0;
+}
+
 .boolean-filter-row {
     min-height: 38px;
     display: flex;
@@ -72,4 +76,56 @@
 
 .range-label:hover .range-values {
     color: var(--bt-yellow);
+}
+
+.filter-placeholder {
+    box-sizing: border-box;
+    width: 100%;
+    color: var(--text-color-secondary, #aaa);
+    opacity: .55;
+}
+
+.boolean-filter-placeholder,
+.dropdown-filter-placeholder {
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+}
+
+.placeholder-value {
+    margin-left: auto;
+    font-size: .9em;
+    font-style: italic;
+}
+
+.placeholder-chevron {
+    margin-left: 8px;
+    font-size: 1.1em;
+}
+
+.range-filter-placeholder {
+    min-height: 53px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 1px;
+}
+
+.placeholder-track {
+    height: 4px;
+    margin: 0 18px;
+    background: #666;
+}
+
+.advanced-filters-loading {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }

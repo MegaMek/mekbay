@@ -2,19 +2,49 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
-import type { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
-import type { HandlerCommandContext } from '../../services/equipment-interaction-registry.service';
-import type { AmmoControlEntry, AmmoControlGroup, AmmoControlGroupLocation } from '../../utils/ammo-interaction.util';
-import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, isAmmoControlEntryUsable, setAmmoEntry, setAmmoGroup } from '../../utils/ammo-interaction.util';
+import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+import { AmmoEquipment } from '../../models/equipment.model';
+import type { EquipmentStatus } from '../../models/equipment-status.model';
+import type { EquipmentPanelComponent } from '../../models/runtime/equipment-panel';
+import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
+import type { EquipmentDialogRuntimeController } from './equipment-dialog-runtime.controller';
+import { EquipmentCatalogService } from '../../services/catalogs/equipment-catalog.service';
+import { DialogsService } from '../../services/dialogs.service';
 
-export interface AmmoLoadoutPanelData {
-    entries: AmmoControlEntry[];
-    context: HandlerCommandContext;
-    readOnly?: boolean;
-    getEntries?: () => AmmoControlEntry[];
-    inventoryControl?: CBTInventoryControlRuntime;
+interface AmmoControlGroupLocation {
+    readonly loc: string;
+    quantity: number;
+    readonly state: 'normal' | 'exposed' | 'disabled' | 'destroyed';
 }
+
+interface AmmoLoadoutEntryView {
+    readonly id: string;
+    readonly displayBinName: string;
+    readonly locationLabel: string;
+    readonly status: EquipmentStatus;
+    readonly totalAmmo: number;
+    readonly remaining: number;
+    readonly exposed: boolean;
+    readonly component: EquipmentPanelComponent;
+}
+
+interface AmmoLoadoutGroupView {
+    readonly id: string;
+    readonly displayName: string;
+    readonly locations: readonly AmmoControlGroupLocation[];
+    readonly totalAmmo: number;
+    readonly remaining: number;
+    readonly status: EquipmentStatus;
+    readonly expandable: boolean;
+    readonly entries: readonly AmmoLoadoutEntryView[];
+}
+
+const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
+    available: 0,
+    disabled: 1,
+    destroyed: 2,
+};
 
 @Component({
     selector: 'ammo-loadout-panel',
@@ -420,36 +450,30 @@ export interface AmmoLoadoutPanelData {
     `]
 })
 export class AmmoLoadoutPanelComponent {
-    readonly panelData = input.required<AmmoLoadoutPanelData>({ alias: 'data' });
+    readonly runtime = input.required<EquipmentDialogRuntimeController>();
+    private readonly dialogs = inject(DialogsService);
+    private readonly equipmentCatalog = inject(EquipmentCatalogService);
     private readonly expandedGroups = signal<Set<string>>(new Set());
     private readonly expandedEntries = signal<Set<string>>(new Set());
 
-    get data(): AmmoLoadoutPanelData {
-        return this.panelData();
-    }
-
-    groups(): AmmoControlGroup[] {
-        this.trackInventoryView();
-        return getAmmoControlGroups(this.data.getEntries?.() ?? this.data.entries);
+    groups(): readonly AmmoLoadoutGroupView[] {
+        return this.buildGroups(this.runtime().ammo());
     }
 
     readOnly(): boolean {
-        this.trackInventoryView();
-        const entries = this.data.getEntries?.() ?? this.data.entries;
-        return this.data.readOnly ?? entries[0]?.owner.readOnly() ?? false;
+        return this.runtime().member.force.readOnly();
     }
 
     hasExpandableGroups(): boolean {
         return this.groups().some(group => group.expandable);
     }
 
-    isExpanded(group: AmmoControlGroup): boolean {
-        this.trackInventoryView();
+    isExpanded(group: AmmoLoadoutGroupView): boolean {
         const expandedEntries = this.expandedEntries();
         return this.expandedGroups().has(group.id) || group.entries.some(entry => expandedEntries.has(entry.id));
     }
 
-    toggleGroup(group: AmmoControlGroup): void {
+    toggleGroup(group: AmmoLoadoutGroupView): void {
         if (!group.expandable) return;
         const isExpanded = this.isExpanded(group);
         this.expandedGroups.update(groups => {
@@ -474,14 +498,12 @@ export class AmmoLoadoutPanelComponent {
         });
     }
 
-    remaining(entry: AmmoControlEntry): number {
-        this.trackInventoryView();
-        return getAmmoEntryRemaining(entry);
+    remaining(entry: AmmoLoadoutEntryView): number {
+        return entry.remaining;
     }
 
-    groupRemaining(group: AmmoControlGroup): number {
-        this.trackInventoryView();
-        return getAmmoGroupRemaining(group);
+    groupRemaining(group: AmmoLoadoutGroupView): number {
+        return group.remaining;
     }
 
     isLocationBadgeExposed(location: AmmoControlGroupLocation): boolean {
@@ -496,71 +518,150 @@ export class AmmoLoadoutPanelComponent {
         return location.state === 'disabled';
     }
 
-    isEntryLocationBadgeExposed(group: AmmoControlGroup, entry: AmmoControlEntry): boolean {
-        if (!isAmmoControlEntryUsable(entry)) return false;
-        return group.locations.find(location => location.loc === entry.locationLabel)?.state === 'exposed';
+    isEntryLocationBadgeExposed(_group: AmmoLoadoutGroupView, entry: AmmoLoadoutEntryView): boolean {
+        return this.entryUsable(entry) && entry.exposed;
     }
 
-    isEntryLocationBadgeDestroyed(entry: AmmoControlEntry): boolean {
+    isEntryLocationBadgeDestroyed(entry: AmmoLoadoutEntryView): boolean {
         return entry.status === 'destroyed';
     }
 
-    isEntryLocationBadgeDisabled(entry: AmmoControlEntry): boolean {
+    isEntryLocationBadgeDisabled(entry: AmmoLoadoutEntryView): boolean {
         return entry.status === 'disabled';
     }
 
-    entryUsable(entry: AmmoControlEntry): boolean {
-        return isAmmoControlEntryUsable(entry);
+    entryUsable(entry: AmmoLoadoutEntryView): boolean {
+        return entry.status === 'available';
     }
 
-    decrement(group: AmmoControlGroup): void {
+    decrement(group: AmmoLoadoutGroupView): void {
         if (this.readOnly()) return;
-        if (changeAmmoGroupRemaining(group, -1, this.data.context)) {
-            this.markInventoryViewChanged();
-        }
+        const entry = group.entries.find(candidate =>
+            this.entryUsable(candidate) && candidate.remaining > 0);
+        if (entry) void this.runtime().changeAmmo(entry.component, -1);
     }
 
-    increment(group: AmmoControlGroup): void {
+    increment(group: AmmoLoadoutGroupView): void {
         if (this.readOnly()) return;
-        if (changeAmmoGroupRemaining(group, 1, this.data.context)) {
-            this.markInventoryViewChanged();
-        }
+        const entry = group.entries.find(candidate =>
+            this.entryUsable(candidate) && candidate.remaining < candidate.totalAmmo);
+        if (entry) void this.runtime().changeAmmo(entry.component, 1);
     }
 
-    decrementBin(entry: AmmoControlEntry): void {
-        if (this.readOnly() || !isAmmoControlEntryUsable(entry)) return;
-        if (changeAmmoEntryRemaining(entry, -1, this.data.context)) {
-            this.markInventoryViewChanged();
-        }
+    decrementBin(entry: AmmoLoadoutEntryView): void {
+        if (this.readOnly() || !this.entryUsable(entry)) return;
+        void this.runtime().changeAmmo(entry.component, -1);
     }
 
-    incrementBin(entry: AmmoControlEntry): void {
-        if (this.readOnly() || !isAmmoControlEntryUsable(entry)) return;
-        if (changeAmmoEntryRemaining(entry, 1, this.data.context)) {
-            this.markInventoryViewChanged();
-        }
+    incrementBin(entry: AmmoLoadoutEntryView): void {
+        if (this.readOnly() || !this.entryUsable(entry)) return;
+        void this.runtime().changeAmmo(entry.component, 1);
     }
 
-    async setAmmo(group: AmmoControlGroup): Promise<void> {
+    async setAmmo(group: AmmoLoadoutGroupView): Promise<void> {
         if (this.readOnly()) return;
-        if (await setAmmoGroup(group, this.data.context)) {
-            this.markInventoryViewChanged();
-        }
+        await this.setAmmoEntries(group.entries);
     }
 
-    async setAmmoBin(entry: AmmoControlEntry): Promise<void> {
+    async setAmmoBin(entry: AmmoLoadoutEntryView): Promise<void> {
         if (this.readOnly()) return;
-        if (await setAmmoEntry(entry, this.data.context)) {
-            this.markInventoryViewChanged();
+        await this.setAmmoEntries([entry]);
+    }
+
+    private buildGroups(rows: readonly EquipmentPanelComponent[]): readonly AmmoLoadoutGroupView[] {
+        const grouped = new Map<string, EquipmentPanelComponent[]>();
+        for (const row of rows) {
+            if (!row.ammo) continue;
+            const key = `${row.ammo.munitionKey}\u0000${row.ammo.displayName}`;
+            const group = grouped.get(key);
+            if (group) group.push(row);
+            else grouped.set(key, [row]);
         }
+        return Object.freeze([...grouped.values()].map(rowsForGroup => {
+            const entries = rowsForGroup.map((row, index) => Object.freeze({
+                id: row.componentId,
+                displayBinName: `#${index + 1} Bin`,
+                locationLabel: row.locations.map(location => location.code).join('/') || 'Ammo',
+                status: row.status,
+                totalAmmo: row.ammo!.capacity,
+                remaining: row.status === 'available' ? row.ammo!.remaining : 0,
+                exposed: row.locations.some(location => location.exposed),
+                component: row,
+            } satisfies AmmoLoadoutEntryView));
+            const locations = new Map<string, AmmoControlGroupLocation>();
+            for (const entry of entries) {
+                const state: AmmoControlGroupLocation['state'] = entry.status === 'destroyed'
+                    ? 'destroyed'
+                    : entry.status === 'disabled' ? 'disabled' : entry.exposed ? 'exposed' : 'normal';
+                const key = `${entry.locationLabel}:${state}`;
+                const existing = locations.get(key);
+                if (existing) existing.quantity += 1;
+                else locations.set(key, { loc: entry.locationLabel, quantity: 1, state });
+            }
+            const first = rowsForGroup[0]!;
+            return Object.freeze({
+                id: entries.map(entry => entry.id).join('|'),
+                displayName: (first.ammo?.displayName ?? first.label).replace(/ Ammo$/i, ''),
+                locations: Object.freeze([...locations.values()].map(location => Object.freeze({ ...location }))),
+                totalAmmo: entries.reduce((sum, entry) => sum + entry.totalAmmo, 0),
+                remaining: entries.reduce((sum, entry) => sum + entry.remaining, 0),
+                status: entries.some(entry => entry.status === 'available')
+                    ? 'available'
+                    : entries.some(entry => entry.status === 'disabled') ? 'disabled' : 'destroyed',
+                expandable: entries.length > 1,
+                entries: Object.freeze(entries),
+            } satisfies AmmoLoadoutGroupView);
+        }).sort((left, right) => EQUIPMENT_STATUS_ORDER[left.status] - EQUIPMENT_STATUS_ORDER[right.status]
+            || left.displayName.localeCompare(right.displayName)
+            || left.id.localeCompare(right.id)));
     }
 
-    private trackInventoryView(): void {
-        this.data.inventoryControl?.inventoryViewVersion();
-    }
-
-    private markInventoryViewChanged(): void {
-        this.data.inventoryControl?.markInventoryViewChanged();
+    private async setAmmoEntries(entries: readonly AmmoLoadoutEntryView[]): Promise<void> {
+        const runtime = this.runtime();
+        const rows = entries.map(entry => entry.component);
+        const first = rows[0];
+        if (!first?.ammo) return;
+        const commonLoadouts = first.ammo.loadouts.filter(loadout => rows.every(row =>
+            row.ammo?.loadouts.some(candidate => candidate.munitionKey === loadout.munitionKey)));
+        if (commonLoadouts.length === 0) return;
+        const registry = this.equipmentCatalog.getEquipmentRegistry();
+        const ammoOptions = commonLoadouts
+            .map(loadout => registry.findEquipment(loadout.munitionKey))
+            .filter((equipment): equipment is AmmoEquipment => equipment instanceof AmmoEquipment);
+        const currentAmmo = registry.findEquipment(first.ammo.munitionKey);
+        const originalAmmo = registry.findEquipment(first.ammo.defaultMunitionKey);
+        if (!(currentAmmo instanceof AmmoEquipment)
+            || !(originalAmmo instanceof AmmoEquipment)
+            || ammoOptions.length !== commonLoadouts.length) return;
+        const maxQuantity = rows.reduce((sum, row) => sum + (row.ammo?.capacity ?? 0), 0);
+        const ref = this.dialogs.createDialog<{ name: string; quantity: number; totalAmmo: number } | null>(
+            SetAmmoDialogComponent,
+            {
+                data: {
+                    currentAmmo,
+                    originalAmmo,
+                    originalTotalAmmo: rows.reduce((sum, row) => sum + (
+                        row.ammo?.loadouts.find(loadout =>
+                            loadout.munitionKey === row.ammo?.defaultMunitionKey)?.capacity ?? 0
+                    ), 0),
+                    ammoOptions,
+                    quantity: rows.reduce((sum, row) => sum + (row.ammo?.remaining ?? 0), 0),
+                    maxQuantity,
+                    unitType: runtime.snapshot().unitType,
+                    equipmentRegistry: registry,
+                } satisfies SetAmmoDialogData,
+            },
+        );
+        const selection = await firstValueFrom(ref.closed);
+        if (!selection) return;
+        let remaining = Math.max(0, selection.quantity);
+        for (const row of rows) {
+            const capacity = row.ammo?.loadouts.find(loadout => loadout.munitionKey === selection.name)?.capacity;
+            if (capacity === undefined) return;
+            const allocated = Math.min(capacity, remaining);
+            await runtime.configureAmmo(row, selection.name, allocated);
+            remaining -= allocated;
+        }
     }
 
 }

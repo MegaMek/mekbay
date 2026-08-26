@@ -4,6 +4,7 @@
 
 import { TestBed } from '@angular/core/testing';
 
+import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
 import { PageViewerShadowRenderService } from './page-viewer-shadow-render.service';
 
 function createSvg(): SVGSVGElement {
@@ -15,7 +16,16 @@ describe('PageViewerShadowRenderService', () => {
 
     beforeEach(() => {
         TestBed.configureTestingModule({
-            providers: [PageViewerShadowRenderService]
+            providers: [
+                PageViewerShadowRenderService,
+                {
+                    provide: PageViewerSheetSourceService,
+                    useValue: {
+                        svg: (unit: { svg(): SVGSVGElement | null }) => unit.svg(),
+                        load: (unit: { load(): Promise<void> }) => unit.load(),
+                    },
+                },
+            ]
         });
 
         service = TestBed.inject(PageViewerShadowRenderService);

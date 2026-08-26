@@ -4,12 +4,12 @@
 
 import { Injectable } from '@angular/core';
 
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
+import type { PageViewerMember } from './types';
 import type { PageViewerSwipeInitialRangePlan, PageViewerSwipeVisibleOffsetWindow } from './page-viewer-swipe-slot.service';
 
 export interface PageViewerSwipeSessionStartState {
     baseDisplayStartIndex: number;
-    swipeAllUnits: CBTForceUnit[];
+    swipeAllUnits: PageViewerMember[];
     swipeLeftmostOffset: number;
     swipeRightmostOffset: number;
     lastSwipeVisibleOffsets: PageViewerSwipeVisibleOffsetWindow;
@@ -22,14 +22,14 @@ export interface PageViewerSwipeSessionResetState {
     lastSwipeVisibleOffsets: null;
     swipeLeftmostOffset: number;
     swipeRightmostOffset: number;
-    swipeAllUnits: CBTForceUnit[];
+    swipeAllUnits: PageViewerMember[];
 }
 
 @Injectable()
 export class PageViewerSwipeSessionService {
     buildStartState(options: {
         viewStartIndex: number;
-        units: CBTForceUnit[];
+        units: PageViewerMember[];
         initialRangePlan: PageViewerSwipeInitialRangePlan;
         initialVisibleOffsets: PageViewerSwipeVisibleOffsetWindow;
     }): PageViewerSwipeSessionStartState {

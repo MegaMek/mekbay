@@ -3,26 +3,43 @@
     @if (!allChecksAutomaticFailure()) {
         <div class="psr-target">
             <span>Target roll</span>
-            <strong>{{ unit()?.PSRTargetRoll() }}</strong>
+            <strong>{{ targetRoll() }}</strong>
         </div>
     }
     <div class="body">
         <div class="psr-list">
-            @for (check of psrChecks(); let i = $index; track check.id ?? i) {
-                @if (check.fallCheck !== undefined) {
+            @for (fall of automaticFalls(); let i = $index; track fall.triggerKind + ':' + fall.locationIds.join(':')) {
+                <div class="psr-item automatic-failure">
+                    <div class="psr-check-header">
+                        <div class="psr-number">{{ i + 1 }}</div>
+                        <div class="psr-item-content">
+                            <div class="psr-reason">{{ automaticFallReason(fall) }}</div>
+                            <div class="psr-subtitle">
+                                @if (locationLabel(fall.locationIds[0]); as location) {
+                                    <span class="psr-location-value">{{ location }}</span>
+                                    <span class="psr-subtitle-separator" aria-hidden="true">&nbsp;—&nbsp;</span>
+                                }
+                                <span>Failure: <span class="psr-failure-value">Fall</span></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="psr-automatic-failure">AUTOMATIC FAILURE</div>
+                </div>
+            }
+            @for (check of psrChecks(); let i = $index; track check.checkId) {
                     <div class="psr-item" [class.resolved]="!isAutomaticFailure(check) && outcome(check)"
                         [class.failed]="outcome(check) === 'failed'"
                         [class.automatic-failure]="isAutomaticFailure(check)">
                         <div class="psr-check-header">
-                            <div class="psr-number">{{ i + 1 }}</div>
+                            <div class="psr-number">{{ automaticFalls().length + i + 1 }}</div>
                             <div class="psr-item-content">
                                 <div class="psr-reason">{{ check.reason }}</div>
                                 <div class="psr-subtitle">
-                                    @if (locationLabel(check.loc); as location) {
+                                    @if (locationLabel(check.source.locationIds[0]); as location) {
                                         <span class="psr-location-value">{{ location }}</span>
                                         <span class="psr-subtitle-separator" aria-hidden="true">&nbsp;—&nbsp;</span>
                                     }
-                                    <span>Failure: <span class="psr-failure-value">{{ check.failureOutcome }}</span></span>
+                                    <span>Target {{ check.targetNumber }} · Failure: <span class="psr-failure-value">{{ failureLabel(check) }}</span></span>
                                 </div>
                             </div>
                             @if (!isAutomaticFailure(check) && outcome(check); as result) {
@@ -41,7 +58,6 @@
                             </div>
                         }
                     </div>
-                }
             }
         </div>
         @if (!allChecksAutomaticFailure()) {
@@ -52,11 +68,11 @@
                         @for (modifier of modifiersList(); track $index) {
                             <div class="modifier-item">
                                 <span class="modifier-location">
-                                    @if (modifier.loc) { {{ modifier.loc }} } @else { &mdash; }
+                                    @if (locationLabel(modifier.locationId); as location) { {{ location }} } @else { &mdash; }
                                 </span>
                                 <span class="modifier-reason">{{ modifier.reason }}</span>
-                                <strong class="modifier-value" [class.bonus]="modifier.pilotCheck < 0">
-                                    {{ modifier.pilotCheck >= 0 ? '+' : '' }}{{ modifier.pilotCheck }}
+                                <strong class="modifier-value" [class.bonus]="modifier.modifier < 0">
+                                    {{ modifier.modifier >= 0 ? '+' : '' }}{{ modifier.modifier }}
                                 </strong>
                             </div>
                         }

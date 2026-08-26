@@ -43,7 +43,7 @@ export interface PrintOptionsDialogData {
 
                 <div class="option-col">
                     <div class="option-row">
-                        <label for="cleanPrint">Fresh units:</label>
+                        <label for="cleanPrint">Units condition:</label>
                         <select id="cleanPrint" class="bt-select option-select" [value]="printOptions().clean"
                             (change)="onBooleanChange('clean', $event)">
                             <option value="false">Keep current state</option>
@@ -53,6 +53,18 @@ export interface PrintOptionsDialogData {
                 </div>
 
                 @if (isClassic()) {
+                <div class="option-col">
+                    <div class="option-row">
+                        <label for="printPaperSize">Paper size:</label>
+                        <select id="printPaperSize" class="bt-select option-select"
+                            [value]="printOptions().paperSize"
+                            (change)="onPaperSizeChange($event)">
+                            <option value="letter">Letter</option>
+                            <option value="a4">A4</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="option-col">
                     <div class="option-row">
                         <label for="printPilotData">Pilot data:</label>
@@ -191,6 +203,7 @@ export class PrintOptionsDialogComponent {
         clean: false,
         printPilotData: true,
         printRosterSummary: this.optionsService.options().printRosterSummary,
+        paperSize: this.optionsService.options().printPaperSize,
         recordSheetCenterPanelContent: this.optionsService.options().recordSheetCenterPanelContent,
         ASPrintPageBreakOnGroups: this.optionsService.options().ASPrintPageBreakOnGroups,
         printMargin: this.optionsService.options().printMargin,
@@ -209,6 +222,11 @@ export class PrintOptionsDialogComponent {
         this.printOptions.update(current => ({ ...current, recordSheetCenterPanelContent: value }));
     }
 
+    protected onPaperSizeChange(event: Event): void {
+        const value = (event.target as HTMLSelectElement).value as PrintAllOptions['paperSize'];
+        this.printOptions.update(current => ({ ...current, paperSize: value }));
+    }
+
     protected onPrintMarginChange(event: Event): void {
         const value = (event.target as HTMLSelectElement).value as PrintAllOptions['printMargin'];
         this.printOptions.update(current => ({ ...current, printMargin: value }));
@@ -219,6 +237,7 @@ export class PrintOptionsDialogComponent {
     }
 
     protected async onPrint(): Promise<void> {
+        await this.optionsService.setOption('printPaperSize', this.printOptions().paperSize);
         await this.optionsService.setOption('printMargin', this.printOptions().printMargin);
         this.dialogRef.close(this.printOptions());
     }

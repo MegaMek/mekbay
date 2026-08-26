@@ -19,11 +19,15 @@ interface AlphanumericProjection {
 }
 
 function isAlphanumericSearchChar(char: string): boolean {
-    return /[a-z0-9]/i.test(char);
+    const code = char.charCodeAt(0);
+    return (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
 }
 
 function buildAlphanumericProjection(value: string): AlphanumericProjection {
-    const normalized = normalizeSearchValue(value);
+    return buildAlphanumericProjectionFromNormalized(normalizeSearchValue(value));
+}
+
+function buildAlphanumericProjectionFromNormalized(normalized: string): AlphanumericProjection {
     let collapsed = '';
     const originalIndices: number[] = [];
     const startsAfterWhitespace: boolean[] = [];
@@ -63,9 +67,12 @@ function crossesWhitespaceBoundary(projection: AlphanumericProjection, start: nu
 
 function findTokenRangesInAlphanumericProjection(
     textToSearch: string,
-    tokens: string[],
+    tokens: readonly string[],
+    textIsNormalized = false,
 ): Array<[number, number]> | null {
-    const projection = buildAlphanumericProjection(textToSearch);
+    const projection = textIsNormalized
+        ? buildAlphanumericProjectionFromNormalized(textToSearch)
+        : buildAlphanumericProjection(textToSearch);
     if (!projection.collapsed) {
         return null;
     }
@@ -262,7 +269,7 @@ export function parseSearchQuery(query: string): SearchTokensGroup[] {
  * @param tokens The partial tokens to match.
  * @returns True if all tokens are found non-overlappingly, false otherwise.
  */
-function tokensMatchNonOverlapping(text: string, tokens: string[]): boolean {
+function tokensMatchNonOverlapping(text: string, tokens: readonly string[]): boolean {
     const hay = text; // Already lowercased by caller
     const taken: Array<[number, number]> = [];
     for (const token of tokens) {
@@ -286,6 +293,187 @@ function tokensMatchNonOverlapping(text: string, tokens: string[]): boolean {
     return true;
 }
 
+function isSearchWhitespace(char: string): boolean {
+    return /\s/.test(char);
+}
+
+function findAlphanumericTokenRange(
+    normalizedText: string,
+    token: string,
+    taken: readonly [number, number][],
+): [number, number] | null {
+    let sawAlphanumeric = false;
+    let sawWhitespaceSinceLastAlphanumeric = false;
+
+    for (let start = 0; start < normalizedText.length; start++) {
+        const startChar = normalizedText[start];
+        if (!isAlphanumericSearchChar(startChar)) {
+            if (isSearchWhitespace(startChar)) {
+                sawWhitespaceSinceLastAlphanumeric = true;
+            }
+            continue;
+        }
+
+        const startsAfterWhitespace = !sawAlphanumeric || sawWhitespaceSinceLastAlphanumeric;
+        sawAlphanumeric = true;
+        sawWhitespaceSinceLastAlphanumeric = false;
+        if (startChar !== token[0]) {
+            continue;
+        }
+
+        let cursor = start;
+        let tokenIndex = 0;
+        let spansWhitespace = false;
+        while (cursor < normalizedText.length && tokenIndex < token.length) {
+            const char = normalizedText[cursor];
+            if (isAlphanumericSearchChar(char)) {
+                if (char !== token[tokenIndex]) {
+                    break;
+                }
+                tokenIndex++;
+            } else if (isSearchWhitespace(char)) {
+                spansWhitespace = true;
+            }
+            cursor++;
+        }
+
+        if (tokenIndex !== token.length || (spansWhitespace && !startsAfterWhitespace)) {
+            continue;
+        }
+
+        const overlaps = taken.some(([takenStart, takenEnd]) => (
+            !(cursor <= takenStart || start >= takenEnd)
+        ));
+        if (!overlaps) {
+            return [start, cursor];
+        }
+    }
+
+    return null;
+}
+
+function alphanumericTokensMatchNonOverlapping(
+    normalizedText: string,
+    tokens: readonly string[],
+): boolean {
+    const taken: Array<[number, number]> = [];
+    for (const token of tokens) {
+        if (!token) {
+            continue;
+        }
+
+        const range = findAlphanumericTokenRange(normalizedText, token, taken);
+        if (!range) {
+            return false;
+        }
+        taken.push(range);
+    }
+
+    return true;
+}
+
+interface CompiledSearchTokensGroup {
+    readonly exactTokens: readonly string[];
+    readonly partialTokens: readonly string[];
+    readonly alphaNumExactTokens: readonly string[];
+    readonly alphaNumPartialTokens: readonly string[];
+}
+
+/** Compile query-only work once when the same search is evaluated against many texts. */
+export function createSearchMatcher(
+    searchTokens: SearchTokensGroup[],
+    alphanumericNormalization = false,
+    textIsNormalized = false,
+): (textToSearch: string, precomputedAlphanumericText?: string) => boolean {
+    if (!searchTokens || searchTokens.length === 0) {
+        return () => true;
+    }
+
+    const compiledGroups: CompiledSearchTokensGroup[] = searchTokens.map(group => {
+        const exactTokens = group.tokens.filter(token => token.mode === 'exact').map(token => token.token);
+        const partialTokens = group.tokens.filter(token => token.mode === 'partial').map(token => token.token);
+        return {
+            exactTokens,
+            partialTokens,
+            alphaNumExactTokens: alphanumericNormalization
+                ? exactTokens.map(toAlphanumericSearchValue).filter(Boolean)
+                : [],
+            alphaNumPartialTokens: alphanumericNormalization
+                ? partialTokens.map(toAlphanumericSearchValue).filter(Boolean)
+                : [],
+        };
+    });
+
+    return (textToSearch: string, precomputedAlphanumericText?: string): boolean => {
+        const normalizedText = textIsNormalized ? textToSearch : normalizeSearchValue(textToSearch);
+        let alphaNumText = precomputedAlphanumericText;
+        const getAlphaNumText = (): string => {
+            alphaNumText ??= normalizedText.replace(/[^a-z0-9]/g, '');
+            return alphaNumText;
+        };
+
+        return compiledGroups.some(group => {
+            if (group.exactTokens.length === 0 && group.partialTokens.length === 1) {
+                const partialToken = group.partialTokens[0];
+                if (normalizedText.includes(partialToken)) {
+                    return true;
+                }
+
+                const alphaNumPartialToken = group.alphaNumPartialTokens[0];
+                return Boolean(
+                    alphanumericNormalization
+                    && alphaNumPartialToken
+                    && getAlphaNumText().includes(alphaNumPartialToken)
+                    && findAlphanumericTokenRange(normalizedText, alphaNumPartialToken, [])
+                );
+            }
+
+            if (group.exactTokens.length > 0) {
+                const textWords = new Set(normalizedText.split(/\s+/));
+                const alphaNumWords = alphanumericNormalization
+                    ? new Set(
+                        normalizedText
+                            .split(/\s+/)
+                            .map(toAlphanumericSearchValue)
+                            .filter(Boolean),
+                    )
+                    : new Set<string>();
+                for (let index = 0; index < group.exactTokens.length; index++) {
+                    const exactToken = group.exactTokens[index];
+                    if (!textWords.has(exactToken) && normalizedText !== exactToken) {
+                        const alphaNumExactToken = group.alphaNumExactTokens[index];
+                        if (
+                            !alphanumericNormalization
+                            || !alphaNumExactToken
+                            || (!alphaNumWords.has(alphaNumExactToken) && getAlphaNumText() !== alphaNumExactToken)
+                        ) {
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            if (
+                group.partialTokens.length > 0
+                && !tokensMatchNonOverlapping(normalizedText, group.partialTokens)
+                && (
+                    !alphanumericNormalization
+                    || group.alphaNumPartialTokens.length === 0
+                    || !tokensMatchNonOverlapping(getAlphaNumText(), group.alphaNumPartialTokens)
+                    || !alphanumericTokensMatchNonOverlapping(
+                        normalizedText,
+                        group.alphaNumPartialTokens,
+                    )
+                )
+            ) {
+                return false;
+            }
+
+            return true;
+        });
+    };
+}
+
 /**
  * Checks if a given text matches the search tokens.
  * @param textToSearch The text to check.
@@ -297,57 +485,7 @@ export function matchesSearch(
     searchTokens: SearchTokensGroup[],
     alphanumericNormalization = false
 ): boolean {
-    if (!searchTokens || searchTokens.length === 0) return true;
-
-    const normalizedText = normalizeSearchValue(textToSearch);
-    const alphaNumText = alphanumericNormalization
-        ? buildAlphanumericProjection(textToSearch).collapsed
-        : '';
-
-    // The text matches if it matches ANY of the OR groups
-    return searchTokens.some(group => {
-        const exactTokens = group.tokens.filter(t => t.mode === 'exact').map(t => t.token);
-        const partialTokens = group.tokens.filter(t => t.mode === 'partial').map(t => t.token);
-        const alphaNumExactTokens = alphanumericNormalization
-            ? exactTokens.map(token => toAlphanumericSearchValue(token)).filter(Boolean)
-            : [];
-        const alphaNumPartialTokens = alphanumericNormalization
-            ? partialTokens.map(token => toAlphanumericSearchValue(token)).filter(Boolean)
-            : [];
-
-        // All exact tokens must match as whole words
-        if (exactTokens.length > 0) {
-            const textWords = new Set(normalizedText.split(/\s+/));
-            const alphaNumWords = alphanumericNormalization
-                ? new Set(
-                    normalizedText
-                        .split(/\s+/)
-                        .map(word => toAlphanumericSearchValue(word))
-                        .filter(Boolean)
-                )
-                : new Set<string>();
-            for (let index = 0; index < exactTokens.length; index++) {
-                const et = exactTokens[index];
-                if (!textWords.has(et) && normalizedText !== et) {
-                    const alphaNumExactToken = alphaNumExactTokens[index];
-                    if (!alphanumericNormalization || !alphaNumExactToken || (!alphaNumWords.has(alphaNumExactToken) && alphaNumText !== alphaNumExactToken)) {
-                        return false;
-                    }
-                }
-            }
-        }
-
-        // All partial tokens must match non-overlappingly
-        if (partialTokens.length > 0) {
-            if (!tokensMatchNonOverlapping(normalizedText, partialTokens)) {
-                if (!alphanumericNormalization || alphaNumPartialTokens.length === 0 || !alphaNumText || !findTokenRangesInAlphanumericProjection(textToSearch, alphaNumPartialTokens)) {
-                    return false;
-                }
-            }
-        }
-
-        return true;
-    });
+    return createSearchMatcher(searchTokens, alphanumericNormalization)(textToSearch);
 }
 
 /**

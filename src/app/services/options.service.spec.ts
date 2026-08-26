@@ -52,6 +52,17 @@ describe('OptionsService theme migration', () => {
         expect(service.options().enableForceSyncConflictDialog).toBeTrue();
     });
 
+    it('uses generated record sheets by default and restores compatibility mode', async () => {
+        savedOptions = null;
+        let service = await createService();
+        expect(service.options().usePreGeneratedRecordSheets).toBeFalse();
+
+        TestBed.resetTestingModule();
+        savedOptions = { usePreGeneratedRecordSheets: true };
+        service = await createService();
+        expect(service.options().usePreGeneratedRecordSheets).toBeTrue();
+    });
+
     it('restores a disabled CBT automations preference', async () => {
         savedOptions = { cbtAutomations: false };
 

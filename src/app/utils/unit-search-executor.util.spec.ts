@@ -3,16 +3,17 @@
 // Author: Drake
 
 import { GameSystem } from '../models/common.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { parseSemanticQueryAST } from './semantic-filter-ast.util';
 import { executeUnitSearch } from './unit-search-executor.util';
+import { getUnitSearchIdentityKey } from './unit-search-shared.util';
 
-function createUnit(overrides: Pick<Unit, 'name' | 'chassis' | 'model' | 'tons'>): Unit {
+function createUnit(overrides: Pick<UnitSummary, 'name' | 'chassis' | 'model' | 'tons'>): UnitSummary {
     return createEmptyUnit(overrides);
 }
 
-function executeSortedUnits(units: Unit[], sortKey: string): Unit[] {
+function executeSortedUnits(units: UnitSummary[], sortKey: string): UnitSummary[] {
     return executeUnitSearch({
         units,
         parsedQuery: parseSemanticQueryAST('', GameSystem.CLASSIC),
@@ -32,7 +33,7 @@ function executeSortedUnits(units: Unit[], sortKey: string): Unit[] {
     }).results;
 }
 
-function executeQuery(units: Unit[], query: string): Unit[] {
+function executeQuery(units: UnitSummary[], query: string): UnitSummary[] {
     return executeUnitSearch({
         units,
         parsedQuery: parseSemanticQueryAST(query, GameSystem.CLASSIC),
@@ -83,7 +84,7 @@ describe('unit-search-executor', () => {
         });
 
         expect(execution.results).toEqual([unit]);
-        expect(execution.normalizationMatchesByUnitName.size).toBe(0);
+        expect(execution.normalizationMatchesByUnitIdentity.size).toBe(0);
     });
 
     it('normalizes Alpha Strike results and excludes units outside the target PV range', () => {
@@ -119,7 +120,7 @@ describe('unit-search-executor', () => {
         });
 
         expect(execution.results.map(unit => unit.name)).toEqual(['Matching']);
-        expect(execution.normalizationMatchesByUnitName.get('Matching')).toEqual({
+        expect(execution.normalizationMatchesByUnitIdentity.get(getUnitSearchIdentityKey(matching))).toEqual({
             kind: 'pv',
             adjustedValue: 18,
             skill: 5,

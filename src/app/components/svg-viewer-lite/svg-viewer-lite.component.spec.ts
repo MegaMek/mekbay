@@ -7,17 +7,15 @@ import { TestBed } from '@angular/core/testing';
 
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { OptionsService } from '../../services/options.service';
-import { SheetService } from '../../services/sheet.service';
 import { LoggerService } from '../../services/logger.service';
+import { NativeEntityService } from '../../services/native-entity.service';
+import type { LoadedEntity } from '../../models/entity/entity-repository';
+import { TestTankEntity } from '../../models/entity/testing/test-entities';
+import { RecordSheetSourceService } from '../../services/record-sheet-source.service';
 import { SvgViewerLiteComponent } from './svg-viewer-lite.component';
 
-function makeSvg(width = 100, height = 200): SVGSVGElement {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('id', 'source-sheet');
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.setAttribute('width', width.toString());
-    svg.setAttribute('height', height.toString());
-    return svg;
+function loadedEntity(entity: TestTankEntity): LoadedEntity {
+    return { entity, source: {} } as unknown as LoadedEntity;
 }
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (reason?: unknown) => void } {
@@ -45,15 +43,30 @@ type LayoutState = {
 const layouts = new WeakMap<HTMLElement, Partial<LayoutState>>();
 
 describe('SvgViewerLiteComponent', () => {
-    let sheetService: jasmine.SpyObj<Pick<SheetService, 'getSheet'>>;
     let logger: jasmine.SpyObj<Pick<LoggerService, 'error'>>;
+    let nativeEntities: jasmine.SpyObj<Pick<NativeEntityService, 'canLoad' | 'load'>>;
+    let recordSheets: jasmine.SpyObj<Pick<RecordSheetSourceService, 'mode' | 'load'>>;
     let originalResizeObserver: typeof ResizeObserver | undefined;
     let triggerResize: (() => void) | null;
     const options = signal({ recordSheetCenterPanelContent: 'clusterTable' });
 
     beforeEach(() => {
-        sheetService = jasmine.createSpyObj<Pick<SheetService, 'getSheet'>>('SheetService', ['getSheet']);
         logger = jasmine.createSpyObj<Pick<LoggerService, 'error'>>('LoggerService', ['error']);
+        nativeEntities = jasmine.createSpyObj<Pick<NativeEntityService, 'canLoad' | 'load'>>(
+            'NativeEntityService', ['canLoad', 'load'],
+        );
+        nativeEntities.canLoad.and.returnValue(true);
+        nativeEntities.load.and.resolveTo(loadedEntity(new TestTankEntity()));
+        recordSheets = jasmine.createSpyObj<Pick<RecordSheetSourceService, 'mode' | 'load'>>(
+            'RecordSheetSourceService', ['mode', 'load'],
+        );
+        recordSheets.mode.and.returnValue('generated');
+        recordSheets.load.and.callFake(async () => {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.dataset['mekbayGenerated'] = '1';
+            svg.setAttribute('viewBox', '0 0 612 792');
+            return { source: 'generated', svgs: [svg] };
+        });
         options.set({ recordSheetCenterPanelContent: 'clusterTable' });
         triggerResize = null;
         originalResizeObserver = window.ResizeObserver;
@@ -71,8 +84,9 @@ describe('SvgViewerLiteComponent', () => {
             imports: [SvgViewerLiteComponent],
             providers: [
                 provideZonelessChangeDetection(),
-                { provide: SheetService, useValue: sheetService },
                 { provide: LoggerService, useValue: logger },
+                { provide: NativeEntityService, useValue: nativeEntities },
+                { provide: RecordSheetSourceService, useValue: recordSheets },
                 { provide: OptionsService, useValue: { options } },
             ],
         });
@@ -88,11 +102,9 @@ describe('SvgViewerLiteComponent', () => {
         }
     }
 
-    async function createViewer(zoomable = true, _controls = false, sheets = ['atlas.svg']) {
-        sheetService.getSheet.and.callFake(async (sheetName) => sheetName.includes('wide') ? makeSvg(50, 300) : makeSvg());
-
+    async function createViewer(zoomable = true) {
         const fixture = TestBed.createComponent(SvgViewerLiteComponent);
-        fixture.componentRef.setInput('unit', createEmptyUnit({ sheets }));
+        fixture.componentRef.setInput('unit', createEmptyUnit());
         fixture.componentRef.setInput('zoomable', zoomable);
         fixture.detectChanges();
         await settle();
@@ -191,10 +203,12 @@ describe('SvgViewerLiteComponent', () => {
         }));
     }
 
-    it('loads cloned sheets into the content surface at fit-width scale', async () => {
+    it('loads a generated sheet into the content surface at fit-width scale', async () => {
         const { container, content, svg } = await createViewer();
 
-        expect(sheetService.getSheet).toHaveBeenCalledOnceWith('atlas.svg', undefined);
+        expect(nativeEntities.load).toHaveBeenCalledTimes(1);
+        expect(recordSheets.load).toHaveBeenCalledTimes(1);
+        expect(svg.dataset['mekbayGenerated']).toBe('1');
         expect(svg.id).toBe('');
         expect(svg.style.width).toBe('100%');
         expect(content.style.width).toBe('100%');
@@ -202,39 +216,31 @@ describe('SvgViewerLiteComponent', () => {
     });
 
     it('ignores stale sheet loads when the unit changes before a previous request resolves', async () => {
-        const atlasLoad = deferred<SVGSVGElement>();
-        const marauderLoad = deferred<SVGSVGElement>();
-        sheetService.getSheet.and.callFake((sheetName) => {
-            if (sheetName === 'atlas.svg') return atlasLoad.promise;
-            if (sheetName === 'marauder.svg') return marauderLoad.promise;
-            return Promise.reject(new Error(`Unexpected sheet ${sheetName}`));
-        });
+        const atlasLoad = deferred<LoadedEntity>();
+        const marauderLoad = deferred<LoadedEntity>();
+        nativeEntities.load.and.returnValues(atlasLoad.promise, marauderLoad.promise);
 
         const fixture = TestBed.createComponent(SvgViewerLiteComponent);
-        fixture.componentRef.setInput('unit', createEmptyUnit({ sheets: ['atlas.svg'] }));
+        fixture.componentRef.setInput('unit', createEmptyUnit());
         fixture.componentRef.setInput('zoomable', true);
         fixture.detectChanges();
         await settle();
 
-        fixture.componentRef.setInput('unit', createEmptyUnit({ sheets: ['marauder.svg'] }));
+        fixture.componentRef.setInput('unit', createEmptyUnit({ name: 'Marauder' }));
         fixture.detectChanges();
         await settle();
 
-        const marauderSvg = makeSvg();
-        marauderSvg.setAttribute('data-sheet', 'marauder.svg');
-        marauderLoad.resolve(marauderSvg);
+        marauderLoad.resolve(loadedEntity(new TestTankEntity()));
         await settle();
         fixture.detectChanges();
 
-        const atlasSvg = makeSvg();
-        atlasSvg.setAttribute('data-sheet', 'atlas.svg');
-        atlasLoad.resolve(atlasSvg);
+        atlasLoad.resolve(loadedEntity(new TestTankEntity()));
         await settle();
         fixture.detectChanges();
 
         const svgs = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<SVGSVGElement>('svg'));
         expect(svgs.length).toBe(1);
-        expect(svgs[0].getAttribute('data-sheet')).toBe('marauder.svg');
+        expect(svgs[0].getAttribute('aria-label')).toBe('Marauder record sheet');
     });
 
     it('does not consume wheel events when zoomable is false', async () => {

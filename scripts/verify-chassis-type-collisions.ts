@@ -3,7 +3,7 @@ import path from 'node:path';
 
 const {
     resolveExistingPath,
-} = require('./lib/script-paths.js') as typeof import('./lib/script-paths.js');
+} = require('./lib/script-paths') as typeof import('./lib/script-paths');
 
 interface SvgExportUnitRecord {
     id?: number;

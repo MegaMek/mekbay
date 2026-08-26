@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { Injectable, inject } from '@angular/core';
-import { DbService } from '../db.service';
 import {
     hydrateMegaMekFactionRecord,
     type MegaMekFactionAffiliation,
@@ -17,11 +16,11 @@ import { FactionsCatalogService } from './mulfactions-catalog.service';
 import { CatalogBaseService } from './catalog-base.service';
 
 function isMegaMekFactionsData(data: MegaMekFactionsData | Record<string, MegaMekFactionRecordData>): data is MegaMekFactionsData {
-    if (!('etag' in data) || !('factions' in data)) {
+    if (!('assetHash' in data) || !('factions' in data)) {
         return false;
     }
 
-    return typeof data.etag === 'string' && typeof data.factions === 'object' && data.factions !== null && !Array.isArray(data.factions);
+    return typeof data.assetHash === 'string' && typeof data.factions === 'object' && data.factions !== null && !Array.isArray(data.factions);
 }
 
 function mapMulFactionAffiliation(group: string | undefined): MegaMekFactionAffiliation {
@@ -44,7 +43,6 @@ function mapMulFactionAffiliation(group: string | undefined): MegaMekFactionAffi
     providedIn: 'root'
 })
 export class MegaMekFactionsCatalogService extends CatalogBaseService<MegaMekFactionsData | MegaMekFactions, MegaMekFactionsData, MegaMekFactionsData | Record<string, MegaMekFactionRecordData>> {
-    private readonly dbService = inject(DbService);
     private readonly factionsCatalog = inject(FactionsCatalogService);
 
     private factions = new Map<string, MegaMekFactionRecord>();
@@ -55,8 +53,10 @@ export class MegaMekFactionsCatalogService extends CatalogBaseService<MegaMekFac
     }
 
     protected override get remoteUrl(): string {
-        return 'assets/factions-lite.json';
+        return 'online-assets/generated/factions-lite.json';
     }
+
+    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
     public getFactions(): MegaMekFactions {
         return Object.fromEntries(this.factions.entries());
@@ -106,14 +106,6 @@ export class MegaMekFactionsCatalogService extends CatalogBaseService<MegaMekFac
         return this.factions.size > 0;
     }
 
-    protected override async loadFromCache(): Promise<MegaMekFactionsData | MegaMekFactions | undefined> {
-        return await this.dbService.getMegaMekFactions() ?? undefined;
-    }
-
-    protected override saveToCache(data: MegaMekFactionsData): Promise<void> {
-        return this.dbService.saveMegaMekFactions(data);
-    }
-
     protected override hydrate(data: MegaMekFactionsData | MegaMekFactions): void {
         const wrappedData = isMegaMekFactionsData(data) ? data : undefined;
         const rawFactions = wrappedData?.factions ?? data;
@@ -141,27 +133,27 @@ export class MegaMekFactionsCatalogService extends CatalogBaseService<MegaMekFac
             }
         }
 
-        this.etag = wrappedData?.etag || '';
+        this.transportRevision = wrappedData?.assetHash || '';
     }
 
-    protected override normalizeFetchedData(data: MegaMekFactionsData | Record<string, MegaMekFactionRecordData>, etag: string): MegaMekFactionsData {
-        return this.wrapData(data, etag);
+    protected override normalizeFetchedData(data: MegaMekFactionsData | Record<string, MegaMekFactionRecordData>, assetHash: string): MegaMekFactionsData {
+        return this.wrapData(data, assetHash);
     }
 
     protected override getDatasetSize(data: MegaMekFactionsData | MegaMekFactions): number {
         return Object.keys(this.wrapData(data, '').factions).length;
     }
 
-    private wrapData(data: MegaMekFactionsData | Record<string, MegaMekFactionRecordData>, etag: string): MegaMekFactionsData {
+    private wrapData(data: MegaMekFactionsData | Record<string, MegaMekFactionRecordData>, assetHash: string): MegaMekFactionsData {
         if (isMegaMekFactionsData(data)) {
             return {
-                etag,
+                assetHash,
                 factions: data.factions,
             };
         }
 
         return {
-            etag,
+            assetHash,
             factions: data,
         };
     }

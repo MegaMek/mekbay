@@ -38,29 +38,29 @@ jobs:
           npm ci
           npm run build:next
 
+      - name: Verify published equipment and official Mek domain corpora
+        run: npm run check:mek-domain-corpus
+
+      - name: Verify script typechecks and RAT generator oracle
+        env:
+          MM_DATA_PATH: mm-data
+          SVGEXPORT_UNITFILES_PATH: mm-data/data/mekfiles
+          MEK_NAME_CHANGES_PATH: mm-data/data/mekfiles/name_changes.txt
+        run: npm run check:script-integrity
+
       - name: Get LFTP
         run: sudo apt-get install -y --no-install-recommends lftp
 
-      - name: Configure LFTP
-        run: mkdir ~/.lftp && echo "set ssl:verify-certificate false;" >> ~/.lftp/rc
+      - name: Upload content, then manifests and entry points
+        env:
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_REMOTE_DIR: ./mekbay_next
+        run: node --import tsx scripts/deploy-build.ts
 
-      - name: Upload Folder
-        run: |
-          INDEX_CSR_PUT=""
-          if [ -f ./dist/browser/index.csr.html ]; then
-            INDEX_CSR_PUT="put -O ./mekbay_next/ ./dist/browser/index.csr.html;"
-          fi
-
-          lftp -c "set cmd:fail-exit yes;
-          set ftp:list-options -a;
-          set net:max-retries 3;
-          set net:timeout 30;
-          open -u ${{ secrets.FTP_USER }},${{ secrets.FTP_PASSWORD }} ${{ secrets.FTP_HOST }};
-          mirror --parallel=20 -R --transfer-all --no-perms --verbose --exclude-glob index.html --exclude-glob index.csr.html --exclude-glob ngsw.json ./dist/browser/ ./mekbay_next/;
-          put -O ./mekbay_next/ ./dist/browser/index.html;
-          ${INDEX_CSR_PUT}
-          put -O ./mekbay_next/ ./dist/browser/ngsw.json;
-          put -O ./mekbay_next/ ./dist/3rdpartylicenses.txt;"
+      - name: Verify deployed generated core assets
+        run: npm run validate:deployed-core-assets -- --base-url https://next.mekbay.com/
 
       - name: Cleanup Old Build and Sprite Files
         env:
@@ -69,4 +69,4 @@ jobs:
           FTP_HOST: ${{ secrets.FTP_HOST }}
           FTP_REMOTE_DIR: ./mekbay_next
           FTP_CLEANUP_RETENTION_DAYS: 5
-        run: node scripts/cleanup-ftp-build-output.mjs
+        run: node --import tsx scripts/cleanup-ftp-build-output.ts

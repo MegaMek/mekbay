@@ -45,13 +45,6 @@
     width: 100%;
 }
 
-.intel-loading-spinner {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    background: rgba(32, 43, 70, 0.62);
-}
-
 .fluff-image-container {
     float: right;
     display: flex;
@@ -93,10 +86,15 @@
     word-wrap: break-word;
 }
 
-.no-fluff {
+.no-fluff,
+.intel-status {
     text-align: center;
     color: var(--text-color-secondary);
     margin-top: 24px;
+}
+
+.intel-error {
+    color: var(--error-color, #ffb4ab);
 }
 
 /* Responsive */

@@ -3,165 +3,302 @@
 // Author: Drake
 
 import { getFactionAffinity } from '../models/factions.model';
-import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { PrintAllOptions } from '../models/print-options.model';
-import type { Unit, UnitComponent } from '../models/units.model';
-import type { DataService } from '../services/data.service';
-import type { UnitInitializerService } from '../services/unit-initializer.service';
-import type { Injector } from '@angular/core';
-import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
-import { getSelectedInventoryControlMode, INVENTORY_CONTROL_MODE_STATE, syncSvgMode } from './inventory-control.util';
+import type { UnitSummary, UnitComponent } from '../models/unit-summary.model';
+import { isJumpJetEquipment } from '../models/jump-equipment.model';
+import { isHeatSinkEquipment } from '../models/heat-equipment.model';
+import { caseRecordSheetLabel, isCaseEquipment } from '../models/case-equipment.model';
+import type {
+    RecordSheetSourceMode,
+    RecordSheetSourceService,
+} from '../services/record-sheet-source.service';
+import {
+    isCBTMekForceMember,
+    type CBTForceMember,
+} from '../models/force-member.model';
+import type { NonMekRecordSheetSnapshot } from '../models/runtime/non-mek-record-sheet';
+import type { MekRecordSheetSnapshot } from '../models/runtime/mek-record-sheet';
+import { RsPolyfillUtil } from './rs-polyfill.util';
+import {
+    MEK_CREW_STATE_CONTROLS,
+    MEK_UNIT_CONDITION_CONTROLS,
+} from '../models/mek-record-sheet-controls';
+import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../models/mek-sheet-binding';
+import { bindMekRecordSheet } from '../components/page-viewer/mek-record-sheet-binder';
+import { bindNonMekRecordSheet } from '../components/page-viewer/non-mek-record-sheet-binder';
+import { crewStateDefinitions, unitConditionControls } from '../models/unit-status-presentation';
+import { RecordSheetSvgGenerator } from './sheets/record-sheet-svg-generator';
+import {
+    planRecordSheetPages,
+    type RecordSheetLayoutProfile,
+} from './sheets/record-sheet-layout';
+import { recordSheetLayoutProfile } from './sheets/layouts/record-sheet-layout-resolver';
 
-export interface CBTPrintServices {
-    dataService: DataService;
-    unitInitializer: UnitInitializerService;
-    injector: Injector;
+interface PreparedPrintSheet {
+    readonly member: CBTForceMember;
+    readonly svg: SVGSVGElement;
+    readonly compact: boolean;
+    readonly kind: RecordSheetLayoutProfile['kind'];
+    readonly height: number;
+    readonly pageContentY: number | undefined;
+    readonly pristineBattleValue: number;
 }
 
 
 export class CBTPrintUtil {
 
     public static async multipagePrint(
-        printServices: CBTPrintServices,
-        forceUnits: CBTForceUnit[],
+        members: readonly CBTForceMember[],
         printOptions: PrintAllOptions,
-        triggerPrint: boolean = true
+        recordSheetSource: RecordSheetSourceService,
+        triggerPrint: boolean = true,
     ): Promise<void> {
-        if (forceUnits.length === 0) {
+        if (members.length === 0) {
             console.warn('No units to export.');
             return;
         }
-        // Gather all SVGs as strings
+        const prepared: PreparedPrintSheet[] = [];
+        const sourceMode = recordSheetSource.mode();
+        for (const member of members) {
+            const memberSheets = await this.createPrintSheets(
+                member,
+                printOptions.clean,
+                printOptions.paperSize,
+                recordSheetSource,
+                sourceMode,
+            );
+            for (const sheet of memberSheets) {
+                const { svg } = sheet;
+
+                await this.nextAnimationFrames(2);
+
+                this.applyPilotDataPrintOption(
+                    svg,
+                    printOptions.printPilotData,
+                    sheet.pristineBattleValue,
+                );
+
+                // Turn on/off fluff image
+                const injectedEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
+                if (injectedEl) {
+                    const centerContent = printOptions.recordSheetCenterPanelContent;
+                    const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
+                    if (centerContent === 'fluffImage') {
+                        injectedEl.style.setProperty('display', 'block');
+                        referenceTables.forEach((rt) => {
+                            rt.style.display = 'none';
+                        });
+                    } else {
+                        injectedEl.style.setProperty('display', 'none');
+                        referenceTables.forEach((rt) => {
+                            rt.style.display = 'block';
+                        });
+                    }
+                }
+
+                prepared.push(sheet);
+            }
+        }
+
+        const pages = planRecordSheetPages(prepared, sheet => ({
+            compact: sheet.compact,
+            kind: sheet.kind,
+            height: sheet.height,
+            pageContentY: sheet.pageContentY,
+        }), printOptions.paperSize).map(page => page.compact
+            ? RecordSheetSvgGenerator.composeCompactPage(page.items.map(item => item.svg), printOptions.paperSize)
+            : page.items[0].svg);
         const svgStrings: string[] = [];
-        for (const unit of forceUnits) {
-            const printUnit = await this.createPrintUnit(unit, printServices, printOptions.clean);
-            const svg = printUnit.svg()?.cloneNode(true) as SVGSVGElement | null;
+        for (const page of pages) {
+            await this.embedExternalImages(page);
+            svgStrings.push(this.serializeSvg(page));
+        }
+        await this.generateMultipagePrintContainer(svgStrings, members, printOptions, triggerPrint);
+    }
 
-            printUnit.destroy();
-            if (!svg) continue;
+    private static async createPrintSheets(
+        member: CBTForceMember,
+        clean: boolean,
+        paperSize: PrintAllOptions['paperSize'],
+        recordSheetSource: RecordSheetSourceService,
+        sourceMode: RecordSheetSourceMode,
+    ): Promise<readonly PreparedPrintSheet[]> {
+        const ready = member.force.getUnitSnapshot(member.id);
+        if (!ready) throw new Error(`Classic unit ${member.id} is no longer admitted`);
+        const entity = ready.entity;
+        const profile = recordSheetLayoutProfile(entity, paperSize);
+        const generatorOptions = {
+            format: profile.compact ? 'compact' : paperSize,
+            pageFormat: paperSize,
+        } as const;
+        const artwork = await recordSheetSource.load(member.summary, entity, generatorOptions, sourceMode);
+        const compact = artwork.source === 'generated' && profile.compact;
 
-            await this.nextAnimationFrames(2);
-
-            this.applyPilotDataPrintOption(svg, printOptions.printPilotData, printUnit.getBaseBv());
-
-            // Turn on/off fluff image
-            const injectedEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
-            if (injectedEl) {
-                const centerContent = printOptions.recordSheetCenterPanelContent;
-                const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
-                if (centerContent === 'fluffImage') {
-                    injectedEl.style.setProperty('display', 'block');
-                    referenceTables.forEach((rt) => {
-                        rt.style.display = 'none';
-                    });
-                } else {
-                    injectedEl.style.setProperty('display', 'none');
-                    referenceTables.forEach((rt) => {
-                        rt.style.display = 'block';
-                    });
-                }
-            }
-
-            // Ensure font-size has units
-            svg.querySelectorAll('[style]').forEach(el => {
-                const style = el.getAttribute('style');
-                if (style && /font-size\s*:\s*\d+(\.\d+)?(\s*;|;|$)/i.test(style)) {
-                    const fixed = style.replace(
-                        /font-size\s*:\s*(\d+(\.\d+)?)(?!\s*[a-zA-Z%])(\s*;?)/gi,
-                        (match, num, _, tail) => `font-size: ${num}px${tail || ''}`
-                    );
-                    if (fixed !== style) {
-                        el.setAttribute('style', fixed);
-                    }
-                }
+        if (isCBTMekForceMember(member)) {
+            const current = member.force.getMekRecordSheetSnapshot(member.id);
+            if (!current) throw new Error(`CBT Mek ${member.id} is no longer admitted`);
+            const snapshot = clean ? this.pristinePrintSnapshot(current) : current;
+            return artwork.svgs.map(svg => {
+                RsPolyfillUtil.prepareRecordSheet({
+                    unit: {
+                        type: 'Mek',
+                        subtype: snapshot.identity.form === 'lam' ? 'Land-Air BattleMek' : 'BattleMek',
+                        armorType: snapshot.construction.armor,
+                        structureType: snapshot.construction.structure,
+                        crewSize: snapshot.crew.length,
+                    },
+                    conditionControls: MEK_UNIT_CONDITION_CONTROLS,
+                    addCrewStateControls: MEK_CREW_STATE_CONTROLS.length > 0 && snapshot.crew.length > 0,
+                }, svg);
+                const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, snapshot);
+                binding.render(snapshot);
+                binding.destroy();
+                return Object.freeze({
+                    member,
+                    svg,
+                    compact,
+                    kind: profile.kind,
+                    height: profile.height,
+                    pageContentY: profile.pageContentY,
+                    pristineBattleValue: snapshot.battleValue.pristine ?? snapshot.battleValue.current ?? member.summary.bv,
+                });
             });
-
-            // Inline external images so they are guaranteed to render
-            await this.embedExternalImages(svg);
-
-            // Serialize, sanitize outer svg tag, ensure namespaces/viewBox
-            const serializer = new XMLSerializer();
-            let svgString = serializer.serializeToString(svg);
-            svgString = svgString.replace(
-                /^<svg([^>]*)>/,
-                (match, attrs) => {
-                    let cleanedAttrs = attrs;
-                    // .replace(/\sclass="[^"]*"/g, '')
-                    // .replace(/\sstyle="[^"]*"/g, '')
-                    // .replace(/\s(width|height|preserveAspectRatio)="[^"]*"/g, '')
-                    // .replace(/\s+$/, '');
-                    if (!/viewBox=/.test(cleanedAttrs)) {
-                        cleanedAttrs += ' viewBox="0 0 612 792"';
-                    }
-                    if (!/xmlns=/.test(cleanedAttrs)) {
-                        cleanedAttrs += ' xmlns="http://www.w3.org/2000/svg"';
-                    }
-                    if (!/xmlns:xlink=/.test(cleanedAttrs)) {
-                        cleanedAttrs += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
-                    }
-                    if (!/preserveAspectRatio=/.test(cleanedAttrs)) {
-                        cleanedAttrs += ' preserveAspectRatio="xMidYMid meet"';
-                    }
-                    return `<svg${cleanedAttrs}>`;
-                }
-            );
-            if (svgString) {
-                svgStrings.push(svgString);
-            }
         }
-        await this.generateMultipagePrintContainer(svgStrings, forceUnits, printOptions, triggerPrint);
+
+        const current = member.force.getNonMekRecordSheetSnapshot(member.id);
+        if (!current) throw new Error(`Classic Entity ${member.id} is no longer admitted`);
+        const snapshot = clean ? this.pristineEntityPrintSnapshot(current) : current;
+        return artwork.svgs.map(svg => {
+            RsPolyfillUtil.prepareRecordSheet({
+                unit: {
+                    type: snapshot.unitType,
+                    subtype: snapshot.subtype,
+                    armorType: snapshot.armorType,
+                    structureType: snapshot.structureType,
+                    crewSize: snapshot.crewSize,
+                },
+                conditionControls: unitConditionControls(snapshot.conditionControlKeys),
+                addCrewStateControls: crewStateDefinitions(snapshot.crewStateControlKeys).length > 0
+                    && snapshot.crew.length > 0,
+            }, svg);
+            const binding = bindNonMekRecordSheet(svg, snapshot);
+            binding.render(snapshot);
+            binding.destroy();
+            return Object.freeze({
+                member,
+                svg,
+                compact,
+                kind: profile.kind,
+                height: profile.height,
+                pageContentY: profile.pageContentY,
+                pristineBattleValue: snapshot.pristineBattleValue,
+            });
+        });
     }
 
-    private static async createPrintUnit(
-        unit: CBTForceUnit,
-        printServices: CBTPrintServices,
-        clean: boolean
-    ): Promise<CBTForceUnit> {
-        const serializedUnit = unit.serialize();
-        const printUnit = CBTForceUnit.deserialize(
-            serializedUnit,
-            unit.force,
-            printServices.dataService,
-            printServices.unitInitializer,
-            printServices.injector
-        );
-        printUnit.disabledSaving = true;
-
-        await printUnit.load();
-        printUnit.update(serializedUnit);
-
-        if (clean) {
-            printUnit.repairAll();
-        } else {
-            const heat = printUnit.getHeat();
-            if (heat.heatsinksOff !== undefined) {
-                printUnit.setHeatsinksOff(0);
-            }
-            printUnit.setHeatData({ current: 0, previous: 0, next: undefined });
-        }
-
-        this.resetInventoryControlModes(printUnit);
-        printUnit.clearInventoryControlSelection();
-        printUnit.turnState().update(undefined);
-        printUnit.syncInventoryControlSelectionSvg();
-        printUnit.svgService?.forceRepaint();
-        await this.nextAnimationFrames(2);
-
-        return printUnit;
+    private static pristinePrintSnapshot(
+        snapshot: MekRecordSheetSnapshot,
+    ): MekRecordSheetSnapshot {
+        return Object.freeze({
+            ...snapshot,
+            destroyed: false,
+            crippled: false,
+            conditions: Object.freeze([]),
+            locations: Object.freeze(snapshot.locations.map(location => Object.freeze({
+                ...location,
+                committedRemainingInternal: location.maximumInternal,
+                previewRemainingInternal: location.maximumInternal,
+                conditions: Object.freeze([]),
+                armor: Object.freeze(location.armor.map(face => Object.freeze({
+                    ...face,
+                    committedRemaining: face.maximum,
+                    previewRemaining: face.maximum,
+                }))),
+            }))),
+            criticalSlots: Object.freeze(snapshot.criticalSlots.map(slot => Object.freeze({
+                ...slot,
+                committedHits: 0,
+                previewHits: 0,
+                components: Object.freeze(slot.components.map(component => Object.freeze({
+                    ...component,
+                    status: 'available' as const,
+                    ...(component.ammo === undefined ? {} : {
+                        ammo: Object.freeze({ ...component.ammo, remaining: component.ammo.capacity }),
+                    }),
+                }))),
+            }))),
+            crew: Object.freeze(snapshot.crew.map(position => Object.freeze({
+                ...position,
+                state: Object.freeze({ wounds: 0, unconscious: false, ejected: false }),
+            }))),
+        });
     }
 
-    private static resetInventoryControlModes(printUnit: CBTForceUnit): void {
-        for (const entry of printUnit.getInventory()) {
-            if (entry.deleteState(INVENTORY_CONTROL_MODE_STATE)) {
-                printUnit.setInventoryEntry(entry);
-            }
-            const defaultMode = getSelectedInventoryControlMode(
-                entry,
-                EMPTY_EQUIPMENT_REGISTRY,
-                printUnit.getInventoryControlRules().matchesAmmo
-            );
-            syncSvgMode(entry, defaultMode, false);
-        }
+    private static pristineEntityPrintSnapshot(
+        snapshot: NonMekRecordSheetSnapshot,
+    ): NonMekRecordSheetSnapshot {
+        return Object.freeze({
+            ...snapshot,
+            destroyed: false,
+            conditions: Object.freeze([]),
+            currentBattleValue: snapshot.pristineBattleValue,
+            heat: Object.freeze({
+                ...snapshot.heat,
+                current: 0,
+                pending: null,
+                heatsinksOff: 0,
+            }),
+            locations: Object.freeze(snapshot.locations.map(location => Object.freeze({
+                ...location,
+                remainingInternal: location.maximumInternal,
+                previewRemainingInternal: location.maximumInternal,
+                armor: Object.freeze(location.armor.map(face => Object.freeze({
+                    ...face,
+                    remaining: face.maximum,
+                    previewRemaining: face.maximum,
+                }))),
+            }))),
+            components: Object.freeze(snapshot.components.map(component => Object.freeze({
+                ...component,
+                status: 'available' as const,
+                previewStatus: 'available' as const,
+                ...(component.ammo === undefined ? {} : {
+                    ammo: Object.freeze({ ...component.ammo, remaining: component.ammo.capacity }),
+                }),
+            }))),
+            damageTracks: Object.freeze(snapshot.damageTracks.map(track => Object.freeze({
+                ...track,
+                committedHits: 0,
+                previewHits: 0,
+                committedHitTimestamps: Object.freeze([]),
+                pendingHitTimestamps: Object.freeze([]),
+            }))),
+            crew: Object.freeze(snapshot.crew.map(position => Object.freeze({
+                ...position,
+                state: Object.freeze({ wounds: 0, unconscious: false, ejected: false }),
+                effectiveState: 'healthy' as const,
+            }))),
+        });
+    }
+
+    private static serializeSvg(svg: SVGSVGElement): string {
+        svg.querySelectorAll('[style]').forEach(element => {
+            const style = element.getAttribute('style');
+            if (!style || !/font-size\s*:\s*\d+(\.\d+)?(\s*;|;|$)/iu.test(style)) return;
+            element.setAttribute('style', style.replace(
+                /font-size\s*:\s*(\d+(\.\d+)?)(?!\s*[a-zA-Z%])(\s*;?)/giu,
+                (_match, number, _fraction, tail) => `font-size: ${number}px${tail || ''}`,
+            ));
+        });
+        const serializer = new XMLSerializer();
+        return serializer.serializeToString(svg).replace(/^<svg([^>]*)>/u, (_match, attributes: string) => {
+            let resolved = attributes;
+            if (!/viewBox=/u.test(resolved)) resolved += ' viewBox="0 0 612 792"';
+            if (!/xmlns=/u.test(resolved)) resolved += ' xmlns="http://www.w3.org/2000/svg"';
+            if (!/xmlns:xlink=/u.test(resolved)) resolved += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
+            if (!/preserveAspectRatio=/u.test(resolved)) resolved += ' preserveAspectRatio="xMidYMid meet"';
+            return `<svg${resolved}>`;
+        });
     }
 
     /**
@@ -261,12 +398,12 @@ export class CBTPrintUtil {
      * Generates a multipage print container and waits for images to load before printing.
      */
     private static async generateMultipagePrintContainer(svgStrings: string[],
-        forceUnits: CBTForceUnit[],
+        members: readonly CBTForceMember[],
         printOptions: PrintAllOptions,
         triggerPrint: boolean = true): Promise<void> {
         const pages = svgStrings.map(svg => `<div class="svg-container">${svg}</div>`);
         if (printOptions.printRosterSummary) {
-            pages.push(this.createRosterSummaryPage(forceUnits, printOptions.printPilotData));
+            pages.push(this.createRosterSummaryPage(members, printOptions.printPilotData));
         }
         if (pages.length > 0) {
             pages[pages.length - 1] = pages[pages.length - 1].replace('svg-container', 'svg-container last-svg');
@@ -278,7 +415,7 @@ export class CBTPrintUtil {
         overlay.innerHTML = bodyContent;
 
         const style = document.createElement('style');
-        style.textContent = this.getPrintStyles(printOptions.printMargin);
+        style.textContent = this.getPrintStyles(printOptions.printMargin, printOptions.paperSize);
         overlay.appendChild(style);
         document.body.appendChild(overlay);
         document.body.classList.add('multipage-container-active');
@@ -380,8 +517,8 @@ export class CBTPrintUtil {
         }
     }
 
-    private static createRosterSummaryPage(forceUnits: CBTForceUnit[], printPilotData: boolean): string {
-        const force = forceUnits[0]?.force;
+    private static createRosterSummaryPage(members: readonly CBTForceMember[], printPilotData: boolean): string {
+        const force = members[0]?.force;
         if (!force) {
             return `
                 <div class="svg-container cbt-roster-summary">
@@ -394,14 +531,16 @@ export class CBTPrintUtil {
             `;
         }
 
-        const groups: CBTForceUnit[][] = [];
-        const seenGroupIds = new Set<string>();
-        for (const forceUnit of forceUnits) {
-            const group = forceUnit.getGroup();
-            if (!group || seenGroupIds.has(group.id)) continue;
-            seenGroupIds.add(group.id);
-            groups.push(group.units() as CBTForceUnit[]);
-        }
+        const roster = force.queryCanonicalRoster();
+        if (roster.kind !== 'available') throw new Error(roster.message);
+        const memberById = new Map(members.map(member => [String(member.id), member] as const));
+        const groups = roster.snapshot.structural.groups.map(group => Object.freeze({
+            group,
+            members: Object.freeze(group.members.flatMap(row => {
+                const member = memberById.get(String(row.instanceId));
+                return member ? [member] : [];
+            })),
+        })).filter(group => group.members.length > 0);
 
         const headerParts: string[] = [];
         const faction = force.faction();
@@ -422,29 +561,27 @@ export class CBTPrintUtil {
         let totalFinalBv = 0;
         const groupSections: string[] = [];
 
-        for (const groupUnits of groups) {
-            const group = groupUnits[0]?.getGroup();
-            if (!group) continue;
+        for (const { group, members: groupMembers } of groups) {
 
             const bodyRows: string[] = [];
 
-            for (const forceUnit of groupUnits) {
-                const unit = forceUnit.getUnit();
+            for (const member of groupMembers) {
+                const unit = member.summary;
                 const baseBv = unit.bv ?? 0;
-                const finalBv = this.getPrintableBv(forceUnit, printPilotData);
+                const finalBv = this.getPrintableBv(member, printPilotData);
 
                 totalBaseBv += baseBv;
                 totalFinalBv += finalBv;
 
-                bodyRows.push(this.createRosterTableRow(forceUnit, printPilotData));
+                bodyRows.push(this.createRosterTableRow(member, printPilotData));
             }
 
             groupSections.push(`
                 <section class="cbt-roster-group-section">
                     <div class="cbt-roster-group-header">
-                        <span class="cbt-roster-group-name">${this.escapeHtml(group.groupDisplayName())}</span>
-                        <span class="cbt-roster-group-bv">BV: ${groupUnits
-                            .reduce((total, forceUnit) => total + this.getPrintableBv(forceUnit, printPilotData), 0)
+                        <span class="cbt-roster-group-name">${this.escapeHtml(group.name?.trim() || group.groupId)}</span>
+                        <span class="cbt-roster-group-bv">BV: ${groupMembers
+                            .reduce((total, member) => total + this.getPrintableBv(member, printPilotData), 0)
                             .toLocaleString()}</span>
                     </div>
                     <table class="cbt-roster-table">
@@ -491,9 +628,10 @@ export class CBTPrintUtil {
         `;
     }
 
-    private static createRosterTableRow(forceUnit: CBTForceUnit, printPilotData: boolean): string {
-        const unit = forceUnit.getUnit();
-        const alias = printPilotData ? forceUnit.alias() : undefined;
+    private static createRosterTableRow(member: CBTForceMember, printPilotData: boolean): string {
+        const unit = member.summary;
+        const primaryCrew = member.force.getUnitCrewAssignment(member.id)?.positions[0];
+        const alias = printPilotData ? primaryCrew?.name : undefined;
         const model = unit.model || '';
         const chassisLine = alias ? `${unit.chassis} (${alias})` : unit.chassis;
 
@@ -511,8 +649,8 @@ export class CBTPrintUtil {
                 <td class="col-type">${this.escapeHtml(typeSubtype)}</td>
                 <td class="col-role">${this.escapeHtml(unit.role && unit.role !== 'None' ? unit.role : '')}</td>
                 <td class="col-base-bv is-numeric">${this.formatNumber(unit.bv)}</td>
-                <td class="col-gp is-numeric">${printPilotData ? `${forceUnit.gunnerySkill()}/${forceUnit.pilotingSkill()}` : ''}</td>
-                <td class="col-bv is-numeric is-bold">${this.formatNumber(this.getPrintableBv(forceUnit, printPilotData))}</td>
+                <td class="col-gp is-numeric">${printPilotData && primaryCrew ? `${primaryCrew.gunnery}/${primaryCrew.piloting}` : ''}</td>
+                <td class="col-bv is-numeric is-bold">${this.formatNumber(this.getPrintableBv(member, printPilotData))}</td>
                 <td class="col-tons is-numeric">${this.formatNumber(unit.tons)}</td>
                 <td class="col-year">${this.createYearValue(unit)}</td>
                 <td class="col-rules">${this.escapeHtml(this.formatTechBase(unit.techBase, unit.mixed))}<br/>${this.escapeHtml(unit.level)}</td>
@@ -524,7 +662,7 @@ export class CBTPrintUtil {
         `;
     }
 
-    private static createYearValue(unit: Unit): string {
+    private static createYearValue(unit: UnitSummary): string {
         const year = unit.year ? this.escapeHtml(String(unit.year)) : '—';
         if (!unit._era?.img) {
             return year;
@@ -542,11 +680,12 @@ export class CBTPrintUtil {
         return value.toLocaleString();
     }
 
-    private static getPrintableBv(forceUnit: CBTForceUnit, printPilotData: boolean): number {
-        return printPilotData ? forceUnit.getBv() : forceUnit.getBaseBv();
+    private static getPrintableBv(member: CBTForceMember, printPilotData: boolean): number {
+        if (printPilotData) return member.adjustedBattleValue() ?? member.summary.bv;
+        return member.currentBaseBattleValue() ?? member.pristineBattleValue() ?? member.summary.bv;
     }
 
-    private static formatMovement(unit: Unit): string {
+    private static formatMovement(unit: UnitSummary): string {
         const parts: string[] = [];
         if (unit.walk) {
             let ground = `${unit.walk}/${unit.run}`;
@@ -564,7 +703,7 @@ export class CBTPrintUtil {
         return parts.join('/');
     }
 
-    private static formatTechBase(techBase: Unit['techBase'], mixed: boolean): string {
+    private static formatTechBase(techBase: UnitSummary['techBase'], mixed: boolean): string {
         if (!techBase) return '';
         const tech = techBase === 'Inner Sphere' ? 'IS' : 'Clan';
         if (mixed) {
@@ -574,11 +713,11 @@ export class CBTPrintUtil {
         }
     }
 
-    private static formatArmorStructure(unit: Unit): string {
+    private static formatArmorStructure(unit: UnitSummary): string {
         return `${this.formatNumber(unit.armor) || '0'}/${this.formatNumber(unit.internal) || '0'}`;
     }
 
-    private static formatEquipmentSummary(unit: Unit): string {
+    private static formatEquipmentSummary(unit: UnitSummary): string {
         const equipment = this.getExpandedComponents(unit.comp).map(comp => this.formatComponentText(comp));
         const ammo = this.getAmmoComponents(unit.comp).map(comp => {
             const text = this.formatComponentText(comp);
@@ -615,9 +754,9 @@ export class CBTPrintUtil {
         for (const comp of components) {
             if (comp.t === 'HIDDEN' || comp.t === 'S' || comp.t === 'X') continue;
             if (comp.t === 'C') {
-                if (comp.eq?.hasAnyFlag(['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK'])) continue;
-                if (comp.eq?.hasAnyFlag(['F_CASE', 'F_CASE_II'])) continue;
-                if (comp.eq?.hasAnyFlag(['F_JUMP_JET'])) continue;
+                if (isHeatSinkEquipment(comp.eq)) continue;
+                if (isCaseEquipment(comp.eq)) continue;
+                if (isJumpJetEquipment(comp.eq)) continue;
             }
 
             const key = comp.n || '';
@@ -664,18 +803,16 @@ export class CBTPrintUtil {
         return `${quantity}×${comp.n}${secondary}`;
     }
 
-    private static getCaseLabel(unit: Unit, loc: string): string {
+    private static getCaseLabel(unit: UnitSummary, loc: string): string {
         return this.getCaseByLocation(unit).get(this.normalizeLoc(loc)) ?? '';
     }
 
-    private static getCaseByLocation(unit: Unit): Map<string, string> {
+    private static getCaseByLocation(unit: UnitSummary): Map<string, string> {
         const result = new Map<string, string>();
         for (const comp of unit.comp ?? []) {
             if (!comp.eq || !comp.l) continue;
 
-            let label: string | undefined;
-            if (comp.eq.hasFlag('F_CASE_II')) label = '[CASE II]';
-            else if (comp.eq.hasFlag('F_CASE') || comp.eq.hasFlag('F_CASE_P')) label = '[CASE]';
+            const label = caseRecordSheetLabel(comp.eq) ?? undefined;
 
             if (label) {
                 result.set(this.normalizeLoc(comp.l), label);
@@ -703,7 +840,10 @@ export class CBTPrintUtil {
             .replaceAll("'", '&#39;');
     }
 
-    private static getPrintStyles(printMargin: PrintAllOptions['printMargin']): string {
+    private static getPrintStyles(
+        printMargin: PrintAllOptions['printMargin'],
+        paperSize: PrintAllOptions['paperSize'],
+    ): string {
         return `
             #multipage-container .cbt-roster-summary {
                 position: relative;
@@ -957,7 +1097,7 @@ export class CBTPrintUtil {
                 }
 
                 @page {
-                    size: auto;                    
+                    size: ${paperSize === 'a4' ? 'A4' : 'Letter'} portrait;
                     margin: ${printMargin === 'none' ? '0in' : '0.25in'} !important;
                 }
             }

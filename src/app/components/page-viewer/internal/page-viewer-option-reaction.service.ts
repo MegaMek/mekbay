@@ -3,11 +3,13 @@
 // Author: Drake
 
 import { Injectable } from '@angular/core';
+import type { RecordSheetSourceMode } from '../../../services/record-sheet-source.service';
 
 @Injectable()
 export class PageViewerOptionReactionService {
     private previousAllowMultiple: boolean | undefined;
     private previousReadOnly: boolean | undefined;
+    private previousSheetSource: RecordSheetSourceMode | undefined;
 
     shouldRedisplayForAllowMultipleChange(options: {
         allowMultiple: boolean;
@@ -44,5 +46,20 @@ export class PageViewerOptionReactionService {
         const shouldRedisplay = this.previousReadOnly !== isReadOnly && viewInitialized && !isSwiping;
         this.previousReadOnly = isReadOnly;
         return shouldRedisplay;
+    }
+
+    shouldRedisplayForSheetSourceChange(options: {
+        source: RecordSheetSourceMode;
+        viewInitialized: boolean;
+        isSwiping: boolean;
+    }): boolean {
+        const { source, viewInitialized, isSwiping } = options;
+        if (this.previousSheetSource === undefined) {
+            this.previousSheetSource = source;
+            return false;
+        }
+        if (source === this.previousSheetSource) return false;
+        this.previousSheetSource = source;
+        return viewInitialized && !isSwiping;
     }
 }

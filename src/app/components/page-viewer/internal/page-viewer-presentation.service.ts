@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import { resolveCenterPanelTables } from '../../../utils/record-sheet-center-panel.util';
+import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
+import type { PageViewerMember } from './types';
 
 @Injectable()
 export class PageViewerPresentationService {
     private readonly centerPanelTablesBySvg = new WeakMap<SVGSVGElement, readonly SVGGraphicsElement[]>();
+    private readonly sheetSource = inject(PageViewerSheetSourceService);
 
     updateSelectedPageHighlight(wrappers: readonly HTMLDivElement[], currentUnitId: string | null): void {
         wrappers.forEach((wrapper) => {
@@ -17,9 +19,9 @@ export class PageViewerPresentationService {
         });
     }
 
-    setDisplayedFluffImageVisibility(displayedUnits: readonly CBTForceUnit[], showFluff: boolean): void {
+    setDisplayedFluffImageVisibility(displayedUnits: readonly PageViewerMember[], showFluff: boolean): void {
         displayedUnits.forEach((unit) => {
-            const svg = unit.svg();
+            const svg = this.sheetSource.svg(unit);
             if (!svg) {
                 return;
             }

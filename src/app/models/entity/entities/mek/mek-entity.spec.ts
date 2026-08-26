@@ -398,7 +398,7 @@ describe('MekEntity jumpMP', () => {
     expect(entity.jumpMP()).toBe(8);
     expect(entity.installedJumpJetMP()).toBe(6);
 
-    addTestEquipmentWithFlags(entity, 'S_SHIELD_MEDIUM', { location: 'CT' });
+    addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_MEDIUM'], { location: 'CT' });
     expect(entity.jumpMP()).toBe(7);
     expect(entity.installedJumpJetMP()).toBe(6);
 
@@ -406,7 +406,7 @@ describe('MekEntity jumpMP', () => {
     expect(entity.jumpMP()).toBe(6);
     expect(entity.installedJumpJetMP()).toBe(6);
 
-    addTestEquipmentWithFlags(entity, 'S_SHIELD_LARGE', { location: 'CT' });
+    addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_LARGE'], { location: 'CT' });
     expect(entity.jumpMP()).toBe(0);
     expect(entity.installedJumpJetMP()).toBe(6);
   });
@@ -420,7 +420,7 @@ describe('MekEntity jumpMP', () => {
     expect(entity.installedUmuMP()).toBe(4);
     expect(entity.umuMP()).toBe(4);
 
-    addTestEquipmentWithFlags(entity, 'S_SHIELD_LARGE', { location: 'CT' });
+    addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_LARGE'], { location: 'CT' });
     expect(entity.installedUmuMP()).toBe(4);
     expect(entity.umuMP()).toBe(0);
   });
@@ -492,16 +492,16 @@ describe('MekEntity jumpMP', () => {
   it('applies static shield, modular armor, and chain drape walk penalties', () => {
     const entity = new BipedMekEntity();
     entity.originalWalkMP.set(8);
-    addTestEquipmentWithFlags(entity, 'S_SHIELD_MEDIUM', { location: 'CT' });
-    addTestEquipmentWithFlags(entity, 'S_SHIELD_LARGE', { location: 'CT' });
+    addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_MEDIUM'], { location: 'CT' });
+    addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_LARGE'], { location: 'CT' });
     addTestEquipmentWithFlags(entity, 'F_MODULAR_ARMOR', { location: 'CT' });
     addTestEquipmentWithFlags(entity, 'F_MODULAR_ARMOR', { location: 'CT' });
     addTestEquipmentWithFlags(entity, 'F_CHAIN_DRAPE', { location: 'CT' });
 
     expect(entity.walkMP()).toBe(4);
     expect(entity.runMP()).toBe(6);
-    expect(entity.maxWalkMP()).toBe(5);
-    expect(entity.maxRunMP()).toBe(8);
+    expect(entity.maxWalkMP()).toBe(7);
+    expect(entity.maxRunMP()).toBe(11);
   });
 
   it('uses TSM and movement boosters for maximum movement', () => {
@@ -519,7 +519,7 @@ describe('MekEntity jumpMP', () => {
   it('does not apply shield walk penalties to quad Meks', () => {
     const entity = new QuadMekEntity();
     entity.originalWalkMP.set(6);
-    addTestEquipmentWithFlags(entity, 'S_SHIELD_MEDIUM', { location: 'CT' });
+    addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_MEDIUM'], { location: 'CT' });
 
     expect(entity.walkMP()).toBe(6);
   });
@@ -563,12 +563,12 @@ describe('MekEntity weapons', () => {
 
     const attacks = entity.intrinsicWeapons();
     expect(attacks.map(attack => attack.name)).toEqual([
-      'Punch', 'Punch', 'Club', 'Kick', 'Charge', 'Push',
+      'Punch', 'Punch', 'Kick', 'Club (Club/Improvised)', 'Charge', 'Push',
     ]);
     expect(attacks.find(attack => attack.id === 'intrinsic:punch:LA')?.damage).toEqual({
       kind: 'fixed', value: 6,
     });
-    expect(attacks.find(attack => attack.id === 'intrinsic:kick')?.hitModifiers).toEqual([-2]);
+    expect(attacks.find(attack => attack.id === 'intrinsic:kick')?.hitModifierAdjustment).toBe(0);
     expect(attacks.every(attack => attack.source === 'intrinsic')).toBeTrue();
   });
 
@@ -583,13 +583,13 @@ describe('MekEntity weapons', () => {
     addTestEquipmentWithFlags(entity, 'F_TALON', { location: 'LL' });
     addTestEquipmentWithFlags(entity, 'F_TALON', { location: 'RL' });
     addTestEquipmentWithFlags(entity, 'F_JUMP_JET', { location: 'CT' });
-    addTestEquipmentWithFlags(entity, 'S_SHIELD_LARGE', { location: 'CT' });
+    addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_LARGE'], { location: 'CT' });
 
     const attacks = entity.intrinsicWeapons();
     expect(attacks.find(attack => attack.id === 'intrinsic:punch:LA')).toEqual(
       jasmine.objectContaining({
         damage: { kind: 'fixed', value: 3, boostedValue: 6 },
-        hitModifiers: [2],
+        hitModifierAdjustment: 2,
       }),
     );
     expect(attacks.some(attack => attack.id === 'intrinsic:punch:RA')).toBeFalse();

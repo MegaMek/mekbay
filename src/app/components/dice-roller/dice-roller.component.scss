@@ -4,13 +4,19 @@
     }
 
     &:not(.small) .dice-row {
-        gap: 1rem;
+        gap: clamp(4px, 2vw, 12px);
     }
 }
 
 .dice-row {
     display: flex;
     align-items: center;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+}
+
+.dice-row > * {
+    flex: 0 0 auto;
 }
 
 .die {
@@ -34,14 +40,19 @@
 }
 
 .sum.large {
-    font-size: 32px;
+    font-size: clamp(24px, 7vw, 32px);
     font-weight: bold;
     color: #fff;
+    white-space: nowrap;
+
+    .value {
+        font-size: 1.4em;
+    }
 }
 
 .plus-sign {
     .dice-roller-root:not(.small) & {
-        font-size: 24px;
+        font-size: clamp(20px, 6vw, 24px);
         font-weight: bold;
         color: #fff;
     }
@@ -57,43 +68,55 @@
 .dice-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.45);
+    background: rgba(0,0,0,0.7);
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: clamp(.5rem, 2vmin, 1rem);
+    box-sizing: border-box;
+    overflow: auto;
+    overscroll-behavior: contain;
     z-index: 9999;
 
-    &.can-close {
+    &.can-close,
+    &.can-finish {
         cursor: pointer;
     }
 }
 
 .dice-overlay-inner {
     background: transparent;
-    padding: 1rem;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    margin: auto;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1rem;
+    gap: clamp(.5rem, 2vmin, 1rem);
 }
 
 .overlay-result {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     min-height: 1em;
     color: var(--bt-yellow);
-    font-size: 7rem;
+    font-size: clamp(2.5rem, 40vmin, 7rem);
     font-weight: 800;
     line-height: 1;
     text-align: center;
     text-shadow: 0 3px 12px #000;
+    overflow-wrap: anywhere;
 
     &.compact {
         height: 1em;
-        font-size: clamp(2.5rem, 12vw, 4rem);
+        font-size: clamp(2.5rem, 12vmin, 4rem);
         white-space: nowrap;
     }
 
     &.success {
-        color: #7dcc80;
+        color: var(--success);
     }
 
     &.failed {
@@ -107,16 +130,18 @@
 
 .overlay-dice-row {
     display: flex;
-    gap: 1rem;
+    gap: clamp(4px, 2vw, 12px);
     align-items: center;
     justify-content: center;
+    flex-wrap: nowrap;
+    white-space: nowrap;
 }
 
 /* big die in overlay */
 .die.large {
-    width: 64px;
-    height: 64px;
-    font-size: 28px;
+    width: clamp(48px, 15vw, 64px);
+    height: clamp(48px, 15vw, 64px);
+    font-size: clamp(24px, 7vw, 28px);
     border-radius: 6px;
     border-width: 2px;
     background: #fff;
@@ -126,26 +151,12 @@
     justify-content: center;
 }
 
-.operator {
-    .dice-roller-root:not(.small) & {
-        font-size: 24px;
-        font-weight: bold;
-        color: #fff;
-    }
-
-    &.large {
-        font-size: 32px;
-        font-weight: bold;
-        color: #fff;
-    }
-}
-
 .modifier-value {
     font-weight: bold;
     color: #fff;
 
     &.large {
-        font-size: 32px;
+        font-size: clamp(24px, 7vw, 32px);
     }
 }
 
@@ -158,11 +169,6 @@
 
 .overlay-hint {
     min-height: 1em;
-    color: #fff;
+    color: var(--text-color-secondary);
     font-size: .85rem;
-    opacity: .75;
-
-    &.pending {
-        visibility: hidden;
-    }
 }

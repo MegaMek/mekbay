@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, output, signal } from '@angular/core';
-import type { PublicTagInfo } from '../../models/units.model';
+import type { PublicTagInfo } from '../../models/unit-summary.model';
 
 /** Event data for tag selection with type information */
 export interface TagSelectionEvent {

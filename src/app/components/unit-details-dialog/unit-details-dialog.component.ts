@@ -5,20 +5,19 @@
 import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed, type Signal, isSignal, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
 import { ToastService } from '../../services/toast.service';
-import { ForceUnit } from '../../models/force-unit.model';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
 import { shareUrlWithClipboardFallback } from '../../utils/clipboard.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
 import { SwipeDirective, type SwipeEndEvent, type SwipeMoveEvent, type SwipeStartEvent } from '../../directives/swipe.directive';
 import { LongPressDirective } from '../../directives/long-press.directive';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
-import { GameSystem, getUnitServerHost } from '../../models/common.model';
+import { GameSystem } from '../../models/common.model';
 import { UnitDetailsGeneralTabComponent } from './tabs/unit-details-general-tab.component';
 import { UnitDetailsIntelTabComponent } from './tabs/unit-details-intel-tab.component';
 import { UnitDetailsFactionTabComponent } from './tabs/unit-details-factions-tab.component';
@@ -36,10 +35,12 @@ import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialo
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { UnitDetailsFooterComponent } from '../unit-details-footer/unit-details-footer.component';
 import { getNormalizationGunnery, getNormalizationPiloting, type UnitSearchNormalizationMatch } from '../../models/unit-search-result.model';
+import { UnitFluffImageService } from '../../services/catalogs/unit-fluff-image.service';
+import { UnitDetailsSummaryService } from '../../services/unit-details-summary.service';
 
 
 export interface UnitDetailsDialogData {
-    unitList: Unit[] | Signal<ForceUnit[]>;
+    unitList: UnitSummary[] | Signal<ASForceUnit[]>;
     unitIndex: number;
     gunnerySkill?: number;
     pilotingSkill?: number;
@@ -49,13 +50,13 @@ export interface UnitDetailsDialogData {
     selectMode?: boolean;
     changeAction?: UnitDetailsChangeAction;
     showChangeButton?: boolean;
-    /** Override game system (used when the unit list has no ForceUnit context). */
+    /** Override game system when the unit list contains summaries. */
     gameSystem?: GameSystem;
 }
 
 export interface UnitDetailsChangeAction {
-    originalUnit: Unit;
-    apply: (unit: Unit) => boolean | void | Promise<boolean | void>;
+    originalUnit: UnitSummary;
+    apply: (unit: UnitSummary) => boolean | void | Promise<boolean | void>;
     disabled?: () => boolean;
     closeParentOnChange?: boolean;
 }
@@ -73,7 +74,9 @@ export interface UnitDetailsChangeAction {
 })
 export class UnitDetailsDialogComponent {
     gameService = inject(GameService);
-    forceBuilderService = inject(ForceBuilderService);
+    protected readonly forceWorkspace = inject(ForceWorkspaceStateService);
+
+    private readonly forceCommands = inject(ForceWorkspaceCommandsService);
     private dialogRef = inject(DialogRef<void>);
     data = inject(DIALOG_DATA) as UnitDetailsDialogData;
     toastService = inject(ToastService);
@@ -84,9 +87,11 @@ export class UnitDetailsDialogComponent {
     private dialogsService = inject(DialogsService);
     private keyboardShortcutService = inject(KeyboardShortcutService);
     private destroyRef = inject(DestroyRef);
-    add = output<Unit>();
-    select = output<Unit>();
-    change = output<{ oldUnit: ForceUnit; newUnit: Unit }>();
+    private fluffImages = inject(UnitFluffImageService);
+    private detailsSummaries = inject(UnitDetailsSummaryService);
+    add = output<UnitSummary>();
+    select = output<UnitSummary>();
+    change = output<{ oldUnit: ASForceUnit; newUnit: UnitSummary }>();
     indexChange = output<number>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
     sheetTabRef = viewChild<UnitDetailsSheetTabComponent>(UnitDetailsSheetTabComponent);
@@ -109,24 +114,28 @@ export class UnitDetailsDialogComponent {
     });
     activeTab = signal(this.deriveInitialIsAlphaStrike() ? 'Card' : 'General');
 
-    unitList = computed<Unit[] | ForceUnit[]>(() => {
+    unitList = computed<UnitSummary[] | ASForceUnit[]>(() => {
         const input = this.data.unitList;
         return isSignal(input) ? input() : input;
     });
     unitIndex = signal(this.data.unitIndex);
-    prevUnit = computed<Unit | null>(() => {
+    private readonly resolvedActiveUnit = signal<{
+        readonly source: UnitSummary;
+        readonly summary: UnitSummary;
+    } | null>(null);
+    prevUnit = computed<UnitSummary | null>(() => {
         if (!this.hasPrev) return null;
         return this.getUnitAtIndex(this.unitIndex() - 1);
     });
-    nextUnit = computed<Unit | null>(() => {
+    nextUnit = computed<UnitSummary | null>(() => {
         if (!this.hasNext) return null;
         return this.getUnitAtIndex(this.unitIndex() + 1);
     });
-    /** Derives game system from the current unit's force (when ForceUnit), otherwise falls back to global. */
+    /** Derives game system from an Alpha Strike member, otherwise uses the explicit/global context. */
     currentGameSystem = computed<GameSystem>(() => {
         const list = this.unitList();
         const item = list[this.unitIndex()];
-        if (item instanceof ForceUnit) {
+        if (item instanceof ASForceUnit) {
             return item.force.gameSystem;
         }
         return this.data.gameSystem ?? this.gameService.currentGameSystem();
@@ -137,35 +146,25 @@ export class UnitDetailsDialogComponent {
     });
     readonly searchResultContext = computed<UnitSearchNormalizationMatch | null>(() => {
         const currentUnit = this.unitList()[this.unitIndex()];
-        const unitName = currentUnit instanceof ForceUnit ? currentUnit.getUnit().name : currentUnit?.name;
+        const unitName = currentUnit instanceof ASForceUnit ? currentUnit.getSummary().name : currentUnit?.name;
         return unitName ? this.data.searchResultContexts?.get(unitName) ?? null : null;
     });
     gunnerySkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
-        if (currentUnit instanceof CBTForceUnit) {
-            return currentUnit.getCrewMember(0).getSkill('gunnery');
-        } else
-            if (currentUnit instanceof ASForceUnit) {
-                return currentUnit.getPilotSkill();
-            }
+        if (currentUnit instanceof ASForceUnit) return currentUnit.getPilotSkill();
         const context = this.searchResultContext();
         return context ? getNormalizationGunnery(context) : this.data.gunnerySkill;
     });
     pilotingSkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
-        if (currentUnit instanceof CBTForceUnit) {
-            return currentUnit.getCrewMember(0).getSkill('piloting');
-        } else
-            if (currentUnit instanceof ASForceUnit) {
-                return currentUnit.getPilotSkill();
-            }
+        if (currentUnit instanceof ASForceUnit) return currentUnit.getPilotSkill();
         const context = this.searchResultContext();
         return context ? getNormalizationPiloting(context) : this.data.pilotingSkill;
     });
 
     // Swipe animation state
     isSwipeAnimating = signal(false);
-    incomingUnit = signal<Unit | null>(null);
+    incomingUnit = signal<UnitSummary | null>(null);
     readonly incomingSearchResultContext = computed<UnitSearchNormalizationMatch | null>(() => {
         const unitName = this.incomingUnit()?.name;
         return unitName ? this.data.searchResultContexts?.get(unitName) ?? null : null;
@@ -211,18 +210,13 @@ export class UnitDetailsDialogComponent {
 
     // Fluff background image URL - based on header unit (most visible during swipe)
     headerFluffImageUrl = computed(() => {
-        const unit = this.headerUnit();
-        if (!unit?.fluff?.img) return null;
-        if (unit.fluff.img.endsWith('hud.png')) return null; // Ignore HUD images
-        return `${getUnitServerHost(unit)}/images/fluff/${unit.fluff.img}`;
+        return this.fluffImages.resolveUrl(this.headerUnit());
     });
 
-    get unit(): Unit {
-        const currentUnit = this.unitList()[this.unitIndex()]
-        if (currentUnit instanceof ForceUnit) {
-            return currentUnit.getUnit();
-        }
-        return currentUnit;
+    get unit(): UnitSummary {
+        const source = this.getUnitAtIndex(this.unitIndex());
+        const resolved = this.resolvedActiveUnit();
+        return resolved?.source === source ? resolved.summary : source;
     }
 
     /** Reads the game system directly from dialog data (used for field initializers before computeds are available). */
@@ -230,7 +224,7 @@ export class UnitDetailsDialogComponent {
         const input = this.data.unitList;
         const list = isSignal(input) ? input() : input;
         const item = list[this.data.unitIndex];
-        if (item instanceof ForceUnit) {
+        if (item instanceof ASForceUnit) {
             return item.force.gameSystem === GameSystem.ALPHA_STRIKE;
         }
         if (this.data.gameSystem) {
@@ -249,6 +243,18 @@ export class UnitDetailsDialogComponent {
     }
 
     constructor() {
+        effect(onCleanup => {
+            const current = this.unitList()[this.unitIndex()];
+            this.resolvedActiveUnit.set(null);
+            if (current instanceof ASForceUnit) return;
+
+            let active = true;
+            void this.detailsSummaries.resolve(current).then(summary => {
+                if (active) this.resolvedActiveUnit.set({ source: current, summary });
+            });
+            onCleanup(() => { active = false; });
+        });
+
         this.keyboardShortcutService.register({
             id: 'unit-details-dialog',
             dialogRef: this.dialogRef,
@@ -309,10 +315,10 @@ export class UnitDetailsDialogComponent {
         return this.unitList() && this.unitIndex() < this.unitList().length - 1;
     }
 
-    private getUnitAtIndex(index: number): Unit {
+    private getUnitAtIndex(index: number): UnitSummary {
         const item = this.unitList()[index];
-        if (item instanceof ForceUnit) {
-            return item.getUnit();
+        if (item instanceof ASForceUnit) {
+            return item.getSummary();
         }
         return item;
     }
@@ -320,7 +326,6 @@ export class UnitDetailsDialogComponent {
     onPrev() {
         if (this.hasPrev && !this.isSwipeAnimating() && !this.isSwiping()) {
             // Emulate RIGHT swipe: current goes right, prev comes from left
-            // this.navigateToUnit(this.unitIndex() - 1, 'right');
             this.floatingOverlayService.hide();
             this.unitIndex.update(v => v - 1);
         }
@@ -329,59 +334,13 @@ export class UnitDetailsDialogComponent {
     onNext() {
         if (this.hasNext && !this.isSwipeAnimating() && !this.isSwiping()) {
             // Emulate LEFT swipe: current goes left, next comes from right
-            // this.navigateToUnit(this.unitIndex() + 1, 'left');
             this.floatingOverlayService.hide();
             this.unitIndex.update(v => v + 1);
         }
     }
 
-    /**
-     * Navigate to a new unit with animation.
-     * @param newIndex - The index of the unit to navigate to
-     * @param swipeDirection - 'left' means swiping left (current goes left, incoming from right)
-     *                        'right' means swiping right (current goes right, incoming from left)
-     */
-    private navigateToUnit(newIndex: number, swipeDirection: 'left' | 'right') {
-        this.floatingOverlayService.hide();
-
-        this.prepareIncomingUnit(this.getUnitAtIndex(newIndex));
-        this.isSwiping.set(false);
-
-        // Set initial positions for animation
-        if (swipeDirection === 'left') {
-            // Swiping left: current goes to -100%, incoming starts at 100% and goes to 0
-            this.currentPanelOffset.set('0');
-            this.incomingPanelOffset.set('100%');
-        } else {
-            // Swiping right: current goes to 100%, incoming starts at -100% and goes to 0
-            this.currentPanelOffset.set('0');
-            this.incomingPanelOffset.set('-100%');
-        }
-
-        // Trigger animation on next frame
-        requestAnimationFrame(async () => {
-            this.isSwipeAnimating.set(true);
-
-            if (swipeDirection === 'left') {
-                this.currentPanelOffset.set('-100%');
-                this.incomingPanelOffset.set('0');
-            } else {
-                this.currentPanelOffset.set('100%');
-                this.incomingPanelOffset.set('0');
-            }
-
-            await this.waitForTransitionEnd();
-            // After animation completes, update the actual unit
-            this.commitSwipeToIndex(newIndex);
-            this.isSwipeAnimating.set(false);
-            this.currentPanelOffset.set('0');
-            this.incomingPanelOffset.set('100%');
-            this.incomingUnit.set(null);
-        });
-    }
-
     async onSelect() {
-        const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
+        const selectedUnit = this.unit;
         this.select.emit(selectedUnit);
         this.onClose();
         return;
@@ -403,7 +362,7 @@ export class UnitDetailsDialogComponent {
      */
     private async resolveGameSystemForFirstUnit(): Promise<GameSystem | undefined | null> {
         // Only relevant when no force exists yet (first unit creates the force)
-        if (this.forceBuilderService.smartCurrentForce()) return undefined;
+        if (this.forceWorkspace.smartCurrentForce()) return undefined;
 
         const tab = this.activeTab();
         const gameSystem = this.gameService.currentGameSystem();
@@ -432,20 +391,18 @@ export class UnitDetailsDialogComponent {
         const gameSystemOverride = await this.resolveGameSystemForFirstUnit();
         if (gameSystemOverride === null) return; // user cancelled
 
-        const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
+        const selectedUnit = this.unit;
+        const currentItem = this.unitList()[this.unitIndex()];
         let gunnery;
         let piloting;
-        if (this.unit instanceof CBTForceUnit) {
-            gunnery = this.unit.getCrewMember(0).getSkill('gunnery');
-            piloting = this.unit.getCrewMember(0).getSkill('piloting');
-        } else if (this.unit instanceof ASForceUnit) {
-            gunnery = this.unit.getPilotSkill();
-            piloting = this.unit.getPilotSkill();
+        if (currentItem instanceof ASForceUnit) {
+            gunnery = currentItem.getPilotSkill();
+            piloting = currentItem.getPilotSkill();
         } else {
             gunnery = this.gunnerySkill();
             piloting = this.pilotingSkill();
         }
-        const addedUnit = await this.forceBuilderService.addUnit(
+        const addedUnit = await this.forceCommands.addUnit(
             selectedUnit,
             gunnery,
             piloting,
@@ -484,16 +441,13 @@ export class UnitDetailsDialogComponent {
         const count = await firstValueFrom(ref.closed);
         if (count == null) return;
 
-        const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
+        const selectedUnit = this.unit;
         let gunnery: number | undefined;
         let piloting: number | undefined;
-        const currentUnit = this.unit;
-        if (currentUnit instanceof CBTForceUnit) {
-            gunnery = currentUnit.getCrewMember(0).getSkill('gunnery');
-            piloting = currentUnit.getCrewMember(0).getSkill('piloting');
-        } else if (currentUnit instanceof ASForceUnit) {
-            gunnery = currentUnit.getPilotSkill();
-            piloting = currentUnit.getPilotSkill();
+        const currentItem = this.unitList()[this.unitIndex()];
+        if (currentItem instanceof ASForceUnit) {
+            gunnery = currentItem.getPilotSkill();
+            piloting = currentItem.getPilotSkill();
         } else {
             gunnery = this.gunnerySkill();
             piloting = this.pilotingSkill();
@@ -501,7 +455,7 @@ export class UnitDetailsDialogComponent {
 
         let addedCount = 0;
         for (let i = 0; i < count; i++) {
-            const added = await this.forceBuilderService.addUnit(selectedUnit, gunnery, piloting, undefined, gameSystemOverride);
+            const added = await this.forceCommands.addUnit(selectedUnit, gunnery, piloting, undefined, gameSystemOverride);
             if (added) addedCount++;
         }
         if (addedCount > 0) {
@@ -553,7 +507,7 @@ export class UnitDetailsDialogComponent {
     }
 
     /** Handle variant card click - opens a new dialog for that variant */
-    onVariantClick(event: { variant: Unit; variants: Unit[] }): void {
+    onVariantClick(event: { variant: UnitSummary; variants: UnitSummary[] }): void {
         if (this.data.selectMode) return;
 
         const changeAction = this.wrapParentClose(this.variantChangeAction());
@@ -578,29 +532,29 @@ export class UnitDetailsDialogComponent {
 
     private variantChangeAction(): UnitDetailsChangeAction | undefined {
         const currentItem = this.unitList()[this.unitIndex()];
-        if (currentItem instanceof ForceUnit) {
+        if (currentItem instanceof ASForceUnit) {
             return this.forceUnitChangeAction(currentItem);
         }
 
         return this.data.showChangeButton === true ? undefined : this.data.changeAction;
     }
 
-    private forceUnitChangeAction(originalForceUnit: ForceUnit): UnitDetailsChangeAction {
+    private forceUnitChangeAction(originalForceUnit: ASForceUnit): UnitDetailsChangeAction {
         return {
-            originalUnit: originalForceUnit.getUnit(),
+            originalUnit: originalForceUnit.getSummary(),
             disabled: () => originalForceUnit.readOnly(),
             closeParentOnChange: true,
-            apply: async (selectedUnit: Unit) => {
-                const result = await this.forceBuilderService.replaceUnit(originalForceUnit, selectedUnit);
+            apply: async (selectedUnit: UnitSummary) => {
+                const result = await this.forceCommands.replaceAlphaStrikeUnit(originalForceUnit, selectedUnit);
                 if (!result) return false;
 
                 this.toastService.showToast(
-                    `Changed ${originalForceUnit.getUnit().chassis} ${originalForceUnit.getUnit().model} to ${selectedUnit.chassis} ${selectedUnit.model}.`,
+                    `Changed ${originalForceUnit.getSummary().chassis} ${originalForceUnit.getSummary().model} to ${selectedUnit.chassis} ${selectedUnit.model}.`,
                     'success'
                 );
                 this.change.emit({ oldUnit: originalForceUnit, newUnit: selectedUnit });
 
-                const newIndex = this.unitList().findIndex((unit) => unit instanceof ForceUnit && unit.id === result.id);
+                const newIndex = this.unitList().findIndex((unit) => unit instanceof ASForceUnit && unit.id === result.id);
                 if (newIndex >= 0) {
                     this.unitIndex.set(newIndex);
                 }
@@ -617,7 +571,7 @@ export class UnitDetailsDialogComponent {
         return {
             ...action,
             closeParentOnChange: false,
-            apply: async (unit: Unit) => {
+            apply: async (unit: UnitSummary) => {
                 const result = await action.apply(unit);
                 if (result === false) return false;
 
@@ -729,7 +683,7 @@ export class UnitDetailsDialogComponent {
         if (incoming) {
             const currentIdx = this.unitIndex();
             const incomingIdx = this.unitList().findIndex(u => {
-                const unit = u instanceof ForceUnit ? u.getUnit() : u;
+                const unit = u instanceof ASForceUnit ? u.getSummary() : u;
                 return unit === incoming;
             });
             if (incomingIdx < currentIdx) {
@@ -799,7 +753,7 @@ export class UnitDetailsDialogComponent {
         setTimeout(() => this.resetSwipeState(), 100);
     }
 
-    private prepareIncomingUnit(unit: Unit): void {
+    private prepareIncomingUnit(unit: UnitSummary): void {
         this.incomingPanelScrollTop.set(this.getIncomingPanelInitialScrollTop());
         this.incomingUnit.set(unit);
         requestAnimationFrame(() => this.syncIncomingPanelScrollTop());

@@ -16,6 +16,7 @@ import type { MountedArmor } from '../components';
 import type { SupportVehicle } from '../entities/support-vehicle';
 import { serializeTransporterLines } from '../parsers/transporter-codec';
 import type { EncodeEquipmentOptions } from './equipment-encoder';
+import { isSupportVehicleBarArmor } from '../../construction-equipment.model';
 
 /**
  * Serialises BLK tag-based format.
@@ -30,7 +31,8 @@ import type { EncodeEquipmentOptions } from './equipment-encoder';
  * ```
  */
 export class BuildingBlockWriter {
-  private readonly lines: string[] = [];
+  // MegaMek leaves one blank row between its ignored comment header and BLK data.
+  private readonly lines: string[] = [''];
 
   /**
    * Add a single block with one or more values.
@@ -40,9 +42,12 @@ export class BuildingBlockWriter {
    * @param values One or more values to write between the tags
    */
   addBlock(tag: string, ...values: (string | number)[]): void {
+    assertSafeTag(tag);
     this.lines.push(`<${tag}>`);
     for (const v of values) {
-      this.lines.push(String(v));
+      const value = String(v);
+      assertRepresentableValue(tag, value);
+      this.lines.push(value);
     }
     this.lines.push(`</${tag}>`);
     this.lines.push('');
@@ -75,8 +80,8 @@ export class BuildingBlockWriter {
   /**
    * Serialise all accumulated blocks to a single string.
    */
-  toString(): string {
-    return this.lines.join('\n');
+  toString(trailingNewlines = 2): string {
+    return `${this.lines.join('\n').replace(/\n+$/u, '')}${'\n'.repeat(trailingNewlines)}`;
   }
 }
 
@@ -202,7 +207,7 @@ export function writeSupportVehicleBarRating(
   w: BuildingBlockWriter,
   entity: BaseEntity & SupportVehicle,
 ): void {
-  if (entity.uniformArmor()?.armor.hasFlag('F_SUPPORT_VEE_BAR_ARMOR')) {
+  if (isSupportVehicleBarArmor(entity.uniformArmor()?.armor)) {
     w.addBlock('barrating', entity.barRating());
   }
 }
@@ -328,10 +333,49 @@ export function writeFluffBlocks(w: BuildingBlockWriter, fluff: EntityFluff): vo
   if (fluff.height)        w.addBlock('height', fluff.height);
 }
 
-/** Write source and publication blocks. */
+/** Write source, publication, and construction-faction blocks. */
 export function writeSource(w: BuildingBlockWriter, entity: BaseEntity): void {
   if (entity.source().length > 0) w.addBlock('source', entity.source().map(source => source.abbrev).join(','));
   if (entity.published().length > 0) w.addBlock('published', entity.published().map(source => source.abbrev).join(','));
+  if (entity.faction() !== 'None') w.addBlock('faction', entity.faction());
+}
+
+export class UnrepresentableBlkValueError extends Error {
+  readonly code = 'UNREPRESENTABLE_BLK_VALUE' as const;
+
+  constructor(readonly tag: string, message: string) {
+    super(message);
+    this.name = 'UnrepresentableBlkValueError';
+  }
+}
+
+function assertSafeTag(tag: string): void {
+  if (!tag || tag.length > 256 || /[<>\r\n\u0000-\u001f\u007f]/u.test(tag)) {
+    throw new UnrepresentableBlkValueError(tag, `Invalid BLK tag: ${JSON.stringify(tag)}`);
+  }
+}
+
+function assertRepresentableValue(tag: string, value: string): void {
+  if (value.includes('\u0000')) {
+    throw new UnrepresentableBlkValueError(tag, `BLK <${tag}> contains a NUL byte`);
+  }
+  const closing = `</${tag}>`.toLowerCase();
+  if (value.split(/\r\n|\n|\r/u).some(line => line.trim().toLowerCase() === closing)) {
+    throw new UnrepresentableBlkValueError(
+      tag,
+      `BLK <${tag}> cannot contain its own closing tag as a value line`,
+    );
+  }
+}
+
+/**
+ * Write embedded presentation bytes at the canonical end of a BLK document.
+ * These are import/export facts only; catalog image resolution never derives
+ * or persists them into a unit summary.
+ */
+export function writeEmbeddedImages(w: BuildingBlockWriter, entity: BaseEntity): void {
+  if (entity.iconEncoded()) w.addBlock('icon', entity.iconEncoded());
+  if (entity.fluffImageEncoded()) w.addBlock('fluffimage', entity.fluffImageEncoded());
 }
 
 /**

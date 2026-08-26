@@ -95,6 +95,7 @@ describe('Alpha Strike entity specials', () => {
 
     expect(specials).toContain('BOMB2');
   });
+
 });
 
 function weapon(): WeaponEquipment {

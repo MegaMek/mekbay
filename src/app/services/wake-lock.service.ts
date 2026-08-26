@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { DestroyRef, Injectable, effect, inject } from '@angular/core';
-import { ForceBuilderService } from './force-builder.service';
+import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { LoggerService } from './logger.service';
 
 interface WakeLockSentinelLike {
@@ -24,7 +24,7 @@ interface WakeLockApiLike {
  */
 @Injectable({ providedIn: 'root' })
 export class WakeLockService {
-    private forceBuilderService = inject(ForceBuilderService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private logger = inject(LoggerService);
     private destroyRef = inject(DestroyRef);
 
@@ -52,7 +52,7 @@ export class WakeLockService {
         }
 
         effect(() => {
-            this.scheduleSync(this.forceBuilderService.hasForces());
+            this.scheduleSync(this.forceWorkspace.hasForces());
         });
     }
 

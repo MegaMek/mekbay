@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ASUnitTypeCode, Unit } from '../../models/units.model';
+import type { ASUnitTypeCode, UnitSummary } from '../../models/unit-summary.model';
 
 /*
  *
@@ -110,17 +110,17 @@ export interface GroupSizeResult {
     foreignDisplayName?: string;
     displayName?: string;
     children?: GroupSizeResult[];
-    units?: Unit[];
+    units?: UnitSummary[];
     unitAllocations?: GroupUnitAllocation[];
-    formationMatchingIgnoredUnits?: Unit[];
-    leftoverUnits?: Unit[];
+    formationMatchingIgnoredUnits?: UnitSummary[];
+    leftoverUnits?: UnitSummary[];
     leftoverUnitAllocations?: GroupUnitAllocation[];
     tag?: OrgGroupTag;
     priority?: number;
 }
 
 export interface GroupUnitAllocation {
-    readonly unit: Unit;
+    readonly unit: UnitSummary;
     readonly squads?: number;
 }
 
@@ -191,7 +191,7 @@ export type BuiltInUnitClassKey =
     | 'CV'
     | 'CV:omni'
     | 'PM';
-export type DerivedUnitClassKey = Lowercase<Unit['type']>;
+export type DerivedUnitClassKey = Lowercase<UnitSummary['type']>;
 export type UnitClassKey = BuiltInUnitClassKey | DerivedUnitClassKey;
 export type CIMoveClass =
     | 'foot'
@@ -287,7 +287,7 @@ export interface UnitFactScalars {
  * Unit callbacks.
  */
 export interface UnitFacts {
-    readonly unit: Unit;
+    readonly unit: UnitSummary;
     readonly factId: number;
     readonly classKey: UnitClassKey;
     readonly tags: ReadonlySet<UnitFactTag>;

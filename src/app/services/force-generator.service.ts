@@ -27,7 +27,7 @@ import { MAX_UNITS as FORCE_MAX_UNITS } from '../models/force.model';
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY, MULFACTION_NONE } from '../models/mulfactions.model';
 import type { ForceGeneratorOptions } from '../models/options.model';
 import { getUnitsAverageTechBase } from '../models/tech.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { resolveOrgDefinition } from '../utils/org/org-registry.util';
 import { resolveFromGroups, resolveFromUnits } from '../utils/org/org-solver.util';
 import { LanceTypeIdentifierUtil, type FormationGroupLike } from '../utils/lance-type-identifier.util';
@@ -41,7 +41,7 @@ import { collectGroupUnits } from '../utils/org/org-facts.util';
 import type { GroupSizeResult, OrgDefinition, OrgRuleDefinition, OrgType } from '../utils/org/org-types';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { getEffectivePilotingSkill, getFixedPilotingSkill } from '../utils/cbt-common.util';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type CrewMemberDetails } from '../models/crew-member.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type CrewMemberDetails } from '../models/crew.model';
 import { getPositiveDropdownNamesFromFilter, resolveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { adjustPointValueForSkill } from '../utils/pv-skill-adjustment.util';
@@ -89,7 +89,7 @@ interface RulesetPreferenceSource {
 }
 
 interface ForceGenerationCandidateUnit {
-    unit: Unit;
+    unit: UnitSummary;
     requisitionWeight: number;
     salvageWeight: number;
     cost: number;
@@ -163,7 +163,7 @@ interface ForceGenerationPreparedCandidateCache {
 }
 
 interface ForceGenerationBaseCandidateUnit {
-    unit: Unit;
+    unit: UnitSummary;
     cost: number;
     skill?: number;
     gunnery?: number;
@@ -257,7 +257,7 @@ interface ResolvedRulesetContext {
 }
 
 interface ForceGenerationSelectionStep {
-    unit: Unit;
+    unit: UnitSummary;
     locked: boolean;
     rolledSource: ForceGenerationAvailabilitySource;
     source: ForceGenerationAvailabilitySource;
@@ -480,7 +480,7 @@ export interface ForceGenerationTargetFormationPreviewGroup {
 
 export interface ForceGenerationRequest {
     context: ForceGenerationContext;
-    eligibleUnits?: readonly Unit[];
+    eligibleUnits?: readonly UnitSummary[];
     searchSettings?: readonly string[];
     gameSystem: GameSystem;
     budgetRange: ForceGenerationBudgetRange;
@@ -536,7 +536,7 @@ export interface ForceGenerationContext {
 }
 
 export interface GeneratedForceUnit {
-    unit: Unit;
+    unit: UnitSummary;
     cost: number;
     skill?: number;
     gunnery?: number;
@@ -549,7 +549,7 @@ export interface GeneratedForceUnit {
 }
 
 export function normalizeGeneratedClassicCrew(
-    unit: Unit,
+    unit: UnitSummary,
     crew: readonly CrewMemberDetails[] | undefined,
     gunnery: number,
     piloting: number,
@@ -742,8 +742,8 @@ function removeSelectedIndices(
     return nextRemainingIndices;
 }
 
-function createGeneratedUnitQueues(generatedUnits: readonly GeneratedForceUnit[]): Map<Unit, GeneratedForceUnit[]> {
-    const queueByUnit = new Map<Unit, GeneratedForceUnit[]>();
+function createGeneratedUnitQueues(generatedUnits: readonly GeneratedForceUnit[]): Map<UnitSummary, GeneratedForceUnit[]> {
+    const queueByUnit = new Map<UnitSummary, GeneratedForceUnit[]>();
 
     for (const generatedUnit of generatedUnits) {
         const queue = queueByUnit.get(generatedUnit.unit);
@@ -759,8 +759,8 @@ function createGeneratedUnitQueues(generatedUnits: readonly GeneratedForceUnit[]
 }
 
 function takeGeneratedUnitsForUnitList(
-    units: readonly Unit[],
-    queueByUnit: Map<Unit, GeneratedForceUnit[]>,
+    units: readonly UnitSummary[],
+    queueByUnit: Map<UnitSummary, GeneratedForceUnit[]>,
 ): GeneratedForceUnit[] | null {
     const result: GeneratedForceUnit[] = [];
 
@@ -777,7 +777,7 @@ function takeGeneratedUnitsForUnitList(
     return result;
 }
 
-function countQueuedGeneratedUnits(queueByUnit: ReadonlyMap<Unit, readonly GeneratedForceUnit[]>): number {
+function countQueuedGeneratedUnits(queueByUnit: ReadonlyMap<UnitSummary, readonly GeneratedForceUnit[]>): number {
     let count = 0;
     for (const queue of queueByUnit.values()) {
         count += queue.length;
@@ -895,7 +895,7 @@ function createPreviewFormationUnit(
 ): FormationUnitLike {
     return {
         force: forceContext,
-        getUnit: () => generatedUnit.unit,
+        getSummary: () => generatedUnit.unit,
         pilotSkill: () => generatedUnit.skill ?? generatedUnit.gunnery ?? 4,
         gunnerySkill: () => generatedUnit.gunnery ?? generatedUnit.skill ?? 4,
     };
@@ -1415,7 +1415,7 @@ function pickRandomIntegerInRange(range: ForceGenerationSkillRange): number {
 
 export function getForceGenerationClassicSkillPairs(
     settings: ForceGenerationSkillSettings,
-    unit?: Unit,
+    unit?: UnitSummary,
 ): ForceGenerationClassicSkillPair[] {
     const pairs: ForceGenerationClassicSkillPair[] = [];
     const pairKeys = new Set<string>();
@@ -1536,7 +1536,7 @@ function resolveUnitCountRangeWithEditedMax(
     }, 'max');
 }
 
-function getBudgetMetric(unit: Unit, gameSystem: GameSystem, gunnery: number, piloting: number): number {
+function getBudgetMetric(unit: UnitSummary, gameSystem: GameSystem, gunnery: number, piloting: number): number {
     if (gameSystem === GameSystem.ALPHA_STRIKE) {
         return Math.max(0, adjustPointValueForSkill(unit.as.PV, gunnery));
     }
@@ -1756,7 +1756,7 @@ function normalizeSelectionKey(value: string | undefined): string {
     return value?.trim().toLowerCase() || '';
 }
 
-function buildDuplicateChassisKey(unit: Unit): string {
+function buildDuplicateChassisKey(unit: UnitSummary): string {
     const chassisKey = normalizeSelectionKey(unit.chassis);
     if (chassisKey.length === 0) {
         return '';
@@ -1765,11 +1765,11 @@ function buildDuplicateChassisKey(unit: Unit): string {
     return normalizeSelectionKey(getUnitVariantGroupKey(unit));
 }
 
-function buildTaggedQuantityUnitKey(unit: Unit): string {
+function buildTaggedQuantityUnitKey(unit: UnitSummary): string {
     return `unit:${normalizeSelectionKey(unit.name)}`;
 }
 
-function buildTaggedQuantityChassisKey(unit: Unit): string {
+function buildTaggedQuantityChassisKey(unit: UnitSummary): string {
     const chassisKey = normalizeSelectionKey(TagsService.getChassisTagKey(unit));
     return chassisKey.length > 0 ? `chassis:${chassisKey}` : buildTaggedQuantityUnitKey(unit);
 }
@@ -1782,7 +1782,7 @@ function serializeForceGenerationCacheIds(ids: readonly number[]): string {
     return [...new Set(ids)].sort((left, right) => left - right).join(',');
 }
 
-function buildForceGenerationUnitListSignature(units: readonly Pick<Unit, 'name'>[]): string {
+function buildForceGenerationUnitListSignature(units: readonly Pick<UnitSummary, 'name'>[]): string {
     return [units.length, ...units.map((unit) => unit.name)].join('\u001f');
 }
 
@@ -1846,7 +1846,7 @@ function getForceGeneratorNow(): number {
     return Date.now();
 }
 
-function formatForceGenerationUnitLabel(unit: Pick<Unit, 'chassis' | 'model'>): string {
+function formatForceGenerationUnitLabel(unit: Pick<UnitSummary, 'chassis' | 'model'>): string {
     const model = unit.model.trim();
     return model.length > 0 ? `${unit.chassis} ${model}` : unit.chassis;
 }
@@ -1864,7 +1864,7 @@ function formatForceGenerationSkillSummary(
         : `G/P ${step.gunnery}/${step.piloting}`;
 }
 
-function toMegaMekUnitType(unit: Unit): string {
+function toMegaMekUnitType(unit: UnitSummary): string {
     switch (unit.type) {
         case 'Mek':
             return 'Mek';
@@ -1908,7 +1908,7 @@ function toMegaMekUnitType(unit: Unit): string {
     }
 }
 
-function toMegaMekWeightClass(unit: Unit): string | undefined {
+function toMegaMekWeightClass(unit: UnitSummary): string | undefined {
     switch (unit.weightClass) {
         case 'Ultra Light/PA(L)/Exoskeleton':
             return 'UL';
@@ -1927,7 +1927,7 @@ function toMegaMekWeightClass(unit: Unit): string | undefined {
     }
 }
 
-function toMegaMekMotive(unit: Unit): string | undefined {
+function toMegaMekMotive(unit: UnitSummary): string | undefined {
     switch (unit.moveType) {
         case 'VTOL':
             return 'vtol';
@@ -2049,12 +2049,12 @@ export class ForceGeneratorService implements OnDestroy {
         return resolveUnitCountRangeWithEditedMax(range, editedMax);
     }
 
-    public getBudgetMetric(unit: Unit, gameSystem: GameSystem, gunnery: number, piloting: number): number {
+    public getBudgetMetric(unit: UnitSummary, gameSystem: GameSystem, gunnery: number, piloting: number): number {
         return getBudgetMetric(unit, gameSystem, gunnery, piloting);
     }
 
     public resolveGenerationContext(
-        eligibleUnits: readonly Unit[],
+        eligibleUnits: readonly UnitSummary[],
         options: ForceGenerationContextOptions = {},
     ): ForceGenerationContext {
         const selectedEras = this.resolveSelectedEras();
@@ -3352,7 +3352,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private collectPositiveAvailabilityPairs(
-        eligibleUnits: readonly Unit[],
+        eligibleUnits: readonly UnitSummary[],
         eraIds: readonly number[],
         factionIds: readonly number[],
         excludedEraIds: ReadonlySet<number> = new Set<number>(),
@@ -3414,7 +3414,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private collectPositiveMegaMekAvailabilityPairs(
-        eligibleUnits: readonly Unit[],
+        eligibleUnits: readonly UnitSummary[],
         scopedEraIds: ReadonlySet<number>,
         scopedFactionIds: ReadonlySet<number>,
         excludedEraIds: ReadonlySet<number>,
@@ -3598,7 +3598,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private createCandidateUnit(
-        unit: Unit,
+        unit: UnitSummary,
         context: ForceGenerationContext,
         options: ForceGenerationRequest,
         lockedUnit?: GeneratedForceUnit,
@@ -3631,7 +3631,7 @@ export class ForceGeneratorService implements OnDestroy {
     private resolveLockedUnitVariant(
         lockedUnit: GeneratedForceUnit,
         candidatePool: readonly ForceGenerationCandidateUnit[],
-    ): Unit {
+    ): UnitSummary {
         const variantGroupKey = lockedUnit.variantGroupKey;
         if (!variantGroupKey) {
             return lockedUnit.unit;
@@ -3650,7 +3650,7 @@ export class ForceGeneratorService implements OnDestroy {
 
     private resolveLockedUnitForSelection(
         lockedUnit: GeneratedForceUnit,
-        unit: Unit,
+        unit: UnitSummary,
         options: ForceGenerationRequest,
     ): GeneratedForceUnit {
         const skill = options.gameSystem === GameSystem.ALPHA_STRIKE
@@ -3690,7 +3690,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private createBaseCandidateUnit(
-        unit: Unit,
+        unit: UnitSummary,
         options: ForceGenerationRequest,
     ): ForceGenerationBaseCandidateUnit {
         const skillSettings = resolveForceGenerationSkillSettings(options);
@@ -3741,7 +3741,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private resolveTaggedQuantityCaps(
-        eligibleUnits: readonly Unit[],
+        eligibleUnits: readonly UnitSummary[],
         maxUnitCount: number,
         useUnitTagsAsChassisTags = false,
     ): ForceGenerationTaggedQuantityCaps {
@@ -3776,7 +3776,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private resolveChassisSharedTaggedQuantityCaps(
-        eligibleUnits: readonly Unit[],
+        eligibleUnits: readonly UnitSummary[],
         selectedTagKeys: ReadonlySet<string>,
         maxUnitCount: number,
     ): ForceGenerationTaggedQuantityCaps {
@@ -3801,7 +3801,7 @@ export class ForceGeneratorService implements OnDestroy {
         };
     }
 
-    private resolvePositiveTaggedQuantityFilterKeys(eligibleUnits: readonly Unit[]): Set<string> {
+    private resolvePositiveTaggedQuantityFilterKeys(eligibleUnits: readonly UnitSummary[]): Set<string> {
         const filterState = this.filtersService.effectiveFilterState()['_tags'];
         if (!filterState?.interactedWith) {
             return new Set<string>();
@@ -3820,7 +3820,7 @@ export class ForceGeneratorService implements OnDestroy {
         );
     }
 
-    private collectTaggedQuantityFilterNames(eligibleUnits: readonly Unit[]): string[] {
+    private collectTaggedQuantityFilterNames(eligibleUnits: readonly UnitSummary[]): string[] {
         const tagNames = new Set<string>();
 
         for (const unit of eligibleUnits) {
@@ -3841,7 +3841,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private getTaggedQuantityCapForUnit(
-        unit: Unit,
+        unit: UnitSummary,
         selectedTagKeys: ReadonlySet<string>,
         maxUnitCount: number,
     ): { key: string; cap: number } | null {
@@ -3902,7 +3902,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private resolveTaggedQuantityCapKeyForUnit(
-        unit: Unit,
+        unit: UnitSummary,
         taggedQuantityCaps: ForceGenerationTaggedQuantityCaps,
     ): string | null {
         const mappedKey = taggedQuantityCaps.keyByUnitName.get(unit.name);
@@ -3932,7 +3932,7 @@ export class ForceGeneratorService implements OnDestroy {
 
     private countTaggedQuantityCapacity<T>(
         items: readonly T[],
-        getUnit: (item: T) => Unit,
+        getUnit: (item: T) => UnitSummary,
         taggedQuantityCaps: ForceGenerationTaggedQuantityCaps,
         lockedCountsByKey: ReadonlyMap<string, number>,
         maxUnitCount: number,
@@ -4467,7 +4467,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private resolveAvailabilityWeightCache(
-        eligibleUnits: readonly Unit[],
+        eligibleUnits: readonly UnitSummary[],
         context: ForceGenerationContext,
     ): ForceGenerationAvailabilityWeightCache {
         const useMegaMekAvailability = this.unitAvailabilitySource.useMegaMekAvailability();
@@ -4491,9 +4491,9 @@ export class ForceGeneratorService implements OnDestroy {
         signature: string,
         useMegaMekAvailability: boolean,
         scopeState: ForceGenerationAvailabilityScopeState,
-        eligibleUnits: readonly Unit[],
+        eligibleUnits: readonly UnitSummary[],
     ): ForceGenerationAvailabilityWeightCache {
-        const unitsByMulId = new Map<number, Unit[]>();
+        const unitsByMulId = new Map<number, UnitSummary[]>();
         for (const unit of eligibleUnits) {
             const unitsForMulId = unitsByMulId.get(unit.id) ?? [];
             unitsForMulId.push(unit);
@@ -4514,7 +4514,7 @@ export class ForceGeneratorService implements OnDestroy {
 
     private buildMegaMekAvailabilityWeightMap(
         scopeState: ForceGenerationAvailabilityScopeState,
-        eligibleUnits: readonly Unit[],
+        eligibleUnits: readonly UnitSummary[],
         exactPairKeysByUnitName?: Map<string, Set<string>>,
         includeUnknownForMissingRecords = true,
     ): Map<string, { requisition: number; salvage: number }> {
@@ -4611,8 +4611,8 @@ export class ForceGeneratorService implements OnDestroy {
 
     private buildMulAvailabilityWeightMap(
         scopeState: ForceGenerationAvailabilityScopeState,
-        eligibleUnits: readonly Unit[],
-        unitsByMulId: ReadonlyMap<number, readonly Unit[]>,
+        eligibleUnits: readonly UnitSummary[],
+        unitsByMulId: ReadonlyMap<number, readonly UnitSummary[]>,
     ): Map<string, { requisition: number; salvage: number }> {
         if (scopeState.pairCount <= 0) {
             const zeroWeightsByUnitName = new Map<string, { requisition: number; salvage: number }>();
@@ -4732,7 +4732,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private getCachedAvailabilityWeights(
-        unit: Unit,
+        unit: UnitSummary,
         context: ForceGenerationContext,
         availabilityWeightCache?: ForceGenerationAvailabilityWeightCache,
     ): { requisition: number; salvage: number } {
@@ -4747,7 +4747,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private resolvePreparedCandidateCache(
-        eligibleUnits: readonly Unit[],
+        eligibleUnits: readonly UnitSummary[],
         context: ForceGenerationContext,
         options: ForceGenerationRequest,
         availabilityWeightCache: ForceGenerationAvailabilityWeightCache,
@@ -4772,7 +4772,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private buildPreparedCandidateCacheSignature(
-        eligibleUnits: readonly Unit[],
+        eligibleUnits: readonly UnitSummary[],
         options: ForceGenerationRequest,
         availabilityWeightCache: ForceGenerationAvailabilityWeightCache,
     ): string {
@@ -4786,7 +4786,7 @@ export class ForceGeneratorService implements OnDestroy {
 
     private buildPreparedCandidateCache(
         signature: string,
-        eligibleUnits: readonly Unit[],
+        eligibleUnits: readonly UnitSummary[],
         context: ForceGenerationContext,
         options: ForceGenerationRequest,
         availabilityWeightCache: ForceGenerationAvailabilityWeightCache,
@@ -4828,7 +4828,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private resolveBaseCandidateCache(
-        eligibleUnits: readonly Unit[],
+        eligibleUnits: readonly UnitSummary[],
         options: ForceGenerationRequest,
     ): ForceGenerationBaseCandidateCache {
         const signature = this.buildBaseCandidateCacheSignature(eligibleUnits, options);
@@ -4841,7 +4841,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private buildBaseCandidateCacheSignature(
-        eligibleUnits: readonly Unit[],
+        eligibleUnits: readonly UnitSummary[],
         options: ForceGenerationRequest,
     ): string {
         return [
@@ -4854,7 +4854,7 @@ export class ForceGeneratorService implements OnDestroy {
 
     private buildBaseCandidateCache(
         signature: string,
-        eligibleUnits: readonly Unit[],
+        eligibleUnits: readonly UnitSummary[],
         options: ForceGenerationRequest,
     ): ForceGenerationBaseCandidateCache {
         const candidates = eligibleUnits.map((unit) => this.createBaseCandidateUnit(unit, options));
@@ -4968,7 +4968,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private getAvailabilityWeights(
-        unit: Unit,
+        unit: UnitSummary,
         context: ForceGenerationContext,
         availabilityScopeState?: ForceGenerationAvailabilityScopeState,
     ): { requisition: number; salvage: number } {
@@ -5020,7 +5020,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private getScopedAvailabilityWeights(
-        unit: Unit,
+        unit: UnitSummary,
         context: ForceGenerationContext,
         availabilityRecord: MegaMekWeightedAvailabilityRecord | undefined,
         useMegaMekAvailability: boolean,
@@ -5151,7 +5151,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private getMissingAvailabilityWeightsForPair(
-        unit: Unit,
+        unit: UnitSummary,
         eraId: number,
         factionId: number,
         useMegaMekAvailability: boolean,
@@ -5170,7 +5170,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private getAvailabilityWeightsForPair(
-        unit: Unit,
+        unit: UnitSummary,
         availabilityRecord: MegaMekWeightedAvailabilityRecord,
         eraId: number,
         factionId: number,
@@ -5197,7 +5197,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private getMulFallbackWeightsForPair(
-        unit: Unit,
+        unit: UnitSummary,
         eraId: number,
         factionId: number,
     ): { requisition: number; salvage: number } | null {
@@ -6394,7 +6394,7 @@ export class ForceGeneratorService implements OnDestroy {
 
         return candidates.map((candidate) => ({
             force: forceContext,
-            getUnit: () => candidate.unit,
+            getSummary: () => candidate.unit,
             pilotSkill: () => candidate.skill ?? candidate.gunnery ?? 4,
             gunnerySkill: () => candidate.gunnery ?? candidate.skill ?? 4,
         }));

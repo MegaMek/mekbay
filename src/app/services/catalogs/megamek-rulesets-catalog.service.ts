@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 
 import type { MegaMekRulesetRecord, MegaMekRulesetsData } from '../../models/megamek/rulesets.model';
-import { DbService } from '../db.service';
 import { CatalogBaseService } from './catalog-base.service';
 
 const CURRENT_RULESET_SCHEMA_VERSION = 2;
@@ -39,18 +38,18 @@ function normalizeRulesetRecord(record: MegaMekRulesetRecord): MegaMekRulesetRec
 
 function normalizeRulesetsData(
     data: MegaMekRulesetsData | MegaMekRulesetRecord[],
-    etag: string,
+    assetHash: string,
 ): MegaMekRulesetsData {
     if (isMegaMekRulesetsData(data)) {
         return {
-            etag,
+            assetHash,
             version: data.version ?? CURRENT_RULESET_SCHEMA_VERSION,
             rulesets: data.rulesets.map((record) => normalizeRulesetRecord(record)),
         };
     }
 
     return {
-        etag,
+        assetHash,
         version: CURRENT_RULESET_SCHEMA_VERSION,
         rulesets: data.map((record) => normalizeRulesetRecord(record)),
     };
@@ -59,15 +58,13 @@ function normalizeRulesetsData(
 function isMegaMekRulesetsData(
     data: MegaMekRulesetsData | MegaMekRulesetRecord[],
 ): data is MegaMekRulesetsData {
-    return 'etag' in data && 'rulesets' in data;
+    return 'assetHash' in data && 'rulesets' in data;
 }
 
 @Injectable({
     providedIn: 'root'
 })
 export class MegaMekRulesetsCatalogService extends CatalogBaseService<MegaMekRulesetsData | MegaMekRulesetRecord[], MegaMekRulesetsData, MegaMekRulesetsData | MegaMekRulesetRecord[]> {
-    private readonly dbService = inject(DbService);
-
     private rulesets: MegaMekRulesetRecord[] = [];
     private rulesetsByFactionKey = new Map<string, MegaMekRulesetRecord>();
 
@@ -76,8 +73,10 @@ export class MegaMekRulesetsCatalogService extends CatalogBaseService<MegaMekRul
     }
 
     protected override get remoteUrl(): string {
-        return 'assets/rulesets.json';
+        return 'online-assets/generated/rulesets.json';
     }
+
+    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
     public getRulesets(): readonly MegaMekRulesetRecord[] {
         return this.rulesets;
@@ -91,16 +90,8 @@ export class MegaMekRulesetsCatalogService extends CatalogBaseService<MegaMekRul
         return this.rulesets.length > 0;
     }
 
-    protected override async loadFromCache(): Promise<MegaMekRulesetsData | MegaMekRulesetRecord[] | undefined> {
-        return await this.dbService.getMegaMekRulesets() ?? undefined;
-    }
-
-    protected override saveToCache(data: MegaMekRulesetsData): Promise<void> {
-        return this.dbService.saveMegaMekRulesets(data);
-    }
-
     protected override hydrate(data: MegaMekRulesetsData | MegaMekRulesetRecord[]): void {
-        const wrappedData = normalizeRulesetsData(data, isMegaMekRulesetsData(data) ? data.etag : '');
+        const wrappedData = normalizeRulesetsData(data, isMegaMekRulesetsData(data) ? data.assetHash : '');
 
         this.rulesets = wrappedData.rulesets;
         this.rulesetsByFactionKey.clear();
@@ -109,14 +100,14 @@ export class MegaMekRulesetsCatalogService extends CatalogBaseService<MegaMekRul
             this.rulesetsByFactionKey.set(ruleset.factionKey, ruleset);
         }
 
-        this.etag = wrappedData.etag;
+        this.transportRevision = wrappedData.assetHash;
     }
 
     protected override normalizeFetchedData(
         data: MegaMekRulesetsData | MegaMekRulesetRecord[],
-        etag: string,
+        assetHash: string,
     ): MegaMekRulesetsData {
-        return normalizeRulesetsData(data, etag);
+        return normalizeRulesetsData(data, assetHash);
     }
 
     protected override getDatasetSize(data: MegaMekRulesetsData | MegaMekRulesetRecord[]): number {

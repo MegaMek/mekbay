@@ -104,6 +104,9 @@
                                         <span class="force-bv">BV: {{ force.bv | number }}</span>
                                     }
                                 }
+                                @if (hangarSort() === 'size') {
+                                    <span class="force-unit-count">{{ getForceUnitCount(force) }} units</span>
+                                }
                                 <span class="timestamp">{{ force.timestamp | formatTimestamp }}</span>
                             </div>
                             <force-tags

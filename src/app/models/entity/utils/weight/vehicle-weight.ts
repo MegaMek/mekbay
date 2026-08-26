@@ -9,17 +9,7 @@ import { calculateHeatNeutralRequirement, calculatePowerAmplifierWeight } from '
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
 import { resolveLabArmorEquipment } from './armor-weight';
 import { ceilToHalfTon } from './weight-rounding';
-
-const SYSTEM_MISC_FLAGS = [
-  'F_ENDO_STEEL', 'F_ENDO_COMPOSITE', 'F_ENDO_STEEL_PROTO', 'F_COMPOSITE',
-  'F_INDUSTRIAL_STRUCTURE', 'F_REINFORCED', 'F_FERRO_FIBROUS',
-  'F_FERRO_LAMELLOR', 'F_LIGHT_FERRO', 'F_HEAVY_FERRO', 'F_REACTIVE',
-  'F_REFLECTIVE', 'F_HARDENED_ARMOR', 'F_PRIMITIVE_ARMOR',
-  'F_COMMERCIAL_ARMOR', 'F_INDUSTRIAL_ARMOR', 'F_HEAVY_INDUSTRIAL_ARMOR',
-  'F_ANTI_PENETRATIVE_ABLATIVE', 'F_HEAT_DISSIPATING', 'F_IMPACT_RESISTANT',
-  'F_BALLISTIC_REINFORCED', 'F_ELECTRIC_DISCHARGE_ARMOR', 'F_HEAT_SINK',
-  'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE',
-] as const;
+import { isConstructionSystemEquipment } from '../../../construction-equipment.model';
 
 export interface VehicleWeightBreakdown {
   readonly engine: number;
@@ -72,7 +62,7 @@ export function calculateVehicleWeightBreakdown(entity: VehicleEntity): VehicleW
       if (mount.location !== 'None') ammo += requireTonnage(entity, mount);
     } else if (equipment instanceof WeaponEquipment) {
       weapons += requireTonnage(entity, mount);
-    } else if (equipment instanceof MiscEquipment && !equipment.hasAnyFlag([...SYSTEM_MISC_FLAGS])) {
+    } else if (equipment instanceof MiscEquipment && !isConstructionSystemEquipment(equipment)) {
       miscellaneous += requireTonnage(entity, mount);
     }
   }

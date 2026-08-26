@@ -25,10 +25,7 @@
               {
                 "glob": "**/*",
                 "input": "public",
-                "output": ".",
-                "ignore": [
-                  "images/units/**"
-                ]
+                "output": "."
               },
               {
                 "glob": "{LICENSE,NOTICE,THIRD-PARTY-NOTICES.md}",
@@ -47,10 +44,7 @@
                 {
                   "glob": "**/*",
                   "input": "public",
-                  "output": ".",
-                  "ignore": [
-                    "images/units/**"
-                  ]
+                  "output": "."
                 },
                 {
                   "glob": "{LICENSE,NOTICE,THIRD-PARTY-NOTICES.md}",
@@ -82,10 +76,7 @@
                 {
                   "glob": "**/*",
                   "input": "public",
-                  "output": ".",
-                  "ignore": [
-                    "images/units/**"
-                  ]
+                  "output": "."
                 },
                 {
                   "glob": "{LICENSE,NOTICE,THIRD-PARTY-NOTICES.md}",
@@ -117,10 +108,7 @@
                 {
                   "glob": "**/*",
                   "input": "public",
-                  "output": ".",
-                  "ignore": [
-                    "images/units/**"
-                  ]
+                  "output": "."
                 },
                 {
                   "glob": "{LICENSE,NOTICE,THIRD-PARTY-NOTICES.md}",
@@ -159,6 +147,9 @@
           "builder": "@angular/build:karma",
           "options": {
             "tsConfig": "tsconfig.spec.json",
+            "styles": [
+              "src/styles.scss"
+            ],
             "assets": [
               {
                 "glob": "**/*",

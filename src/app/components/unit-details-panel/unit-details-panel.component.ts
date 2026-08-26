@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Component, ChangeDetectionStrategy, input, output, signal, computed, inject, DestroyRef, viewChild } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output, signal, computed, inject, DestroyRef, viewChild, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { GameService } from '../../services/game.service';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
 import { ToastService } from '../../services/toast.service';
 import { TaggingService } from '../../services/tagging.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
-import { getUnitServerHost } from '../../models/common.model';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { BasePanelComponent } from '../base-panel/base-panel.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
@@ -26,6 +26,8 @@ import { UnitDetailsVariantsTabComponent, type VariantsTabState, DEFAULT_VARIANT
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
 import { UnitDetailsFooterComponent } from '../unit-details-footer/unit-details-footer.component';
+import { UnitFluffImageService } from '../../services/catalogs/unit-fluff-image.service';
+import { UnitDetailsSummaryService } from '../../services/unit-details-summary.service';
 
 /**
  * Inline unit details panel for expanded view mode.
@@ -58,21 +60,34 @@ import { UnitDetailsFooterComponent } from '../unit-details-footer/unit-details-
 })
 export class UnitDetailsPanelComponent {
     private gameService = inject(GameService);
-    forceBuilderService = inject(ForceBuilderService);
+    protected readonly forceWorkspace = inject(ForceWorkspaceStateService);
+
+    private readonly forceCommands = inject(ForceWorkspaceCommandsService);
     private toastService = inject(ToastService);
     private taggingService = inject(TaggingService);
     private dialogsService = inject(DialogsService);
     private keyboardShortcutService = inject(KeyboardShortcutService);
     private destroyRef = inject(DestroyRef);
-    readonly unit = input<Unit | null>(null);
-    readonly prevUnit = input<Unit | null>(null);
-    readonly nextUnit = input<Unit | null>(null);
+    private fluffImages = inject(UnitFluffImageService);
+    private detailsSummaries = inject(UnitDetailsSummaryService);
+    public readonly sourceUnit = input<UnitSummary | null>(null, { alias: 'unit' });
+    private readonly resolvedUnit = signal<{
+        readonly source: UnitSummary;
+        readonly summary: UnitSummary;
+    } | null>(null);
+    readonly unit = computed(() => {
+        const source = this.sourceUnit();
+        const resolved = this.resolvedUnit();
+        return source && resolved?.source === source ? resolved.summary : source;
+    });
+    readonly prevUnit = input<UnitSummary | null>(null);
+    readonly nextUnit = input<UnitSummary | null>(null);
     readonly gunnerySkill = input<number | undefined>(undefined);
     readonly pilotingSkill = input<number | undefined>(undefined);
     readonly adjustedValueOverride = input<number | undefined>(undefined);
     readonly hasPrev = input<boolean>(false);
     readonly hasNext = input<boolean>(false);
-    readonly add = output<Unit>();
+    readonly add = output<UnitSummary>();
     readonly prev = output<void>();
     readonly next = output<void>();
 
@@ -88,6 +103,18 @@ export class UnitDetailsPanelComponent {
     readonly sheetTabRef = viewChild(UnitDetailsSheetTabComponent);
 
     constructor() {
+        effect(onCleanup => {
+            const source = this.sourceUnit();
+            this.resolvedUnit.set(null);
+            if (!source) return;
+
+            let active = true;
+            void this.detailsSummaries.resolve(source).then(summary => {
+                if (active) this.resolvedUnit.set({ source, summary });
+            });
+            onCleanup(() => { active = false; });
+        });
+
         this.keyboardShortcutService.register({
             id: 'unit-details-panel',
             active: () => !!this.unit(),
@@ -97,18 +124,12 @@ export class UnitDetailsPanelComponent {
 
     /** Check if unit has fluff background image */
     readonly hasFluff = computed(() => {
-        const u = this.unit();
-        if (!u?.fluff?.img) return false;
-        if (u.fluff.img.endsWith('hud.png')) return false;
-        return true;
+        return this.fluffImageUrl() !== null;
     });
 
     /** Fluff background URL */
     readonly fluffImageUrl = computed(() => {
-        const u = this.unit();
-        if (!u?.fluff?.img) return null;
-        if (u.fluff.img.endsWith('hud.png')) return null;
-        return `${getUnitServerHost(u)}/images/fluff/${u.fluff.img}`;
+        return this.fluffImages.resolveUrl(this.unit());
     });
 
     /** CSS background style for fluff */
@@ -146,7 +167,7 @@ export class UnitDetailsPanelComponent {
         const unit = this.unit();
         if (!unit) return;
 
-        const addedUnit = await this.forceBuilderService.addUnit(
+        const addedUnit = await this.forceCommands.addUnit(
             unit,
             this.gunnerySkill(),
             this.pilotingSkill()
@@ -182,7 +203,7 @@ export class UnitDetailsPanelComponent {
 
         let addedCount = 0;
         for (let index = 0; index < count; index++) {
-            const addedUnit = await this.forceBuilderService.addUnit(
+            const addedUnit = await this.forceCommands.addUnit(
                 unit,
                 this.gunnerySkill(),
                 this.pilotingSkill()
@@ -209,7 +230,7 @@ export class UnitDetailsPanelComponent {
     }
 
     /** Handle variant card click - opens a dialog for that variant */
-    onVariantClick(event: { variant: Unit; variants: Unit[] }): void {
+    onVariantClick(event: { variant: UnitSummary; variants: UnitSummary[] }): void {
         this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: event.variants,

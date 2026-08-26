@@ -12,7 +12,8 @@ import {
 } from '@angular/core';
 import { PageViewerCanvasService } from './page-viewer-canvas.service';
 import { DialogsService } from '../../../services/dialogs.service';
-import type { ForceUnit } from '../../../models/force-unit.model';
+import { forceMemberSummary, isCBTForceMember } from '../../../models/force-member.model';
+import type { PageCanvasMember } from '../internal/types';
 
 /*
  * 
@@ -115,7 +116,7 @@ export class PageViewerCanvasControlsComponent {
     private dialogsService = inject(DialogsService);
 
     // Input for current unit
-    unit = input<ForceUnit | null>(null);
+    unit = input<PageCanvasMember | null>(null);
 
     clearRequested = output<'unit' | 'force'>();
     printRequested = output<void>();
@@ -145,7 +146,7 @@ export class PageViewerCanvasControlsComponent {
         const currentForce = currentUnit.force;
         const choice = await this.dialogsService.choose<'unit' | 'force' | 'dismiss'>(
             'Clear Canvas',
-            `Delete the canvas for "${currentUnit.getDisplayName()}", or delete all canvases for "${currentForce.displayName()}"? This cannot be undone.`,
+            `Delete the canvas for "${isCBTForceMember(currentUnit) ? forceMemberSummary(currentUnit).name : currentUnit.getDisplayName()}", or delete all canvases for "${currentForce.displayName()}"? This cannot be undone.`,
             [
                 { label: 'UNIT', value: 'unit', class: 'danger' },
                 { label: 'FORCE', value: 'force', class: 'danger' },

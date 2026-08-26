@@ -12,6 +12,6 @@ export interface Quirk {
 
 export interface Quirks {
     version: string;
-    etag: string;
+    assetHash: string;
     quirks: Quirk[];
 }

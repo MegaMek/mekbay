@@ -10,7 +10,7 @@ const {
 } = require('./lib/script-paths') as typeof import('./lib/script-paths');
 
 const {
-    writeFileWithContentTimestamp,
+    writeDeterministicFile,
 } = require('./lib/deterministic-output') as typeof import('./lib/deterministic-output');
 
 type JsonObject = Record<string, unknown>;
@@ -269,7 +269,7 @@ const NAME_CHANGES_FILE_PATH = path.join(UNIT_FILES_ROOT, 'name_changes.txt');
 const FACTIONS_MM_TO_MUL_PATH = path.join(APP_ROOT, 'scripts', 'config', 'factions-mm-to-mul.csv');
 const MUL_FACTIONS_PATH = path.join(APP_ROOT, 'scripts', 'config', 'mulfactions.csv');
 const MM_FACTIONS_IMAGE_DIR = path.join(APP_ROOT, 'public', 'images', 'mmfactions');
-const OUTPUT_DIR = path.join(APP_ROOT, 'public', 'assets');
+const OUTPUT_DIR = path.join(APP_ROOT, 'public', 'online-assets', 'generated');
 const EXPAND_RATING_ADJUSTMENTS = true;
 const GENERAL_FACTION_KEY = 'General';
 type UnitType =
@@ -3966,7 +3966,7 @@ function writeJsonFile(filePath: string, data: unknown): void {
     const contents = BEAUTIFY_OUTPUT
         ? formatJsonValue(data) ?? ''
         : JSON.stringify(data);
-    writeFileWithContentTimestamp(filePath, `${contents}\n`, 'utf8');
+    writeDeterministicFile(filePath, `${contents}\n`, 'utf8');
 }
 
 function collapseUniformAvailabilityValueForWrite(value: CompactAvailabilityValue): CompactAvailabilityValue {
@@ -4475,12 +4475,12 @@ function isManagedOutputFile(fileName: string): boolean {
         || fileName === 'chassis.json'
         || fileName === 'models.json'
         || fileName === 'availability.json'
-    || fileName === 'availability_weighted.json'
+        || fileName === 'availability_weighted.json'
         || fileName === 'availability_weighted_q.json'
         || fileName === 'mulized_chassis.json'
         || fileName === 'mulized_models.json'
-    || fileName === 'mulized_availability.json'
-    || fileName === 'mulized_availability_weighted.json';
+        || fileName === 'mulized_availability.json'
+        || fileName === 'mulized_availability_weighted.json';
 }
 
 function cleanupStaleOutputFiles(dirPath: string, expectedFiles: string[]): void {

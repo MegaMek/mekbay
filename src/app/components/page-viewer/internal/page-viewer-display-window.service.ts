@@ -4,8 +4,7 @@
 
 import { Injectable } from '@angular/core';
 
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
-import type { PageViewerDisplayWindow, PageViewerForceChangePlan } from './types';
+import type { PageViewerDisplayWindow, PageViewerForceChangePlan, PageViewerMember } from './types';
 
 @Injectable()
 export class PageViewerDisplayWindowService {
@@ -18,7 +17,7 @@ export class PageViewerDisplayWindowService {
     }
 
     resolveDisplayedUnits(
-        allUnits: readonly CBTForceUnit[],
+        allUnits: readonly PageViewerMember[],
         visiblePages: number,
         currentViewStartIndex: number
     ): PageViewerDisplayWindow {
@@ -28,14 +27,14 @@ export class PageViewerDisplayWindowService {
         if (totalUnits <= visiblePages) {
             return {
                 startIndex,
-                units: allUnits.map((unit) => unit as CBTForceUnit)
+                units: [...allUnits]
             };
         }
 
-        const units: CBTForceUnit[] = [];
+        const units: PageViewerMember[] = [];
         for (let slotIndex = 0; slotIndex < visiblePages; slotIndex++) {
             const unitIndex = (startIndex + slotIndex) % totalUnits;
-            const unit = allUnits[unitIndex] as CBTForceUnit | undefined;
+            const unit = allUnits[unitIndex];
             if (unit && !units.includes(unit)) {
                 units.push(unit);
             }
@@ -45,8 +44,8 @@ export class PageViewerDisplayWindowService {
     }
 
     buildForceChangePlan(options: {
-        allUnits: readonly CBTForceUnit[];
-        displayedUnits: readonly CBTForceUnit[];
+        allUnits: readonly PageViewerMember[];
+        displayedUnits: readonly PageViewerMember[];
         selectedUnitId: string | null;
         visibleCount: number;
         previousUnitCount: number;

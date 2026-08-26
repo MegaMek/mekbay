@@ -4,8 +4,9 @@
 
 import type { GameSystem } from '../models/common.model';
 import type { UnitSearchNormalizationMatch } from '../models/unit-search-result.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import type { SearchTelemetrySnapshot } from '../services/unit-search-filters.model';
+import type { UnitProviderId } from '../services/unit-catalog/unit-catalog.types';
 import type { UnitSearchWorkerResultMessage } from './unit-search-worker-protocol.util';
 
 interface WorkerResultTelemetryContext {
@@ -19,42 +20,43 @@ interface WorkerResultTelemetryContext {
 }
 
 export interface HydratedWorkerSearchResult {
-    units: Unit[];
-    normalizationMatchesByUnitName: ReadonlyMap<string, UnitSearchNormalizationMatch>;
+    units: UnitSummary[];
+    normalizationMatchesByUnit: ReadonlyMap<UnitSummary, UnitSearchNormalizationMatch>;
 }
 
 export function hydrateWorkerSearchResult(
     result: UnitSearchWorkerResultMessage,
-    getUnitByName: (unitName: string) => Unit | undefined,
+    getUnitByIdentity: (provider: UnitProviderId, uuid: string) => UnitSummary | undefined,
 ): HydratedWorkerSearchResult {
-    const units: Unit[] = [];
-    const normalizationMatchesByUnitName = new Map<string, UnitSearchNormalizationMatch>();
-    const seenUnitNames = new Set<string>();
+    const units: UnitSummary[] = [];
+    const normalizationMatchesByUnit = new Map<UnitSummary, UnitSearchNormalizationMatch>();
+    const seenIdentities = new Set<string>();
 
     for (const entry of result.entries) {
-        if (seenUnitNames.has(entry.unitName)) {
+        const identityKey = `${entry.provider.length}:${entry.provider}${entry.uuid.length}:${entry.uuid}`;
+        if (seenIdentities.has(identityKey)) {
             continue;
         }
-        const unit = getUnitByName(entry.unitName);
-        if (!unit) {
+        const unit = getUnitByIdentity(entry.provider, entry.uuid);
+        if (!unit || unit.name !== entry.unitName) {
             continue;
         }
 
-        seenUnitNames.add(entry.unitName);
+        seenIdentities.add(identityKey);
         units.push(unit);
         if (entry.match) {
-            normalizationMatchesByUnitName.set(entry.unitName, entry.match);
+            normalizationMatchesByUnit.set(unit, entry.match);
         }
     }
 
-    return { units, normalizationMatchesByUnitName };
+    return { units, normalizationMatchesByUnit };
 }
 
 export function hydrateWorkerResultUnits(
     result: UnitSearchWorkerResultMessage,
-    getUnitByName: (unitName: string) => Unit | undefined,
-): Unit[] {
-    return hydrateWorkerSearchResult(result, getUnitByName).units;
+    getUnitByIdentity: (provider: UnitProviderId, uuid: string) => UnitSummary | undefined,
+): UnitSummary[] {
+    return hydrateWorkerSearchResult(result, getUnitByIdentity).units;
 }
 
 export function buildWorkerSearchTelemetrySnapshot(

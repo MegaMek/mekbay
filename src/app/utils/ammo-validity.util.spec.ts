@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
+import { AmmoEquipment } from '../models/equipment.model';
 import type { WireSplitTechDates } from '../models/equipment-tech-codec';
 import type { Era } from '../models/eras.model';
-import type { MountedEquipment } from '../models/mounted-equipment.model';
-import { AmmoValidityUtil } from './ammo-validity.util';
-import { EquipmentFlag } from '../models/equipment-flags.type';
+import { AmmoValidityUtil, type AmmoSelectionCompatibilityFacts } from './ammo-validity.util';
 import { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
 
 function createEra(from: number | undefined, to: number | undefined): Era {
@@ -43,37 +41,15 @@ function createSrmAmmo(id: string, munitionType: AmmoMunitionFlag[] = []): AmmoE
     });
 }
 
-function createSrmWeapon(flags: EquipmentFlag[] = ['F_ARTEMIS_COMPATIBLE']): WeaponEquipment {
-    return new WeaponEquipment({
-        id: 'ISSRM4',
-        name: 'SRM 4',
-        type: 'weapon',
-        flags,
-        weapon: { ammoType: 'SRM', rackSize: 4 }
-    });
-}
-
-function createArtemis(flags: EquipmentFlag[] = ['F_ARTEMIS']): MiscEquipment {
-    return new MiscEquipment({
-        id: flags.includes('F_ARTEMIS_V') ? 'ISArtemisV' : 'ISArtemisIV',
-        name: flags.includes('F_ARTEMIS_V') ? 'Artemis V FCS' : 'Artemis IV FCS',
-        type: 'misc',
-        flags: ['F_WEAPON_ENHANCEMENT', ...flags]
-    });
-}
-
-function mount(id: string, equipment: MountedEquipment['equipment'], locations: string[] = []): MountedEquipment {
-    return {
-        id,
-        name: equipment?.internalName ?? id,
-        equipment,
-        locations: new Set(locations),
-        states: new Map<string, string>(),
-    } as MountedEquipment;
-}
-
 function issueReasons(ammo: AmmoEquipment, context: Parameters<typeof AmmoValidityUtil.getAmmoSelectionIssues>[1] = {}) {
     return AmmoValidityUtil.getAmmoSelectionIssues(ammo, context).map(issue => issue.reason);
+}
+
+function compatibilityFacts(
+    artemisIV: readonly string[] = [],
+    artemisV: readonly string[] = [],
+): AmmoSelectionCompatibilityFacts {
+    return { artemisIV, artemisV };
 }
 
 describe('AmmoValidityUtil', () => {
@@ -138,38 +114,32 @@ describe('AmmoValidityUtil', () => {
     it('does not hard-filter Artemis-capable ammo without a compatible Artemis-enhanced weapon', () => {
         const standardAmmo = createSrmAmmo('IS Ammo SRM-4');
         const artemisAmmo = createSrmAmmo('IS Ammo SRM-4 Artemis-capable', ['M_ARTEMIS_CAPABLE']);
-        const weaponEntry = mount('ISSRM4@RT#0', createSrmWeapon(), ['RT']);
-        const nonArtemisWeaponEntry = mount('ISSRM4@RT#0', createSrmWeapon([]), ['RT']);
-        const artemisEntry = mount('ISArtemisIV@RT#1', createArtemis(), ['RT']);
-        const wrongLocationArtemisEntry = mount('ISArtemisIV@LT#1', createArtemis(), ['LT']);
         const unit = { type: 'Mek', techBase: 'Inner Sphere' } as any;
 
-        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [weaponEntry])).toBeTrue();
-        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [nonArtemisWeaponEntry, artemisEntry])).toBeTrue();
-        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [weaponEntry, wrongLocationArtemisEntry])).toBeTrue();
-        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [weaponEntry, artemisEntry])).toBeTrue();
+        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit)).toBeTrue();
     });
 
     it('adds Artemis selection issues only when the matching Artemis component is missing', () => {
         const standardAmmo = createSrmAmmo('IS Ammo SRM-4');
         const artemisAmmo = createSrmAmmo('IS Ammo SRM-4 Artemis-capable', ['M_ARTEMIS_CAPABLE']);
         const artemisVAmmo = createSrmAmmo('IS Ammo SRM-4 Artemis V-capable', ['M_ARTEMIS_V_CAPABLE']);
-        const weaponEntry = mount('ISSRM4@RT#0', createSrmWeapon(), ['RT']);
-        const artemisEntry = mount('ISArtemisIV@RT#1', createArtemis(), ['RT']);
-        const artemisProtoEntry = mount('ISArtemisProto@RT#2', createArtemis(['F_ARTEMIS_PROTO']), ['RT']);
-        const artemisVEntry = mount('ISArtemisV@RT#1', createArtemis(['F_ARTEMIS_V']), ['RT']);
         const unit = { type: 'Mek', techBase: 'Inner Sphere' } as any;
 
-        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisVAmmo, unit, [weaponEntry, artemisEntry])).toBeTrue();
-        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisVAmmo, unit, [weaponEntry, artemisVEntry])).toBeTrue();
-        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [weaponEntry, artemisVEntry])).toBeTrue();
-        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [weaponEntry])).toBeTrue();
+        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisVAmmo, unit)).toBeTrue();
+        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit)).toBeTrue();
 
-        expect(issueReasons(artemisAmmo, { inventory: [weaponEntry] })).toEqual(['missing-artemis-iv-component']);
-        expect(issueReasons(artemisAmmo, { inventory: [weaponEntry, artemisEntry] })).toEqual([]);
-        expect(issueReasons(artemisAmmo, { inventory: [weaponEntry, artemisProtoEntry] })).toEqual([]);
-        expect(issueReasons(artemisAmmo, { inventory: [weaponEntry, artemisVEntry] })).toEqual(['missing-artemis-iv-component']);
-        expect(issueReasons(artemisVAmmo, { inventory: [weaponEntry, artemisEntry] })).toEqual(['missing-artemis-v-component']);
-        expect(issueReasons(artemisVAmmo, { inventory: [weaponEntry, artemisVEntry] })).toEqual([]);
+        expect(issueReasons(artemisAmmo)).toEqual(['missing-artemis-iv-component']);
+        expect(issueReasons(artemisAmmo, {
+            compatibilityFacts: compatibilityFacts([artemisAmmo.internalName]),
+        })).toEqual([]);
+        expect(issueReasons(artemisAmmo, {
+            compatibilityFacts: compatibilityFacts([], [artemisAmmo.internalName]),
+        })).toEqual(['missing-artemis-iv-component']);
+        expect(issueReasons(artemisVAmmo, {
+            compatibilityFacts: compatibilityFacts([artemisVAmmo.internalName]),
+        })).toEqual(['missing-artemis-v-component']);
+        expect(issueReasons(artemisVAmmo, {
+            compatibilityFacts: compatibilityFacts([], [artemisVAmmo.internalName]),
+        })).toEqual([]);
     });
 });

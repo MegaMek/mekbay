@@ -13,7 +13,7 @@ const {
 } = require('./lib/script-paths') as typeof import('./lib/script-paths');
 
 const {
-    writeFileWithContentTimestamp,
+    writeDeterministicFile,
 } = require('./lib/deterministic-output') as typeof import('./lib/deterministic-output');
 
 type JsonObject = Record<string, unknown>;
@@ -43,7 +43,7 @@ loadOptionalEnvFile(APP_ROOT, { logPrefix: 'MegaMek Rulesets' });
 
 const MM_DATA_ROOT = resolveMmDataRoot(APP_ROOT);
 const FORCEGEN_ROOT = path.join(MM_DATA_ROOT, 'data', 'forcegenerator');
-const OUTPUT_PATH = path.join(APP_ROOT, 'public', 'assets', 'rulesets.json');
+const OUTPUT_PATH = path.join(APP_ROOT, 'public', 'online-assets', 'generated', 'rulesets.json');
 
 function shouldTreatXmlNodeAsArray(name: string, jpath: unknown): boolean {
     const pathKey = typeof jpath === 'string' ? jpath : '';
@@ -736,7 +736,7 @@ function writeJsonFile(filePath: string, data: unknown): void {
     const contents = BEAUTIFY_OUTPUT
         ? formatJsonValue(data) ?? ''
         : JSON.stringify(data);
-    writeFileWithContentTimestamp(filePath, `${contents}\n`, 'utf8');
+    writeDeterministicFile(filePath, `${contents}\n`, 'utf8');
 }
 
 function run(): void {

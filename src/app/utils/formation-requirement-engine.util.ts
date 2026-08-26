@@ -70,7 +70,7 @@ export class FormationRequirementEngine {
             return this.createEvaluation(definition.id, units.length, false, [unitCountEvaluation]);
         }
 
-        if (definition.idealRole && units.every((unit) => unit.getUnit().role === definition.idealRole)) {
+        if (definition.idealRole && units.every((unit) => unit.getSummary().role === definition.idealRole)) {
             return {
                 formationId: definition.id,
                 valid: true,
@@ -184,7 +184,7 @@ export class FormationRequirementEngine {
         }
 
         const unitCountEvaluation = this.evaluateUnitCount(definition, units.length);
-        if (definition.idealRole && units.every((unit) => unit.getUnit().role === definition.idealRole)) {
+        if (definition.idealRole && units.every((unit) => unit.getSummary().role === definition.idealRole)) {
             return this.createEvaluation(definition.id, units.length, true, unitCountEvaluation ? [unitCountEvaluation] : []);
         }
 

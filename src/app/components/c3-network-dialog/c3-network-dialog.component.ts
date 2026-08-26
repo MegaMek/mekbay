@@ -7,22 +7,33 @@ import {
     Component,
     computed,
     DestroyRef,
-    effect,
     type ElementRef,
     inject,
     signal,
-    untracked,
     viewChild,
     type AfterViewInit
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import type { ForceUnit } from '../../models/force-unit.model';
-import { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { CBTForce } from '../../models/cbt-force.model';
+import {
+    isCBTForceMember,
+    isCBTMekForceMember,
+    type CBTForceMember,
+} from '../../models/force-member.model';
 import { C3NetworkEditor, type C3NetworkContext } from '../../models/c3-network-editor';
-import { C3Capabilities, C3Network, C3TaxCalculator, c3NetworkTypeName, c3RoleName, C3NetworkType, type C3Node, C3Role, C3_NETWORK_LIMITS } from '../../models/c3-network.model';
-import type { Force, UnitGroup } from '../../models/force.model';
+import { C3Capabilities, C3Network, C3TaxCalculator, c3NetworkTypeName, c3RoleName, C3NetworkType, type C3Component, type C3Node, C3Role, C3_NETWORK_LIMITS, type C3UnitView, projectNonMekC3Components } from '../../models/c3-network.model';
+import type { Force } from '../../models/force.model';
 import type { SerializedC3NetworkGroup } from '../../models/force-serialization';
+import {
+    type EncounterNetwork,
+} from '../../models/runtime/encounter-runtime';
+import type { ComponentId } from '../../models/entity/entity-identifiers';
+import { isC3EmergencyMasterOperatingTurnsFried } from '../../models/c3-emergency-master.model';
+import {
+    projectC3EditorNetworksToEncounter,
+    projectEncounterNetworksToC3Editor,
+} from '../../models/c3-network-presentation';
 import { GameSystem } from '../../models/common.model';
 import { ToastService } from '../../services/toast.service';
 import { OptionsService } from '../../services/options.service';
@@ -30,6 +41,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { LayoutService } from '../../services/layout.service';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
+import { hasNonMekRuntime, hasMekRuntime } from '../../models/cbt-unit-snapshot';
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3.0;
@@ -40,9 +52,34 @@ export interface C3NetworkDialogData {
     readOnly?: boolean;
 }
 
-export interface C3NetworkDialogResult {
-    networks: SerializedC3NetworkGroup[];
-    updated: boolean;
+interface C3NetworkDialogResultBase {
+    readonly positions: readonly Readonly<{
+        readonly unitId: string;
+        readonly x: number;
+        readonly y: number;
+    }>[];
+    readonly updated: boolean;
+}
+
+export type C3NetworkDialogResult = C3NetworkDialogResultBase & (
+    | { readonly authority: 'cbt'; readonly networks: readonly EncounterNetwork[] }
+    | { readonly authority: 'alpha-strike'; readonly networks: readonly SerializedC3NetworkGroup[] }
+);
+
+interface C3DialogUnit extends C3UnitView {
+    readonly member?: CBTForceMember;
+    alias(): string;
+    c3Position(): Readonly<{ x: number; y: number }> | null;
+    getBaseBv(): number;
+    tagBV(): number;
+    externalStoresBv(): number;
+    gunnerySkill(): number;
+    pilotingSkill(): number;
+}
+
+interface C3DialogGroup {
+    readonly id: string;
+    units(): readonly C3DialogUnit[];
 }
 
 interface ConnectionLine {
@@ -217,58 +254,130 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         this.watchForRemoteUpdates();
     }
 
-    /** Get current units value from force */
-    private getUnits(): ForceUnit[] {
-        return this.data.force.units();
+    /** One presentation snapshot; mechanics remain owned by Entity + runtime. */
+    private getUnits(): C3DialogUnit[] {
+        if (!(this.data.force instanceof CBTForce)) {
+            return this.data.force.members() as unknown as C3DialogUnit[];
+        }
+        const networks = this.data.force.c3EncounterNetworks();
+        return this.data.force.members()
+            .filter(isCBTForceMember)
+            .flatMap(member => {
+                let structural: readonly C3Component[];
+                const snapshot = member.force.getUnitSnapshot(member.id);
+                if (!snapshot) return [];
+                if (isCBTMekForceMember(member)) {
+                    if (!hasMekRuntime(snapshot)) return [];
+                    const projected = snapshot.query.mekC3Endpoints();
+                    if (projected.kind !== 'supported') return [];
+                    structural = projected.endpoints.map((endpoint, index): C3Component => {
+                        const emergencyState = endpoint.emergency
+                            ? snapshot.query.componentC3EmergencyMaster(endpoint.componentId)
+                            : undefined;
+                        return Object.freeze({
+                            componentId: endpoint.componentId,
+                            networkType: endpoint.family as C3NetworkType,
+                            role: endpoint.role === 'master'
+                                ? C3Role.MASTER
+                                : endpoint.role === 'peer' ? C3Role.PEER : C3Role.SLAVE,
+                            boosted: endpoint.boosted,
+                            emergency: endpoint.emergency,
+                            emergencyFried: isC3EmergencyMasterOperatingTurnsFried(
+                                emergencyState?.operatingTurns ?? 0,
+                            ),
+                            index,
+                        });
+                    });
+                } else {
+                    if (!hasNonMekRuntime(snapshot)) return [];
+                    structural = projectNonMekC3Components(snapshot.index);
+                }
+                const currentRoles = new Map<ComponentId, C3Role>();
+                for (const network of networks) {
+                    for (const endpoint of network.endpoints) {
+                        if (endpoint.instanceId !== member.id) continue;
+                        currentRoles.set(endpoint.componentId, endpoint.role === 'master'
+                            ? C3Role.MASTER
+                            : endpoint.role === 'peer' ? C3Role.PEER : C3Role.SLAVE);
+                    }
+                }
+                const c3Components = structural.map(component => Object.freeze({
+                    ...component,
+                    ...(component.componentId === undefined
+                        ? {}
+                        : { role: currentRoles.get(component.componentId) ?? component.role }),
+                }));
+                const crew = member.force.getUnitCrewAssignment(member.id)?.positions[0];
+                return [Object.freeze({
+                    id: String(member.id),
+                    member,
+                    c3Components: Object.freeze(c3Components),
+                    getSummary: () => member.summary,
+                    alias: () => '',
+                    c3Position: () => null,
+                    isC3Jammed: () => member.force.getUnitConditions(member.id)?.includes('jammed') === true,
+                    isC3EndpointOperational: (_index: number, endpoint: C3Component) => endpoint.componentId !== undefined
+                        && endpoint.emergencyFried !== true
+                        && member.force.isC3EndpointOperational(member.id, endpoint.componentId),
+                    getBaseBv: () => member.currentBaseBattleValue() ?? member.summary.bv,
+                    tagBV: () => member.tagBattleValue() ?? 0,
+                    externalStoresBv: () => 0,
+                    gunnerySkill: () => crew?.gunnery ?? 4,
+                    pilotingSkill: () => crew?.piloting ?? 5,
+                })];
+            });
     }
 
     /** Get current networks value from force */
     private getNetworks(): SerializedC3NetworkGroup[] {
-        return this.data.force.c3Networks();
+        return this.data.force instanceof CBTForce
+            ? projectEncounterNetworksToC3Editor(
+                this.data.force.c3EncounterNetworks(),
+                this.getUnits().flatMap(unit => unit.member ? [{
+                    instanceId: unit.member.id,
+                    c3Components: unit.c3Components ?? [],
+                }] : []),
+            )
+            : this.data.force.c3Networks();
     }
 
     /** Get groups from force for auto-configure */
-    private getGroups(): UnitGroup[] {
-        return this.data.force.groups();
+    private getGroups(): C3DialogGroup[] {
+        const unitsById = new Map(this.getUnits().map(unit => [unit.id, unit]));
+        if (!(this.data.force instanceof CBTForce)) {
+            return this.data.force.groups() as unknown as C3DialogGroup[];
+        }
+        const roster = this.data.force.queryCanonicalRoster();
+        if (roster.kind !== 'available') return [];
+        return roster.snapshot.structural.groups.map(group => Object.freeze({
+            id: group.groupId,
+            units: () => Object.freeze(group.members.flatMap(instanceId => {
+                const unit = unitsById.get(String(instanceId));
+                return unit ? [unit] : [];
+            })),
+        }));
     }
+
 
     /**
      * Watches for remote force updates and syncs C3 network data.
-     * When the force is updated via WebSocket, this effect will detect
-     * changes to the provided signals and update the dialog accordingly.
+     * The force event is shared by both AS and typed CBT encounter authority.
      */
     private watchForRemoteUpdates(): void {
-        effect(() => {
-            // Read the current values from the force signals (this creates dependencies)
-            const forceNetworks = this.data.force.c3Networks();
-            const forceUnits = this.data.force.units();
-
-            // Use untracked to avoid circular dependencies when reading local state
-            untracked(() => {
-                // Skip the initial effect trigger before dialog is fully initialized
-                if (!this.initialized) return;
-
-                // Only sync if we haven't made local modifications
-                // If user has modified, they will save or cancel explicitly
-                if (this.hasModifications()) {
-                    // User has local changes - show a toast notification
-                    this.toastService.showToast(
-                        'C3 network was updated remotely. Your local changes will be kept.',
-                        'info'
-                    );
-                    return;
-                }
-
-                // Sync networks from force to dialog
-                this.networks.set([...forceNetworks]);
-
-                // Update nodes for any new/removed units
-                this.syncNodesWithUnits(forceUnits);
-
-                // Re-initialize master pin colors
-                this.initializeMasterPinColors();
-            });
+        const subscription = this.data.force.changed.subscribe(() => {
+            if (!this.initialized) return;
+            if (this.hasModifications()) {
+                this.toastService.showToast(
+                    'C3 network was updated remotely. Your local changes will be kept.',
+                    'info',
+                );
+                return;
+            }
+            this.networks.set(this.getNetworks());
+            this.syncNodesWithUnits(this.getUnits());
+            this.initializeMasterPinColors();
         });
+        this.destroyRef.onDestroy(() => subscription.unsubscribe());
     }
 
     /**
@@ -276,7 +385,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
      * Adds nodes for new C3-capable units and removes nodes for deleted units.
      * Also syncs positions from unit.c3Position() for existing nodes.
      */
-    private syncNodesWithUnits(forceUnits: ForceUnit[]): void {
+    private syncNodesWithUnits(forceUnits: C3DialogUnit[]): void {
         const capabilities = new Map(forceUnits.map(unit => [unit.id, new C3Capabilities(unit)]));
         const c3Units = forceUnits.filter(unit => capabilities.get(unit.id)?.hasC3);
         const currentNodes = this.nodes();
@@ -458,8 +567,62 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     ));
 
     private taxCalculator = computed(() => new C3TaxCalculator(
-        this.networks(), this.nodes().map(node => node.unit as CBTForceUnit),
+        this.networks(), this.nodes().map(node => node.unit) as C3DialogUnit[],
     ));
+
+    private cbtBattleValues = computed(() => {
+        if (!(this.data.force instanceof CBTForce)) return null;
+        const units = this.getUnits().flatMap(unit => unit.member ? [{
+            instanceId: unit.member.id,
+            c3Components: unit.c3Components ?? [],
+        }] : []);
+        const networks = projectC3EditorNetworksToEncounter(this.networks(), units);
+        return this.data.force.previewAdjustedBattleValues(networks);
+    });
+
+    private c3Tax(unit: C3DialogUnit): number {
+        if (unit.member) return this.cbtBattleValues()?.get(unit.member.id)?.c3 ?? 0;
+        const calculator = this.taxCalculator();
+        return this.optionsService.options().CBTRules === 'total-warfare'
+            ? calculator.totalWar(unit)
+            : calculator.core2026(unit);
+    }
+
+    private unitBvData(unit: C3DialogUnit) {
+        const projected = unit.member
+            ? this.cbtBattleValues()?.get(unit.member.id)
+            : undefined;
+        if (projected) {
+            return {
+                baseBv: projected.base,
+                tagBv: projected.tag,
+                c3Bv: projected.c3,
+                externalStoresBv: 0,
+                pilotBv: projected.skills,
+                adjustedBv: projected.adjusted,
+            };
+        }
+        const summary = unit.getSummary();
+        const baseBv = unit.getBaseBv();
+        const tagBv = unit.tagBV();
+        const c3Bv = this.c3Tax(unit);
+        const externalStoresBv = unit.externalStoresBv();
+        const preSkillAdjustedBv = baseBv + tagBv + c3Bv + externalStoresBv;
+        const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(
+            summary,
+            preSkillAdjustedBv,
+            unit.gunnerySkill(),
+            unit.pilotingSkill(),
+        );
+        return {
+            baseBv,
+            tagBv,
+            c3Bv,
+            externalStoresBv,
+            pilotBv: adjustedBv - preSkillAdjustedBv,
+            adjustedBv,
+        };
+    }
 
     protected connectionLines = computed<ConnectionLine[]>(() => {
         const lines: ConnectionLine[] = [];
@@ -600,21 +763,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const topLevel = topology.topLevelNetworks;
         const visited = new Set<string>();
         const isClassic = this.isClassicGame();
-        const allUnits = isClassic ? this.nodes().map(n => n.unit as CBTForceUnit) : [];
-        const taxCalculator = isClassic ? this.taxCalculator() : undefined;
-
         const getUnitBvData = (node: C3Node | null): { baseBv?: number; tagBv?: number; c3Bv?: number; externalStoresBv?: number; pilotBv?: number, adjustedBv?: number } => {
             if (!isClassic || !node) return {};
-            const cbtUnit = node.unit as CBTForceUnit;
-            const unit = cbtUnit.getUnit();
-            const baseBv = cbtUnit.getBaseBv();
-            const tagBv = cbtUnit.tagBV();
-            const c3Bv = cbtUnit.rules.calculateC3Tax(networks, allUnits, taxCalculator);
-            const externalStoresBv = cbtUnit.externalStoresBv();
-            const preSkillAdjustedBv = baseBv + tagBv + c3Bv + externalStoresBv;
-            const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
-            const pilotBv = adjustedBv - preSkillAdjustedBv;
-            return { baseBv: baseBv, tagBv, c3Bv, externalStoresBv, pilotBv, adjustedBv };
+            return this.unitBvData(node.unit as C3DialogUnit);
         };
 
         const buildNetworkVm = (network: SerializedC3NetworkGroup, isTopLevel: boolean): SidebarNetworkVm | null => {
@@ -628,7 +779,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 for (const id of network.peerIds) {
                     const node = nodesById.get(id) ?? null;
                     members.push({
-                        id, name: node?.unit.getUnit().chassis || 'Unknown',
+                        id, name: node?.unit.getSummary().chassis || 'Unknown',
                         role: 'peer', canRemove: !this.data.readOnly, node,
                         brokenLink: runtimeGraph.hasOnlyBrokenIncidentLinks(network.id, id),
                         ...getUnitBvData(node)
@@ -638,7 +789,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const masterNode = nodesById.get(network.masterId) ?? null;
                 members.push({
                     id: network.masterId,
-                    name: masterNode?.unit.getUnit().chassis || 'Unknown',
+                    name: masterNode?.unit.getSummary().chassis || 'Unknown',
                     role: 'master', canRemove: false, node: masterNode, network,
                     brokenLink: runtimeGraph.hasOnlyBrokenIncidentLinks(network.id, network.masterId),
                     ...getUnitBvData(masterNode)
@@ -657,7 +808,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                             const childVm = buildNetworkVm(childNet, false);
                             members.push({
                                 id: parsed.unitId,
-                                name: node?.unit.getUnit().chassis || 'Unknown',
+                                name: node?.unit.getSummary().chassis || 'Unknown',
                                 role: 'sub-master', canRemove: !this.data.readOnly, isSelfConnection,
                                 memberStr, node, network: childNet, networkVm: childVm ?? undefined,
                                 brokenLink: runtimeGraph.childLinkBroken(network.id, {
@@ -673,7 +824,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
                     members.push({
                         id: parsed.unitId,
-                        name: node?.unit.getUnit().chassis || 'Unknown',
+                        name: node?.unit.getSummary().chassis || 'Unknown',
                         role: 'slave', canRemove: !this.data.readOnly, isSelfConnection, memberStr, node,
                         brokenLink: runtimeGraph.childLinkBroken(network.id, {
                             unitId: parsed.unitId,
@@ -737,7 +888,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const node = nodesById.get(id) ?? null;
                 return {
                     id,
-                    name: node?.unit.getUnit().chassis || 'Unknown',
+                    name: node?.unit.getSummary().chassis || 'Unknown',
                     role: index === 0 ? 'master' : 'slave',
                     canRemove: false,
                     brokenLink: false,
@@ -761,9 +912,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         if (!this.isClassicGame()) return null;
         const nodes = this.nodes();
         const networks = this.networks();
-        const allUnits = nodes.map(n => n.unit as CBTForceUnit);
-        const taxCalculator = this.taxCalculator();
-        
         let totalBaseBv = 0;
         let totalTagBv = 0;
         let totalC3Bv = 0;
@@ -772,20 +920,14 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         let grandTotal = 0;
         
         for (const node of nodes) {
-            const cbtUnit = node.unit as CBTForceUnit;
-            const unit = cbtUnit.getUnit();
-            const baseBv = cbtUnit.getBaseBv();
-            const tagBv = cbtUnit.tagBV();
-            const c3Bv = cbtUnit.rules.calculateC3Tax(networks, allUnits, taxCalculator);
-            const externalStoresBv = cbtUnit.externalStoresBv();
-            const preSkillAdjustedBv = baseBv + tagBv + c3Bv + externalStoresBv;
-            const finalBv = BVCalculatorUtil.calculateAdjustedBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
-            totalBaseBv += baseBv;
-            totalTagBv += tagBv;
-            totalC3Bv += c3Bv;
-            totalExternalStoresBv += externalStoresBv;
-            totalPilotSkillsBv += finalBv - baseBv - tagBv - c3Bv - externalStoresBv;
-            grandTotal += finalBv;
+            const cbtUnit = node.unit as C3DialogUnit;
+            const value = this.unitBvData(cbtUnit);
+            totalBaseBv += value.baseBv;
+            totalTagBv += value.tagBv;
+            totalC3Bv += value.c3Bv;
+            totalExternalStoresBv += value.externalStoresBv;
+            totalPilotSkillsBv += value.pilotBv;
+            grandTotal += value.adjustedBv;
         }
         
         return { totalBaseBv, totalTagBv, totalC3Bv, totalExternalStoresBv, totalPilotSkillsBv, grandTotal };
@@ -944,9 +1086,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return [...componentIndexes].every(index => {
             const component = runtime.capability(node.unit.id)?.component(index);
             if (!component) return false;
-            return component.mount
-                ? !component.mount.owner.canPerformEquipmentAction(component.mount, 'configure-network')
-                : !node.unit.isC3EndpointOperational(index, component);
+            return !node.unit.isC3EndpointOperational(index, component);
         });
     }
 
@@ -988,8 +1128,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const canvasH = el?.clientHeight || 600;
         const spacing = 180;
 
-        const unitsWithPos: ForceUnit[] = [];
-        const unitsWithoutPos: ForceUnit[] = [];
+        const unitsWithPos: C3DialogUnit[] = [];
+        const unitsWithoutPos: C3DialogUnit[] = [];
 
         for (const unit of c3Units) {
             const pos = unit.c3Position();
@@ -1083,12 +1223,12 @@ export class C3NetworkDialogComponent implements AfterViewInit {
      * Load extracted icon data URLs for all nodes.
      * Uses sprite service caching
      */
-    private async loadNodeIcons(units: ForceUnit[]): Promise<void> {
+    private async loadNodeIcons(units: C3DialogUnit[]): Promise<void> {
         const urlMap = new Map<string, string>();
 
         // Extract all icons in parallel
         await Promise.all(units.map(async (unit) => {
-            const iconPath = unit.getUnit().icon;
+            const iconPath = unit.getSummary().icon;
             if (!iconPath) return;
 
             const url = await this.spriteService.getExtractedIconUrl(iconPath);
@@ -1839,13 +1979,13 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 if (a.pinCount !== b.pinCount) return a.pinCount - b.pinCount;
                 
                 // Prefer heavier units as masters (higher tonnage = lower sort value)
-                const aTonnage = a.node.unit.getUnit().tons ?? 0;
-                const bTonnage = b.node.unit.getUnit().tons ?? 0;
+                const aTonnage = a.node.unit.getSummary().tons ?? 0;
+                const bTonnage = b.node.unit.getSummary().tons ?? 0;
                 if (aTonnage !== bTonnage) return bTonnage - aTonnage;
                 
                 // Prefer slower units as masters (lower movement = lower sort value)
-                const aMove = a.node.unit.getUnit().walk ?? 99;
-                const bMove = b.node.unit.getUnit().walk ?? 99;
+                const aMove = a.node.unit.getSummary().walk ?? 99;
+                const bMove = b.node.unit.getSummary().walk ?? 99;
                 return aMove - bMove;
             });
             
@@ -1922,13 +2062,13 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     if (aHasNet !== bHasNet) return aHasNet - bHasNet;
                     
                     // Prefer heavier units as GMs (higher tonnage = lower sort value)
-                    const aTonnage = a.node.unit.getUnit().tons ?? 0;
-                    const bTonnage = b.node.unit.getUnit().tons ?? 0;
+                    const aTonnage = a.node.unit.getSummary().tons ?? 0;
+                    const bTonnage = b.node.unit.getSummary().tons ?? 0;
                     if (aTonnage !== bTonnage) return bTonnage - aTonnage;
                     
                     // Prefer slower units as GMs (lower movement = lower sort value)
-                    const aMove = a.node.unit.getUnit().walk ?? 99;
-                    const bMove = b.node.unit.getUnit().walk ?? 99;
+                    const aMove = a.node.unit.getSummary().walk ?? 99;
+                    const bMove = b.node.unit.getSummary().walk ?? 99;
                     return aMove - bMove;
                 });
                 
@@ -2018,11 +2158,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const candidates = allMasterPins
                     .filter(p => pinHasNetwork(p, networks) && getAvailableSlaveSlots(p, networks) > 0)
                     .sort((a, b) => {
-                        const aTonnage = a.node.unit.getUnit().tons ?? 0;
-                        const bTonnage = b.node.unit.getUnit().tons ?? 0;
+                        const aTonnage = a.node.unit.getSummary().tons ?? 0;
+                        const bTonnage = b.node.unit.getSummary().tons ?? 0;
                         if (aTonnage !== bTonnage) return bTonnage - aTonnage;
-                        const aMove = a.node.unit.getUnit().walk ?? 99;
-                        const bMove = b.node.unit.getUnit().walk ?? 99;
+                        const aMove = a.node.unit.getSummary().walk ?? 99;
+                        const bMove = b.node.unit.getSummary().walk ?? 99;
                         return aMove - bMove;
                     });
 
@@ -2062,11 +2202,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                                 const bHasNet = pinHasNetwork(b, networks) ? 0 : 1;
                                 if (aHasNet !== bHasNet) return aHasNet - bHasNet;
 
-                                const aTonnage = a.node.unit.getUnit().tons ?? 0;
-                                const bTonnage = b.node.unit.getUnit().tons ?? 0;
+                                const aTonnage = a.node.unit.getSummary().tons ?? 0;
+                                const bTonnage = b.node.unit.getSummary().tons ?? 0;
                                 if (aTonnage !== bTonnage) return bTonnage - aTonnage;
-                                const aMove = a.node.unit.getUnit().walk ?? 99;
-                                const bMove = b.node.unit.getUnit().walk ?? 99;
+                                const aMove = a.node.unit.getSummary().walk ?? 99;
+                                const bMove = b.node.unit.getSummary().walk ?? 99;
                                 return aMove - bMove;
                             });
 
@@ -2100,11 +2240,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const candidates = allMasterPins
                     .filter(p => getAvailableSlaveSlots(p, networks) > 0)
                     .sort((a, b) => {
-                        const aTonnage = a.node.unit.getUnit().tons ?? 0;
-                        const bTonnage = b.node.unit.getUnit().tons ?? 0;
+                        const aTonnage = a.node.unit.getSummary().tons ?? 0;
+                        const bTonnage = b.node.unit.getSummary().tons ?? 0;
                         if (aTonnage !== bTonnage) return bTonnage - aTonnage;
-                        const aMove = a.node.unit.getUnit().walk ?? 99;
-                        const bMove = b.node.unit.getUnit().walk ?? 99;
+                        const aMove = a.node.unit.getSummary().walk ?? 99;
+                        const bMove = b.node.unit.getSummary().walk ?? 99;
                         return aMove - bMove;
                     });
 
@@ -2333,15 +2473,38 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     }
 
     protected saveAndClose() {
-        for (const node of this.nodes()) {
-            node.unit.setC3Position({ x: node.x, y: node.y });
-        }
         const unitsMap = new Map(this.getUnits().map(u => [u.id, u]));
-        this.networks.set(C3NetworkEditor.clean(this.networks(), unitsMap));
-        this.dialogRef.close({ networks: this.networks(), updated: this.hasModifications() });
+        const visualNetworks = structuredClone(C3NetworkEditor.clean(this.networks(), unitsMap));
+        const positions = this.nodes().map(node => Object.freeze({
+            unitId: node.unit.id,
+            x: node.x,
+            y: node.y,
+        }));
+        if (this.data.force instanceof CBTForce) {
+            try {
+                const networks = projectC3EditorNetworksToEncounter(
+                    visualNetworks,
+                    this.getUnits().flatMap(unit => unit.member ? [{
+                        instanceId: unit.member.id,
+                        c3Components: unit.c3Components ?? [],
+                    }] : []),
+                );
+                this.dialogRef.close(Object.freeze({
+                    authority: 'cbt', networks, positions, updated: this.hasModifications(),
+                }));
+            } catch (error) {
+                this.toastService.showToast(error instanceof Error ? error.message : 'Invalid C3 network.', 'error');
+            }
+            return;
+        }
+        this.dialogRef.close(Object.freeze({
+            authority: 'alpha-strike', networks: visualNetworks, positions, updated: this.hasModifications(),
+        }));
     }
 
     protected close() {
-        this.dialogRef.close({ networks: this.getNetworks(), updated: false });
+        this.dialogRef.close(this.data.force instanceof CBTForce
+            ? { authority: 'cbt', networks: [], positions: [], updated: false }
+            : { authority: 'alpha-strike', networks: [], positions: [], updated: false });
     }
 }

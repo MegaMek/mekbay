@@ -201,8 +201,8 @@ export class ShareForceDialogComponent {
     }
 
     async exportToExcel() {
-        const forceUnits = this.force.units();
-        if (!forceUnits || forceUnits.length === 0) {
+        const members = this.force.members();
+        if (members.length === 0) {
             this.toastService.showToast('No units to export.', 'error');
             return;
         }
@@ -215,8 +215,8 @@ export class ShareForceDialogComponent {
         this.isExporting.set(true);
         try {
             const { exportForceToExcel } = await import('../../utils/excel-export.util');
-            await exportForceToExcel(this.force);
-            this.toastService.showToast(`Exported ${forceUnits.length} units to Excel.`, 'success');
+            await exportForceToExcel(this.force, members);
+            this.toastService.showToast(`Exported ${members.length} units to Excel.`, 'success');
         } catch (err) {
             console.error('Failed to export to Excel:', err);
             this.toastService.showToast('Failed to export to Excel.', 'error');
@@ -226,8 +226,8 @@ export class ShareForceDialogComponent {
     }
 
     async exportToCSV() {
-        const forceUnits = this.force.units();
-        if (!forceUnits || forceUnits.length === 0) {
+        const members = this.force.members();
+        if (members.length === 0) {
             this.toastService.showToast('No units to export.', 'error');
             return;
         }
@@ -240,8 +240,8 @@ export class ShareForceDialogComponent {
         this.isExporting.set(true);
         try {
             const { exportForceToCSV } = await import('../../utils/excel-export.util');
-            await exportForceToCSV(this.force);
-            this.toastService.showToast(`Exported ${forceUnits.length} units to CSV.`, 'success');
+            await exportForceToCSV(this.force, members);
+            this.toastService.showToast(`Exported ${members.length} units to CSV.`, 'success');
         } catch (err) {
             console.error('Failed to export to CSV:', err);
             this.toastService.showToast('Failed to export to CSV.', 'error');
@@ -251,11 +251,11 @@ export class ShareForceDialogComponent {
     }
 
     async exportToMUL() {
-        const forceUnits = this.force.units();
+        const members = this.force.members();
         if (this.force.gameSystem !== GameSystem.CLASSIC) {
             return;
         }
-        if (!forceUnits || forceUnits.length === 0) {
+        if (members.length === 0) {
             this.toastService.showToast('No units to export.', 'error');
             return;
         }
@@ -264,7 +264,7 @@ export class ShareForceDialogComponent {
         try {
             const { exportForceToMul } = await import('../../utils/mul-file.util');
             await exportForceToMul(this.force as CBTForce);
-            this.toastService.showToast(`Exported ${forceUnits.length} units to MUL.`, 'success');
+            this.toastService.showToast(`Exported ${members.length} units to MUL.`, 'success');
         } catch (err) {
             console.error('Failed to export to MUL:', err);
             this.toastService.showToast('Failed to export to MUL.', 'error');

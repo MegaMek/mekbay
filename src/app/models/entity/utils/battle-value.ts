@@ -87,6 +87,5 @@ export {
   HeatTrackingBVCalculator,
   InfantryBVCalculator,
   LargeAeroBVCalculator,
-  MekBVCalculator,
   ProtoMekBVCalculator,
 } from './battle-value/family-calculators';

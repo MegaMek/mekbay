@@ -6,7 +6,7 @@ import { BaseEntity } from '../models/entity/base-entity';
 import { InfantryBaseEntity } from '../models/entity/entities/infantry/infantry-base-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
 import { JumpShipEntity } from '../models/entity/entities/largecraft/jumpship-entity';
-import { Unit } from '../models/units.model';
+import { UnitSummary } from '../models/unit-summary.model';
 import { EntityType, MoveType } from '../models/entity/types';
 import { buildUnitCargoMetadata } from './unit-cargo-metadata-builder';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
@@ -17,6 +17,7 @@ import {
   armorTypeDisplayName,
   equipmentFireControlFeature,
 } from './unit-summary-display-facts';
+import { buildUnitRulesRefs } from './unit-rules-ref-builder';
 
 /**
  * Builds a `Partial<Unit>` metadata object from a parsed entity.
@@ -37,12 +38,12 @@ export class UnitMetadataBuilder {
    * Returns only the fields that are currently implemented.
    * Use the compare-unit-output script to validate against units.json.
    */
-  build(entity: BaseEntity, unitFile?: string): Partial<Unit> {
+  build(entity: BaseEntity, unitFile?: string): Partial<UnitSummary> {
     const me = entity.mountedEngine();
     const alphaStrikeUnitStats = convertEntityToAlphaStrike(entity);
     return {
       // ── Phase 0: Identity ──────────────────────────────────────────
-      uuid: entity.uuid(),
+      uuid: entity.uuid() as UnitSummary['uuid'],
       name: this.buildName(entity),
       icon: this.resolveIcon(entity),
       chassis: entity.fullChassis(),
@@ -54,6 +55,7 @@ export class UnitMetadataBuilder {
       role: entity.role() || 'None',
       source: entity.source().map(source => source.abbrev),
       published: entity.published().map(source => source.abbrev),
+      rulesRefs: buildUnitRulesRefs(entity),
       type: entity.unitType(),
       id: entity.mulId(),
       canon: entity.canon(),
@@ -208,7 +210,7 @@ export class UnitMetadataBuilder {
     return !ENGINELESS_EXPORT_TYPES.has(entity.entityType);
   }
 
-  private buildWeightClass(entity: BaseEntity): Unit['weightClass'] {
+  private buildWeightClass(entity: BaseEntity): UnitSummary['weightClass'] {
     switch (entity.weightClass()) {
       case 'Ultra Light': return 'Ultra Light/PA(L)/Exoskeleton';
       case 'Light': return 'Light';
@@ -217,9 +219,9 @@ export class UnitMetadataBuilder {
       case 'Assault': return 'Assault';
       case 'Super Heavy': return 'Colossal/Super-Heavy';
       case 'Small Craft': return 'Small Craft';
-      case 'Small DropShip': return 'Small Dropship';
-      case 'Medium DropShip': return 'Medium Dropship';
-      case 'Large DropShip': return 'Large Dropship';
+      case 'Small DropShip': return 'Small DropShip';
+      case 'Medium DropShip': return 'Medium DropShip';
+      case 'Large DropShip': return 'Large DropShip';
       case 'Small Support': return 'Small Support Vehicle';
       case 'Medium Support': return 'Medium Support Vehicle';
       case 'Large Support': return 'Large Support Vehicle';
@@ -228,15 +230,15 @@ export class UnitMetadataBuilder {
     }
   }
 
-  private buildCapitalWeightClass(entity: BaseEntity, size: 'Small' | 'Large'): Unit['weightClass'] {
+  private buildCapitalWeightClass(entity: BaseEntity, size: 'Small' | 'Large'): UnitSummary['weightClass'] {
     switch (entity.entityType) {
-      case 'WarShip': return `${size} Warship`;
+      case 'WarShip': return `${size} WarShip`;
       case 'SpaceStation': return `${size} Space Station`;
-      default: return `${size} Jumpship`;
+      default: return `${size} JumpShip`;
     }
   }
 
-  private buildCapitalData(entity: BaseEntity): Unit['capital'] {
+  private buildCapitalData(entity: BaseEntity): UnitSummary['capital'] {
     if (!(entity instanceof JumpShipEntity)) return undefined;
     return {
       dropshipCapacity: entity.dockingCollarCount(),

@@ -108,18 +108,18 @@
                 (next)="next.emit()"
                 (variantsTabStateChange)="variantsTabState.set($event)">
                 <ng-container unit-details-footer-actions>
-                <div class="bt-split-button add-split-button" [class.disabled]="forceBuilderService.currentForce()?.readOnly()">
+                <div class="bt-split-button add-split-button" [class.disabled]="forceWorkspace.currentForce()?.readOnly()">
                     <button
                         type="button"
                         class="bt-split-part split-main"
-                        [disabled]="forceBuilderService.currentForce()?.readOnly()"
+                        [disabled]="forceWorkspace.currentForce()?.readOnly()"
                         (click)="onAdd()">
                         ADD TO FORCE
                     </button>
                     <button
                         type="button"
                         class="bt-split-part split-extra"
-                        [disabled]="forceBuilderService.currentForce()?.readOnly()"
+                        [disabled]="forceWorkspace.currentForce()?.readOnly()"
                         (click)="onAddMultiple()"
                         title="Add multiple copies">
                         +

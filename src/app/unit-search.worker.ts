@@ -4,8 +4,8 @@
 
 /// <reference lib="webworker" />
 
-import type { Unit } from './models/units.model';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './models/crew-member.model';
+import type { UnitSummary } from './models/unit-summary.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './models/crew.model';
 import { getForcePacks } from './models/forcepacks.model';
 import {
     ADVANCED_FILTERS,
@@ -17,11 +17,15 @@ import { parseSemanticQueryAST } from './utils/semantic-filter-ast.util';
 import { adjustPointValueForSkill } from './utils/pv-skill-adjustment.util';
 import { parseSearchQuery } from './utils/search.util';
 import { executeUnitSearch } from './utils/unit-search-executor.util';
-import { getNowMs } from './utils/unit-search-shared.util';
+import { getNowMs, getUnitSearchIdentityKey } from './utils/unit-search-shared.util';
+import {
+    createMulFactionEraSearchIndex,
+    getMulFactionEraUnitIdentityKeys,
+    type MulFactionEraSearchIndex,
+} from './utils/mul-faction-era-search-index.util';
 import type {
     UnitSearchWorkerCorpusSnapshot,
     UnitSearchWorkerErrorMessage,
-    UnitSearchWorkerFactionEraSnapshot,
     UnitSearchWorkerIndexSnapshot,
     UnitSearchWorkerQueryRequest,
     UnitSearchWorkerRequestMessage,
@@ -29,16 +33,21 @@ import type {
     UnitSearchWorkerResultMessage,
 } from './utils/unit-search-worker-protocol.util';
 import { getUnitVariantGroupKey } from './utils/unit-variant.util';
+import {
+    MM_DATA_UNIT_PROVIDER_ID,
+    type UnitProviderId,
+} from './services/unit-catalog/unit-catalog.types';
 
-interface WorkerCorpusRuntime {
+interface WorkerCorpusRuntime extends MulFactionEraSearchIndex {
     corpusVersion: string;
-    units: Unit[];
-    allUnitNames: ReadonlySet<string>;
+    units: UnitSummary[];
+    allUnitIdentityKeys: ReadonlySet<string>;
     indexedUnitIds: Map<string, Map<string, ReadonlySet<string>>>;
     indexedFilterValues: Map<string, string[]>;
-    factionEraUnitIds: Map<string, Map<string, ReadonlySet<string>>>;
     forcePackToLookupKey: Map<string, Set<string>>;
 }
+
+type CatalogIdentityUnit = UnitSummary & { readonly provider?: UnitProviderId };
 
 let corpus: WorkerCorpusRuntime | null = null;
 const workerDisplayNameFns = new Map(
@@ -51,13 +60,17 @@ function getUnitNameKey(name: string): string {
     return name.toLowerCase();
 }
 
+function getUnitProvider(unit: UnitSummary): UnitProviderId {
+    return (unit as CatalogIdentityUnit).provider ?? MM_DATA_UNIT_PROVIDER_ID;
+}
+
 function buildIndexedUnitIds(indexes: UnitSearchWorkerIndexSnapshot): Map<string, Map<string, ReadonlySet<string>>> {
     const result = new Map<string, Map<string, ReadonlySet<string>>>();
 
     for (const [filterKey, valueMap] of Object.entries(indexes)) {
         const filterIndex = new Map<string, ReadonlySet<string>>();
-        for (const [value, unitNames] of Object.entries(valueMap)) {
-            filterIndex.set(value, new Set(unitNames));
+        for (const [value, unitIdentityKeys] of Object.entries(valueMap)) {
+            filterIndex.set(value, new Set(unitIdentityKeys));
         }
         result.set(filterKey, filterIndex);
     }
@@ -75,31 +88,17 @@ function buildIndexedFilterValues(indexes: UnitSearchWorkerIndexSnapshot): Map<s
     return result;
 }
 
-function buildFactionEraUnitIds(factionEraIndex: UnitSearchWorkerFactionEraSnapshot): Map<string, Map<string, ReadonlySet<string>>> {
-    const result = new Map<string, Map<string, ReadonlySet<string>>>();
-
-    for (const [eraName, factionMap] of Object.entries(factionEraIndex)) {
-        const eraIndex = new Map<string, ReadonlySet<string>>();
-        for (const [factionName, unitNames] of Object.entries(factionMap)) {
-            eraIndex.set(factionName, new Set(unitNames));
-        }
-        result.set(eraName, eraIndex);
-    }
-
-    return result;
-}
-
-function addUnitNames(target: Set<string>, source: ReadonlySet<string> | undefined): void {
+function addUnitIdentityKeys(target: Set<string>, source: ReadonlySet<string> | undefined): void {
     if (!source || source.size === 0) {
         return;
     }
 
-    for (const unitName of source) {
-        target.add(unitName);
+    for (const unitIdentityKey of source) {
+        target.add(unitIdentityKey);
     }
 }
 
-function buildForcePackIndex(units: Unit[]): Map<string, Set<string>> {
+function buildForcePackIndex(units: UnitSummary[]): Map<string, Set<string>> {
     const unitsByName = new Map(units.map(unit => [getUnitNameKey(unit.name), unit]));
     const result = new Map<string, Set<string>>();
 
@@ -124,15 +123,30 @@ function buildForcePackIndex(units: Unit[]): Map<string, Set<string>> {
     return result;
 }
 
-function hydrateCorpus(snapshot: UnitSearchWorkerCorpusSnapshot): WorkerCorpusRuntime {
+function hydrateCorpus(
+    snapshot: UnitSearchWorkerCorpusSnapshot,
+    onProgress: (completed: number, detail: string) => void = () => undefined,
+): WorkerCorpusRuntime {
+    const units = snapshot.units as unknown as UnitSummary[];
+    const allUnitIdentityKeys = new Set(units.map(getUnitSearchIdentityKey));
+    const forcePackToLookupKey = buildForcePackIndex(units);
+    onProgress(1, `Loaded ${units.length.toLocaleString()} compact unit search records`);
+
+    const indexedUnitIds = buildIndexedUnitIds(snapshot.indexes);
+    const indexedFilterValues = buildIndexedFilterValues(snapshot.indexes);
+    onProgress(2, 'Hydrated unit filter indexes');
+
+    const factionEraSearchIndex = createMulFactionEraSearchIndex(snapshot.factionEraIndex);
+    onProgress(3, 'Hydrated faction and era memberships');
+
     return {
         corpusVersion: snapshot.corpusVersion,
-        units: snapshot.units,
-        allUnitNames: new Set(snapshot.units.map((unit) => unit.name)),
-        indexedUnitIds: buildIndexedUnitIds(snapshot.indexes),
-        indexedFilterValues: buildIndexedFilterValues(snapshot.indexes),
-        factionEraUnitIds: buildFactionEraUnitIds(snapshot.factionEraIndex),
-        forcePackToLookupKey: buildForcePackIndex(snapshot.units),
+        units,
+        allUnitIdentityKeys,
+        indexedUnitIds,
+        indexedFilterValues,
+        ...factionEraSearchIndex,
+        forcePackToLookupKey,
     };
 }
 
@@ -146,68 +160,58 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
     const parsedQuery = parseSemanticQueryAST(request.executionQuery, request.gameSystem);
     const parseDurationMs = getNowMs() - parseStartedAt;
 
-    const getFactionEraUnitNames = (eraName: string, factionNames: readonly string[]): ReadonlySet<string> => {
-        const unitNames = new Set<string>();
-        if (factionNames.length === 0) {
-            return unitNames;
-        }
-
-        const eraFactionUnitIds = runtime.factionEraUnitIds.get(eraName);
-        for (const factionName of factionNames) {
-            addUnitNames(unitNames, eraFactionUnitIds?.get(factionName));
-        }
-
-        return unitNames;
+    const getFactionEraUnitIdentityKeys = (eraName: string, factionNames: readonly string[]): ReadonlySet<string> => {
+        return getMulFactionEraUnitIdentityKeys(runtime, [eraName], factionNames);
     };
 
-    const getMembershipUnitNames = (scope?: AvailabilityFilterScope): ReadonlySet<string> => {
-        const unitNames = new Set<string>();
+    const getMembershipUnitIdentityKeys = (scope?: AvailabilityFilterScope): ReadonlySet<string> => {
+        const unitIdentityKeys = new Set<string>();
 
         if (scope?.eraNames !== undefined && scope.factionNames !== undefined) {
             for (const eraName of scope.eraNames) {
-                addUnitNames(unitNames, getFactionEraUnitNames(eraName, scope.factionNames));
+                addUnitIdentityKeys(unitIdentityKeys, getFactionEraUnitIdentityKeys(eraName, scope.factionNames));
             }
 
-            return unitNames;
+            return unitIdentityKeys;
         }
 
         if (scope?.eraNames !== undefined) {
             for (const eraName of scope.eraNames) {
-                addUnitNames(unitNames, runtime.indexedUnitIds.get('era')?.get(eraName));
+                addUnitIdentityKeys(unitIdentityKeys, runtime.indexedUnitIds.get('era')?.get(eraName));
             }
 
-            return unitNames;
+            return unitIdentityKeys;
         }
 
         if (scope?.factionNames !== undefined) {
             for (const factionName of scope.factionNames) {
-                addUnitNames(unitNames, runtime.indexedUnitIds.get('faction')?.get(factionName));
+                addUnitIdentityKeys(unitIdentityKeys, runtime.indexedUnitIds.get('faction')?.get(factionName));
             }
 
-            return unitNames;
+            return unitIdentityKeys;
         }
 
-        addUnitNames(unitNames, runtime.allUnitNames);
+        addUnitIdentityKeys(unitIdentityKeys, runtime.allUnitIdentityKeys);
 
-        return unitNames;
+        return unitIdentityKeys;
     };
 
-    const getScopedEraUnitNames = (
+    const getScopedEraUnitIdentityKeys = (
         eraName: string,
         scope?: AvailabilityFilterScope,
     ): ReadonlySet<string> => {
-        return getMembershipUnitNames(
+        return getMembershipUnitIdentityKeys(
             scope?.factionNames === undefined
                 ? { eraNames: [eraName] }
                 : { eraNames: [eraName], factionNames: scope.factionNames },
         );
     };
 
-    const getScopedFactionUnitNames = (
+    const getScopedFactionUnitIdentityKeys = (
         factionName: string,
         eraNames?: readonly string[],
     ): ReadonlySet<string> => {
-        return getMembershipUnitNames(
+        return getMembershipUnitIdentityKeys(
             eraNames === undefined
                 ? { factionNames: [factionName] }
                 : { eraNames: [...eraNames], factionNames: [factionName] },
@@ -228,11 +232,11 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         scope?: AvailabilityFilterScope,
     ): ReadonlySet<string> | undefined => {
         if (filterKey === 'era') {
-            return getScopedEraUnitNames(value, scope);
+            return getScopedEraUnitIdentityKeys(value, scope);
         }
 
         if (filterKey === 'faction') {
-            return getScopedFactionUnitNames(value, scope?.eraNames);
+            return getScopedFactionUnitIdentityKeys(value, scope?.eraNames);
         }
 
         return runtime.indexedUnitIds.get(filterKey)?.get(value);
@@ -260,20 +264,20 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         bvPvLimit: request.bvPvLimit,
         forceTotalBvPv: request.forceTotalBvPv,
         normalization: request.normalization,
-        getAdjustedBV: (unit: Unit) => {
+        getAdjustedBV: (unit: UnitSummary) => {
             const gunnery = request.pilotGunnerySkill;
             const piloting = request.pilotPilotingSkill;
             return BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
         },
-        getAdjustedPV: (unit: Unit) => {
+        getAdjustedPV: (unit: UnitSummary) => {
             if (request.pilotGunnerySkill === DEFAULT_GUNNERY_SKILL) {
                 return unit.as.PV;
             }
             return adjustPointValueForSkill(unit.as.PV, request.pilotGunnerySkill);
         },
-        unitBelongsToEra: (unit: Unit, eraName: string, scope?: AvailabilityFilterScope) => getScopedEraUnitNames(eraName, scope).has(unit.name),
-        unitBelongsToFaction: (unit: Unit, factionName: string, eraNames?: readonly string[]) => getScopedFactionUnitNames(factionName, eraNames).has(unit.name),
-        unitBelongsToForcePack: (unit: Unit, packName: string) => runtime.forcePackToLookupKey.get(packName)?.has(getUnitVariantGroupKey(unit)) ?? false,
+        unitBelongsToEra: (unit: UnitSummary, eraName: string, scope?: AvailabilityFilterScope) => getScopedEraUnitIdentityKeys(eraName, scope).has(getUnitSearchIdentityKey(unit)),
+        unitBelongsToFaction: (unit: UnitSummary, factionName: string, eraNames?: readonly string[]) => getScopedFactionUnitIdentityKeys(factionName, eraNames).has(getUnitSearchIdentityKey(unit)),
+        unitBelongsToForcePack: (unit: UnitSummary, packName: string) => runtime.forcePackToLookupKey.get(packName)?.has(getUnitVariantGroupKey(unit)) ?? false,
         getAllEraNames: getEraFilterValues,
         getAllFactionNames: getFactionFilterValues,
         getDisplayName: (filterKey: string, value: string) => workerDisplayNameFns.get(filterKey)?.(value),
@@ -293,8 +297,13 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         corpusVersion: runtime.corpusVersion,
         telemetryQuery: request.telemetryQuery,
         entries: execution.results.map(unit => {
-            const match = execution.normalizationMatchesByUnitName.get(unit.name);
-            return match ? { unitName: unit.name, match } : { unitName: unit.name };
+            const match = execution.normalizationMatchesByUnitIdentity.get(getUnitSearchIdentityKey(unit));
+            const identity = {
+                provider: getUnitProvider(unit),
+                uuid: unit.uuid,
+                unitName: unit.name,
+            };
+            return match ? { ...identity, match } : identity;
         }),
         stages: [parseStage, ...execution.telemetryStages],
         totalMs: parseDurationMs + execution.totalMs,
@@ -317,7 +326,15 @@ if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScop
     addEventListener('message', ({ data }: MessageEvent<UnitSearchWorkerRequestMessage>) => {
         try {
             if (data.type === 'init') {
-                corpus = hydrateCorpus(data.snapshot);
+                corpus = hydrateCorpus(data.snapshot, (completed, detail) => {
+                    postMessage({
+                        type: 'progress',
+                        corpusVersion: data.snapshot.corpusVersion,
+                        completed,
+                        total: 4,
+                        detail,
+                    } satisfies UnitSearchWorkerResponseMessage);
+                });
                 postMessage({
                     type: 'ready',
                     corpusVersion: data.snapshot.corpusVersion,

@@ -1,349 +1,459 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
-import { MiscEquipment } from '../models/equipment.model';
 import {
-    C3EM_MODE_STATE_KEY,
-    C3EM_OPERATING_TURNS_STATE_KEY,
-    getC3EmergencyMasterMode,
-    getC3EmergencyMasterOperatingTurns,
-    isC3EmergencyMasterFried,
-    type C3EmergencyMasterStatus,
-} from '../models/c3-emergency-master.model';
-import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
-import { MountedEquipment } from '../models/mounted-equipment.model';
-import type { DialogsService } from '../services/dialogs.service';
-import { createHandlerCommandContext, createHandlerQueryContext, EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
-import type { ToastService } from '../services/toast.service';
-import { C3EmergencyMasterHandler, C3EM_TOGGLE_CHOICE_VALUE } from './c3-emergency-master.handler';
+    componentC3EmergencyMasterDefinition,
+    componentC3EmergencyMasterFacts,
+    selectComponentC3EmergencyMasterOperatingTurns,
+    syncComponentC3EmergencyMasterEncounter,
+} from '../models/runtime/component-c3-emergency-master';
+import {
+    asEncounterNetworkId,
+    emptyCBTEncounterSnapshot,
+    type CBTEncounterSnapshot,
+    type EncounterNetworkEndpoint,
+} from '../models/runtime/encounter-runtime';
+import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import { asCommandId } from '../models/runtime/runtime-state';
+import {
+    createHandlerCommandContext,
+    createHandlerQueryContext,
+    type HandlerDialogsService,
+    type HandlerNotifications,
+    type HandlerToastService,
+} from '../services/equipment-interaction-registry.service';
+import {
+    C3EM_TOGGLE_CHOICE_VALUE,
+    C3EmergencyMasterHandler,
+} from '../models/runtime/component-c3-emergency-master';
 
-function fixture(initialStatus: C3EmergencyMasterStatus = 'dormant') {
-    let status = initialStatus;
-    let equipment!: MountedEquipment;
-    const owner = {
-        id: 'emergency-unit',
-        readOnly: () => false,
-        getEquipmentStatus: (entry: MountedEquipment) => entry.committedDestroyed() ? 'destroyed' : 'available',
-        isEquipmentOperational: (entry: MountedEquipment) => !entry.committedDestroyed(),
-        canPerformEquipmentAction: (entry: MountedEquipment) => !entry.committedDestroyed(),
-        getInventory: () => [equipment],
-        setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        getNotificationDisplayName: () => 'Emergency Unit',
-    };
-    const force = {
-        name: 'Test Force',
-        instanceId: () => 'test-force',
-        units: () => [owner],
-        c3Network: () => ({ emergencyMasterStatus: () => status }),
-    };
-    Object.assign(owner, { force });
-    equipment = new MountedEquipment({
-        owner: owner as never,
-        id: 'c3em',
-        name: 'C3 Emergency Master',
-        equipment: new MiscEquipment({ id: 'c3em', name: 'C3 Emergency Master', type: 'misc', flags: ['F_C3S', 'F_C3EM'] }),
-        states: new Map(),
-    });
-    const toastService = jasmine.createSpyObj<ToastService>('ToastService', ['showToast']);
-    const context = {
-        query: createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY, 'turn-summary'),
-        command: createHandlerCommandContext(
-            EMPTY_EQUIPMENT_REGISTRY,
-            toastService,
-            jasmine.createSpyObj<DialogsService>('DialogsService', ['createDialog']),
-        ),
-        toastService,
-    };
-    return { equipment, owner, force, context, setStatus: (value: C3EmergencyMasterStatus) => { status = value; } };
-}
+describe('C3EmergencyMasterHandler direct V2 runtime', () => {
+    it('renders the production track from direct sparse operating-turn state', () => {
+        const setup = directC3Setup(null);
+        let choices = setup.handler.getComponentC3EmergencyMasterChoices(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            setup.queryContext,
+        );
 
-describe('C3EmergencyMasterHandler', () => {
-    const handler = new C3EmergencyMasterHandler();
-
-    it('renders an empty track and a gray inactive EMERGENCY toggle with no consumed turns', () => {
-        const { equipment, context } = fixture();
-        const choices = handler.getChoices(equipment, context.query);
-
-        expect(choices.map(choice => choice.label)).toEqual(['1', '2', '3', '4', '5', '6', '!!', 'EMERGENCY']);
+        expect(choices.map(choice => choice.label)).toEqual([
+            '1', '2', '3', '4', '5', '6', '!!', 'EMERGENCY',
+        ]);
         expect(choices.slice(0, 7).every(choice => !choice.active)).toBeTrue();
         expect(choices.at(-1)).toEqual(jasmine.objectContaining({
             value: C3EM_TOGGLE_CHOICE_VALUE,
             active: false,
         }));
-    });
 
-    it('displays retained turns with a muted current marker while dormant', () => {
-        const { equipment, context, setStatus } = fixture('dormant');
-        equipment.setState(C3EM_OPERATING_TURNS_STATE_KEY, '4');
-
-        let choices = handler.getChoices(equipment, context.query);
-
-        expect(choices.slice(0, 3).every(choice => choice.active && choice.selectionTone === 'muted')).toBeTrue();
-        expect(choices[3]).toEqual(jasmine.objectContaining({ active: true, selectionTone: 'muted' }));
+        expect(selectComponentC3EmergencyMasterOperatingTurns(
+            setup.runtime,
+            setup.definition,
+            4,
+        ).accepted).toBeTrue();
+        choices = setup.handler.getComponentC3EmergencyMasterChoices(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            setup.queryContext,
+        );
+        expect(choices.slice(0, 4).every(choice => choice.active
+            && choice.selectionTone === 'muted')).toBeTrue();
         expect(choices.slice(4, 7).every(choice => !choice.active)).toBeTrue();
-        expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(4);
-        expect(equipment.states.get(C3EM_OPERATING_TURNS_STATE_KEY)).toBe('4');
 
-        setStatus('active');
-        choices = handler.getChoices(equipment, context.query);
-        expect(choices[3]).toEqual(jasmine.objectContaining({ active: true, selectionTone: 'selected' }));
-        expect(choices[4].active).toBeFalse();
-        expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(4);
-    });
-
-    it('shows the activation turn as current and advances it after each completed turn', () => {
-        const { equipment, context, setStatus } = fixture('active');
-        equipment.setState(C3EM_OPERATING_TURNS_STATE_KEY, '1');
-
-        let choices = handler.getChoices(equipment, context.query);
-        expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(1);
-        expect(choices[0]).toEqual(jasmine.objectContaining({ active: true, selectionTone: 'selected' }));
-        expect(choices[1].active).toBeFalse();
-
-        handler.onEndTurn(equipment, context.toastService);
-        choices = handler.getChoices(equipment, context.query);
-        expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(2);
-        expect(choices[0]).toEqual(jasmine.objectContaining({ active: true, selectionTone: 'muted' }));
-        expect(choices[1]).toEqual(jasmine.objectContaining({ active: true, selectionTone: 'selected' }));
-        expect(context.toastService.showToast).toHaveBeenCalledWith(
-            'Emergency Unit: C3 Emergency Master active, 2/6 operating turns',
-            'info'
+        setup.setRole('master');
+        choices = setup.handler.getComponentC3EmergencyMasterChoices(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            setup.queryContext,
         );
-
-        setStatus('standby');
-        choices = handler.getChoices(equipment, context.query);
-        expect(choices[0]).toEqual(jasmine.objectContaining({ active: true, selectionTone: 'muted' }));
-        expect(choices[1]).toEqual(jasmine.objectContaining({ active: true, selectionTone: 'muted' }));
+        expect(choices[3]).toEqual(jasmine.objectContaining({
+            active: true,
+            selectionTone: 'selected',
+        }));
     });
 
-    it('allows manual override on and off without resetting consumed turns', () => {
-        const { equipment, owner, context, setStatus } = fixture();
-        const toggle = handler.getChoices(equipment, context.query).at(-1)!;
+    it('uses the typed encounter role and direct sparse lifecycle commands', () => {
+        const setup = directC3Setup('master');
+        expect(componentC3EmergencyMasterFacts(
+            setup.runtime, setup.definition, setup.runtimeContext,
+        )).toEqual(jasmine.objectContaining({
+            mode: 'auto', status: 'active', operatingTurns: 0, endpointRole: 'master',
+        }));
 
-        handler.handleSelection(equipment, toggle, context.command);
-        expect(getC3EmergencyMasterMode(equipment)).toBe('on');
-        expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(1);
-        expect(context.toastService.showToast).not.toHaveBeenCalled();
-        setStatus('active');
-        handler.onEndTurn(equipment, context.toastService);
-        expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(2);
-        handler.handleSelection(equipment, handler.getChoices(equipment, context.query).at(-1)!, context.command);
-
-        expect(getC3EmergencyMasterMode(equipment)).toBe('off');
-        expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(2);
-        expect(owner.setInventoryEntry).toHaveBeenCalledTimes(3);
-    });
-
-    it('owns activation transition notifications for manual and automatic status changes', () => {
-        const { force, context, setStatus } = fixture('dormant');
-
-        handler.onForceRuntimeChanged(force as never, context.toastService);
-        expect(context.toastService.showToast).not.toHaveBeenCalled();
-
-        setStatus('active');
-        handler.onForceRuntimeChanged(force as never, context.toastService);
-        handler.onForceRuntimeChanged(force as never, context.toastService);
-        expect(context.toastService.showToast).toHaveBeenCalledOnceWith(
-            'Emergency Unit: C3 Emergency Master EMERGENCY active',
-            'info',
-            'c3em-activation-test-force-emergency-unit\0c3em'
+        expect(syncComponentC3EmergencyMasterEncounter(
+            setup.runtime, setup.definition, setup.runtimeContext,
+        ).accepted).toBeTrue();
+        const choices = setup.handler.getComponentC3EmergencyMasterChoices(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            setup.queryContext,
         );
+        expect(choices[0]).toEqual(jasmine.objectContaining({ value: 1, active: true }));
+        expect(choices.at(-1)).toEqual(jasmine.objectContaining({
+            value: C3EM_TOGGLE_CHOICE_VALUE,
+            active: true,
+        }));
 
-        setStatus('dormant');
-        handler.onForceRuntimeChanged(force as never, context.toastService);
-        setStatus('active');
-        handler.onForceRuntimeChanged(force as never, context.toastService);
-        expect(context.toastService.showToast).toHaveBeenCalledTimes(2);
+        expect(setup.handler.handleComponentC3EmergencyMasterSelection(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            { value: C3EM_TOGGLE_CHOICE_VALUE } as never,
+            setup.commandContext,
+        )).toBeTrue();
+        expect(componentC3EmergencyMasterFacts(
+            setup.runtime, setup.definition, setup.runtimeContext,
+        ).status).toBe('dormant');
+
+        expect(setup.handler.handleComponentC3EmergencyMasterSelection(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            { value: 7 } as never,
+            setup.commandContext,
+        )).toBeTrue();
+        expect(componentC3EmergencyMasterFacts(
+            setup.runtime, setup.definition, setup.runtimeContext,
+        ).status).toBe('fried');
+        expect(setup.toast.showToast).toHaveBeenCalledWith(
+            'Test C3 Emergency Master: fried after 6 operating turns',
+            'error',
+        );
     });
 
-    it('initializes an already active emergency master without a load-time activation toast', () => {
-        const { force, equipment, owner, context } = fixture('active');
+    it('settles active masters but not standby members at end turn', () => {
+        const master = directC3Setup('master');
+        expect(syncComponentC3EmergencyMasterEncounter(
+            master.runtime, master.definition, master.runtimeContext,
+        ).accepted).toBeTrue();
+        expect(selectComponentC3EmergencyMasterOperatingTurns(
+            master.runtime, master.definition, 6,
+        ).accepted).toBeTrue();
+        master.handler.onComponentC3EmergencyMasterEndTurn(
+            master.runtime,
+            master.definition,
+            master.runtimeContext,
+            master.notifications,
+        );
+        expect(componentC3EmergencyMasterFacts(
+            master.runtime, master.definition, master.runtimeContext,
+        )).toEqual(jasmine.objectContaining({ status: 'fried', operatingTurns: 7 }));
+        expect(master.notifications.showToast).toHaveBeenCalled();
 
-        handler.onForceRuntimeChanged(force as never, context.toastService);
-
-        expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(1);
-        expect(owner.setInventoryEntry).toHaveBeenCalledOnceWith(equipment);
-        expect(context.toastService.showToast).not.toHaveBeenCalled();
+        const member = directC3Setup('member');
+        expect(member.handler.handleComponentC3EmergencyMasterSelection(
+            member.runtime,
+            member.definition,
+            member.runtimeContext,
+            { value: C3EM_TOGGLE_CHOICE_VALUE } as never,
+            member.commandContext,
+        )).toBeTrue();
+        expect(componentC3EmergencyMasterFacts(
+            member.runtime, member.definition, member.runtimeContext,
+        )).toEqual(jasmine.objectContaining({ status: 'standby', operatingTurns: 1 }));
+        member.handler.onComponentC3EmergencyMasterEndTurn(
+            member.runtime,
+            member.definition,
+            member.runtimeContext,
+            member.notifications,
+        );
+        expect(componentC3EmergencyMasterFacts(
+            member.runtime, member.definition, member.runtimeContext,
+        ).operatingTurns).toBe(1);
+        expect(member.notifications.showToast).not.toHaveBeenCalled();
     });
 
-    it('increments only active operating turns and pauses on standby, recovery, or unavailability', () => {
-        const { equipment, owner, context, setStatus } = fixture('active');
-        equipment.setState(C3EM_OPERATING_TURNS_STATE_KEY, '1');
+    it('retains consumed turns across manual Emergency overrides', () => {
+        const setup = directC3Setup('member');
+        const toggle = () => setup.handler.getComponentC3EmergencyMasterChoices(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            setup.queryContext,
+        ).at(-1)!;
 
-        handler.onEndTurn(equipment, context.toastService);
-        setStatus('standby');
-        handler.onEndTurn(equipment, context.toastService);
-        setStatus('dormant');
-        handler.onEndTurn(equipment, context.toastService);
-        setStatus('unavailable');
-        handler.onEndTurn(equipment, context.toastService);
-        setStatus('active');
-        handler.onEndTurn(equipment, context.toastService);
+        expect(setup.handler.handleComponentC3EmergencyMasterSelection(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            toggle() as never,
+            setup.commandContext,
+        )).toBeTrue();
+        expect(componentC3EmergencyMasterFacts(
+            setup.runtime, setup.definition, setup.runtimeContext,
+        )).toEqual(jasmine.objectContaining({
+            mode: 'on', status: 'standby', operatingTurns: 1,
+        }));
 
-        expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(3);
-        expect(owner.setInventoryEntry).toHaveBeenCalledTimes(2);
+        setup.handler.onComponentC3EmergencyMasterEndTurn(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            setup.notifications,
+        );
+        expect(componentC3EmergencyMasterFacts(
+            setup.runtime, setup.definition, setup.runtimeContext,
+        ).operatingTurns).toBe(1);
+
+        setup.setRole('master');
+        setup.handler.onComponentC3EmergencyMasterEndTurn(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            setup.notifications,
+        );
+        expect(componentC3EmergencyMasterFacts(
+            setup.runtime, setup.definition, setup.runtimeContext,
+        ).operatingTurns).toBe(2);
+
+        expect(setup.handler.handleComponentC3EmergencyMasterSelection(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            toggle() as never,
+            setup.commandContext,
+        )).toBeTrue();
+        expect(componentC3EmergencyMasterFacts(
+            setup.runtime, setup.definition, setup.runtimeContext,
+        )).toEqual(jasmine.objectContaining({
+            mode: 'off', status: 'dormant', operatingTurns: 2,
+        }));
     });
 
-    it('highlights the red fried marker after six turns while leaving track correction enabled', () => {
-        const { equipment, owner, context, setStatus } = fixture('active');
-        equipment.setState(C3EM_OPERATING_TURNS_STATE_KEY, '1');
+    it('pauses outside active service and resumes from the retained turn', () => {
+        const setup = directC3Setup('master');
+        expect(syncComponentC3EmergencyMasterEncounter(
+            setup.runtime, setup.definition, setup.runtimeContext,
+        ).accepted).toBeTrue();
 
-        for (let turn = 2; turn <= 7; turn++) {
-            handler.onEndTurn(equipment, context.toastService);
-            expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(turn);
-            if (turn === 7) setStatus('fried');
-        }
-        handler.onEndTurn(equipment, context.toastService);
-        const choices = handler.getChoices(equipment, context.query);
+        setup.handler.onComponentC3EmergencyMasterEndTurn(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            setup.notifications,
+        );
+        setup.setRole(null);
+        setup.handler.onComponentC3EmergencyMasterEndTurn(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            setup.notifications,
+        );
+        expect(componentC3EmergencyMasterFacts(
+            setup.runtime, setup.definition, setup.runtimeContext,
+        ).operatingTurns).toBe(2);
 
-        expect(isC3EmergencyMasterFried(equipment)).toBeTrue();
-        expect(choices[6]).toEqual(jasmine.objectContaining({ active: true, selectionTone: 'selected' }));
-        expect(choices[6].disabled).toBeFalsy();
-        expect(choices[6].colors).toEqual(jasmine.objectContaining({ selected: '#f00', selectedText: '#fff' }));
-        expect(choices.at(-1)).toEqual(jasmine.objectContaining({ active: false, disabled: true }));
-        expect(choices.slice(0, 7).every(choice => !choice.disabled)).toBeTrue();
-        expect(owner.setInventoryEntry).toHaveBeenCalledTimes(6);
+        setup.setRole('master');
+        expect(setup.runtime.dispatch({
+            type: 'set-component-status',
+            commandId: asCommandId('c3em:unavailable'),
+            expectedRevision: setup.runtime.revision(),
+            componentId: setup.component.id,
+            status: 'destroyed',
+            target: 'committed',
+        }).accepted).toBeTrue();
+        setup.handler.onComponentC3EmergencyMasterEndTurn(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            setup.notifications,
+        );
+        expect(componentC3EmergencyMasterFacts(
+            setup.runtime, setup.definition, setup.runtimeContext,
+        )).toEqual(jasmine.objectContaining({ status: 'unavailable', operatingTurns: 2 }));
+
+        expect(setup.runtime.dispatch({
+            type: 'set-component-status',
+            commandId: asCommandId('c3em:available'),
+            expectedRevision: setup.runtime.revision(),
+            componentId: setup.component.id,
+            status: 'available',
+            target: 'committed',
+        }).accepted).toBeTrue();
+        setup.handler.onComponentC3EmergencyMasterEndTurn(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            setup.notifications,
+        );
+        expect(componentC3EmergencyMasterFacts(
+            setup.runtime, setup.definition, setup.runtimeContext,
+        )).toEqual(jasmine.objectContaining({ status: 'active', operatingTurns: 3 }));
     });
 
-    it('allows correcting a fried track to a lower value and unfrying it', () => {
-        const { equipment, owner, context, setStatus } = fixture('fried');
-        equipment.setState(C3EM_OPERATING_TURNS_STATE_KEY, '7');
+    it('fries after six operating turns and keeps direct track correction available', () => {
+        const setup = directC3Setup('master');
+        expect(selectComponentC3EmergencyMasterOperatingTurns(
+            setup.runtime,
+            setup.definition,
+            6,
+        ).accepted).toBeTrue();
 
-        handler.handleSelection(equipment, handler.getChoices(equipment, context.query)[3], context.command);
-        setStatus('dormant');
+        setup.handler.onComponentC3EmergencyMasterEndTurn(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            setup.notifications,
+        );
+        let choices = setup.handler.getComponentC3EmergencyMasterChoices(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            setup.queryContext,
+        );
+        expect(componentC3EmergencyMasterFacts(
+            setup.runtime, setup.definition, setup.runtimeContext,
+        )).toEqual(jasmine.objectContaining({ status: 'fried', operatingTurns: 7 }));
+        expect(choices[6]).toEqual(jasmine.objectContaining({
+            active: true,
+            disabled: false,
+            selectionTone: 'selected',
+            colors: jasmine.objectContaining({ selected: '#f00', selectedText: '#fff' }),
+        }));
+        expect(choices.at(-1)).toEqual(jasmine.objectContaining({
+            active: false,
+            disabled: true,
+        }));
 
-        expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(4);
-        expect(isC3EmergencyMasterFried(equipment)).toBeFalse();
-        expect(owner.setInventoryEntry).toHaveBeenCalledWith(equipment);
-        const choices = handler.getChoices(equipment, context.query);
-        expect(choices[6].active).toBeFalse();
+        expect(setup.handler.handleComponentC3EmergencyMasterSelection(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            choices[3] as never,
+            setup.commandContext,
+        )).toBeTrue();
+        choices = setup.handler.getComponentC3EmergencyMasterChoices(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            setup.queryContext,
+        );
+        expect(componentC3EmergencyMasterFacts(
+            setup.runtime, setup.definition, setup.runtimeContext,
+        )).toEqual(jasmine.objectContaining({
+            mode: 'off', status: 'dormant', operatingTurns: 4,
+        }));
         expect(choices.slice(0, 4).every(choice => choice.active)).toBeTrue();
+        expect(choices[6].active).toBeFalse();
         expect(choices.at(-1)?.disabled).toBeFalse();
     });
 
-    it('supports correcting the track while clamping malformed and boundary state', () => {
-        const { equipment, context } = fixture();
-        equipment.setState(C3EM_OPERATING_TURNS_STATE_KEY, 'invalid');
-        expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(0);
-        equipment.setState(C3EM_OPERATING_TURNS_STATE_KEY, '-4');
-        expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(0);
-        equipment.setState(C3EM_OPERATING_TURNS_STATE_KEY, '99');
-        expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(7);
-        equipment.deleteState(C3EM_OPERATING_TURNS_STATE_KEY);
-
-        handler.handleSelection(equipment, handler.getChoices(equipment, context.query)[2], context.command);
-        expect(equipment.states.get(C3EM_OPERATING_TURNS_STATE_KEY)).toBe('3');
-    });
-
-    it('ignores malformed track choices without mutating equipment', () => {
-        const { equipment, owner, context } = fixture();
+    it('ignores malformed track values without changing sparse state', () => {
+        const setup = directC3Setup('master');
+        const revision = setup.runtime.revision();
 
         for (const value of ['invalid', Number.NaN, 0, -1, 1.5, 8]) {
-            handler.handleSelection(equipment, { label: String(value), value }, context.command);
+            expect(setup.handler.handleComponentC3EmergencyMasterSelection(
+                setup.runtime,
+                setup.definition,
+                setup.runtimeContext,
+                { value } as never,
+                setup.commandContext,
+            )).toBeTrue();
         }
 
-        expect(equipment.states.has(C3EM_OPERATING_TURNS_STATE_KEY)).toBeFalse();
-        expect(owner.setInventoryEntry).not.toHaveBeenCalled();
-        expect(context.toastService.showToast).not.toHaveBeenCalled();
+        expect(setup.runtime.revision()).toBe(revision);
+        expect(setup.toast.showToast).not.toHaveBeenCalled();
     });
 
-    it('maps active track buttons to the selected displayed turn without an offset', () => {
-        const { equipment, context } = fixture('active');
+    it('disables every control and rejects edits when the component is unavailable', () => {
+        const setup = directC3Setup('master');
+        expect(setup.runtime.dispatch({
+            type: 'set-component-status',
+            commandId: asCommandId('c3em:destroyed'),
+            expectedRevision: setup.runtime.revision(),
+            componentId: setup.component.id,
+            status: 'destroyed',
+            target: 'committed',
+        }).accepted).toBeTrue();
 
-        handler.handleSelection(equipment, handler.getChoices(equipment, context.query)[1], context.command);
-
-        expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(2);
-        const choices = handler.getChoices(equipment, context.query);
-        expect(choices[0]).toEqual(jasmine.objectContaining({ active: true, selectionTone: 'muted' }));
-        expect(choices[1]).toEqual(jasmine.objectContaining({ active: true, selectionTone: 'selected' }));
-        expect(choices[2].active).toBeFalse();
-    });
-
-    it('maps active turn 1 directly to sequence value 1', () => {
-        const { equipment, context } = fixture('active');
-        equipment.setState(C3EM_OPERATING_TURNS_STATE_KEY, '4');
-
-        handler.handleSelection(equipment, handler.getChoices(equipment, context.query)[0], context.command);
-
-        expect(getC3EmergencyMasterOperatingTurns(equipment)).toBe(1);
-        expect(equipment.states.get(C3EM_OPERATING_TURNS_STATE_KEY)).toBe('1');
-        expect(handler.getChoices(equipment, context.query)[0]).toEqual(
-            jasmine.objectContaining({ active: true, selectionTone: 'selected' })
+        const choices = setup.handler.getComponentC3EmergencyMasterChoices(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            setup.queryContext,
         );
-    });
+        expect(choices.every(choice => choice.disabled)).toBeTrue();
 
-    it('follows direct sequence values across Emergency toggles, frying, and corrections', () => {
-        const { equipment, context, setStatus } = fixture('dormant');
-        const track = () => handler.getChoices(equipment, context.query);
-        const expectTrack = (active: number[], selected?: number) => {
-            const choices = track();
-            expect(choices.slice(0, 7).map(choice => choice.active)).toEqual(
-                Array.from({ length: 7 }, (_, index) => active.includes(index + 1))
-            );
-            expect(choices.slice(0, 7).map(choice => choice.selectionTone)).toEqual(
-                Array.from({ length: 7 }, (_, index) => index + 1 === selected ? 'selected' : 'muted')
-            );
-        };
-
-        handler.handleSelection(equipment, track().at(-1)!, context.command);
-        setStatus('active');
-        expectTrack([1], 1);
-
-        handler.handleSelection(equipment, track().at(-1)!, context.command);
-        setStatus('dormant');
-        expectTrack([1]);
-
-        handler.handleSelection(equipment, track().at(-1)!, context.command);
-        setStatus('active');
-        expectTrack([1], 1);
-
-        handler.handleSelection(equipment, track()[2], context.command);
-        expectTrack([1, 2, 3], 3);
-
-        handler.handleSelection(equipment, track().at(-1)!, context.command);
-        setStatus('dormant');
-        expectTrack([1, 2, 3]);
-
-        setStatus('active');
-        handler.handleSelection(equipment, track()[6], context.command);
-        setStatus('fried');
-        expect(getC3EmergencyMasterMode(equipment)).toBe('off');
-        expectTrack([7], 7);
-
-        handler.handleSelection(equipment, track()[5], context.command);
-        setStatus('dormant');
-        expect(isC3EmergencyMasterFried(equipment)).toBeFalse();
-        expect(getC3EmergencyMasterMode(equipment)).toBe('off');
-        expectTrack([1, 2, 3, 4, 5, 6]);
-
-        handler.handleSelection(equipment, track().at(-1)!, context.command);
-        setStatus('active');
-        expectTrack([1, 2, 3, 4, 5, 6], 6);
-
-        handler.handleSelection(equipment, track()[4], context.command);
-        expectTrack([1, 2, 3, 4, 5], 5);
-    });
-
-    it('does not mutate unavailable or read-only equipment and blocks fried Emergency activation', () => {
-        const registry = new EquipmentInteractionRegistry();
-        registry.register(handler);
-        const unavailable = fixture();
-        unavailable.equipment.setCommittedDestroyed(true);
-        const unavailableChoice = registry.getChoices(unavailable.equipment, unavailable.context.query).at(-1)!;
-        expect(registry.handleSelection(unavailable.equipment, unavailableChoice, unavailable.context.command)).toBeFalse();
-        expect(unavailable.equipment.states.has(C3EM_MODE_STATE_KEY)).toBeFalse();
-
-        const readOnly = fixture();
-        Object.assign(readOnly.owner, { readOnly: () => true });
-        const readOnlyChoice = registry.getChoices(readOnly.equipment, readOnly.context.query).at(-1)!;
-        expect(registry.handleSelection(readOnly.equipment, readOnlyChoice, readOnly.context.command)).toBeFalse();
-        expect(readOnly.equipment.states.has(C3EM_MODE_STATE_KEY)).toBeFalse();
-
-        const fried = fixture('fried');
-        fried.equipment.setState(C3EM_OPERATING_TURNS_STATE_KEY, '7');
-        const friedChoice = registry.getChoices(fried.equipment, fried.context.query).at(-1)!;
-        expect(registry.handleSelection(fried.equipment, friedChoice, fried.context.command)).toBeFalse();
-        expect(fried.equipment.states.has(C3EM_MODE_STATE_KEY)).toBeFalse();
+        const revision = setup.runtime.revision();
+        expect(setup.handler.handleComponentC3EmergencyMasterSelection(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            { value: C3EM_TOGGLE_CHOICE_VALUE } as never,
+            setup.commandContext,
+        )).toBeFalse();
+        expect(setup.handler.handleComponentC3EmergencyMasterSelection(
+            setup.runtime,
+            setup.definition,
+            setup.runtimeContext,
+            { value: 3 } as never,
+            setup.commandContext,
+        )).toBeFalse();
+        expect(setup.runtime.revision()).toBe(revision);
     });
 });
+
+type C3EndpointRole = Extract<EncounterNetworkEndpoint['role'], 'master' | 'member'>;
+
+function directC3Setup(initialRole: C3EndpointRole | null) {
+    const fixture = createDirectMekRuntimeFixture();
+    const component = fixture.equipmentComponent('Test C3 Emergency Master');
+    const runtime = fixture.instance;
+    const definition = componentC3EmergencyMasterDefinition(
+        fixture.entity,
+        fixture.index,
+        component.id,
+    );
+    const empty = emptyCBTEncounterSnapshot();
+    let role = initialRole;
+    const encounter = (): CBTEncounterSnapshot => Object.freeze({
+        ...empty,
+        networks: role === null
+            ? Object.freeze([])
+            : Object.freeze([Object.freeze({
+                id: asEncounterNetworkId(`network:${role}`),
+                networkType: 'c3' as const,
+                color: '#123456',
+                endpoints: Object.freeze([Object.freeze({
+                    instanceId: fixture.instance.id,
+                    componentId: component.id,
+                    role,
+                })]),
+            })]),
+    });
+    const toast = toastService();
+    return {
+        fixture,
+        component,
+        runtime,
+        definition,
+        runtimeContext: Object.freeze({
+            instanceId: fixture.instance.id,
+            encounter,
+        }),
+        setRole: (nextRole: C3EndpointRole | null) => { role = nextRole; },
+        handler: new C3EmergencyMasterHandler(),
+        toast,
+        notifications: {
+            showToast: jasmine.createSpy('showToast'),
+        } as HandlerNotifications & { showToast: jasmine.Spy },
+        queryContext: createHandlerQueryContext(fixture.equipment),
+        commandContext: createHandlerCommandContext(fixture.equipment, toast, dialogsService()),
+    };
+}
+
+function toastService(): HandlerToastService & { showToast: jasmine.Spy } {
+    return { showToast: jasmine.createSpy('showToast'), toasts: () => [] };
+}
+
+function dialogsService(): HandlerDialogsService {
+    return {
+        createDialog: jasmine.createSpy('createDialog'),
+        showError: jasmine.createSpy('showError'),
+        showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
+    };
+}

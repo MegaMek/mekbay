@@ -7,6 +7,18 @@ import type { BaseEntity } from '../../base-entity';
 import type { EntityMountedEquipment } from '../../types';
 import { amount } from './cost-report';
 import type { EntityCostEntry } from './cost-report';
+import { isRiscLaserPulseModule } from '../../../risc-laser-mode.model';
+import {
+  isPpcCapacitorEquipment,
+  isPpcEquipment,
+} from '../../../ppc-capacitor.model';
+import { isEcmEquipment } from '../../../ecm-mode.model';
+import { isBlueShieldEquipment } from '../../../escalating-equipment.model';
+import { isCaseIIEquipment, isStandardCaseEquipment } from '../../../case-equipment.model';
+import {
+  isBattleArmorManipulatorEquipment,
+  isElectronicInterfaceEquipment,
+} from '../../../battle-armor-equipment.model';
 
 export interface MountedEquipmentCostBreakdown {
   readonly total: number;
@@ -39,8 +51,8 @@ export function calculateMountedEquipmentCostBreakdown(
     const equipment = mount.equipment;
     if (!equipment || equipment instanceof ArmorEquipment) continue;
     if (ignoreAmmo && equipment instanceof AmmoEquipment && equipment.ammoType !== 'COOLANT_POD') continue;
-    if (equipment.hasFlag('F_BA_MANIPULATOR')) continue;
-    if (entity.entityType === 'ProtoMek' && equipment.hasFlag('F_EI_INTERFACE')) continue;
+    if (isBattleArmorManipulatorEquipment(equipment)) continue;
+    if (entity.entityType === 'ProtoMek' && isElectronicInterfaceEquipment(equipment)) continue;
 
     const cost = mount.getCost(entity);
     if (cost === undefined) throw new Error(`Unable to calculate variable cost for ${equipment.id}`);
@@ -54,7 +66,7 @@ export function calculateMountedEquipmentCostBreakdown(
     addGrouped(equipment.name, Math.trunc(itemCost));
   }
   if (entity.entityType === 'SmallCraft') {
-    for (const equipment of entity.implicitSystemEquipment().filter(item => item.hasFlag('F_ECM'))) {
+    for (const equipment of entity.implicitSystemEquipment().filter(isEcmEquipment)) {
       if (!equipment.hasFixedCost()) {
         throw new Error(`Unable to calculate variable cost for ${equipment.id}`);
       }
@@ -106,7 +118,7 @@ function calculateImplicitClanCaseCost(entity: BaseEntity): number {
   if (!isMek && !isVehicle) return 0;
   const hasClanCase = entity.equipment().some(mount =>
     mount.equipment instanceof MiscEquipment
-    && mount.equipment.hasFlag('F_CASE')
+    && isStandardCaseEquipment(mount.equipment)
     && mount.equipment.techBase === 'Clan');
   if (entity.techBase() !== 'Clan' && !(isMek && hasClanCase)) return 0;
 
@@ -116,7 +128,7 @@ function calculateImplicitClanCaseCost(entity: BaseEntity): number {
   for (const mount of entity.equipment()) {
     const equipment = mount.equipment;
     if (!equipment) continue;
-    if (equipment instanceof MiscEquipment && equipment.hasFlag('F_CASE')) {
+    if (equipment instanceof MiscEquipment && isStandardCaseEquipment(equipment)) {
       sourceCaseCount++;
       continue;
     }
@@ -132,7 +144,7 @@ function calculateImplicitClanCaseCost(entity: BaseEntity): number {
   // MekFileParser materializes generated Clan CASE before the cost calculator
   // runs. Reproduce that lifecycle without adding derived mounts to the entity.
   const protectedLocations = new Set(entity.equipment()
-    .filter(mount => mount.equipment?.hasFlag('F_CASE') || mount.equipment?.hasFlag('F_CASE_II'))
+    .filter(mount => isStandardCaseEquipment(mount.equipment) || isCaseIIEquipment(mount.equipment))
     .flatMap(mount => mount.getOccupiedLocations()));
   const generatedLocations = new Set<string>();
   for (const mount of entity.equipment()) {
@@ -158,15 +170,12 @@ function isExplosiveForConstructionCost(entity: BaseEntity, mount: EntityMounted
     if (['AC_ROTARY', 'AC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC', 'LAC'].includes(equipment.ammoType)) {
       return false;
     }
-    if (equipment.hasFlag('F_PPC')) return false;
-    if (equipment.hasAnyFlag(['F_B_POD', 'F_M_POD'])) {
-      // Entity.addEquipment creates and loads an implicit one-shot ammo mount.
-      return true;
-    }
+    if (isPpcEquipment(equipment)) return false;
+    if (equipment.hasWeaponTrait('b-pod') || equipment.hasWeaponTrait('m-pod')) return false;
   }
   if (equipment instanceof MiscEquipment) {
-    if (equipment.hasFlag('F_PPC_CAPACITOR')) return false;
-    if (equipment.hasFlag('F_RISC_LASER_PULSE_MODULE')) {
+    if (isPpcCapacitorEquipment(equipment)) return false;
+    if (isRiscLaserPulseModule(equipment)) {
       return entity.getLinkedMount(mount) !== undefined;
     }
   }
@@ -181,20 +190,17 @@ function isExplosiveForGeneratedClanCase(entity: BaseEntity, mount: EntityMounte
     if (['AC_ROTARY', 'AC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC', 'LAC'].includes(equipment.ammoType)) {
       return false;
     }
-    if (equipment.hasAnyFlag(['F_B_POD', 'F_M_POD'])) {
-      // Entity.addEquipment creates and loads an implicit one-shot ammo mount.
-      return true;
-    }
-    if (equipment.hasFlag('F_PPC')) {
-      return entity.getLinkingMount(mount)?.equipment?.hasFlag('F_PPC_CAPACITOR') === true;
+    if (equipment.hasWeaponTrait('b-pod') || equipment.hasWeaponTrait('m-pod')) return false;
+    if (isPpcEquipment(equipment)) {
+      return isPpcCapacitorEquipment(entity.getLinkingMount(mount)?.equipment);
     }
   }
   if (equipment instanceof MiscEquipment) {
-    if (equipment.hasFlag('F_PPC_CAPACITOR')) return entity.getLinkedMount(mount) !== undefined;
-    if (equipment.hasFlag('F_RISC_LASER_PULSE_MODULE')) {
+    if (isPpcCapacitorEquipment(equipment)) return entity.getLinkedMount(mount) !== undefined;
+    if (isRiscLaserPulseModule(equipment)) {
       return entity.getLinkedMount(mount) !== undefined;
     }
-    if (equipment.hasFlag('F_BLUE_SHIELD')) return false;
+    if (isBlueShieldEquipment(equipment)) return false;
   }
   return true;
 }

@@ -47,10 +47,10 @@
                             </button>
                         }
                     </div>
-                    @if (isReadOnly && forceBuilderService.loadedForces().length === 1) {
-                        <button class="bt-button btn-clone primary" (click)="forceBuilderService.requestCloneForce(slotForce)">CLONE FORCE TO EDIT</button>
+                    @if (isReadOnly && forceWorkspace.loadedForces().length === 1) {
+                        <button class="bt-button btn-clone primary" (click)="forceCommands.requestCloneForce(slotForce)">CLONE FORCE TO EDIT</button>
                     }
-                    <div class="force-total">@if (slotForce.name && slotForce.groups().length > 1) {<span class="force-size-name">{{ slotForce.organizationalName() }}</span> · }@if (slotForce.groups().length > 1) {Total {{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ displayedBvPv(slotForce.units()) }}}</div>
+                    <div class="force-total">@if (slotForce.name && slotForce.groups().length > 1) {<span class="force-size-name">{{ slotForce.organizationalName() }}</span> · }@if (slotForce.groups().length > 1) {Total {{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: <force-member-value [members]="slotForce.members()" />}</div>
                     <button class="btn-remove" (click)="removeForceFromSlot($event, slotForce)" title="Remove force">
                         <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg">
                             <path d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
@@ -106,7 +106,8 @@
                                 }
                             </div>
                             <div class="group-footer">
-                                <span class="group-bv"><span class="muted">{{ group.units().length }} Unit{{ group.units().length !== 1 ? 's' : '' }} · </span>{{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: {{ displayedBvPv(group.units()) }}</span>
+                                @let groupMembers = membersInGroup(slotForce, group);
+                                <span class="group-bv"><span class="muted">{{ groupMembers.length }} Unit{{ groupMembers.length !== 1 ? 's' : '' }} · </span>{{ slotForce.gameSystem === 'as' ? 'PV' : 'BV' }}: <force-member-value [members]="groupMembers" /></span>
                             </div>
                             @if (!isReadOnly && groups.length > 1) {
                             <button class="btn-remove group-remove" (click)="removeGroup($event, group)" title="Remove group">
@@ -122,49 +123,49 @@
                         }
                     }
                     @if (groupCollapsed && miniMode()) {
-                        <div class="mini-collapsed-indicator" (click)="toggleGroupCollapsed($event, group.id)" title="{{ group.groupDisplayName() }} ({{ group.units().length }} units) — click to expand">
+                        <div class="mini-collapsed-indicator" (click)="toggleGroupCollapsed($event, group.id)" title="{{ group.groupDisplayName() }} ({{ groupMemberCount(slotForce, group) }} units) — click to expand">
                             <svg width="14px" height="14px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" class="collapsed">
                                 <path d="M0 2l5 6 5-6z"/>
                             </svg>
-                            <span class="mini-collapsed-count">{{ group.units().length }}</span>
+                            <span class="mini-collapsed-count">{{ groupMemberCount(slotForce, group) }}</span>
                         </div>
                     }
                     @if (!groupCollapsed) {
-                    @let units = group.units();
+                    @let members = membersInGroup(slotForce, group);
                     <div class="group-units" 
                         [class.compact-mode]="compactMode()" 
                         [class.mini-mode]="miniMode()" 
                         id="group-{{ group.id }}"
                         cdkDropList 
                         cdkDropListOrientation="vertical" 
-                        [cdkDropListData]="units"
+                        [cdkDropListData]="members"
                         [cdkDropListConnectedTo]="connectedDropLists()"
                         [cdkDropListDisabled]="compactMode() || isReadOnly"
                         [cdkDropListAutoScrollDisabled]="true"
                         (cdkDropListDropped)="drop($event)">
-                        @if (units.length === 0) {
+                        @if (members.length === 0) {
                         <div class="empty-group-placeholder" (click)="onEmptyGroupClick(group)">
                             No units in this group.<br />Drop units here to add them or click to remove it.
                         </div>
                         }
-                        @for (unit of units; let i = $index; track unit.id) {
-                        <div #forceUnitItem [id]="'unit-'+unit.id" class="force-unit-item" (click)="selectUnit(unit)"
+                        @for (member of members; let i = $index; track member.id) {
+                        <div #forceUnitItem [id]="'unit-'+member.id" class="force-unit-item" (click)="selectUnit(member)"
                             tabindex="0" (keydown)="onUnitKeydown($event, i)" cdkDrag
                             [cdkDragDisabled]="isReadOnly" (cdkDragStarted)="onUnitDragStart(slotForce)"
                             (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onUnitDragEnd(slotForce)"
                             cdkDragLockAxis="y" cdkDragBoundary=".scrollable-content"
                             [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
-                            <unit-block class="selectable" [forceUnit]="unit" [compactMode]="compactMode() || miniMode()"
+                            <unit-block class="selectable" [forceUnit]="member" [compactMode]="compactMode() || miniMode()"
                                 [ctrlHeld]="ctrlHeld()"
                                 [class.miniMode]="miniMode()"
                                 [class.friendly]="showAlignment && slot.alignment === 'friendly'"
                                 [class.enemy]="showAlignment && slot.alignment === 'enemy'"
-                                [class.selected]="unit.id === forceBuilderService.selectedUnit()?.id"
-                                (onRemoveUnit)="removeUnit($event, unit)" (onInfo)="showUnitInfo($event, unit)"
-                                (onCloneUnit)="cloneUnit($event, unit)"
-                                (onRepairUnit)="repairUnit($event, unit)"
-                                (onEditPilot)="editPilot($event, unit)"
-                                (onOpenC3Network)="openC3Network($event, unit)"></unit-block>
+                                [class.selected]="member.id === forceWorkspace.selectedUnit()?.id"
+                                (onRemoveUnit)="removeUnit($event, member)" (onInfo)="showUnitInfo($event, member)"
+                                (onCloneUnit)="cloneUnit($event, member)"
+                                (onRepairUnit)="repairUnit($event, member)"
+                                (onEditPilot)="editPilot($event, member)"
+                                (onOpenC3Network)="openC3Network($event, member)"></unit-block>
                         </div>
                         }
                     </div>
@@ -173,7 +174,7 @@
                 }
                 @if (!compactMode() && !miniMode() && !isGroupDragging()) {
                     @if (!isReadOnly && !isUnitDragging() && !slotForce.hasMaxGroups() && !slotForce.hasEmptyGroups()) {
-                    <button class="bt-button btn-add-group" (click)="slotForce.addGroup()">+ Add Group</button>
+                    <button class="bt-button btn-add-group" (click)="addGroup(slotForce)">+ Add Group</button>
                     }
                 }
                 @if (!compactMode() && !miniMode() && !isReadOnly && !isGroupDragging()) {
@@ -196,17 +197,18 @@
         </div>
     </div>
     @if (!miniMode() && loadedSlots().length > 1) {
-        @let totals = combinedTotals();
+        @let bvUnits = combinedBvMembers();
+        @let pvUnits = combinedPvMembers();
         <div class="force-slot-footer">
             <div class="row total-bv">
-                @if (totals.hasBV) {
-                    <span>Total BV: {{ totals.totalBV }}</span>
+                @if (bvUnits.length > 0) {
+                    <span>Total BV: <force-member-value [members]="bvUnits" /></span>
                 }
-                @if (totals.hasBV && totals.hasPV) {
+                @if (bvUnits.length > 0 && pvUnits.length > 0) {
                     <span class="separator"> · </span>
                 }
-                @if (totals.hasPV) {
-                    <span>Total PV: {{ totals.totalPV }}</span>
+                @if (pvUnits.length > 0) {
+                    <span>Total PV: <force-member-value [members]="pvUnits" /></span>
                 }
             </div>
         </div>

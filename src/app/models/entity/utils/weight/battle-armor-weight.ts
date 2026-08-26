@@ -5,6 +5,7 @@
 import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
 import type { BattleArmorEntity } from '../../entities/infantry/battle-armor-entity';
 import type { EntityMountedEquipment } from '../../types/equipment';
+import { isConstructionSystemEquipment } from '../../../construction-equipment.model';
 
 const WEIGHT_CLASS_INDEX = {
   'Ultra Light': 0, Light: 1, Medium: 2, Heavy: 3, Assault: 4,
@@ -15,17 +16,6 @@ const GROUND_MP = [0.025, 0.03, 0.04, 0.08, 0.16] as const;
 const JUMP_MP = [0.025, 0.025, 0.05, 0.125, 0.25] as const;
 const UMU_MP = [0.045, 0.045, 0.085, 0.16, 0.25] as const;
 const VTOL_MP = [0.03, 0.04, 0.06, 0, 0] as const;
-
-const SYSTEM_MISC_FLAGS = [
-  'F_ENDO_STEEL', 'F_ENDO_COMPOSITE', 'F_ENDO_STEEL_PROTO', 'F_COMPOSITE',
-  'F_INDUSTRIAL_STRUCTURE', 'F_REINFORCED', 'F_FERRO_FIBROUS',
-  'F_FERRO_FIBROUS_PROTO', 'F_FERRO_LAMELLOR', 'F_LIGHT_FERRO',
-  'F_HEAVY_FERRO', 'F_REACTIVE', 'F_REFLECTIVE', 'F_HARDENED_ARMOR',
-  'F_PRIMITIVE_ARMOR', 'F_COMMERCIAL_ARMOR', 'F_INDUSTRIAL_ARMOR',
-  'F_HEAVY_INDUSTRIAL_ARMOR', 'F_ANTI_PENETRATIVE_ABLATIVE',
-  'F_HEAT_DISSIPATING', 'F_IMPACT_RESISTANT', 'F_BALLISTIC_REINFORCED',
-  'F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE',
-] as const;
 
 export interface BattleArmorSuitWeight {
   readonly trooper: number;
@@ -57,7 +47,7 @@ export function calculateBattleArmorWeightBreakdown(entity: BattleArmorEntity): 
     const mounts = entity.equipment().filter(mount => appliesToSuit(mount, trooper));
     const miscellaneous = mounts.reduce((sum, mount) => {
       if (!(mount.equipment instanceof MiscEquipment)
-        || mount.equipment.hasAnyFlag([...SYSTEM_MISC_FLAGS])) return sum;
+        || isConstructionSystemEquipment(mount.equipment)) return sum;
       return sum + requireTonnage(entity, mount);
     }, 0);
     const weapons = roundKg(mounts.reduce((sum, mount) => {

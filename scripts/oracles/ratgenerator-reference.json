@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "sha256": "8c1dfb372ac50e787c5a049ee53f130190c34100d30dd79a54c4d9d0e901be5e",
+  "bytes": 6297907,
+  "lines": 48728,
+  "rows": 48726,
+  "warnings": {
+    "count": 3027,
+    "sha256": "0e0bdb7983bc048087af92dba8a8207df5a10455d1bc9c82008a64f6d5f9abbc"
+  },
+  "sentinels": [
+    {
+      "index": 0,
+      "value": "Chassis;Model;Model/Chassis Data;MUL ID;Unit Type;Intro Date;Faction ID;Faction;2398;2440;2460;2470;2490;2520;2571;2650;2700;2765;2780;2807;2815;2823;2830;2835;2855;2860;2865;2870;2900;2950;3019;3028;3039;3049;3055;3058;3060;3067;3075;3078;3082;3085;3100;3131;3145;3150;3160"
+    },
+    {
+      "index": 24363,
+      "value": "Field Artillery Platoon (AFFS);(Tracked Thumper 3067+);Model Data;-1;Infantry;3067;FS;Federated Suns;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;!A:8!B:8!C:8!D:6;!A:8!B:8!C:8!D:6;!A:8!B:8!C:8!D:6;!A:8!B:8!C:8!D:6;!A:8!B:8!C:8!D:6;!A:8!B:8!C:8!D:6;!A:8!B:8!C:8!D:6;!A:8!B:8!C:8!D:6;!A:8!B:8!C:8!D:6;!A:8!B:8!C:8!D:6;"
+    },
+    {
+      "index": 48726,
+      "value": "Zugvogel Omni Support Aircraft;Prime;Model Data;3660;Conventional Fighter;3086;RD;Rasalhague Dominion;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;6;6;6;6;6;"
+    }
+  ]
+}

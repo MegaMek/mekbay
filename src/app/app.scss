@@ -1,13 +1,54 @@
+:host {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.application-surface {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.application-viewport {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
+    transform: translateZ(0);
+}
+
 .app-container {
     position: relative;
     display: flex;
-    height: 100%;
+    height: auto;
+    min-height: 0;
+    flex: 1 1 auto;
     width: 100%;
     box-sizing: border-box;
     overflow: hidden;
 
     @media print {
         overflow: unset;
+    }
+}
+
+@media print {
+    :host,
+    .application-surface {
+        height: auto;
+        overflow: visible;
+    }
+
+    .application-viewport {
+        display: block;
+        overflow: visible;
+        transform: none;
     }
 }
 

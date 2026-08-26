@@ -7,6 +7,7 @@ import type { EquipmentFlag } from '../../equipment-flags.type';
 import {
   isPhysicalWeaponEquipment,
   resolvePhysicalWeaponDamage,
+  resolveShieldProfile,
 } from './physical-weapon';
 
 function misc(flags: readonly EquipmentFlag[]): MiscEquipment {
@@ -34,6 +35,15 @@ describe('physical weapon utilities', () => {
   });
 
   describe('resolvePhysicalWeaponDamage', () => {
+    it('uses the shield absorption track as static TW attack damage', () => {
+      expect(resolvePhysicalWeaponDamage(misc(['F_SHIELD', 'S_SHIELD_SMALL']), 55))
+        .toEqual({ kind: 'fixed', value: 3 });
+      expect(resolvePhysicalWeaponDamage(misc(['F_SHIELD', 'S_SHIELD_MEDIUM']), 55))
+        .toEqual({ kind: 'fixed', value: 5 });
+      expect(resolvePhysicalWeaponDamage(misc(['F_SHIELD', 'S_SHIELD_LARGE']), 55))
+        .toEqual({ kind: 'fixed', value: 7 });
+    });
+
     it('resolves fixed subtype damage formulas', () => {
       const cases: readonly [string[], number][] = [
         [['F_HAND_WEAPON', 'S_CLAW'], 8],
@@ -68,6 +78,19 @@ describe('physical weapon utilities', () => {
       expect(resolvePhysicalWeaponDamage(misc(['F_TALON']), 55)).toEqual({ kind: 'fixed', value: 17 });
       expect(resolvePhysicalWeaponDamage(misc(['F_CLUB', 'S_HATCHET']), 4)).toEqual({ kind: 'fixed', value: 0 });
       expect(resolvePhysicalWeaponDamage(misc(['F_CLUB', 'S_HATCHET']), 5)).toEqual({ kind: 'fixed', value: 1 });
+    });
+  });
+
+  describe('resolveShieldProfile', () => {
+    it('resolves all three shield sizes from equipment flags', () => {
+      expect(resolveShieldProfile(misc(['F_SHIELD', 'S_SHIELD_SMALL'])))
+        .toEqual({ bashBonus: 1, damageAbsorption: 3, damageCapacity: 11 });
+      expect(resolveShieldProfile(misc(['F_SHIELD', 'S_SHIELD_MEDIUM'])))
+        .toEqual({ bashBonus: 2, damageAbsorption: 5, damageCapacity: 18 });
+      expect(resolveShieldProfile(misc(['F_SHIELD', 'S_SHIELD_LARGE'])))
+        .toEqual({ bashBonus: 3, damageAbsorption: 7, damageCapacity: 25 });
+      expect(resolveShieldProfile(misc(['F_CLUB']))).toBeUndefined();
+      expect(resolveShieldProfile()).toBeUndefined();
     });
   });
 });

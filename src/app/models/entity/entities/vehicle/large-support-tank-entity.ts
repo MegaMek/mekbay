@@ -18,12 +18,12 @@ export class LargeSupportTankEntity extends SupportTankEntity {
   override readonly entityType: EntityType = 'LargeSupportTank';
 
   override componentLocationOrder(): readonly string[] {
-    return ['Body', 'Front', 'Front Right', 'Front Left', 'Rear Right', 'Rear Left', 'Rear', 'Turret', 'Rear Turret', 'Front Turret'];
+    return ['Body', ...this.locationOrder];
   }
 
   override componentLocationLabel(location: string): string {
     return ({
-      'Front Right': 'FRR', 'Front Left': 'FRL', 'Rear Right': 'RRR', 'Rear Left': 'RRL',
+      'Front Right': 'FRRS', 'Front Left': 'FRLS', 'Rear Right': 'RRRS', 'Rear Left': 'RRLS',
     })[location] ?? super.componentLocationLabel(location);
   }
 

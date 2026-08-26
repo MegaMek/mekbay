@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { UnitType } from '../units.model';
+import type { UnitType } from '../unit-summary.model';
 
 export type MegaMekWeightedAvailabilityValue = [number, number];
 
@@ -65,7 +65,7 @@ export interface MegaMekWeightedAvailabilityRecord {
 }
 
 export interface MegaMekAvailabilityData {
-    etag: string;
+    assetHash: string;
     records: MegaMekWeightedAvailabilityRecord[];
 }
 

@@ -3,6 +3,8 @@
 // Author: Drake
 
 import { Signal, computed, signal } from '@angular/core';
+import { isMascEquipment } from '../../../escalating-equipment.model';
+import { isRamPlateEquipment } from '../../../physical-augmentation.model';
 import { BaseEntity } from '../../base-entity';
 import {
   getDualTurretTech,
@@ -28,22 +30,51 @@ import {
   TechRatingSource,
   resolveWeightClass,
   type EntityFeature,
+  type IntrinsicWeapon,
 } from '../../types';
 import { WeaponEquipment, type Equipment } from '../../../equipment.model';
+import { modularArmorMovementPenalty } from '../../../modular-armor.model';
+import {
+  isDuneBuggyEquipment,
+  isHydrofoilEquipment,
+  isTrailerEquipment,
+} from '../../../chassis-equipment.model';
+import { supportEquipmentNeedsCrew } from '../../../support-equipment.model';
 
 // ============================================================================
 // VehicleEntity - abstract base for all combat-vehicle entities
 // ============================================================================
 
 export abstract class VehicleEntity extends BaseEntity {
+  protected override computeIntrinsicWeapons(): readonly IntrinsicWeapon[] {
+    const ramPlate = this.equipment().some(mount => isRamPlateEquipment(mount.equipment));
+    return [Object.freeze({
+      source: 'intrinsic' as const,
+      id: 'intrinsic:charge',
+      kind: 'charge' as const,
+      name: 'Charge',
+      locations: Object.freeze([]),
+      damage: Object.freeze({
+        kind: 'per-hex' as const,
+        coefficient: this.tonnage() / 10 * (ramPlate ? 1.5 : 1),
+        bonus: 0,
+      }),
+      hitModifierAdjustment: 'versus' as const,
+    })];
+  }
+
   override componentLocationOrder(): readonly string[] {
-    return ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Front Turret', 'Rear Turret'];
+    if (this.isSuperHeavy()) return ['Body', ...this.locationOrder];
+    const locations = ['Body', 'Front', 'Right', 'Left', 'Rear'];
+    if (this.hasDualTurret()) return [...locations, 'Rear Turret', 'Front Turret'];
+    return this.hasTurret() ? [...locations, 'Turret'] : locations;
   }
 
   override componentLocationLabel(location: string): string {
     return ({
       Body: 'BD', Front: 'FR', Right: 'RS', Left: 'LS', Rear: 'RR', Turret: 'TU',
       'Front Turret': 'FT', 'Rear Turret': 'RT', Rotor: 'RO',
+      'Front Right': 'FRRS', 'Front Left': 'FRLS', 'Rear Right': 'RRRS', 'Rear Left': 'RRLS',
     })[location] ?? super.componentLocationLabel(location);
   }
 
@@ -98,17 +129,12 @@ export abstract class VehicleEntity extends BaseEntity {
   /** Java treats a support-vehicle trailer chassis modification as trailer state. */
   readonly effectiveIsTrailer = computed<boolean>(() => this.isTrailer()
     || (this.isSupportVehicle() && this.equipment().some(
-      mount => mount.equipment?.hasFlag('F_TRAILER_MODIFICATION'),
+      mount => isTrailerEquipment(mount.equipment),
     )));
   override readonly crewSlotCount = computed<number>(() => {
     const hasWeapons = this.equipment().some(mount => mount.equipment instanceof WeaponEquipment);
     const hasAdditionalCrew = this.extraSeats() > 0 || this.equipment().some(
-      mount => mount.equipment?.hasAnyFlag([
-        'F_COMMUNICATIONS',
-        'F_MASH',
-        'F_MOBILE_FIELD_BASE',
-        'F_FIELD_KITCHEN',
-      ]),
+      mount => supportEquipmentNeedsCrew(mount.equipment),
     );
     const isUncrewedTrailer = this.effectiveIsTrailer()
       && !hasWeapons
@@ -129,19 +155,18 @@ export abstract class VehicleEntity extends BaseEntity {
   override computeWalkMP(options: MovementCalculationOptions): number {
     const equipment = this.equipment();
     let walkMP = this.originalWalkMP();
-    if (equipment.some(mount => mount.equipment?.hasFlag('F_HYDROFOIL'))) {
+    if (equipment.some(mount => isHydrofoilEquipment(mount.equipment))) {
       walkMP = Math.round(walkMP * 1.25);
     }
-    if (!options.ignoreModularArmor
-      && equipment.some(mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'))) walkMP--;
-    if (equipment.some(mount => mount.equipment?.hasFlag('F_DUNE_BUGGY'))) walkMP--;
+    walkMP -= modularArmorMovementPenalty(equipment, options.ignoreModularArmor);
+    if (equipment.some(mount => isDuneBuggyEquipment(mount.equipment))) walkMP--;
     return Math.max(0, walkMP);
   }
 
   override computeRunMP(options: MovementCalculationOptions): number {
     const walkMP = this.computeWalkMP(options);
     return !options.ignoreMASC
-      && this.equipment().some(mount => mount.equipment?.hasFlag('F_MASC'))
+      && this.equipment().some(mount => isMascEquipment(mount.equipment))
       ? walkMP * 2
       : Math.ceil(walkMP * 1.5);
   }

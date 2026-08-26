@@ -3,9 +3,9 @@
 // Author: Drake
 
 import { getMotiveModeLabel, getMotiveModesByUnit } from './motiveModes.model';
-import type { Unit } from './units.model';
+import type { UnitSummary } from './unit-summary.model';
 
-function createUnit(overrides: Partial<Unit> = {}): Unit {
+function createUnit(overrides: Partial<UnitSummary> = {}): UnitSummary {
     return {
         type: 'Mek',
         subtype: 'Biped',
@@ -16,7 +16,7 @@ function createUnit(overrides: Partial<Unit> = {}): Unit {
         jump: 5,
         umu: 0,
         ...overrides,
-    } as Unit;
+    } as UnitSummary;
 }
 
 describe('motiveModes', () => {

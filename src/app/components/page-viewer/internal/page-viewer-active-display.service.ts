@@ -4,19 +4,19 @@
 
 import { Injectable, inject } from '@angular/core';
 
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import { PageViewerDisplayWindowService } from './page-viewer-display-window.service';
 import { PageViewerInPlaceUpdateService } from './page-viewer-in-place-update.service';
-import type { PageViewerInPlaceUpdatePlan } from './types';
+import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
+import type { PageViewerInPlaceUpdatePlan, PageViewerMember } from './types';
 
 export interface PageViewerActiveDisplayPreparation {
     canRender: boolean;
-    displayedUnits: CBTForceUnit[];
+    displayedUnits: PageViewerMember[];
     loadError: string | null;
 }
 
 export interface PageViewerActiveInPlacePreparation {
-    expectedUnits: CBTForceUnit[];
+    expectedUnits: PageViewerMember[];
     patchPlan: PageViewerInPlaceUpdatePlan;
 }
 
@@ -24,6 +24,7 @@ export interface PageViewerActiveInPlacePreparation {
 export class PageViewerActiveDisplayService {
     private readonly pageViewerDisplayWindow = inject(PageViewerDisplayWindowService);
     private readonly pageViewerInPlaceUpdate = inject(PageViewerInPlaceUpdateService);
+    private readonly sheetSource = inject(PageViewerSheetSourceService);
 
     clearActivePageElements(content: HTMLDivElement, pageElements: readonly HTMLDivElement[]): HTMLDivElement[] {
         pageElements.forEach((element) => {
@@ -37,14 +38,14 @@ export class PageViewerActiveDisplayService {
     }
 
     prepareDisplay(options: {
-        currentUnit: CBTForceUnit | null | undefined;
-        allUnits: readonly CBTForceUnit[];
+        currentUnit: PageViewerMember | null | undefined;
+        allUnits: readonly PageViewerMember[];
         visiblePages: number;
         viewStartIndex: number;
     }): PageViewerActiveDisplayPreparation {
         const { currentUnit, allUnits, visiblePages, viewStartIndex } = options;
 
-        if (!currentUnit || typeof currentUnit.svg !== 'function') {
+        if (!currentUnit) {
             return {
                 canRender: false,
                 displayedUnits: [],
@@ -52,7 +53,7 @@ export class PageViewerActiveDisplayService {
             };
         }
 
-        if (!currentUnit.svg()) {
+        if (!this.sheetSource.svg(currentUnit)) {
             return {
                 canRender: false,
                 displayedUnits: [],
@@ -68,7 +69,7 @@ export class PageViewerActiveDisplayService {
     }
 
     prepareInPlaceUpdate(options: {
-        allUnits: readonly CBTForceUnit[];
+        allUnits: readonly PageViewerMember[];
         visiblePages: number;
         viewStartIndex: number;
         currentWrapperUnitIds: readonly string[];

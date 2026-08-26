@@ -5,7 +5,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CdkMenuModule } from '@angular/cdk/menu';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { GameSystem } from '../../models/common.model';
 import { ToastService } from '../../services/toast.service';
 import { isMegaMekRaritySortKey, SORT_OPTIONS } from '../../services/unit-search-filters.model';
@@ -27,8 +27,8 @@ export class UnitDetailsFooterComponent {
     private toastService = inject(ToastService);
 
     readonly activeTab = input.required<string>();
-    readonly prevUnit = input<Unit | null>(null);
-    readonly nextUnit = input<Unit | null>(null);
+    readonly prevUnit = input<UnitSummary | null>(null);
+    readonly nextUnit = input<UnitSummary | null>(null);
     readonly hasPrev = input(false);
     readonly hasNext = input(false);
     readonly sheetTab = input<UnitDetailsSheetTabComponent | undefined>(undefined);
@@ -104,7 +104,7 @@ export class UnitDetailsFooterComponent {
         });
     }
 
-    private formatUnitLabel(unit: Unit): string {
+    private formatUnitLabel(unit: UnitSummary): string {
         return [unit.chassis, unit.model].filter(Boolean).join(' ') || unit.name;
     }
 }

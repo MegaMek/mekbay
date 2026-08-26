@@ -6,16 +6,14 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementR
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import type { UnitGroup } from '../../models/force.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { SkillDropdownPanelComponent, type SkillPreviewEntry } from '../skill-dropdown-panel/skill-dropdown-panel.component';
 import { SkillMatrixPanelComponent, type SkillMatrixCell } from '../skill-dropdown-panel/skill-matrix-panel.component';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import type { Era } from '../../models/eras.model';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type CrewMemberDetails, type SkillType } from '../../models/crew-member.model';
+import type { CrewPositionId } from '../../models/entity/entity-identifiers';
 import { PilotNameGeneratorService } from '../../services/pilot-name-generator.service';
 import { LoggerService } from '../../services/logger.service';
 
@@ -23,7 +21,7 @@ import { LoggerService } from '../../services/logger.service';
 
 export interface EditPilotDialogData {
     unitId?: string;
-    crew: readonly CrewMemberDetails[];
+    crew: readonly EditPilotCrewPosition[];
     /** Skills that affect BV but are not editable here, such as LAM aerospace skills. */
     additionalGunnerySkills?: readonly number[];
     additionalPilotingSkills?: readonly number[];
@@ -31,25 +29,41 @@ export interface EditPilotDialogData {
     labelPiloting?: string;
     disablePiloting?: boolean;
     commander?: boolean;
-    group?: UnitGroup<CBTForceUnit> | null;
+    /** Detached commander context; no force/group/runtime object enters the dialog. */
+    commanderContext?: {
+        readonly conflictingCommanderDisplayName?: string;
+    };
     factionId?: number | null;
     isAerospace?: boolean;
     era?: Era | null;
     /** Pre-skill BV (base + TAG + C3) for BV preview calculation. */
     preSkillBv?: number;
     /** Unit reference for effective piloting skill calculation. */
-    unit?: Unit;
+    unit?: UnitSummary;
 }
 
 export interface EditPilotResult {
-    crew: CrewMemberDetails[];
+    crew: EditPilotCrewPosition[];
     commander: boolean;
 }
 
-type CrewSkillField = SkillType | 'asfGunnery' | 'asfPiloting';
+/** Detached dialog DTO; the dialog never receives a CrewMember instance. */
+export interface EditPilotCrewPosition {
+    readonly id: CrewPositionId | number;
+    readonly name: string;
+    readonly role?: string;
+    readonly gunnery: number;
+    readonly piloting: number;
+    readonly asfGunnery?: number;
+    readonly asfPiloting?: number;
+}
+
+type CrewSkillType = 'gunnery' | 'piloting';
+type CrewSkillField = CrewSkillType | 'asfGunnery' | 'asfPiloting';
 
 interface EditableCrewMember {
-    readonly id: number;
+    readonly id: CrewPositionId | number;
+    readonly role?: string;
     readonly asfGunnery?: WritableSignal<number>;
     readonly asfPiloting?: WritableSignal<number>;
     readonly name: WritableSignal<string>;
@@ -62,8 +76,8 @@ const CREW_NAME_LABELS = ['Pilot Name', 'Gunner Name', 'Officer Name'] as const;
 const SKILL_VALUES = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
 
 export function getSyntheticCrewSkill(
-    crew: readonly CrewMemberDetails[],
-    skillType: SkillType,
+    crew: readonly EditPilotCrewPosition[],
+    skillType: CrewSkillType,
     additionalSkills: readonly number[] = [],
 ): number {
     const asfSkill = skillType === 'gunnery' ? 'asfGunnery' : 'asfPiloting';
@@ -73,21 +87,21 @@ export function getSyntheticCrewSkill(
     ];
     return skills.length > 0
         ? Math.min(...skills)
-        : skillType === 'gunnery' ? DEFAULT_GUNNERY_SKILL : DEFAULT_PILOTING_SKILL;
+        : skillType === 'gunnery' ? 4 : 5;
 }
 
 export function buildCrewSkillPreviewEntries(
-    crew: readonly CrewMemberDetails[],
+    crew: readonly EditPilotCrewPosition[],
     crewIndex: number,
     skillField: CrewSkillField,
     calculateBv: (gunnery: number, piloting: number) => number,
     additionalGunnerySkills: readonly number[] = [],
     additionalPilotingSkills: readonly number[] = [],
 ): SkillPreviewEntry[] {
-    const skillType: SkillType = skillField === 'gunnery' || skillField === 'asfGunnery'
+    const skillType: CrewSkillType = skillField === 'gunnery' || skillField === 'asfGunnery'
         ? 'gunnery'
         : 'piloting';
-    const defaultSkill = skillType === 'gunnery' ? DEFAULT_GUNNERY_SKILL : DEFAULT_PILOTING_SKILL;
+    const defaultSkill = skillType === 'gunnery' ? 4 : 5;
     const calculateCandidate = (value: number): number => {
         const candidateCrew = crew.map((member, index) => index === crewIndex
             ? { ...member, [skillField]: value }
@@ -134,6 +148,7 @@ export class EditPilotDialogComponent {
 
     readonly crew = this.data.crew.map<EditableCrewMember>((member) => ({
         id: member.id,
+        ...(member.role === undefined ? {} : { role: member.role }),
         asfGunnery: member.asfGunnery === undefined ? undefined : signal(member.asfGunnery),
         asfPiloting: member.asfPiloting === undefined ? undefined : signal(member.asfPiloting),
         name: signal(member.name),
@@ -154,16 +169,6 @@ export class EditPilotDialogComponent {
         'piloting',
         this.data.additionalPilotingSkills,
     ));
-    readonly persistedOtherCommander = computed<CBTForceUnit | null>(() => {
-        const group = this.data.group;
-        const unitId = this.data.unitId;
-        if (!group || !unitId) {
-            return null;
-        }
-
-        return group.units().find((unit) => unit.id !== unitId && unit.commander()) ?? null;
-    });
-
     /** 9x9 BV matrix: matrix[gunnery][piloting] = adjusted BV */
     bvMatrix = computed<number[][]>(() => {
         if (!this.hasBvPreview) return [];
@@ -273,21 +278,11 @@ export class EditPilotDialogComponent {
         }
     }
 
-    private formatCommanderDisplayName(unit: CBTForceUnit): string {
-        const pilotName = unit.alias()?.trim();
-        const unitName = unit.getDisplayName();
-        if (pilotName) {
-            return `${unitName} (${pilotName})`;
-        }
-        return unitName;
-    }
-
     async setGroupCommanderSelected(value: boolean): Promise<void> {
         const requestId = ++this.commanderSelectionRequestId;
         if (value && !this.selectedGroupCommander()) {
-            const otherCommander = this.persistedOtherCommander();
-            if (otherCommander) {
-                const otherCommanderName = this.formatCommanderDisplayName(otherCommander);
+            const otherCommanderName = this.data.commanderContext?.conflictingCommanderDisplayName;
+            if (otherCommanderName) {
                 const confirmed = await this.dialogsService.requestConfirmation(
                     `${otherCommanderName} is currently marked as the group commander. Making this unit the commander will remove that flag from ${otherCommanderName}. Continue?`,
                     'Replace Group Commander',
@@ -340,7 +335,7 @@ export class EditPilotDialogComponent {
             });
     }
 
-    private skillOverlayKey(skillType: CrewSkillField, crewId: number): string {
+    private skillOverlayKey(skillType: CrewSkillField, crewId: CrewPositionId | number): string {
         return `skill-${skillType}-dropdown-${crewId}`;
     }
 
@@ -353,9 +348,10 @@ export class EditPilotDialogComponent {
         }
     }
 
-    private crewSnapshot(): CrewMemberDetails[] {
+    private crewSnapshot(): EditPilotCrewPosition[] {
         return this.crew.map((member) => ({
             id: member.id,
+            ...(member.role === undefined ? {} : { role: member.role }),
             name: member.name(),
             gunnery: member.gunnery(),
             piloting: member.piloting(),
@@ -394,12 +390,12 @@ export class EditPilotDialogComponent {
         member.generatingName.set(true);
         try {
             const name = await this.pilotNameGenerator.generate({
-                factionId: this.data.factionId ?? this.data.group?.force.faction()?.id,
+                factionId: this.data.factionId,
                 isAerospace: !!this.data.isAerospace,
                 isCommander: this.selectedGroupCommander(),
                 unitType: this.data.unit?.type,
                 unitSubtype: this.data.unit?.subtype,
-                era: this.data.era?.years ?? this.data.group?.force.era()?.years,
+                era: this.data.era?.years,
             });
             if (!name) {
                 this.logger.warn('Pilot name generation returned no name.');

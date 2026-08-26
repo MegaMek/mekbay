@@ -15,6 +15,7 @@ describe('equipment technology codec', () => {
             advancement: {
                 is: { prototype: '~3055', production: '3067', common: '3072' },
             },
+            factions: { prototype: ['FS'], production: ['FS', 'LC'], reintroduction: ['DC'] },
         })).toEqual({
             base: 'IS',
             rating: 'E',
@@ -30,6 +31,25 @@ describe('equipment technology codec', () => {
                 },
                 clan: undefined,
             },
+            factions: { prototype: ['FS'], production: ['FS', 'LC'], reintroduction: ['DC'] },
         });
+    });
+
+    it('copies and freezes faction milestones at the wire boundary', () => {
+        const prototype = ['FS'];
+        const decoded = decodeEquipmentTechData({
+            base: 'IS',
+            rating: 'E',
+            level: 'Standard',
+            availability: {},
+            advancement: {},
+            factions: { prototype },
+        });
+
+        prototype.push('LC');
+
+        expect(decoded.factions?.prototype).toEqual(['FS']);
+        expect(Object.isFrozen(decoded.factions)).toBeTrue();
+        expect(Object.isFrozen(decoded.factions?.prototype)).toBeTrue();
     });
 });

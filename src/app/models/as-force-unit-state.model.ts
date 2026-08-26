@@ -172,8 +172,8 @@ export class ASForceUnitState extends ForceUnitState {
      * totalDamage is the total damage to distribute across armor and internal.
      */
     setPendingDamage(totalDamage: number): void {
-        const maxArmor = this.unit.getUnit().as.Arm;
-        const maxInternal = this.unit.getUnit().as.Str;
+        const maxArmor = this.unit.getSummary().as.Arm;
+        const maxInternal = this.unit.getSummary().as.Str;
         const committedArmor = this.armor();
         const committedInternal = this.internal();
 

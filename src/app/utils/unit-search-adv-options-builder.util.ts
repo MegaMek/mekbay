@@ -4,7 +4,7 @@
 
 import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import type { GameSystem } from '../models/common.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import type { WildcardPattern } from './semantic-filter.util';
 import { getAdvOptionsContextSnapshot, getSnapshotAvailabilityNames, getSnapshotAvailableNames, getSnapshotCountableValues, getSnapshotUnitIds, type AdvOptionsContextSnapshot } from './unit-search-adv-options.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from './unit-filter-kernel.util';
@@ -19,7 +19,7 @@ const AVAILABILITY_CASCADE_FILTER_KEYS = new Set(['era', 'faction', 'availabilit
 interface BuildUnitSearchAdvOptionsRequest {
     advancedFilters: readonly AdvFilterConfig[];
     state: FilterState;
-    units: Unit[];
+    units: UnitSummary[];
     queryText: string;
     textSearch: string;
     isComplexQuery: boolean;
@@ -29,35 +29,28 @@ interface BuildUnitSearchAdvOptionsRequest {
     getUnitFilterKernelDependencies: () => UnitFilterKernelDependencies;
     buildIndexedDropdownOptions: (
         conf: AdvFilterConfig,
-        contextUnits: Unit[],
+        contextUnits: UnitSummary[],
         displayNameFn?: (value: string) => string | undefined,
         contextUnitIds?: ReadonlySet<string>,
+        availabilityMode?: 'indexed' | 'all' | 'omit',
     ) => { name: string; img?: string; displayName?: string; available?: boolean }[];
     buildForcePackDropdownOptions: (
         snapshot: AdvOptionsContextSnapshot,
-        contextUnits: Unit[],
+        contextUnits: UnitSummary[],
     ) => { name: string; available: boolean }[];
     buildCustomDropdownOptions?: (
         conf: AdvFilterConfig,
-        contextUnits: Unit[],
+        contextUnits: UnitSummary[],
         state: FilterState,
     ) => { name: string; img?: string; displayName?: string; available?: boolean }[] | null;
-    getIndexedUniverseNames: (filterKey: string) => string[];
-    getSortedIndexedUniverseNames: (conf: AdvFilterConfig) => string[];
-    collectIndexedAvailabilityNames: (
-        filterKey: string,
-        optionNames: readonly string[],
-        contextUnitIds: ReadonlySet<string>,
-        isComponentFilter: boolean,
-    ) => Set<string>;
     collectConstrainedMultistateAvailabilityNames: (
         filterKey: string,
-        units: Unit[],
+        units: UnitSummary[],
         selection: MultiStateSelection,
         isComponentFilter: boolean,
     ) => Set<string> | null;
     getAvailableRangeForUnits: (
-        units: Unit[],
+        units: UnitSummary[],
         conf: AdvFilterConfig,
         fallbackRange: [number, number],
     ) => [number, number];
@@ -214,9 +207,9 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
             dependencies: request.getUnitFilterKernelDependencies(),
         });
 
-    const contextUnitsCache = new Map<string, Unit[]>();
-    const contextSnapshotCache = new WeakMap<Unit[], AdvOptionsContextSnapshot>();
-    let availabilityContextUnits: Unit[] | null = null;
+    const contextUnitsCache = new Map<string, UnitSummary[]>();
+    const contextSnapshotCache = new WeakMap<UnitSummary[], AdvOptionsContextSnapshot>();
+    let availabilityContextUnits: UnitSummary[] | null = null;
 
     const pushAdvOptionsTelemetry = (
         conf: AdvFilterConfig,
@@ -325,13 +318,23 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
         if (conf.type === AdvFilterType.DROPDOWN) {
             const displayNameFn = (value: string) => request.getDisplayName(conf.key, value);
             const contextSnapshot = getAdvOptionsContextSnapshot(contextSnapshotCache, contextUnits);
-            const contextUnitIds = getSnapshotUnitIds(contextSnapshot, contextUnits);
             const customOptions = request.buildCustomDropdownOptions?.(conf, contextUnits, request.state);
+            // Indexed universes for ordinary summary fields are built from this
+            // exact catalog. When the availability context is the full catalog,
+            // every value is therefore available without thousands of redundant
+            // set intersections.
+            const hasFullIndexedContext = contextUnits === request.units && !conf.external;
 
             if (customOptions) {
                 availableOptions = customOptions;
             } else if (usesIndexedDropdownUniverse(conf) && !conf.multistate) {
-                availableOptions = request.buildIndexedDropdownOptions(conf, contextUnits, displayNameFn, contextUnitIds);
+                availableOptions = request.buildIndexedDropdownOptions(
+                    conf,
+                    contextUnits,
+                    displayNameFn,
+                    hasFullIndexedContext ? undefined : getSnapshotUnitIds(contextSnapshot, contextUnits),
+                    hasFullIndexedContext ? 'all' : 'indexed',
+                );
             } else if (conf.multistate) {
                 const isComponentFilter = isComponentBackedDropdown(conf);
                 const isCountableFilter = isCountableBackedDropdown(conf);
@@ -348,9 +351,6 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                         || selection.countExcludeRanges !== undefined
                     );
                 const indexedUniverse = usesIndexedDropdownUniverse(conf);
-                const availableNames = indexedUniverse
-                    ? request.getIndexedUniverseNames(conf.key)
-                    : getSnapshotAvailableNames(contextSnapshot, conf.key, contextUnits, isComponentFilter);
                 const constrainedAvailableNameSet = Object.keys(normalizedCurrentSelection).length > 0
                     ? request.collectConstrainedMultistateAvailabilityNames(
                         conf.key,
@@ -359,21 +359,40 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                         isCountableFilter,
                     )
                     : null;
-
-                const sortedNames = indexedUniverse
-                    ? request.getSortedIndexedUniverseNames(conf)
-                    : availableNames;
+                const needsIndexedAvailability = indexedUniverse
+                    && usesIndexedDropdownAvailability(conf)
+                    && !hasFullIndexedContext
+                    && constrainedAvailableNameSet === null;
+                const indexedOptions = indexedUniverse
+                    ? request.buildIndexedDropdownOptions(
+                        conf,
+                        contextUnits,
+                        displayNameFn,
+                        needsIndexedAvailability ? getSnapshotUnitIds(contextSnapshot, contextUnits) : undefined,
+                        hasFullIndexedContext
+                            ? 'all'
+                            : needsIndexedAvailability
+                                ? 'indexed'
+                                : 'omit',
+                    )
+                    : null;
+                const sortedNames = indexedOptions
+                    ? indexedOptions.map(option => option.name)
+                    : getSnapshotAvailableNames(contextSnapshot, conf.key, contextUnits, isComponentFilter);
                 const availableNameSet = constrainedAvailableNameSet
                     ?? (indexedUniverse
-                        ? (usesIndexedDropdownAvailability(conf)
-                            ? request.collectIndexedAvailabilityNames(conf.key, sortedNames, contextUnitIds, isCountableFilter)
+                        ? (hasFullIndexedContext
+                            ? new Set(sortedNames.map(name => isCountableFilter ? name.toLowerCase() : name))
+                            : usesIndexedDropdownAvailability(conf)
+                                ? new Set(
+                                    (indexedOptions ?? [])
+                                        .filter(option => option.available !== false)
+                                        .map(option => isCountableFilter ? option.name.toLowerCase() : option.name),
+                                )
                             : getSnapshotAvailabilityNames(contextSnapshot, conf.key, contextUnits, isComponentFilter))
                         : getSnapshotAvailabilityNames(contextSnapshot, conf.key, contextUnits, isComponentFilter));
-                const indexedOptionMetadata = indexedUniverse
-                    ? new Map(
-                        request.buildIndexedDropdownOptions(conf, contextUnits, displayNameFn, contextUnitIds)
-                            .map(option => [option.name, option] as const)
-                    )
+                const indexedOptionMetadata = indexedOptions
+                    ? new Map(indexedOptions.map(option => [option.name, option] as const))
                     : null;
 
                 let totalCountsMap: Map<string, number> | null = null;
@@ -538,11 +557,13 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
             pushAdvOptionsTelemetry(conf, filterStartedAt, contextDerivationMs, contextUnits.length, contextStrategy, availableOptions);
         } else if (conf.type === AdvFilterType.RANGE) {
             const totalRange = request.totalRanges[conf.key] || [0, 0];
-            const availableRange = request.getAvailableRangeForUnits(
-                contextUnits,
-                conf,
-                totalRange as [number, number],
-            );
+            const availableRange = contextUnits === request.units
+                ? totalRange as [number, number]
+                : request.getAvailableRangeForUnits(
+                    contextUnits,
+                    conf,
+                    totalRange as [number, number],
+                );
 
             const isInteracted = filterStateEntry?.interactedWith ?? false;
             const originalValue: [number, number] = isInteracted ? filterStateEntry.value : availableRange;

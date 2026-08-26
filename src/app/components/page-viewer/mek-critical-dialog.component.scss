@@ -1,0 +1,202 @@
+:host {
+    display: block;
+}
+
+.panel {
+    width: min(460px, 100vw);
+}
+
+.body {
+    padding: 0 8px;
+}
+
+.critical-dialog-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 8px 0;
+    text-align: center;
+}
+
+.critical-dialog-body p {
+    margin: 0;
+}
+
+.critical-table-hint {
+    color: var(--text-color-tertiary);
+    font-size: 0.85em;
+}
+
+.critical-result-slot {
+    align-self: stretch;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    place-items: center;
+}
+
+.critical-result-slot > * {
+    grid-area: 1 / 1;
+    min-width: 0;
+}
+
+.result-slot-hidden {
+    visibility: hidden;
+}
+
+.critical-roll-details {
+    align-self: stretch;
+    margin: 0;
+    text-align: left;
+}
+
+.critical-modifier {
+    min-height: 36px;
+}
+
+.critical-modifier.inactive .modifier-reason,
+.critical-modifier.inactive .modifier-value {
+    opacity: 0.5;
+}
+
+.critical-modifier-checkbox,
+.critical-modifier.optional .modifier-reason,
+.other-modifier .modifier-reason {
+    cursor: pointer;
+}
+
+.critical-modifier-checkbox .bt-checkbox {
+    display: block;
+}
+
+.other-modifier {
+    grid-template-columns: var(--modifier-location-width) minmax(0, 1fr) auto;
+}
+
+.critical-modifier-controls {
+    align-self: center;
+    display: grid;
+    grid-template-columns: 28px 42px 28px;
+    align-items: center;
+    gap: 4px;
+}
+
+.critical-modifier-step {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    background: var(--background-highlight);
+    color: var(--text-color);
+    font-size: 1.2rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.critical-modifier-step:not(:disabled):hover,
+.critical-modifier-step:not(:disabled):focus-visible {
+    border-color: var(--text-color-secondary);
+    background: var(--background-highlight-bright);
+}
+
+.critical-modifier-step:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.situational-modifier-value {
+    min-width: 42px;
+    min-height: 28px;
+    box-sizing: border-box;
+}
+
+.situational-modifier-value.neutral {
+    border-color: var(--border-color);
+    background: var(--background-input);
+    color: var(--text-color);
+}
+
+.guided-progress,
+.critical-result {
+    color: var(--text-color);
+    font-weight: 700;
+}
+
+.explosion-protection {
+    align-self: stretch;
+    display: flex;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--background-highlight-bright) 12%, transparent);
+    text-align: left;
+}
+
+.protection-badge {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    display: block;
+    font-size: 0.9em;
+    color: #e8a64a;
+    font-weight: bold;
+    letter-spacing: 0.03em;
+}
+
+.protection-note {
+    color: var(--text-color-secondary);
+    font-size: 0.82em;
+    line-height: 1.35;
+}
+
+.critical-result {
+    font-size: 1.05em;
+    color: var(--danger);
+}
+
+.critical-result.no-critical {
+    color: var(--success);
+}
+
+.critical-result.reroll {
+    color: var(--text-color);
+}
+
+.explosion-result {
+    align-self: stretch;
+    padding: 0.75rem;
+    border: 1px solid var(--danger);
+    background: rgba(120, 0, 0, 0.25);
+    color: var(--text-color);
+}
+
+.explosion-result.pending-explosion {
+    border-color: #e8a64a;
+    background: rgba(120, 80, 0, 0.25);
+}
+
+.actions {
+    gap: 8px;
+}
+
+.actions .bt-button {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+}
+
+.critical-chance-actions {
+    flex-wrap: wrap;
+}
+
+.critical-chance-actions .critical-action {
+    order: -1;
+    flex: 0 0 100%;
+    width: 100%;
+}
+
+.critical-chance-actions .critical-action.action-unavailable {
+    visibility: hidden;
+}

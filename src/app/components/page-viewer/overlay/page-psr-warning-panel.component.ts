@@ -2,28 +2,43 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, computed, inject, Injector, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, Injector, signal, viewChild } from '@angular/core';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import type { PSRCheck } from '../../../models/rules/unit-type-rules';
-import { OverlayManagerService } from '../../../services/overlay-manager.service';
-import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
-import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
-import { displayPsrModifiers } from './page-turn-summary.util';
-import { getMekLocationLabel } from '../../../models/entity/types';
 
-export function psrRollOutcome(sum: number, target: number): 'success' | 'failed' {
+import type {
+    MekAutomaticFallV2,
+    MekPilotCheckOutcomeV2,
+    MekPilotCheckV2,
+} from '../../../models/runtime/mek-movement-psr-v2';
+import type { CBTMekForceMember } from '../../../models/force-member.model';
+import { OptionsService } from '../../../services/options.service';
+import { OverlayManagerService } from '../../../services/overlay-manager.service';
+import { ToastService } from '../../../services/toast.service';
+import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
+import {
+    diceForMekPilotCheckOutcome,
+    MekTurnSummaryRuntimeController,
+} from './mek-turn-summary-runtime.controller';
+import {
+    actionableMekPilotChecks,
+    composeMekPsrDisplayModifiers,
+    openTurnSummaryChildOverlay,
+    PAGE_TURN_MEMBER,
+} from './page-turn-summary.util';
+
+export function psrRollOutcome(sum: number, target: number): MekPilotCheckOutcomeV2 {
     return sum >= target ? 'success' : 'failed';
 }
 
 export function togglePsrWarningOverlay(
-    parent: PageInteractionOverlayComponent,
+    member: CBTMekForceMember | null,
     overlayManager: OverlayManagerService,
     injector: Injector,
     overlay: Overlay,
     beforeOpen?: () => void
 ): void {
-    const unitId = parent.unit()?.id;
+    const unitId = member?.id;
     if (!unitId) return;
 
     const overlayKey = `psrWarning-${unitId}`;
@@ -34,20 +49,20 @@ export function togglePsrWarningOverlay(
 
     beforeOpen?.();
     const customInjector = Injector.create({
-        providers: [
-            { provide: PageInteractionOverlayComponent, useValue: parent }
-        ],
+        providers: [{ provide: PAGE_TURN_MEMBER, useValue: member }],
         parent: injector
     });
     const portal = new ComponentPortal(PagePsrWarningPanelComponent, null, customInjector);
-    overlayManager.createManagedOverlay(overlayKey, null, portal, {
-        hasBackdrop: true,
-        backdropClass: 'cdk-overlay-dark-backdrop',
-        panelClass: 'psr-warning-overlay-panel',
-        closeOnOutsideClick: true,
-        scrollStrategy: overlay.scrollStrategies.block(),
-        positions: []
-    });
+    openTurnSummaryChildOverlay(overlayManager, unitId, () =>
+        overlayManager.createManagedOverlay(overlayKey, null, portal, {
+            hasBackdrop: true,
+            backdropClass: 'cdk-overlay-dark-backdrop',
+            panelClass: 'psr-warning-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: overlay.scrollStrategies.block(),
+            positions: []
+        })
+    );
 }
 
 @Component({
@@ -58,26 +73,64 @@ export function togglePsrWarningOverlay(
     styleUrl: './page-psr-warning-panel.component.scss',
 })
 export class PagePsrWarningPanelComponent {
-    private readonly parent = inject(PageInteractionOverlayComponent);
+    private readonly member = inject(PAGE_TURN_MEMBER);
     private readonly overlayManager = inject(OverlayManagerService);
+    private readonly options = inject(OptionsService);
+    private readonly toast = inject(ToastService);
+    private readonly destroyRef = inject(DestroyRef);
+
     readonly diceRoller = viewChild<DiceRollerComponent>('roller');
-    readonly unit = this.parent.unit;
     readonly rolledResult = signal<string | null>(null);
     readonly rolledResultTone = computed<'default' | 'success' | 'failed'>(() => {
         if (this.rolledResult() === 'SUCCESS') return 'success';
         if (this.rolledResult() === 'FAILED') return 'failed';
         return 'default';
     });
-    private readonly retainedResolvedRuleChecks = signal<readonly PSRCheck[]>([]);
-    private rollingCheck: PSRCheck | null = null;
-    readonly locationLabel = getMekLocationLabel;
+    readonly controlRollFullLabel = computed(() => 'Piloting Skill Rolls');
 
-    close(): void {
-        const unitId = this.unit()?.id;
-        this.overlayManager.closeManagedOverlay(`psrWarning-${unitId}`);
+    private controller: MekTurnSummaryRuntimeController | null = null;
+    private rollingCheck: MekPilotCheckV2 | null = null;
+
+    readonly automaticFalls = computed(() =>
+        this.runtime()?.snapshot().movementState.automaticFalls ?? []);
+    readonly psrChecks = computed(() => actionableMekPilotChecks(
+        this.runtime()?.snapshot().movementState.checks ?? [],
+        this.automaticFalls().length > 0,
+    ));
+    readonly targetRoll = computed(() => {
+        const checks = this.psrChecks();
+        return checks.find(check => check.status === 'pending')?.targetNumber
+            ?? checks[0]?.targetNumber
+            ?? 0;
+    });
+    readonly modifiersList = computed(() => {
+        const snapshot = this.runtime()?.snapshot();
+        const permanent = snapshot?.movement.kind === 'supported'
+            ? snapshot.movement.permanentPsrModifiers
+            : [];
+        return composeMekPsrDisplayModifiers(permanent, snapshot?.movementState.checks ?? []);
+    });
+    readonly allChecksAutomaticFailure = computed(() => {
+        const checks = this.psrChecks();
+        return this.automaticFalls().length + checks.length > 0
+            && checks.every(check => this.isAutomaticFailure(check));
+    });
+
+    automaticFallReason(fall: MekAutomaticFallV2): string {
+        return fall.triggerKind === 'gyro-destroyed' ? 'Gyro destroyed' : 'Leg destroyed';
     }
 
-    roll(check: PSRCheck): void {
+    locationLabel(locationId: string | undefined): string | null {
+        return locationId
+            ? this.runtime()?.snapshot().locationLabels[locationId] ?? null
+            : null;
+    }
+
+    close(): void {
+        this.overlayManager.closeManagedOverlay(`psrWarning-${this.member.id}`);
+    }
+
+    roll(check: MekPilotCheckV2): void {
         const roller = this.diceRoller();
         if (!roller || roller.isRolling() || this.outcome(check) || this.isAutomaticFailure(check)) return;
         this.rollingCheck = check;
@@ -86,99 +139,50 @@ export class PagePsrWarningPanelComponent {
     }
 
     onRollFinished(event: { readonly results: number[]; readonly sum: number }): void {
-        const unit = this.unit();
+        const runtime = this.runtime();
         const check = this.rollingCheck;
         this.rollingCheck = null;
-        if (!unit || !check) return;
-
-        const result = psrRollOutcome(event.sum, unit.PSRTargetRoll());
-        this.rolledResult.set(result.toUpperCase());
-        this.resolve(check, result);
+        if (!runtime || !check || event.results.length < 2) return;
+        const outcome = psrRollOutcome(event.sum, check.targetNumber);
+        this.rolledResult.set(outcome.toUpperCase());
+        runtime.setDie(check.checkId, 0, event.results[0]!);
+        runtime.setDie(check.checkId, 1, event.results[1]!);
+        void runtime.resolveCheck(check.checkId);
     }
 
-    resolve(check: PSRCheck, result: 'success' | 'failed'): void {
-        const unit = this.unit();
-        if (!unit) return;
-        if (check.resolution) {
-            if (unit.resolveRuleCheck(check.resolution.key, check.resolution.token, result)) {
-                this.retainResolvedRuleCheck(check);
-            }
-        } else if (check.id) {
-            unit.turnState().resolvePSRCheck(check.id, result);
+    resolve(check: MekPilotCheckV2, outcome: MekPilotCheckOutcomeV2): void {
+        const runtime = this.runtime();
+        const dice = diceForMekPilotCheckOutcome(check.targetNumber, outcome);
+        if (!runtime || !dice || check.status !== 'pending') return;
+        runtime.setDie(check.checkId, 0, dice[0]);
+        runtime.setDie(check.checkId, 1, dice[1]);
+        this.rolledResult.set(outcome.toUpperCase());
+        void runtime.resolveCheck(check.checkId);
+    }
+
+    outcome(check: MekPilotCheckV2): MekPilotCheckOutcomeV2 | undefined {
+        return check.status === 'pending' ? undefined : check.status;
+    }
+
+    isAutomaticFailure(check: MekPilotCheckV2): boolean {
+        return check.targetNumber > 12;
+    }
+
+    failureLabel(check: MekPilotCheckV2): string {
+        if (check.source.triggerKind === 'shutdown') return 'Shutdown';
+        if (check.source.triggerKind === 'get-up') return 'Remain prone';
+        return 'Fall';
+    }
+
+    private runtime(): MekTurnSummaryRuntimeController | null {
+        if (!this.controller || this.controller.member !== this.member) {
+            this.controller = new MekTurnSummaryRuntimeController(
+                this.member,
+                this.options,
+                this.toast,
+                this.destroyRef,
+            );
         }
-    }
-
-    outcome(check: PSRCheck) {
-        const unit = this.unit();
-        if (!unit) return undefined;
-        if (check.resolution) {
-            const ruleCheck = unit.getRuleCheck(check.resolution.key);
-            if (!ruleCheck || ruleCheck.token !== check.resolution.token || ruleCheck.status === 'pending') {
-                return undefined;
-            }
-            return ruleCheck.status;
-        }
-        if (!check.id) return undefined;
-        return unit.turnState().getPSROutcome(check.id);
-    }
-
-    isAutomaticFailure(check: PSRCheck): boolean {
-        return this.unit()?.turnState().autoFall() === true && check.failureOutcome === 'Fall';
-    }
-
-    readonly modifiersList = computed(() => {
-        const unit = this.unit();
-        if (!unit) return [];
-        return displayPsrModifiers(unit.PSRModifiers().modifiers);
-    });
-
-    readonly controlRollFullLabel = computed(() => {
-        const unit = this.unit();
-        if (!unit) return 'Piloting Skill Rolls';
-        return unit.rules.controlRollFullLabel;
-    });
-
-    readonly psrChecks = computed(() => {
-        const unit = this.unit();
-        if (!unit) return [];
-        const checks = unit.turnState().getPSRChecks()
-            .filter(check => check.fallCheck !== undefined)
-        for (const retainedCheck of this.retainedResolvedRuleChecks()) {
-            if (!retainedCheck.resolution) continue;
-            const ruleCheck = unit.getRuleCheck(retainedCheck.resolution.key);
-            if (!ruleCheck
-                || ruleCheck.token !== retainedCheck.resolution.token
-                || ruleCheck.status === 'pending'
-                || checks.some(check => this.sameRuleCheck(check, retainedCheck))) {
-                continue;
-            }
-            checks.push(retainedCheck);
-        }
-        return checks.sort((left, right) => this.checkDisplayOrder(left) - this.checkDisplayOrder(right));
-    });
-
-    readonly allChecksAutomaticFailure = computed(() => {
-        const checks = this.psrChecks();
-        return checks.length > 0 && checks.every(check => this.isAutomaticFailure(check));
-    });
-
-    private checkDisplayOrder(check: PSRCheck): number {
-        if (this.isAutomaticFailure(check)) return 2;
-        if (this.outcome(check)) return 1;
-        return 0;
-    }
-
-    private retainResolvedRuleCheck(check: PSRCheck): void {
-        if (!check.resolution) return;
-        this.retainedResolvedRuleChecks.update(current =>
-            current.some(existing => this.sameRuleCheck(existing, check))
-                ? current
-                : [...current, check]
-        );
-    }
-
-    private sameRuleCheck(left: PSRCheck, right: PSRCheck): boolean {
-        return left.resolution?.key === right.resolution?.key
-            && left.resolution?.token === right.resolution?.token;
+        return this.controller;
     }
 }

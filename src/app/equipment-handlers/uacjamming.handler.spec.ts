@@ -1,85 +1,91 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
-import { WeaponEquipment, type AmmoType } from '../models/equipment.model';
-import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
-import { MountedEquipment } from '../models/mounted-equipment.model';
-import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
-import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../models/rules/unit-type-rules';
-import { createHandlerCommandContext, createHandlerQueryContext } from '../services/equipment-interaction-registry.service';
-import type { DialogsService } from '../services/dialogs.service';
-import type { ToastService } from '../services/toast.service';
-import { createTestEquipmentOwner } from '../testing/unit-test-helpers';
-import { UACJammingHandler } from './uacjamming.handler';
+import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../models/cbt-ruleset.model';
+import { EQUIPMENT_DISABLED_CHOICE_VALUE } from '../models/component-control-choice';
+import { createComponentJamDefinition } from '../models/runtime/component-jam';
+import { rapidFireAutocannonSupportsJamming } from '../models/runtime/component-rapid-fire-autocannon';
+import { asCommandId } from '../models/runtime/runtime-state';
+import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import {
+    createHandlerCommandContext,
+    createHandlerQueryContext,
+    type HandlerDialogsService,
+    type HandlerToastService,
+} from '../services/equipment-interaction-registry.service';
+import { UACJammingHandler } from '../models/runtime/component-rapid-fire-autocannon';
 
-function owner(gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
-    const { owner } = createTestEquipmentOwner({ gameRules });
-    spyOn(owner, 'setInventoryEntry').and.callThrough();
-    return owner;
-}
+describe('direct UAC jamming handler', () => {
+    it('jams and unjams an Ultra AC under Total Warfare', () => {
+        const fixture = createDirectMekRuntimeFixture(TOTAL_WARFARE_RULESET);
+        const component = fixture.equipmentComponent('Test AC');
+        const equipment = component.mount.equipment;
+        if (!equipment) throw new Error('Test AC equipment is missing');
+        const runtime = fixture.instance;
+        const handler = new UACJammingHandler();
+        const definition = createComponentJamDefinition({
+            componentId: component.id,
+            displayName: equipment.name,
+            flags: equipment.flags,
+            supportsJamming: rapidFireAutocannonSupportsJamming(fixture.index, component.id, TOTAL_WARFARE_RULESET),
+        });
+        const toast: HandlerToastService = {
+            showToast: jasmine.createSpy('showToast'),
+            toasts: () => [],
+        };
+        const dialogs = {
+            createDialog: jasmine.createSpy('createDialog'),
+            showError: jasmine.createSpy('showError'),
+            showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
+        } as HandlerDialogsService;
+        const queryContext = createHandlerQueryContext(fixture.equipment);
+        const commandContext = createHandlerCommandContext(fixture.equipment, toast, dialogs);
 
-function weapon(ammoType: AmmoType): WeaponEquipment {
-    return new WeaponEquipment({
-        id: ammoType,
-        name: ammoType,
-        type: 'weapon',
-        flags: ['F_BALLISTIC', 'F_DIRECT_FIRE'],
-        weapon: { ammoType }
-    });
-}
-
-function entry(ammoType: AmmoType, states = new Map<string, string>(), gameRules: CBTGameRules = CORE_2026_GAME_RULES): MountedEquipment {
-    return new MountedEquipment({
-        owner: owner(gameRules),
-        id: ammoType,
-        name: ammoType,
-        equipment: weapon(ammoType),
-        states
-    });
-}
-
-describe('UACJammingHandler', () => {
-    const handler = new UACJammingHandler();
-    const queryContext = createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY);
-    const commandContext = createHandlerCommandContext(
-        EMPTY_EQUIPMENT_REGISTRY,
-        jasmine.createSpyObj<ToastService>('ToastService', ['showToast']),
-        jasmine.createSpyObj<DialogsService>('DialogsService', ['createDialog']),
-    );
-
-    it('applies rotary autocannons and Tactical Warfare Ultra autocannons', () => {
-        expect(handler.applicableTo(entry('AC_ROTARY'))).toBeTrue();
-        expect(handler.applicableTo(entry('AC'))).toBeFalse();
-        expect(handler.applicableTo(entry('AC_ULTRA'))).toBeFalse();
-        expect(handler.applicableTo(entry('AC_ULTRA_THB'))).toBeFalse();
-        expect(handler.applicableTo(entry('AC_ULTRA', new Map(), TW_GAME_RULES))).toBeTrue();
-        expect(handler.applicableTo(entry('AC_ULTRA_THB', new Map(), TW_GAME_RULES))).toBeTrue();
-    });
-
-    it('toggles the shared disabled state with jam labels', () => {
-        const mounted = entry('AC_ULTRA');
-
-        expect(handler.getChoices(mounted, queryContext)[0]).toEqual(jasmine.objectContaining({
+        expect(handler.applicableToComponentJam(definition)).toBeTrue();
+        const jam = handler.getComponentJamChoices(runtime, definition, queryContext)[0]!;
+        expect(jam).toEqual(jasmine.objectContaining({
             label: 'Jam',
             shortLabel: 'Jam',
+            value: EQUIPMENT_DISABLED_CHOICE_VALUE,
             active: false,
-            value: ENTRY_DISABLED_STATE_VALUE
         }));
+        expect(handler.handleComponentJamSelection(runtime, definition, jam, commandContext)).toBeTrue();
+        expect(runtime.query().componentJammed(component.id)).toBeTrue();
+        expect(toast.showToast).toHaveBeenCalledWith('Test AC is jammed', 'error');
 
-        handler.handleSelection(mounted, handler.getChoices(mounted, queryContext)[0], commandContext);
-
-        expect(mounted.states.get(ENTRY_DISABLED_STATE_KEY)).toBe(ENTRY_DISABLED_STATE_VALUE);
-        expect(mounted.states.has('state')).toBeFalse();
-        expect(mounted.owner.setInventoryEntry).toHaveBeenCalledWith(mounted);
-        expect(handler.getChoices(mounted, queryContext)[0]).toEqual(jasmine.objectContaining({
+        const unjam = handler.getComponentJamChoices(runtime, definition, queryContext)[0]!;
+        expect(unjam).toEqual(jasmine.objectContaining({
             label: 'Jammed',
             shortLabel: 'Unjam',
+            value: 'false',
             active: true,
         }));
+        expect(handler.handleComponentJamSelection(runtime, definition, unjam, commandContext)).toBeTrue();
+        expect(runtime.query().componentJammed(component.id)).toBeFalse();
+        expect(toast.showToast).toHaveBeenCalledWith('Test AC is unjammed', 'info');
+    });
 
-        handler.handleSelection(mounted, handler.getChoices(mounted, queryContext)[0], commandContext);
+    it('rejects Ultra AC jamming under Core rules', () => {
+        const fixture = createDirectMekRuntimeFixture(CORE_2026_RULESET);
+        const component = fixture.equipmentComponent('Test AC');
+        const equipment = component.mount.equipment;
+        if (!equipment) throw new Error('Test AC equipment is missing');
+        const runtime = fixture.instance;
+        const handler = new UACJammingHandler();
+        const definition = createComponentJamDefinition({
+            componentId: component.id,
+            displayName: equipment.name,
+            flags: equipment.flags,
+            supportsJamming: rapidFireAutocannonSupportsJamming(fixture.index, component.id, CORE_2026_RULESET),
+        });
 
-        expect(mounted.states.has(ENTRY_DISABLED_STATE_KEY)).toBeFalse();
+        expect(handler.applicableToComponentJam(definition)).toBeFalse();
+        expect(runtime.dispatch({
+            type: 'set-component-jammed',
+            commandId: asCommandId('core:uac-jam'),
+            expectedRevision: runtime.revision(),
+            componentId: component.id,
+            jammed: true,
+        })).toEqual(jasmine.objectContaining({ accepted: false, reason: 'INVALID_TARGET' }));
     });
 });

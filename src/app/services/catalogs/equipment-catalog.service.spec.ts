@@ -14,6 +14,7 @@ import { EquipmentCatalogService } from './equipment-catalog.service';
 
 interface HydratableEquipmentCatalogService {
     hydrate(data: RawEquipmentData): void;
+    afterInitialize(): Promise<void>;
 }
 
 function createAmmo(id: string, name = id): EquipmentRawData {
@@ -53,7 +54,7 @@ describe('EquipmentCatalogService', () => {
     function hydrate(equipment: RawEquipmentData['equipment']): void {
         (service as unknown as HydratableEquipmentCatalogService).hydrate({
             version: 'test',
-            etag: 'test-etag',
+            assetHash: 'test-hash',
             equipment,
         });
     }
@@ -96,5 +97,53 @@ describe('EquipmentCatalogService', () => {
 
         expect(service.getEquipmentRegistry().size).toBe(1);
         expect(logger.error).not.toHaveBeenCalled();
+    });
+
+    it('uses the supplier asset hash as the catalog revision', async () => {
+        const seam = service as unknown as HydratableEquipmentCatalogService;
+        const equipment = { StandardAmmo: createAmmo('StandardAmmo') };
+        seam.hydrate({ version: '1', assetHash: 'first', equipment });
+        await seam.afterInitialize();
+        const first = service.getCatalogRevision();
+
+        seam.hydrate({ version: '1', assetHash: 'second', equipment });
+        await seam.afterInitialize();
+        expect(service.getCatalogRevision()).toBe('second');
+        expect(service.getCatalogRevision()).not.toBe(first);
+
+        seam.hydrate({
+            version: '2',
+            assetHash: 'second',
+            equipment: { StandardAmmo: createAmmo('StandardAmmo', 'Changed Semantic Name') },
+        });
+        await seam.afterInitialize();
+        expect(service.getCatalogRevision()).toBe('second');
+    });
+
+    it('builds and commits one equipment registry directly', () => {
+        const input: RawEquipmentData = {
+            version: 'snapshot-v1',
+            assetHash: 'transport-a',
+            equipment: {
+                StandardAmmo: {
+                    ...createAmmo('StandardAmmo'),
+                    aliases: ['Original Alias'],
+                    modes: ['Original Mode'],
+                    flags: ['F_ENERGY'],
+                },
+            },
+        };
+        const prepared = service.prepareBundledCatalog(input);
+        service.commitPreparedCatalog(prepared);
+
+        expect(service.getEquipmentRegistry()).toBe(prepared.registry);
+        expect(service.getCatalogRevision()).toBe('transport-a');
+        expect(service.getEquipmentRegistry().findEquipment('StandardAmmo')).toEqual(
+            jasmine.objectContaining({
+                name: 'StandardAmmo',
+                aliases: ['Original Alias'],
+                modes: ['Original Mode'],
+            }),
+        );
     });
 });

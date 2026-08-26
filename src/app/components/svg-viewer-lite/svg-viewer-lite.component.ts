@@ -4,12 +4,13 @@
 
 import { Component, ChangeDetectionStrategy, DestroyRef, signal, effect, input, inject, viewChild, type ElementRef } from '@angular/core';
 
-import type { Unit } from '../../models/units.model';
-import { SheetService } from '../../services/sheet.service';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { OptionsService } from '../../services/options.service';
 import { LoggerService } from '../../services/logger.service';
-import { getUnitServerHost } from '../../models/common.model';
 import { SvgExportUtil } from '../../utils/svg-export.util';
+import { UnitFluffImageService } from '../../services/catalogs/unit-fluff-image.service';
+import { NativeEntityService } from '../../services/native-entity.service';
+import { RecordSheetSourceService } from '../../services/record-sheet-source.service';
 
 type Point = { x: number; y: number };
 
@@ -30,10 +31,12 @@ type PointerGesture = {
 export class SvgViewerLiteComponent {
     logger = inject(LoggerService);
     private destroyRef = inject(DestroyRef);
-    private sheetService = inject(SheetService);
     private optionsService = inject(OptionsService);
+    private fluffImages = inject(UnitFluffImageService);
+    private nativeEntities = inject(NativeEntityService);
+    private recordSheets = inject(RecordSheetSourceService);
 
-    unit = input<Unit | null>(null);
+    unit = input<UnitSummary | null>(null);
     zoomable = input<boolean>(false);
 
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
@@ -71,28 +74,33 @@ export class SvgViewerLiteComponent {
                 }
             });
 
+            const sourceMode = this.recordSheets.mode();
             const u = this.unit();
             this.svgs.set([]);
             this.svgsAttached.set(false);
             this.cleanContainer();
             this.resetZoom();
 
-            if (!u || !u.sheets || u.sheets.length === 0) return;
+            if (!u || !this.nativeEntities.canLoad(u)) return;
 
             (async () => {
                 try {
-                    const svgs: SVGSVGElement[] = [];
-                    for (const sheetName of u.sheets) {
-                        const svg = await this.sheetService.getSheet(sheetName, u.serverHost);
-                        if (!this.isCurrentSheetLoad(loadGeneration)) return;
-
-                        const cloned = svg.cloneNode(true) as SVGSVGElement;
-                        cloned.removeAttribute('id');
-                        svgs.push(cloned);
-                    }
+                    const loaded = await this.nativeEntities.load({ provider: u.provider, uuid: u.uuid });
+                    if (!this.isCurrentSheetLoad(loadGeneration)) return;
+                    const artwork = await this.recordSheets.load(u, loaded.entity, {}, sourceMode);
                     if (!this.isCurrentSheetLoad(loadGeneration)) return;
 
-                    this.svgs.set(svgs);
+                    const svgs = artwork.svgs.map((svg, index) => {
+                        svg.removeAttribute('id');
+                        svg.setAttribute(
+                            'aria-label',
+                            artwork.svgs.length === 1
+                                ? `${u.name} record sheet`
+                                : `${u.name} record sheet page ${index + 1}`,
+                        );
+                        return svg;
+                    });
+                    this.svgs.set([...svgs]);
                     this.cleanContainer();
                     this.attachSvgs(loadGeneration);
                 } catch (err) {
@@ -107,15 +115,13 @@ export class SvgViewerLiteComponent {
             if (!this.svgsAttached()) return;
             const centerContent = this.optionsService.options().recordSheetCenterPanelContent;
             const u = this.unit();
-            const fluffImage = u?.fluff?.img;
-            if (!fluffImage) return; // no fluff image to inject
-            if (fluffImage.endsWith('hud.png')) return;
+            const fluffImageUrl = this.fluffImages.resolveUrl(u);
+            if (!fluffImageUrl) return;
             for (const svg of this.svgs()) {
                 if (svg.getElementById('fluff-image')) continue; // already present from the original sheet, we skip
                 if (svg.getElementById('fluffImage')) continue; // already present from the original sheet, we skip
                 if (centerContent === 'fluffImage') {
                     if (svg.getElementById('fluff-image-injected')) return; // already injected, we skip
-                    const fluffImageUrl = `${getUnitServerHost(u)}/images/fluff/${fluffImage}`;
                     this.injectFluffToSvg(svg, fluffImageUrl);
                 } else {
                     svg.getElementById('fluff-image-injected')?.remove();

@@ -9,23 +9,26 @@ import type { ForceEntryResolver } from './force-entry-resolver.model';
 import type { Force } from './force.model';
 import type {
     ASSerializedUnit,
-    CBTSerializedState,
-    CBTSerializedUnit,
     SerializedForce,
-    SerializedUnit,
 } from './force-serialization';
-import type { ForceUnit } from './force-unit.model';
+import {
+    forceMemberAdjustedValue,
+    forceMemberSummary,
+    isCBTForceMember,
+    type ForceMember,
+} from './force-member.model';
 import type {
     RemoteLoadForceEntry,
     RemoteLoadForceGroup,
     RemoteLoadForceUnit,
 } from './remote-load-force-entry.model';
-import type { Unit } from './units.model';
+import type { UnitSummary } from './unit-summary.model';
 import { uuidv7 } from '../utils/uuid.util';
-import type { CrewMemberDetails } from './crew-member.model';
+import type { CrewMemberDetails } from './crew.model';
+import type { SerializedCBTForceV2 } from './runtime/persistence-v2';
 
 export interface ForcePreviewUnit {
-    unit: Unit | undefined;
+    unit: UnitSummary | undefined;
     alias?: string;
     destroyed: boolean;
     skill?: number;
@@ -80,40 +83,9 @@ function resolveSerializedUnitId(id: string | undefined): string {
     return uuidv7();
 }
 
-function isASSerializedUnit(unit: SerializedUnit): unit is ASSerializedUnit {
-    return typeof (unit as Partial<ASSerializedUnit>).skill === 'number';
-}
-
-function isCBTSerializedUnit(unit: SerializedUnit): unit is CBTSerializedUnit {
-    return Array.isArray((unit.state as Partial<CBTSerializedState>).crew);
-}
-
-type LiveClassicPilotStatsForceUnit = ForceUnit & {
-    gunnerySkill: () => number;
-    pilotingSkill: () => number;
-    getCrewMembers?: () => Array<{
-        getId: () => number;
-        getName: () => string;
-        getSkill: (skillType: 'gunnery' | 'piloting', asf?: boolean) => number;
-    }>;
-};
-
-type LiveAlphaStrikePilotStatsForceUnit = ForceUnit & {
-    getPilotSkill: () => number;
-};
-
-function hasLiveClassicPilotStats(forceUnit: ForceUnit): forceUnit is LiveClassicPilotStatsForceUnit {
-    return typeof (forceUnit as Partial<LiveClassicPilotStatsForceUnit>).gunnerySkill === 'function'
-        && typeof (forceUnit as Partial<LiveClassicPilotStatsForceUnit>).pilotingSkill === 'function';
-}
-
-function hasLiveAlphaStrikePilotStats(forceUnit: ForceUnit): forceUnit is LiveAlphaStrikePilotStatsForceUnit {
-    return typeof (forceUnit as Partial<LiveAlphaStrikePilotStatsForceUnit>).getPilotSkill === 'function';
-}
-
 function createForcePreviewGroups(
     rawGroups: readonly RemoteLoadForceGroup[] | undefined,
-    getUnitByName: (name: string) => Unit | undefined,
+    getUnitByName: (name: string) => UnitSummary | undefined,
 ): ForcePreviewGroup[] {
     if (!Array.isArray(rawGroups)) {
         return [];
@@ -160,7 +132,7 @@ export function isForcePreviewEntry(value: unknown): value is ForcePreviewEntry 
 
 export function createForcePreviewUnit(
     raw: RemoteLoadForceUnit,
-    getUnitByName: (name: string) => Unit | undefined,
+    getUnitByName: (name: string) => UnitSummary | undefined,
 ): ForcePreviewUnit {
     const previewUnit: ForcePreviewUnit = {
         unit: getUnitByName(raw.unit),
@@ -178,8 +150,8 @@ export function createForcePreviewUnit(
 }
 
 export function createForcePreviewUnitFromSerializedUnit(
-    unit: SerializedUnit,
-    getUnitByName: (name: string) => Unit | undefined,
+    unit: ASSerializedUnit,
+    getUnitByName: (name: string) => UnitSummary | undefined,
 ): ForcePreviewUnit {
     const resolvedUnit = getUnitByName(unit.unit);
     const previewUnit: ForcePreviewUnit = {
@@ -191,43 +163,33 @@ export function createForcePreviewUnitFromSerializedUnit(
     assignForcePreviewUnitField(previewUnit, 'alias', unit.alias);
     assignForcePreviewUnitField(previewUnit, 'commander', unit.commander);
 
-    if (isASSerializedUnit(unit)) {
-        assignForcePreviewUnitField(previewUnit, 'skill', unit.skill);
-        return previewUnit;
-    }
-
-    if (!isCBTSerializedUnit(unit)) {
-        return previewUnit;
-    }
-
-    const isLandAirMek = resolvedUnit?.subtype === 'Land-Air BattleMek';
-    const crew = unit.state.crew.map((member) => ({
-        id: member.id,
-        name: member.name,
-        gunnery: member.gunnerySkill,
-        piloting: member.pilotingSkill,
-        ...(isLandAirMek && member.asfGunnerySkill !== undefined ? { asfGunnery: member.asfGunnerySkill } : {}),
-        ...(isLandAirMek && member.asfPilotingSkill !== undefined ? { asfPiloting: member.asfPilotingSkill } : {}),
-    }));
-    const gunnerySkills = crew.flatMap((member) => [member.gunnery, member.asfGunnery]
-        .filter((skill): skill is number => skill !== undefined));
-    const pilotingSkills = crew.flatMap((member) => [member.piloting, member.asfPiloting]
-        .filter((skill): skill is number => skill !== undefined));
-    const gunnery = gunnerySkills.length ? Math.min(...gunnerySkills) : undefined;
-    const piloting = pilotingSkills.length ? Math.min(...pilotingSkills) : undefined;
-
-    assignForcePreviewUnitField(previewUnit, 'gunnery', gunnery);
-    assignForcePreviewUnitField(previewUnit, 'piloting', piloting);
-    assignForcePreviewUnitField(previewUnit, 'crew', crew);
+    assignForcePreviewUnitField(previewUnit, 'skill', unit.skill);
     return previewUnit;
 }
 
-export function createForcePreviewUnitFromForceUnit(
-    forceUnit: ForceUnit,
-    gameSystem: GameSystem,
+export function createForcePreviewUnitFromForceMember(
+    member: ForceMember,
 ): ForcePreviewUnit {
+    if (isCBTForceMember(member)) {
+        const crew = member.force.getUnitCrewAssignment(member.id)?.positions ?? [];
+        const previewUnit: ForcePreviewUnit = {
+            unit: member.summary,
+            destroyed: member.force.getUnitDestroyed(member.id) ?? false,
+            lockKey: member.id,
+        };
+        if (crew.length > 0) {
+            assignForcePreviewUnitField(previewUnit, 'gunnery', Math.min(...crew.map(position => position.gunnery)));
+            assignForcePreviewUnitField(previewUnit, 'piloting', Math.min(...crew.map(position => position.piloting)));
+        }
+        if (member.force.isUnitCommander(member.id)) {
+            assignForcePreviewUnitField(previewUnit, 'commander', true);
+        }
+        return previewUnit;
+    }
+
+    const forceUnit = member;
     const previewUnit: ForcePreviewUnit = {
-        unit: forceUnit.getUnit(),
+        unit: forceMemberSummary(forceUnit),
         destroyed: forceUnit.destroyed,
         lockKey: resolveSerializedUnitId(forceUnit.id),
     };
@@ -235,37 +197,47 @@ export function createForcePreviewUnitFromForceUnit(
     assignForcePreviewUnitField(previewUnit, 'alias', forceUnit.alias());
     assignForcePreviewUnitField(previewUnit, 'commander', forceUnit.commander());
 
-    if (gameSystem === GameSystem.ALPHA_STRIKE) {
-        const skill = hasLiveAlphaStrikePilotStats(forceUnit)
-            ? forceUnit.getPilotSkill()
-            : Number(forceUnit.getPilotStats());
-
-        if (Number.isFinite(skill)) {
-            assignForcePreviewUnitField(previewUnit, 'skill', skill);
-        }
-        return previewUnit;
-    }
-
-    if (hasLiveClassicPilotStats(forceUnit)) {
-        assignForcePreviewUnitField(previewUnit, 'gunnery', forceUnit.gunnerySkill());
-        assignForcePreviewUnitField(previewUnit, 'piloting', forceUnit.pilotingSkill());
-        if (forceUnit.getCrewMembers) {
-            assignForcePreviewUnitField(previewUnit, 'crew', forceUnit.getCrewMembers().map((member) => ({
-                id: member.getId(),
-                name: member.getName(),
-                gunnery: member.getSkill('gunnery'),
-                piloting: member.getSkill('piloting'),
-                ...(forceUnit.getUnit().subtype === 'Land-Air BattleMek'
-                    ? {
-                        asfGunnery: member.getSkill('gunnery', true),
-                        asfPiloting: member.getSkill('piloting', true),
-                    }
-                    : {}),
-            })));
-        }
-    }
-
+    assignForcePreviewUnitField(previewUnit, 'skill', forceUnit.getPilotSkill());
     return previewUnit;
+}
+
+function createCBTForcePreviewGroups(
+    cbt: SerializedCBTForceV2,
+    resolver: ForceEntryResolver,
+): ForcePreviewGroup[] {
+    const entries = new Map(cbt.units.map(entry => [entry.instanceId, entry] as const));
+    return cbt.roster.groups.map(group => ({
+        name: group.name,
+        formationId: group.formationId,
+        units: group.members.map(member => {
+            const entry = entries.get(member.instanceId)!;
+            const identity = entry.kind === 'ready'
+                ? entry.unit.entity
+                : entry.source.identity.kind === 'resolved'
+                    ? entry.source.identity.savedIdentity
+                    : undefined;
+            const preview: ForcePreviewUnit = {
+                unit: identity ? resolver.getUnitByIdentity(identity.provider, identity.uuid) : undefined,
+                destroyed: entry.kind === 'ready' && entry.unit.destroyed === true,
+                lockKey: member.instanceId,
+            };
+            if (member.commander === true) preview.commander = true;
+            if (entry.kind === 'ready') {
+                const positions = entry.unit.deployment.values.crewAssignment.positions;
+                if (positions.length > 0) {
+                    preview.gunnery = Math.min(...positions.map(position => position.gunnery));
+                    preview.piloting = Math.min(...positions.map(position => position.piloting));
+                    preview.crew = positions.map((position, index) => ({
+                        id: index,
+                        name: position.name,
+                        gunnery: position.gunnery,
+                        piloting: position.piloting,
+                    }));
+                }
+            }
+            return preview;
+        }),
+    }));
 }
 
 export function createForcePreviewEntry(
@@ -296,6 +268,9 @@ export function createForcePreviewEntryFromSerializedForce(
     resolver: ForceEntryResolver,
     options: { cloud?: boolean; local?: boolean } = {},
 ): ForcePreviewEntry {
+    if (raw.version !== 2 || (raw.type === GameSystem.CLASSIC && raw.cbt === undefined)) {
+        throw new Error('Force preview requires normalized current persistence');
+    }
     return createForcePreviewEntryData({
         cloud: options.cloud ?? false,
         local: options.local ?? false,
@@ -310,26 +285,39 @@ export function createForcePreviewEntryFromSerializedForce(
         bv: raw.bv,
         pv: raw.pv,
         timestamp: raw.timestamp,
-        groups: (raw.groups ?? []).map((group) => ({
-            name: group.name,
-            formationId: group.formationId,
-            units: group.units.map((unit) => createForcePreviewUnitFromSerializedUnit(unit, (name) => resolver.getUnitByName(name))),
-        })),
+        groups: raw.type === GameSystem.CLASSIC
+            ? createCBTForcePreviewGroups(raw.cbt!, resolver)
+            : (raw.groups ?? []).map((group) => ({
+                name: group.name,
+                formationId: group.formationId,
+                units: group.units.map((unit) => createForcePreviewUnitFromSerializedUnit(
+                    unit as ASSerializedUnit,
+                    (name) => resolver.getUnitByName(name),
+                )),
+            })),
     });
 }
 
 export function createForcePreviewEntryFromForce(
     force: Force,
+    members: readonly ForceMember[],
     options: { cloud?: boolean; local?: boolean } = {},
 ): ForcePreviewEntry {
     const tags = force.tags ?? [];
     const groups = force.groups()
-        .filter((group) => group.units().length > 0)
-        .map((group) => ({
-            name: group.name() || undefined,
-            formationId: group.activeFormation()?.id,
-            units: group.units().map((unit) => createForcePreviewUnitFromForceUnit(unit, force.gameSystem)),
-        }));
+        .map((group) => {
+            const alphaStrikeMembers = new Set(group.units());
+            const groupMembers = members.filter(member => isCBTForceMember(member)
+                ? member.rosterGroupId === group.id
+                : alphaStrikeMembers.has(member));
+            return {
+                name: group.name() || undefined,
+                formationId: group.activeFormation()?.id,
+                units: groupMembers.map(member => createForcePreviewUnitFromForceMember(member)),
+            };
+        })
+        .filter(group => group.units.length > 0);
+    const total = members.reduce((sum, member) => sum + forceMemberAdjustedValue(member), 0);
 
     return createForcePreviewEntryData({
         cloud: options.cloud ?? false,
@@ -342,8 +330,8 @@ export function createForcePreviewEntryFromForce(
         type: force.gameSystem,
         faction: force.faction(),
         era: force.era(),
-        bv: force.gameSystem === GameSystem.CLASSIC ? force.totalBv() : undefined,
-        pv: force.gameSystem === GameSystem.ALPHA_STRIKE ? force.totalBv() : undefined,
+        bv: force.gameSystem === GameSystem.CLASSIC ? total : undefined,
+        pv: force.gameSystem === GameSystem.ALPHA_STRIKE ? total : undefined,
         timestamp: force.timestamp ?? '',
         groups,
     });
@@ -353,7 +341,7 @@ export function getForcePreviewUnitEntries(forcePreview: ForcePreviewEntry): For
     return forcePreview.groups.flatMap((group) => group.units);
 }
 
-export function getForcePreviewResolvedUnits(forcePreview: ForcePreviewEntry): Unit[] {
+export function getForcePreviewResolvedUnits(forcePreview: ForcePreviewEntry): UnitSummary[] {
     return getForcePreviewUnitEntries(forcePreview)
         .flatMap((entry) => entry.unit ? [entry.unit] : []);
 }

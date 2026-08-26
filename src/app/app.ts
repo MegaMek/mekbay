@@ -8,26 +8,25 @@ import { UnitSearchComponent } from './components/unit-search/unit-search.compon
 import { PageViewerComponent } from './components/page-viewer/page-viewer.component';
 import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
 import { DataService } from './services/data.service';
-import { ForceBuilderService } from './services/force-builder.service';
-import type { Unit } from './models/units.model';
+import { ForceWorkspaceStateService } from './services/force-workspace-state.service';
+import { ForceDialogsService } from './services/force-dialogs.service';
+import { ForceImportService } from './services/force-import.service';
+import type { UnitSummary } from './models/unit-summary.model';
 import { LayoutService } from './services/layout.service';
 import { LayoutModule } from '@angular/cdk/layout';
-import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from './components/unit-details-dialog/unit-details-dialog.component';
+import type { UnitDetailsDialogData } from './components/unit-details-dialog/unit-details-dialog.component';
 import { OptionsService } from './services/options.service';
-import { OptionsDialogComponent } from './components/options-dialog/options-dialog.component';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { ConnectionStatusBadgeComponent } from './components/connection-status-badge/connection-status-badge.component';
 import { ModeSwitchComponent } from './components/mode-switch/mode-switch.component';
-import { LicenseDialogComponent } from './components/license-dialog/license-dialog.component';
 import { ToastsComponent } from './components/toasts/toasts.component';
 import { SavedSearchesService } from './services/saved-searches.service';
 import { WsService } from './services/ws.service';
 import { ToastService } from './services/toast.service';
 import { DialogsService } from './services/dialogs.service';
-import { BetaDialogComponent } from './components/beta-dialog/beta-dialog.component';
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
-import { OverlayModule } from '@angular/cdk/overlay';
+import { OverlayContainer, OverlayModule } from '@angular/cdk/overlay';
 import { APP_VERSION_STRING, BUILD_BRANCH } from './build-meta';
 import { LoggerService } from './services/logger.service';
 import { isAndroid, isIOS, isRunningStandalone } from './utils/platform.util';
@@ -36,6 +35,8 @@ import { AccountAuthService } from './services/account-auth.service';
 import { AccountProtectionService } from './services/account-protection.service';
 import { AppUpdateService } from './services/app-update.service';
 import { LoadingSpinnerComponent } from './components/loading-spinner/loading-spinner.component';
+import { CatalogRefreshStatusComponent } from './components/catalog-refresh-status/catalog-refresh-status.component';
+import { projectBackgroundCatalogProgress } from './models/startup-progress.model';
 
 import { GameSystem } from './models/common.model';
 import { Router, RouterOutlet } from '@angular/router';
@@ -61,6 +62,7 @@ const PENDING_UPDATE_RELOAD_AFTER_NO_FOCUS_MS = 6 * 60 * 60 * 1000; // 6 hours
     OverlayModule,
     PortalModule,
     LoadingSpinnerComponent,
+    CatalogRefreshStatusComponent,
     RouterOutlet
 ],
     templateUrl: './app.html',
@@ -74,7 +76,9 @@ const PENDING_UPDATE_RELOAD_AFTER_NO_FOCUS_MS = 6 * 60 * 60 * 1000; // 6 hours
 export class App {
     logger = inject(LoggerService);
     protected dataService = inject(DataService);
-    forceBuilderService = inject(ForceBuilderService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
+    private readonly forceDialogs = inject(ForceDialogsService);
+    private readonly forceImport = inject(ForceImportService);
     protected layoutService = inject(LayoutService);
     protected appUpdateService = inject(AppUpdateService);
     private wsService = inject(WsService);
@@ -90,11 +94,23 @@ export class App {
     private urlService = inject(UrlService);
     private savedSearchesService = inject(SavedSearchesService);
     private destroyRef = inject(DestroyRef);
+    private overlayContainer = inject(OverlayContainer);
+    private overlayViewportObserver: ResizeObserver | null = null;
+
+    protected readonly backgroundCatalogProgress = computed(() => projectBackgroundCatalogProgress({
+        dataReady: this.dataService.isDataReady(),
+        coreCatalog: this.dataService.unitCatalogState(),
+        runtimeCatalog: this.dataService.runtimeCatalogProgress(),
+        searchWorker: this.unitSearchFiltersService.workerCatalogProgress(),
+        auxiliaryCatalog: this.dataService.auxiliaryCatalogProgress(),
+    }));
 
     protected GameSystem = GameSystem;
     protected buildInfo = APP_VERSION_STRING;
     protected isMainBuild = BUILD_BRANCH === 'main';
     private updateCheckTimeoutId: number | null = null;
+    private initialServicesFrameId: number | null = null;
+    private initialServicesTimeoutId: number | null = null;
     protected showInstallButton = signal(false);
     protected homeActionsPanelOpen = signal(false);
     private deferredPrompt: any;
@@ -119,6 +135,7 @@ export class App {
     ]);
 
 
+    private readonly applicationViewport = viewChild.required<ElementRef<HTMLElement>>('applicationViewport');
     private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
     public readonly unitSearchComponentRef = viewChild(UnitSearchComponent);
     protected unitSearchPortal: DomPortal<ElementRef> | null = null;
@@ -128,14 +145,20 @@ export class App {
     protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
 
     constructor() {
+        afterNextRender(() => {
+            const viewport = this.applicationViewport().nativeElement;
+            const container = this.overlayContainer.getContainerElement();
+            viewport.append(container);
+            this.syncOverlayViewport(container, viewport);
+            this.overlayViewportObserver = new ResizeObserver(() => this.syncOverlayViewport(container, viewport));
+            this.overlayViewportObserver.observe(viewport);
+            this.scheduleInitialServicesAfterFirstPaint();
+        }, { injector: this.injector });
+
         // if ("virtualKeyboard" in navigator) {
         //     (navigator as any).virtualKeyboard.overlaysContent = true; // Opt out of the automatic handling.
         // }
         void this.accountProtectionService;
-        this.dataService.initialize();
-        this.savedSearchesService.initialize();
-        this.savedSearchesService.registerWsHandlers();
-        void this.accountAuthService.handleOAuthRedirectReturn();
         
         // Set up foreign tag import dialog callback
         this.unitSearchFiltersService.setForeignTagDialogCallback(
@@ -253,7 +276,7 @@ export class App {
                 const tab = this.urlService.getInitialParam('tab') ?? undefined;
                 if (onHomePage && organizationId) {
                     // Legacy ?toe=... link on the home page: open the TO&E page
-                    void this.forceBuilderService.showForceOrgDialog(organizationId);
+                    void this.forceDialogs.showForceOrgDialog(organizationId);
                 } else if (onHomePage && sharedUnitName) {
                     const unit = this.dataService.getUnitByName(sharedUnitName);
                     if (unit) {
@@ -272,6 +295,9 @@ export class App {
             }
         });
         this.destroyRef.onDestroy(() => {
+            this.overlayViewportObserver?.disconnect();
+            this.overlayViewportObserver = null;
+            this.cancelInitialServicesStart();
             this.clearUpdateCheckTimer();
             this.removeBeforeUnloadHandler();
             window.removeEventListener('beforeinstallprompt', this.beforeInstallPromptHandler);
@@ -291,7 +317,9 @@ export class App {
         });
     }
 
-    hasForces = this.forceBuilderService.hasForces;
+    hasForces = this.forceWorkspace.hasForces;
+    hasForceUnits = computed(() => this.forceWorkspace.loadedForces()
+        .some(slot => slot.force.members().length > 0));
 
     private readonly keyboardNavigationHandler = (event: KeyboardEvent) => {
         if (event.metaKey || event.ctrlKey || event.altKey) {
@@ -457,6 +485,42 @@ export class App {
         return `${window.location.pathname}${window.location.search}`;
     }
 
+    private scheduleInitialServicesAfterFirstPaint(): void {
+        this.initialServicesFrameId = window.requestAnimationFrame(() => {
+            this.initialServicesFrameId = null;
+            this.initialServicesTimeoutId = window.setTimeout(() => {
+                this.initialServicesTimeoutId = null;
+                if (this.destroyRef.destroyed) {
+                    return;
+                }
+
+                void this.dataService.initialize();
+                void this.savedSearchesService.initialize();
+                this.savedSearchesService.registerWsHandlers();
+                void this.accountAuthService.handleOAuthRedirectReturn();
+            }, 0);
+        });
+    }
+
+    private syncOverlayViewport(container: HTMLElement, viewport: HTMLElement): void {
+        const bounds = viewport.getBoundingClientRect();
+        container.style.setProperty('--mekbay-overlay-left', `${bounds.left}px`);
+        container.style.setProperty('--mekbay-overlay-top', `${bounds.top}px`);
+        container.style.setProperty('--mekbay-overlay-width', `${bounds.width}px`);
+        container.style.setProperty('--mekbay-overlay-height', `${bounds.height}px`);
+    }
+
+    private cancelInitialServicesStart(): void {
+        if (this.initialServicesFrameId !== null) {
+            window.cancelAnimationFrame(this.initialServicesFrameId);
+            this.initialServicesFrameId = null;
+        }
+        if (this.initialServicesTimeoutId !== null) {
+            window.clearTimeout(this.initialServicesTimeoutId);
+            this.initialServicesTimeoutId = null;
+        }
+    }
+
     private shouldSkipDuplicateCapturedUrl(parsed: URL): boolean {
         const normalizedUrl = `${parsed.pathname}${parsed.search}`;
         const now = Date.now();
@@ -546,24 +610,28 @@ export class App {
     };
 
     private hasBlockingUnsavedWork(): boolean {
-        if (this.dataService.hasPendingCloudSaves()) {
+        if (this.dataService.hasPendingForceSaves()) {
             return true;
         }
 
-        const loadedForces = this.forceBuilderService.loadedForces();
-        return loadedForces.some(forceSlot => forceSlot.force.units().length > 0 && !forceSlot.force.instanceId());
+        const loadedForces = this.forceWorkspace.loadedForces();
+        return loadedForces.some(forceSlot => forceSlot.force.members().length > 0
+            && !forceSlot.force.instanceId());
     }
 
 
-    showLicenseDialog(): void {
+    async showLicenseDialog(): Promise<void> {
+        const { LicenseDialogComponent } = await import('./components/license-dialog/license-dialog.component');
         this.dialogService.createDialog(LicenseDialogComponent);
     }
 
-    showOptionsDialog(): void {
+    async showOptionsDialog(): Promise<void> {
+        const { OptionsDialogComponent } = await import('./components/options-dialog/options-dialog.component');
         this.dialogService.createDialog(OptionsDialogComponent);
     }
 
-    showBetaDialog(): void {
+    async showBetaDialog(): Promise<void> {
+        const { BetaDialogComponent } = await import('./components/beta-dialog/beta-dialog.component');
         this.dialogService.createDialog(BetaDialogComponent);
     }
 
@@ -572,7 +640,7 @@ export class App {
     }
 
     showLoadForceDialog(): void {
-        this.forceBuilderService.showLoadForceDialog();
+        void this.forceImport.showLoadForceDialog();
     }
 
     showCollectionDialog(): void {
@@ -580,7 +648,7 @@ export class App {
     }
 
     showForceGeneratorDialog(): void {
-        void this.forceBuilderService.showForceGeneratorDialog();
+        void this.forceImport.showSearchForceGeneratorDialog();
     }
 
     openHomeActionsPanel(): void {
@@ -591,7 +659,8 @@ export class App {
         this.homeActionsPanelOpen.set(false);
     }
 
-    showSingleUnitDetails(unit: Unit, tab?: string) {
+    async showSingleUnitDetails(unit: UnitSummary, tab?: string): Promise<void> {
+        const { UnitDetailsDialogComponent } = await import('./components/unit-details-dialog/unit-details-dialog.component');
         const ref = this.dialogService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: [unit],

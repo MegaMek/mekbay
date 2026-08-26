@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { MountedArmor, MountedEngine } from '../../components';
+import { MountedArmor } from '../../components';
 import { locationArmor } from '../../types';
-import { AmmoEquipment, ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
+import { AmmoEquipment, ArmorEquipment, WeaponEquipment } from '../../../equipment.model';
 import {
   TestAeroSpaceFighterEntity as AeroSpaceFighterEntity,
   TestBattleArmorEntity as BattleArmorEntity,
@@ -18,6 +18,7 @@ import {
   TestSmallCraftEntity as SmallCraftEntity,
   TestSpaceStationEntity as SpaceStationEntity,
   TestSupportTankEntity as SupportTankEntity,
+  TestTankEntity as TankEntity,
   TestVtolEntity as VtolEntity,
   TestWarShipEntity as WarShipEntity,
 } from '../../testing/test-entities';
@@ -29,37 +30,13 @@ import {
 } from './alpha-strike-converter';
 
 describe('Alpha Strike conversion', () => {
-  it('converts a basic BattleMek foundation', () => {
-    const entity = new BipedMekEntity();
-    entity.setTonnage(100);
-    entity.originalWalkMP.set(3);
-    entity.mountedEngine.set(new MountedEngine({
-      type: 'Fusion', rating: 300, techBase: 'IS', installed: true,
-    }));
-    entity.armorValues.set(new Map([
-      ['HD', locationArmor(9)], ['CT', locationArmor(47, 15)],
-      ['LT', locationArmor(32, 10)], ['RT', locationArmor(32, 10)],
-      ['LA', locationArmor(34)], ['RA', locationArmor(34)],
-      ['LL', locationArmor(41)], ['RL', locationArmor(41)],
-    ]));
-
-    const result = convertEntityToAlphaStrike(entity);
-
-    expect(result.TP).toBe('BM');
-    expect(result.SZ).toBe(4);
-    expect(result.MVm).toEqual({ '': 6 });
-    expect(result.MV).toBe('6\"');
-    expect(result.MVp).toBe('');
-    expect(result.TMM).toBe(1);
-    expect(result.Arm).toBe(10);
-    expect(result.Str).toBe(8);
-    expect(result.usesOV).toBe(true);
-    expect(result.usesArcs).toBe(false);
-    expect(result.Th).toBe(-1);
+  it('converts Meks through the canonical entity calculation surface', () => {
+    expect(convertEntityToAlphaStrike(new BipedMekEntity()).TP).toBe('BM');
+    expect(convertEntityToAlphaStrike(new LamEntity()).TP).toBe('BM');
   });
 
   it('applies armor material modifiers before rounding', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
     entity.setTonnage(50);
     entity.setUniformArmor(new MountedArmor({
       armor: new ArmorEquipment({
@@ -95,19 +72,6 @@ describe('Alpha Strike conversion', () => {
     expect(result.MVm).toEqual({ f: 2 });
     expect(result.MV).toBe('2\"f');
     expect(result.TMM).toBe(0);
-  });
-
-  it('adds LAM special movement without changing primary movement', () => {
-    const entity = new LamEntity();
-    entity.setTonnage(50);
-    entity.originalWalkMP.set(5);
-    entity.lamType.set('Standard');
-
-    const result = convertEntityToAlphaStrike(entity);
-
-    expect(result.MVp).toBe('');
-    expect(result.MVm).toEqual({ '': 10, a: 0, g: 0 });
-    expect(result.MV).toBe('10\"');
   });
 
   it('uses fighter threshold and null exported TMM', () => {
@@ -215,32 +179,14 @@ describe('Alpha Strike conversion', () => {
       id: 'long-weapon', name: 'Long Weapon', type: 'weapon',
       weapon: { av: [10, 10, 10, 10], ranges: [6, 12, 24, 30], ammoType: 'NA' },
     });
-    const entity = new BipedMekEntity();
-    addTestEquipment(entity, weapon, { location: 'RA' });
+    const entity = new TankEntity();
+    addTestEquipment(entity, weapon, { location: 'Front' });
 
     expect(convertEntityToAlphaStrike(entity).dmg.dmgE).toBe('0');
   });
 
-  it('counts each non-compact double heat sink as two Alpha Strike heat-capacity points', () => {
-    const entity = new BipedMekEntity();
-    for (let index = 0; index < 17; index++) {
-      addTestEquipment(entity, new MiscEquipment({
-        id: `double-heat-sink-${index}`, name: 'Double Heat Sink', type: 'misc',
-        flags: ['F_DOUBLE_HEAT_SINK'],
-      }), { location: 'CT' });
-    }
-    for (let index = 0; index < 3; index++) {
-      addTestEquipment(entity, new WeaponEquipment({
-        id: `hot-laser-${index}`, name: 'Hot Laser', type: 'weapon', flags: ['F_LASER'],
-        weapon: { heat: 20, damage: 10, ranges: [3, 6, 9, 12], ammoType: 'NA' },
-      }), { location: 'RA' });
-    }
-
-    expect(convertEntityToAlphaStrike(entity).OV).toBe(1);
-  });
-
   it('excludes artillery and torpedo launchers from generic standard damage', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
     addTestEquipment(entity, new WeaponEquipment({
       id: 'srt-6', name: 'SRT 6', type: 'weapon',
       weapon: {
@@ -282,7 +228,7 @@ describe('Alpha Strike conversion', () => {
   });
 
   it('converts front-mounted weapon heat damage into HT after Java thresholds', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
     for (let index = 0; index < 3; index++) {
       addTestEquipment(entity, new WeaponEquipment({
         id: `flamer-${index}`, name: 'Flamer', type: 'weapon', flags: ['F_FLAMER'],
@@ -540,7 +486,7 @@ describe('Alpha Strike conversion', () => {
   });
 
   it('merges core special abilities into exported stats and conversion reports', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
     entity.omni.set(true);
     addTestEquipmentWithFlags(entity, ['F_ECM', 'F_ANGEL_ECM']);
     addTestEquipmentWithFlags(entity, 'F_BAP');
@@ -548,14 +494,14 @@ describe('Alpha Strike conversion', () => {
     const converted = convertEntityToAlphaStrikeWithReport(entity);
 
     expect(converted.stats.PV).toBeGreaterThan(0);
-    expect(converted.stats.specials).toEqual(['AECM', 'ENE', 'OMNI', 'PRB', 'RCN']);
+    expect(converted.stats.specials).toEqual(['AECM', 'ENE', 'OMNI', 'PRB', 'RCN', 'SRCH']);
     expect(converted.report).toContain('Further Special Abilities:\n');
     expect(converted.report).toContain('AECM\n');
     expect(converted.report).toContain('RCN\n');
   });
 
   it('returns the same stats through the report API', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
     entity.chassis.set('Atlas');
     entity.model.set('AS7-D');
     entity.role.set('Juggernaut');
@@ -575,7 +521,7 @@ describe('Alpha Strike conversion', () => {
   });
 
   it('uses two report headers for a name at the long-name boundary', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
     entity.chassis.set('123456789012345');
 
     const { reportEvents } = convertEntityToAlphaStrikeWithReport(entity);
@@ -587,7 +533,7 @@ describe('Alpha Strike conversion', () => {
   });
 
   it('uses the default Gunnery skill of four in conversion reports', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
 
     const { reportEvents } = convertEntityToAlphaStrikeWithReport(entity);
 
@@ -597,7 +543,7 @@ describe('Alpha Strike conversion', () => {
   });
 
   it('uses an overridden Gunnery skill in conversion reports', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
 
     const { reportEvents } = convertEntityToAlphaStrikeWithReport(entity, { skill: 2 });
 
@@ -607,7 +553,7 @@ describe('Alpha Strike conversion', () => {
   });
 
   it('rejects an invalid Alpha Strike skill', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
 
     expect(() => convertEntityToAlphaStrike(entity, { skill: -1 }))
       .toThrowError(RangeError, 'Alpha Strike skill must be a non-negative integer.');

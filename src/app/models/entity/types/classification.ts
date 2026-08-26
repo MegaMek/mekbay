@@ -5,6 +5,8 @@
 /** Broad Classic BattleTech classification exposed by an entity. */
 export type UnitType =
   | 'Aero'
+  | 'Building'
+  | 'Gun Emplacement'
   | 'Handheld Weapon'
   | 'Infantry'
   | 'Mek'
@@ -28,10 +30,12 @@ export type UnitSubtype =
   | 'Civilian Spheroid DropShip'
   | 'Combat Vehicle'
   | 'Combat Vehicle Omni'
+  | 'Building'
   | 'Conventional Fighter'
   | 'Conventional Infantry'
   | 'Fixed Wing Support Vehicle'
   | 'Fixed Wing Support Vehicle Omni'
+  | 'Gun Emplacement'
   | 'Handheld Weapon'
   | 'Hovercraft'
   | 'Hovercraft Omni'

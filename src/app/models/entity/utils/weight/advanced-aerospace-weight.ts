@@ -6,20 +6,11 @@ import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, Weapo
 import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import type { JumpShipEntity } from '../../entities/largecraft/jumpship-entity';
 import { ceilToHalfTon } from './weight-rounding';
-
-const SYSTEM_FLAGS = [
-  'F_ENDO_STEEL', 'F_ENDO_COMPOSITE', 'F_ENDO_STEEL_PROTO', 'F_COMPOSITE',
-  'F_INDUSTRIAL_STRUCTURE', 'F_REINFORCED', 'F_FERRO_FIBROUS',
-  'F_FERRO_FIBROUS_PROTO', 'F_FERRO_LAMELLOR', 'F_LIGHT_FERRO', 'F_HEAVY_FERRO',
-  'F_REACTIVE', 'F_REFLECTIVE', 'F_HARDENED_ARMOR', 'F_PRIMITIVE_ARMOR',
-  'F_COMMERCIAL_ARMOR', 'F_INDUSTRIAL_ARMOR', 'F_HEAVY_INDUSTRIAL_ARMOR',
-  'F_ANTI_PENETRATIVE_ABLATIVE', 'F_HEAT_DISSIPATING', 'F_IMPACT_RESISTANT',
-  'F_BALLISTIC_REINFORCED', 'F_ELECTRIC_DISCHARGE_ARMOR', 'F_HEAT_SINK',
-  'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE',
-] as const;
-const SLOT_FLAGS = ['F_CHAFF_POD', 'F_SPACE_MINE_DISPENSER', 'F_MOBILE_HPG',
-  'F_RECON_CAMERA', 'F_HIRES_IMAGER', 'F_HYPERSPECTRAL_IMAGER', 'F_INFRARED_IMAGER',
-  'F_LOOKDOWN_RADAR'] as const;
+import { capitalCraftArmorPointsPerTon } from '../large-craft-armor';
+import { isConstructionSystemEquipment } from '../../../construction-equipment.model';
+import { isNavalC3Equipment } from '../../../c3-network.model';
+import { usesLargeCraftAerospaceSupportSlot } from '../../../aerospace-support-equipment.model';
+import { usesLargeCraftSensorSlot } from '../../../sensor-equipment.model';
 
 export interface AdvancedAerospaceWeightBreakdown {
   readonly structure: number; readonly engine: number; readonly jumpDrive: number;
@@ -72,7 +63,7 @@ export function calculateAdvancedAerospaceWeightBreakdown(entity: JumpShipEntity
       }
     } else if (equipment instanceof WeaponEquipment) {
       weapons += requireTonnage(entity, mount);
-    } else if (equipment instanceof MiscEquipment && !equipment.hasAnyFlag([...SYSTEM_FLAGS])) {
+    } else if (equipment instanceof MiscEquipment && !isConstructionSystemEquipment(equipment)) {
       miscellaneous += requireTonnage(entity, mount);
     }
   }
@@ -116,12 +107,7 @@ function calculateArmorWeight(entity: JumpShipEntity, primitive: boolean): numbe
   let points = entity.totalArmorPoints();
   if (primitive) points = Math.ceil(points / 0.66);
   const weightedPoints = Math.max(0, points - 6 * Math.round(entity.structuralIntegrity() / 10));
-  let pointsPerTon = 16 * armor.pptMultiplier;
-  const thresholds = [150000, 250000];
-  if (armor.pptCapital.length > thresholds.length) {
-    const index = thresholds.findIndex(threshold => entity.tonnage() < threshold);
-    pointsPerTon = armor.pptCapital[index < 0 ? armor.pptCapital.length - 1 : index] ?? pointsPerTon;
-  }
+  const pointsPerTon = capitalCraftArmorPointsPerTon(entity.tonnage(), armor);
   return ceilToHalfTon(weightedPoints / pointsPerTon);
 }
 
@@ -132,13 +118,15 @@ function calculateExtraSlotWeight(entity: JumpShipEntity): number {
     const equipment = mount.equipment;
     if (!equipment || mount.location === 'Unallocated' || mount.location === 'None') continue;
     if (!(equipment instanceof WeaponEquipment)
-      && !(equipment instanceof MiscEquipment && equipment.hasAnyFlag([...SLOT_FLAGS]))) continue;
+      && !(equipment instanceof MiscEquipment
+        && (usesLargeCraftAerospaceSupportSlot(equipment)
+          || usesLargeCraftSensorSlot(equipment)))) continue;
     const arc = arcs.get(mount.location) ?? { slots: 0, tonnage: 0 };
-    arc.slots += equipment.hasFlag('F_MASS_DRIVER') ? 10 : 1;
+    arc.slots += equipment.hasWeaponTrait('mass-driver') ? 10 : 1;
     arc.tonnage += requireTonnage(entity, mount);
     arcs.set(mount.location, arc);
   }
-  const multiplier = entity.equipment().some(mount => mount.equipment?.hasFlag('F_NAVAL_C3')) ? 2 : 1;
+  const multiplier = entity.equipment().some(mount => isNavalC3Equipment(mount.equipment)) ? 2 : 1;
   let result = 0;
   for (const arc of arcs.values()) {
     const excess = Math.trunc((arc.slots - 1) / slotsPerArc);

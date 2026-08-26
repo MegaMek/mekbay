@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import type { AdvFilterConfig } from '../services/unit-search-filters.model';
 import { usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
 
 export interface UnitSearchDropdownValuesDependencies {
     getDropdownOptionUniverse: (filterKey: string) => readonly string[];
     getExternalDropdownValues: (filterKey: string) => readonly string[];
-    units: readonly Unit[];
-    getProperty: (unit: Unit, key?: string) => unknown;
+    units: readonly UnitSummary[];
+    getProperty: (unit: UnitSummary, key?: string) => unknown;
 }
 
 function getAvailableDropdownValues(

@@ -3,12 +3,16 @@
 // Author: Drake
 
 import { computed, signal } from '@angular/core';
-import type { MountedEquipment } from './mounted-equipment.model';
-import type { TnTargetNumberCalculatorState, TnTargetUnitType } from './target-number-calculator.model';
+import {
+    isTnTargetImmobile,
+    type TnTargetNumberCalculatorState,
+    type TnTargetUnitType,
+} from './target-number-calculator.model';
 
 export type InventoryControlRuntimeRangeKey = 'short' | 'medium' | 'long' | 'extreme';
 
 export const INVENTORY_CONTROL_TARGET_MAX_COUNT = 12;
+export const INVENTORY_CONTROL_TAG_INFANTRY_TARGET_REASON = 'TAG cannot designate infantry';
 export const INVENTORY_CONTROL_TARGET_COLORS = [
     '#c0f7ff',
     '#ffebca',
@@ -38,7 +42,20 @@ export interface InventoryControlRuntimeTarget {
     c3Distance?: number;
     useC3?: boolean;
     tnModifier: number;
+    /** Present only when this unit owns an explicit manual TN override. */
+    manualTnModifier?: number;
     tnCalculator?: TnTargetNumberCalculatorState;
+}
+
+/** Calculator-derived modes are inactive while the target TN is manually overridden. */
+export function getEffectiveInventoryControlCalculatorState(
+    target: Pick<InventoryControlRuntimeTarget, 'manualTnModifier' | 'tnCalculator' | 'unitType'>,
+): TnTargetNumberCalculatorState | undefined {
+    if (target.manualTnModifier !== undefined || !target.tnCalculator) return undefined;
+    if (target.tnCalculator.immobile === true || !isTnTargetImmobile(target.unitType, false)) {
+        return target.tnCalculator;
+    }
+    return { ...target.tnCalculator, immobile: true };
 }
 
 /** Target data whose value depends on the attacking unit and its line of sight. */
@@ -51,13 +68,30 @@ export interface InventoryControlUnitTargetState {
     tnCalculator?: TnTargetNumberCalculatorState;
 }
 
+/** Attacker-local target facts; these must never be written to the force target registry. */
+export type InventoryControlUnitTargetPatch = Partial<Pick<
+    InventoryControlRuntimeTarget,
+    'distance' | 'c3Distance' | 'useC3' | 'tnModifier' | 'tnCalculator'
+>>;
+
 const SHARED_TARGET_CALCULATOR_KEYS = [
     'isAirborne',
     'targetMovementBracket',
+    'targetMovementDistance',
     'skidding',
-    'stance',
+    'prone',
+    'immobile',
     'targetHexCover',
-    'largeTarget'
+    'waterDepth',
+    'buildingCover',
+    'targetHeight',
+    'largeTarget',
+    'narcAboveWater',
+    'narcUnderwater',
+    'tagged',
+    'ecmShielded',
+    'stealth',
+    'stealthSystem',
 ] as const satisfies readonly (keyof TnTargetNumberCalculatorState)[];
 
 const SHARED_TARGET_CALCULATOR_KEY_SET = new Set<keyof TnTargetNumberCalculatorState>(SHARED_TARGET_CALCULATOR_KEYS);
@@ -71,7 +105,6 @@ export function splitInventoryControlCalculatorState(state: TnTargetNumberCalcul
     const local: TnTargetNumberCalculatorState = {};
     for (const key of Object.keys(state) as (keyof TnTargetNumberCalculatorState)[]) {
         const value = state[key];
-        if (value === undefined) continue;
         Object.assign(SHARED_TARGET_CALCULATOR_KEY_SET.has(key) ? shared : local, { [key]: value });
     }
     return {
@@ -105,6 +138,12 @@ export interface InventoryControlRuntimeAmmoSelection {
     readonly preferredSourceOptionId: string | null;
 }
 
+/** Detached presentation row for the supplied record-sheet ammo summary. */
+export interface InventoryControlAmmoProfileRow {
+    readonly label: string;
+    readonly remaining: number;
+}
+
 export interface InventoryControlRuntimeAmmoOptionIdentity {
     readonly id: string;
     readonly profileId: string;
@@ -113,6 +152,11 @@ export interface InventoryControlRuntimeAmmoOptionIdentity {
 
 export interface InventoryControlRuntimeAmmoProfileIdentity {
     readonly profileId: string;
+}
+
+/** Stable identity required by selection/range/target presentation state. */
+export interface InventoryControlRuntimeEntryRef {
+    readonly id: string;
 }
 
 export function resolveInventoryControlSelectedAmmoProfileId(
@@ -169,45 +213,26 @@ export function getInventoryControlTargetLetter(index: number): string {
     return label;
 }
 
-function getInventoryControlTargetIndex(targetId: InventoryControlRuntimeTargetId): number {
-    if (targetId.length !== 1) return Number.MAX_SAFE_INTEGER;
-    return targetId.toUpperCase().charCodeAt(0) - 'A'.charCodeAt(0);
-}
-
 export class InventoryControlRuntimeState {
     private readonly entryStatesState = signal<Map<string, InventoryControlRuntimeEntryState>>(new Map());
-    private readonly targetsState = signal<Map<InventoryControlRuntimeTargetId, InventoryControlRuntimeTarget>>(new Map());
     private readonly inventoryViewVersionState = signal(0);
 
     readonly entryStates = computed<ReadonlyMap<string, Readonly<InventoryControlRuntimeEntryState>>>(() => this.cloneEntryStates(this.entryStatesState()));
-    readonly targetsMap = this.targetsState.asReadonly();
     readonly inventoryViewVersion = this.inventoryViewVersionState.asReadonly();
 
     constructor(
-        private readonly getInventory: () => MountedEquipment[],
-        private readonly isTargetValid: (targetId: InventoryControlRuntimeTargetId) => boolean = targetId => this.targetsMap().has(targetId),
+        private readonly getInventory: () => readonly InventoryControlRuntimeEntryRef[],
+        private readonly isTargetValid: (targetId: InventoryControlRuntimeTargetId) => boolean = () => false,
         private readonly reconcileAmmoSelection: (
-            entry: MountedEquipment,
+            entry: InventoryControlRuntimeEntryRef,
             selection: InventoryControlRuntimeAmmoSelection,
         ) => InventoryControlRuntimeAmmoSelection | undefined = (_entry, selection) => selection,
     ) {}
 
-    getSnapshot(): InventoryControlRuntimeSnapshot {
+    getSnapshot(): Pick<InventoryControlRuntimeSnapshot, 'entryStates'> {
         return {
             entryStates: this.cloneEntryStates(this.entryStatesState()),
-            targets: this.getTargets()
         };
-    }
-
-    getTargets(): InventoryControlRuntimeTarget[] {
-        return Array.from(this.targetsMap().values())
-            .sort((a, b) => getInventoryControlTargetIndex(a.letter) - getInventoryControlTargetIndex(b.letter))
-            .map(target => this.cloneTarget(target));
-    }
-
-    getTarget(targetId: InventoryControlRuntimeTargetId): InventoryControlRuntimeTarget | undefined {
-        const target = this.targetsMap().get(targetId);
-        return target ? this.cloneTarget(target) : undefined;
     }
 
     getEntryState(entryId: string): InventoryControlRuntimeEntryState | undefined {
@@ -232,7 +257,7 @@ export class InventoryControlRuntimeState {
         return selection ? { ...selection } : undefined;
     }
 
-    setEntrySelected(entry: MountedEquipment, selected: boolean): void {
+    setEntrySelected(entry: InventoryControlRuntimeEntryRef, selected: boolean): void {
         this.updateEntryState(entry.id, entryState => {
             entryState.selected = selected;
             if (!selected) {
@@ -242,7 +267,7 @@ export class InventoryControlRuntimeState {
         });
     }
 
-    setEntryRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null): void {
+    setEntryRange(entry: InventoryControlRuntimeEntryRef, range: InventoryControlRuntimeRangeKey | null): void {
         this.updateEntryState(entry.id, entryState => {
             entryState.selected = range !== null;
             if (range === null) {
@@ -254,7 +279,7 @@ export class InventoryControlRuntimeState {
         });
     }
 
-    toggleEntryRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey, forceSelected = false): void {
+    toggleEntryRange(entry: InventoryControlRuntimeEntryRef, range: InventoryControlRuntimeRangeKey, forceSelected = false): void {
         const entryState = this.entryStatesState().get(entry.id);
         const selected = (entryState?.selected ?? false) && entryState?.range === range;
         this.setEntryRange(entry, !forceSelected && selected ? null : range);
@@ -266,7 +291,7 @@ export class InventoryControlRuntimeState {
         });
     }
 
-    setEntryTarget(entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null): void {
+    setEntryTarget(entry: InventoryControlRuntimeEntryRef, targetId: InventoryControlRuntimeTargetId | null): void {
         const validTargetId = targetId !== null && this.isTargetValid(targetId) ? targetId : null;
         this.updateEntryState(entry.id, entryState => {
             entryState.selected = validTargetId !== null;
@@ -276,91 +301,6 @@ export class InventoryControlRuntimeState {
                 entryState.targetId = validTargetId;
             }
             delete entryState.range;
-        });
-    }
-
-    createTarget(): InventoryControlRuntimeTarget | null {
-        const targets = this.targetsMap();
-        if (targets.size >= INVENTORY_CONTROL_TARGET_MAX_COUNT) return null;
-        const targetId = this.nextTargetId();
-        if (!targetId || targets.has(targetId)) return null;
-
-        const wasEmpty = targets.size === 0;
-        const letter = targetId;
-        const targetIndex = getInventoryControlTargetIndex(letter);
-        const target: InventoryControlRuntimeTarget = {
-            id: targetId,
-            letter,
-            name: `Target ${letter}`,
-            color: INVENTORY_CONTROL_TARGET_COLORS[targetIndex % INVENTORY_CONTROL_TARGET_COLORS.length],
-            source: 'manual',
-            unitType: 'mek-biped',
-            distance: 1,
-            tnModifier: 0
-        };
-        this.updateTargets(nextTargets => nextTargets.set(targetId, target));
-
-        if (wasEmpty) {
-            this.updateEntryStates(entryStates => {
-                for (const entryState of entryStates.values()) {
-                    if (entryState.selected && !entryState.targetId) {
-                        entryState.targetId = targetId;
-                    }
-                    if (entryState.selected) {
-                        delete entryState.range;
-                    }
-                }
-            });
-        }
-
-        return this.cloneTarget(target);
-    }
-
-    replaceTargets(targets: readonly InventoryControlRuntimeTarget[]): void {
-        this.targetsState.set(new Map(targets.map(target => [target.id, this.cloneTarget(target)])));
-    }
-
-    updateTarget(targetId: InventoryControlRuntimeTargetId, patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>): InventoryControlRuntimeTarget | null {
-        const target = this.targetsMap().get(targetId);
-        if (!target) return null;
-        const updated: InventoryControlRuntimeTarget = {
-            ...target,
-            ...(patch.name !== undefined && { name: patch.name }),
-            ...(patch.color !== undefined && { color: patch.color }),
-            ...(patch.unitType !== undefined && { unitType: patch.unitType }),
-            ...(patch.distance !== undefined && { distance: Math.max(0, Number.isFinite(patch.distance) ? patch.distance : target.distance) }),
-            ...(patch.c3Distance !== undefined && { c3Distance: Math.max(0, Number.isFinite(patch.c3Distance) ? patch.c3Distance : target.c3Distance ?? target.distance) }),
-            ...(patch.useC3 !== undefined && { useC3: patch.useC3 === true }),
-            ...(patch.tnModifier !== undefined && { tnModifier: Number.isFinite(patch.tnModifier) ? patch.tnModifier : target.tnModifier }),
-            ...(patch.tnCalculator !== undefined && { tnCalculator: { ...patch.tnCalculator } })
-        };
-        this.updateTargets(targets => targets.set(targetId, updated));
-        return this.cloneTarget(updated);
-    }
-
-    deleteTarget(targetId: InventoryControlRuntimeTargetId): void {
-        const targets = new Map(this.targetsMap());
-        if (!targets.delete(targetId)) return;
-        this.targetsState.set(targets);
-        this.updateEntryStates(entryStates => {
-            for (const entryState of entryStates.values()) {
-                if (entryState.targetId === targetId || targets.size === 0) {
-                    entryState.selected = false;
-                    delete entryState.range;
-                    delete entryState.targetId;
-                }
-            }
-        });
-    }
-
-    resetTargets(): void {
-        this.targetsState.set(new Map());
-        this.updateEntryStates(entryStates => {
-            for (const entryState of entryStates.values()) {
-                entryState.selected = false;
-                delete entryState.range;
-                delete entryState.targetId;
-            }
         });
     }
 
@@ -374,7 +314,7 @@ export class InventoryControlRuntimeState {
         });
     }
 
-    reconcile(validTargetIds: ReadonlySet<InventoryControlRuntimeTargetId> = new Set(this.targetsMap().keys())): void {
+    reconcile(validTargetIds?: ReadonlySet<InventoryControlRuntimeTargetId>): void {
         const validEntryIds = new Set(this.getInventory().map(entry => entry.id));
 
         this.updateEntryStates(entryStates => {
@@ -383,7 +323,8 @@ export class InventoryControlRuntimeState {
                     entryStates.delete(entryId);
                     continue;
                 }
-                if (entryState.targetId && !validTargetIds.has(entryState.targetId)) {
+                if (entryState.targetId
+                    && !(validTargetIds?.has(entryState.targetId) ?? this.isTargetValid(entryState.targetId))) {
                     entryState.selected = false;
                     delete entryState.range;
                     delete entryState.targetId;
@@ -413,19 +354,6 @@ export class InventoryControlRuntimeState {
 
     markInventoryViewChanged(): void {
         this.inventoryViewVersionState.update(value => value + 1);
-    }
-
-    syncSelectionSvg(): void {
-        this.inventoryViewVersion();
-    }
-
-    private nextTargetId(): InventoryControlRuntimeTargetId | null {
-        const usedLetters = new Set(Array.from(this.targetsMap().values(), target => target.letter));
-        for (let index = 0; index < INVENTORY_CONTROL_TARGET_MAX_COUNT; index++) {
-            const targetId = getInventoryControlTargetLetter(index);
-            if (!usedLetters.has(targetId)) return targetId;
-        }
-        return null;
     }
 
     private updateEntryState(entryId: string, mutator: (entryState: InventoryControlRuntimeEntryState) => void): void {
@@ -464,29 +392,20 @@ export class InventoryControlRuntimeState {
         return this.cloneEntryState(entryState);
     }
 
-    private cloneEntryStates(entryStates: Map<string, InventoryControlRuntimeEntryState>): Map<string, InventoryControlRuntimeEntryState> {
+    private cloneEntryStates(
+        entryStates: ReadonlyMap<string, Readonly<InventoryControlRuntimeEntryState>>,
+    ): Map<string, InventoryControlRuntimeEntryState> {
         return new Map(Array.from(entryStates, ([entryId, entryState]) => [
             entryId,
             this.cloneEntryState(entryState),
         ]));
     }
 
-    private cloneEntryState(entryState: InventoryControlRuntimeEntryState): InventoryControlRuntimeEntryState {
+    private cloneEntryState(entryState: Readonly<InventoryControlRuntimeEntryState>): InventoryControlRuntimeEntryState {
         return {
             ...entryState,
             ...(entryState.ammoSelection && { ammoSelection: { ...entryState.ammoSelection } }),
         };
     }
 
-    private cloneTarget(target: InventoryControlRuntimeTarget): InventoryControlRuntimeTarget {
-        return { ...target, ...(target.tnCalculator && { tnCalculator: { ...target.tnCalculator } }) };
-    }
-
-    private updateTargets(mutator: (targets: Map<InventoryControlRuntimeTargetId, InventoryControlRuntimeTarget>) => void): void {
-        this.targetsState.update(current => {
-            const next = new Map(current);
-            mutator(next);
-            return next;
-        });
-    }
 }

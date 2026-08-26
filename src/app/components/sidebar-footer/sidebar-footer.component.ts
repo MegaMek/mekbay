@@ -8,6 +8,11 @@ import { LayoutService } from '../../services/layout.service';
 import { OptionsDialogComponent } from '../options-dialog/options-dialog.component';
 import { ToastService } from '../../services/toast.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { ForceDialogsService } from '../../services/force-dialogs.service';
+import { ForceRemoteSyncService } from '../../services/force-remote-sync.service';
+import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
+import { ForceImportService } from '../../services/force-import.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { DataService } from '../../services/data.service';
 import type { ForceAlignment } from '../../models/force-slot.model';
@@ -23,6 +28,9 @@ import { AddExternalForceDialogComponent } from '../add-external-force-dialog/ad
 import { getFactionImg } from '../../models/factions.model';
 import { GameSystem } from '../../models/common.model';
 import { AppUpdateService } from '../../services/app-update.service';
+import { ForceOperationService } from '../../services/force-operation.service';
+import { isCBTForceMember, isCBTMekForceMember } from '../../models/force-member.model';
+import { hasMekRuntime } from '../../models/cbt-unit-snapshot';
 
 /*
  * Sidebar footer component
@@ -41,6 +49,13 @@ export class SidebarFooterComponent {
     layoutService = inject(LayoutService);
     toastService = inject(ToastService);
     forceBuilderService = inject(ForceBuilderService);
+    protected readonly forceWorkspace = inject(ForceWorkspaceStateService);
+    private readonly forceDialogs = inject(ForceDialogsService);
+    private readonly remoteSync = inject(ForceRemoteSyncService);
+
+    private readonly forceCommands = inject(ForceWorkspaceCommandsService);
+    forceImportService = inject(ForceImportService);
+    operationService = inject(ForceOperationService);
     dialogsService = inject(DialogsService);
     dataService = inject(DataService);
     appUpdateService = inject(AppUpdateService);
@@ -56,34 +71,41 @@ export class SidebarFooterComponent {
      * Returns true if the force can be saved (has units, no instanceId, and is not readOnly)
      */
     smartCurrentForceCanSave = computed<boolean>(() => {
-        const f = this.forceBuilderService.smartCurrentForce();
-        return !!f && f.units().length > 0 && !f.instanceId() && !f.readOnly();
+        const f = this.forceWorkspace.smartCurrentForce();
+        return !!f && f.members().length > 0 && !f.instanceId() && !f.readOnly();
     });
 
     /** Friendly slots in the loaded operation. */
     operationFriendlySlots = computed<ForceSlot[]>(() =>
-        this.forceBuilderService.loadedForces().filter(s => s.alignment === 'friendly')
+        this.forceWorkspace.loadedForces().filter(s => s.alignment === 'friendly')
     );
 
     /** Enemy slots in the loaded operation. */
     operationEnemySlots = computed<ForceSlot[]>(() =>
-        this.forceBuilderService.loadedForces().filter(s => s.alignment === 'enemy')
+        this.forceWorkspace.loadedForces().filter(s => s.alignment === 'enemy')
     );
 
     /**
      * Returns true if the force has any units with C3 network capability
      */
     hasC3Units = computed(() => {
-        return this.forceBuilderService.currentForce()?.units()?.some(forceUnit => {
-            return new C3Capabilities(forceUnit).hasC3;
-        });
+        const force = this.forceWorkspace.currentForce();
+        return force ? force.members().some(member => {
+            if (!isCBTForceMember(member)) return new C3Capabilities(member).hasC3;
+            if (!isCBTMekForceMember(member)) return false;
+            const snapshot = member.force.getUnitSnapshot(member.id);
+            const capability = snapshot && hasMekRuntime(snapshot)
+                ? snapshot.query.mekC3Endpoints()
+                : null;
+            return capability?.kind === 'supported' && capability.endpoints.length > 0;
+        }) : false;
     });
 
     /**
      * Title text for the alignment filter button based on current state.
      */
     alignmentFilterTitle = computed(() => {
-        switch (this.forceBuilderService.alignmentFilter()) {
+        switch (this.forceWorkspace.alignmentFilter()) {
             case 'friendly': return 'Click to show Enemy';
             default: return 'Click to show Friendly';
         }
@@ -95,25 +117,25 @@ export class SidebarFooterComponent {
     private remoteUpdateSub: Subscription | null = null;
 
     optimizeBudgetLabel = computed(() => (
-        this.forceBuilderService.smartCurrentForce()?.gameSystem === GameSystem.ALPHA_STRIKE ? 'Optimize PV...' : 'Optimize BV...'
+        this.forceWorkspace.smartCurrentForce()?.gameSystem === GameSystem.ALPHA_STRIKE ? 'Optimize PV...' : 'Optimize BV...'
     ));
 
     canOpenForceGeneratorWithCurrentForce = computed(() => {
-        const force = this.forceBuilderService.smartCurrentForce();
-        return !!force && force.units().length > 0;
+        const force = this.forceWorkspace.smartCurrentForce();
+        return !!force && force.members().length > 0;
     });
 
     canOptimizeBudget = computed(() => {
-        const force = this.forceBuilderService.smartCurrentForce();
-        return !!force && force.units().length > 0 && !force.readOnly();
+        const force = this.forceWorkspace.smartCurrentForce();
+        return !!force && force.members().length > 0 && !force.readOnly();
     });
 
     constructor() {
         const destroyRef = inject(DestroyRef);
 
-        this.remoteUpdateSub = this.forceBuilderService.remoteForceUpdated$.subscribe(({ alignment }) => {
-            if (!this.forceBuilderService.hasMixedAlignments()) return;
-            const filter = this.forceBuilderService.alignmentFilter();
+        this.remoteUpdateSub = this.remoteSync.remoteForceUpdated$.subscribe(({ alignment }) => {
+            if (!this.forceWorkspace.hasMixedAlignments()) return;
+            const filter = this.forceWorkspace.alignmentFilter();
             // Blink when the updated force is NOT visible (filter doesn't match)
             const isHidden = filter !== 'all' && filter !== alignment;
             if (isHidden) {
@@ -131,7 +153,7 @@ export class SidebarFooterComponent {
 
         // Refresh org membership when the current force changes
         effect(() => {
-            const force = this.forceBuilderService.currentForce();
+            const force = this.forceWorkspace.currentForce();
             const instanceId = force?.instanceId();
             if (instanceId) {
                 this.refreshForceOrganizations();
@@ -147,15 +169,15 @@ export class SidebarFooterComponent {
     }
 
     cycleAlignmentFilter() {
-        this.forceBuilderService.cycleAlignmentFilter();
+        this.forceWorkspace.cycleAlignmentFilter();
     }
 
     selectOperationForce(slot: ForceSlot): void {
-        const firstUnit = slot.force.units()[0] ?? null;
-        this.forceBuilderService.selectUnit(firstUnit);
-        const filter = this.forceBuilderService.alignmentFilter();
+        const firstUnit = slot.force.members()[0] ?? null;
+        this.forceWorkspace.selectUnit(firstUnit);
+        const filter = this.forceWorkspace.alignmentFilter();
         if (filter !== 'all' && filter !== slot.alignment) {
-            this.forceBuilderService.alignmentFilter.set(slot.alignment);
+            this.forceWorkspace.alignmentFilter.set(slot.alignment);
         }
     }
 
@@ -164,8 +186,8 @@ export class SidebarFooterComponent {
     }
 
     async showBudgetOptimizerDialog(): Promise<void> {
-        const force = this.forceBuilderService.smartCurrentForce();
-        if (!force || force.readOnly() || force.units().length === 0) { return; }
+        const force = this.forceWorkspace.smartCurrentForce();
+        if (!force || force.readOnly() || force.members().length === 0) { return; }
         const { ForceBudgetOptimizerDialogComponent } = await import('../force-budget-optimizer-dialog/force-budget-optimizer-dialog.component');
         this.dialogsService.createDialog(ForceBudgetOptimizerDialogComponent, {
             data: { force },
@@ -173,21 +195,21 @@ export class SidebarFooterComponent {
     }
 
     async showCurrentForceInGeneratorDialog(): Promise<void> {
-        const force = this.forceBuilderService.smartCurrentForce();
-        if (!force || force.units().length === 0) { return; }
-        await this.forceBuilderService.showSearchForceGeneratorDialog({ importCurrentForce: true });
+        const force = this.forceWorkspace.smartCurrentForce();
+        if (!force || force.members().length === 0) { return; }
+        await this.forceImportService.showSearchForceGeneratorDialog({ importCurrentForce: true });
     }
 
     showForceOverview(): void {
-        const force = this.forceBuilderService.currentForce();
+        const force = this.forceWorkspace.currentForce();
         if (!force) { return; }
-        this.forceBuilderService.showForceOverview(force);
+        void this.forceDialogs.showForceOverview(force);
     }
 
     showC3NetworkDialog(): void {
-        const force = this.forceBuilderService.currentForce();
+        const force = this.forceWorkspace.currentForce();
         if (!force) { return; }
-        this.forceBuilderService.showC3Network(force);
+        this.forceDialogs.showC3Network(force);
     }
 
     /** Cached org entries for the current force. */
@@ -196,7 +218,7 @@ export class SidebarFooterComponent {
     forceHasOrganizations = signal(false);
 
     async refreshForceOrganizations(): Promise<void> {
-        const force = this.forceBuilderService.currentForce();
+        const force = this.forceWorkspace.currentForce();
         const instanceId = force?.instanceId();
         if (!instanceId) {
             this.forceOrgEntries = [];
@@ -208,7 +230,7 @@ export class SidebarFooterComponent {
     }
 
     async showForceOrgDialog(): Promise<void> {
-        const force = this.forceBuilderService.currentForce();
+        const force = this.forceWorkspace.currentForce();
         const instanceId = force?.instanceId();
         if (!instanceId) return;
 
@@ -219,7 +241,7 @@ export class SidebarFooterComponent {
         if (orgs.length === 0) return;
 
         if (orgs.length === 1) {
-            const ref = await this.forceBuilderService.showForceOrgDialog(orgs[0].organizationId);
+            const ref = await this.forceDialogs.showForceOrgDialog(orgs[0].organizationId);
             await firstValueFrom(ref.closed);
             await this.refreshForceOrganizations();
             return;
@@ -240,18 +262,18 @@ export class SidebarFooterComponent {
         });
         const selected = await firstValueFrom(ref.closed);
         if (selected) {
-            const orgRef = await this.forceBuilderService.showForceOrgDialog(selected.organizationId);
+            const orgRef = await this.forceDialogs.showForceOrgDialog(selected.organizationId);
             await firstValueFrom(orgRef.closed);
             await this.refreshForceOrganizations();
         }
     }
 
     showLoadForceDialog(): void {
-        this.forceBuilderService.showLoadForceDialog();
+        void this.forceImportService.showLoadForceDialog();
     }
 
     showForcePackDialog(): void {
-        this.forceBuilderService.showForcePackDialog();
+        void this.forceImportService.showForcePackDialog();
     }
 
     async addExternalForce(): Promise<void> {
@@ -264,7 +286,7 @@ export class SidebarFooterComponent {
         const instanceId = this.extractInstanceId(input.trim());
 
         // Check if already loaded
-        if (this.forceBuilderService.loadedForces().some(s => s.force.instanceId() === instanceId)) {
+        if (this.forceWorkspace.loadedForces().some(s => s.force.instanceId() === instanceId)) {
             this.toastService.showToast('This force is already loaded.', 'info');
             return;
         }
@@ -284,7 +306,7 @@ export class SidebarFooterComponent {
 
         let forceToAdd = force;
         if (result.clone) {
-            forceToAdd = force.clone();
+            forceToAdd = await force.cloneForPersistence();
             forceToAdd.loading = true;
             try {
                 await this.dataService.saveForce(forceToAdd);
@@ -293,7 +315,13 @@ export class SidebarFooterComponent {
             }
         }
 
-        this.forceBuilderService.addLoadedForce(forceToAdd, result.alignment);
+        if (!this.forceBuilderService.addLoadedForce(forceToAdd, result.alignment)) {
+            if (!this.forceWorkspace.getForceSlot(forceToAdd)) {
+                for (const unit of forceToAdd.units()) unit.destroy();
+            }
+            this.toastService.showToast('This force is already loaded or no longer active.', 'info');
+            return;
+        }
         this.toastService.showToast(`Force "${forceToAdd.name}" added.`, 'success');
     }
 
@@ -315,51 +343,51 @@ export class SidebarFooterComponent {
     }
 
     async saveForce(): Promise<void> {
-        const force = this.forceBuilderService.smartCurrentForce();
+        const force = this.forceWorkspace.smartCurrentForce();
         if (!force || force.readOnly()) {return; }
-        await this.forceBuilderService.saveForceWithNameConfirmation(force);
+        await this.forceDialogs.saveForceWithNameConfirmation(force);
     }
 
     async saveOperation(): Promise<void> {
-        await this.forceBuilderService.saveOperation();
+        await this.operationService.saveOperation();
     }
 
     async updateOperation(): Promise<void> {
-        await this.forceBuilderService.updateOperation();
+        await this.operationService.updateOperation();
     }
 
     async closeOperation(): Promise<void> {
-        await this.forceBuilderService.closeOperation();
+        await this.operationService.closeOperation();
     }
 
     loadOperation(): void {
-        this.forceBuilderService.showLoadForceDialog({ initialTab: 'Operations' });
+        void this.forceImportService.showLoadForceDialog({ initialTab: 'Operations' });
     }
 
     async requestRepairAll(): Promise<void> {
-        const force = this.forceBuilderService.smartCurrentForce();
+        const force = this.forceWorkspace.smartCurrentForce();
         if (!force || force.readOnly()) {return; }
-        if (await this.forceBuilderService.repairAllUnits(force)) {
+        if (await this.forceCommands.repairAllUnits(force)) {
             this.toastService.showToast(`Repaired all units.`, 'success');
         }
     }
 
     async requestCloneForce(): Promise<void> {
-        const force = this.forceBuilderService.currentForce();
+        const force = this.forceWorkspace.currentForce();
         if (!force) { return; }
-        this.forceBuilderService.requestCloneForce(force);
+        this.forceCommands.requestCloneForce(force);
     }
 
     toggleFollowLastModified() {
-        this.forceBuilderService.followLastModifiedUnit.update(v => !v);
+        this.forceWorkspace.followLastModifiedUnit.update(v => !v);
     }
 
     shareForce() {
-        this.forceBuilderService.shareForce();
+        this.forceDialogs.shareForce(this.forceWorkspace.currentForce());
     }
 
     printAll(): void {
-        this.forceBuilderService.printAll();
+        void this.forceDialogs.printAll(this.forceWorkspace.currentForce());
     }
 
     closeAllMenus(): void {

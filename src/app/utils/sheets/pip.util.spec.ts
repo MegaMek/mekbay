@@ -1,0 +1,629 @@
+import { CanonPipRenderer } from './canon-pip-renderer';
+import { CapitalShipPipRenderer } from './capital-ship-pip-renderer';
+import { DistributedPipRenderer } from './distributed-pip-renderer';
+import { GenericPipRenderer } from './generic-pip-renderer';
+import { PipRendererShared } from './pip-renderer.shared';
+import { MIN_PIP_SHAPE_SIZE, PipShapeProfileGenerator } from './pip-shape-profile-generator';
+import { PipShapeProfile } from './pip-shape-profile';
+import type { PipShapeSpan } from './pip-renderer.types';
+import { RailPipRenderer } from './rail-pip-renderer';
+import {
+    BIPED_ARMOR_PIP_LAYOUTS,
+    BIPED_STRUCTURE_PIP_LAYOUTS,
+} from '../../data/biped-canon-pip-layouts.generated';
+
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
+
+describe('Pip renderers', () => {
+    const svgRoots: SVGSVGElement[] = [];
+    const createProfile = (spans: readonly PipShapeSpan[]): PipShapeProfile =>
+        PipShapeProfile.create(spans) as PipShapeProfile;
+
+    afterEach(() => {
+        svgRoots.forEach(root => root.remove());
+        svgRoots.length = 0;
+    });
+
+    it('reproduces capital-vessel square armor blocks and shadows', () => {
+        const pips = CapitalShipPipRenderer.createPips(100, 200, 100, 'armor', 'NOS');
+        const armor = Array.from(pips?.querySelectorAll<SVGRectElement>('rect:not([data-pip-shadow])') ?? []);
+        const shadows = Array.from(pips?.querySelectorAll<SVGRectElement>('rect[data-pip-shadow]') ?? []);
+        const xs = new Set(armor.map(pip => pip.getAttribute('x')));
+        const ys = new Set(armor.map(pip => pip.getAttribute('y')));
+
+        expect(armor.length).toBe(100);
+        expect(shadows.length).toBe(100);
+        expect(xs.size).toBe(10);
+        expect(ys.size).toBe(10);
+        expect(armor[0].getAttribute('x')).toBe('78');
+        expect(armor[0].getAttribute('y')).toBe('25.25');
+        expect(armor[0].getAttribute('width')).toBe('4.5');
+        expect(shadows[0].getAttribute('x')).toBe('79.35');
+        expect(pips?.dataset['pipLayout']).toBe('capital-grid');
+    });
+
+    it('uses the capital-vessel structure block capacity for each track', () => {
+        const kf = CapitalShipPipRenderer.createPips(14, 80, 15, 'structure', 'KF');
+        const sail = CapitalShipPipRenderer.createPips(5, 80, 5, 'structure', 'SAIL');
+        const kfPips = Array.from(kf?.querySelectorAll<SVGRectElement>('rect') ?? []);
+        const sailPips = Array.from(sail?.querySelectorAll<SVGRectElement>('rect') ?? []);
+
+        expect(kfPips.length).toBe(14);
+        expect(new Set(kfPips.map(pip => pip.getAttribute('y'))).size).toBe(2);
+        expect(kfPips[0].getAttribute('x')).toBe('20.5');
+        expect(sailPips.length).toBe(5);
+        expect(sailPips[0].getAttribute('x')).toBe('30.5');
+    });
+
+    it('keeps the rendered canon radius stable as a location gains pips', () => {
+        const onePip = CanonPipRenderer.createArmorPips('CT', 1, 29.063, 85.873, { inset: 1.8 });
+        const threePips = CanonPipRenderer.createArmorPips('CT', 3, 29.063, 85.873, { inset: 1.8 });
+
+        const getRenderedRadius = (group: SVGGElement | null): number => {
+            const scale = Number(/scale\(([^)]+)\)/u.exec(group?.getAttribute('transform') ?? '')?.[1]);
+            const radius = Number(group?.querySelector('circle')?.getAttribute('r'));
+            return radius * scale;
+        };
+
+        expect(getRenderedRadius(onePip)).toBeCloseTo(3, 6);
+        expect(getRenderedRadius(threePips)).toBeCloseTo(3, 6);
+    });
+
+    it('does not apply minimum radius clamping to default canon pips', () => {
+        const getRenderedRadius = (group: SVGGElement | null): number => {
+            const scale = Number(/scale\(([^)]+)\)/u.exec(group?.getAttribute('transform') ?? '')?.[1]);
+            return Number(group?.querySelector('circle')?.getAttribute('r')) * scale;
+        };
+        const defaultMinimum = CanonPipRenderer.createArmorPips('CT', 3, 29.063, 85.873, {
+            inset: 1.8,
+            minPipRadius: 0,
+        });
+        const oversizedMinimum = CanonPipRenderer.createArmorPips('CT', 3, 29.063, 85.873, {
+            inset: 1.8,
+            minPipRadius: 100,
+        });
+
+        expect(getRenderedRadius(oversizedMinimum)).toBeCloseTo(getRenderedRadius(defaultMinimum), 6);
+    });
+
+    it('applies pipGap to canon pip spacing', () => {
+        const getRenderedRadius = (group: SVGGElement | null): number => {
+            const scale = Number(/scale\(([^)]+)\)/u.exec(group?.getAttribute('transform') ?? '')?.[1]);
+            return Number(group?.querySelector('circle')?.getAttribute('r')) * scale;
+        };
+        const noGap = CanonPipRenderer.createArmorPips('HD', 9, 17.088, 21.553, {
+            inset: 1.8,
+            pipGap: 0,
+            minPipRadius: 0,
+            pipRadius: 3,
+        });
+        const withGap = CanonPipRenderer.createArmorPips('HD', 9, 17.088, 21.553, {
+            inset: 1.8,
+            pipGap: 1,
+            minPipRadius: 0,
+            pipRadius: 3,
+        });
+
+        expect(getRenderedRadius(withGap)).toBeLessThan(getRenderedRadius(noGap));
+    });
+
+    it('scales generic pips to fit their cells and pipGap', () => {
+        const options = {
+            minPipRadius: 0,
+            pipGap: 2,
+            pipRadius: 100,
+            strokeWidthRatio: 0.2,
+        };
+        const pips = GenericPipRenderer.createPips(4, 20, 20, options);
+
+        expect(pips).not.toBeNull();
+        const circles = Array.from(pips?.querySelectorAll('circle') ?? []);
+        expect(circles.length).toBe(4);
+        const radius = Number(circles[0]?.getAttribute('r'));
+        const strokeWidth = Number(circles[0]?.getAttribute('stroke-width'));
+        const centerDistance = Math.hypot(
+            Number(circles[0]?.getAttribute('cx')) - Number(circles[1]?.getAttribute('cx')),
+            Number(circles[0]?.getAttribute('cy')) - Number(circles[1]?.getAttribute('cy')),
+        );
+
+        expect(radius).toBeCloseTo((10 - options.pipGap) / (2 * (1 + options.strokeWidthRatio / 2)), 6);
+        expect(centerDistance).toBeCloseTo(2 * radius + strokeWidth + options.pipGap, 6);
+    });
+
+    it('decomposes tall rectangles into horizontal shape rows', () => {
+        const rectangle = document.createElementNS(SVG_NAMESPACE, 'rect');
+        rectangle.setAttribute('x', '0');
+        rectangle.setAttribute('y', '0');
+        rectangle.setAttribute('width', '30');
+        rectangle.setAttribute('height', '90');
+
+        const generated = PipShapeProfileGenerator.createProfile(rectangle);
+
+        expect(generated).not.toBeNull();
+        expect(generated?.profile.spans.length).toBeGreaterThan(1);
+        expect(generated?.profile.spans.every(span => span.width >= span.height)).toBeTrue();
+    });
+
+    it('does not generate shapes below the minimum size', () => {
+        const rectangle = document.createElementNS(SVG_NAMESPACE, 'rect');
+        rectangle.setAttribute('width', (MIN_PIP_SHAPE_SIZE / 2).toString());
+        rectangle.setAttribute('height', (MIN_PIP_SHAPE_SIZE / 2).toString());
+
+        expect(PipShapeProfileGenerator.createProfile(rectangle)).toBeNull();
+    });
+
+    it('precomputes validated shape profile bounds and normalized spans', () => {
+        const profile = PipShapeProfile.create([
+            { x: 14, y: 20, width: 8, height: 4 },
+            { x: 10, y: 12, width: 5, height: 3 },
+            { x: 0, y: 0, width: 0, height: 1 },
+        ]);
+
+        expect(profile?.bounds).toEqual({ left: 10, top: 12, right: 22, bottom: 24 });
+        expect(profile?.spans.map(span => [span.x, span.y])).toEqual([[10, 12], [14, 20]]);
+        expect(profile?.normalizedSpans.map(span => [span.x, span.y])).toEqual([[0, 0], [4, 8]]);
+        expect(profile?.averageSpanWidth).toBe(6.5);
+        expect(profile?.averageSpanHeight).toBe(3.5);
+    });
+
+    it('samples each geometry row within its own vertical band', () => {
+        const path = createPath('M 0 0 H 30 V 10 H 10 V 30 H 0 Z', 30, 30);
+
+        const generated = PipShapeProfileGenerator.createProfile(path);
+        const upperRow = generated?.profile.spans[0];
+
+        expect(upperRow).toBeDefined();
+        expect(upperRow?.x).toBeCloseTo(0, 3);
+        expect(upperRow?.width).toBeGreaterThan(20);
+    });
+
+    it('preserves even-odd holes when sampling path rows', () => {
+        const path = createPath(
+            'M 0 0 H 30 V 30 H 0 Z M 10 0 H 20 V 30 H 10 Z',
+            30,
+            30,
+        );
+        path.setAttribute('fill-rule', 'evenodd');
+
+        const generated = PipShapeProfileGenerator.createProfile(path);
+        const firstBand = generated?.profile.spans.filter(span => span.y < 1) ?? [];
+
+        expect(firstBand.length).toBe(2);
+        expect(firstBand[0].x + firstBand[0].width).toBeLessThanOrEqual(10.01);
+        expect(firstBand[1].x).toBeGreaterThanOrEqual(19.99);
+    });
+
+    it('overrides row height and preserves shape transforms', () => {
+        const path = createPath('M 0 0 H 40 V 30 H 0 Z', 50, 40);
+        path.setAttribute('transform', 'translate(12 4)');
+
+        const generated = PipShapeProfileGenerator.createProfile(path, 3);
+        const pips = generated
+            ? DistributedPipRenderer.createPips(generated.profile, 3, { rowHeight: 3 })
+            : null;
+        if (pips && generated?.transform) {
+            pips.setAttribute('transform', generated.transform);
+        }
+
+        expect(generated?.transform).toBe('matrix(1 0 0 1 12 4)');
+        expect(generated?.profile.spans.every(span => span.height <= 3 && span.width >= span.height)).toBeTrue();
+        expect(pips?.getAttribute('transform')).toBe('matrix(1 0 0 1 12 4)');
+    });
+
+    it('preserves transform origins when generating transformed rectangle rows', () => {
+        const svg = document.createElementNS(SVG_NAMESPACE, 'svg');
+        svg.setAttribute('width', '100');
+        svg.setAttribute('height', '320');
+        const rectangle = document.createElementNS(SVG_NAMESPACE, 'rect');
+        rectangle.setAttribute('x', '29.384');
+        rectangle.setAttribute('y', '191.485');
+        rectangle.setAttribute('width', '18.945');
+        rectangle.setAttribute('height', '115.741');
+        rectangle.setAttribute('transform', 'matrix(0.974593 0.223983 -0.223983 0.974593 14.056866 -32.599451)');
+        rectangle.style.setProperty('transform-box', 'fill-box');
+        rectangle.style.setProperty('transform-origin', '50% 50%');
+        svg.appendChild(rectangle);
+        document.body.appendChild(svg);
+        svgRoots.push(svg);
+
+        const generated = PipShapeProfileGenerator.createProfile(rectangle, 6);
+        const pips = generated
+            ? DistributedPipRenderer.createPips(generated.profile, 3, { rowHeight: 6 })
+            : null;
+        if (pips && generated?.transform) {
+            pips.setAttribute('transform', generated.transform);
+        }
+        const sourceMatrix = rectangle.getCTM();
+        svg.appendChild(pips as SVGGElement);
+        const generatedMatrix = pips?.getCTM();
+
+        expect(pips).not.toBeNull();
+        expect(generatedMatrix?.a).toBeCloseTo(sourceMatrix?.a ?? 0, 5);
+        expect(generatedMatrix?.b).toBeCloseTo(sourceMatrix?.b ?? 0, 5);
+        expect(generatedMatrix?.c).toBeCloseTo(sourceMatrix?.c ?? 0, 5);
+        expect(generatedMatrix?.d).toBeCloseTo(sourceMatrix?.d ?? 0, 5);
+        expect(generatedMatrix?.e).toBeCloseTo(sourceMatrix?.e ?? 0, 5);
+        expect(generatedMatrix?.f).toBeCloseTo(sourceMatrix?.f ?? 0, 5);
+    });
+
+    it('interleaves generic rows when a staggered layout packs better', () => {
+        const pips = GenericPipRenderer.createPips(8, 20, 20, {
+            minPipRadius: 0,
+            pipGap: 1,
+            pipRadius: 100,
+            strokeWidthRatio: 0,
+        });
+
+        const rows = Array.from(pips?.querySelectorAll('circle') ?? [])
+            .reduce((counts, circle) => {
+                const y = circle.getAttribute('cy') ?? '';
+                counts.set(y, (counts.get(y) ?? 0) + 1);
+                return counts;
+            }, new Map<string, number>());
+        const rowCounts = Array.from(rows.values());
+        expect(rowCounts).toEqual([3, 2, 3]);
+
+        const rowCenters = Array.from(rows.keys());
+        const firstRow = Array.from(pips?.querySelectorAll(`circle[cy="${rowCenters[0]}"]`) ?? [], circle => Number(circle.getAttribute('cx')));
+        const middleRow = Array.from(pips?.querySelectorAll(`circle[cy="${rowCenters[1]}"]`) ?? [], circle => Number(circle.getAttribute('cx')));
+        expect(middleRow[0]).toBeGreaterThan(firstRow[0]);
+        expect(middleRow[0]).toBeLessThan(firstRow[1]);
+    });
+
+    it('uses synthetic rows as weighted generic boundaries', () => {
+        const rows = [
+            { x: 0, y: 0, width: 30, height: 6 },
+            { x: 8, y: 5, width: 14, height: 6 },
+            { x: 0, y: 10, width: 30, height: 6 },
+        ];
+        const pips = GenericPipRenderer.createPips(
+            8,
+            30,
+            16,
+            { minPipRadius: 0, pipGap: 0, pipRadius: 100, strokeWidthRatio: 0 },
+            'armor',
+            'CT',
+            createProfile(rows),
+        );
+        const rectanglePips = GenericPipRenderer.createPips(
+            8,
+            30,
+            16,
+            { minPipRadius: 0, pipGap: 0, pipRadius: 100, strokeWidthRatio: 0 },
+        );
+        const circles = Array.from(pips?.querySelectorAll('circle') ?? []);
+
+        expect(circles.length).toBe(8);
+        expect(Number(circles[0]?.getAttribute('r')))
+            .toBeCloseTo(Number(rectanglePips?.querySelector('circle')?.getAttribute('r')), 6);
+        expect(circles.every(circle => {
+            const x = Number(circle.getAttribute('cx'));
+            const y = Number(circle.getAttribute('cy'));
+            return rows.some(row =>
+                x >= row.x
+                && x <= row.x + row.width
+                && y >= row.y
+                && y <= row.y + row.height);
+        })).toBeTrue();
+    });
+
+    it('preserves generic alternating offsets across synthetic rows', () => {
+        const options = {
+            minPipRadius: 0,
+            pipGap: 0,
+            pipRadius: 100,
+            strokeWidthRatio: 0,
+        };
+        const withRows = GenericPipRenderer.createPips(
+            7,
+            30,
+            20,
+            options,
+            'armor',
+            'CT',
+            createProfile([
+                { x: 0, y: 0, width: 30, height: 10 },
+                { x: 0, y: 10, width: 30, height: 10 },
+            ]),
+        );
+        const withoutRows = GenericPipRenderer.createPips(7, 30, 20, options);
+        const getPoints = (group: SVGGElement | null): number[][] =>
+            Array.from(group?.querySelectorAll('circle') ?? [], circle => [
+                Number(circle.getAttribute('cx')),
+                Number(circle.getAttribute('cy')),
+            ]);
+        const withRowsPoints = getPoints(withRows);
+        const withoutRowsPoints = getPoints(withoutRows);
+
+        expect(withRowsPoints).toEqual(withoutRowsPoints);
+        expect(withRowsPoints[4][0]).toBeGreaterThan(withRowsPoints[0][0]);
+        expect(withRowsPoints[4][0]).toBeLessThan(withRowsPoints[1][0]);
+    });
+
+    it('uses virtual rows for dense generic layouts', () => {
+        const rowHeight = 6.1515198;
+        const rowStep = 5.3271999;
+        const rows = Array.from({ length: 16 }, (_value, index) => ({
+            x: 0,
+            y: index * rowStep,
+            width: 26.448,
+            height: rowHeight,
+        }));
+        const pips = GenericPipRenderer.createPips(
+            120,
+            26.448,
+            84.27,
+            { minPipRadius: 0, pipGap: 0, pipRadius: 100, strokeWidthRatio: 0.2 },
+            'armor',
+            'CT',
+            createProfile(rows),
+        );
+        const circles = Array.from(pips?.querySelectorAll('circle') ?? []);
+        const rowCenters = new Set(circles.map(circle => circle.getAttribute('cy')));
+
+        expect(circles.length).toBe(120);
+        expect(rowCenters.size).toBeGreaterThan(rows.length);
+        expect(Number(circles[0]?.getAttribute('r'))).toBeGreaterThan(1.8);
+    });
+
+    it('prunes expensive generic candidate evaluation for dense layouts', () => {
+        const evaluate = spyOn(PipRendererShared, 'getMaximumRadiusForPoints').and.callThrough();
+        const pips = GenericPipRenderer.createPips(
+            120,
+            26.448,
+            84.27,
+            { inset: 1.8, minPipRadius: 0, pipGap: 0, pipRadius: 100, strokeWidthRatio: 0.2 },
+        );
+
+        expect(pips?.querySelectorAll('circle').length).toBe(120);
+        expect(evaluate.calls.count()).toBeLessThan(10);
+    });
+
+    it('moves full-radius pips inside offset synthetic row boundaries', () => {
+        const radius = 3;
+        const rows = [
+            { x: 0, y: 0, width: 24, height: 10 },
+            { x: 6, y: 10, width: 24, height: 10 },
+        ];
+        const pips = GenericPipRenderer.createPips(
+            4,
+            30,
+            20,
+            { minPipRadius: 0, pipGap: 0, pipRadius: radius, strokeWidthRatio: 0 },
+            'armor',
+            'CT',
+            createProfile(rows),
+        );
+        const circles = Array.from(pips?.querySelectorAll('circle') ?? []);
+
+        expect(Number(circles[0]?.getAttribute('r'))).toBeCloseTo(radius, 6);
+        expect(circles.every(circle => {
+            const x = Number(circle.getAttribute('cx'));
+            const y = Number(circle.getAttribute('cy'));
+            return rows.some(row =>
+                y >= row.y
+                && y <= row.y + row.height
+                && x - radius >= row.x
+                && x + radius <= row.x + row.width);
+        })).toBeTrue();
+    });
+
+    it('uses baked canon radii when explicitly requested', () => {
+        const options = {
+            useCanonPipRadius: true,
+            pipRadius: 100,
+            minPipRadius: 100,
+        };
+        const armorPips = CanonPipRenderer.createArmorPips('CT', 3, 29.063, 85.873, options);
+        const structurePips = CanonPipRenderer.createStructurePips(15, 'CT', 29.063, 85.873, options);
+        const armorLayout = BIPED_ARMOR_PIP_LAYOUTS['CT'].amount[3];
+        const structureLayout = BIPED_STRUCTURE_PIP_LAYOUTS['CT'].amount[15];
+
+        expect(new Set(Array.from(armorPips?.querySelectorAll('circle') ?? [], circle => Number(circle.getAttribute('r')))))
+            .toEqual(new Set([armorLayout.radius]));
+        expect(new Set(Array.from(armorPips?.querySelectorAll('circle') ?? [], circle => Number(circle.getAttribute('stroke-width')))))
+            .toEqual(new Set([armorLayout.stroke]));
+        expect(new Set(Array.from(structurePips?.querySelectorAll('circle') ?? [], circle => Number(circle.getAttribute('r')))))
+            .toEqual(new Set([structureLayout.radius]));
+        expect(new Set(Array.from(structurePips?.querySelectorAll('circle') ?? [], circle => Number(circle.getAttribute('stroke-width')))))
+            .toEqual(new Set([structureLayout.stroke]));
+    });
+
+    it('does not apply pipGap to baked canon pips', () => {
+        const noGap = CanonPipRenderer.createArmorPips('HD', 9, 17.088, 21.553, {
+            useCanonPipRadius: true,
+            pipGap: 0,
+        });
+        const withGap = CanonPipRenderer.createArmorPips('HD', 9, 17.088, 21.553, {
+            useCanonPipRadius: true,
+            pipGap: 1,
+        });
+
+        const getRenderedRadius = (group: SVGGElement | null): number => {
+            const scale = Number(/scale\(([^)]+)\)/u.exec(group?.getAttribute('transform') ?? '')?.[1]);
+            return Number(group?.querySelector('circle')?.getAttribute('r')) * scale;
+        };
+
+        expect(getRenderedRadius(withGap)).toBeCloseTo(getRenderedRadius(noGap), 6);
+        expect(Array.from(withGap?.querySelectorAll('circle') ?? [])
+            .map(circle => Number(circle.getAttribute('r'))))
+            .toEqual(Array.from(noGap?.querySelectorAll('circle') ?? [])
+                .map(circle => Number(circle.getAttribute('r'))));
+    });
+
+    it('uses the baked canon radius without collision resizing', () => {
+        const pips = CanonPipRenderer.createArmorPips('HD', 9, 17.088, 21.553, {
+            useCanonPipRadius: true,
+            pipGap: 100,
+            minPipRadius: 0,
+            pipRadius: 0,
+        });
+        const bakedRadius = BIPED_ARMOR_PIP_LAYOUTS['HD'].amount[9].radius;
+
+        expect(Array.from(pips?.querySelectorAll('circle') ?? [])
+            .map(circle => Number(circle.getAttribute('r'))))
+            .toEqual(Array(9).fill(bakedRadius));
+    });
+
+    it('uses one shared normalized box for all amounts in a canon location', () => {
+        const onePip = CanonPipRenderer.createArmorPips(
+            'CT',
+            1,
+            29.063,
+            85.873,
+            { useCanonPipRadius: true },
+        );
+        const threePips = CanonPipRenderer.createArmorPips(
+            'CT',
+            3,
+            29.063,
+            85.873,
+            { useCanonPipRadius: true },
+        );
+
+        expect(onePip?.getAttribute('transform')).toBe(threePips?.getAttribute('transform'));
+        expect(BIPED_ARMOR_PIP_LAYOUTS['CT'].info).toEqual({ width: 0.299, height: 1 });
+    });
+
+    it('uses the available height when distributing sparse pips across rows', () => {
+        const height = 86;
+        const rows = Array.from({ length: 17 }, (_value, index) => ({
+            x: 0,
+            y: index * 5,
+            width: 20,
+            height: 6,
+        }));
+        const pips = DistributedPipRenderer.createPips(
+            createProfile(rows),
+            3,
+            { minPipRadius: 0, pipGap: 0, pipRadius: 100, strokeWidthRatio: 0 },
+        );
+        const yValues = [...new Set(Array.from(
+            pips?.querySelectorAll('circle') ?? [],
+            circle => Number(circle.getAttribute('cy')),
+        ))];
+
+        expect(yValues.length).toBe(3);
+        expect(yValues[0]).toBeCloseTo(height / 6, 6);
+        expect(yValues[1]).toBeCloseTo(height / 2, 6);
+        expect(yValues[2]).toBeCloseTo(height * 5 / 6, 6);
+    });
+
+    it('chooses a larger distributed layout when zero gap fits another row arrangement', () => {
+        const options = { inset: 1.8, minPipRadius: 0, pipGap: 0, pipRadius: 3 };
+        const zeroGapPips = DistributedPipRenderer.createPips(
+            createProfile([{ x: 0, y: 0, width: 17.088, height: 21.553 }]),
+            5,
+            options,
+            'armor',
+            'HD',
+        );
+        const positiveGapPips = DistributedPipRenderer.createPips(
+            createProfile([{ x: 0, y: 0, width: 17.088, height: 21.553 }]),
+            5,
+            { ...options, pipGap: 1 },
+            'armor',
+            'HD',
+        );
+
+        expect(zeroGapPips?.querySelectorAll('circle').length).toBe(5);
+        const zeroGapRadius = Number(zeroGapPips?.querySelector('circle')?.getAttribute('r'));
+        const positiveGapRadius = Number(positiveGapPips?.querySelector('circle')?.getAttribute('r'));
+        expect(zeroGapRadius).toBeGreaterThan(2);
+        expect(positiveGapRadius).toBeLessThan(zeroGapRadius);
+
+        const getMinimumCenterDistance = (group: SVGGElement | null): number => {
+            const circles = Array.from(group?.querySelectorAll('circle') ?? []);
+            return Math.min(...circles.flatMap((first, firstIndex) =>
+                circles.slice(firstIndex + 1).map(second => Math.hypot(
+                Number(first.getAttribute('cx')) - Number(second.getAttribute('cx')),
+                Number(first.getAttribute('cy')) - Number(second.getAttribute('cy')),
+                ))));
+        };
+        const zeroGapStrokeWidth = Number(zeroGapPips?.querySelector('circle')?.getAttribute('stroke-width'));
+        const positiveGapStrokeWidth = Number(positiveGapPips?.querySelector('circle')?.getAttribute('stroke-width'));
+        expect(getMinimumCenterDistance(zeroGapPips))
+            .toBeGreaterThanOrEqual(2 * zeroGapRadius + zeroGapStrokeWidth);
+        expect(getMinimumCenterDistance(positiveGapPips))
+            .toBeGreaterThanOrEqual(2 * positiveGapRadius + positiveGapStrokeWidth + 1);
+    });
+
+    it('uses pipGap when sizing rail pips', () => {
+        const options = { pipRadius: 100 };
+        const noGapRadius = RailPipRenderer.getPipRadius(100, 5, { ...options, pipGap: 0 });
+        const positiveGapRadius = RailPipRenderer.getPipRadius(100, 5, { ...options, pipGap: 10 });
+
+        expect(positiveGapRadius).toBeLessThan(noGapRadius);
+    });
+
+    it('hard-caps collision shrinkage at the minimum pip radius', () => {
+        const radius = RailPipRenderer.getPipRadius(1, 1, {
+            pipRadius: 100,
+            pipGap: 100,
+        });
+
+        expect(radius).toBeCloseTo(1.5, 6);
+    });
+
+    it('balances many distributed pips across more rows', () => {
+        const pips = DistributedPipRenderer.createPips(
+            createProfile([{ x: 0, y: 0, width: 17.088, height: 21.553 }]),
+            18,
+            { inset: 1.8, pipGap: 0, pipRadius: 3 },
+            'armor',
+            'HD',
+        );
+        const circles = Array.from(pips?.querySelectorAll('circle') ?? []);
+        const rowCounts = Array.from(
+            circles.reduce((counts, circle) => {
+                const y = circle.getAttribute('cy') ?? '';
+                counts.set(y, (counts.get(y) ?? 0) + 1);
+                return counts;
+            }, new Map<string, number>()).values(),
+        );
+
+        expect(rowCounts.length).toBe(5);
+        expect(Math.min(...rowCounts)).toBe(3);
+        expect(Math.max(...rowCounts)).toBe(4);
+        expect(Number(circles[0]?.getAttribute('r'))).toBeGreaterThan(1.4);
+    });
+
+    it('alternates row parity for dense distributed layouts', () => {
+        const pips = DistributedPipRenderer.createPips(
+            createProfile([{ x: 0, y: 0, width: 40, height: 20 }]),
+            9,
+            { minPipRadius: 0, pipGap: 1, pipRadius: 100, strokeWidthRatio: 0 },
+            'armor',
+            'CT',
+        );
+        const rowCounts = Array.from(
+            pips?.querySelectorAll('circle') ?? [],
+        ).reduce((counts, circle) => {
+            const y = circle.getAttribute('cy') ?? '';
+            counts.set(y, (counts.get(y) ?? 0) + 1);
+            return counts;
+        }, new Map<string, number>());
+
+        expect(pips).not.toBeNull();
+        const counts = Array.from(rowCounts.values());
+        expect(counts.length).toBe(2);
+        expect(counts).toEqual([5, 4]);
+        expect(counts.reduce((sum, count) => sum + count, 0)).toBe(9);
+        expect(counts[0] % 2).not.toBe(counts[1] % 2);
+        expect(Number(pips?.querySelector('circle')?.getAttribute('r'))).toBeCloseTo(3.5, 6);
+    });
+
+    function createPath(d: string, width: number, height: number): SVGPathElement {
+        const svg = document.createElementNS(SVG_NAMESPACE, 'svg');
+        svg.setAttribute('width', width.toString());
+        svg.setAttribute('height', height.toString());
+        svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        const path = document.createElementNS(SVG_NAMESPACE, 'path');
+        path.setAttribute('d', d);
+        svg.appendChild(path);
+        document.body.appendChild(svg);
+        svgRoots.push(svg);
+        return path;
+    }
+});
+

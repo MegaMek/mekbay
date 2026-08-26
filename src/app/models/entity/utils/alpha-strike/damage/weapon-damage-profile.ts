@@ -5,9 +5,24 @@
 import { WeaponEquipment } from '../../../../equipment.model';
 import type { BaseEntity } from '../../../base-entity';
 import type { EntityMountedWeapon } from '../../../types';
-import { isArtemisCompatibleWeapon } from '../../equipment-link-rules';
+import {
+  artemisClanLrmDamageMultiplier,
+  artemisClusterRoll,
+  artemisKind,
+  artemisTorpedoDamageMultiplier,
+  isArtemisCompatibleWeapon,
+  isArtemisEquipment,
+  usesArtemisIVDamageTable,
+} from '../../../../artemis-equipment.model';
 import { alphaStrikeArtilleryAbility } from '../specials/artillery-special';
 import { clusterHits } from '../../../../../utils/cluster-hit-table';
+import { isApolloEquipment } from '../../../../apollo-mode.model';
+import {
+  PPC_CAPACITOR_DAMAGE_BONUS,
+  isPpcCapacitorCompatibleWeapon,
+  isPpcCapacitorEquipment,
+  isPpcEquipment,
+} from '../../../../ppc-capacitor.model';
 
 export type AlphaStrikeRangeIndex = 0 | 1 | 2 | 3;
 export type AlphaStrikeWeaponDamageVector = readonly [number, number, number, number];
@@ -58,7 +73,7 @@ function primaryDamageClass(
 ): AlphaStrikePrimaryDamageClass | null {
   if (hasAlphaStrikeBattleForceClass(weapon, 'TORPEDO')
     || weapon.damage === 'artillery'
-    || (pointDefense && weapon.hasFlag('F_AMS'))) {
+    || (pointDefense && weapon.hasWeaponTrait('anti-missile'))) {
     return null;
   }
   if (hasAlphaStrikeBattleForceClass(weapon, 'CAPITAL_MISSILE')) return 'MSL';
@@ -94,6 +109,7 @@ function battleForceDamage(
   linked?: { hasFlag(flag: Parameters<WeaponEquipment['hasFlag']>[0]): boolean },
 ): number {
   if (weapon.alphaStrike?.damage) {
+    if (weapon.ammoType === 'EXLRM') return weapon.alphaStrike.damage[range];
     const torpedoArtemisDamage = torpedoArtemisProfileDamage(weapon, range, linked);
     if (torpedoArtemisDamage !== null) {
       return torpedoArtemisDamage;
@@ -121,22 +137,19 @@ function torpedoArtemisProfileDamage(
   if (!hasAlphaStrikeBattleForceClass(weapon, 'TORPEDO')
     || !isArtemisCompatibleWeapon(weapon)) return null;
   if (weapon.techBase === 'Clan' && weapon.ammoType === 'LRM_TORPEDO') {
-    const multiplier = linked?.hasFlag('F_ARTEMIS_V') ? 1.4
-      : linked?.hasFlag('F_ARTEMIS') ? 1.2
-        : linked?.hasFlag('F_ARTEMIS_PROTO') ? 1.1 : null;
+    const multiplier = artemisTorpedoDamageMultiplier(linked);
     return multiplier === null ? null : (weapon.alphaStrike?.damage?.[range] ?? 0) * multiplier;
   }
   if (weapon.techBase === 'Clan' && weapon.ammoType === 'SRM_TORPEDO') {
     const artemisIV: Readonly<Partial<Record<number, number>>> = { 2: 0.4, 4: 0.6, 6: 1 };
     const artemisV: Readonly<Partial<Record<number, number>>> = { 2: 0.42, 4: 0.63, 6: 1.05 };
-    const damage = linked?.hasFlag('F_ARTEMIS_V') ? artemisV[weapon.rackSize]
-      : linked?.hasFlag('F_ARTEMIS') || linked?.hasFlag('F_ARTEMIS_PROTO')
+    const kind = artemisKind(linked);
+    const damage = kind === 'v' ? artemisV[weapon.rackSize]
+      : kind === 'iv' || kind === 'prototype'
         ? artemisIV[weapon.rackSize] : undefined;
     return damage === undefined ? null : (weapon.alphaStrike?.damage?.[range] ?? 0) > 0 ? damage : 0;
   }
-  const roll = linked?.hasFlag('F_ARTEMIS_V') ? 11
-    : linked?.hasFlag('F_ARTEMIS') ? 9
-      : linked?.hasFlag('F_ARTEMIS_PROTO') ? 8 : null;
+  const roll = artemisClusterRoll(linked);
   if (roll === null) return null;
   if ((weapon.alphaStrike?.damage?.[range] ?? 0) <= 0) return 0;
   const missileDamage = weapon.ammoType === 'SRM_TORPEDO' ? 2 : 1;
@@ -157,8 +170,9 @@ function clanSrmArtemisProfileDamage(
     || !isArtemisCompatibleWeapon(weapon)) return null;
   const artemisIV: Readonly<Partial<Record<number, number>>> = { 2: 0.4, 4: 0.6, 6: 1 };
   const artemisV: Readonly<Partial<Record<number, number>>> = { 2: 0.42, 4: 0.63, 6: 1.05 };
-  const damage = linked?.hasFlag('F_ARTEMIS_V') ? artemisV[weapon.rackSize]
-    : linked?.hasFlag('F_ARTEMIS') || linked?.hasFlag('F_ARTEMIS_PROTO')
+  const kind = artemisKind(linked);
+  const damage = kind === 'v' ? artemisV[weapon.rackSize]
+    : kind === 'iv' || kind === 'prototype'
       ? artemisIV[weapon.rackSize] : undefined;
   return damage === undefined ? null : range <= 1 ? damage : 0;
 }
@@ -170,9 +184,9 @@ function capacitatedSnubPpcDamage(
 ): number | null {
   const classicDamage = weapon.weapon.damage;
   const alphaStrikeDamage = weapon.alphaStrike?.damage;
-  if (!linked?.hasFlag('F_PPC_CAPACITOR')
+  if (!isPpcCapacitorEquipment(linked)
     || weapon.techBase !== 'IS'
-    || !weapon.hasFlag('F_PPC_CAPACITOR_COMPATIBLE')
+    || !isPpcCapacitorCompatibleWeapon(weapon)
     || !Array.isArray(classicDamage)
     || classicDamage[0] !== 10 || classicDamage[1] !== 8 || classicDamage[2] !== 5
     || alphaStrikeDamage?.[0] !== 1 || alphaStrikeDamage[1] !== 0.65) return null;
@@ -187,9 +201,7 @@ function clanLrmArtemisDamageMultiplier(
   if (weapon.techBase !== 'Clan'
     || !hasAlphaStrikeBattleForceClass(weapon, 'LRM')
     || !isArtemisCompatibleWeapon(weapon)) return null;
-  if (linked?.hasFlag('F_ARTEMIS_V')) return 1.4;
-  if (linked?.hasFlag('F_ARTEMIS') || linked?.hasFlag('F_ARTEMIS_PROTO')) return 4 / 3;
-  return null;
+  return artemisClanLrmDamageMultiplier(linked);
 }
 
 function assertRangeIndex(range: number): asserts range is AlphaStrikeRangeIndex {
@@ -204,26 +216,28 @@ function nativeBattleForceDamage(
   rangeIndex: AlphaStrikeRangeIndex,
   linked?: { hasFlag(flag: Parameters<WeaponEquipment['hasFlag']>[0]): boolean },
 ): number {
-  if (weapon.hasFlag('F_MGA')) return 0;
+  if (weapon.hasWeaponTrait('machine-gun-array')) return 0;
   if (hasAlphaStrikeBattleForceClass(weapon, 'MML')) return mmlDamage(weapon, rangeIndex, linked);
   const range = RANGE_HEXES[rangeIndex];
   if (range > (weapon.ranges[2] ?? 0)) return 0;
-  if (weapon.hasFlag('F_MRM') || weapon.ammoType === 'MRM') {
-    const roll = linked?.hasFlag('F_APOLLO') ? 6 : 7;
-    const multiplier = linked?.hasFlag('F_APOLLO') ? 1 : 0.95;
+  if (weapon.hasWeaponTrait('mrm') || weapon.ammoType === 'MRM') {
+    const roll = isApolloEquipment(linked) ? 6 : 7;
+    const multiplier = isApolloEquipment(linked) ? 1 : 0.95;
     return applyMinimumRange(clusterHits(roll, weapon.rackSize) * multiplier, weapon, rangeIndex) / 10;
   }
   if (isClusterMissile(weapon)) {
-    const roll = linked?.hasFlag('F_ARTEMIS_V') ? 11
-      : linked?.hasFlag('F_ARTEMIS') ? 9
-        : linked?.hasFlag('F_ARTEMIS_PROTO') ? 8 : 7;
-    const multiplier = weapon.hasFlag('F_SRM')
+    const roll = artemisClusterRoll(linked, 7)!;
+    const multiplier = weapon.hasWeaponTrait('srm')
       || weapon.ammoType === 'SRM'
       || weapon.ammoType === 'SRM_TORPEDO' ? 2 : 1;
     return applyMinimumRange(clusterHits(roll, weapon.rackSize) * multiplier, weapon, rangeIndex) / 10;
   }
-  if (weapon.hasFlag('F_PPC') && linked?.hasFlag('F_PPC_CAPACITOR')) {
-    return genericBattleForceDamage(weapon, rangeIndex, damage => (damage + 5) / 2);
+  if (isPpcEquipment(weapon) && isPpcCapacitorEquipment(linked)) {
+    return genericBattleForceDamage(
+      weapon,
+      rangeIndex,
+      damage => (damage + PPC_CAPACITOR_DAMAGE_BONUS) / 2,
+    );
   }
   if (weapon.ammoType === 'AC') return applyMinimumRange(weapon.rackSize, weapon, rangeIndex) / 10;
   return genericBattleForceDamage(weapon, rangeIndex);
@@ -232,11 +246,9 @@ function nativeBattleForceDamage(
 function hasDynamicFireControl(
   linked: { hasFlag(flag: Parameters<WeaponEquipment['hasFlag']>[0]): boolean } | undefined,
 ): boolean {
-  return linked?.hasFlag('F_ARTEMIS') === true
-    || linked?.hasFlag('F_ARTEMIS_PROTO') === true
-    || linked?.hasFlag('F_ARTEMIS_V') === true
-    || linked?.hasFlag('F_APOLLO') === true
-    || linked?.hasFlag('F_PPC_CAPACITOR') === true;
+  return isArtemisEquipment(linked)
+    || isApolloEquipment(linked)
+    || isPpcCapacitorEquipment(linked);
 }
 
 function genericBattleForceDamage(
@@ -275,7 +287,8 @@ function applyMinimumRange(damage: number, weapon: WeaponEquipment, rangeIndex: 
 }
 
 function isClusterMissile(weapon: WeaponEquipment): boolean {
-  return (weapon.damage === 'cluster' && weapon.hasAnyFlag(['F_LRM', 'F_SRM', 'F_MML']))
+  return (weapon.damage === 'cluster'
+    && (weapon.hasWeaponTrait('lrm') || weapon.hasWeaponTrait('srm') || weapon.hasWeaponTrait('mml')))
     || ['LRM', 'SRM', 'MML', 'LRM_PRIMITIVE', 'LRM_IMP', 'SRM_IMP',
       'LRM_TORPEDO', 'SRM_TORPEDO'].includes(weapon.ammoType);
 }
@@ -297,7 +310,7 @@ function mmlDamage(
     7: [1.2, 0.9, 0.6, 0],
     9: [1.4, 1.05, 0.7, 0],
   };
-  const usesArtemis = linked?.hasFlag('F_ARTEMIS') || linked?.hasFlag('F_ARTEMIS_PROTO');
+  const usesArtemis = usesArtemisIVDamageTable(linked);
   return ((usesArtemis ? artemis[weapon.rackSize] : undefined) ?? standard[weapon.rackSize])?.[rangeIndex] ?? 0;
 }
 

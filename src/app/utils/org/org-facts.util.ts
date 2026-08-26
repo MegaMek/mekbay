@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ASUnitTypeCode, Unit } from '../../models/units.model';
+import type { ASUnitTypeCode, UnitSummary } from '../../models/unit-summary.model';
 import type {
     CIMoveClass,
     CIMoveClassBucketValue,
@@ -68,35 +68,35 @@ function createUnitTypeSelectors(): Partial<Record<ASUnitTypeCode, (facts: UnitF
     ) as Partial<Record<ASUnitTypeCode, (facts: UnitFacts) => boolean>>;
 }
 
-function isAero(unit: Unit): boolean {
+function isAero(unit: UnitSummary): boolean {
     return unit.type === 'Aero';
 }
 
-function isBM(unit: Unit): boolean {
+function isBM(unit: UnitSummary): boolean {
     return unit.type === 'Mek';
 }
 
-function isCV(unit: Unit): boolean {
+function isCV(unit: UnitSummary): boolean {
     return unit.type === 'Tank' || unit.type === 'VTOL' || unit.type === 'Naval';
 }
 
-function isBA(unit: Unit): boolean {
+function isBA(unit: UnitSummary): boolean {
     return unit.type === 'Infantry' && unit.subtype === 'Battle Armor';
 }
 
-function isCI(unit: Unit): boolean {
+function isCI(unit: UnitSummary): boolean {
     return unit.type === 'Infantry' && unit.subtype !== 'Battle Armor';
 }
 
-function isPM(unit: Unit): boolean {
+function isPM(unit: UnitSummary): boolean {
     return unit.type === 'ProtoMek';
 }
 
-export function getNormalizedOrgUnitType(unit: Unit): Unit['as']['TP'] {
+export function getNormalizedOrgUnitType(unit: UnitSummary): UnitSummary['as']['TP'] {
     return unit.as.TP;
 }
 
-export function getCIMoveClass(unit: Unit): CIMoveClass | null {
+export function getCIMoveClass(unit: UnitSummary): CIMoveClass | null {
     if (!isCI(unit)) {
         return null;
     }
@@ -134,12 +134,12 @@ export function getCIMoveClass(unit: Unit): CIMoveClass | null {
     return 'foot';
 }
 
-function getCIMoveClassTag(unit: Unit): CIMoveClassTag | null {
+function getCIMoveClassTag(unit: UnitSummary): CIMoveClassTag | null {
     const moveClass = getCIMoveClass(unit);
     return moveClass ? `ci:${moveClass}` as CIMoveClassTag : null;
 }
 
-function hasSpecial(unit: Unit, special: string): boolean {
+function hasSpecial(unit: UnitSummary, special: string): boolean {
     return unit.as?.specials?.includes(special) ?? false;
 }
 
@@ -162,7 +162,7 @@ function allocateGroupFactId(): number {
     return groupFactId;
 }
 
-export function getUnitClassKey(unit: Unit): UnitClassKey {
+export function getUnitClassKey(unit: UnitSummary): UnitClassKey {
     if (isBA(unit)) return 'BA';
     if (isCI(unit)) return unit.subtype === 'Mechanized Conventional Infantry' ? 'CI:mechanized' : 'CI';
     if (isBM(unit)) return unit.omni === 1 ? 'BM:omni' : 'BM';
@@ -191,7 +191,7 @@ function getCIMoveClassTrooperBucketValue(facts: UnitFacts): CIMoveClassTrooperB
     return `CI:${moveClass}:${facts.scalars.troopers}` as CIMoveClassTrooperBucketValue;
 }
 
-function hasFlightMoveType(unit: Unit): boolean {
+function hasFlightMoveType(unit: UnitSummary): boolean {
     return unit.as.MVm?.['a'] !== undefined || unit.as.MVm?.['v'] !== undefined || unit.as.MVm?.['g'] !== undefined;
 }
 
@@ -267,7 +267,7 @@ function getGroupCIMoveClassBucketValue(facts: GroupFacts): CIMoveClassBucketVal
     return `CI:${moveClassTags[0].slice('ci:'.length)}` as CIMoveClassBucketValue;
 }
 
-export function compileUnitFacts(unit: Unit, index?: number): UnitFacts {
+export function compileUnitFacts(unit: UnitSummary, index?: number): UnitFacts {
     const tags = new Set<UnitFactTag>();
 
     tags.add(getUnitClassKey(unit));
@@ -303,12 +303,12 @@ export function compileUnitFacts(unit: Unit, index?: number): UnitFacts {
     };
 }
 
-export function compileUnitFactsList(units: ReadonlyArray<Unit>): UnitFacts[] {
+export function compileUnitFactsList(units: ReadonlyArray<UnitSummary>): UnitFacts[] {
     return units.map((unit, index) => compileUnitFacts(unit, index));
 }
 
-export function buildUnitFactsMap(units: ReadonlyArray<Unit>): WeakMap<Unit, UnitFacts> {
-    const factsMap = new WeakMap<Unit, UnitFacts>();
+export function buildUnitFactsMap(units: ReadonlyArray<UnitSummary>): WeakMap<UnitSummary, UnitFacts> {
+    const factsMap = new WeakMap<UnitSummary, UnitFacts>();
 
     for (const [index, unit] of units.entries()) {
         factsMap.set(unit, compileUnitFacts(unit, index));
@@ -317,8 +317,8 @@ export function buildUnitFactsMap(units: ReadonlyArray<Unit>): WeakMap<Unit, Uni
     return factsMap;
 }
 
-export function collectGroupUnits(group: GroupSizeResult): Unit[] {
-    const result: Unit[] = [];
+export function collectGroupUnits(group: GroupSizeResult): UnitSummary[] {
+    const result: UnitSummary[] = [];
 
     if (group.unitAllocations) {
         result.push(...group.unitAllocations.map((allocation) => allocation.unit));
@@ -355,11 +355,11 @@ function getGroupProvenance(group: GroupSizeResult): OrgGroupProvenance {
 
 export function compileGroupFacts(
     group: GroupSizeResult,
-    unitFactsMap?: WeakMap<Unit, UnitFacts>,
-    groupUnitCache?: WeakMap<GroupSizeResult, Unit[]>,
+    unitFactsMap?: WeakMap<UnitSummary, UnitFacts>,
+    groupUnitCache?: WeakMap<GroupSizeResult, UnitSummary[]>,
 ): GroupFacts {
     const childTypeCounts = new Map<OrgChildTypeCountKey, number>();
-    const unitTypeCounts = new Map<Unit['as']['TP'], number>();
+    const unitTypeCounts = new Map<UnitSummary['as']['TP'], number>();
     const unitClassCounts = new Map<UnitClassKey, number>();
     const unitTagCounts = new Map<UnitFactTag, number>();
     const unitScalarSums = new Map<UnitNumericScalarName, number>();
@@ -435,8 +435,8 @@ export function compileGroupFacts(
 
 export function compileGroupFactsList(
     groups: ReadonlyArray<GroupSizeResult>,
-    unitFactsMap?: WeakMap<Unit, UnitFacts>,
-    groupUnitCache?: WeakMap<GroupSizeResult, Unit[]>,
+    unitFactsMap?: WeakMap<UnitSummary, UnitFacts>,
+    groupUnitCache?: WeakMap<GroupSizeResult, UnitSummary[]>,
 ): GroupFacts[] {
     return groups.map((group) => compileGroupFacts(group, unitFactsMap, groupUnitCache));
 }

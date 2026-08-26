@@ -5,11 +5,16 @@
 import { Injector, provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { DataService } from '../services/data.service';
-import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { ASForce } from './as-force.model';
 import { ASForceUnit } from './as-force-unit.model';
-import type { Unit } from './units.model';
+import type { UnitSummary } from './unit-summary.model';
+import {
+    asSourceHash,
+    asUnitUuid,
+    makeUnitFileName,
+    MM_DATA_UNIT_PROVIDER_ID,
+} from '../services/unit-catalog/unit-catalog.types';
 
 describe('ASForceUnit ability effects', () => {
     let injector: Injector;
@@ -21,7 +26,7 @@ describe('ASForceUnit ability effects', () => {
         injector = TestBed.inject(Injector);
     });
 
-    function createForceUnit(unit: Unit = createTestUnit()): ASForceUnit {
+    function createForceUnit(unit: UnitSummary = createTestUnit()): ASForceUnit {
         const force = {
             owned: () => true,
             emitChanged: jasmine.createSpy('emitChanged'),
@@ -31,13 +36,11 @@ describe('ASForceUnit ability effects', () => {
         return new ASForceUnit(
             unit,
             force,
-            {} as DataService,
-            {} as UnitInitializerService,
-            injector,
+            {} as DataService,            injector,
         );
     }
 
-    function createTestUnit(overrides: Parameters<typeof createEmptyUnit>[0] = {}): Unit {
+    function createTestUnit(overrides: Parameters<typeof createEmptyUnit>[0] = {}): UnitSummary {
         const { as: asOverrides, ...unitOverrides } = overrides;
         return createEmptyUnit({
             type: 'Mek',
@@ -65,6 +68,87 @@ describe('ASForceUnit ability effects', () => {
         expect(forceUnit.getBaseBv()).toBe(30);
         expect(forceUnit.getPreSkillBv()).toBe(30);
         expect(forceUnit.getBv()).toBeGreaterThan(30);
+    });
+
+    it('retains an exact detached native source with the loaded force unit', async () => {
+        const hash = asSourceHash('A'.repeat(27));
+        const uuid = asUnitUuid('019f91ca-c29f-7aca-a778-abba3d601f35');
+        const file = makeUnitFileName(uuid, 'mtf');
+        const originalBytes = new TextEncoder().encode('native BLK source').buffer;
+        const readNativeUnitSource = jasmine.createSpy('readNativeUnitSource').and.resolveTo({
+            file,
+            hash,
+            format: 'mtf' as const,
+            bytes: originalBytes,
+        });
+        const summary = createTestUnit({
+            uuid,
+            provider: MM_DATA_UNIT_PROVIDER_ID,
+            origin: 'megamek',
+            hash,
+        });
+        const force = {
+            owned: () => true,
+            emitChanged: jasmine.createSpy('emitChanged'),
+            groups: () => [],
+        } as unknown as ASForce;
+        const forceUnit = new ASForceUnit(
+            summary,
+            force,
+            { readNativeUnitSource } as unknown as DataService,            injector,
+        );
+
+        await forceUnit.load();
+        const first = forceUnit.getNativeSource();
+        expect(readNativeUnitSource).toHaveBeenCalledOnceWith(
+            MM_DATA_UNIT_PROVIDER_ID,
+            summary.uuid,
+        );
+        expect(first).toEqual(jasmine.objectContaining({ file, sourceHash: hash, format: 'mtf' }));
+        expect(new TextDecoder().decode(first!.bytes)).toBe('native BLK source');
+
+        new Uint8Array(first!.bytes)[0] = 0;
+        expect(new TextDecoder().decode(forceUnit.getNativeSource()!.bytes))
+            .toBe('native BLK source');
+    });
+
+    it('rejects a direct C3 position write on a read-only unit', () => {
+        const emitChanged = jasmine.createSpy('emitChanged');
+        const force = {
+            owned: () => false,
+            emitChanged,
+            groups: () => [],
+        } as unknown as ASForce;
+        const forceUnit = new ASForceUnit(
+            createTestUnit(),
+            force,
+            {} as DataService,            injector,
+        );
+
+        expect(forceUnit.setC3Position({ x: 12, y: 34 })).toBeFalse();
+        expect(forceUnit.c3Position()).toBeNull();
+        expect(emitChanged).not.toHaveBeenCalled();
+    });
+
+    it('rejects a direct C3 position write after exact membership is lost', () => {
+        const emitChanged = jasmine.createSpy('emitChanged');
+        const group = { force: null as unknown as ASForce, units: () => [] as ASForceUnit[] };
+        const force = {
+            owned: () => true,
+            readOnly: () => false,
+            emitChanged,
+            groups: () => [group],
+        } as unknown as ASForce;
+        group.force = force;
+        const forceUnit = new ASForceUnit(
+            createTestUnit(),
+            force,
+            {} as DataService,            injector,
+        );
+
+        expect(forceUnit.setC3Position({ x: 56, y: 78 })).toBeFalse();
+        expect(forceUnit.c3Position()).toBeNull();
+        expect(emitChanged).not.toHaveBeenCalled();
     });
 
     it('keeps default heat behavior without Hot Dog', () => {

@@ -4,7 +4,7 @@
 
 import { Component, ChangeDetectionStrategy, input, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { Unit, UnitComponent } from '../../../models/units.model';
+import type { UnitSummary, UnitComponent } from '../../../models/unit-summary.model';
 import { weaponTypes } from '../../../utils/equipment.util';
 import { DataService } from '../../../services/data.service';
 import { DialogsService } from '../../../services/dialogs.service';
@@ -17,6 +17,9 @@ import { ModeSwitchComponent } from '../../mode-switch/mode-switch.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import { BVCalculatorUtil } from '../../../utils/bv-calculator.util';
 import { getUnitSourceFilterValues } from '../../../utils/unit-search-shared.util';
+import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
+import { isHeatSinkEquipment } from '../../../models/heat-equipment.model';
+import { caseRecordSheetLabel, isCaseEquipment } from '../../../models/case-equipment.model';
 import {
     SourcebookInfoDialogComponent,
     type SourcebookInfoDialogData,
@@ -32,7 +35,7 @@ import {
     type ComponentMatrixAreaView,
 } from './unit-details-component-matrix.util';
 import { naturalCompare } from '../../../utils/sort.util';
-import { EquipmentFlag } from '../../../models/equipment-flags.type';
+import { isClubOrHandWeaponEquipment } from '../../../models/entity/utils/physical-weapon';
 import { formatBvPv } from '../../../utils/force-viewer-bv-pv-display.util';
 import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.util';
 import { GameService } from '../../../services/game.service';
@@ -48,10 +51,6 @@ type ComponentLayoutState = {
     showAmmoSummary: boolean;
     showAdditionalSummary: boolean;
 };
-
-const ADDITIONAL_COMPONENT_FLAGS: EquipmentFlag[] = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_JUMP_JET'];
-const CASE_COMPONENT_FLAGS: EquipmentFlag[] = ['F_CASE', 'F_CASE_II'];
-const WEAPON_MODE_MISC_COMPONENT_FLAGS: EquipmentFlag[] = ['F_CLUB', 'F_HAND_WEAPON'];
 
 export function shouldShowAdjustedPilotSkills(
     adjustedBv: number | null,
@@ -81,7 +80,7 @@ export class UnitDetailsGeneralTabComponent {
     private gameService = inject(GameService);
 
     // Inputs
-    unit = input.required<Unit>();
+    unit = input.required<UnitSummary>();
     gunnerySkill = input<number | undefined>(undefined);
     pilotingSkill = input<number | undefined>(undefined);
     adjustedValueOverride = input<number | undefined>(undefined);
@@ -142,9 +141,7 @@ export class UnitDetailsGeneralTabComponent {
         if (!u?.comp) return result;
         for (const comp of u.comp) {
             if (!comp.eq || !comp.l) continue;
-            let label: string | undefined;
-            if (comp.eq.hasFlag('F_CASE_II')) label = '[CASE II]';
-            else if (comp.eq.hasFlag('F_CASE') || comp.eq.hasFlag('F_CASE_P')) label = '[CASE]';
+            const label = caseRecordSheetLabel(comp.eq) ?? undefined;
             if (label) result.set(normalizeComponentLocation(comp.l), label);
         }
         return result;
@@ -194,12 +191,14 @@ export class UnitDetailsGeneralTabComponent {
 
     typeSummary = computed(() => {
         const u = this.unit();
-        const EXCLUDE_FLAGS: EquipmentFlag[] = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_CASE', 'F_CASE_II', 'F_JUMP_JET'];
         const counts: Record<string, number> = {};
         if (u?.comp) {
             for (const comp of u.comp) {
                 let code = comp.t;
-                if (code === 'C' && !comp.eq?.hasAnyFlag(EXCLUDE_FLAGS)) {
+                if (code === 'C'
+                    && !isHeatSinkEquipment(comp.eq)
+                    && !isCaseEquipment(comp.eq)
+                    && !isJumpJetEquipment(comp.eq)) {
                     code = 'O';
                 }
                 counts[code] = (counts[code] || 0) + (comp.q || 1);
@@ -292,7 +291,7 @@ export class UnitDetailsGeneralTabComponent {
         return source.trim().toLowerCase();
     }
 
-    private getPublishedSourceKeys(unit: Unit): Set<string> {
+    private getPublishedSourceKeys(unit: UnitSummary): Set<string> {
         const keys = new Set<string>();
         for (const source of unit.published ?? []) {
             if (typeof source !== 'string') continue;
@@ -307,17 +306,18 @@ export class UnitDetailsGeneralTabComponent {
     }
 
     isAdditionalComponent(comp: UnitComponent | null | undefined): boolean {
-        return comp?.t === 'C' && !!comp.eq?.hasAnyFlag(ADDITIONAL_COMPONENT_FLAGS);
+        return comp?.t === 'C'
+            && (isHeatSinkEquipment(comp.eq) || isJumpJetEquipment(comp.eq));
     }
 
     private isWeaponModeMiscComponent(comp: UnitComponent | null | undefined): boolean {
-        return comp?.t === 'C' && !!comp.eq?.hasAnyFlag(WEAPON_MODE_MISC_COMPONENT_FLAGS);
+        return comp?.t === 'C' && isClubOrHandWeaponEquipment(comp.eq);
     }
 
     private isWeaponModeSummaryComponent(comp: UnitComponent | null | undefined): boolean {
         return comp?.t === 'C'
             && (comp.p ?? -1) >= 0
-            && !comp.eq?.hasAnyFlag(CASE_COMPONENT_FLAGS)
+            && !isCaseEquipment(comp.eq)
             && !this.isAdditionalComponent(comp)
             && !this.isWeaponModeMiscComponent(comp);
     }
@@ -326,7 +326,7 @@ export class UnitDetailsGeneralTabComponent {
         for (const component of this.getHydratedComponents()) {
             if (component.t === 'X') return true;
             if (component.t !== 'C' || component.p < 0) continue;
-            if (component.eq?.hasAnyFlag(CASE_COMPONENT_FLAGS)) continue;
+            if (isCaseEquipment(component.eq)) continue;
             if (!this.isWeaponModeMiscComponent(component)) return true;
         }
         return false;
@@ -354,7 +354,7 @@ export class UnitDetailsGeneralTabComponent {
             if (component.t === 'S') continue;
             if (component.t === 'C') {
                 if (component.p < 0) continue; // Hide non-weapon components that are not in valid location (like HS in engine)
-                if (component.eq?.hasAnyFlag(CASE_COMPONENT_FLAGS)) continue; // Hide CASE components
+                if (isCaseEquipment(component.eq)) continue; // Hide CASE components
                 if (!showFilteredComponents && !this.isWeaponModeMiscComponent(component)) continue;
             };
 

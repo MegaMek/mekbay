@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew.model';
 import {
     DEFAULT_CLASSIC_BV_NORMALIZATION_MAX,
     type UnitSearchNormalizationMatch,
     type BvNormalizationSettings,
     type UnitSearchNumericRange,
 } from '../models/unit-search-result.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { BVCalculatorUtil } from './bv-calculator.util';
 import { getEffectivePilotingSkill, getFixedPilotingSkill } from './cbt-common.util';
 import {
@@ -48,7 +48,7 @@ export function isValidBvNormalizationSettings(settings: BvNormalizationSettings
  * delta, so only their Gunnery is normalized.
  */
 export function findBvNormalizationMatch(
-    unit: Unit,
+    unit: UnitSummary,
     settings: BvNormalizationSettings,
 ): BvNormalizationMatch | null {
     if (!isValidBvNormalizationSettings(settings)
@@ -98,7 +98,7 @@ export function findBvNormalizationMatch(
     return bestMatch;
 }
 
-function createMatch(unit: Unit, gunnery: number, piloting: number): BvNormalizationMatch {
+function createMatch(unit: UnitSummary, gunnery: number, piloting: number): BvNormalizationMatch {
     return {
         kind: 'bv',
         adjustedValue: BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting),

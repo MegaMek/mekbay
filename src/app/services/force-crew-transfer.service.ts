@@ -1,0 +1,112 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Injectable } from '@angular/core';
+import { ASForceUnit } from '../models/as-force-unit.model';
+import { GameSystem } from '../models/common.model';
+import type { LoadForceUnit } from '../models/load-force-entry.model';
+import {
+    forceMemberCommander,
+    isCBTForceMember,
+    type CBTForceMember,
+    type ForceMember,
+} from '../models/force-member.model';
+import type { CrewProfilePosition } from '../models/runtime/crew-profile';
+import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
+
+/** Copies crew facts between the only two live force-member owners. */
+@Injectable({ providedIn: 'root' })
+export class ForceCrewTransferService {
+    async applyGeneratedOverrides(created: ForceMember, input: LoadForceUnit): Promise<void> {
+        if (created instanceof ASForceUnit) {
+            if (input.alias) created.setPilotName(input.alias);
+            if (input.commander) created.setFormationCommander(true, false);
+            return;
+        }
+        if (!isCBTForceMember(created)) throw new Error('Unsupported force-member owner');
+        const overrides = new Map((input.crew ?? []).map(details => [details.id, details] as const));
+        await this.replaceCrew(created, (position, index) => {
+            const details = overrides.get(index);
+            if (details) return {
+                ...position,
+                name: details.name,
+                gunnery: details.gunnery,
+                piloting: getEffectivePilotingSkill(created.summary, details.piloting),
+            };
+            return index === 0 && !input.crew?.length && input.alias
+                ? { ...position, name: input.alias }
+                : position;
+        });
+    }
+
+    async transferCrossSystem(
+        source: ForceMember,
+        target: ForceMember,
+        sourceSystem: GameSystem,
+        targetSystem: GameSystem,
+    ): Promise<void> {
+        if (sourceSystem === targetSystem) return this.transferSameSystem(source, target, sourceSystem);
+        if (sourceSystem === GameSystem.ALPHA_STRIKE) {
+            if (!(source instanceof ASForceUnit) || !isCBTForceMember(target)) {
+                throw new Error('Alpha Strike to CBT transfer requires canonical AS and Classic members');
+            }
+            const name = source.alias();
+            await this.replaceCrew(target, (position, index) => index === 0 ? {
+                ...position,
+                ...(name ? { name } : {}),
+                gunnery: source.getPilotSkill(),
+            } : position);
+            return;
+        }
+        if (!isCBTForceMember(source) || !(target instanceof ASForceUnit)) {
+            throw new Error('CBT to Alpha Strike transfer requires canonical Classic and AS members');
+        }
+        const crew = source.force.getUnitCrewProfile(source.id)?.positions[0];
+        if (crew?.name) target.setPilotName(crew.name);
+        if (crew) target.setPilotSkill(crew.gunnery);
+        target.setFormationCommander(forceMemberCommander(source));
+    }
+
+    async transferSameSystem(source: ForceMember, target: ForceMember, system: GameSystem): Promise<void> {
+        if (system === GameSystem.ALPHA_STRIKE) {
+            if (!(source instanceof ASForceUnit) || !(target instanceof ASForceUnit)) {
+                throw new Error('Alpha Strike crew transfer requires Alpha Strike members');
+            }
+            const name = source.alias();
+            if (name) target.setPilotName(name);
+            target.setPilotSkill(source.pilotSkill());
+            const abilities = source.manualPilotAbilities();
+            if (abilities?.length) target.setPilotAbilities([...abilities]);
+            target.setFormationAbilities([...source.formationAbilities()]);
+            target.setFormationCommander(source.commander());
+            return;
+        }
+        if (!isCBTForceMember(source) || !isCBTForceMember(target)) {
+            throw new Error('CBT crew transfer requires canonical Classic members');
+        }
+        const sourceCrew = source.force.getUnitCrewProfile(source.id);
+        if (!sourceCrew) throw new Error(`Missing crew profile for ${source.id}`);
+        await this.replaceCrew(target, (position, index) => {
+            const value = sourceCrew.positions[index];
+            return value ? {
+                ...position,
+                ...(value.name ? { name: value.name } : {}),
+                gunnery: value.gunnery,
+                piloting: getEffectivePilotingSkill(target.summary, value.piloting),
+            } : position;
+        });
+    }
+
+    private async replaceCrew(
+        target: CBTForceMember,
+        update: (position: CrewProfilePosition, index: number) => CrewProfilePosition,
+    ): Promise<void> {
+        const before = target.force.getUnitCrewProfile(target.id);
+        if (!before) throw new Error(`Missing crew profile for ${target.id}`);
+        const result = await target.force.replaceUnitCrewProfile(target.id, {
+            expectedRevision: before.revision,
+            positions: before.positions.map(update),
+        });
+        if (!result?.accepted) throw new Error(`Could not update crew profile for ${target.id}`);
+    }
+}

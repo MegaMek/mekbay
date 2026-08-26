@@ -9,10 +9,10 @@ import { signal, type WritableSignal } from '@angular/core';
 import { GameSystem } from '../../models/common.model';
 import type { ForcePreviewEntry } from '../../models/force-preview.model';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { SearchForceGeneratorDialogComponent } from './search-force-generator-dialog.component';
 import { DataService } from '../../services/data.service';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { ForceGeneratorService, type ForceGenerationPreview } from '../../services/force-generator.service';
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
@@ -41,8 +41,8 @@ describe('SearchForceGeneratorDialogComponent', () => {
     let optionsSignal: WritableSignal<any>;
     let advOptionsSignal: WritableSignal<any>;
     let effectiveFilterStateSignal: WritableSignal<any>;
-    let filteredUnitsSignal: WritableSignal<Unit[]>;
-    let forceGeneratorEligibleUnitsSignal: WritableSignal<Unit[]>;
+    let filteredUnitsSignal: WritableSignal<UnitSummary[]>;
+    let forceGeneratorEligibleUnitsSignal: WritableSignal<UnitSummary[]>;
     let gameSystemSignal: WritableSignal<GameSystem>;
     let searchTextSignal: WritableSignal<string>;
 
@@ -156,9 +156,9 @@ describe('SearchForceGeneratorDialogComponent', () => {
         effectiveFilterStateSignal = signal({});
 
         const currentForceSignal = signal<any>(null);
-        filteredUnitsSignal = signal<Unit[]>([]);
-        forceGeneratorEligibleUnitsSignal = signal<Unit[]>([]);
-        const unitsByName = new Map<string, Unit>();
+        filteredUnitsSignal = signal<UnitSummary[]>([]);
+        forceGeneratorEligibleUnitsSignal = signal<UnitSummary[]>([]);
+        const unitsByName = new Map<string, UnitSummary>();
         const factionsByName = new Map<string, any>();
         const dataServiceMock = {
             isDataReady: signal(true),
@@ -305,7 +305,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             createForcePreviewEntry: createForcePreviewEntrySpy,
             createForceEntry: createForceEntrySpy,
             createForceEntryFromPreviewEntry: createForceEntryFromPreviewEntrySpy,
-            getBudgetMetric: (unit: Unit, gameSystem: GameSystem) => {
+            getBudgetMetric: (unit: UnitSummary, gameSystem: GameSystem) => {
                 return gameSystem === GameSystem.ALPHA_STRIKE ? unit.as?.PV ?? 0 : unit.bv ?? 0;
             },
         };
@@ -327,7 +327,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
                     useValue: forceGeneratorServiceMock,
                 },
                 {
-                    provide: ForceBuilderService,
+                    provide: ForceWorkspaceStateService,
                     useValue: {
                         smartCurrentForce: currentForceSignal,
                     },
@@ -899,7 +899,9 @@ describe('SearchForceGeneratorDialogComponent', () => {
         const liveUnit1 = {
             id: 'u-1',
             destroyed: false,
-            getUnit: () => atlas,
+            getSummary: () => atlas,
+            getBv: () => atlas.as.PV,
+            getPreSkillBv: () => atlas.as.PV,
             alias: () => undefined,
             commander: () => false,
             getPilotSkill: () => 3,
@@ -908,14 +910,16 @@ describe('SearchForceGeneratorDialogComponent', () => {
         const liveUnit2 = {
             id: 'u-2',
             destroyed: false,
-            getUnit: () => locust,
+            getSummary: () => locust,
+            getBv: () => locust.as.PV,
+            getPreSkillBv: () => locust.as.PV,
             alias: () => undefined,
             commander: () => false,
             getPilotSkill: () => 4,
             getPilotStats: () => 4,
         };
         testState.currentForceSignal.set({
-            units: () => [liveUnit1, liveUnit2],
+            members: () => [liveUnit1, liveUnit2],
             owned: () => true,
             instanceId: () => 'force-1',
             name: 'Current Force',
@@ -1190,12 +1194,12 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 type: 'dropdown' as const,
                 label: 'Tags',
                 options: [
-                    { name: 'Official' },
+                    { name: 'MM-Data' },
                     { name: 'Want' },
                     { name: 'CGB' },
                 ],
                 value: {
-                    Official: { name: 'Official', state: 'or' as const, count: 1 },
+                    'MM-Data': { name: 'MM-Data', state: 'or' as const, count: 1 },
                     Want: { name: 'Want', state: 'or' as const, count: 1 },
                     CGB: { name: 'CGB', state: 'and' as const, count: 1 },
                 },
@@ -1206,7 +1210,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         component.reroll();
 
         expect(buildPreviewSpy.calls.mostRecent().args[0].searchSettings).toEqual([
-            'Search settings: filters Era Jihad | Type Mek | Subtype BattleMek | Type BM | Tags Official, Want, CGB.',
+            'Search settings: filters Era Jihad | Type Mek | Subtype BattleMek | Type BM | Tags MM-Data, Want, CGB.',
         ]);
     });
 

@@ -2,29 +2,26 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import {
     type MegaMekAvailabilityData,
     type MegaMekWeightedAvailabilityRecord,
     type MegaMekWeightedAvailabilityValue,
 } from '../../models/megamek/availability.model';
-import { DbService } from '../db.service';
 import { CatalogBaseService } from './catalog-base.service';
 
 function isMegaMekAvailabilityData(
     data: MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[],
 ): data is MegaMekAvailabilityData {
-    return 'etag' in data && 'records' in data;
+    return 'assetHash' in data && 'records' in data;
 }
 
 @Injectable({
     providedIn: 'root'
 })
 export class MegaMekAvailabilityCatalogService extends CatalogBaseService<MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[], MegaMekAvailabilityData, MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[]> {
-    private readonly dbService = inject(DbService);
-
     private records: MegaMekWeightedAvailabilityRecord[] = [];
     private recordsByUnitName = new Map<string, MegaMekWeightedAvailabilityRecord>();
 
@@ -33,19 +30,21 @@ export class MegaMekAvailabilityCatalogService extends CatalogBaseService<MegaMe
     }
 
     protected override get remoteUrl(): string {
-        return 'assets/mulized_availability_weighted.json';
+        return 'online-assets/generated/mulized_availability_weighted.json';
     }
+
+    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
     public getRecords(): readonly MegaMekWeightedAvailabilityRecord[] {
         return this.records;
     }
 
-    public getRecordForUnit(unit: Pick<Unit, 'name'>): MegaMekWeightedAvailabilityRecord | undefined {
+    public getRecordForUnit(unit: Pick<UnitSummary, 'name'>): MegaMekWeightedAvailabilityRecord | undefined {
         return this.recordsByUnitName.get(unit.name);
     }
 
     public getAvailabilityForUnit(
-        unit: Pick<Unit, 'name'>,
+        unit: Pick<UnitSummary, 'name'>,
         eraId: number,
         factionId: number,
     ): MegaMekWeightedAvailabilityValue | undefined {
@@ -54,14 +53,6 @@ export class MegaMekAvailabilityCatalogService extends CatalogBaseService<MegaMe
 
     protected override hasHydratedData(): boolean {
         return this.records.length > 0;
-    }
-
-    protected override async loadFromCache(): Promise<MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[] | undefined> {
-        return await this.dbService.getMegaMekAvailability() ?? undefined;
-    }
-
-    protected override saveToCache(data: MegaMekAvailabilityData): Promise<void> {
-        return this.dbService.saveMegaMekAvailability(data);
     }
 
     protected override hydrate(data: MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[]): void {
@@ -78,14 +69,14 @@ export class MegaMekAvailabilityCatalogService extends CatalogBaseService<MegaMe
             }
         }
 
-        this.etag = wrappedData.etag;
+        this.transportRevision = wrappedData.assetHash;
     }
 
     protected override normalizeFetchedData(
         data: MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[],
-        etag: string,
+        assetHash: string,
     ): MegaMekAvailabilityData {
-        return this.wrapData(data, etag);
+        return this.wrapData(data, assetHash);
     }
 
     protected override getDatasetSize(data: MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[]): number {
@@ -94,17 +85,17 @@ export class MegaMekAvailabilityCatalogService extends CatalogBaseService<MegaMe
 
     private wrapData(
         data: MegaMekAvailabilityData | MegaMekWeightedAvailabilityRecord[],
-        etag: string,
+        assetHash: string,
     ): MegaMekAvailabilityData {
         if (isMegaMekAvailabilityData(data)) {
             return {
-                etag,
+                assetHash,
                 records: data.records,
             };
         }
 
         return {
-            etag,
+            assetHash,
             records: data,
         };
     }

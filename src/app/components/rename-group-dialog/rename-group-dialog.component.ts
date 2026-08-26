@@ -130,7 +130,7 @@ export interface RenameGroupDialogResult {
                 <svg class="expand-icon" width="16" height="16" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1l5 4-5 4z"/></svg>
               </summary>
               <div class="selected-formation-details">
-                <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.units().length" [isValid]="isSelectedFormationValid()" [requirementsFiltered]="isSelectedFormationRequirementsFiltered()" [requirementsFilterCompositionName]="selectedFormationRequirementsFilterCompositionName()" [requirementsFilterNotice]="selectedFormationRequirementsFilterNotice()"></formation-info>
+                <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.formationUnits().length" [isValid]="isSelectedFormationValid()" [requirementsFiltered]="isSelectedFormationRequirementsFiltered()" [requirementsFilterCompositionName]="selectedFormationRequirementsFilterCompositionName()" [requirementsFilterNotice]="selectedFormationRequirementsFilterNotice()"></formation-info>
               </div>
             </details>
             }

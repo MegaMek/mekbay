@@ -2,14 +2,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EquipmentFlag } from '../../../equipment-flags.type';
-import { AmmoEquipment, ArmorEquipment, isBombEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
+import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
+import { isBombEquipment } from '../../../aerospace-support-equipment.model';
 import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import type { FixedWingSupportEntity } from '../../entities/aero/fixed-wing-support-entity';
 import type { TechRating } from '../../types';
 import { calculateHeatNeutralRequirement, calculatePowerAmplifierWeight } from '../cost/common';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
 import { ceilToHalfTon } from './weight-rounding';
+import {
+  isConstructionSystemEquipment,
+  isSupportVehicleBarArmor,
+} from '../../../construction-equipment.model';
+import {
+  isChassisSystemEquipment,
+  isPropellerEquipment,
+  supportVehicleStructureMultiplier,
+} from '../../../chassis-equipment.model';
+import { isFireControlEquipment } from '../fire-control';
 
 const RATINGS: readonly TechRating[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 const STRUCTURE_MULTIPLIERS = [1.6, 1.3, 1.15, 1, 0.85, 0.66] as const;
@@ -18,20 +28,6 @@ const KG_PER_FUEL_POINT = [
   [63, 38, 25, 20, 18, 15],
   [83, 50, 35, 28, 23, 20],
 ] as const;
-const CHASSIS_MODIFIERS: ReadonlyArray<readonly [EquipmentFlag, number]> = [
-  ['F_AMPHIBIOUS', 1.75], ['F_ARMORED_CHASSIS', 1.5], ['F_BICYCLE', 0.75],
-  ['F_CONVERTIBLE', 1.1], ['F_DUNE_BUGGY', 1.5], ['F_ENVIRONMENTAL_SEALING', 2],
-  ['F_EXTERNAL_POWER_PICKUP', 1.1], ['F_HYDROFOIL', 1.7], ['F_MONOCYCLE', 0.5],
-  ['F_OFF_ROAD', 1.5], ['F_PROP', 1.2], ['F_SNOWMOBILE', 1.75],
-  ['F_STOL_CHASSIS', 1.5], ['F_SUBMERSIBLE', 1.8], ['F_TRACTOR_MODIFICATION', 1.2],
-  ['F_TRAILER_MODIFICATION', 0.8], ['F_ULTRA_LIGHT', 0.5], ['F_VSTOL_CHASSIS', 2],
-];
-const SYSTEM_FLAGS = [
-  'F_BASIC_FIRE_CONTROL', 'F_ADVANCED_FIRE_CONTROL', 'F_CHASSIS_MODIFICATION',
-  'F_FERRO_FIBROUS', 'F_FERRO_LAMELLOR', 'F_LIGHT_FERRO', 'F_HEAVY_FERRO',
-  'F_REACTIVE', 'F_REFLECTIVE', 'F_HARDENED_ARMOR', 'F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK',
-] as const;
-
 export interface FixedWingSupportWeightBreakdown {
   readonly engine: number; readonly structure: number; readonly controls: number;
   readonly fireControl: number;
@@ -47,10 +43,9 @@ export function calculateFixedWingSupportEffectiveTonnage(entity: FixedWingSuppo
 export function calculateFixedWingSupportWeightBreakdown(entity: FixedWingSupportEntity): FixedWingSupportWeightBreakdown {
   const small = entity.weightClass() === 'Small Support';
   const engine = getEquipmentEngineWeight(entity);
-  let structureModifier = 1;
-  for (const [flag, multiplier] of CHASSIS_MODIFIERS) {
-    if (entity.equipment().some(mount => mount.equipment?.hasFlag(flag))) structureModifier *= multiplier;
-  }
+  const structureModifier = supportVehicleStructureMultiplier(
+    entity.equipment().map(mount => mount.equipment),
+  );
   const chassisFactor = entity.tonnage() < 5 ? 0.08 : entity.tonnage() <= 100 ? 0.1 : 0.15;
   const structureRaw = entity.tonnage() * chassisFactor
     * (STRUCTURE_MULTIPLIERS[entity.structuralTechRating()] ?? 1) * structureModifier;
@@ -65,9 +60,7 @@ export function calculateFixedWingSupportWeightBreakdown(entity: FixedWingSuppor
   }, 0));
   const heatSinks = small ? 0 : calculateHeatNeutralRequirement(entity);
   const armor = calculateArmor(entity);
-  const fireControlMount = entity.equipment().find(mount => mount.equipment?.hasAnyFlag([
-    'F_BASIC_FIRE_CONTROL', 'F_ADVANCED_FIRE_CONTROL',
-  ]));
+  const fireControlMount = entity.equipment().find(mount => isFireControlEquipment(mount.equipment));
   const fireControl = fireControlMount
     ? requireTonnage(entity, fireControlMount)
     : entity.baseChassisFireConWeight();
@@ -80,7 +73,10 @@ export function calculateFixedWingSupportWeightBreakdown(entity: FixedWingSuppor
       if (!small && mount.location !== 'None' && !isBombEquipment(equipment)) ammo += requireTonnage(entity, mount);
     } else if (equipment instanceof WeaponEquipment) {
       if (!isBombEquipment(equipment)) weapons += requireTonnage(entity, mount);
-    } else if (equipment instanceof MiscEquipment && !equipment.hasAnyFlag([...SYSTEM_FLAGS])) {
+    } else if (equipment instanceof MiscEquipment
+      && !isFireControlEquipment(equipment)
+      && !isChassisSystemEquipment(equipment)
+      && !isConstructionSystemEquipment(equipment, 'fixed-wing-support')) {
       miscellaneous += requireTonnage(entity, mount);
     }
   }
@@ -90,7 +86,7 @@ export function calculateFixedWingSupportWeightBreakdown(entity: FixedWingSuppor
     if (transporter.kind !== 'bay' || isQuartersBay(transporter)) return total;
     return total + getBayConstructionWeight(transporter);
   }, 0);
-  const prop = entity.equipment().some(mount => mount.equipment?.hasFlag('F_PROP'));
+  const prop = entity.equipment().some(mount => isPropellerEquipment(mount.equipment));
   const fuelFree = (prop || entity.motiveType() === 'Airship')
     && (entity.mountedEngine().isFusion || entity.mountedEngine().isFission
       || entity.mountedEngine().descriptor().powerSource === 'solar');
@@ -108,7 +104,7 @@ export function calculateFixedWingSupportWeightBreakdown(entity: FixedWingSuppor
 function calculateArmor(entity: FixedWingSupportEntity): number {
   const mounted = entity.uniformArmor();
   if (!mounted) return 0;
-  const raw = mounted.armor.hasFlag('F_SUPPORT_VEE_BAR_ARMOR')
+  const raw = isSupportVehicleBarArmor(mounted.armor)
     ? entity.totalArmorPoints() * (mounted.armor.weightPerPointSV[mounted.techRating ?? RATINGS[entity.structuralTechRating()] ?? 'A'] ?? mounted.armor.weightPerPoint)
     : entity.totalArmorPoints() / (16 * mounted.armor.pptMultiplier);
   return entity.weightClass() === 'Small Support' ? ceilKg(raw) : ceilToHalfTon(raw);

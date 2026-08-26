@@ -2,16 +2,84 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { MountedEquipment } from '../models/mounted-equipment.model';
-import { WeaponEquipment, type AmmoEquipment } from '../models/equipment.model';
+import type { AmmoEquipment } from '../models/equipment.model';
 import { resolveAmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
-import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
+import {
+    getEffectiveInventoryControlCalculatorState,
+    type InventoryControlRuntimeRangeKey,
+    type InventoryControlRuntimeTarget,
+} from '../models/inventory-control-runtime-state.model';
 import { CORE_2026_GAME_RULES, separateHeatFireModifier, SKILL_BREAKDOWN_PRIORITY, type C3DegradationSource, type CBTGameRules, type ToHitResolution } from '../models/rules/game-rules';
 import { modifierTooltipLines, orderHitTargetTooltipLines } from './hit-target-tooltip.util';
-import type { UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
-import type { InventoryControlDisplayData, InventoryControlGroupId, InventoryRangeKey } from './inventory-control.util';
+import type { UnitModifierBreakdownEntry } from '../models/combat-modifier';
 import type { TooltipLine } from '../components/tooltip/tooltip.component';
 import { aerospaceRangeBracket, aerospaceRangeLimits, effectiveAerospaceMaximumBracket, isRangeBracketWithinMaximum } from './aerospace-range.util';
+import type { ComponentId } from '../models/entity/entity-identifiers';
+import type { EntityWeaponHitModifier } from '../models/entity/types/weapon';
+import type {
+    TnTargetNumberCalculatorState,
+    TnTargetUnitType,
+} from '../models/target-number-calculator.model';
+
+export interface TargetGuidanceCapabilities {
+    readonly semiGuided: boolean;
+    readonly narcCapableAboveWater: boolean;
+    readonly narcCapableUnderwater: boolean;
+}
+
+export type NarcGuidanceUnavailableReason = 'ecm-shielded' | 'water-layer';
+
+export interface TargetGuidanceResolution {
+    readonly semiGuided: boolean;
+    readonly narc: boolean;
+    readonly narcRelevant: boolean;
+    readonly narcUnavailableReason: NarcGuidanceUnavailableReason | null;
+}
+
+export function resolveTargetGuidance(
+    calculator: TnTargetNumberCalculatorState | undefined,
+    unitType: TnTargetUnitType | undefined,
+    capabilities: TargetGuidanceCapabilities,
+    gameRules: CBTGameRules = CORE_2026_GAME_RULES,
+): TargetGuidanceResolution {
+    const narcRelevant = calculator !== undefined
+        && (calculator.narcAboveWater === true || calculator.narcUnderwater === true)
+        && (capabilities.narcCapableAboveWater || capabilities.narcCapableUnderwater);
+    const sameWaterLayer = calculator !== undefined
+        && ((calculator.narcAboveWater === true && capabilities.narcCapableAboveWater)
+            || (calculator.narcUnderwater === true && capabilities.narcCapableUnderwater));
+    const narcUnavailableReason: NarcGuidanceUnavailableReason | null = !narcRelevant
+        ? null
+        : calculator.ecmShielded === true ? 'ecm-shielded'
+            : !sameWaterLayer ? 'water-layer' : null;
+    return {
+        semiGuided: calculator?.tagged === true
+            && capabilities.semiGuided
+            && gameRules.allowsTagDesignation(unitType),
+        narc: narcRelevant && narcUnavailableReason === null,
+        narcRelevant,
+        narcUnavailableReason,
+    };
+}
+
+export interface InventoryTargetNumberAerospaceWeaponFacts {
+    readonly capital: boolean;
+    readonly maxRangeBracket: InventoryControlRuntimeRangeKey;
+}
+
+/** Immutable component-local input for inventory range and target-number projection. */
+export interface InventoryTargetNumberComponentFacts {
+    readonly componentId: ComponentId;
+    readonly physical: boolean;
+    readonly aerospaceWeapon: InventoryTargetNumberAerospaceWeaponFacts | null;
+}
+
+export interface InventoryTargetDisplay {
+    readonly min: string;
+    readonly short: string;
+    readonly medium: string;
+    readonly long: string;
+}
 
 export interface InventoryTargetRangeSelection {
     range: InventoryControlRuntimeRangeKey;
@@ -37,9 +105,8 @@ export interface InventoryTargetNumberState {
 }
 
 export interface InventoryTargetNumberInput {
-    entry: MountedEquipment;
-    category: InventoryControlGroupId;
-    display: Pick<InventoryControlDisplayData, InventoryRangeKey | 'min'>;
+    targetNumberFacts: InventoryTargetNumberComponentFacts;
+    display: InventoryTargetDisplay;
     extremeRange?: number | null;
     allowExtremeRange?: boolean;
     selectedAmmo?: AmmoEquipment | null;
@@ -49,35 +116,35 @@ export interface InventoryTargetNumberInput {
     missingMovementModifier?: boolean;
     attackModifierBreakdown: readonly UnitModifierBreakdownEntry[];
     hitResolution: ToHitResolution;
+    /** Effective weapon-specific target modifier, when ammunition changes it. */
+    targetModifier?: number;
+    /** Optional detail behind the effective target modifier. */
+    targetModifierBreakdown?: readonly Readonly<{
+        label: string;
+        modifier: number;
+        ignored?: true;
+    }>[] | null;
     c3DegradationSource?: C3DegradationSource;
     gameRules?: CBTGameRules;
 }
 
-export type InventoryTargetDisplay = Pick<InventoryControlDisplayData, InventoryRangeKey | 'min'>;
-
-export function inventoryTargetCategory(entry: MountedEquipment): InventoryControlGroupId {
-    if (entry.isPhysicalWeapon()) return 'physical';
-    if (entry.equipment instanceof WeaponEquipment) return 'ranged';
-    return 'equipment';
-}
-
 export function inventoryTargetAllowsC3(target: InventoryControlRuntimeTarget): boolean {
-    return target.tnCalculator?.indirectFire !== true;
+    return getEffectiveInventoryControlCalculatorState(target)?.indirectFire !== true;
 }
 
 export function inventoryTargetUsesC3(target: InventoryControlRuntimeTarget): boolean {
     return target.useC3 === true && inventoryTargetAllowsC3(target);
 }
 
-export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberInput, 'entry' | 'category' | 'display' | 'extremeRange' | 'allowExtremeRange' | 'target' | 'selectedAmmo'>): InventoryTargetRangeSelection | null {
+export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberInput, 'targetNumberFacts' | 'display' | 'extremeRange' | 'allowExtremeRange' | 'target' | 'selectedAmmo'>): InventoryTargetRangeSelection | null {
     const target = input.target;
     if (!target) return null;
     const c3Distance = inventoryTargetUsesC3(target) ? target.c3Distance ?? null : null;
     const rangeDistance = c3Distance === null ? target.distance : Math.min(target.distance, c3Distance);
-    if (isPhysicalInventoryTargetNumberEntry(input.entry, input.category)) return { range: 'short', maximumRange: 'short', outOfRange: false, outOfLongRange: false, outOfExtremeRange: false, minimumRangeModifier: 0, distance: target.distance, c3Distance };
+    if (input.targetNumberFacts.physical) return { range: 'short', maximumRange: 'short', outOfRange: false, outOfLongRange: false, outOfExtremeRange: false, minimumRangeModifier: 0, distance: target.distance, c3Distance };
 
-    if (isAerospaceWeaponAttack(input.entry)) {
-        return aerospaceTargetRangeSelection(input.entry, target, input.selectedAmmo ?? null, c3Distance);
+    if (input.targetNumberFacts.aerospaceWeapon) {
+        return aerospaceTargetRangeSelection(input.targetNumberFacts.aerospaceWeapon, target, input.selectedAmmo ?? null, c3Distance);
     }
 
     const artilleryMinimumDistance = input.selectedAmmo?.category === 'Artillery' ? 7 : null;
@@ -89,7 +156,7 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
 
     const thresholds = (['short', 'medium', 'long'] as const)
         .map(range => ({ range, value: parseInventoryTargetNumberCell(input.display[range]) }))
-        .filter((item): item is { range: InventoryRangeKey; value: number } => item.value !== null);
+        .filter((item): item is { range: 'short' | 'medium' | 'long'; value: number } => item.value !== null);
     if (thresholds.length === 0) return null;
     const normalMaximum = thresholds[thresholds.length - 1];
     const extremeRange = input.extremeRange ?? null;
@@ -120,17 +187,12 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
     };
 }
 
-function isAerospaceWeaponAttack(entry: MountedEquipment): boolean {
-    return entry.owner.getUnit?.().type === 'Aero' && entry.equipment instanceof WeaponEquipment;
-}
-
 function aerospaceTargetRangeSelection(
-    entry: MountedEquipment,
+    weapon: InventoryTargetNumberAerospaceWeaponFacts,
     target: InventoryControlRuntimeTarget,
     selectedAmmo: AmmoEquipment | null,
     c3Distance: number | null
 ): InventoryTargetRangeSelection {
-    const weapon = entry.equipment as WeaponEquipment;
     // Runtime targets do not yet model altitude or map scale. An Aero target is
     // therefore the explicit signal that the entered distance is an A2A range;
     // all other targets use MegaMek's zero-distance A2G bracket rule.
@@ -162,7 +224,7 @@ function aerospaceTargetRangeSelection(
 }
 
 function aerospaceMaximumRangeBracket(
-    weapon: WeaponEquipment,
+    weapon: InventoryTargetNumberAerospaceWeaponFacts,
     selectedAmmo: AmmoEquipment | null
 ): InventoryControlRuntimeRangeKey {
     return effectiveAerospaceMaximumBracket(weapon, resolveAmmoWeaponProfile(selectedAmmo));
@@ -205,7 +267,7 @@ export function inventoryTargetNumberBreakdown(
         };
     }
 
-    const physical = isPhysicalInventoryTargetNumberEntry(input.entry, input.category);
+    const physical = input.targetNumberFacts.physical;
     const skillLabel = physical ? 'Piloting' : 'Gunnery';
     const skill = physical ? input.pilotingSkill : input.gunnerySkill;
     const gameRules = input.gameRules ?? CORE_2026_GAME_RULES;
@@ -229,8 +291,21 @@ export function inventoryTargetNumberBreakdown(
 
     terms.push(...modifierTooltipLines(input.attackModifierBreakdown, entry => formatInventoryTargetSignedModifier(entry.modifier)));
 
-    if (target.tnModifier !== 0) {
-        terms.push({ label: `Target (${target.letter})`, value: formatInventoryTargetSignedModifier(target.tnModifier) });
+    const targetModifier = input.targetModifier ?? target.tnModifier;
+    if (input.targetModifierBreakdown !== undefined && input.targetModifierBreakdown !== null) {
+        terms.push({
+            label: `Target ${target.letter}`,
+            value: formatInventoryTargetSignedModifier(targetModifier),
+            isHeader: true,
+        });
+        terms.push(...input.targetModifierBreakdown.map(modifier => ({
+            label: modifier.label,
+            value: formatInventoryTargetSignedModifier(modifier.modifier),
+            nested: true,
+            ...(modifier.ignored === true ? { ignored: true as const } : {}),
+        })));
+    } else if (targetModifier !== 0) {
+        terms.push({ label: `Target (${target.letter})`, value: formatInventoryTargetSignedModifier(targetModifier) });
     }
 
     if (!physical) {
@@ -267,7 +342,7 @@ export function inventoryTargetNumberBreakdown(
 
     const attackModifier = input.attackModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
     const equipmentHitModifier = hitModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
-    const total = skill + attackModifier + target.tnModifier + rangeModifier + c3ModifierValue + minimumRangeModifier + equipmentHitModifier + numericAmmoToHitModifier + heatFireModifier;
+    const total = skill + attackModifier + targetModifier + rangeModifier + c3ModifierValue + minimumRangeModifier + equipmentHitModifier + numericAmmoToHitModifier + heatFireModifier;
     return {
         total,
         lines: [
@@ -334,10 +409,6 @@ function nextInventoryRangeBracket(range: InventoryControlRuntimeRangeKey): Inve
     }
 }
 
-export function isPhysicalInventoryTargetNumberEntry(entry: MountedEquipment, category?: string): boolean {
-    return category === 'physical' || entry.isPhysicalWeapon();
-}
-
 export function parseInventoryTargetNumberCell(value: string): number | null {
     const text = value.trim();
     if (!/^[-+]?\d+(?:\.\d+)?$/.test(text)) return null;
@@ -347,6 +418,15 @@ export function parseInventoryTargetNumberCell(value: string): number | null {
 
 export function formatInventoryTargetSignedModifier(value: number): string {
     return value >= 0 ? `+${value}` : value.toString();
+}
+
+export function formatPhysicalHitModifier(
+    modifier: EntityWeaponHitModifier | undefined,
+): string {
+    if (modifier === undefined) return '—';
+    if (modifier === 'versus') return 'Vs';
+    if (modifier === 'variable') return '*';
+    return formatInventoryTargetSignedModifier(modifier);
 }
 
 function inventoryTargetMinimumRangeModifier(minimumRangeText: string, distance: number): number {

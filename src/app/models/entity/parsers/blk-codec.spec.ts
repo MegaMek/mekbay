@@ -5,7 +5,14 @@
 import { MountedArmor } from '../components/armor';
 import { ArmorEquipment, createEquipment } from '../../equipment.model';
 import type { GyroType } from '../components/gyro-data';
-import type { AeroDesignType, DriveCoreType, DropShipCollarType, EngineType, HeatSinkType } from '../types';
+import {
+  type AeroDesignType,
+  type DriveCoreType,
+  type DropShipCollarType,
+  type EngineType,
+  type HeatSinkType,
+  VALID_TECH_BASE_STRINGS,
+} from '../types';
 import type { CockpitType } from '../types/cockpit';
 import {
   encodeBlkAeroCockpitType,
@@ -159,9 +166,31 @@ describe('BLK codec', () => {
   it('parses and canonically encodes BLK entity tech levels', () => {
     expect(parseBlkTechLevel(' IS Level 2 Advanced ')).toEqual({ techBase: 'IS', rulesLevel: 3, mixedTech: false });
     expect(parseBlkTechLevel('Mixed (IS Chassis)')).toEqual({ techBase: 'IS', rulesLevel: 2, mixedTech: true });
+    expect(parseBlkTechLevel('Mixed (Clan Chassis) Advanced')).toEqual({ techBase: 'Clan', rulesLevel: 3, mixedTech: true });
     expect(parseBlkTechLevel('Mixed (Clan Chassis) Experimental')).toEqual({ techBase: 'Clan', rulesLevel: 4, mixedTech: true });
     expect(encodeBlkTechLevel({ techBase: 'IS', rulesLevel: 2, mixedTech: true })).toBe('Mixed (IS Chassis)');
     expect(encodeBlkTechLevel({ techBase: 'Clan', rulesLevel: 4, mixedTech: true })).toBe('Mixed (Clan Chassis) Experimental');
     expect(encodeBlkTechLevel({ techBase: 'IS', rulesLevel: 2, mixedTech: false })).toBe('IS Level 2');
+  });
+
+  it('validates exactly the BLK entity tech-level strings accepted by MegaMek', () => {
+    const megaMekTechLevels = [
+      'IS',
+      'IS Level 1', 'IS Level 2', 'IS Level 3', 'IS Level 4', 'IS Level 5',
+      'Clan',
+      'Clan Level 2', 'Clan Level 3', 'Clan Level 4', 'Clan Level 5',
+      'Mixed (IS Chassis)',
+      'Mixed (IS Chassis) Advanced',
+      'Mixed (IS Chassis) Experimental',
+      'Mixed (IS Chassis) Unofficial',
+      'Mixed (Clan Chassis)',
+      'Mixed (Clan Chassis) Advanced',
+      'Mixed (Clan Chassis) Experimental',
+      'Mixed (Clan Chassis) Unofficial',
+    ];
+
+    expect([...VALID_TECH_BASE_STRINGS]).toEqual(megaMekTechLevels);
+    expect(VALID_TECH_BASE_STRINGS.has('Mixed (Clan Chassis) Level 3')).toBeFalse();
+    expect(VALID_TECH_BASE_STRINGS.has('Clan Level 1')).toBeFalse();
   });
 });

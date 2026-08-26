@@ -21,7 +21,7 @@
 import { signal, computed, WritableSignal } from '@angular/core';
 import type { EngineType, EntityTechBase, TechAdvancement } from '../types';
 import { MEK_SLOTS_PER_LOCATION } from '../types';
-import { type GyroType, getGyro } from './gyro';
+import { GYRO_DATA, type GyroType } from './gyro-data';
 import {
   ENGINE_DATA,
   type EngineTypeDescriptor,
@@ -315,7 +315,7 @@ export function buildCTSystemLayout(
 ): (string | null)[] {
   const layout: (string | null)[] = new Array(MEK_SLOTS_PER_LOCATION).fill(null);
   const engineSlots = engine.getCTSlots(gyroType);
-  const gyro = getGyro(gyroType);
+  const gyroCriticalSlots = GYRO_DATA[gyroType].criticalSlots;
 
   // Place engine slots
   for (const idx of engineSlots) {
@@ -328,7 +328,7 @@ export function buildCTSystemLayout(
     if (idx === gyroStart) gyroStart = idx + 1;
     else break;
   }
-  for (let i = 0; i < gyro.criticalSlots; i++) {
+  for (let i = 0; i < gyroCriticalSlots; i++) {
     const idx = gyroStart + i;
     if (idx < MEK_SLOTS_PER_LOCATION) layout[idx] = 'Gyro';
   }

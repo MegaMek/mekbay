@@ -1,0 +1,275 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import assert from 'node:assert/strict';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { extname, join, relative, resolve } from 'node:path';
+
+const root = resolve(__dirname, '..');
+const app = join(root, 'src', 'app');
+
+function filesBelow(directory: string): string[] {
+    return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+        const path = join(directory, entry.name);
+        return entry.isDirectory() ? filesBelow(path) : extname(path) === '.ts' ? [path] : [];
+    });
+}
+
+function source(path: string): string {
+    return readFileSync(path, 'utf8');
+}
+
+function display(path: string): string {
+    return relative(root, path).replaceAll('\\', '/');
+}
+
+const deletedPaths = [
+    'src/app/models/runtime/mek-publication-context.ts',
+    'src/app/models/runtime/combat-transaction-v2.ts',
+    'src/app/models/runtime/combat-transaction-v2.spec.ts',
+    'src/app/models/runtime/component-interaction-authority.ts',
+    'src/app/models/runtime/mek-c3-network-v2.ts',
+    'src/app/models/runtime/mek-damage-lifecycle-runtime.ts',
+    'src/app/models/runtime/mek-heat-recovery-capability-v2.ts',
+    'src/app/models/runtime/mek-mechanics-recovery-capability-v2.ts',
+    'src/app/models/runtime/unit-runtime-port.ts',
+    'src/app/models/runtime/mek-crew-profile.ts',
+    'src/app/models/cbt-force-unit.model.ts',
+    'src/app/models/cbt-force-unit-state.model.ts',
+    'src/app/utils/java-string-compat.ts',
+    'src/app/services/entity-editor-session.service.ts',
+    'src/app/services/mek-editor-workspace.service.ts',
+    'src/app/services/force-member-query.ts',
+    'src/app/services/force-member-projection.service.ts',
+    'src/app/models/rules/vehicle-motive-hit.util.ts',
+    'src/app/models/runtime/entity-unit-instance.ts',
+    'src/app/models/runtime/ready-entity-unit.ts',
+    'src/app/models/runtime/entity-runtime-index.ts',
+];
+for (const path of deletedPaths) {
+    assert.equal(existsSync(join(root, path)), false, `${path} must stay deleted`);
+}
+
+const production = filesBelow(app).filter(path => !path.endsWith('.spec.ts'));
+const facadeFiles = production.filter(path =>
+    /(?:^|[-_.])facade(?:[-_.]|$)/iu.test(display(path)));
+assert.deepEqual(facadeFiles.map(display), [], 'facade files must stay deleted');
+
+const forbidden = /\b(?:PublishedEntity|PublishedMek|EntityBlueprint|immutablePublication|canonicalJson|assertNoDuplicateJsonKeys|javaCaseFoldKey|convertLegacyV1|movementPsrRecovery|movementHeatFallback|discard-mek-movement-psr-recovery|ForceMemberProjectionService|queryForceMembers|queryForceGroupMembers|cbtForceV2State|V2UnitRuntimePort|UnitRuntimePort|MekDamageLifecycleRuntime|InMemoryCombatTransactionCoordinatorV2|CBTForceUnit)\b|entity\/blueprint/u;
+const offenders = production.filter(path => forbidden.test(source(path)));
+assert.deepEqual(
+    offenders.map(display),
+    [],
+    'production must not recreate the discarded published/blueprint/canonicalization layers',
+);
+
+const readyUnit = source(join(app, 'models', 'runtime', 'ready-unit-factory.ts'));
+assert.match(readyUnit, /private readonly entity: MekEntity;/u);
+assert.match(readyUnit, /public getUnit\(\): MekEntity\s*\{\s*return this\.entity;/u);
+
+const unitInstance = source(join(app, 'models', 'runtime', 'unit-instance.ts'));
+assert.match(unitInstance, /readonly entity: MekEntity;/u);
+assert.match(unitInstance, /#state: MekUnitRuntimeState;/u);
+assert.doesNotMatch(unitInstance, /MountedEquipment|SVGElement|querySelector|document\./u);
+assert.doesNotMatch(unitInstance, /legacy|Legacy|migrateLegacy|recovery evidence/u);
+
+const baseline = source(join(app, 'models', 'runtime', 'runtime-state.ts'));
+assert.match(baseline, /readonly entity: SavedEntityIdentity;/u);
+assert.doesNotMatch(baseline, /readonly published:/u);
+
+const force = source(join(app, 'models', 'force.model.ts'));
+assert.doesNotMatch(force, /cbtForceV2State/u);
+assert.match(force, /public readonly members = computed<ForceMember\[\]>/u);
+
+const cbtForce = source(join(app, 'models', 'cbt-force.model.ts'));
+const cbtAuthority = source(join(app, 'models', 'cbt-force-authority.ts'));
+const cbtC3 = source(join(app, 'models', 'cbt-force-c3.ts'));
+const memberRegistry = source(join(app, 'models', 'runtime', 'cbt-force-member-registry.ts'));
+const runtimeJournal = source(join(app, 'models', 'runtime', 'cbt-force-runtime-journal.ts'));
+assert.match(cbtAuthority, /interface CBTForceAuthorityState\s*\{\s*readonly envelope: SerializedCBTForceV2;/u);
+assert.match(cbtForce, /private readonly authority = new CBTForceAuthority\(\);/u);
+assert.match(cbtForce, /private readonly memberRegistry = new CBTForceMemberRegistry/u);
+assert.match(cbtForce, /private readonly runtimeJournal = new CBTForceRuntimeJournal/u);
+assert.match(cbtForce, /return this\.authority\.envelope\(\);/u);
+assert.doesNotMatch(cbtForce, /CBTForceUnitStore|memberProjection|runtimeCommands/u);
+assert.match(cbtForce, /export class CBTForce extends Force<never>/u);
+assert.match(cbtForce, /protected override createForceUnit\(unit: UnitSummary\): never/u);
+assert.match(cbtForce, /protected override deserializeForceUnit\(_data: never\): never/u);
+assert.match(cbtForce, /public getRuntimeInstanceIds\(\): readonly UnitInstanceId\[\]/u);
+assert.match(cbtForce, /public async admitRetainedUnit\(/u);
+assert.doesNotMatch(
+    cbtForce,
+    /\b(?:getMekRuntimeInstanceIds|updateMekGroup|reorderMekGroup|removeMekGroup|admitRetainedMekV2)\b/u,
+);
+assert.doesNotMatch(cbtForce, /CBT_SERIALIZED_FORCE_SCHEMA|Sanitizer\.sanitize/u);
+assert.ok(cbtForce.split(/\r?\n/u).length < 2600, 'CBTForce must not regrow into a 5000-line god class');
+assert.ok(cbtAuthority.split(/\r?\n/u).length < 1700, 'CBTForceAuthority must remain focused');
+assert.match(cbtC3, /export class CBTForceC3/u);
+assert.match(memberRegistry, /no BV result/u);
+assert.match(runtimeJournal, /Sole owner of session-only checkpoints/u);
+assert.doesNotMatch(runtimeJournal, /encounter|Encounter/u, 'C3 topology must stay outside runtime undo');
+assert.doesNotMatch(
+    [cbtForce, cbtAuthority, cbtC3, memberRegistry].join('\n'),
+    /UnitBattleValueCacheEntry|TagBattleValueCache|WeakMap/u,
+    'force BV must not grow cache entries or object-key caches',
+);
+assert.doesNotMatch(
+    cbtForce,
+    /groups:\s*_legacyGroups|c3Networks:\s*_legacyNetworks/u,
+    'the current Classic writer must not strip V1 topology after serialization',
+);
+
+const readyClassic = source(join(app, 'models', 'runtime', 'ready-classic-unit.ts'));
+assert.match(readyClassic, /export interface ReadyClassicUnit/u);
+assert.doesNotMatch(readyClassic, /endTurn\([^)]*MekHeatAutomationPolicyV2/u);
+const readyMek = source(join(app, 'models', 'runtime', 'ready-unit-factory.ts'));
+const readyNonMek = source(join(app, 'models', 'runtime', 'ready-non-mek-unit.ts'));
+assert.match(readyMek, /class ReadyMekUnit implements ReadyClassicUnit/u);
+assert.match(readyNonMek, /class ReadyNonMekUnit implements ReadyClassicUnit/u);
+const nonMekRuntime = source(join(app, 'models', 'runtime', 'non-mek-unit-instance.ts'));
+assert.match(nonMekRuntime, /NonMekEntityType = Exclude<EntityType, 'Mek'>/u);
+assert.match(nonMekRuntime, /export class NonMekUnitInstance/u);
+assert.match(nonMekRuntime, /private readonly entity: BaseEntity/u);
+assert.match(nonMekRuntime, /this\.entity\.battleValueFor\(this\.stateView\(\), this\.ruleset\)/u);
+assert.doesNotMatch(nonMekRuntime, /ForceUnit|Facade|Published/u);
+
+const unitSnapshot = source(join(app, 'models', 'cbt-unit-snapshot.ts'));
+const classicRuntime = source(join(app, 'models', 'runtime', 'classic-unit-runtime.ts'));
+assert.match(unitSnapshot, /export interface CBTUnitSnapshot/u);
+assert.doesNotMatch(unitSnapshot, /CBTMekUnitSnapshot|CBTEntityUnitSnapshot|readonly kind:/u);
+assert.match(unitSnapshot, /entity: BaseEntity/u);
+assert.match(unitSnapshot, /Critical slots and critical-hit state[\s\S]*hasMekRuntime/u);
+assert.doesNotMatch(classicRuntime, /CriticalSlotId|readonly slots:|readonly destroyed:/u);
+assert.match(nonMekRuntime, /readonly explicitlyDestroyed: boolean/u);
+assert.doesNotMatch(nonMekRuntime, /readonly slots:|readonly criticalHits:/u);
+
+const operationalC3 = source(join(app, 'models', 'runtime', 'c3-operational-network.ts'));
+const forceBv = source(join(app, 'models', 'cbt-force-battle-value.ts'));
+assert.match(operationalC3, /export function projectOperationalC3Networks/u);
+assert.match(forceBv, /projectOperationalC3Networks\(/u);
+assert.match(cbtC3, /projectOperationalC3Networks\(/u);
+
+const commandSession = source(join(app, 'models', 'runtime', 'runtime-command-session.ts'));
+assert.match(commandSession, /interface RuntimeCommandCheckpoint\s*\{\s*readonly units:/u);
+assert.doesNotMatch(commandSession, /encounter/u);
+
+const forceSerialization = source(join(app, 'models', 'force-serialization.ts'));
+assert.match(
+    forceSerialization,
+    /interface CBTSerializedForce extends SerializedForce\s*\{\s*version: 1;\s*type: GameSystem\.CLASSIC;\s*cbt\?: never;/u,
+    'the grouped Classic DTO must remain an exact V1 ingress type',
+);
+
+const forceMember = source(join(app, 'models', 'force-member.model.ts'));
+assert.match(forceMember, /export class CBTForceMember/u);
+assert.match(forceMember, /readonly kind: 'cbt'/u);
+assert.match(forceMember, /export type ForceMember = ASForceUnit \| CBTForceMember;/u);
+assert.doesNotMatch(forceMember, /readonly kind: 'cbt-mek'/u);
+
+const forcePreview = source(join(app, 'models', 'force-preview.model.ts'));
+assert.match(forcePreview, /Force preview requires normalized current persistence/u);
+assert.doesNotMatch(
+    forcePreview,
+    /CBTSerialized(?:Unit|State|Group|Force)|CBT_SERIALIZED_FORCE_SCHEMA|LiveClassic|gunnerySkill\(|pilotingSkill\(/u,
+);
+
+const database = source(join(app, 'services', 'db.service.ts'));
+assert.match(database, /createLoadForceEntryFromPersistedForce/u);
+assert.match(database, /deleteForce\(instanceId: string, unitIds: readonly string\[\] = \[\]\)/u);
+assert.doesNotMatch(
+    database,
+    /deleteForceCanvasData\(instanceId|force\.groups[\s\S]{0,200}deleteCanvasData/u,
+    'IndexedDB must not decode V1 force topology',
+);
+
+const mul = source(join(app, 'utils', 'mul-file.util.ts'));
+assert.match(mul, /isCBTForceMember/u);
+assert.match(mul, /getUnitSnapshot/u);
+assert.match(mul, /dispatchNonMekUnitCommand/u);
+assert.match(mul, /snapshot\.query\.destroyed\(\)/u);
+assert.doesNotMatch(mul, /canonical CBT Mek/u);
+
+const summaryModel = source(join(app, 'models', 'unit-summary.model.ts'));
+const summaryBuilder = source(join(app, 'utils', 'unit-summary-builder.ts'));
+assert.doesNotMatch(summaryModel, /runtime-family-not-implemented|entity-load-errors/u);
+assert.doesNotMatch(summaryBuilder, /runtime-family-not-implemented|catalogSummary/u);
+
+const handlers = filesBelow(join(app, 'equipment-handlers'))
+    .filter(path => !path.endsWith('.spec.ts'));
+const handlerOffenders = handlers.filter(path =>
+    /MountedEquipment|CBTForceUnit|TurnState|Published|Facade|UnitRuntimePort/u.test(source(path)));
+assert.deepEqual(
+    handlerOffenders.map(display),
+    [],
+    'equipment handlers must use direct Entity/component facts and CBTUnitInstance',
+);
+
+function importersOf(moduleName: string): string[] {
+    const escaped = moduleName.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    const pattern = new RegExp(`from\\s+['\"][^'\"]*${escaped}['\"]`, 'u');
+    return production.filter(path => pattern.test(source(path))).map(display).sort();
+}
+
+assert.deepEqual(
+    importersOf('legacy-force-v1-converter'),
+    ['src/app/services/data.service.ts'],
+    'the saved-force loader must be the only production caller of V1 conversion',
+);
+assert.deepEqual(
+    importersOf('state-restorer'),
+    [
+        'src/app/models/runtime/legacy-force-v1-converter.ts',
+        'src/app/models/runtime/legacy-restoration-sidecar.ts',
+    ],
+    'legacy state restoration must stay behind the V1 converter',
+);
+assert.deepEqual(
+    importersOf('legacy-restoration-sidecar'),
+    ['src/app/models/runtime/legacy-force-v1-converter.ts'],
+    'legacy diagnostics must stay behind the V1 converter',
+);
+assert.deepEqual(
+    importersOf('mek-movement-psr-restoration-v1'),
+    ['src/app/models/runtime/state-restorer.ts'],
+    'legacy movement restoration must stay inside legacy state restoration',
+);
+assert.deepEqual(
+    importersOf('legacy-mek-turn-state-v1'),
+    ['src/app/models/runtime/mek-movement-psr-restoration-v1.ts'],
+    'the V1 turn decoder must stay inside the V1 movement converter',
+);
+
+const directV1ForceSurface = production
+    .filter(path => /CBTSerialized|CBT_SERIALIZED|convertPersistedForceV1|version\s*===?\s*1/u.test(source(path)))
+    .map(display)
+    .sort();
+assert.deepEqual(
+    directV1ForceSurface,
+    [
+        'src/app/models/force-serialization.ts',
+        'src/app/models/runtime/force-storage-codec.ts',
+        'src/app/models/runtime/legacy-force-v1-converter.ts',
+        'src/app/services/data.service.ts',
+    ],
+    'V1 force handling must stay inside its DTO, transparent storage ingress, converter, and DataService boundary',
+);
+
+const storageCodec = source(join(app, 'models', 'runtime', 'force-storage-codec.ts'));
+assert.match(storageCodec, /force\.version === 1[\s\S]{0,100}return detached/u);
+assert.doesNotMatch(storageCodec, /CBTSerialized|CBT_SERIALIZED|convertPersistedForceV1/u);
+
+const v1Converter = source(join(app, 'models', 'runtime', 'legacy-force-v1-converter.ts'));
+assert.match(v1Converter, /The only force V1 ingress/u);
+assert.match(v1Converter, /version: 2/u);
+assert.doesNotMatch(v1Converter, /movementPsrRecovery|movementHeatFallback/u);
+assert.match(v1Converter, /convertLegacyMovementHeatAcknowledgement/u);
+
+const dataService = source(join(app, 'services', 'data.service.ts'));
+assert.match(dataService, /raw\.version === 1\s*\? convertPersistedForceV1/u);
+assert.match(
+    dataService,
+    /createLoadForceEntryFromPersistedForce[\s\S]*normalizePersistedForce/u,
+);
+assert.match(database, /if \(force\.version !== 2\)[\s\S]*Only V2 force records may be saved/u);
+
+console.log('Convergence architecture guard passed: Entity + rules + sparse runtime is the only live Classic authority.');

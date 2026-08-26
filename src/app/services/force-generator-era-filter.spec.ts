@@ -9,7 +9,7 @@ import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
 import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
 import type { AvailabilitySource } from '../models/options.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { DataService } from './data.service';
 import { ForceGeneratorService } from './force-generator.service';
@@ -26,13 +26,13 @@ describe('ForceGeneratorService negative era filters', () => {
     const factionsById = new Map<number, Faction>();
     const availabilityByUnitName = new Map<string, { e: Record<string, Record<string, [number, number]>> }>();
     const megaMekAvailabilityRecords: Array<{ e: Record<string, Record<string, [number, number]>> }> = [];
-    const units: Unit[] = [];
+    const units: UnitSummary[] = [];
     const optionsServiceMock = {
         options: signal<{ availabilitySource: AvailabilitySource }>({ availabilitySource: 'megamek' }),
     };
 
     const filtersServiceMock = {
-        filteredUnits: signal<Unit[]>([]),
+        filteredUnits: signal<UnitSummary[]>([]),
         effectiveFilterState: jasmine.createSpy('effectiveFilterState').and.returnValue({}),
     };
 
@@ -47,7 +47,7 @@ describe('ForceGeneratorService negative era filters', () => {
         getFactionById: jasmine.createSpy('getFactionById').and.callFake((id: number) => factionsById.get(id)),
         getFactions: jasmine.createSpy('getFactions').and.callFake(() => [...factionsById.values()]),
         getMegaMekAvailabilityRecords: jasmine.createSpy('getMegaMekAvailabilityRecords').and.callFake(() => megaMekAvailabilityRecords),
-        getMegaMekAvailabilityRecordForUnit: jasmine.createSpy('getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => (
+        getMegaMekAvailabilityRecordForUnit: jasmine.createSpy('getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => (
             availabilityByUnitName.get(unit.name)
         )),
         getMegaMekRulesetsByMulFactionId: jasmine.createSpy('getMegaMekRulesetsByMulFactionId').and.returnValue([] as MegaMekRulesetRecord[]),

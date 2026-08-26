@@ -9,6 +9,12 @@ import type { CockpitType, EngineType, EntityTechBase, EquipmentTechBase } from 
 import type { HeatSinkType } from '../types/heat-sink';
 import { COCKPIT_DATA } from '../components/cockpit-data';
 import { GYRO_DATA, type GyroType } from '../components/gyro-data';
+import {
+  isCompactHeatSinkEquipment,
+  isDoubleHeatSinkEquipment,
+  isLaserHeatSinkEquipment,
+  isPrototypeDoubleHeatSinkEquipment,
+} from '../../heat-equipment.model';
 
 const FULL_HEAD_EJECTION_SYSTEM = 'Full Head Ejection System';
 const RISC_HEAT_SINK_OVERRIDE_KIT = 'RISC Heat Sink Override Kit';
@@ -208,10 +214,10 @@ export function decodeMtfHeatSinks(value: string): MtfHeatSinkConfiguration {
 
 export function encodeMtfHeatSinkType(equipment: MiscEquipment | null): string {
   if (!equipment) return 'Single';
-  if (equipment.hasFlag('F_IS_DOUBLE_HEAT_SINK_PROTOTYPE')) return 'Single';
-  if (equipment.isCompactHeatSink) return 'Compact';
-  if (equipment.hasFlag('F_LASER_HEAT_SINK')) return 'Laser';
-  if (equipment.hasFlag('F_DOUBLE_HEAT_SINK')) {
+  if (isPrototypeDoubleHeatSinkEquipment(equipment)) return 'Single';
+  if (isCompactHeatSinkEquipment(equipment)) return 'Compact';
+  if (isLaserHeatSinkEquipment(equipment)) return 'Laser';
+  if (isDoubleHeatSinkEquipment(equipment)) {
     return `${equipment.tech.base === 'Clan' ? 'Clan' : 'IS'} Double`;
   }
   return 'Single';

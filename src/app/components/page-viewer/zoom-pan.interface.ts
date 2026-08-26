@@ -5,7 +5,7 @@
 import { InjectionToken } from '@angular/core';
 
 /**
- * Minimal interface for zoom-pan services that need to work with SvgInteractionService.
+ * Minimal interface for record-sheet zoom and pan consumers.
  * Both SvgZoomPanService and PageViewerZoomPanService implement this interface.
  */
 export interface ZoomPanServiceInterface {

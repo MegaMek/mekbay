@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { approx, type TechAdvancement } from '../types';
+import { approx, type TechAdvancement, type TechRatingSource } from '../types';
+
+/** Technology imposed by non-fusion BattleMek engines and FrankenMek structure. */
+export const EXPERIMENTAL_MEK_SYSTEM_TECH = {
+  rating: 'A', level: 'Experimental', availability: ['A', 'A', 'A', 'A'],
+} as const satisfies TechRatingSource;
 
 const FULL_HEAD_EJECTION_TECH: TechAdvancement = {
   techBase: 'All', rating: 'D', availability: ['X', 'X', 'E', 'D'], level: 'Standard',

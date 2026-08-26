@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { AlphaStrikeArcStats, AlphaStrikeUnitStats, ASUnitTypeCode } from '../../../../units.model';
+import type { AlphaStrikeArcStats, AlphaStrikeUnitStats, ASUnitTypeCode } from '../../../../unit-summary.model';
 import { adjustPointValueForSkill } from '../../../../../utils/pv-skill-adjustment.util';
 
 type DamageRange = readonly [number, number, number];
@@ -301,10 +301,10 @@ function has(abilities: AbilitySource, ability: string): boolean {
 }
 
 function scalar(abilities: AbilitySource, ability: string): number {
-  const pattern = new RegExp(`^${escapeRegExp(ability)}(-?\\d+(?:\\.\\d+)?)$`);
   for (const value of abilities) {
-    const match = value.match(pattern);
-    if (match) return Number(match[1]);
+    if (!value.startsWith(ability)) continue;
+    const suffix = value.slice(ability.length);
+    if (SIGNED_DECIMAL.test(suffix)) return Number(suffix);
   }
   return 0;
 }
@@ -314,10 +314,11 @@ function optionalCount(abilities: AbilitySource, ability: string): number {
 }
 
 function hyphenatedCount(abilities: AbilitySource, ability: string): number {
-  const pattern = new RegExp(`^${escapeRegExp(ability)}-(\\d+)$`);
+  const prefix = `${ability}-`;
   for (const value of abilities) {
-    const match = value.match(pattern);
-    if (match) return Number(match[1]);
+    if (!value.startsWith(prefix)) continue;
+    const suffix = value.slice(prefix.length);
+    if (UNSIGNED_INTEGER.test(suffix)) return Number(suffix);
   }
   return 0;
 }
@@ -355,6 +356,5 @@ function roundToHalf(value: number): number {
   return 0.5 * Math.round(value * 2);
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+const SIGNED_DECIMAL = /^-?\d+(?:\.\d+)?$/;
+const UNSIGNED_INTEGER = /^\d+$/;

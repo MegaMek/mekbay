@@ -12,7 +12,7 @@ import type { MegaMekFactionRecord } from '../models/megamek/factions.model';
 import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY, MULFACTION_NONE } from '../models/mulfactions.model';
 import type { AvailabilitySource } from '../models/options.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import type { ForcePreviewEntry } from '../models/force-preview.model';
 import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
@@ -119,7 +119,7 @@ describe('ForceGeneratorService', () => {
     const megaMekRulesetsByMulFactionId = new Map<number, MegaMekRulesetRecord[]>();
     const megaMekRulesetsByFactionKey = new Map<string, MegaMekRulesetRecord>();
     const megaMekFactionsByKey = new Map<string, MegaMekFactionRecord>();
-    const units: Unit[] = [];
+    const units: UnitSummary[] = [];
     const optionsServiceMock = {
         options: signal({
             availabilitySource: 'megamek' as AvailabilitySource,
@@ -130,7 +130,7 @@ describe('ForceGeneratorService', () => {
     };
 
     const filtersServiceMock = {
-        filteredUnits: signal<Unit[]>([]),
+        filteredUnits: signal<UnitSummary[]>([]),
         effectiveFilterState: jasmine.createSpy('effectiveFilterState').and.returnValue({}),
     };
 
@@ -145,7 +145,7 @@ describe('ForceGeneratorService', () => {
         getFactionById: jasmine.createSpy('getFactionById').and.callFake((id: number) => factionsById.get(id)),
         getFactionByName: jasmine.createSpy('getFactionByName').and.callFake((name: string) => factionsByName.get(name)),
         getMegaMekAvailabilityRecords: jasmine.createSpy('getMegaMekAvailabilityRecords').and.callFake(() => megaMekAvailabilityRecords),
-        getMegaMekAvailabilityRecordForUnit: jasmine.createSpy('getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        getMegaMekAvailabilityRecordForUnit: jasmine.createSpy('getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return megaMekAvailabilityByUnitName.get(unit.name);
         }),
         getMegaMekRulesetsByMulFactionId: jasmine.createSpy('getMegaMekRulesetsByMulFactionId').and.callFake((mulFactionId: number) => {
@@ -180,7 +180,7 @@ describe('ForceGeneratorService', () => {
         } as Faction;
     }
 
-    function createUnit(overrides: TestUnitOverrides = {}): Unit {
+    function createUnit(overrides: TestUnitOverrides = {}): UnitSummary {
         const type = overrides.type ?? 'Mek';
         const subtype = overrides.subtype ?? 'BattleMek';
         const moveType = overrides.moveType ?? 'Tracked';
@@ -232,7 +232,7 @@ describe('ForceGeneratorService', () => {
         factionsById.set(faction.id, faction);
     }
 
-    function addMegaMekAvailability(unit: Unit, faction: Faction, era: Era, requisition = 5, salvage = 0): void {
+    function addMegaMekAvailability(unit: UnitSummary, faction: Faction, era: Era, requisition = 5, salvage = 0): void {
         megaMekAvailabilityByUnitName.set(unit.name, {
             e: {
                 [`${era.id}`]: {
@@ -1049,8 +1049,8 @@ describe('ForceGeneratorService', () => {
     it('prefers the higher MegaMek availability weight and falls back unknown units to the minimum requisition-only weight', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const knownUnit = createUnit({ id: 1, name: 'Known Unit', as: { PV: 5 } as Unit['as'] });
-        const unknownUnit = createUnit({ id: 2, name: 'Unknown Unit', as: { PV: 5 } as Unit['as'] });
+        const knownUnit = createUnit({ id: 1, name: 'Known Unit', as: { PV: 5 } as UnitSummary['as'] });
+        const unknownUnit = createUnit({ id: 2, name: 'Unknown Unit', as: { PV: 5 } as UnitSummary['as'] });
 
         megaMekAvailabilityByUnitName.set(knownUnit.name, {
             e: {
@@ -1085,8 +1085,8 @@ describe('ForceGeneratorService', () => {
     it('keys MegaMek availability weights by unit name when units share a missing MUL id', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const availableUnit = createUnit({ id: -1, name: 'Name-Keyed Available Unit', as: { PV: 5 } as Unit['as'] });
-        const unavailableUnit = createUnit({ id: -1, name: 'Name-Keyed Unavailable Unit', as: { PV: 6 } as Unit['as'] });
+        const availableUnit = createUnit({ id: -1, name: 'Name-Keyed Available Unit', as: { PV: 5 } as UnitSummary['as'] });
+        const unavailableUnit = createUnit({ id: -1, name: 'Name-Keyed Unavailable Unit', as: { PV: 6 } as UnitSummary['as'] });
 
         addMegaMekAvailability(availableUnit, faction, era, 5, 0);
         addMegaMekAvailability(unavailableUnit, faction, era, 0, 0);
@@ -1110,8 +1110,8 @@ describe('ForceGeneratorService', () => {
     it('does not reuse force generation candidate caches across different names that share a missing MUL id', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const firstUnit = createUnit({ id: -1, name: 'Signature Name Unit A', as: { PV: 5 } as Unit['as'] });
-        const secondUnit = createUnit({ id: -1, name: 'Signature Name Unit B', as: { PV: 6 } as Unit['as'] });
+        const firstUnit = createUnit({ id: -1, name: 'Signature Name Unit A', as: { PV: 5 } as UnitSummary['as'] });
+        const secondUnit = createUnit({ id: -1, name: 'Signature Name Unit B', as: { PV: 6 } as UnitSummary['as'] });
 
         addMegaMekAvailability(firstUnit, faction, era, 5, 0);
         addMegaMekAvailability(secondUnit, faction, era, 5, 0);
@@ -1354,16 +1354,16 @@ describe('ForceGeneratorService', () => {
         const faction = createFaction(10, 'Federated Suns');
         registerEraAndFaction(era, faction);
         const commandUnits = [
-            createUnit({ id: 1, name: 'Command Sniper', role: 'Sniper', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Command Skirmisher', role: 'Skirmisher', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Command Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 4, name: 'Command Scout', role: 'Scout', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Command Sniper', role: 'Sniper', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Command Skirmisher', role: 'Skirmisher', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Command Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 4, name: 'Command Scout', role: 'Scout', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
         ];
         const assaultUnits = [
-            createUnit({ id: 5, name: 'Assault Juggernaut', role: 'Juggernaut', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as Unit['as'] }),
-            createUnit({ id: 6, name: 'Assault Sniper A', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as Unit['as'] }),
-            createUnit({ id: 7, name: 'Assault Sniper B', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as Unit['as'] }),
-            createUnit({ id: 8, name: 'Assault Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as Unit['as'] }),
+            createUnit({ id: 5, name: 'Assault Juggernaut', role: 'Juggernaut', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as UnitSummary['as'] }),
+            createUnit({ id: 6, name: 'Assault Sniper A', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as UnitSummary['as'] }),
+            createUnit({ id: 7, name: 'Assault Sniper B', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as UnitSummary['as'] }),
+            createUnit({ id: 8, name: 'Assault Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as UnitSummary['as'] }),
         ];
         for (const unit of [...commandUnits, ...assaultUnits]) {
             units.push(unit);
@@ -1402,10 +1402,10 @@ describe('ForceGeneratorService', () => {
         const faction = createFaction(10, 'Federated Suns');
         registerEraAndFaction(era, faction);
         const commandUnits = [
-            createUnit({ id: 1, name: 'Compact Command Sniper', role: 'Sniper', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Compact Command Skirmisher', role: 'Skirmisher', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Compact Command Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 4, name: 'Compact Command Scout', role: 'Scout', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Compact Command Sniper', role: 'Sniper', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Compact Command Skirmisher', role: 'Skirmisher', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Compact Command Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 4, name: 'Compact Command Scout', role: 'Scout', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
         ];
         for (const unit of commandUnits) {
             units.push(unit);
@@ -1439,22 +1439,22 @@ describe('ForceGeneratorService', () => {
         const faction = createFaction(10, 'Capellan Confederation');
         registerEraAndFaction(era, faction);
         const commandUnits = [
-            createUnit({ id: 1, name: 'Quantity Command Sniper', role: 'Sniper', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Quantity Command Skirmisher', role: 'Skirmisher', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Quantity Command Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 4, name: 'Quantity Command Scout', role: 'Scout', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Quantity Command Sniper', role: 'Sniper', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Quantity Command Skirmisher', role: 'Skirmisher', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Quantity Command Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 4, name: 'Quantity Command Scout', role: 'Scout', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
         ];
         const antiAirUnits = [
-            createUnit({ id: 5, name: 'Quantity Anti-Air A', role: 'Missile Boat', as: { TP: 'BM', PV: 10, specials: ['AC'] } as Unit['as'] }),
-            createUnit({ id: 6, name: 'Quantity Anti-Air B', role: 'Sniper', as: { TP: 'BM', PV: 10, specials: ['FLK'] } as Unit['as'] }),
-            createUnit({ id: 7, name: 'Quantity Anti-Air C', role: 'Missile Boat', as: { TP: 'BM', PV: 10 } as Unit['as'] }),
-            createUnit({ id: 8, name: 'Quantity Anti-Air D', role: 'Brawler', as: { TP: 'BM', PV: 10 } as Unit['as'] }),
+            createUnit({ id: 5, name: 'Quantity Anti-Air A', role: 'Missile Boat', as: { TP: 'BM', PV: 10, specials: ['AC'] } as UnitSummary['as'] }),
+            createUnit({ id: 6, name: 'Quantity Anti-Air B', role: 'Sniper', as: { TP: 'BM', PV: 10, specials: ['FLK'] } as UnitSummary['as'] }),
+            createUnit({ id: 7, name: 'Quantity Anti-Air C', role: 'Missile Boat', as: { TP: 'BM', PV: 10 } as UnitSummary['as'] }),
+            createUnit({ id: 8, name: 'Quantity Anti-Air D', role: 'Brawler', as: { TP: 'BM', PV: 10 } as UnitSummary['as'] }),
         ];
         const assaultUnits = [
-            createUnit({ id: 9, name: 'Quantity Assault Juggernaut', role: 'Juggernaut', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as Unit['as'] }),
-            createUnit({ id: 10, name: 'Quantity Assault Sniper A', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as Unit['as'] }),
-            createUnit({ id: 11, name: 'Quantity Assault Sniper B', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as Unit['as'] }),
-            createUnit({ id: 12, name: 'Quantity Assault Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as Unit['as'] }),
+            createUnit({ id: 9, name: 'Quantity Assault Juggernaut', role: 'Juggernaut', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as UnitSummary['as'] }),
+            createUnit({ id: 10, name: 'Quantity Assault Sniper A', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as UnitSummary['as'] }),
+            createUnit({ id: 11, name: 'Quantity Assault Sniper B', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as UnitSummary['as'] }),
+            createUnit({ id: 12, name: 'Quantity Assault Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as UnitSummary['as'] }),
         ];
         for (const unit of [...commandUnits, ...antiAirUnits, ...assaultUnits]) {
             units.push(unit);
@@ -1498,14 +1498,14 @@ describe('ForceGeneratorService', () => {
             id: index + 1,
             name: `Regular Assault ${index + 1}`,
             role: 'Juggernaut',
-            as: { TP: 'BM', SZ: 3, PV: 40, Arm: 5, dmg: { _dmgM: 3 } } as Unit['as'],
+            as: { TP: 'BM', SZ: 3, PV: 40, Arm: 5, dmg: { _dmgM: 3 } } as UnitSummary['as'],
         }));
         const commandUnits = [
-            createUnit({ id: 101, name: 'Regular Command Sniper', role: 'Sniper', as: { TP: 'BM', SZ: 2, PV: 40, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 102, name: 'Regular Command Missile Boat', role: 'Missile Boat', as: { TP: 'BM', SZ: 2, PV: 40, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 103, name: 'Regular Command Skirmisher', role: 'Skirmisher', as: { TP: 'BM', SZ: 2, PV: 40, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 104, name: 'Regular Command Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 2, PV: 40, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 105, name: 'Regular Command Scout', role: 'Scout', as: { TP: 'BM', SZ: 2, PV: 40, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
+            createUnit({ id: 101, name: 'Regular Command Sniper', role: 'Sniper', as: { TP: 'BM', SZ: 2, PV: 40, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 102, name: 'Regular Command Missile Boat', role: 'Missile Boat', as: { TP: 'BM', SZ: 2, PV: 40, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 103, name: 'Regular Command Skirmisher', role: 'Skirmisher', as: { TP: 'BM', SZ: 2, PV: 40, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 104, name: 'Regular Command Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 2, PV: 40, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 105, name: 'Regular Command Scout', role: 'Scout', as: { TP: 'BM', SZ: 2, PV: 40, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
         ];
         for (const unit of [...assaultUnits, ...commandUnits]) {
             units.push(unit);
@@ -1579,13 +1579,13 @@ describe('ForceGeneratorService', () => {
                 Arm: 5,
                 dmg: { _dmgM: 3 },
                 MVm: fast ? { w: 10 } : { w: 8 },
-            } as unknown as Unit['as'],
+            } as unknown as UnitSummary['as'],
         });
         const createCommandUnit = (id: number, name: string, role: string, pv: number) => createUnit({
             id,
             name,
             role,
-            as: { TP: 'BM', SZ: 2, PV: pv, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'],
+            as: { TP: 'BM', SZ: 2, PV: pv, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'],
         });
         const fastAssaultCheapUnits = Array.from({ length: 5 }, (_, index) => createAssaultUnit(100 + index, `Cheap Fast Assault ${index + 1}`, 20, true));
         const commandCheapUnits = ['Sniper', 'Missile Boat', 'Skirmisher', 'Brawler', 'Scout']
@@ -1595,7 +1595,7 @@ describe('ForceGeneratorService', () => {
             id: 400 + index,
             name: `Cheap Filler ${index + 1}`,
             role: 'Skirmisher',
-            as: { TP: 'BM', SZ: 2, PV: 20, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'],
+            as: { TP: 'BM', SZ: 2, PV: 20, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'],
         }));
         const fastAssaultExpensiveUnits = Array.from({ length: 5 }, (_, index) => createAssaultUnit(500 + index, `Expensive Fast Assault ${index + 1}`, 80, true));
         const commandExpensiveUnits = ['Sniper', 'Missile Boat', 'Skirmisher', 'Brawler', 'Scout']
@@ -1651,22 +1651,22 @@ describe('ForceGeneratorService', () => {
         const faction = createFaction(MULFACTION_MERCENARY, 'Mercenary');
         registerEraAndFaction(era, faction);
         const commandUnits = [
-            createUnit({ id: 1, name: 'Capped Command Sniper', role: 'Sniper', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgL: 1, _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Capped Command Missile', role: 'Missile Boat', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgL: 1, _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Capped Command Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgL: 1, _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 4, name: 'Capped Command Scout', role: 'Scout', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgL: 1, _dmgM: 2 } } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Capped Command Sniper', role: 'Sniper', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgL: 1, _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Capped Command Missile', role: 'Missile Boat', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgL: 1, _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Capped Command Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgL: 1, _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 4, name: 'Capped Command Scout', role: 'Scout', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgL: 1, _dmgM: 2 } } as UnitSummary['as'] }),
         ];
         const directFireUnits = [
-            createUnit({ id: 10, name: 'Capped Direct Fire A', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgL: 2, _dmgM: 3 } } as Unit['as'] }),
-            createUnit({ id: 11, name: 'Capped Direct Fire B', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgL: 2, _dmgM: 3 } } as Unit['as'] }),
-            createUnit({ id: 12, name: 'Capped Direct Fire C', role: 'Brawler', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgL: 2, _dmgM: 3 } } as Unit['as'] }),
-            createUnit({ id: 13, name: 'Capped Direct Fire D', role: 'Skirmisher', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgL: 2, _dmgM: 3 } } as Unit['as'] }),
+            createUnit({ id: 10, name: 'Capped Direct Fire A', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgL: 2, _dmgM: 3 } } as UnitSummary['as'] }),
+            createUnit({ id: 11, name: 'Capped Direct Fire B', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgL: 2, _dmgM: 3 } } as UnitSummary['as'] }),
+            createUnit({ id: 12, name: 'Capped Direct Fire C', role: 'Brawler', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgL: 2, _dmgM: 3 } } as UnitSummary['as'] }),
+            createUnit({ id: 13, name: 'Capped Direct Fire D', role: 'Skirmisher', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgL: 2, _dmgM: 3 } } as UnitSummary['as'] }),
         ];
         const fillerUnits = Array.from({ length: 320 }, (_, index) => createUnit({
             id: 1000 + index,
             name: `Capped Filler ${index + 1}`,
             role: 'Transport',
-            as: { TP: 'BM', SZ: 1, PV: 10, Arm: 1, dmg: { _dmgL: 0, _dmgM: 1 } } as Unit['as'],
+            as: { TP: 'BM', SZ: 1, PV: 10, Arm: 1, dmg: { _dmgL: 0, _dmgM: 1 } } as UnitSummary['as'],
         }));
         const eligibleUnits = [...commandUnits, ...directFireUnits, ...fillerUnits];
         for (const unit of eligibleUnits) {
@@ -1704,11 +1704,11 @@ describe('ForceGeneratorService', () => {
         const faction = createFaction(10, 'Clan Jade Falcon');
         registerEraAndFaction(era, faction);
         const commandUnits = [
-            createUnit({ id: 1, name: 'Faction Command Sniper', role: 'Sniper', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Faction Command Skirmisher', role: 'Skirmisher', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Faction Command Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 4, name: 'Faction Command Scout', role: 'Scout', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 5, name: 'Faction Command Sniper B', role: 'Sniper', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Faction Command Sniper', role: 'Sniper', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Faction Command Skirmisher', role: 'Skirmisher', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Faction Command Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 4, name: 'Faction Command Scout', role: 'Scout', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 5, name: 'Faction Command Sniper B', role: 'Sniper', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
         ];
         for (const unit of commandUnits) {
             units.push(unit);
@@ -1747,9 +1747,9 @@ describe('ForceGeneratorService', () => {
         factionsByName.set(mercenary.name, mercenary);
         factionsById.set(mercenary.id, mercenary);
         const anvilUnits = [
-            createUnit({ id: 1, name: 'Anvil AC A', role: 'Juggernaut', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, specials: ['AC'] } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Anvil AC B', role: 'Juggernaut', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, specials: ['LRM'] } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Anvil Line A', role: 'Juggernaut', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4 } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Anvil AC A', role: 'Juggernaut', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, specials: ['AC'] } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Anvil AC B', role: 'Juggernaut', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, specials: ['LRM'] } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Anvil Line A', role: 'Juggernaut', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4 } as UnitSummary['as'] }),
         ];
         for (const unit of anvilUnits) {
             units.push(unit);
@@ -1795,14 +1795,14 @@ describe('ForceGeneratorService', () => {
         factionsById.set(mercenary.id, mercenary);
 
         const phalanxUnits = [
-            createUnit({ id: 1, name: 'Phalanx Mek A', as: { TP: 'BM', SZ: 3, PV: 10 } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Phalanx Mek B', as: { TP: 'BM', SZ: 3, PV: 10 } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Phalanx BA A', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 10 } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Phalanx Mek A', as: { TP: 'BM', SZ: 3, PV: 10 } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Phalanx Mek B', as: { TP: 'BM', SZ: 3, PV: 10 } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Phalanx BA A', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 10 } as UnitSummary['as'] }),
         ];
         const strategicUnits = [
-            createUnit({ id: 4, name: 'Strategic Aero A', type: 'Aero', as: { TP: 'AF', SZ: 2, PV: 10 } as Unit['as'] }),
-            createUnit({ id: 5, name: 'Strategic Aero B', type: 'Aero', as: { TP: 'AF', SZ: 2, PV: 10 } as Unit['as'] }),
-            createUnit({ id: 6, name: 'Strategic BA A', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 10 } as Unit['as'] }),
+            createUnit({ id: 4, name: 'Strategic Aero A', type: 'Aero', as: { TP: 'AF', SZ: 2, PV: 10 } as UnitSummary['as'] }),
+            createUnit({ id: 5, name: 'Strategic Aero B', type: 'Aero', as: { TP: 'AF', SZ: 2, PV: 10 } as UnitSummary['as'] }),
+            createUnit({ id: 6, name: 'Strategic BA A', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 10 } as UnitSummary['as'] }),
         ];
         for (const unit of [...phalanxUnits, ...strategicUnits]) {
             units.push(unit);
@@ -1812,7 +1812,7 @@ describe('ForceGeneratorService', () => {
 
         const expectClanTargetPreview = (
             formationId: string,
-            eligibleUnits: readonly Unit[],
+            eligibleUnits: readonly UnitSummary[],
             skills: { gunnery: number; piloting: number },
         ) => {
             const context = service.resolveGenerationContext(eligibleUnits, {
@@ -1847,7 +1847,7 @@ describe('ForceGeneratorService', () => {
         const era = createEra(3150, 'ilClan');
         const clanJadeFalcon = createFaction(18, 'Clan Jade Falcon', 'IS Clan');
         const clanWolf = createFaction(24, 'Clan Wolf', 'IS Clan');
-        const strategicUnit = createUnit({ id: 1, name: 'Strategic Shared Candidate', as: { TP: 'BM', SZ: 3, PV: 10 } as Unit['as'] });
+        const strategicUnit = createUnit({ id: 1, name: 'Strategic Shared Candidate', as: { TP: 'BM', SZ: 3, PV: 10 } as UnitSummary['as'] });
         registerEraAndFaction(era, clanJadeFalcon);
         registerEraAndFaction(era, clanWolf);
         units.push(strategicUnit);
@@ -1891,7 +1891,7 @@ describe('ForceGeneratorService', () => {
         const clanGhostBear = createFaction(17, 'Clan Ghost Bear', 'IS Clan');
         const clanJadeFalcon = createFaction(18, 'Clan Jade Falcon', 'IS Clan');
         const clanWolf = createFaction(24, 'Clan Wolf', 'IS Clan');
-        const strategicUnit = createUnit({ id: 1, name: 'Strategic Era Candidate', as: { TP: 'BM', SZ: 3, PV: 10 } as Unit['as'] });
+        const strategicUnit = createUnit({ id: 1, name: 'Strategic Era Candidate', as: { TP: 'BM', SZ: 3, PV: 10 } as UnitSummary['as'] });
         registerEraAndFaction(successionWars, clanGhostBear);
         registerEraAndFaction(ilClan, clanJadeFalcon);
         registerEraAndFaction(ilClan, clanWolf);
@@ -1930,10 +1930,10 @@ describe('ForceGeneratorService', () => {
         const era = createEra(3150, 'ilClan');
         const clanWolf = createFaction(24, 'Clan Wolf', 'IS Clan');
         registerEraAndFaction(era, clanWolf);
-        const strategicWarShip = createUnit({ id: 1, name: 'Strategic WarShip', type: 'Aero', subtype: 'WarShip', as: { TP: 'WS', SZ: 5, PV: 30 } as Unit['as'] });
-        const strategicAeroA = createUnit({ id: 2, name: 'Strategic Aero A', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as Unit['as'] });
-        const strategicAeroB = createUnit({ id: 3, name: 'Strategic Aero B', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as Unit['as'] });
-        const strategicBA = createUnit({ id: 4, name: 'Strategic BA', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 30 } as Unit['as'] });
+        const strategicWarShip = createUnit({ id: 1, name: 'Strategic WarShip', type: 'Aero', subtype: 'WarShip', as: { TP: 'WS', SZ: 5, PV: 30 } as UnitSummary['as'] });
+        const strategicAeroA = createUnit({ id: 2, name: 'Strategic Aero A', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as UnitSummary['as'] });
+        const strategicAeroB = createUnit({ id: 3, name: 'Strategic Aero B', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as UnitSummary['as'] });
+        const strategicBA = createUnit({ id: 4, name: 'Strategic BA', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 30 } as UnitSummary['as'] });
         const eligibleUnits = [strategicWarShip, strategicAeroA, strategicAeroB, strategicBA];
         for (const unit of eligibleUnits) {
             units.push(unit);
@@ -1966,11 +1966,11 @@ describe('ForceGeneratorService', () => {
         registerEraAndFaction(era, clanJadeFalcon);
         registerMegaMekRuleset(clanJadeFalcon, createMekOnlyStarRuleset('CJF'));
         const eligibleUnits = [
-            createUnit({ id: 1, name: 'Strategic Ruleset Mek A', chassis: 'Strategic Ruleset Mek A', weightClass: 'Heavy', as: { TP: 'BM', SZ: 3, PV: 50 } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Strategic Ruleset Mek B', chassis: 'Strategic Ruleset Mek B', weightClass: 'Assault', as: { TP: 'BM', SZ: 4, PV: 55 } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Strategic Ruleset Aero A', chassis: 'Strategic Ruleset Aero A', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 40 } as Unit['as'] }),
-            createUnit({ id: 4, name: 'Strategic Ruleset Aero B', chassis: 'Strategic Ruleset Aero B', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 45 } as Unit['as'] }),
-            createUnit({ id: 5, name: 'Strategic Ruleset BA', chassis: 'Strategic Ruleset BA', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 20 } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Strategic Ruleset Mek A', chassis: 'Strategic Ruleset Mek A', weightClass: 'Heavy', as: { TP: 'BM', SZ: 3, PV: 50 } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Strategic Ruleset Mek B', chassis: 'Strategic Ruleset Mek B', weightClass: 'Assault', as: { TP: 'BM', SZ: 4, PV: 55 } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Strategic Ruleset Aero A', chassis: 'Strategic Ruleset Aero A', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 40 } as UnitSummary['as'] }),
+            createUnit({ id: 4, name: 'Strategic Ruleset Aero B', chassis: 'Strategic Ruleset Aero B', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 45 } as UnitSummary['as'] }),
+            createUnit({ id: 5, name: 'Strategic Ruleset BA', chassis: 'Strategic Ruleset BA', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 20 } as UnitSummary['as'] }),
         ];
         for (const unit of eligibleUnits) {
             units.push(unit);
@@ -2005,11 +2005,11 @@ describe('ForceGeneratorService', () => {
         const clanWolf = createFaction(24, 'Clan Wolf', 'IS Clan');
         registerEraAndFaction(era, clanWolf);
         const eligibleUnits = [
-            createUnit({ id: 1, name: 'Strategic BM A', chassis: 'Strategic BM A', weightClass: 'Heavy', as: { TP: 'BM', SZ: 3, PV: 50 } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Strategic BM B', chassis: 'Strategic BM B', weightClass: 'Assault', as: { TP: 'BM', SZ: 4, PV: 55 } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Strategic Aero A', chassis: 'Strategic Aero A', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 40 } as Unit['as'] }),
-            createUnit({ id: 4, name: 'Strategic Aero B', chassis: 'Strategic Aero B', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 45 } as Unit['as'] }),
-            createUnit({ id: 5, name: 'Strategic BA', chassis: 'Strategic BA', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 20 } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Strategic BM A', chassis: 'Strategic BM A', weightClass: 'Heavy', as: { TP: 'BM', SZ: 3, PV: 50 } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Strategic BM B', chassis: 'Strategic BM B', weightClass: 'Assault', as: { TP: 'BM', SZ: 4, PV: 55 } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Strategic Aero A', chassis: 'Strategic Aero A', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 40 } as UnitSummary['as'] }),
+            createUnit({ id: 4, name: 'Strategic Aero B', chassis: 'Strategic Aero B', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 45 } as UnitSummary['as'] }),
+            createUnit({ id: 5, name: 'Strategic BA', chassis: 'Strategic BA', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 20 } as UnitSummary['as'] }),
         ];
         for (const unit of eligibleUnits) {
             units.push(unit);
@@ -2045,9 +2045,9 @@ describe('ForceGeneratorService', () => {
         const clanWolf = createFaction(24, 'Clan Wolf', 'IS Clan');
         registerEraAndFaction(era, clanWolf);
         const eligibleUnits = [
-            createUnit({ id: 1, name: 'Skill Forced Aero A', chassis: 'Skill Forced Aero A', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Skill Forced Aero B', chassis: 'Skill Forced Aero B', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Skill Forced BA', chassis: 'Skill Forced BA', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 20 } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Skill Forced Aero A', chassis: 'Skill Forced Aero A', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Skill Forced Aero B', chassis: 'Skill Forced Aero B', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Skill Forced BA', chassis: 'Skill Forced BA', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 20 } as UnitSummary['as'] }),
         ];
         for (const unit of eligibleUnits) {
             units.push(unit);
@@ -2080,9 +2080,9 @@ describe('ForceGeneratorService', () => {
         const clanWolf = createFaction(24, 'Clan Wolf', 'IS Clan');
         registerEraAndFaction(era, clanWolf);
         const eligibleUnits = [
-            createUnit({ id: 1, name: 'Skill Clipped Aero A', chassis: 'Skill Clipped Aero A', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Skill Clipped Aero B', chassis: 'Skill Clipped Aero B', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Skill Clipped BA', chassis: 'Skill Clipped BA', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 20 } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Skill Clipped Aero A', chassis: 'Skill Clipped Aero A', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Skill Clipped Aero B', chassis: 'Skill Clipped Aero B', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Skill Clipped BA', chassis: 'Skill Clipped BA', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 20 } as UnitSummary['as'] }),
         ];
         for (const unit of eligibleUnits) {
             units.push(unit);
@@ -2119,7 +2119,7 @@ describe('ForceGeneratorService', () => {
             id,
             name: `Support Skill Unit ${id}`,
             chassis: `Support Skill Unit ${id}`,
-            as: { TP: 'BM', SZ: 2, PV: 20 } as Unit['as'],
+            as: { TP: 'BM', SZ: 2, PV: 20 } as UnitSummary['as'],
         }));
         for (const unit of eligibleUnits) {
             units.push(unit);
@@ -2153,11 +2153,11 @@ describe('ForceGeneratorService', () => {
         registerEraAndFaction(era, clanHellsHorses);
         registerMegaMekRuleset(clanHellsHorses, createMekOnlyStarRuleset('CHH'));
         const eligibleUnits = [
-            createUnit({ id: 1, name: 'Phalanx Ruleset Mek A', chassis: 'Phalanx Ruleset Mek A', as: { TP: 'BM', SZ: 3, PV: 55 } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Phalanx Ruleset Mek B', chassis: 'Phalanx Ruleset Mek B', as: { TP: 'BM', SZ: 3, PV: 45 } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Phalanx Ruleset Mek C', chassis: 'Phalanx Ruleset Mek C', as: { TP: 'BM', SZ: 2, PV: 35 } as Unit['as'] }),
-            createUnit({ id: 4, name: 'Phalanx Ruleset BA', chassis: 'Phalanx Ruleset BA', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 25 } as Unit['as'] }),
-            createUnit({ id: 5, name: 'Phalanx Ruleset CV', chassis: 'Phalanx Ruleset CV', type: 'Tank', subtype: 'Combat Vehicle', as: { TP: 'CV', SZ: 2, PV: 40 } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Phalanx Ruleset Mek A', chassis: 'Phalanx Ruleset Mek A', as: { TP: 'BM', SZ: 3, PV: 55 } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Phalanx Ruleset Mek B', chassis: 'Phalanx Ruleset Mek B', as: { TP: 'BM', SZ: 3, PV: 45 } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Phalanx Ruleset Mek C', chassis: 'Phalanx Ruleset Mek C', as: { TP: 'BM', SZ: 2, PV: 35 } as UnitSummary['as'] }),
+            createUnit({ id: 4, name: 'Phalanx Ruleset BA', chassis: 'Phalanx Ruleset BA', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 25 } as UnitSummary['as'] }),
+            createUnit({ id: 5, name: 'Phalanx Ruleset CV', chassis: 'Phalanx Ruleset CV', type: 'Tank', subtype: 'Combat Vehicle', as: { TP: 'CV', SZ: 2, PV: 40 } as UnitSummary['as'] }),
         ];
         for (const unit of eligibleUnits) {
             units.push(unit);
@@ -2197,9 +2197,9 @@ describe('ForceGeneratorService', () => {
         factionsByName.set(mercenary.name, mercenary);
         factionsById.set(mercenary.id, mercenary);
         const anvilUnits = [
-            createUnit({ id: 1, name: 'Mixed Exclusive AC A', role: 'Juggernaut', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, specials: ['AC'], MVm: { w: 8 } } as unknown as Unit['as'] }),
-            createUnit({ id: 2, name: 'Mixed Exclusive AC B', role: 'Juggernaut', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, specials: ['FLK'], MVm: { w: 8 } } as unknown as Unit['as'] }),
-            createUnit({ id: 3, name: 'Mixed Exclusive Line A', role: 'Juggernaut', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, MVm: { w: 8 } } as unknown as Unit['as'] }),
+            createUnit({ id: 1, name: 'Mixed Exclusive AC A', role: 'Juggernaut', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, specials: ['AC'], MVm: { w: 8 } } as unknown as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Mixed Exclusive AC B', role: 'Juggernaut', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, specials: ['FLK'], MVm: { w: 8 } } as unknown as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Mixed Exclusive Line A', role: 'Juggernaut', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, MVm: { w: 8 } } as unknown as UnitSummary['as'] }),
         ];
         for (const unit of anvilUnits) {
             units.push(unit);
@@ -2249,13 +2249,13 @@ describe('ForceGeneratorService', () => {
         const faction = createFaction(10, 'Clan Jade Falcon');
         registerEraAndFaction(era, faction);
         const assaultUnits = [
-            createUnit({ id: 1, name: 'Rotated Assault Juggernaut', role: 'Juggernaut', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Rotated Assault Sniper', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Rotated Assault Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Rotated Assault Juggernaut', role: 'Juggernaut', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Rotated Assault Sniper', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Rotated Assault Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgM: 3 } } as UnitSummary['as'] }),
         ];
         const fillerUnits = [
-            createUnit({ id: 4, name: 'Rotated Filler Scout', role: 'Scout', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
-            createUnit({ id: 5, name: 'Rotated Filler Skirmisher', role: 'Skirmisher', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as Unit['as'] }),
+            createUnit({ id: 4, name: 'Rotated Filler Scout', role: 'Scout', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
+            createUnit({ id: 5, name: 'Rotated Filler Skirmisher', role: 'Skirmisher', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'] }),
         ];
         for (const unit of [...assaultUnits, ...fillerUnits]) {
             units.push(unit);
@@ -2289,7 +2289,7 @@ describe('ForceGeneratorService', () => {
     it('rolls Alpha Strike pilot skill within the requested range', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const unit = createUnit({ id: 1, name: 'Skill Range AS Unit', as: { PV: 20 } as Unit['as'] });
+        const unit = createUnit({ id: 1, name: 'Skill Range AS Unit', as: { PV: 20 } as UnitSummary['as'] });
 
         spyOn(Math, 'random').and.returnValues(0.99, 0, 0, 0);
 
@@ -2444,8 +2444,8 @@ describe('ForceGeneratorService', () => {
     it('uses max weights across selected eras and factions when multiselect expansion is enabled', () => {
         const rolledEra = createEra(3150, 'Jihad');
         const rolledFaction = createFaction(10, 'Capellan Confederation');
-        const extinctUnit = createUnit({ id: 1, name: 'Extinct Unit', as: { PV: 5 } as Unit['as'] });
-        const availableUnit = createUnit({ id: 2, name: 'Available Unit', as: { PV: 5 } as Unit['as'] });
+        const extinctUnit = createUnit({ id: 1, name: 'Extinct Unit', as: { PV: 5 } as UnitSummary['as'] });
+        const availableUnit = createUnit({ id: 2, name: 'Available Unit', as: { PV: 5 } as UnitSummary['as'] });
 
         megaMekAvailabilityByUnitName.set(extinctUnit.name, {
             e: {
@@ -2498,7 +2498,7 @@ describe('ForceGeneratorService', () => {
     it('uses max weights across selected eras for a single rolled faction when multiselect expansion is enabled', () => {
         const rolledEra = createEra(3150, 'Jihad');
         const rolledFaction = createFaction(10, 'Capellan Confederation');
-        const scopedUnit = createUnit({ id: 1, name: 'Scoped Era Unit', as: { PV: 5 } as Unit['as'] });
+        const scopedUnit = createUnit({ id: 1, name: 'Scoped Era Unit', as: { PV: 5 } as UnitSummary['as'] });
 
         megaMekAvailabilityByUnitName.set(scopedUnit.name, {
             e: {
@@ -2545,7 +2545,7 @@ describe('ForceGeneratorService', () => {
     it('uses max weights across selected factions for a single rolled era when multiselect expansion is enabled', () => {
         const rolledEra = createEra(3150, 'Jihad');
         const rolledFaction = createFaction(10, 'Capellan Confederation');
-        const scopedUnit = createUnit({ id: 1, name: 'Scoped Faction Unit', as: { PV: 5 } as Unit['as'] });
+        const scopedUnit = createUnit({ id: 1, name: 'Scoped Faction Unit', as: { PV: 5 } as UnitSummary['as'] });
 
         megaMekAvailabilityByUnitName.set(scopedUnit.name, {
             e: {
@@ -2590,8 +2590,8 @@ describe('ForceGeneratorService', () => {
         const capellanConfederation = createFaction(10, 'Capellan Confederation');
         const federatedSuns = createFaction(20, 'Federated Suns');
         const draconisCombine = createFaction(30, 'Draconis Combine');
-        const unitA = createUnit({ id: 1, name: 'Cache Test A', as: { PV: 5 } as Unit['as'] });
-        const unitB = createUnit({ id: 2, name: 'Cache Test B', as: { PV: 6 } as Unit['as'] });
+        const unitA = createUnit({ id: 1, name: 'Cache Test A', as: { PV: 5 } as UnitSummary['as'] });
+        const unitB = createUnit({ id: 2, name: 'Cache Test B', as: { PV: 6 } as UnitSummary['as'] });
 
         erasByName.set(era.name, era);
         erasById.set(era.id, era);
@@ -2663,7 +2663,7 @@ describe('ForceGeneratorService', () => {
     it('rebuilds cached availability weights when MegaMek availability data changes', () => {
         const era = createEra(3150, 'Jihad');
         const faction = createFaction(10, 'Capellan Confederation');
-        const unit = createUnit({ id: 1, name: 'Availability Version Unit', as: { PV: 5 } as Unit['as'] });
+        const unit = createUnit({ id: 1, name: 'Availability Version Unit', as: { PV: 5 } as UnitSummary['as'] });
 
         registerEraAndFaction(era, faction);
         addMegaMekAvailability(unit, faction, era, 2);
@@ -2692,14 +2692,14 @@ describe('ForceGeneratorService', () => {
     it('rebuilds base candidates when the search corpus changes with the same unit names', () => {
         const era = createEra(3150, 'Jihad');
         const faction = createFaction(10, 'Capellan Confederation');
-        const firstUnit = createUnit({ id: 1, name: 'Corpus Version Unit', as: { PV: 5 } as Unit['as'] });
-        const replacementUnit = createUnit({ id: 1, name: 'Corpus Version Unit', as: { PV: 9 } as Unit['as'] });
+        const firstUnit = createUnit({ id: 1, name: 'Corpus Version Unit', as: { PV: 5 } as UnitSummary['as'] });
+        const replacementUnit = createUnit({ id: 1, name: 'Corpus Version Unit', as: { PV: 9 } as UnitSummary['as'] });
 
         registerEraAndFaction(era, faction);
         addMegaMekAvailability(firstUnit, faction, era, 2);
         const buildBaseCandidateCacheSpy = spyOn(service as any, 'buildBaseCandidateCache').and.callThrough();
         const request = {
-            eligibleUnits: [firstUnit] as Unit[],
+            eligibleUnits: [firstUnit] as UnitSummary[],
             context: createContext(faction, era),
             gameSystem: GameSystem.ALPHA_STRIKE,
             budgetRange: { min: 0, max: 20 },
@@ -2722,8 +2722,8 @@ describe('ForceGeneratorService', () => {
         const era = createEra(3150, 'Jihad');
         const capellanConfederation = createFaction(10, 'Capellan Confederation');
         const federatedSuns = createFaction(20, 'Federated Suns');
-        const unitA = createUnit({ id: 1, name: 'Scoped Cache A', as: { PV: 5 } as Unit['as'] });
-        const unitB = createUnit({ id: 2, name: 'Scoped Cache B', as: { PV: 6 } as Unit['as'] });
+        const unitA = createUnit({ id: 1, name: 'Scoped Cache A', as: { PV: 5 } as UnitSummary['as'] });
+        const unitB = createUnit({ id: 2, name: 'Scoped Cache B', as: { PV: 6 } as UnitSummary['as'] });
 
         erasByName.set(era.name, era);
         erasById.set(era.id, era);
@@ -2794,8 +2794,8 @@ describe('ForceGeneratorService', () => {
         const firstEra = createEra(3075, 'Jihad');
         const secondEra = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Capellan Confederation');
-        const unitA = createUnit({ id: 1, name: 'Era Cache A', as: { PV: 5 } as Unit['as'] });
-        const unitB = createUnit({ id: 2, name: 'Era Cache B', as: { PV: 6 } as Unit['as'] });
+        const unitA = createUnit({ id: 1, name: 'Era Cache A', as: { PV: 5 } as UnitSummary['as'] });
+        const unitB = createUnit({ id: 2, name: 'Era Cache B', as: { PV: 6 } as UnitSummary['as'] });
 
         erasByName.set(firstEra.name, firstEra);
         erasById.set(firstEra.id, firstEra);
@@ -2859,8 +2859,8 @@ describe('ForceGeneratorService', () => {
     it('reuses the prepared candidate list across identical rerolls', () => {
         const era = createEra(3150, 'Jihad');
         const faction = createFaction(10, 'Capellan Confederation');
-        const unitA = createUnit({ id: 1, name: 'Prepared Cache A', as: { PV: 5 } as Unit['as'] });
-        const unitB = createUnit({ id: 2, name: 'Prepared Cache B', as: { PV: 6 } as Unit['as'] });
+        const unitA = createUnit({ id: 1, name: 'Prepared Cache A', as: { PV: 5 } as UnitSummary['as'] });
+        const unitB = createUnit({ id: 2, name: 'Prepared Cache B', as: { PV: 6 } as UnitSummary['as'] });
 
         erasByName.set(era.name, era);
         erasById.set(era.id, era);
@@ -2908,8 +2908,8 @@ describe('ForceGeneratorService', () => {
     it('reuses no-lock selection preparation across identical rerolls', () => {
         const era = createEra(3150, 'Jihad');
         const faction = createFaction(10, 'Capellan Confederation');
-        const unitA = createUnit({ id: 1, name: 'Selection Cache A', as: { PV: 5 } as Unit['as'] });
-        const unitB = createUnit({ id: 2, name: 'Selection Cache B', as: { PV: 6 } as Unit['as'] });
+        const unitA = createUnit({ id: 1, name: 'Selection Cache A', as: { PV: 5 } as UnitSummary['as'] });
+        const unitB = createUnit({ id: 2, name: 'Selection Cache B', as: { PV: 6 } as UnitSummary['as'] });
 
         erasByName.set(era.name, era);
         erasById.set(era.id, era);
@@ -2995,8 +2995,8 @@ describe('ForceGeneratorService', () => {
     it('prepares ruleset guidance once per preview instead of rebuilding it on every attempt', () => {
         const era = createEra(3150, 'Jihad');
         const faction = createFaction(10, 'Capellan Confederation');
-        const unitA = createUnit({ id: 1, name: 'Attempt Cache A', bv: 100, as: { PV: 5 } as Unit['as'] });
-        const unitB = createUnit({ id: 2, name: 'Attempt Cache B', bv: 100, as: { PV: 5 } as Unit['as'] });
+        const unitA = createUnit({ id: 1, name: 'Attempt Cache A', bv: 100, as: { PV: 5 } as UnitSummary['as'] });
+        const unitB = createUnit({ id: 2, name: 'Attempt Cache B', bv: 100, as: { PV: 5 } as UnitSummary['as'] });
 
         erasByName.set(era.name, era);
         erasById.set(era.id, era);
@@ -3044,7 +3044,7 @@ describe('ForceGeneratorService', () => {
     it('uses exact MegaMek weights for MUL-visible units when MegaMek has an exact-context record', () => {
         const era = createEra(3150, 'Jihad');
         const faction = createFaction(10, 'Draconis Combine');
-        const mulVisibleUnit = createUnit({ id: 1, name: 'MUL Visible Unit', as: { PV: 5 } as Unit['as'] });
+        const mulVisibleUnit = createUnit({ id: 1, name: 'MUL Visible Unit', as: { PV: 5 } as UnitSummary['as'] });
 
         era.units = new Set<number>([mulVisibleUnit.id]);
         faction.eras = {
@@ -3086,7 +3086,7 @@ describe('ForceGeneratorService', () => {
     it('keeps excluding zero-weight MegaMek units in MUL mode when the exact rolled MUL faction-era does not contain them', () => {
         const era = createEra(3150, 'Jihad');
         const faction = createFaction(10, 'Draconis Combine');
-        const mulInvisibleUnit = createUnit({ id: 1, name: 'MUL Invisible Unit', as: { PV: 5 } as Unit['as'] });
+        const mulInvisibleUnit = createUnit({ id: 1, name: 'MUL Invisible Unit', as: { PV: 5 } as UnitSummary['as'] });
 
         erasByName.set(era.name, era);
         erasById.set(era.id, era);
@@ -3121,7 +3121,7 @@ describe('ForceGeneratorService', () => {
     it('falls back to minimum unknown weights for MUL-visible units that are missing MegaMek availability records', () => {
         const era = createEra(2570, 'Age of War', 2570, 2780);
         const faction = createFaction(10, 'Draconis Combine');
-        const mulVisibleUnit = createUnit({ id: 1, name: 'MUL Visible Unknown', as: { PV: 5 } as Unit['as'] });
+        const mulVisibleUnit = createUnit({ id: 1, name: 'MUL Visible Unknown', as: { PV: 5 } as UnitSummary['as'] });
 
         era.units = new Set<number>([mulVisibleUnit.id]);
         faction.eras = {
@@ -3158,7 +3158,7 @@ describe('ForceGeneratorService', () => {
         const era = createEra(2570, 'Age of War', 2570, 2780);
         const primaryFaction = createFaction(10, 'Draconis Combine');
         const secondaryFaction = createFaction(20, 'Free Worlds League');
-        const mixedScopeUnit = createUnit({ id: 1, name: 'Mixed Scope Unknown', as: { PV: 5 } as Unit['as'] });
+        const mixedScopeUnit = createUnit({ id: 1, name: 'Mixed Scope Unknown', as: { PV: 5 } as UnitSummary['as'] });
 
         era.units = new Set<number>([mixedScopeUnit.id]);
         primaryFaction.eras = {
@@ -3218,7 +3218,7 @@ describe('ForceGeneratorService', () => {
     it('keeps excluding MUL-invisible units that are missing MegaMek availability records', () => {
         const era = createEra(2570, 'Age of War', 2570, 2780);
         const faction = createFaction(10, 'Draconis Combine');
-        const mulInvisibleUnknown = createUnit({ id: 1, name: 'MUL Invisible Unknown', as: { PV: 5 } as Unit['as'] });
+        const mulInvisibleUnknown = createUnit({ id: 1, name: 'MUL Invisible Unknown', as: { PV: 5 } as UnitSummary['as'] });
 
         erasByName.set(era.name, era);
         erasById.set(era.id, era);
@@ -3245,8 +3245,8 @@ describe('ForceGeneratorService', () => {
     it('rolls requisition and salvage separately before picking the unit', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const requisitionUnit = createUnit({ id: 1, name: 'Requisition Unit', chassis: 'Phoenix Hawk', model: 'PXH-1', as: { PV: 5 } as Unit['as'] });
-        const salvageUnit = createUnit({ id: 2, name: 'Salvage Unit', chassis: 'Shadow Hawk', model: 'SHD-2H', as: { PV: 5 } as Unit['as'] });
+        const requisitionUnit = createUnit({ id: 1, name: 'Requisition Unit', chassis: 'Phoenix Hawk', model: 'PXH-1', as: { PV: 5 } as UnitSummary['as'] });
+        const salvageUnit = createUnit({ id: 2, name: 'Salvage Unit', chassis: 'Shadow Hawk', model: 'SHD-2H', as: { PV: 5 } as UnitSummary['as'] });
 
         megaMekAvailabilityByUnitName.set(requisitionUnit.name, {
             e: {
@@ -3299,8 +3299,8 @@ describe('ForceGeneratorService', () => {
     });
 
     it('does not weight equally available candidate rolls by cost', () => {
-        const cheapUnit = createUnit({ id: 1, name: 'Cheap Equal Availability', as: { PV: 10 } as Unit['as'] });
-        const expensiveUnit = createUnit({ id: 2, name: 'Expensive Equal Availability', as: { PV: 90 } as Unit['as'] });
+        const cheapUnit = createUnit({ id: 1, name: 'Cheap Equal Availability', as: { PV: 10 } as UnitSummary['as'] });
+        const expensiveUnit = createUnit({ id: 2, name: 'Expensive Equal Availability', as: { PV: 90 } as UnitSummary['as'] });
         const cheapCandidate = {
             unit: cheapUnit,
             requisitionWeight: 10,
@@ -3327,7 +3327,7 @@ describe('ForceGeneratorService', () => {
     it('includes a readable explanation for the generated picks', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const unit = createUnit({ id: 1, name: 'Explained Unit', chassis: 'Warhammer', model: 'WHM-6R', as: { PV: 5 } as Unit['as'] });
+        const unit = createUnit({ id: 1, name: 'Explained Unit', chassis: 'Warhammer', model: 'WHM-6R', as: { PV: 5 } as UnitSummary['as'] });
 
         megaMekAvailabilityByUnitName.set(unit.name, {
             e: {
@@ -3360,8 +3360,8 @@ describe('ForceGeneratorService', () => {
     it('stays inside an exact budget range without adjusting skill', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const lightUnit = createUnit({ id: 1, name: 'Light Unit', as: { PV: 4 } as Unit['as'] });
-        const mediumUnit = createUnit({ id: 2, name: 'Medium Unit', as: { PV: 5 } as Unit['as'] });
+        const lightUnit = createUnit({ id: 1, name: 'Light Unit', as: { PV: 4 } as UnitSummary['as'] });
+        const mediumUnit = createUnit({ id: 2, name: 'Medium Unit', as: { PV: 5 } as UnitSummary['as'] });
 
         spyOn(Math, 'random').and.returnValue(0);
 
@@ -3386,7 +3386,7 @@ describe('ForceGeneratorService', () => {
     it('returns the highest under-target result when the minimum budget cannot be reached within the unit count range', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const unit = createUnit({ id: 1, name: 'Too Cheap', as: { PV: 5 } as Unit['as'] });
+        const unit = createUnit({ id: 1, name: 'Too Cheap', as: { PV: 5 } as UnitSummary['as'] });
 
         spyOn(Math, 'random').and.returnValue(0);
 
@@ -3414,9 +3414,9 @@ describe('ForceGeneratorService', () => {
             id: index + 1,
             name: index === 14 ? 'Pouncer Candidate' : `Fallback Unit ${index + 1}`,
             chassis: index === 14 ? 'Pouncer' : `Fallback ${index + 1}`,
-            as: { PV: index === 14 ? 37 : 40 } as Unit['as'],
+            as: { PV: index === 14 ? 37 : 40 } as UnitSummary['as'],
         }));
-        const makeCandidate = (unit: Unit) => ({
+        const makeCandidate = (unit: UnitSummary) => ({
             unit,
             requisitionWeight: 1,
             salvageWeight: 0,
@@ -3459,13 +3459,13 @@ describe('ForceGeneratorService', () => {
             id: 1,
             name: 'Requisition Unit',
             chassis: 'Requisition',
-            as: { PV: 50 } as Unit['as'],
+            as: { PV: 50 } as UnitSummary['as'],
         });
         const salvageUnit = createUnit({
             id: 2,
             name: 'Salvage Unit',
             chassis: 'Salvage',
-            as: { PV: 20 } as Unit['as'],
+            as: { PV: 20 } as UnitSummary['as'],
         });
         registerEraAndFaction(era, faction);
         addMegaMekAvailability(requisitionUnit, faction, era, 5, 0);
@@ -3494,15 +3494,15 @@ describe('ForceGeneratorService', () => {
     it('returns the lowest-total compatible force in the requested unit-count range when nothing can stay at or below the maximum budget', () => {
         const era = createEra(3025, 'Succession Wars');
         const faction = createFaction(10, 'Capellan Confederation');
-        const expensiveMek = createUnit({ id: 1, name: 'Expensive Mek', as: { PV: 6 } as Unit['as'] });
-        const moreExpensiveMek = createUnit({ id: 2, name: 'More Expensive Mek', as: { PV: 8 } as Unit['as'] });
+        const expensiveMek = createUnit({ id: 1, name: 'Expensive Mek', as: { PV: 6 } as UnitSummary['as'] });
+        const moreExpensiveMek = createUnit({ id: 2, name: 'More Expensive Mek', as: { PV: 8 } as UnitSummary['as'] });
         const cheaperAero = createUnit({
             id: 3,
             name: 'Cheaper Aero',
             type: 'Aero',
             subtype: 'Aerospace Fighter',
             moveType: 'Aerodyne',
-            as: { PV: 4, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+            as: { PV: 4, TP: 'AF', MVm: { a: 8 } } as unknown as UnitSummary['as'],
         });
         const ruleset: MegaMekRulesetRecord = {
             factionKey: 'CC',
@@ -3545,11 +3545,11 @@ describe('ForceGeneratorService', () => {
         const era = createEra(3025, 'Succession Wars');
         const faction = createFaction(10, 'Capellan Confederation');
         const units = [
-            createUnit({ id: 1, name: 'Unit 1', as: { PV: 4 } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Unit 2', as: { PV: 5 } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Unit 3', as: { PV: 6 } as Unit['as'] }),
-            createUnit({ id: 4, name: 'Unit 4', as: { PV: 7 } as Unit['as'] }),
-            createUnit({ id: 5, name: 'Unit 5', as: { PV: 8 } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Unit 1', as: { PV: 4 } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Unit 2', as: { PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Unit 3', as: { PV: 6 } as UnitSummary['as'] }),
+            createUnit({ id: 4, name: 'Unit 4', as: { PV: 7 } as UnitSummary['as'] }),
+            createUnit({ id: 5, name: 'Unit 5', as: { PV: 8 } as UnitSummary['as'] }),
         ];
 
         spyOn(Math, 'random').and.returnValue(0);
@@ -3576,8 +3576,8 @@ describe('ForceGeneratorService', () => {
     it('treats a 0/0 budget request as the first compatible result', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const firstUnit = createUnit({ id: 1, name: 'First Unit', as: { PV: 6 } as Unit['as'] });
-        const secondUnit = createUnit({ id: 2, name: 'Second Unit', as: { PV: 8 } as Unit['as'] });
+        const firstUnit = createUnit({ id: 1, name: 'First Unit', as: { PV: 6 } as UnitSummary['as'] });
+        const secondUnit = createUnit({ id: 2, name: 'Second Unit', as: { PV: 8 } as UnitSummary['as'] });
         const firstAttempt = {
             selectedCandidates: [firstUnit].map((unit) => ({
                 unit,
@@ -3631,8 +3631,8 @@ describe('ForceGeneratorService', () => {
     it('preserves locked units and their preview metadata while filling the remaining slots', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const lockedAtlas = createUnit({ id: 1, name: 'Atlas AS7-D', chassis: 'Atlas', model: 'AS7-D', as: { PV: 6 } as Unit['as'] });
-        const locust = createUnit({ id: 2, name: 'Locust LCT-1V', chassis: 'Locust', model: 'LCT-1V', as: { PV: 4 } as Unit['as'] });
+        const lockedAtlas = createUnit({ id: 1, name: 'Atlas AS7-D', chassis: 'Atlas', model: 'AS7-D', as: { PV: 6 } as UnitSummary['as'] });
+        const locust = createUnit({ id: 2, name: 'Locust LCT-1V', chassis: 'Locust', model: 'LCT-1V', as: { PV: 4 } as UnitSummary['as'] });
 
         spyOn(Math, 'random').and.returnValue(0);
 
@@ -3751,9 +3751,9 @@ describe('ForceGeneratorService', () => {
     it('prevents duplicate chassis when requested', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const atlasPrime = createUnit({ id: 1, name: 'Atlas Prime', chassis: 'Atlas', model: 'Prime', as: { PV: 4 } as Unit['as'] });
-        const atlasAlt = createUnit({ id: 2, name: 'Atlas Alt', chassis: 'Atlas', model: 'Alt', as: { PV: 4 } as Unit['as'] });
-        const locust = createUnit({ id: 3, name: 'Locust', chassis: 'Locust', model: 'LCT-1V', as: { PV: 4 } as Unit['as'] });
+        const atlasPrime = createUnit({ id: 1, name: 'Atlas Prime', chassis: 'Atlas', model: 'Prime', as: { PV: 4 } as UnitSummary['as'] });
+        const atlasAlt = createUnit({ id: 2, name: 'Atlas Alt', chassis: 'Atlas', model: 'Alt', as: { PV: 4 } as UnitSummary['as'] });
+        const locust = createUnit({ id: 3, name: 'Locust', chassis: 'Locust', model: 'LCT-1V', as: { PV: 4 } as UnitSummary['as'] });
 
         spyOn(Math, 'random').and.returnValue(0);
 
@@ -3790,8 +3790,8 @@ describe('ForceGeneratorService', () => {
     it('returns a best-effort force when duplicate chassis prevention exhausts the finite pool below the target', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const atlas = createUnit({ id: 1, name: 'Atlas AS7-D', chassis: 'Atlas', model: 'AS7-D', as: { PV: 6 } as Unit['as'] });
-        const locust = createUnit({ id: 2, name: 'Locust LCT-1V', chassis: 'Locust', model: 'LCT-1V', as: { PV: 4 } as Unit['as'] });
+        const atlas = createUnit({ id: 1, name: 'Atlas AS7-D', chassis: 'Atlas', model: 'AS7-D', as: { PV: 6 } as UnitSummary['as'] });
+        const locust = createUnit({ id: 2, name: 'Locust LCT-1V', chassis: 'Locust', model: 'LCT-1V', as: { PV: 4 } as UnitSummary['as'] });
 
         spyOn(Math, 'random').and.returnValue(0);
         const buildSelectionSpy = spyOn<any>(service, 'buildCandidateSelection').and.callThrough();
@@ -3824,21 +3824,21 @@ describe('ForceGeneratorService', () => {
             name: 'Crab CRB-27b',
             chassis: 'Crab',
             model: 'CRB-27b',
-            as: { PV: 50 } as Unit['as'],
+            as: { PV: 50 } as UnitSummary['as'],
         });
         const crab27 = createUnit({
             id: 2,
             name: 'Crab CRB-27',
             chassis: 'Crab',
             model: 'CRB-27',
-            as: { PV: 50 } as Unit['as'],
+            as: { PV: 50 } as UnitSummary['as'],
         });
         const crab27sl = createUnit({
             id: 3,
             name: 'Crab CRB-27sl',
             chassis: 'Crab',
             model: 'CRB-27sl',
-            as: { PV: 50 } as Unit['as'],
+            as: { PV: 50 } as UnitSummary['as'],
         });
         for (const unit of [crab27b, crab27, crab27sl]) {
             units.push(unit);
@@ -3879,7 +3879,7 @@ describe('ForceGeneratorService', () => {
             model: 'HTM-27T',
             type: 'Mek',
             subtype: 'BattleMek',
-            as: { TP: 'BM', PV: 4 } as Unit['as'],
+            as: { TP: 'BM', PV: 4 } as UnitSummary['as'],
         });
         const hatamotoKaze = createUnit({
             id: 2,
@@ -3888,7 +3888,7 @@ describe('ForceGeneratorService', () => {
             model: 'HTM-27V',
             type: 'Mek',
             subtype: 'BattleMek',
-            as: { TP: 'BM', PV: 4 } as Unit['as'],
+            as: { TP: 'BM', PV: 4 } as UnitSummary['as'],
         });
         const battleMek = createUnit({
             id: 3,
@@ -3897,7 +3897,7 @@ describe('ForceGeneratorService', () => {
             model: 'PK-M',
             type: 'Mek',
             subtype: 'BattleMek',
-            as: { TP: 'BM', PV: 4 } as Unit['as'],
+            as: { TP: 'BM', PV: 4 } as UnitSummary['as'],
         });
         const industrialMek = createUnit({
             id: 4,
@@ -3906,7 +3906,7 @@ describe('ForceGeneratorService', () => {
             model: 'PK-I',
             type: 'Mek',
             subtype: 'Industrial Mek',
-            as: { TP: 'IM', PV: 4 } as Unit['as'],
+            as: { TP: 'IM', PV: 4 } as UnitSummary['as'],
         });
         const omniMek = createUnit({
             id: 5,
@@ -3916,7 +3916,7 @@ describe('ForceGeneratorService', () => {
             type: 'Mek',
             subtype: 'BattleMek',
             omni: 1,
-            as: { TP: 'BM', PV: 4 } as Unit['as'],
+            as: { TP: 'BM', PV: 4 } as UnitSummary['as'],
         });
 
         spyOn(Math, 'random').and.returnValue(0);
@@ -3950,7 +3950,7 @@ describe('ForceGeneratorService', () => {
             name: 'Unit A',
             chassis: 'Unit A',
             model: 'Prime',
-            as: { PV: 4 } as Unit['as'],
+            as: { PV: 4 } as UnitSummary['as'],
             _nameTags: [
                 { tag: 'owned', quantity: 2 },
                 { tag: 'painted', quantity: 1 },
@@ -3962,7 +3962,7 @@ describe('ForceGeneratorService', () => {
             name: 'Unit B',
             chassis: 'Unit B',
             model: 'Prime',
-            as: { PV: 4 } as Unit['as'],
+            as: { PV: 4 } as UnitSummary['as'],
             _nameTags: [
                 { tag: 'owned', quantity: 1 },
                 { tag: 'painted', quantity: 1 },
@@ -4006,7 +4006,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Locust',
             model: 'LCT-1V',
             type: 'Mek',
-            as: { PV: 4 } as Unit['as'],
+            as: { PV: 4 } as UnitSummary['as'],
             _chassisTags: [{ tag: 'collection', quantity: 1 }],
         });
         const locustTwo = createUnit({
@@ -4015,7 +4015,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Locust',
             model: 'LCT-3D',
             type: 'Mek',
-            as: { PV: 4 } as Unit['as'],
+            as: { PV: 4 } as UnitSummary['as'],
             _chassisTags: [{ tag: 'collection', quantity: 1 }],
         });
         const wasp = createUnit({
@@ -4024,7 +4024,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Wasp',
             model: 'WSP-1A',
             type: 'Mek',
-            as: { PV: 4 } as Unit['as'],
+            as: { PV: 4 } as UnitSummary['as'],
             _chassisTags: [{ tag: 'collection', quantity: 1 }],
         });
 
@@ -4065,7 +4065,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Locust',
             model: 'LCT-A',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 2 }],
         });
         const locustB = createUnit({
@@ -4074,7 +4074,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Locust',
             model: 'LCT-B',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 1 }],
         });
         const crabVariants = ['A', 'B', 'C', 'D', 'E'].map((model, index) => createUnit({
@@ -4083,7 +4083,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Crab',
             model: `CRB-${model}`,
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _chassisTags: [{ tag: 'owned', quantity: 4 }],
         }));
 
@@ -4125,7 +4125,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Locust',
             model: 'LCT-20',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 1 }],
         });
         const locust21 = createUnit({
@@ -4134,7 +4134,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Locust',
             model: 'LCT-21',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 2 }],
         });
         const locust22 = createUnit({
@@ -4143,7 +4143,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Locust',
             model: 'LCT-22',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 1 }],
         });
         const wasp = createUnit({
@@ -4152,7 +4152,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Wasp',
             model: 'WSP-1A',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 2 }],
         });
 
@@ -4194,7 +4194,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Locust',
             model: 'LCT-A',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 2 }],
         });
         const locustB = createUnit({
@@ -4203,7 +4203,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Locust',
             model: 'LCT-B',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 2 }],
         });
         const wasp = createUnit({
@@ -4212,7 +4212,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Wasp',
             model: 'WSP-1A',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 1 }],
         });
 
@@ -4258,7 +4258,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Locust',
             model: 'LCT-A',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 2 }],
             _chassisTags: [{ tag: 'owned', quantity: 1 }],
         });
@@ -4268,7 +4268,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Locust',
             model: 'LCT-B',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 1 }],
             _chassisTags: [{ tag: 'owned', quantity: 1 }],
         });
@@ -4278,7 +4278,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Wasp',
             model: 'WSP-1A',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 1 }],
         });
 
@@ -4320,7 +4320,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Locust',
             model: 'LCT-L',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 1 }],
         });
         const locustA = createUnit({
@@ -4329,7 +4329,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Locust',
             model: 'LCT-A',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 2 }],
         });
         const locustB = createUnit({
@@ -4338,7 +4338,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Locust',
             model: 'LCT-B',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 1 }],
         });
         const wasp = createUnit({
@@ -4347,7 +4347,7 @@ describe('ForceGeneratorService', () => {
             chassis: 'Wasp',
             model: 'WSP-1A',
             type: 'Mek',
-            as: { PV: 1 } as Unit['as'],
+            as: { PV: 1 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 2 }],
         });
 
@@ -4395,7 +4395,7 @@ describe('ForceGeneratorService', () => {
             name: 'Unit A',
             chassis: 'Unit A',
             model: 'Prime',
-            as: { PV: 4 } as Unit['as'],
+            as: { PV: 4 } as UnitSummary['as'],
             _nameTags: [
                 { tag: 'owned', quantity: 1 },
                 { tag: 'test', quantity: 5 },
@@ -4440,7 +4440,7 @@ describe('ForceGeneratorService', () => {
             name: 'Unit A',
             chassis: 'Unit A',
             model: 'Prime',
-            as: { PV: 4 } as Unit['as'],
+            as: { PV: 4 } as UnitSummary['as'],
             _nameTags: [
                 { tag: 'test', quantity: 5 },
             ],
@@ -4476,7 +4476,7 @@ describe('ForceGeneratorService', () => {
         const preview = {
             gameSystem: GameSystem.ALPHA_STRIKE,
             units: [{
-                unit: createUnit({ id: 1, name: 'Locked Atlas', chassis: 'Atlas', as: { PV: 6 } as Unit['as'] }),
+                unit: createUnit({ id: 1, name: 'Locked Atlas', chassis: 'Atlas', as: { PV: 6 } as UnitSummary['as'] }),
                 cost: 6,
                 skill: 3,
                 lockKey: 'locked-atlas',
@@ -4494,7 +4494,7 @@ describe('ForceGeneratorService', () => {
     it('creates a load entry from an already-rendered preview entry without rebuilding groups', () => {
         const faction = createFaction(10, 'Federated Suns');
         const era = createEra(3150, 'ilClan');
-        const unit = createUnit({ id: 1, name: 'Light Fire Unit', as: { PV: 6 } as Unit['as'] });
+        const unit = createUnit({ id: 1, name: 'Light Fire Unit', as: { PV: 6 } as UnitSummary['as'] });
         const previewEntry = {
             instanceId: 'preview-entry',
             timestamp: '2026-05-11T00:00:00.000Z',
@@ -4573,7 +4573,7 @@ describe('ForceGeneratorService', () => {
         } as any;
 
         spyOn(LanceTypeIdentifierUtil, 'identifyFormations').and.callFake((forceUnits) => {
-            const unitNames = forceUnits.map((unit) => unit.getUnit().name);
+            const unitNames = forceUnits.map((unit) => unit.getSummary().name);
             if (unitNames.length !== 4) {
                 return [];
             }
@@ -4630,16 +4630,16 @@ describe('ForceGeneratorService', () => {
             group: 'HW Clan',
         } as Faction;
         const previewUnits = [
-            createUnit({ id: 1, name: 'X-1', chassis: 'X', model: '1', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Y-1', chassis: 'Y', model: '1', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
-            createUnit({ id: 3, name: 'X-2', chassis: 'X', model: '2', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
-            createUnit({ id: 4, name: 'Y-2', chassis: 'Y', model: '2', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
-            createUnit({ id: 5, name: 'X-3', chassis: 'X', model: '3', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
-            createUnit({ id: 6, name: 'Y-3', chassis: 'Y', model: '3', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
-            createUnit({ id: 7, name: 'X-4', chassis: 'X', model: '4', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
-            createUnit({ id: 8, name: 'Y-4', chassis: 'Y', model: '4', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
-            createUnit({ id: 9, name: 'X-5', chassis: 'X', model: '5', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
-            createUnit({ id: 10, name: 'Y-5', chassis: 'Y', model: '5', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as Unit['as'] }),
+            createUnit({ id: 1, name: 'X-1', chassis: 'X', model: '1', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Y-1', chassis: 'Y', model: '1', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'X-2', chassis: 'X', model: '2', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 4, name: 'Y-2', chassis: 'Y', model: '2', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 5, name: 'X-3', chassis: 'X', model: '3', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 6, name: 'Y-3', chassis: 'Y', model: '3', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 7, name: 'X-4', chassis: 'X', model: '4', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 8, name: 'Y-4', chassis: 'Y', model: '4', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 9, name: 'X-5', chassis: 'X', model: '5', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 10, name: 'Y-5', chassis: 'Y', model: '5', techBase: 'Clan', as: { TP: 'BM', PV: 5 } as UnitSummary['as'] }),
         ];
         const clanFormation = {
             id: 'clan-star',
@@ -4662,7 +4662,7 @@ describe('ForceGeneratorService', () => {
         } as any;
 
         spyOn(LanceTypeIdentifierUtil, 'identifyFormations').and.callFake((forceUnits) => {
-            const unitNames = forceUnits.map((unit) => unit.getUnit().name);
+            const unitNames = forceUnits.map((unit) => unit.getSummary().name);
             if (unitNames.length !== 5) {
                 return [];
             }
@@ -4706,8 +4706,8 @@ describe('ForceGeneratorService', () => {
     it('returns a fallback when no exact budget match exists', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const lightUnit = createUnit({ id: 1, name: 'Light Unit', as: { PV: 4 } as Unit['as'] });
-        const mediumUnit = createUnit({ id: 2, name: 'Medium Unit', as: { PV: 5 } as Unit['as'] });
+        const lightUnit = createUnit({ id: 1, name: 'Light Unit', as: { PV: 4 } as UnitSummary['as'] });
+        const mediumUnit = createUnit({ id: 2, name: 'Medium Unit', as: { PV: 5 } as UnitSummary['as'] });
 
         spyOn(Math, 'random').and.returnValue(0);
         const buildSelectionSpy = spyOn<any>(service, 'buildCandidateSelection').and.callThrough();
@@ -4735,12 +4735,12 @@ describe('ForceGeneratorService', () => {
     it('prefers a unit-count-complete failed attempt before budget closeness', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const nearBudgetA = createUnit({ id: 1, name: 'Near Budget A', as: { PV: 10 } as Unit['as'] });
-        const nearBudgetB = createUnit({ id: 2, name: 'Near Budget B', as: { PV: 9 } as Unit['as'] });
-        const countMatchA = createUnit({ id: 3, name: 'Count Match A', as: { PV: 4 } as Unit['as'] });
-        const countMatchB = createUnit({ id: 4, name: 'Count Match B', as: { PV: 4 } as Unit['as'] });
-        const countMatchC = createUnit({ id: 5, name: 'Count Match C', as: { PV: 4 } as Unit['as'] });
-        const countMatchD = createUnit({ id: 6, name: 'Count Match D', as: { PV: 4 } as Unit['as'] });
+        const nearBudgetA = createUnit({ id: 1, name: 'Near Budget A', as: { PV: 10 } as UnitSummary['as'] });
+        const nearBudgetB = createUnit({ id: 2, name: 'Near Budget B', as: { PV: 9 } as UnitSummary['as'] });
+        const countMatchA = createUnit({ id: 3, name: 'Count Match A', as: { PV: 4 } as UnitSummary['as'] });
+        const countMatchB = createUnit({ id: 4, name: 'Count Match B', as: { PV: 4 } as UnitSummary['as'] });
+        const countMatchC = createUnit({ id: 5, name: 'Count Match C', as: { PV: 4 } as UnitSummary['as'] });
+        const countMatchD = createUnit({ id: 6, name: 'Count Match D', as: { PV: 4 } as UnitSummary['as'] });
 
         const budgetCloserAttempt = {
             selectedCandidates: [nearBudgetA, nearBudgetB].map((unit) => ({
@@ -4804,8 +4804,8 @@ describe('ForceGeneratorService', () => {
     it('prefers the highest total below the target over a closer total that exceeds it', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const underTargetUnit = createUnit({ id: 1, name: 'Under Target', as: { PV: 5890 } as Unit['as'] });
-        const overTargetUnit = createUnit({ id: 2, name: 'Over Target', as: { PV: 5910 } as Unit['as'] });
+        const underTargetUnit = createUnit({ id: 1, name: 'Under Target', as: { PV: 5890 } as UnitSummary['as'] });
+        const overTargetUnit = createUnit({ id: 2, name: 'Over Target', as: { PV: 5910 } as UnitSummary['as'] });
 
         const underTargetAttempt = {
             selectedCandidates: [underTargetUnit].map((unit) => ({
@@ -4859,9 +4859,9 @@ describe('ForceGeneratorService', () => {
     it('uses ruleset preferences to bias additional unit selection', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const seedUnit = createUnit({ id: 1, name: 'Seed', chassis: 'Seed', role: 'skirmisher', weightClass: 'Medium', as: { PV: 4 } as Unit['as'] });
-        const commandUnit = createUnit({ id: 2, name: 'Command', chassis: 'Command', role: 'command', weightClass: 'Heavy', as: { PV: 4 } as Unit['as'] });
-        const scoutUnit = createUnit({ id: 3, name: 'Scout', chassis: 'Scout', role: 'scout', weightClass: 'Light', as: { PV: 4 } as Unit['as'] });
+        const seedUnit = createUnit({ id: 1, name: 'Seed', chassis: 'Seed', role: 'skirmisher', weightClass: 'Medium', as: { PV: 4 } as UnitSummary['as'] });
+        const commandUnit = createUnit({ id: 2, name: 'Command', chassis: 'Command', role: 'command', weightClass: 'Heavy', as: { PV: 4 } as UnitSummary['as'] });
+        const scoutUnit = createUnit({ id: 3, name: 'Scout', chassis: 'Scout', role: 'scout', weightClass: 'Light', as: { PV: 4 } as UnitSummary['as'] });
         const ruleset: MegaMekRulesetRecord = {
             factionKey: 'FS',
             indexes: {
@@ -4923,14 +4923,14 @@ describe('ForceGeneratorService', () => {
             type: 'Aero',
             subtype: 'JumpShip',
             moveType: 'Aerodyne',
-            as: { PV: 5 } as Unit['as'],
+            as: { PV: 5 } as UnitSummary['as'],
         });
         const mek = createUnit({
             id: 2,
             name: 'BattleMek Pick',
             type: 'Mek',
             subtype: 'BattleMek',
-            as: { PV: 5 } as Unit['as'],
+            as: { PV: 5 } as UnitSummary['as'],
         });
         const ruleset: MegaMekRulesetRecord = {
             factionKey: 'CC',
@@ -4988,10 +4988,10 @@ describe('ForceGeneratorService', () => {
         const era = createEra(3052, 'Clan Invasion');
         const faction = createFaction(10, 'Capellan Confederation');
         const mekUnits = [
-            createUnit({ id: 1, name: 'Mek 1', as: { PV: 5 } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Mek 2', as: { PV: 5 } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Mek 3', as: { PV: 5 } as Unit['as'] }),
-            createUnit({ id: 4, name: 'Mek 4', as: { PV: 5 } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Mek 1', as: { PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Mek 2', as: { PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Mek 3', as: { PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 4, name: 'Mek 4', as: { PV: 5 } as UnitSummary['as'] }),
         ];
         const aeroUnit = createUnit({
             id: 5,
@@ -4999,7 +4999,7 @@ describe('ForceGeneratorService', () => {
             type: 'Aero',
             subtype: 'Aerospace Fighter',
             moveType: 'Aerodyne',
-            as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+            as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as UnitSummary['as'],
         });
         const ruleset: MegaMekRulesetRecord = {
             factionKey: 'CC',
@@ -5070,7 +5070,7 @@ describe('ForceGeneratorService', () => {
         const mekUnits = Array.from({ length: 4 }, (_, index) => createUnit({
             id: index + 1,
             name: `Budget Mek ${index + 1}`,
-            as: { PV: 5 } as Unit['as'],
+            as: { PV: 5 } as UnitSummary['as'],
         }));
         const aeroUnits = Array.from({ length: 6 }, (_, index) => createUnit({
             id: index + 5,
@@ -5078,7 +5078,7 @@ describe('ForceGeneratorService', () => {
             type: 'Aero',
             subtype: 'Aerospace Fighter',
             moveType: 'Aerodyne',
-            as: { PV: 20, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+            as: { PV: 20, TP: 'AF', MVm: { a: 8 } } as unknown as UnitSummary['as'],
         }));
         const ruleset: MegaMekRulesetRecord = {
             factionKey: 'CC',
@@ -5129,14 +5129,14 @@ describe('ForceGeneratorService', () => {
     it('applies budget reachability to force-node fallback choices without a TOC', () => {
         const era = createEra(3052, 'Clan Invasion');
         const faction = createFaction(10, 'Capellan Confederation');
-        const mek = createUnit({ id: 1, name: 'Fallback Budget Mek', as: { PV: 5 } as Unit['as'] });
+        const mek = createUnit({ id: 1, name: 'Fallback Budget Mek', as: { PV: 5 } as UnitSummary['as'] });
         const fighter = createUnit({
             id: 2,
             name: 'Fallback Over Budget Fighter',
             type: 'Aero',
             subtype: 'Aerospace Fighter',
             moveType: 'Aerodyne',
-            as: { PV: 20, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+            as: { PV: 20, TP: 'AF', MVm: { a: 8 } } as unknown as UnitSummary['as'],
         });
         const ruleset: MegaMekRulesetRecord = {
             factionKey: 'CC',
@@ -5179,7 +5179,7 @@ describe('ForceGeneratorService', () => {
     it('uses reusable candidate capacity for top-level echelon feasibility', () => {
         const era = createEra(3052, 'Clan Invasion');
         const faction = createFaction(10, 'Capellan Confederation');
-        const mek = createUnit({ id: 1, name: 'Reusable Lance Mek', as: { PV: 5 } as Unit['as'] });
+        const mek = createUnit({ id: 1, name: 'Reusable Lance Mek', as: { PV: 5 } as UnitSummary['as'] });
 
         registerEraAndFaction(era, faction);
         registerMegaMekRuleset(faction, createMekOnlyStarRuleset('CC'));
@@ -5209,7 +5209,7 @@ describe('ForceGeneratorService', () => {
             name: `Shared Chassis Variant ${index + 1}`,
             chassis: 'Shared Chassis',
             model: `SC-${index + 1}`,
-            as: { PV: 5 } as Unit['as'],
+            as: { PV: 5 } as UnitSummary['as'],
         }));
 
         registerEraAndFaction(era, faction);
@@ -5237,7 +5237,7 @@ describe('ForceGeneratorService', () => {
     it('does not start an ordinary generation attempt after its deadline expires', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const unit = createUnit({ id: 1, name: 'Deadline Unit', as: { PV: 5 } as Unit['as'] });
+        const unit = createUnit({ id: 1, name: 'Deadline Unit', as: { PV: 5 } as UnitSummary['as'] });
         const createSearchDeadlineSpy = spyOn<any>(service, 'createSearchDeadline').and.callThrough();
         const deadlineExpiredSpy = spyOn<any>(service, 'hasSearchDeadlineExpired').and.returnValues(false, true);
         const buildSelectionSpy = spyOn<any>(service, 'buildCandidateSelection').and.callThrough();
@@ -5273,7 +5273,7 @@ describe('ForceGeneratorService', () => {
             name: `Tagged Variant ${index}`,
             chassis: 'Tagged Chassis',
             model: `TC-${index}`,
-            as: { PV: 5 } as Unit['as'],
+            as: { PV: 5 } as UnitSummary['as'],
             _nameTags: [{ tag: 'owned', quantity: 2 }],
         }));
 
@@ -5310,10 +5310,10 @@ describe('ForceGeneratorService', () => {
         const era = createEra(3052, 'Clan Invasion');
         const faction = createFaction(10, 'Capellan Confederation');
         const mekUnits = [
-            createUnit({ id: 1, name: 'Mek 1', as: { PV: 5 } as Unit['as'] }),
-            createUnit({ id: 2, name: 'Mek 2', as: { PV: 5 } as Unit['as'] }),
-            createUnit({ id: 3, name: 'Mek 3', as: { PV: 5 } as Unit['as'] }),
-            createUnit({ id: 4, name: 'Mek 4', as: { PV: 5 } as Unit['as'] }),
+            createUnit({ id: 1, name: 'Mek 1', as: { PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 2, name: 'Mek 2', as: { PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 3, name: 'Mek 3', as: { PV: 5 } as UnitSummary['as'] }),
+            createUnit({ id: 4, name: 'Mek 4', as: { PV: 5 } as UnitSummary['as'] }),
         ];
         const aeroUnits = [
             createUnit({
@@ -5322,7 +5322,7 @@ describe('ForceGeneratorService', () => {
                 type: 'Aero',
                 subtype: 'Aerospace Fighter',
                 moveType: 'Aerodyne',
-                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as UnitSummary['as'],
             }),
             createUnit({
                 id: 6,
@@ -5330,7 +5330,7 @@ describe('ForceGeneratorService', () => {
                 type: 'Aero',
                 subtype: 'Aerospace Fighter',
                 moveType: 'Aerodyne',
-                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as UnitSummary['as'],
             }),
             createUnit({
                 id: 7,
@@ -5338,7 +5338,7 @@ describe('ForceGeneratorService', () => {
                 type: 'Aero',
                 subtype: 'Aerospace Fighter',
                 moveType: 'Aerodyne',
-                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as UnitSummary['as'],
             }),
             createUnit({
                 id: 8,
@@ -5346,7 +5346,7 @@ describe('ForceGeneratorService', () => {
                 type: 'Aero',
                 subtype: 'Aerospace Fighter',
                 moveType: 'Aerodyne',
-                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as UnitSummary['as'],
             }),
             createUnit({
                 id: 9,
@@ -5354,7 +5354,7 @@ describe('ForceGeneratorService', () => {
                 type: 'Aero',
                 subtype: 'Aerospace Fighter',
                 moveType: 'Aerodyne',
-                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as UnitSummary['as'],
             }),
             createUnit({
                 id: 10,
@@ -5362,7 +5362,7 @@ describe('ForceGeneratorService', () => {
                 type: 'Aero',
                 subtype: 'Aerospace Fighter',
                 moveType: 'Aerodyne',
-                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+                as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as UnitSummary['as'],
             }),
         ];
         const ruleset: MegaMekRulesetRecord = {
@@ -5468,9 +5468,9 @@ describe('ForceGeneratorService', () => {
     it('switches child ruleset context with asFactionKey when building templates', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const seedUnit = createUnit({ id: 1, name: 'Seed', role: 'skirmisher', weightClass: 'Medium', as: { PV: 4 } as Unit['as'] });
-        const switchedMatch = createUnit({ id: 2, name: 'Clan Command', role: 'command', weightClass: 'Heavy', as: { PV: 4 } as Unit['as'] });
-        const offMatch = createUnit({ id: 3, name: 'Scout', role: 'scout', weightClass: 'Light', as: { PV: 4 } as Unit['as'] });
+        const seedUnit = createUnit({ id: 1, name: 'Seed', role: 'skirmisher', weightClass: 'Medium', as: { PV: 4 } as UnitSummary['as'] });
+        const switchedMatch = createUnit({ id: 2, name: 'Clan Command', role: 'command', weightClass: 'Heavy', as: { PV: 4 } as UnitSummary['as'] });
+        const offMatch = createUnit({ id: 3, name: 'Scout', role: 'scout', weightClass: 'Light', as: { PV: 4 } as UnitSummary['as'] });
         const parentRuleset: MegaMekRulesetRecord = {
             factionKey: 'FS',
             indexes: {
@@ -5549,9 +5549,9 @@ describe('ForceGeneratorService', () => {
     it('switches child ruleset context with useParentFaction based on MegaMek fallback order', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Clan Wolf');
-        const seedUnit = createUnit({ id: 1, name: 'Seed', role: 'skirmisher', weightClass: 'Medium', as: { PV: 4 } as Unit['as'] });
-        const parentMatch = createUnit({ id: 2, name: 'Parent Command', role: 'command', weightClass: 'Heavy', as: { PV: 4 } as Unit['as'] });
-        const offMatch = createUnit({ id: 3, name: 'Scout', role: 'scout', weightClass: 'Light', as: { PV: 4 } as Unit['as'] });
+        const seedUnit = createUnit({ id: 1, name: 'Seed', role: 'skirmisher', weightClass: 'Medium', as: { PV: 4 } as UnitSummary['as'] });
+        const parentMatch = createUnit({ id: 2, name: 'Parent Command', role: 'command', weightClass: 'Heavy', as: { PV: 4 } as UnitSummary['as'] });
+        const offMatch = createUnit({ id: 3, name: 'Scout', role: 'scout', weightClass: 'Light', as: { PV: 4 } as UnitSummary['as'] });
         const primaryRuleset: MegaMekRulesetRecord = {
             factionKey: 'WOLF',
             parentFactionKey: 'CLAN',
@@ -5753,7 +5753,7 @@ describe('ForceGeneratorService', () => {
     it('prefers a squadron-shaped valid force over a company-shaped valid force when the ruleset selects SQUADRON', () => {
         const era = createEra(3055, 'Clan Invasion');
         const faction = createFaction(10, 'Capellan Confederation');
-        const fighterStats = { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'];
+        const fighterStats = { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as UnitSummary['as'];
         const squadronUnits = [
             createUnit({ id: 21, name: 'Fighter 1', type: 'Aero', subtype: 'Aerospace Fighter', moveType: 'Aerodyne', bv: 980, as: fighterStats }),
             createUnit({ id: 22, name: 'Fighter 2', type: 'Aero', subtype: 'Aerospace Fighter', moveType: 'Aerodyne', bv: 980, as: fighterStats }),

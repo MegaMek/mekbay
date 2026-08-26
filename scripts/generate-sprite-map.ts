@@ -35,10 +35,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import {
-  setFileContentTimestamp,
-  writeFileWithContentTimestamp,
-} from './lib/deterministic-output';
+import { writeDeterministicFile } from './lib/deterministic-output';
 import { loadMeksetAssignments } from './lib/mekset-assignments';
 import { loadOptionalEnvFile, resolveMmDataRoot } from './lib/script-paths';
 
@@ -49,7 +46,7 @@ loadOptionalEnvFile(root, { logPrefix: 'SpriteMap' });
 const mmDataRoot = resolveMmDataRoot(root, { allowMissing: true });
 const unitIconsDir = path.join(mmDataRoot, 'data/images/units');
 const meksetPath = path.join(unitIconsDir, 'mekset.txt');
-const outputDir = path.join(root, 'public', 'sprites');
+const outputDir = path.join(root, 'public', 'online-assets', 'generated', 'sprites');
 
 // Sprite configuration
 const ICON_BASE_WIDTH = 84;
@@ -78,15 +75,12 @@ interface SpritePosition {
 interface SpriteTypeInfo {
   readonly width: number;
   readonly height: number;
+  /** Complete lowercase SHA-256 hex digest of the authored WebP bytes. */
   readonly hash: string;
 }
 
 function getFileHash(filePath: string): string {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
-}
-
-function getSpriteHash(filePath: string): string {
-  return getFileHash(filePath).slice(0, SPRITE_HASH_LENGTH);
 }
 
 function buildSpriteTempFileName(unitType: string): string {
@@ -98,7 +92,7 @@ function buildSpriteFileName(unitType: string, spriteHash: string): string {
 }
 
 function buildSpriteUrl(unitType: string, spriteHash: string): string {
-  return `sprites/${buildSpriteFileName(unitType, spriteHash)}`;
+  return `online-assets/generated/sprites/${buildSpriteFileName(unitType, spriteHash)}`;
 }
 
 function cleanGeneratedSpriteFiles(): number {
@@ -106,11 +100,9 @@ function cleanGeneratedSpriteFiles(): number {
 
   let removed = 0;
   for (const file of fs.readdirSync(outputDir)) {
-    if (!file.toLowerCase().endsWith('.webp')) {
-      continue;
-    }
-
-    fs.unlinkSync(path.join(outputDir, file));
+    const filePath = path.join(outputDir, file);
+    if (!fs.lstatSync(filePath).isFile()) continue;
+    fs.unlinkSync(filePath);
     removed += 1;
   }
 
@@ -257,13 +249,13 @@ async function generateSpriteForType(
     .webp({ lossless: true, effort: 6 })
     .toFile(spriteTempPath);
 
-  const spriteHash = getSpriteHash(spriteTempPath);
-  const spriteImagePath = path.join(outputDir, buildSpriteFileName(unitType, spriteHash));
-  if (fs.existsSync(spriteImagePath)) {
-    fs.unlinkSync(spriteImagePath);
-  }
-  fs.renameSync(spriteTempPath, spriteImagePath);
-  setFileContentTimestamp(spriteImagePath);
+  const spriteHash = getFileHash(spriteTempPath);
+  const spriteImagePath = path.join(
+    outputDir,
+    buildSpriteFileName(unitType, spriteHash.slice(0, SPRITE_HASH_LENGTH)),
+  );
+  if (fs.existsSync(spriteImagePath)) fs.unlinkSync(spriteTempPath);
+  else fs.renameSync(spriteTempPath, spriteImagePath);
 
   const spriteSize = (fs.statSync(spriteImagePath).size / 1024).toFixed(2);
   console.log(`[SpriteMap] Created ${spriteImagePath} (${spriteSize} KB)`);
@@ -283,9 +275,9 @@ async function generateSprites(): Promise<void> {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  const removedSprites = cleanGeneratedSpriteFiles();
-  if (removedSprites > 0) {
-    console.log(`[SpriteMap] Removed ${removedSprites} stale generated sprite sheets.`);
+  const removedOutputs = cleanGeneratedSpriteFiles();
+  if (removedOutputs > 0) {
+    console.log(`[SpriteMap] Removed ${removedOutputs} stale generated sprite outputs.`);
   }
 
   console.log('[SpriteMap] Collecting images by unit type...');
@@ -330,9 +322,10 @@ async function generateSprites(): Promise<void> {
       [...imagesByType.keys()].map(type => {
         const { width, height, hash } = spriteTypes[type]!;
         return [type, {
-          url: buildSpriteUrl(type, hash),
+          url: buildSpriteUrl(type, hash.slice(0, SPRITE_HASH_LENGTH)),
           width,
-          height
+          height,
+          hash,
         }];
       })
     ),
@@ -343,22 +336,12 @@ async function generateSprites(): Promise<void> {
     }
   };
   const manifestJson = JSON.stringify(manifest);
-  writeFileWithContentTimestamp(spriteJsonPath, manifestJson);
-
-  // Generate combined hash
-  const hashSum = crypto.createHash('sha256');
-  hashSum.update(manifestJson);
-  const hash = hashSum.digest('hex');
-  
-  const hashFilePath = path.join(outputDir, 'unit-icons.hash');
-  writeFileWithContentTimestamp(hashFilePath, hash);
+  writeDeterministicFile(spriteJsonPath, manifestJson);
 
   const jsonSize = (fs.statSync(spriteJsonPath).size / 1024).toFixed(2);
 
   console.log(`[SpriteMap] Generated files:`);
   console.log(`  - ${spriteJsonPath} (${jsonSize} KB)`);
-  console.log(`  - ${hashFilePath}`);
-  console.log(`[SpriteMap] Hash: ${hash}`);
   console.log(`[SpriteMap] Total icons: ${Object.keys(spriteData).length}`);
 }
 

@@ -158,7 +158,7 @@
                             }
                         </div>
                         <div class="table-group-footer">
-                            <span class="table-group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ displayedBvPv(row.group.units()) }}</span>
+                            <span class="table-group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ displayedBvPv(membersForGroup(row.group)) }}</span>
                         </div>
                     </div>
                     }
@@ -174,7 +174,7 @@
                     @if (row.kind === 'unit') {
                     <div class="as-td as-td-name">
                         <span class="as-td-model">{{ row.vm.unit.model }}</span>
-                        <span class="as-td-chassis">{{ row.vm.unit.chassis }}@if (row.vm.forceUnit.alias(); as alias) { <span class="as-td-alias">({{ alias }})</span>}</span>
+                        <span class="as-td-chassis">{{ row.vm.unit.chassis }}@if (memberAlias(row.vm.member); as alias) { <span class="as-td-alias">({{ alias }})</span>}</span>
                     </div>
                     }
                 </ng-template>
@@ -193,7 +193,7 @@
                 <ng-template #tableSkillCell let-row>
                     @if (row.kind === 'unit') {
                     <button type="button" class="as-td as-td-skill clickable"
-                        (click)="onPilotClick(row.vm.forceUnit); $event.stopPropagation()"
+                        (click)="onPilotClick(row.vm.member); $event.stopPropagation()"
                         [attr.aria-label]="isAlphaStrike() ? 'Edit pilot' : 'Edit crew'"
                         [title]="isAlphaStrike() ? 'Edit pilot' : 'Edit crew'">{{ getPilotSkill(row.vm) }}</button>
                     }
@@ -246,10 +246,10 @@
                             }
                         </div>
                         <div class="group-footer">
-                            <span class="group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ displayedBvPv(group.units()) }}</span>
+                            <span class="group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ displayedBvPv(membersForGroup(group)) }}</span>
                         </div>
                     </div>
-                    @let units = group.units();
+                    @let units = membersForGroup(group);
                     <div class="group-units"
                         cdkDropList 
                         id="group-{{ group.id }}"
@@ -265,7 +265,7 @@
                             </div>
                         }
                         @if (viewMode() === 'compact') {
-                            @for (forceUnit of units; let last = $last; track forceUnit.id) {
+                            @for (member of units; let last = $last; track member.id) {
                                 <div class="drag-item" 
                                     cdkDrag
                                     cdkDragPreviewClass="glass"
@@ -275,27 +275,30 @@
                                     (cdkDragEnded)="onUnitDragEnd()"
                                     [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                                     <unit-block
-                                        [forceUnit]="forceUnit"
+                                        [forceUnit]="member"
                                         [compactMode]="false"
-                                        (onEditPilot)="onPilotClick(forceUnit)"
-                                        (onOpenC3Network)="openC3Network($event, forceUnit)"
-                                        (onRemoveUnit)="removeUnit($event, forceUnit)"
-                                        (onRepairUnit)="repairUnit($event, forceUnit)"
-                                        (onInfo)="showUnitInfo($event, forceUnit)">
+                                        (onEditPilot)="onPilotClick(member)"
+                                        (onOpenC3Network)="openC3Network($event, member)"
+                                        (onRemoveUnit)="removeUnit($event, member)"
+                                        (onRepairUnit)="repairUnit($event, member)"
+                                        (onInfo)="showUnitInfo($event, member)">
                                     </unit-block>
                                 </div>
                             }
                         } @else {
-                            @for (vm of getSortedUnitsForGroup(group); let last = $last; track vm.forceUnit.id) {
+                            @for (vm of getSortedUnitsForGroup(group); let last = $last; track vm.member.id) {
                                 <unit-card-expanded
-                                    [unit]="vm.forceUnit"
+                                    [unit]="expandedMemberUnit(vm.member)"
+                                    [gunnery]="memberGunnery(vm.member)"
+                                    [piloting]="memberPiloting(vm.member)"
+                                    [forceShowPilotInfo]="isCBTMekForceMember(vm.member)"
                                     [expandedView]="true"
                                     [sortKey]="selectedSort()"
                                     [sortSlotLabel]="selectedSortLabel()"
                                     [useHex]="useHex()"
                                     (cardClick)="onUnitClick(vm)"
                                     (tagClick)="onTagClick($event)"
-                                    (pilotInfoClick)="onPilotClick(vm.forceUnit)">
+                                    (pilotInfoClick)="onPilotClick(vm.member)">
                                 </unit-card-expanded>
                                 @if (!last && !isTableMode()) {
                                     <hr class="divider" />

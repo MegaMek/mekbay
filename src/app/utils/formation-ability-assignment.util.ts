@@ -211,7 +211,7 @@ function getSupportedEffectDescriptors(definition: FormationTypeDefinition | nul
 
 function getConditionalCandidate(unit: ASForceUnit, group: FormationEffectGroup): boolean {
     if (group.condition === 'Move (Thrust) ≤ 9') {
-        const movementValues = Object.values(unit.getUnit().as?.MVm ?? {});
+        const movementValues = Object.values(unit.getSummary().as?.MVm ?? {});
         if (movementValues.length === 0) {
             return false;
         }
@@ -256,7 +256,7 @@ function getCandidateUnits(
 
     switch (descriptor.group.distribution) {
         case 'role-filtered':
-            candidateUnits = candidateUnits.filter((unit) => unit.getUnit().role === descriptor.group.roleFilter);
+            candidateUnits = candidateUnits.filter((unit) => unit.getSummary().role === descriptor.group.roleFilter);
             break;
         case 'conditional':
             candidateUnits = candidateUnits.filter((unit) => getConditionalCandidate(unit, descriptor.group));

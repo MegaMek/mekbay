@@ -1,0 +1,120 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Injectable, inject } from '@angular/core';
+
+import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../../../models/mek-sheet-binding';
+import type { CBTMekForceMember } from '../../../models/force-member.model';
+import {
+    MEK_CREW_STATE_CONTROLS,
+    MEK_UNIT_CONDITION_CONTROLS,
+} from '../../../models/mek-record-sheet-controls';
+import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
+import { UnitFluffImageService } from '../../../services/catalogs/unit-fluff-image.service';
+import { LoggerService } from '../../../services/logger.service';
+import { RsPolyfillUtil } from '../../../utils/rs-polyfill.util';
+import {
+    bindMekRecordSheet,
+    type MekRecordSheetBinding,
+} from '../mek-record-sheet-binder';
+import { PageViewerMekInteractionService } from './page-viewer-mek-interaction.service';
+import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
+
+interface BoundMekSheet {
+    readonly member: CBTMekForceMember;
+    readonly svg: SVGSVGElement;
+    readonly binding: MekRecordSheetBinding;
+    readonly subscription: { unsubscribe(): void };
+}
+
+/** Binds Entity + typed runtime state to the established page-viewer SVG. */
+@Injectable()
+export class PageViewerMekRuntimeService {
+    private readonly interactions = inject(PageViewerMekInteractionService);
+    private readonly fluffImages = inject(UnitFluffImageService);
+    private readonly logger = inject(LoggerService);
+    private readonly sheetSource = inject(PageViewerSheetSourceService);
+    private readonly bound = new Map<string, BoundMekSheet>();
+
+    bind(member: CBTMekForceMember, svg: SVGSVGElement): boolean {
+        const existing = this.bound.get(member.id);
+        if (existing?.svg === svg && existing.member === member) {
+            this.render(member);
+            return true;
+        }
+        this.destroyBinding(member.id);
+
+        const snapshot = this.requiredSnapshot(member);
+        if (svg.dataset['mekbayRecordSheetPrepared'] !== '1') {
+            RsPolyfillUtil.prepareRecordSheet({
+                unit: {
+                    type: 'Mek',
+                    subtype: snapshot.identity.form === 'lam' ? 'Land-Air BattleMek' : 'BattleMek',
+                    armorType: snapshot.construction.armor,
+                    structureType: snapshot.construction.structure,
+                    crewSize: snapshot.crew.length,
+                },
+                conditionControls: MEK_UNIT_CONDITION_CONTROLS,
+                addCrewStateControls: MEK_CREW_STATE_CONTROLS.length > 0 && snapshot.crew.length > 0,
+                fluffImageUrl: this.fluffImages.resolveUrl(member.summary),
+            }, svg);
+            svg.dataset['mekbayRecordSheetPrepared'] = '1';
+        }
+
+        svg.classList.toggle('read-only', member.force.readOnly());
+        const binding = bindMekRecordSheet(
+            svg,
+            MM_DATA_MEK_SHEET_BINDING_MANIFEST,
+            snapshot,
+            member.force.readOnly()
+                ? undefined
+                : (interaction, event) => this.interactions.handle(member, interaction, event),
+        );
+        const subscription = member.force.changed.subscribe(changedUnitIds => {
+            if (changedUnitIds?.includes(member.id) ?? true) this.render(member);
+        });
+        this.bound.set(member.id, { member, svg, binding, subscription });
+        this.render(member);
+        return true;
+    }
+
+    isPickerOpen(unitId: string): boolean {
+        return this.interactions.isPickerOpen(unitId);
+    }
+
+    cleanupUnused(keepUnitIds: ReadonlySet<string>): void {
+        for (const unitId of [...this.bound.keys()]) {
+            if (!keepUnitIds.has(unitId)) this.destroyBinding(unitId);
+        }
+    }
+
+    clear(): void {
+        for (const unitId of [...this.bound.keys()]) this.destroyBinding(unitId);
+        this.interactions.clear();
+    }
+
+    private requiredSnapshot(member: CBTMekForceMember): MekRecordSheetSnapshot {
+        const snapshot = member.force.getMekRecordSheetSnapshot(member.id);
+        if (!snapshot) throw new Error('The selected V2 Mek is no longer admitted');
+        return snapshot;
+    }
+
+    private render(member: CBTMekForceMember): void {
+        const current = this.bound.get(member.id);
+        const snapshot = member.force.getMekRecordSheetSnapshot(member.id);
+        if (!current || current.member !== member || !snapshot) return;
+        const issues = current.binding.render(snapshot);
+        if (issues.length > 0) {
+            this.logger.warn(`Record-sheet layout omissions for ${snapshot.identity.displayName}: ${issues.join('; ')}`);
+        }
+    }
+
+    private destroyBinding(unitId: string): void {
+        const current = this.bound.get(unitId);
+        if (!current) return;
+        current.subscription.unsubscribe();
+        current.binding.destroy();
+        this.bound.delete(unitId);
+        this.interactions.cleanup(unitId);
+    }
+}

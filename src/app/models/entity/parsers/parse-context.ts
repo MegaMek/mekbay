@@ -29,12 +29,22 @@ export {
 
 export type ParseSeverity = 'error' | 'warning';
 
-export interface ParseDiagnostic {
-  severity: ParseSeverity;
+export interface EntityLoadIssue {
+  readonly code: string;
+  readonly severity: ParseSeverity;
   /** Which field/block produced the problem, e.g. 'engine_type', 'Front Equipment' */
-  field: string;
+  readonly field: string;
   /** Human-readable description */
-  message: string;
+  readonly message: string;
+}
+
+export function isEntityLoadIssueArray(value: unknown): value is readonly EntityLoadIssue[] {
+  return Array.isArray(value) && value.every(issue => issue !== null
+    && typeof issue === 'object'
+    && typeof issue.code === 'string' && issue.code.length > 0
+    && (issue.severity === 'error' || issue.severity === 'warning')
+    && typeof issue.field === 'string'
+    && typeof issue.message === 'string' && issue.message.length > 0);
 }
 
 // ============================================================================
@@ -92,7 +102,7 @@ export class ParseContext {
   readonly quirkResolver: QuirkResolverFn | null;
 
   /** Accumulated diagnostics */
-  readonly diagnostics: ParseDiagnostic[] = [];
+  readonly diagnostics: EntityLoadIssue[] = [];
 
   constructor(
     fileName: string,
@@ -116,7 +126,7 @@ export class ParseContext {
     const value = separator >= 0 ? rawKey.slice(separator + 1) : undefined;
     const quirk = this.quirkResolver?.(key);
     if (!quirk) {
-      this.error(field, `Unknown quirk key: "${key}"`);
+      this.error(field, `Unknown quirk key: "${key}"`, 'QUIRK_NOT_FOUND');
       return null;
     }
     return {
@@ -127,19 +137,19 @@ export class ParseContext {
 
   // ── Diagnostic helpers ──
 
-  error(field: string, message: string): void {
-    this.diagnostics.push({ severity: 'error', field, message });
+  error(field: string, message: string, code = 'ENTITY_PARSE_ERROR'): void {
+    this.diagnostics.push({ code, severity: 'error', field, message });
   }
 
-  warn(field: string, message: string): void {
-    this.diagnostics.push({ severity: 'warning', field, message });
+  warn(field: string, message: string, code = 'ENTITY_PARSE_WARNING'): void {
+    this.diagnostics.push({ code, severity: 'warning', field, message });
   }
 
-  get errors(): ParseDiagnostic[] {
+  get errors(): EntityLoadIssue[] {
     return this.diagnostics.filter(d => d.severity === 'error');
   }
 
-  get warnings(): ParseDiagnostic[] {
+  get warnings(): EntityLoadIssue[] {
     return this.diagnostics.filter(d => d.severity === 'warning');
   }
 
@@ -233,7 +243,7 @@ export class ParseContext {
     }
 
     // 3. Not found - record error
-    this.error(field, `Equipment not found: "${name}"`);
+    this.error(field, `Equipment not found: "${name}"`, 'EQUIPMENT_NOT_FOUND');
     return null;
   }
 }

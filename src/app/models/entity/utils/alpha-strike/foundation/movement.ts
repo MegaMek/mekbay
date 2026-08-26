@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ASUnitTypeCode } from '../../../../units.model';
+import type { ASUnitTypeCode } from '../../../../unit-summary.model';
 import {
   AeroEntity,
   BattleArmorEntity,
@@ -16,6 +16,13 @@ import {
   WarShipEntity,
 } from '../../../entities';
 import { AS_MOVEMENT_CALCULATION } from '../../../types';
+import { resolveShieldSize } from '../../physical-weapon';
+import {
+  isJetBoosterEquipment,
+  isMascEquipment,
+  isSuperchargerEquipment,
+} from '../../../../escalating-equipment.model';
+import { modularArmorMovementPenalty } from '../../../../modular-armor.model';
 
 export type MovementMap = Record<string, number>;
 
@@ -38,21 +45,22 @@ export function alphaStrikeMovement(entity: BaseEntity): AlphaStrikeMovement {
 
   let walk = entity.originalWalkMP();
   const equipment = entity.equipment();
-  const hasSupercharger = equipment.some(mount =>
-    mount.equipment?.hasFlag('F_MASC') && mount.equipment.hasFlag('S_SUPERCHARGER'));
+  const hasSupercharger = equipment.some(mount => isSuperchargerEquipment(mount.equipment));
   const hasMasc = entity instanceof MekEntity && equipment.some(mount =>
-    mount.equipment?.hasFlag('F_MASC') && !mount.equipment.hasFlag('S_SUPERCHARGER'));
+    isMascEquipment(mount.equipment) && !isSuperchargerEquipment(mount.equipment));
   const hasSingleBooster = hasSupercharger || hasMasc
-    || equipment.some(mount => mount.equipment?.hasFlag('F_JET_BOOSTER'))
-    || (entity instanceof ProtoMekEntity && equipment.some(mount => mount.equipment?.hasFlag('F_MASC')));
+    || equipment.some(mount => isJetBoosterEquipment(mount.equipment))
+    || (entity instanceof ProtoMekEntity && equipment.some(mount => isMascEquipment(mount.equipment)));
   if (hasSupercharger && hasMasc) walk *= 1.5;
   else if (hasSingleBooster) walk *= 1.25;
   walk = Math.round(walk);
   if (entity instanceof MekEntity && entity.locationOrder.some(location =>
     entity.locationIsLeg(location) && entity.armorAt(location).type === 'HARDENED')) walk--;
-  if (equipment.some(mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'))) walk--;
-  if (equipment.some(mount => mount.equipment?.hasFlag('F_CLUB')
-    && mount.equipment.hasAnyFlag(['S_SHIELD_LARGE', 'S_SHIELD_MEDIUM']))) walk--;
+  walk -= modularArmorMovementPenalty(equipment);
+  if (equipment.some(mount => {
+    const size = resolveShieldSize(mount.equipment);
+    return size === 'large' || size === 'medium';
+  })) walk--;
 
   const baseMove = Math.max(0, Math.round(walk) * 2);
   const jumpMove = entity.computeJumpMP({

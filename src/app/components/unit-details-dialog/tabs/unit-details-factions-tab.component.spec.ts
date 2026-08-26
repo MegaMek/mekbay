@@ -9,7 +9,7 @@ import type { Era } from '../../../models/eras.model';
 import type { Faction } from '../../../models/factions.model';
 import type { MegaMekWeightedAvailabilityRecord } from '../../../models/megamek/availability.model';
 import { MULFACTION_EXTINCT } from '../../../models/mulfactions.model';
-import type { Unit } from '../../../models/units.model';
+import type { UnitSummary } from '../../../models/unit-summary.model';
 import { DataService } from '../../../services/data.service';
 import { createEmptyUnit } from '../../../testing/unit-test-helpers';
 import { UnitAvailabilitySourceService } from '../../../services/unit-availability-source.service';

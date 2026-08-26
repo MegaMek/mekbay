@@ -4,7 +4,7 @@
 
 import { inject, Pipe, type PipeTransform } from "@angular/core";
 import { DataService, DOES_NOT_TRACK, type MinMaxStatsRange } from "../services/data.service";
-import type { Unit } from "../models/units.model";
+import type { UnitSummary } from "../models/unit-summary.model";
 
 
 interface statBarSpec {
@@ -32,7 +32,7 @@ interface StatBarDefinition {
 export class StatBarSpecsPipe implements PipeTransform {
     private dataService = inject(DataService);
 
-    transform(unit: Unit): statBarSpec[] {
+    transform(unit: UnitSummary): statBarSpec[] {
         const bucketStats = this.dataService.getUnitSubtypeMaxStats(unit.subtype);
         // const armorLabel = unit.armorType ? `Armor (${unit.armorType.replace(/armor/i,'').trim()})` : 'Armor';
         const armorLabel = 'Armor';
@@ -73,13 +73,15 @@ export class StatBarSpecsPipe implements PipeTransform {
             );
         }
 
-        const maxRangeValue = unit._maxRange === unit._weightedMaxRange ? `${unit._maxRange}` : `${unit._maxRange} (${unit._weightedMaxRange})`;
+        const maxRange = unit._maxRange ?? 0;
+        const weightedMaxRange = unit._weightedMaxRange ?? 0;
+        const maxRangeValue = maxRange === weightedMaxRange ? `${maxRange}` : `${maxRange} (${weightedMaxRange})`;
         const dissipationValue = (unit.diss?.length === 2 && (unit.diss[0] != unit.diss[1])) ? `${unit.diss[0]} (${unit.diss[1]})` : `${unit.dissipation}`;
         
         statDefs.push(
-            { key: 'alphaNoPhysical', label: 'Firepower', value: unit._mdSumNoPhysical, max: bucketStats.alphaNoPhysicalNoOneshots.max, description: 'Total maximum damage from all weapons fired simultaneously' },
+            { key: 'alphaNoPhysical', label: 'Firepower', value: unit._mdSumNoPhysical ?? 0, max: bucketStats.alphaNoPhysicalNoOneshots.max, description: 'Total maximum damage from all weapons fired simultaneously' },
             { key: 'dpt', label: 'Damage/Turn', value: unit.dpt, max: bucketStats.dpt.max, description: 'Average damage per turn over a 10-turn engagement, accounting for heat and ammo limits' },
-            { key: 'maxRange', label: 'Range', value: unit._maxRange, valueText: maxRangeValue, max: bucketStats.maxRange.max, description: 'Maximum weapon range in hexes, and weighted maximum range for effective damage output' },
+            { key: 'maxRange', label: 'Range', value: maxRange, valueText: maxRangeValue, max: bucketStats.maxRange.max, description: 'Maximum weapon range in hexes, and weighted maximum range for effective damage output' },
             { key: 'heat', label: 'Heat', value: unit.heat, max: bucketStats.heat.max, description: 'Maximum heat generated when firing all weapons and activating all equipment' },
             { key: 'dissipation', label: 'Dissipation', value: unit.dissipation, valueText: dissipationValue, max: bucketStats.dissipation.max, description: 'Heat dissipation capacity per turn from heat sinks. If two values are present, the first is the minimum and the second is the maximum' },
             { key: 'run2MP', label: 'Top Speed', value: unit.run2, max: bucketStats.run2MP.max, description: 'Maximum running/cruising speed in hexes per turn' },

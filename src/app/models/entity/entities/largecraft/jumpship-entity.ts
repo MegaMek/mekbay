@@ -13,11 +13,14 @@ import {
   LARGE_CRAFT_LOCATIONS,
   resolveWeightClass,
   WeightClass,
+  type EntityDamageLocation,
   type EntityFeature,
+  locationArmor,
 } from '../../types';
 import type { UnitSubtype } from '../../types';
 import type { TechRatingSource } from '../../types';
 import { getJumpshipConstructionTech } from '../../components';
+import { capitalCraftArmorPointsPerTon } from '../../utils/large-craft-armor';
 
 // ============================================================================
 // JumpShip equipment location tags
@@ -40,6 +43,38 @@ export class JumpShipEntity extends LargeAeroEntity {
 
   override componentLocationLabel(location: string): string {
     return location === 'Hull' ? 'HULL' : super.componentLocationLabel(location);
+  }
+
+  override damageLocations(): readonly EntityDamageLocation[] {
+    const locations = super.damageLocations().map(location => location.code === 'SI'
+      ? { ...location, sheetCode: this.entityType === 'WarShip' ? 'SI' : undefined }
+      : location);
+    if (this.driveCoreType() !== 'None') {
+      locations.push({
+        code: 'KF',
+        sheetCode: 'KF',
+        internalPoints: this.kfIntegrity(),
+        armor: locationArmor(0),
+      });
+    }
+    if (this.sail()) {
+      locations.push({
+        code: 'SAIL',
+        sheetCode: 'SAIL',
+        internalPoints: this.sailIntegrity(),
+        armor: locationArmor(0),
+      });
+    }
+    const dockingCollars = this.dockingCollarCount();
+    if (dockingCollars > 0) {
+      locations.push({
+        code: 'DC',
+        sheetCode: 'DC',
+        internalPoints: dockingCollars,
+        armor: locationArmor(0),
+      });
+    }
+    return locations;
   }
 
   override unitSubtype(): UnitSubtype {
@@ -105,7 +140,10 @@ export class JumpShipEntity extends LargeAeroEntity {
     : Math.ceil(1.2 + this.jumpDriveWeight() / 60000));
 
   protected override computeMaximumArmorPoints(): number {
-    const pointsPerTon = 16 * (this.uniformArmor()?.armor.pptMultiplier ?? 1);
+    const mountedArmor = this.uniformArmor();
+    const pointsPerTon = mountedArmor
+      ? capitalCraftArmorPointsPerTon(this.tonnage(), mountedArmor.armor)
+      : 16;
 
     let maximumArmorWeight: number;
     if (this.entityType === 'WarShip') {

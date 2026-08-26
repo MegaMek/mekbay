@@ -3,6 +3,12 @@
 // Author: Drake
 
 import type { MiscEquipment } from '../../equipment.model';
+import {
+  isCompactHeatSinkEquipment,
+  isDoubleHeatSinkEquipment,
+  isLaserHeatSinkEquipment,
+  isPrototypeDoubleHeatSinkEquipment,
+} from '../../heat-equipment.model';
 
 // ============================================================================
 // Heat Sink Types
@@ -17,9 +23,9 @@ export interface IntegralHeatSinkCapability {
 
 export function getMekHeatSinkType(equipment: MiscEquipment | null): HeatSinkType {
   if (!equipment) return 'Single';
-  if (equipment.isCompactHeatSink) return 'Compact';
-  if (equipment.hasFlag('F_LASER_HEAT_SINK')) return 'Laser';
-  return equipment.hasAnyFlag(['F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE'])
+  if (isCompactHeatSinkEquipment(equipment)) return 'Compact';
+  if (isLaserHeatSinkEquipment(equipment)) return 'Laser';
+  return isDoubleHeatSinkEquipment(equipment) || isPrototypeDoubleHeatSinkEquipment(equipment)
     ? 'Double'
     : 'Single';
 }

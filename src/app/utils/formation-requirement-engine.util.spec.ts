@@ -54,7 +54,7 @@ function createForceUnit(
 
     return {
         force,
-        getUnit: () => unit,
+        getSummary: () => unit,
         getBv: () => 0,
         pilotSkill: () => options.pilotSkill ?? 4,
         gunnerySkill: () => options.gunnerySkill ?? 4,
@@ -151,7 +151,7 @@ describe('FormationRequirementEngine', () => {
             createForceUnit(createUnit(4, 'Vehicle-B', { type: 'Tank', subtype: 'Combat Vehicle', role: 'Scout', as: { TP: 'CV', SZ: 3 } })),
         ];
         const unmatchedVehicles = validVehiclePairs.map((forceUnit, index) => {
-            const unit = forceUnit.getUnit();
+            const unit = forceUnit.getSummary();
             return createForceUnit(createUnit(index + 10, `${unit.name}-${index}`, {
                 type: 'Tank',
                 subtype: 'Combat Vehicle',
@@ -244,7 +244,7 @@ describe('FormationRequirementEngine', () => {
             createForceUnit(createUnit(4, 'Nova Prime', { as: { TP: 'BM' } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION }),
             createForceUnit(createUnit(5, 'Stormcrow Prime', { as: { TP: 'BM' } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION }),
         ];
-        const invalidUnits = validUnits.map((forceUnit, index) => createForceUnit(createUnit(index + 10, `${forceUnit.getUnit().name}-${index}`, {
+        const invalidUnits = validUnits.map((forceUnit, index) => createForceUnit(createUnit(index + 10, `${forceUnit.getSummary().name}-${index}`, {
             as: { TP: 'BM' },
         }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION }));
 
@@ -267,7 +267,7 @@ describe('FormationRequirementEngine', () => {
             validUnits[4],
             createForceUnit(createUnit(6, 'Executioner', { weightClass: 'Assault', as: { TP: 'BM', SZ: 4 } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION, pilotSkill: 3 }),
         ];
-        const lowSkillUnits = validUnits.map((forceUnit, index) => createForceUnit(forceUnit.getUnit(), GameSystem.ALPHA_STRIKE, {
+        const lowSkillUnits = validUnits.map((forceUnit, index) => createForceUnit(forceUnit.getSummary(), GameSystem.ALPHA_STRIKE, {
             faction: CLAN_FACTION,
             pilotSkill: index === 0 ? 4 : 3,
         }));

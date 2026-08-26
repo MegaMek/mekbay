@@ -11,7 +11,7 @@ import type { ForceUnit } from '../models/force-unit.model';
 import type { MULFactions } from '../models/mulfactions.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import type { AvailabilitySource, UnitSearchViewMode } from '../models/options.model';
-import type { Unit, Units } from '../models/units.model';
+import type { UnitSummary, Units } from '../models/unit-summary.model';
 import { GameSystem } from '../models/common.model';
 import { DataService } from './data.service';
 import { DbService, type TagData } from './db.service';
@@ -21,7 +21,6 @@ import { OptionsService } from './options.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
-import { UnitInitializerService } from './unit-initializer.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { UrlService } from './url.service';
 import { UserStateService } from './userState.service';
@@ -38,6 +37,12 @@ import { SEARCH_WORKER_FACTORY } from '../utils/unit-search-worker-factory.util'
 import type { SearchWorkerLike } from '../utils/unit-search-worker-client.util';
 import type { UnitSearchWorkerResponseMessage } from '../utils/unit-search-worker-protocol.util';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
+import { getUnitSearchIdentityKey } from '../utils/unit-search-shared.util';
+import { UnitsCatalogService } from './catalogs/units-catalog.service';
+import {
+    MM_DATA_UNIT_PROVIDER_ID,
+    type UnitProviderId,
+} from './unit-catalog/unit-catalog.types';
 
 const originalJasmineTimeoutInterval = jasmine.DEFAULT_TIMEOUT_INTERVAL;
 jasmine.DEFAULT_TIMEOUT_INTERVAL = 60000;
@@ -77,6 +82,41 @@ class FakeSearchWorker implements SearchWorkerLike {
     }
 }
 
+/**
+ * Mutable ownership of synthetic units belongs in this spec, not in the
+ * production catalog API. DataService only needs the catalog's public read
+ * surface for these search tests.
+ */
+class TestUnitsCatalog {
+    public readonly coreState = signal({ status: 'idle' as const, availableUnits: 0 as const }).asReadonly();
+    public readonly pendingActivation = signal(undefined).asReadonly();
+    private units: UnitSummary[] = [];
+
+    public replaceUnits(data: Units): void {
+        this.units = cloneUnit(data.units);
+    }
+
+    public getUnits(): UnitSummary[] {
+        return this.units;
+    }
+
+    public getCoreSummaries(): readonly UnitSummary[] {
+        return this.units;
+    }
+
+    public getCoreSummaryByIdentity(): undefined {
+        return undefined;
+    }
+
+    public readNativeUnitSource(): Promise<undefined> {
+        return Promise.resolve(undefined);
+    }
+
+    public initialize(): Promise<void> {
+        return Promise.resolve();
+    }
+}
+
 function cloneUnit<T>(value: T): T {
     if (typeof structuredClone === 'function') {
         return structuredClone(value);
@@ -84,7 +124,7 @@ function cloneUnit<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function prepareUnitForSearch(unit: Unit, index: number): Unit {
+function prepareUnitForSearch(unit: UnitSummary, index: number): UnitSummary {
     const clone = cloneUnit(unit);
     clone.id = index + 1;
     clone.name = `${unit.name}__${index}`;
@@ -109,7 +149,7 @@ function buildBenchmarkBundle(payload: BenchmarkBundle, targetCount: number): Be
         };
     }
 
-    const dataset: Unit[] = [];
+    const dataset: UnitSummary[] = [];
     const idExpansion = new Map<number, number[]>();
     for (let index = 0; index < targetCount; index++) {
         const unit = prepareUnitForSearch(prepared[index % prepared.length], index);
@@ -196,12 +236,12 @@ function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
     return {
         units: {
             version: payload.units.version,
-            etag: payload.units.etag,
+            assetHash: payload.units.assetHash,
             units: [firstUnit, secondUnit],
         },
         eras: {
             version: payload.eras.version,
-            etag: payload.eras.etag,
+            assetHash: payload.eras.assetHash,
             eras: [{
                 id: 1,
                 name: 'Succession Wars',
@@ -216,7 +256,7 @@ function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
         },
         factions: {
             version: payload.factions.version,
-            etag: payload.factions.etag,
+            assetHash: payload.factions.assetHash,
             factions: [{
                 id: 1,
                 name: 'Test Faction',
@@ -230,10 +270,15 @@ function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
     };
 }
 
-function createTestUnit(overrides: TestUnitOverrides = {}): Unit {
+let nextSyntheticUuid = 1;
+
+function createTestUnit(overrides: TestUnitOverrides = {}): UnitSummary {
     const { as: asOverrides, ...unitOverrides } = overrides;
+    const uuid = unitOverrides.uuid
+        ?? `01900000-0000-7000-8000-${(nextSyntheticUuid++).toString(16).padStart(12, '0')}`;
 
     return createEmptyUnit({
+        uuid,
         name: 'Test Unit',
         id: 1,
         chassis: 'Test Unit',
@@ -283,6 +328,20 @@ function createTestUnit(overrides: TestUnitOverrides = {}): Unit {
     });
 }
 
+function workerResultEntry(unit: UnitSummary) {
+    const provider = (unit as UnitSummary & { readonly provider?: UnitProviderId }).provider
+        ?? MM_DATA_UNIT_PROVIDER_ID;
+    return { provider, uuid: unit.uuid, unitName: unit.name };
+}
+
+function workerResultEntriesByName(units: readonly UnitSummary[], names: readonly string[]) {
+    return names.map(name => {
+        const unit = units.find(candidate => candidate.name === name);
+        if (!unit) throw new Error(`Missing worker-result fixture unit: ${name}`);
+        return workerResultEntry(unit);
+    });
+}
+
 function createStandaloneBundle(): BenchmarkBundle {
     const firstUnit = createTestUnit({
         id: 1,
@@ -324,12 +383,12 @@ function createStandaloneBundle(): BenchmarkBundle {
     return {
         units: {
             version: 'test',
-            etag: 'test',
+            assetHash: 'test',
             units: [firstUnit, secondUnit],
         },
         eras: {
             version: 'test',
-            etag: 'test',
+            assetHash: 'test',
             eras: [{
                 id: 1,
                 name: 'Succession Wars',
@@ -344,7 +403,7 @@ function createStandaloneBundle(): BenchmarkBundle {
         },
         factions: {
             version: 'test',
-            etag: 'test',
+            assetHash: 'test',
             factions: [{
                 id: 1,
                 name: 'Test Faction',
@@ -491,12 +550,12 @@ function createStrategicCommandBundle(): BenchmarkBundle {
     return {
         units: {
             version: 'test',
-            etag: 'test',
+            assetHash: 'test',
             units: [firstAerospace, secondAerospace, heavyMek, battleArmor, lightMek, tank],
         },
         eras: {
             version: 'test',
-            etag: 'test',
+            assetHash: 'test',
             eras: [{
                 id: 1,
                 name: 'Clan Invasion',
@@ -511,7 +570,7 @@ function createStrategicCommandBundle(): BenchmarkBundle {
         },
         factions: {
             version: 'test',
-            etag: 'test',
+            assetHash: 'test',
             factions: [{
                 ...CLAN_WOLF_TEST_FACTION,
                 eras: {
@@ -523,7 +582,7 @@ function createStrategicCommandBundle(): BenchmarkBundle {
 }
 
 function createFormationExistingForceUnit(
-    unit: Unit,
+    unit: UnitSummary,
     gameSystem: GameSystem = GameSystem.ALPHA_STRIKE,
     options: { faction?: Faction; pilotSkill?: number; gunnerySkill?: number } = {},
 ): ForceUnit {
@@ -534,7 +593,7 @@ function createFormationExistingForceUnit(
             techBase: () => 'Inner Sphere',
             gameSystem,
         },
-        getUnit: () => unit,
+        getSummary: () => unit,
         getBv: () => 0,
         pilotSkill: () => options.pilotSkill ?? 4,
         gunnerySkill: () => options.gunnerySkill ?? 4,
@@ -608,11 +667,15 @@ function buildSyntheticMegaMekRarityBenchmarkScenario(targetCount: number): Synt
     };
 }
 
-function hydrateDataService(dataService: DataService, bundle: BenchmarkBundle): void {
-    (dataService as any).unitsCatalog.hydrate(cloneUnit(bundle.units));
+function hydrateDataService(
+    dataService: DataService,
+    unitsCatalog: TestUnitsCatalog,
+    bundle: BenchmarkBundle,
+): void {
+    unitsCatalog.replaceUnits(bundle.units);
     (dataService as any).erasCatalog.hydrate(cloneUnit(bundle.eras));
     (dataService as any).factionsCatalog.hydrate(cloneUnit(bundle.factions));
-    (dataService as any).postprocessData();
+    dataService.refreshSearchCorpus();
     dataService.isDataReady.set(true);
 }
 
@@ -633,6 +696,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             useRealLogger?: boolean;
             workerFactory?: (() => SearchWorkerLike) | null;
             automaticallyConvertFiltersToSemantic?: boolean;
+            initialParams?: URLSearchParams;
         }
     ) {
         const dbServiceStub = {
@@ -668,7 +732,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const httpClientStub = {};
 
         const urlServiceStub = {
-            initialParams: new URLSearchParams(),
+            initialParams: new URLSearchParams(options?.initialParams),
             initialPathname: '/',
             getInitialParam: (key: string) => urlServiceStub.initialParams.get(key),
             getGameSystemOverride: () => null,
@@ -681,7 +745,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             getChassisTags: () => ({}),
             getTagData: async () => ({ tags: {}, timestamp: 0, formatVersion: 3 as const }),
             migrateChassisTagsToVariantGroups: jasmine.createSpy('migrateChassisTagsToVariantGroups')
-                .and.callFake(async (_units: Unit[], tagData?: TagData) => tagData ?? ({ tags: {}, timestamp: 0, formatVersion: 4 as const })),
+                .and.callFake(async (_units: UnitSummary[], tagData?: TagData) => tagData ?? ({ tags: {}, timestamp: 0, formatVersion: 4 as const })),
             fixNameTagsCoveredByChassis: jasmine.createSpy('fixNameTagsCoveredByChassis').and.resolveTo(undefined),
             setRefreshUnitsCallback: jasmine.createSpy('setRefreshUnitsCallback'),
             setNotifyStoreUpdatedCallback: jasmine.createSpy('setNotifyStoreUpdatedCallback'),
@@ -703,9 +767,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             uuid: () => '',
         };
 
-        const unitInitializerStub = {
-            initializeUnit: jasmine.createSpy('initializeUnit'),
-        };
+        const unitsCatalog = new TestUnitsCatalog();
 
         TestBed.resetTestingModule();
         TestBed.configureTestingModule({
@@ -716,13 +778,13 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 { provide: HttpClient, useValue: httpClientStub },
                 { provide: DbService, useValue: dbServiceStub },
                 { provide: WsService, useValue: wsServiceStub },
-                { provide: UnitInitializerService, useValue: unitInitializerStub },
                 { provide: OptionsService, useValue: optionsServiceStub },
                 { provide: GameService, useValue: gameServiceStub },
                 { provide: UrlService, useValue: urlServiceStub },
                 { provide: UserStateService, useValue: userStateServiceStub },
                 { provide: PublicTagsService, useValue: publicTagsServiceStub },
                 { provide: TagsService, useValue: tagsServiceStub },
+                { provide: UnitsCatalogService, useValue: unitsCatalog },
                 { provide: SEARCH_WORKER_FACTORY, useValue: options?.workerFactory ?? null },
             ],
         });
@@ -734,7 +796,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const dataService = TestBed.inject(DataService);
         const bundle = bundleOverride ?? benchmarkBundle;
         if (bundle) {
-            hydrateDataService(dataService, bundle);
+            hydrateDataService(dataService, unitsCatalog, bundle);
         }
 
         return {
@@ -744,6 +806,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             loggerStub,
             logger: TestBed.inject(LoggerService),
             gameServiceStub,
+            urlServiceStub,
         };
     }
 
@@ -1209,7 +1272,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
         optionsServiceStub.options.set({
@@ -1321,7 +1384,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
         optionsServiceStub.options.set({
@@ -1425,10 +1488,15 @@ describe('UnitSearchFiltersService search telemetry', () => {
     it('ignores the active formation target for worker-backed generator eligibility', async () => {
         const worker = new FakeSearchWorker();
         const bundle = createStandaloneBundle();
-        const { service } = createService(bundle, {
+        const { dataService, service } = createService(bundle, {
             workerFactory: () => worker,
         });
         const existingForceUnit = createFormationExistingForceUnit(bundle.units.units[0]);
+
+        expect(bundle.units.units.map(unit => dataService.getUnitByIdentity(
+            unit.provider,
+            unit.uuid,
+        )?.name)).toEqual(bundle.units.units.map(unit => unit.name));
 
         await flushAsyncWork();
 
@@ -1455,7 +1523,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: bundle.units.units.map((unit) => ({ unitName: unit.name })),
+            entries: bundle.units.units.map(workerResultEntry),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -1651,7 +1719,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => (
                 record.n === unit.name
             ));
@@ -1747,7 +1815,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => (
                 record.n === unit.name
             ));
@@ -2028,7 +2096,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => (
                 record.n === unit.name
             ));
@@ -2124,7 +2192,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2226,7 +2294,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2345,7 +2413,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2461,7 +2529,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2581,7 +2649,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2675,7 +2743,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2807,7 +2875,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2872,7 +2940,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => (
                 record.n === unit.name
             ));
@@ -2924,7 +2992,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -2972,7 +3040,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3011,9 +3079,14 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
+
+        expect(bundle.units.units.map(unit => dataService.getUnitByIdentity(
+            unit.provider,
+            unit.uuid,
+        )?.name)).toEqual(bundle.units.units.map(unit => unit.name));
 
         await flushAsyncWork();
 
@@ -3040,7 +3113,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: ['Very Common Crab', 'Unknown Crab'].map(unitName => ({ unitName })),
+            entries: workerResultEntriesByName(bundle.units.units, ['Very Common Crab', 'Unknown Crab']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -3076,7 +3149,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3105,7 +3178,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: ['Known Crab', 'Unknown Crab'].map(unitName => ({ unitName })),
+            entries: workerResultEntriesByName(bundle.units.units, ['Known Crab', 'Unknown Crab']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -3138,7 +3211,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3192,7 +3265,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3258,7 +3331,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3331,7 +3404,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3427,7 +3500,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3438,13 +3511,13 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(Array.from((service as any).getSemanticIndexedUnitIds('era', 'Age of War', {
             factionNames: ['Draconis Combine'],
-        }) ?? [])).toEqual(['Combine Scout']);
+        }) ?? [])).toEqual([getUnitSearchIdentityKey(bundle.units.units[0])]);
         expect(Array.from((service as any).getSemanticIndexedUnitIds('era', 'Age of War', {
             factionNames: ['Federated Suns'],
-        }) ?? [])).toEqual(['Suns Raider']);
+        }) ?? [])).toEqual([getUnitSearchIdentityKey(bundle.units.units[1])]);
         expect(Array.from((service as any).getSemanticIndexedUnitIds('faction', 'Draconis Combine', {
             eraNames: ['Age of War'],
-        }) ?? [])).toEqual(['Combine Scout']);
+        }) ?? [])).toEqual([getUnitSearchIdentityKey(bundle.units.units[0])]);
         expect(Array.from((service as any).getSemanticIndexedUnitIds('faction', 'Federated Suns', {
             eraNames: ['Succession Wars'],
         }) ?? [])).toEqual([]);
@@ -3530,7 +3603,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3625,7 +3698,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3660,7 +3733,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const bundle = benchmarkBundle && benchmarkBundle.units.units.length >= 2
             ? buildSmallBundle(benchmarkBundle)
             : createStandaloneBundle();
-        const { dataService, service, optionsServiceStub, loggerStub } = createService(bundle, {
+        const { dataService, service, optionsServiceStub } = createService(bundle, {
             workerFactory: () => worker,
         });
 
@@ -3677,7 +3750,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3692,7 +3765,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.filteredUnits();
 
         expect((service as any).workerSearchActive()).toBeTrue();
-        expect(loggerStub.info).toHaveBeenCalledWith('Unit search worker startup: enabled');
 
         const corpusVersion = (service as any).getWorkerCorpusVersion();
         const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
@@ -3714,7 +3786,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: bundle.units.units.map((unit) => ({ unitName: unit.name })),
+            entries: bundle.units.units.map(workerResultEntry),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -3812,7 +3884,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3869,7 +3941,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: firstExecuteMessage.request.revision,
             corpusVersion: firstExecuteMessage.request.corpusVersion,
             telemetryQuery: firstExecuteMessage.request.telemetryQuery,
-            entries: ['BattleMaster C3', 'Common Dominion Mek'].map(unitName => ({ unitName })),
+            entries: workerResultEntriesByName(bundle.units.units, ['BattleMaster C3', 'Common Dominion Mek']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -3948,7 +4020,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -3980,7 +4052,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: firstExecuteMessage.request.revision,
             corpusVersion: firstExecuteMessage.request.corpusVersion,
             telemetryQuery: firstExecuteMessage.request.telemetryQuery,
-            entries: [{ unitName: 'BattleMaster C3' }],
+            entries: [workerResultEntry(bundle.units.units[0])],
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4032,7 +4104,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4067,7 +4139,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: ['Rare Salvage Crab', 'Common Requisition Crab'].map(unitName => ({ unitName })),
+            entries: workerResultEntriesByName(bundle.units.units, ['Rare Salvage Crab', 'Common Requisition Crab']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4148,7 +4220,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4191,7 +4263,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: ['BattleMaster C3', 'Common Dominion Mek'].map(unitName => ({ unitName })),
+            entries: workerResultEntriesByName(bundle.units.units, ['BattleMaster C3', 'Common Dominion Mek']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4254,7 +4326,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4300,7 +4372,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: [{ unitName: 'BattleMaster C3' }],
+            entries: [workerResultEntry(bundle.units.units[0])],
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4336,7 +4408,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4367,7 +4439,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: ['Very Common Crab', 'Unknown Crab'].map(unitName => ({ unitName })),
+            entries: workerResultEntriesByName(bundle.units.units, ['Very Common Crab', 'Unknown Crab']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4411,7 +4483,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4464,7 +4536,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4496,7 +4568,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: ['Known Unit', 'Unknown Unit'].map(unitName => ({ unitName })),
+            entries: workerResultEntriesByName(bundle.units.units, ['Known Unit', 'Unknown Unit']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4551,7 +4623,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4607,7 +4679,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4636,7 +4708,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: ['Low Unit', 'Unknown Unit', 'High Unit'].map(unitName => ({ unitName })),
+            entries: workerResultEntriesByName(bundle.units.units, ['Low Unit', 'Unknown Unit', 'High Unit']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4647,10 +4719,36 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['High Unit', 'Low Unit', 'Unknown Unit']);
     });
 
-    it('logs when the search worker is unavailable at startup', () => {
+    it('uses the synchronous fallback quietly when the search worker is unavailable', () => {
         const { loggerStub } = createService(createStandaloneBundle());
 
-        expect(loggerStub.info).toHaveBeenCalledWith('Unit search worker startup: disabled');
+        expect(loggerStub.info).not.toHaveBeenCalledWith(
+            jasmine.stringMatching(/Unit search worker startup/u),
+        );
+    });
+
+    it('keeps the full catalog in the worker through the compact summary projection', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        const { dataService, service, loggerStub } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        await flushAsyncWork();
+        worker.messages.length = 0;
+        spyOn(dataService, 'getUnitSummaries').and.returnValue(
+            Array.from({ length: 10_990 }, () => bundle.units.units[0]),
+        );
+
+        (service as any).submitWorkerSearchRequest();
+
+        const initMessage = worker.messages.find((message: any) => message.type === 'init') as any;
+        expect(initMessage.snapshot.units.length).toBe(10_990);
+        expect(Object.prototype.hasOwnProperty.call(initMessage.snapshot.units[0], 'comp')).toBeFalse();
+        expect(Object.prototype.hasOwnProperty.call(initMessage.snapshot.units[0], 'sourceRef')).toBeFalse();
+        expect((service as any).workerSearchEnabled()).toBeTrue();
+        expect(loggerStub.info).not.toHaveBeenCalledWith(
+            jasmine.stringMatching(/safe cloned-corpus budget/u),
+        );
     });
 
     it('keeps indexed faction self and co-matches available for multistate AND selections', () => {
@@ -4750,7 +4848,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
         });
 
@@ -4825,6 +4923,71 @@ describe('UnitSearchFiltersService search telemetry', () => {
         });
 
         expect(() => service.advOptions()).not.toThrow();
+    });
+
+    it('preserves startup faction and era filters until the current worker corpus is ready', async () => {
+        const worker = new FakeSearchWorker();
+        const initialParams = new URLSearchParams();
+        initialParams.set('q', 'Test');
+        initialParams.set('expanded', 'true');
+        initialParams.set('filters', 'canon:yes|faction:Test Faction|era:Succession Wars');
+        const bundle = createStandaloneBundle();
+        const { service, urlServiceStub } = createService(bundle, {
+            workerFactory: () => worker,
+            initialParams,
+        });
+
+        TestBed.tick();
+        await flushAsyncWork();
+
+        TestBed.tick();
+
+        expect(service.filterState()['faction']?.value).toEqual({
+            'Test Faction': {
+                name: 'Test Faction',
+                state: 'or',
+                count: 1,
+            },
+        });
+        expect(service.filterState()['era']?.value).toEqual({
+            'Succession Wars': {
+                name: 'Succession Wars',
+                state: 'or',
+                count: 1,
+            },
+        });
+        expect(service.isInteractionReady()).toBeFalse();
+        expect(urlServiceStub.setQueryParams).not.toHaveBeenCalled();
+
+        // Drive the real client boundary: readiness is granted only after the
+        // latest parsed deep-link query has a result for the current corpus.
+        (service as any).submitWorkerSearchRequest();
+        const initMessage = worker.messages.find((message: any) => message.type === 'init') as any;
+        expect(initMessage).toBeDefined();
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            entries: bundle.units.units.map(workerResultEntry),
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+        TestBed.tick();
+
+        expect(service.isInteractionReady()).toBeTrue();
+        const publishedParams = urlServiceStub.setQueryParams.calls.mostRecent().args[0];
+        expect(publishedParams.filters).toContain('faction:');
+        expect(publishedParams.filters).toContain('Test Faction');
+        expect(publishedParams.filters).toContain('era:');
+        expect(publishedParams.filters).toContain('Succession Wars');
     });
 
     it('canonicalizes indexed source, faction, and era filters from URL params', () => {
@@ -5501,8 +5664,16 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
 
         const workerSnapshot = (service as any).getWorkerCorpusSnapshot((service as any).getWorkerCorpusVersion());
-        expect(workerSnapshot.factionEraIndex['Clan Invasion']?.['Clan Coyote']).toEqual(['Test Mek']);
-        expect(workerSnapshot.factionEraIndex['Jihad']?.['Clan Coyote']).toEqual(['Test Tank']);
+        expect(workerSnapshot.factionEraIndex.referenceIdsByEraAndFaction['Clan Invasion']?.['Clan Coyote'])
+            .toEqual([1]);
+        expect(workerSnapshot.factionEraIndex.unitIdentityKeysByMulId['1']).toEqual([
+            getUnitSearchIdentityKey(bundle.units.units[0]),
+        ]);
+        expect(workerSnapshot.factionEraIndex.referenceIdsByEraAndFaction['Jihad']?.['Clan Coyote'])
+            .toEqual([2]);
+        expect(workerSnapshot.factionEraIndex.unitIdentityKeysByMulId['2']).toEqual([
+            getUnitSearchIdentityKey(bundle.units.units[1]),
+        ]);
     });
 
     it('requires faction membership in every selected multistate era', async () => {
@@ -5829,10 +6000,13 @@ describe('UnitSearchFiltersService search telemetry', () => {
             return;
         }
 
-        const { dataService, service } = createService(buildSmallBundle(benchmarkBundle));
+        const bundle = buildSmallBundle(benchmarkBundle);
+        const testMek = bundle.units.units.find(unit => unit.name === 'Test Mek')!;
+        const testTank = bundle.units.units.find(unit => unit.name === 'Test Tank')!;
+        const { dataService, service } = createService(bundle);
         const initialTagIds = dataService.getIndexedUnitIds('_tags', 'tag-a');
 
-        expect(initialTagIds?.has('Test Mek')).toBeTrue();
+        expect(initialTagIds?.has(getUnitSearchIdentityKey(testMek))).toBeTrue();
 
         (dataService as any).applyTagDataToUnits({
             tags: {
@@ -5858,8 +6032,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const namedTagOptions = tagOptions.filter(option => typeof option !== 'number');
 
         expect(dataService.getIndexedUnitIds('_tags', 'tag-a')).toBeUndefined();
-        expect(indexedAlphaIds?.has('Test Mek')).toBeTrue();
-        expect(indexedBetaIds?.has('Test Tank')).toBeTrue();
+        expect(indexedAlphaIds?.has(getUnitSearchIdentityKey(testMek))).toBeTrue();
+        expect(indexedBetaIds?.has(getUnitSearchIdentityKey(testTank))).toBeTrue();
         expect(dropdownUniverse).toEqual(['alpha-tag', 'beta-tag']);
         expect(namedTagOptions.map(option => option.name)).toEqual(['alpha-tag', 'beta-tag']);
     });
@@ -6145,7 +6319,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { dataService, service } = createService(scenario.bundle);
 
         spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue(scenario.availabilityRecords);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return scenario.availabilityRecordsByName.get(unit.name);
         });
 
@@ -6261,7 +6435,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: [{ unitName: bundle.units.units[0].name }],
+            entries: [workerResultEntry(bundle.units.units[0])],
             stages: [],
             totalMs: 1,
             unitCount: 2,
@@ -6295,7 +6469,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
             entries: [{
-                unitName: unit.name,
+                ...workerResultEntry(unit),
                 match: { kind: 'pv', adjustedValue: unit.as.PV, skill: 8 },
             }],
             stages: [],
@@ -6307,6 +6481,44 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(service.filteredUnits().map(result => result.name)).toContain(unit.name);
         expect(service.getSearchResultPilotContext(unit).kind).toBe('bv');
+    });
+
+    it('rejects a delayed old-corpus result during a catalog swap before the replacement snapshot is submitted', () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        const { dataService, service } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+
+        const oldCorpusVersion = (service as any).getWorkerCorpusVersion();
+        const oldSnapshot = (service as any).getWorkerCorpusSnapshot(oldCorpusVersion);
+        const oldRequest = (service as any).buildWorkerSearchRequest(oldCorpusVersion);
+        (service as any).searchWorkerClient.submit(oldSnapshot, oldRequest);
+
+        worker.emit({ type: 'ready', corpusVersion: oldCorpusVersion });
+        const oldExecute = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        const messageCountBeforeSwap = worker.messages.length;
+
+        dataService.refreshSearchCorpus();
+
+        expect((service as any).getWorkerCorpusVersion()).not.toBe(oldExecute.request.corpusVersion);
+        expect(worker.messages.length).toBe(messageCountBeforeSwap);
+
+        worker.emit({
+            type: 'result',
+            revision: oldExecute.request.revision,
+            corpusVersion: oldExecute.request.corpusVersion,
+            telemetryQuery: oldExecute.request.telemetryQuery,
+            entries: [workerResultEntry(bundle.units.units[0])],
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+
+        expect((service as any).rawWorkerResultUnitsState()).toEqual([]);
+        expect((service as any).workerResultRevision()).not.toBe(oldExecute.request.revision);
+        expect(service.searchTelemetry()).toBeNull();
     });
 
     it('ignores stale worker results and applies only the latest response', async () => {
@@ -6347,7 +6559,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: firstExecute.request.revision,
             corpusVersion: firstExecute.request.corpusVersion,
             telemetryQuery: firstExecute.request.telemetryQuery,
-            entries: [{ unitName: bundle.units.units[0].name }],
+            entries: [workerResultEntry(bundle.units.units[0])],
             stages: [],
             totalMs: 1,
             unitCount: 2,
@@ -6362,7 +6574,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: secondExecute.request.revision,
             corpusVersion: secondExecute.request.corpusVersion,
             telemetryQuery: secondExecute.request.telemetryQuery,
-            entries: [{ unitName: bundle.units.units[1].name }],
+            entries: [workerResultEntry(bundle.units.units[1])],
             stages: [],
             totalMs: 1,
             unitCount: 2,
@@ -6410,7 +6622,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: initialExecute.request.revision,
             corpusVersion: initialExecute.request.corpusVersion,
             telemetryQuery: initialExecute.request.telemetryQuery,
-            entries: bundle.units.units.map((unit) => ({ unitName: unit.name })),
+            entries: bundle.units.units.map(workerResultEntry),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -6433,7 +6645,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: updatedExecute.request.revision,
             corpusVersion: updatedExecute.request.corpusVersion,
             telemetryQuery: updatedExecute.request.telemetryQuery,
-            entries: [{ unitName: 'BattleMaster C3' }],
+            entries: [workerResultEntry(bundle.units.units[0])],
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,

@@ -6,18 +6,7 @@ import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, Weapo
 import { getEngineBaseWeight } from '../../components/engine';
 import type { ProtoMekEntity } from '../../entities/protomek/protomek-entity';
 import { calculateHeatNeutralRequirement } from '../cost/common';
-
-const SYSTEM_MISC_FLAGS = [
-  'F_ENDO_STEEL', 'F_ENDO_COMPOSITE', 'F_ENDO_STEEL_PROTO', 'F_COMPOSITE',
-  'F_INDUSTRIAL_STRUCTURE', 'F_REINFORCED', 'F_FERRO_FIBROUS',
-  'F_FERRO_FIBROUS_PROTO', 'F_FERRO_LAMELLOR', 'F_LIGHT_FERRO',
-  'F_HEAVY_FERRO', 'F_REACTIVE', 'F_REFLECTIVE', 'F_HARDENED_ARMOR',
-  'F_PRIMITIVE_ARMOR', 'F_COMMERCIAL_ARMOR', 'F_INDUSTRIAL_ARMOR',
-  'F_HEAVY_INDUSTRIAL_ARMOR', 'F_ANTI_PENETRATIVE_ABLATIVE',
-  'F_HEAT_DISSIPATING', 'F_IMPACT_RESISTANT', 'F_BALLISTIC_REINFORCED',
-  'F_ELECTRIC_DISCHARGE_ARMOR', 'F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK',
-  'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE',
-] as const;
+import { isConstructionSystemEquipment } from '../../../construction-equipment.model';
 
 export interface ProtoMekWeightBreakdown {
   readonly engine: number;
@@ -53,7 +42,7 @@ export function calculateProtoMekWeightBreakdown(entity: ProtoMekEntity): ProtoM
       ammo += ceilKg(equipment.kgPerShot * (mount.getAmmoShots() ?? 0) / 1000);
     } else if (equipment instanceof WeaponEquipment) {
       weapons += requireTonnage(entity, mount);
-    } else if (equipment instanceof MiscEquipment && !equipment.hasAnyFlag([...SYSTEM_MISC_FLAGS])) {
+    } else if (equipment instanceof MiscEquipment && !isConstructionSystemEquipment(equipment)) {
       miscellaneous += requireTonnage(entity, mount);
     }
   }

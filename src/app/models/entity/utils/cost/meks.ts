@@ -6,12 +6,13 @@ import type { MekEntity, MekWithArmsEntity } from '../../entities/mek/mek-entity
 import { calculateArmorCost } from './common';
 import { amount, buildCostReport, multiplier } from './cost-report';
 import type { EntityCostEntry, EntityCostReport } from './cost-report';
+import {
+  isImprovedJumpJetEquipment,
+  isAnyJumpBoosterEquipment,
+  isPrototypeImprovedJumpJetEquipment,
+} from '../../../jump-equipment.model';
 
 /** Mirrors MegaMek's MekCostCalculator for common Mek construction systems. */
-export function calculateMekCost(entity: MekEntity, equipmentCost: number): number {
-  return calculateMekCostReport(entity, [amount('Equipment', equipmentCost)]).total;
-}
-
 export function calculateMekCostReport(
   entity: MekEntity,
   equipmentEntries: readonly EntityCostEntry[],
@@ -25,12 +26,11 @@ export function calculateMekCostReport(
   const myomerCost = getMekMyomerCost(entity) * tonnage;
   const jumpJets = entity.installedJumpJetMP();
   const improvedJumpJets = entity.equipment().some(mount =>
-    mount.equipment?.hasFlag('F_JUMP_JET')
-    && mount.equipment.hasFlag('S_IMPROVED')
-    && !mount.equipment.hasFlag('S_PROTOTYPE'));
+    isImprovedJumpJetEquipment(mount.equipment)
+    && !isPrototypeImprovedJumpJetEquipment(mount.equipment));
   const primaryJumpMP = entity.installedUmuMP() > 0 ? entity.installedUmuMP() : jumpJets;
   const mechanicalJumpBoosterMP = Math.round(entity.equipment().find(
-    mount => mount.equipment?.hasAnyFlag(['F_JUMP_BOOSTER', 'F_MECHANICAL_JUMP_BOOSTER']),
+    mount => isAnyJumpBoosterEquipment(mount.equipment),
   )?.size ?? 0);
   const jumpCost = primaryJumpMP ** 2 * tonnage * (improvedJumpJets ? 500 : 200)
     + mechanicalJumpBoosterMP ** 2 * tonnage * 150;
@@ -76,8 +76,6 @@ export function calculateMekCostReport(
 }
 
 function getMekStructureCostPerTon(entity: MekEntity): number {
-  // MegaMek retains the default Standard aggregate structure type when MTF
-  // declares a location-specific Hybrid structure.
   if (entity.hasMixedStructureMaterials()) return entity.isSuperHeavy() ? 4000 : 400;
   const name = entity.structureAt('CT').structure.name.toLowerCase();
   const superHeavyMultiplier = entity.isSuperHeavy() ? 2 : 1;

@@ -7,6 +7,7 @@ import type { InfantryEntity } from '../../entities/infantry/infantry-entity';
 import { WeaponEquipment } from '../../../equipment.model';
 import { getEquipmentCost } from './equipment-pricing';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
+import { isBattleArmorManipulatorEquipment } from '../../../battle-armor-equipment.model';
 
 /** Mirrors MegaMek's BattleArmorCostCalculator, including training costs. */
 export function calculateBattleArmorCost(entity: BattleArmorEntity, equipmentCost: number): number {
@@ -39,7 +40,7 @@ export function calculateBattleArmorCostReport(
       propulsionCost = propulsionMP * 50000;
   }
   const manipulatorCost = entity.equipment().reduce<number>((total, mount) =>
-    total + (mount.equipment?.hasFlag('F_BA_MANIPULATOR')
+    total + (isBattleArmorManipulatorEquipment(mount.equipment)
       ? Math.trunc(getEquipmentCost(entity, mount) ?? 0)
       : 0), 0);
   const armor = entity.uniformArmor()?.armor;

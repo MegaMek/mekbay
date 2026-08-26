@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, type ComponentRef, Injector } from '@angular/core';
-import type { ASUnitTypeCode, Unit } from '../../models/units.model';
+import type { ASUnitTypeCode, UnitSummary } from '../../models/unit-summary.model';
 import type { ASForceUnit, AbilitySelection } from '../../models/as-force-unit.model';
 import { COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import { PILOT_ABILITIES, type ASCustomPilotAbility } from '../../models/pilot-abilities.model';
@@ -18,13 +18,14 @@ import type { SpecialAbilityClickEvent } from './layouts/layout-base.component';
 import { CriticalHitRollDialogComponent, type CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
 import { MotiveDamageRollDialogComponent, type MotiveDamageRollDialogData } from './motive-damage-roll-dialog/motive-damage-roll-dialog.component';
 import { AsLayoutStandardComponent, AsLayoutLargeVessel1Component, AsLayoutLargeVessel2Component } from './layouts';
-import { GameSystem, getUnitServerHost } from '../../models/common.model';
+import { GameSystem } from '../../models/common.model';
 import type { ChoicePickerInstance, NumericPickerInstance, NumericPickerResult, PickerChoice, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 import { firstValueFrom } from 'rxjs';
 import { OptionsService } from '../../services/options.service';
 import { PickerFactoryService } from '../../services/picker-factory.service';
 import type { ColorScheme } from '../../models/options.model';
+import { UnitFluffImageService } from '../../services/catalogs/unit-fluff-image.service';
 
 
 
@@ -54,6 +55,7 @@ export class AlphaStrikeCardComponent {
     private readonly elRef = inject(ElementRef<HTMLElement>);
     private readonly destroyRef = inject(DestroyRef);
     private readonly pickerFactory = inject(PickerFactoryService);
+    private readonly fluffImages = inject(UnitFluffImageService);
     
     /** Unique instance ID for SVG filter deduplication */
     readonly instanceId = AlphaStrikeCardComponent.nextId++;
@@ -61,7 +63,7 @@ export class AlphaStrikeCardComponent {
     /** Optional: provide the stateful AS unit wrapper (preferred when available). */
     forceUnit = input<ASForceUnit | undefined>(undefined);
     /** Optional: provide a plain Unit (used when no forceUnit is available). */
-    unit = input<Unit | undefined>(undefined);
+    unit = input<UnitSummary | undefined>(undefined);
     useHex = input<boolean>(false);
     cardStyle = input<ColorScheme>('default');
     isSelected = input<boolean>(false);
@@ -77,7 +79,7 @@ export class AlphaStrikeCardComponent {
     selected = output<ASForceUnit>();
     editPilot = output<ASForceUnit>();
     
-    imageUrl = signal<string>('');
+    imageUrl = computed(() => this.fluffImages.resolveUrl(this.resolvedUnit()) ?? '');
     
     // Interaction state
     private interactionAbortController: AbortController | null = null;
@@ -92,8 +94,8 @@ export class AlphaStrikeCardComponent {
         }
     }
     
-    /** Effective Unit for rendering: forceUnit.getUnit() wins, otherwise the plain unit input. */
-    resolvedUnit = computed<Unit | undefined>(() => this.forceUnit()?.getUnit() ?? this.unit());
+    /** Effective Unit for rendering: forceUnit.getSummary() wins, otherwise the plain unit input. */
+    resolvedUnit = computed<UnitSummary | undefined>(() => this.forceUnit()?.getSummary() ?? this.unit());
     
     /** Get the Alpha Strike unit type (BM, IM, CV, CI, WS, etc.) */
     unitType = computed<ASUnitTypeCode>(() => this.resolvedUnit()?.as.TP || 'BM');
@@ -130,17 +132,6 @@ export class AlphaStrikeCardComponent {
     }
 
     constructor() {
-        // Effect to load image
-        effect(() => {
-            const unit = this.resolvedUnit();
-            const imagePath = unit?.fluff?.img;
-            if (imagePath) {
-                this.loadFluffImage(imagePath, unit?.serverHost);
-            } else {
-                this.imageUrl.set('');
-            }
-        });
-        
         // Track pending afterNextRender callbacks to clean up on destroy
         let pendingAfterRenderRef: { destroy: () => void } | null = null;
         
@@ -195,20 +186,6 @@ export class AlphaStrikeCardComponent {
             pendingAfterRenderRef?.destroy();
             this.cleanupInteractions();
         });
-    }
-    
-    private async loadFluffImage(imagePath: string, serverHost?: string): Promise<void> {
-        try {    
-            if (imagePath.endsWith('hud.png')) {
-                this.imageUrl.set('');
-                return;
-            }
-            const fluffImageUrl = `${getUnitServerHost({ serverHost })}/images/fluff/${imagePath}`;
-            this.imageUrl.set(fluffImageUrl);
-        } catch {
-            // Ignore errors, image will just not display
-            this.imageUrl.set('');
-        }
     }
     
     // Handle special ability click from layout components
@@ -377,7 +354,7 @@ export class AlphaStrikeCardComponent {
         const fu = this.forceUnit();
         if (!fu) return;
         
-        const unitType = fu.getUnit().as.TP;
+        const unitType = fu.getSummary().as.TP;
         if (!unitType) return;
         
         const ref = this.dialogs.createDialog<void, CriticalHitRollDialogComponent, CriticalHitRollDialogData>(
@@ -568,8 +545,8 @@ export class AlphaStrikeCardComponent {
         const unit = this.forceUnit();
         if (!unit) return;
         
-        const maxArmor = unit.getUnit().as.Arm;
-        const maxInternal = unit.getUnit().as.Str;
+        const maxArmor = unit.getSummary().as.Arm;
+        const maxInternal = unit.getSummary().as.Str;
         const totalMax = maxArmor + maxInternal;
         
         const committedTotal = unit.getState().armor() + unit.getState().internal();
@@ -611,7 +588,7 @@ export class AlphaStrikeCardComponent {
         
         const state = unit.getState();
         const isArmor = type === 'armor';
-        const max = isArmor ? unit.getUnit().as.Arm : unit.getUnit().as.Str;
+        const max = isArmor ? unit.getSummary().as.Arm : unit.getSummary().as.Str;
         const committed = isArmor ? state.armor() : state.internal();
         const pending = isArmor ? state.pendingArmor() : state.pendingInternal();
         const currentDamage = committed + pending;
@@ -655,7 +632,7 @@ export class AlphaStrikeCardComponent {
                 message: 'Enter damage amount (negative to heal):',
                 inputType: 'number',
                 minimumValue: - (unit.getState().armor() + unit.getState().pendingArmor() + unit.getState().internal() + unit.getState().pendingInternal()),
-                maximumValue: unit.getUnit().as.Arm + unit.getUnit().as.Str,
+                maximumValue: unit.getSummary().as.Arm + unit.getSummary().as.Str,
                 defaultValue: 0
             } as InputDialogData
         });
@@ -693,8 +670,9 @@ export class AlphaStrikeCardComponent {
                 message: 'Enter damage amount (negative to heal):',
                 inputType: 'number',
                 minimumValue: - (isArmor ? state.armor() + state.pendingArmor() : state.internal() + state.pendingInternal()),
-                maximumValue: isArmor ? unit.getUnit().as.Arm : unit.getUnit().as.Str,
-                defaultValue: 0
+                maximumValue: isArmor ? unit.getSummary().as.Arm : unit.getSummary().as.Str,
+                defaultValue: 0,
+                centerInput: true,
             } as InputDialogData
         });
         
@@ -731,13 +709,13 @@ export class AlphaStrikeCardComponent {
         if (!this.optionsService.options().ASUseAutomations) return;
         if (deltaChange <= 0) return;
         
-        const unitType = unit.getUnit().as.TP;
+        const unitType = unit.getSummary().as.TP;
         if (unitType === 'CI') return; // Skip conventional infantry
         if (unitType === 'BA') return; // Skip battle armor
         
         const newPendingInternal = unit.getState().pendingInternal();
         const tookStructureDamage = newPendingInternal > previousPendingInternal;
-        const specials = unit.getUnit().as.specials || [];
+        const specials = unit.getSummary().as.specials || [];
         const hasBAR = specials.some(s => s.startsWith('BAR'));
         
         // BAR: Any time a unit with BAR suffers damage, a critical hit may occur
@@ -764,7 +742,7 @@ export class AlphaStrikeCardComponent {
      * Vehicles must roll on the Motive Systems Damage Table when taking structure damage.
      */
     private async checkMotiveDamage(unit: ASForceUnit): Promise<void> {
-        const unitType = unit.getUnit().as.TP;
+        const unitType = unit.getSummary().as.TP;
         // Only vehicles (CV = Combat Vehicle, SV = Support Vehicle) need motive damage rolls
         if (unitType !== 'CV' && unitType !== 'SV') return;
         

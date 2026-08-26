@@ -5,6 +5,15 @@
 import type { BaseEntity } from '../../base-entity';
 import { MiscEquipment } from '../../../equipment.model';
 import { EquipmentFlag } from '../../../equipment-flags.type';
+import { laserInsulatorAdjustedHeat } from '../../../laser-insulator.model';
+import { flamerRequiresPower } from '../../../flamer-mode.model';
+import {
+  PPC_CAPACITOR_HEAT_BONUS,
+  isPpcCapacitorEquipment,
+  isPpcEquipment,
+} from '../../../ppc-capacitor.model';
+import { isSupportVehicleBarArmor } from '../../../construction-equipment.model';
+import { isSpotWelderEquipment } from '../physical-weapon';
 
 export function nextHalfTon(tonnage: number): number {
   const truncated = Math.round(tonnage * 1000000) / 1000000;
@@ -26,7 +35,7 @@ export function standardRound(value: number, entity: BaseEntity): number {
 
 export function calculateArmorCost(entity: BaseEntity): number {
   const uniformArmor = entity.uniformArmor();
-  if (uniformArmor && !uniformArmor.armor.hasFlag('F_SUPPORT_VEE_BAR_ARMOR')) {
+  if (uniformArmor && !isSupportVehicleBarArmor(uniformArmor.armor)) {
     const armor = uniformArmor.armor;
     if (!armor.hasFixedCost()) throw new Error(`Unable to calculate armor cost for ${armor.id}`);
     const armorWeight = standardRound(
@@ -43,7 +52,7 @@ export function calculateArmorCost(entity: BaseEntity): number {
     if (armorPoints <= 0) continue;
     const armor = mountedArmor.armor;
     if (!armor.hasFixedCost()) throw new Error(`Unable to calculate armor cost for ${armor.id}`);
-    if (armor.hasFlag('F_SUPPORT_VEE_BAR_ARMOR')) {
+    if (isSupportVehicleBarArmor(armor)) {
       total += armorPoints * armor.cost;
     } else {
       const armorWeight = armorPoints / (16 * armor.pptMultiplier);
@@ -58,9 +67,10 @@ export function calculatePowerAmplifierWeight(entity: BaseEntity): number {
   if (engine.isFusion || engine.isFission || entity.weightClass() === 'Small Support') return 0;
   const tonnage = entity.mountedWeapons().reduce((total, mount) => {
     const weapon = mount.equipment;
-    const requiresPower = (weapon.hasFlag('F_LASER') && weapon.ammoType === 'NA')
-      || weapon.hasAnyFlag(['F_PPC', 'F_PLASMA', 'F_PLASMA_MFUK'])
-      || (weapon.hasFlag('F_FLAMER') && weapon.ammoType === 'NA');
+    const requiresPower = (weapon.hasWeaponTrait('laser') && weapon.ammoType === 'NA')
+      || isPpcEquipment(weapon)
+      || weapon.hasWeaponTrait('plasma') || weapon.hasWeaponTrait('plasma-mfuk')
+      || flamerRequiresPower(weapon);
     return total + (requiresPower ? mount.getTonnage(entity) ?? 0 : 0);
   }, 0);
   return nextHalfTon(tonnage / 10);
@@ -69,20 +79,18 @@ export function calculatePowerAmplifierWeight(entity: BaseEntity): number {
 export function calculateHeatNeutralRequirement(entity: BaseEntity): number {
   const weaponHeat = entity.mountedWeapons().reduce((total, mount) => {
     const weapon = mount.equipment;
-    const producesHeat = (weapon.hasFlag('F_LASER') && weapon.ammoType === 'NA')
-      || weapon.hasAnyFlag(['F_PPC', 'F_PLASMA', 'F_PLASMA_MFUK'])
-      || (weapon.hasFlag('F_FLAMER') && weapon.ammoType === 'NA');
+    const producesHeat = (weapon.hasWeaponTrait('laser') && weapon.ammoType === 'NA')
+      || isPpcEquipment(weapon)
+      || weapon.hasWeaponTrait('plasma') || weapon.hasWeaponTrait('plasma-mfuk')
+      || flamerRequiresPower(weapon);
     if (!producesHeat) return total;
     const enhancement = entity.getLinkingMount(mount)?.equipment;
-    let heat = weapon.heat;
-    if (weapon.hasFlag('F_LASER') && enhancement?.hasFlag('F_LASER_INSULATOR')) {
-      heat = Math.max(1, heat - 1);
-    }
+    const heat = laserInsulatorAdjustedHeat(weapon.heat, enhancement, weapon);
     return total + heat;
   }, 0);
   const capacitorHeat = entity.equipment().reduce((total, mount) => {
     const equipment = mount.equipment;
-    return total + (equipment?.hasFlag('F_PPC_CAPACITOR') ? 5 : 0);
+    return total + (isPpcCapacitorEquipment(equipment) ? PPC_CAPACITOR_HEAT_BONUS : 0);
   }, 0);
   const hasStealth = [...entity.armorByLocation().values()]
     .some(mounted => ['STEALTH', 'STEALTH_VEHICLE'].includes(mounted.armor.armorType));
@@ -90,7 +98,7 @@ export function calculateHeatNeutralRequirement(entity: BaseEntity): number {
   const miscHeat = entity.equipment().reduce((total, mount) => {
     const equipment = mount.equipment;
     if (!(equipment instanceof MiscEquipment)) return total;
-    const isSpotWelder = equipment.hasAllFlags(['F_CLUB', 'S_SPOT_WELDER']);
+    const isSpotWelder = isSpotWelderEquipment(equipment);
     if (isSpotWelder && ['fusion', 'fission'].includes(powerSource)) return total;
     return total + equipment.operatingHeat;
   }, 0);

@@ -10,7 +10,8 @@ import { GameSystem } from '../../models/common.model';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { Options } from '../../models/options.model';
 import { DialogsService } from '../../services/dialogs.service';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceImportService } from '../../services/force-import.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { OptionsService } from '../../services/options.service';
 import { ToastService } from '../../services/toast.service';
 import { FormationInfoDialogComponent, type FormationInfoDialogData } from '../formation-info-dialog/formation-info-dialog.component';
@@ -73,7 +74,8 @@ describe('ForceEntryPreviewDialogComponent', () => {
                     },
                 },
                 { provide: DialogsService, useValue: dialogsServiceStub },
-                { provide: ForceBuilderService, useValue: forceBuilderServiceStub },
+                { provide: ForceWorkspaceStateService, useValue: forceBuilderServiceStub },
+                { provide: ForceImportService, useValue: forceBuilderServiceStub },
                 { provide: OptionsService, useValue: optionsServiceStub },
                 { provide: ToastService, useValue: toastServiceStub },
             ],

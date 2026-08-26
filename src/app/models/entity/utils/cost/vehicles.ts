@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EquipmentFlag } from '../../../equipment-flags.type';
 import type { SupportVehicle } from '../../entities/support-vehicle';
 import type { VehicleEntity } from '../../entities/vehicle/vehicle-entity';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
@@ -15,6 +14,13 @@ import {
   standardRound,
 } from './common';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
+import { isPpcCapacitorEquipment } from '../../../ppc-capacitor.model';
+import {
+  isFlotationOrSealingEquipment,
+  isOffRoadEquipment,
+  supportVehicleChassisCostMultiplier,
+  supportVehicleStructureMultiplier,
+} from '../../../chassis-equipment.model';
 
 /** Mirrors MegaMek's CombatVehicleCostCalculator for support and combat vehicles. */
 export function calculateVehicleCost(entity: VehicleEntity, equipmentCost: number): number {
@@ -69,8 +75,9 @@ export function calculateVehicleCostReport(
   entries.push(multiplier('Weight Multiplier', getVehicleTonnageMultiplier(entity)));
   if (!supportVehicle) {
     entries.push(multiplier('Flotation/Sealing Multiplier', 1.25,
-      hasAnyEquipmentFlag(entity, ['F_FLOTATION_HULL', 'F_ENVIRONMENTAL_SEALING'])));
-    entries.push(multiplier('Off-Road Multiplier', 1.2, hasAnyEquipmentFlag(entity, ['F_OFF_ROAD'])));
+      entity.equipment().some(mount => isFlotationOrSealingEquipment(mount.equipment))));
+    entries.push(multiplier('Off-Road Multiplier', 1.2,
+      entity.equipment().some(mount => isOffRoadEquipment(mount.equipment))));
   }
   return buildCostReport(entries, true);
 }
@@ -79,21 +86,9 @@ function calculateVehicleArmorCost(entity: VehicleEntity): number {
   return calculateArmorCost(entity);
 }
 
-const SUPPORT_VEHICLE_STRUCTURE_COST_MODIFIERS: ReadonlyArray<readonly [EquipmentFlag, number]> = [
-  ['F_AMPHIBIOUS', 1.75], ['F_ARMORED_CHASSIS', 1.5], ['F_BICYCLE', 0.75],
-  ['F_CONVERTIBLE', 1.1], ['F_DUNE_BUGGY', 1.5], ['F_ENVIRONMENTAL_SEALING', 2],
-  ['F_EXTERNAL_POWER_PICKUP', 1.1], ['F_HYDROFOIL', 1.7], ['F_MONOCYCLE', 0.5],
-  ['F_OFF_ROAD', 1.5], ['F_PROP', 1.2], ['F_SNOWMOBILE', 1.75],
-  ['F_STOL_CHASSIS', 1.5], ['F_SUBMERSIBLE', 1.8], ['F_TRACTOR_MODIFICATION', 1.2],
-  ['F_TRAILER_MODIFICATION', 0.8], ['F_ULTRA_LIGHT', 0.5], ['F_VSTOL_CHASSIS', 2],
-];
-
 function getSupportVehicleStructureWeight(entity: VehicleEntity & SupportVehicle): number {
   const ratingMultipliers = [1.6, 1.3, 1.15, 1, 0.85, 0.66];
-  let modifier = 1;
-  for (const [flag, multiplier] of SUPPORT_VEHICLE_STRUCTURE_COST_MODIFIERS) {
-    if (hasAnyEquipmentFlag(entity, [flag])) modifier *= multiplier;
-  }
+  const modifier = supportVehicleStructureMultiplier(entity.equipment().map(mount => mount.equipment));
   const raw = getSupportVehicleBaseChassisValue(entity) * (ratingMultipliers[entity.structuralTechRating()] ?? 1)
     * modifier * entity.tonnage();
   return entity.tonnage() < 5 ? Math.floor(raw * 1000) / 1000 : Math.floor(raw * 2) / 2;
@@ -115,21 +110,8 @@ function getSupportVehicleBaseChassisValue(entity: VehicleEntity): number {
   }
 }
 
-const SUPPORT_VEHICLE_CHASSIS_COST_MODIFIERS: ReadonlyArray<readonly [EquipmentFlag, number]> = [
-  ['F_AMPHIBIOUS', 1.25], ['F_ARMORED_CHASSIS', 2], ['F_BICYCLE', 0.75],
-  ['F_CONVERTIBLE', 1.1], ['F_DUNE_BUGGY', 1.25], ['F_ENVIRONMENTAL_SEALING', 1.75],
-  ['F_EXTERNAL_POWER_PICKUP', 1.1], ['F_HYDROFOIL', 1.1], ['F_MONOCYCLE', 1.3],
-  ['F_OFF_ROAD', 1.2], ['F_PROP', 0.75], ['F_SNOWMOBILE', 1.3],
-  ['F_STOL_CHASSIS', 1.5], ['F_SUBMERSIBLE', 3.5], ['F_TRACTOR_MODIFICATION', 1.1],
-  ['F_TRAILER_MODIFICATION', 0.75], ['F_ULTRA_LIGHT', 1.5], ['F_VSTOL_CHASSIS', 2],
-];
-
 function getSupportVehicleChassisCostMultiplier(entity: VehicleEntity & SupportVehicle): number {
-  let multiplier = 1;
-  for (const [flag, value] of SUPPORT_VEHICLE_CHASSIS_COST_MODIFIERS) {
-    if (hasAnyEquipmentFlag(entity, [flag])) multiplier *= value;
-  }
-  return multiplier;
+  return supportVehicleChassisCostMultiplier(entity.equipment().map(mount => mount.equipment));
 }
 
 function getVehicleTonnageMultiplier(entity: VehicleEntity): number {
@@ -163,7 +145,7 @@ function calculateVehicleTurretWeight(entity: VehicleEntity): number {
       || mount.location === 'Rear Turret';
     if (!inTurret) return total;
     const enhancement = entity.getLinkingMount(mount);
-    const capacitorTonnage = enhancement?.equipment?.hasFlag('F_PPC_CAPACITOR')
+    const capacitorTonnage = enhancement && isPpcCapacitorEquipment(enhancement.equipment)
       ? enhancement.getTonnage(entity) ?? 0
       : 0;
     return total + ((mount.getTonnage(entity) ?? 0) + capacitorTonnage) / 10;

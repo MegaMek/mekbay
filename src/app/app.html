@@ -1,7 +1,11 @@
+<div class="application-surface">
+<div #applicationViewport class="application-viewport">
 <main class="app-container" [class.menu-open]="this.layoutService.isMenuOpen()">
     @if (this.hasForces()) {
-    <sidebar #sidebar [unitSearchPortal]="unitSearchPortalForceBuilder()"
-        [unitSearchComponent]="unitSearchComponentRef()"></sidebar>
+    @defer (when this.hasForces()) {
+        <sidebar #sidebar [unitSearchPortal]="unitSearchPortalForceBuilder()"
+            [unitSearchComponent]="unitSearchComponentRef()"></sidebar>
+    }
     }
     <div class="extended-search-container">
         <div [cdkPortalOutlet]="unitSearchPortalExtended()"></div>
@@ -11,9 +15,13 @@
         @if (this.hasForces()) {
         <div class="content-area">
             @if (gameService.isAlphaStrike()) {
-            <alpha-strike-viewer></alpha-strike-viewer>
-            } @else {
-            <page-viewer></page-viewer>
+            @defer (when gameService.isAlphaStrike()) {
+                <alpha-strike-viewer></alpha-strike-viewer>
+            }
+            } @else if (hasForceUnits()) {
+            @defer (when hasForceUnits()) {
+                <page-viewer></page-viewer>
+            }
             }
         </div>
         } @else {
@@ -110,7 +118,7 @@
                 <div class="main-search">
                     <div class="empty-state-logo">
                         <div class="empty-state-logo-mark">
-                            <img src="/images/logo.png" alt="MekBay Logo">
+                            <img src="/images/logo.png" width="512" height="109" alt="MekBay Logo" fetchpriority="high">
                             @if (!isMainBuild) { <span class="next-badge" (click)="showNextDialog()">NEXT</span> }
                         </div>
                         <connection-status-badge placement="home"></connection-status-badge>
@@ -155,8 +163,8 @@
                             <div [cdkPortalOutlet]="unitSearchPortalMain()"></div>
                         </div>
                     </div>
-                    @if (this.dataService.isDownloading() || this.dataService.isCloudForceLoading()) {
-                    <loading-spinner class="spinner-container" message="Downloading data..." ariaLabel="Downloading data"></loading-spinner>
+                    @if (this.dataService.isCloudForceLoading()) {
+                    <loading-spinner class="spinner-container" message="Loading force..." ariaLabel="Loading force"></loading-spinner>
                     }
                 </div>
             </div>
@@ -191,5 +199,8 @@
         <unit-search></unit-search>
     </div>
 </main>
-<app-toasts></app-toasts>
 <router-outlet></router-outlet>
+<app-toasts></app-toasts>
+</div>
+<catalog-refresh-status [view]="backgroundCatalogProgress()"></catalog-refresh-status>
+</div>

@@ -5,17 +5,49 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { ColorPickerButtonComponent } from '../color-picker-button/color-picker-button.component';
 import {
+    getEffectiveInventoryControlCalculatorState,
     INVENTORY_CONTROL_TARGET_COLORS,
     INVENTORY_CONTROL_TARGET_MAX_COUNT,
     type InventoryControlRuntimeTarget,
     type InventoryControlRuntimeTargetId
 } from '../../models/inventory-control-runtime-state.model';
 import { TooltipDirective } from '../../directives/tooltip.directive';
-import { getUnitConditionDefinition } from '../../models/rules/unit-type-rules';
-import type { C3DegradationLabel } from '../../models/rules/game-rules';
-import { inventoryTargetAllowsC3, inventoryTargetUsesC3 } from '../../utils/inventory-target-number.util';
+import { getUnitConditionDefinition, NARC_CONDITION_COLOR } from '../../models/unit-status-presentation';
+import { CORE_2026_GAME_RULES, type C3DegradationLabel, type CBTGameRules } from '../../models/rules/game-rules';
+import {
+    calculateTargetTnModifierBreakdown,
+    type TnTargetModifierBreakdownEntry,
+    type TnTargetNumberCalculatorState,
+} from '../../models/target-number-calculator.model';
+import { unitBuildingLevelNumber, unitWaterDepthNumber } from '../../models/unit-cover.model';
+import {
+    inventoryTargetAllowsC3,
+    inventoryTargetUsesC3,
+    resolveTargetGuidance,
+} from '../../utils/inventory-target-number.util';
 
 const JAMMED_CONDITION_COLOR = getUnitConditionDefinition('jammed')?.color ?? '#ff6be6';
+const TAGGED_CONDITION_COLOR = getUnitConditionDefinition('tagged').color;
+
+interface TargetModifierPill {
+    label: string;
+    modifier?: number;
+    accentColor?: string;
+    invalid?: boolean;
+    invalidReason?: string;
+    custom?: boolean;
+}
+
+export interface NarcCapableWeaponLayers {
+    aboveWater: boolean;
+    underwater: boolean;
+}
+
+const NO_NARC_CAPABLE_WEAPON_LAYERS: NarcCapableWeaponLayers = {
+    aboveWater: false,
+    underwater: false,
+};
+
 export interface WeaponTargetUpdateRequest {
     targetId: InventoryControlRuntimeTargetId;
     patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>;
@@ -65,7 +97,7 @@ export interface WeaponTargetCalculatorRequest {
                     }
                     @for (target of targets(); track target.id) {
                         <div class="weapon-target-row" [style.--target-row-color]="target.color">
-                            <div class="target-wrapper">
+                            <div class="target-wrapper" [class.has-c3-distance]="showC3Distance()">
                                 <div class="target-main-row">
                                     <div class="target-identity-row">
                                         <color-picker-button
@@ -89,14 +121,14 @@ export interface WeaponTargetCalculatorRequest {
                                             </span>
                                         </div>
                                         <div class="target-number-field">
-                                            <span class="tn-modifier-label" [tooltip]="tnModifierTooltip">TN Modifier <span class="info-notice" aria-hidden="true">i</span></span>
+                                            <span class="tn-modifier-label" [tooltip]="tnModifierTooltipFor(target)">{{ tnModifierLabel(target) }} <span class="info-notice" aria-hidden="true">i</span></span>
                                             <span class="target-stepper">
                                                 <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepTnModifier(target, -1)">-</button>
-                                                <input class="value" type="number" step="1" [readOnly]="readOnly()" [value]="target.tnModifier" (input)="updateTnModifier(target.id, $any($event.target).value)">
+                                                <input class="value tn-modifier-value" [class.linked-tn-modifier]="!isTnModifierManual(target)" type="number" step="1" [readOnly]="readOnly()" [value]="target.tnModifier" [attr.aria-label]="tnModifierAriaLabel(target)" [title]="tnModifierTitle(target)" (input)="updateTnModifier(target.id, $any($event.target).value)">
                                                 <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepTnModifier(target, 1)">+</button>
                                             </span>
                                         </div>
-                                        <button class="bt-button square-small calculator-button" type="button" [disabled]="readOnly()" (click)="openTnCalculator(target.id, $event)" aria-label="Open TN calculator" title="Open TN calculator">
+                                        <button class="bt-button square primary calculator-button" type="button" [disabled]="readOnly()" (click)="openTnCalculator(target.id, $event)" aria-label="Open TN calculator" title="Open TN calculator">
                                             <svg fill="currentColor" width="16px" height="16px" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
                                             <path d="M116,184a12,12,0,0,1-12,12H84v20a12,12,0,0,1-24,0V196H40a12,12,0,0,1,0-24H60V152a12,12,0,0,1,24,0v20h20A12,12,0,0,1,116,184ZM104,60H40a12,12,0,0,0,0,24h64a12,12,0,0,0,0-24Zm48,116.06641h64a12,12,0,0,0,0-24H152a12,12,0,0,0,0,24Zm64,15.86718H152a12,12,0,0,0,0,24h64a12,12,0,0,0,0-24Zm-64.48535-87.44824a12.00033,12.00033,0,0,0,16.9707,0L184,88.9707l15.51465,15.51465a12.0001,12.0001,0,0,0,16.9707-16.9707L200.9707,72l15.51465-15.51465a12.0001,12.0001,0,0,0-16.9707-16.9707L184,55.0293,168.48535,39.51465a12.0001,12.0001,0,0,0-16.9707,16.9707L167.0293,72,151.51465,87.51465A12.00062,12.00062,0,0,0,151.51465,104.48535Z"/>
                                             </svg>
@@ -105,7 +137,25 @@ export interface WeaponTargetCalculatorRequest {
                                 </div>
                                 @if (showC3Distance()) {
                                     <div class="target-secondary-row">
-                                        <div class="target-identity-spacer" aria-hidden="true"></div>
+                                        <div class="target-identity-spacer">
+                                            @if (targetModifierPills(target); as modifierPills) {
+                                                @if (modifierPills.length > 0) {
+                                                    <div class="target-modifier-pills" aria-label="Assigned target modifiers">
+                                                        @for (pill of modifierPills; track $index) {
+                                                            <span class="target-modifier-pill" [class.guidance-pill]="pill.accentColor !== undefined" [class.invalid-guidance]="pill.invalid" [class.custom-pill]="pill.custom" [style.--target-pill-accent]="pill.accentColor ?? null" [attr.aria-label]="pill.invalid ? pill.label + ' guidance unavailable' : null" [attr.title]="pill.invalid ? pill.invalidReason : null">
+                                                                <span class="modifier-label">{{ pill.label }}</span>
+                                                                @if (pill.modifier !== undefined) {
+                                                                    <span class="modifier-badge">{{ formatModifier(pill.modifier) }}</span>
+                                                                }
+                                                                @if (pill.custom) {
+                                                                    <button class="custom-pill-remove" type="button" [disabled]="readOnly()" aria-label="Remove custom TN modifier" title="Remove custom TN modifier" (click)="removeCustomModifier(target.id)">×</button>
+                                                                }
+                                                            </span>
+                                                        }
+                                                    </div>
+                                                }
+                                            }
+                                        </div>
                                         <div class="target-controls-row target-c3-controls" [class.c3-degraded]="c3Degraded()">
                                             <div class="c3-fields">
                                                 <div class="c3-distance-caption">C³ Distance@if (c3Degraded()) { <strong class="c3-status-label"> ({{ c3DegradationLabel() }})</strong> }</div>
@@ -126,6 +176,23 @@ export interface WeaponTargetCalculatorRequest {
                                             <span class="calculator-spacer" aria-hidden="true"></span>
                                         </div>
                                     </div>
+                                }
+                                @if (targetModifierPills(target); as modifierPills) {
+                                    @if (modifierPills.length > 0) {
+                                        <div class="target-modifier-pills target-modifier-pills-fallback" aria-label="Assigned target modifiers">
+                                            @for (pill of modifierPills; track $index) {
+                                                <span class="target-modifier-pill" [class.guidance-pill]="pill.accentColor !== undefined" [class.invalid-guidance]="pill.invalid" [class.custom-pill]="pill.custom" [style.--target-pill-accent]="pill.accentColor ?? null" [attr.aria-label]="pill.invalid ? pill.label + ' guidance unavailable' : null" [attr.title]="pill.invalid ? pill.invalidReason : null">
+                                                    <span class="modifier-label">{{ pill.label }}</span>
+                                                    @if (pill.modifier !== undefined) {
+                                                        <span class="modifier-badge">{{ formatModifier(pill.modifier) }}</span>
+                                                    }
+                                                    @if (pill.custom) {
+                                                        <button class="custom-pill-remove" type="button" [disabled]="readOnly()" aria-label="Remove custom TN modifier" title="Remove custom TN modifier" (click)="removeCustomModifier(target.id)">×</button>
+                                                    }
+                                                </span>
+                                            }
+                                        </div>
+                                    }
                                 }
                             </div>
                             @if (manualTargetCount() > 0) {
@@ -238,6 +305,116 @@ export interface WeaponTargetCalculatorRequest {
             min-width: 0;
         }
 
+        .target-modifier-pills {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1px;
+            min-width: 0;
+        }
+
+        .target-wrapper.has-c3-distance .target-modifier-pills-fallback {
+            display: none;
+        }
+
+        .target-identity-spacer .target-modifier-pills {
+            flex: 1 1 auto;
+        }
+
+        .target-modifier-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            min-height: 24px;
+            max-width: 100%;
+            padding: 0 6px;
+            border: 1px solid var(--border-color);
+            background: rgba(0, 0, 0, 0.35);
+            color: var(--text-color-secondary);
+            font-size: 0.76rem;
+            line-height: 1;
+            white-space: nowrap;
+            box-sizing: border-box;
+        }
+
+        .target-modifier-pill .modifier-label {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .target-modifier-pill.guidance-pill {
+            border-color: var(--target-pill-accent);
+            background: color-mix(in srgb, var(--target-pill-accent) 48%, #141414);
+            color: #fff;
+            font-weight: 700;
+        }
+
+        .target-modifier-pill.guidance-pill.invalid-guidance {
+            border-color: color-mix(in srgb, var(--target-pill-accent) 55%, var(--border-color));
+            background: rgba(0, 0, 0, 0.35);
+            color: var(--text-color-secondary);
+            font-weight: 400;
+        }
+
+        .target-modifier-pill.custom-pill {
+            border-color: var(--bt-yellow, #EAAE3F);
+            background: color-mix(in srgb, var(--bt-yellow, #EAAE3F) 24%, #141414);
+            color: var(--bt-yellow, #EAAE3F);
+            font-weight: 700;
+        }
+
+        .target-modifier-pill.invalid-guidance .modifier-label {
+            color: var(--danger, red);
+            text-decoration-line: line-through;
+            text-decoration-color: red;
+            text-decoration-thickness: 2px;
+        }
+
+        .target-modifier-pill .modifier-badge {
+            flex: 0 0 18px;
+            inline-size: 18px;
+            block-size: 18px;
+            margin-right: -4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border-color);
+            background: rgba(0, 0, 0, 0.6);
+            color: var(--text-color);
+            font-weight: 600;
+            font-size: 0.85em;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+            box-sizing: border-box;
+        }
+
+        .custom-pill-remove {
+            inline-size: 18px;
+            block-size: 18px;
+            margin: 0 -4px 0 0;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: inherit;
+            font: inherit;
+            font-size: 1rem;
+            font-weight: 800;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .custom-pill-remove:hover:not(:disabled),
+        .custom-pill-remove:focus-visible {
+            background: var(--bt-yellow, #EAAE3F);
+            color: #000;
+            outline: none;
+        }
+
+        .custom-pill-remove:disabled {
+            cursor: not-allowed;
+            opacity: 0.45;
+        }
+
         .target-main-row,
         .target-secondary-row {
             display: flex;
@@ -270,6 +447,7 @@ export interface WeaponTargetCalculatorRequest {
             align-items: end;
             position: relative;
             overflow: visible;
+            align-self: start;
         }
 
         .c3-fields {
@@ -417,6 +595,16 @@ export interface WeaponTargetCalculatorRequest {
             -moz-appearance: textfield;
         }
 
+        .target-stepper .value.tn-modifier-value {
+            border-bottom-width: 2px;
+            transition: border-color 0.2s ease-in-out, background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+        }
+
+        .target-stepper .value.tn-modifier-value.linked-tn-modifier {
+            border-bottom-color: var(--primary-focus-color);
+            background-color: color-mix(in srgb, var(--primary-focus-color) 10%, transparent);
+        }
+
         .target-stepper .value::-webkit-outer-spin-button,
         .target-stepper .value::-webkit-inner-spin-button {
             margin: 0;
@@ -494,6 +682,10 @@ export interface WeaponTargetCalculatorRequest {
                 display: none;
             }
 
+            .target-wrapper.has-c3-distance .target-modifier-pills-fallback {
+                display: flex;
+            }
+
             .target-identity-row,
             .target-controls-row {
                 flex: 1 1 100%;
@@ -508,7 +700,7 @@ export interface WeaponTargetCalculatorRequest {
 })
 export class WeaponTargetsMenuComponent {
     readonly jammedConditionColor = JAMMED_CONDITION_COLOR;
-    readonly tnModifierTooltip = 'Target-side TN modifier for this target. Use it for target movement, indirect fire, spotter movement, terrain, cover, stance, and similar target conditions. It is added separately from your unit skill, your movement, range, heat, and weapon modifiers. The calculator can fill it, and you can still override it manually.';
+    readonly tnModifierTooltip = 'Target-side TN modifier for this target. Use it for target movement, indirect fire, spotter movement, terrain, cover, stance, and similar target conditions. It is added separately from your unit skill, your movement, range, heat, and weapon modifiers. Directly editing it creates a complete target-side override.';
     readonly targets = input<InventoryControlRuntimeTarget[]>([]);
     readonly colors = input<readonly string[]>(INVENTORY_CONTROL_TARGET_COLORS);
     readonly maxTargets = input(INVENTORY_CONTROL_TARGET_MAX_COUNT);
@@ -516,6 +708,9 @@ export class WeaponTargetsMenuComponent {
     readonly showC3Distance = input(false);
     readonly c3Degraded = input(false);
     readonly c3DegradationLabel = input<C3DegradationLabel>('DEGRADED');
+    readonly gameRules = input<CBTGameRules>(CORE_2026_GAME_RULES);
+    readonly hasSemiGuidedMissiles = input(false);
+    readonly narcCapableWeaponLayers = input<NarcCapableWeaponLayers>(NO_NARC_CAPABLE_WEAPON_LAYERS);
     readonly opforAvailable = input(false);
     readonly opforEnabled = input(false);
     readonly readOnly = input(false);
@@ -584,6 +779,11 @@ export class WeaponTargetsMenuComponent {
         this.updateRequest.emit({ targetId, patch: { tnModifier: this.parseNumber(value, 0, false) }, manualTnOverride: true });
     }
 
+    removeCustomModifier(targetId: InventoryControlRuntimeTargetId): void {
+        if (this.readOnly()) return;
+        this.updateRequest.emit({ targetId, patch: { tnCalculator: { customModifier: undefined } } });
+    }
+
     stepDistance(target: InventoryControlRuntimeTarget, delta: number): void {
         if (this.readOnly()) return;
         this.updateRequest.emit({ targetId: target.id, patch: { distance: Math.max(0, target.distance + delta) } });
@@ -619,9 +819,133 @@ export class WeaponTargetsMenuComponent {
         this.updateRequest.emit({ targetId: target.id, patch: { tnModifier: target.tnModifier + delta }, manualTnOverride: true });
     }
 
+    isTnModifierManual(target: InventoryControlRuntimeTarget): boolean {
+        return target.manualTnModifier !== undefined;
+    }
+
+    tnModifierLabel(target: InventoryControlRuntimeTarget): string {
+        return this.isTnModifierManual(target) ? 'TN Override' : 'TN Modifier';
+    }
+
+    tnModifierTooltipFor(target: InventoryControlRuntimeTarget): string {
+        return this.isTnModifierManual(target)
+            ? 'Complete target-side override. Calculator-derived and weapon-specific target effects, including Precision, NARC, and Semi-Guided adjustments, are disabled. Reapply the calculator to restore them.'
+            : this.tnModifierTooltip;
+    }
+
+    tnModifierAriaLabel(target: InventoryControlRuntimeTarget): string {
+        return this.isTnModifierManual(target)
+            ? 'TN Modifier (complete manual override)'
+            : 'TN Modifier (linked to calculator)';
+    }
+
+    tnModifierTitle(target: InventoryControlRuntimeTarget): string {
+        return this.isTnModifierManual(target)
+            ? 'Complete manual TN override; calculator and weapon-specific target effects are disabled'
+            : 'TN Modifier: linked to calculator';
+    }
+
     openTnCalculator(targetId: InventoryControlRuntimeTargetId, event: MouseEvent): void {
         if (this.readOnly()) return;
         this.calculatorRequest.emit({ targetId, origin: event.currentTarget as HTMLElement });
+    }
+
+    targetModifierPills(target: InventoryControlRuntimeTarget): TargetModifierPill[] {
+        const statePills = [
+            ...this.targetGuidancePills(target),
+            ...(target.tnCalculator?.stealth ? [{ label: 'Stealth' }] : []),
+        ];
+        const calculator = getEffectiveInventoryControlCalculatorState(target);
+        if (!calculator) return statePills;
+        const breakdown = calculateTargetTnModifierBreakdown({
+            ...calculator,
+            unitType: target.unitType,
+            range: target.distance,
+        }, this.gameRules());
+        return [...statePills, ...this.targetBreakdownPills(breakdown, calculator)];
+    }
+
+    private targetGuidancePills(target: InventoryControlRuntimeTarget): TargetModifierPill[] {
+        const calculator = target.tnCalculator;
+        if (!calculator) return [];
+
+        const narcWeaponLayers = this.narcCapableWeaponLayers();
+        const guidance = resolveTargetGuidance(calculator, target.unitType, {
+            semiGuided: this.hasSemiGuidedMissiles(),
+            narcCapableAboveWater: narcWeaponLayers.aboveWater,
+            narcCapableUnderwater: narcWeaponLayers.underwater,
+        }, this.gameRules());
+        const pills: TargetModifierPill[] = [];
+        if (guidance.semiGuided) {
+            pills.push({ label: 'Tagged', accentColor: TAGGED_CONDITION_COLOR });
+        }
+
+        if (guidance.narcRelevant) {
+            pills.push({
+                label: 'NARC',
+                accentColor: NARC_CONDITION_COLOR,
+                ...(guidance.narc ? {} : {
+                    invalid: true,
+                    invalidReason: guidance.narcUnavailableReason === 'ecm-shielded'
+                        ? 'NARC guidance is suppressed by ECM'
+                        : 'NARC guidance is unavailable across this water layer',
+                }),
+            });
+        }
+        return pills;
+    }
+
+    private targetBreakdownPills(
+        breakdown: readonly TnTargetModifierBreakdownEntry[],
+        calculator: TnTargetNumberCalculatorState,
+    ): TargetModifierPill[] {
+        const pills: TargetModifierPill[] = [];
+        let spotterModifier = 0;
+        for (const entry of breakdown) {
+            if (entry.id === 'spotter-movement' || entry.id === 'spotter-declared-attack') {
+                spotterModifier += entry.modifier;
+                continue;
+            }
+            pills.push({
+                label: this.targetModifierPillLabel(entry, calculator),
+                modifier: entry.modifier,
+                ...(entry.id === 'custom' && { custom: true }),
+            });
+        }
+        if (spotterModifier !== 0) pills.push({ label: 'Spotter', modifier: spotterModifier });
+        return pills;
+    }
+
+    private targetModifierPillLabel(
+        entry: TnTargetModifierBreakdownEntry,
+        calculator: TnTargetNumberCalculatorState,
+    ): string {
+        if (entry.partialCoverSource === 'water' && calculator.waterDepth) {
+            return `Depth ${unitWaterDepthNumber(calculator.waterDepth)}`;
+        }
+        if ((entry.partialCoverSource === 'building' || entry.id === 'building-cover')
+            && calculator.buildingCover) {
+            return `Building lv${unitBuildingLevelNumber(calculator.buildingCover)}`;
+        }
+        switch (entry.id) {
+            case 'intervening-woods': return 'LoS';
+            case 'target-hex-cover':
+                switch (entry.targetHexCover) {
+                    case 'heavy': return 'Heavy Wood';
+                    case 'light': return 'Light Wood';
+                    default: return entry.label;
+                }
+            case 'secondary-target': return 'Secondary';
+            case 'secondary-target-side-back': return 'Secondary (Side/Back)';
+            case 'large-target': return 'Large';
+            case 'indirect-fire': return 'Indirect';
+            case 'prone': return 'Prone';
+            default: return entry.label;
+        }
+    }
+
+    formatModifier(value: number): string {
+        return value >= 0 ? `+${value}` : `${value}`;
     }
 
     private parseNumber(value: string, fallback: number, clampMinZero: boolean): number {

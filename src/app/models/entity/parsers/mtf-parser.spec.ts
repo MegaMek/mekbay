@@ -5,9 +5,10 @@
 import { AmmoEquipment, ArmorEquipment, EquipmentMap, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../equipment.model';
 import { EquipmentRegistry } from '../../equipment-lookup';
 import { ParseContext } from './parse-context';
-import { parseMtf } from './mtf-parser';
+import { MtfSourceLimitError, parseMtf } from './mtf-parser';
 import { writeMtf } from '../writers/mtf-writer';
-import { writeBlkMek } from '../writers/blk-mek-writer';
+import { encodeNativeEntity } from '../write-entity';
+import { parseEntity, UnsupportedNativeFormatError } from '../parse-entity';
 
 const STANDARD_ARMOR = new ArmorEquipment({
   id: 'Standard Armor',
@@ -19,6 +20,40 @@ const STANDARD_ARMOR = new ArmorEquipment({
 const STANDARD_ARMOR_REGISTRY = equipmentRegistry({});
 
 describe('MTF parser identity', () => {
+  it('bounds untrusted MTF source before parsing it', () => {
+    const oversized = `chassis:${'x'.repeat(8 * 1024 * 1024)}`;
+
+    expect(() => parseMtf(
+      oversized,
+      new ParseContext('oversized.mtf', STANDARD_ARMOR_REGISTRY),
+    )).toThrowError(MtfSourceLimitError);
+  });
+
+  it('diagnoses junk-suffix integers instead of truncating them', () => {
+    const context = new ParseContext('junk-number.mtf', STANDARD_ARMOR_REGISTRY);
+    const entity = parseMtf(minimalMtf().replace('mass:20', 'mass:20tons'), context);
+
+    expect(context.errors).toContain(jasmine.objectContaining({
+      field: 'mass', message: 'Invalid integer "20tons"',
+    }));
+    expect(entity.tonnage()).toBe(0);
+  });
+
+  it('rejects Mek BLK as an unsupported native format', () => {
+    let error: unknown;
+    try {
+      parseEntity('<UnitType>\nBipedMek\n</UnitType>\n', 'invalid-mek.blk', STANDARD_ARMOR_REGISTRY);
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toEqual(jasmine.objectContaining<Partial<UnsupportedNativeFormatError>>({
+      code: 'UNSUPPORTED_NATIVE_FORMAT',
+      format: 'blk',
+      unitType: 'BipedMek',
+    }));
+  });
+
   it('preserves an existing UUID', () => {
     const uuid = '019f6767-0dcb-7bb8-992f-aef08202f5e1';
     const entity = parseMtf(minimalMtf(`uuid:${uuid}\n`), new ParseContext('test.mtf', STANDARD_ARMOR_REGISTRY));
@@ -30,6 +65,23 @@ describe('MTF parser identity', () => {
     const entity = parseMtf(minimalMtf(), new ParseContext('test.mtf', STANDARD_ARMOR_REGISTRY));
 
     expect(entity.uuid()).toBeTruthy();
+  });
+
+  it('attaches unresolved equipment errors to the parsed entity', () => {
+    const parsed = parseEntity(
+      `${minimalMtf()}Right Arm:\nMissing Test Equipment\n`,
+      'missing-equipment.mtf',
+      STANDARD_ARMOR_REGISTRY,
+    );
+
+    expect(parsed.diagnostics).toContain(jasmine.objectContaining({
+      code: 'EQUIPMENT_NOT_FOUND',
+      severity: 'error',
+      field: 'RA',
+      message: 'Equipment not found: "Missing Test Equipment"',
+    }));
+    expect(parsed.entity.loadIssues()).toEqual(parsed.diagnostics);
+    expect(Object.isFrozen(parsed.entity.loadIssues())).toBeTrue();
   });
 
   it('decodes optional Mek systems and writes their canonical MTF values', () => {
@@ -188,18 +240,20 @@ describe('MTF parser identity', () => {
     expect(entity.structureAt('LA').tonnage).toBe(20);
   });
 
-  it('rejects lossy FrankenMek BLK serialization', () => {
+  it('always serializes a Mek in native MTF', () => {
     const entity = parseMtf(
       frankenMtf('structure:Standard\nLA structure:25\n'),
       new ParseContext('franken.mtf', structureRegistry()),
     );
 
-    expect(() => writeBlkMek(entity)).toThrowError(
-      'Hybrid per-location structure cannot be represented in BLK format',
-    );
+    const encoded = encodeNativeEntity(entity);
+
+    expect(encoded).toContain('\nConfig:Biped FrankenMek\n');
+    expect(encoded).toContain('\nLA structure:25\n');
+    expect(encoded).not.toContain('<UnitType>');
   });
 
-  it('derives construction jump MP from installed equipment', () => {
+  it('derives construction jump MP from equipment while preserving the source field', () => {
     const entity = parseMtf(
       minimalMtf().replace('jump mp:0', 'jump mp:5'),
       new ParseContext('construction-jump-mp.mtf', STANDARD_ARMOR_REGISTRY),
@@ -207,7 +261,26 @@ describe('MTF parser identity', () => {
 
     expect(entity.installedJumpJetMP()).toBe(0);
     expect(entity.jumpMP()).toBe(0);
-    expect(writeMtf(entity)).toContain('\njump mp:0\n');
+    expect(writeMtf(entity)).toContain('\njump mp:5\n');
+  });
+
+  it('keeps MTF VGL front and rear facings distinct from rear mounting', () => {
+    const vgl = new WeaponEquipment({
+      id: 'Test VGL', name: 'Test VGL', type: 'weapon', flags: ['F_VGL'],
+    });
+    const registry = equipmentRegistry({ [vgl.id]: vgl });
+
+    for (const [suffix, facing] of [['F', 2], ['R', 3]] as const) {
+      const entity = parseMtf(
+        `${minimalMtf()}\nLeft Torso:\nTest VGL (${suffix})\n`,
+        new ParseContext(`vgl-${suffix}.mtf`, registry),
+      );
+      const mount = entity.equipment().find(candidate => candidate.equipment === vgl);
+
+      expect(mount?.facing).toBe(facing);
+      expect(mount?.rearMounted).toBeFalse();
+      expect(writeMtf(entity)).toContain(`\nTest VGL (${suffix})\n`);
+    }
   });
 
   it('models QuadVee conversion gear as an intrinsic fixed system', () => {

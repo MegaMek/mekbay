@@ -2,11 +2,30 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { CBTForceUnit } from '../cbt-force-unit.model';
+import type { CBTRuleset } from '../cbt-ruleset.model';
 import { AmmoEquipment, Equipment, WeaponEquipment, type RangeBrackets } from '../equipment.model';
 import type { EquipmentRegistry } from '../equipment-lookup';
+import type { EquipmentStatus } from '../equipment-status.model';
+import type { ComponentId } from '../entity/entity-identifiers';
+import type { IntrinsicWeaponKind } from '../entity/types/weapon';
 import type { InventoryControlRuntimeTarget } from '../inventory-control-runtime-state.model';
-import { MountedEquipment } from '../mounted-equipment.model';
+import { resolveAmmoWeaponProfile } from '../ammo-weapon-profile.model';
+import type { TnTargetUnitType } from '../target-number-calculator.model';
+import type { WeaponType } from '../weapon-types.model';
+import { isHagEquipment } from '../hag-mode.model';
+import { isFlamerEquipment } from '../flamer-mode.model';
+import {
+    isClubOrHandWeaponFlags,
+    isClawFlags,
+    isShieldFlags,
+} from '../entity/utils/physical-weapon-kernel';
+import { isDirectFireEquipment } from '../entity/utils/targeting-computer';
+import {
+    resolveAmmoBattleValue,
+    resolveAmmoKgPerShot,
+    resolveAmmoShots,
+    type AmmoCapacityFacts,
+} from './ammo-capacity-rules';
 
 export type HitModifier = number | 'Vs' | '*' | null;
 
@@ -26,11 +45,49 @@ export type ToHitAdjustment =
     | { readonly kind: 'add'; readonly modifier: number; readonly label: string; readonly weakened?: boolean }
     | { readonly kind: 'unsupported' };
 
+export interface ComponentToHitWeaponFacts {
+    /** Catalog rule subject only; never a mounted component or mutable owner graph. */
+    readonly equipment: WeaponEquipment;
+    /** Frozen effective type snapshot, including the selected ammo/profile effects. */
+    readonly effectiveWeaponTypes: readonly WeaponType[];
+}
+
+export interface ComponentToHitTargetingComputerFacts {
+    readonly label: string;
+    readonly status: EquipmentStatus;
+}
+
+export type ComponentToHitSource =
+    | {
+        readonly kind: 'intrinsic';
+        readonly actionKind: IntrinsicWeaponKind;
+    }
+    | {
+        readonly kind: 'equipment';
+        /** Catalog rule subject only; never a mounted component or mutable owner graph. */
+        readonly equipment: Equipment | null;
+        readonly physical: boolean;
+        /** Exact linked parent catalog subject used by the no-range eligibility rule. */
+        readonly parentEquipment: Equipment | null;
+    };
+
+/** Immutable, stable-ID rule subject for one installed component. */
+export interface ComponentToHitSubject {
+    readonly kind: 'component';
+    readonly componentId: ComponentId;
+    readonly source: ComponentToHitSource;
+    readonly locations: readonly string[];
+    /** The exact parent-or-self weapon used by Mek linked-child targeting-computer rules. */
+    readonly targetingComputerWeapon: ComponentToHitWeaponFacts | null;
+    /** First installed targeting computer and its current status. */
+    readonly targetingComputer: ComponentToHitTargetingComputerFacts | null;
+}
+
 export interface ToHitRequest {
-    subject: Equipment | MountedEquipment;
-    range?: RangeBrackets | null;
-    stateModifiers?: readonly ToHitModifierBreakdownEntry[];
-    adjustments?: readonly ToHitAdjustment[];
+    readonly subject: Equipment | ComponentToHitSubject;
+    readonly range?: RangeBrackets | null;
+    readonly stateModifiers?: readonly ToHitModifierBreakdownEntry[];
+    readonly adjustments?: readonly ToHitAdjustment[];
 }
 
 export interface ToHitResolution {
@@ -49,6 +106,60 @@ export interface ToHitHeatSeparation {
 
 export type C3DegradationSource = 'none' | 'unit' | 'network-member';
 export type C3DegradationLabel = 'DEGRADED' | 'JAMMED';
+export type SemiGuidedAdjustmentSource = 'movement' | 'terrain';
+
+export type MekExplosionProtection = 'none' | 'case' | 'case-ii';
+
+export interface MekExplosionDamageContext {
+    readonly damage: number;
+    readonly protection: MekExplosionProtection;
+    readonly remainingInternal: number;
+    readonly remainingArmor: number;
+    readonly originalArmor: number;
+    readonly torso: boolean;
+    /** Core's standard 20-point cap was exceeded before damage transferred here. */
+    readonly armorBlowoutPending?: boolean;
+}
+
+export interface MekExplosionDamageResolution {
+    readonly internalDamage: number;
+    readonly armorDamage: number;
+    readonly armorRear: boolean;
+    readonly stopsTransfer: boolean;
+}
+
+/** No failure roll is made for this tracked use. */
+export const ESCALATING_FAILURE_NO_CHECK_TARGET = 0;
+/** First impossible 2D6 target; represents automatic failure. */
+export const ESCALATING_FAILURE_AUTO_FAIL_TARGET = 13;
+
+export interface IndirectFireContext {
+    readonly weaponUnderwater: boolean;
+    readonly targetHasUnderwaterLayer: boolean;
+}
+
+export type NarcBeaconAttackRestriction = 'infantry' | 'building';
+
+export interface NarcBeaconAttackContext {
+    readonly targetInsideBuilding: boolean;
+    readonly targetIsInfantry: boolean;
+}
+
+/** Attack-family facts needed to decide whether the target's Immobile modifier applies. */
+export interface TargetAttackTraits {
+    readonly areaEffect: boolean;
+    readonly artillery: boolean;
+    readonly artilleryCannon: boolean;
+    readonly bomb: boolean;
+    readonly mekMortarAirburst: boolean;
+}
+
+/** Force-owned operational facts used by TAG BV rules. */
+export interface TagBattleValueFacts {
+    readonly operationalTagCount: number;
+    readonly homingArtilleryLauncherCount: number;
+    readonly guidedAmmoBv: number;
+}
 
 export interface C3TargetingResolution {
     readonly target: InventoryControlRuntimeTarget;
@@ -106,9 +217,13 @@ export function separateHeatFireModifier(resolution: ToHitResolution): ToHitHeat
 }
 
 export abstract class CBTGameRules {
-    abstract readonly id: 'core2026' | 'tw';
+    abstract readonly id: CBTRuleset;
     abstract readonly c3DegradationLabel: C3DegradationLabel;
-    abstract readonly escalatingFailureLabels: readonly string[];
+    abstract readonly escalatingFailureTargets: readonly number[];
+    abstract readonly radicalHeatSinkFailureTargets: readonly number[];
+    abstract readonly blueShieldFailureTargets: readonly number[];
+    abstract readonly emergencyCoolantSystemFailureTargets: readonly number[];
+    abstract readonly viralJammerFailureTargets: readonly number[];
     abstract readonly usesUacJamming: boolean;
     abstract readonly supportsSkidding: boolean;
     abstract readonly supportsSecondaryTargetSideBack: boolean;
@@ -116,20 +231,55 @@ export abstract class CBTGameRules {
     abstract readonly artilleryFlatRangeModifier: number | null;
     abstract readonly supportsApolloSaturationMode: boolean;
     abstract readonly supportsBombastLaserRules: boolean;
+    abstract readonly supportsFlamerModes: boolean;
+    abstract readonly narcHomingTargetModifier: number;
+    abstract readonly narcIndirectFireIgnoresAllTerrain: boolean;
+    abstract readonly indirectFireUsesSpotterPartialCover: boolean;
+    abstract readonly semiGuidedIgnoresCover: boolean;
+    abstract readonly semiGuidedIgnoresIndirectFireModifier: boolean;
     abstract readonly physicalLocationRows: readonly PhysicalLocationRow[];
 
     abstract resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution;
     abstract resolveC3TargetingModifier(degradationSource: C3DegradationSource, rangeBracketImprovement: number): ToHitModifierBreakdownEntry | null;
+    abstract getSemiGuidedAdjustment(modifierValue: number, source: SemiGuidedAdjustmentSource): number;
+    abstract getNarcBeaconAttackRestriction(context: NarcBeaconAttackContext): NarcBeaconAttackRestriction | null;
+    abstract allowsTagDesignation(targetType: TnTargetUnitType | undefined): boolean;
+    abstract attackBenefitsFromImmobile(traits: TargetAttackTraits): boolean;
+    abstract getExplosiveWeaponDamage(weapon: WeaponEquipment, mountedCriticalSlots: number): number;
+    abstract resolveMekExplosionDamage(context: MekExplosionDamageContext): MekExplosionDamageResolution;
+    abstract getMekExplosionProtectionNote(protection: MekExplosionProtection): string | null;
+    protected abstract canFireTorpedoesIndirectly(context: IndirectFireContext): boolean;
+
+    get escalatingFailureLabels(): readonly string[] {
+        return this.escalatingFailureTargets.map(formatEscalatingFailureTarget);
+    }
+
+    canFireIndirectly(
+        weapon: WeaponEquipment,
+        selectedAmmo: AmmoEquipment | null,
+        context: IndirectFireContext,
+    ): boolean {
+        if (!weapon.hasWeaponTrait('indirect-fire')) return false;
+        if (weapon.ammoType === 'MML' && resolveAmmoWeaponProfile(selectedAmmo)?.id !== 'mml-lrm') {
+            return false;
+        }
+        return !isTorpedoAmmo(selectedAmmo) || this.canFireTorpedoesIndirectly(context);
+    }
 
     resolveToHit(request: ToHitRequest): ToHitResolution {
-        const entry = request.subject instanceof MountedEquipment ? request.subject : null;
-        const equipment = entry?.equipment ?? (request.subject instanceof Equipment ? request.subject : null);
+        const component = request.subject instanceof Equipment ? null : request.subject;
+        const equipment = component?.source.kind === 'equipment'
+            ? component.source.equipment
+            : request.subject instanceof Equipment ? request.subject : null;
         const adjustments = request.adjustments ?? [];
         const unsupported = adjustments.some(adjustment => adjustment.kind === 'unsupported');
         const replacement = adjustments.find(adjustment => adjustment.kind === 'replace-base');
         const hasBaseReplacement = replacement !== undefined;
-        if (unsupported || (entry && !this.supportsToHit(entry) && !hasBaseReplacement)) return emptyToHitResolution();
-        const stateBreakdown = [...(request.stateModifiers ?? [])];
+        if (unsupported || (component && !this.supportsToHit(component) && !hasBaseReplacement)) return emptyToHitResolution();
+        const stateBreakdown = [
+            ...(component ? this.targetingComputerModifiers(component) : []),
+            ...(request.stateModifiers ?? []),
+        ];
         const adjustmentBreakdowns = adjustments
             .filter((adjustment): adjustment is Extract<ToHitAdjustment, { readonly kind: 'add' }> => adjustment.kind === 'add')
             .filter(adjustment => adjustment.modifier !== 0 || adjustment.weakened !== undefined)
@@ -139,8 +289,8 @@ export abstract class CBTGameRules {
                 ...(weakened !== undefined && { weakened })
             }));
 
-        if (entry?.isIntrinsicPhysicalAttack()) {
-            const physicalValue = this.physicalBaseHitModifiers[entry.name.toLowerCase()] ?? null;
+        if (component?.source.kind === 'intrinsic') {
+            const physicalValue = this.physicalBaseHitModifiers[component.source.actionKind] ?? null;
             if (physicalValue === null || physicalValue === 'Vs') {
                 const modifierBreakdown = this.resolveModifierBreakdown(
                     0,
@@ -169,42 +319,76 @@ export abstract class CBTGameRules {
     }
 
     getAmmoShots(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number {
-        return ammo.shots;
+        return resolveAmmoShots(this.id, ammoCapacityFacts(ammo, equipmentRegistry));
     }
 
     getAmmoKgPerShot(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number {
-        const shots = this.getAmmoShots(ammo, equipmentRegistry);
-        if (shots <= 0) return 0;
-        return ammo.hasCustomKgPerShot
-            ? ammo.kgPerShot * ammo.shots / shots
-            : 1000 / shots;
+        return resolveAmmoKgPerShot(this.id, ammoCapacityFacts(ammo, equipmentRegistry));
     }
 
-    calculateTagBVCost(_unit: CBTForceUnit): number {
-        return 0;
+    getAmmoBV(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number | 'variable' {
+        return resolveAmmoBattleValue(this.id, ammoCapacityFacts(ammo, equipmentRegistry));
     }
 
-    protected abstract readonly physicalBaseHitModifiers: Readonly<Record<string, number | 'Vs'>>;
+    calculateTagBVCost(facts: TagBattleValueFacts): number {
+        return 50
+            * Math.max(0, facts.homingArtilleryLauncherCount)
+            * Math.max(0, facts.operationalTagCount);
+    }
+
+    getMekInternalExplosionPilotHits(): number {
+        return this.id === 'core-2026' ? 1 : 2;
+    }
+
+    protected abstract readonly physicalBaseHitModifiers: Readonly<Record<IntrinsicWeaponKind, number | 'Vs'>>;
 
     protected getRulesProfile(equipment: Equipment): number[] {
         return normalizeToHitProfile(equipment.toHitModifier);
     }
 
-    private supportsToHit(entry: MountedEquipment): boolean {
-        const equipment = entry.equipment;
-        if (entry.isPhysicalWeapon()) return true;
+    private supportsToHit(subject: ComponentToHitSubject): boolean {
+        if (subject.source.kind === 'intrinsic') return true;
+        const { equipment, parentEquipment, physical } = subject.source;
+        if (physical) return true;
         if (!equipment) return false;
         if (!(equipment instanceof WeaponEquipment)
-            && !equipment.flags.has('F_CLUB')
-            && !equipment.flags.has('F_HAND_WEAPON')) return false;
+            && !isShieldFlags(equipment.flags)
+            && !isClubOrHandWeaponFlags(equipment.flags)) return false;
         if (equipment instanceof WeaponEquipment
             && equipment.hasNoRange()
-            && !equipment.flags.has('F_CLUB')
-            && !equipment.flags.has('F_HAND_WEAPON')
+            && !isShieldFlags(equipment.flags)
+            && !isClubOrHandWeaponFlags(equipment.flags)
             && equipment.weapon.ammoType !== 'MML'
-            && (!entry.parent?.equipment
-                || (entry.parent.equipment instanceof WeaponEquipment && entry.parent.equipment.hasNoRange()))) return false;
+            && (!parentEquipment
+                || (parentEquipment instanceof WeaponEquipment && parentEquipment.hasNoRange()))) return false;
         return true;
+    }
+
+    private targetingComputerModifiers(subject: ComponentToHitSubject): ToHitModifierBreakdownEntry[] {
+        const weapon = subject.targetingComputerWeapon;
+        const targetingComputer = subject.targetingComputer;
+        if (!weapon || !targetingComputer || !this.targetingComputerEligible(weapon)) return [];
+        if (targetingComputer.status === 'available') {
+            return [{ label: targetingComputer.label, modifier: -1 }];
+        }
+        return [{
+            label: `${targetingComputer.label} ${targetingComputer.status === 'destroyed' ? 'Destroyed' : 'Disabled'}`,
+            modifier: 0,
+            weakened: true,
+        }];
+    }
+
+    private targetingComputerEligible(facts: ComponentToHitWeaponFacts): boolean {
+        const weapon = facts.equipment;
+        const types = new Set(facts.effectiveWeaponTypes);
+        return isDirectFireEquipment(weapon)
+            && !isFlamerEquipment(weapon)
+            && !weapon.hasWeaponTrait('taser')
+            && !weapon.hasWeaponTrait('machine-gun')
+            && !weapon.hasWeaponTrait('machine-gun-array')
+            && (types.has('DB') || types.has('DE') || types.has('P'))
+            && !types.has('F')
+            && (!types.has('C') || isHagEquipment(weapon));
     }
 
     private composeToHit(
@@ -231,7 +415,7 @@ export abstract class CBTGameRules {
             || stateBreakdown.some(entry => entry.weakened === true);
         const modifierBreakdown = typeof value === 'number'
             ? this.resolveModifierBreakdown(baseValue, stateBreakdown, adjustmentBreakdowns, baseLabel)
-            : [];
+            : [...stateBreakdown, ...adjustmentBreakdowns];
         return { profile, value, changed, weakened, modifierBreakdown };
     }
 
@@ -250,21 +434,30 @@ export abstract class CBTGameRules {
 }
 
 export class GameRules extends CBTGameRules {
-    readonly id = 'core2026' as const;
+    readonly id = 'core-2026' as const;
     readonly c3DegradationLabel = 'DEGRADED' as const;
     readonly physicalBaseHitModifiers = {
         punch: -1,
         kick: -1,
-        'kick [talons]': -1,
         club: -1,
         push: -1,
         frenzy: 0,
         charge: 'Vs',
-        'death from above': 'Vs',
-        'dfa [talons]': 'Vs',
-        'airmech ram': 'Vs',
+        'death-from-above': 'Vs',
+        'airmek-ram': 'Vs',
     } as const;
-    readonly escalatingFailureLabels = ['3+', '5+', '7+', '10+', '11+'] as const;
+    readonly escalatingFailureTargets = [3, 5, 7, 10, 11] as const;
+    readonly radicalHeatSinkFailureTargets = this.escalatingFailureTargets;
+    readonly blueShieldFailureTargets = [
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ...this.escalatingFailureTargets,
+    ] as const;
+    readonly emergencyCoolantSystemFailureTargets = this.escalatingFailureTargets;
+    readonly viralJammerFailureTargets = this.escalatingFailureTargets;
     readonly usesUacJamming = false;
     readonly supportsSkidding = false;
     readonly supportsSecondaryTargetSideBack = false;
@@ -272,6 +465,12 @@ export class GameRules extends CBTGameRules {
     readonly artilleryFlatRangeModifier = 4;
     readonly supportsApolloSaturationMode = true;
     readonly supportsBombastLaserRules = true;
+    readonly supportsFlamerModes = false;
+    readonly narcHomingTargetModifier = -1;
+    readonly narcIndirectFireIgnoresAllTerrain = false;
+    readonly indirectFireUsesSpotterPartialCover = false;
+    readonly semiGuidedIgnoresCover = true;
+    readonly semiGuidedIgnoresIndirectFireModifier = false;
     readonly physicalLocationRows = CORE_2026_PHYSICAL_LOCATION_ROWS;
 
     override resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
@@ -284,48 +483,103 @@ export class GameRules extends CBTGameRules {
             : null;
     }
 
-    protected override getRulesProfile(equipment: Equipment): number[] {
-        // Claw and Lance has 0 hitmod instead of 1
-        if (equipment.flags.has('S_CLAW') || equipment.flags.has('S_LANCE')) {
-            return [0];
+    override getSemiGuidedAdjustment(modifierValue: number, source: SemiGuidedAdjustmentSource): number {
+        return source === 'terrain' ? Math.min(2, Math.max(0, modifierValue)) : 0;
+    }
+
+    override getNarcBeaconAttackRestriction(_context: NarcBeaconAttackContext): NarcBeaconAttackRestriction | null {
+        return null;
+    }
+
+    override allowsTagDesignation(_targetType: TnTargetUnitType | undefined): boolean {
+        return true;
+    }
+
+    override attackBenefitsFromImmobile(traits: TargetAttackTraits): boolean {
+        return !traits.areaEffect;
+    }
+
+    override getExplosiveWeaponDamage(_weapon: WeaponEquipment, mountedCriticalSlots: number): number {
+        return Math.max(0, mountedCriticalSlots) * 2;
+    }
+
+    override resolveMekExplosionDamage(context: MekExplosionDamageContext): MekExplosionDamageResolution {
+        const damage = Math.max(0, context.damage);
+        const cap = context.protection === 'case-ii' ? 1 : context.protection === 'case' ? 10 : 20;
+        const internalDamage = Math.min(damage, cap);
+        let armorDamage = 0;
+
+        if (context.protection === 'none') {
+            const armorBlowoutPending = context.armorBlowoutPending || damage > cap;
+            if (armorBlowoutPending && context.remainingInternal > internalDamage) {
+                armorDamage = context.remainingArmor;
+            }
+        } else if (damage > cap && context.remainingInternal > internalDamage) {
+            armorDamage = Math.min(context.remainingArmor, 10, damage - cap);
         }
 
-        const modifiers = super.getRulesProfile(equipment);
-        // MRM doesn't have the +1 but 0
-        return equipment instanceof WeaponEquipment && equipment.hasFlag('F_MRM')
-            ? modifiers.map(modifier => modifier - 1)
-            : modifiers;
+        return {
+            internalDamage,
+            armorDamage,
+            armorRear: context.torso,
+            stopsTransfer: context.protection !== 'none',
+        };
     }
 
-    override getAmmoShots(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number {
-        const multiplier = ammo.hasMunitionType('M_PRECISION')
-            ? 0.6
-            : ammo.hasMunitionType('M_ARMOR_PIERCING')
-                ? 0.8
-                : null;
-        if (multiplier === null) return ammo.shots;
-
-        const baseShots = equipmentRegistry?.getBaseAmmo(ammo)?.shots;
-        return baseShots === undefined ? ammo.shots : Math.floor(baseShots * multiplier);
+    override getMekExplosionProtectionNote(protection: MekExplosionProtection): string | null {
+        if (protection === 'case') {
+            return 'Caps internal damage at 10; if the location survives, up to 10 excess damage vents through its armor. Damage never transfers.';
+        }
+        if (protection === 'case-ii') {
+            return 'Caps internal damage at 1; if the location survives, up to 10 excess damage vents through its armor. Damage never transfers; each resulting critical hit is ignored on 8+.';
+        }
+        return null;
     }
+
+    protected override canFireTorpedoesIndirectly(_context: IndirectFireContext): boolean {
+        return false;
+    }
+
+    protected override getRulesProfile(equipment: Equipment): number[] {
+        if (isClawFlags(equipment.flags)) {
+            return [0];
+        }
+        if (equipment instanceof WeaponEquipment && equipment.hasWeaponTrait('mrm')) {
+            return [0];
+        }
+        return super.getRulesProfile(equipment);
+    }
+
 }
 
 export class TWGameRules extends CBTGameRules {
-    readonly id = 'tw' as const;
+    readonly id = 'total-warfare' as const;
     readonly c3DegradationLabel = 'JAMMED' as const;
     readonly physicalBaseHitModifiers = {
         punch: 0,
         kick: -2,
-        'kick [talons]': -2,
         club: -1,
         push: -1,
         frenzy: 0,
         charge: 'Vs',
-        'death from above': 'Vs',
-        'dfa [talons]': 'Vs',
-        'airmech ram': 'Vs',
+        'death-from-above': 'Vs',
+        'airmek-ram': 'Vs',
     } as const;
-    readonly escalatingFailureLabels = ['3+', '5+', '7+', '11+', '!!'] as const;
+    readonly escalatingFailureTargets = [3, 5, 7, 11, ESCALATING_FAILURE_AUTO_FAIL_TARGET] as const;
+    readonly radicalHeatSinkFailureTargets = [3, 5, 7, 10, 11, ESCALATING_FAILURE_AUTO_FAIL_TARGET] as const;
+    readonly blueShieldFailureTargets = [
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        ESCALATING_FAILURE_NO_CHECK_TARGET,
+        3, 4, 5, 6, 7, 8, 9, 10, 11, 12, ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+    ] as const;
+    readonly emergencyCoolantSystemFailureTargets = [3, 5, 7, 10, ESCALATING_FAILURE_AUTO_FAIL_TARGET] as const;
+    readonly viralJammerFailureTargets = [
+        4, 5, 6, 7, 8, 9, 10, 11, 12, ESCALATING_FAILURE_AUTO_FAIL_TARGET,
+    ] as const;
     readonly usesUacJamming = true;
     readonly supportsSkidding = true;
     readonly supportsSecondaryTargetSideBack = true;
@@ -333,6 +587,12 @@ export class TWGameRules extends CBTGameRules {
     readonly artilleryFlatRangeModifier = null;
     readonly supportsApolloSaturationMode = false;
     readonly supportsBombastLaserRules = false;
+    readonly supportsFlamerModes = true;
+    readonly narcHomingTargetModifier = 0;
+    readonly narcIndirectFireIgnoresAllTerrain = true;
+    readonly indirectFireUsesSpotterPartialCover = true;
+    readonly semiGuidedIgnoresCover = false;
+    readonly semiGuidedIgnoresIndirectFireModifier = true;
     readonly physicalLocationRows = TW_PHYSICAL_LOCATION_ROWS;
 
     override resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
@@ -348,53 +608,118 @@ export class TWGameRules extends CBTGameRules {
         return null;
     }
 
-    /* TARGET ACQUISITION GEAR (TAG)
-    Any unit in the battle force equipped with TAG, Light TAG or a C3 Master Computer (flag F_TAG)
-    adds BV equal to the BV of each ton of semi-guided (flag M_SEMIGUIDED or M_HOMING) LRM ammunition 
-    carried in the force (use the ammo BV for the appropriate-size LRM launcher). */
-    override calculateTagBVCost(unit: CBTForceUnit): number {
-        const tagCount = unit.getOperationalMountedEquipmentByFlag('F_TAG').length;
-        if (tagCount === 0) return 0;
-
-        const guidedAmmoBV = unit.force.units().reduce((total, forceUnit) =>
-            total + this.calculateGuidedAmmoBV(forceUnit), 0);
-        return Math.round(guidedAmmoBV * tagCount);
+    protected override canFireTorpedoesIndirectly(context: IndirectFireContext): boolean {
+        return context.weaponUnderwater && context.targetHasUnderwaterLayer;
     }
 
-    private calculateGuidedAmmoBV(unit: CBTForceUnit): number {
-        if (!unit.isLoaded()) return 0;
-        const launchers = unit.getInventory().filter(entry =>
-            entry.equipment instanceof WeaponEquipment && unit.isEquipmentOperational(entry));
-        if (launchers.length === 0) return 0;
+    override getSemiGuidedAdjustment(modifierValue: number, source: SemiGuidedAdjustmentSource): number {
+        return source === 'movement' ? Math.max(0, modifierValue) : 0;
+    }
 
-        if (unit.getUnit().type === 'Mek') {
-            return unit.getCritSlots().reduce((total, crit) => {
-                const ammo = crit.eq;
-                if (!(ammo instanceof AmmoEquipment)
-                    || !isTagGuidedAmmo(ammo)
-                    || !unit.isEquipmentOperational(crit)
-                    || !hasUsableAmmo(crit.totalAmmo, crit.consumed)
-                    || !hasCompatibleLauncher(ammo, launchers)
-                    || !ammo.hasFixedBV()) return total;
-                return total + ammo.bv;
-            }, 0);
+    override getNarcBeaconAttackRestriction(context: NarcBeaconAttackContext): NarcBeaconAttackRestriction | null {
+        if (context.targetIsInfantry) return 'infantry';
+        if (context.targetInsideBuilding) return 'building';
+        return null;
+    }
+
+    override allowsTagDesignation(targetType: TnTargetUnitType | undefined): boolean {
+        return targetType !== 'infantry' && targetType !== 'battle-armor';
+    }
+
+    override attackBenefitsFromImmobile(traits: TargetAttackTraits): boolean {
+        return !traits.artilleryCannon && !traits.bomb && !traits.mekMortarAirburst;
+    }
+
+    override getExplosiveWeaponDamage(weapon: WeaponEquipment, _mountedCriticalSlots: number): number {
+        return Math.max(0, weapon.weapon.explosionDamage);
+    }
+
+    override resolveMekExplosionDamage(context: MekExplosionDamageContext): MekExplosionDamageResolution {
+        const damage = Math.max(0, context.damage);
+        if (context.protection !== 'case-ii') {
+            return {
+                internalDamage: damage,
+                armorDamage: 0,
+                armorRear: context.torso,
+                stopsTransfer: context.protection === 'case',
+            };
         }
 
-        return unit.getInventory().reduce((total, mount) => {
-            const ammo = resolveMountedAmmo(unit, mount);
-            if (!(ammo instanceof AmmoEquipment)
-                || !isTagGuidedAmmo(ammo)
-                || !unit.isEquipmentOperational(mount)
-                || !hasUsableAmmo(mount.totalAmmo, mount.consumed)
-                || !hasCompatibleLauncher(ammo, launchers)
-                || !ammo.hasFixedBV()) return total;
-            return total + ammo.bv;
-        }, 0);
+        const ventedDamage = Math.max(0, damage - 1);
+        const armorCap = context.torso ? context.remainingArmor : Math.ceil(context.originalArmor / 2);
+        return {
+            internalDamage: damage > 0 && context.remainingInternal > 0 ? 1 : 0,
+            armorDamage: Math.min(context.remainingArmor, armorCap, ventedDamage),
+            armorRear: context.torso,
+            stopsTransfer: true,
+        };
     }
+
+    override getMekExplosionProtectionNote(protection: MekExplosionProtection): string | null {
+        if (protection === 'case') {
+            return 'Takes full explosion damage in this location, but prevents any excess from transferring.';
+        }
+        if (protection === 'case-ii') {
+            return 'Applies 1 internal damage and vents the remainder through rear armor, or up to half the original armor in a limb or head. Damage never transfers; each resulting critical hit is ignored on 8+.';
+        }
+        return null;
+    }
+
+    override calculateTagBVCost(facts: TagBattleValueFacts): number {
+        return Math.round(Math.max(0, facts.guidedAmmoBv) * Math.max(0, facts.operationalTagCount));
+    }
+
+    protected override getRulesProfile(equipment: Equipment): number[] {
+        if (isClawFlags(equipment.flags)) {
+            return [1];
+        }
+        if (equipment instanceof WeaponEquipment && equipment.hasWeaponTrait('mrm')) {
+            return [1];
+        }
+        return super.getRulesProfile(equipment);
+    }
+
 }
 
 export const CORE_2026_GAME_RULES = new GameRules();
 export const TW_GAME_RULES = new TWGameRules();
+
+function ammoCapacityFacts(
+    ammo: AmmoEquipment,
+    equipmentRegistry?: EquipmentRegistry,
+): AmmoCapacityFacts {
+    const baseAmmo = equipmentRegistry?.getBaseAmmo(ammo);
+    return {
+        shots: ammo.shots,
+        kgPerShot: ammo.kgPerShot,
+        hasCustomKgPerShot: ammo.hasCustomKgPerShot,
+        munitionTypes: ammo.munitionType,
+        bv: ammo.bv,
+        ...(baseAmmo === null || baseAmmo === undefined ? {} : {
+            baseAmmoShots: baseAmmo.shots,
+            baseAmmoBv: baseAmmo.bv,
+        }),
+    };
+}
+
+export function gameRulesFor(ruleset: CBTRuleset): CBTGameRules {
+    return ruleset === 'total-warfare' ? TW_GAME_RULES : CORE_2026_GAME_RULES;
+}
+
+export function formatEscalatingFailureTarget(target: number): string {
+    if (target === ESCALATING_FAILURE_NO_CHECK_TARGET) return '—';
+    if (target >= ESCALATING_FAILURE_AUTO_FAIL_TARGET) return '!!';
+    return `${target}+`;
+}
+
+function isTorpedoAmmo(ammo: AmmoEquipment | null): boolean {
+    return ammo !== null && (
+        ammo.ammoType === 'LRM_TORPEDO'
+        || ammo.ammoType === 'SRM_TORPEDO'
+        || ammo.ammoType === 'NLRM_TORPEDO'
+        || ammo.munitionType.has('M_TORPEDO')
+    );
+}
 
 function normalizeToHitProfile(value: number | readonly number[]): number[] {
     if (typeof value === 'number') return [value];
@@ -412,27 +737,4 @@ function sameProfile(left: readonly number[], right: readonly number[]): boolean
 
 function emptyToHitResolution(): ToHitResolution {
     return { profile: [], value: null, changed: false, weakened: false, modifierBreakdown: [] };
-}
-
-function isTagGuidedAmmo(ammo: AmmoEquipment): boolean {
-    return ammo.hasMunitionType('M_SEMIGUIDED') || ammo.hasMunitionType('M_HOMING');
-}
-
-function hasUsableAmmo(totalAmmo: number | undefined, consumed: number | undefined): boolean {
-    return totalAmmo === undefined || totalAmmo > (consumed ?? 0);
-}
-
-function hasCompatibleLauncher(ammo: AmmoEquipment, launchers: readonly MountedEquipment[]): boolean {
-    return launchers.some(mount => mount.equipment instanceof WeaponEquipment
-        && mount.equipment.ammoType === ammo.ammoType
-        && mount.equipment.rackSize === ammo.rackSize);
-}
-
-function resolveMountedAmmo(unit: CBTForceUnit, mount: MountedEquipment): AmmoEquipment | null {
-    if (!(mount.equipment instanceof AmmoEquipment)) return null;
-
-    const selectedAmmo = mount.ammo
-        ? unit.getEquipmentRegistry().findEquipment(mount.ammo)
-        : null;
-    return selectedAmmo instanceof AmmoEquipment ? selectedAmmo : mount.equipment;
 }

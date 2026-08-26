@@ -16,12 +16,14 @@ import {
 import { getMegaMekAvailabilityRarityForScore, MEGAMEK_AVAILABILITY_UNKNOWN_SCORE } from '../../models/megamek/availability.model';
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { DEFAULT_CLASSIC_BV_NORMALIZATION_MAX, DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX, getNormalizationGunnery, getNormalizationPiloting, type UnitSearchNormalizationMatch, type UnitSearchBudgetMode } from '../../models/unit-search-result.model';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
+import { ForceImportService } from '../../services/force-import.service';
 import { Overlay, OverlayModule, type ConnectedPosition, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
+import type { UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { firstValueFrom } from 'rxjs';
 import { LayoutService } from '../../services/layout.service';
 import { DataService } from '../../services/data.service';
@@ -31,8 +33,6 @@ import { LongPressDirective } from '../../directives/long-press.directive';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { SearchFavoritesMenuComponent } from '../search-favorites-menu/search-favorites-menu.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
-import { ShareSearchDialogComponent } from './share-search.component';
-import { SemanticGuideDialogComponent } from '../semantic-guide-dialog/semantic-guide-dialog.component';
 import { highlightMatches } from '../../utils/search.util';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
@@ -52,7 +52,7 @@ import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-pa
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { formatMovement } from '../../utils/as-common.util';
-import type { UnitType } from '../../models/units.model';
+import type { UnitType } from '../../models/unit-summary.model';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import { updateNumericRangeBound } from '../../utils/unit-search-normalization-range.util';
 import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableRowLongPressEvent, type DataTableRowPointerEnterEvent, type DataTableRowPointerMoveEvent, type DataTableSortEvent } from '../data-table/data-table.component';
@@ -68,6 +68,7 @@ import type { UnitSearchViewMode } from '../../models/options.model';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { SimpleSliderComponent } from '../simple-slider/simple-slider.component';
 import { normalizeBoundedInteger, normalizeBoundedIntegerInput } from '../../utils/bounded-integer-input.util';
+import { LoadingSpinnerComponent } from '../loading-spinner/loading-spinner.component';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup extends UnitVariantGroupIdentity {
@@ -77,13 +78,13 @@ export interface ChassisGroup extends UnitVariantGroupIdentity {
     displayType: string;
     icon: string;
     /** A representative unit (first encountered) for icon display */
-    representativeUnit: Unit;
+    representativeUnit: UnitSummary;
     variantCount: number;
     minBV: number;
     maxBV: number;
     minPV: number;
     maxPV: number;
-    units: Unit[];
+    units: UnitSummary[];
 }
 
 interface ViewModeOptionConfig {
@@ -102,13 +103,13 @@ interface ViewModeOption extends ViewModeOptionConfig {
 
 interface ActiveVariantGroupFilter extends UnitVariantGroupIdentity {
     key: string;
-    representativeUnit: Unit;
+    representativeUnit: UnitSummary;
 }
 
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, OverlayModule, LongPressDirective, TooltipDirective, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent, VariableSizeVirtualScrollDirective, RangeSliderComponent, SimpleSliderComponent],
+    imports: [CommonModule, ScrollingModule, OverlayModule, LongPressDirective, LoadingSpinnerComponent, TooltipDirective, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent, VariableSizeVirtualScrollDirective, RangeSliderComponent, SimpleSliderComponent],
     templateUrl: './unit-search.component.html',
     styleUrls: [
         './unit-search.component.scss',
@@ -169,7 +170,10 @@ export class UnitSearchComponent {
     layoutService = inject(LayoutService);
     filtersService = inject(UnitSearchFiltersService);
     dataService = inject(DataService);
-    forceBuilderService = inject(ForceBuilderService);
+    protected readonly forceWorkspace = inject(ForceWorkspaceStateService);
+
+    private readonly forceCommands = inject(ForceWorkspaceCommandsService);
+    private readonly forceImport = inject(ForceImportService);
     gameService = inject(GameService);
     overlayManager = inject(OverlayManagerService);
 
@@ -270,6 +274,7 @@ export class UnitSearchComponent {
 
     readonly filterChordActive = signal(false);
     private filterChordTimer?: ReturnType<typeof setTimeout>;
+    readonly budgetModeSwitchTransitionsEnabled = signal(false);
     /** Reference to the favorites overlay component for in-place updates. */
     private favoritesCompRef: ComponentRef<SearchFavoritesMenuComponent> | null = null;
     /** Flag to track when a favorites dialog (rename/delete) is in progress. */
@@ -285,18 +290,18 @@ export class UnitSearchComponent {
     favBtn = viewChild.required<ElementRef<HTMLButtonElement>>('favBtn');
     advPanel = viewChild<ElementRef<HTMLElement>>('advPanel');
     resultsDropdown = viewChild<ElementRef<HTMLElement>>('resultsDropdown');
-    resultsDataTable = viewChild<DataTableComponent<Unit>>(DataTableComponent);
-    private readonly tableIconCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableIconCell');
-    private readonly tableNameCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableNameCell');
-    private readonly tableYearCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableYearCell');
-    private readonly tableTypeCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableTypeCell');
-    private readonly tableBvCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableBvCell');
-    private readonly tableTonsCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableTonsCell');
-    private readonly tablePvCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tablePvCell');
-    private readonly tableMovementCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableMovementCell');
-    private readonly tableClassicMovementCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableClassicMovementCell');
-    private readonly tableSpecialsCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableSpecialsCell');
-    private readonly tableTagsCell = viewChild<TemplateRef<DataTableCellContext<Unit>>>('tableTagsCell');
+    resultsDataTable = viewChild<DataTableComponent<UnitSummary>>(DataTableComponent);
+    private readonly tableIconCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableIconCell');
+    private readonly tableNameCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableNameCell');
+    private readonly tableYearCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableYearCell');
+    private readonly tableTypeCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableTypeCell');
+    private readonly tableBvCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableBvCell');
+    private readonly tableTonsCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableTonsCell');
+    private readonly tablePvCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tablePvCell');
+    private readonly tableMovementCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableMovementCell');
+    private readonly tableClassicMovementCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableClassicMovementCell');
+    private readonly tableSpecialsCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableSpecialsCell');
+    private readonly tableTagsCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableTagsCell');
 
     /** Query the active dropdown element directly from DOM to avoid viewChild retention */
     private getActiveDropdownElement(): HTMLElement | null {
@@ -332,14 +337,21 @@ export class UnitSearchComponent {
 
 
     /** Unit currently selected for inline details panel in expanded view */
-    inlinePanelUnit = signal<Unit | null>(null);
+    inlinePanelUnit = signal<UnitSummary | null>(null);
 
     /** Minimum window width to show the inline details panel */
     private readonly INLINE_PANEL_MIN_WIDTH = 2100;
 
+    /** Expanded deep links keep their full layout visible while the first worker result is prepared. */
+    readonly resultsLoading = computed(() => {
+        return this.expandedView() && !this.filtersService.isInteractionReady();
+    });
+
     /** Whether to show the inline details panel (expanded view + sufficient screen width) */
     showInlinePanel = computed(() => {
-        return this.expandedView() && this.layoutService.windowWidth() >= this.INLINE_PANEL_MIN_WIDTH;
+        return !this.resultsLoading()
+            && this.expandedView()
+            && this.layoutService.windowWidth() >= this.INLINE_PANEL_MIN_WIDTH;
     });
 
     readonly isTableMode = computed(() => this.viewMode() === 'table');
@@ -374,7 +386,7 @@ export class UnitSearchComponent {
     readonly cardViewRows = computed(() => {
         const units = this.displayedUnits();
         const columnCount = this.cardViewColumnCount();
-        const rows: Unit[][] = [];
+        const rows: UnitSummary[][] = [];
 
         for (let index = 0; index < units.length; index += columnCount) {
             rows.push(units.slice(index, index + columnCount));
@@ -428,7 +440,7 @@ export class UnitSearchComponent {
                     key,
                     ...identity,
                     type: unit.type,
-                    displayType: unit._displayType,
+                    displayType: unit._displayType ?? unit.type,
                     icon: unit.icon,
                     /** Store a representative unit for the icon component */
                     representativeUnit: unit,
@@ -567,7 +579,7 @@ export class UnitSearchComponent {
         return opt?.slotLabel || opt?.label || key;
     });
 
-    readonly unitSearchTableColumns = computed<readonly DataTableColumn<Unit>[]>(() => {
+    readonly unitSearchTableColumns = computed<readonly DataTableColumn<UnitSummary>[]>(() => {
         const iconCell = this.tableIconCell();
         const nameCell = this.tableNameCell();
         const yearCell = this.tableYearCell();
@@ -589,7 +601,7 @@ export class UnitSearchComponent {
                 return [];
             }
 
-            const columns: DataTableColumn<Unit>[] = [
+            const columns: DataTableColumn<UnitSummary>[] = [
                 {
                     id: 'icon',
                     header: '',
@@ -794,7 +806,7 @@ export class UnitSearchComponent {
             return [];
         }
 
-        const columns: DataTableColumn<Unit>[] = [
+        const columns: DataTableColumn<UnitSummary>[] = [
             {
                 id: 'icon',
                 header: '',
@@ -853,7 +865,7 @@ export class UnitSearchComponent {
                 id: 'normalized-skill',
                 header: 'Skill',
                 track: 45,
-                value: (unit: Unit) => getNormalizationGunnery(this.getSearchResultContext(unit)),
+                value: (unit: UnitSummary) => getNormalizationGunnery(this.getSearchResultContext(unit)),
                 cellTone: 'focus' as const,
                 align: 'center' as const,
             }] : []),
@@ -1031,6 +1043,9 @@ export class UnitSearchComponent {
         if (this.expandedView()) {
             return true;
         }
+        if (!this.filtersService.isInteractionReady()) {
+            return false;
+        }
         const wantsVisible = (this.focused() || this.advOpen() || this.unitDetailsDialogOpen()) &&
             (this.filtersService.searchText() || this.isAdvActive() || this.activeVariantGroupFilter());
         if (!wantsVisible) return false;
@@ -1161,7 +1176,7 @@ export class UnitSearchComponent {
         });
         // Keep the filters service in sync with the current force total BV/PV
         effect(() => {
-            const force = this.forceBuilderService.smartCurrentForce();
+            const force = this.forceWorkspace.smartCurrentForce();
             const total = force ? force.totalBv() : 0;
             untracked(() => this.filtersService.forceTotalBvPv.set(total));
         });
@@ -1185,6 +1200,11 @@ export class UnitSearchComponent {
                 this.advPanelUserColumns();
                 this.updateAdvPanelPosition();
                 this.updateResultsDropdownPosition();
+            }
+        });
+        effect(() => {
+            if (!this.advOpen()) {
+                untracked(() => this.budgetModeSwitchTransitionsEnabled.set(false));
             }
         });
         effect(() => {
@@ -1270,7 +1290,7 @@ export class UnitSearchComponent {
         });
     }
 
-    trackCardRow = (index: number, row: Unit[]) => row[0]?.name ?? index;
+    trackCardRow = (index: number, row: UnitSummary[]) => row[0]?.name ?? index;
 
     getCardUnitIndex(rowIndex: number, columnIndex: number): number {
         return rowIndex * this.cardViewColumnCount() + columnIndex;
@@ -1413,13 +1433,13 @@ export class UnitSearchComponent {
         this.closeAllPanels();
     }
 
-    trackByUnitId(index: number, unit: Unit) {
+    trackByUnitId(index: number, unit: UnitSummary) {
         // Track by index to force position-based recycling in virtual scroll
         // Tracking by unit.name causes orphaned DOM nodes for who knows what reason...
         return index;
     }
 
-    readonly unitTableRowClass = (unit: Unit, index: number) => ({
+    readonly unitTableRowClass = (unit: UnitSummary, index: number) => ({
         'is-selected': this.isUnitSelected(unit),
         'is-active': this.activeIndex() === index,
         'is-panel-selected': this.showInlinePanel() && this.inlinePanelUnit()?.name === unit.name,
@@ -1912,12 +1932,13 @@ export class UnitSearchComponent {
         this.setAdvFilter(filterKey, normalizeUnitSearchRange(newValues, totalRange));
     }
 
-    showUnitDetails(unit: Unit) {
+    async showUnitDetails(unit: UnitSummary): Promise<void> {
         const filteredUnits = this.displayedUnits();
         const filteredUnitIndex = filteredUnits.findIndex(u => u.name === unit.name);
         const searchResultContexts = new Map(
             filteredUnits.map(resultUnit => [resultUnit.name, this.getSearchResultContext(resultUnit)]),
         );
+        const { UnitDetailsDialogComponent } = await import('../unit-details-dialog/unit-details-dialog.component');
         const ref = this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: filteredUnits,
@@ -1935,7 +1956,8 @@ export class UnitSearchComponent {
         });
 
         const addSub = ref.componentInstance?.add.subscribe(() => {
-            if (this.forceBuilderService.smartCurrentForce()?.units().length === 1) {
+            const force = this.forceWorkspace.smartCurrentForce();
+            if (force && force.members().length === 1) {
                 this.expandedView.set(false);
                 queueMicrotask(() => {
                     this.closeAllPanels();
@@ -2008,19 +2030,19 @@ export class UnitSearchComponent {
         this.inlinePanelUnit.set(null);
     }
 
-    onUnitTableRowClick(event: DataTableRowClickEvent<Unit>): void {
+    onUnitTableRowClick(event: DataTableRowClickEvent<UnitSummary>): void {
         this.onUnitCardClick(event.row, event.event);
     }
 
-    onUnitTableRowLongPress(event: DataTableRowLongPressEvent<Unit>): void {
+    onUnitTableRowLongPress(event: DataTableRowLongPressEvent<UnitSummary>): void {
         this.multiSelectUnit(event.row, event.event);
     }
 
-    onUnitTableRowPointerEnter(event: DataTableRowPointerEnterEvent<Unit>): void {
+    onUnitTableRowPointerEnter(event: DataTableRowPointerEnterEvent<UnitSummary>): void {
         this.onResultPointerHover(event.index, event.event);
     }
 
-    onUnitTableRowPointerMove(event: DataTableRowPointerMoveEvent<Unit>): void {
+    onUnitTableRowPointerMove(event: DataTableRowPointerMoveEvent<UnitSummary>): void {
         this.onResultPointerHover(event.index, event.event);
     }
 
@@ -2053,7 +2075,7 @@ export class UnitSearchComponent {
      * Get the sort slot value for AS table row view.
      * Returns null if the sort key is already visible in the table columns.
      */
-    getAsTableSortSlot(unit: Unit): string | null {
+    getAsTableSortSlot(unit: UnitSummary): string | null {
         const key = this.filtersService.selectedSort();
         if (!key) return null;
 
@@ -2069,7 +2091,7 @@ export class UnitSearchComponent {
         return this.formatTableSortSlotValue(unit, key);
     }
 
-    getClassicTableSortSlot(unit: Unit): string | null {
+    getClassicTableSortSlot(unit: UnitSummary): string | null {
         const key = this.filtersService.selectedSort();
         if (!key) return null;
 
@@ -2135,7 +2157,7 @@ export class UnitSearchComponent {
         return cur;
     }
 
-    formatClassicMovement(unit: Unit): string {
+    formatClassicMovement(unit: UnitSummary): string {
         if (!unit.walk) return '';
 
         let movement = `${unit.walk} / ${unit.run}`;
@@ -2152,7 +2174,7 @@ export class UnitSearchComponent {
         return movement;
     }
 
-    formatClassicSubtype(unit: Unit): string {
+    formatClassicSubtype(unit: UnitSummary): string {
         return unit.subtype && unit.subtype !== unit.type ? unit.subtype : '';
     }
 
@@ -2166,7 +2188,7 @@ export class UnitSearchComponent {
         return structureType.endsWith(' Structure') ? structureType.slice(0, -10) : structureType;
     }
 
-    private formatTableSortSlotValue(unit: Unit, key: string): string {
+    private formatTableSortSlotValue(unit: UnitSummary, key: string): string {
         if (UnitSearchComponent.SORT_KEY_GROUPS['movement'].includes(key)) {
             return this.formatClassicMovement(unit) || '—';
         }
@@ -2189,15 +2211,15 @@ export class UnitSearchComponent {
         return typeof raw === 'number' ? FormatNumberPipe.formatValue(raw, true, false) : String(raw);
     }
 
-    getSearchResultMegaMekRarity(unit: Unit): string {
+    getSearchResultMegaMekRarity(unit: UnitSummary): string {
         return this.formatMegaMekRaritySortScore(this.filtersService.getMegaMekRaritySortScore(unit));
     }
 
-    getSearchResultMegaMekAvailability(unit: Unit) {
+    getSearchResultMegaMekAvailability(unit: UnitSummary) {
         return this.filtersService.getMegaMekAvailabilityBadges(unit);
     }
 
-    getCardSortSlotOverride(unit: Unit): { value: string; numeric?: boolean } | null {
+    getCardSortSlotOverride(unit: UnitSummary): { value: string; numeric?: boolean } | null {
         if (!isMegaMekRaritySortKey(this.filtersService.selectedSort())) {
             return null;
         }
@@ -2216,7 +2238,7 @@ export class UnitSearchComponent {
         return getMegaMekAvailabilityRarityForScore(score);
     }
 
-    private getUnitSortRawValue(unit: Unit, key: string): unknown {
+    private getUnitSortRawValue(unit: UnitSummary, key: string): unknown {
         if (isMegaMekRaritySortKey(key)) {
             return this.filtersService.getMegaMekRaritySortScore(unit);
         }
@@ -2231,7 +2253,7 @@ export class UnitSearchComponent {
         return FormatNumberPipe.formatValue(value, true, false);
     }
 
-    formatClassicBv(unit: Unit, gunnery: number, piloting: number): string {
+    formatClassicBv(unit: UnitSummary, gunnery: number, piloting: number): string {
         if (this.filtersService.activeBvNormalization()) {
             return formatBvPv(
                 this.getSearchResultContext(unit).adjustedValue,
@@ -2246,12 +2268,12 @@ export class UnitSearchComponent {
         );
     }
 
-    formatNormalizedSkills(unit: Unit): string {
+    formatNormalizedSkills(unit: UnitSummary): string {
         const context = this.getSearchResultContext(unit);
         return context.kind === 'pv' ? `${context.skill}` : `${context.gunnery}/${context.piloting}`;
     }
 
-    formatAlphaStrikePv(unit: Unit, gunnery: number): string {
+    formatAlphaStrikePv(unit: UnitSummary, gunnery: number): string {
         return formatBvPv(
             this.filtersService.activePvNormalization()
                 ? this.getSearchResultContext(unit).adjustedValue
@@ -2280,7 +2302,7 @@ export class UnitSearchComponent {
         // Determine which units to tag: selected units if any.
         const selectedNames = this.selectedUnits();
         const allUnits = this.displayedUnits();
-        let unitsToTag: Unit[];
+        let unitsToTag: UnitSummary[];
         if (selectedNames.size > 0) {
             // Always include the clicked unit, even if not in the selection
             const selectedSet = new Set(selectedNames);
@@ -2330,6 +2352,9 @@ export class UnitSearchComponent {
     }
 
     toggleSearchBudgetMode(mode: Exclude<UnitSearchBudgetMode, null>): void {
+        if (this.advOpen()) {
+            this.budgetModeSwitchTransitionsEnabled.set(true);
+        }
         this.setSearchBudgetMode(this.filtersService.budgetMode() === mode ? null : mode);
     }
 
@@ -2470,7 +2495,7 @@ export class UnitSearchComponent {
         window.removeEventListener('pointercancel', this.onAdvPanelDragEnd);
     }
 
-    multiSelectUnit(unit: Unit, event?: Event) {
+    multiSelectUnit(unit: UnitSummary, event?: Event) {
         event?.stopPropagation();
         const selected = new Set(this.selectedUnits());
         if (selected.has(unit.name)) {
@@ -2484,7 +2509,7 @@ export class UnitSearchComponent {
     }
 
     // Multi-select logic: click with Ctrl/Cmd or Shift to select multiple units
-    onUnitCardClick(unit: Unit, event?: MouseEvent) {
+    onUnitCardClick(unit: UnitSummary, event?: MouseEvent) {
         const multiSelect = event ? (event.ctrlKey || event.metaKey || event.shiftKey) : false;
         if (event && multiSelect) {
             // Multi-select logic
@@ -2505,13 +2530,14 @@ export class UnitSearchComponent {
         }
     }
 
-    onUnitInfoClick(unit: Unit) {
+    onUnitInfoClick(unit: UnitSummary) {
         this.showUnitDetails(unit);
     }
 
     /** Handle unit added from inline panel */
     onInlinePanelAdd(): void {
-        if (this.forceBuilderService.smartCurrentForce()?.units().length === 1) {
+        const force = this.forceWorkspace.smartCurrentForce();
+        if (force && force.members().length === 1) {
             // If this is the first unit being added, close the search panel
             this.closeAllPanels();
             this.expandedView.set(false);
@@ -2536,7 +2562,7 @@ export class UnitSearchComponent {
         }
     }
 
-    isUnitSelected(unit: Unit): boolean {
+    isUnitSelected(unit: UnitSummary): boolean {
         return this.selectedUnits().has(unit.name);
     }
 
@@ -2564,7 +2590,7 @@ export class UnitSearchComponent {
             if (unit) {
                 const context = this.selectedUnitContexts.get(selectedUnit)
                     ?? this.getSearchResultContext(unit);
-                if (!await this.forceBuilderService.addUnit(
+                if (!await this.forceCommands.addUnit(
                     unit,
                     getNormalizationGunnery(context),
                     getNormalizationPiloting(context),
@@ -2577,20 +2603,20 @@ export class UnitSearchComponent {
         this.closeAllPanels();
     }
 
-    getSearchResultContext(unit: Unit): UnitSearchNormalizationMatch {
+    getSearchResultContext(unit: UnitSummary): UnitSearchNormalizationMatch {
         return this.filtersService.getSearchResultPilotContext(unit);
     }
 
-    getSearchResultGunnery(unit: Unit): number {
+    getSearchResultGunnery(unit: UnitSummary): number {
         return getNormalizationGunnery(this.getSearchResultContext(unit));
     }
 
-    getSearchResultPiloting(unit: Unit): number {
+    getSearchResultPiloting(unit: UnitSummary): number {
         return getNormalizationPiloting(this.getSearchResultContext(unit));
     }
 
     showGenerateForceDialog(): void {
-        void this.forceBuilderService.showSearchForceGeneratorDialog();
+        void this.forceImport.showSearchForceGeneratorDialog();
     }
 
     /**
@@ -2609,7 +2635,7 @@ export class UnitSearchComponent {
      * Converts inches to hexes if hex mode is enabled.
      * Handles different movement modes (j for jump, etc.)
      */
-    formatASMovement(unit: Unit): string {
+    formatASMovement(unit: UnitSummary): string {
         const mvm = unit.as.MVm;
         if (!mvm) return unit.as.MV ?? '';
 
@@ -2684,7 +2710,7 @@ export class UnitSearchComponent {
         const isExpanded = this.expandedView();
 
         if (isExpanded) {
-            if (this.forceBuilderService.hasForces()) {
+            if (this.forceWorkspace.hasForces()) {
                 this.closeAllPanels();
                 this.blurInput();
             }
@@ -2758,13 +2784,15 @@ export class UnitSearchComponent {
         }, { injector: this.injector });
     }
 
-    openShareSearch(event: MouseEvent) {
+    async openShareSearch(event: MouseEvent): Promise<void> {
         event.stopPropagation();
+        const { ShareSearchDialogComponent } = await import('./share-search.component');
         this.dialogsService.createDialog(ShareSearchDialogComponent);
     }
 
-    openSemanticGuide(event: MouseEvent) {
+    async openSemanticGuide(event: MouseEvent): Promise<void> {
         event.stopPropagation();
+        const { SemanticGuideDialogComponent } = await import('../semantic-guide-dialog/semantic-guide-dialog.component');
         this.dialogsService.createDialog(SemanticGuideDialogComponent);
     }
 
@@ -2792,7 +2820,7 @@ export class UnitSearchComponent {
         this.favoritesCompRef = componentRef;
 
         // Get favorites - filter by game system only if a force is loaded
-        const hasForces = this.forceBuilderService.hasForces();
+        const hasForces = this.forceWorkspace.hasForces();
         const favorites = hasForces
             ? this.savedSearchesService.getSearchesForGameSystem(this.gameService.currentGameSystem())
             : this.savedSearchesService.getAllSearches();
@@ -2920,7 +2948,7 @@ export class UnitSearchComponent {
         // Update favorites data in-place without closing overlay
         if (this.favoritesCompRef && this.overlayManager.has('favorites')) {
             // Get favorites - filter by game system only if a force is loaded
-            const hasForces = this.forceBuilderService.hasForces();
+            const hasForces = this.forceWorkspace.hasForces();
             const favorites = hasForces
                 ? this.savedSearchesService.getSearchesForGameSystem(this.gameService.currentGameSystem())
                 : this.savedSearchesService.getAllSearches();

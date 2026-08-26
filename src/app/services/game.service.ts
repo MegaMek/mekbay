@@ -4,7 +4,7 @@
 
 import { Injectable, signal, inject, computed, effect, untracked } from '@angular/core';
 import { OptionsService } from './options.service';
-import { ForceBuilderService } from './force-builder.service';
+import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { GameSystem } from '../models/common.model';
 import { UrlService } from './url.service';
 
@@ -29,7 +29,7 @@ import { UrlService } from './url.service';
 })
 export class GameService {
     private readonly optionsService = inject(OptionsService);
-    private readonly forceBuilderService = inject(ForceBuilderService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private readonly urlService = inject(UrlService);
 
     public readonly currentGameSystem = signal<GameSystem>(this.optionsService.options().gameSystem);
@@ -56,7 +56,7 @@ export class GameService {
          * 3. User options (default fallback)
          */
         effect(() => {
-            const forceGameSystem = this.forceBuilderService.forceGameSystem();
+            const forceGameSystem = this.forceWorkspace.forceGameSystem();
             let gameSystem: GameSystem;
             if (forceGameSystem) {
                 gameSystem = forceGameSystem;
@@ -82,7 +82,7 @@ export class GameService {
             const gs = this.currentGameSystem();
             // Skip URL update if forces are loaded - ForceBuilderService handles all URL params
             // including `gs` when forces exist, avoiding race conditions between the two services
-            const hasForces = this.forceBuilderService.hasForces();
+            const hasForces = this.forceWorkspace.hasForces();
             if (hasForces) {
                 return;
             }

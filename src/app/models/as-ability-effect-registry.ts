@@ -4,17 +4,17 @@
 
 import { isAerospaceMovementMode } from '../utils/as-common.util';
 import type { ASAbilityEffectDefinition } from './as-ability-effects.model';
-import type { Unit } from './units.model';
+import type { UnitSummary } from './unit-summary.model';
 
 
-function isBeastMountedInfantry(unit: Unit): boolean {
+function isBeastMountedInfantry(unit: UnitSummary): boolean {
     if (unit.as.TP !== 'CI') {
         return false;
     }
     return unit.chassis.includes('Beast Infantry');
 }
 
-function isFootInfantry(unit: Unit): boolean {
+function isFootInfantry(unit: UnitSummary): boolean {
     return unit.as.TP === 'CI' && !isBeastMountedInfantry(unit);
 }
 

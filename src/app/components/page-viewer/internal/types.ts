@@ -3,7 +3,13 @@
 // Author: Drake
 
 import type { ViewportTransform } from '../../../models/force-serialization';
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
+import type { CBTForceMember } from '../../../models/force-member.model';
+import type { ASForceUnit } from '../../../models/as-force-unit.model';
+
+/** A Classic record-sheet owner. V2 members expose Entity + runtime through CBTForce. */
+export type PageViewerMember = CBTForceMember;
+/** Shared drawing surface also serves Alpha Strike cards. */
+export type PageCanvasMember = ASForceUnit | CBTForceMember;
 
 export type PageViewerNavigationSource = 'keyboard' | 'shadow' | 'swipe';
 export type PageViewerDirection = 'left' | 'right';
@@ -26,7 +32,7 @@ export interface PageViewerTransitionState {
 
 export interface PageViewerPageDescriptor {
     key: string;
-    unit: CBTForceUnit;
+    unit: PageViewerMember;
     unitId: string;
     unitIndex: number;
     slotIndex: number;
@@ -41,7 +47,7 @@ export interface PageViewerPageDescriptor {
 
 export interface PageViewerShadowDescriptor {
     key: string;
-    unit: CBTForceUnit;
+    unit: PageViewerMember;
     unitId: string;
     unitIndex: number;
     direction: PageViewerDirection;
@@ -58,7 +64,7 @@ export interface PageViewerViewStateRecord {
 
 export interface PageViewerDisplayWindow {
     startIndex: number;
-    units: CBTForceUnit[];
+    units: PageViewerMember[];
 }
 
 export interface PageViewerForceChangePlan {
@@ -71,7 +77,7 @@ export interface PageViewerForceChangePlan {
 
 export interface PageViewerInPlaceSlotPlan {
     slotIndex: number;
-    unit: CBTForceUnit;
+    unit: PageViewerMember;
     preserveExisting: boolean;
 }
 

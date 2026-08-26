@@ -5,6 +5,26 @@
 import { RsPolyfillUtil } from './rs-polyfill.util';
 
 describe('RsPolyfillUtil', () => {
+    it('restores the established MekBay sheet root presentation contract', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const input = {
+            unit: {
+                type: 'Mek',
+                subtype: 'BattleMek',
+                armorType: 'Standard',
+                structureType: 'Standard',
+                crewSize: 1,
+            },
+            conditionControls: [],
+            addCrewStateControls: false,
+        } as const;
+
+        RsPolyfillUtil.prepareRecordSheet(input, svg);
+        RsPolyfillUtil.prepareRecordSheet(input, svg);
+
+        expect(svg.classList.contains('mekbay-sheet')).toBeTrue();
+        expect(svg.querySelectorAll('#mekbay-svg-style').length).toBe(1);
+    });
     it('adds an idempotent native SVG inversion filter for iOS night mode', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const addFilter = (RsPolyfillUtil as unknown as {
@@ -21,6 +41,30 @@ describe('RsPolyfillUtil', () => {
         expect(filters[0].querySelector('feFuncR')?.getAttribute('tableValues')).toBe('1 0');
         expect(filters[0].querySelector('feFuncG')?.getAttribute('tableValues')).toBe('1 0');
         expect(filters[0].querySelector('feFuncB')?.getAttribute('tableValues')).toBe('1 0');
+    });
+
+    it('adds the production Life Support warning anchor once', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const warriorData = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        warriorData.setAttribute('id', 'warriorDataDual');
+        warriorData.getBBox = () => ({ x: 2, y: 3, width: 148, height: 84 } as DOMRect);
+        svg.appendChild(warriorData);
+        const addWarning = (RsPolyfillUtil as unknown as {
+            addLifeSupportPilotDamageWarning: (type: 'Mek', svg: SVGSVGElement) => void;
+        }).addLifeSupportPilotDamageWarning.bind(RsPolyfillUtil);
+
+        addWarning('Mek', svg);
+        addWarning('Mek', svg);
+
+        const warning = svg.getElementById('lifeSupportPilotDamageWarning');
+        expect(svg.querySelectorAll('#lifeSupportPilotDamageWarning').length).toBe(1);
+        expect(warning?.parentNode).toBe(warriorData);
+        expect(warning?.getAttribute('transform')).toBe('translate(102 1)');
+        expect(warning?.getAttribute('data-width')).toBe('42');
+        expect(warning?.getAttribute('data-height')).toBe('15');
+        expect(warning?.querySelectorAll('#lifeSupportHeatDamageIcon path').length).toBe(5);
+        expect(warning?.querySelectorAll('#lifeSupportOxygenDamageIcon path').length).toBe(5);
+        expect(warning?.querySelectorAll('use').length).toBe(0);
     });
 
     it('injects fluff at outer root coordinates across a nested SVG viewport', () => {
@@ -48,8 +92,8 @@ describe('RsPolyfillUtil', () => {
         svg.appendChild(parent);
 
         (RsPolyfillUtil as unknown as {
-            injectFluffImage: (unit: { fluff: { img: string } }, svg: SVGSVGElement) => void;
-        }).injectFluffImage({ fluff: { img: 'Mek/Avatar.png' } }, svg);
+            injectFluffImage: (url: string, svg: SVGSVGElement) => void;
+        }).injectFluffImage('https://db.mekbay.com/images/fluff/Mek/Avatar.png', svg);
 
         const foreignObject = svg.getElementById('fluff-image-fo') as SVGForeignObjectElement;
         expect(foreignObject).not.toBeNull();
@@ -85,16 +129,13 @@ describe('RsPolyfillUtil', () => {
     it('adds unit condition banners when the sheet has no unit data panel', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', '0 0 612 792');
-        const forceUnit = {
-            rules: {
-                conditionControls: [
-                    { key: 'swarmed', label: 'SWARMED', color: '#b35c00', placement: 'menu' },
-                ],
-            },
-            getUnit: () => ({ type: 'ProtoMek' }),
-        };
+        const conditionControls = [
+            { key: 'swarmed', label: 'SWARMED', color: '#b35c00', placement: 'menu' },
+        ];
 
-        (RsPolyfillUtil as unknown as { addConditionsButtons: (unit: unknown, svg: SVGSVGElement) => void }).addConditionsButtons(forceUnit, svg);
+        (RsPolyfillUtil as unknown as {
+            addConditionsButtons: (summary: unknown, controls: unknown, svg: SVGSVGElement) => void;
+        }).addConditionsButtons({ type: 'ProtoMek' }, conditionControls, svg);
 
         expect(svg.getElementById('unit_condition_wrapper')).toBeNull();
         expect(svg.getElementById('condition_banner_wrapper')).not.toBeNull();
@@ -108,16 +149,13 @@ describe('RsPolyfillUtil', () => {
     it('adds only one disconnected banner when disconnected is also a unit condition control', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', '0 0 612 792');
-        const forceUnit = {
-            rules: {
-                conditionControls: [
-                    { key: 'disconnected', label: 'DISCONNECTED', color: '#455a64', placement: 'menu' },
-                ],
-            },
-            getUnit: () => ({ type: 'Aero' }),
-        };
+        const conditionControls = [
+            { key: 'disconnected', label: 'DISCONNECTED', color: '#455a64', placement: 'menu' },
+        ];
 
-        (RsPolyfillUtil as unknown as { addConditionsButtons: (unit: unknown, svg: SVGSVGElement) => void }).addConditionsButtons(forceUnit, svg);
+        (RsPolyfillUtil as unknown as {
+            addConditionsButtons: (summary: unknown, controls: unknown, svg: SVGSVGElement) => void;
+        }).addConditionsButtons({ type: 'Aero' }, conditionControls, svg);
 
         expect(svg.querySelectorAll('.unitConditionBanner[condition="disconnected"]').length).toBe(1);
     });
@@ -132,19 +170,16 @@ describe('RsPolyfillUtil', () => {
             </g>
             <g id="condition_banner_wrapper" class="unitConditionBannerWrapper"></g>
         `;
-        const forceUnit = {
-            rules: {
-                conditionControls: [
-                    { key: 'shutdown', label: 'SHUTDOWN', color: '#840000', placement: 'button' },
-                    { key: 'prone', label: 'PRONE', color: '#666', placement: 'button' },
-                    { key: 'disconnected', label: 'DISCONNECTED', color: '#455a64', placement: 'button' },
-                    { key: 'jammed', label: 'JAMMED', color: '#ff6be6', placement: 'menu' },
-                ],
-            },
-            getUnit: () => ({ type: 'Mek' }),
-        };
+        const conditionControls = [
+            { key: 'shutdown', label: 'SHUTDOWN', color: '#840000', placement: 'button' },
+            { key: 'prone', label: 'PRONE', color: '#666', placement: 'button' },
+            { key: 'disconnected', label: 'DISCONNECTED', color: '#455a64', placement: 'button' },
+            { key: 'jammed', label: 'JAMMED', color: '#ff6be6', placement: 'menu' },
+        ];
 
-        (RsPolyfillUtil as unknown as { addConditionsButtons: (unit: unknown, svg: SVGSVGElement) => void }).addConditionsButtons(forceUnit, svg);
+        (RsPolyfillUtil as unknown as {
+            addConditionsButtons: (summary: unknown, controls: unknown, svg: SVGSVGElement) => void;
+        }).addConditionsButtons({ type: 'Mek' }, conditionControls, svg);
 
         const disconnectedButton = svg.querySelector('.unitConditionButton[condition="disconnected"]') as SVGElement;
         expect(disconnectedButton).not.toBeNull();
@@ -171,16 +206,13 @@ describe('RsPolyfillUtil', () => {
             { key: 'shutdown', label: 'SHUTDOWN', color: '#840000', placement: 'button' },
             { key: 'prone', label: 'PRONE', color: '#666', placement: 'button' },
         ];
-        const forceUnit = {
-            rules: { conditionControls },
-            getUnit: () => ({ type: 'Mek' }),
-        };
+        const summary = { type: 'Mek' };
 
-        RsPolyfillUtil.syncConditionButtons(forceUnit as never, svg);
+        RsPolyfillUtil.syncConditionButtons(summary as never, conditionControls as never, svg);
         expect(svg.querySelector('.unitConditionButton[condition="disconnected"]')).toBeNull();
 
         conditionControls.push({ key: 'disconnected', label: 'DISCONNECTED', color: '#455a64', placement: 'button' });
-        RsPolyfillUtil.syncConditionButtons(forceUnit as never, svg);
+        RsPolyfillUtil.syncConditionButtons(summary as never, conditionControls as never, svg);
 
         expect(svg.querySelector('.unitConditionButton[condition="disconnected"]')).not.toBeNull();
     });
@@ -204,6 +236,41 @@ describe('RsPolyfillUtil', () => {
         expect(Array.from(pips2).every(pip => pip.classList.contains('hidden'))).toBeTrue();
         expect((pips2[0] as SVGCircleElement).getAttribute('cx')).toBe('11.5');
         expect((pips2[0] as SVGCircleElement).getAttribute('cy')).toBe('31.5');
+    });
+
+    it('repairs partial crew picker controls target by target without duplicating authored controls', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = `
+            <g>
+                <path id="blankCrewName0"></path>
+                <text id="pilotName0" x="100" y="20"></text>
+                <text id="gunnerySkill0" x="40" y="30"></text>
+                <text id="pilotingSkill0" x="60" y="30"></text>
+                <rect class="crewSkillButton" crewId="0" skill="gunnery"></rect>
+            </g>
+        `;
+        const blank = svg.getElementById('blankCrewName0') as unknown as SVGGraphicsElement;
+        blank.getBBox = () => ({ x: 20, y: 10, width: 100, height: 10 } as DOMRect);
+        const addSkills = (RsPolyfillUtil as unknown as {
+            addCrewSkillsButtons: (svg: SVGSVGElement, unitType: string) => void;
+        }).addCrewSkillsButtons.bind(RsPolyfillUtil);
+        const addNames = (RsPolyfillUtil as unknown as {
+            addCrewNamesButtons: (
+                svg: SVGSVGElement,
+                unit: { type: string; crewSize: number },
+                addStateControls: boolean,
+            ) => void;
+        }).addCrewNamesButtons.bind(RsPolyfillUtil);
+
+        addSkills(svg, 'Mek');
+        addNames(svg, { type: 'Mek', crewSize: 1 }, true);
+        addSkills(svg, 'Mek');
+        addNames(svg, { type: 'Mek', crewSize: 1 }, true);
+
+        expect(svg.querySelectorAll('.crewSkillButton[crewId="0"][skill="gunnery"]').length).toBe(1);
+        expect(svg.querySelectorAll('.crewSkillButton[crewId="0"][skill="piloting"]').length).toBe(1);
+        expect(svg.querySelectorAll('.crewNameButton[crewId="0"][textElement="pilotName0"]').length).toBe(1);
+        expect(svg.querySelectorAll('.crewStateButton[crewId="0"][data-mekbay-control-id="pilotName0"]').length).toBe(1);
     });
 
     it('adds target TN overlay elements beside existing hit modifier elements', () => {
@@ -232,6 +299,10 @@ describe('RsPolyfillUtil', () => {
         expect(entry.querySelector('.targetAimedShotWarning-text')).toBeNull();
         expect(entry.querySelectorAll('.hitMod-rect').length).toBe(1);
         expect(entry.querySelectorAll('.hitMod-text').length).toBe(1);
+        const children = [...entry.children];
+        expect(children.indexOf(entry.querySelector('.hitMod-rect')!))
+            .toBeLessThan(children.indexOf(entry.querySelector('.hitMod-text')!));
+        expect(children.indexOf(targetTnRect)).toBeLessThan(children.indexOf(targetTnText));
     });
 
     it('adds hit modifier and target TN elements to inventory rows without a name wrapper', () => {
@@ -319,6 +390,40 @@ describe('RsPolyfillUtil', () => {
 
         expect(entry.querySelectorAll(':scope > .inventoryEntryButton.mainButton').length).toBe(1);
         expect(entry.querySelectorAll(':scope > .damaged-strike').length).toBe(1);
+    });
+
+    it('keeps armor pip hit areas when the only authored location zones are shields', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const shield = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const armor = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        const structure = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        shield.setAttribute('class', 'unitLocation shield');
+        armor.setAttribute('class', 'pip armor');
+        armor.setAttribute('loc', 'CT');
+        structure.setAttribute('class', 'pip structure');
+        structure.setAttribute('loc', 'CT');
+        armor.getBBox = () => ({ x: 10, y: 20, width: 2, height: 2 } as DOMRect);
+        structure.getBBox = () => ({ x: 14, y: 20, width: 2, height: 2 } as DOMRect);
+        armor.getCTM = () => ({ a: 75, b: 0, c: 0, d: 50 } as DOMMatrix);
+        structure.getCTM = () => ({ a: 30, b: 0, c: 0, d: 25 } as DOMMatrix);
+        svg.append(shield, armor, structure);
+
+        const addPipHitAreas = (RsPolyfillUtil as unknown as {
+            addPipHitAreas: (sheet: SVGSVGElement) => void;
+        }).addPipHitAreas.bind(RsPolyfillUtil);
+        addPipHitAreas(svg);
+        addPipHitAreas(svg);
+
+        expect(svg.querySelectorAll('.pip-hit-area.armor[loc="CT"]').length).toBe(1);
+        expect(svg.querySelectorAll('.pip-hit-area.structure[loc="CT"]').length).toBe(1);
+        const armorHitArea = svg.querySelector<SVGEllipseElement>('.pip-hit-area.armor[loc="CT"]');
+        const structureHitArea = svg.querySelector<SVGEllipseElement>('.pip-hit-area.structure[loc="CT"]');
+        expect(Number(armorHitArea?.getAttribute('rx'))).toBeCloseTo(0.1, 6);
+        expect(Number(armorHitArea?.getAttribute('ry'))).toBeCloseTo(0.15, 6);
+        expect(Number(structureHitArea?.getAttribute('rx'))).toBeCloseTo(0.25, 6);
+        expect(Number(structureHitArea?.getAttribute('ry'))).toBeCloseTo(0.3, 6);
+        expect(armor.getAttribute('data-mekbay-hit-area')).toBe('1');
+        expect(structure.getAttribute('data-mekbay-hit-area')).toBe('1');
     });
 
     it('adds heat controls idempotently', () => {

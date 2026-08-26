@@ -3,13 +3,14 @@
 // Author: Drake
 
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, untracked } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, Injector, input, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { GameSystem } from '../../models/common.model';
 import { DialogsService } from '../../services/dialogs.service';
-import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { isCBTForceMember } from '../../models/force-member.model';
 import { OptionsService } from '../../services/options.service';
 import { BOOLEAN_FILTERS, DROPDOWN_FILTERS, RANGE_FILTERS, type RangeFilterConfig } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
@@ -41,6 +42,8 @@ import {
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UnitSearchAdvancedFiltersComponent {
+    private static readonly CONTROL_RENDER_BATCH_SIZE = 4;
+
     readonly filterGameSystem = input.required<GameSystem>();
     readonly excludedFilterKeys = input<readonly string[]>([]);
     readonly columnsCount = input<number>(1);
@@ -48,9 +51,24 @@ export class UnitSearchAdvancedFiltersComponent {
     readonly showFormationTargetFilter = input(false);
 
     readonly filtersService = inject(UnitSearchFiltersService);
-    private readonly forceBuilderService = inject(ForceBuilderService);
+    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private readonly optionsService = inject(OptionsService);
     private readonly dialogsService = inject(DialogsService);
+    private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
+    private renderFrameId: number | null = null;
+    private destroyed = false;
+
+    /**
+     * Keep the first panel paint cheap. Building option availability and
+     * constructing every dropdown/slider in the button's click task caused a
+     * multi-second freeze under mobile CPU throttling. The template reserves
+     * every control's final grid slot, then these counts hydrate those slots in
+     * place so batching never changes the visible order.
+     */
+    readonly filtersReady = signal(false);
+    readonly renderedDropdownCount = signal(0);
+    readonly renderedRangeCount = signal(0);
 
     readonly isComplexQuery = this.filtersService.isComplexQuery;
     readonly megaMekAvailabilitySourceSelected = computed(() => this.optionsService.options().availabilitySource === 'megamek');
@@ -115,6 +133,38 @@ export class UnitSearchAdvancedFiltersComponent {
     });
 
     constructor() {
+        this.destroyRef.onDestroy(() => {
+            this.destroyed = true;
+            if (this.renderFrameId !== null) {
+                cancelAnimationFrame(this.renderFrameId);
+                this.renderFrameId = null;
+            }
+        });
+
+        afterNextRender(() => {
+            if (this.destroyed) {
+                return;
+            }
+
+            // Populate the memoized option projection only after the empty
+            // panel shell has reached the screen.
+            this.filtersService.advOptions();
+            this.filtersReady.set(true);
+            this.renderNextControlBatch();
+        }, { injector: this.injector });
+
+        effect(() => {
+            const dropdownCount = this.dropdownFilters().length;
+            const rangeCount = this.rangeFilters().length;
+            if (!this.filtersReady()
+                || (this.renderedDropdownCount() >= dropdownCount
+                    && this.renderedRangeCount() >= rangeCount)) {
+                return;
+            }
+
+            this.scheduleNextControlBatch();
+        });
+
         effect(() => {
             if (!this.showFormationTargetFilter()) {
                 return;
@@ -139,6 +189,42 @@ export class UnitSearchAdvancedFiltersComponent {
                 untracked(() => this.filtersService.setFormationTarget(nextTarget));
             }
         });
+    }
+
+    private scheduleNextControlBatch(): void {
+        if (this.destroyed || this.renderFrameId !== null) {
+            return;
+        }
+
+        this.renderFrameId = requestAnimationFrame(() => {
+            this.renderFrameId = null;
+            this.renderNextControlBatch();
+        });
+    }
+
+    private renderNextControlBatch(): void {
+        if (this.destroyed) {
+            return;
+        }
+
+        const dropdownTotal = this.dropdownFilters().length;
+        if (this.renderedDropdownCount() < dropdownTotal) {
+            this.renderedDropdownCount.update(count => Math.min(
+                dropdownTotal,
+                count + UnitSearchAdvancedFiltersComponent.CONTROL_RENDER_BATCH_SIZE,
+            ));
+            this.scheduleNextControlBatch();
+            return;
+        }
+
+        const rangeTotal = this.rangeFilters().length;
+        if (this.renderedRangeCount() < rangeTotal) {
+            this.renderedRangeCount.update(count => Math.min(
+                rangeTotal,
+                count + UnitSearchAdvancedFiltersComponent.CONTROL_RENDER_BATCH_SIZE,
+            ));
+            this.scheduleNextControlBatch();
+        }
     }
 
     setAdvFilter(key: string, value: unknown): void {
@@ -179,8 +265,10 @@ export class UnitSearchAdvancedFiltersComponent {
     }
 
     private selectedFormationTargetGroupUnits() {
-        const selectedUnit = this.forceBuilderService.selectedUnit();
-        return selectedUnit?.getGroup()?.units() ?? [];
+        const selectedUnit = this.forceWorkspace.selectedUnit();
+        return !selectedUnit || isCBTForceMember(selectedUnit)
+            ? []
+            : selectedUnit.getGroup()?.units() ?? [];
     }
 
     private formationTargetsEqual(left: FormationSearchTarget | null, right: FormationSearchTarget | null): boolean {

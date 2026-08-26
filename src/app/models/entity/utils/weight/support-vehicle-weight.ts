@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EquipmentFlag } from '../../../equipment-flags.type';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
 import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import type { SupportVehicle } from '../../entities/support-vehicle';
@@ -12,24 +11,17 @@ import { calculateHeatNeutralRequirement, calculatePowerAmplifierWeight } from '
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
 import { resolveLabArmorEquipment } from './armor-weight';
 import { ceilToHalfTon } from './weight-rounding';
+import {
+    isConstructionSystemEquipment,
+    isSupportVehicleBarArmor,
+} from '../../../construction-equipment.model';
+import {
+  isChassisSystemEquipment,
+  supportVehicleStructureMultiplier,
+} from '../../../chassis-equipment.model';
 
 const TECH_RATINGS: readonly TechRating[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 const STRUCTURAL_RATING_MULTIPLIERS = [1.6, 1.3, 1.15, 1, 0.85, 0.66] as const;
-const CHASSIS_MODIFIERS: ReadonlyArray<readonly [EquipmentFlag, number]> = [
-  ['F_AMPHIBIOUS', 1.75], ['F_ARMORED_CHASSIS', 1.5], ['F_BICYCLE', 0.75],
-  ['F_CONVERTIBLE', 1.1], ['F_DUNE_BUGGY', 1.5], ['F_ENVIRONMENTAL_SEALING', 2],
-  ['F_EXTERNAL_POWER_PICKUP', 1.1], ['F_HYDROFOIL', 1.7], ['F_MONOCYCLE', 0.5],
-  ['F_OFF_ROAD', 1.5], ['F_PROP', 1.2], ['F_SNOWMOBILE', 1.75],
-  ['F_STOL_CHASSIS', 1.5], ['F_SUBMERSIBLE', 1.8], ['F_TRACTOR_MODIFICATION', 1.2],
-  ['F_TRAILER_MODIFICATION', 0.8], ['F_ULTRA_LIGHT', 0.5], ['F_VSTOL_CHASSIS', 2],
-];
-const SYSTEM_MISC_FLAGS = [
-  'F_CHASSIS_MODIFICATION',
-  'F_SUPPORT_VEE_BAR_ARMOR', 'F_FERRO_FIBROUS', 'F_FERRO_LAMELLOR',
-  'F_LIGHT_FERRO', 'F_HEAVY_FERRO', 'F_REACTIVE', 'F_REFLECTIVE',
-  'F_HARDENED_ARMOR', 'F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK',
-] as const;
-
 type SupportVehicleEntity = VehicleEntity & SupportVehicle;
 
 export interface SupportVehicleWeightBreakdown {
@@ -81,7 +73,9 @@ export function calculateSupportVehicleWeightBreakdown(entity: SupportVehicleEnt
       if (small && equipment.isInfantryWeapon() && (mount.size ?? 1) > 1) {
         ammo += ceilKg(((mount.size ?? 1) - 1) * equipment.infantry.ammoWeight);
       }
-    } else if (equipment instanceof MiscEquipment && !equipment.hasAnyFlag([...SYSTEM_MISC_FLAGS])) {
+    } else if (equipment instanceof MiscEquipment
+      && !isConstructionSystemEquipment(equipment, 'support-vehicle')
+      && !isChassisSystemEquipment(equipment)) {
       miscellaneous += requireTonnage(entity, mount);
     }
   }
@@ -113,10 +107,7 @@ function getQuartersWeight(bay: { configuration: { type: string }; capacity: num
 }
 
 export function calculateSupportVehicleStructureWeight(entity: SupportVehicleEntity): number {
-  let modifier = 1;
-  for (const [flag, multiplier] of CHASSIS_MODIFIERS) {
-    if (entity.equipment().some(mount => mount.equipment?.hasFlag(flag))) modifier *= multiplier;
-  }
+  const modifier = supportVehicleStructureMultiplier(entity.equipment().map(mount => mount.equipment));
   const raw = entity.tonnage() * getBaseChassisValue(entity)
     * (STRUCTURAL_RATING_MULTIPLIERS[entity.structuralTechRating()] ?? 1) * modifier;
   return entity.weightClass() === 'Small Support' ? ceilKg(raw) : ceilToHalfTon(raw);
@@ -124,7 +115,7 @@ export function calculateSupportVehicleStructureWeight(entity: SupportVehicleEnt
 
 export function calculateSupportVehicleArmorWeight(entity: SupportVehicleEntity): number {
   const calculateRaw = (armor: ArmorEquipment, points: number, rating: TechRating | null): number => {
-    if (!armor.hasFlag('F_SUPPORT_VEE_BAR_ARMOR')) return points / (16 * armor.pptMultiplier);
+    if (!isSupportVehicleBarArmor(armor)) return points / (16 * armor.pptMultiplier);
     const key = rating ?? TECH_RATINGS[entity.structuralTechRating()] ?? 'A';
     return points * (armor.weightPerPointSV[key] ?? armor.weightPerPoint);
   };

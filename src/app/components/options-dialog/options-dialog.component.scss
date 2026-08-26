@@ -3,14 +3,6 @@
   height: 100%;
 }
 
-:host ::ng-deep .options-dialog-modal {
-  width: min(1360px, calc(100dvw - 32px));
-  max-width: min(1360px, calc(100dvw - 32px));
-  min-height: min(780px, calc(100dvh - 32px));
-  height: min(94dvh, 920px);
-  max-height: calc(100dvh - 16px);
-}
-
 :host ::ng-deep .options-dialog-modal .modal-header {
   border-bottom: 2px solid var(--border-color);
 }
@@ -22,18 +14,6 @@
 
 :host ::ng-deep .options-dialog-modal .modal-footer {
   display: none;
-}
-
-@media (max-width: 759px), (max-height: 559px) {
-  :host ::ng-deep .options-dialog-modal {
-    width: 100dvw;
-    max-width: 100dvw;
-    min-height: 100dvh;
-    height: 100dvh;
-    max-height: 100dvh;
-    margin-left: 0;
-    margin-right: 0;
-  }
 }
 
 .settings-header {
@@ -246,7 +226,7 @@
   background-color: var(--background-color-menu);
 }
 
-.mobile-settings-copy {
+.mobile-settings-text {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;

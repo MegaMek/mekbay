@@ -17,6 +17,9 @@ describe('PrintOptionsDialogComponent', () => {
         expect(select).not.toBeNull();
         expect(select.value).toBe('true');
         expect(select.previousElementSibling?.textContent?.trim()).toBe('Pilot data:');
+        const condition = fixture.nativeElement.querySelector('#cleanPrint') as HTMLSelectElement;
+        expect(condition.previousElementSibling?.textContent?.trim()).toBe('Units condition:');
+        expect((fixture.nativeElement.querySelector('#printPaperSize') as HTMLSelectElement).value).toBe('letter');
     });
 
     it('allows Pilot data to be disabled and returns it with the print options', async () => {
@@ -46,6 +49,7 @@ function createComponent(gameSystem: GameSystem) {
     const optionsService = {
         options: () => ({
             printRosterSummary: false,
+            printPaperSize: 'letter',
             recordSheetCenterPanelContent: 'clusterTable',
             ASPrintPageBreakOnGroups: true,
             printMargin: 'browserDefined'

@@ -6,7 +6,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { GameSystem } from '../../models/common.model';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { DataService, type BucketStatSummary, type MinMaxStatsRange } from '../../services/data.service';
 import { createEmptyUnit, type TestUnitOverrides } from '../../testing/unit-test-helpers';
 import { ForceRadarPanelComponent } from './force-radar-panel.component';
@@ -60,7 +60,7 @@ function createMaxStats(overrides: MaxStatsOverride): MinMaxStatsRange {
     };
 }
 
-function createUnit(overrides: TestUnitOverrides): Unit {
+function createUnit(overrides: TestUnitOverrides): UnitSummary {
     const { as: asOverrides, ...unitOverrides } = overrides;
 
     return createEmptyUnit({

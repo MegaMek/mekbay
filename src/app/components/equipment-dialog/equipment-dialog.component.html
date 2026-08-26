@@ -2,10 +2,12 @@
     <div class="wide-dialog-title equipment-dialog-title-row">
         <h2>{{ unitTitle() }}</h2>
         <div class="title-buttons">
-            <button class="equipment-dialog-title-button round-button preventZoomReset" type="button" aria-label="Targets" title="Targets" (click)="openTargets($event)">
-                <svg aria-hidden="true" stroke="currentColor" stroke-width="1.5" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="2"></circle><path d="M12 1v5M12 18v5M1 12h5M18 12h5"></path></svg>
-            </button>
-            @if (!readOnly()) {
+            @if (runtime().supportsTargetingTools()) {
+                <button class="equipment-dialog-title-button round-button preventZoomReset" type="button" aria-label="Targets" title="Targets" (click)="openTargets($event)">
+                    <svg aria-hidden="true" stroke="currentColor" stroke-width="1.5" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="2"></circle><path d="M12 1v5M12 18v5M1 12h5M18 12h5"></path></svg>
+                </button>
+            }
+            @if (!readOnly() && runtime().supportsMekTurnTools()) {
                 <button class="equipment-dialog-title-button turn-tracker-title-button preventZoomReset" type="button" aria-label="Turn summary" title="Turn Summary" (click)="openTurnSummary($event)">
                     @let phase = turnSummaryPhase();
                     @if (turnSummaryFalling()) {
@@ -52,17 +54,17 @@
         <div class="equipment-swipe-container" [class.animating]="isSwipeAnimating()" [class.swiping]="isSwiping()">
             <div class="equipment-swipe-panel current-panel" [style.--current-offset]="currentPanelOffset()">
                 @if (activeTab() === 'weapons') {
-                    <weapons-equipment-panel #currentWeaponsPanel [unit]="unit()" [context]="data.context" [readOnly]="readOnly()" />
+                    <weapons-equipment-panel #currentWeaponsPanel [runtime]="runtime()" />
                 } @else {
-                    <ammo-loadout-panel [data]="ammoPanelData(unit())" />
+                    <ammo-loadout-panel [runtime]="runtime()" />
                 }
             </div>
-            @if (incomingUnit(); as unit) {
+            @if (incomingRuntime(); as runtime) {
                 <div #incomingPanel class="equipment-swipe-panel incoming-panel" [style.--incoming-offset]="incomingPanelOffset()">
                     @if (activeTab() === 'weapons') {
-                        <weapons-equipment-panel [unit]="unit" [context]="data.context" [readOnly]="readOnly(unit)" />
+                        <weapons-equipment-panel [runtime]="runtime" />
                     } @else {
-                        <ammo-loadout-panel [data]="ammoPanelData(unit)" />
+                        <ammo-loadout-panel [runtime]="runtime" />
                     }
                 </div>
             }
@@ -100,7 +102,9 @@
                                 </div>
                             </div>
                         }
-                        <button class="bt-button danger fire-button" type="button" [disabled]="readOnly()" (click)="weaponsPanel.consumeSelectedHeatAndAmmo()">FIRE</button>
+                        @if (runtime().canFireSelectedWeapons()) {
+                            <button class="bt-button danger fire-button" type="button" [disabled]="readOnly() || weaponsPanel.fireInFlight()" (click)="weaponsPanel.consumeSelectedHeatAndAmmo()">FIRED</button>
+                        }
                     </div>
                 }
                 <button class="bt-button square" type="button" aria-label="Reset" title="Reset" (click)="weaponsPanel.resetSelections()">

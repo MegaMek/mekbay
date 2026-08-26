@@ -27,7 +27,7 @@ import {
     type ForcePreviewUnit,
 } from '../../models/force-preview.model';
 import type { Options } from '../../models/options.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceTaggingService } from '../../services/force-tagging.service';
@@ -45,7 +45,7 @@ import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { GameSystem } from '../../models/common.model';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew.model';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 
 const UNIT_TILE_MIN_WIDTH = 86;
@@ -844,7 +844,7 @@ export class ForcePreviewPanelComponent {
     readonly lockedUnitKeys = input<ReadonlySet<string>>(new Set<string>());
     readonly chassisOnlyLockedUnitKeys = input<ReadonlySet<string>>(new Set<string>());
     readonly lockToggle = input<((unitEntry: ForcePreviewUnit) => void) | null>(null);
-    readonly variantChange = input<((unitEntry: ForcePreviewUnit, variant: Unit) => void) | null>(null);
+    readonly variantChange = input<((unitEntry: ForcePreviewUnit, variant: UnitSummary) => void) | null>(null);
     readonly hoveredUnitChange = output<ForcePreviewUnit | null>();
     readonly selectedUnitsChange = output<ForcePreviewUnit[]>();
     readonly unitMenuAction = output<ForcePreviewUnitMenuActionEvent>();
@@ -870,7 +870,7 @@ export class ForcePreviewPanelComponent {
         () => this.displayMode() ?? this.optionsService.options().unitDisplayName,
     );
 
-    readonly resolvedUnits = computed<Unit[]>(() => getForcePreviewResolvedUnits(this.force()));
+    readonly resolvedUnits = computed<UnitSummary[]>(() => getForcePreviewResolvedUnits(this.force()));
     readonly notePreviewLineCount = NOTE_PREVIEW_LINE_COUNT;
     readonly noteOverflowing = signal(false);
 
@@ -977,7 +977,7 @@ export class ForcePreviewPanelComponent {
         }
 
         const unitList = this.resolvedUnits();
-        const unitIndex = unitList.findIndex((unit: Unit) => unit === loadForceUnit.unit || unit.name === loadForceUnit.unit?.name);
+        const unitIndex = unitList.findIndex((unit: UnitSummary) => unit === loadForceUnit.unit || unit.name === loadForceUnit.unit?.name);
         const variantChange = this.variantChange();
         this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: {
@@ -987,7 +987,7 @@ export class ForcePreviewPanelComponent {
                 gameSystem: this.force().type,
                 changeAction: variantChange ? {
                     originalUnit: loadForceUnit.unit,
-                    apply: (variant: Unit) => variantChange(loadForceUnit, variant),
+                    apply: (variant: UnitSummary) => variantChange(loadForceUnit, variant),
                     closeParentOnChange: true,
                 } : undefined,
                 showChangeButton: false,

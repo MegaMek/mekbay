@@ -5,7 +5,7 @@
 import { Component, ChangeDetectionStrategy, inject, input, signal, effect, computed, DestroyRef } from '@angular/core';
 
 import { SpriteStorageService, type SpriteIconInfo } from '../../services/sprite-storage.service';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 
 interface SpriteData {
   url: string;
@@ -65,7 +65,7 @@ export class UnitIconComponent {
   isLoading = this.spriteService.loading;
   
   // Inputs
-  unit = input<Unit | undefined | null>(null);
+  unit = input<UnitSummary | undefined | null>(null);
   alt = input<string | undefined>(undefined);
   styleClass = input<string>('');
   

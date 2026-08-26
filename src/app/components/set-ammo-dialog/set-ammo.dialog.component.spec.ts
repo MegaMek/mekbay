@@ -26,7 +26,7 @@ function createAmmo(id: string, kgPerShot = 100, ammo: Partial<ConstructorParame
         id,
         name: id,
         type: 'ammo',
-        rulesRefs: '207, TM',
+        rulesRefs: [{ book: 'TM', page: 207 }],
         tech: {
             base: 'Clan',
             rating: 'E',
@@ -181,6 +181,27 @@ describe('SetAmmoDialogComponent', () => {
         fixture.detectChanges();
 
         expect(overlayContainerElement.querySelector('.ammo-selection-issue')?.textContent?.trim()).toBe('Not yet existing in this era');
+    });
+
+    it('uses mount-free compatibility facts for Artemis selection guidance', () => {
+        const guidedAmmo = createAmmo('Clan Ultra AC/20 Artemis-capable Ammo', 100, {
+            munitionType: ['M_ARTEMIS_CAPABLE'],
+        });
+        const fixture = configureDialog({
+            currentAmmo: guidedAmmo,
+            originalAmmo: guidedAmmo,
+            originalTotalAmmo: 5,
+            ammoOptions: [guidedAmmo],
+            quantity: 3,
+            maxQuantity: 5,
+            compatibilityFacts: {
+                artemisIV: [guidedAmmo.internalName],
+                artemisV: [],
+            },
+        });
+
+        expect(fixture.componentInstance.selectedAmmoSelectionIssues()).toEqual([]);
+        expect(fixture.nativeElement.querySelector('.ammo-selection-issue')).toBeNull();
     });
 
     it('shows compact ammo details in the dialog and expanded dropdown details', () => {

@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { DEFAULT_GUNNERY_SKILL } from '../models/crew-member.model';
+import { DEFAULT_GUNNERY_SKILL } from '../models/crew.model';
 import {
     DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX,
     type UnitSearchNormalizationMatch,
     type PvNormalizationSettings,
     type UnitSearchNumericRange,
 } from '../models/unit-search-result.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { adjustPointValueForSkill } from './pv-skill-adjustment.util';
 import { isValidNormalizationSkillRange, isWithinNumericRange } from './unit-search-normalization-range.util';
 
@@ -34,7 +34,7 @@ export function isValidPvNormalizationSettings(settings: PvNormalizationSettings
  * preserved.
  */
 export function findPvNormalizationMatch(
-    unit: Unit,
+    unit: UnitSummary,
     settings: PvNormalizationSettings,
 ): PvNormalizationMatch | null {
     const basePv = unit.as?.PV;

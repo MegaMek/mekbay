@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit, UnitSubtype, UnitType } from '../models/units.model';
+import type { UnitSummary, UnitSubtype, UnitType } from '../models/unit-summary.model';
 import { getEffectivePilotingSkill, getFixedPilotingSkill } from './cbt-common.util';
 
-function createUnit(overrides: Partial<Unit> = {}): Unit {
+function createUnit(overrides: Partial<UnitSummary> = {}): UnitSummary {
     return {
         type: 'Mek' as UnitType,
         subtype: '' as UnitSubtype,
         canAntiMech: true,
         ...overrides,
-    } as Unit;
+    } as UnitSummary;
 }
 
 describe('CBT common rules', () => {

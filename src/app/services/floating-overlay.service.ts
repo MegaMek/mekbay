@@ -6,7 +6,7 @@ import { afterNextRender, DestroyRef, inject, Injectable, Injector } from '@angu
 import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { FloatingCompInfoComponent } from '../components/floating-comp-info/floating-comp-info.component';
-import type { Unit, UnitComponent } from '../models/units.model';
+import type { UnitSummary, UnitComponent } from '../models/unit-summary.model';
 
 
 @Injectable({ providedIn: 'root' })
@@ -79,7 +79,7 @@ export class FloatingOverlayService {
         } catch (e) { /* ignore */ }
     }
 
-    show(unit: Unit, comp: UnitComponent | null, origin: HTMLElement) {
+    show(unit: UnitSummary, comp: UnitComponent | null, origin: HTMLElement) {
         if (!origin) return;
         
         // Cancel any pending hide so quick moves between anchors won't hide the overlay.

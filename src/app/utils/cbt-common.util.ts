@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { DEFAULT_PILOTING_SKILL } from "../models/crew-member.model";
-import type { Unit } from "../models/units.model";
+import { DEFAULT_PILOTING_SKILL } from "../models/crew.model";
+import type { UnitSummary } from "../models/unit-summary.model";
 
 const NO_ANTIMEK_SKILL = 8;
 
@@ -11,7 +11,7 @@ const NO_ANTIMEK_SKILL = 8;
  * Returns the fixed Piloting value for units whose Piloting cannot be changed.
  * Returns `null` when the unit uses the requested Piloting value.
  */
-export function getFixedPilotingSkill(unit: Unit): number | null {
+export function getFixedPilotingSkill(unit: UnitSummary): number | null {
     if (unit.type === 'ProtoMek') {
         return DEFAULT_PILOTING_SKILL;
     }
@@ -41,6 +41,6 @@ export function getFixedPilotingSkill(unit: Unit): number | null {
  * @param pilotingSkill - The raw/requested piloting skill
  * @returns The effective piloting skill after applying CBT rules
  */
-export function getEffectivePilotingSkill(unit: Unit, pilotingSkill: number): number {
+export function getEffectivePilotingSkill(unit: UnitSummary, pilotingSkill: number): number {
     return getFixedPilotingSkill(unit) ?? pilotingSkill;
 }

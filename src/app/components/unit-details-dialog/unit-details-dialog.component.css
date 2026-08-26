@@ -301,3 +301,24 @@
         display: none;
     }
 }
+
+.unit-load-issues {
+    margin: 8px;
+    padding: 10px 12px;
+    border: 1px solid red;
+    background: #f002;
+    color: var(--text-color);
+    user-select: text;
+}
+
+.unit-load-issue {
+    margin-top: 4px;
+}
+
+.unit-load-issue span {
+    font-weight: 700;
+}
+
+.unit-load-issue.error span {
+    color: #e05252;
+}

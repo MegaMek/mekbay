@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "./generate-core-unit-assets.ts",
+    "./generate-core-unit-assets.test.ts",
+    "./verify-core-unit-archive-summary.ts",
+    "./generated-asset-inventory.test.ts",
+    "./generate-force-name-words.ts",
+    "./generate-megamek-availability.ts",
+    "./generate-all-megamek-availability.ts",
+    "./generate-megamek-rulesets.ts",
+    "./generate-sarna-page-titles.ts",
+    "./lib/megamek-unit-file-metadata.ts",
+    "./lib/unit-file-discovery.ts",
+    "./lib/deterministic-output.ts",
+    "./lib/generated-asset-inventory.ts"
+  ]
+}

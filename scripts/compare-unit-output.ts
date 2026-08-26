@@ -12,7 +12,7 @@
  *   2. For each oracle entry (filtered by --type / --unit):
  *      a. Finds the unit file on disk via `unitFile` path
  *      b. Parses it into an entity via `parseEntity()`
- *      c. Feeds entity to `UnitMetadataBuilder` → `Partial<Unit>`
+ *      c. Projects every entity through the same `UnitMetadataBuilder`
  *      d. Compares each checked field against the oracle
  *   3. Prints a summary of matches, mismatches, and errors
  *
@@ -24,7 +24,11 @@
  *   npx tsx scripts/compare-unit-output.ts --fields chassis,model   # check only these
  *   npx tsx scripts/compare-unit-output.ts --all-non-as             # strict non-AS parity gate
  *   npx tsx scripts/compare-unit-output.ts --verbose                # show every mismatch
+ *   node --expose-gc --import tsx scripts/compare-unit-output.ts --profile # batch timing/heap
  *   npx tsx scripts/compare-unit-output.ts --fail-on-mismatch       # exit 1 on any failure
+ *
+ * Array order is deliberately ignored at every nesting level. Arrays are
+ * compared as multisets, so duplicate values still have to match.
  */
 
 import * as fs from 'fs';
@@ -38,6 +42,11 @@ import { createUnitIconResolver } from '../src/app/utils/unit-sprite-resolver';
 import type { Sourcebook } from '../src/app/models/sourcebook.model';
 import type { Quirk } from '../src/app/models/quirks.model';
 import { getOracleFieldName, isCalculableLoadoutTons } from './loadout-tonnage-oracle';
+import {
+  formatBoundedDiagnosticValue,
+  unorderedStructuralEqual,
+} from './lib/unordered-value-comparison';
+import { isKnownMegaMekCostBug } from './lib/known-megamek-cost-bugs';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -62,13 +71,14 @@ interface CompareResult {
   status: 'match' | 'mismatch' | 'parse-error' | 'build-error' | 'file-missing';
   issues: FieldIssue[];
   error?: string;
+  knownMegaMekCostBug?: true;
 }
 
 interface FieldIssue {
   kind: IssueKind;
   field: string;
-  expected: unknown;
-  actual: unknown;
+  expected: string;
+  actual: string;
   message?: string;
 }
 
@@ -98,6 +108,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'role',          compare: 'exact', parity: 'verified' },
   { field: 'source',        compare: 'setCompare', parity: 'verified' },
   { field: 'published',     compare: 'setCompare', parity: 'verified' },
+  { field: 'rulesRefs',     compare: 'exact', parity: 'verified' },
   // Legacy compatibility mirror; as.PV is authoritative.
   { field: 'pv',            compare: 'skip', parity: 'missing' },
   { field: 'type',          compare: 'exact', parity: 'verified' },
@@ -126,7 +137,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'canAntiMech',    compare: 'exact', parity: 'verified' },
   { field: 'capital',        compare: 'exact', parity: 'verified' },
   { field: 'cargo',          compare: 'exact', parity: 'verified' },
-  { field: 'comp',           compare: 'componentSet', parity: 'partial' },
+  { field: 'comp',           compare: 'componentSet', parity: 'verified' },
   { field: 'cost',           compare: 'numeric', tolerance: 0, parity: 'verified' },
   { field: 'crewSize',       compare: 'exact', parity: 'verified' },
   { field: 'diss',           compare: 'exact', parity: 'verified' },
@@ -196,7 +207,7 @@ const hasFlag = (name: string) => args.includes(`--${name}`);
 const FIXTURE_ROOT = path.join(PROJECT_ROOT, 'scripts', 'fixtures');
 const UNITS_JSON_PATH = path.resolve(getArg('oracle', path.join(FIXTURE_ROOT, 'units.json')));
 const UNIT_FILES_DIR = path.resolve(getArg('unitfiles', path.join(WORKSPACE_ROOT, 'mm-data', 'data', 'mekfiles')));
-const SPRITE_MANIFEST_PATH = path.join(PROJECT_ROOT, 'public', 'sprites', 'unit-icons.json');
+const SPRITE_MANIFEST_PATH = path.join(PROJECT_ROOT, 'public', 'online-assets', 'generated', 'sprites', 'unit-icons.json');
 const TYPE_FILTER = getArg('type', '');
 const UNIT_FILTER = getArg('unit', '');
 const FIELDS_FILTER = getArg('fields', '');
@@ -204,12 +215,20 @@ const EXCLUDE_FIELDS = getArg('exclude-fields', '');
 const VERBOSE = hasFlag('verbose');
 const FAIL_ON_MISMATCH = hasFlag('fail-on-mismatch');
 const ALL_NON_AS = hasFlag('all-non-as');
+const PROFILE = hasFlag('profile');
 const STRICT = FAIL_ON_MISMATCH || ALL_NON_AS;
+
+type ProfileStage =
+  | 'read'
+  | 'parse'
+  | 'summary'
+  | 'compare';
+const PROFILE_TOTALS = new Map<ProfileStage, { calls: number; elapsedMs: number }>();
 
 const VALUE_OPTIONS = new Set([
   'oracle', 'unitfiles', 'type', 'unit', 'fields', 'exclude-fields',
 ]);
-const FLAG_OPTIONS = new Set(['verbose', 'fail-on-mismatch', 'all-non-as']);
+const FLAG_OPTIONS = new Set(['verbose', 'fail-on-mismatch', 'all-non-as', 'profile']);
 
 function validateArguments(): void {
   for (let index = 0; index < args.length; index++) {
@@ -266,7 +285,7 @@ function loadEquipmentRegistry(): EquipmentRegistry {
 }
 
 function loadSourcebooks(): ReadonlyMap<string, Sourcebook> {
-  const sourcebooksPath = path.join(__dirname, '..', 'public', 'assets', 'sourcebooks.json');
+  const sourcebooksPath = path.join(__dirname, '..', 'public', 'online-assets', 'generated', 'sourcebooks.json');
   const sourcebooks: Sourcebook[] = JSON.parse(fs.readFileSync(sourcebooksPath, 'utf-8'));
   return new Map(sourcebooks.map(sourcebook => [sourcebook.abbrev, sourcebook]));
 }
@@ -341,6 +360,21 @@ function validateStringArray(value: unknown): string | null {
   return invalidIndex < 0
     ? null
     : `expected a string at index ${invalidIndex}, received ${describeValue(value[invalidIndex])}`;
+}
+
+function validateRulesRefs(value: unknown): string | null {
+  if (!Array.isArray(value)) return `expected an array, received ${describeValue(value)}`;
+  for (let combinationIndex = 0; combinationIndex < value.length; combinationIndex += 1) {
+    const combination = value[combinationIndex];
+    if (!Array.isArray(combination) || combination.length === 0) {
+      return `rulesRefs[${combinationIndex}] must be a nonempty array`;
+    }
+    const invalidBook = combination.findIndex(book => typeof book !== 'string' || book.length === 0);
+    if (invalidBook >= 0) {
+      return `rulesRefs[${combinationIndex}][${invalidBook}] must be a nonempty string`;
+    }
+  }
+  return null;
 }
 
 function validateNumberArray(value: unknown): string | null {
@@ -476,6 +510,7 @@ function validateNonAsField(field: string, value: unknown): string | null {
   if (field === 'cargo') return validateCargo(value);
   if (field === 'capital') return validateCapital(value);
   if (field === 'fluff') return validateFluff(value);
+  if (field === 'rulesRefs') return validateRulesRefs(value);
   return `no runtime schema is registered for ${field}`;
 }
 
@@ -628,7 +663,7 @@ function compareField(check: FieldCheck, expected: any, actual: any): boolean {
       return true;
 
     case 'exact':
-      return deepEqual(expected, actual);
+      return unorderedStructuralEqual(expected, actual);
 
     case 'numeric': {
       const tolerance = check.tolerance ?? 0;
@@ -637,27 +672,20 @@ function compareField(check: FieldCheck, expected: any, actual: any): boolean {
     }
 
     case 'setCompare': {
-      if (!Array.isArray(expected) || !Array.isArray(actual)) {
-        return deepEqual(expected, actual);
-      }
-      const sortedA = [...expected].sort();
-      const sortedB = [...actual].sort();
-      return deepEqual(sortedA, sortedB);
+      return unorderedStructuralEqual(expected, actual);
     }
 
     case 'componentSet':
-      return deepEqual(normaliseComponentSet(expected), normaliseComponentSet(actual));
+      return unorderedStructuralEqual(normaliseComponentSet(expected), normaliseComponentSet(actual));
 
     default:
-      return deepEqual(expected, actual);
+      return unorderedStructuralEqual(expected, actual);
   }
 }
 
 function normaliseComponentSet(value: unknown): unknown {
   if (!Array.isArray(value)) return value;
-  return value
-    .map(component => normaliseComponent(component))
-    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  return value.map(component => normaliseComponent(component));
 }
 
 function normaliseComponent(value: unknown): unknown {
@@ -666,29 +694,11 @@ function normaliseComponent(value: unknown): unknown {
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>)
       .filter(([, fieldValue]) => fieldValue !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, fieldValue]) => [
         key,
         key === 'bay' ? normaliseComponentSet(fieldValue) : fieldValue,
       ]),
   );
-}
-
-function deepEqual(a: any, b: any): boolean {
-  if (a === b) return true;
-  if (a === null || b === null || a === undefined || b === undefined) return false;
-  if (typeof a !== typeof b) return false;
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    return a.every((val: any, i: number) => deepEqual(val, b[i]));
-  }
-  if (typeof a === 'object') {
-    const keysA = Object.keys(a);
-    const keysB = Object.keys(b);
-    if (keysA.length !== keysB.length) return false;
-    return keysA.every(k => deepEqual(a[k], b[k]));
-  }
-  return false;
 }
 
 function getFieldValue(value: unknown, field: string): unknown {
@@ -735,12 +745,16 @@ function processUnit(
   // Parse entity
   let entity;
   try {
+    const readStartedAt = profileNow();
     const content = fs.readFileSync(unitFilePath, 'utf-8');
+    recordProfileStage('read', readStartedAt);
     const fileName = path.basename(unitFilePath);
+    const parseStartedAt = profileNow();
     const parsed = parseEntity(content, fileName, equipmentRegistry, {
       sourcebookResolver: source => sourcebooks.get(source),
       quirkResolver: key => quirks.get(key),
     });
+    recordProfileStage('parse', parseStartedAt);
     entity = parsed.entity;
     const errors = parsed.diagnostics.filter(diagnostic => diagnostic.severity === 'error');
     if (STRICT && errors.length > 0) {
@@ -761,23 +775,21 @@ function processUnit(
   }
 
   try {
-    // Build metadata
-    const metadata = builder.build(entity, oracle.unitFile);
+    const summaryStartedAt = profileNow();
+    const metadata = builder.build(entity, oracle.unitFile) as unknown as Record<string, unknown>;
+    recordProfileStage('summary', summaryStartedAt);
 
     // Compare fields
+    const compareStartedAt = profileNow();
     const issues: FieldIssue[] = [];
+    let knownMegaMekCostBug = false;
     for (const check of checks) {
       if (check.field === 'loadoutTonnage') {
         const expected = oracle.loadoutTons;
         if (!isCalculableLoadoutTons(expected)) continue;
-        const actual = entity.loadoutTonnage();
+        const actual = metadata.loadoutTons;
         if (!compareField(check, expected, actual)) {
-          issues.push({
-            kind: 'value-mismatch',
-            field: check.field,
-            expected,
-            actual,
-          });
+          issues.push(fieldIssue('value-mismatch', check.field, expected, actual));
         }
         continue;
       }
@@ -785,39 +797,38 @@ function processUnit(
       const actual = getFieldValue(metadata, check.field);
 
       if (hasOwnPath(oracle, check.field) && (!hasOwnPath(metadata, check.field) || actual === undefined)) {
-        issues.push({
-          kind: 'missing-output',
-          field: check.field,
-          expected,
-          actual,
-          message: 'required oracle field is absent from generated metadata',
-        });
+        issues.push(fieldIssue(
+          'missing-output', check.field, expected, actual,
+          'required oracle field is absent from generated metadata',
+        ));
         continue;
       }
 
       if (actual !== undefined) {
         const schemaError = validateOutputField(check, actual);
         if (schemaError) {
-          issues.push({
-            kind: 'output-schema',
-            field: check.field,
-            expected,
-            actual,
-            message: schemaError,
-          });
+          issues.push(fieldIssue('output-schema', check.field, expected, actual, schemaError));
           continue;
         }
       }
 
       if (!compareField(check, expected, actual)) {
-        issues.push({ kind: 'value-mismatch', field: check.field, expected, actual });
+        if (check.field === 'cost' && isKnownMegaMekCostBug(oracle.uuid, actual, expected)) {
+          knownMegaMekCostBug = true;
+          continue;
+        }
+        issues.push(check.compare === 'componentSet'
+          ? componentSetIssue(check.field, expected, actual)
+          : fieldIssue('value-mismatch', check.field, expected, actual));
       }
     }
+    recordProfileStage('compare', compareStartedAt);
 
     return {
       unitName,
       status: issues.length > 0 ? 'mismatch' : 'match',
       issues,
+      ...(knownMegaMekCostBug ? { knownMegaMekCostBug: true as const } : {}),
     };
   } catch (err: any) {
     return {
@@ -827,6 +838,44 @@ function processUnit(
       error: err.message || String(err),
     };
   }
+}
+
+function componentSetIssue(field: string, expected: unknown, actual: unknown): FieldIssue {
+  if (!Array.isArray(expected) || !Array.isArray(actual)) {
+    return fieldIssue('value-mismatch', field, expected, actual);
+  }
+  const unmatchedActual = [...actual];
+  const unmatchedExpected: unknown[] = [];
+  for (const component of expected) {
+    const index = unmatchedActual.findIndex(candidate => unorderedStructuralEqual(
+      normaliseComponent(component), normaliseComponent(candidate),
+    ));
+    if (index < 0) unmatchedExpected.push(component);
+    else unmatchedActual.splice(index, 1);
+  }
+  return fieldIssue(
+    'value-mismatch', field,
+    unmatchedExpected[0], unmatchedActual[0],
+    `${unmatchedExpected.length} missing, ${unmatchedActual.length} unexpected; `
+      + `missing=${formatBoundedDiagnosticValue(unmatchedExpected, 1_000)}; `
+      + `unexpected=${formatBoundedDiagnosticValue(unmatchedActual, 1_000)}`,
+  );
+}
+
+function fieldIssue(
+  kind: IssueKind,
+  field: string,
+  expected: unknown,
+  actual: unknown,
+  message?: string,
+): FieldIssue {
+  return {
+    kind,
+    field,
+    expected: formatBoundedDiagnosticValue(expected),
+    actual: formatBoundedDiagnosticValue(actual),
+    ...(message === undefined ? {} : { message }),
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -843,6 +892,7 @@ function printResults(
   const parseErrors = results.filter(r => r.status === 'parse-error');
   const buildErrors = results.filter(r => r.status === 'build-error');
   const fileMissing = results.filter(r => r.status === 'file-missing');
+  const knownMegaMekCostBugs = results.filter(r => r.knownMegaMekCostBug);
   const unimplemented = selectedChecks.filter(check => check.parity === 'missing');
 
   if (unimplemented.length > 0) {
@@ -875,7 +925,7 @@ function printResults(
           const message = issue.message ? ` (${issue.message})` : '';
           console.log(
             `    ${issue.kind}:${issue.field}${message}: `
-            + `expected=${JSON.stringify(issue.expected)} actual=${JSON.stringify(issue.actual)}`,
+            + `expected=${issue.expected} actual=${issue.actual}`,
           );
         }
       }
@@ -887,11 +937,13 @@ function printResults(
           const message = issue.message ? ` (${issue.message})` : '';
           console.log(
             `    ${issue.kind}:${issue.field}${message}: `
-            + `expected=${JSON.stringify(issue.expected)} actual=${JSON.stringify(issue.actual)}`,
+            + `expected=${issue.expected} actual=${issue.actual}`,
           );
         }
       }
     } else {
+      console.log('\n  First mismatching units:');
+      for (const r of mismatches.slice(0, 20)) console.log(`    ${r.unitName}`);
       console.log(`\n  Use --verbose to see all mismatch details.`);
     }
   }
@@ -939,6 +991,7 @@ function printResults(
   console.log(`  Parse errors:    ${parseErrors.length}`);
   console.log(`  Build errors:    ${buildErrors.length}`);
   console.log(`  Missing files:   ${fileMissing.length}`);
+  console.log(`  Known MM costs:  ${knownMegaMekCostBugs.length}`);
 
   const passRate = results.length > 0
     ? ((matches.length / results.length) * 100).toFixed(1)
@@ -950,7 +1003,7 @@ function printResults(
 // Main
 // ═══════════════════════════════════════════════════════════════════════════
 
-function main() {
+function main(): void {
   console.log('Unit Metadata Comparison Script\n');
   validateArguments();
 
@@ -959,8 +1012,12 @@ function main() {
   const sourcebooks = loadSourcebooks();
   const quirks = loadQuirks();
   const spriteManifest = JSON.parse(fs.readFileSync(SPRITE_MANIFEST_PATH, 'utf8')) as SpriteManifest;
-  const builder = new UnitMetadataBuilder(createUnitIconResolver(spriteManifest.assignments));
-  const selectedChecks = getActiveChecks();
+  const resolveIcon = createUnitIconResolver(spriteManifest.assignments);
+  const builder = new UnitMetadataBuilder(resolveIcon);
+  const selectedChecks = getActiveChecks().map(check =>
+    TYPE_FILTER === 'Mek' && check.field === 'dpt'
+      ? { ...check, parity: 'verified' as const }
+      : check);
   const comparedChecks = selectedChecks.filter(check => check.parity !== 'missing');
   console.log(`Selected checks: ${selectedChecks.map(c => c.field).join(', ')}`);
   if (selectedChecks.length !== comparedChecks.length) {
@@ -982,20 +1039,41 @@ function main() {
   // Process each unit
   const results: CompareResult[] = [];
   let processed = 0;
+  let batchStartedAt = performance.now();
 
   for (const entry of entries) {
-    const result = processUnit(entry, comparedChecks, equipmentRegistry, builder, sourcebooks, quirks);
+    const result = processUnit(
+      entry, comparedChecks, equipmentRegistry, builder, sourcebooks, quirks,
+    );
     results.push(result);
     processed++;
 
     // Progress indicator
     if (processed % 500 === 0) {
-      process.stdout.write(`  ${processed}/${entries.length}...\r`);
+      if (PROFILE) {
+        const elapsedSeconds = (performance.now() - batchStartedAt) / 1_000;
+        const beforeGc = process.memoryUsage();
+        const collectGarbage = (globalThis as typeof globalThis & { gc?: () => void }).gc;
+        collectGarbage?.();
+        const afterGc = process.memoryUsage();
+        const heap = collectGarbage
+          ? `heap ${megabytes(beforeGc.heapUsed)} MB -> ${megabytes(afterGc.heapUsed)} MB after GC`
+          : `heap ${megabytes(afterGc.heapUsed)} MB`;
+        console.log(
+          `  ${processed}/${entries.length} [${entry.type}]: ${elapsedSeconds.toFixed(1)}s/500, `
+          + `${heap}, `
+          + `rss ${megabytes(afterGc.rss)} MB`,
+        );
+        batchStartedAt = performance.now();
+      } else {
+        process.stdout.write(`  ${processed}/${entries.length}...\r`);
+      }
     }
   }
 
   // Report
   printResults(results, selectedChecks, comparedChecks);
+  if (PROFILE) printProfileStages();
 
   // Exit code
   if (STRICT) {
@@ -1005,9 +1083,35 @@ function main() {
   }
 }
 
+function megabytes(bytes: number): string {
+  return (bytes / 1024 / 1024).toFixed(1);
+}
+
+function profileNow(): number {
+  return PROFILE ? performance.now() : 0;
+}
+
+function recordProfileStage(stage: ProfileStage, startedAt: number): void {
+  if (!PROFILE) return;
+  const total = PROFILE_TOTALS.get(stage) ?? { calls: 0, elapsedMs: 0 };
+  total.calls += 1;
+  total.elapsedMs += performance.now() - startedAt;
+  PROFILE_TOTALS.set(stage, total);
+}
+
+function printProfileStages(): void {
+  console.log('\n═══ PROFILE STAGES ═══\n');
+  for (const [stage, total] of PROFILE_TOTALS) {
+    console.log(
+      `  ${stage.padEnd(14)} ${total.elapsedMs.toFixed(1).padStart(9)} ms total, `
+      + `${(total.elapsedMs / total.calls).toFixed(3).padStart(7)} ms/call`,
+    );
+  }
+}
+
 try {
   main();
 } catch (error: unknown) {
-  console.error(`\nFatal: ${error instanceof Error ? error.message : String(error)}`);
+  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
   process.exitCode = 1;
 }

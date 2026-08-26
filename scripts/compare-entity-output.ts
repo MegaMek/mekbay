@@ -7,15 +7,15 @@
  *
  * Parses every .mtf / .blk file from the input folder, writes each one out
  * to the output folder preserving the original directory structure and file
- * name, then compares the written output against the original file ignoring
- * comment lines (lines starting with #).
+ * name, then compares the written output against the original file. The only
+ * ignored rows are rows that literally start with `#` or `generator:`.
  *
  * Usage:
  *   npx tsx scripts/compare-entity-output.ts [--input PATH] [--output PATH] [--type TYPE] [--fail-fast] [--verbose]
  *
  * Options:
- *   --input  PATH   Root directory of unit files (default: ..\..\mm-data\data\mekfiles)
- *   --output PATH   Directory to write generated files (default: C:\Projects\megamek\resavedUnits)
+ *   --input  PATH   Root directory of unit files (default: sibling mm-data/data/mekfiles)
+ *   --output PATH   Directory to write generated files (default: .tmp/entity-compare-all)
  *   --type   TYPE   Filter by entity type: meks|fighters|vehicles|battlearmor|infantry|protomeks|dropships|smallcraft|jumpships|warship|spacestation|ge|handheld|convfighter
  *   --name   TEXT   Filter by chassis/model name (space-separated tokens, all must match, case-insensitive)
  *   --fail-fast      Stop on the first failure
@@ -27,25 +27,10 @@ import * as path from 'path';
 import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
-import { writeEntity } from '../src/app/models/entity/write-entity';
-import { MekEntity } from '../src/app/models/entity/entities/mek/mek-entity';
-import { BaseEntity } from '../src/app/models/entity/base-entity';
+import { encodeNativeEntity } from '../src/app/models/entity/write-entity';
+import type { BaseEntity } from '../src/app/models/entity/base-entity';
 import { loadQuirkResolver } from './quirk-fixture';
-
-/**
- * UnitTypes explicitly skipped - these entity types are not yet supported.
- * Files with these types are counted separately and do NOT count as failures.
- */
-const SKIPPED_UNIT_TYPES = new Set([
-  'BuildingEntity',
-  'GunEmplacement',
-]);
-
-/** Extract the UnitType string from a raw BLK file without full parsing. */
-function peekBlkUnitType(content: string): string | null {
-  const match = content.match(/<UnitType>\s*([^<\r\n]+)/i);
-  return match ? match[1].trim() : null;
-}
+import { nativeEntityComparisonRows } from './lib/native-entity-comparison';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLI argument parsing
@@ -58,8 +43,14 @@ function getArg(name: string, defaultValue: string): string {
 }
 const hasFlag = (name: string) => args.includes(`--${name}`);
 
-const INPUT_DIR = path.resolve(getArg('input', String.raw`..\..\mm-data\data\mekfiles`));
-const OUTPUT_DIR = path.resolve(getArg('output', String.raw`..\..\resavedUnits`));
+const INPUT_DIR = path.resolve(getArg(
+  'input',
+  path.resolve(__dirname, '..', '..', 'mm-data', 'data', 'mekfiles'),
+));
+const OUTPUT_DIR = path.resolve(getArg(
+  'output',
+  path.resolve(__dirname, '..', '.tmp', 'entity-compare-all'),
+));
 const TYPE_FILTER = getArg('type', '');
 const NAME_FILTER = getArg('name', '');
 const NAME_TOKENS = NAME_FILTER
@@ -168,121 +159,26 @@ function matchesTypeFilter(filePath: string): boolean {
 // Comment-stripping comparison
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Fluff field prefixes whose *values* should be trimmed for comparison.
- * The originals sometimes have leading/trailing spaces in these fields;
- * our writer correctly trims them, so we normalise both sides.
- */
-const FLUFF_PREFIXES = [
-  'overview:', 'capabilities:', 'deployment:', 'history:',
-  'manufacturer:', 'primaryfactory:',
-  'systemmanufacturer:', 'systemmode:',
-  'notes:', 'use:',
-];
-
-interface ComparisonSkipRule {
-  readonly extensions: readonly string[];
-  readonly linePrefixes: readonly string[];
-  readonly maxFailuresBeforeNoSkip: number;
-}
-
-const COMPARISON_SKIP_RULES: readonly ComparisonSkipRule[] = [
-  {
-    extensions: ['.mtf'],
-    linePrefixes: ['jump mp:'],
-    maxFailuresBeforeNoSkip: 5,
-  },
-];
-
-interface NormalizedComparisonLine {
-  readonly text: string;
-  readonly skipRule?: ComparisonSkipRule;
-}
-
-function getComparisonSkipRule(line: string, extension: string): ComparisonSkipRule | undefined {
-  const normalizedLine = line.trimStart().toLowerCase();
-  return COMPARISON_SKIP_RULES.find(rule =>
-    rule.extensions.includes(extension)
-    && rule.linePrefixes.some(prefix => normalizedLine.startsWith(prefix))
-  );
-}
-
-/**
- * Strip comment lines (starting with #), the MTF generator: line,
- * trim fluff field values, and normalise whitespace for comparison.
- */
-function normalizeForComparison(text: string, extension: string): NormalizedComparisonLine[] {
-  const lines = text.split(/\r?\n/);
-  const filtered: NormalizedComparisonLine[] = [];
-
-  for (const line of lines) {
-    const trimmed = line.trimStart();
-    // Skip comment lines
-    if (trimmed.startsWith('#')) continue;
-    // Skip MTF generator line (e.g. "generator:MegaMek Suite 0.50.12 on 2026-02-25")
-    if (trimmed.startsWith('generator:')) continue;
-
-    // Trim values of fluff fields so whitespace differences are ignored
-    const lower = trimmed.toLowerCase();
-    let handled = false;
-    for (const prefix of FLUFF_PREFIXES) {
-      if (lower.startsWith(prefix)) {
-        const colonIdx = trimmed.indexOf(':');
-        const key = trimmed.substring(0, colonIdx + 1);
-        const value = trimmed.substring(colonIdx + 1).trim();
-        filtered.push({ text: `${key}${value}` });
-        handled = true;
-        break;
-      }
-    }
-    if (!handled) {
-      const normalizedLine = line.trimEnd();
-      if (normalizedLine === '' && filtered[filtered.length - 1]?.text === '') continue;
-      filtered.push({
-        text: normalizedLine,
-        skipRule: getComparisonSkipRule(trimmed, extension),
-      });
-    }
-  }
-
-  let first = 0;
-  while (first < filtered.length && filtered[first].text === '') first++;
-
-  let last = filtered.length - 1;
-  while (last >= first && filtered[last].text === '') last--;
-
-  if (first > last) return [];
-
-  filtered[first] = {
-    ...filtered[first],
-    text: filtered[first].text.trimStart(),
-  };
-  filtered[last] = {
-    ...filtered[last],
-    text: filtered[last].text.trimEnd(),
-  };
-  return filtered.slice(first, last + 1);
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Single-file processing
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface CompareResult {
   file: string;
-  status: 'match' | 'diff' | 'parse-error' | 'write-error';
+  status: 'match' | 'skipped' | 'diff' | 'parse-error' | 'write-error';
   entityType?: string;
   error?: string;
-  /** First differing line index (0-based) in the non-comment content */
+  /** First differing row index after removing the two explicitly ignored row forms. */
   firstDiffLine?: number;
   expectedLine?: string;
   actualLine?: string;
   /** The parsed entity, available for diagnostic inspection on diff. */
   entity?: BaseEntity;
+  /** Parser and encoder evidence retained even when the file is skipped or blocked. */
+  diagnostics?: readonly string[];
 }
 
 const createdOutputDirectories = new Set<string>();
-const comparisonSkipFailureCounts = new Map<ComparisonSkipRule, number>();
 
 /**
  * Check whether a file path matches all NAME_TOKENS (checked against the filename).
@@ -294,42 +190,49 @@ function matchesNameFilter(filePath: string): boolean {
   return NAME_TOKENS.every(token => haystack.includes(token));
 }
 
-function processFile(
+async function processFile(
   filePath: string,
   equipmentRegistry: EquipmentRegistry,
   contentOverride?: string,
-): CompareResult {
+): Promise<CompareResult> {
   const fileName = path.basename(filePath);
   const content = contentOverride ?? fs.readFileSync(filePath, 'utf-8');
-  const ext = path.extname(fileName).toLowerCase();
-  const isMtf = ext === '.mtf';
+  const diagnostics: string[] = [];
 
   // ── Parse ──
   let entity;
   try {
-    entity = parseEntity(content, fileName, equipmentRegistry, { quirkResolver }).entity;
-  } catch (e: any) {
-    return { file: filePath, status: 'parse-error', error: `Parse: ${e.message}` };
+    const parsed = parseEntity(content, fileName, equipmentRegistry, { quirkResolver });
+    entity = parsed.entity;
+    diagnostics.push(...parsed.diagnostics.map(diagnostic =>
+      `parse ${diagnostic.severity} ${diagnostic.field}: ${diagnostic.message}`));
+    if (parsed.diagnostics.some(diagnostic => diagnostic.severity === 'error')) {
+      return {
+        file: filePath,
+        status: 'parse-error',
+        entityType: entity.entityType,
+        error: 'Parse produced error diagnostics',
+        diagnostics,
+      };
+    }
+  } catch (caught) {
+    return { file: filePath, status: 'parse-error', error: `Parse: ${errorMessage(caught)}`, diagnostics };
   }
 
   // ── Write ──
   let written: string;
   try {
-    const format = isMtf && entity instanceof MekEntity ? 'mtf' : 'blk';
-    written = writeEntity(entity, format);
-  } catch (e: any) {
+    written = encodeNativeEntity(entity);
+  } catch (caught) {
     return {
       file: filePath, status: 'write-error', entityType: entity.entityType,
-      error: `Write: ${e.message}`,
+      error: `Write: ${errorMessage(caught)}`, diagnostics,
     };
   }
 
   // ── Save to output dir preserving folder structure ──
   const relPath = path.relative(INPUT_DIR, filePath);
-  // For MTF files that are non-Mek entities, the writer produces BLK - adjust extension
-  const outRelPath = (isMtf && !(entity instanceof MekEntity))
-    ? relPath.replace(/\.mtf$/i, '.blk')
-    : relPath;
+  const outRelPath = relPath;
   const outPath = path.join(OUTPUT_DIR, outRelPath);
   const outDir = path.dirname(outPath);
   if (!createdOutputDirectories.has(outDir)) {
@@ -338,40 +241,41 @@ function processFile(
   }
   fs.writeFileSync(outPath, written, 'utf-8');
 
-  // ── Compare ignoring comments and generator block ──
-  const origLines = normalizeForComparison(content, ext);
-  const writLines = normalizeForComparison(written, ext);
+  // ── Bidirectional exact row comparison after the two explicit exclusions ──
+  const origLines = nativeEntityComparisonRows(content);
+  const writLines = nativeEntityComparisonRows(written);
   const maxLen = Math.max(origLines.length, writLines.length);
   for (let i = 0; i < maxLen; i++) {
-    const origLine = origLines[i];
-    const writLine = writLines[i];
-    const oLine = origLine?.text ?? '<EOF>';
-    const wLine = writLine?.text ?? '<EOF>';
+    const oLine = origLines[i] ?? '<EOF>';
+    const wLine = writLines[i] ?? '<EOF>';
     if (oLine !== wLine) {
-      const skipRule = origLine?.skipRule ?? writLine?.skipRule;
-      if (skipRule) {
-        const failureCount = (comparisonSkipFailureCounts.get(skipRule) ?? 0) + 1;
-        comparisonSkipFailureCounts.set(skipRule, failureCount);
-        if (failureCount <= skipRule.maxFailuresBeforeNoSkip) continue;
-      }
       return {
         file: filePath, status: 'diff', entityType: entity.entityType,
         firstDiffLine: i,
         expectedLine: oLine,
         actualLine: wLine,
         entity,
+        diagnostics,
       };
     }
   }
 
-  return { file: filePath, status: 'match', entityType: entity.entityType };
+  return { file: filePath, status: 'match', entityType: entity.entityType, diagnostics };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function printDiagnostics(result: CompareResult): void {
+  for (const diagnostic of result.diagnostics ?? []) console.log(`           ! ${diagnostic}`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Main
 // ═══════════════════════════════════════════════════════════════════════════
 
-function main(): void {
+async function main(): Promise<void> {
   console.log('═══════════════════════════════════════════════════════════════');
   console.log('  Entity Output Comparison');
   console.log('═══════════════════════════════════════════════════════════════');
@@ -404,6 +308,7 @@ function main(): void {
     parseError: 0,
     writeError: 0,
     skipped: 0,
+    diagnostics: 0,
   };
 
   const byType = new Map<string, { match: number; diff: number }>();
@@ -420,30 +325,26 @@ function main(): void {
       continue;
     }
 
-    // ── Skip unsupported UnitTypes before parsing ──
-    if (file.toLowerCase().endsWith('.blk')) {
-      const raw = fs.readFileSync(file, 'utf-8');
-      const unitType = peekBlkUnitType(raw);
-      if (unitType && SKIPPED_UNIT_TYPES.has(unitType)) {
-        stats.skipped++;
-        if (VERBOSE) {
-          console.log(`  ⊘ SKIP   ${path.relative(INPUT_DIR, file)} (${unitType})`);
-        }
-        continue;
-      }
-    }
-
-    const result = processFile(file, equipmentRegistry);
+    const result = await processFile(file, equipmentRegistry);
+    stats.diagnostics += result.diagnostics?.length ?? 0;
 
     const typeKey = result.entityType ?? 'unknown';
     if (!byType.has(typeKey)) byType.set(typeKey, { match: 0, diff: 0 });
 
     switch (result.status) {
+      case 'skipped':
+        stats.skipped++;
+        if (VERBOSE) {
+          console.log(`  - ${path.relative(INPUT_DIR, file)} (${result.error})`);
+          printDiagnostics(result);
+        }
+        break;
       case 'match':
         stats.match++;
         byType.get(typeKey)!.match++;
         if (VERBOSE) {
           console.log(`  ✓ ${path.relative(INPUT_DIR, file)}`);
+          printDiagnostics(result);
         }
         break;
       case 'diff':
@@ -459,22 +360,25 @@ function main(): void {
           //   console.log(`           mixedTech: ${reasons.join('; ')}`);
           // }
         }
+        printDiagnostics(result);
         break;
       case 'parse-error':
         stats.parseError++;
         byType.get(typeKey)!.diff++;
         failures.push(result);
         console.log(`  ✗ PARSE  ${path.relative(INPUT_DIR, file)}: ${result.error}`);
+        printDiagnostics(result);
         break;
       case 'write-error':
         stats.writeError++;
         byType.get(typeKey)!.diff++;
         failures.push(result);
         console.log(`  ✗ WRITE  ${path.relative(INPUT_DIR, file)}: ${result.error}`);
+        printDiagnostics(result);
         break;
     }
 
-    if (FAIL_FAST && result.status !== 'match') {
+    if (FAIL_FAST && result.status !== 'match' && result.status !== 'skipped') {
       console.log('\n--fail-fast: stopping at first failure');
       break;
     }
@@ -499,12 +403,16 @@ function main(): void {
   console.log(`  Diff:         ${stats.diff}`);
   console.log(`  Parse errors: ${stats.parseError}`);
   console.log(`  Write errors: ${stats.writeError}`);
+  console.log(`  Diagnostics retained: ${stats.diagnostics}`);
   console.log(`  Time:         ${elapsed}s`);
   console.log(`  Match rate:   ${tested > 0 ? ((stats.match / tested) * 100).toFixed(1) : 0}%`);
 
   // ── Per-type breakdown ──
-  console.log('\n  By Entity Type:');
-  for (const [type, counts] of [...byType.entries()].sort()) {
+  const testedTypes = [...byType.entries()]
+    .filter(([, counts]) => counts.match + counts.diff > 0)
+    .sort();
+  if (testedTypes.length > 0) console.log('\n  By Entity Type:');
+  for (const [type, counts] of testedTypes) {
     const total = counts.match + counts.diff;
     const pct = total > 0 ? ((counts.match / total) * 100).toFixed(1) : '0.0';
     const icon = counts.diff === 0 ? '✓' : '✗';
@@ -518,8 +426,10 @@ function main(): void {
   if (totalFail > 0) {
     console.log(`${totalFail} file(s) differ from original. Output written to: ${OUTPUT_DIR}`);
     process.exit(1);
+  } else if (tested === 0) {
+    console.log('No capability-enabled native encode cells were tested; unsupported cells were skipped.');
   } else {
-    console.log('All files match the originals (ignoring comments)! ✓');
+    console.log('All files match exactly after excluding # and generator: rows! ✓');
   }
 }
 
@@ -528,4 +438,7 @@ function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 3) + '...' : s;
 }
 
-main();
+main().catch(error => {
+  console.error(error);
+  process.exit(1);
+});

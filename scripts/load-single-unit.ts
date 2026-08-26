@@ -21,9 +21,9 @@ import { SmallCraftEntity } from '../src/app/models/entity/entities/aero/small-c
 import { MekEntity } from '../src/app/models/entity/entities/mek/mek-entity';
 import { loadQuirkResolver } from './quirk-fixture';
 import { formatBattleValueDetails, formatCostReport, formatDiagnosticNumber } from './unit-diagnostics';
-import { calculateMekWeightBreakdown } from '../src/app/models/entity/utils/weight/mek-weight';
 import { ProtoMekEntity } from '../src/app/models/entity/entities/protomek/protomek-entity';
 import { calculateProtoMekWeightBreakdown } from '../src/app/models/entity/utils/weight/protomek-weight';
+import { calculateMekWeightBreakdown } from '../src/app/models/entity/utils/weight/mek-weight';
 import { VehicleEntity } from '../src/app/models/entity/entities/vehicle/vehicle-entity';
 import { calculateVehicleWeightBreakdown } from '../src/app/models/entity/utils/weight/vehicle-weight';
 import { calculateSupportVehicleWeightBreakdown } from '../src/app/models/entity/utils/weight/support-vehicle-weight';
@@ -79,7 +79,7 @@ function loadEquipmentDb() {
 // Main
 // ═══════════════════════════════════════════════════════════════════════════
 
-function main() {
+async function main(): Promise<void> {
   if (!fs.existsSync(INPUT_FILE)) {
     console.error(`Unit file not found: ${INPUT_FILE}`);
     process.exit(1);
@@ -293,4 +293,7 @@ function main() {
   }
 }
 
-main();
+void main().catch(error => {
+  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+  process.exitCode = 1;
+});

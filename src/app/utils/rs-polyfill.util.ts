@@ -2,10 +2,30 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { getUnitServerHost, heatLevels } from "../models/common.model";
-import type { CBTForceUnit } from "../models/cbt-force-unit.model";
-import { getUnitConditionDefinition, UNIT_CONDITION_DEFINITIONS } from "../models/rules/unit-type-rules";
-import type { Unit, UnitType } from "../models/units.model";
+import { heatLevels } from "../models/common.model";
+import {
+    getUnitConditionDefinition,
+    UNIT_CONDITION_DEFINITIONS,
+    type UnitConditionControl,
+} from "../models/unit-status-presentation";
+import type { UnitType } from "../models/unit-summary.model";
+import { NON_MEK_DAMAGE_TRACK_SHEET_BASE_IDS } from "../models/rules/non-mek-damage-track-rules";
+
+/** Detached Entity-derived layout facts; never a runtime owner or catalog row. */
+export interface RecordSheetPolyfillUnitFacts {
+    readonly type: UnitType;
+    readonly subtype: string;
+    readonly armorType: string;
+    readonly structureType: string;
+    readonly crewSize: number;
+}
+
+export interface RecordSheetPolyfillInput {
+    readonly unit: RecordSheetPolyfillUnitFacts;
+    readonly conditionControls: readonly UnitConditionControl[];
+    readonly addCrewStateControls: boolean;
+    readonly fluffImageUrl?: string | null;
+}
 
 interface InventoryRangeButtonColumn {
     className: string;
@@ -40,73 +60,50 @@ export class RsPolyfillUtil {
     private static readonly CREW_STATE_BANNER_FONT_SIZE = 8;
     
     
-    private static readonly CRITICAL_LOCATION_IDS = [
-        "commander_hit",
-        "driver_hit",
-        "pilot_hit",
-        "copilot_hit",
-        "avionics_hit_",
-        "fcs_hit_",
-        "cic_hit_",
-        "fuel_tank_hit_",
-        "docking_collar_hit_",
-        "kf_boom_hit_",
-        "thruster_left_hit_",
-        "thruster_right_hit_",
-        "engine_hit_",
-        "gyro_hit_",
-        "sensor_hit_",
-        "landing_gear_hit_",
-        "life_support_hit_",
-        "life_support_hit",
-        "motive_system_hit_",
-        "turret_locked",
-        "turret_locked_f",
-        "turret_locked_r",
-        "stabilizer_hit_front",
-        "stabilizer_hit_left",
-        "stabilizer_hit_right",
-        "stabilizer_hit_rear",
-        "stabilizer_hit_turret",
-        "stabilizer_hit_turret_f",
-        "stabilizer_hit_turret_r",
-        "flight_stabilizer_hit",
-        // Protomek
-        "gun_hit_",
-        "ra_hit_",
-        "legs_hit_",
-        "torso_hit_",
-        "la_hit_",
-        "head_hit_",
-    ];
-
     /**
      * Polyfill to add missing classes to record sheets SVGs.
      * TODO: Remove this when the record sheet SVGs are updated to include these classes.
      * @param callback The function to call when the browser is idle.
      */
-    public static addMissingClasses(forceUnit: CBTForceUnit, svg: SVGSVGElement): void {
-        const unit = forceUnit.getUnit();
+    public static prepareRecordSheet(input: RecordSheetPolyfillInput, svg: SVGSVGElement): void {
+        const unit = input.unit;
+        this.prepareSheetRoot(svg);
         this.addNightModeImageFilter(svg);
         if (unit.type !== 'Mek') {
             this.addCriticalLocs(svg);
         }
-        this.addConditionsButtons(forceUnit, svg);
+        this.addLifeSupportPilotDamageWarning(unit.type, svg);
+        this.addConditionsButtons(unit, input.conditionControls, svg);
         this.addMotiveHitPips(svg);
         this.addVtolRotorHitsCounter(unit, svg);
         this.addHeatLevels(svg);
         this.addApplyHeatButton(svg);
         this.addCrewSkillsButtons(svg, unit.type);
         this.addCrewDamageClasses(unit, svg);
-        this.addCrewNamesButtons(svg, forceUnit);
+        this.addCrewNamesButtons(svg, unit, input.addCrewStateControls);
         this.addInventoryLines(svg);
         this.adjustArmorPips(unit, svg);
         this.addPipHitAreas(svg);
         this.addHitMod(svg);
-        this.injectFluffImage(unit, svg);
+        this.injectFluffImage(input.fluffImageUrl, svg);
         this.addTurnStateClasses(unit, svg);
         this.addCritSlotClasses(svg);
         this.addCriticalSectionsButtons(unit, svg)
+    }
+
+    /**
+     * Restores the application-owned sheet root contract before any controls
+     * are added. The authored SVG is layout only; this class activates the
+     * established record-sheet presentation and interaction CSS.
+     */
+    private static prepareSheetRoot(svg: SVGSVGElement): void {
+        svg.classList.add('mekbay-sheet');
+        const styleId = 'mekbay-svg-style';
+        if (svg.querySelector(`#${styleId}`)) return;
+        const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+        style.setAttribute('id', styleId);
+        style.textContent = 'svg:not(:root) { overflow: visible; }';
+        svg.insertBefore(style, svg.firstChild);
     }
 
     /** Adds a native SVG inversion filter for iOS WebKit, which ignores CSS invert() on SVG images. */
@@ -136,13 +133,111 @@ export class RsPolyfillUtil {
         defs.appendChild(filter);
     }
 
-    public static syncConditionButtons(forceUnit: CBTForceUnit, svg: SVGSVGElement): void {
-        this.addConditionsButtons(forceUnit, svg);
+    public static syncConditionButtons(
+        summary: RecordSheetPolyfillUnitFacts,
+        conditionControls: readonly UnitConditionControl[],
+        svg: SVGSVGElement,
+    ): void {
+        this.addConditionsButtons(summary, conditionControls, svg);
     }
 
     public static fixSvg(svg: SVGSVGElement): void {
         this.addViewBox(svg);
         this.fixFontSize(svg);
+    }
+
+    private static addLifeSupportPilotDamageWarning(type: UnitType, svg: SVGSVGElement): void {
+        if (type !== 'Mek'
+            || svg.getElementById('heatLifeSupportWarning')
+            || svg.getElementById('lifeSupportPilotDamageWarning')) return;
+
+        const warriorData = ['warriorDataSingle', 'warriorDataDual', 'warriorDataTriple']
+            .map(id => svg.getElementById(id) as SVGGraphicsElement | null)
+            .find(element => element !== null);
+        if (!warriorData) return;
+
+        const coords = warriorData.getBBox();
+        const warningWidth = 42;
+        const warningHeight = 15;
+        const warning = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        warning.setAttribute('id', 'lifeSupportPilotDamageWarning');
+        warning.setAttribute('class', 'screen-only no-autocolor');
+        warning.setAttribute('pointer-events', 'none');
+        warning.setAttribute('display', 'none');
+        warning.setAttribute(
+            'transform',
+            `translate(${coords.x + coords.width - warningWidth - 6} ${coords.y - 2})`,
+        );
+        warning.setAttribute('data-width', String(warningWidth));
+        warning.setAttribute('data-height', String(warningHeight));
+
+        const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        defs.append(
+            this.createLifeSupportHeatDamageIcon(),
+            this.createLifeSupportOxygenDamageIcon(),
+        );
+        warning.appendChild(defs);
+        warriorData.appendChild(warning);
+    }
+
+    private static createLifeSupportHeatDamageIcon(): SVGSymbolElement {
+        const symbol = document.createElementNS('http://www.w3.org/2000/svg', 'symbol');
+        symbol.setAttribute('id', 'lifeSupportHeatDamageIcon');
+        symbol.setAttribute('viewBox', '-48 -48 608 608');
+
+        const flame = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        flame.setAttribute('class', 'lifeSupportHeatFlame');
+        flame.setAttribute('d', 'M392.172,147.731c13.598,34.6-10.914,87.102-45.319,68.762c-25.344-13.528-18.732-38.095,0.456-72.5c27.26-48.843-20.194-82.996-20.194-82.996s-9.013,62.081-60.738,51.402C222.128,103.268,220.306,27.526,239.464,0c-69.092,8.212-79.267,107.563-46.951,144.15c38.864,43.999,31.594,102.649-18.451,100.592c-36.398-1.492-53.231-46.943-33.965-91.712c-65.763,27.213-92.19,109.904-87.338,161.722c3.282,34.805,10.411,76.778,39.633,112.682c51.71,72.099,146.821,104.148,234.237,72.208c84.402-30.84,135.859-111.889,133.065-197.044C459.254,264.197,450.617,186.932,392.172,147.731z');
+        flame.setAttribute('fill', '#f4511e');
+        flame.setAttribute('stroke', '#000');
+        flame.setAttribute('stroke-width', '96');
+        flame.setAttribute('stroke-linejoin', 'round');
+        flame.setAttribute('paint-order', 'stroke fill');
+
+        const letters = [
+            'M199.123,395.55c-0.141,0.895-0.722,1.554-1.602,1.672l-17.634,2.34c-0.88,0.11-1.461-0.392-1.319-1.288l6.862-39.53c0.142-0.598-0.157-0.856-0.738-0.778l-31.327,4.153c-0.58,0.078-0.879,0.408-1.02,1.013l-6.847,39.524c-0.157,0.903-0.596,1.539-1.46,1.656l-17.634,2.34c-0.88,0.118-1.46-0.392-1.319-1.287l17.053-98.448c0.142-0.888,0.738-1.555,1.602-1.672l17.634-2.34c0.88-0.117,1.32,0.416,1.178,1.303l-6.564,38.472c-0.142,0.613,0.141,0.864,0.722,0.786l31.185-4.138c0.597-0.079,0.88-0.408,1.021-1.013l6.705-38.487c0.157-0.895,0.738-1.562,1.601-1.672l17.634-2.34c0.879-0.118,1.46,0.392,1.319,1.288L199.123,395.55z',
+            'M293.606,363.344c-7.883,16.936-20.854,25.501-38.487,27.841c-18.654,2.473-31.327-6.195-31.327-26.161c0-8.888,4.804-39.398,9.908-50.57c7.867-16.928,20.994-25.525,38.472-27.841c18.655-2.473,31.342,6.194,31.342,26.16C303.515,321.668,298.71,352.178,293.606,363.344z',
+            'M389.236,289.455c-0.142,0.895-0.722,1.554-1.602,1.672l-24.339,3.227c-0.581,0.078-0.88,0.408-1.021,1.005l-13.85,80.39c-0.141,0.903-0.722,1.554-1.602,1.672l-17.634,2.339c-0.723,0.094-1.303-0.408-1.162-1.303l13.85-80.39c0.142-0.604-0.157-0.856-0.738-0.777l-24.182,3.211c-0.88,0.11-1.461-0.392-1.32-1.287l2.764-15.672c0.157-0.887,0.738-1.554,1.617-1.672l70.678-9.374c0.879-0.117,1.46,0.4,1.303,1.288L389.236,289.455z',
+        ].map(data => {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('class', 'lifeSupportHeatLetter');
+            path.setAttribute('d', data);
+            path.setAttribute('fill', '#fff');
+            return path;
+        });
+        const counter = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        counter.setAttribute('class', 'lifeSupportHeatCounter');
+        counter.setAttribute('d', 'M269.408,305.205c-8.008,1.06-13.692,6.328-17.053,13.92c-3.501,7.31-7.867,34.114-7.867,41.259c0,8.597,4.946,13.339,13.41,12.216c8.008-1.06,13.692-6.336,17.194-13.936c3.345-7.302,7.726-34.114,7.726-41.251C282.819,308.808,278.014,304.058,269.408,305.205z');
+        counter.setAttribute('fill', '#f4511e');
+        symbol.append(flame, ...letters, counter);
+        return symbol;
+    }
+
+    private static createLifeSupportOxygenDamageIcon(): SVGSymbolElement {
+        const symbol = document.createElementNS('http://www.w3.org/2000/svg', 'symbol');
+        symbol.setAttribute('id', 'lifeSupportOxygenDamageIcon');
+        symbol.setAttribute('viewBox', '-48 -48 608 608');
+        const shapes = [
+            'M80 456V226c0-46 32-76 70-84v-28h30v28c38 8 70 38 70 84v230q0 18-18 18H98q-18 0-18-18z',
+            'M140 142V82h-28V42h96v40h-28v23h88v40h-88v-3z',
+            'M112 78a50 50 0 1 0 0 100a50 50 0 1 0 0-100zm0 34a16 16 0 1 1 0 32a16 16 0 1 1 0-32z',
+            'M292 224q0-58 58-58h18q58 0 58 58v106q0 58-58 58h-18q-58 0-58-58zm50 2v102q0 16 16 16h2q16 0 16-16V226q0-16-16-16h-2q-16 0-16 16z',
+            'M412 360q0-46 46-46h12q40 0 40 40q0 24-22 40l-37 27h59v47H404v-48l57-45q9-7 9-17q0-8-10-8h-8q-8 0-8 10z',
+        ].map((data, index) => {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('class', index < 3 ? 'lifeSupportOxygenTank' : 'lifeSupportOxygenLabel');
+            path.setAttribute('d', data);
+            path.setAttribute('fill', index < 3 ? '#2196f3' : '#fff');
+            path.setAttribute('stroke', '#000');
+            path.setAttribute('stroke-width', '96');
+            path.setAttribute('stroke-linejoin', 'round');
+            path.setAttribute('paint-order', 'stroke fill');
+            if (index === 2 || index === 3) path.setAttribute('fill-rule', 'evenodd');
+            if (index === 3) path.setAttribute('transform', 'translate(-44 0)');
+            return path;
+        });
+        symbol.append(...shapes);
+        return symbol;
     }
 
     private static addViewBox(svg: SVGSVGElement): void {
@@ -183,7 +278,7 @@ export class RsPolyfillUtil {
      * TODO: fix this in the SVGs themselves.
      */
     private static addCriticalLocs(svg: SVGSVGElement): void {
-        this.CRITICAL_LOCATION_IDS.forEach(baseId => {
+        NON_MEK_DAMAGE_TRACK_SHEET_BASE_IDS.forEach(baseId => {
             if (baseId.endsWith('_')) {
                 for (let i = 1; i <= 8; i++) {
                     const fullId = `${baseId}${i}`;
@@ -195,10 +290,13 @@ export class RsPolyfillUtil {
         });
     }
 
-    private static addConditionsButtons(unit: CBTForceUnit, svg: SVGSVGElement): void {
+    private static addConditionsButtons(
+        unit: RecordSheetPolyfillUnitFacts,
+        conditionControls: readonly UnitConditionControl[],
+        svg: SVGSVGElement,
+    ): void {
         const buttonWrapper = svg.getElementById('unit_condition_wrapper') as SVGElement | null;
         const hasBannerWrapper = !!svg.getElementById('condition_banner_wrapper');
-        const conditionControls = unit.rules.conditionControls;
         if (conditionControls.length === 0) return;
 
         const buttons = this.conditionButtons(conditionControls);
@@ -293,7 +391,7 @@ export class RsPolyfillUtil {
         ];
     }
 
-    private static createConditionButtonWrapper(buttons: readonly { key: string; label: string; color: string; width: number }[], unit: CBTForceUnit, svg: SVGSVGElement): void {
+    private static createConditionButtonWrapper(buttons: readonly { key: string; label: string; color: string; width: number }[], unit: RecordSheetPolyfillUnitFacts, svg: SVGSVGElement): void {
         const unitDataPanelEl = svg.getElementById('unitDataPanel') as SVGGraphicsElement | null;
         if (!unitDataPanelEl) return;
 
@@ -305,7 +403,7 @@ export class RsPolyfillUtil {
         const buttonGap = 2;
         const totalButtonWidth = buttons.reduce((total, button) => total + button.width, 0) + buttonGap * (buttons.length - 1);
         // This is needed to fix the misaligned buttons on Vehicles
-        const buttonY = coords.y - (unit.getUnit().type === 'Mek' ? 0.5 : -2);
+        const buttonY = coords.y - (unit.type === 'Mek' ? 0.5 : -2);
         let buttonX = coords.x + coords.width - totalButtonWidth - 16;
         const buttonWrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         buttonWrapper.setAttribute('id', `unit_condition_wrapper`);
@@ -553,7 +651,7 @@ export class RsPolyfillUtil {
         });
     }
 
-    private static addVtolRotorHitsCounter(unit: Unit, svg: SVGSVGElement): void {
+    private static addVtolRotorHitsCounter(unit: RecordSheetPolyfillUnitFacts, svg: SVGSVGElement): void {
         if (unit.type !== 'VTOL' || svg.getElementById('rotor_hits_group')) return;
 
         const rotorArmorText = svg.getElementById('textArmor_RO') as SVGTextElement | null;
@@ -613,7 +711,6 @@ export class RsPolyfillUtil {
     }
 
     private static addCrewSkillsButtons(svg: SVGSVGElement, unitType: UnitType): void {
-        if (svg.querySelector('.crewSkillButton')) return; // Avoid duplicates
         const skillTargets = [
             { textElement: 'gunnerySkill0', crewId: 0, skill: 'gunnery' },
             { textElement: 'pilotingSkill0', crewId: 0, skill: 'piloting' },
@@ -627,6 +724,10 @@ export class RsPolyfillUtil {
             { textElement: 'pilotingSkill3', crewId: 3, skill: 'piloting' },
         ];
         skillTargets.forEach((skillTarget) => {
+            const asfSelector = skillTarget.asf ? '[asf="true"]' : ':not([asf="true"])';
+            if (svg.querySelector(
+                `.crewSkillButton[crewId="${skillTarget.crewId}"][skill="${skillTarget.skill}"]${asfSelector}`,
+            )) return;
             const textElement = svg.getElementById(skillTarget.textElement);
             if (!textElement) return;
             const textElementVisibility = (textElement as SVGElement).getAttribute('visibility');
@@ -680,10 +781,13 @@ export class RsPolyfillUtil {
         });
     }
 
-    private static addCrewNamesButtons(svg: SVGSVGElement, forceUnit: CBTForceUnit): void {
-        if (svg.querySelector('.crewNameButton')) return; // Avoid duplicates
-        const unitType = forceUnit.getUnit().type;
-        const crewSize = forceUnit.getUnit().crewSize;
+    private static addCrewNamesButtons(
+        svg: SVGSVGElement,
+        unit: RecordSheetPolyfillUnitFacts,
+        addStateControls: boolean,
+    ): void {
+        const unitType = unit.type;
+        const crewSize = unit.crewSize;
         // Ugly offset due to the sheets SVG messed up
         let offsetX = 0;
         if (unitType === 'Mek' && crewSize > 1) {
@@ -693,7 +797,6 @@ export class RsPolyfillUtil {
         } else {
             offsetX = 2;
         }
-        const addStateControls = forceUnit.rules.crewStateControls.length > 0;
         const nameTargets = [
             { blankPath: 'blankCrewName0', textElement: 'pilotName0', crewId: 0 },
             { blankPath: 'blankCrewName1', textElement: 'pilotName1', crewId: 1 },
@@ -725,19 +828,26 @@ export class RsPolyfillUtil {
             const stateButtonWidth = addStateControls ? this.CREW_STATE_BUTTON_WIDTH : 0;
             const stateButtonGap = addStateControls ? this.CREW_STATE_BUTTON_GAP : 0;
             const nameButtonWidth = addStateControls ? Math.max(30, width - stateButtonWidth - stateButtonGap) : width;
-            const clickArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            clickArea.classList.add('crewNameButton');
-            clickArea.setAttribute('id', `crewNameButton${target.crewId}`);
-            clickArea.setAttribute('x', nameX.toString());
-            clickArea.setAttribute('y', (nameY - height).toString());
-            clickArea.setAttribute('width', nameButtonWidth.toString());
-            clickArea.setAttribute('height', height.toString());
-            clickArea.setAttribute('fill', 'transparent');
-            clickArea.setAttribute('crewId', target.crewId.toString());
-            clickArea.setAttribute('textElement', target.textElement);
-            clickArea.setAttribute('blankElement', target.blankPath);
-            blankNamePath.parentNode?.insertBefore(clickArea, blankNamePath.nextSibling);
-            if (addStateControls) {
+            const nameSelector = `.crewNameButton[crewId="${target.crewId}"][textElement="${target.textElement}"]`;
+            if (!svg.querySelector(nameSelector)) {
+                const clickArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                clickArea.classList.add('crewNameButton');
+                const primaryId = `crewNameButton${target.crewId}`;
+                clickArea.setAttribute('id', svg.getElementById(primaryId)
+                    ? `${primaryId}_${target.textElement}`
+                    : primaryId);
+                clickArea.setAttribute('x', nameX.toString());
+                clickArea.setAttribute('y', (nameY - height).toString());
+                clickArea.setAttribute('width', nameButtonWidth.toString());
+                clickArea.setAttribute('height', height.toString());
+                clickArea.setAttribute('fill', 'transparent');
+                clickArea.setAttribute('crewId', target.crewId.toString());
+                clickArea.setAttribute('textElement', target.textElement);
+                clickArea.setAttribute('blankElement', target.blankPath);
+                blankNamePath.parentNode?.insertBefore(clickArea, blankNamePath.nextSibling);
+            }
+            const stateSelector = `.crewStateButton[crewId="${target.crewId}"][data-mekbay-control-id="${target.textElement}"]`;
+            if (addStateControls && !svg.querySelector(stateSelector)) {
                 const buttonX = nameX + nameButtonWidth + stateButtonGap + offsetX;
                 const buttonY = nameY + 2 - height + (height - this.CREW_STATE_BUTTON_HEIGHT) / 2;
                 this.addCrewStateMenuButton(blankNamePath.parentNode, target.crewId, target.textElement, buttonX, buttonY);
@@ -752,6 +862,7 @@ export class RsPolyfillUtil {
         buttonGroup.setAttribute('id', `crew_state_button_${crewId}_${controlId}`);
         buttonGroup.setAttribute('class', 'crewStateButton unitConditionButton screen-only');
         buttonGroup.setAttribute('crewId', crewId.toString());
+        buttonGroup.setAttribute('data-mekbay-control-id', controlId);
         buttonGroup.setAttribute('active-color', '#666');
         buttonGroup.style.setProperty('--unit-condition-active-color', '#666');
 
@@ -814,7 +925,7 @@ export class RsPolyfillUtil {
      * Adds crew damage hit boxes to the svg.
      * Creates transparent rectangles above crew damage text elements.
      */
-    private static addCrewDamageClasses(unit: Unit, svg: SVGSVGElement): boolean {
+    private static addCrewDamageClasses(unit: RecordSheetPolyfillUnitFacts, svg: SVGSVGElement): boolean {
         // First number: crew index (0-4)
         for (let crewId = 0; crewId <= 4; crewId++) {
             // Second number: hit index (1-10)
@@ -832,6 +943,7 @@ export class RsPolyfillUtil {
     }
 
     private static addCrewHitRect(svg: SVGSVGElement, textElement: Element, crewId: number, hit: number): void {
+        if (svg.querySelector(`.crewHit[crewId="${crewId}"][hit="${hit}"]`)) return;
         // Get text element position and dimension
         const yAttr = (textElement as SVGTextElement).getAttribute('y');
         const xAttr = (textElement as SVGTextElement).getAttribute('x');
@@ -913,6 +1025,9 @@ export class RsPolyfillUtil {
                 existingHitModRect.setAttribute('display', 'none');
                 existingHitModText.setAttribute('display', 'none');
                 existingHitModText.textContent = '';
+                if ([...group.children].indexOf(existingHitModRect) > [...group.children].indexOf(existingHitModText)) {
+                    group.insertBefore(existingHitModRect, existingHitModText);
+                }
                 this.addTargetTnOverlay(group, existingHitModRect, existingHitModText);
                 return;
             }
@@ -984,7 +1099,8 @@ export class RsPolyfillUtil {
 
             text.textContent = '';
             if (!existingHitModRect) parent.appendChild(rect);
-            if (!existingHitModText) parent.appendChild(text);
+            parent.appendChild(text);
+            parent.insertBefore(rect, text);
             this.addTargetTnOverlay(parent, rect, text);
         });
     }
@@ -1007,6 +1123,9 @@ export class RsPolyfillUtil {
 
         if (!existingRect) parent.appendChild(targetTnRect);
         if (!existingText) parent.appendChild(targetTnText);
+        if ([...parent.children].indexOf(targetTnRect) > [...parent.children].indexOf(targetTnText)) {
+            parent.insertBefore(targetTnRect, targetTnText);
+        }
     }
 
 
@@ -1248,7 +1367,7 @@ export class RsPolyfillUtil {
         return value.length > 0 && value !== '—';
     }
 
-    private static adjustArmorPips(unit: Unit, svg: SVGSVGElement): void {
+    private static adjustArmorPips(unit: RecordSheetPolyfillUnitFacts, svg: SVGSVGElement): void {
         if (unit.armorType === 'Hardened') {
             const armorPips = svg.querySelectorAll<SVGElement>('.pip.armor');
             armorPips.forEach(pip => {
@@ -1262,7 +1381,7 @@ export class RsPolyfillUtil {
                 }
             });
         }
-        const structureType = svg.getElementById('structureType')?.textContent || '';
+        const structureType = unit.structureType ?? '';
         if (structureType.includes('Reinforced')) {
             const structurePips = svg.querySelectorAll<SVGElement>('.pip.structure');
             structurePips.forEach(pip => {
@@ -1284,44 +1403,53 @@ export class RsPolyfillUtil {
      * which are too small to reliably tap on touch devices.
      */
     private static addPipHitAreas(svg: SVGSVGElement): void {
-        // Only add hit areas if there are no .unitLocation zones
-        // (if .unitLocation exists, those are used instead for interaction)
-        if (svg.querySelector('.unitLocation')) return;
+        // Armor/structure location zones supersede individual pip targets.
+        // Shield controls are also named .unitLocation, but they do not cover
+        // the armor diagram and must not suppress its pip hit areas.
+        if (svg.querySelector('.unitLocation.armor, .unitLocation.structure')) return;
 
         const pips = svg.querySelectorAll<SVGElement>('.pip.armor, .pip.structure');
         if (pips.length === 0) return;
 
-        const hitAreaSize = 15; // Size of the transparent hit area rectangle
+        const hitAreaRadius = 7.5;
 
         pips.forEach(pip => {
             // Skip if hit area already added
-            if (pip.querySelector('.pip-hit-area')) return;
+            if (pip.getAttribute('data-mekbay-hit-area') === '1') return;
 
             const bbox = (pip as SVGGraphicsElement).getBBox();
             const centerX = bbox.x + bbox.width / 2;
             const centerY = bbox.y + bbox.height / 2;
+            const matrix = (pip as SVGGraphicsElement).getCTM();
+            const scaleX = matrix ? Math.hypot(matrix.a, matrix.b) : 1;
+            const scaleY = matrix ? Math.hypot(matrix.c, matrix.d) : 1;
 
-            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            rect.setAttribute('cx', centerX.toString());
-            rect.setAttribute('cy', centerY.toString());
-            rect.setAttribute('r', (hitAreaSize / 2).toString());
-            rect.setAttribute('fill', 'transparent');
-            rect.setAttribute('class', 'pip-hit-area screen-only');
+            // Pips in generated paper dolls use normalized coordinates and are
+            // scaled by their parent group. Keep the authored 15-unit target in
+            // viewport space instead of accidentally scaling it with the pip.
+            const hitArea = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+            hitArea.setAttribute('cx', centerX.toString());
+            hitArea.setAttribute('cy', centerY.toString());
+            hitArea.setAttribute('rx', (hitAreaRadius / Math.max(scaleX, Number.EPSILON)).toString());
+            hitArea.setAttribute('ry', (hitAreaRadius / Math.max(scaleY, Number.EPSILON)).toString());
+            hitArea.setAttribute('fill', 'transparent');
+            hitArea.setAttribute('class', 'pip-hit-area screen-only');
 
             // Copy relevant attributes from pip to hit area
             const loc = pip.getAttribute('loc');
-            if (loc) rect.setAttribute('loc', loc);
+            if (loc) hitArea.setAttribute('loc', loc);
             const rear = pip.getAttribute('rear');
-            if (rear) rect.setAttribute('rear', rear);
+            if (rear) hitArea.setAttribute('rear', rear);
             const id = pip.getAttribute('id');
-            if (id) rect.setAttribute('pip-id', id);
+            if (id) hitArea.setAttribute('pip-id', id);
 
             // Copy relevant classes for interaction service to identify pip type
-            if (pip.classList.contains('armor')) rect.classList.add('armor');
-            if (pip.classList.contains('structure')) rect.classList.add('structure');
-            if (pip.classList.contains('shield')) rect.classList.add('shield');
+            if (pip.classList.contains('armor')) hitArea.classList.add('armor');
+            if (pip.classList.contains('structure')) hitArea.classList.add('structure');
+            if (pip.classList.contains('shield')) hitArea.classList.add('shield');
 
-            pip.after(rect);
+            pip.after(hitArea);
+            pip.setAttribute('data-mekbay-hit-area', '1');
         });
     }
 
@@ -1414,11 +1542,8 @@ export class RsPolyfillUtil {
         }
     }
 
-    private static injectFluffImage(unit: Unit, svg: SVGSVGElement) {
-        const fluffImage = unit?.fluff?.img;
-        if (!fluffImage) return; // no fluff image to inject
-        if (fluffImage.endsWith('hud.png')) return; // default fluff image, we skip
-        const fluffImageUrl = `${getUnitServerHost(unit)}/images/fluff/${fluffImage}`;
+    private static injectFluffImage(fluffImageUrl: string | null | undefined, svg: SVGSVGElement) {
+        if (!fluffImageUrl) return;
         const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
         if (referenceTables.length === 0) return; // We don't have a place where to put the fluff image
         // We calculate the width/height using all the reference tables and also the top/left most position
@@ -1493,7 +1618,7 @@ export class RsPolyfillUtil {
         svg.appendChild(fo);
     }
 
-    private static addTurnStateClasses(unit: Unit, svg: SVGSVGElement): void {
+    private static addTurnStateClasses(unit: RecordSheetPolyfillUnitFacts, svg: SVGSVGElement): void {
         const mpWalkEl = svg.getElementById('mpWalk') as SVGElement | null;
         const mpRunEl = svg.getElementById('mpRun') as SVGElement | null;
         const mpJumpEl = svg.getElementById('mpJump') as SVGElement | null;
@@ -1558,7 +1683,7 @@ export class RsPolyfillUtil {
         this.addMovementPsrWarningText(unit, svg, mpJumpEl ?? (svg.querySelector('#mp_2') as SVGElement | null));
     }
 
-    private static addMovementPsrWarningText(unit: Unit, svg: SVGSVGElement, moveEl: SVGElement | null): void {
+    private static addMovementPsrWarningText(unit: RecordSheetPolyfillUnitFacts, svg: SVGSVGElement, moveEl: SVGElement | null): void {
         if (!moveEl) return;
 
         const warningId = `${moveEl.id}-psr-warning`;
@@ -1693,7 +1818,7 @@ export class RsPolyfillUtil {
     }
 
     
-    private static addCriticalSectionsButtons(unit: Unit, svg: SVGSVGElement): void {
+    private static addCriticalSectionsButtons(unit: RecordSheetPolyfillUnitFacts, svg: SVGSVGElement): void {
         if (unit.type !== 'Mek') return;
 
         svg.querySelectorAll<SVGElement>('.critGroup').forEach(critGroup => {

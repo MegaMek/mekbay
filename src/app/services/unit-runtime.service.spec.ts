@@ -4,7 +4,7 @@
 
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import type { TagData } from './db.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
@@ -14,9 +14,25 @@ import { getProperty } from '../utils/unit-search-shared.util';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MiscEquipment } from '../models/equipment.model';
+import { asSourceHash, asUnitUuid, MM_DATA_UNIT_PROVIDER_ID } from './unit-catalog/unit-catalog.types';
 
-function createUnit(name: string, chassis = name): Unit {
+function createUnit(name: string, chassis = name): UnitSummary {
     return createEmptyUnit({ name, chassis, type: 'Mek' });
+}
+
+function createCatalogUnit(
+    name: string,
+    uuid: string,
+    sourceHash = asSourceHash('A'.repeat(27)),
+): UnitSummary {
+    const unit = createUnit(name);
+    Object.assign(unit, {
+        uuid: asUnitUuid(uuid),
+        provider: MM_DATA_UNIT_PROVIDER_ID,
+        origin: 'megamek' as const,
+        hash: sourceHash,
+    });
+    return unit;
 }
 
 describe('UnitRuntimeService', () => {
@@ -37,7 +53,7 @@ describe('UnitRuntimeService', () => {
         unitSearchIndexServiceMock.rebuildTagSearchIndex.calls.reset();
         tagsServiceMock.getTagData.calls.reset();
         tagsServiceMock.migrateChassisTagsToVariantGroups.calls.reset();
-        tagsServiceMock.migrateChassisTagsToVariantGroups.and.callFake((_units: Unit[], data?: TagData) => Promise.resolve(data));
+        tagsServiceMock.migrateChassisTagsToVariantGroups.and.callFake((_units: UnitSummary[], data?: TagData) => Promise.resolve(data));
         tagsServiceMock.fixNameTagsCoveredByChassis.calls.reset();
         tagsServiceMock.fixNameTagsCoveredByChassis.and.resolveTo(undefined);
 
@@ -62,6 +78,129 @@ describe('UnitRuntimeService', () => {
         expect(service.getUnitByName('Mad Cat Prime')).toBe(unit);
         expect(service.getUnitByName('mad cat prime')).toBe(unit);
         expect(service.getUnitByName('MAD CAT PRIME')).toBe(unit);
+    });
+
+    it('resolves provider plus UUID before a conflicting legacy name', () => {
+        const requested = createCatalogUnit('Shared Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
+        const collision = createCatalogUnit('Shared Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d35678');
+        service.preprocessUnits([collision, requested]);
+
+        const resolution = service.resolveUnitReference({
+            unit: 'A stale legacy name is only evidence',
+            entityIdentity: service.getSavedEntityIdentity(requested),
+        });
+
+        expect(resolution.kind).toBe('resolved');
+        if (resolution.kind === 'resolved') {
+            expect(resolution.unit).toBe(requested);
+            expect(resolution.usedLegacyNameFallback).toBeFalse();
+        }
+        expect(service.getUnitByName('Shared Name')).toBeUndefined();
+    });
+
+    it('indexes summaries by provider and UUID without a readiness facade', () => {
+        const catalogOnly = createCatalogUnit('Static Emplacement', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
+        const gameplayReady = createUnit('Gameplay Ready');
+        service.preprocessUnits([catalogOnly, gameplayReady]);
+
+        expect(service.getUnitByIdentity(MM_DATA_UNIT_PROVIDER_ID, catalogOnly.uuid)).toBe(catalogOnly);
+        expect(Object.prototype.hasOwnProperty.call(catalogOnly, 'readiness')).toBeFalse();
+        expect(Object.prototype.hasOwnProperty.call(gameplayReady, 'readiness')).toBeFalse();
+    });
+
+    it('keeps an exact published source resolvable while two revisions share provider and UUID', () => {
+        const uuid = '01890f3a-9d5b-7c24-8b2e-6f8a10d31234';
+        const sourceA = asSourceHash('A'.repeat(27));
+        const sourceB = asSourceHash('B'.repeat(26) + 'A');
+        const revisionA = createCatalogUnit('Crab CRB-20', uuid, sourceA);
+        const revisionB = createCatalogUnit('Crab CRB-20', uuid, sourceB);
+        service.preprocessUnits([revisionA, revisionB]);
+
+        expect(service.getUnitByIdentity(MM_DATA_UNIT_PROVIDER_ID, uuid)).toBeUndefined();
+        expect(service.getUnitByPublicationArtifact(
+            MM_DATA_UNIT_PROVIDER_ID,
+            uuid,
+            'ignored-for-native-source',
+            sourceA,
+        )).toBe(revisionA);
+        expect(service.getUnitByPublicationArtifact(
+            MM_DATA_UNIT_PROVIDER_ID,
+            uuid,
+            'ignored-for-native-source',
+            sourceB,
+        )).toBe(revisionB);
+    });
+
+    it('uses a legacy name only when it has exactly one catalog match', () => {
+        const unique = createCatalogUnit('Unique Legacy Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
+        service.preprocessUnits([unique]);
+
+        const resolution = service.resolveUnitReference({ unit: 'unique legacy name' });
+
+        expect(resolution.kind).toBe('resolved');
+        if (resolution.kind === 'resolved') {
+            expect(resolution.unit).toBe(unique);
+            expect(resolution.usedLegacyNameFallback).toBeTrue();
+        }
+    });
+
+    it('defers ambiguous name-only state instead of selecting the first match', () => {
+        const first = createCatalogUnit('Duplicate Legacy Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
+        const second = createCatalogUnit('Duplicate Legacy Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d35678');
+        service.preprocessUnits([first, second]);
+
+        const resolution = service.resolveUnitReference({ unit: 'Duplicate Legacy Name' });
+
+        expect(resolution.kind).toBe('deferred');
+        if (resolution.kind === 'deferred') {
+            expect(resolution.descriptor.reason).toBe('ambiguous');
+            expect(resolution.descriptor.candidates.length).toBe(2);
+        }
+    });
+
+    it('does not fall back by name when a saved provider/UUID is missing locally', () => {
+        const sameNameWrongDesign = createCatalogUnit('Expected Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d35678');
+        const missing = createCatalogUnit('Missing', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
+        const missingIdentity = service.getSavedEntityIdentity(missing);
+        service.preprocessUnits([sameNameWrongDesign]);
+
+        const resolution = service.resolveUnitReference({ unit: 'Expected Name', entityIdentity: missingIdentity });
+
+        expect(resolution.kind).toBe('deferred');
+        if (resolution.kind === 'deferred') {
+            expect(resolution.descriptor.reason).toBe('not-found');
+            expect(resolution.descriptor.requestedIdentity?.uuid).toBe(
+                asUnitUuid('01890f3a-9d5b-7c24-8b2e-6f8a10d31234'),
+            );
+        }
+    });
+
+    it('accepts the same provider/UUID across source changes and reports the mismatch', () => {
+        const current = createCatalogUnit(
+            'Updated Unit',
+            '01890f3a-9d5b-7c24-8b2e-6f8a10d31234',
+            asSourceHash('E'.repeat(27)),
+        );
+        service.preprocessUnits([current]);
+
+        const resolution = service.resolveUnitReference({
+            unit: 'Old Name',
+            entityIdentity: {
+                origin: 'user',
+                provider: MM_DATA_UNIT_PROVIDER_ID,
+                uuid: asUnitUuid('01890f3a-9d5b-7c24-8b2e-6f8a10d31234'),
+                sourceHashAtSave: asSourceHash('A'.repeat(27)),
+                sourceFormat: 'mtf',
+            },
+        });
+
+        expect(resolution.kind).toBe('resolved');
+        if (resolution.kind === 'resolved') {
+            expect(resolution.unit).toBe(current);
+            expect(resolution.sourceChanged).toBeTrue();
+            expect(resolution.savedIdentity?.origin).toBe('user');
+            expect(resolution.currentIdentity?.origin).toBe('megamek');
+        }
     });
 
     it('precomputes mixed-aware tech-base display values before indexing', () => {
@@ -110,7 +249,7 @@ describe('UnitRuntimeService', () => {
             bay: [{ id: 'CANONICAL EQUIPMENT', q: 1, n: 'Canonical Equipment', t: 'C', p: 1, l: 'CT' }],
         }];
 
-        service.linkEquipmentToUnits([unit], new EquipmentRegistry({ [equipment.internalName]: equipment }));
+        service.linkEquipmentToUnit(unit, new EquipmentRegistry({ [equipment.internalName]: equipment }));
 
         expect(unit.comp[0].eq).toBe(equipment);
         expect(unit.comp[0].bay?.[0].eq).toBe(equipment);
@@ -120,7 +259,7 @@ describe('UnitRuntimeService', () => {
         const unit = createUnit('Unknown Equipment');
         unit.comp = [{ id: 'Missing Equipment', q: 1, n: 'Missing Equipment', t: 'C', p: 1, l: 'CT' }];
 
-        service.linkEquipmentToUnits([unit], new EquipmentRegistry({}));
+        service.linkEquipmentToUnit(unit, new EquipmentRegistry({}));
 
         expect(unit.comp[0].eq).toBeUndefined();
     });
@@ -154,7 +293,7 @@ describe('UnitRuntimeService', () => {
             timestamp: 1,
             formatVersion: 4,
         };
-        tagsServiceMock.fixNameTagsCoveredByChassis.and.callFake((units: Unit[], data: TagData | null) => {
+        tagsServiceMock.fixNameTagsCoveredByChassis.and.callFake((units: UnitSummary[], data: TagData | null) => {
             for (const unit of units) {
                 const chassisKey = TagsService.getChassisTagKey(unit);
                 for (const entry of Object.values(data?.tags ?? {})) {
@@ -177,5 +316,41 @@ describe('UnitRuntimeService', () => {
         expect(tagData.tags['clan'].units).toEqual({ 'Adder Prime': {} });
         expect(tagsServiceMock.migrateChassisTagsToVariantGroups).toHaveBeenCalledOnceWith([prime, variantA, adder], tagData);
         expect(tagsServiceMock.fixNameTagsCoveredByChassis).toHaveBeenCalledOnceWith([prime, variantA, adder], tagData);
+    });
+
+    it('awaits tag cleanup before hydrating a catalog and can defer its only index rebuild', async () => {
+        const unit = createUnit('Dasher Prime', 'Dasher');
+        const chassisKey = TagsService.getChassisTagKey(unit);
+        const tagData: TagData = {
+            tags: {
+                clan: {
+                    label: 'CLAN',
+                    units: { [unit.name]: {} },
+                    chassis: { [chassisKey]: {} },
+                },
+            },
+            timestamp: 1,
+            formatVersion: 4,
+        };
+        tagsServiceMock.migrateChassisTagsToVariantGroups.and.resolveTo(tagData);
+        let releaseCleanup!: () => void;
+        tagsServiceMock.fixNameTagsCoveredByChassis.and.callFake(async () => {
+            await new Promise<void>(resolve => { releaseCleanup = resolve; });
+            delete tagData.tags['clan'].units[unit.name];
+        });
+
+        const hydration = service.loadUnitTags([unit], { rebuildTagSearchIndex: false });
+        for (let index = 0; index < 3; index += 1) await Promise.resolve();
+        expect(releaseCleanup).toBeDefined();
+        expect(unit._chassisTags).toEqual([]);
+
+        releaseCleanup();
+        await hydration;
+
+        expect(unit._nameTags).toEqual([]);
+        expect(unit._chassisTags).toEqual([{ tag: 'CLAN', quantity: 1 }]);
+        expect(tagsServiceMock.migrateChassisTagsToVariantGroups).toHaveBeenCalledOnceWith([unit]);
+        expect(tagsServiceMock.fixNameTagsCoveredByChassis).toHaveBeenCalledOnceWith([unit], tagData);
+        expect(unitSearchIndexServiceMock.rebuildTagSearchIndex).not.toHaveBeenCalled();
     });
 });

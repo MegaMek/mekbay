@@ -1,0 +1,416 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { asComponentId } from '../entity/entity-identifiers';
+import { asStateRevision, asUnitInstanceId } from './runtime-state';
+import {
+    asEncounterNetworkId,
+    asEncounterTargetId,
+    CBTEncounterRuntime,
+    createEncounterTargetId,
+    decodeCBTEncounterStateV2,
+    emptyCBTEncounterSnapshot,
+    encodeCBTEncounterStateV2,
+    queryTargetRegistry,
+    reduceCBTEncounter,
+    reduceTargetRegistry,
+    type EncounterTarget,
+} from './encounter-runtime';
+import { encounterTargetFactId } from './persistence-v2';
+
+function registryTarget(letter: string, overrides: Partial<EncounterTarget> = {}): EncounterTarget {
+    return {
+        id: asEncounterTargetId(`target:${letter}`),
+        letter,
+        name: `Target ${letter}`,
+        color: '#123456',
+        source: 'manual',
+        ...overrides,
+    };
+}
+
+describe('CBT encounter runtime', () => {
+    it('owns immutable, revisioned force targets behind explicit CAS commands', () => {
+        const runtime = new CBTEncounterRuntime();
+        const first = { ...registryTarget('A'), id: createEncounterTargetId() };
+        const second = { ...registryTarget('B'), id: createEncounterTargetId() };
+        expect(runtime.dispatchTargetRegistry({
+            kind: 'create-target', expectedRevision: runtime.targetRegistry().revision, target: first,
+        }).accepted).toBeTrue();
+        expect(runtime.dispatchTargetRegistry({
+            kind: 'create-target', expectedRevision: runtime.targetRegistry().revision, target: second,
+        }).accepted).toBeTrue();
+
+        expect(String(first.id)).toMatch(/^target:[0-9a-f-]{36}$/u);
+        expect(String(second.id)).toMatch(/^target:[0-9a-f-]{36}$/u);
+        expect(first.id).not.toBe(second.id);
+        expect(runtime.snapshot().revision).toBe(asStateRevision(2));
+        expect(Object.isFrozen(runtime.snapshot().targets)).toBeTrue();
+
+        const firstId = first.id;
+        const secondId = second.id;
+        const copy = runtime.getTarget(firstId)!;
+        copy.name = 'mutated copy';
+        expect(runtime.getTarget(firstId)?.name).toBe('Target A');
+
+        runtime.dispatchTargetRegistry({
+            kind: 'update-target', expectedRevision: runtime.targetRegistry().revision,
+            targetId: firstId, patch: { name: 'Primary' },
+        });
+        expect(runtime.getTarget(firstId)).toEqual(jasmine.objectContaining({
+            name: 'Primary',
+            // Range is attacker-local and cannot become a force-owned target fact.
+            distance: 1,
+        }));
+        runtime.dispatchTargetRegistry({
+            kind: 'delete-target', expectedRevision: runtime.targetRegistry().revision, targetId: secondId,
+        });
+        expect(runtime.getTargets().map(target => target.id)).toEqual([firstId]);
+    });
+
+    it('rejects stale or invalid commands without changing the snapshot', () => {
+        const current = emptyCBTEncounterSnapshot();
+        const stale = reduceCBTEncounter(current, {
+            kind: 'replace-targets', expectedRevision: asStateRevision(1), targets: [],
+        });
+        const invalid = reduceCBTEncounter(current, {
+            kind: 'put-target', expectedRevision: asStateRevision(0),
+            target: { id: asEncounterTargetId('invalid'), letter: '', name: 'Bad', color: '#ffffff' },
+        });
+
+        expect(stale).toEqual({ kind: 'rejected', snapshot: current, reason: 'stale-revision' });
+        expect(invalid).toEqual({ kind: 'rejected', snapshot: current, reason: 'invalid-target' });
+        expect(current.revision).toBe(asStateRevision(0));
+    });
+
+    it('stores typed C3 endpoints without unit names or component indexes', () => {
+        const runtime = new CBTEncounterRuntime();
+        const networkId = asEncounterNetworkId('network:c3:1');
+        expect(runtime.putNetwork({
+            id: networkId,
+            networkType: 'c3',
+            color: '#123456',
+            endpoints: [
+                {
+                    instanceId: asUnitInstanceId('instance-1'),
+                    componentId: asComponentId('component:c3-master'),
+                    role: 'master',
+                },
+                {
+                    instanceId: asUnitInstanceId('instance-2'),
+                    componentId: asComponentId('component:c3-slave'),
+                    role: 'member',
+                },
+            ],
+        })).toBeTrue();
+        expect(runtime.snapshot().networks[0].endpoints[0].componentId).toBe(asComponentId('component:c3-master'));
+
+        const duplicateEndpoint = {
+            id: asEncounterNetworkId('network:c3:2'),
+            networkType: 'c3' as const,
+            color: '#abcdef',
+            endpoints: [
+                {
+                    instanceId: asUnitInstanceId('instance-1'),
+                    componentId: asComponentId('component:c3-master'),
+                    role: 'master' as const,
+                },
+                {
+                    instanceId: asUnitInstanceId('instance-1'),
+                    componentId: asComponentId('component:c3-master'),
+                    role: 'member' as const,
+                },
+            ],
+        };
+        expect(runtime.putNetwork(duplicateEndpoint)).toBeFalse();
+        expect(runtime.snapshot().networks.length).toBe(1);
+
+        expect(runtime.putNetwork({
+            ...duplicateEndpoint,
+            id: asEncounterNetworkId('network:c3:multiple-components'),
+            endpoints: [
+                duplicateEndpoint.endpoints[0],
+                {
+                    ...duplicateEndpoint.endpoints[1],
+                    componentId: asComponentId('component:c3-member-on-same-unit'),
+                },
+            ],
+        })).toBeFalse();
+        expect(runtime.putNetwork({
+            ...duplicateEndpoint,
+            id: asEncounterNetworkId('network:c3:multiple-masters'),
+            endpoints: [
+                duplicateEndpoint.endpoints[0],
+                {
+                    instanceId: asUnitInstanceId('instance-2'),
+                    componentId: asComponentId('component:c3-master-2'),
+                    role: 'master',
+                },
+            ],
+        })).toBeFalse();
+        expect(runtime.snapshot().networks.length).toBe(1);
+    });
+
+    it('round-trips owned facts and preserves unknown typed facts without adopting them', () => {
+        const runtime = new CBTEncounterRuntime();
+        const created = { ...registryTarget('A'), id: createEncounterTargetId() };
+        runtime.dispatchTargetRegistry({
+            kind: 'create-target', expectedRevision: runtime.targetRegistry().revision, target: created,
+        });
+        const preserved = {
+            kind: 'cross-unit-effect' as const,
+            factId: 'effect:tagged',
+            effectKey: 'tagged',
+            target: { instanceId: asUnitInstanceId('unit:target') },
+        };
+
+        const encoded = encodeCBTEncounterStateV2(runtime.snapshot(), [preserved]);
+        const decoded = decodeCBTEncounterStateV2(encoded);
+        const restored = new CBTEncounterRuntime();
+        restored.restoreSerialized(encoded);
+
+        expect(decoded.preservedFacts).toEqual([preserved]);
+        expect(restored.getTargets().map(target => target.id)).toEqual([created.id]);
+        expect(restored.serializedState().facts).toEqual(encoded.facts);
+    });
+
+    it('rejects invalid persisted target origin ownership before restoring runtime state', () => {
+        const invalid = {
+            schemaVersion: 2 as const,
+            encounterRevision: asStateRevision(1),
+            facts: [{
+                kind: 'target' as const,
+                factId: encounterTargetFactId('opfor:v1:invalid-origin'),
+                target: {
+                    id: 'opfor:v1:invalid-origin',
+                    letter: 'A',
+                    name: 'Invalid OPFOR target',
+                    color: '#fff',
+                    source: 'opfor' as const,
+                    readOnly: false,
+                },
+            }],
+        };
+        const runtime = new CBTEncounterRuntime();
+
+        expect(() => decodeCBTEncounterStateV2(invalid)).toThrow();
+        expect(() => runtime.restoreSerialized(invalid)).toThrow();
+        expect(runtime.targetRegistry()).toEqual({
+            revision: asStateRevision(0),
+            targets: [],
+        });
+    });
+
+});
+
+describe('force-shared target registry kernel', () => {
+    it('requires the caller revision and rejects a stale command without capturing the latest revision', () => {
+        const initial = queryTargetRegistry(emptyCBTEncounterSnapshot());
+        const created = reduceTargetRegistry(initial, {
+            kind: 'create-target', expectedRevision: asStateRevision(0), target: registryTarget('A'),
+        });
+        const stale = reduceTargetRegistry(created.snapshot, {
+            kind: 'update-target', expectedRevision: asStateRevision(0),
+            targetId: asEncounterTargetId('target:A'), patch: { name: 'Stale edit' },
+        });
+
+        expect(created).toEqual(jasmine.objectContaining({
+            accepted: true, changed: true, previousRevision: asStateRevision(0),
+        }));
+        expect(created.snapshot.revision).toBe(asStateRevision(1));
+        expect(stale).toEqual(jasmine.objectContaining({
+            accepted: false, changed: false, reason: 'STALE_REVISION', snapshot: created.snapshot,
+        }));
+        expect(stale.snapshot.targets[0].name).toBe('Target A');
+    });
+
+    it('accepts semantic no-ops without advancing the revision', () => {
+        const runtime = new CBTEncounterRuntime();
+        const emptyReset = runtime.dispatchTargetRegistry({
+            kind: 'reset-targets', expectedRevision: asStateRevision(0),
+        });
+        const created = runtime.dispatchTargetRegistry({
+            kind: 'create-target', expectedRevision: asStateRevision(0), target: registryTarget('A'),
+        });
+        const unchangedUpdate = runtime.dispatchTargetRegistry({
+            kind: 'update-target', expectedRevision: asStateRevision(1),
+            targetId: asEncounterTargetId('target:A'), patch: { name: 'Target A' },
+        });
+        const unchangedReplace = runtime.dispatchTargetRegistry({
+            kind: 'replace-targets', expectedRevision: asStateRevision(1), targets: [registryTarget('A')],
+        });
+
+        expect(emptyReset).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
+        expect(created).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(unchangedUpdate).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
+        expect(unchangedReplace).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
+        expect(runtime.targetRegistry().revision).toBe(asStateRevision(1));
+    });
+
+    it('returns deeply immutable queries detached from runtime state and later queries', () => {
+        const runtime = new CBTEncounterRuntime();
+        runtime.dispatchTargetRegistry({
+            kind: 'create-target', expectedRevision: asStateRevision(0),
+            target: registryTarget('A', {
+                tnCalculator: {
+                    prone: true,
+                    targetMovementDistance: 2,
+                    targetHeight: 3,
+                    stealth: {
+                        short: 0,
+                        medium: 1,
+                        long: 2,
+                        conventionalInfantry: { short: 0, medium: 0, long: 0 },
+                    },
+                    stealthSystem: 'stealth-armor',
+                },
+            }),
+        });
+        const first = runtime.targetRegistry();
+
+        expect(Object.isFrozen(first)).toBeTrue();
+        expect(Object.isFrozen(first.targets)).toBeTrue();
+        expect(Object.isFrozen(first.targets[0])).toBeTrue();
+        expect(Object.isFrozen(first.targets[0].tnCalculator)).toBeTrue();
+        expect(Object.isFrozen(first.targets[0].tnCalculator?.stealth)).toBeTrue();
+        const stealth = first.targets[0].tnCalculator?.stealth;
+        expect(typeof stealth === 'object'
+            && Object.isFrozen(stealth.conventionalInfantry)).toBeTrue();
+        expect(first.targets[0]).not.toBe(runtime.snapshot().targets[0]);
+        expect(() => {
+            (first.targets[0] as { name: string }).name = 'escaped mutation';
+        }).toThrow();
+
+        runtime.dispatchTargetRegistry({
+            kind: 'update-target', expectedRevision: first.revision,
+            targetId: first.targets[0].id, patch: { color: '#abcdef' },
+        });
+        const second = runtime.targetRegistry();
+        expect(first.targets[0].color).toBe('#123456');
+        expect(second.targets[0].color).toBe('#abcdef');
+        expect(second.targets[0]).not.toBe(first.targets[0]);
+    });
+
+    it('reports capacity for create and whole-registry replacement overflow', () => {
+        const fullTargets = Array.from({ length: 12 }, (_value, index) =>
+            registryTarget(String.fromCharCode('A'.charCodeAt(0) + index)));
+        const full = queryTargetRegistry({ revision: asStateRevision(4), targets: fullTargets });
+        const createOverflow = reduceTargetRegistry(full, {
+            kind: 'create-target', expectedRevision: asStateRevision(4), target: registryTarget('M'),
+        });
+        const replaceOverflow = reduceTargetRegistry(queryTargetRegistry(emptyCBTEncounterSnapshot()), {
+            kind: 'replace-targets', expectedRevision: asStateRevision(0),
+            targets: [...fullTargets, registryTarget('M')],
+        });
+
+        expect(createOverflow).toEqual(jasmine.objectContaining({
+            accepted: false, changed: false, reason: 'EXCEEDS_CAPACITY',
+        }));
+        expect(replaceOverflow).toEqual(jasmine.objectContaining({
+            accepted: false, changed: false, reason: 'EXCEEDS_CAPACITY',
+        }));
+        expect(replaceOverflow.snapshot.revision).toBe(asStateRevision(0));
+        expect(replaceOverflow.snapshot.targets).toEqual([]);
+    });
+
+    it('atomically gives a new manual target priority over the last reclaimable OPFOR row', () => {
+        const manual = Array.from({ length: 11 }, (_value, index) =>
+            registryTarget(String.fromCharCode('A'.charCodeAt(0) + index)));
+        const opfor = registryTarget('L', {
+            id: asEncounterTargetId('opfor:v1:capacity'),
+            source: 'opfor',
+            readOnly: true,
+        });
+        const full = queryTargetRegistry({
+            revision: asStateRevision(8),
+            targets: [...manual, opfor],
+        });
+
+        const created = reduceTargetRegistry(full, {
+            kind: 'create-target',
+            expectedRevision: asStateRevision(8),
+            target: registryTarget('L'),
+        });
+
+        expect(created).toEqual(jasmine.objectContaining({
+            accepted: true,
+            changed: true,
+            previousRevision: asStateRevision(8),
+        }));
+        expect(created.snapshot.revision).toBe(asStateRevision(9));
+        expect(created.snapshot.targets).toHaveSize(12);
+        expect(created.snapshot.targets.filter(target => target.source === 'opfor')).toEqual([]);
+        expect(created.snapshot.targets.map(target => target.letter)).toEqual([
+            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
+        ]);
+    });
+
+    it('protects read-only target identity while allowing its presentation color to change', () => {
+        const opfor = registryTarget('A', {
+            id: asEncounterTargetId('opfor:unit-1'), source: 'opfor', readOnly: true,
+        });
+        const snapshot = queryTargetRegistry({ revision: asStateRevision(2), targets: [opfor] });
+        const renamed = reduceTargetRegistry(snapshot, {
+            kind: 'update-target', expectedRevision: asStateRevision(2),
+            targetId: opfor.id, patch: { name: 'Forged identity' },
+        });
+        const deleted = reduceTargetRegistry(snapshot, {
+            kind: 'delete-target', expectedRevision: asStateRevision(2), targetId: opfor.id,
+        });
+        const recolored = reduceTargetRegistry(snapshot, {
+            kind: 'update-target', expectedRevision: asStateRevision(2),
+            targetId: opfor.id, patch: { color: '#abcdef' },
+        });
+
+        expect(renamed).toEqual(jasmine.objectContaining({
+            accepted: false, reason: 'READ_ONLY_TARGET',
+        }));
+        expect(deleted).toEqual(jasmine.objectContaining({
+            accepted: false, reason: 'READ_ONLY_TARGET',
+        }));
+        expect(recolored).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(recolored.snapshot.targets[0].color).toBe('#abcdef');
+    });
+
+    it('distinguishes target-origin, invalid, and not-found failures with deterministic precedence', () => {
+        const initial = queryTargetRegistry(emptyCBTEncounterSnapshot());
+        const invalidOrigin = reduceTargetRegistry(initial, {
+            kind: 'create-target', expectedRevision: asStateRevision(0),
+            target: registryTarget('A', { source: 'opfor' }),
+        });
+        const notFound = reduceTargetRegistry(initial, {
+            kind: 'delete-target', expectedRevision: asStateRevision(0),
+            targetId: asEncounterTargetId('missing'),
+        });
+        const attackerLocal = reduceTargetRegistry(initial, {
+            kind: 'create-target', expectedRevision: asStateRevision(0),
+            target: { ...registryTarget('A'), distance: 7 } as EncounterTarget,
+        });
+        const staleMalformed = reduceTargetRegistry(initial, {
+            kind: 'create-target', expectedRevision: asStateRevision(99),
+            target: { ...registryTarget('A'), distance: 7 } as EncounterTarget,
+        });
+        const malformedAfterOrigin = registryTarget('B', { name: '' });
+        const bothOrders = [
+            [registryTarget('A', { source: 'opfor' }), malformedAfterOrigin],
+            [malformedAfterOrigin, registryTarget('A', { source: 'opfor' })],
+        ].map(targets => reduceTargetRegistry(initial, {
+            kind: 'replace-targets', expectedRevision: asStateRevision(0), targets,
+        }));
+
+        expect(invalidOrigin).toEqual(jasmine.objectContaining({
+            accepted: false, reason: 'TARGET_ORIGIN_POLICY',
+        }));
+        expect(notFound).toEqual(jasmine.objectContaining({
+            accepted: false, reason: 'TARGET_NOT_FOUND',
+        }));
+        expect(attackerLocal).toEqual(jasmine.objectContaining({
+            accepted: false, reason: 'INVALID_TARGET',
+        }));
+        expect(staleMalformed).toEqual(jasmine.objectContaining({
+            accepted: false, reason: 'STALE_REVISION',
+        }));
+        expect(bothOrders.map(result => result.accepted ? null : result.reason))
+            .toEqual(['INVALID_TARGET', 'INVALID_TARGET']);
+    });
+});

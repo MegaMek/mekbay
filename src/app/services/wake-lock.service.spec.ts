@@ -4,7 +4,7 @@
 
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ForceBuilderService } from './force-builder.service';
+import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { LoggerService } from './logger.service';
 import { WakeLockService } from './wake-lock.service';
 
@@ -82,7 +82,7 @@ describe('WakeLockService', () => {
                 provideZonelessChangeDetection(),
                 WakeLockService,
                 {
-                    provide: ForceBuilderService,
+                    provide: ForceWorkspaceStateService,
                     useValue: { hasForces },
                 },
                 {

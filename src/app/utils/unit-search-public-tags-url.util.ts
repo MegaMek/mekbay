@@ -3,7 +3,7 @@
 // Author: Drake
 
 import type { GameSystem } from '../models/common.model';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew.model';
 import type { FilterState } from '../services/unit-search-filters.model';
 import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { parseSemanticQueryAST } from './semantic-filter-ast.util';

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 
 import {
     createEmptyPilotNameCatalog,
@@ -13,13 +13,12 @@ import {
     type PilotNameCatalogData,
     type WeightedValue,
 } from '../../models/pilot-name-catalog.model';
-import { DbService } from '../db.service';
 import { CatalogBaseService } from './catalog-base.service';
 
 type PilotNameRemoteBody = PilotNameCatalogData | CompactPilotNameCatalog;
 
 function isStoredCatalog(value: PilotNameRemoteBody): value is PilotNameCatalogData {
-    return 'etag' in value && 'catalog' in value;
+    return 'assetHash' in value && 'catalog' in value;
 }
 
 function requireCurrentCatalog(value: unknown): CompactPilotNameCatalog {
@@ -93,19 +92,19 @@ function unwrapCatalog(data: PilotNameRemoteBody): CompactPilotNameCatalog {
     return isStoredCatalog(data) ? data.catalog : data;
 }
 
-function normalizeData(data: PilotNameRemoteBody, etag: string): PilotNameCatalogData {
+function normalizeData(data: PilotNameRemoteBody, assetHash: string): PilotNameCatalogData {
     const rawCatalog = unwrapCatalog(data);
-    return { etag: isStoredCatalog(data) ? data.etag || etag : etag, catalog: requireCurrentCatalog(rawCatalog) };
+    return { assetHash: isStoredCatalog(data) ? data.assetHash || assetHash : assetHash, catalog: requireCurrentCatalog(rawCatalog) };
 }
 
 @Injectable({ providedIn: 'root' })
 export class PilotNameCatalogService extends CatalogBaseService<PilotNameRemoteBody, PilotNameCatalogData, PilotNameRemoteBody> {
-    private readonly dbService = inject(DbService);
     private catalog = createEmptyPilotNameCatalog();
     private hydrated = false;
 
     protected override get catalogKey(): string { return 'pilot_names'; }
-    protected override get remoteUrl(): string { return 'assets/pilot-names.json'; }
+    protected override get remoteUrl(): string { return 'online-assets/generated/pilot-names.json'; }
+    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
     public getCatalog(): PilotNameCatalog {
         return this.catalog;
@@ -115,23 +114,15 @@ export class PilotNameCatalogService extends CatalogBaseService<PilotNameRemoteB
         return this.hydrated;
     }
 
-    protected override async loadFromCache(): Promise<PilotNameCatalogData | undefined> {
-        return await this.dbService.getPilotNames() ?? undefined;
-    }
-
-    protected override saveToCache(data: PilotNameCatalogData): Promise<void> {
-        return this.dbService.savePilotNames(data);
-    }
-
     protected override hydrate(data: PilotNameRemoteBody): void {
         const rawCatalog = unwrapCatalog(data);
         this.catalog = normalizePilotNameCatalog(rawCatalog);
         this.hydrated = true;
-        this.etag = isStoredCatalog(data) ? data.etag : '';
+        this.transportRevision = isStoredCatalog(data) ? data.assetHash : '';
     }
 
-    protected override normalizeFetchedData(data: PilotNameRemoteBody, etag: string): PilotNameCatalogData {
-        return normalizeData(data, etag);
+    protected override normalizeFetchedData(data: PilotNameRemoteBody, assetHash: string): PilotNameCatalogData {
+        return normalizeData(data, assetHash);
     }
 
 }

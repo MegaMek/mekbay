@@ -14,6 +14,7 @@ import {
   WarShipEntity,
 } from '../../../entities';
 import { infantryDamageDivisor } from '../../battle-value/infantry-rules';
+import { modularArmorPoints } from '../../../../modular-armor.model';
 
 const AS_MEK_STRUCTURE: readonly (readonly number[])[] = [
   [1,1,2,2,3,3,3,4,4,5,5,5,6,6,6,7,7,8,8,8,8,9,9,10,10,10,11,11,11,12,12,13,13,13,14,14,14,15,15],
@@ -49,7 +50,7 @@ export function alphaStrikeArmor(entity: BaseEntity): number {
     }
     points += Math.max(0, armor.front * modifier) + Math.max(0, armor.rear * modifier);
   }
-  points += entity.equipment().filter(mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR')).length * 10;
+  points += modularArmorPoints(entity.equipment());
   return entity instanceof JumpShipEntity ? Math.round(points * 0.33) : Math.round(points / 30);
 }
 
@@ -70,6 +71,19 @@ export function alphaStrikeStructure(entity: BaseEntity): number {
   return -1;
 }
 
+function mekEngineIndex(entity: MekEntity): number {
+  const engine = entity.mountedEngine();
+  const clan = engine.techBase === 'Clan';
+  const large = engine.isLarge;
+  switch (engine.type()) {
+    case 'Compact': return clan ? 0 : 1;
+    case 'Light': return clan ? 0 : large ? 4 : 3;
+    case 'XL': return clan ? (large ? 4 : 3) : 4;
+    case 'XXL': return clan ? (large ? 7 : 5) : large ? 8 : 6;
+    default: return clan ? 0 : large ? 2 : 0;
+  }
+}
+
 function vehicleStructure(entity: VehicleEntity): number {
   let divisor = 10;
   if (entity.isSupportVehicle() && ['Naval', 'Hydrofoil', 'Submarine'].includes(entity.motiveType())) {
@@ -84,19 +98,6 @@ function vehicleStructure(entity: VehicleEntity): number {
     ? entity.totalInternalPoints() - 1
     : entity.totalInternalPoints();
   return Math.ceil(internalPoints / divisor);
-}
-
-function mekEngineIndex(entity: MekEntity): number {
-  const engine = entity.mountedEngine();
-  const clan = engine.techBase === 'Clan';
-  const large = engine.isLarge;
-  switch (engine.type()) {
-    case 'Compact': return clan ? 0 : 1;
-    case 'Light': return clan ? 0 : large ? 4 : 3;
-    case 'XL': return clan ? (large ? 4 : 3) : 4;
-    case 'XXL': return clan ? (large ? 7 : 5) : large ? 8 : 6;
-    default: return clan ? 0 : large ? 2 : 0;
-  }
 }
 
 export function alphaStrikeRoundUp(value: number): number {

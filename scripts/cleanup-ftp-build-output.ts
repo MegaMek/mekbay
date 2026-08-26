@@ -12,8 +12,6 @@ const DEFAULT_BUILD_DIR = 'dist/browser';
 const DEFAULT_RETENTION_DAYS = 30;
 const DELETE_BATCH_SIZE = 50;
 const SPRITES_DIR_NAME = 'sprites';
-const CORE_UNIT_RETENTION_NOTICE =
-    'Core-unit immutable objects are deliberately retained: this FTP job has no authoritative remote reader-grace evidence, so content-derived mtimes cannot be used for safe deletion.';
 
 interface RemoteFile {
     readonly modifiedAtSeconds: number;
@@ -230,12 +228,6 @@ function main(): void {
         cutoffSeconds,
     });
 
-    // The build contains current/previous manifests, but it cannot prove that an
-    // older remote reader has released its activation. Deleting units, immutable
-    // manifests, or archives by age would also be invalid because their mtimes are
-    // content-derived rather than chronological. A future cleanup may delete only
-    // from an authoritative retained-generation reachability set with reader grace.
-    console.log(CORE_UNIT_RETENTION_NOTICE);
 }
 
 main();

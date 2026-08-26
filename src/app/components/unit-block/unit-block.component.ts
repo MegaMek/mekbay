@@ -2,24 +2,42 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Component, ChangeDetectionStrategy, computed, input, output, inject } from '@angular/core';
+import { Component, ChangeDetectionStrategy, computed, effect, input, output, inject, signal } from '@angular/core';
 import { UpperCasePipe } from '@angular/common';
-import type { ForceUnit } from '../../models/force-unit.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { OptionsService } from '../../services/options.service';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
-import { ECMMode } from '../../models/common.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
-import { C3Capabilities, C3Network, c3NetworkTypeName, type C3Component, type C3NetworkType } from '../../models/c3-network.model';
+import { C3Capabilities, C3Network, C3NetworkType, c3NetworkTypeName, type C3Component } from '../../models/c3-network.model';
 import { GameSystem } from '../../models/common.model';
 import { formatMovement, formatMovementWithAlternate } from '../../utils/as-common.util';
-import { getUnitConditionDefinition, unitConditionSortIndex } from '../../models/rules/unit-type-rules';
+import {
+    crewStateDefinitions,
+    getUnitConditionDefinition,
+    NARC_CONDITION_COLOR,
+    unitConditionSortIndex,
+} from '../../models/unit-status-presentation';
+import { MEK_CREW_STATE_DISPLAYS } from '../../models/mek-record-sheet-controls';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import {
+    isMekTurnPanelDirty,
+    isMekTurnPanelDirtyPhase,
+    mekTurnPanelPhase,
+} from '../../models/runtime/mek-turn-panel';
+import {
+    forceMemberAlias,
+    forceMemberAdjustedValue,
+    forceMemberBaseValue,
+    forceMemberDestroyed,
+    forceMemberPilotStats,
+    isCBTForceMember,
+    isCBTMekForceMember,
+    type ForceMember,
+} from '../../models/force-member.model';
 
 interface UnitConditionDisplay {
     key: string;
@@ -27,10 +45,8 @@ interface UnitConditionDisplay {
     color: string;
 }
 
-interface ECMDisplay {
-    mode: ECMMode | string;
-    unavailable: boolean;
-}
+const VEHICLE_CREW_STATE_DISPLAYS = crewStateDefinitions(['killed', 'stunned']);
+const PROTOMEK_CREW_STATE_DISPLAYS = crewStateDefinitions(['unconscious', 'dead']);
 
 export interface UnitBlockPilotEditEvent {
     event: MouseEvent;
@@ -46,7 +62,7 @@ export interface UnitBlockPilotEditEvent {
 })
 export class UnitBlockComponent {
     optionsService = inject(OptionsService);
-    forceUnit = input<ForceUnit>();
+    forceUnit = input<ForceMember>();
     compactMode = input<boolean>(false);
     ctrlHeld = input<boolean>(false);
     onInfo = output<MouseEvent>();
@@ -56,9 +72,45 @@ export class UnitBlockComponent {
     onRepairUnit = output<MouseEvent>();
     onEditPilot = output<UnitBlockPilotEditEvent>();
 
-    unit = computed<Unit | undefined>(() => {
-        return this.forceUnit()?.getUnit();
+    private readonly runtimeRevision = signal(0);
+
+    unit = computed<UnitSummary | undefined>(() => {
+        this.runtimeRevision();
+        const member = this.forceUnit();
+        return member ? (isCBTForceMember(member) ? member.summary : member.getSummary()) : undefined;
     });
+
+    destroyed = computed(() => {
+        this.runtimeRevision();
+        const member = this.forceUnit();
+        return member ? forceMemberDestroyed(member) : false;
+    });
+
+    alias = computed(() => {
+        const member = this.forceUnit();
+        return member ? forceMemberAlias(member) : null;
+    });
+
+    readOnly = computed(() => this.forceUnit()?.force.readOnly() ?? true);
+
+    pilotStats = computed(() => {
+        this.runtimeRevision();
+        const member = this.forceUnit();
+        return member ? forceMemberPilotStats(member) : '';
+    });
+
+    public constructor() {
+        effect(onCleanup => {
+            const member = this.forceUnit();
+            if (!member || !isCBTForceMember(member)) return;
+            const subscription = member.force.changed.subscribe(changedUnitIds => {
+                if (changedUnitIds?.includes(member.id) ?? true) {
+                    this.runtimeRevision.update(value => value + 1);
+                }
+            });
+            onCleanup(() => subscription.unsubscribe());
+        });
+    }
 
     alphaStrikePilotSkill = computed<number | undefined>(() => {
         const forceUnit = this.forceUnit();
@@ -66,8 +118,18 @@ export class UnitBlockComponent {
     });
 
     displayedBvPv = computed(() => {
+        const startedAt = performance.now();
         const unit = this.forceUnit();
         if (!unit) return '';
+        if (isCBTForceMember(unit)) {
+            const result = formatBvPv(
+                forceMemberAdjustedValue(unit),
+                forceMemberBaseValue(unit),
+                this.optionsService.options().forceViewerBVPVDisplay,
+            );
+            console.info(`[unit-block-perf] bv ${unit.summary.name} ${(performance.now() - startedAt).toFixed(1)}ms`);
+            return result;
+        }
         return formatBvPv(
             unit.getBv(),
             unit.getPreSkillBv(),
@@ -81,7 +143,11 @@ export class UnitBlockComponent {
     isCommander = computed<boolean>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return false;
-        if (forceUnit instanceof ASForceUnit || forceUnit instanceof CBTForceUnit) {
+        if (isCBTForceMember(forceUnit)) {
+            this.runtimeRevision();
+            return forceUnit.force.isUnitCommander(forceUnit.id);
+        }
+        if (forceUnit instanceof ASForceUnit) {
             return forceUnit.commander();
         }
         return false;
@@ -93,11 +159,10 @@ export class UnitBlockComponent {
         }
         const unit = this.forceUnit();
         if (!unit) return false;
-        if (unit instanceof ASForceUnit) {
-            return false;
-        } else
-        if (unit instanceof CBTForceUnit) {
-            return unit.turnState().dirty();
+        if (isCBTMekForceMember(unit)) {
+            this.runtimeRevision();
+            const snapshot = unit.force.getMekTurnPanelSnapshot(unit.id, 'manual');
+            return snapshot !== null && isMekTurnPanelDirty(snapshot);
         }
         return false;
     });
@@ -105,12 +170,13 @@ export class UnitBlockComponent {
     unitPhase = computed<string>(() => {
         const unit = this.forceUnit();
         if (!unit) return '';
+        if (isCBTMekForceMember(unit)) {
+            this.runtimeRevision();
+            const snapshot = unit.force.getMekTurnPanelSnapshot(unit.id, 'manual');
+            return snapshot === null ? '' : mekTurnPanelPhase(snapshot);
+        }
         if (unit instanceof ASForceUnit) {
             return '';
-        } else
-        if (unit instanceof CBTForceUnit) {
-            const phase = unit.turnState().currentPhase();
-            return phase || '';
         }
         return '';
     });
@@ -121,22 +187,66 @@ export class UnitBlockComponent {
         }
         const unit = this.forceUnit();
         if (!unit) return false;
-        if (unit instanceof ASForceUnit) {
-            return false;
-        } else
-        if (unit instanceof CBTForceUnit) {
-            return unit.turnState().dirtyPhase();
+        if (isCBTMekForceMember(unit)) {
+            this.runtimeRevision();
+            const snapshot = unit.force.getMekTurnPanelSnapshot(unit.id, 'manual');
+            return snapshot !== null && isMekTurnPanelDirtyPhase(snapshot);
         }
         return false;
     });
 
     activeConditions = computed<UnitConditionDisplay[]>(() => {
+        const startedAt = performance.now();
         const forceUnit = this.forceUnit();
         if (!forceUnit) return [];
+        this.runtimeRevision();
+        const conditionKeys = new Set<string>();
+        let crewConditions: UnitConditionDisplay[] = [];
+        let locationConditions: UnitConditionDisplay[] = [];
+        if (isCBTMekForceMember(forceUnit)) {
+            const sheet = forceUnit.force.getMekRecordSheetSnapshot(forceUnit.id);
+            const turn = forceUnit.force.getMekTurnPanelSnapshot(forceUnit.id, 'manual');
+            sheet?.conditions.forEach(condition => conditionKeys.add(condition));
+            turn?.conditions.forEach(condition => conditionKeys.add(condition));
+            if (sheet?.crippled) conditionKeys.add('crippled');
+            if (turn?.turn.spotting) conditionKeys.add('spotting');
+            const crewStates = new Set(sheet?.crew.map(position => position.effectiveState) ?? []);
+            crewConditions = [...crewStates].flatMap(state => {
+                if (state === 'healthy') return [];
+                const definition = MEK_CREW_STATE_DISPLAYS.find(candidate => candidate.key === state);
+                return definition ? [{
+                    key: `crew-${definition.key}`,
+                    label: definition.bannerLabel,
+                    color: definition.color,
+                }] : [];
+            });
+            const hasNarc = sheet?.locations.some(location => location.conditions.some(condition =>
+                condition.condition === 'narc' && condition.preview > 0)) ?? false;
+            if (hasNarc) {
+                locationConditions = [{ key: 'location-narc', label: 'NARC', color: NARC_CONDITION_COLOR }];
+            }
+        } else if (isCBTForceMember(forceUnit)) {
+            forceUnit.force.getUnitConditions(forceUnit.id)?.forEach(condition => conditionKeys.add(condition));
+            const sheet = forceUnit.force.getNonMekRecordSheetSnapshot(forceUnit.id);
+            const definitions = sheet?.unitType === 'ProtoMek'
+                ? PROTOMEK_CREW_STATE_DISPLAYS
+                : sheet !== null && ['Tank', 'VTOL', 'Naval'].includes(sheet.unitType)
+                    ? VEHICLE_CREW_STATE_DISPLAYS
+                    : [];
+            const crewStates = new Set(sheet?.crew.map(position => position.effectiveState) ?? []);
+            crewConditions = [...crewStates].flatMap(state => {
+                const definition = definitions.find(candidate => candidate.key === state);
+                return definition ? [{
+                    key: `crew-${definition.key}`,
+                    label: definition.bannerLabel,
+                    color: definition.color,
+                }] : [];
+            });
+        } else {
+            for (const condition of forceUnit.getConditions().keys()) conditionKeys.add(condition);
+        }
 
-        const conditionKeys = new Set(forceUnit.getConditions().keys());
-
-        return Array.from(conditionKeys)
+        const unitConditions = Array.from(conditionKeys)
             .map(key => {
                 const condition = getUnitConditionDefinition(key);
                 return {
@@ -146,64 +256,47 @@ export class UnitBlockComponent {
                 };
             })
             .sort((left, right) => unitConditionSortIndex(left.key) - unitConditionSortIndex(right.key) || left.label.localeCompare(right.label));
+        const result = [...unitConditions, ...crewConditions, ...locationConditions];
+        if (isCBTForceMember(forceUnit)) {
+            console.info(`[unit-block-perf] conditions ${forceUnit.summary.name} ${(performance.now() - startedAt).toFixed(1)}ms`);
+        }
+        return result;
     });
 
-    tagDisplay = computed<{ label: 'TAG' | 'LTAG'; unavailable: boolean } | undefined>(() => {
-        const forceUnit = this.forceUnit();
-        if (!forceUnit) return undefined;
-        if (forceUnit instanceof ASForceUnit) {
-            const specials = forceUnit.getUnit().as.specials;
-            if (specials.includes('TAG')) {
-                return { label: 'TAG', unavailable: false };
-            }
-            if (specials.includes('LTAG')) {
-                return { label: 'LTAG', unavailable: false };
-            }
-            return undefined;
-        } else
-        if (forceUnit instanceof CBTForceUnit) {
-            const tagMounts = forceUnit.getMountedEquipmentByFlag('F_TAG');
-            if (tagMounts.length === 0) return undefined;
-            const tag = tagMounts.find(mount => mount.owner.canPerformEquipmentAction(mount, 'activate')) ?? tagMounts[0];
-            const names = [tag.name, tag.equipment?.name, tag.equipment?.shortName, tag.equipment?.sortingName]
-                .filter((name): name is string => !!name);
-            return {
-                label: names.some(name => /\blight\b/i.test(name)) ? 'LTAG' : 'TAG',
-                unavailable: tagMounts.every(mount => !mount.owner.canPerformEquipmentAction(mount, 'activate')),
-            };
-        }
-        return undefined;
+    private readonly capabilitySummary = computed(() => {
+        const member = this.forceUnit();
+        return !member || isCBTForceMember(member)
+            ? null
+            : member.getTagEcmCapabilitySummary();
     });
 
-    ecmDisplay = computed<ECMDisplay | null>(() => {
-        const forceUnit = this.forceUnit();
-        if (!forceUnit) return null;
-        if (forceUnit instanceof ASForceUnit) {
-            const mode = forceUnit.getUnit().as.specials.find(spec => spec === 'ECM' || spec === 'AECM' || spec === 'LECM');
-            return mode ? { mode, unavailable: false } : null;
-        }
-        if (forceUnit instanceof CBTForceUnit) {
-            const ecms = forceUnit.getMountedEquipmentByFlag('F_ECM');
-            if (ecms.length === 0) return null;
-            const mount = ecms.find(candidate => candidate.owner.canPerformEquipmentAction(candidate, 'activate')) ?? ecms[0];
-            return {
-                mode: mount.states.get('ecm_mode') as ECMMode || ECMMode.ECM,
-                unavailable: ecms.every(candidate => !candidate.owner.canPerformEquipmentAction(candidate, 'activate')),
-            };
-        }
-        return null;
-    });
+    tagDisplay = computed(() => this.capabilitySummary()?.tag ?? undefined);
+
+    ecmDisplay = computed(() => this.capabilitySummary()?.ecm ?? null);
 
     /** Get individual C3 network items for display */
     c3NetworkItems = computed<{ label: string; networkType: C3NetworkType; enabled: boolean; unavailable: boolean; color?: string }[]>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return [];
+        if (isCBTForceMember(forceUnit)) {
+            const networkType = summaryC3NetworkType(forceUnit.summary.c3);
+            if (!networkType) return [];
+            const state = forceUnit.c3State();
+            const connected = forceUnit.force.c3EncounterNetworks().find(network =>
+                network.networkType === networkType
+                && network.endpoints.some(endpoint => endpoint.instanceId === forceUnit.id));
+            return [{
+                label: c3NetworkTypeName(networkType),
+                networkType,
+                enabled: state === 'operational',
+                unavailable: state === 'degraded',
+                ...(connected ? { color: connected.color } : {}),
+            }];
+        }
         const components = new C3Capabilities(forceUnit).components;
         if (components.length === 0) return [];
 
-        const networks = (forceUnit instanceof CBTForceUnit || forceUnit instanceof ASForceUnit) 
-            ? forceUnit.force.c3Networks() 
-            : [];
+        const networks = forceUnit instanceof ASForceUnit ? forceUnit.force.c3Networks() : [];
         const unitId = forceUnit?.id;
         
         // Group by network type to get unique types
@@ -225,16 +318,11 @@ export class UnitBlockComponent {
                 )
             ) : undefined;
             
-            const runtimeState = forceUnit instanceof CBTForceUnit
-                ? forceUnit.getC3NetworkRuntimeState(networkType)
-                : null;
-            const enabled = runtimeState?.linked ?? !!connectedNetwork;
+            const enabled = !!connectedNetwork;
             
             // Get color from root network
             let color: string | undefined;
-            if (runtimeState?.color) {
-                color = runtimeState.color;
-            } else if (connectedNetwork) {
+            if (connectedNetwork) {
                 const rootNetwork = new C3Network(networks).rootOf(connectedNetwork.id) ?? connectedNetwork;
                 color = rootNetwork.color;
             }
@@ -243,8 +331,7 @@ export class UnitBlockComponent {
                 label: c3NetworkTypeName(networkType),
                 networkType,
                 enabled,
-                unavailable: forceUnit instanceof CBTForceUnit
-                    && forceUnit.isC3NetworkTypeUnavailable(networkType),
+                unavailable: false,
                 color
             });
         }
@@ -262,10 +349,11 @@ export class UnitBlockComponent {
     getEffectiveTmm = computed<string>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return '';
+        if (isCBTMekForceMember(forceUnit)) return forceUnit.summary.as?.TMM?.toString() ?? '';
         if (forceUnit instanceof ASForceUnit) {
             return this.formatTmm(forceUnit.effectiveTmm());
         }
-        return forceUnit.getUnit()?.as?.TMM?.toString() ?? '';
+        return forceUnit.getSummary()?.as?.TMM?.toString() ?? '';
     });
 
     private formatTmm(tmm: { [mode: string]: number }): string {
@@ -280,15 +368,16 @@ export class UnitBlockComponent {
     getEffectiveMovement = computed<string>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return '';
+        if (isCBTMekForceMember(forceUnit)) return forceUnit.summary.as?.MV ?? '';
         if (forceUnit instanceof ASForceUnit) {
             const effectiveMv = forceUnit.effectiveMovement();
             const entries = this.getMovementEntries(effectiveMv);
-            if (entries.length === 0) return forceUnit.getUnit()?.as?.MV ?? '';
+            if (entries.length === 0) return forceUnit.getSummary()?.as?.MV ?? '';
             return entries
                 .map(([mode, inches]) => this.formatASMovementEntry(forceUnit, mode, inches))
                 .join('/');
         }
-        return forceUnit.getUnit()?.as?.MV ?? '';
+        return forceUnit.getSummary()?.as?.MV ?? '';
     });
 
     private formatASMovementEntry(forceUnit: ASForceUnit, mode: string, inches: number): string {
@@ -304,6 +393,7 @@ export class UnitBlockComponent {
     showTMM = computed<boolean>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return true;
+        if (isCBTMekForceMember(forceUnit)) return true;
         if (forceUnit instanceof ASForceUnit) {
             return !forceUnit.isAerospace();
         }
@@ -321,40 +411,24 @@ export class UnitBlockComponent {
         const forceUnit = this.forceUnit();
         const unit = this.unit();
         if (!forceUnit || !unit) return null;
-        if (!(forceUnit instanceof CBTForceUnit)) return null;
-
-        const baseBv = forceUnit.getUnit().bv;
-        const ammoBvVariation = forceUnit.customAmmoBvVariation();
-        const totalBv = forceUnit.getBv();
-        if (baseBv === totalBv) return null; // No adjustments
-        const tagBv = forceUnit.tagBV();
-        const c3Tax = forceUnit.c3Tax();
-        const pilotBv = forceUnit.pilotBV();
-
-        const lines: TooltipLine[] = [];
-        if (baseBv > 0) {
-            lines.push({ label: 'Base', value: `${baseBv}` });
+        if (isCBTForceMember(forceUnit)) {
+            const pristine = forceUnit.pristineBattleValue();
+            const current = forceUnit.currentBaseBattleValue();
+            const tag = forceUnit.tagBattleValue();
+            const c3 = forceUnit.c3BattleValue();
+            const adjusted = forceUnit.adjustedBattleValue();
+            if (pristine === null || current === null || tag === null || c3 === null || adjusted === null
+                || (current === pristine && adjusted === current)) return null;
+            const lines: TooltipLine[] = [{ label: 'Base', value: `${pristine}` }];
+            if (current !== pristine) lines.push({ label: 'Damage', value: `${current}` });
+            if (tag !== 0) lines.push({ label: 'TAG', value: `+${tag}` });
+            if (c3 !== 0) lines.push({ label: 'C3', value: `+${c3}` });
+            const preSkill = current + tag + c3;
+            if (adjusted !== preSkill) lines.push({ label: 'Skills', value: `${adjusted - preSkill}` });
+            lines.push({ isBreak: true }, { label: 'Total', value: `${adjusted}` });
+            return lines;
         }
-        if (ammoBvVariation !== 0) {
-            const sign = ammoBvVariation > 0 ? '+' : '';
-            lines.push({ label: 'Custom Ammo', value: `${sign}${ammoBvVariation}` });
-        }
-        if (tagBv > 0) {
-            lines.push({ label: 'TAG', value: `+${tagBv}` });
-        }
-        if (c3Tax > 0) {
-            lines.push({ label: 'C³', value: `+${c3Tax}` });
-        }
-        if (pilotBv !== 0) {
-            const sign = pilotBv > 0 ? '+' : '';
-            lines.push({ label: 'Pilot', value: `${sign}${pilotBv}` });
-        }
-        lines.push({ isBreak: true });
-        if (tagBv > 0 || c3Tax > 0 || pilotBv !== 0) {
-            lines.push({ label: 'Total', value: `${totalBv}` });
-        }
-
-        return lines.length > 0 ? lines : null;
+        return null;
     });
 
     clickInfo(event: MouseEvent): void {
@@ -385,4 +459,12 @@ export class UnitBlockComponent {
         event.stopPropagation();
         this.onEditPilot.emit({ event });
     }
+}
+
+function summaryC3NetworkType(value: string): C3NetworkType | null {
+    if (value === 'C3') return C3NetworkType.C3;
+    if (value === 'C3i') return C3NetworkType.C3I;
+    if (value === 'Naval C3') return C3NetworkType.NAVAL;
+    if (value === 'Nova CEWS') return C3NetworkType.NOVA;
+    return null;
 }

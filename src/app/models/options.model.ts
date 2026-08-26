@@ -3,6 +3,7 @@
 // Author: Drake
 
 import type { GameSystem } from "./common.model";
+import type { CBTRuleset } from './cbt-ruleset.model';
 
 
 export type AvailabilitySource = 'mul' | 'megamek';
@@ -58,6 +59,7 @@ export interface Options {
     megaMekAvailabilityFiltersUseAllScopedOptions: boolean;
     forceViewerBVPVDisplay: ForceViewerBVPVDisplay;
     recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
+    usePreGeneratedRecordSheets: boolean;
     recordSheetDoubleTapZoomReset: RecordSheetDoubleTapZoomResetMode;
     lastCanvasState?: {
         brushSize: number;
@@ -67,7 +69,7 @@ export interface Options {
     trackPhaseAndTurn: boolean;
     cbtAutomations: boolean;
     CBTOptionalRules: CBTOptionalRules;
-    CBTRules: 'tw' | `core2026`;
+    CBTRules: CBTRuleset;
     ASUseHex: boolean;
     ASPrintPageBreakOnGroups: boolean;
     c3NetworkConnectionsAboveNodes: boolean;
@@ -81,6 +83,7 @@ export interface Options {
     ASVehiclesCriticalHitTable: 'default' | 'scouringSands';
     ASUnifiedDamagePicker: boolean;
     printRosterSummary: boolean;
+    printPaperSize: 'letter' | 'a4';
     printMargin: 'none' | 'browserDefined';
     performanceMode: boolean;
     enableForceSyncConflictDialog: boolean;

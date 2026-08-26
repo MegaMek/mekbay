@@ -5,10 +5,11 @@
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
 import { WeaponEquipment } from '../../models/equipment.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { CBTGameRules, CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../models/rules/game-rules';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 import { ClusterTableDialogComponent, shouldCombineReferenceTables } from './cluster-table-dialog.component';
+import { clusterTableForUnit } from '../../utils/record-sheet-reference-table';
 
 describe('shouldCombineReferenceTables', () => {
     it('combines only when the complete intrinsic table width fits', () => {
@@ -21,13 +22,13 @@ describe('shouldCombineReferenceTables', () => {
 describe('ClusterTableDialogComponent', () => {
     const close = jasmine.createSpy('close');
 
-    function createFixture(unit: Unit, gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
+    function createFixture(unit: UnitSummary, gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
         TestBed.resetTestingModule();
         TestBed.configureTestingModule({
             imports: [ClusterTableDialogComponent],
             providers: [
                 { provide: DialogRef, useValue: { close } },
-                { provide: DIALOG_DATA, useValue: { unit, gameRules } },
+                { provide: DIALOG_DATA, useValue: { table: clusterTableForUnit(unit), gameRules } },
             ],
         });
         const fixture = TestBed.createComponent(ClusterTableDialogComponent);
@@ -35,11 +36,11 @@ describe('ClusterTableDialogComponent', () => {
         return fixture;
     }
 
-    function mekUnit(subtype = 'BattleMek'): Unit {
-        return { type: 'Mek', subtype, comp: [] } as unknown as Unit;
+    function mekUnit(subtype = 'BattleMek'): UnitSummary {
+        return { type: 'Mek', subtype, comp: [] } as unknown as UnitSummary;
     }
 
-    function clusterUnit(): Unit {
+    function clusterUnit(): UnitSummary {
         const lrm = new WeaponEquipment({
             id: 'lrm-5',
             name: 'LRM 5',
@@ -50,7 +51,7 @@ describe('ClusterTableDialogComponent', () => {
             type: 'Tank',
             subtype: 'Combat Vehicle',
             comp: [{ id: 'lrm-5', q: 1, n: 'LRM 5', t: 'B', p: 0, l: 'TU', eq: lrm }],
-        } as unknown as Unit;
+        } as unknown as UnitSummary;
     }
 
     it('rolls the selected location column from headers and cells', () => {
@@ -152,7 +153,7 @@ describe('ClusterTableDialogComponent', () => {
             type: 'Mek',
             subtype: 'BattleMek',
             comp: [{ id: 'lrm-5', q: 1, n: 'LRM 5', t: 'B', p: 0, l: 'RA', eq: lrm }],
-        } as unknown as Unit);
+        } as unknown as UnitSummary);
         fixture.componentInstance.useCombinedTable.set(true);
         fixture.detectChanges();
 

@@ -13,7 +13,7 @@ export type BeastSize = 'Large' | 'Very Large' | 'Monstrous';
 
 /**
  * Data for a beast mount used by beast-mounted infantry.
- * Predefined mounts are loaded from infantry-mounts.json.
+ * Predefined mounts are canonical parser data; no runtime catalog is required.
  * Custom mounts are parsed from BLK `Beast:Custom:...` strings.
  */
 export interface InfantryMount {

@@ -2,22 +2,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EquipmentFlag } from '../../../equipment-flags.type';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
 import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import type { SmallCraftEntity } from '../../entities/aero/small-craft-entity';
 import { ceilToHalfTon, ceilToWholeTon } from './weight-rounding';
-
-const SYSTEM_FLAGS: EquipmentFlag[] = [
-  'F_LIGHT_FERRO', 'F_HEAVY_FERRO',
-  'F_REACTIVE', 'F_REFLECTIVE', 'F_HARDENED_ARMOR', 'F_PRIMITIVE_ARMOR',
-  'F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE',
-] as const;
-const ALL_CRAFT_SLOT_FLAGS: EquipmentFlag[] = ['F_CHAFF_POD', 'F_SPACE_MINE_DISPENSER', 'F_MOBILE_HPG',
-  'F_RECON_CAMERA', 'F_HIRES_IMAGER', 'F_HYPERSPECTRAL_IMAGER', 'F_INFRARED_IMAGER',
-  'F_LOOKDOWN_RADAR'] as const;
-const SMALL_CRAFT_SLOT_FLAGS: EquipmentFlag[] = ['F_BAP', 'F_WATCHDOG', 'F_ECM', 'F_ANGEL_ECM',
-  'F_EW_EQUIPMENT', 'F_BOOBY_TRAP', 'F_SENSOR_DISPENSER'] as const;
+import { smallCraftArmorPointsPerTon } from '../large-craft-armor';
+import { isConstructionSystemEquipment } from '../../../construction-equipment.model';
+import { isNavalC3Equipment } from '../../../c3-network.model';
+import {
+  usesLargeCraftAerospaceSupportSlot,
+  usesSmallCraftAerospaceSupportSlot,
+} from '../../../aerospace-support-equipment.model';
+import {
+  usesLargeCraftSensorSlot,
+  usesSmallCraftSensorSlot,
+} from '../../../sensor-equipment.model';
 
 export interface SmallCraftWeightBreakdown {
   readonly structure: number; readonly engine: number; readonly controls: number;
@@ -72,7 +71,8 @@ export function calculateSmallCraftWeightBreakdown(entity: SmallCraftEntity): Sm
       }
     } else if (equipment instanceof WeaponEquipment) {
       weapons += requireTonnage(entity, mount);
-    } else if (equipment instanceof MiscEquipment && !equipment.hasAnyFlag([...SYSTEM_FLAGS])) {
+    } else if (equipment instanceof MiscEquipment
+      && !isConstructionSystemEquipment(equipment, 'small-craft')) {
       miscellaneous += requireTonnage(entity, mount);
     }
   }
@@ -105,8 +105,14 @@ function calculateExtraSlotWeight(entity: SmallCraftEntity): number {
     const equipment = mount.equipment;
     if (!equipment || mount.location === 'Unallocated' || mount.location === 'None') continue;
     const usesSlot = equipment instanceof WeaponEquipment
-      || equipment instanceof MiscEquipment && (equipment.hasAnyFlag([...ALL_CRAFT_SLOT_FLAGS])
-        || !dropShip && equipment.hasAnyFlag([...SMALL_CRAFT_SLOT_FLAGS]));
+      || equipment instanceof MiscEquipment && (
+        usesLargeCraftAerospaceSupportSlot(equipment)
+        || usesLargeCraftSensorSlot(equipment)
+        || !dropShip && (
+          usesSmallCraftAerospaceSupportSlot(equipment)
+          || usesSmallCraftSensorSlot(equipment)
+        )
+      );
     if (!usesSlot) continue;
     let arc = mount.location;
     if (spheroid && mount.rearMounted && (arc === 'Left Side' || arc === 'Right Side')) arc += ' Aft';
@@ -115,7 +121,7 @@ function calculateExtraSlotWeight(entity: SmallCraftEntity): number {
     current.tonnage += requireTonnage(entity, mount);
     arcs.set(arc, current);
   }
-  const navalC3Multiplier = entity.equipment().some(mount => mount.equipment?.hasFlag('F_NAVAL_C3')) ? 2 : 1;
+  const navalC3Multiplier = entity.equipment().some(mount => isNavalC3Equipment(mount.equipment)) ? 2 : 1;
   let total = 0;
   for (const arc of arcs.values()) {
     const excessGroups = Math.trunc((arc.count - 1) / 12);
@@ -130,12 +136,7 @@ function calculateArmorWeight(entity: SmallCraftEntity, primitive: boolean, sphe
   let points = entity.totalArmorPoints();
   if (primitive) points = Math.ceil(points / 0.66);
   const weightedPoints = Math.max(0, points - 4 * entity.structuralIntegrity());
-  let ppt = 16 * armor.pptMultiplier;
-  if (armor.pptDropship.length) {
-    const thresholds = spheroid ? [12500, 20000, 35000, 50000, 65000] : [6000, 9500, 12500, 17500, 25000];
-    const index = thresholds.findIndex(value => entity.tonnage() < value);
-    ppt = armor.pptDropship[index < 0 ? armor.pptDropship.length - 1 : Math.min(index, armor.pptDropship.length - 1)] ?? ppt;
-  }
+  const ppt = smallCraftArmorPointsPerTon(entity.tonnage(), spheroid, armor);
   return ceilToHalfTon(weightedPoints / ppt);
 }
 function smallCraftEngineMultiplier(y: number): number { return y >= 2500 ? .065 : y >= 2400 ? .078 : y >= 2300 ? .091 : y >= 2251 ? .0975 : y >= 2201 ? .1105 : y >= 2151 ? .1235 : .143; }

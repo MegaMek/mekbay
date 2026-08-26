@@ -3,7 +3,7 @@
 // Author: Drake
 
 import type { MultiStateOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import {
     ADVANCED_FILTERS,
     AS_MOVEMENT_MODE_DISPLAY_NAMES,
@@ -26,9 +26,9 @@ import { getUnitVariantGroupKey } from './unit-variant.util';
 import { isCountableBackedDropdown } from './unit-search-filter-config.util';
 
 export interface UnitFilterKernelDependencies {
-    getProperty: (unit: Unit, key?: string) => unknown;
-    getAdjustedBV: (unit: Unit) => number;
-    getAdjustedPV: (unit: Unit) => number;
+    getProperty: (unit: UnitSummary, key?: string) => unknown;
+    getAdjustedBV: (unit: UnitSummary) => number;
+    getAdjustedPV: (unit: UnitSummary) => number;
     getUnitIdsForExternalFilters: (
         eraFilterState?: FilterState[string],
         factionFilterState?: FilterState[string],
@@ -37,14 +37,14 @@ export interface UnitFilterKernelDependencies {
         selectedFactionEntries: MultiStateSelection,
         wildcardPatterns?: WildcardPattern[],
     ) => string[];
-    unitMatchesAvailabilityFrom: (unit: Unit, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
-    unitMatchesAvailabilityRarity: (unit: Unit, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitMatchesAvailabilityFrom: (unit: UnitSummary, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitMatchesAvailabilityRarity: (unit: UnitSummary, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
     getForcePackLookupSet: (packName: string) => ReadonlySet<string> | undefined;
-    getAvailabilityLookupKey: (unit: Unit) => string;
+    getAvailabilityLookupKey: (unit: UnitSummary) => string;
 }
 
 interface ApplyUnitFilterStateRequest {
-    units: Unit[];
+    units: UnitSummary[];
     state: FilterState;
     dependencies: UnitFilterKernelDependencies;
     skipKey?: string;
@@ -53,12 +53,12 @@ interface ApplyUnitFilterStateRequest {
 const ADVANCED_FILTER_CONFIG_BY_KEY = new Map(ADVANCED_FILTERS.map(conf => [conf.key, conf]));
 
 function filterUnitsByMultiState(
-    units: Unit[],
+    units: UnitSummary[],
     key: string,
     selection: MultiStateSelection,
     getProperty: UnitFilterKernelDependencies['getProperty'],
     wildcardPatterns?: WildcardPattern[],
-): Unit[] {
+): UnitSummary[] {
     const orList: MultiStateOption[] = [];
     const andList: MultiStateOption[] = [];
     const notList: MultiStateOption[] = [];
@@ -198,7 +198,7 @@ function filterUnitsByMultiState(
     });
 }
 
-export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): Unit[] {
+export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): UnitSummary[] {
     const { units, state, dependencies, skipKey } = request;
     let results = units;
     const activeFilters: Record<string, unknown> = {};

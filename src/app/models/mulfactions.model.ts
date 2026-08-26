@@ -30,12 +30,12 @@ export interface RawMULFaction {
 
 export interface MULFactions {
     version: string;
-    etag: string;
+    assetHash: string;
     factions: MULFaction[];
 }
 
 export interface RawMULFactions {
     version: string;
-    etag: string;
+    assetHash: string;
     factions: RawMULFaction[];
 }

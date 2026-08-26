@@ -18,7 +18,7 @@ import { TaggingService } from '../../services/tagging.service';
 import { UnitCardCompactComponent } from '../unit-card-compact/unit-card-compact.component';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { VariantDropdownPanelComponent } from './variant-dropdown-panel.component';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { type PackUnitEntry, type ResolvedPack } from '../../utils/force-pack.util';
 import { isSameVariantGroup } from '../../utils/unit-variant.util';
 import { compareUnitsByName } from '../../utils/sort.util';
@@ -37,7 +37,7 @@ export interface CustomizeForcePackDialogResult {
 }
 
 interface CustomizableUnit extends PackUnitEntry {
-    originalUnit: Unit | null;  // The original unit from the force pack
+    originalUnit: UnitSummary | null;  // The original unit from the force pack
     index: number;              // Position in the pack
 }
 
@@ -78,7 +78,7 @@ export class CustomizeForcePackDialogComponent {
     openDropdownIndex = signal<number | null>(null);
 
     // Variants for selected unit (used by docked panel on non-phone layouts)
-    variantsForSelected = computed<Unit[]>(() => {
+    variantsForSelected = computed<UnitSummary[]>(() => {
         const idx = this.openDropdownIndex();
         if (idx === null) return [];
         
@@ -171,20 +171,20 @@ export class CustomizeForcePackDialogComponent {
         componentRef.setInput('currentUnitName', unit.unit?.name ?? null);
 
         // Handle selection - cleanup when dialog closes
-        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((variant: Unit) => {
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((variant: UnitSummary) => {
             this.selectVariant(index, variant);
             this.closeDropdown();
         });
 
         // Handle info request - cleanup when dialog closes
-        outputToObservable(componentRef.instance.infoRequested).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((variant: Unit) => {
+        outputToObservable(componentRef.instance.infoRequested).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((variant: UnitSummary) => {
             this.showVariantInfo(variant, variants, index);
         });
 
         this.openDropdownIndex.set(index);
     }
 
-    private getVariantsForUnit(unit: Unit): Unit[] {
+    private getVariantsForUnit(unit: UnitSummary): UnitSummary[] {
         return this.dataService.getUnits()
             .filter(candidate => isSameVariantGroup(candidate, unit));
     }
@@ -194,7 +194,7 @@ export class CustomizeForcePackDialogComponent {
         this.openDropdownIndex.set(null);
     }
 
-    private selectVariant(index: number, variant: Unit): void {
+    private selectVariant(index: number, variant: UnitSummary): void {
         this.customizableUnits.update(units => {
             const updated = [...units];
             updated[index] = {
@@ -208,7 +208,7 @@ export class CustomizeForcePackDialogComponent {
     }
 
     /** Handler for docked panel variant selection */
-    onDockedVariantSelect(variant: Unit): void {
+    onDockedVariantSelect(variant: UnitSummary): void {
         const idx = this.openDropdownIndex();
         if (idx === null) return;
         this.selectVariant(idx, variant);
@@ -216,7 +216,7 @@ export class CustomizeForcePackDialogComponent {
     }
 
     /** Handler for docked panel info request */
-    onDockedVariantInfo(variant: Unit): void {
+    onDockedVariantInfo(variant: UnitSummary): void {
         const idx = this.openDropdownIndex();
         if (idx === null) return;
         this.showVariantInfo(variant, this.variantsForSelected(), idx);
@@ -251,7 +251,7 @@ export class CustomizeForcePackDialogComponent {
     }
 
     /** Open unit details for a variant in the dropdown - SELECT selects the unit */
-    private async showVariantInfo(variant: Unit, variants: Unit[], unitIndex: number): Promise<void> {
+    private async showVariantInfo(variant: UnitSummary, variants: UnitSummary[], unitIndex: number): Promise<void> {
         const variantIdx = variants.findIndex(v => v.name === variant.name);
 
         const ref = this.dialogsService.createDialog(
@@ -267,7 +267,7 @@ export class CustomizeForcePackDialogComponent {
         );
 
         // When SELECT is clicked in unit-details, select that variant
-        outputToObservable(ref.componentInstance!.select).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((selectedUnit: Unit) => {
+        outputToObservable(ref.componentInstance!.select).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((selectedUnit: UnitSummary) => {
             this.selectVariant(unitIndex, selectedUnit);
             this.closeDropdown();
             ref.close();
@@ -280,7 +280,7 @@ export class CustomizeForcePackDialogComponent {
         
         const units = this.customizableUnits()
             .map(u => u.unit)
-            .filter((u): u is Unit => u !== null && u !== undefined);
+            .filter((u): u is UnitSummary => u !== null && u !== undefined);
         
         if (units.length === 0) return;
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 
 export interface UnitVariantGroupIdentity {
     chassis: string;
@@ -10,7 +10,7 @@ export interface UnitVariantGroupIdentity {
     omni: boolean;
 }
 
-export type UnitVariantGroupLike = Pick<Unit, 'chassis' | 'as' | 'omni'>;
+export type UnitVariantGroupLike = Pick<UnitSummary, 'chassis' | 'as' | 'omni'>;
 
 export function getUnitVariantGroupIdentity(unit: UnitVariantGroupLike): UnitVariantGroupIdentity {
     return {

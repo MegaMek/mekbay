@@ -38,6 +38,11 @@
     &:hover {
         opacity: 1.0;
     }
+
+    &:disabled {
+        opacity: 0.35;
+        cursor: default;
+    }
 }
 
 .top-right-controls {
@@ -48,6 +53,9 @@
     align-items: center;
     gap: 8px;
     pointer-events: auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: calc(100% - 16px);
 }
 
 .overlay-round-button {

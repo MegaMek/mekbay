@@ -7,6 +7,7 @@ export interface PrintAllOptions {
     clean: boolean;
     printPilotData: boolean;
     printRosterSummary: boolean;
+    paperSize: 'letter' | 'a4';
     recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
     ASPrintPageBreakOnGroups: boolean;
     printMargin: 'none' | 'browserDefined';

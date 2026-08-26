@@ -7,11 +7,10 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { AmmoEquipment } from '../../models/equipment.model';
 import type { EquipmentRegistry } from '../../models/equipment-lookup';
 import type { Era } from '../../models/eras.model';
-import type { MountedEquipment } from '../../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, type CBTGameRules } from '../../models/rules/game-rules';
-import type { UnitType } from '../../models/units.model';
+import type { UnitType } from '../../models/unit-summary.model';
 import { DialogsService } from '../../services/dialogs.service';
-import { AmmoValidityUtil } from '../../utils/ammo-validity.util';
+import { AmmoValidityUtil, type AmmoSelectionCompatibilityFacts } from '../../utils/ammo-validity.util';
 import { getAmmoInfoItems, SetAmmoDropdownComponent } from './set-ammo-dropdown.component';
 import { AdvancementTimelineComponent, getEquipmentAdvancementTimeline, type EquipmentAdvancementTimeline } from './advancement-timeline.component';
 
@@ -25,7 +24,7 @@ export interface SetAmmoDialogData {
     maxQuantity: number;
     unitType?: UnitType;
     era?: Era | null;
-    inventory?: readonly MountedEquipment[];
+    compatibilityFacts?: AmmoSelectionCompatibilityFacts;
     gameRules?: CBTGameRules;
     equipmentRegistry?: EquipmentRegistry;
 }

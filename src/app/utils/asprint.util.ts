@@ -158,7 +158,7 @@ export class ASPrintUtil {
         for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
             const groupUnits = groups[groupIndex].units();
             for (const forceUnit of groupUnits) {
-                const unitType = forceUnit.getUnit().as.TP;
+                const unitType = forceUnit.getSummary().as.TP;
                 const layout = getLayoutForUnitType(unitType);
                 const cardCount = layout.cards.length;
                 
@@ -803,7 +803,7 @@ export class ASPrintUtil {
 
         for (const group of groups) {
             for (const forceUnit of group.units()) {
-                const unit = forceUnit.getUnit();
+                const unit = forceUnit.getSummary();
                 const as = unit.as;
                 const adjustedPv = forceUnit.adjustedPv();
                 totalPv += adjustedPv;
@@ -869,7 +869,7 @@ export class ASPrintUtil {
         const movementEntries = Object.entries(forceUnit.effectiveMovement())
             .filter(([, value]) => typeof value === 'number') as Array<[string, number]>;
 
-        if (forceUnit.getUnit().as.TP === 'BM') {
+        if (forceUnit.getSummary().as.TP === 'BM') {
             return movementEntries
                 .filter(([mode]) => mode !== 'a' && mode !== 'g')
                 .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : 0))

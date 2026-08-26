@@ -6,11 +6,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const {
-    writeFileWithContentTimestamp,
+    writeDeterministicFile,
 } = require('./lib/deterministic-output') as typeof import('./lib/deterministic-output');
 
 const APP_ROOT = path.resolve(__dirname, '..');
-const OUTPUT_PATH = path.join(APP_ROOT, 'public', 'assets', 'sarna-page-titles.json');
+const OUTPUT_PATH = path.join(APP_ROOT, 'public', 'online-assets', 'generated', 'sarna-page-titles.json');
 const SARNA_API_URL = 'https://www.sarna.net/wiki/api.php';
 const MAX_FETCH_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1000;
@@ -200,7 +200,7 @@ async function collectTitlesForCategories(categories: readonly string[]): Promis
 
 function writeJsonFile(filePath: string, data: unknown): void {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    writeFileWithContentTimestamp(filePath, `${JSON.stringify(data)}\n`, 'utf8');
+    writeDeterministicFile(filePath, `${JSON.stringify(data)}\n`, 'utf8');
 }
 
 async function run(): Promise<void> {

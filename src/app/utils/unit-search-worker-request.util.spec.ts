@@ -106,11 +106,24 @@ describe('getWorkerCorpusSnapshot', () => {
             { version: null, snapshot: null },
             '1:0',
             [unit],
+            () => ({ tags: [], weaponTypes: [], weaponTypeCounts: {} }),
             {},
-            {},
+            { unitIdentityKeysByMulId: {}, referenceIdsByEraAndFaction: {} },
         );
-        const second = getWorkerCorpusSnapshot(first.cache, '1:0', [unit], {}, {});
+        const second = getWorkerCorpusSnapshot(
+            first.cache,
+            '1:0',
+            [unit],
+            () => ({ tags: [], weaponTypes: [], weaponTypeCounts: {} }),
+            {},
+            { unitIdentityKeysByMulId: {}, referenceIdsByEraAndFaction: {} },
+        );
 
         expect(second.snapshot).toBe(first.snapshot);
+        expect(first.snapshot.units[0]._componentNameCounts).toEqual({});
+        expect(first.snapshot.units[0]._searchTags).toEqual([]);
+        expect(Object.prototype.hasOwnProperty.call(first.snapshot.units[0], 'comp')).toBeFalse();
+        expect(Object.prototype.hasOwnProperty.call(first.snapshot.units[0], 'sourceRef')).toBeFalse();
+        expect(Object.prototype.hasOwnProperty.call(first.snapshot.units[0], 'fluff')).toBeFalse();
     });
 });

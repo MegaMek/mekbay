@@ -4,15 +4,13 @@
 
 import { computed, type Injector, signal, type Signal } from '@angular/core';
 import type { DataService } from '../services/data.service';
-import type { Unit } from "./units.model";
-import type { UnitInitializerService } from '../services/unit-initializer.service';
+import type { UnitSummary } from "./unit-summary.model";
 import { AsAbilityLookupService } from '../services/as-ability-lookup.service';
 import { type ASSerializedState, type ASSerializedUnit, AS_SERIALIZED_UNIT_SCHEMA } from './force-serialization';
 import type { ASForce } from './as-force.model';
 import { ForceUnit } from './force-unit.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { ASForceUnitState } from './as-force-unit-state.model';
-import type { CrewMember } from './crew-member.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import { adjustPointValueForSkill } from '../utils/pv-skill-adjustment.util';
 import type { SpecialAbilityState } from './as-special-ability-state.model';
@@ -31,6 +29,10 @@ import {
     resolveASAbilityEffects,
 } from '../utils/as-ability-effect-engine.util';
 import { isAerospace, isAerospaceMovementMode, isGroundMovementMode } from '../utils/as-common.util';
+import {
+    resolveAlphaStrikeTagEcmCapabilitySummary,
+    type UnitTagEcmCapabilitySummary,
+} from './unit-capability-summary.model';
 
 /** Represents either a standard ability (by ID) or a custom ability (object) */
 export type AbilitySelection = string | ASCustomPilotAbility;
@@ -70,13 +72,12 @@ export class ASForceUnit extends ForceUnit {
         return mergedAbilities;
     });
 
-    constructor(unit: Unit,
+    constructor(unit: UnitSummary,
         force: ASForce,
         dataService: DataService,
-        unitInitializer: UnitInitializerService,
         injector: Injector
     ) {
-        super(unit, force, dataService, unitInitializer, injector);
+        super(unit, force, dataService, injector);
         this.state = new ASForceUnitState(this);
         this.abilityLookup = injector.get(AsAbilityLookupService);
     }
@@ -88,9 +89,14 @@ export class ASForceUnit extends ForceUnit {
     public async load() {
         if (this.isLoaded()) return;
         try {
+            await this.ensureNativeSourceLoaded();
             this.isLoaded.set(true);
         } finally {
         }
+    }
+
+    override getTagEcmCapabilitySummary(): UnitTagEcmCapabilitySummary {
+        return resolveAlphaStrikeTagEcmCapabilitySummary(this.getSummary().as.specials);
     }
     
     public getBaseBv = computed<number>(() => {
@@ -112,11 +118,6 @@ export class ASForceUnit extends ForceUnit {
             this.getBaseBv(),
             this.pilotSkill()
         );
-    });
-
-    /** Alpha Strike units don't have detailed crew management - return empty signal */
-    getCrewMembers = computed<CrewMember[]>(() => {
-        return [];
     });
 
     getHeat = computed<number>(() => {
@@ -463,7 +464,7 @@ export class ASForceUnit extends ForceUnit {
     }
 
     setPilotAbilities(abilities: AbilitySelection[]): void {
-        this._pilotAbilities.set(abilities);
+        this._pilotAbilities.set(structuredClone(abilities));
         this.setModified();
     }
 
@@ -503,9 +504,9 @@ export class ASForceUnit extends ForceUnit {
         }
         // Update pilot abilities
         if (data.abilities !== undefined) {
-            this._pilotAbilities.set(data.abilities);
+            this._pilotAbilities.set(structuredClone(data.abilities));
         }
-        this._formationAbilities.set(data.formationAbilities ?? []);
+        this._formationAbilities.set([...(data.formationAbilities ?? [])]);
         this._formationCommander.set(data.commander ?? false);
         // Update state (includes pending)
         if (data.state) {
@@ -551,13 +552,16 @@ export class ASForceUnit extends ForceUnit {
         const data: ASSerializedUnit = {
             id: this.id,
             state: stateObj,
-            unit: this.getUnit().name, // Serialize only the name,
+            unit: this.getSummary().name, // Serialize only the name,
             alias: this.alias(),
             updatedTs: this.updatedTs || undefined,
             skill: this._pilotSkill(),
-            abilities: this._pilotAbilities(),
-            formationAbilities: this._formationAbilities().length > 0 ? this._formationAbilities() : undefined,
+            abilities: structuredClone(this._pilotAbilities()),
+            formationAbilities: this._formationAbilities().length > 0 ? [...this._formationAbilities()] : undefined,
             commander: this._formationCommander() || undefined,
+            entityIdentity: typeof this.dataService.getSavedEntityIdentity === 'function'
+                ? this.dataService.getSavedEntityIdentity(this.getSummary())
+                : undefined,
         };
         return data;
     }
@@ -610,17 +614,26 @@ export class ASForceUnit extends ForceUnit {
         data: ASSerializedUnit,
         force: ASForce,
         dataService: DataService,
-        unitInitializer: UnitInitializerService,
         injector: Injector
     ): ASForceUnit {
         // Sanitize the input data using the schema
         const sanitizedData = Sanitizer.sanitize(data, AS_SERIALIZED_UNIT_SCHEMA);
         
-        const unit = dataService.getUnitByName(sanitizedData.unit);
-        if (!unit) {
-            throw new Error(`Unit with name "${sanitizedData.unit}" not found in dataService`);
+        const resolution = typeof dataService.resolveSerializedUnit === 'function'
+            ? dataService.resolveSerializedUnit(sanitizedData)
+            : undefined;
+        const unit = resolution?.unit ?? dataService.getUnitByName(sanitizedData.unit);
+        if (!unit) throw new Error(`Unit with name "${sanitizedData.unit}" not found in dataService`);
+        const fu = new ASForceUnit(unit, force, dataService, injector);
+        if (resolution) {
+            fu.definitionResolution = {
+                savedIdentity: resolution.savedIdentity,
+                currentIdentity: resolution.currentIdentity,
+                usedLegacyNameFallback: resolution.usedLegacyNameFallback,
+                sourceChanged: resolution.sourceChanged,
+                formatChanged: resolution.formatChanged,
+            };
         }
-        const fu = new ASForceUnit(unit, force, dataService, unitInitializer, injector);
         fu.id = sanitizedData.id;
         
         if (sanitizedData.alias !== undefined) {
@@ -630,9 +643,9 @@ export class ASForceUnit extends ForceUnit {
             fu._pilotSkill.set(sanitizedData.skill);
         }
         if (sanitizedData.abilities !== undefined) {
-            fu._pilotAbilities.set(sanitizedData.abilities);
+            fu._pilotAbilities.set(structuredClone(sanitizedData.abilities));
         }
-        fu._formationAbilities.set(sanitizedData.formationAbilities ?? []);
+        fu._formationAbilities.set([...(sanitizedData.formationAbilities ?? [])]);
         fu._formationCommander.set(sanitizedData.commander ?? false);
         if (sanitizedData.updatedTs !== undefined) {
             fu.updatedTs = sanitizedData.updatedTs;

@@ -25,3 +25,4 @@ export { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
 export { SupportTankEntity } from '../entities/vehicle/support-tank-entity';
 export { LargeSupportTankEntity } from '../entities/vehicle/large-support-tank-entity';
 export { SupportNavalEntity } from '../entities/vehicle/support-naval-entity';
+export { StaticEmplacementEntity } from '../entities/misc/static-emplacement-entity';

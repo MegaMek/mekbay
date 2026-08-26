@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from "../models/units.model";
+import type { UnitSummary } from "../models/unit-summary.model";
 import { escapeRegExp, removeAccents } from './string.util';
 
 
@@ -111,7 +111,7 @@ export function naturalCompare(a: string, b: string, isModel: boolean = false): 
     return a.localeCompare(b);
 }
 
-export function compareUnitsByName(a: Unit, b: Unit) {
+export function compareUnitsByName(a: UnitSummary, b: UnitSummary) {
     let comparison = naturalCompare(a.chassis || '', b.chassis || '');
     if (comparison === 0) {
         comparison = naturalCompare(a.model || '', b.model || '', true);

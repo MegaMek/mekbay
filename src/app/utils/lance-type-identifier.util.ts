@@ -4,7 +4,7 @@
 
 import { GameSystem } from '../models/common.model';
 import { type Faction } from '../models/factions.model';
-import type { Unit } from '../models/units.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { type FormationTypeDefinition, type FormationMatch, getFormationNameMatchStrings, NO_FORMATION, NO_FORMATION_ID } from './formation-type.model';
 import { getFormationDefinition, getFormationDefinitions } from './formation-blueprints';
 import { FormationRequirementEngine } from './formation-requirement-engine.util';
@@ -47,6 +47,7 @@ export interface FormationGroupLike<TUnit extends FormationUnitLike = FormationU
     readonly force: FormationForceLike | null;
     readonly formationHistory: ReadonlySet<string>;
     units(): readonly TUnit[];
+    formationUnits?(): readonly TUnit[];
     organizationalResult(): Pick<OrgSizeResult, 'groups'>;
 }
 
@@ -65,6 +66,10 @@ export class LanceTypeIdentifierUtil {
         img: '',
         eras: {},
     };
+
+    private static groupUnits<TUnit extends FormationUnitLike>(group: FormationGroupLike<TUnit>): readonly TUnit[] {
+        return group.formationUnits?.() ?? group.units();
+    }
 
     private static validateDefinition(
         definition: FormationTypeDefinition,
@@ -93,8 +98,8 @@ export class LanceTypeIdentifierUtil {
     private static collectIgnoredUnits(
         group: GroupSizeResult,
         formationMatching: OrgFormationMatchingSpec,
-    ): Set<Unit> {
-        const ignoredUnits = new Set<Unit>(group.formationMatchingIgnoredUnits ?? []);
+    ): Set<UnitSummary> {
+        const ignoredUnits = new Set<UnitSummary>(group.formationMatchingIgnoredUnits ?? []);
 
         if (!formationMatching.ignoredChildRoles || formationMatching.ignoredChildRoles.length === 0) {
             return ignoredUnits;
@@ -153,8 +158,9 @@ export class LanceTypeIdentifierUtil {
             return {};
         }
 
-        const filteredUnits = group.units().filter((unit) => !ignoredUnits.has(unit.getUnit()));
-        if (filteredUnits.length === 0 || filteredUnits.length >= group.units().length) {
+        const units = this.groupUnits(group);
+        const filteredUnits = units.filter((unit) => !ignoredUnits.has(unit.getSummary()));
+        if (filteredUnits.length === 0 || filteredUnits.length >= units.length) {
             return {};
         }
 
@@ -388,7 +394,7 @@ export class LanceTypeIdentifierUtil {
 
         const faction = targetForce.faction() ?? 'Mercenary';
         return this.identifyFormations(
-            group.units(),
+            this.groupUnits(group),
             targetForce.techBase(),
             faction,
             targetForce.gameSystem,
@@ -405,7 +411,7 @@ export class LanceTypeIdentifierUtil {
             return null;
         }
 
-        const units = group.units();
+        const units = this.groupUnits(group);
         const gameSystem = targetForce.gameSystem;
 
         const filterContext = this.getRequirementsFilterContext(group);
@@ -477,7 +483,7 @@ export class LanceTypeIdentifierUtil {
 
         const faction = targetForce.faction() ?? 'Mercenary';
         return this.getBestMatch(
-            group.units(),
+            this.groupUnits(group),
             targetForce.techBase(),
             faction,
             targetForce.gameSystem,

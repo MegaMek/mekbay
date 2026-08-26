@@ -9,12 +9,22 @@ import { DragDropModule, type CdkDragDrop, type CdkDragMove } from '@angular/cdk
 import type { Force, UnitGroup } from '../../models/force.model';
 import type { ForceUnit } from '../../models/force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
-import type { Unit } from '../../models/units.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
+import {
+    forceMemberSummary,
+    isCBTForceMember,
+    isCBTMekForceMember,
+    type ForceMember,
+} from '../../models/force-member.model';
 import { GameService } from '../../services/game.service';
 import { LayoutService } from '../../services/layout.service';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
+import { ForceDialogsService } from '../../services/force-dialogs.service';
+import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
+import { ForceFormationService } from '../../services/force-formation.service';
+import { ForcePilotEditorService } from '../../services/force-pilot-editor.service';
 import { ToastService } from '../../services/toast.service';
 import { OptionsService } from '../../services/options.service';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
@@ -37,21 +47,23 @@ import { DataTableComponent, type DataTableCellContext, type DataTableColumn, ty
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { FORCE_NOTE_MAX_LENGTH } from '../../models/force-serialization';
 import { naturalCompare } from '../../utils/sort.util';
-import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import { formatForceMembersBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew.model';
+import { CBTForce } from '../../models/cbt-force.model';
 
 export interface ForceOverviewDialogData {
     force: Force;
 }
 
 /** View model for displaying units in the force */
-interface ForceUnitViewModel {
-    forceUnit: ForceUnit;
-    unit: Unit;
+interface ForceMemberViewModel {
+    member: ForceMember;
+    unit: UnitSummary;
 }
 
 type ForceTableRow =
     | { kind: 'group'; group: UnitGroup }
-    | { kind: 'unit'; vm: ForceUnitViewModel; group: UnitGroup };
+    | { kind: 'unit'; vm: ForceMemberViewModel; group: UnitGroup };
 
 type ForceOverviewTab = 'primer' | 'summary' | 'units';
 
@@ -98,6 +110,7 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
     styleUrls: ['./force-overview-dialog.component.scss']
 })
 export class ForceOverviewDialogComponent {
+    protected readonly isCBTMekForceMember = isCBTMekForceMember;
     private dialogRef = inject<DialogRef<void>>(DialogRef);
     protected data = inject<ForceOverviewDialogData>(DIALOG_DATA);
     protected gameService = inject(GameService);
@@ -105,6 +118,11 @@ export class ForceOverviewDialogComponent {
     private dataService = inject(DataService);
     private dialogsService = inject(DialogsService);
     private forceBuilderService = inject(ForceBuilderService);
+    private readonly forceDialogs = inject(ForceDialogsService);
+
+    private readonly forceCommands = inject(ForceWorkspaceCommandsService);
+    private readonly formations = inject(ForceFormationService);
+    private readonly pilotEditor = inject(ForcePilotEditorService);
     private toastService = inject(ToastService);
     private optionsService = inject(OptionsService);
     private abilityLookup = inject(AsAbilityLookupService);
@@ -195,7 +213,7 @@ export class ForceOverviewDialogComponent {
 
     /** Live force adapter for the preview and summary panels */
     readonly summaryPreviewEntry = computed<ForcePreviewEntry>(() => {
-        return createForcePreviewEntryFromForce(this.data.force);
+        return createForcePreviewEntryFromForce(this.data.force, this.data.force.members());
     });
 
     /** Total unit count */
@@ -271,12 +289,13 @@ export class ForceOverviewDialogComponent {
     };
 
     /** Total BV/PV of the force using the selected display mode. */
-    totalBv = computed(() => this.displayedBvPv(this.data.force.units()));
+    totalBv = computed(() => {
+        return this.displayedBvPv(this.data.force.members());
+    });
 
-    displayedBvPv(units: readonly ForceUnit[]): string {
-        return formatBvPv(
-            units.reduce((total, unit) => total + unit.getBv(), 0),
-            units.reduce((total, unit) => total + unit.getPreSkillBv(), 0),
+    displayedBvPv(members: readonly ForceMember[]): string {
+        return formatForceMembersBvPv(
+            members,
             this.optionsService.options().forceViewerBVPVDisplay,
         );
     }
@@ -291,7 +310,7 @@ export class ForceOverviewDialogComponent {
     hasSingleGroup = computed(() => this.groups().length === 1);
 
     /** Whether any group is empty */
-    hasEmptyGroups = computed(() => this.groups().some(g => g.units().length === 0));
+    hasEmptyGroups = computed(() => this.groups().some(group => this.membersForGroup(group).length === 0));
 
     /** Whether force has max groups */
     hasMaxGroups = computed(() => this.data.force.hasMaxGroups());
@@ -384,11 +403,7 @@ export class ForceOverviewDialogComponent {
                 header: 'PV',
                 track: 45,
                 value: row => row.kind === 'unit'
-                    ? formatBvPv(
-                        row.vm.forceUnit.getBv(),
-                        row.vm.forceUnit.getPreSkillBv(),
-                        this.optionsService.options().forceViewerBVPVDisplay,
-                    )
+                    ? this.displayedBvPv([row.vm.member])
                     : '',
                 sortKey: 'as.PV',
                 sortActive: this.isSortActive('as.PV'),
@@ -500,24 +515,21 @@ export class ForceOverviewDialogComponent {
     canDragDrop = computed(() => 
         this.viewMode() === 'compact' && 
         this.selectedSort() === '' && 
-        !this.isReadOnly()
+        !this.isReadOnly() &&
+        !this.units().some(vm => isCBTMekForceMember(vm.member))
     );
 
     /** All units in the force with their view model data */
-    units = computed<ForceUnitViewModel[]>(() => {
+    units = computed<ForceMemberViewModel[]>(() => {
         const force = this.data.force;
-        const forceUnits = force.units();
+        const members = force.members();
         const sortKey = this.selectedSort();
         const sortDirection = this.selectedSortDirection();
 
-        // Build view models - ForceUnit now contains all needed data
-        const viewModels: ForceUnitViewModel[] = forceUnits.map(fu => {
-            const unit = fu.getUnit();
-            return {
-                forceUnit: fu,
-                unit
-            };
-        }).filter(vm => vm.unit != null) as ForceUnitViewModel[];
+        const viewModels: ForceMemberViewModel[] = members.map(member => ({
+            member,
+            unit: forceMemberSummary(member),
+        }));
 
         // Sort the units (skip if no sort key - show default order)
         if (sortKey) {
@@ -603,20 +615,13 @@ export class ForceOverviewDialogComponent {
         return this.shouldShowLengthMeta(this.primerNote().length, this.noteLimit);
     }
 
-    trackByForceUnitId = (_index: number, row: ForceTableRow) => row.kind === 'group' ? `group-${row.group.id}` : row.vm.forceUnit.id;
+    trackByForceUnitId = (_index: number, row: ForceTableRow) => row.kind === 'group' ? `group-${row.group.id}` : row.vm.member.id;
 
     isForceTableGroupRow = (row: ForceTableRow) => row.kind === 'group';
 
     /** Handle unit card click - open unit details dialog */
-    onUnitClick(vm: ForceUnitViewModel): void {
-        const unitList = this.data.force.units();
-        const unitIndex = unitList.findIndex(u => u.id === vm.forceUnit.id);
-        this.dialogsService.createDialog(UnitDetailsDialogComponent, {
-            data: <UnitDetailsDialogData>{
-                unitList: this.data.force.units,
-                unitIndex: unitIndex
-            }
-        });
+    onUnitClick(vm: ForceMemberViewModel): void {
+        this.openMemberDetails(vm.member);
     }
 
     async onTagClick({ unit, event }: TagClickEvent): Promise<void> {
@@ -630,21 +635,25 @@ export class ForceOverviewDialogComponent {
     }
 
     /** Handle pilot click - open pilot edit dialog */
-    async onPilotClick(forceUnit: ForceUnit): Promise<void> {
-        if (forceUnit.readOnly()) return;
-        await this.forceBuilderService.editPilotOfUnit(forceUnit);
+    async onPilotClick(member: ForceMember): Promise<void> {
+        if (member.force.readOnly()) return;
+        if (isCBTForceMember(member)) {
+            await this.pilotEditor.editClassicMember(member.force, member.id);
+            return;
+        }
+        if (member instanceof ASForceUnit) await this.pilotEditor.editAlphaStrikeUnit(member);
     }
 
     /** Handle force name click - open rename dialog */
     async onForceNameClick(): Promise<void> {
         if (this.isReadOnly()) return;
-        await this.forceBuilderService.promptChangeForceName(this.data.force);
+        await this.forceDialogs.promptChangeForceName(this.data.force);
     }
 
     /** Show formation info dialog */
     showFormationInfo(event: MouseEvent, group: UnitGroup): void {
         event.stopPropagation();
-        this.forceBuilderService.showFormationInfo(group);
+        this.formations.showFormationInfo(group);
     }
 
     /** Build tooltip HTML for a mismatched formation */
@@ -681,57 +690,45 @@ export class ForceOverviewDialogComponent {
     /** Handle group name click - open rename dialog */
     async onGroupNameClick(group: UnitGroup): Promise<void> {
         if (this.isReadOnly()) return;
-        await this.forceBuilderService.promptChangeGroupName(group);
+        await this.forceDialogs.promptChangeGroupName(group);
     }
 
     /** Handle C3 network click - open C3 network dialog */
-    async openC3Network(event: MouseEvent, forceUnit: ForceUnit): Promise<void> {
+    async openC3Network(event: MouseEvent, member: ForceMember): Promise<void> {
         event.stopPropagation();
-        await this.forceBuilderService.openC3Network(this.data.force, forceUnit.readOnly());
+        await this.forceDialogs.openC3Network(
+            this.data.force,
+            isCBTForceMember(member) ? member.force.readOnly() : member.readOnly(),
+        );
     }
 
     /** Handle remove unit */
-    async removeUnit(event: MouseEvent, forceUnit: ForceUnit): Promise<void> {
+    async removeUnit(event: MouseEvent, member: ForceMember): Promise<void> {
         event.stopPropagation();
-        await this.forceBuilderService.removeUnit(forceUnit, event.ctrlKey);
+        await this.forceCommands.removeUnit(member, event.ctrlKey);
     }
 
     /** Handle repair unit */
-    async repairUnit(event: MouseEvent, forceUnit: ForceUnit): Promise<void> {
+    async repairUnit(event: MouseEvent, member: ForceMember): Promise<void> {
         event.stopPropagation();
-        const unit = forceUnit.getUnit();
-        const confirmed = await this.dialogsService.requestConfirmation(
-            `Are you sure you want to repair the unit "${unit?.chassis} ${unit?.model}"? This will reset all damage and status effects.`,
-            `Repair ${unit?.chassis}`,
-            'info');
-        if (confirmed) {
-            forceUnit.repairAll();
-            this.toastService.showToast(`Repaired unit ${unit?.chassis} ${unit?.model}.`, 'success');
-        }
+        await this.forceCommands.repairUnit(member);
     }
 
     /** Handle show unit info */
-    showUnitInfo(event: MouseEvent, forceUnit: ForceUnit): void {
+    showUnitInfo(event: MouseEvent, member: ForceMember): void {
         event.stopPropagation();
-        const unitList = this.data.force.units();
-        const unitIndex = unitList.findIndex(u => u.id === forceUnit.id);
-        this.dialogsService.createDialog(UnitDetailsDialogComponent, {
-            data: <UnitDetailsDialogData>{
-                unitList: this.data.force.units,
-                unitIndex: unitIndex
-            }
-        });
+        this.openMemberDetails(member);
     }
 
     /** Get sorted units for a group */
-    getSortedUnitsForGroup(group: UnitGroup): ForceUnitViewModel[] {
+    getSortedUnitsForGroup(group: UnitGroup): ForceMemberViewModel[] {
         const sortKey = this.selectedSort();
         const sortDirection = this.selectedSortDirection();
 
-        const viewModels: ForceUnitViewModel[] = group.units().map(fu => {
-            const unit = fu.getUnit();
-            return { forceUnit: fu, unit };
-        }).filter(vm => vm.unit != null) as ForceUnitViewModel[];
+        const viewModels: ForceMemberViewModel[] = this.membersForGroup(group).map(member => ({
+            member,
+            unit: forceMemberSummary(member),
+        }));
 
         // Skip sorting if no sort key - show default order
         if (sortKey) {
@@ -754,6 +751,56 @@ export class ForceOverviewDialogComponent {
         }
 
         return viewModels;
+    }
+
+    membersForGroup(group: UnitGroup): ForceMember[] {
+        return this.data.force.membersInGroup(group);
+    }
+
+    expandedMemberUnit(member: ForceMember): UnitSummary | ForceUnit {
+        return isCBTForceMember(member) ? member.summary : member;
+    }
+
+    memberAlias(member: ForceMember): string | null {
+        return isCBTForceMember(member) ? null : member.alias() ?? null;
+    }
+
+    memberGunnery(member: ForceMember): number {
+        if (!isCBTForceMember(member)) {
+            return member instanceof ASForceUnit ? member.pilotSkill() : DEFAULT_GUNNERY_SKILL;
+        }
+        return member.force.getUnitCrewAssignment(member.id)?.positions[0]?.gunnery
+            ?? DEFAULT_GUNNERY_SKILL;
+    }
+
+    memberPiloting(member: ForceMember): number {
+        if (!isCBTForceMember(member)) return DEFAULT_PILOTING_SKILL;
+        return member.force.getUnitCrewAssignment(member.id)?.positions[0]?.piloting
+            ?? DEFAULT_PILOTING_SKILL;
+    }
+
+    private openMemberDetails(member: ForceMember): void {
+        if (!isCBTForceMember(member)) {
+            const unitList = this.data.force.units();
+            this.dialogsService.createDialog(UnitDetailsDialogComponent, {
+                data: <UnitDetailsDialogData>{
+                    unitList: this.data.force.units,
+                    unitIndex: unitList.findIndex(unit => unit.id === member.id),
+                },
+            });
+            return;
+        }
+
+        this.dialogsService.createDialog(UnitDetailsDialogComponent, {
+            data: <UnitDetailsDialogData>{
+                unitList: [member.summary],
+                unitIndex: 0,
+                gunnerySkill: this.memberGunnery(member),
+                pilotingSkill: this.memberPiloting(member),
+                hideAddButton: true,
+                gameSystem: this.data.force.gameSystem,
+            },
+        });
     }
 
     /** Close the dialog */
@@ -894,7 +941,7 @@ export class ForceOverviewDialogComponent {
     });
 
     /** Handle drop within or between groups */
-    drop(event: CdkDragDrop<ForceUnit[]>): void {
+    async drop(event: CdkDragDrop<ForceMember[]>): Promise<void> {
         if (this.isReadOnly()) return;
 
         const force = this.data.force;
@@ -916,13 +963,26 @@ export class ForceOverviewDialogComponent {
             return;
         }
 
+        const movingMember = this.membersForGroup(fromGroup)[event.previousIndex];
+        if (isCBTForceMember(movingMember)) {
+            if (!(force instanceof CBTForce)) return;
+            const moved = await force.moveMember(movingMember.id, toGroup.id, event.currentIndex);
+            if (!moved.accepted) {
+                this.toastService.showToast(`Could not move unit: ${moved.reason}`, 'error');
+                return;
+            }
+            await this.formations.assignFormationIfNeeded(fromGroup);
+            if (fromGroup !== toGroup) await this.formations.assignFormationIfNeeded(toGroup);
+            return;
+        }
+
         if (fromGroup === toGroup) {
             fromGroup.reorderUnit(event.previousIndex, event.currentIndex);
         } else {
             const moved = fromGroup.moveUnitTo(event.previousIndex, toGroup, event.currentIndex);
             if (!moved) return;
-            this.forceBuilderService.assignFormationIfNeeded(fromGroup);
-            this.forceBuilderService.assignFormationIfNeeded(toGroup);
+            await this.formations.assignFormationIfNeeded(fromGroup);
+            await this.formations.assignFormationIfNeeded(toGroup);
         }
 
         force.removeEmptyGroups();
@@ -930,13 +990,10 @@ export class ForceOverviewDialogComponent {
     }
 
     /** Handle drop to create a new group */
-    dropForNewGroup(event: CdkDragDrop<any>): void {
+    async dropForNewGroup(event: CdkDragDrop<any>): Promise<void> {
         if (this.isReadOnly()) return;
 
         const force = this.data.force;
-        const newGroup = force.addGroup();
-        if (!newGroup) return;
-
         const prevId = event.previousContainer?.id;
         if (!prevId || !prevId.startsWith('group-')) return;
 
@@ -944,26 +1001,48 @@ export class ForceOverviewDialogComponent {
         const sourceGroup = force.groups().find(g => g.id === sourceGroupId);
         if (!sourceGroup) return;
 
-        const moved = sourceGroup.moveUnitTo(event.previousIndex, newGroup);
-        if (!moved) return;
+        const movingMember = this.membersForGroup(sourceGroup)[event.previousIndex];
+        if (!movingMember) return;
+        const newGroup = await force.addGroup();
 
-        this.forceBuilderService.assignFormationIfNeeded(sourceGroup);
-        this.forceBuilderService.assignFormationIfNeeded(newGroup);
-        force.removeEmptyGroups();
-        force.emitChanged();
+        if (isCBTForceMember(movingMember)) {
+            if (!(force instanceof CBTForce)) {
+                await force.removeGroup(newGroup);
+                return;
+            }
+            const moved = await force.moveMember(movingMember.id, newGroup.id, 0);
+            if (!moved.accepted) {
+                await force.removeRosterGroup(newGroup);
+                this.toastService.showToast(`Could not move unit: ${moved.reason}`, 'error');
+                return;
+            }
+        } else {
+            const moved = sourceGroup.moveUnitTo(event.previousIndex, newGroup);
+            if (!moved) {
+                await force.removeGroup(newGroup);
+                return;
+            }
+        }
+
+        await this.formations.assignFormationIfNeeded(sourceGroup);
+        await this.formations.assignFormationIfNeeded(newGroup);
+        if (!(force instanceof CBTForce)) {
+            force.removeEmptyGroups();
+            force.emitChanged();
+        }
     }
 
     /** Handle group drag-drop for reordering within the force */
-    dropGroup(event: CdkDragDrop<UnitGroup[]>): void {
+    async dropGroup(event: CdkDragDrop<UnitGroup[]>): Promise<void> {
         if (this.isReadOnly()) return;
-        this.data.force.reorderGroup(event.previousIndex, event.currentIndex);
+        await this.data.force.reorderGroup(event.previousIndex, event.currentIndex);
     }
 
     /** Handle click on empty group to remove it */
     onEmptyGroupClick(group: UnitGroup): void {
         if (this.isReadOnly()) return;
-        if (group.units().length === 0) {
-            this.forceBuilderService.removeGroup(group);
+        if (this.membersForGroup(group).length === 0) {
+            this.forceCommands.removeGroup(group);
         }
     }
 
@@ -994,7 +1073,7 @@ export class ForceOverviewDialogComponent {
     }
 
     /** Get the sort slot value for AS table row view */
-    getAsTableSortSlot(vm: ForceUnitViewModel): string | null {
+    getAsTableSortSlot(vm: ForceMemberViewModel): string | null {
         const sortKey = this.selectedSort();
         if (!sortKey || !this.isAlphaStrike()) return null;
         
@@ -1010,7 +1089,7 @@ export class ForceOverviewDialogComponent {
     }
 
     /** Format movement value for Alpha Strike table view */
-    formatASMovement(unit: Unit): string {
+    formatASMovement(unit: UnitSummary): string {
         const mvm = unit.as.MVm;
         if (!mvm) return unit.as.MV ?? '';
 
@@ -1050,12 +1129,8 @@ export class ForceOverviewDialogComponent {
     }
 
     /** Get pilot skill for AS table display */
-    getPilotSkill(vm: ForceUnitViewModel): number {
-        const fu = vm.forceUnit;
-        if (fu instanceof ASForceUnit) {
-            return fu.pilotSkill();
-        }
-        return 4; // Default
+    getPilotSkill(vm: ForceMemberViewModel): number {
+        return this.memberGunnery(vm.member);
     }
 
     private normalizeViewMode(viewMode: 'expanded' | 'compact' | 'table'): 'expanded' | 'compact' | 'table' {

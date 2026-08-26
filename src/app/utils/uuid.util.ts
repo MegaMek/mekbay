@@ -4,21 +4,23 @@
 
 const buf = new Uint8Array(16);
 const hexTable = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'));
+type UuidCrypto = Partial<Pick<Crypto, 'getRandomValues' | 'randomUUID'>>;
 
 let lastMs = 0;
 let seq = 0;
 
-export function uuidv4(): string {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-        return crypto.randomUUID();
+export function uuidv4(cryptoApi: UuidCrypto | undefined = globalThis.crypto): string {
+    if (typeof cryptoApi?.randomUUID === 'function') {
+        return cryptoApi.randomUUID();
     }
 
-    // Fallback for non-secure contexts
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = Math.random() * 16 | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-    });
+    // randomUUID() is restricted to secure contexts, while getRandomValues()
+    // remains available on plain-HTTP LAN origins used for local mobile play.
+    const bytes = new Uint8Array(16);
+    fillRandomBytes(bytes, cryptoApi);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    return formatUuid(bytes);
 }
 
 export function uuidv7(): string {
@@ -34,7 +36,7 @@ export function uuidv7(): string {
     }
   } else {
     lastMs = now;
-    crypto.getRandomValues(buf);
+    fillRandomBytes(buf, globalThis.crypto);
     seq = (buf[8] << 24) | (buf[9] << 16) | (buf[10] << 8) | buf[11];
   }
 
@@ -63,12 +65,32 @@ export function uuidv7(): string {
 
   // Bytes 13, 14, and 15 retain pure random entropy values from the crypto call
 
-  return (
-    hexTable[buf[0]] + hexTable[buf[1]] + hexTable[buf[2]] + hexTable[buf[3]] + "-" +
-    hexTable[buf[4]] + hexTable[buf[5]] + "-" +
-    hexTable[buf[6]] + hexTable[buf[7]] + "-" +
-    hexTable[buf[8]] + hexTable[buf[9]] + "-" +
-    hexTable[buf[10]] + hexTable[buf[11]] + hexTable[buf[12]] +
-    hexTable[buf[13]] + hexTable[buf[14]] + hexTable[buf[15]]
-  );
+  return formatUuid(buf);
+}
+
+function fillRandomBytes(
+    target: Uint8Array<ArrayBuffer>,
+    cryptoApi: Pick<UuidCrypto, 'getRandomValues'> | undefined,
+): void {
+    if (typeof cryptoApi?.getRandomValues === 'function') {
+        cryptoApi.getRandomValues(target);
+        return;
+    }
+
+    // Last-resort compatibility for runtimes without Web Crypto. UUIDs are
+    // opaque collision-resistant identifiers here, not authentication tokens.
+    for (let index = 0; index < target.length; index++) {
+        target[index] = Math.floor(Math.random() * 256);
+    }
+}
+
+function formatUuid(bytes: Uint8Array): string {
+    return (
+        hexTable[bytes[0]] + hexTable[bytes[1]] + hexTable[bytes[2]] + hexTable[bytes[3]] + '-' +
+        hexTable[bytes[4]] + hexTable[bytes[5]] + '-' +
+        hexTable[bytes[6]] + hexTable[bytes[7]] + '-' +
+        hexTable[bytes[8]] + hexTable[bytes[9]] + '-' +
+        hexTable[bytes[10]] + hexTable[bytes[11]] + hexTable[bytes[12]] +
+        hexTable[bytes[13]] + hexTable[bytes[14]] + hexTable[bytes[15]]
+    );
 }

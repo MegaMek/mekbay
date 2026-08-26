@@ -11,7 +11,7 @@ export interface ForceNameWords {
 }
 
 export interface ForceNameWordsData {
-    etag: string;
+    assetHash: string;
     words: ForceNameWords;
 }
 

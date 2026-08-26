@@ -6,6 +6,7 @@ import type {
     UnitSearchWorkerCorpusSnapshot,
     UnitSearchWorkerCorpusVersion,
     UnitSearchWorkerErrorMessage,
+    UnitSearchWorkerProgressMessage,
     UnitSearchWorkerQueryRequest,
     UnitSearchWorkerResponseMessage,
     UnitSearchWorkerResultMessage,
@@ -23,6 +24,7 @@ interface UnitSearchWorkerClientOptions {
     onResult: (result: UnitSearchWorkerResultMessage) => void;
     onError: (message: string) => void;
     onReady?: (corpusVersion: UnitSearchWorkerCorpusVersion) => void;
+    onProgress?: (progress: UnitSearchWorkerProgressMessage) => void;
 }
 
 export class UnitSearchWorkerClient {
@@ -30,6 +32,7 @@ export class UnitSearchWorkerClient {
     private readonly onResult: (result: UnitSearchWorkerResultMessage) => void;
     private readonly onError: (message: string) => void;
     private readonly onReady?: (corpusVersion: UnitSearchWorkerCorpusVersion) => void;
+    private readonly onProgress?: (progress: UnitSearchWorkerProgressMessage) => void;
     private worker: SearchWorkerLike | null = null;
     private readyCorpusVersion: UnitSearchWorkerCorpusVersion | null = null;
     private initializingCorpusVersion: UnitSearchWorkerCorpusVersion | null = null;
@@ -43,22 +46,32 @@ export class UnitSearchWorkerClient {
         this.onResult = options.onResult;
         this.onError = options.onError;
         this.onReady = options.onReady;
+        this.onProgress = options.onProgress;
     }
 
-    submit(snapshot: UnitSearchWorkerCorpusSnapshot, request: UnitSearchWorkerQueryRequest): void {
+    isReadyFor(corpusVersion: UnitSearchWorkerCorpusVersion): boolean {
+        return this.readyCorpusVersion === corpusVersion;
+    }
+
+    submit(snapshot: UnitSearchWorkerCorpusSnapshot | null, request: UnitSearchWorkerQueryRequest): void {
         if (this.failed) {
             throw new Error('Search worker client is disabled');
         }
 
         const worker = this.ensureWorker();
-        this.latestSnapshot = snapshot;
         this.pendingRequest = request;
         this.latestRequestedRevision = request.revision;
 
-        if (this.readyCorpusVersion === snapshot.corpusVersion) {
+        if (this.readyCorpusVersion === request.corpusVersion) {
             worker.postMessage({ type: 'execute', request });
             return;
         }
+
+        if (!snapshot || snapshot.corpusVersion !== request.corpusVersion) {
+            throw new Error(`Search worker corpus ${request.corpusVersion} is not ready and no exact snapshot was supplied`);
+        }
+
+        this.latestSnapshot = snapshot;
 
         if (this.initializingCorpusVersion !== snapshot.corpusVersion) {
             this.initializingCorpusVersion = snapshot.corpusVersion;
@@ -90,6 +103,9 @@ export class UnitSearchWorkerClient {
 
     private handleMessage(message: UnitSearchWorkerResponseMessage): void {
         switch (message.type) {
+            case 'progress':
+                this.onProgress?.(message);
+                return;
             case 'ready':
                 this.readyCorpusVersion = message.corpusVersion;
                 if (this.initializingCorpusVersion === message.corpusVersion) {
@@ -97,6 +113,11 @@ export class UnitSearchWorkerClient {
                 }
                 this.onReady?.(message.corpusVersion);
                 this.flushPendingRequest();
+                if (this.latestSnapshot?.corpusVersion === message.corpusVersion) {
+                    // The worker now owns its structured clone. Do not keep a
+                    // second compact corpus alive on the main thread.
+                    this.latestSnapshot = null;
+                }
                 return;
             case 'result':
                 if (message.revision !== this.latestRequestedRevision) {

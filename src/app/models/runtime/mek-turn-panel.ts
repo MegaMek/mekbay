@@ -1,0 +1,252 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import type { ComponentId } from '../entity/entity-identifiers';
+import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import type { CBTRuleset } from '../cbt-ruleset.model';
+import { calculateModifierTotal, type UnitModifierBreakdownEntry, type UnitModifierTotal } from '../combat-modifier';
+import { gameRulesFor } from '../rules/game-rules';
+import {
+    getDefaultAttackerMovementModifier,
+    getTargetMovementBracketForDistance,
+    TN_AIRBORNE_MOVE_TYPE_MODIFIER,
+    TN_IMMOBILE,
+    TN_PRONE,
+    TN_PRONE_ADJACENT,
+    TN_SKIDDING_MODIFIER,
+} from '../target-number-calculator.model';
+import type { MekRuntimeIndex } from './mek-runtime-index';
+import type {
+    MekHeatAutomationPolicyV2,
+    MekHeatProjectionResultV2,
+    MekHeatStateV2,
+} from './mek-heat-state-v2';
+import { movementBoosterUsableWhile } from './component-escalating-failure';
+import type {
+    MekMovementModeV2,
+    MekMovementPsrProjectionResultV2,
+    MekMovementPsrStateV2,
+} from './mek-movement-psr-v2';
+import type { StateRevision } from './runtime-state';
+import type { MekUnitQueryPort } from './unit-instance';
+import type { MekTurnStateV2 } from './mek-turn-state-v2';
+import {
+    isUnitBuildingLevel,
+    resolveUnitBuildingCoverState,
+    type UnitBuildingCoverState,
+} from '../unit-cover.model';
+import { mekUnitHeight, resolveMekUnitWaterState } from './mek-targeting-rules';
+import { MAX_MEK_CREW_WOUNDS } from './runtime-state';
+import { getMekLocationLabel } from '../entity/types';
+
+export type MekAttackMovementModifiers = Readonly<Record<MekMovementModeV2, number>>;
+
+/**
+ * Complete typed turn-tracker read model for the retained Mek UI. Neither an
+ * SVG nor UnitSummary participates in this projection.
+ */
+export interface MekTurnPanelSnapshot {
+    readonly entityUuid: string;
+    readonly stateRevision: StateRevision;
+    readonly hasPendingCombat: boolean;
+    readonly movement: MekMovementPsrProjectionResultV2;
+    readonly movementState: MekMovementPsrStateV2;
+    readonly activeBoosterComponentIds: readonly ComponentId[];
+    readonly locationLabels: Readonly<Record<string, string>>;
+    readonly attackMovementModifiers: MekAttackMovementModifiers;
+    readonly defenseModifierBreakdown: readonly UnitModifierBreakdownEntry[];
+    readonly defenseModifierTotal: UnitModifierTotal;
+    readonly spottingModifier: number;
+    readonly turn: MekTurnStateV2;
+    readonly cover: Readonly<{
+        readonly partiallyUnderwater: boolean;
+        readonly submerged: boolean;
+        readonly building: UnitBuildingCoverState;
+    }>;
+    readonly heat: MekHeatStateV2;
+    readonly heatProjection: MekHeatProjectionResultV2;
+    readonly conditions: readonly string[];
+}
+
+export function projectMekTurnPanel(
+    entity: MekEntity,
+    index: MekRuntimeIndex,
+    ruleset: CBTRuleset,
+    query: MekUnitQueryPort,
+    heatPolicy: MekHeatAutomationPolicyV2,
+): MekTurnPanelSnapshot {
+    const turn = query.turnState();
+    const activeBoosterComponentIds = [...index.components]
+        .filter(([componentId, component]) => component.kind === 'equipment'
+            && movementBoosterUsableWhile(component.mount.equipment, turn.airborne)
+            && query.componentStatus(componentId) !== 'disabled'
+            && query.componentEscalatingFailure(componentId)?.active === true)
+        .map(([componentId]) => componentId)
+        .sort(compareText);
+    const locationLabels = Object.freeze(Object.fromEntries([...index.locations.values()]
+        .map(location => [
+            location.id,
+            getMekLocationLabel(location.code) ?? location.code,
+        ])));
+    const conditions = ['shutdown', 'prone', 'immobile', 'skidding', 'disconnected']
+        .filter(condition => query.hasCondition(condition));
+    const prone = conditions.includes('prone');
+    const height = mekUnitHeight(entity, prone);
+    const movement = query.mekMovementPsr();
+    const runtimeMovementState = query.mekMovementPsrState();
+    const pilotChecks = query.mekPilotChecks();
+    const movementState = pilotChecks === runtimeMovementState.checks
+        ? runtimeMovementState
+        : Object.freeze({ ...runtimeMovementState, checks: pilotChecks });
+    const water = resolveMekUnitWaterState(entity, turn.cover, prone);
+    const building = resolveUnitBuildingCoverState(
+        isUnitBuildingLevel(turn.cover) ? turn.cover : undefined,
+        height,
+    );
+    const attackMovementModifiers = Object.freeze({
+        stationary: 0,
+        walk: mekAttackMovementModifier(entity, 'walk', turn.airborne === true),
+        run: mekAttackMovementModifier(entity, 'run', turn.airborne === true),
+        jump: mekAttackMovementModifier(entity, 'jump', turn.airborne === true),
+        UMU: mekAttackMovementModifier(entity, 'UMU', turn.airborne === true),
+    });
+    const defenseModifierBreakdown = projectMekDefenseModifierBreakdown(
+        ruleset,
+        movementState,
+        turn,
+        conditions,
+    );
+    return Object.freeze({
+        entityUuid: entity.uuid(),
+        stateRevision: query.stateRevision,
+        hasPendingCombat: query.hasPendingCombat(),
+        movement,
+        movementState,
+        activeBoosterComponentIds: Object.freeze(activeBoosterComponentIds),
+        locationLabels,
+        attackMovementModifiers,
+        defenseModifierBreakdown,
+        defenseModifierTotal: calculateModifierTotal(defenseModifierBreakdown),
+        spottingModifier: projectMekSpottingModifier(entity, index, query),
+        turn,
+        cover: Object.freeze({ ...water, building }),
+        heat: query.heatState(),
+        heatProjection: query.heatProjection(heatPolicy),
+        conditions: Object.freeze(conditions),
+    });
+}
+
+/** Production Mek attacker movement rule, including airborne LAM movement. */
+export function mekAttackMovementModifier(
+    entity: MekEntity,
+    mode: MekMovementModeV2,
+    airborne: boolean,
+): number {
+    if (entity.chassisConfig === 'LAM' && airborne) {
+        if (mode === 'walk') return 3;
+        if (mode === 'run') return 4;
+    }
+    return getDefaultAttackerMovementModifier(mode);
+}
+
+export function isMekTurnPanelDirty(snapshot: MekTurnPanelSnapshot): boolean {
+    return snapshot.hasPendingCombat
+        || snapshot.movementState.movement !== null
+        || snapshot.movementState.action !== null
+        || snapshot.movementState.damageThisPhase > 0
+        || snapshot.movementState.checks.length > 0
+        || snapshot.movementState.automaticFalls.length > 0
+        || snapshot.turn.airborne !== null
+        || snapshot.turn.cover !== null
+        || snapshot.turn.weaponsHeat > 0
+        || snapshot.turn.acknowledgedHeatSources.size > 0
+        || snapshot.turn.heatDissipationConsumed > 0
+        || snapshot.turn.spotting
+        || snapshot.turn.equipmentStateChanged
+        || snapshot.heat.pendingOverride !== undefined
+        || (snapshot.heatProjection.kind === 'supported'
+            && snapshot.heatProjection.projection.hasPendingSettlement);
+}
+
+export function isMekTurnPanelDirtyPhase(snapshot: MekTurnPanelSnapshot): boolean {
+    return snapshot.hasPendingCombat
+        || snapshot.movementState.damageThisPhase > 0
+        || snapshot.movementState.checks.some(check => check.status === 'pending')
+        || snapshot.movementState.automaticFalls.length > 0
+        || snapshot.turn.equipmentStateChanged;
+}
+
+/** Production turn-button phase: movement selection first, then weapon fire. */
+export function mekTurnPanelPhase(snapshot: MekTurnPanelSnapshot): 'M' | 'W' | 'P' | 'H' {
+    const coreImmobile = snapshot.movement.kind === 'supported'
+        && snapshot.movement.rulesFlavor === 'core-2026'
+        && snapshot.movement.immobile;
+    return snapshot.movementState.movement === null
+        && snapshot.movementState.action === null
+        && !coreImmobile
+        ? 'M'
+        : 'W';
+}
+
+function projectMekDefenseModifierBreakdown(
+    ruleset: CBTRuleset,
+    movementState: MekMovementPsrStateV2,
+    turn: MekTurnStateV2,
+    conditions: readonly string[],
+): readonly UnitModifierBreakdownEntry[] {
+    const entries: UnitModifierBreakdownEntry[] = [];
+    if (conditions.includes('immobile')) entries.push({ label: 'Immobile', modifier: TN_IMMOBILE });
+    if (gameRulesFor(ruleset).supportsSkidding && conditions.includes('skidding')) {
+        entries.push({ label: 'Skidding', modifier: TN_SKIDDING_MODIFIER });
+    }
+    const movement = movementState.movement;
+    if (movement?.mode === 'jump') {
+        entries.push({ label: 'Jumped', modifier: TN_AIRBORNE_MOVE_TYPE_MODIFIER });
+    } else if (turn.airborne === true) {
+        entries.push({ label: 'Airborne', modifier: TN_AIRBORNE_MOVE_TYPE_MODIFIER });
+    }
+    if (movement !== null && movement.mode !== 'stationary') {
+        const bracket = getTargetMovementBracketForDistance(movement.distance);
+        entries.push({
+            label: `Moved ${bracket?.label ?? movement.distance} hexes`,
+            modifier: bracket?.modifier ?? 0,
+        });
+    }
+    if (conditions.includes('prone')) {
+        entries.push({
+            label: 'Prone',
+            modifier: Math.max(TN_PRONE, TN_PRONE_ADJACENT),
+            alternateModifier: Math.min(TN_PRONE, TN_PRONE_ADJACENT),
+            alternateModifierLabel: 'adjacent',
+        });
+    }
+    return Object.freeze(entries.map(entry => Object.freeze(entry)));
+}
+
+export function projectMekSpottingModifier(
+    entity: MekEntity,
+    index: MekRuntimeIndex,
+    query: MekUnitQueryPort,
+): number {
+    if (!entity.mountedCockpit().hasCommandConsoleBonus) return 1;
+    const crewByOccurrence = new Map([...index.crewPositions.values()]
+        .map(position => [position.occurrence, position] as const));
+    for (const occurrence of [0, 1]) {
+        const position = crewByOccurrence.get(occurrence);
+        if (!position) return 1;
+        const state = query.crewState(position.id);
+        if (state.unconscious || state.ejected || state.wounds >= MAX_MEK_CREW_WOUNDS) return 1;
+    }
+    const cockpit = [...index.components.values()].find(component =>
+        component.kind === 'system' && component.systemType === 'Cockpit');
+    if (!cockpit || query.componentStatus(cockpit.id) !== 'available') return 1;
+    const slots = [...index.slots.values()].filter(slot => slot.componentIds.includes(cockpit.id));
+    return slots.length >= 2 && slots.every(slot =>
+        query.criticalHits(slot.id) === 0 && query.remainingInternal(slot.locationId) > 0)
+        ? 0
+        : 1;
+}
+
+function compareText(left: string, right: string): number {
+    return left < right ? -1 : left > right ? 1 : 0;
+}

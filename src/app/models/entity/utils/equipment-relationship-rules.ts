@@ -6,6 +6,8 @@ import { MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import type { BaseEntity } from '../base-entity';
 import type { EntityMountedEquipment } from '../types';
 import { isWeaponEnhancement } from './equipment-link-rules';
+import { isLaserInsulatorEquipment } from '../../laser-insulator.model';
+import { isRiscLaserPulseModule } from '../../risc-laser-mode.model';
 
 /** Reconcile inferred relationships from the entity's current mounted equipment. */
 export function reconcileEquipmentRelationships(entity: BaseEntity): void {
@@ -39,7 +41,7 @@ export function reconcileEquipmentRelationships(entity: BaseEntity): void {
     if (!(equipment instanceof MiscEquipment) || !isWeaponEnhancement(source)
       || entity.getLinkedMount(source)) continue;
 
-    if (equipment.hasAnyFlag(['F_LASER_INSULATOR', 'F_RISC_LASER_PULSE_MODULE'])) {
+    if (isLaserInsulatorEquipment(equipment) || isRiscLaserPulseModule(equipment)) {
       const predecessor = mounts[index - 1];
       if (predecessor && !claimedTargets.has(predecessor)
         && entity.canLinkEquipment(source, predecessor)) {
@@ -60,11 +62,11 @@ export function reconcileEquipmentRelationships(entity: BaseEntity): void {
   const machineGunArrays: { controller: EntityMountedEquipment; mounts: EntityMountedEquipment[] }[] = [];
   for (const controller of mounts) {
     const equipment = controller.equipment;
-    if (!(equipment instanceof WeaponEquipment) || !equipment.hasFlag('F_MGA')) continue;
+    if (!(equipment instanceof WeaponEquipment) || !equipment.hasWeaponTrait('machine-gun-array')) continue;
     const members = mounts.filter(candidate => {
       const weapon = candidate.equipment;
       return candidate !== controller && weapon instanceof WeaponEquipment
-        && weapon.hasFlag('F_MG') && !weapon.hasFlag('F_MGA')
+        && weapon.hasWeaponTrait('machine-gun') && !weapon.hasWeaponTrait('machine-gun-array')
         && candidate.location === controller.location && weapon.rackSize === equipment.rackSize
         && !claimedMachineGuns.has(candidate);
     }).slice(0, 4);

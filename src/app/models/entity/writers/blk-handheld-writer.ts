@@ -8,6 +8,7 @@ import {
   writeArmorBlocks,
   writeBlkPreamble,
   writeFluffBlocks,
+  writeEmbeddedImages,
   writeInternalType,
   writeSource,
   writeTonnage,
@@ -51,5 +52,7 @@ export function writeBlkHandheld(entity: HandheldWeaponEntity): string {
   writeSource(w, entity);
   writeTonnage(w, entity);
 
-  return w.toString();
+  writeEmbeddedImages(w, entity);
+
+  return w.toString(entity.nativeSourceTrailingNewlines || 2);
 }

@@ -4,6 +4,8 @@
 
 // ── Types & Constants ──
 export * from './types';
+export * from './codec-capabilities';
+export * from './entity-state-view';
 
 // ── Base Entity ──
 export { BaseEntity } from './base-entity';
@@ -45,12 +47,10 @@ export { LamEntity } from './entities/mek/lam-entity';
 
 // ── Mek Parsers ──
 export { parseMtf } from './parsers/mtf-parser';
-export { parseBlkMek } from './parsers/blk-mek-parser';
 export { parseBaseBlk, getBlkEquipmentLines, getBlkTechBase } from './parsers/blk-base-parser';
 
 // ── Mek Writers ──
 export { writeMtf } from './writers/mtf-writer';
-export { writeBlkMek } from './writers/blk-mek-writer';
 
 // ── Aero Entities ──
 export { AeroEntity } from './entities/aero/aero-entity';
@@ -121,18 +121,21 @@ export { writeBlkLargeCraft } from './writers/blk-largecraft-writer';
 
 // ── Misc Entities ──
 export { HandheldWeaponEntity } from './entities/misc/handheld-weapon-entity';
+export { StaticEmplacementEntity } from './entities/misc/static-emplacement-entity';
 
 // ── Misc Parsers ──
 export { parseBlkHandheld } from './parsers/blk-handheld-parser';
+export { parseBlkStaticEmplacement } from './parsers/blk-static-emplacement-parser';
 
 // ── Misc Writers ──
 export { writeBlkHandheld } from './writers/blk-handheld-writer';
 
 // ── Dispatch Entry Points ──
 export { parseEntity } from './parse-entity';
+export { UnsupportedNativeFormatError } from './parse-entity';
 export type { ParseResult } from './parse-entity';
-export { writeEntity } from './write-entity';
+export { encodeNativeEntity } from './write-entity';
 
 // ── Parse Context ──
-export { ParseContext } from './parsers/parse-context';
-export type { ParseDiagnostic, ParseSeverity, EquipmentFallbackFn } from './parsers/parse-context';
+export { ParseContext, isEntityLoadIssueArray } from './parsers/parse-context';
+export type { EntityLoadIssue, ParseSeverity, EquipmentFallbackFn } from './parsers/parse-context';

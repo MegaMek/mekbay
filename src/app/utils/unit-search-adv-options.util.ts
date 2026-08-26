@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Unit } from '../models/units.model';
-import { getProperty, getUnitComponentData, getUnitCountableFilterData } from './unit-search-shared.util';
+import type { UnitSummary } from '../models/unit-summary.model';
+import { getProperty, getUnitComponentData, getUnitCountableFilterData, getUnitSearchIdentityKey } from './unit-search-shared.util';
 
 export interface AdvOptionsContextSnapshot {
     unitIds?: Set<string>;
@@ -14,8 +14,8 @@ export interface AdvOptionsContextSnapshot {
 }
 
 export function getAdvOptionsContextSnapshot(
-    cache: WeakMap<Unit[], AdvOptionsContextSnapshot>,
-    units: Unit[],
+    cache: WeakMap<UnitSummary[], AdvOptionsContextSnapshot>,
+    units: UnitSummary[],
 ): AdvOptionsContextSnapshot {
     let snapshot = cache.get(units);
     if (!snapshot) {
@@ -29,17 +29,17 @@ export function getAdvOptionsContextSnapshot(
     return snapshot;
 }
 
-export function getSnapshotUnitIds(snapshot: AdvOptionsContextSnapshot, units: Unit[]): Set<string> {
+export function getSnapshotUnitIds(snapshot: AdvOptionsContextSnapshot, units: UnitSummary[]): Set<string> {
     if (!snapshot.unitIds) {
-        snapshot.unitIds = new Set(units.map(unit => unit.name));
+        snapshot.unitIds = new Set(units.map(getUnitSearchIdentityKey));
     }
     return snapshot.unitIds;
 }
 
 export function getSnapshotForcePackNames(
     snapshot: AdvOptionsContextSnapshot,
-    units: Unit[],
-    getForcePacksForUnit: (unit: Unit) => Iterable<string>,
+    units: UnitSummary[],
+    getForcePacksForUnit: (unit: UnitSummary) => Iterable<string>,
 ): Set<string> {
     if (!snapshot.forcePackNames) {
         const packNames = new Set<string>();
@@ -56,7 +56,7 @@ export function getSnapshotForcePackNames(
 function ensureSnapshotFilterNames(
     snapshot: AdvOptionsContextSnapshot,
     filterKey: string,
-    units: Unit[],
+    units: UnitSummary[],
     isComponentFilter: boolean,
 ): void {
     if (snapshot.namesByFilterKey.has(filterKey) && snapshot.availabilityNamesByFilterKey.has(filterKey)) {
@@ -105,7 +105,7 @@ function ensureSnapshotFilterNames(
 export function getSnapshotAvailableNames(
     snapshot: AdvOptionsContextSnapshot,
     filterKey: string,
-    units: Unit[],
+    units: UnitSummary[],
     isComponentFilter: boolean,
 ): string[] {
     ensureSnapshotFilterNames(snapshot, filterKey, units, isComponentFilter);
@@ -115,7 +115,7 @@ export function getSnapshotAvailableNames(
 export function getSnapshotAvailabilityNames(
     snapshot: AdvOptionsContextSnapshot,
     filterKey: string,
-    units: Unit[],
+    units: UnitSummary[],
     isComponentFilter: boolean,
 ): Set<string> {
     ensureSnapshotFilterNames(snapshot, filterKey, units, isComponentFilter);
@@ -125,7 +125,7 @@ export function getSnapshotAvailabilityNames(
 export function getSnapshotCountableValues(
     snapshot: AdvOptionsContextSnapshot,
     filterKey: string,
-    units: Unit[],
+    units: UnitSummary[],
 ): Map<string, number> {
     snapshot.countsByFilterKey ??= new Map<string, Map<string, number>>();
     let counts = snapshot.countsByFilterKey.get(filterKey);

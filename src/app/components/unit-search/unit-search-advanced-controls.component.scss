@@ -252,6 +252,9 @@
     width: 12px;
     height: 8px;
     background: var(--bt-yellow);
+}
+
+.budget-mode-switch-control.animate-thumb .budget-mode-switch-thumb {
     transition: transform .12s, background-color .12s;
 }
 

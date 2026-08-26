@@ -10,6 +10,7 @@ import { outputToObservable } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
 import { DataService } from '../../services/data.service';
 import { buildEraWarningMessage, getEraUnitValidationSummary, type Force } from '../../models/force.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { getFactionImg, type Faction, type FactionId } from '../../models/factions.model';
 import type { Era } from '../../models/eras.model';
 import { ForceNamerUtil, type FactionDisplayInfo } from '../../utils/force-namer.util';
@@ -20,6 +21,7 @@ import { EraDropdownPanelComponent, type EraDisplayInfo, type EraDropdownPointer
 import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
 import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
 import { DropdownPointerActivationGuard, scrollActiveOptionIntoView } from '../../utils/dropdown-interaction.utils';
+import { forceMemberSummary } from '../../models/force-member.model';
 
 
 
@@ -455,14 +457,15 @@ export class RenameForceDialogComponent implements OnDestroy {
     factionDropdownOpen = signal(false);
     activeEraId = signal<number | null>(this.data.force.era()?.id ?? null);
     activeFactionId = signal<FactionId | null>(this.data.force.faction()?.id ?? null);
+    unitSummaries = computed(() => this.data.force.members().map(forceMemberSummary));
     availabilityContext = computed(() => this.unitAvailabilitySource.createForceAvailabilityContextForUnits(
-        this.data.force.units().map((unit) => unit.getUnit()),
+        this.unitSummaries(),
         this.dataService.getEras(),
     ));
 
     eraDisplayList = computed<EraDisplayInfo[]>(() => {
         const eras = this.dataService.getEras();
-        const units = this.data.force.units();
+        const units = this.unitSummaries();
         const availabilityContext = this.availabilityContext();
         if (units.length === 0) {
             return eras.map(era => ({ era, matchPercentage: 100 }));
@@ -490,7 +493,7 @@ export class RenameForceDialogComponent implements OnDestroy {
         const availabilityContext = this.availabilityContext();
         const extinctFaction = this.dataService.getFactionById(MULFACTION_EXTINCT) ?? null;
         return buildEraWarningMessage(
-            this.data.force.units(),
+            this.unitSummaries(),
             this.selectedEra(),
             this.selectedFaction(),
             this.dataService.getEras(),
@@ -512,7 +515,7 @@ export class RenameForceDialogComponent implements OnDestroy {
     });
 
     factionDisplayList = computed<FactionDisplayInfo[]>(() => {
-        const units = this.data.force.units();
+        const units = this.forceSummaries();
         return ForceNamerUtil.buildFactionDisplayList(
             units,
             this.dataService.getFactions(),
@@ -683,7 +686,7 @@ export class RenameForceDialogComponent implements OnDestroy {
     }
 
     fillRandomFaction() {
-        const units = this.data.force.units();
+        const units = this.forceSummaries();
         const randomFaction = ForceNamerUtil.pickRandomFaction(
             units,
             this.dataService.getFactions(),
@@ -693,6 +696,10 @@ export class RenameForceDialogComponent implements OnDestroy {
         );
         if (randomFaction === this.selectedFaction()) return; // no change
         this.selectedFaction.set(randomFaction);
+    }
+
+    private forceSummaries(): UnitSummary[] {
+        return this.data.force.members().map(forceMemberSummary);
     }
 
     toggleFactionDropdown(): void {

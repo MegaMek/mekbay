@@ -9,11 +9,13 @@ import {
     WeaponDamage,
     WeaponEquipment,
 } from '../models/equipment.model';
+import { isGaussEquipment } from '../models/gauss-equipment.model';
+import { isHagEquipment } from '../models/hag-mode.model';
 import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
-import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import type { AmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
 import type { InventoryControlRuntimeRangeKey } from '../models/inventory-control-runtime-state.model';
+import type { ComponentId } from '../models/entity/entity-identifiers';
 import {
     formatWeaponDamage,
     type WeaponDamageRange,
@@ -24,6 +26,7 @@ export interface InventoryControlDamageContext {
     readonly selectedAmmo: AmmoEquipment | null;
     readonly equipmentCatalog: EquipmentRegistry;
     readonly ammoProfile?: AmmoWeaponProfile | null;
+    readonly damageOverride?: WeaponEquipment['damage'];
 }
 
 export interface DefaultWeaponDamageContext {
@@ -37,14 +40,22 @@ export interface InventoryControlDamageResolution {
     readonly text: string;
 }
 
+/** Immutable component-local input for inventory weapon-damage projection. */
+export interface InventoryControlDamageComponentFacts {
+    readonly componentId: ComponentId;
+    readonly physical: boolean;
+    /** Catalog rule subject only; never a mounted component or mutable owner graph. */
+    readonly weapon: WeaponEquipment | null;
+}
+
 export interface InventoryControlDamageRules {
     applyDamageEffects?: (
-        entry: MountedEquipment,
+        componentId: ComponentId,
         damage: WeaponDamage,
         context: InventoryControlDamageContext
     ) => WeaponDamage;
     applyWeaponTypes?: (
-        entry: MountedEquipment,
+        componentId: ComponentId,
         types: ReadonlySet<WeaponType>
     ) => ReadonlySet<WeaponType>;
 }
@@ -58,11 +69,11 @@ export function inventoryControlDamageRange(
 }
 
 export function resolveInventoryControlDamageText(
-    entry: MountedEquipment,
+    component: InventoryControlDamageComponentFacts,
     context: InventoryControlDamageContext,
     rules: InventoryControlDamageRules = {}
 ): string | null {
-    return resolveInventoryControlWeaponDamage(entry, context, rules)?.text ?? null;
+    return resolveInventoryControlWeaponDamage(component, context, rules)?.text ?? null;
 }
 
 export function resolveDefaultWeaponDamageText(
@@ -86,25 +97,27 @@ export function resolveDefaultWeaponDamageText(
 }
 
 export function resolveInventoryControlWeaponDamage(
-    entry: MountedEquipment,
+    component: InventoryControlDamageComponentFacts,
     context: InventoryControlDamageContext,
     rules: InventoryControlDamageRules = {}
 ): InventoryControlDamageResolution | null {
-    if (entry.isPhysicalWeapon() || !(entry.equipment instanceof WeaponEquipment)) return null;
+    const weapon = component.weapon;
+    if (component.physical || !weapon) return null;
 
-    const ammo = resolveWeaponAmmo(entry.equipment, context.equipmentCatalog, {
+    const ammo = resolveWeaponAmmo(weapon, context.equipmentCatalog, {
         ammo: context.selectedAmmo,
         ammoProfile: context.ammoProfile,
     });
-    const baseDamage = resolveWeaponDamage(entry.equipment, context.equipmentCatalog, {
+    const baseDamage = resolveWeaponDamage(weapon, context.equipmentCatalog, {
         ammo,
         ammoProfile: context.ammoProfile,
         range: context.selectedRange,
+        damageOverride: context.damageOverride,
     });
-    const damageTypes = getInventoryControlDamageTypes(entry, ammo, rules);
-    const modifiedDamage = rules.applyDamageEffects?.(entry, baseDamage, context) ?? baseDamage;
+    const damageTypes = getInventoryControlDamageTypes(component, ammo, rules);
+    const modifiedDamage = rules.applyDamageEffects?.(component.componentId, baseDamage, context) ?? baseDamage;
     const damage = context.selectedRange === 'extreme'
-        ? applyExtremeRangeDamageRules(entry.equipment, modifiedDamage, damageTypes)
+        ? applyExtremeRangeDamageRules(weapon, modifiedDamage, damageTypes)
         : modifiedDamage;
     return {
         damage,
@@ -112,7 +125,7 @@ export function resolveInventoryControlWeaponDamage(
         text: formatDamageWithTypes(
             damage,
             damageTypes,
-            entry.equipment,
+            weapon,
             ammo,
             context.ammoProfile
         ),
@@ -128,11 +141,11 @@ function applyExtremeRangeDamageRules(
     let subtraction = 0;
     let multiplier = 1;
 
-    if (weapon.hasFlag('F_PULSE')) divisor = 2;
-    if (damageTypes.includes('DE') || (weapon.hasFlag('F_GAUSS') && !weapon.hasFlag('F_HAG'))) {
+    if (weapon.hasWeaponTrait('pulse')) divisor = 2;
+    if (damageTypes.includes('DE') || (isGaussEquipment(weapon) && !isHagEquipment(weapon))) {
         subtraction = 1;
     }
-    if (damageTypes.includes('DB') && !weapon.hasFlag('F_GAUSS')) multiplier = 0.75;
+    if (damageTypes.includes('DB') && !isGaussEquipment(weapon)) multiplier = 0.75;
 
     if (divisor === 1 && subtraction === 0 && multiplier === 1) return damage;
     const adjust = (value: number): number => Math.max(0, Math.floor(((value / divisor) - subtraction) * multiplier));
@@ -144,16 +157,15 @@ function applyExtremeRangeDamageRules(
 }
 
 export function getInventoryControlDamageTypes(
-    entry: MountedEquipment,
+    component: InventoryControlDamageComponentFacts,
     selectedAmmo?: AmmoEquipment | null,
     rules: InventoryControlDamageRules = {}
 ): WeaponType[] {
-    if (entry.isPhysicalWeapon() || !(entry.equipment instanceof WeaponEquipment)) return [];
+    const weapon = component.weapon;
+    if (component.physical || !weapon) return [];
 
-    const baseTypes = entry instanceof MountedWeapon
-        ? new Set(entry.getWeaponTypes(selectedAmmo))
-        : getUnmountedWeaponTypes(entry.equipment, selectedAmmo);
-    const effectiveTypes = rules.applyWeaponTypes?.(entry, baseTypes) ?? baseTypes;
+    const baseTypes = getUnmountedWeaponTypes(weapon, selectedAmmo);
+    const effectiveTypes = rules.applyWeaponTypes?.(component.componentId, baseTypes) ?? baseTypes;
     return WEAPON_TYPES.filter(type => effectiveTypes.has(type));
 }
 

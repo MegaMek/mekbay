@@ -7,10 +7,10 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { ForceTagSelectorComponent } from '../components/force-tag-selector/force-tag-selector.component';
-import { ForceBuilderService } from './force-builder.service';
 import { DataService } from './data.service';
 import { DialogsService } from './dialogs.service';
 import { ForceTaggingService } from './force-tagging.service';
+import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { OverlayManagerService } from './overlay-manager.service';
 
 describe('ForceTaggingService', () => {
@@ -58,7 +58,7 @@ describe('ForceTaggingService', () => {
                 provideZonelessChangeDetection(),
                 ForceTaggingService,
                 { provide: DataService, useValue: dataServiceMock },
-                { provide: ForceBuilderService, useValue: forceBuilderServiceMock },
+                { provide: ForceWorkspaceStateService, useValue: forceBuilderServiceMock },
                 { provide: OverlayManagerService, useValue: overlayManagerMock },
                 { provide: DialogsService, useValue: dialogsServiceMock },
                 { provide: Overlay, useValue: overlayMock },

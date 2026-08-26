@@ -21,6 +21,6 @@ export interface Era {
 
 export interface Eras {
     version: string;
-    etag: string;
+    assetHash: string;
     eras: Era[];
 }

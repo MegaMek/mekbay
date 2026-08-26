@@ -4,9 +4,8 @@
 
 import { Injectable } from '@angular/core';
 
-import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import type { PageViewerSwipeSlotExtensionPlan } from './page-viewer-swipe-slot.service';
-import type { PageViewerOverlayMode } from './types';
+import type { PageViewerMember, PageViewerOverlayMode } from './types';
 import type { PageViewerSwipeRendererInstruction, PageViewerSwipeRendererSlotState, PageViewerSwipeRendererUpdate } from './page-viewer-swipe-renderer.service';
 import { PageViewerWrapperLayoutService } from './page-viewer-wrapper-layout.service';
 
@@ -213,21 +212,21 @@ export class PageViewerSwipeDomService {
         slotStates: PageViewerSwipeRendererSlotState[];
         swipeSlotSvgs: (SVGSVGElement | null)[];
         renderUpdate: Pick<PageViewerSwipeRendererUpdate, 'clearSlotIndices' | 'attachedUnitToSlotMap' | 'slotInstructions'>;
-        resolveUnit: (unitIndex: number) => CBTForceUnit | undefined;
+        resolveUnit: (unitIndex: number) => PageViewerMember | undefined;
         scale: number;
         visiblePages: number;
         readOnly: boolean;
         showFluff: boolean;
         performanceMode: boolean;
         setPageWrapperContentState: (wrapper: HTMLDivElement, hasSvg: boolean) => void;
-        setSwipePlaceholderContent: (wrapper: HTMLDivElement, unit: CBTForceUnit) => void;
+        setSwipePlaceholderContent: (wrapper: HTMLDivElement, unit: PageViewerMember) => void;
         clearSwipePlaceholderContent: (wrapper: HTMLDivElement) => void;
         setWrapperSelectedState: (wrapper: HTMLDivElement, isSelected: boolean) => void;
         setSwipeNeighborVisibilityState: (wrapper: HTMLDivElement, isVisible: boolean) => void;
         attachSvgToWrapper: (options: { wrapper: HTMLDivElement; svg: SVGSVGElement; scale?: number; setAsCurrent?: boolean }) => void;
         applyFluffImageVisibilityToSvg: (svg: SVGSVGElement, showFluff: boolean) => void;
-        bindWrapperInteractiveLayers: (wrapper: HTMLDivElement, unit: CBTForceUnit, svg: SVGSVGElement, overlayMode: PageViewerOverlayMode) => void;
-        getOrCreateInteractionOverlay: (wrapper: HTMLDivElement, unit: CBTForceUnit, overlayMode: PageViewerOverlayMode) => unknown;
+        bindWrapperInteractiveLayers: (wrapper: HTMLDivElement, unit: PageViewerMember, svg: SVGSVGElement, overlayMode: PageViewerOverlayMode) => void;
+        getOrCreateInteractionOverlay: (wrapper: HTMLDivElement, unit: PageViewerMember, overlayMode: PageViewerOverlayMode) => unknown;
     }): Set<string> {
         const {
             addOnly,
@@ -352,7 +351,7 @@ export class PageViewerSwipeDomService {
     applyInstructions(options: {
         slotStates: PageViewerSwipeRendererSlotState[];
         slotInstructions: readonly PageViewerSwipeRendererInstruction[];
-        resolveUnit: (unitIndex: number) => CBTForceUnit | undefined;
+        resolveUnit: (unitIndex: number) => PageViewerMember | undefined;
         attachedUnitToSlotMap: Map<number, number>;
         scale: number;
         visiblePages: number;
@@ -360,14 +359,14 @@ export class PageViewerSwipeDomService {
         showFluff: boolean;
         performanceMode: boolean;
         setPageWrapperContentState: (wrapper: HTMLDivElement, hasSvg: boolean) => void;
-        setSwipePlaceholderContent: (wrapper: HTMLDivElement, unit: CBTForceUnit) => void;
+        setSwipePlaceholderContent: (wrapper: HTMLDivElement, unit: PageViewerMember) => void;
         clearSwipePlaceholderContent: (wrapper: HTMLDivElement) => void;
         setWrapperSelectedState: (wrapper: HTMLDivElement, isSelected: boolean) => void;
         setSwipeNeighborVisibilityState: (wrapper: HTMLDivElement, isVisible: boolean) => void;
         attachSvgToWrapper: (options: { wrapper: HTMLDivElement; svg: SVGSVGElement; scale?: number; setAsCurrent?: boolean }) => void;
         applyFluffImageVisibilityToSvg: (svg: SVGSVGElement, showFluff: boolean) => void;
-        bindWrapperInteractiveLayers: (wrapper: HTMLDivElement, unit: CBTForceUnit, svg: SVGSVGElement, overlayMode: PageViewerOverlayMode) => void;
-        getOrCreateInteractionOverlay: (wrapper: HTMLDivElement, unit: CBTForceUnit, overlayMode: PageViewerOverlayMode) => unknown;
+        bindWrapperInteractiveLayers: (wrapper: HTMLDivElement, unit: PageViewerMember, svg: SVGSVGElement, overlayMode: PageViewerOverlayMode) => void;
+        getOrCreateInteractionOverlay: (wrapper: HTMLDivElement, unit: PageViewerMember, overlayMode: PageViewerOverlayMode) => unknown;
     }): Set<string> {
         const displayedUnitIds = new Set<string>();
         const {
@@ -454,8 +453,8 @@ export class PageViewerSwipeDomService {
     resolveDisplayedUnits(options: {
         addOnly: boolean;
         winningUnitIndices: Iterable<number>;
-        units: readonly CBTForceUnit[];
-    }): CBTForceUnit[] | null {
+        units: readonly PageViewerMember[];
+    }): PageViewerMember[] | null {
         const { addOnly, winningUnitIndices, units } = options;
         if (addOnly) {
             return null;
@@ -463,7 +462,7 @@ export class PageViewerSwipeDomService {
 
         return Array.from(new Set(winningUnitIndices))
             .map((unitIndex) => units[unitIndex])
-            .filter((unit): unit is CBTForceUnit => !!unit);
+            .filter((unit): unit is PageViewerMember => !!unit);
     }
 
     private createSlotElement(options: {

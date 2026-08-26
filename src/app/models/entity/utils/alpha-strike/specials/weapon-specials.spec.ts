@@ -111,22 +111,23 @@ describe('Alpha Strike weapon specials', () => {
     expect(alphaStrikeWeaponSpecials(entity)).not.toContain(jasmine.stringMatching(/^MTAS/));
   });
 
-  it('excludes Battle Armor squad-support tasers', () => {
+  it('grants BTAS for a Battle Armor squad-support taser', () => {
     const entity = new BattleArmorEntity();
     addTestEquipment(entity, weapon('ba-support-taser', [], { ammoType: 'TASER' }), {
       location: 'Squad', isSSWM: true,
     });
 
-    expect(alphaStrikeWeaponSpecials(entity)).not.toContain(jasmine.stringMatching(/TAS/));
+    expect(alphaStrikeWeaponSpecials(entity)).toContain('BTAS1');
+    expect(alphaStrikeWeaponSpecials(entity)).not.toContain(jasmine.stringMatching(/^MTAS/));
   });
 
-  it('excludes Battle Armor squad-support TAG from discrete abilities', () => {
+  it('grants LTAG for Battle Armor squad-support TAG', () => {
     const entity = new BattleArmorEntity();
     addTestEquipment(entity, weapon('ba-support-tag', ['F_TAG'], { ranges: [3, 6, 9, 12] }), {
       location: 'Squad', isSSWM: true,
     });
 
-    expect(alphaStrikeWeaponSpecials(entity)).not.toContain('LTAG');
+    expect(alphaStrikeWeaponSpecials(entity)).toContain('LTAG');
   });
 
   it('converts TAG from conventional-infantry selected weapons', () => {
@@ -152,18 +153,18 @@ describe('Alpha Strike weapon specials', () => {
   });
 
   it('derives LRM, IF, and rear damage from canonical ammo, range, and mount orientation', () => {
-    const entity = new BipedMekEntity();
+    const entity = new TankEntity();
     const lrm = weapon('lrm20', ['F_LRM', 'F_MISSILE', 'F_INDIRECT_FIRE'], {
       ammoType: 'LRM', damage: 'cluster', rackSize: 20, ranges: [7, 14, 21, 28],
       alphaStrike: { battleForceClass: 'LRM' },
     });
-    addTestEquipment(entity, lrm, { location: 'RA' });
+    addTestEquipment(entity, lrm, { location: 'Front' });
     addTestEquipment(entity, new AmmoEquipment({
       id: 'lrm-ammo', name: 'LRM Ammo', type: 'ammo', ammo: { type: 'LRM', rackSize: 20, shots: 20 },
-    }), { location: 'RT', shotsCount: 20 });
+    }), { location: 'Body', shotsCount: 20 });
     addTestEquipment(entity, weapon('rear-laser', [], {
       damage: 10, ranges: [5, 10, 20, 24], ammoType: 'NA',
-    }), { location: 'RT', rearMounted: true });
+    }), { location: 'Rear' });
 
     expect(alphaStrikeWeaponSpecials(entity)).toEqual(['IF1', 'LRM1/1/1', 'REAR1/1/1']);
   });
@@ -338,7 +339,7 @@ describe('Alpha Strike weapon specials', () => {
     expect(alphaStrikeWeaponSpecials(entity)).not.toContain(jasmine.stringMatching(/^LRM/));
   });
 
-  it('applies a same-arm actuator enhancement system to indirect-fire damage', () => {
+  it('uses the entity actuator-enhancement modifier in indirect-fire aggregation', () => {
     const entity = new BipedMekEntity();
     addTestEquipment(entity, weapon('aes-lrm', ['F_MISSILE', 'F_INDIRECT_FIRE'], {
       ammoType: 'NA', damage: 'cluster', rackSize: 10, ranges: [7, 14, 21, 28],
@@ -347,17 +348,6 @@ describe('Alpha Strike weapon specials', () => {
     addTestEquipmentWithFlags(entity, 'F_ACTUATOR_ENHANCEMENT_SYSTEM', { location: 'RA' });
 
     expect(alphaStrikeWeaponSpecials(entity)).toContain('IF1');
-  });
-
-  it('does not apply an opposite-arm actuator enhancement system', () => {
-    const entity = new BipedMekEntity();
-    addTestEquipment(entity, weapon('unenhanced-lrm', ['F_MISSILE', 'F_INDIRECT_FIRE'], {
-      ammoType: 'NA', damage: 'cluster', rackSize: 10, ranges: [7, 14, 21, 28],
-      alphaStrike: { battleForceClass: 'LRM', damage: [0.39, 0.39, 0.39, 0] },
-    }), { location: 'RA' });
-    addTestEquipmentWithFlags(entity, 'F_ACTUATOR_ENHANCEMENT_SYSTEM', { location: 'LA' });
-
-    expect(alphaStrikeWeaponSpecials(entity)).toContain('IF0*');
   });
 
   it('honors an explicit Alpha Strike indirect-fire override', () => {

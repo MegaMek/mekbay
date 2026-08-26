@@ -50,109 +50,6 @@ describe('createForcePreviewUnitFromSerializedUnit', () => {
         expect(result.piloting).toBeUndefined();
     });
 
-    it('reads classic crew skills from serialized CBT units', () => {
-        const serializedUnit = {
-            id: 'cbt-1',
-            unit: 'Atlas AS7-D',
-            commander: false,
-            state: {
-                modified: false,
-                destroyed: false,
-                shutdown: false,
-                crew: [
-                    { id: 0, name: 'Pilot 1', gunnerySkill: 4, pilotingSkill: 5, hits: 0, state: 0 },
-                    { id: 1, name: 'Pilot 2', gunnerySkill: 3, pilotingSkill: 4, hits: 0, state: 0 },
-                ],
-                crits: [],
-                locations: {},
-                heat: {
-                    current: 0,
-                    previous: 0,
-                },
-            },
-        } as any;
-
-        const result = createForcePreviewUnitFromSerializedUnit(serializedUnit, getUnitByName);
-
-        expect(result).toEqual(jasmine.objectContaining({
-            gunnery: 3,
-            piloting: 4,
-            commander: false,
-            crew: [
-                { id: 0, name: 'Pilot 1', gunnery: 4, piloting: 5 },
-                { id: 1, name: 'Pilot 2', gunnery: 3, piloting: 4 },
-            ],
-        }));
-        expect(result.skill).toBeUndefined();
-    });
-
-    it('includes LAM aerospace skills in serialized synthetic minima', () => {
-        const serializedUnit = {
-            id: 'lam-1',
-            unit: 'Phoenix Hawk LAM',
-            state: {
-                crew: [{
-                    id: 0,
-                    name: 'LAM Pilot',
-                    gunnerySkill: 4,
-                    pilotingSkill: 5,
-                    asfGunnerySkill: 2,
-                    asfPilotingSkill: 3,
-                    hits: 0,
-                    state: 0,
-                }],
-                crits: [],
-                locations: {},
-                heat: { current: 0, previous: 0 },
-            },
-        } as any;
-
-        const result = createForcePreviewUnitFromSerializedUnit(serializedUnit, getUnitByName);
-
-        expect(result.gunnery).toBe(2);
-        expect(result.piloting).toBe(3);
-        expect(result.crew).toEqual([{
-            id: 0,
-            name: 'LAM Pilot',
-            gunnery: 4,
-            piloting: 5,
-            asfGunnery: 2,
-            asfPiloting: 3,
-        }]);
-    });
-
-    it('ignores serialized aerospace fallback skills for non-LAM units', () => {
-        const serializedUnit = {
-            id: 'cbt-2',
-            unit: 'Atlas AS7-D',
-            state: {
-                crew: [{
-                    id: 0,
-                    name: 'Recruit',
-                    gunnerySkill: 6,
-                    pilotingSkill: 7,
-                    asfGunnerySkill: 4,
-                    asfPilotingSkill: 5,
-                    hits: 0,
-                    state: 0,
-                }],
-                crits: [],
-                locations: {},
-                heat: { current: 0, previous: 0 },
-            },
-        } as any;
-
-        const result = createForcePreviewUnitFromSerializedUnit(serializedUnit, getUnitByName);
-
-        expect(result.gunnery).toBe(6);
-        expect(result.piloting).toBe(7);
-        expect(result.crew).toEqual([{
-            id: 0,
-            name: 'Recruit',
-            gunnery: 6,
-            piloting: 7,
-        }]);
-    });
 });
 
 describe('createForcePreviewEntryFromForce', () => {
@@ -161,11 +58,13 @@ describe('createForcePreviewEntryFromForce', () => {
         const liveUnit = {
             id: 'as-1',
             destroyed: false,
-            getUnit: () => resolvedUnit,
+            getSummary: () => resolvedUnit,
             alias: () => 'Ace',
             commander: () => true,
             getPilotSkill: () => 3,
             getPilotStats: () => 3,
+            getBv: () => 123,
+            getPreSkillBv: () => 100,
         } as any;
 
         const force = {
@@ -187,7 +86,7 @@ describe('createForcePreviewEntryFromForce', () => {
             }],
         } as any;
 
-        const result = createForcePreviewEntryFromForce(force);
+        const result = createForcePreviewEntryFromForce(force, [liveUnit]);
 
         expect(force.serialize).not.toHaveBeenCalled();
         expect(result instanceof LoadForceEntry).toBe(false);
@@ -204,75 +103,57 @@ describe('createForcePreviewEntryFromForce', () => {
         expect(getForcePreviewUnitPilotStats(result.groups[0].units[0], result.type)).toBe('3');
     });
 
-    it('builds classic pilot stats from live force units and skips empty groups', () => {
-        const resolvedUnit = { name: 'Atlas AS7-D', type: 'Mek' } as any;
-        const liveUnit = {
-            id: 'cbt-1',
-            destroyed: false,
-            getUnit: () => resolvedUnit,
-            alias: () => 'Veteran',
-            commander: () => false,
-            getPilotStats: () => '3/4',
-            gunnerySkill: () => 3,
-            pilotingSkill: () => 4,
-            getCrewMembers: () => [
-                {
-                    getId: () => 0,
-                    getName: () => 'Veteran',
-                    getSkill: (skillType: 'gunnery' | 'piloting') => skillType === 'gunnery' ? 3 : 5,
-                },
-                {
-                    getId: () => 1,
-                    getName: () => 'Driver',
-                    getSkill: (skillType: 'gunnery' | 'piloting') => skillType === 'gunnery' ? 4 : 4,
-                },
-            ],
-        } as any;
-
+    it('projects a retained CBT member through the original summary view', () => {
+        const resolvedUnit = { name: 'Crab CRB-20', type: 'Mek', bv: 1143 } as any;
         const force = {
-            serialize: jasmine.createSpy('serialize'),
-            instanceId: () => null,
+            instanceId: () => 'force-v2',
             owned: () => true,
-            name: 'Unsaved Classic Force',
-            note: 'Drop-ready line unit.',
-            tags: ['Line', 'Drop'],
+            name: 'Retained Force',
+            note: '',
+            tags: [],
             gameSystem: GameSystem.CLASSIC,
             faction: () => null,
             era: () => null,
-            totalBv: () => 1400,
-            timestamp: null,
-            groups: () => [
-                {
-                    name: () => undefined,
-                    activeFormation: () => null,
-                    units: () => [liveUnit],
-                },
-                {
-                    name: () => 'Empty Group',
-                    activeFormation: () => null,
-                    units: () => [],
-                },
-            ],
+            timestamp: '2026-08-14T00:00:00.000Z',
+            groups: () => [{
+                id: 'group-v2',
+                name: () => 'Lance',
+                activeFormation: () => null,
+                units: () => [],
+            }],
+            getUnitCrewAssignment: () => ({
+                schemaVersion: 1,
+                positions: [{ positionId: 'crew:pilot', name: 'Ace', role: 'pilot', gunnery: 3, piloting: 4 }],
+            }),
+            getUnitDestroyed: () => true,
+            isUnitCommander: () => true,
+            getUnitAdjustedBattleValue: () => 1200,
+            getUnitPristineBattleValue: () => 1143,
         } as any;
+        const member = {
+            kind: 'cbt',
+            id: 'unit-v2',
+            force,
+            summary: resolvedUnit,
+            rosterGroupId: 'group-v2',
+            adjustedBattleValue: () => 1200,
+        } as const;
 
-        const result = createForcePreviewEntryFromForce(force);
+        const result = createForcePreviewEntryFromForce(force, [member as any]);
 
-        expect(force.serialize).not.toHaveBeenCalled();
-        expect(result.bv).toBe(1400);
-        expect(result.note).toBe('Drop-ready line unit.');
-        expect(result.tags).toEqual(['Line', 'Drop']);
-        expect(result.groups.length).toBe(1);
-        expect(result.groups[0].units[0]).toEqual(jasmine.objectContaining({
-            alias: 'Veteran',
-            gunnery: 3,
-            piloting: 4,
-            crew: [
-                { id: 0, name: 'Veteran', gunnery: 3, piloting: 5 },
-                { id: 1, name: 'Driver', gunnery: 4, piloting: 4 },
-            ],
-        }));
-        expect(getForcePreviewResolvedUnits(result)).toEqual([resolvedUnit]);
-        expect(getForcePreviewUnitPilotStats(result.groups[0].units[0], result.type)).toBe('3/4');
+        expect(result.bv).toBe(1200);
+        expect(result.groups).toEqual([jasmine.objectContaining({
+            name: 'Lance',
+            force: result,
+            units: [jasmine.objectContaining({
+                unit: resolvedUnit,
+                destroyed: true,
+                commander: true,
+                gunnery: 3,
+                piloting: 4,
+                lockKey: 'unit-v2',
+            })],
+        })]);
     });
 });
 
