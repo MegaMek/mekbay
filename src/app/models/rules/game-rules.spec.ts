@@ -300,6 +300,11 @@ function coreTagBvContext(options: {
 }
 
 describe('game rules', () => {
+    it('declares whether consciousness rolls accumulate phase damage', () => {
+        expect(CORE_2026_GAME_RULES.aggregatedEndPhaseConsciousRolls).toBeTrue();
+        expect(TW_GAME_RULES.aggregatedEndPhaseConsciousRolls).toBeFalse();
+    });
+
     describe('escalating failure targets', () => {
         it('uses the standardized numeric Core sequence for every checked component', () => {
             const standard = [3, 5, 7, 10, 11] as const;

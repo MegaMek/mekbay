@@ -183,6 +183,7 @@ export function separateHeatFireModifier(resolution: ToHitResolution): ToHitHeat
 
 export abstract class CBTGameRules {
     abstract readonly id: 'core2026' | 'tw';
+    abstract readonly aggregatedEndPhaseConsciousRolls: boolean;
     abstract readonly c3DegradationLabel: C3DegradationLabel;
     abstract readonly escalatingFailureTargets: readonly number[];
     abstract readonly radicalHeatSinkFailureTargets: readonly number[];
@@ -473,6 +474,7 @@ export abstract class CBTGameRules {
 
 export class GameRules extends CBTGameRules {
     readonly id = 'core2026' as const;
+    readonly aggregatedEndPhaseConsciousRolls = true;
     readonly c3DegradationLabel = 'DEGRADED' as const;
     readonly physicalBaseHitModifiers = {
         punch: -1,
@@ -601,6 +603,7 @@ export class GameRules extends CBTGameRules {
 
 export class TWGameRules extends CBTGameRules {
     readonly id = 'tw' as const;
+    readonly aggregatedEndPhaseConsciousRolls = false;
     readonly c3DegradationLabel = 'JAMMED' as const;
     readonly physicalBaseHitModifiers = {
         punch: 0,
