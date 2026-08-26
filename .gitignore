@@ -3,12 +3,11 @@
 # Compiled output
 /dist
 /tmp
+/.tmp
 /out-tsc
 /bazel-out
 /public/zip
-/public/sprites/*.webp
-/public/sprites/*.json
-/public/sprites/*.hash
+/public/online-assets/generated/
 
 # Node
 /node_modules
@@ -51,4 +50,4 @@ Thumbs.db
 /plans
 
 # Test fixtures (large data files)
-/scripts/fixtures/
+/scripts/fixtures
