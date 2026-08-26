@@ -37,7 +37,7 @@ export function buildHeatSummaryRows(
     if (balance < 0 || (balance > 0 && consumed > 0)) {
         rows.push({
             id: 'heat-sink',
-            label: clippedAtZero ? `Sink (-${balance})` : 'Sink',
+            label: clippedAtZero ? `Sink (${balance})` : 'Sink',
             value: balance > 0 ? -(clippedAtZero ? consumed : balance) : Math.abs(balance),
             kind: 'sink',
         });

@@ -9,7 +9,7 @@ describe('buildHeatSummaryRows', () => {
         expect(buildHeatSummaryRows([
             { id: 'movement', label: 'Movement', value: 2 },
             { id: 'weapons', label: 'Weapons', value: 12 },
-            { id: 'damaged-engine', label: 'Damaged Engine', value: 5 },
+            { id: 'damaged-engine', label: 'Engine', value: 5 },
         ], 10, 10, 13)).toEqual([
             { id: 'movement', label: 'Movement', value: 2, kind: 'source' },
             { id: 'weapons', label: 'Weapons', value: 12, kind: 'source' },
@@ -20,7 +20,7 @@ describe('buildHeatSummaryRows', () => {
 
     it('shows unused sink capacity without pretending it removed heat below zero', () => {
         expect(buildHeatSummaryRows([], 28, 22, 0)).toEqual([
-            { id: 'heat-sink', label: 'Sink (-28)', value: -22, kind: 'sink' },
+            { id: 'heat-sink', label: 'Sink (28)', value: -22, kind: 'sink' },
         ]);
     });
 });

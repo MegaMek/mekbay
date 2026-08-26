@@ -24,6 +24,25 @@ describe('DiceRollerComponent', () => {
         expect(fixture.nativeElement.querySelectorAll('.die')).toHaveSize(3);
     });
 
+    it('displays restored faces as a completed roll without emitting it again', () => {
+        const fixture = TestBed.createComponent(DiceRollerComponent);
+        const finished = jasmine.createSpy('finished');
+        fixture.componentInstance.finished.subscribe(finished);
+        fixture.componentRef.setInput('initialResults', [5, 2]);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.diceResults()).toEqual([5, 2]);
+        expect(fixture.componentInstance.diceSum()).toBe(7);
+        expect(fixture.componentInstance.rollFinished()).toBeTrue();
+        expect(finished).not.toHaveBeenCalled();
+
+        fixture.componentRef.setInput('initialResults', null);
+        fixture.detectChanges();
+        expect(fixture.componentInstance.diceResults()).toEqual([null, null]);
+        expect(fixture.componentInstance.rollFinished()).toBeFalse();
+        fixture.destroy();
+    });
+
     it('rolls deterministic dice, applies the modifier, and emits once', () => {
         spyOn(Math, 'random').and.returnValue(0.5);
         const fixture = TestBed.createComponent(DiceRollerComponent);

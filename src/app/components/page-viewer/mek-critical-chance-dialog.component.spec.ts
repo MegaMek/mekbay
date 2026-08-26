@@ -41,6 +41,10 @@ describe('MekCriticalChanceDialogComponent', () => {
             .toBe('Criticals');
         expect(Array.from(manualActions, button => button.textContent?.trim()))
             .toEqual(['NO CRITICAL', '1', '2', '3']);
+        expect(manualActions[0].classList).toContain('success');
+        expect(manualActions[0].classList).not.toContain('primary');
+        expect(Array.from(manualActions).slice(1).every(button => button.classList.contains('primary')))
+            .toBeTrue();
         expect(fixture.nativeElement.querySelector('.critical-result-action')).toBeNull();
 
         manualActions[2].click();
@@ -95,6 +99,9 @@ describe('MekCriticalChanceDialogComponent', () => {
         expect(previousAction.disabled).toBeTrue();
         expect((fixture.nativeElement.querySelector('.random-button') as HTMLButtonElement).disabled)
             .toBeTrue();
+        const randomRow = fixture.nativeElement.querySelector('.critical-random-row') as HTMLElement;
+        expect(randomRow.classList).toContain('roll-disabled');
+        expect(getComputedStyle(randomRow).cursor).toBe('not-allowed');
         expect(fixture.nativeElement.querySelector(
             '.critical-chance-options:not(.rolled-result-action)',
         )).toBeNull();
@@ -118,6 +125,31 @@ describe('MekCriticalChanceDialogComponent', () => {
             ?.textContent.trim()).toBe('CLOSE');
         fixture.componentInstance.close();
         expect(dialogRef.close).toHaveBeenCalledOnceWith(undefined);
+    });
+
+    it('restores exact dice when a pending chance is reopened', () => {
+        const data = fixture.componentInstance.data as {
+            initialRoll?: readonly [number, number];
+            initialResult?: { readonly kind: 'critical-hits'; readonly count: number };
+            onRollChange?: (roll: readonly [number, number]) => void;
+        };
+        const onRollChange = jasmine.createSpy('onRollChange');
+        fixture.destroy();
+        data.initialRoll = [5, 3];
+        data.initialResult = { kind: 'critical-hits', count: 1 };
+        data.onRollChange = onRollChange;
+        fixture = TestBed.createComponent(MekCriticalChanceDialogComponent);
+        fixture.detectChanges();
+
+        const roller = fixture.componentInstance.roller()!;
+        expect(roller.diceResults()).toEqual([5, 3]);
+        expect(roller.rollFinished()).toBeTrue();
+        expect(fixture.componentInstance.result()).toEqual({ kind: 'critical-hits', count: 1 });
+        expect(onRollChange).not.toHaveBeenCalled();
+
+        roller.roll([6, 4]);
+        jasmine.clock().tick(500);
+        expect(onRollChange).toHaveBeenCalledOnceWith([6, 4]);
     });
 
     it('offers NO CRITICAL inline while CLOSE only dismisses the dialog', () => {

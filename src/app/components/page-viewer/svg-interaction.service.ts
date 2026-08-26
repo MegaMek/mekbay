@@ -51,6 +51,7 @@ import { MekCriticalHitAutomationService } from '../../services/mek-critical-hit
 import { MekCriticalResolutionService } from '../../services/mek-critical-resolution.service';
 import { UnitCheckResolutionService } from '../../services/unit-check-resolution.service';
 import { FallingResolutionService } from '../../services/falling-resolution.service';
+import { CBTPhaseResolutionService } from '../../services/cbt-phase-resolution.service';
 import type { AutomationReviewEvent } from '../../models/automation-review.model';
 import { uuidv7 } from '../../utils/uuid.util';
 
@@ -84,7 +85,7 @@ const SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-conditions-dropdown';
 const SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY = 'svg-crew-state-dropdown';
 const SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-location-conditions-dropdown';
 const CRITICAL_CHANCE_ACTION = 'critical-chance';
-const CRITICAL_ROLL_ACTION = 'critical-roll';
+const CRITICAL_HIT_ACTION = 'critical-hit';
 const EQUIPMENT_HOVER_SECONDARY_CLASS = 'equipment-hover-secondary';
 const ARMOR_OVERFLOW_CHOICE_COLORS = {
     normal: '#8B0000',
@@ -123,6 +124,7 @@ export class SvgInteractionService {
     private criticalResolution = inject(MekCriticalResolutionService);
     private unitCheckResolution = inject(UnitCheckResolutionService);
     private fallingResolution = inject(FallingResolutionService);
+    private phaseResolution = inject(CBTPhaseResolutionService);
 
     // Zoom-pan service passed via initialize()
     private zoomPanService!: ZoomPanServiceInterface;
@@ -1694,7 +1696,7 @@ export class SvgInteractionService {
         updateChoices();
 
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
-            if (state === CRITICAL_CHANCE_ACTION || state === CRITICAL_ROLL_ACTION) {
+            if (state === CRITICAL_CHANCE_ACTION || state === CRITICAL_HIT_ACTION) {
                 this.overlayManager.closeManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY);
                 if (state === CRITICAL_CHANCE_ACTION) {
                     this.openMekCriticalChanceDialog(unit, loc);
@@ -1750,12 +1752,16 @@ export class SvgInteractionService {
             ...conditions,
             { key: 'critical-actions-break', label: '', color: '', active: false, isBreak: true },
             { key: CRITICAL_CHANCE_ACTION, label: 'Critical Chance', color: '#444', active: false, action: true },
-            { key: CRITICAL_ROLL_ACTION, label: 'Critical Roll', color: '#444', active: false, action: true },
+            { key: CRITICAL_HIT_ACTION, label: 'Critical Hit', color: '#444', active: false, action: true },
         ];
     }
 
     private scheduleAutomation(unit: CBTForceUnit, trigger: CBTUnitAutomationTrigger): void {
-        let task: () => Promise<void>;
+        // Events emitted while END PHASE is draining are already represented in
+        // the unit queue and belong to that awaited workflow.
+        if (this.phaseResolution.isResolving(unit)) return;
+
+        let task: () => Promise<unknown>;
         if (trigger.kind === 'critical-hit-chance') {
             task = () => this.criticalResolution.resumeChance(unit, trigger.id);
         } else if (trigger.kind === 'pending-unit-check') {
@@ -1766,7 +1772,11 @@ export class SvgInteractionService {
             task = () => this.handleBreachAndFloodTrigger(unit, trigger);
         }
 
-        this.queueAutomation(task);
+        this.queueAutomation(async () => {
+            // END PHASE may have started after the trigger was scheduled.
+            if (this.phaseResolution.isResolving(unit)) return;
+            await task();
+        });
     }
 
     private queueAutomation(task: () => Promise<void>): void {

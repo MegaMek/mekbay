@@ -19,28 +19,30 @@
     text-align: center;
 }
 
-.critical-dialog-body p {
-    margin: 0;
-}
-
 .critical-random-row {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 10px;
+    cursor: pointer;
+
+    &:not(.roll-disabled):hover .random-button,
+    &:not(.roll-disabled):focus-within .random-button {
+        opacity: 1;
+    }
+
+    &.roll-disabled {
+        cursor: not-allowed;
+    }
 }
 
 .critical-dice-trigger {
-    cursor: pointer;
-}
+    cursor: inherit;
 
-.critical-dice-trigger:focus-visible {
-    outline: 2px solid var(--bt-yellow);
-    outline-offset: 4px;
-}
-
-.critical-dice-trigger[aria-disabled="true"] {
-    cursor: default;
+    &:focus-visible {
+        outline: 2px solid var(--bt-yellow);
+        outline-offset: 4px;
+    }
 }
 
 .critical-table-hint {
@@ -135,20 +137,27 @@
 
 .guided-progress,
 .critical-result {
-    color: var(--text-color);
     font-weight: 700;
 }
 
-.explosion-protection {
+.guided-progress {
+    color: var(--text-color);
+}
+
+.explosion-protection,
+.case-ii-check {
     align-self: stretch;
     display: flex;
-    align-items: flex-start;
     flex-direction: column;
     gap: 4px;
     padding: 0.65rem 0.75rem;
+    text-align: left;
+}
+
+.explosion-protection {
+    align-items: flex-start;
     border: 1px solid var(--border-color);
     background: color-mix(in srgb, var(--background-highlight-bright) 12%, transparent);
-    text-align: left;
 }
 
 .protection-badge {
@@ -168,17 +177,11 @@
 }
 
 .case-ii-check {
-    align-self: stretch;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 0.65rem 0.75rem;
     border: 1px solid #e8a64a;
     background: rgba(120, 80, 0, 0.2);
     color: var(--text-color-secondary);
     font-size: 0.88em;
     line-height: 1.35;
-    text-align: left;
 }
 
 .case-ii-check strong {
@@ -206,14 +209,14 @@
 .critical-result {
     font-size: 1.05em;
     color: var(--danger);
-}
 
-.critical-result.no-critical {
-    color: var(--success);
-}
+    &.no-critical {
+        color: var(--success);
+    }
 
-.critical-result.reroll {
-    color: var(--text-color);
+    &.reroll {
+        color: var(--text-color);
+    }
 }
 
 .explosion-result {
@@ -222,22 +225,22 @@
     border: 1px solid var(--danger);
     background: rgba(120, 0, 0, 0.25);
     color: var(--text-color);
-}
 
-.explosion-result.pending-explosion {
-    border-color: #e8a64a;
-    background: rgba(120, 80, 0, 0.25);
+    &.pending-explosion {
+        border-color: #e8a64a;
+        background: rgba(120, 80, 0, 0.25);
+    }
 }
 
 .actions {
     gap: 4px;
     flex-wrap: wrap;
-}
 
-.actions .bt-button {
-    flex: 1 1 0;
-    width: auto;
-    min-width: 0;
+    .bt-button {
+        flex: 1 1 0;
+        width: auto;
+        min-width: 0;
+    }
 }
 
 .critical-manual-results {
@@ -281,7 +284,38 @@
     align-self: stretch;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+}
+
+.critical-slot-block {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 2px;
+    min-width: 0;
+}
+
+.critical-slot-single-block {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.critical-slot-first-die {
+    display: grid;
+    place-items: center;
+    min-width: 0;
+    border: 1px solid var(--border-color);
+    background: var(--border-color);
+    color: var(--text-color);
+    font-size: 0.75em;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+}
+
+.critical-slot-block-rows {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 1px;
+    min-width: 0;
 }
 
 .critical-slot-option {
@@ -308,10 +342,18 @@
     align-self: stretch;
     display: flex;
     align-items: center;
+    gap: 5px;
     min-width: 0;
     padding: 4px 8px;
     border-right: 1px solid var(--border-color);
     color: var(--text-color-secondary);
+}
+
+.critical-slot-explosion-icon {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    fill: #f60;
 }
 
 .critical-slot-hit-button {
@@ -346,6 +388,11 @@
     border-right: 0;
     font-size: 0.7em;
     line-height: 1;
+}
+
+.critical-slot-option.critical-slot-collapsed .critical-slot-explosion-icon {
+    width: 9px;
+    height: 9px;
 }
 
 .critical-slot-option.critical-slot-hit .critical-slot-number {

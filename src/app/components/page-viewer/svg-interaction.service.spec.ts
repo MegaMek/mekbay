@@ -31,6 +31,7 @@ import { MekCriticalHitAutomationService } from '../../services/mek-critical-hit
 import { MekCriticalResolutionService } from '../../services/mek-critical-resolution.service';
 import { UnitCheckResolutionService } from '../../services/unit-check-resolution.service';
 import { FallingResolutionService } from '../../services/falling-resolution.service';
+import { CBTPhaseResolutionService } from '../../services/cbt-phase-resolution.service';
 
 type SvgInteractionServicePrivate = {
     addSvgTapHandler(
@@ -42,6 +43,7 @@ type SvgInteractionServicePrivate = {
     updateUnit(unit: any): void;
     setupInteractions(svg: SVGSVGElement): void;
     setupReadOnlyInteractions(svg: SVGSVGElement): void;
+    setupCrewHitInteractions(svg: SVGSVGElement, signal: AbortSignal): void;
     cleanup(): void;
     getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; baselineHeat: number; containerRect: DOMRect } | null;
     updateHeatHighlight(heatValue: number): void;
@@ -112,6 +114,7 @@ describe('SvgInteractionService', () => {
     let criticalOpenManual: jasmine.Spy;
     let openUnitChecks: jasmine.Spy;
     let openFalling: jasmine.Spy;
+    let phaseIsResolving: jasmine.Spy;
 
     beforeEach(() => {
         zoomPanService = {
@@ -167,6 +170,7 @@ describe('SvgInteractionService', () => {
         criticalOpenManual = jasmine.createSpy('openManual').and.resolveTo();
         openUnitChecks = jasmine.createSpy('open').and.resolveTo();
         openFalling = jasmine.createSpy('open').and.resolveTo();
+        phaseIsResolving = jasmine.createSpy('isResolving').and.returnValue(false);
         options = {
             pickerStyle: 'default',
             colorScheme: 'default',
@@ -220,6 +224,7 @@ describe('SvgInteractionService', () => {
                 },
                 { provide: UnitCheckResolutionService, useValue: { open: openUnitChecks } },
                 { provide: FallingResolutionService, useValue: { open: openFalling } },
+                { provide: CBTPhaseResolutionService, useValue: { isResolving: phaseIsResolving } },
                 { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } }
             ]
         });
@@ -361,11 +366,11 @@ describe('SvgInteractionService', () => {
         const armChoices = service.locationConditionDropdownChoices(unit, 'LA');
 
         expect(torsoChoices.filter(choice => !choice.isBreak).map(choice => choice.key))
-            .toEqual(['flooded', 'critical-chance', 'critical-roll']);
+            .toEqual(['flooded', 'critical-chance', 'critical-hit']);
         expect(armChoices.filter(choice => !choice.isBreak).map(choice => choice.key))
-            .toEqual(['flooded', 'blown-off', 'critical-chance', 'critical-roll']);
+            .toEqual(['flooded', 'blown-off', 'critical-chance', 'critical-hit']);
         expect(torsoChoices.filter(choice => choice.action).map(choice => choice.key))
-            .toEqual(['critical-chance', 'critical-roll']);
+            .toEqual(['critical-chance', 'critical-hit']);
         expect(torsoChoices.filter(choice => choice.isBreak).length).toBe(1);
     });
 
@@ -431,6 +436,44 @@ describe('SvgInteractionService', () => {
         expect(openUnitChecks).toHaveBeenCalledOnceWith([unit]);
     });
 
+    it('opens checks after adding crew damage from a sheet pip, but not after removing it', async () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const crewHit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        crewHit.classList.add('crewHit');
+        crewHit.setAttribute('crewId', '0');
+        crewHit.setAttribute('hit', '2');
+        svg.appendChild(crewHit);
+
+        let hits = 0;
+        const automationTriggers = new Subject<CBTUnitAutomationTrigger>();
+        const setCrewHits = jasmine.createSpy('setCrewHits').and.callFake((_crewId: number, nextHits: number) => {
+            const addedDamage = nextHits > hits;
+            hits = nextHits;
+            if (addedDamage) automationTriggers.next({ kind: 'pending-unit-check' });
+            return true;
+        });
+        const unit = createSvgInteractionUnit({
+            id: 'unit-a',
+            automationTriggers,
+            getCrewMember: () => ({ getHits: () => hits }),
+            setCrewHits,
+        });
+        service.updateUnit(unit);
+        service.setupCrewHitInteractions(svg, new AbortController().signal);
+
+        tap(crewHit, 71);
+        await service.automationQueue;
+
+        expect(setCrewHits).toHaveBeenCalledOnceWith(0, 2);
+        expect(openUnitChecks).toHaveBeenCalledOnceWith([unit]);
+
+        tap(crewHit, 72);
+        await service.automationQueue;
+
+        expect(setCrewHits.calls.allArgs()).toEqual([[0, 2], [0, 1]]);
+        expect(openUnitChecks).toHaveBeenCalledTimes(1);
+    });
+
     it('opens seatbelt work only after falling resolution releases it', async () => {
         let finishFalling!: () => void;
         const automationTriggers = new Subject<CBTUnitAutomationTrigger>();
@@ -461,6 +504,26 @@ describe('SvgInteractionService', () => {
         await service.automationQueue;
 
         expect(openUnitChecks).toHaveBeenCalledOnceWith([unit]);
+    });
+
+    it('leaves triggers emitted during END PHASE to the phase coordinator', async () => {
+        const automationTriggers = new Subject<CBTUnitAutomationTrigger>();
+        const unit = createSvgInteractionUnit({
+            id: 'unit-a',
+            automationTriggers,
+        });
+        service.updateUnit(unit);
+        phaseIsResolving.and.returnValue(true);
+
+        automationTriggers.next({
+            kind: 'falling',
+            id: 'fall:phase-owned',
+            source: 'psr',
+            levelsFallen: 0,
+        });
+        await service.automationQueue;
+
+        expect(openFalling).not.toHaveBeenCalled();
     });
 
     it('waits for the current workflow before processing an automation emitted from inside it', async () => {

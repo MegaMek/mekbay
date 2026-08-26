@@ -17,7 +17,9 @@ export interface MekCriticalChanceDialogData {
     readonly industrialMek: boolean;
     readonly modifiers?: readonly MekCriticalChanceModifier[];
     readonly initialResult?: MekCriticalChanceResult;
+    readonly initialRoll?: readonly [number, number];
     readonly onResultChange?: (result: MekCriticalChanceResult | null) => void;
+    readonly onRollChange?: (roll: readonly [number, number]) => void;
     readonly manual?: boolean;
 }
 
@@ -110,14 +112,17 @@ export interface MekCriticalChanceDialogData {
                             </div>
                         </div>
                     </div>
-                    <div class="critical-random-row">
+                    <div
+                        class="critical-random-row"
+                        [class.roll-disabled]="isRolling()"
+                        (click)="roll()"
+                    >
                         <button
                             class="random-button large"
                             type="button"
                             aria-label="Roll critical chance"
                             title="Roll critical chance"
                             [disabled]="isRolling()"
-                            (click)="roll()"
                         ></button>
                         <div
                             class="critical-dice-trigger"
@@ -125,13 +130,13 @@ export interface MekCriticalChanceDialogData {
                             [attr.tabindex]="isRolling() ? -1 : 0"
                             aria-label="Roll critical chance dice"
                             [attr.aria-disabled]="isRolling()"
-                            (click)="roll()"
                             (keydown.enter)="roll()"
                             (keydown.space)="roll(); $event.preventDefault()"
                         >
                             <dice-roller
                                 #roller
                                 [diceCount]="2"
+                                [initialResults]="data.initialRoll ?? null"
                                 [modifier]="modifierTotal()"
                                 (finished)="onFinished($event)"
                             />
@@ -163,7 +168,12 @@ export interface MekCriticalChanceDialogData {
                         <div class="critical-manual-results-label">Criticals</div>
                         <div class="critical-chance-options" aria-label="Set critical hit count manually">
                             @for (manualResult of manualResults; track manualResult.label) {
-                                <button class="bt-button primary" type="button" [disabled]="isRolling()"
+                                <button
+                                    class="bt-button"
+                                    [class.success]="manualResult.result.kind === 'none'"
+                                    [class.primary]="manualResult.result.kind !== 'none'"
+                                    type="button"
+                                    [disabled]="isRolling()"
                                     (click)="continueWith(manualResult.result)">{{ manualResult.label }}</button>
                             }
                         </div>
@@ -212,6 +222,9 @@ export class MekCriticalChanceDialogComponent {
     }
 
     onFinished(event: { readonly results: readonly number[] }): void {
+        if (event.results.length === 2) {
+            this.data.onRollChange?.([event.results[0], event.results[1]]);
+        }
         this.resolveRoll(event.results.reduce((total, die) => total + die, 0));
     }
 

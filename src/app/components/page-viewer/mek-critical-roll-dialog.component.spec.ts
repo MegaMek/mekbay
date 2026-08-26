@@ -8,6 +8,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
 import type { CriticalSlot, SerializedPendingUnitCheck } from '../../models/force-serialization';
+import type { MountedEquipment } from '../../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../models/rules/game-rules';
 import { MekCriticalHitAutomationService } from '../../services/mek-critical-hit-automation.service';
 import { MekCriticalRollDialogComponent } from './mek-critical-roll-dialog.component';
@@ -16,8 +17,10 @@ describe('MekCriticalRollDialogComponent', () => {
     let fixture: ComponentFixture<MekCriticalRollDialogComponent>;
     let caseIISlot: CriticalSlot;
     let criticalSlots: CriticalSlot[];
+    let inventoryEntries: MountedEquipment[];
     let dialogRef: { close: jasmine.Spy };
     let previewRoll: jasmine.Spy;
+    let previewSlot: jasmine.Spy;
     let applyRoll: jasmine.Spy;
     let dialogData: {
         unit: CBTForceUnit;
@@ -30,6 +33,7 @@ describe('MekCriticalRollDialogComponent', () => {
         caseIICheckRequired?: boolean;
         caseIICheckPassed?: boolean;
         caseIICheckResult?: 'resolve' | 'discard';
+        caseIICheckRoll?: readonly [number, number];
         canUndoToChance?: boolean;
     };
     let getPendingCriticalHit: jasmine.Spy;
@@ -68,8 +72,10 @@ describe('MekCriticalRollDialogComponent', () => {
             { id: 'small-laser@LT', name: secondWeapon.name, loc: 'LT', slot: 2, eq: secondWeapon },
             { id: 'destroyed-laser@LT', name: weapon.name, loc: 'LT', slot: 3, eq: weapon, hits: 1, destroyed: 1 },
         ];
+        inventoryEntries = [];
         dialogRef = { close: jasmine.createSpy('close') };
         previewRoll = jasmine.createSpy('previewRoll').and.returnValue(null);
+        previewSlot = jasmine.createSpy('previewSlot').and.returnValue(null);
         applyRoll = jasmine.createSpy('applyRoll').and.resolveTo({
             cancelled: false,
             outcome: {
@@ -110,6 +116,7 @@ describe('MekCriticalRollDialogComponent', () => {
                 slotsVersion();
                 return criticalSlots.find(candidate => candidate.loc === location && candidate.slot === slot) ?? null;
             },
+            getInventory: () => inventoryEntries,
             getUnit: () => ({ comp: [] }),
         } as unknown as CBTForceUnit;
         dialogData = {
@@ -125,7 +132,7 @@ describe('MekCriticalRollDialogComponent', () => {
             providers: [
                 provideZonelessChangeDetection(),
                 { provide: DialogRef, useValue: dialogRef },
-                { provide: MekCriticalHitAutomationService, useValue: { previewRoll, applyRoll } },
+                { provide: MekCriticalHitAutomationService, useValue: { previewRoll, previewSlot, applyRoll } },
                 { provide: DIALOG_DATA, useValue: dialogData },
             ],
         }).compileComponents();
@@ -147,14 +154,30 @@ describe('MekCriticalRollDialogComponent', () => {
         expect(element.querySelector('.protection-note')?.textContent).toContain('Caps internal damage at 1');
     });
 
-    it('animates to dice faces for a valid critical slot', () => {
+    it('rolls from the full random row and animates to valid critical-slot dice faces', () => {
         spyOn(Math, 'random').and.returnValue(0);
         const roller = fixture.componentInstance.roller()!;
         const roll = spyOn(roller, 'roll');
 
-        fixture.componentInstance.roll();
+        (fixture.nativeElement.querySelector('.critical-random-row') as HTMLElement).click();
 
         expect(roll).toHaveBeenCalledOnceWith([1, 1]);
+    });
+
+    it('shows a not-allowed cursor across the random row when rolling is unavailable', () => {
+        const row = fixture.nativeElement.querySelector('.critical-random-row') as HTMLElement;
+        const diceTrigger = row.querySelector('.critical-dice-trigger') as HTMLElement;
+        const randomButton = row.querySelector('.random-button') as HTMLButtonElement;
+
+        expect(getComputedStyle(row).cursor).toBe('pointer');
+
+        fixture.componentInstance.resolving.set(true);
+        fixture.detectChanges();
+
+        expect(row.classList).toContain('roll-disabled');
+        expect(getComputedStyle(row).cursor).toBe('not-allowed');
+        expect(getComputedStyle(diceTrigger).cursor).toBe('not-allowed');
+        expect(randomButton.disabled).toBeTrue();
     });
 
     it('omits sequence UNDO when a queued critical has no chance step to return to', () => {
@@ -167,6 +190,44 @@ describe('MekCriticalRollDialogComponent', () => {
         expect(actions[0].disabled).toBeTrue();
         expect(actions[1].disabled).toBeFalse();
         expect(fixture.nativeElement.querySelector('.critical-sequence-undo')).toBeNull();
+    });
+
+    it('automatically selects the only slot when opened from critical chance', () => {
+        fixture.destroy();
+        criticalSlots[2].destroyed = 1;
+        slotsVersion.update(version => version + 1);
+        dialogData.manual = true;
+        dialogData.pendingCriticalId = undefined;
+        dialogData.canUndoToChance = true;
+        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.selectedSlotIndex()).toBe(0);
+        const hitButtons = fixture.nativeElement.querySelectorAll(
+            '.critical-slot-hit-button',
+        ) as NodeListOf<HTMLButtonElement>;
+        expect(hitButtons).toHaveSize(1);
+        expect(hitButtons[0].textContent).toContain('UNDO');
+        expect(fixture.componentInstance.primaryLabel()).toBe('APPLY');
+    });
+
+    it('does not automatically select the only slot for a manual critical hit', () => {
+        fixture.destroy();
+        criticalSlots[2].destroyed = 1;
+        slotsVersion.update(version => version + 1);
+        dialogData.manual = true;
+        dialogData.pendingCriticalId = undefined;
+        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.selectedSlotIndex()).toBeNull();
+        const hitButtons = fixture.nativeElement.querySelectorAll(
+            '.critical-slot-hit-button',
+        ) as NodeListOf<HTMLButtonElement>;
+        expect(hitButtons).toHaveSize(1);
+        expect(hitButtons[0].textContent).toContain('HIT');
+        expect((fixture.nativeElement.querySelector('.actions .bt-button.primary') as HTMLButtonElement).disabled)
+            .toBeTrue();
     });
 
     it('uses CANCEL for a transient manual critical without touching pending events', () => {
@@ -374,6 +435,114 @@ describe('MekCriticalRollDialogComponent', () => {
             jasmine.any(Object),
         );
         expect(fixture.nativeElement.querySelector('.critical-result')?.textContent).toContain('Medium Laser');
+    });
+
+    it('shows an inline explosion SVG only beside slots whose critical hit can explode', () => {
+        previewSlot.and.callFake((_unit: CBTForceUnit, slot: CriticalSlot) =>
+            slot.id === 'laser@LT' ? { explosion: {} } : null);
+        fixture.destroy();
+        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture.detectChanges();
+
+        const choices = fixture.nativeElement.querySelectorAll(
+            '.critical-slot-option',
+        ) as NodeListOf<HTMLElement>;
+        const explosiveIcon = choices[0].querySelector(
+            '.critical-slot-explosion-icon',
+        ) as SVGElement;
+
+        expect(explosiveIcon).not.toBeNull();
+        expect(explosiveIcon.getAttribute('aria-label')).toBe('Can explode');
+        expect(choices[1].querySelector('.critical-slot-explosion-icon')).toBeNull();
+        expect(choices[0].querySelector('.critical-slot-name')?.textContent?.trim()).toBe('Medium Laser');
+    });
+
+    it('uses the mounted equipment display name instead of the raw critical-slot id', () => {
+        criticalSlots[0].name = 'ISMediumLaser';
+        const getDisplayName = jasmine.createSpy('getDisplayName').and.returnValue('Medium Laser (R)');
+        inventoryEntries = [{
+            critSlots: [{ ...criticalSlots[0] }],
+            getDisplayName,
+        } as unknown as MountedEquipment];
+        fixture.destroy();
+        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture.detectChanges();
+
+        const firstSlotName = fixture.nativeElement.querySelector(
+            '.critical-slot-name',
+        ) as HTMLElement;
+        expect(firstSlotName.textContent?.trim()).toBe('Medium Laser (R)');
+        expect(getDisplayName).toHaveBeenCalledWith('Medium Laser');
+    });
+
+    it('splits twelve-slot locations into 1–3 and 4–6 blocks numbered 1 through 6', () => {
+        const equipment = criticalSlots[0].eq;
+        criticalSlots = Array.from({ length: 12 }, (_, slot) => ({
+            id: `slot-${slot}@LT`,
+            name: `Slot ${slot + 1}`,
+            loc: 'LT',
+            slot,
+            eq: equipment,
+        }));
+        slotsVersion.update(version => version + 1);
+        fixture.destroy();
+        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture.detectChanges();
+
+        const blocks = fixture.nativeElement.querySelectorAll(
+            '.critical-slot-block',
+        ) as NodeListOf<HTMLElement>;
+        expect(blocks).toHaveSize(2);
+        expect(Array.from(blocks, block => block.querySelector('.critical-slot-first-die')?.textContent?.trim()))
+            .toEqual(['1–3', '4–6']);
+        expect(Array.from(blocks[0].querySelectorAll('.critical-slot-number'), number => number.textContent?.trim()))
+            .toEqual(['1', '2', '3', '4', '5', '6']);
+        expect(Array.from(blocks[1].querySelectorAll('.critical-slot-number'), number => number.textContent?.trim()))
+            .toEqual(['1', '2', '3', '4', '5', '6']);
+    });
+
+    it('uses NEXT for a non-final critical and immediately advances to the next slot choice', async () => {
+        fixture.destroy();
+        dialogData.requiredHits = 2;
+        applyRoll.and.resolveTo({
+            cancelled: false,
+            outcome: {
+                applied: true,
+                slotNumber: 1,
+                equipment: 'Medium Laser',
+                armoredAbsorption: false,
+            },
+        });
+        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture.detectChanges();
+
+        let hitButtons = fixture.nativeElement.querySelectorAll(
+            '.critical-slot-hit-button',
+        ) as NodeListOf<HTMLButtonElement>;
+        hitButtons[0].click();
+        fixture.detectChanges();
+
+        let primary = fixture.nativeElement.querySelector('.actions .bt-button.primary') as HTMLButtonElement;
+        expect(primary.textContent).toContain('NEXT');
+
+        primary.click();
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.appliedHits()).toBe(1);
+        expect(fixture.componentInstance.complete()).toBeFalse();
+        expect(fixture.nativeElement.querySelector('.critical-result')).toBeNull();
+        expect(dialogRef.close).not.toHaveBeenCalled();
+        hitButtons = fixture.nativeElement.querySelectorAll(
+            '.critical-slot-hit-button',
+        ) as NodeListOf<HTMLButtonElement>;
+        expect(Array.from(hitButtons, button => button.textContent?.trim())).toEqual(['HIT', 'HIT']);
+
+        hitButtons[1].click();
+        fixture.detectChanges();
+
+        primary = fixture.nativeElement.querySelector('.actions .bt-button.primary') as HTMLButtonElement;
+        expect(primary.textContent).toContain('APPLY');
     });
 
     it('stages a dice result through the same row-level UNDO path', () => {
@@ -593,6 +762,7 @@ describe('MekCriticalRollDialogComponent', () => {
         expect(setPendingCriticalCaseIICheckResult).toHaveBeenCalledOnceWith(
             dialogData.pendingCriticalId,
             'discard',
+            [4, 4],
         );
         expect(resolvePendingCriticalHit).not.toHaveBeenCalled();
         expect(fixture.nativeElement.querySelector('.actions .bt-button.danger')?.textContent)
@@ -601,6 +771,15 @@ describe('MekCriticalRollDialogComponent', () => {
         fixture.componentInstance.close();
         expect(dialogRef.close).toHaveBeenCalledOnceWith({ completed: false });
         expect(resolvePendingCriticalHit).not.toHaveBeenCalled();
+
+        fixture.destroy();
+        dialogData.caseIICheckResult = 'discard';
+        dialogData.caseIICheckRoll = [4, 4];
+        fixture = TestBed.createComponent(MekCriticalRollDialogComponent);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.caseIIRoller()!.diceResults()).toEqual([4, 4]);
+        expect(fixture.componentInstance.caseIIRoller()!.rollFinished()).toBeTrue();
     });
 
     it('records a physical CASE II discard as one resolved pending critical', () => {
@@ -616,9 +795,8 @@ describe('MekCriticalRollDialogComponent', () => {
         expect(resolvePendingCriticalHit).toHaveBeenCalledOnceWith(dialogData.pendingCriticalId);
         expect(fixture.componentInstance.discardedHits()).toBe(1);
         expect(fixture.componentInstance.complete()).toBeFalse();
-        expect(fixture.nativeElement.querySelector('.critical-result')?.textContent)
-            .toContain('CASE II discarded');
-        expect(fixture.componentInstance.primaryLabel()).toBe('NEXT');
+        expect(fixture.nativeElement.querySelector('.critical-result')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.case-ii-check')).not.toBeNull();
     });
 
     it('decrements persisted work only after the critical is applied', async () => {
@@ -690,6 +868,9 @@ describe('MekCriticalRollDialogComponent', () => {
 
         expect(fixture.componentInstance.primaryLabel()).toBe('DISCARD');
         expect(fixture.componentInstance.complete()).toBeFalse();
+        expect(fixture.nativeElement.querySelector('.critical-result')?.textContent)
+            .toContain('No valid critical slots remain');
+        expect(fixture.nativeElement.querySelector('.critical-random-row')).toBeNull();
 
         const primaryButton = fixture.nativeElement.querySelector('.bt-button.primary') as HTMLButtonElement;
         expect(primaryButton.disabled).toBeFalse();

@@ -13,6 +13,7 @@ import {
     mekCriticalRollDiceCount,
     mekCriticalRollForSlot,
     mekCriticalRollLocation,
+    mekCriticalSlotDisplayName,
     mekCriticalSlotRollability,
     mekCriticalSlotIndexForRoll,
     randomValidMekCriticalRoll,
@@ -36,6 +37,7 @@ export interface MekCriticalRollDialogData {
     readonly caseIICheckRequired?: boolean;
     readonly caseIICheckPassed?: boolean;
     readonly caseIICheckResult?: 'resolve' | 'discard';
+    readonly caseIICheckRoll?: readonly [number, number];
     readonly pilotDamageGroup?: string;
     readonly canUndoToChance?: boolean;
 }
@@ -51,6 +53,13 @@ interface CriticalSlotRow {
     readonly slotIndex: number;
     readonly slot: CriticalSlot | null;
     readonly destroyed: boolean;
+    readonly explosive: boolean;
+}
+
+interface CriticalSlotBlock {
+    readonly key: 'single' | 'upper' | 'lower';
+    readonly firstDieRange: string | null;
+    readonly rows: readonly CriticalSlotRow[];
 }
 
 interface CriticalExplosionDisplay {
@@ -92,14 +101,17 @@ interface CriticalExplosionDisplay {
                             <strong>CASE II critical check</strong>
                             <span>Roll 2D6 for this critical: resolve it on 2–7; discard it on 8+.</span>
                         </div>
-                        <div class="critical-random-row">
+                        <div
+                            class="critical-random-row"
+                            [class.roll-disabled]="!canStartCaseIIRoll()"
+                            (click)="rollCaseIICheck()"
+                        >
                             <button
                                 class="random-button large"
                                 type="button"
                                 aria-label="Roll the CASE II critical check"
                                 title="Roll the CASE II critical check"
                                 [disabled]="!canStartCaseIIRoll()"
-                                (click)="rollCaseIICheck()"
                             ></button>
                             <div
                                 class="critical-dice-trigger case-ii-dice-trigger"
@@ -107,11 +119,12 @@ interface CriticalExplosionDisplay {
                                 [attr.tabindex]="canStartCaseIIRoll() ? 0 : -1"
                                 aria-label="Roll CASE II critical check dice"
                                 [attr.aria-disabled]="!canStartCaseIIRoll()"
-                                (click)="rollCaseIICheck()"
                                 (keydown.enter)="rollCaseIICheck()"
                                 (keydown.space)="rollCaseIICheck(); $event.preventDefault()"
                             >
-                                <dice-roller #caseIIRoller [diceCount]="2" (finished)="onCaseIIFinished($event)" />
+                                <dice-roller #caseIIRoller [diceCount]="2"
+                                    [initialResults]="data.caseIICheckRoll ?? null"
+                                    (finished)="onCaseIIFinished($event)" />
                             </div>
                         </div>
                         @if (caseIICheckResult(); as checkResult) {
@@ -128,15 +141,18 @@ interface CriticalExplosionDisplay {
                                     (click)="applyCaseIICheck('discard')">8+ · DISCARD CRITICAL</button>
                             </div>
                         }
-                    } @else if (selectedSlotIndex() === null) {
-                        <div class="critical-random-row">
+                    } @else if (selectedSlotIndex() === null && hasRollableSlot()) {
+                        <div
+                            class="critical-random-row"
+                            [class.roll-disabled]="!canStartRoll()"
+                            (click)="roll()"
+                        >
                             <button
                                 class="random-button large"
                                 type="button"
                                 aria-label="Roll a random critical slot"
                                 title="Roll a random critical slot"
                                 [disabled]="!canStartRoll()"
-                                (click)="roll()"
                             ></button>
                             <div
                                 class="critical-dice-trigger"
@@ -144,13 +160,13 @@ interface CriticalExplosionDisplay {
                                 [attr.tabindex]="canStartRoll() ? 0 : -1"
                                 aria-label="Roll critical slot dice"
                                 [attr.aria-disabled]="!canStartRoll()"
-                                (click)="roll()"
                                 (keydown.enter)="roll()"
                                 (keydown.space)="roll(); $event.preventDefault()"
                             >
                                 <dice-roller
                                     #roller
                                     [diceCount]="diceCount"
+                                    [initialResults]="restoredRoll ?? null"
                                     [showSum]="false"
                                     (finished)="onFinished($event)"
                                 />
@@ -216,44 +232,73 @@ interface CriticalExplosionDisplay {
                     }
                     @if (showManualSlots()) {
                         <div class="critical-slot-options" aria-label="Choose a critical slot manually">
-                            @for (row of manualSlotRows(); track row.slotIndex) {
-                                @if (row.slot; as slot) {
-                                    <div
-                                        class="critical-slot-option"
-                                        [class.critical-slot-hit]="isHighlightedSlot(slot)"
-                                        [class.critical-slot-dimmed]="isDimmedSlot(slot)"
-                                        [class.critical-slot-collapsed]="isCollapsedSlot(slot)"
-                                    >
-                                        <span class="critical-slot-number">{{ slotNumber(slot) }}</span>
-                                        <span class="critical-slot-name">{{ slotLabel(slot) }}</span>
-                                        @if (isSelectedSlot(slot)) {
-                                            <button
-                                                class="bt-button critical-slot-hit-button"
-                                                type="button"
-                                                [disabled]="isAnyRolling() || resolving()"
-                                                (click)="undoSlotSelection()"
-                                            >
-                                                UNDO
-                                            </button>
-                                        } @else if (selectedSlotIndex() === null) {
-                                            <button
-                                                class="bt-button danger critical-slot-hit-button"
-                                                type="button"
-                                                [disabled]="!canStartRoll()"
-                                                (click)="selectSlot(slot)"
-                                            >
-                                                HIT
-                                            </button>
+                            @for (block of manualSlotBlocks(); track block.key) {
+                                <div
+                                    class="critical-slot-block"
+                                    [class.critical-slot-single-block]="block.firstDieRange === null"
+                                    role="group"
+                                    [attr.aria-label]="block.firstDieRange ? 'First die ' + block.firstDieRange : null"
+                                >
+                                    @if (block.firstDieRange; as firstDieRange) {
+                                        <div class="critical-slot-first-die" aria-hidden="true"
+                                            [title]="'First die: ' + firstDieRange">{{ firstDieRange }}</div>
+                                    }
+                                    <div class="critical-slot-block-rows">
+                                        @for (row of block.rows; track row.slotIndex) {
+                                            @if (row.slot; as slot) {
+                                                <div
+                                                    class="critical-slot-option"
+                                                    [class.critical-slot-hit]="isHighlightedSlot(slot)"
+                                                    [class.critical-slot-dimmed]="isDimmedSlot(slot)"
+                                                    [class.critical-slot-collapsed]="isCollapsedSlot(slot)"
+                                                >
+                                                    <span class="critical-slot-number">{{ tableSlotNumber(row.slotIndex) }}</span>
+                                                    <span class="critical-slot-name">
+                                                        {{ slotLabel(slot) }}
+                                                        @if (row.explosive) {
+                                                            <svg
+                                                                class="critical-slot-explosion-icon"
+                                                                viewBox="0 0 24 24"
+                                                                role="img"
+                                                                aria-label="Can explode"
+                                                                title="Can explode"
+                                                            >
+                                                                <path d="M12 1.5l2.2 5.1 4.6-3.2-.7 5.6 5.4.1-4.5 3.2 4.1 3.7-5.5-.7 1.5 5.3-4.5-3.1L12 22.5l-2.6-5-4.5 3.1 1.5-5.3-5.5.7L5 12.3.5 9.1 5.9 9l-.7-5.6 4.6 3.2L12 1.5Z" />
+                                                                <circle cx="12" cy="12" r="2.5" />
+                                                            </svg>
+                                                        }
+                                                    </span>
+                                                    @if (isSelectedSlot(slot)) {
+                                                        <button
+                                                            class="bt-button critical-slot-hit-button"
+                                                            type="button"
+                                                            [disabled]="isAnyRolling() || resolving()"
+                                                            (click)="undoSlotSelection()"
+                                                        >
+                                                            UNDO
+                                                        </button>
+                                                    } @else if (selectedSlotIndex() === null) {
+                                                        <button
+                                                            class="bt-button danger critical-slot-hit-button"
+                                                            type="button"
+                                                            [disabled]="!canStartRoll()"
+                                                            (click)="selectSlot(slot)"
+                                                        >
+                                                            HIT
+                                                        </button>
+                                                    }
+                                                </div>
+                                            } @else {
+                                                <div class="critical-slot-unavailable"
+                                                    [class.critical-slot-destroyed]="row.destroyed"
+                                                    [class.critical-slot-hit]="highlightedSlotNumber() === row.slotIndex + 1"
+                                                    [class.critical-slot-dimmed]="highlightedSlotNumber() !== null
+                                                        && highlightedSlotNumber() !== row.slotIndex + 1"
+                                                    aria-hidden="true"></div>
+                                            }
                                         }
                                     </div>
-                                } @else {
-                                    <div class="critical-slot-unavailable"
-                                        [class.critical-slot-destroyed]="row.destroyed"
-                                        [class.critical-slot-hit]="highlightedSlotNumber() === row.slotIndex + 1"
-                                        [class.critical-slot-dimmed]="highlightedSlotNumber() !== null
-                                            && highlightedSlotNumber() !== row.slotIndex + 1"
-                                        aria-hidden="true"></div>
-                                }
+                                </div>
                             }
                         </div>
                         @if (canDiscardNonExplosiveResult()) {
@@ -317,7 +362,7 @@ export class MekCriticalRollDialogComponent {
     readonly caseIICheckPassed = signal(this.data.caseIICheckPassed ?? false);
     readonly caseIICheckResult = signal<'resolve' | 'discard' | null>(this.data.caseIICheckResult ?? null);
     readonly currentDiscardReason = signal<'case-ii' | 'non-explosive' | null>(null);
-    private readonly restoredRoll = this.data.pendingCriticalId
+    readonly restoredRoll = this.data.pendingCriticalId
         ? this.data.unit.turnState().getPendingCriticalHit(this.data.pendingCriticalId)?.roll
         : undefined;
     readonly selectedSlotIndex = signal<number | null>(this.restoredRoll
@@ -383,6 +428,15 @@ export class MekCriticalRollDialogComponent {
     );
     readonly manualSlotRows = computed(() =>
         this.lockedSlotRows() ?? this.createSlotRows(this.availableSlots()));
+    readonly manualSlotBlocks = computed<readonly CriticalSlotBlock[]>(() => {
+        const rows = this.manualSlotRows();
+        return this.diceCount === 1
+            ? [{ key: 'single', firstDieRange: null, rows }]
+            : [
+                { key: 'upper', firstDieRange: '1–3', rows: rows.slice(0, 6) },
+                { key: 'lower', firstDieRange: '4–6', rows: rows.slice(6, 12) },
+            ];
+    });
     readonly hasRollableSlot = computed(() => this.availableSlots().length > 0);
     readonly isRolling = computed(() => this.roller()?.isRolling() ?? false);
     readonly isCaseIIRolling = computed(() => this.caseIIRoller()?.isRolling() ?? false);
@@ -424,13 +478,18 @@ export class MekCriticalRollDialogComponent {
             || !!this.currentDiscardReason()
             || !this.hasRollableSlot()));
     readonly hasInterruptingConsciousness = computed(() =>
-        this.data.unit.gameRules.id === 'tw'
+        !this.data.unit.gameRules.aggregatedEndPhaseConsciousRolls
         && this.data.unit.turnState().actionablePendingUnitChecks()
             .some(check => check.kind === 'consciousness'));
     // Keep the protection that applied when rolling began visible after an explosion destroys the location.
     readonly explosionProtection = getMekExplosionProtection(this.data.unit, this.targetLocation);
     readonly explosionProtectionLabel = this.explosionProtection === 'case-ii' ? '[CASE II]' : '[CASE]';
     readonly explosionProtectionNote = this.data.unit.gameRules.getMekExplosionProtectionNote(this.explosionProtection);
+
+    constructor() {
+        const slots = this.availableSlots();
+        if (this.data.canUndoToChance && slots.length === 1) this.selectSlot(slots[0]);
+    }
 
     roll(): void {
         if (!this.canStartRoll()) return;
@@ -458,7 +517,13 @@ export class MekCriticalRollDialogComponent {
             : 'resolve';
         this.caseIICheckResult.set(result);
         const pendingId = this.data.pendingCriticalId;
-        if (pendingId) this.data.unit.turnState().setPendingCriticalCaseIICheckResult(pendingId, result);
+        if (pendingId) {
+            this.data.unit.turnState().setPendingCriticalCaseIICheckResult(
+                pendingId,
+                result,
+                event.results,
+            );
+        }
     }
 
     applyCaseIICheck(result: 'resolve' | 'discard'): void {
@@ -529,7 +594,11 @@ export class MekCriticalRollDialogComponent {
                 this.resolvePersistedHit();
                 this.outcome.set(outcome);
                 this.discardedHits.update(value => value + 1);
-                if (this.complete()) this.completeDialog();
+                if (this.complete()) {
+                    this.completeDialog();
+                } else {
+                    this.advanceToNextCritical();
+                }
                 return;
             }
             this.clearPersistedRoll();
@@ -541,7 +610,11 @@ export class MekCriticalRollDialogComponent {
         this.resolvePersistedHit();
         this.outcome.set(outcome);
         this.appliedHits.update(value => value + 1);
-        if (this.complete()) this.completeDialog(this.hasInterruptingConsciousness());
+        if (this.complete()) {
+            this.completeDialog(this.hasInterruptingConsciousness());
+        } else if (!this.hasInterruptingConsciousness()) {
+            this.advanceToNextCritical();
+        }
     }
 
     primaryLabel(): string {
@@ -549,6 +622,9 @@ export class MekCriticalRollDialogComponent {
         if (caseIICheckResult === 'resolve') return 'RESOLVE';
         if (caseIICheckResult === 'discard') return 'DISCARD';
         if (this.outcome() && this.hasInterruptingConsciousness()) return 'CONTINUE';
+        if (this.pendingResults()) {
+            return this.resolvedHits() + 1 < this.data.requiredHits ? 'NEXT' : 'APPLY';
+        }
         if (!this.hasRollableSlot()) return 'DISCARD';
         if (this.outcome() || this.currentDiscardReason()) return 'NEXT';
         return 'APPLY';
@@ -607,8 +683,12 @@ export class MekCriticalRollDialogComponent {
         return (slot.slot ?? 0) + 1;
     }
 
+    tableSlotNumber(slotIndex: number): number {
+        return slotIndex % 6 + 1;
+    }
+
     slotLabel(slot: CriticalSlot): string {
-        return slot.name?.trim() || slot.eq?.name || 'Equipment';
+        return mekCriticalSlotDisplayName(this.data.unit, slot);
     }
 
     isHighlightedSlot(slot: CriticalSlot): boolean {
@@ -665,7 +745,19 @@ export class MekCriticalRollDialogComponent {
         this.caseIICheckResult.set(null);
         this.currentDiscardReason.set(reason);
         this.discardedHits.update(value => value + 1);
-        if (this.complete()) this.completeDialog();
+        if (this.complete()) {
+            this.completeDialog();
+        } else {
+            this.advanceToNextCritical();
+        }
+    }
+
+    private advanceToNextCritical(): void {
+        this.outcome.set(null);
+        this.currentDiscardReason.set(null);
+        this.caseIICheckPassed.set(false);
+        this.caseIICheckResult.set(null);
+        this.unlockManualSlots();
     }
 
     private createSlotRows(slots: readonly CriticalSlot[]): readonly CriticalSlotRow[] {
@@ -677,6 +769,12 @@ export class MekCriticalRollDialogComponent {
             return {
                 slotIndex,
                 slot,
+                explosive: slot !== null
+                    && this.criticalHitAutomation.previewSlot(
+                        this.data.unit,
+                        slot,
+                        this.criticalRollOptions,
+                    )?.explosion !== undefined,
                 // Color reflects why the underlying table slot is unavailable.
                 // Explosion-only filtering must not hide that a component was already destroyed.
                 destroyed: slot === null && mekCriticalSlotRollability(
