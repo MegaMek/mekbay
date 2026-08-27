@@ -33,7 +33,8 @@ import type { PSRCheck, UnitTypeRules } from './rules/unit-type-rules';
 import { type InventoryControlRuntimeAmmoSelection, type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
 import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
 import { getMekLegLocations, getMekLocationParent, inferMekConfigFromLocations, MEK_REAR_ARMOR_LOCATIONS, type ArmorType } from './entity/types';
-import { mekStructurePhaseDamage, MEK_STRUCTURE_TYPE, type MekStructureKind } from '../utils/mek-structure-damage.util';
+import { mekStructureDamageReceived, MEK_STRUCTURE_TYPE, type MekStructureKind } from '../utils/mek-structure-damage.util';
+import { resolveMekFallArmorDamage, type MekFallArmorDamageResolution } from '../utils/mek-falling.util';
 import { ARMOR_TYPE_FROM_BLK_CODE } from './entity/parsers/blk-codec';
 import {
     createHandlerQueryContext,
@@ -98,8 +99,16 @@ export interface CBTInternalDamageContext {
     readonly hardenedArmorApplies?: boolean;
     /** Critical explosions retain the pilot-damage event that produced the internal hit. */
     readonly pilotDamageGroup?: string;
+    /** The first composite pip shares a damage point already counted in the previous location. */
+    readonly sharedCompositePip?: boolean;
     /** Hit-table arc for a possible through-armor critical. */
     readonly throughArmorHitArc?: MekHitArc;
+}
+
+export interface CBTModularArmorState {
+    readonly hits: number;
+    readonly points: number;
+    readonly remaining: number;
 }
 
 export interface CBTMekFallDamageRoll {
@@ -830,10 +839,51 @@ export class CBTForceUnit extends ForceUnit {
         hits: number,
         rear?: boolean,
         consolidateImmediately: boolean = false,
-        damageReceived?: number,
-    ) {
+    ): number {
+        const armorPoints = this.getArmorPoints(loc, rear);
+        const previousHits = Math.min(armorPoints, Math.max(0, this.getArmorHits(loc, rear)));
+        const currentHits = Math.min(armorPoints, Math.max(0, previousHits + hits));
+        const damageReceived = this.getArmorTypeAt(loc) === 'HARDENED'
+            ? Math.floor(currentHits / 2) - Math.floor(previousHits / 2)
+            : currentHits - previousHits;
+        this.recordArmorHits(loc, hits, rear, consolidateImmediately, damageReceived);
+        return damageReceived;
+    }
+
+    /** Applies one physical non-attack hit using the selected ruleset and records its exact phase damage. */
+    applyMekFallArmorDamage(
+        loc: string,
+        damage: number,
+        rear: boolean,
+        consolidateImmediately: boolean,
+    ): MekFallArmorDamageResolution {
+        const remainingArmor = Math.max(0, this.getArmorPoints(loc, rear) - this.getArmorHits(loc, rear));
+        const resolution = resolveMekFallArmorDamage(
+            this.gameRules.id,
+            damage,
+            remainingArmor,
+            this.getArmorTypeAt(loc),
+        );
+        if (resolution.armorDamage > 0) {
+            this.recordArmorHits(
+                loc,
+                resolution.armorDamage,
+                rear,
+                consolidateImmediately,
+                resolution.appliedDamage,
+            );
+        }
+        return resolution;
+    }
+
+    private recordArmorHits(
+        loc: string,
+        hits: number,
+        rear: boolean | undefined,
+        consolidateImmediately: boolean,
+        damageReceived: number,
+    ): void {
         const locKey = rear ? `${loc}-rear` : loc;
-        const previousHits = this.getArmorHits(loc, rear);
         const locations = { ...this.state.locations() };
 
         if (locations[locKey] === undefined) {
@@ -845,10 +895,7 @@ export class CBTForceUnit extends ForceUnit {
         locations[locKey].pendingArmor += hits;
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
         this.markEquipmentLocationsChanged();
-        this.state.turnState().addDmgReceived(damageReceived
-            ?? (this.getArmorTypeAt(loc) === 'HARDENED'
-                ? Math.floor(this.getArmorHits(loc, rear) / 2) - Math.floor(previousHits / 2)
-                : hits));
+        this.state.turnState().addDmgReceived(damageReceived);
         if (consolidateImmediately) this.state.consolidateLocations();
         else this.applyUnderwaterBreachAndFlooding();
         this.evaluateDestroyed();
@@ -868,6 +915,43 @@ export class CBTForceUnit extends ForceUnit {
         this.applyUnderwaterBreachAndFlooding(true);
         this.evaluateDestroyed();
         this.setModified();
+    }
+
+    getModularArmorState(loc: string): CBTModularArmorState {
+        let hits = 0;
+        let points = 0;
+        for (const slot of this.getCritSlots()) {
+            if (slot.loc !== loc || slot.destroyed || !slot.eq?.flags?.has('F_MODULAR_ARMOR')) continue;
+            points += 10;
+            hits += Math.min(10, Math.max(0, slot.consumed ?? 0));
+        }
+        return { hits, points, remaining: points - hits };
+    }
+
+    /** Applies or repairs modular armor and returns the signed record change actually made. */
+    addModularArmorHits(loc: string, hits: number): number {
+        if (!Number.isFinite(hits)) return 0;
+        let remaining = Math.abs(Math.trunc(hits));
+        if (remaining === 0) return 0;
+        const applyingDamage = hits > 0;
+        const crits = [...this.getCritSlots()];
+
+        for (let index = 0; index < crits.length && remaining > 0; index++) {
+            const slot = crits[index];
+            if (slot.loc !== loc || slot.destroyed || !slot.eq?.flags?.has('F_MODULAR_ARMOR')) continue;
+            const consumed = Math.min(10, Math.max(0, slot.consumed ?? 0));
+            const change = Math.min(remaining, applyingDamage ? 10 - consumed : consumed);
+            if (change === 0) continue;
+            crits[index] = { ...slot, consumed: consumed + (applyingDamage ? change : -change) };
+            remaining -= change;
+        }
+
+        const applied = Math.abs(Math.trunc(hits)) - remaining;
+        if (applied === 0) return 0;
+        const signedApplied = applyingDamage ? applied : -applied;
+        this.setCritSlots(crits);
+        this.state.turnState().addDmgReceived(signedApplied);
+        return signedApplied;
     }
 
     getInternalPoints(loc: string): number {
@@ -917,9 +1001,15 @@ export class CBTForceUnit extends ForceUnit {
         hits: number,
         consolidateImmediately: boolean = false,
         context: CBTInternalDamageContext = {},
-    ) {
+    ): number {
         const previousHits = this.getInternalHits(loc);
         const internalPoints = this.getInternalPoints(loc);
+        const structureKind = this.getStructureKindAt(loc);
+        const previousDamageReceived = mekStructureDamageReceived(
+            internalPoints,
+            Math.min(internalPoints, Math.max(0, previousHits)),
+            structureKind,
+        );
         const locations = { ...this.state.locations() };
         if (locations[loc] === undefined) {
             locations[loc] = {};
@@ -942,18 +1032,15 @@ export class CBTForceUnit extends ForceUnit {
         const boundedPreviousHits = Math.min(internalPoints, Math.max(0, previousHits));
         const boundedCurrentHits = Math.min(internalPoints, Math.max(0, this.getInternalHits(loc)));
         const appliedDamage = boundedCurrentHits - boundedPreviousHits;
-        const structureKind = this.getStructureKindAt(loc);
-        const phaseDamage = appliedDamage >= 0
-            ? mekStructurePhaseDamage(
-                appliedDamage,
-                internalPoints - boundedPreviousHits,
+        let phaseDamage = mekStructureDamageReceived(internalPoints, boundedCurrentHits, structureKind)
+            - previousDamageReceived;
+        if (context.sharedCompositePip && structureKind === 'composite' && appliedDamage > 0) {
+            phaseDamage -= mekStructureDamageReceived(
+                internalPoints,
+                Math.min(boundedCurrentHits, boundedPreviousHits + 1),
                 structureKind,
-            )
-            : -mekStructurePhaseDamage(
-                -appliedDamage,
-                internalPoints - boundedCurrentHits,
-                structureKind,
-            );
+            ) - previousDamageReceived;
+        }
         this.state.turnState().addDmgReceived(phaseDamage);
         // A single assignment is one hit/event, regardless of how many structure pips it marks.
         if (appliedDamage > 0) this.queueMekCriticalChance(loc, {
@@ -961,6 +1048,7 @@ export class CBTForceUnit extends ForceUnit {
             locationDestroyed: boundedCurrentHits >= internalPoints,
             consolidateImmediately,
         });
+        return phaseDamage;
     }
 
     setInternalHits(loc: string, hits: number) {

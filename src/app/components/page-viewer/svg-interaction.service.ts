@@ -656,6 +656,11 @@ export class SvgInteractionService {
             const rear = !!svgEl.getAttribute('rear');
             let consumedModularArmorPoints = 0;
             let availableModularArmorPoints = 0;
+            const refreshModularArmor = () => {
+                const modularArmor = this.unit()?.getModularArmorState(loc);
+                consumedModularArmorPoints = modularArmor?.hits ?? 0;
+                availableModularArmorPoints = modularArmor?.remaining ?? 0;
+            };
             let pipsCount = isStructure ? this.unit()?.getInternalPoints(loc) : this.unit()?.getArmorPoints(loc, rear);
             if (!pipsCount) {
                 pipsCount = 0;
@@ -699,14 +704,7 @@ export class SvgInteractionService {
 
                 if (!isStructure && !isShield) {
                     // We recalculate modular armor status, in case we added/removed some crits (destroyed or repaired)
-                    consumedModularArmorPoints = 0;
-                    availableModularArmorPoints = 0;
-                    this.unit()?.getCritSlotsAsMatrix()[loc]?.forEach(critSlot => {
-                        if (!critSlot.eq?.flags?.has('F_MODULAR_ARMOR')) return;
-                        if (critSlot.destroyed) return;
-                        consumedModularArmorPoints += critSlot.consumed || 0;
-                        availableModularArmorPoints += 10 - consumedModularArmorPoints;
-                    });
+                    refreshModularArmor();
                 }
 
                 const allowedValues = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, -1, -2, -3, -4, -5, -10, -20];
@@ -776,32 +774,14 @@ export class SvgInteractionService {
                         let valueToApply = value;
                         // Apply damage to modular armor first, and restore it last when repairing.
                         if (availableModularArmorPoints > 0 && valueToApply > 0) {
-                            unit.getCritSlotsAsMatrix()[loc]?.forEach(critSlot => {
-                                if (valueToApply == 0) return;
-                                if (!critSlot.eq?.flags?.has('F_MODULAR_ARMOR')) return;
-                                if (critSlot.destroyed) return;
-                                const canApply = Math.min(valueToApply, 10 - (critSlot.consumed || 0));
-                                critSlot.consumed = (critSlot.consumed || 0) + canApply;
-                                valueToApply -= canApply;
-                                availableModularArmorPoints -= canApply;
-                                consumedModularArmorPoints += canApply;
-                                unit.setCritSlot(critSlot);
-                            });
+                            valueToApply -= unit.addModularArmorHits(loc, valueToApply);
                         } else if (consumedModularArmorPoints > 0 && valueToApply < 0) {
-                            unit.getCritSlotsAsMatrix()[loc]?.forEach(critSlot => {
-                                const armorPointsToRepair = Math.min(-valueToApply, unit.getArmorHits(loc, rear));
-                                unit.addArmorHits(loc, -armorPointsToRepair, rear, this.consolidateImmediately);
-                                valueToApply += armorPointsToRepair;
-                                if (valueToApply == 0) return;
-                                if (!critSlot.eq?.flags?.has('F_MODULAR_ARMOR')) return;
-                                if (critSlot.destroyed) return;
-                                const canApply = Math.min(-valueToApply, critSlot.consumed || 0);
-                                critSlot.consumed = (critSlot.consumed || 0) - canApply;
-                                valueToApply += canApply;
-                                availableModularArmorPoints += canApply;
-                                consumedModularArmorPoints -= canApply;
-                                unit.setCritSlot(critSlot);
-                            });
+                            const armorPointsToRepair = Math.min(-valueToApply, unit.getArmorHits(loc, rear));
+                            unit.addArmorHits(loc, -armorPointsToRepair, rear, this.consolidateImmediately);
+                            valueToApply += armorPointsToRepair;
+                            if (valueToApply < 0) {
+                                valueToApply -= unit.addModularArmorHits(loc, valueToApply);
+                            }
                         }
                         if (valueToApply != 0) {
                             if (valueToApply > 0 && !isShield && internalPoints > 0) {
@@ -820,6 +800,7 @@ export class SvgInteractionService {
                                 unit.addArmorHits(loc, valueToApply, rear, this.consolidateImmediately);
                             }
                         }
+                        refreshModularArmor();
                     }
                     if (loc === 'RO' && value !== 0) {
                         this.applyVtolRotorHitDelta(unit, value > 0 ? 1 : -1, svg.getElementById('rotor_hits_group') as SVGElement | null);

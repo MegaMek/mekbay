@@ -77,6 +77,8 @@ function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInve
         }),
         getInventory: () => [],
         getCritSlot: () => null,
+        getModularArmorState: () => ({ hits: 0, points: 0, remaining: 0 }),
+        addModularArmorHits: () => 0,
         getEquipmentStatus: () => 'available',
         isEquipmentOperational: () => true,
         canPerformEquipmentAction: () => true,

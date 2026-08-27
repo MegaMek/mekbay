@@ -10,6 +10,7 @@ import {
 } from '../components/falling-damage-dialog/falling-damage-dialog.component';
 import { FallingNoticeDialogComponent } from '../components/falling-notice-dialog/falling-notice-dialog.component';
 import type { CBTForceUnit, CBTMekFallDamageRoll } from '../models/cbt-force-unit.model';
+import { resolveMekFallArmorDamage } from '../utils/mek-falling.util';
 import { CBTAutomationService } from './cbt-automation.service';
 import { DialogsService } from './dialogs.service';
 import { FallingResolutionService } from './falling-resolution.service';
@@ -66,7 +67,7 @@ describe('FallingResolutionService', () => {
                 },
             },
         );
-        expect(harness.addArmorHits).toHaveBeenCalledWith('HD', 5, false, false, 5);
+        expect(harness.addArmorHits).toHaveBeenCalledWith('HD', 5, false, false);
         expect(harness.applyHeadHitCrewHits).toHaveBeenCalledTimes(1);
         expect(harness.completePendingFall).toHaveBeenCalledOnceWith('fall:1');
         expect(showToast).toHaveBeenCalledWith(
@@ -136,7 +137,7 @@ describe('FallingResolutionService', () => {
         closed.complete();
         await operation;
 
-        expect(harness.addArmorHits).toHaveBeenCalledOnceWith('HD', 5, false, false, 5);
+        expect(harness.addArmorHits).toHaveBeenCalledOnceWith('HD', 5, false, false);
         expect(resolveAutomation.calls.allArgs().map(args => args[0])).toEqual([
             'pilotHitsAndConsciousnessCheck',
         ]);
@@ -184,7 +185,7 @@ describe('FallingResolutionService', () => {
         closed.complete();
         await operation;
 
-        expect(harness.addArmorHits).toHaveBeenCalledOnceWith('HD', 5, false, false, 5);
+        expect(harness.addArmorHits).toHaveBeenCalledOnceWith('HD', 5, false, false);
         expect(harness.applyHeadHitCrewHits).not.toHaveBeenCalled();
         expect(harness.completePendingFall).toHaveBeenCalledOnceWith('fall:1');
     });
@@ -293,6 +294,7 @@ function createUnit(
     const armorHits = new Map<string, number>();
     const addArmorHits = jasmine.createSpy('addArmorHits').and.callFake((location: string, hits: number) => {
         armorHits.set(location, (armorHits.get(location) ?? 0) + hits);
+        return hits;
     });
     const applyHeadHitCrewHits = jasmine.createSpy('applyHeadHitCrewHits').and.returnValue(1);
     const pendingFalls: Array<{
@@ -323,6 +325,7 @@ function createUnit(
     const unit = {
         id: 'unit:test-mek',
         gameRules: { id: 'core2026', aggregatedEndPhaseConsciousRolls: true },
+        turnState: () => ({ cover: () => undefined }),
         locations: { internal: new Map([['HD', { loc: 'HD' }], ['CT', { loc: 'CT' }]]) },
         getUnit: () => ({
             type: 'Mek',
@@ -357,10 +360,29 @@ function createUnit(
         getArmorTypeAt: () => 'STANDARD',
         hasArmorType: () => false,
         addArmorHits,
+        getModularArmorState: () => ({ hits: 0, points: 0, remaining: 0 }),
+        addModularArmorHits: () => 0,
+        applyMekFallArmorDamage: (
+            location: string,
+            damage: number,
+            rear: boolean,
+            consolidateImmediately: boolean,
+        ) => {
+            const resolution = resolveMekFallArmorDamage(
+                'core2026',
+                damage,
+                (location === 'HD' ? 9 : 10) - (armorHits.get(location) ?? 0),
+                'STANDARD',
+            );
+            if (resolution.armorDamage > 0) {
+                addArmorHits(location, resolution.armorDamage, rear, consolidateImmediately);
+            }
+            return resolution;
+        },
         getInternalPoints: () => 10,
         getInternalHits: () => 0,
         getStructureKindAt: () => 'standard',
-        addInternalHits: jasmine.createSpy('addInternalHits'),
+        addInternalHits: jasmine.createSpy('addInternalHits').and.callFake((_location: string, hits: number) => hits),
         queueMekCriticalChance: jasmine.createSpy('queueMekCriticalChance'),
         applyHeadHitCrewHits,
     } as unknown as CBTForceUnit;

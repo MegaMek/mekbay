@@ -12,8 +12,6 @@ export const MEK_STRUCTURE_TYPE = {
 export interface MekStructureDamageResolution {
     readonly internalDamage: number;
     readonly overflowDamage: number;
-    /** MegaMek-compatible amount added to damage received this phase. */
-    readonly phaseDamage: number;
 }
 
 /** Incoming damage required to destroy the remaining structure. */
@@ -44,22 +42,28 @@ export function resolveMekStructureDamage(
         : internalDamage);
     return {
         internalDamage,
-        phaseDamage: mekStructurePhaseDamage(internalDamage, capacity, kind),
         overflowDamage: incoming - absorbedDamage,
     };
 }
 
-/** Damage contributed by an applied structure-pip delta to the phase's 20+ damage PSR. */
-export function mekStructurePhaseDamage(
-    internalDamage: number,
-    remainingInternal: number,
+/**
+ * Damage represented by the marked structure pips. Keeping this cumulative makes
+ * the result independent of whether the same record edit was entered in one step
+ * or several smaller steps.
+ */
+export function mekStructureDamageReceived(
+    internalPoints: number,
+    internalHits: number,
     kind: MekStructureKind,
 ): number {
-    const capacity = normalizedInteger(remainingInternal);
-    const applied = Math.min(capacity, normalizedInteger(internalDamage));
-    if (kind === 'reinforced') return fullDoubleDamagePipsRemoved(capacity, applied);
-    if (kind === 'composite' && applied < capacity) return Math.ceil(applied / 2);
-    return applied;
+    const points = normalizedInteger(internalPoints);
+    const hits = Math.min(points, normalizedInteger(internalHits));
+    if (kind === 'reinforced') return fullDoubleDamagePipsRemoved(points, hits);
+    if (kind === 'composite') {
+        return mekStructureDamageCapacity(points, kind)
+            - mekStructureDamageCapacity(points - hits, kind);
+    }
+    return hits;
 }
 
 /** Full printed pips removed when each pip is represented by two ordered damage pips. */

@@ -9,10 +9,11 @@ import type {
     CBTMekFallDamageRoll,
     CBTUnitAutomationTrigger,
 } from '../../models/cbt-force-unit.model';
+import { unitCoverWaterDepth } from '../../models/unit-cover.model';
 import {
     isResolvedMekFallHitLocation,
-    mekFallDamage,
-    mekFallDamageGroups,
+    resolvedMekFallDamageGroups,
+    resolveMekFallDamage,
     resolveMekFallHitLocation,
     resolveMekFallOrientation,
     twoD6ForTotal,
@@ -70,8 +71,14 @@ export class FallingDamageDialogComponent {
     readonly rulesId = this.data.unit.gameRules.id;
     readonly tons = this.data.unit.getUnit().tons;
     readonly levelsFallen = this.data.trigger.levelsFallen;
-    readonly totalDamage = mekFallDamage(this.tons, this.levelsFallen);
-    readonly damageGroups = mekFallDamageGroups(this.totalDamage);
+    readonly fallDamage = resolveMekFallDamage(
+        this.rulesId,
+        this.tons,
+        this.levelsFallen,
+        unitCoverWaterDepth(this.data.unit.turnState().cover()),
+    );
+    readonly totalDamage = this.fallDamage.totalDamage;
+    readonly damageGroups = resolvedMekFallDamageGroups(this.fallDamage);
     readonly hitLocationTable: MekHitLocationTable = clusterTableForUnit(this.data.unit.getUnit()).hitLocationTable
         ?? 'biped';
     readonly orientationRoll = signal<number | null>(this.pending?.orientationRoll ?? null);

@@ -19,6 +19,7 @@ describe('FallingDamageDialogComponent', () => {
         persistRolls = jasmine.createSpy('setPendingFallRolls');
         const unit = {
             gameRules: { id: 'core2026' },
+            turnState: () => ({ cover: () => undefined }),
             getPendingFall: () => undefined,
             setPendingFallRolls: persistRolls,
             getNotificationDisplayName: () => 'Atlas AS7-D',

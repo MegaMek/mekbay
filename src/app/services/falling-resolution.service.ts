@@ -18,11 +18,12 @@ import {
 import type { AutomationReviewEvent } from '../models/automation-review.model';
 import type { CBTForceUnit, CBTMekFallDamageRoll } from '../models/cbt-force-unit.model';
 import { getMekLocationLabel } from '../models/entity/types';
+import { unitCoverWaterDepth } from '../models/unit-cover.model';
 import {
     applyMekFallDamage,
     isResolvedMekFallHitLocation,
-    mekFallDamage,
-    mekFallDamageGroups,
+    resolvedMekFallDamageGroups,
+    resolveMekFallDamage,
     resolveMekFallHitLocation,
     resolveMekFallOrientation,
     twoD6Total,
@@ -141,9 +142,11 @@ export class FallingResolutionService {
         const pending = unit.getPendingFall(trigger.id);
         const orientationRoll = pending?.orientationRoll ?? this.rollD6();
         const orientation = resolveMekFallOrientation(unit.gameRules.id, orientationRoll);
-        const damageGroups = mekFallDamageGroups(mekFallDamage(
+        const damageGroups = resolvedMekFallDamageGroups(resolveMekFallDamage(
+            unit.gameRules.id,
             unit.getUnit().tons,
             trigger.levelsFallen,
+            unitCoverWaterDepth(unit.turnState().cover()),
         ));
         const hitLocationTable = clusterTableForUnit(unit.getUnit()).hitLocationTable ?? 'biped';
         const damageRolls: CBTMekFallDamageRoll[] = [];

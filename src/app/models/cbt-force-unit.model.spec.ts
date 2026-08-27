@@ -1994,19 +1994,59 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             structureType: 'Hybrid',
             patchworkLayout: {
                 CT: { type: 0, clan: false },
-                LA: { type: 25, clan: false },
+                LA: { type: 4, clan: false },
+                LT: { type: 25, clan: false },
             },
             hybridLayout: {
                 CT: { type: 0, clan: false },
                 LA: { type: 5, clan: false },
             },
         });
+        forceUnit.locations = {
+            armor: new Map([['LA', { loc: 'LA', rear: false, points: 20 }]]),
+            internal: new Map([['LA', { loc: 'LA', points: 5 }]]),
+        };
 
         expect(forceUnit.getArmorTypeAt('CT')).toBe('STANDARD');
-        expect(forceUnit.getArmorTypeAt('LA')).toBe('IMPACT_RESISTANT');
+        expect(forceUnit.getArmorTypeAt('LA')).toBe('HARDENED');
+        expect(forceUnit.getArmorTypeAt('LT')).toBe('IMPACT_RESISTANT');
+        expect(forceUnit.hasArmorType('HARDENED')).toBeTrue();
         expect(forceUnit.hasArmorType('IMPACT_RESISTANT')).toBeTrue();
         expect(forceUnit.getStructureKindAt('CT')).toBe('standard');
         expect(forceUnit.getStructureKindAt('LA')).toBe('composite');
+
+        forceUnit.addArmorHits('LA', 1);
+        expect(forceUnit.turnState().dmgReceived()).toBe(0);
+        forceUnit.addArmorHits('LA', 1);
+        expect(forceUnit.turnState().dmgReceived()).toBe(1);
+    });
+
+    it('owns modular armor state and damage accounting across multiple slots', () => {
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        const modularArmor = new MiscEquipment({
+            id: 'test-modular-armor',
+            name: 'Modular Armor',
+            type: 'misc',
+            flags: ['F_MODULAR_ARMOR'],
+        });
+        forceUnit.setCritSlots([0, 1].map(slot => ({
+            id: `modular-armor-${slot}`,
+            name: modularArmor.name,
+            loc: 'LT',
+            slot,
+            hits: 0,
+            eq: modularArmor,
+        })), true);
+
+        expect(forceUnit.addModularArmorHits('LT', 15)).toBe(15);
+        expect(forceUnit.getModularArmorState('LT')).toEqual({ hits: 15, points: 20, remaining: 5 });
+        expect(forceUnit.getCritSlots().map(slot => slot.consumed)).toEqual([10, 5]);
+        expect(forceUnit.turnState().dmgReceived()).toBe(15);
+
+        expect(forceUnit.addModularArmorHits('LT', -12)).toBe(-12);
+        expect(forceUnit.getModularArmorState('LT')).toEqual({ hits: 3, points: 20, remaining: 17 });
+        expect(forceUnit.getCritSlots().map(slot => slot.consumed)).toEqual([0, 3]);
+        expect(forceUnit.turnState().dmgReceived()).toBe(3);
     });
 
     it('automatically floods armorless submerged locations based on posture', () => {
@@ -2158,6 +2198,12 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         composite.addInternalHits('LT', 2);
 
         expect(composite.turnState().dmgReceived()).toBe(1);
+
+        const sequentialComposite = createCriticalHeatSinkForceUnit().forceUnit;
+        spyOn(sequentialComposite, 'getStructureKindAt').and.returnValue('composite');
+        sequentialComposite.addInternalHits('LT', 1);
+        sequentialComposite.addInternalHits('LT', 1);
+        expect(sequentialComposite.turnState().dmgReceived()).toBe(1);
 
         const reinforced = createCriticalHeatSinkForceUnit().forceUnit;
         spyOn(reinforced, 'getStructureKindAt').and.returnValue('reinforced');

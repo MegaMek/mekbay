@@ -53,6 +53,8 @@ export interface MekExplosionLocationDamage {
     readonly armorDamage: number;
     readonly armorRear: boolean;
     readonly protection: MekExplosionProtection;
+    /** Core composite structure shares this pip with the preceding location. */
+    readonly sharedCompositePip?: boolean;
 }
 
 export interface MekEquipmentExplosionResult {
@@ -966,21 +968,25 @@ function resolveMekExplosionLocationDamage(
     let location: string | null = sourceLocation;
     let damage = plan.rawDamage;
     let armorBlowoutPending = false;
+    let sharedCompositePip = false;
 
-    while (location && damage > 0 && !visited.has(location)) {
+    while (location && (damage > 0 || sharedCompositePip) && !visited.has(location)) {
         visited.add(location);
         const protection = getMekExplosionProtection(unit, location);
         if (unit.gameRules.id === 'core2026' && protection === 'none' && damage > 20) {
             armorBlowoutPending = true;
         }
         const remainingInternal = Math.max(0, unit.getInternalPoints(location) - unit.getInternalHits(location));
+        const receivedSharedCompositePip: boolean = sharedCompositePip && remainingInternal > 0;
+        const sharedInternalDamage: number = receivedSharedCompositePip ? 1 : 0;
+        sharedCompositePip = false;
         const structureKind = unit.getStructureKindAt(location);
         const torso = MEK_TORSO_LOCATIONS.has(location);
         const remainingArmor = Math.max(0, unit.getArmorPoints(location, torso) - unit.getArmorHits(location, torso));
         const resolution = unit.gameRules.resolveMekExplosionDamage({
             damage,
             protection,
-            remainingInternal: mekStructureDamageCapacity(remainingInternal, structureKind),
+            remainingInternal: mekStructureDamageCapacity(remainingInternal - sharedInternalDamage, structureKind),
             remainingArmor,
             originalArmor: unit.getArmorPoints(location, torso),
             torso,
@@ -989,21 +995,33 @@ function resolveMekExplosionLocationDamage(
         const armorDamage = Math.min(remainingArmor, resolution.armorDamage);
         const structureDamage = resolveMekStructureDamage(
             resolution.internalDamage,
-            remainingInternal,
+            remainingInternal - sharedInternalDamage,
             structureKind,
         );
+        const internalDamage: number = sharedInternalDamage + structureDamage.internalDamage;
+        const nextLocation: string | null = topology[location as keyof typeof topology]?.transfersTo ?? null;
 
         locations.push({
             location,
-            internalDamage: structureDamage.internalDamage,
+            internalDamage,
             armorDamage,
             armorRear: resolution.armorRear,
             protection,
+            ...(receivedSharedCompositePip ? { sharedCompositePip: true } : {}),
         });
 
         const overflow = structureDamage.overflowDamage;
-        if (overflow === 0 || resolution.stopsTransfer) break;
-        location = topology[location as keyof typeof topology]?.transfersTo ?? null;
+        sharedCompositePip = !receivedSharedCompositePip
+            && unit.gameRules.id === 'core2026'
+            && protection === 'none'
+            && remainingInternal % 2 === 1
+            && structureKind === 'composite'
+            && internalDamage === remainingInternal
+            && !!nextLocation
+            && unit.getStructureKindAt(nextLocation) === 'composite'
+            && unit.getInternalPoints(nextLocation) - unit.getInternalHits(nextLocation) > 0;
+        if ((overflow === 0 && !sharedCompositePip) || resolution.stopsTransfer) break;
+        location = nextLocation;
         damage = overflow;
     }
 
@@ -1034,6 +1052,7 @@ function applyMekEquipmentExplosion(
                 consolidateImmediately,
                 {
                     explosionProtection: damage.protection,
+                    ...(damage.sharedCompositePip ? { sharedCompositePip: true } : {}),
                     ...(pilotDamageGroup && { pilotDamageGroup }),
                 },
             );

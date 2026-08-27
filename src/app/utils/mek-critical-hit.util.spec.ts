@@ -387,6 +387,24 @@ describe('Mek critical-hit workflow', () => {
         expect(armorHits.get('CT-rear')).toBe(12);
     });
 
+    it('shares the final odd Core composite pip across an un-CASED explosion transfer', () => {
+        const fixture = explodingAmmoUnit(CORE_2026_GAME_RULES, 'composite');
+        fixture.internalHits.set('LT', 1);
+
+        const outcome = applyMekCriticalRoll(fixture.unit, 'LT', [1, 1], true);
+
+        expect(outcome?.explosion?.locations.map(location => ({
+            location: location.location,
+            internalDamage: location.internalDamage,
+            sharedCompositePip: location.sharedCompositePip,
+        }))).toEqual([
+            { location: 'LT', internalDamage: 11, sharedCompositePip: undefined },
+            { location: 'CT', internalDamage: 29, sharedCompositePip: true },
+        ]);
+        expect(fixture.internalHits.get('LT')).toBe(12);
+        expect(fixture.internalHits.get('CT')).toBe(29);
+    });
+
     it('uses TW damage and transfers all uncased explosion overflow', () => {
         const fixture = explodingAmmoUnit(TW_GAME_RULES);
 

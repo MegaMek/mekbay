@@ -4,7 +4,7 @@
 
 import {
     mekStructureDamageCapacity,
-    mekStructurePhaseDamage,
+    mekStructureDamageReceived,
     resolveMekStructureDamage,
 } from './mek-structure-damage.util';
 
@@ -18,12 +18,10 @@ describe('Mek structure damage', () => {
     it('drops the unusable half point when odd composite structure is destroyed', () => {
         expect(resolveMekStructureDamage(2, 3, 'composite')).toEqual({
             internalDamage: 3,
-            phaseDamage: 3,
             overflowDamage: 0,
         });
         expect(resolveMekStructureDamage(2, 1, 'composite')).toEqual({
             internalDamage: 1,
-            phaseDamage: 1,
             overflowDamage: 1,
         });
     });
@@ -31,28 +29,27 @@ describe('Mek structure damage', () => {
     it('keeps incoming phase damage while composite structure survives', () => {
         expect(resolveMekStructureDamage(1, 3, 'composite')).toEqual({
             internalDamage: 2,
-            phaseDamage: 1,
             overflowDamage: 0,
         });
     });
 
-    it('derives phase damage from applied pips, remaining structure, and structure kind', () => {
-        expect(mekStructurePhaseDamage(2, 6, 'composite')).toBe(1);
-        expect(mekStructurePhaseDamage(3, 3, 'composite')).toBe(3);
-        expect(mekStructurePhaseDamage(1, 6, 'reinforced')).toBe(0);
-        expect(mekStructurePhaseDamage(1, 5, 'reinforced')).toBe(1);
-        expect(mekStructurePhaseDamage(2, 6, 'standard')).toBe(2);
+    it('derives received damage cumulatively from marked pips and structure kind', () => {
+        expect([0, 1, 2, 3].map(hits => mekStructureDamageReceived(5, hits, 'composite')))
+            .toEqual([0, 1, 1, 2]);
+        expect([0, 1, 2, 3].map(hits => mekStructureDamageReceived(4, hits, 'composite')))
+            .toEqual([0, 0, 1, 1]);
+        expect([0, 1, 2, 3].map(hits => mekStructureDamageReceived(6, hits, 'reinforced')))
+            .toEqual([0, 0, 1, 1]);
+        expect(mekStructureDamageReceived(5, 2, 'standard')).toBe(2);
     });
 
     it('records Reinforced Structure as integer half-pips and counts only completed circles', () => {
         expect(resolveMekStructureDamage(3, 6, 'reinforced')).toEqual({
             internalDamage: 3,
-            phaseDamage: 1,
             overflowDamage: 0,
         });
         expect(resolveMekStructureDamage(1, 3, 'reinforced')).toEqual({
             internalDamage: 1,
-            phaseDamage: 1,
             overflowDamage: 0,
         });
     });
@@ -60,7 +57,6 @@ describe('Mek structure damage', () => {
     it('uses reinforced structure pips as two incoming damage points', () => {
         expect(resolveMekStructureDamage(5, 2, 'reinforced')).toEqual({
             internalDamage: 2,
-            phaseDamage: 1,
             overflowDamage: 3,
         });
     });
