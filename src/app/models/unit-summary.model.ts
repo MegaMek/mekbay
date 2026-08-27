@@ -73,6 +73,14 @@ export interface UnitComponent {
     eq?: Equipment; // linked equipment data
 }
 
+/** Canonical MegaMek material code and technology base at one unit location. */
+export interface UnitMaterialLayoutEntry {
+    readonly type: number;
+    readonly clan: boolean;
+}
+
+export type UnitMaterialLayout = Readonly<Record<string, UnitMaterialLayoutEntry>>;
+
 export interface UnitTagEntry {
     /** Tag display label */
     tag: string;
@@ -145,6 +153,8 @@ export interface UnitSummary {
     role: string;
     armorType: string;
     structureType: string | null;
+    patchworkLayout?: UnitMaterialLayout;
+    hybridLayout?: UnitMaterialLayout;
     armor: number;
     armorPer: number; // Armor %
     internal: number;
