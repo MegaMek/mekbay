@@ -4,7 +4,7 @@
 
 import { inject, Injectable, signal } from '@angular/core';
 import { DbService } from './db.service';
-import { OPTION_VALUES, type AutomationMode, type CBTAutomationKey, type CBTAutomationOptions, type CBTOptionalRules, type ColorScheme, type ForceBudgetOptimizerLastSkills, type ForceGeneratorOptions, type Options } from '../models/options.model';
+import { CBT_AUTOMATION_KEYS, OPTION_VALUES, type AutomationMode, type CBTAutomationKey, type CBTAutomationOptions, type CBTOptionalRules, type ColorScheme, type ForceBudgetOptimizerLastSkills, type ForceGeneratorOptions, type Options } from '../models/options.model';
 import { PRINT_OPTION_VALUES, type PrintAllOptions } from '../models/print-options.model';
 import { GameSystem, normalizeUnitServerUrl } from '../models/common.model';
 
@@ -197,48 +197,10 @@ function resolveCBTOptionalRules(saved: Options | null | undefined): CBTOptional
 
 function resolveCBTAutomationOptions(saved: Options | null | undefined): CBTAutomationOptions {
     const defaults = DEFAULT_OPTIONS.cbtAutomationOptions;
-    return {
-        pilotSkillCheck: resolveSavedValue(
-            saved?.cbtAutomationOptions?.pilotSkillCheck,
-            defaults.pilotSkillCheck,
-            OPTION_VALUES.automationMode,
-        ),
-        heatAndDissipationResolution: resolveSavedValue(
-            saved?.cbtAutomationOptions?.heatAndDissipationResolution,
-            defaults.heatAndDissipationResolution,
-            OPTION_VALUES.automationMode,
-        ),
-        heatEffectsCheck: resolveSavedValue(
-            saved?.cbtAutomationOptions?.heatEffectsCheck,
-            defaults.heatEffectsCheck,
-            OPTION_VALUES.automationMode,
-        ),
-        pilotHitsAndConsciousnessCheck: resolveSavedValue(
-            saved?.cbtAutomationOptions?.pilotHitsAndConsciousnessCheck,
-            defaults.pilotHitsAndConsciousnessCheck,
-            OPTION_VALUES.automationMode,
-        ),
-        internalExplosionsCheck: resolveSavedValue(
-            saved?.cbtAutomationOptions?.internalExplosionsCheck,
-            defaults.internalExplosionsCheck,
-            OPTION_VALUES.automationMode,
-        ),
-        criticalHitChanceCheck: resolveSavedValue(
-            saved?.cbtAutomationOptions?.criticalHitChanceCheck,
-            defaults.criticalHitChanceCheck,
-            OPTION_VALUES.automationMode,
-        ),
-        breachAndFloodCheck: resolveSavedValue(
-            saved?.cbtAutomationOptions?.breachAndFloodCheck,
-            defaults.breachAndFloodCheck,
-            OPTION_VALUES.automationMode,
-        ),
-        fallingCheck: resolveSavedValue(
-            saved?.cbtAutomationOptions?.fallingCheck,
-            defaults.fallingCheck,
-            OPTION_VALUES.automationMode,
-        ),
-    };
+    return Object.fromEntries(CBT_AUTOMATION_KEYS.map(key => [
+        key,
+        resolveSavedValue(saved?.cbtAutomationOptions?.[key], defaults[key], OPTION_VALUES.automationMode),
+    ])) as CBTAutomationOptions;
 }
 
 function resolveLastCanvasState(saved: unknown): Options['lastCanvasState'] {
