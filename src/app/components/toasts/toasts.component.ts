@@ -14,7 +14,7 @@ import { ToastService } from '../../services/toast.service';
     imports: [CommonModule],
     template: `
     <div class="toast-container">
-        @for (toast of toastService.toasts(); let i = $index; track i) {
+        @for (toast of toastService.visibleToasts(); track toast.id) {
             <div class="toast" [ngClass]="toast.type" (click)="toastService.dismiss(toast.id)">
                 {{ toast.message }}
             </div>

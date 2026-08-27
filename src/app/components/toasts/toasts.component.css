@@ -19,7 +19,7 @@
     font-size: 1rem;
     cursor: pointer;
     pointer-events: auto;
-    opacity: 0.95;
+    opacity: 1;
     text-align: left;
     width: auto;
     max-width: 400px;
