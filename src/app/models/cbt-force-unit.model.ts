@@ -94,6 +94,7 @@ export interface CBTEndTurnAutomationDecisions {
 }
 
 export interface CBTInternalDamageContext {
+    /** Present only for internal-explosion damage; records the protection used to resolve it. */
     readonly explosionProtection?: MekExplosionProtection;
     /** Whether Hardened Armor remained in the exact facing/location when this hit reached structure. */
     readonly hardenedArmorApplies?: boolean;
@@ -101,6 +102,8 @@ export interface CBTInternalDamageContext {
     readonly pilotDamageGroup?: string;
     /** The first composite pip shares a damage point already counted in the previous location. */
     readonly sharedCompositePip?: boolean;
+    /** This hit already damaged armor in the same location and initiated its hull-breach resolution. */
+    readonly armorDamagedBySameHit?: boolean;
     /** Hit-table arc for a possible through-armor critical. */
     readonly throughArmorHitArc?: MekHitArc;
 }
@@ -114,6 +117,12 @@ export interface CBTModularArmorState {
 export interface CBTMekFallDamageRoll {
     readonly hitLocationDice: readonly [number, number] | null;
     readonly tripodLegRoll: number | null;
+}
+
+export interface CBTHullBreachCheckResolution {
+    readonly dice: readonly [number, number];
+    readonly total: number;
+    readonly breached: boolean;
 }
 
 /** Serialized event facts exposed to the dialog with explicit unrolled values. */
@@ -130,6 +139,10 @@ function fallDamageRollForDialog(roll: SerializedMekFallDamageRoll): CBTMekFallD
         hitLocationDice: roll.hitLocationDice ?? null,
         tripodLegRoll: roll.tripodLegRoll ?? null,
     };
+}
+
+function rollD6(random: () => number): number {
+    return Math.floor(random() * 6) + 1;
 }
 
 export type CBTUnitAutomationTrigger =
@@ -150,6 +163,12 @@ export type CBTUnitAutomationTrigger =
         readonly kind: 'breach-and-flood';
         readonly id: string;
         readonly locations: readonly string[];
+        readonly commit: boolean;
+    }
+    | {
+        readonly kind: 'hull-breach-check';
+        readonly id: string;
+        readonly location: string;
         readonly commit: boolean;
     };
 
@@ -846,7 +865,14 @@ export class CBTForceUnit extends ForceUnit {
         const damageReceived = this.getArmorTypeAt(loc) === 'HARDENED'
             ? Math.floor(currentHits / 2) - Math.floor(previousHits / 2)
             : currentHits - previousHits;
-        this.recordArmorHits(loc, hits, rear, consolidateImmediately, damageReceived);
+        this.recordArmorHits(
+            loc,
+            hits,
+            rear,
+            consolidateImmediately,
+            damageReceived,
+            damageReceived > 0,
+        );
         return damageReceived;
     }
 
@@ -871,6 +897,7 @@ export class CBTForceUnit extends ForceUnit {
                 rear,
                 consolidateImmediately,
                 resolution.appliedDamage,
+                resolution.appliedDamage > 0,
             );
         }
         return resolution;
@@ -882,6 +909,7 @@ export class CBTForceUnit extends ForceUnit {
         rear: boolean | undefined,
         consolidateImmediately: boolean,
         damageReceived: number,
+        armorDamageApplied: boolean,
     ): void {
         const locKey = rear ? `${loc}-rear` : loc;
         const locations = { ...this.state.locations() };
@@ -898,6 +926,7 @@ export class CBTForceUnit extends ForceUnit {
         this.state.turnState().addDmgReceived(damageReceived);
         if (consolidateImmediately) this.state.consolidateLocations();
         else this.applyUnderwaterBreachAndFlooding();
+        if (armorDamageApplied) this.applyUnderwaterHullBreachCheck(loc, consolidateImmediately);
         this.evaluateDestroyed();
         this.setModified();
     }
@@ -1032,9 +1061,17 @@ export class CBTForceUnit extends ForceUnit {
         const boundedPreviousHits = Math.min(internalPoints, Math.max(0, previousHits));
         const boundedCurrentHits = Math.min(internalPoints, Math.max(0, this.getInternalHits(loc)));
         const appliedDamage = boundedCurrentHits - boundedPreviousHits;
-        let phaseDamage = mekStructureDamageReceived(internalPoints, boundedCurrentHits, structureKind)
-            - previousDamageReceived;
-        if (context.sharedCompositePip && structureKind === 'composite' && appliedDamage > 0) {
+        // Core counts every Composite structure pip destroyed by an internal explosion toward the damage PSR.
+        const countsExplosionPips = this.gameRules.id === 'core2026'
+            && context.explosionProtection !== undefined
+            && structureKind === 'composite';
+        let phaseDamage = countsExplosionPips
+            ? appliedDamage
+            : mekStructureDamageReceived(internalPoints, boundedCurrentHits, structureKind) - previousDamageReceived;
+        if (!countsExplosionPips
+            && context.sharedCompositePip
+            && structureKind === 'composite'
+            && appliedDamage > 0) {
             phaseDamage -= mekStructureDamageReceived(
                 internalPoints,
                 Math.min(boundedCurrentHits, boundedPreviousHits + 1),
@@ -1043,11 +1080,17 @@ export class CBTForceUnit extends ForceUnit {
         }
         this.state.turnState().addDmgReceived(phaseDamage);
         // A single assignment is one hit/event, regardless of how many structure pips it marks.
-        if (appliedDamage > 0) this.queueMekCriticalChance(loc, {
-            ...context,
-            locationDestroyed: boundedCurrentHits >= internalPoints,
-            consolidateImmediately,
-        });
+        if (appliedDamage > 0) {
+            if (!context.armorDamagedBySameHit) {
+                this.applyUnderwaterBreachAndFlooding(consolidateImmediately);
+                this.applyUnderwaterHullBreachCheck(loc, consolidateImmediately);
+            }
+            this.queueMekCriticalChance(loc, {
+                ...context,
+                locationDestroyed: boundedCurrentHits >= internalPoints,
+                consolidateImmediately,
+            });
+        }
         return phaseDamage;
     }
 
@@ -1151,6 +1194,81 @@ export class CBTForceUnit extends ForceUnit {
         return location.split('/').some(loc => legLocations.has(loc.trim()));
     }
 
+    private isFloodableLocation(location: string): boolean {
+        const internalLocations = this.locations?.internal;
+        if (!internalLocations?.has(location) || this.getLocationCondition(location, 'blown-off')) return false;
+        const structurallyDestroyed = this.isInternalLocStructurallyDestroyed(location);
+        // A location destroyed only through its parent is detached. A location whose own
+        // structure is destroyed remains eligible when its armor also satisfies the rule.
+        return structurallyDestroyed || !this.isInternalLocPhysicallyDestroyed(location);
+    }
+
+    private isLocationArmorDepletedForFlooding(location: string, commit: boolean): boolean {
+        const armorLocations = this.locations?.armor;
+        if (!armorLocations) return false;
+        const armorByFacing = new Map(
+            Array.from(armorLocations.values())
+                .filter(armor => armor.loc === location)
+                .map(armor => [armor.rear, armor] as const),
+        );
+        const armorFacings = MEK_REAR_ARMOR_LOCATIONS.has(location) ? [false, true] : [false];
+        return armorFacings.some(rear => {
+            const armor = armorByFacing.get(rear);
+            const armorHits = commit
+                ? this.getCommittedArmorHits(location, rear)
+                : this.getArmorHits(location, rear);
+            return !armor || armorHits >= this.getArmorPoints(location, rear);
+        });
+    }
+
+    /** Initiates the per-damaging-hit hull-breach check for an armored submerged location. */
+    applyUnderwaterHullBreachCheck(location: string, commit = false): void {
+        const mode = this.automationMode('breachAndFloodCheck');
+        if (mode === 'no'
+            || this.getUnit().type !== 'Mek'
+            || !this.isLocationSubmerged(location)
+            || !this.isFloodableLocation(location)
+            || this.getLocationCondition(location, 'flooded')
+            || this.isLocationArmorDepletedForFlooding(location, commit)) return;
+
+        if (mode === 'yes') {
+            this.resolveUnderwaterHullBreachCheck(location, commit);
+            return;
+        }
+        if (!this.automationTriggers.observed) return;
+        this.automationTriggers.next({
+            kind: 'hull-breach-check',
+            id: uuidv7(),
+            location,
+            commit,
+        });
+    }
+
+    /** Rolls and applies one previously established hull-breach check. */
+    resolveUnderwaterHullBreachCheck(
+        location: string,
+        commit = false,
+        random: () => number = Math.random,
+    ): CBTHullBreachCheckResolution | null {
+        if (this.getUnit().type !== 'Mek'
+            || !this.isFloodableLocation(location)
+            || this.getLocationCondition(location, 'flooded')) return null;
+
+        const dice = [rollD6(random), rollD6(random)] as const;
+        const total = dice[0] + dice[1];
+        const breached = this.gameRules.hullBreachCheckSucceeds(total);
+        if (breached) this.setLocationCondition(location, 'flooded', true, commit);
+
+        const locationLabel = getMekLocationLabel(location) ?? location;
+        const breachRange = this.gameRules.getHullBreachCheckRangeLabel();
+        this.injector.get(CBTAutomationToastService).show(
+            this,
+            `Hull breach check: ${locationLabel} ${breached ? 'breached and flooded' : 'held'} (${total} on 2D6; breach on ${breachRange})`,
+            breached ? 'error' : 'success',
+        );
+        return { dice, total, breached };
+    }
+
     applyUnderwaterBreachAndFlooding(commit = false): void {
         const internalLocations = this.locations?.internal;
         const armorLocations = this.locations?.armor;
@@ -1170,22 +1288,9 @@ export class CBTForceUnit extends ForceUnit {
             : getMekLegLocations(inferMekConfigFromLocations(internalLocations.keys()));
         const eligibleLocations: string[] = [];
         for (const loc of submergedLocations) {
-            if (!internalLocations.has(loc) || this.isInternalLocPhysicallyDestroyed(loc)) continue;
-            // Armor metadata is sparse, so a missing front/rear entry means that facing is exposed.
-            const armorByFacing = new Map(
-                Array.from(armorLocations.values())
-                    .filter(armor => armor.loc === loc)
-                    .map(armor => [armor.rear, armor] as const),
-            );
-            const armorFacings = MEK_REAR_ARMOR_LOCATIONS.has(loc) ? [false, true] : [false];
-            const armorBreached = armorFacings.some(rear => {
-                const armor = armorByFacing.get(rear);
-                const armorHits = commit
-                    ? this.getCommittedArmorHits(loc, rear)
-                    : this.getArmorHits(loc, rear);
-                return !armor || armorHits >= this.getArmorPoints(loc, rear);
-            });
-            if (armorBreached && !this.getLocationCondition(loc, 'flooded')) eligibleLocations.push(loc);
+            if (!this.isFloodableLocation(loc)) continue;
+            if (this.isLocationArmorDepletedForFlooding(loc, commit)
+                && !this.getLocationCondition(loc, 'flooded')) eligibleLocations.push(loc);
         }
 
         const eligible = new Set(eligibleLocations);

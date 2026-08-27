@@ -1052,6 +1052,7 @@ function applyMekEquipmentExplosion(
                 consolidateImmediately,
                 {
                     explosionProtection: damage.protection,
+                    ...(damage.armorDamage > 0 ? { armorDamagedBySameHit: true } : {}),
                     ...(damage.sharedCompositePip ? { sharedCompositePip: true } : {}),
                     ...(pilotDamageGroup && { pilotDamageGroup }),
                 },

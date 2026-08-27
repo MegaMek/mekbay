@@ -214,6 +214,8 @@ export abstract class CBTGameRules {
     abstract getExplosiveWeaponDamage(weapon: WeaponEquipment, mountedCriticalSlots: number): number;
     abstract resolveMekExplosionDamage(context: MekExplosionDamageContext): MekExplosionDamageResolution;
     abstract getMekExplosionProtectionNote(protection: MekExplosionProtection): string | null;
+    abstract hullBreachCheckSucceeds(total: number): boolean;
+    abstract getHullBreachCheckRangeLabel(): string;
     protected abstract canFireTorpedoesIndirectly(context: IndirectFireContext): boolean;
 
     /** Resolves immediate Mek explosion effects after handler-owned delayed cases are excluded. */
@@ -524,6 +526,14 @@ export class GameRules extends CBTGameRules {
         { munitionType: 'M_AX_HEAD', shotsMultiplier: 1, baseAmmoBvMultiplier: 1 },
     ];
 
+    override hullBreachCheckSucceeds(total: number): boolean {
+        return total >= 2 && total <= 4;
+    }
+
+    override getHullBreachCheckRangeLabel(): string {
+        return '2–4';
+    }
+
     override resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
         return { target, degradationSource };
     }
@@ -656,6 +666,14 @@ export class TWGameRules extends CBTGameRules {
         { munitionType: 'M_ARMOR_PIERCING', shotsMultiplier: 0.5 },
         { munitionType: 'M_AX_HEAD', shotsMultiplier: 0.5, baseAmmoBvMultiplier: 2 },
     ];
+
+    override hullBreachCheckSucceeds(total: number): boolean {
+        return total >= 10 && total <= 12;
+    }
+
+    override getHullBreachCheckRangeLabel(): string {
+        return '10+';
+    }
 
     override resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
         return {

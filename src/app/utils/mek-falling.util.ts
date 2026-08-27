@@ -329,6 +329,7 @@ export function applyMekFallDamage(
             if (internalDamage > 0) {
                 const appliedInternalDamage = unit.addInternalHits(location, internalDamage, consolidateImmediately, {
                     hardenedArmorApplies: armorType === 'HARDENED' && remainingArmor > 0,
+                    ...(armorDamage > 0 ? { armorDamagedBySameHit: true } : {}),
                     ...(receivedSharedCompositePip ? { sharedCompositePip: true } : {}),
                 });
                 appliedDamage += appliedInternalDamage;

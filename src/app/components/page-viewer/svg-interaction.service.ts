@@ -794,6 +794,7 @@ export class SvgInteractionService {
                                 if (internalDamage > 0) {
                                     unit.addInternalHits(loc, internalDamage, this.consolidateImmediately, {
                                         hardenedArmorApplies: ordinaryArmorRemaining > 0,
+                                        ...(armorDamage > 0 ? { armorDamagedBySameHit: true } : {}),
                                     });
                                 }
                             } else {
@@ -1752,7 +1753,8 @@ export class SvgInteractionService {
         // Events emitted while END PHASE is draining are already represented in
         // the unit queue and belong to that awaited workflow. Breach reviews are
         // transient, so they must still be delivered rather than silently lost.
-        const phaseOwned = trigger.kind !== 'breach-and-flood';
+        const phaseOwned = trigger.kind !== 'breach-and-flood'
+            && trigger.kind !== 'hull-breach-check';
         if (phaseOwned && this.phaseResolution.isResolving(unit)) return;
 
         let task: () => Promise<unknown>;
@@ -1762,6 +1764,8 @@ export class SvgInteractionService {
             task = () => this.unitCheckResolution.open([unit]);
         } else if (trigger.kind === 'falling') {
             task = () => this.fallingResolution.open(unit, trigger, this.consolidateImmediately);
+        } else if (trigger.kind === 'hull-breach-check') {
+            task = () => this.handleHullBreachCheckTrigger(unit, trigger);
         } else {
             task = () => this.handleBreachAndFloodTrigger(unit, trigger);
         }
@@ -1822,6 +1826,28 @@ export class SvgInteractionService {
             if (!accepted.has(event.id)) continue;
             const location = trigger.locations[index];
             unit.setLocationCondition(location, 'flooded', true, trigger.commit);
+        }
+    }
+
+    private async handleHullBreachCheckTrigger(
+        unit: CBTForceUnit,
+        trigger: Extract<CBTUnitAutomationTrigger, { readonly kind: 'hull-breach-check' }>,
+    ): Promise<void> {
+        const locationLabel = getMekLocationLabel(trigger.location) ?? trigger.location;
+        const breachRange = unit.gameRules.getHullBreachCheckRangeLabel();
+        const event: AutomationReviewEvent = {
+            id: trigger.id,
+            subject: unit.getNotificationDisplayName(),
+            event: 'Hull breach check',
+            description: `${locationLabel} took damage while submerged`,
+            effects: [`Roll 2D6; the location breaches and floods on ${breachRange}.`],
+        };
+        const accepted = await this.automations.resolve('breachAndFloodCheck', [event], {
+            title: 'Review Hull Breach Check',
+            message: 'Choose whether to roll and resolve this hull breach check.',
+        });
+        if (accepted?.has(event.id)) {
+            unit.resolveUnderwaterHullBreachCheck(trigger.location, trigger.commit);
         }
     }
 

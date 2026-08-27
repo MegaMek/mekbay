@@ -879,7 +879,7 @@ describe('Mek critical-hit workflow', () => {
             'LT',
             1,
             true,
-            { explosionProtection: 'case-ii' },
+            { explosionProtection: 'case-ii', armorDamagedBySameHit: true },
         );
     });
 });

@@ -85,6 +85,7 @@ function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInve
         getNotificationDisplayName: () => 'Test Unit',
         automationMode: () => 'ask',
         applyUnderwaterBreachAndFlooding: () => undefined,
+        resolveUnderwaterHullBreachCheck: () => null,
         automationTriggers: new Subject(),
         rules: NO_CONDITION_RULES,
         ...overrides,
@@ -595,6 +596,64 @@ describe('SvgInteractionService', () => {
             jasmine.any(Object),
         );
         expect(setLocationCondition).toHaveBeenCalledOnceWith('LL', 'flooded', true, true);
+    });
+
+    it('rolls an accepted hull-breach check through breach and flood automation', async () => {
+        const automationTriggers = new Subject<CBTUnitAutomationTrigger>();
+        const resolveUnderwaterHullBreachCheck = jasmine.createSpy('resolveUnderwaterHullBreachCheck');
+        const unit = createSvgInteractionUnit({
+            id: 'unit-a',
+            automationTriggers,
+            getNotificationDisplayName: () => 'Archer ARC-2D',
+            resolveUnderwaterHullBreachCheck,
+        });
+        automationResolve.and.resolveTo(new Set(['hull:1']));
+        phaseIsResolving.and.returnValue(true);
+        service.updateUnit(unit);
+
+        automationTriggers.next({
+            kind: 'hull-breach-check',
+            id: 'hull:1',
+            location: 'LL',
+            commit: false,
+        });
+        await service.automationQueue;
+
+        expect(automationResolve).toHaveBeenCalledOnceWith(
+            'breachAndFloodCheck',
+            [jasmine.objectContaining({
+                id: 'hull:1',
+                event: 'Hull breach check',
+                description: 'Left Leg took damage while submerged',
+                effects: ['Roll 2D6; the location breaches and floods on 2–4.'],
+            })],
+            {
+                title: 'Review Hull Breach Check',
+                message: 'Choose whether to roll and resolve this hull breach check.',
+            },
+        );
+        expect(resolveUnderwaterHullBreachCheck).toHaveBeenCalledOnceWith('LL', false);
+    });
+
+    it('does not roll a skipped hull-breach check', async () => {
+        const automationTriggers = new Subject<CBTUnitAutomationTrigger>();
+        const resolveUnderwaterHullBreachCheck = jasmine.createSpy('resolveUnderwaterHullBreachCheck');
+        const unit = createSvgInteractionUnit({
+            automationTriggers,
+            resolveUnderwaterHullBreachCheck,
+        });
+        automationResolve.and.resolveTo(new Set<string>());
+        service.updateUnit(unit);
+
+        automationTriggers.next({
+            kind: 'hull-breach-check',
+            id: 'hull:skip',
+            location: 'RL',
+            commit: true,
+        });
+        await service.automationQueue;
+
+        expect(resolveUnderwaterHullBreachCheck).not.toHaveBeenCalled();
     });
 
     it('does not discard a breach and flood review during phase resolution', async () => {
@@ -1464,6 +1523,7 @@ describe('SvgInteractionService', () => {
         expect(unit.addArmorHits).toHaveBeenCalledWith('LT', 15, false, false);
         expect(unit.addInternalHits).toHaveBeenCalledWith('LT', 12, false, {
             hardenedArmorApplies: true,
+            armorDamagedBySameHit: true,
         });
     });
 
@@ -1500,6 +1560,7 @@ describe('SvgInteractionService', () => {
         expect(unit.addArmorHits).toHaveBeenCalledWith('HD', 2, false, false);
         expect(unit.addInternalHits).toHaveBeenCalledWith('HD', 2, false, {
             hardenedArmorApplies: true,
+            armorDamagedBySameHit: true,
         });
         expect(showToast).toHaveBeenCalledWith(
             'Test Unit — Pilot hit from head damage in Head: 3 applied',
@@ -1601,6 +1662,7 @@ describe('SvgInteractionService', () => {
         expect(unit.addArmorHits).toHaveBeenCalledWith('LT', 2, true, false);
         expect(unit.addInternalHits).toHaveBeenCalledWith('LT', 2, false, {
             hardenedArmorApplies: true,
+            armorDamagedBySameHit: true,
         });
     });
 
@@ -1696,6 +1758,7 @@ describe('SvgInteractionService', () => {
         expect(unit.addArmorHits).toHaveBeenCalledWith('LT', 15, false, false);
         expect(unit.addInternalHits).toHaveBeenCalledWith('LT', 1, false, {
             hardenedArmorApplies: true,
+            armorDamagedBySameHit: true,
         });
     });
 

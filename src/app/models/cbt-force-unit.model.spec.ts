@@ -2072,6 +2072,125 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.getLocationCondition('LT', 'flooded')).toBeTrue();
     });
 
+    it('floods a structurally destroyed location with depleted armor when it becomes submerged', () => {
+        automationModes.pilotSkillCheck = 'no';
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        forceUnit.setArmorHits('LL', forceUnit.getArmorPoints('LL'));
+        forceUnit.setInternalHits('LL', forceUnit.getInternalPoints('LL'));
+
+        expect(forceUnit.isInternalLocStructurallyDestroyed('LL')).toBeTrue();
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeFalse();
+
+        forceUnit.turnState().setCover('underwater-depth-1');
+
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeTrue();
+    });
+
+    it('does not use structural destruction as a substitute for depleted armor', () => {
+        automationModes.pilotSkillCheck = 'no';
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        forceUnit.setInternalHits('LL', forceUnit.getInternalPoints('LL'));
+
+        forceUnit.turnState().setCover('underwater-depth-1');
+
+        expect(forceUnit.isInternalLocStructurallyDestroyed('LL')).toBeTrue();
+        expect(forceUnit.getArmorHits('LL')).toBe(0);
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeFalse();
+    });
+
+    it('automatically resolves a successful Core hull-breach check after underwater damage', () => {
+        automationModes.pilotSkillCheck = 'no';
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        forceUnit.turnState().setCover('underwater-depth-1');
+        spyOn(Math, 'random').and.returnValues(0, 0);
+
+        forceUnit.addArmorHits('LL', 1);
+
+        expect(Math.random).toHaveBeenCalledTimes(2);
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeTrue();
+        expect(toastService.showToast).toHaveBeenCalledWith(
+            jasmine.stringContaining('Hull breach check: Left Leg breached and flooded (2 on 2D6; breach on 2–4)'),
+            'error',
+        );
+    });
+
+    it('does not flood when a Core hull-breach check rolls above 4', () => {
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        forceUnit.turnState().setCover('underwater-depth-1');
+        spyOn(Math, 'random').and.returnValues(0.5, 0.5);
+
+        forceUnit.addArmorHits('LL', 1);
+
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeFalse();
+        expect(toastService.showToast).toHaveBeenCalledWith(
+            jasmine.stringContaining('Hull breach check: Left Leg held (8 on 2D6; breach on 2–4)'),
+            'success',
+        );
+    });
+
+    it('uses the Total Warfare 10+ hull-breach result', () => {
+        cbtRules = 'tw';
+        automationModes.pilotSkillCheck = 'no';
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        forceUnit.turnState().setCover('underwater-depth-1');
+        spyOn(Math, 'random').and.returnValues(0.7, 0.7);
+
+        forceUnit.addArmorHits('LL', 1);
+
+        expect(forceUnit.gameRules.id).toBe('tw');
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeTrue();
+        expect(toastService.showToast).toHaveBeenCalledWith(
+            jasmine.stringContaining('Hull breach check: Left Leg breached and flooded (10 on 2D6; breach on 10+)'),
+            'error',
+        );
+    });
+
+    it('does not breach on a low Total Warfare hull-breach roll', () => {
+        cbtRules = 'tw';
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        forceUnit.turnState().setCover('underwater-depth-1');
+        spyOn(Math, 'random').and.returnValues(0, 0);
+
+        forceUnit.addArmorHits('LL', 1);
+
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeFalse();
+        expect(toastService.showToast).toHaveBeenCalledWith(
+            jasmine.stringContaining('Hull breach check: Left Leg held (2 on 2D6; breach on 10+)'),
+            'success',
+        );
+    });
+
+    it('does not roll when depleted armor makes the underwater breach automatic', () => {
+        automationModes.pilotSkillCheck = 'no';
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        forceUnit.turnState().setCover('underwater-depth-1');
+        spyOn(Math, 'random');
+
+        forceUnit.addArmorHits('LL', forceUnit.getArmorPoints('LL'));
+
+        expect(Math.random).not.toHaveBeenCalled();
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeTrue();
+    });
+
+    it('requests a hull-breach check in ask mode without resolving it', () => {
+        automationModes.breachAndFloodCheck = 'ask';
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+        forceUnit.turnState().setCover('underwater-depth-1');
+
+        forceUnit.addArmorHits('LL', 1);
+
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeFalse();
+        expect(triggers).toEqual([
+            jasmine.objectContaining({
+                kind: 'hull-breach-check',
+                location: 'LL',
+                commit: false,
+            }),
+        ]);
+    });
+
     it('marks flooding when pending armor breaches underwater and commits it at phase end', () => {
         const { forceUnit } = createCriticalHeatSinkForceUnit();
         forceUnit.turnState().setCover('underwater-depth-1');
@@ -2097,7 +2216,11 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
         forceUnit.turnState().setCover('underwater-depth-1');
 
-        forceUnit.addArmorHits('LL', 5);
+        forceUnit.addArmorHits('LL', 1);
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeFalse();
+        expect(triggers).toEqual([]);
+
+        forceUnit.addArmorHits('LL', 4);
         forceUnit.endPhase();
 
         expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeFalse();
@@ -2214,6 +2337,31 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         reinforced.addInternalHits('LT', 1);
         expect(reinforced.turnState().dmgReceived()).toBe(1);
+    });
+
+    it('counts every Core composite pip destroyed by an internal explosion toward the damage PSR', () => {
+        const explosion = createCriticalHeatSinkForceUnit().forceUnit;
+        spyOn(explosion, 'getStructureKindAt').and.returnValue('composite');
+        explosion.locations!.internal.set('LT', { loc: 'LT', points: 20 });
+
+        // Explosion resolution has already capped 10 damage and doubled it to 20 structure pips.
+        expect(explosion.addInternalHits('LT', 20, false, {
+            explosionProtection: 'none',
+        })).toBe(20);
+
+        expect(explosion.turnState().dmgReceived()).toBe(20);
+        expect(explosion.turnState().getPSRChecks()).toContain(jasmine.objectContaining({
+            kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+        }));
+
+        const transferred = createCriticalHeatSinkForceUnit().forceUnit;
+        spyOn(transferred, 'getStructureKindAt').and.returnValue('composite');
+
+        expect(transferred.addInternalHits('LT', 1, false, {
+            explosionProtection: 'none',
+            sharedCompositePip: true,
+        })).toBe(1);
+        expect(transferred.turnState().dmgReceived()).toBe(1);
     });
 
     it('does not queue automatic critical chances when that automation is no', () => {
