@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import type { CBTForceUnit, CBTMekFallDamageRoll } from '../models/cbt-force-unit.model';
 import { getMekLocationLabel, getTopologyFor, MEK_TORSO_LOCATIONS, type ArmorType } from '../models/entity/types';
 import type { MekHitArc } from '../models/force-serialization';
 import { fullDoubleDamagePipsRemoved, resolveMekStructureDamage } from './mek-structure-damage.util';
@@ -41,6 +41,19 @@ export interface ResolvedMekFallDamageGroup extends MekFallHitLocationResult {
     readonly damage: number;
     readonly location: string;
     readonly locationLabel: string;
+}
+
+export interface MekFallDiceOptions {
+    readonly orientationRoll?: number | null;
+    readonly damageRolls?: readonly CBTMekFallDamageRoll[];
+    readonly random?: () => number;
+}
+
+export interface RolledMekFallDice {
+    readonly orientationRoll: number;
+    readonly orientation: MekFallOrientation;
+    readonly damageRolls: readonly CBTMekFallDamageRoll[];
+    readonly hitLocations: readonly MekFallHitLocationResult[];
 }
 
 export interface AppliedMekFallLocationDamage {
@@ -196,6 +209,49 @@ export function twoD6ForTotal(total: number | null): readonly [number, number] |
     return total !== null && Number.isInteger(total) && total >= 2 && total <= 12
         ? [Math.floor(total / 2), Math.ceil(total / 2)]
         : null;
+}
+
+/** Rolls or restores every die needed to resolve one fall. */
+export function rollMekFallDice(
+    rulesId: MekFallRulesId,
+    table: MekHitLocationTable,
+    damageGroupCount: number,
+    options: MekFallDiceOptions = {},
+): RolledMekFallDice {
+    const random = options.random ?? Math.random;
+    const orientationRoll = options.orientationRoll ?? rollD6(random);
+    const orientation = resolveMekFallOrientation(rulesId, orientationRoll);
+    const rolled = Array.from({ length: damageGroupCount }, (_unused, index) => {
+        const saved = options.damageRolls?.[index];
+        const hitLocationDice = saved?.hitLocationDice ?? [rollD6(random), rollD6(random)] as const;
+        const preliminary = resolveMekFallHitLocation(
+            table,
+            orientation.hitArc,
+            twoD6Total(hitLocationDice),
+        );
+        const needsTripodLeg = preliminary.location === null
+            && preliminary.tripodLegModifier !== undefined;
+        const tripodLegRoll = needsTripodLeg
+            ? saved?.tripodLegRoll ?? rollD6(random)
+            : null;
+        return {
+            damageRoll: { hitLocationDice, tripodLegRoll },
+            hitLocation: tripodLegRoll === null
+                ? preliminary
+                : resolveMekFallHitLocation(
+                    table,
+                    orientation.hitArc,
+                    twoD6Total(hitLocationDice),
+                    tripodLegRoll,
+                ),
+        };
+    });
+    return {
+        orientationRoll,
+        orientation,
+        damageRolls: rolled.map(result => result.damageRoll),
+        hitLocations: rolled.map(result => result.hitLocation),
+    };
 }
 
 /** Resolves one 2D6 hit-location roll, including the extra tripod leg roll. */
@@ -453,6 +509,10 @@ function throughArmorHitArc(group: ResolvedMekFallDamageGroup): MekFallHitArc {
 
 function normalizedInteger(value: number): number {
     return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+}
+
+function rollD6(random: () => number): number {
+    return Math.floor(random() * 6) + 1;
 }
 
 function mekFallWeightDamage(tons: number): number {

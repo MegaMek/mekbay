@@ -9,6 +9,7 @@ import {
     mekFallDamage,
     mekFallDamageGroups,
     resolvedMekFallDamageGroups,
+    rollMekFallDice,
     resolveMekFallArmorDamage,
     resolveMekFallDamage,
     resolveMekFallHitLocation,
@@ -121,6 +122,33 @@ describe('Mek falling rules', () => {
             adjustedTripodLegRoll: 3,
             location: 'CL',
         }));
+    });
+
+    it('rolls and restores all fall dice through one workflow', () => {
+        const values = [0.7, 0, 0.2, 0.5];
+        const random = () => values.shift() ?? 0;
+
+        const rolled = rollMekFallDice('tw', 'tripod', 1, { random });
+
+        expect(rolled.orientation).toEqual(jasmine.objectContaining({ hitArc: 'left' }));
+        expect(rolled.damageRolls).toEqual([{
+            hitLocationDice: [1, 2],
+            tripodLegRoll: 4,
+        }]);
+        expect(rolled.hitLocations[0]).toEqual(jasmine.objectContaining({
+            location: 'LL',
+            adjustedTripodLegRoll: 5,
+        }));
+
+        const unusedRandom = jasmine.createSpy('random');
+        const restored = rollMekFallDice('tw', 'tripod', 1, {
+            orientationRoll: rolled.orientationRoll,
+            damageRolls: rolled.damageRolls,
+            random: unusedRandom,
+        });
+
+        expect(restored).toEqual(rolled);
+        expect(unusedRandom).not.toHaveBeenCalled();
     });
 
     it('applies armor, internal damage, and normal inward transfer for each group', () => {
