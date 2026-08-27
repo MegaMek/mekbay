@@ -30,19 +30,27 @@
     }
 }
 
-.sum.large {
-    font-size: clamp(24px, 7vw, 32px);
-    font-weight: bold;
-    color: #fff;
-    white-space: nowrap;
+.sum {
     display: flex;
     align-items: center;
     gap: 4px;
 
     .value {
-        font-size: 1.5em;
+        font-size: 1.4em;
+    }
+
+    &.large {
+        font-size: clamp(24px, 7vw, 32px);
+        font-weight: bold;
+        color: #fff;
+        white-space: nowrap;
+    
+        .value {
+            font-size: 1.5em;
+        }
     }
 }
+
 
 .plus-sign {
     .dice-roller-root:not(.small) & {

@@ -16,7 +16,7 @@ import { LoggerService } from '../../services/logger.service';
 import { GameService } from '../../services/game.service';
 import type { GameSystem } from '../../models/common.model';
 import { normalizeUnitServerUrl } from '../../models/common.model';
-import type { AutomationMode, AvailabilitySource, CBTAutomationKey, ForceViewerBVPVDisplay, RecordSheetDoubleTapZoomResetMode } from '../../models/options.model';
+import type { AutomationMode, AvailabilitySource, CBTAutomationKey, CBTOptionalRules, ForceViewerBVPVDisplay, RecordSheetDoubleTapZoomResetMode } from '../../models/options.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { DataService } from '../../services/data.service';
 import { PublicTagsService } from '../../services/public-tags.service';
@@ -111,37 +111,37 @@ const CBT_AUTOMATION_OPTIONS: readonly CBTAutomationOptionDefinition[] = [
         description: 'Resolve end-of-phase Piloting Skill Rolls. "No" keeps the warnings available but skips them when the phase closes.',
     },
     {
-        key: 'heatAndDissipation',
+        key: 'heatAndDissipationResolution',
         label: 'Heat and dissipation',
         description: 'Calculate and apply heat and cooling at end of turn.',
     },
     {
-        key: 'heatEffects',
+        key: 'heatEffectsCheck',
         label: 'Heat effects',
         description: 'Resolve shutdown, ammunition explosion, life support, and aerospace heat checks after end-turn heat is applied. Pilot damage also follows its own setting.',
     },
     {
-        key: 'pilotHitsAndConsciousness',
+        key: 'pilotHitsAndConsciousnessCheck',
         label: 'Pilot hits and consciousness',
-        description: 'Apply pilot injuries from head and heat effects, then resolve consciousness and recovery rolls.',
+        description: 'Apply pilot injuries from head hits and heat effects, then resolve consciousness and recovery rolls.',
     },
     {
-        key: 'internalExplosions',
+        key: 'internalExplosionsCheck',
         label: 'Internal explosions',
-        description: 'Resolve explosion effects caused by internal equipment and ammunition.',
+        description: 'Resolve effects caused by explosive equipment and ammunition.',
     },
     {
-        key: 'criticalHitChance',
+        key: 'criticalHitChanceCheck',
         label: 'Critical hit chance',
         description: 'Resolve checks that can cause critical hits.',
     },
     {
-        key: 'breachAndFlood',
+        key: 'breachAndFloodCheck',
         label: 'Breach and flood',
         description: 'Resolve armor breaches and flooding effects.',
     },
     {
-        key: 'falling',
+        key: 'fallingCheck',
         label: 'Falling',
         description: 'Resolve fall orientation, hit locations, and damage before the seatbelt check.',
     },
@@ -568,13 +568,10 @@ export class OptionsDialogComponent {
     }
 
     onCbtAutomationModeChange(key: CBTAutomationKey, value: AutomationMode) {
-        this.optionsService.setOption('cbtAutomationOptions', {
-            ...this.optionsService.options().cbtAutomationOptions,
-            [key]: value,
-        });
+        this.optionsService.setCbtAutomationMode(key, value);
     }
 
-    onCBTOptionalRuleChange(key: 'forcedWithdrawal' | 'extremeRange', event: Event) {
+    onCBTOptionalRuleChange(key: keyof CBTOptionalRules, event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.optionsService.setOption('CBTOptionalRules', {
             ...this.optionsService.options().CBTOptionalRules,

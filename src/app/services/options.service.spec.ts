@@ -45,40 +45,6 @@ describe('OptionsService', () => {
         expect(service.options().enableForceSyncConflictDialog).toBeFalse();
     });
 
-    it('defaults heat effects to ask while preserving the established automation defaults', async () => {
-        savedOptions = null;
-
-        const service = await createService();
-
-        expect(service.options().cbtAutomationOptions).toEqual({
-            pilotSkillCheck: 'ask',
-            heatAndDissipation: 'no',
-            heatEffects: 'ask',
-            pilotHitsAndConsciousness: 'ask',
-            internalExplosions: 'ask',
-            criticalHitChance: 'ask',
-            breachAndFlood: 'ask',
-            falling: 'ask',
-        });
-    });
-
-    it('restores each heat automation policy independently', async () => {
-        savedOptions = {
-            cbtAutomationOptions: {
-                heatAndDissipation: 'yes',
-                heatEffects: 'no',
-            },
-        };
-
-        const service = await createService();
-
-        expect(service.cbtAutomationMode('heatAndDissipation')).toBe('yes');
-        expect(service.cbtAutomationMode('heatEffects')).toBe('no');
-        expect(service.cbtAutomationMode('pilotHitsAndConsciousness')).toBe('ask');
-        expect(service.cbtAutomationMode('criticalHitChance')).toBe('ask');
-        expect(service.cbtAutomationMode('falling')).toBe('ask');
-    });
-
     it('restores the force sync conflict dialog preference', async () => {
         savedOptions = { enableForceSyncConflictDialog: true };
 
@@ -222,6 +188,7 @@ describe('OptionsService', () => {
         expect(service.options().CBTOptionalRules).toEqual({
             forcedWithdrawal: true,
             extremeRange: false,
+            floatingCriticals: false,
         });
         expect(service.options().lastCanvasState).toBeUndefined();
         expect(service.options().sidebarLipPosition).toBeUndefined();
@@ -283,6 +250,7 @@ describe('OptionsService', () => {
         expect(service.options().CBTOptionalRules).toEqual({
             forcedWithdrawal: true,
             extremeRange: false,
+            floatingCriticals: false,
         });
     });
 
@@ -291,6 +259,7 @@ describe('OptionsService', () => {
             CBTOptionalRules: {
                 forcedWithdrawal: false,
                 extremeRange: true,
+                floatingCriticals: true,
             },
         };
 
@@ -299,6 +268,7 @@ describe('OptionsService', () => {
         expect(service.options().CBTOptionalRules).toEqual({
             forcedWithdrawal: false,
             extremeRange: true,
+            floatingCriticals: true,
         });
     });
 

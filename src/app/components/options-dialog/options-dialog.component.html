@@ -533,8 +533,8 @@
                 </div>
                 <div class="option-section-title">Automations</div>
                 <div class="description automation-description">
-                    <p><strong>Yes</strong> starts the workflow when it triggers, <strong>Ask</strong> first requests
-                        permission, and <strong>No</strong> leaves it for manual tracking.</p>
+                    <p><strong>Yes</strong> automatically rolls and applies the result, <strong>Ask</strong> opens the
+                        review and roll controls, and <strong>No</strong> leaves it for manual tracking.</p>
                 </div>
                 <div class="automation-options">
                     @for (automation of cbtAutomationOptions; track automation.key) {
@@ -548,8 +548,8 @@
                                 @for (mode of cbtAutomationModes; track mode.value) {
                                 <button type="button" class="automation-mode-choice"
                                     role="radio"
-                                    [class.selected]="optionsService.options().cbtAutomationOptions[automation.key] === mode.value"
-                                    [attr.aria-checked]="optionsService.options().cbtAutomationOptions[automation.key] === mode.value"
+                                    [class.selected]="optionsService.cbtAutomationMode(automation.key) === mode.value"
+                                    [attr.aria-checked]="optionsService.cbtAutomationMode(automation.key) === mode.value"
                                     (click)="onCbtAutomationModeChange(automation.key, mode.value)">
                                     {{ mode.label }}
                                 </button>
@@ -564,7 +564,16 @@
                 </div>
                 <div class="option-section-title">Optional rules</div>
                 <div class="option-row">
-                    <label for="CBTForcedWithdrawal">Forced Withdrawal (Cripple):</label>
+                    <label for="CBTOptionalFloatingCritical">Floating criticals:</label>
+                    <select id="CBTOptionalFloatingCritical" class="bt-select"
+                        [value]="optionsService.options().CBTOptionalRules.floatingCriticals"
+                        (change)="onCBTOptionalRuleChange('floatingCriticals', $event)">
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled (default)</option>
+                    </select>
+                </div>
+                <div class="option-row">
+                    <label for="CBTForcedWithdrawal">Forced withdrawal (Cripple):</label>
                     <select id="CBTForcedWithdrawal" class="bt-select"
                         [value]="optionsService.options().CBTOptionalRules.forcedWithdrawal"
                         (change)="onCBTOptionalRuleChange('forcedWithdrawal', $event)">

@@ -118,7 +118,7 @@ export interface MekCriticalChanceDialogData {
                         (click)="roll()"
                     >
                         <button
-                            class="random-button large"
+                            class="random-button huge"
                             type="button"
                             aria-label="Roll critical chance"
                             title="Roll critical chance"

@@ -633,7 +633,7 @@ export class UnitSvgService {
         const projection = this.unit.turnState().heatProjection();
         const manualTarget = heat.next;
         const hasUserTarget = manualTarget !== undefined;
-        const heatAutomationMode = this.unit.automationMode('heatAndDissipation');
+        const heatAutomationMode = this.unit.automationMode('heatAndDissipationResolution');
         const showProjection = heatAutomationMode !== 'no'
             && !hasUserTarget
             && this.unit.turnState().hasPendingHeatResolution();

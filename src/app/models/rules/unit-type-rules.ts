@@ -9,7 +9,7 @@ import { WeaponEquipment, type Equipment } from '../equipment.model';
 import type { CriticalSlot, RuleCheckOutcome, SerializedC3NetworkGroup } from '../force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
-import type { CrewMemberState } from '../crew-member.model';
+import { isCrewMemberAvailable, type CrewMember, type CrewMemberState } from '../crew-member.model';
 import {
     getTargetMovementBracketForDistance,
     getTargetMovementDistanceModifier,
@@ -30,7 +30,7 @@ import type {
     UnitSystemStatusFacts,
 } from '../equipment-status.model';
 
-export type PSRCheckKind = 'damaged-leg-actuator-movement' | 'damaged-hip-movement';
+export type PSRCheckKind = 'shutdown' | 'damaged-leg-actuator-movement' | 'damaged-hip-movement';
 
 export interface PSRCheck {
     id?: string;
@@ -368,6 +368,9 @@ export interface UnitTypeRules {
 
     /** Evaluate whether internal damage creates unit-type-specific control-roll checks. */
     evaluateLegDestroyed(location: string, hits: number): void;
+
+    /** Apply the ruleset-specific consequences of flooding a location. */
+    evaluateLocationFlooded(location: string, active: boolean): void;
 
     /** Evaluate whether critical damage creates unit-type-specific control-roll checks. */
     evaluateCritSlotHit(crit: CriticalSlot): void;
@@ -717,6 +720,9 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     evaluateLegDestroyed(_location: string, _hits: number): void {
     }
 
+    evaluateLocationFlooded(_location: string, _active: boolean): void {
+    }
+
     evaluateCritSlotHit(_crit: CriticalSlot): void {
     }
 
@@ -748,7 +754,15 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     getActivePilotCrewId(): number | null {
-        return this.unit.getCrewMember(0)?.getState() === 'healthy' ? 0 : null;
+        const primaryPilot = this.unit.getCrewMember(0);
+        if (primaryPilot && isCrewMemberAvailable(primaryPilot.getState())) return 0;
+
+        return this.unit.getCrewMembers().reduce<CrewMember | null>((best, crew) => {
+            if (crew.getId() === 0 || !isCrewMemberAvailable(crew.getState())) return best;
+            if (!best || crew.getSkill('piloting') < best.getSkill('piloting')) return crew;
+            if (crew.getSkill('piloting') === best.getSkill('piloting') && crew.getId() < best.getId()) return crew;
+            return best;
+        }, null)?.getId() ?? null;
     }
 
     getMaxDistanceForMoveMode(_moveMode: MotiveModes): number | null {
@@ -784,7 +798,9 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     getBasePilotingSkill(): number {
-        return this.unit.getCrewMember(0)?.getSkill('piloting') ?? this.unit.pilotingSkill();
+        const crewId = this.getActivePilotCrewId();
+        return (crewId === null ? null : this.unit.getCrewMember(crewId)?.getSkill('piloting'))
+            ?? this.unit.pilotingSkill();
     }
 
     getStandardControlRollTarget(): number {

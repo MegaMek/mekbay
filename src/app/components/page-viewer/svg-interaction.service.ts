@@ -47,6 +47,7 @@ import { canApplyMekCriticalHitToSlot } from '../../utils/mek-critical-hit.util'
 import { uidTranslations } from '../../models/common.model';
 import type { MekRules } from '../../models/rules/mek-rules';
 import { CBTAutomationService } from '../../services/cbt-automation.service';
+import { CBTAutomationToastService } from '../../services/cbt-automation-toast.service';
 import { MekCriticalHitAutomationService } from '../../services/mek-critical-hit-automation.service';
 import { MekCriticalResolutionService } from '../../services/mek-critical-resolution.service';
 import { UnitCheckResolutionService } from '../../services/unit-check-resolution.service';
@@ -120,6 +121,7 @@ export class SvgInteractionService {
     private pageViewerState = inject(PageViewerStateService);
     private pickerFactory = inject(PickerFactoryService);
     private automations = inject(CBTAutomationService);
+    private automationToasts = inject(CBTAutomationToastService);
     private criticalHitAutomation = inject(MekCriticalHitAutomationService);
     private criticalResolution = inject(MekCriticalResolutionService);
     private unitCheckResolution = inject(UnitCheckResolutionService);
@@ -758,7 +760,16 @@ export class SvgInteractionService {
                 const endValue = remainingArmorPoints + remainingInternalPoints;
 
                 const commitArmorChange = (unit: CBTForceUnit, value: number, applyHeadHit: boolean) => {
-                    if (applyHeadHit) unit.applyHeadHitPilotHits();
+                    if (applyHeadHit) {
+                        const appliedPilotHits = unit.applyHeadHitCrewHits();
+                        if (unit.automationMode('pilotHitsAndConsciousnessCheck') === 'yes') {
+                            this.automationToasts.show(
+                                unit,
+                                `Pilot hit from head damage in ${getMekLocationLabel(loc) ?? loc}: ${appliedPilotHits > 0 ? `${appliedPilotHits} applied` : 'none applied'}`,
+                                appliedPilotHits > 0 ? 'error' : 'info',
+                            );
+                        }
+                    }
                     if (isStructure) {
                         unit.addInternalHits(loc, value, this.consolidateImmediately);
                     } else {
@@ -1758,8 +1769,10 @@ export class SvgInteractionService {
 
     private scheduleAutomation(unit: CBTForceUnit, trigger: CBTUnitAutomationTrigger): void {
         // Events emitted while END PHASE is draining are already represented in
-        // the unit queue and belong to that awaited workflow.
-        if (this.phaseResolution.isResolving(unit)) return;
+        // the unit queue and belong to that awaited workflow. Breach reviews are
+        // transient, so they must still be delivered rather than silently lost.
+        const phaseOwned = trigger.kind !== 'breach-and-flood';
+        if (phaseOwned && this.phaseResolution.isResolving(unit)) return;
 
         let task: () => Promise<unknown>;
         if (trigger.kind === 'critical-hit-chance') {
@@ -1774,7 +1787,7 @@ export class SvgInteractionService {
 
         this.queueAutomation(async () => {
             // END PHASE may have started after the trigger was scheduled.
-            if (this.phaseResolution.isResolving(unit)) return;
+            if (phaseOwned && this.phaseResolution.isResolving(unit)) return;
             await task();
         });
     }
@@ -1793,9 +1806,9 @@ export class SvgInteractionService {
             description: 'Apply the resulting pilot hit',
             effects: ['Queue any required Consciousness Roll'],
         };
-        const accepted = await this.automations.resolve('pilotHitsAndConsciousness', [event], {
+        const accepted = await this.automations.resolve('pilotHitsAndConsciousnessCheck', [event], {
             title: 'Review Pilot Hit',
-            message: 'Choose whether to apply the pilot hit caused by this head hit. Cancel leaves the head damage unapplied.',
+            message: 'Choose whether to apply the pilot hit caused by this head hit.',
         });
         return accepted === null ? null : accepted.has(event.id);
     }
@@ -1812,9 +1825,8 @@ export class SvgInteractionService {
         }));
         let accepted: ReadonlySet<string> | null;
         try {
-            accepted = await this.automations.resolve('breachAndFlood', events, {
+            accepted = await this.automations.resolve('breachAndFloodCheck', events, {
                 title: 'Review Breach and Flooding',
-                message: 'Choose which exposed locations to flood. Cancel defers every location until flooding is evaluated again.',
             });
         } catch (error) {
             unit.deferUnderwaterBreachAndFloodingReview(trigger.locations);

@@ -257,7 +257,7 @@ export function renderBfsGenerationReport(files: readonly PlannedBfsFile[], aero
         `- Supported definitions: **${files.length}** (${files.length - existing} new, ${existing} existing)`,
         `- Linked MTF/BLK definitions: **${linked}**`,
         `- Standalone emplacements: **${files.length - linked}**`,
-        `- skipped Aerospace: **${aerospace.length}**`,
+        `- Aerospace rows blocked: **${aerospace.length}**`,
         '',
         '## Generated definitions',
         '',

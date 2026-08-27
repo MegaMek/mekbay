@@ -1,0 +1,84 @@
+.floating-location-options {
+    align-self: stretch;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+}
+
+.floating-location-option {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    min-height: 34px;
+    min-width: 0;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    background: var(--background-input);
+    color: var(--text-color);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.floating-location-option:not(:disabled):hover,
+.floating-location-option:not(:disabled):focus-visible,
+.floating-location-option.selected {
+    border-color: var(--bt-yellow);
+    background: color-mix(in srgb, var(--bt-yellow) 14%, var(--background-input));
+    outline: none;
+}
+
+.floating-location-option:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.floating-location-number {
+    align-self: stretch;
+    display: grid;
+    place-items: center;
+    background: var(--border-color);
+    font-size: 0.82em;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.floating-location-option.selected .floating-location-number {
+    background: var(--bt-yellow);
+    color: #000;
+}
+
+.floating-location-name {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    padding: 5px 10px;
+}
+
+.floating-tripod-leg-picker {
+    align-self: stretch;
+    display: grid;
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid var(--bt-yellow);
+    background: color-mix(in srgb, var(--bt-yellow) 10%, transparent);
+}
+
+.floating-tripod-leg-picker > span {
+    color: var(--text-color-secondary);
+    font-size: 0.8em;
+}
+
+.floating-tripod-leg-options {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 4px;
+}
+
+.floating-tripod-leg-options .bt-button {
+    min-width: 0;
+}
+
+.floating-tripod-leg-options .bt-button.selected {
+    border-color: var(--bt-yellow);
+    color: var(--bt-yellow);
+}

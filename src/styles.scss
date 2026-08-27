@@ -985,6 +985,14 @@ hr {
     transition: opacity 0.2s ease-in-out;
 
     &.large {
+        flex: 0 0 36px;
+        width: 36px;
+        height: 36px;
+        background-size: 32px 32px;
+
+    }
+
+    &.huge {
         flex: 0 0 64px;
         width: 64px;
         height: 64px;

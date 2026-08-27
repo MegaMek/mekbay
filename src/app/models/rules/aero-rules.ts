@@ -76,8 +76,9 @@ export class AeroRules extends UnitTypeRulesBase {
     // ── PSR / Control Rolls ──────────────────────────────────────────────────
 
     override getStandardControlRollTarget(): number {
+        const pilotCrewId = this.getActivePilotCrewId();
         return this.getBasePilotingSkill()
-            + (this.unit.getCrewMember(0)?.getHits() ?? 0)
+            + (pilotCrewId === null ? 0 : this.unit.getCrewMember(pilotCrewId)?.getHits() ?? 0)
             + this.destroyedCriticalBoxes('avionics_hit')
             + this.destroyedCriticalBoxes('life_support_hit');
     }

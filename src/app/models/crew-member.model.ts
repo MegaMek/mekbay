@@ -28,7 +28,17 @@ export function getConsciousnessHitCount(target: number): number | null {
 
 export type SkillType = 'gunnery' | 'piloting';
 export type CrewMemberState = 'healthy' | 'ejected' | 'unconscious' | 'dead' | 'killed' | 'stunned';
-type StoredCrewMemberState = Exclude<CrewMemberState, 'dead'>;
+type StoredCrewMemberState = CrewMemberState;
+
+/** Crew who can currently operate the unit or make a skill check. */
+export function isCrewMemberAvailable(state: CrewMemberState): boolean {
+    return state === 'healthy';
+}
+
+/** Crew still present in the unit and affected by unit-wide damage or fall checks. */
+export function isCrewMemberAboard(state: CrewMemberState): boolean {
+    return state !== 'ejected' && state !== 'dead' && state !== 'killed';
+}
 
 export interface CrewMemberDetails {
     id: number;
@@ -73,7 +83,7 @@ export class CrewMember {
     }
 
     isDead(): boolean {
-        return this.hits >= DEAD_CREW_HIT_THRESHOLD || this.unit.rules.isCrewCockpitDestroyed(this.getId());
+        return this.state === 'dead' || this.unit.rules.isCrewCockpitDestroyed(this.getId());
     }
 
     isCrippled(): boolean {
@@ -88,6 +98,7 @@ export class CrewMember {
     }
 
     setState(state: StoredCrewMemberState) {
+        if (this.isDead() && state !== 'dead') return;
         if (this.state === state) return;
         this.state = state;
         this.unit.setCrewMember(this.id, this);
@@ -146,6 +157,7 @@ export class CrewMember {
         const normalized = normalizeCrewHits(hits);
         if (normalized === this.hits) return;
         this.hits = normalized;
+        if (normalized < DEAD_CREW_HIT_THRESHOLD && this.state === 'dead') this.state = 'healthy';
         this.unit.setCrewMember(this.id, this);
         this.unit.setModified();
     }
@@ -190,15 +202,18 @@ export class CrewMember {
         if (data.asfGunnerySkill !== this.asfGunnerySkill) this.asfGunnerySkill = data.asfGunnerySkill;
         if (data.asfPilotingSkill !== this.asfPilotingSkill) this.asfPilotingSkill = data.asfPilotingSkill;
         const hits = normalizeCrewHits(data.hits);
-        if (hits !== this.hits) this.hits = hits;
+        if (hits !== this.hits) {
+            this.hits = hits;
+            if (hits < DEAD_CREW_HIT_THRESHOLD && this.state === 'dead') this.state = 'healthy';
+        }
 
         const newState = CrewMember.deserializeStoredState(data.state, this.unit);
-        if (newState !== this.state) this.state = newState;
+        if ((!this.isDead() || newState === 'dead') && newState !== this.state) this.state = newState;
     }
 
     private static deserializeStoredState(state: number, unit: CBTForceUnit): StoredCrewMemberState {
         if (state === 1) return 'unconscious';
-        // 'dead' (2) is excluded, we derive it
+        if (state === 2) return 'dead';
         if (state === 3) return 'ejected';
         if (state === 4) return 'killed';
         if (state === 5) return 'stunned';
@@ -207,7 +222,7 @@ export class CrewMember {
 
     private serializeState(): number {
         if (this.state === 'unconscious') return 1;
-        // 'dead' (2) is excluded, we derive it
+        if (this.state === 'dead') return 2;
         if (this.state === 'ejected') return 3;
         if (this.state === 'killed') return 4;
         if (this.state === 'stunned') return 5;

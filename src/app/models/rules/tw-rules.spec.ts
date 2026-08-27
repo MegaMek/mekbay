@@ -150,6 +150,69 @@ describe('TWMekRules', () => {
         expect(forceUnit.rules.PSRModifiers().modifier).toBe(5);
     });
 
+    it('forces a single TW gyro or leg-system PSR to fail while the pilot is unconscious', () => {
+        const cases: readonly { label: string; critical: CriticalSlot }[] = [
+            { label: 'gyro', critical: { id: 'gyro', name: 'Gyro', loc: 'CT', slot: 0 } },
+            { label: 'hip', critical: legActuatorCrit('hip', 'Hip', 'LL', false) },
+            { label: 'upper leg', critical: legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL', false) },
+            { label: 'lower leg', critical: legActuatorCrit('lower-leg', 'Lower Leg Actuator', 'LL', false) },
+            { label: 'foot', critical: legActuatorCrit('foot', 'Foot Actuator', 'LL', false) },
+        ];
+
+        for (const { label, critical } of cases) {
+            const forceUnit = createTWForceUnit([critical]);
+            forceUnit.setCrewState(0, 'unconscious');
+            hitCrit(forceUnit, critical.loc!, critical.slot!);
+
+            const turnState = forceUnit.turnState();
+            const checks = turnState.getPSRChecks();
+            expect(turnState.autoFall()).withContext(label).toBeFalse();
+            expect(checks.length).withContext(label).toBe(1);
+            expect(checks[0].failureOutcome).withContext(label).toBe('Fall');
+            expect(turnState.isPSRCheckAutomaticFailure(checks[0])).withContext(label).toBeTrue();
+            expect(turnState.actionablePSRRollsCount()).withContext(label).toBe(0);
+        }
+    });
+
+    it('applies a flooded TW leg as four actuator losses, not a destroyed leg', () => {
+        const forceUnit = createTWForceUnit([
+            legActuatorCrit('hip', 'Hip', 'LL', false),
+            legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL', false),
+            legActuatorCrit('lower-leg', 'Lower Leg Actuator', 'LL', false),
+            legActuatorCrit('foot', 'Foot', 'LL', false),
+            { id: 'weapon', name: 'Medium Laser', loc: 'LL', slot: 4 },
+        ]);
+        const turnState = forceUnit.turnState();
+
+        forceUnit.setLocationCondition('LL', 'flooded', true);
+
+        expect(turnState.getPSRCheckState().legsDestroyed).toBeUndefined();
+        expect(turnState.autoFall()).toBeFalse();
+        expect(turnState.getPSRChecks().map(check => check.reason)).toEqual([
+            'Leg actuator hit',
+            'Leg actuator hit',
+            'Leg actuator hit',
+            'Hip hit',
+        ]);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(5);
+
+        forceUnit.endPhase();
+
+        const rules = forceUnit.rules as TWMekRules;
+        expect(forceUnit.getCondition('prone')).toBeFalse();
+        expect(forceUnit.isInternalLocCommittedPhysicallyDestroyed('LL')).toBeFalse();
+        expect(rules.systemsStatus()).toEqual(jasmine.objectContaining({
+            destroyedLegsCount: 0,
+            destroyedHipsCount: 1,
+            destroyedLegActuatorsCount: 2,
+            destroyedFeetCount: 1,
+        }));
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0 }));
+        expect(forceUnit.getCritSlots().every(slot => !forceUnit.isEquipmentOperational(slot))).toBeTrue();
+        expect(forceUnit.getCritSlots().every(slot => slot.destroyed === undefined)).toBeTrue();
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(5);
+    });
+
     it('keeps TW actuator hits independent across both legs', () => {
         const forceUnit = createTWForceUnit();
         const turnState = forceUnit.turnState();

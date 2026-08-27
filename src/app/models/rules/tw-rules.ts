@@ -63,6 +63,41 @@ export class TWMekRules extends MekRules {
     protected override get shieldBashPunchBonusEnabled(): boolean { return false; }
     protected override get standaloneShieldDamageEnabled(): boolean { return true; }
 
+    protected override isLegDestroyed(location: string, committed = false): boolean {
+        return committed
+            ? this.unit.isInternalLocCommittedPhysicallyDestroyed(location)
+            : this.unit.isInternalLocPhysicallyDestroyed(location);
+    }
+
+    override evaluateLocationFlooded(location: string, active: boolean): void {
+        for (const leg of this.floodAffectedLegLocations(location)) {
+            if ((active && this.isLegDestroyed(leg)) || this.hasOtherLegFloodSource(leg, location)) continue;
+            this.unit.getCritSlots()
+                .filter(slot => slot.loc === leg
+                    && slot.destroyed === undefined
+                    && slot.destroying === undefined
+                    && this.isLegActuator(slot))
+                .forEach(slot => this.evaluateLegActuatorDamage(slot, active ? 1 : -1));
+        }
+    }
+
+    override evaluateCritSlotHit(crit: CriticalSlot): void {
+        // Flooding already made this actuator nonfunctional; a later critical hit
+        // can still occupy the slot, but must not apply its gameplay effects twice.
+        if (crit.loc
+            && LEG_LOCATIONS.has(crit.loc)
+            && this.isLegFlooded(crit.loc)
+            && this.isLegActuator(crit)) return;
+        super.evaluateCritSlotHit(crit);
+    }
+
+    private isLegActuator(slot: CriticalSlot): boolean {
+        return this.isNamedCrit(slot, 'Hip')
+            || this.isNamedCrit(slot, 'Upper Leg')
+            || this.isNamedCrit(slot, 'Lower Leg')
+            || this.isNamedCrit(slot, 'Foot');
+    }
+
     protected override shieldRetainsMobilityPenalty(entry: MountedEquipment): boolean {
         if (entry.committedDestroyed()) return false;
         const criticals = this.entryCriticalSlots(entry);
@@ -148,9 +183,16 @@ export class TWMekRules extends MekRules {
     ): { modifier: number; modifiers: PSRCheck[] } {
         let modifier = 0;
         const modifiers: PSRCheck[] = [];
+        const turnState = this.unit.turnState();
+        const currentPSR = turnState.getPSRCheckState();
+        const activeHipHits = new Set(turnState.getPSRChecks()
+            .filter(check => check.reason === 'Hip hit' && check.loc)
+            .map(check => check.loc!));
         const destroyedHips = critSlots.filter(slot => slot.loc
             && LEG_LOCATIONS.has(slot.loc)
-            && slot.destroyed !== undefined
+            && !this.isLegDestroyed(slot.loc, true)
+            && !this.unit.isEquipmentOperational(slot)
+            && !activeHipHits.has(slot.loc)
             && !ignoreLeg.has(slot.loc)
             && this.isNamedCrit(slot, 'Hip'));
         for (const hip of destroyedHips) {
@@ -159,7 +201,8 @@ export class TWMekRules extends MekRules {
         }
         const destroyedActuators = this.effectiveCommittedLegActuators(
             critSlots,
-            this.unit.turnState().getPSRCheckState().hipsHit,
+            currentPSR.hipsHit,
+            currentPSR.legActuators,
         )
             .filter(slot => !ignoreLeg.has(slot.loc!));
         const destroyedActuatorCounts = new Map<string, number>();
@@ -183,6 +226,7 @@ export class TWMekRules extends MekRules {
     private effectiveCommittedLegActuators(
         critSlots: readonly CriticalSlot[],
         currentTurnHipHits: ReadonlySet<string> | undefined = undefined,
+        currentTurnActuatorHits: ReadonlyMap<string, number> | undefined = undefined,
     ): CriticalSlot[] {
         // BMM: a hip replaces same-leg actuator modifiers from earlier turns;
         // actuator hits from the hip's turn or a later turn remain cumulative.
@@ -190,13 +234,17 @@ export class TWMekRules extends MekRules {
         for (const slot of critSlots) {
             if (!slot.loc
                 || !LEG_LOCATIONS.has(slot.loc)
-                || slot.destroyed === undefined
+                || this.isLegDestroyed(slot.loc, true)
+                || this.unit.isEquipmentOperational(slot)
                 || !this.isNamedCrit(slot, 'Hip')) continue;
+            const disabledTurn = slot.destroyed === undefined
+                ? Number.MAX_SAFE_INTEGER
+                : slot.destroyedTurn ?? 0;
             hipDestroyedOnTurnByLeg.set(
                 slot.loc,
                 Math.max(
                     hipDestroyedOnTurnByLeg.get(slot.loc) ?? 0,
-                    slot.destroyedTurn ?? 0,
+                    disabledTurn,
                 ),
             );
         }
@@ -210,13 +258,23 @@ export class TWMekRules extends MekRules {
         return critSlots.filter(slot => {
             if (!slot.loc
                 || !LEG_LOCATIONS.has(slot.loc)
-                || slot.destroyed === undefined
-                || this.unit.isInternalLocCommittedDestroyed(slot.loc)
+                || this.isLegDestroyed(slot.loc, true)
+                || this.unit.isEquipmentOperational(slot)
                 || (!this.isNamedCrit(slot, 'Leg') && !this.isNamedCrit(slot, 'Foot'))) return false;
+            if (slot.destroyed === undefined
+                && currentTurnActuatorHits?.has(slot.loc)
+                && this.isCommittedFloodedLeg(slot.loc)) return false;
             const hipDestroyedOnTurn = hipDestroyedOnTurnByLeg.get(slot.loc);
-            const actuatorDestroyedOnTurn = slot.destroyedTurn ?? 0;
+            const actuatorDestroyedOnTurn = slot.destroyed === undefined
+                ? Number.MAX_SAFE_INTEGER
+                : slot.destroyedTurn ?? 0;
             return hipDestroyedOnTurn === undefined || actuatorDestroyedOnTurn >= hipDestroyedOnTurn;
         });
+    }
+
+    private isCommittedFloodedLeg(location: string): boolean {
+        return this.unit.isInternalLocCommittedDestroyed(location)
+            && !this.isLegDestroyed(location, true);
     }
 
     protected override legActuatorMovementReduction(): number {
@@ -250,7 +308,7 @@ export class TWMekRules extends MekRules {
     }
 
     private sideTorsoDestroyedOrDestroying(): boolean {
-        return MEK_SIDE_TORSO_LOCATIONS.some(loc => this.unit.isInternalLocDestroyed(loc));
+        return MEK_SIDE_TORSO_LOCATIONS.some(loc => this.unit.isInternalLocPhysicallyDestroyed(loc));
     }
 
     private internalStructureCrippledOrCrippling(): boolean {

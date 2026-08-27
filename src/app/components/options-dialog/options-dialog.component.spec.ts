@@ -73,45 +73,40 @@ describe('OptionsDialogComponent', () => {
         expect(setOption).toHaveBeenCalledOnceWith('forceViewerBVPVDisplay', 'both');
     });
 
-    it('updates one CBT automation mode without changing the others', () => {
-        const setOption = jasmine.createSpy('setOption');
+    it('forwards a CBT automation mode change to the options service', () => {
+        const setCbtAutomationMode = jasmine.createSpy('setCbtAutomationMode');
         const component = configureComponent({
             options: () => ({
                 unitServers: [],
                 cbtAutomationOptions: {
                     pilotSkillCheck: 'ask',
-                    heatAndDissipation: 'yes',
-                    heatEffects: 'ask',
-                    pilotHitsAndConsciousness: 'ask',
-                    internalExplosions: 'yes',
-                    criticalHitChance: 'no',
-                    breachAndFlood: 'ask',
-                    falling: 'yes',
+                    heatAndDissipationResolution: 'yes',
+                    heatEffectsCheck: 'ask',
+                    pilotHitsAndConsciousnessCheck: 'ask',
+                    internalExplosionsCheck: 'yes',
+                    criticalHitChanceCheck: 'no',
+                    breachAndFloodCheck: 'ask',
+                    fallingCheck: 'yes',
                 },
             }),
-            setOption,
+            setCbtAutomationMode,
         });
 
-        component.onCbtAutomationModeChange('heatAndDissipation', 'ask');
+        component.onCbtAutomationModeChange('heatAndDissipationResolution', 'ask');
 
-        expect(setOption).toHaveBeenCalledOnceWith('cbtAutomationOptions', {
-            pilotSkillCheck: 'ask',
-            heatAndDissipation: 'ask',
-            heatEffects: 'ask',
-            pilotHitsAndConsciousness: 'ask',
-            internalExplosions: 'yes',
-            criticalHitChance: 'no',
-            breachAndFlood: 'ask',
-            falling: 'yes',
-        });
+        expect(setCbtAutomationMode).toHaveBeenCalledOnceWith('heatAndDissipationResolution', 'ask');
     });
 
-    it('updates one CBT optional rule without changing the other', () => {
+    it('updates one CBT optional rule without changing the others', () => {
         const setOption = jasmine.createSpy('setOption');
         const component = configureComponent({
             options: () => ({
                 unitServers: [],
-                CBTOptionalRules: { forcedWithdrawal: true, extremeRange: false },
+                CBTOptionalRules: {
+                    forcedWithdrawal: true,
+                    extremeRange: false,
+                    floatingCriticals: true,
+                },
             }),
             setOption,
         });
@@ -124,6 +119,7 @@ describe('OptionsDialogComponent', () => {
         expect(setOption).toHaveBeenCalledOnceWith('CBTOptionalRules', {
             forcedWithdrawal: false,
             extremeRange: false,
+            floatingCriticals: true,
         });
     });
 

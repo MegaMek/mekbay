@@ -28,11 +28,16 @@ interface TurnStateHarnessOptions {
     internalLocations?: string[];
     unit?: Partial<UnitSummary>;
     destroyed?: boolean;
+    immobile?: boolean;
     prone?: boolean;
     shutdown?: boolean;
     skidding?: boolean;
     rulesType?: 'mek' | 'infantry' | 'aero';
     rulesId?: 'core2026' | 'tw';
+    crewState?: 'healthy' | 'unconscious' | 'ejected' | 'killed';
+    outOfControl?: boolean;
+    phaseTracking?: boolean;
+    turnCounter?: number;
 }
 
 interface TurnStateHarness {
@@ -85,6 +90,12 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
     const heatSourceHandlers = [new PpcCapacitorHandler()];
     const ruleChecks = new Map<string, { token: string; trigger: string; status: 'pending' | 'success' | 'failed' }>();
     const setCondition = jasmine.createSpy('setCondition');
+    const crew = {
+        getId: () => 0,
+        getState: () => options.crewState ?? 'healthy',
+        getHits: () => 0,
+        getSkill: () => 5,
+    };
     let turnState: TurnState;
 
     const unit = {
@@ -93,8 +104,15 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         isLoaded: () => true,
         destroyed: options.destroyed ?? false,
         shutdown: options.shutdown ?? false,
-        getCondition: () => false,
-        getCrewMembers: () => [{ getState: () => 'healthy' }],
+        getCondition: (condition: string) => {
+            if (condition === 'immobile') return options.immobile ?? false;
+            if (condition === 'shutdown') return options.shutdown ?? false;
+            if (condition === 'prone') return options.prone ?? false;
+            if (condition === 'out-of-control') return options.outOfControl ?? false;
+            return false;
+        },
+        getCrewMembers: () => [crew],
+        getCrewMember: (id: number) => id === 0 ? crew : undefined,
         getCritSlots: () => critSlots(),
         getInventory: () => inventory(),
         getHeat: () => heat(),
@@ -105,9 +123,13 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
                 createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY),
             ) ?? [])),
         getRunMovementMultiplierBonus: () => 0,
+        automationMode: () => 'yes',
+        tracksPhaseAndTurn: () => options.phaseTracking ?? true,
         usesForcedWithdrawal: () => true,
         isInternalLocCommittedDestroyed: (loc: string) => committedDestroyedLegs.has(loc),
+        isInternalLocCommittedPhysicallyDestroyed: (loc: string) => committedDestroyedLegs.has(loc),
         isInternalLocDestroyed: (loc: string) => currentDestroyedLegs.has(loc) || committedDestroyedLegs.has(loc),
+        isInternalLocPhysicallyDestroyed: (loc: string) => currentDestroyedLegs.has(loc) || committedDestroyedLegs.has(loc),
         getEquipmentStatus: (source: MountedEquipment | CriticalSlot) => {
             if (source instanceof MountedEquipment) return source.committedDestroyed() ? 'destroyed' : 'available';
             return source.destroyed || (source.loc ? committedDestroyedLegs.has(source.loc) : false)
@@ -124,6 +146,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
             return true;
         },
         setCondition,
+        queueFall: jasmine.createSpy('queueFall'),
         getUnit: () => ({ type: 'Mek', comp: [], ...options.unit } as UnitSummary),
         getAvailableMotiveModes: () => [
             { mode: 'stationary' as const, label: 'Stationary' },
@@ -143,6 +166,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         hasUnconsolidatedLocations: computed(() => false),
         hasUnconsolidatedInventory: computed(() => false),
         hasCondition: (state: string) => {
+            if (state === 'immobile') return options.immobile ?? false;
             if (state === 'prone') return options.prone ?? false;
             if (state === 'skidding') return options.skidding ?? false;
             return false;
@@ -150,7 +174,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         skidding: () => options.skidding ?? false,
     } as unknown as CBTForceUnitState;
 
-    turnState = new TurnState(unitState);
+    turnState = new TurnState(unitState, options.turnCounter ?? 0);
     const rules = options.rulesId === 'tw'
         ? options.rulesType === 'infantry'
             ? new TWInfantryRules(unit as any)
@@ -344,6 +368,38 @@ describe('TurnState', () => {
     });
 
     describe('serialization', () => {
+        it('round-trips the resumable end-turn checkpoint', () => {
+            const { turnState } = createTurnStateHarness();
+            turnState.markEndTurnPhaseEnded();
+
+            expect(turnState.dirty()).toBeTrue();
+            expect(turnState.serialize()).toEqual({ endTurnCheckpoint: 'phase-ended' });
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(turnState.serialize());
+            restored.markEndTurnHeatStaged();
+
+            expect(restored.getEndTurnCheckpoint()).toBe('heat-staged');
+            expect(restored.serialize()).toEqual({ endTurnCheckpoint: 'heat-staged' });
+        });
+
+        it('closes every queued pilot-damage group before end-turn consequences resolve', () => {
+            const { turnState } = createTurnStateHarness();
+            expect(turnState.queuePendingUnitCheck({
+                id: 'seatbelt',
+                kind: 'seatbelt',
+                pilotDamageGroup: 'combat:fall',
+                crewId: 0,
+                target: 5,
+            })).toBeTrue();
+
+            turnState.completePilotDamageTurn();
+            turnState.completePilotDamageTurn();
+
+            expect(turnState.getPendingUnitCheck('seatbelt')?.pilotDamageGroup)
+                .toBe('turn-closed:combat:fall');
+        });
+
         it('keeps stand attempts undefined by default and round-trips an explicit zero', () => {
             const { turnState } = createTurnStateHarness();
 
@@ -360,6 +416,33 @@ describe('TurnState', () => {
 
             expect(restored.standAttempts()).toBe(0);
             expect(restored.serialize()).toEqual({ standAttempts: 0 });
+        });
+
+        it('round-trips a careful stand and clears it with an empty update', () => {
+            const { turnState } = createTurnStateHarness({ rulesId: 'tw' });
+            turnState.carefulStand.set(true);
+
+            expect(turnState.serialize()).toEqual({ carefulStand: true });
+
+            const { turnState: restored } = createTurnStateHarness({ rulesId: 'tw' });
+            restored.update(turnState.serialize());
+
+            expect(restored.carefulStand()).toBeTrue();
+            expect(restored.serialize()).toEqual({ carefulStand: true });
+
+            restored.update(undefined);
+
+            expect(restored.carefulStand()).toBeFalse();
+            expect(restored.serialize()).toBeUndefined();
+        });
+
+        it('discards careful-stand state under Core rules', () => {
+            const { turnState } = createTurnStateHarness({ rulesId: 'core2026' });
+
+            turnState.update({ carefulStand: true });
+
+            expect(turnState.carefulStand()).toBeFalse();
+            expect(turnState.serialize()).toBeUndefined();
         });
 
         it('omits no cover and round-trips active cover', () => {
@@ -422,6 +505,7 @@ describe('TurnState', () => {
             expect(turnState.resolvePSRCheck(checks[1].id!, 'failed')).toBeTrue();
             expect(turnState.getPSROutcome(checks[0].id!)).toBe('failed');
             expect(turnState.getPSROutcome(checks[1].id!)).toBe('failed');
+            expect(turnState.unitState.unit.queueFall).toHaveBeenCalledOnceWith('psr');
             expect(turnState.unitState.unit.setCondition).toHaveBeenCalledOnceWith('prone', true);
             expect(turnState.PSRRollsCount()).toBe(0);
         });
@@ -440,6 +524,73 @@ describe('TurnState', () => {
             expect(turnState.getPSROutcome(firstFall.id!)).toBe('success');
             expect(turnState.getPSROutcome(secondFall.id!)).toBe('failed');
             expect(turnState.getPSROutcome(control.id!)).toBeUndefined();
+        });
+
+        it('does not expose fall rolls made moot by an automatic fall', () => {
+            const { turnState, rules } = createTurnStateHarness();
+            spyOn(rules, 'getPSRChecks').and.returnValue([
+                { reason: 'First fall check', fallCheck: 0, failureOutcome: 'Fall' },
+                { reason: 'Second fall check', fallCheck: 1, failureOutcome: 'Fall' },
+                { reason: 'Control check', fallCheck: 2, failureOutcome: 'Immobilized' },
+            ]);
+
+            expect(turnState.PSRRollsCount()).toBe(3);
+            expect(turnState.actionablePSRRollsCount()).toBe(3);
+
+            turnState.setPSRCheckState({ legsDestroyed: new Set(['LL']) });
+
+            expect(turnState.autoFall()).toBeTrue();
+            expect(turnState.PSRRollsCount()).toBe(3);
+            expect(turnState.actionablePSRRollsCount()).toBe(1);
+        });
+
+        it('does not trigger another fall when a fall PSR is resolved while already prone', () => {
+            const { turnState, rules } = createTurnStateHarness({ prone: true });
+            spyOn(rules, 'getPSRChecks').and.returnValue([
+                { reason: 'Fall check', fallCheck: 0, failureOutcome: 'Fall' },
+                { reason: 'Control check', fallCheck: 1, failureOutcome: 'Immobilized' },
+            ]);
+
+            const fallCheck = turnState.getPSRChecks().find(check => check.reason === 'Fall check');
+            expect(fallCheck?.id).toBeDefined();
+
+            expect(turnState.resolvePSRCheck(fallCheck!.id!, 'failed')).toBeTrue();
+
+            expect(turnState.unitState.unit.queueFall).not.toHaveBeenCalled();
+            expect(turnState.unitState.unit.setCondition).not.toHaveBeenCalled();
+        });
+
+        it('does not offer any PSR to a unit without a conscious pilot', () => {
+            const { turnState, rules } = createTurnStateHarness({ crewState: 'unconscious' });
+            spyOn(rules, 'getPSRChecks').and.returnValue([
+                { reason: 'Fall check', fallCheck: 0, failureOutcome: 'Fall' },
+                { reason: 'System check', fallCheck: 1, failureOutcome: 'Crippled' },
+            ]);
+
+            expect(turnState.automaticPSRFailure()).toBeTrue();
+            expect(turnState.PSRRollsCount()).toBe(2);
+            expect(turnState.actionablePSRRollsCount()).toBe(0);
+        });
+
+        it('keeps the initial shutdown PSR rollable while forcing later PSRs for a standing shutdown Mek', () => {
+            const mixed = createTurnStateHarness({ shutdown: true });
+            const forcedOnly = createTurnStateHarness({ shutdown: true });
+            const prone = createTurnStateHarness({ shutdown: true, prone: true });
+            const shutdown = {
+                kind: 'shutdown', reason: 'Shutdown', fallCheck: 3, failureOutcome: 'Fall',
+            } as const;
+            const later = { reason: 'Received 20 damage', fallCheck: 1, failureOutcome: 'Fall' } as const;
+            spyOn(mixed.rules, 'getPSRChecks').and.returnValue([shutdown, later]);
+            spyOn(forcedOnly.rules, 'getPSRChecks').and.returnValue([later]);
+            spyOn(prone.rules, 'getPSRChecks').and.returnValue([later]);
+
+            expect(mixed.turnState.isPSRCheckAutomaticFailure(shutdown)).toBeFalse();
+            expect(mixed.turnState.isPSRCheckAutomaticFailure(later)).toBeTrue();
+            expect(mixed.turnState.automaticPSRFailure()).toBeFalse();
+            expect(mixed.turnState.actionablePSRRollsCount()).toBe(1);
+            expect(forcedOnly.turnState.automaticPSRFailure()).toBeTrue();
+            expect(forcedOnly.turnState.actionablePSRRollsCount()).toBe(0);
+            expect(prone.turnState.isPSRCheckAutomaticFailure(later)).toBeFalse();
         });
 
         it('round-trips turn signals and PSR check state through a plain object', () => {
@@ -499,6 +650,660 @@ describe('TurnState', () => {
             expect(restored.serialize()).toBeUndefined();
         });
 
+        it('starts at turn zero and round-trips the current turn counter', () => {
+            const { turnState } = createTurnStateHarness();
+
+            expect(turnState.getTurnCounter()).toBe(0);
+            expect(turnState.serialize()).toBeUndefined();
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(turnState.serialize());
+
+            expect(restored.getTurnCounter()).toBe(0);
+        });
+
+        it('round-trips pending critical counts and unresolved dice', () => {
+            const { turnState } = createTurnStateHarness();
+            expect(turnState.queuePendingCriticalHits({
+                id: 'critical:1',
+                location: 'LT',
+                targetLocation: 'CT',
+                remainingHits: 2,
+                locationDestroyed: true,
+            })).toBeTrue();
+            expect(turnState.setPendingCriticalRoll('critical:1', [3, 4])).toBeTrue();
+
+            expect(turnState.pendingCriticalHitCount()).toBe(2);
+            expect(turnState.dirty()).toBeFalse();
+            expect(turnState.dirtyPhase()).toBeFalse();
+            expect(turnState.serialize()?.pendingEvents).toEqual([{
+                type: 'mek-critical-hit',
+                id: 'critical:1',
+                location: 'LT',
+                targetLocation: 'CT',
+                remainingHits: 2,
+                locationDestroyed: true,
+                roll: [3, 4],
+            }]);
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(turnState.serialize());
+            expect(restored.getPendingCriticalHits()).toEqual([{
+                type: 'mek-critical-hit',
+                id: 'critical:1',
+                location: 'LT',
+                targetLocation: 'CT',
+                remainingHits: 2,
+                locationDestroyed: true,
+                roll: [3, 4],
+            }]);
+
+            expect(restored.resolvePendingCriticalHit('critical:1')).toBeTrue();
+            expect(restored.getPendingCriticalHit('critical:1')).toEqual({
+                type: 'mek-critical-hit',
+                id: 'critical:1',
+                location: 'LT',
+                targetLocation: 'CT',
+                remainingHits: 1,
+                locationDestroyed: true,
+            });
+            expect(restored.resolvePendingCriticalHit('critical:1')).toBeTrue();
+            expect(restored.pendingCriticalHitCount()).toBe(0);
+        });
+
+        it('persists and resets the per-critical Total Warfare CASE II check', () => {
+            const { turnState } = createTurnStateHarness();
+            expect(turnState.queuePendingCriticalHits({
+                id: 'critical:case-ii',
+                location: 'LT',
+                targetLocation: 'LT',
+                remainingHits: 2,
+                caseII: { status: 'pending' },
+            })).toBeTrue();
+            expect(turnState.setPendingCriticalRoll('critical:case-ii', [1, 1])).toBeFalse();
+            expect(turnState.setPendingCriticalCaseIICheckResult(
+                'critical:case-ii',
+                'resolve',
+                [3, 3],
+            )).toBeTrue();
+            expect(turnState.getPendingCriticalHit('critical:case-ii')?.caseII).toEqual({
+                status: 'pending',
+                result: 'resolve',
+                roll: [3, 3],
+            });
+            const { turnState: paused } = createTurnStateHarness();
+            paused.update(turnState.serialize());
+            expect(paused.getPendingCriticalHit('critical:case-ii')?.caseII).toEqual({
+                status: 'pending',
+                result: 'resolve',
+                roll: [3, 3],
+            });
+            expect(turnState.passPendingCriticalCaseIICheck('critical:case-ii')).toBeTrue();
+            expect(turnState.setPendingCriticalRoll('critical:case-ii', [1, 1])).toBeTrue();
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(turnState.serialize());
+            expect(restored.getPendingCriticalHit('critical:case-ii')).toEqual({
+                type: 'mek-critical-hit',
+                id: 'critical:case-ii',
+                location: 'LT',
+                targetLocation: 'LT',
+                remainingHits: 2,
+                caseII: { status: 'passed' },
+                roll: [1, 1],
+            });
+
+            expect(restored.resolvePendingCriticalHit('critical:case-ii')).toBeTrue();
+            expect(restored.getPendingCriticalHit('critical:case-ii')).toEqual({
+                type: 'mek-critical-hit',
+                id: 'critical:case-ii',
+                location: 'LT',
+                targetLocation: 'LT',
+                remainingHits: 1,
+                caseII: { status: 'pending' },
+            });
+        });
+
+        it('round-trips pending critical chances without making turn controls dirty', () => {
+            const { turnState } = createTurnStateHarness();
+            expect(turnState.queuePendingCriticalChance({
+                id: 'chance:1',
+                location: 'CT',
+                explosionProtection: 'case-ii',
+                hardenedArmorApplies: true,
+            })).toBeTrue();
+            expect(turnState.setPendingCriticalChanceRoll('chance:1', [5, 5])).toBeTrue();
+            expect(turnState.setPendingCriticalChanceResult('chance:1', 2)).toBeTrue();
+
+            expect(turnState.pendingCriticalChanceCount()).toBe(1);
+            expect(turnState.dirty()).toBeFalse();
+            expect(turnState.dirtyPhase()).toBeFalse();
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(turnState.serialize());
+            expect(restored.getPendingCriticalChances()).toEqual([{
+                type: 'mek-critical-chance',
+                id: 'chance:1',
+                location: 'CT',
+                explosionProtection: 'case-ii',
+                hardenedArmorApplies: true,
+                roll: [5, 5],
+                result: 2,
+            }]);
+
+            restored.preparePendingCriticalWorkAfterPhaseCommit();
+            expect(restored.getPendingCriticalChance('chance:1')?.consolidateImmediately).toBeTrue();
+            expect(restored.discardPendingCriticalChance('chance:1')).toBeTrue();
+            expect(restored.pendingCriticalChanceCount()).toBe(0);
+        });
+
+        it('round-trips a floating-critical location draft before slot resolution', () => {
+            const { turnState } = createTurnStateHarness();
+            expect(turnState.queuePendingCriticalChance({
+                id: 'chance:floating',
+                location: 'RT',
+                throughArmorHitArc: 'right',
+            })).toBeTrue();
+            expect(turnState.replacePendingCriticalChanceWithHits({
+                id: 'chance:floating',
+                targetLocation: 'RT',
+                remainingHits: 1,
+                floatingLocation: { hitArc: 'right' },
+            })).toBeTrue();
+            expect(turnState.setPendingCriticalRoll('chance:floating', [2, 3])).toBeFalse();
+            expect(turnState.setPendingFloatingCriticalLocation(
+                'chance:floating',
+                10,
+                [4, 6],
+            )).toBeTrue();
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(turnState.serialize());
+
+            expect(restored.getPendingCriticalHit('chance:floating')).toEqual({
+                type: 'mek-critical-hit',
+                id: 'chance:floating',
+                location: 'RT',
+                targetLocation: 'RT',
+                remainingHits: 1,
+                chanceOrigin: { throughArmorHitArc: 'right' },
+                floatingLocation: {
+                    hitArc: 'right',
+                    locationRoll: 10,
+                    dice: [4, 6],
+                },
+            });
+            expect(restored.resolvePendingCriticalHit('chance:floating')).toBeFalse();
+            expect(restored.resolvePendingFloatingCriticalLocation('chance:floating', 'LA')).toBeTrue();
+            expect(restored.getPendingCriticalHit('chance:floating')).toEqual(jasmine.objectContaining({
+                targetLocation: 'LA',
+                chanceOrigin: { throughArmorHitArc: 'right' },
+            }));
+            expect(restored.getPendingCriticalHit('chance:floating')?.floatingLocation).toBeUndefined();
+        });
+
+        it('atomically undoes an untouched chance-to-hit transition and locks it after one hit', () => {
+            const { turnState } = createTurnStateHarness();
+            expect(turnState.queuePendingCriticalChance({
+                id: 'chance:undo',
+                location: 'LT',
+                locationDestroyed: true,
+                consolidateImmediately: true,
+                explosionProtection: 'case-ii',
+                hardenedArmorApplies: false,
+                pilotDamageGroup: 'combat:test',
+                roll: [5, 5],
+                result: 2,
+            })).toBeTrue();
+
+            expect(turnState.replacePendingCriticalChanceWithHits({
+                id: 'chance:undo',
+                targetLocation: 'LT',
+                remainingHits: 2,
+                caseII: { status: 'pending' },
+            })).toBeTrue();
+            expect(turnState.getPendingCriticalHit('chance:undo')).toEqual({
+                type: 'mek-critical-hit',
+                id: 'chance:undo',
+                location: 'LT',
+                targetLocation: 'LT',
+                remainingHits: 2,
+                locationDestroyed: true,
+                consolidateImmediately: true,
+                pilotDamageGroup: 'combat:test',
+                chanceOrigin: {
+                    explosionProtection: 'case-ii',
+                    hardenedArmorApplies: false,
+                },
+                caseII: { status: 'pending' },
+            });
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(turnState.serialize());
+            expect(restored.replacePendingCriticalHitWithChance('chance:undo')).toBeTrue();
+            expect(restored.getPendingCriticalChance('chance:undo')).toEqual({
+                type: 'mek-critical-chance',
+                id: 'chance:undo',
+                location: 'LT',
+                locationDestroyed: true,
+                consolidateImmediately: true,
+                pilotDamageGroup: 'combat:test',
+                explosionProtection: 'case-ii',
+                hardenedArmorApplies: false,
+            });
+
+            expect(restored.replacePendingCriticalChanceWithHits({
+                id: 'chance:undo',
+                targetLocation: 'LT',
+                remainingHits: 2,
+            })).toBeTrue();
+            expect(restored.resolvePendingCriticalHit('chance:undo')).toBeTrue();
+            expect(restored.getPendingCriticalHit('chance:undo')?.chanceOrigin).toBeUndefined();
+            expect(restored.replacePendingCriticalHitWithChance('chance:undo')).toBeFalse();
+        });
+
+        it('preserves one ordered critical sequence across chance-to-hit replacement', () => {
+            const { turnState } = createTurnStateHarness();
+            expect(turnState.queuePendingCriticalChance({
+                id: 'chance:first',
+                location: 'LT',
+            })).toBeTrue();
+            expect(turnState.queuePendingCriticalHits({
+                id: 'hit:second',
+                location: 'CT',
+                targetLocation: 'CT',
+                remainingHits: 1,
+            })).toBeTrue();
+
+            expect(turnState.getNextPendingCriticalEvent()?.id).toBe('chance:first');
+            expect(turnState.replacePendingCriticalChanceWithHits({
+                id: 'chance:first',
+                targetLocation: 'LT',
+                remainingHits: 1,
+            })).toBeTrue();
+            expect(turnState.getNextPendingCriticalEvent()).toEqual(jasmine.objectContaining({
+                type: 'mek-critical-hit',
+                id: 'chance:first',
+            }));
+
+            expect(turnState.resolvePendingCriticalHit('chance:first')).toBeTrue();
+            expect(turnState.getNextPendingCriticalEvent()?.id).toBe('hit:second');
+        });
+
+        it('round-trips resumable checks and exposes work at its absolute ready turn', () => {
+            const { turnState } = createTurnStateHarness();
+            expect(turnState.queuePendingUnitCheck({
+                id: 'recovery:1',
+                kind: 'consciousness-recovery',
+                crewId: 0,
+                target: 6,
+                readyTurn: 1,
+            })).toBeTrue();
+            expect(turnState.pendingUnitCheckCount()).toBe(0);
+
+            const { turnState: nextTurn } = createTurnStateHarness({ turnCounter: 1 });
+            nextTurn.update(turnState.serialize());
+            expect(nextTurn.pendingUnitCheckCount()).toBe(1);
+            expect(nextTurn.setPendingUnitCheckOutcome('recovery:1', 'success', [3, 4])).toBeTrue();
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(nextTurn.serialize());
+            expect(restored.getPendingUnitChecks()).toEqual([{
+                type: 'unit-check',
+                id: 'recovery:1',
+                kind: 'consciousness-recovery',
+                crewId: 0,
+                target: 6,
+                readyTurn: 1,
+                result: { kind: 'roll', dice: [3, 4] },
+            }]);
+            expect(restored.dirty()).toBeFalse();
+            expect(restored.dirtyPhase()).toBeFalse();
+        });
+
+        it('auto-fails later consciousness and seatbelt rows after consciousness fails', () => {
+            const { turnState } = createTurnStateHarness({ rulesId: 'tw' });
+            const group = 'immediate:test';
+            expect(turnState.queuePendingUnitCheck({
+                id: 'consciousness:first',
+                kind: 'consciousness',
+                crewId: 0,
+                pilotDamageGroup: group,
+                target: 3,
+            })).toBeTrue();
+            expect(turnState.queuePendingUnitCheck({
+                id: 'seatbelt:next',
+                kind: 'seatbelt',
+                crewId: 0,
+                target: 5,
+            })).toBeTrue();
+            expect(turnState.queuePendingUnitCheck({
+                id: 'consciousness:next',
+                kind: 'consciousness',
+                crewId: 0,
+                pilotDamageGroup: group,
+                target: 5,
+            })).toBeTrue();
+            expect(turnState.setPendingUnitCheckOutcome('seatbelt:next', 'success')).toBeTrue();
+            expect(turnState.setPendingUnitCheckOutcome('consciousness:next', 'success')).toBeTrue();
+
+            expect(turnState.setPendingUnitCheckOutcome('consciousness:first', 'failed')).toBeTrue();
+
+            expect(turnState.getPendingUnitCheck('seatbelt:next')).toEqual(jasmine.objectContaining({
+                target: 5,
+                result: { kind: 'automatic', outcome: 'failed' },
+            }));
+            expect(turnState.getPendingUnitCheck('consciousness:next')).toEqual(jasmine.objectContaining({
+                target: 5,
+                result: { kind: 'automatic', outcome: 'failed' },
+            }));
+
+            const { turnState: restored } = createTurnStateHarness({ rulesId: 'tw' });
+            restored.update(turnState.serialize());
+            expect(restored.getPendingUnitCheck('seatbelt:next')?.result)
+                .toEqual({ kind: 'automatic', outcome: 'failed' });
+            expect(restored.getPendingUnitCheck('consciousness:next')?.result)
+                .toEqual({ kind: 'automatic', outcome: 'failed' });
+
+            expect(restored.setPendingUnitCheckOutcome('consciousness:first', 'success')).toBeTrue();
+            expect(restored.getPendingUnitCheck('seatbelt:next')?.result).toBeUndefined();
+            expect(restored.getPendingUnitCheck('consciousness:next')?.result).toBeUndefined();
+        });
+
+        it('keeps later unit checks hidden while a critical chain is pending', () => {
+            const { turnState } = createTurnStateHarness();
+            expect(turnState.queuePendingUnitCheck({
+                id: 'heat:1',
+                kind: 'heat-shutdown',
+                target: 4,
+            })).toBeTrue();
+            expect(turnState.pendingUnitCheckCount()).toBe(1);
+
+            expect(turnState.queuePendingCriticalChance({
+                id: 'critical:1',
+                location: 'CT',
+            })).toBeTrue();
+
+            expect(turnState.pendingUnitCheckCount()).toBe(0);
+            expect(turnState.discardPendingCriticalChance('critical:1')).toBeTrue();
+            expect(turnState.pendingUnitCheckCount()).toBe(1);
+        });
+
+        it('opens Core combat consciousness only after closing its phase and retains the critical origin', () => {
+            const { turnState } = createTurnStateHarness();
+            turnState.moveMode.set('stationary');
+            const group = turnState.currentPilotDamageGroup();
+            expect(turnState.queuePendingUnitCheck({
+                id: 'consciousness:1',
+                kind: 'consciousness',
+                crewId: 0,
+                pilotDamageGroup: group,
+                target: 5,
+            })).toBeTrue();
+            expect(turnState.queuePendingCriticalChance({
+                id: 'critical:1',
+                location: 'CT',
+                pilotDamageGroup: group,
+            })).toBeTrue();
+
+            expect(turnState.actionablePendingUnitChecks()).toEqual([]);
+            turnState.completePilotDamagePhase();
+
+            expect(turnState.getPendingUnitCheck('consciousness:1')?.pilotDamageGroup)
+                .toBe(`phase-closed:${group}`);
+            expect(turnState.getPendingCriticalChance('critical:1')?.pilotDamageGroup)
+                .toBe(`phase-closed:${group}`);
+            expect(turnState.discardPendingCriticalChance('critical:1')).toBeTrue();
+            expect(turnState.pendingUnitCheckCount()).toBe(1);
+        });
+
+        it('offers open Core combat consciousness to END PHASE without closing the group early', () => {
+            const { turnState } = createTurnStateHarness();
+            turnState.moveMode.set('stationary');
+            const group = turnState.currentPilotDamageGroup();
+            expect(turnState.queuePendingUnitCheck({
+                id: 'consciousness:phase-end',
+                kind: 'consciousness',
+                crewId: 0,
+                pilotDamageGroup: group,
+                target: 5,
+            })).toBeTrue();
+
+            expect(turnState.pendingUnitCheckCount()).toBe(0);
+            expect(turnState.pendingUnitCheckCountAtPhaseEnd()).toBe(1);
+            expect(turnState.getPendingUnitCheck('consciousness:phase-end')?.pilotDamageGroup)
+                .toBe(group);
+        });
+
+        it('uses immediately actionable consciousness checks without a tracked phase boundary', () => {
+            const { turnState } = createTurnStateHarness({ phaseTracking: false });
+            turnState.moveMode.set('stationary');
+            const group = turnState.currentPilotDamageGroup();
+            expect(turnState.queuePendingUnitCheck({
+                id: 'consciousness:1',
+                kind: 'consciousness',
+                crewId: 0,
+                pilotDamageGroup: group,
+                target: 5,
+            })).toBeTrue();
+
+            expect(group).toMatch(/^immediate:/);
+            expect(turnState.actionablePendingUnitChecks().map(check => check.id))
+                .toEqual(['consciousness:1']);
+            expect(turnState.pendingUnitCheckCount()).toBe(1);
+        });
+
+        it('refreshes a deferred consciousness recovery target from current pilot damage', () => {
+            const { turnState } = createTurnStateHarness({ turnCounter: 1 });
+            const unit = turnState.unitState.unit;
+            (unit as unknown as { getCrewMember(id: number): unknown }).getCrewMember = () => ({
+                getState: () => 'unconscious',
+                getHits: () => 4,
+            });
+            expect(turnState.queuePendingUnitCheck({
+                id: 'recovery:1',
+                kind: 'consciousness-recovery',
+                crewId: 0,
+                target: 3,
+                readyTurn: 1,
+            })).toBeTrue();
+
+            turnState.refreshPendingUnitCheckTargets();
+
+            expect(turnState.getPendingUnitCheck('recovery:1')).toEqual({
+                type: 'unit-check',
+                id: 'recovery:1',
+                kind: 'consciousness-recovery',
+                crewId: 0,
+                target: 10,
+                readyTurn: 1,
+            });
+        });
+
+        it('re-evaluates a persisted recovery roll when later pilot damage changes its target', () => {
+            const { turnState } = createTurnStateHarness();
+            const unit = turnState.unitState.unit;
+            (unit as unknown as { getCrewMember(id: number): unknown }).getCrewMember = () => ({
+                getState: () => 'unconscious',
+                getHits: () => 4,
+            });
+            expect(turnState.queuePendingUnitCheck({
+                id: 'recovery:rolled',
+                kind: 'consciousness-recovery',
+                crewId: 0,
+                target: 7,
+                readyTurn: 0,
+                result: { kind: 'roll', dice: [3, 3] },
+            })).toBeTrue();
+
+            turnState.refreshPendingUnitCheckTargets();
+
+            expect(turnState.getPendingUnitCheck('recovery:rolled')).toEqual({
+                type: 'unit-check',
+                id: 'recovery:rolled',
+                kind: 'consciousness-recovery',
+                crewId: 0,
+                target: 10,
+                readyTurn: 0,
+                result: { kind: 'roll', dice: [3, 3] },
+            });
+        });
+
+        it('retargets an aggregated Core Heat Phase consciousness roll after a pilot-hit correction', () => {
+            const { turnState } = createTurnStateHarness();
+            const unit = turnState.unitState.unit;
+            (unit as unknown as { getCrewMember(id: number): unknown }).getCrewMember = () => ({
+                getState: () => 'healthy',
+                getHits: () => 2,
+            });
+            expect(turnState.queuePendingUnitCheck({
+                id: 'consciousness:heat',
+                kind: 'consciousness',
+                crewId: 0,
+                pilotDamageGroup: 'turn-closed:heat:end-turn:test',
+                target: 7,
+            })).toBeTrue();
+
+            turnState.refreshPendingUnitCheckTargets();
+
+            expect(turnState.getPendingUnitCheck('consciousness:heat')).toEqual({
+                type: 'unit-check',
+                id: 'consciousness:heat',
+                kind: 'consciousness',
+                crewId: 0,
+                pilotDamageGroup: 'turn-closed:heat:end-turn:test',
+                target: 5,
+            });
+        });
+
+        it('clears a persisted manual recovery choice when later damage changes its target', () => {
+            const { turnState } = createTurnStateHarness();
+            const unit = turnState.unitState.unit;
+            (unit as unknown as { getCrewMember(id: number): unknown }).getCrewMember = () => ({
+                getState: () => 'unconscious',
+                getHits: () => 4,
+            });
+            expect(turnState.queuePendingUnitCheck({
+                id: 'recovery:manual',
+                kind: 'consciousness-recovery',
+                crewId: 0,
+                target: 7,
+                readyTurn: 0,
+                result: { kind: 'manual', outcome: 'success' },
+            })).toBeTrue();
+
+            turnState.refreshPendingUnitCheckTargets();
+
+            expect(turnState.getPendingUnitCheck('recovery:manual')).toEqual({
+                type: 'unit-check',
+                id: 'recovery:manual',
+                kind: 'consciousness-recovery',
+                crewId: 0,
+                target: 10,
+                readyTurn: 0,
+            });
+        });
+
+        it('keeps automatic rule results immutable until they are applied', () => {
+            const { turnState } = createTurnStateHarness();
+            expect(turnState.queuePendingUnitCheck({
+                id: 'life-support:1',
+                kind: 'heat-life-support',
+                result: { kind: 'automatic', outcome: 'failed' },
+                hits: 2,
+            })).toBeTrue();
+
+            expect(turnState.setPendingUnitCheckOutcome('life-support:1', 'success')).toBeFalse();
+            expect(turnState.getPendingUnitCheck('life-support:1')).toEqual({
+                type: 'unit-check',
+                id: 'life-support:1',
+                kind: 'heat-life-support',
+                result: { kind: 'automatic', outcome: 'failed' },
+                hits: 2,
+            });
+        });
+
+        it('turns a pending seatbelt roll into automatic failure if its crew becomes unconscious', () => {
+            const { turnState } = createTurnStateHarness();
+            const unit = turnState.unitState.unit;
+            (unit as unknown as { getCrewMember(id: number): unknown }).getCrewMember = () => ({
+                getState: () => 'unconscious',
+            });
+            expect(turnState.queuePendingUnitCheck({
+                id: 'seatbelt:unconscious',
+                kind: 'seatbelt',
+                crewId: 0,
+                target: 6,
+            })).toBeTrue();
+
+            turnState.refreshPendingUnitCheckTargets();
+
+            expect(turnState.getPendingUnitCheck('seatbelt:unconscious')).toEqual({
+                type: 'unit-check',
+                id: 'seatbelt:unconscious',
+                kind: 'seatbelt',
+                crewId: 0,
+                result: { kind: 'automatic', outcome: 'failed' },
+            });
+        });
+
+        it('keeps Aero control recovery pending while an unconscious pilot can still wake', () => {
+            const { turnState } = createTurnStateHarness({
+                rulesType: 'aero',
+                rulesId: 'tw',
+                crewState: 'unconscious',
+                outOfControl: true,
+                unit: { type: 'Aero' },
+            });
+            expect(turnState.queuePendingUnitCheck({
+                id: 'control:unconscious',
+                kind: 'aero-control-recovery',
+                target: 5,
+                readyTurn: 0,
+            })).toBeTrue();
+
+            turnState.refreshPendingUnitCheckTargets();
+
+            expect(turnState.getPendingUnitCheck('control:unconscious')).toEqual({
+                type: 'unit-check',
+                id: 'control:unconscious',
+                kind: 'aero-control-recovery',
+                readyTurn: 0,
+                result: { kind: 'automatic', outcome: 'failed' },
+            });
+        });
+
+        it('discards an impossible Aero control recovery after its controller is permanently gone', () => {
+            const { turnState } = createTurnStateHarness({
+                rulesType: 'aero',
+                rulesId: 'tw',
+                crewState: 'ejected',
+                outOfControl: true,
+                unit: { type: 'Aero' },
+            });
+            expect(turnState.queuePendingUnitCheck({
+                id: 'control:ejected',
+                kind: 'aero-control-recovery',
+                target: 5,
+                readyTurn: 0,
+            })).toBeTrue();
+
+            turnState.refreshPendingUnitCheckTargets();
+
+            expect(turnState.getPendingUnitCheck('control:ejected')).toBeUndefined();
+        });
+
+        it('keeps pending critical IDs unique and rejects invalid rolls', () => {
+            const { turnState } = createTurnStateHarness();
+            const pending = { id: 'critical:1', location: 'LT', targetLocation: 'LT', remainingHits: 1 };
+
+            expect(turnState.queuePendingCriticalHits(pending)).toBeTrue();
+            expect(turnState.queuePendingCriticalHits(pending)).toBeFalse();
+            expect(turnState.setPendingCriticalRoll('critical:1', [0, 7])).toBeFalse();
+            expect(turnState.setPendingCriticalRoll('missing', [1, 1])).toBeFalse();
+            expect(turnState.pendingCriticalHitCount()).toBe(1);
+        });
+
         it('persists disabled movement PSRs while omitting other false and empty state', () => {
             const { turnState } = createTurnStateHarness();
             turnState.airborne.set(false);
@@ -513,7 +1318,7 @@ describe('TurnState', () => {
 
             const serialized = turnState.serialize();
 
-            expect(serialized).toEqual({ applyMovePSR: false });
+            expect(turnState.serialize()).toEqual({ applyMovePSR: false });
 
             const { turnState: restored } = createTurnStateHarness();
             restored.update(serialized);
@@ -586,6 +1391,101 @@ describe('TurnState', () => {
 
             expect(turnState.moveDistance()).toBe(8);
         });
+
+        it('keeps the movement-distance range editable while prone in either ruleset', () => {
+            for (const rulesId of ['core2026', 'tw'] as const) {
+                const { turnState } = createTurnStateHarness({
+                    prone: true,
+                    rulesId,
+                    unit: { walk: 4, walk2: 4, run: 6, run2: 6 },
+                });
+                turnState.moveMode.set('walk');
+                turnState.moveDistance.set(1);
+
+                expect(turnState.movementCapacityCurrentMoveMode()).withContext(rulesId).toBe(4);
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(rulesId).toBe(4);
+
+                turnState.clampMoveDistanceToCurrentModeRange();
+
+                expect(turnState.moveDistance()).withContext(rulesId).toBe(1);
+            }
+        });
+
+        it('retains Run 2 capacity for a Core Quad with three destroyed legs', () => {
+            const { turnState, rules } = createTurnStateHarness({
+                prone: false,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                committedDestroyedLegs: ['FLL', 'FRL', 'RLL'],
+                unit: { walk: 4, walk2: 4, run: 6, run2: 6 },
+            });
+            turnState.moveMode.set('run');
+
+            expect((rules as MekRules).movementState())
+                .toEqual(jasmine.objectContaining({ walk: 1, run: 2 }));
+            expect(turnState.movementCapacityCurrentMoveMode()).toBe(2);
+            expect(turnState.maxDistanceCurrentMoveMode()).toBe(2);
+        });
+
+        it('retains Run 2 capacity for a prone Core Quad with three destroyed legs', () => {
+            const { turnState, rules } = createTurnStateHarness({
+                prone: true,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                committedDestroyedLegs: ['FLL', 'FRL', 'RLL'],
+                unit: { walk: 4, walk2: 4, run: 6, run2: 6 },
+            });
+            turnState.moveMode.set('run');
+
+            expect((rules as MekRules).movementState())
+                .toEqual(jasmine.objectContaining({ walk: 1, run: 2 }));
+            expect(turnState.movementCapacityCurrentMoveMode()).toBe(2);
+            expect(turnState.maxDistanceCurrentMoveMode()).toBe(2);
+        });
+
+        it('preserves movement already completed when the unit becomes prone', () => {
+            for (const rulesId of ['core2026', 'tw'] as const) {
+                const { turnState } = createTurnStateHarness({
+                    prone: true,
+                    rulesId,
+                    unit: { walk: 4, walk2: 4, run: 6, run2: 6 },
+                });
+                turnState.moveMode.set('run');
+                turnState.moveDistance.set(6);
+
+                expect(turnState.movementCapacityCurrentMoveMode()).withContext(rulesId).toBe(6);
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(rulesId).toBe(6);
+
+                turnState.clampMoveDistanceToCurrentModeRange();
+
+                expect(turnState.moveDistance()).withContext(rulesId).toBe(6);
+            }
+        });
+
+        it('subtracts two movement points per stand attempt in Core and TW', () => {
+            for (const rulesId of ['core2026', 'tw'] as const) {
+                const { turnState } = createTurnStateHarness({
+                    rulesId,
+                    unit: { walk: 4, walk2: 4, run: 6, run2: 6 },
+                });
+                turnState.moveMode.set('walk');
+                turnState.moveDistance.set(4);
+
+                turnState.adjustStandAttempts(1);
+
+                expect(turnState.movementCapacityCurrentMoveMode()).withContext(rulesId).toBe(4);
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(rulesId).toBe(2);
+                expect(turnState.moveDistance()).withContext(rulesId).toBe(2);
+
+                turnState.adjustStandAttempts(1);
+
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(rulesId).toBe(0);
+                expect(turnState.moveDistance()).withContext(rulesId).toBe(0);
+
+                turnState.moveMode.set('run');
+
+                expect(turnState.movementCapacityCurrentMoveMode()).withContext(rulesId).toBe(6);
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(rulesId).toBe(2);
+            }
+        });
     });
 
     describe('standing up', () => {
@@ -602,22 +1502,149 @@ describe('TurnState', () => {
             expect(turnState.standAttempts()).toBe(0);
         });
 
+        it('reconciles stand-attempt heat through the selected rules', () => {
+            const core = createTurnStateHarness();
+            core.turnState.moveMode.set('run');
+            core.turnState.acknowledgeHeatSources();
+
+            core.turnState.adjustStandAttempts(1);
+
+            expect(core.turnState.heatSources()).toEqual([]);
+
+            const tw = createTurnStateHarness({ rulesId: 'tw' });
+            tw.turnState.moveMode.set('run');
+            tw.turnState.acknowledgeHeatSources();
+
+            tw.turnState.adjustStandAttempts(1);
+
+            expect(getMovementHeat(tw.turnState)).toBe(3);
+            tw.turnState.acknowledgeHeatSources();
+
+            tw.turnState.resetStandAttempts();
+
+            expect(getMovementHeat(tw.turnState)).toBe(2);
+            tw.turnState.acknowledgeHeatSources();
+
+            tw.turnState.resetStandAttempts();
+
+            expect(tw.turnState.heatSources()).toEqual([]);
+        });
+
         it('records outcomes and removes prone only after success', () => {
             const { turnState } = createTurnStateHarness({ prone: true });
 
             expect(turnState.resolveStandAttempt('failed')).toBeTrue();
             expect(turnState.standAttempts()).toBe(1);
             expect(turnState.unitState.unit.setCondition).not.toHaveBeenCalled();
+            expect(turnState.unitState.unit.queueFall).toHaveBeenCalledOnceWith('stand-attempt');
 
             expect(turnState.resolveStandAttempt('success')).toBeTrue();
             expect(turnState.standAttempts()).toBe(2);
             expect(turnState.unitState.unit.setCondition).toHaveBeenCalledOnceWith('prone', false);
         });
 
-        it('disables standing for stationary movement and too many destroyed legs', () => {
+        it('supports careful stand only in TW and requires at least three remaining Walking MP', () => {
+            const core = createTurnStateHarness({
+                prone: true,
+                rulesId: 'core2026',
+                unit: { walk: 5, walk2: 5, run: 8, run2: 8 },
+            });
+            const exactThreshold = createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                unit: { walk: 3, walk2: 3, run: 5, run2: 5 },
+            });
+            const belowThreshold = createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                unit: { walk: 2, walk2: 2, run: 3, run2: 3 },
+            });
+            const threeRemaining = createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                unit: { walk: 5, walk2: 5, run: 8, run2: 8 },
+            });
+            const twoRemaining = createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                unit: { walk: 4, walk2: 4, run: 6, run2: 6 },
+            });
+            threeRemaining.turnState.adjustStandAttempts(1);
+            twoRemaining.turnState.adjustStandAttempts(1);
+
+            expect(core.rules.supportsCarefulStand).toBeFalse();
+            expect(core.rules.canCarefulStand(core.turnState)).toBeFalse();
+            expect(core.turnState.resolveStandAttempt('failed', { carefulStand: true })).toBeFalse();
+            expect(core.turnState.standAttempts()).toBeUndefined();
+
+            expect(exactThreshold.rules.supportsCarefulStand).toBeTrue();
+            expect(exactThreshold.rules.canCarefulStand(exactThreshold.turnState)).toBeTrue();
+            expect(belowThreshold.rules.canCarefulStand(belowThreshold.turnState)).toBeFalse();
+            expect(threeRemaining.rules.canCarefulStand(threeRemaining.turnState)).toBeTrue();
+            expect(twoRemaining.rules.canCarefulStand(twoRemaining.turnState)).toBeFalse();
+            expect(belowThreshold.turnState.resolveStandAttempt('failed', { carefulStand: true })).toBeFalse();
+            expect(belowThreshold.turnState.standAttempts()).toBeUndefined();
+        });
+
+        it('spends the entire phase on a careful stand whether it succeeds or fails', () => {
+            for (const outcome of ['success', 'failed'] as const) {
+                const { turnState, rules } = createTurnStateHarness({
+                    prone: true,
+                    rulesId: 'tw',
+                    unit: { walk: 5, walk2: 5, run: 8, run2: 8 },
+                });
+                turnState.moveMode.set('stationary');
+
+                expect(turnState.resolveStandAttempt(outcome, { carefulStand: true }))
+                    .withContext(outcome)
+                    .toBeTrue();
+                expect(turnState.carefulStand()).withContext(outcome).toBeTrue();
+                expect(turnState.moveMode()).withContext(outcome).toBe('walk');
+                expect(turnState.standAttempts()).withContext(outcome).toBe(1);
+                expect(turnState.movementCapacityCurrentMoveMode()).withContext(outcome).toBe(5);
+                expect(rules.getMovementPointsSpent(turnState)).withContext(outcome).toBe(5);
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(outcome).toBe(0);
+                expect(turnState.canStandUp()).withContext(outcome).toBeFalse();
+            }
+        });
+
+        it('retains Run as the worse movement mode when making a careful stand', () => {
+            const { turnState, rules } = createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                unit: { walk: 5, walk2: 5, run: 8, run2: 8 },
+            });
+            turnState.moveMode.set('run');
+            turnState.moveDistance.set(0);
+
+            expect(turnState.resolveStandAttempt('failed', { carefulStand: true })).toBeTrue();
+
+            expect(turnState.moveMode()).toBe('run');
+            expect(turnState.movementCapacityCurrentMoveMode()).toBe(8);
+            expect(rules.getMovementPointsSpent(turnState)).toBe(8);
+            expect(turnState.maxDistanceCurrentMoveMode()).toBe(0);
+
+            turnState.adjustStandAttempts(-1);
+
+            expect(turnState.carefulStand()).toBeFalse();
+            expect(turnState.standAttempts()).toBe(0);
+            expect(turnState.movementCapacityCurrentMoveMode()).toBe(8);
+            expect(rules.getMovementPointsSpent(turnState)).toBe(0);
+            expect(turnState.maxDistanceCurrentMoveMode()).toBe(8);
+        });
+
+        it('applies the Core and TW limb requirements for standing', () => {
             const stationary = createTurnStateHarness({ prone: true });
             stationary.turnState.moveMode.set('stationary');
-            expect(stationary.turnState.canStandUp()).toBeFalse();
+            expect(stationary.turnState.canStandUp()).toBeTrue();
+            expect(stationary.turnState.prepareStandAttempt()).toBeTrue();
+            expect(stationary.turnState.moveMode()).toBe('walk');
+            expect(stationary.turnState.moveDistance()).toBe(0);
+
+            expect(createTurnStateHarness({
+                prone: true,
+                currentDestroyedLegs: ['LL'],
+            }).turnState.canStandUp()).toBeTrue();
 
             expect(createTurnStateHarness({
                 prone: true,
@@ -634,12 +1661,154 @@ describe('TurnState', () => {
                 prone: true,
                 internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
                 currentDestroyedLegs: ['FLL', 'FRL', 'RLL'],
+            }).turnState.canStandUp()).toBeTrue();
+
+            expect(createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                currentDestroyedLegs: ['FLL', 'FRL', 'RLL'],
             }).turnState.canStandUp()).toBeFalse();
+
+            expect(createTurnStateHarness({
+                prone: true,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                currentDestroyedLegs: ['FLL', 'FRL', 'RLL', 'RRL'],
+            }).turnState.canStandUp()).toBeFalse();
+
+            expect(createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                internalLocations: ['LA', 'RA', 'LL', 'RL'],
+                currentDestroyedLegs: ['LA', 'RA'],
+            }).turnState.canStandUp()).toBeTrue();
+
+            expect(createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                internalLocations: ['LA', 'RA', 'LL', 'RL'],
+                currentDestroyedLegs: ['LA', 'RA', 'LL'],
+            }).turnState.canStandUp()).toBeFalse();
+        });
+
+        it('classifies each TW destroyed-leg exception as running and reports its one-attempt limit', () => {
+            const scenarios = [
+                { label: 'biped with one leg', locations: ['LL', 'RL'], destroyed: ['LL'] },
+                { label: 'tripod with two legs', locations: ['LL', 'CL', 'RL'], destroyed: ['LL'] },
+                {
+                    label: 'quad with two legs',
+                    locations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                    destroyed: ['FLL', 'FRL'],
+                },
+            ];
+
+            for (const scenario of scenarios) {
+                const { turnState, rules } = createTurnStateHarness({
+                    prone: true,
+                    rulesId: 'tw',
+                    internalLocations: scenario.locations,
+                    committedDestroyedLegs: scenario.destroyed,
+                    unit: { walk: 5, walk2: 5, run: 8, run2: 8, jump: 0, umu: 0, heat: 0 },
+                });
+                turnState.moveMode.set('walk');
+
+                expect((rules as MekRules).movementState())
+                    .withContext(scenario.label)
+                    .toEqual(jasmine.objectContaining({ walk: 1, run: 0 }));
+                expect(rules.isMotiveModeAvailable('run')).withContext(scenario.label).toBeTrue();
+                expect(turnState.canStandUp()).withContext(scenario.label).toBeTrue();
+                expect(rules.getStandAttemptLimit(turnState)).withContext(scenario.label).toBe(1);
+
+                expect(turnState.prepareStandAttempt()).withContext(scenario.label).toBeTrue();
+
+                expect(turnState.moveMode()).withContext(scenario.label).toBe('run');
+                expect(turnState.moveDistance()).withContext(scenario.label).toBe(0);
+                expect(turnState.movementCapacityCurrentMoveMode()).withContext(scenario.label).toBe(1);
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(scenario.label).toBe(1);
+                expect(turnState.standAttempts()).withContext(scenario.label).toBeUndefined();
+
+                expect(turnState.resolveStandAttempt('failed')).withContext(scenario.label).toBeTrue();
+
+                expect(getMovementHeat(turnState)).withContext(scenario.label).toBe(3);
+                expect(turnState.standAttempts()).withContext(scenario.label).toBe(1);
+                expect(turnState.movementCapacityCurrentMoveMode()).withContext(scenario.label).toBe(1);
+                expect(turnState.maxDistanceCurrentMoveMode()).withContext(scenario.label).toBe(0);
+                expect(turnState.canStandUp()).withContext(scenario.label).toBeTrue();
+            }
+        });
+
+        it('classifies a Core one-legged stand as running while retaining ordinary Run movement', () => {
+            const { turnState, rules } = createTurnStateHarness({
+                prone: true,
+                committedDestroyedLegs: ['LL'],
+                unit: { walk: 5, walk2: 5, run: 8, run2: 8, jump: 0, umu: 0, heat: 0 },
+            });
+            turnState.moveMode.set('walk');
+
+            expect((rules as MekRules).movementState())
+                .toEqual(jasmine.objectContaining({ walk: 1, run: 2 }));
+            expect(rules.isMotiveModeAvailable('run')).toBeTrue();
+
+            expect(turnState.prepareStandAttempt()).toBeTrue();
+
+            expect(turnState.moveMode()).toBe('run');
+            expect(turnState.moveDistance()).toBe(0);
+
+            expect(turnState.resolveStandAttempt('failed')).toBeTrue();
+
+            expect(getMovementHeat(turnState)).toBe(2);
+        });
+
+        it('does not apply the TW one-attempt exception to a quad with only one destroyed leg', () => {
+            const { turnState } = createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                committedDestroyedLegs: ['FLL'],
+                unit: { walk: 5, walk2: 5, run: 8, run2: 8, jump: 0, umu: 0, heat: 0 },
+            });
+            turnState.moveMode.set('walk');
+
+            expect(turnState.unitState.unit.rules.getStandAttemptLimit(turnState)).toBeNull();
+
+            expect(turnState.resolveStandAttempt('failed')).toBeTrue();
+
+            expect(turnState.moveMode()).toBe('walk');
+            expect(turnState.canStandUp()).toBeTrue();
+        });
+
+        it('does not classify TW units that cannot stand as destroyed-leg stand exceptions', () => {
+            const scenarios = [
+                { label: 'biped with no legs', locations: ['LL', 'RL'], destroyed: ['LL', 'RL'] },
+                {
+                    label: 'quad with one leg',
+                    locations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                    destroyed: ['FLL', 'FRL', 'RLL'],
+                },
+            ];
+
+            for (const scenario of scenarios) {
+                const { turnState, rules } = createTurnStateHarness({
+                    prone: true,
+                    rulesId: 'tw',
+                    internalLocations: scenario.locations,
+                    committedDestroyedLegs: scenario.destroyed,
+                });
+                turnState.moveMode.set('walk');
+
+                expect(turnState.canStandUp()).withContext(scenario.label).toBeFalse();
+                expect(rules.getStandAttemptLimit(turnState)).withContext(scenario.label).toBeNull();
+                expect(rules.getStandAttemptMovementMode(turnState)).withContext(scenario.label).toBe('walk');
+            }
         });
 
         it('lets only an intact quad stand without a PSR', () => {
             const quad = createTurnStateHarness({
                 prone: true,
+                internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+            });
+            const standingQuad = createTurnStateHarness({
+                prone: false,
                 internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
             });
             const damagedQuad = createTurnStateHarness({
@@ -650,8 +1819,20 @@ describe('TurnState', () => {
             const biped = createTurnStateHarness({ prone: true });
 
             expect(quad.turnState.canStandWithoutPSR()).toBeTrue();
+            expect(standingQuad.turnState.canStandUp()).toBeFalse();
+            expect(standingQuad.turnState.canStandWithoutPSR()).toBeTrue();
             expect(damagedQuad.turnState.canStandWithoutPSR()).toBeFalse();
             expect(biped.turnState.canStandWithoutPSR()).toBeFalse();
+        });
+
+        it('does not apply Mek standing rules to other unit types', () => {
+            const infantry = createTurnStateHarness({ prone: true, rulesType: 'infantry' });
+            const aero = createTurnStateHarness({ prone: true, rulesType: 'aero' });
+
+            expect(infantry.turnState.canStandUp()).toBeFalse();
+            expect(infantry.turnState.canStandWithoutPSR()).toBeFalse();
+            expect(aero.turnState.canStandUp()).toBeFalse();
+            expect(aero.turnState.canStandWithoutPSR()).toBeFalse();
         });
     });
 
@@ -695,6 +1876,70 @@ describe('TurnState', () => {
 
             expect(getReasons(turnState)).toContain('Leg Actuator hit');
             expect(getReasons(turnState)).not.toContain('Jumping with damaged leg actuator');
+        });
+
+        it('does not expose separate TW movement fall PSRs while prone during a destroyed-leg stand', () => {
+            const scenarios = [
+                {
+                    label: 'biped with damaged gyro',
+                    locations: ['LL', 'RL'],
+                    destroyedLegs: ['LL'],
+                    crit: createCritSlot('Gyro', 'CT', { destroyed: 1 }),
+                    movementReason: 'Running with damaged gyro',
+                },
+                {
+                    label: 'biped with damaged hip',
+                    locations: ['LL', 'RL'],
+                    destroyedLegs: ['LL'],
+                    crit: createCritSlot('Hip', 'RL', { destroyed: 1 }),
+                    movementReason: 'Running with damaged hip',
+                },
+                {
+                    label: 'quad with damaged gyro',
+                    locations: ['FLL', 'FRL', 'RLL', 'RRL'],
+                    destroyedLegs: ['FLL', 'FRL'],
+                    crit: createCritSlot('Gyro', 'CT', { destroyed: 1 }),
+                    movementReason: 'Running with damaged gyro',
+                },
+            ];
+
+            for (const scenario of scenarios) {
+                const { turnState, rules } = createTurnStateHarness({
+                    prone: true,
+                    rulesId: 'tw',
+                    internalLocations: scenario.locations,
+                    committedDestroyedLegs: scenario.destroyedLegs,
+                    critSlots: [scenario.crit],
+                    unit: { subtype: 'BattleMek' },
+                });
+                turnState.moveMode.set('run');
+                turnState.moveDistance.set(0);
+
+                const standModifier = rules.PSRModifiers().modifier;
+                expect(getReasons(turnState)).withContext(scenario.label).not.toContain(scenario.movementReason);
+                expect(turnState.PSRRollsCount()).withContext(scenario.label).toBe(0);
+
+                expect(turnState.resolveStandAttempt('failed')).withContext(scenario.label).toBeTrue();
+
+                expect(getReasons(turnState)).withContext(scenario.label).not.toContain(scenario.movementReason);
+                expect(turnState.PSRRollsCount()).withContext(scenario.label).toBe(0);
+                expect(rules.PSRModifiers().modifier).withContext(scenario.label).toBe(standModifier);
+            }
+        });
+
+        it('does not create an ordinary TW running fall PSR after a failed stand', () => {
+            const { turnState } = createTurnStateHarness({
+                prone: true,
+                rulesId: 'tw',
+                critSlots: [createCritSlot('Gyro', 'CT', { destroyed: 1 })],
+            });
+            turnState.moveMode.set('run');
+            turnState.moveDistance.set(0);
+
+            expect(turnState.resolveStandAttempt('failed')).toBeTrue();
+
+            expect(getReasons(turnState)).not.toContain('Running with damaged gyro');
+            expect(turnState.PSRRollsCount()).toBe(0);
         });
     });
 
@@ -774,6 +2019,27 @@ describe('TurnState', () => {
     });
 
     describe('movement distance limits', () => {
+        it('treats a Core Immobile unit as stationary without storing a movement selection', () => {
+            const { turnState } = createTurnStateHarness({ immobile: true });
+
+            expect(turnState.moveMode()).toBeNull();
+            expect(turnState.effectiveMoveMode()).toBe('stationary');
+            expect(turnState.getAttackMovementModifier()).toBe(0);
+            expect(turnState.missingAttackMovementModifier()).toBeFalse();
+            expect(turnState.currentPhase()).toBe('W');
+            expect(turnState.dirty()).toBeFalse();
+        });
+
+        it('does not assign an effective movement mode to a TW Immobile unit', () => {
+            const { turnState } = createTurnStateHarness({ immobile: true, rulesId: 'tw' });
+
+            expect(turnState.moveMode()).toBeNull();
+            expect(turnState.effectiveMoveMode()).toBeNull();
+            expect(turnState.missingAttackMovementModifier()).toBeTrue();
+            expect(turnState.currentPhase()).toBe('M');
+            expect(turnState.dirty()).toBeFalse();
+        });
+
         it('uses unit rules for minimum movement distance', () => {
             const { turnState } = createTurnStateHarness({
                 rulesType: 'infantry',

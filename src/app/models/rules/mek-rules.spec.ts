@@ -1875,22 +1875,22 @@ describe('MekRules', () => {
         }
     });
 
-    it('uses the first active alternate pilot with a modifier when the Tripod dedicated pilot is disabled', () => {
+    it('uses the best available alternate pilot with a modifier when the Tripod dedicated pilot is disabled', () => {
         const forceUnit = createForceUnitHarness({ subtype: 'Tripod BattleMek', crewStates: ['unconscious', 'healthy', 'healthy'] });
         forceUnit.getCrewMember(0).setSkill('piloting', 5);
         forceUnit.getCrewMember(1).setSkill('piloting', 6);
         forceUnit.getCrewMember(2).setSkill('piloting', 4);
         const rules = forceUnit.rules as MekRules;
 
-        expect(rules.getBasePilotingSkill()).toBe(6);
-        expect(rules.getActivePilotCrewId()).toBe(1);
+        expect(rules.getBasePilotingSkill()).toBe(4);
+        expect(rules.getActivePilotCrewId()).toBe(2);
         const punchModifiers = rules.getEquipmentToHitModifiers(punchEntry(forceUnit));
         expect(toHitModifierTotal(punchModifiers)).toBe(2);
         expect(punchModifiers).toEqual([
             { label: 'Dedicated Pilot disabled', modifier: 2, weakened: true },
         ]);
         expect(rules.PSRModifiers().modifier).toBe(1);
-        expect(rules.PSRTargetRoll()).toBe(7);
+        expect(rules.PSRTargetRoll()).toBe(5);
     });
 
     it('applies the Tripod dedicated pilot modifier to physical attacks', () => {
@@ -2018,7 +2018,7 @@ describe('MekRules', () => {
         ]);
     });
 
-    it('uses crew order instead of best skill for non-Tripod Mek target-number skills', () => {
+    it('keeps crew 0 as pilot while available, then uses the best alternate piloting skill', () => {
         const forceUnit = createForceUnitHarness({ crewStates: ['healthy', 'healthy', 'healthy'] });
         forceUnit.getCrewMember(0).setSkill('gunnery', 5);
         forceUnit.getCrewMember(0).setSkill('piloting', 6);
@@ -2030,11 +2030,13 @@ describe('MekRules', () => {
 
         expect(rules.getBaseGunnerySkill()).toBe(5);
         expect(rules.getBasePilotingSkill()).toBe(6);
+        expect(rules.getActivePilotCrewId()).toBe(0);
 
         forceUnit.getCrewMember(0).setState('unconscious');
 
         expect(rules.getBaseGunnerySkill()).toBe(4);
-        expect(rules.getBasePilotingSkill()).toBe(5);
+        expect(rules.getBasePilotingSkill()).toBe(3);
+        expect(rules.getActivePilotCrewId()).toBe(2);
     });
 
     it('ignores small cockpit PSR modifiers for drone operating system Meks', () => {
@@ -2396,9 +2398,11 @@ describe('MekRules', () => {
     });
 
     it('marks Meks abandoned when every crew member is dead or ejected', () => {
-        const rules = createRulesHarness({ crewStates: ['healthy', 'ejected'], crewHits: [DEAD_CREW_HIT_THRESHOLD] });
+        const forceUnit = createForceUnitHarness({ crewStates: ['healthy', 'ejected'], crewHits: [DEAD_CREW_HIT_THRESHOLD] });
 
-        expect(rules.hasComputedCondition('abandoned')).toBeTrue();
+        forceUnit.endPhase();
+
+        expect(forceUnit.rules.hasComputedCondition('abandoned')).toBeTrue();
     });
 
     it('does not mark Meks abandoned while any crew member is alive in the unit', () => {
@@ -4204,10 +4208,25 @@ describe('MekRules', () => {
         expect(turnState.autoFall()).toBeFalse();
 
         forceUnit.setLocationCondition('LL', 'blown-off', true);
+        expect(turnState.resolveAutomaticFall()).toBeTrue();
         forceUnit.endPhase();
 
         expect(turnState.autoFall()).toBeFalse();
         expect(forceUnit.getCondition('prone')).toBeTrue();
+    });
+
+    it('treats a flooded CORE leg as a destroyed leg and immediate fall trigger', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['LL', 'RL'] });
+        const turnState = forceUnit.turnState();
+
+        forceUnit.setLocationCondition('LL', 'flooded', true);
+
+        expect(turnState.getPSRCheckState().legsDestroyed).toEqual(new Set(['LL']));
+        expect(turnState.autoFall()).toBeTrue();
+        expect(turnState.getPSRChecks()).toContain(jasmine.objectContaining({
+            loc: 'LL',
+            reason: 'Leg destroyed',
+        }));
     });
 
     it('treats the first pending blown-off quad leg as an immediate fall trigger', () => {
@@ -4219,6 +4238,7 @@ describe('MekRules', () => {
         expect(turnState.getPSRCheckState().legsDestroyed).toEqual(new Set(['FLL']));
         expect(turnState.autoFall()).toBeTrue();
 
+        expect(turnState.resolveAutomaticFall()).toBeTrue();
         forceUnit.endPhase();
 
         expect(turnState.autoFall()).toBeFalse();

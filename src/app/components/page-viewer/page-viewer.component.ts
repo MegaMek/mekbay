@@ -36,6 +36,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsService } from '../../services/options.service';
 import { DbService } from '../../services/db.service';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
+import { CBTAutomationToastService } from '../../services/cbt-automation-toast.service';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { CBTForce } from '../../models/cbt-force.model';
 import { SvgInteractionService } from './svg-interaction.service';
@@ -172,8 +173,10 @@ export class PageViewerComponent implements AfterViewInit {
     private pageViewerSwipeDom = inject(PageViewerSwipeDomService);
     private pageViewerSwipeRenderer = inject(PageViewerSwipeRendererService);
     private pageViewerWrapperLayout = inject(PageViewerWrapperLayoutService);
-    private keyboardShortcutService = inject(KeyboardShortcutService);    
+    private keyboardShortcutService = inject(KeyboardShortcutService);
+    private automationToasts = inject(CBTAutomationToastService);
     private destroyRef = inject(DestroyRef);
+    private readonly automationToastVisibilityOwner = {};
 
     canvasService = inject(PageViewerCanvasService);
 
@@ -344,6 +347,13 @@ export class PageViewerComponent implements AfterViewInit {
     private fluffImageInjectEffectRef: EffectRef | null = null;
 
     constructor() {
+        effect(() => {
+            this.automationToasts.setVisibleUnitIds(
+                this.automationToastVisibilityOwner,
+                this.displayedUnitIds(),
+            );
+        });
+
         this.keyboardShortcutService.register({
             id: 'page-viewer',
             active: () => this.viewInitialized() && !!this.unit(),
@@ -511,7 +521,10 @@ export class PageViewerComponent implements AfterViewInit {
             }
         });
 
-        this.destroyRef.onDestroy(() => this.cleanup());
+        this.destroyRef.onDestroy(() => {
+            this.automationToasts.clearVisibleUnitIds(this.automationToastVisibilityOwner);
+            this.cleanup();
+        });
     }
 
     ngAfterViewInit(): void {

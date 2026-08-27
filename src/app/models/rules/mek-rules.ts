@@ -4,7 +4,7 @@
 
 import { computed } from '@angular/core';
 import type { CBTForceUnit, EquipmentAction } from '../cbt-force-unit.model';
-import type { CrewMember, SkillType } from '../crew-member.model';
+import { isCrewMemberAvailable, type CrewMember } from '../crew-member.model';
 import type { MountedEquipment } from '../mounted-equipment.model';
 import type { CriticalSlot, RuleCheckOutcome } from '../force-serialization';
 import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, NARC_CONDITION_COLOR, sortPSRModifiers, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type ChargeDamage, type LocationConditionControl, type PSRCheck, type PSRCheckKind, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitRuleModifier } from './unit-type-rules';
@@ -16,6 +16,7 @@ import { getDefaultAttackerMovementModifier, TN_PRONE, TN_PRONE_ADJACENT, TN_PRO
 import {
     getMekLegLocations,
     getMekLimbLocations,
+    getMekLocationParent,
     inferMekConfigFromLocations,
     isMekLegLocation,
     LEG_LOCATIONS,
@@ -34,7 +35,7 @@ import { uuidv7 } from '../../utils/uuid.util';
 
 type ArmLocation = 'LA' | 'RA';
 
-const LEG_DAMAGE_MOVEMENT_CRITICAL_NAMES: Record<PSRCheckKind, readonly string[]> = {
+const LEG_DAMAGE_MOVEMENT_CRITICAL_NAMES: Partial<Record<PSRCheckKind, readonly string[]>> = {
     'damaged-leg-actuator-movement': ['Leg', 'Foot', 'Hip'],
     'damaged-hip-movement': ['Hip'],
 };
@@ -209,7 +210,9 @@ export class MekRules extends UnitTypeRulesBase {
 
         const config = inferMekConfigFromLocations(internalLocations.keys());
         const limbLocations = getMekLimbLocations(config);
-        const isDestroyed = (loc: string) => this.unit.isInternalLocCommittedDestroyed(loc);
+        const isDestroyed = (loc: string) => isMekLegLocation(config, loc)
+            ? this.isLegDestroyed(loc, true)
+            : this.unit.isInternalLocCommittedDestroyed(loc);
         if (config !== 'Tripod') return limbLocations.every(isDestroyed);
 
         const armsDestroyed = limbLocations
@@ -350,19 +353,60 @@ export class MekRules extends UnitTypeRulesBase {
         const config = inferMekConfigFromLocations(internalLocations?.keys() ?? []);
         const legs = getMekLegLocations(config);
         const destroyedLegs = legs.filter(loc =>
-            internalLocations?.has(loc) && this.unit.isInternalLocDestroyed(loc)
+            internalLocations?.has(loc) && this.isLegDestroyed(loc)
         );
         const hasIntactLeg = legs.some(loc =>
-            internalLocations?.has(loc) && !this.unit.isInternalLocDestroyed(loc)
+            internalLocations?.has(loc) && !this.isLegDestroyed(loc)
         );
         const allLegsIntact = legs.every(loc =>
-            internalLocations?.has(loc) && !this.unit.isInternalLocDestroyed(loc)
+            internalLocations?.has(loc) && !this.isLegDestroyed(loc)
         );
         const destroyedArms = ['LA', 'RA'].filter(loc =>
             internalLocations?.has(loc) && this.unit.isInternalLocDestroyed(loc)
         );
         return { config, destroyedLegs, destroyedArms, hasIntactLeg, allLegsIntact };
     });
+
+    /** CORE treats a breached leg as destroyed; TW overrides this with physical destruction only. */
+    protected isLegDestroyed(location: string, committed = false): boolean {
+        if (committed) return this.unit.isInternalLocCommittedDestroyed(location);
+        if (this.unit.isInternalLocDestroyed(location)) return true;
+        const internalLocations = this.unit.locations?.internal;
+        const parent = internalLocations
+            ? getMekLocationParent(internalLocations.keys(), location)
+            : null;
+        return parent !== null && this.unit.isInternalLocDestroyed(parent);
+    }
+
+    protected floodAffectedLegLocations(location: string): string[] {
+        const internalLocations = this.unit.locations?.internal;
+        if (!internalLocations) return [];
+        const config = inferMekConfigFromLocations(internalLocations.keys());
+        return getMekLegLocations(config).filter(leg =>
+            internalLocations.has(leg)
+            && (leg === location || getMekLocationParent(internalLocations.keys(), leg) === location)
+        );
+    }
+
+    protected isLegFlooded(location: string): boolean {
+        if (this.unit.getLocationCondition(location, 'flooded')) return true;
+        const internalLocations = this.unit.locations?.internal;
+        const parent = internalLocations
+            ? getMekLocationParent(internalLocations.keys(), location)
+            : null;
+        return parent !== null && this.unit.getLocationCondition(parent, 'flooded');
+    }
+
+    protected hasOtherLegFloodSource(location: string, source: string): boolean {
+        if (location !== source && this.unit.getLocationCondition(location, 'flooded')) return true;
+        const internalLocations = this.unit.locations?.internal;
+        const parent = internalLocations
+            ? getMekLocationParent(internalLocations.keys(), location)
+            : null;
+        return parent !== null
+            && parent !== source
+            && this.unit.getLocationCondition(parent, 'flooded');
+    }
 
     // ── PSR ──────────────────────────────────────────────────────────────────
 
@@ -421,6 +465,7 @@ export class MekRules extends UnitTypeRulesBase {
                 checks.push({
                     fallCheck: 3,
                     pilotCheck: 3,
+                    kind: 'shutdown',
                     reason: 'Shutdown'
                 });
             }
@@ -596,7 +641,7 @@ export class MekRules extends UnitTypeRulesBase {
         const damagedLegLocations: string[] = [];
         this.unit.locations?.internal?.forEach((_value, loc) => {
             if (!LEG_LOCATIONS.has(loc)) return;
-            if (this.unit.isInternalLocCommittedDestroyed(loc)) {
+            if (this.isLegDestroyed(loc, true)) {
                 damagedLegLocations.push(loc);
             }
         });
@@ -606,7 +651,7 @@ export class MekRules extends UnitTypeRulesBase {
         const hasDamagedLegActuators = critSlots.some(slot => {
             if (!slot.name || !slot.loc || !this.isCritUnavailable(slot)) return false;
             if (!LEG_LOCATIONS.has(slot.loc)) return false;
-            if (this.unit.isInternalLocCommittedDestroyed(slot.loc)) return false;
+            if (this.isLegDestroyed(slot.loc, true)) return false;
             return this.isNamedCrit(slot, 'Leg')
                 || this.isNamedCrit(slot, 'Foot')
                 || this.isNamedCrit(slot, 'Hip');
@@ -740,7 +785,7 @@ export class MekRules extends UnitTypeRulesBase {
     override evaluateLegDestroyed(location: string, hits: number): void {
         if (!LEG_LOCATIONS.has(location)) return;
         const turnState = this.unit.turnState();
-        const destroyed = this.unit.isInternalLocDestroyed(location);
+        const destroyed = this.isLegDestroyed(location);
         let isPsrRelevant = false;
         const psr = turnState.getPSRCheckState();
         if (destroyed) {
@@ -762,31 +807,25 @@ export class MekRules extends UnitTypeRulesBase {
         }
     }
 
+    override evaluateLocationFlooded(location: string, active: boolean): void {
+        for (const leg of this.floodAffectedLegLocations(location)) {
+            if (this.hasOtherLegFloodSource(leg, location)) continue;
+            this.evaluateLegDestroyed(leg, active ? 1 : -1);
+        }
+    }
+
     override evaluateCritSlotHit(crit: CriticalSlot): void {
         if (!crit.loc) return;
-        let isPsrRelevant = false;
         const delta = (crit.destroying) ? 1 : -1;
+        if (LEG_LOCATIONS.has(crit.loc)) {
+            this.evaluateLegActuatorDamage(crit, delta);
+            return;
+        }
+
+        let isPsrRelevant = false;
         const turnState = this.unit.turnState();
         const psr = turnState.getPSRCheckState();
-        if (LEG_LOCATIONS.has(crit.loc)) {
-            if ((this.footHitsCausePSR && crit.name?.includes('Foot')) || crit.name?.includes('Leg')) {
-                if (!psr.legActuators) {
-                    psr.legActuators = new Map<string, number>();
-                }
-                psr.legActuators.set(crit.loc, Math.max(0, (psr.legActuators.get(crit.loc) || 0) + delta));
-                isPsrRelevant = true;
-            } else if (crit.name?.includes('Hip')) {
-                if (!psr.hipsHit) {
-                    psr.hipsHit = new Set<string>();
-                }
-                if (delta > 0) {
-                    psr.hipsHit.add(crit.loc);
-                } else {
-                    psr.hipsHit.delete(crit.loc);
-                }
-                isPsrRelevant = true;
-            }
-        } else if (crit.name?.includes('Gyro')) {
+        if (crit.name?.includes('Gyro')) {
             psr.gyroHit = Math.max(0, (psr.gyroHit || 0) + delta);
             isPsrRelevant = true;
             const critSlots = this.unit.getCritSlots();
@@ -804,6 +843,23 @@ export class MekRules extends UnitTypeRulesBase {
         if (isPsrRelevant) {
             turnState.setPSRCheckState(psr);
         }
+    }
+
+    protected evaluateLegActuatorDamage(crit: CriticalSlot, delta: number): void {
+        if (!crit.loc || !LEG_LOCATIONS.has(crit.loc)) return;
+        const turnState = this.unit.turnState();
+        const psr = turnState.getPSRCheckState();
+        if ((this.footHitsCausePSR && crit.name?.includes('Foot')) || crit.name?.includes('Leg')) {
+            psr.legActuators ??= new Map<string, number>();
+            psr.legActuators.set(crit.loc, Math.max(0, (psr.legActuators.get(crit.loc) || 0) + delta));
+        } else if (crit.name?.includes('Hip')) {
+            psr.hipsHit ??= new Set<string>();
+            if (delta > 0) psr.hipsHit.add(crit.loc);
+            else psr.hipsHit.delete(crit.loc);
+        } else {
+            return;
+        }
+        turnState.setPSRCheckState(psr);
     }
 
     protected gyroDestructionHitThreshold(): number {
@@ -1009,7 +1065,7 @@ export class MekRules extends UnitTypeRulesBase {
             if (!destroyedLegAES) {
                 destroyedLegAES = critSlots.some(slot => slot.loc == loc && this.isNamedCrit(slot, 'AES') && this.isCritUnavailable(slot));
             }
-            if (this.unit.isInternalLocCommittedDestroyed(loc)) {
+            if (this.isLegDestroyed(loc, true)) {
                 destroyedLegsCount++;
             } else {
                 destroyedHipsCount += critSlots.filter(slot => slot.loc === loc && this.isNamedCrit(slot, 'Hip') && this.isCritUnavailable(slot)).length;
@@ -1448,17 +1504,7 @@ export class MekRules extends UnitTypeRulesBase {
 
     override getBaseGunnerySkill(): number {
         const gunnerCrewId = this.isTripodMek() ? 1 : 0;
-        return this.getTargetNumberCrewSkill('gunnery', gunnerCrewId) ?? super.getBaseGunnerySkill();
-    }
-
-    override getBasePilotingSkill(): number {
-        return this.getTargetNumberCrewSkill('piloting', 0) ?? super.getBasePilotingSkill();
-    }
-
-    override getActivePilotCrewId(): number | null {
-        return this.getActiveCrewMember(0)?.getId()
-            ?? this.getFirstActiveAlternateCrewMember(0)?.getId()
-            ?? null;
+        return this.getGunneryCrewSkill(gunnerCrewId) ?? super.getBaseGunnerySkill();
     }
 
     protected override buildRuleModifiers(): UnitRuleModifier[] {
@@ -1531,13 +1577,13 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     private isActiveCrewMember(crewMember: CrewMember): boolean {
-        return crewMember.getState() === 'healthy';
+        return isCrewMemberAvailable(crewMember.getState());
     }
 
-    private getTargetNumberCrewSkill(skillType: SkillType, primaryCrewId: number): number | null {
+    private getGunneryCrewSkill(primaryCrewId: number): number | null {
         const primaryCrewMember = this.getActiveCrewMember(primaryCrewId);
-        if (primaryCrewMember) return primaryCrewMember.getSkill(skillType);
-        return this.getFirstActiveAlternateCrewMember(primaryCrewId)?.getSkill(skillType) ?? null;
+        if (primaryCrewMember) return primaryCrewMember.getSkill('gunnery');
+        return this.getFirstActiveAlternateCrewMember(primaryCrewId)?.getSkill('gunnery') ?? null;
     }
 
     private getFirstActiveAlternateCrewMember(primaryCrewId: number): CrewMember | null {
@@ -1557,7 +1603,7 @@ export class MekRules extends UnitTypeRulesBase {
         const config = isTripod ? 'Tripod' : 'Quad';
         let modifier = isTripod ? 1 : 0;
         for (const loc of getMekLegLocations(config)) {
-            if (!this.unit.locations?.internal?.has(loc) || this.unit.isInternalLocCommittedDestroyed(loc)) {
+            if (!this.unit.locations?.internal?.has(loc) || this.isLegDestroyed(loc, true)) {
                 modifier = TN_PRONE_ATTACKER;
             }
         }

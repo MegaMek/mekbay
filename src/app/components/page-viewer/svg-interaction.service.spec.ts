@@ -81,6 +81,7 @@ function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInve
         isEquipmentOperational: () => true,
         canPerformEquipmentAction: () => true,
         getNotificationDisplayName: () => 'Test Unit',
+        automationMode: () => 'ask',
         applyUnderwaterBreachAndFlooding: () => undefined,
         automationTriggers: new Subject(),
         rules: NO_CONDITION_RULES,
@@ -115,6 +116,7 @@ describe('SvgInteractionService', () => {
     let openUnitChecks: jasmine.Spy;
     let openFalling: jasmine.Spy;
     let phaseIsResolving: jasmine.Spy;
+    let showToast: jasmine.Spy;
 
     beforeEach(() => {
         zoomPanService = {
@@ -171,6 +173,7 @@ describe('SvgInteractionService', () => {
         openUnitChecks = jasmine.createSpy('open').and.resolveTo();
         openFalling = jasmine.createSpy('open').and.resolveTo();
         phaseIsResolving = jasmine.createSpy('isResolving').and.returnValue(false);
+        showToast = jasmine.createSpy('showToast');
         options = {
             pickerStyle: 'default',
             colorScheme: 'default',
@@ -225,7 +228,7 @@ describe('SvgInteractionService', () => {
                 { provide: UnitCheckResolutionService, useValue: { open: openUnitChecks } },
                 { provide: FallingResolutionService, useValue: { open: openFalling } },
                 { provide: CBTPhaseResolutionService, useValue: { isResolving: phaseIsResolving } },
-                { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } }
+                { provide: ToastService, useValue: { showToast } }
             ]
         });
 
@@ -582,13 +585,37 @@ describe('SvgInteractionService', () => {
         await service.automationQueue;
 
         expect(automationResolve).toHaveBeenCalledWith(
-            'breachAndFlood',
+            'breachAndFloodCheck',
             [
                 jasmine.objectContaining({ id: 'flood:1:LL', event: 'Breach and flood' }),
                 jasmine.objectContaining({ id: 'flood:1:RL', event: 'Breach and flood' }),
             ],
             jasmine.any(Object),
         );
+        expect(setLocationCondition).toHaveBeenCalledOnceWith('LL', 'flooded', true, true);
+    });
+
+    it('does not discard a breach and flood review during phase resolution', async () => {
+        const automationTriggers = new Subject<CBTUnitAutomationTrigger>();
+        const setLocationCondition = jasmine.createSpy('setLocationCondition');
+        const unit = createSvgInteractionUnit({
+            id: 'unit-a',
+            automationTriggers,
+            getNotificationDisplayName: () => 'Archer ARC-2D',
+            setLocationCondition,
+        });
+        phaseIsResolving.and.returnValue(true);
+        service.updateUnit(unit);
+
+        automationTriggers.next({
+            kind: 'breach-and-flood',
+            id: 'flood:phase',
+            locations: ['LL'],
+            commit: true,
+        });
+        await service.automationQueue;
+
+        expect(automationResolve).toHaveBeenCalled();
         expect(setLocationCondition).toHaveBeenCalledOnceWith('LL', 'flooded', true, true);
     });
 
@@ -1416,6 +1443,7 @@ describe('SvgInteractionService', () => {
             internalPoints: 12,
             internalHits: 0,
         });
+        unit.automationMode = () => 'yes';
         service.updateUnit(unit);
         service.setupInteractions(svg);
 
@@ -1445,6 +1473,8 @@ describe('SvgInteractionService', () => {
             internalPoints: 3,
             internalHits: 0,
         });
+        unit.automationMode = () => 'yes';
+        unit.applyHeadHitCrewHits.and.returnValue(3);
         service.updateUnit(unit);
         service.setupInteractions(svg);
 
@@ -1453,7 +1483,7 @@ describe('SvgInteractionService', () => {
         await service.automationQueue;
 
         expect(automationResolve).toHaveBeenCalledOnceWith(
-            'pilotHitsAndConsciousness',
+            'pilotHitsAndConsciousnessCheck',
             [jasmine.objectContaining({
                 subject: 'Test Unit',
                 event: 'Head hit',
@@ -1461,14 +1491,18 @@ describe('SvgInteractionService', () => {
             })],
             {
                 title: 'Review Pilot Hit',
-                message: 'Choose whether to apply the pilot hit caused by this head hit. Cancel leaves the head damage unapplied.',
+                message: 'Choose whether to apply the pilot hit caused by this head hit.',
             },
         );
-        expect(unit.applyHeadHitPilotHits).toHaveBeenCalledTimes(1);
+        expect(unit.applyHeadHitCrewHits).toHaveBeenCalledTimes(1);
         expect(unit.addArmorHits).toHaveBeenCalledWith('HD', 2, false, false);
         expect(unit.addInternalHits).toHaveBeenCalledWith('HD', 2, false, {
             hardenedArmorApplies: true,
         });
+        expect(showToast).toHaveBeenCalledWith(
+            'Test Unit — Pilot hit from head damage in Head: 3 applied',
+            'error',
+        );
     });
 
     it('applies rejected head damage without applying its pilot hit', async () => {
@@ -1487,7 +1521,7 @@ describe('SvgInteractionService', () => {
         pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: 2 });
         await service.automationQueue;
 
-        expect(unit.applyHeadHitPilotHits).not.toHaveBeenCalled();
+        expect(unit.applyHeadHitCrewHits).not.toHaveBeenCalled();
         expect(unit.addArmorHits).toHaveBeenCalledOnceWith('HD', 2, false, false);
     });
 
@@ -1507,7 +1541,7 @@ describe('SvgInteractionService', () => {
         pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: 2 });
         await service.automationQueue;
 
-        expect(unit.applyHeadHitPilotHits).not.toHaveBeenCalled();
+        expect(unit.applyHeadHitCrewHits).not.toHaveBeenCalled();
         expect(unit.addArmorHits).not.toHaveBeenCalled();
         expect(unit.addInternalHits).not.toHaveBeenCalled();
     });
@@ -1526,7 +1560,7 @@ describe('SvgInteractionService', () => {
         tap(location, 712);
         pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: -4 });
 
-        expect(unit.applyHeadHitPilotHits).not.toHaveBeenCalled();
+        expect(unit.applyHeadHitCrewHits).not.toHaveBeenCalled();
     });
 
     it('does not pass armor repairs backward into structure', () => {
@@ -2312,7 +2346,7 @@ function createArmorInteractionUnit(config: {
         addInternalHits: jasmine.createSpy('addInternalHits').and.callFake((_loc: string, hits: number) => {
             internalHits += hits;
         }),
-        applyHeadHitPilotHits: jasmine.createSpy('applyHeadHitPilotHits'),
+        applyHeadHitCrewHits: jasmine.createSpy('applyHeadHitCrewHits').and.returnValue(1),
         getCritSlotsAsMatrix: () => ({}),
     });
     return { svg, location, unit };

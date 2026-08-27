@@ -332,6 +332,7 @@ export class PageTurnSummaryPanelComponent {
         turnState.moveMode.set(null);
         turnState.moveDistance.set(null);
         turnState.applyMovePSR.set(true);
+        turnState.markPhaseStateChanged();
     }
 
     readonly moveModes = computed<MotiveModeOption[]>(() => {
@@ -381,6 +382,7 @@ export class PageTurnSummaryPanelComponent {
             turnState.moveDistance.set(mode === 'stationary' ? null : turnState.minDistanceCurrentMoveMode());
         }
         turnState.applyMovePSR.set(true);
+        turnState.markPhaseStateChanged();
     }
 
     toggleSpotting(): void {
@@ -482,6 +484,7 @@ export class PageTurnSummaryPanelComponent {
         if (!unit) return;
         this.setMoveDistance(value, false);
         unit.turnState().markModified();
+        unit.turnState().markPhaseStateChanged();
     }
 
     private buildModifierTooltip(title: string, entries: UnitModifierBreakdownEntry[]): TooltipLine[] {

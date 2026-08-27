@@ -83,7 +83,7 @@ describe('MekCriticalHitDialogComponent', () => {
                 slotNumber: 2,
                 equipment: 'CASE II',
                 armoredAbsorption: false,
-                reason: 'unhittable',
+                reason: 'empty',
             },
         });
         getPendingCriticalHit = jasmine.createSpy('getPendingCriticalHit').and.returnValue(undefined);

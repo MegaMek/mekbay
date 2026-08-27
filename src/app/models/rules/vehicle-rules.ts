@@ -263,7 +263,7 @@ export class VehicleRules extends UnitTypeRulesBase {
         };
     });
 
-    override readonly PSRTargetRoll = computed<number>(() => this.unit.pilotingSkill() + this.PSRModifiers().modifier);
+    override readonly PSRTargetRoll = computed<number>(() => this.getBasePilotingSkill() + this.PSRModifiers().modifier);
 
     override getUnitSystemStatusFacts(): UnitSystemStatusFacts {
         return {

@@ -23,6 +23,7 @@ import {
     type MekCriticalRollOutcome,
 } from '../../utils/mek-critical-hit.util';
 import { MekCriticalHitAutomationService } from '../../services/mek-critical-hit-automation.service';
+import { isConsciousnessCheck } from '../../utils/unit-check.util';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 
 export interface MekCriticalHitDialogData {
@@ -107,7 +108,7 @@ interface CriticalExplosionDisplay {
                             (click)="rollCaseIICheck()"
                         >
                             <button
-                                class="random-button large"
+                                class="random-button huge"
                                 type="button"
                                 aria-label="Roll the CASE II critical check"
                                 title="Roll the CASE II critical check"
@@ -148,7 +149,7 @@ interface CriticalExplosionDisplay {
                             (click)="roll()"
                         >
                             <button
-                                class="random-button large"
+                                class="random-button huge"
                                 type="button"
                                 aria-label="Roll a random critical slot"
                                 title="Roll a random critical slot"
@@ -480,7 +481,7 @@ export class MekCriticalHitDialogComponent {
     readonly hasInterruptingConsciousness = computed(() =>
         !this.data.unit.gameRules.aggregatedEndPhaseConsciousRolls
         && this.data.unit.turnState().actionablePendingUnitChecks()
-            .some(check => check.kind === 'consciousness'));
+            .some(isConsciousnessCheck));
     // Keep the protection that applied when rolling began visible after an explosion destroys the location.
     readonly explosionProtection = getMekExplosionProtection(this.data.unit, this.targetLocation);
     readonly explosionProtectionLabel = this.explosionProtection === 'case-ii' ? '[CASE II]' : '[CASE]';
@@ -666,11 +667,11 @@ export class MekCriticalHitDialogComponent {
             }
             const reason = outcome.reason === 'already-damaged'
                 ? 'already damaged'
-                : outcome.reason === 'unhittable' ? 'unhittable' : 'empty';
-            return `Slot ${outcome.slotNumber} is ${reason} — rerolling.`;
+                : 'empty';
+            return `Slot ${outcome.slotNumber} is ${reason}: rerolling.`;
         }
         if (outcome.armoredAbsorption) {
-            return `Slot ${outcome.slotNumber}: ${outcome.equipment} — armored slot absorbs the hit.`;
+            return `Slot ${outcome.slotNumber}: ${outcome.equipment} is armored and absorbs the hit.`;
         }
         return `Slot ${outcome.slotNumber}: ${outcome.equipment} critical slot destroyed.`;
     }

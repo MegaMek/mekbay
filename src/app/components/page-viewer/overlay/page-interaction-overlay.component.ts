@@ -17,7 +17,6 @@ import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { OptionsService } from '../../../services/options.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { LoggerService } from '../../../services/logger.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
@@ -25,14 +24,19 @@ import { DataService } from '../../../services/data.service';
 import { createHandlerCommandContext, createHandlerQueryContext, EquipmentInteractionRegistryService } from '../../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../../services/force-builder.service';
 import { ToastService } from '../../../services/toast.service';
+import { CBTEndTurnService } from '../../../services/cbt-end-turn.service';
+import { CBTPhaseResolutionService } from '../../../services/cbt-phase-resolution.service';
 import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import type { CBTForce } from '../../../models/cbt-force.model';
 import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
 import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';
-import { countActionablePsrChecks } from './page-turn-summary.util';
 import { PageViewerStateService } from '../internal/page-viewer-state.service';
 import { EquipmentDialogComponent } from '../../equipment-dialog/equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData } from '../../equipment-dialog/equipment-dialog.model';
+import {
+    UnitNotificationBadgesComponent,
+    type UnitNotificationActivation,
+} from '../../unit-notification-badges/unit-notification-badges.component';
 import { WeaponTargetsOverlayController } from '../../equipment-dialog/weapon-targets-overlay.controller';
 
 const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
@@ -47,7 +51,7 @@ const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
 @Component({
     selector: 'page-interaction-overlay',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [CommonModule, UnitNotificationBadgesComponent],
     templateUrl: './page-interaction-overlay.component.html',
     host: {
         '[class.fixed-mode]': 'mode() === "fixed"'
@@ -60,7 +64,6 @@ export class PageInteractionOverlayComponent {
     private destroyRef = inject(DestroyRef);
     private dialogsService = inject(DialogsService);
     private overlayManager = inject(OverlayManagerService);
-    private optionsService = inject(OptionsService);
     private overlay = inject(Overlay);
     private host = inject(ElementRef<HTMLElement>);
     private pageViewerState = inject(PageViewerStateService);
@@ -68,6 +71,8 @@ export class PageInteractionOverlayComponent {
     private equipmentRegistryService = inject(EquipmentInteractionRegistryService);
     private forceBuilderService = inject(ForceBuilderService);
     private toastService = inject(ToastService);
+    private cbtEndTurnService = inject(CBTEndTurnService);
+    private phaseResolution = inject(CBTPhaseResolutionService);
     private targetsOverlay = new WeaponTargetsOverlayController({
         overlay: this.overlay,
         overlayManager: this.overlayManager,
@@ -101,29 +106,6 @@ export class PageInteractionOverlayComponent {
         if (!unit) return false;
         return unit.turnState().dirtyPhase();
     });
-
-    falling = computed(() => {
-        const unit = this.unit();
-        if (!unit) return false;
-        return unit.turnState().autoFall();
-    });
-
-    private pendingPSRChecks = computed(() => {
-        const unit = this.unit();
-        if (!unit) return [];
-        const turnState = unit.turnState();
-        return turnState.getPSRChecks().filter(check =>
-            check.fallCheck !== undefined
-            && check.id !== undefined
-            && turnState.getPSROutcome(check.id) === undefined
-        );
-    });
-
-    actionablePSRCount = computed<number>(() => {
-        return countActionablePsrChecks(this.pendingPSRChecks(), this.falling());
-    });
-
-    hasActionablePSRChecks = computed(() => this.actionablePSRCount() > 0);
 
     currentPhase = computed(() => {
         const unit = this.unit();
@@ -192,10 +174,70 @@ export class PageInteractionOverlayComponent {
         }
     }
 
-    openPsrWarning(event: MouseEvent): void {
+    openNotification({ kind, event }: UnitNotificationActivation): void {
+        switch (kind) {
+            case 'fall':
+                if ((this.unit()?.pendingFallCount?.() ?? 0) > 0) {
+                    void this.openPendingFalls(event);
+                } else {
+                    this.openPsrWarning(event);
+                }
+                break;
+            case 'psr':
+                void this.openPendingUnitChecks(event);
+                break;
+            case 'critical-chance':
+                void this.openPendingCriticalChances(event);
+                break;
+            case 'critical-hit':
+                void this.openPendingCriticalHits(event);
+                break;
+            case 'unit-check':
+                void this.openPendingUnitChecks(event);
+                break;
+        }
+    }
+
+    openPsrWarning(event: Event): void {
         event.stopPropagation();
         if (!this.turnTrackerVisible()) return;
         togglePsrWarningOverlay(this, this.overlayManager, this.injector, this.overlay, () => this.closeAllOverlays());
+    }
+
+    async openPendingCriticalHits(event: Event): Promise<void> {
+        event.stopPropagation();
+        if (!this.turnTrackerVisible()) return;
+        const unit = this.unit();
+        if (!unit) return;
+        this.closeAllOverlays();
+        await this.phaseResolution.resumePendingChain(unit);
+    }
+
+    async openPendingCriticalChances(event: Event): Promise<void> {
+        event.stopPropagation();
+        if (!this.turnTrackerVisible()) return;
+        const unit = this.unit();
+        if (!unit) return;
+        this.closeAllOverlays();
+        await this.phaseResolution.resumePendingChain(unit);
+    }
+
+    async openPendingUnitChecks(event: Event): Promise<void> {
+        event.stopPropagation();
+        if (!this.turnTrackerVisible()) return;
+        const unit = this.unit();
+        if (!unit) return;
+        this.closeAllOverlays();
+        await this.phaseResolution.resumePendingChain(unit);
+    }
+
+    async openPendingFalls(event: Event): Promise<void> {
+        event.stopPropagation();
+        if (!this.turnTrackerVisible()) return;
+        const unit = this.unit();
+        if (!unit) return;
+        this.closeAllOverlays();
+        await this.phaseResolution.resumePendingChain(unit);
     }
 
     openTargets(event: MouseEvent): void {
@@ -265,17 +307,22 @@ export class PageInteractionOverlayComponent {
         );
         if (!confirm) return;
         const units = force.units();
-        units.forEach(unit => unit.endTurn());
+        await this.cbtEndTurnService.endTurn(units);
     }
 
-    endPhase(event: MouseEvent): void {
+    async endPhase(event: MouseEvent): Promise<void> {
         event.stopPropagation();
-        this.unit()?.endPhase();
+        const unit = this.unit();
+        if (!unit) return;
+
+        this.closeAllOverlays();
+        await this.phaseResolution.endPhase(unit);
     }
 
-    endTurn(event: MouseEvent): void {
+    async endTurn(event: MouseEvent): Promise<void> {
         event.stopPropagation();
-        this.unit()?.endTurn();
+        const unit = this.unit();
+        if (unit) await this.cbtEndTurnService.endTurn([unit]);
     }
 
     /**

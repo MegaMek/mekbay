@@ -7,7 +7,7 @@ import { computed, Injector, provideZonelessChangeDetection, signal } from '@ang
 import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, Equipment, MiscEquipment, resolveWeaponDamage, WeaponEquipment, type EquipmentMap } from './equipment.model';
 import { CBTForce } from './cbt-force.model';
-import { CBTForceUnit } from './cbt-force-unit.model';
+import { CBTForceUnit, type CBTUnitAutomationTrigger } from './cbt-force-unit.model';
 import { DEAD_CREW_HIT_THRESHOLD } from './crew-member.model';
 import { INVENTORY_CONTROL_TARGET_MAX_COUNT } from './inventory-control-runtime-state.model';
 import { MountedAmmo, MountedEquipment, MountedMisc, MountedWeapon } from './mounted-equipment.model';
@@ -48,6 +48,7 @@ import {
     BombastLaserHandler,
 } from '../equipment-handlers/bombast-laser.handler';
 import { applyMekCriticalRoll } from '../utils/mek-critical-hit.util';
+import type { AutomationMode, CBTAutomationKey } from './options.model';
 
 function createEquipment(): EquipmentMap {
     const ultraAc20 = new WeaponEquipment({
@@ -729,12 +730,20 @@ class ExposedUnitSvgVehicleService extends UnitSvgVehicleService {
 }
 
 class ExposedUnitSvgMekService extends UnitSvgMekService {
+    refreshHeat(): void {
+        this.updateHeatDisplay(this.unit.getHeat());
+    }
+
     refreshInventory(): void {
         this.updateInventory();
     }
 
     refreshHeatSinks(): void {
         this.updateHeatSinkPips();
+    }
+
+    refreshCriticalSlots(criticalSlots = this.unit.getCritSlots()): void {
+        this.updateCritSlotDisplay(criticalSlots);
     }
 }
 
@@ -868,30 +877,41 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     let dataService: jasmine.SpyObj<DataService>;
     let unitInitializer: UnitInitializerService;
     let injector: Injector;
-    let cbtAutomations: ReturnType<typeof signal<boolean>>;
+    let toastService: jasmine.SpyObj<ToastService>;
+    let heatAutomationMode: ReturnType<typeof signal<'yes' | 'ask' | 'no'>>;
+    let automationModes: Partial<Record<CBTAutomationKey, AutomationMode>>;
     let extremeRange: ReturnType<typeof signal<boolean>>;
+    let cbtRules: 'core2026' | 'tw';
 
     beforeEach(() => {
         equipment = createEquipment();
         dataService = jasmine.createSpyObj<DataService>('DataService', ['getEquipmentRegistry', 'findEquipment', 'getUnitByName']);
         dataService.getEquipmentRegistry.and.callFake(() => new EquipmentRegistry(equipment));
         dataService.findEquipment.and.callFake((name: string) => dataService.getEquipmentRegistry().findEquipment(name) ?? undefined);
-        cbtAutomations = signal(true);
+        heatAutomationMode = signal('yes');
+        automationModes = {};
         extremeRange = signal(false);
+        cbtRules = 'core2026';
+        toastService = jasmine.createSpyObj<ToastService>('ToastService', ['showToast']);
 
         TestBed.configureTestingModule({
             providers: [
                 UnitInitializerService,
                 { provide: DataService, useValue: dataService },
                 { provide: DialogsService, useValue: jasmine.createSpyObj<DialogsService>('DialogsService', ['createDialog', 'showError']) },
-                { provide: ToastService, useValue: jasmine.createSpyObj<ToastService>('ToastService', ['showToast']) },
-                { provide: OptionsService, useValue: { options: () => ({
-                    cbtAutomations: cbtAutomations(),
-                    CBTOptionalRules: {
-                        forcedWithdrawal: true,
-                        extremeRange: extremeRange(),
-                    },
-                }) } },
+                { provide: ToastService, useValue: toastService },
+                { provide: OptionsService, useValue: {
+                    cbtAutomationMode: (key: CBTAutomationKey) => key === 'heatAndDissipationResolution'
+                        ? heatAutomationMode()
+                        : automationModes[key] ?? 'yes',
+                    options: () => ({
+                        CBTRules: cbtRules,
+                        CBTOptionalRules: {
+                            forcedWithdrawal: true,
+                            extremeRange: extremeRange(),
+                        },
+                    }),
+                } },
             ],
         });
 
@@ -1140,6 +1160,66 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.turnState().cover()).toBeUndefined();
     });
 
+    it('carries unresolved criticals across turn reset with committed resolution context', () => {
+        const forceUnit = createForceUnit();
+        const pilotDamageGroup = forceUnit.turnState().currentPilotDamageGroup();
+        forceUnit.turnState().queuePendingCriticalChance({
+            id: 'chance:1',
+            location: 'CT',
+            result: 2,
+            pilotDamageGroup,
+        });
+        forceUnit.turnState().queuePendingCriticalHits({
+            id: 'critical:1',
+            location: 'LT',
+            targetLocation: 'LT',
+            remainingHits: 2,
+            roll: [3, 4],
+            pilotDamageGroup,
+        });
+
+        forceUnit.endTurn();
+
+        expect(forceUnit.turnState().getPendingCriticalChances()).toEqual([{
+            type: 'mek-critical-chance',
+            id: 'chance:1',
+            location: 'CT',
+            result: 2,
+            consolidateImmediately: true,
+            pilotDamageGroup: `turn-closed:${pilotDamageGroup}`,
+        }]);
+        expect(forceUnit.turnState().getPendingCriticalHits()).toEqual([{
+            type: 'mek-critical-hit',
+            id: 'critical:1',
+            location: 'LT',
+            targetLocation: 'LT',
+            remainingHits: 2,
+            consolidateImmediately: true,
+            roll: [3, 4],
+            pilotDamageGroup: `turn-closed:${pilotDamageGroup}`,
+        }]);
+        expect(forceUnit.serialize().state.turnState?.pendingEvents).toEqual([
+            {
+                type: 'mek-critical-chance',
+                id: 'chance:1',
+                location: 'CT',
+                result: 2,
+                consolidateImmediately: true,
+                pilotDamageGroup: `turn-closed:${pilotDamageGroup}`,
+            },
+            {
+                type: 'mek-critical-hit',
+                id: 'critical:1',
+                location: 'LT',
+                targetLocation: 'LT',
+                remainingHits: 2,
+                consolidateImmediately: true,
+                roll: [3, 4],
+                pilotDamageGroup: `turn-closed:${pilotDamageGroup}`,
+            },
+        ]);
+    });
+
     it('reacquires each current mount when an end-turn hook rebuilds inventory', () => {
         const handler = new EndTurnTestHandler(true);
         TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(handler);
@@ -1183,7 +1263,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         const projectedHeat = forceUnit.turnState().heatProjection().projected;
 
-        forceUnit.endTurn();
+        forceUnit.endTurn({ heatAndDissipationResolution: true });
 
         expect(forceUnit.getHeat().current).toBe(projectedHeat);
         expect(forceUnit.turnState().heatSources()).toContain(jasmine.objectContaining({
@@ -1214,7 +1294,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.getHeat().current).not.toBe(99);
     });
 
-    it('applies calculated heat automatically when ending the turn', () => {
+    it('applies calculated heat when approved at end turn', () => {
         const forceUnit = createForceUnit(createEmptyUnit({
             ...createMekUnit(),
             heat: 20,
@@ -1224,7 +1304,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.turnState().addFiredHeat(8);
         const projectedHeat = forceUnit.turnState().heatProjection().projected;
 
-        forceUnit.endTurn();
+        forceUnit.endTurn({ heatAndDissipationResolution: true });
 
         expect(forceUnit.getHeat().current).toBe(projectedHeat);
         expect(forceUnit.getHeat().next).toBeUndefined();
@@ -1241,7 +1321,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const projectedHeat = forceUnit.turnState().heatProjection().projected;
         forceUnit.setHeat(25);
 
-        forceUnit.endTurn();
+        forceUnit.endTurn({ heatAndDissipationResolution: true });
 
         expect(forceUnit.getHeat().current).toBe(projectedHeat);
         expect(forceUnit.getHeat().current).not.toBe(25);
@@ -1280,14 +1360,14 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         }));
         expect(forceUnit.turnState().dirty()).toBeTrue();
 
-        forceUnit.endTurn();
+        forceUnit.endTurn({ heatAndDissipationResolution: true });
 
         expect(forceUnit.getHeat().current).toBe(10);
         expect(forceUnit.turnState().hasPendingHeatResolution()).toBeTrue();
         expect(forceUnit.turnState().dirty()).toBeFalse();
     });
 
-    it('applies Aero cooling automatically without requiring a heat source', () => {
+    it('applies approved Aero cooling without requiring a heat source', () => {
         const forceUnit = createForceUnit(createEmptyUnit({
             name: 'Cooling Test Aero',
             type: 'Aero',
@@ -1301,14 +1381,14 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.turnState().heatSources()).toEqual([]);
         expect(forceUnit.turnState().hasPendingHeatResolution()).toBeTrue();
 
-        forceUnit.endTurn();
+        forceUnit.endTurn({ heatAndDissipationResolution: true });
 
         expect(forceUnit.getHeat().current).toBe(5);
         expect(forceUnit.getHeat().next).toBeUndefined();
     });
 
-    it('does not calculate or apply heat automatically when CBT automations are disabled', () => {
-        cbtAutomations.set(false);
+    it('does not calculate or apply heat automatically when heat automation is no', () => {
+        heatAutomationMode.set('no');
         const forceUnit = createForceUnit(createEmptyUnit({
             ...createMekUnit(),
             heat: 20,
@@ -1317,6 +1397,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.setHeatData({ current: 10, previous: 10 });
         forceUnit.turnState().addFiredHeat(8);
 
+        expect(forceUnit.automationMode('heatAndDissipationResolution')).toBe('no');
+
         forceUnit.applyHeat();
         expect(forceUnit.getHeat().current).toBe(10);
 
@@ -1324,7 +1406,84 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.getHeat().current).toBe(10);
     });
 
-    it('keeps sources unresolved when automations are toggled after a manual heat correction', () => {
+    it('resolves yes-mode heat at end turn without an approval decision', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            ...createMekUnit(),
+            heat: 20,
+            dissipation: 5,
+        }));
+        forceUnit.setHeatData({ current: 10, previous: 10 });
+        forceUnit.turnState().addFiredHeat(8);
+
+        expect(forceUnit.automationMode('heatAndDissipationResolution')).toBe('yes');
+        expect(forceUnit.hasPendingEndTurnHeat()).toBeTrue();
+        const projectedHeat = forceUnit.turnState().heatProjection().projected;
+
+        forceUnit.endTurn();
+
+        expect(forceUnit.getHeat().current).toBe(projectedHeat);
+        expect(toastService.showToast).toHaveBeenCalledWith(
+            jasmine.stringContaining(`Heat and dissipation: Heat 10 → ${projectedHeat}`),
+            'info',
+        );
+    });
+
+    it('does not turn an unapplied manual heat arrow into an end-turn automation event', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            ...createMekUnit(),
+            heat: 20,
+            dissipation: 5,
+        }));
+        forceUnit.setHeatData({ current: 0, previous: 0 });
+        forceUnit.setHeat(12);
+
+        expect(forceUnit.getHeat().next).toBe(12);
+        expect(forceUnit.turnState().hasPendingHeatResolution()).toBeFalse();
+        expect(forceUnit.hasPendingEndTurnHeat()).toBeFalse();
+
+        forceUnit.endTurn();
+
+        expect(forceUnit.getHeat().current).toBe(0);
+        expect(forceUnit.getHeat().next).toBeUndefined();
+    });
+
+    it('requires an explicit approval to resolve ask-mode heat at end turn', () => {
+        heatAutomationMode.set('ask');
+        const forceUnit = createForceUnit(createEmptyUnit({
+            ...createMekUnit(),
+            heat: 20,
+            dissipation: 5,
+        }));
+        forceUnit.setHeatData({ current: 10, previous: 10 });
+        forceUnit.turnState().addFiredHeat(8);
+        forceUnit.setHeat(27);
+
+        expect(forceUnit.automationMode('heatAndDissipationResolution')).toBe('ask');
+        expect(forceUnit.hasPendingEndTurnHeat()).toBeTrue();
+
+        forceUnit.endTurn({ heatAndDissipationResolution: false });
+
+        expect(forceUnit.getHeat().current).toBe(10);
+        expect(forceUnit.getHeat().next).toBeUndefined();
+    });
+
+    it('resolves an approved ask-mode heat projection at end turn', () => {
+        heatAutomationMode.set('ask');
+        const forceUnit = createForceUnit(createEmptyUnit({
+            ...createMekUnit(),
+            heat: 20,
+            dissipation: 5,
+        }));
+        forceUnit.setHeatData({ current: 10, previous: 10 });
+        forceUnit.turnState().addFiredHeat(8);
+        const projectedHeat = forceUnit.turnState().heatProjection().projected;
+
+        forceUnit.endTurn({ heatAndDissipationResolution: true });
+
+        expect(forceUnit.getHeat().current).toBe(projectedHeat);
+    });
+
+    it('keeps sources unresolved when the heat automation mode changes after a manual heat correction', () => {
         const forceUnit = createForceUnit();
         forceUnit.turnState().moveMode.set('run');
         forceUnit.turnState().addFiredHeat(8);
@@ -1332,19 +1491,19 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.applyHeat();
         expect(forceUnit.turnState().heatSources().map(source => source.id)).toEqual(['movement', 'weapons']);
 
-        cbtAutomations.set(false);
+        heatAutomationMode.set('no');
 
         expect(forceUnit.turnState().heatSources().map(source => source.id)).toEqual(['movement', 'weapons']);
         expect(forceUnit.turnState().heatProjectionVisible()).toBeTrue();
 
-        cbtAutomations.set(true);
+        heatAutomationMode.set('yes');
 
         expect(forceUnit.turnState().heatSources().map(source => source.id)).toEqual(['movement', 'weapons']);
         expect(forceUnit.turnState().heatProjectionVisible()).toBeTrue();
     });
 
-    it('applies an explicit user heat target without acknowledging sources when CBT automations are disabled', () => {
-        cbtAutomations.set(false);
+    it('applies an explicit user heat target without acknowledging sources when heat automation is no', () => {
+        heatAutomationMode.set('no');
         const forceUnit = createForceUnit();
         forceUnit.setHeatData({ current: 10, previous: 10 });
         forceUnit.turnState().addFiredHeat(8);
@@ -1419,7 +1578,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.turnState().heatProjection().projected).toBe(firstProjection + 3);
 
         const finalProjection = forceUnit.turnState().heatProjection().projected;
-        forceUnit.endTurn();
+        forceUnit.endTurn({ heatAndDissipationResolution: true });
 
         expect(forceUnit.getHeat().current).toBe(finalProjection);
     });
@@ -1436,7 +1595,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.turnState().effectiveHeatDissipation()).toBe(20);
         expect(forceUnit.turnState().serialize()?.heatDissipationConsumed).toBeUndefined();
 
-        forceUnit.endTurn();
+        forceUnit.endTurn({ heatAndDissipationResolution: true });
 
         expect(forceUnit.getHeat().current).toBe(0);
     });
@@ -1461,7 +1620,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(lines.map(line => line.textContent)).toEqual([
             'Movement: +1',
             'Weapons: +5',
-            'Sink (-20): -11',
+            'Sink (20): -11',
         ]);
         expect(lines[2].getAttribute('fill')).toBe('#2070d1');
         expect(lines[2].getAttribute('y')).toBe('100');
@@ -1569,7 +1728,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const lines = Array.from(svg.querySelectorAll<SVGTSpanElement>('#damagedEngineHeatText > tspan'));
         expect(lines.map(line => line.textContent)).toEqual([
             'Selected: +10',
-            'Sink (-20): -10',
+            'Sink (20): -10',
         ]);
         expect(lines[0].getAttribute('fill')).toBe('orange');
         expect(lines[1].getAttribute('fill')).toBe('#2070d1');
@@ -1592,14 +1751,10 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(lines.map(line => line.textContent)).toEqual([
             'Selected: +7',
             'Weapons: +2',
-            'Sink (-20): -7',
+            'Sink (20): -7',
         ]);
         expect(forceUnit.turnState().weaponsHeat()).toBe(2);
 
-        forceUnit.setInventoryControlEntrySelected(variableLaser, false);
-        svgService.refreshTurnState();
-        expect(Array.from(svg.querySelectorAll<SVGTSpanElement>('#damagedEngineHeatText > tspan'))
-            .map(line => line.textContent)).toEqual(['Weapons: +2', 'Sink (-20): -2']);
     });
 
     it('removes selected inventory heat and hides an otherwise empty summary after deselection', () => {
@@ -1641,28 +1796,16 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(svg.querySelector('#damagedEngineHeatText > tspan')?.textContent).toBe('Selected: +3');
     });
 
-    it('shows used and available dissipation when cooling clips heat to zero', () => {
+    it('tracks consumed dissipation when cooling clips heat to zero', () => {
         const forceUnit = createForceUnit(createMekUnitWithDissipation(28));
-        const svg = new DOMParser().parseFromString(`
-            <svg xmlns="http://www.w3.org/2000/svg">
-                <text id="damagedEngineHeatText" x="10" y="100"></text>
-            </svg>
-        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
-        forceUnit.svg.set(svg);
         forceUnit.setHeatData({ current: 3, previous: 3 });
-        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
 
-        svgService.refreshTurnState();
-
-        const line = svg.querySelector<SVGTSpanElement>('#damagedEngineHeatText > tspan');
         expect(forceUnit.turnState().heatProjection().consumedDissipation).toBe(3);
         expect(forceUnit.turnState().heatProjection().projected).toBe(0);
-        expect(line?.textContent).toBe('Sink (-28): -3');
-        expect(line?.getAttribute('fill')).toBe('#2070d1');
     });
 
-    it('includes generated heat in effective dissipation while automations are disabled', () => {
-        cbtAutomations.set(false);
+    it('includes generated heat in effective dissipation when heat automation is no', () => {
+        heatAutomationMode.set('no');
         const forceUnit = createForceUnit(createMekUnitWithDissipation(28));
         const svg = new DOMParser().parseFromString(`
             <svg xmlns="http://www.w3.org/2000/svg">
@@ -1686,7 +1829,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('shows full dissipation capacity when current heat exceeds it with automations disabled', () => {
-        cbtAutomations.set(false);
+        heatAutomationMode.set('no');
         const forceUnit = createForceUnit(createMekUnitWithDissipation(28));
         const svg = new DOMParser().parseFromString(`
             <svg xmlns="http://www.w3.org/2000/svg">
@@ -1703,7 +1846,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('shows dissipation for generated heat when current heat is zero with automations disabled', () => {
-        cbtAutomations.set(false);
+        heatAutomationMode.set('no');
         const forceUnit = createForceUnit(createMekUnitWithDissipation(28));
         const svg = new DOMParser().parseFromString(`
             <svg xmlns="http://www.w3.org/2000/svg">
@@ -1725,7 +1868,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('omits dissipation when current and generated heat are both zero with automations disabled', () => {
-        cbtAutomations.set(false);
+        heatAutomationMode.set('no');
         const forceUnit = createForceUnit(createMekUnitWithDissipation(28));
         const svg = new DOMParser().parseFromString(`
             <svg xmlns="http://www.w3.org/2000/svg">
@@ -1845,6 +1988,9 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('automatically floods armorless submerged locations based on posture', () => {
+        // Keep posture under this test's explicit control; Core's flooded-leg
+        // automatic fall is exercised by the phase-resolution coverage.
+        automationModes.pilotSkillCheck = 'no';
         const { forceUnit } = createCriticalHeatSinkForceUnit();
         forceUnit.setArmorHits('LT', 5);
         forceUnit.turnState().setCover('underwater-depth-1');
@@ -1854,25 +2000,197 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.addArmorHits('LL', 5);
         forceUnit.endPhase();
         expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeTrue();
+        expect(toastService.showToast).toHaveBeenCalledWith(
+            jasmine.stringContaining('Breach and flooding: Left Leg flooded'),
+            'error',
+        );
         expect(forceUnit.getLocationCondition('LT', 'flooded')).toBeFalse();
 
         forceUnit.setCondition('prone', true);
         expect(forceUnit.getLocationCondition('LT', 'flooded')).toBeTrue();
     });
 
-    it('waits to flood a location until pending armor damage is committed', () => {
+    it('marks flooding when pending armor breaches underwater and commits it at phase end', () => {
         const { forceUnit } = createCriticalHeatSinkForceUnit();
         forceUnit.turnState().setCover('underwater-depth-1');
 
         forceUnit.addArmorHits('LL', 5);
 
         expect(forceUnit.getCommittedArmorHits('LL')).toBe(0);
-        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeFalse();
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeTrue();
+        expect(forceUnit.serialize().state.locations['LL'].conditions)
+            .toEqual([{ key: 'flooded', pending: true }]);
 
         forceUnit.endPhase();
 
         expect(forceUnit.getCommittedArmorHits('LL')).toBe(5);
         expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeTrue();
+        expect(forceUnit.serialize().state.locations['LL'].conditions).toEqual(['flooded']);
+    });
+
+    it('does not flood or request review when breach and flood automation is no', () => {
+        automationModes.breachAndFloodCheck = 'no';
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+        forceUnit.turnState().setCover('underwater-depth-1');
+
+        forceUnit.addArmorHits('LL', 5);
+        forceUnit.endPhase();
+
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeFalse();
+        expect(triggers.filter(trigger => trigger.kind === 'breach-and-flood')).toEqual([]);
+    });
+
+    it('requests one flood review as soon as armor breaches while already underwater', () => {
+        automationModes.breachAndFloodCheck = 'ask';
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+        forceUnit.turnState().setCover('underwater-depth-1');
+
+        forceUnit.addArmorHits('LL', 5);
+
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeFalse();
+        expect(triggers.filter(trigger => trigger.kind === 'breach-and-flood')).toEqual([
+            jasmine.objectContaining({
+                kind: 'breach-and-flood',
+                locations: ['LL'],
+                commit: false,
+            }),
+        ]);
+    });
+
+    it('can request a deferred flood review again', () => {
+        automationModes.breachAndFloodCheck = 'ask';
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+        forceUnit.turnState().setCover('underwater-depth-1');
+        forceUnit.addArmorHits('LL', 5);
+        forceUnit.endPhase();
+
+        forceUnit.deferUnderwaterBreachAndFloodingReview(['LL']);
+        forceUnit.applyUnderwaterBreachAndFlooding(true);
+
+        expect(triggers.filter(trigger => trigger.kind === 'breach-and-flood')).toHaveSize(2);
+    });
+
+    it('keeps an unobserved flood review eligible until the unit sheet is opened', () => {
+        automationModes.breachAndFloodCheck = 'ask';
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        forceUnit.turnState().setCover('underwater-depth-1');
+        forceUnit.addArmorHits('LL', 5);
+        forceUnit.endPhase();
+
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+        forceUnit.applyUnderwaterBreachAndFlooding(true);
+
+        expect(triggers.filter(trigger => trigger.kind === 'breach-and-flood')).toEqual([
+            jasmine.objectContaining({ locations: ['LL'], commit: true }),
+        ]);
+    });
+
+    it('emits one critical chance for each internal-damage assignment', () => {
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+
+        forceUnit.addInternalHits('LT', 2);
+        forceUnit.addInternalHits('LT', 2);
+        forceUnit.addInternalHits('LT', -1);
+
+        const criticalTriggers = triggers.filter(trigger => trigger.kind === 'critical-hit-chance');
+        expect(criticalTriggers).toEqual([
+            jasmine.objectContaining({
+                kind: 'critical-hit-chance',
+            }),
+            jasmine.objectContaining({
+                kind: 'critical-hit-chance',
+            }),
+        ]);
+        expect(criticalTriggers.map(trigger => trigger.id)).toEqual([
+            jasmine.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
+            jasmine.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
+        ]);
+        expect(criticalTriggers[0].id).not.toBe(criticalTriggers[1].id);
+        expect(forceUnit.turnState().getPendingCriticalChances()).toEqual([
+            jasmine.objectContaining({
+                id: criticalTriggers[0].id,
+                location: 'LT',
+            }),
+            jasmine.objectContaining({
+                id: criticalTriggers[1].id,
+                location: 'LT',
+            }),
+        ]);
+        expect(forceUnit.turnState().getPendingCriticalChances()
+            .every(chance => !chance.locationDestroyed)).toBeTrue();
+    });
+
+    it('does not queue automatic critical chances when that automation is no', () => {
+        automationModes.criticalHitChanceCheck = 'no';
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+
+        forceUnit.addInternalHits('LT', 2);
+
+        expect(triggers.filter(trigger => trigger.kind === 'critical-hit-chance')).toEqual([]);
+        expect(forceUnit.turnState().getPendingCriticalChances()).toEqual([]);
+    });
+
+    it('carries explosion protection on the critical chance created by internal damage', () => {
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+
+        forceUnit.addInternalHits('LT', 1, false, {
+            explosionProtection: 'case-ii',
+            hardenedArmorApplies: false,
+            pilotDamageGroup: 'turn-closed:immediate:end-turn:heat',
+        });
+
+        expect(triggers).toEqual([
+            jasmine.objectContaining({
+                kind: 'critical-hit-chance',
+            }),
+        ]);
+        const criticalTrigger = triggers.find(trigger => trigger.kind === 'critical-hit-chance');
+        expect(criticalTrigger).toBeDefined();
+        expect(forceUnit.turnState().getPendingCriticalChances()).toEqual([
+            jasmine.objectContaining({
+                id: criticalTrigger!.id,
+                location: 'LT',
+                explosionProtection: 'case-ii',
+                hardenedArmorApplies: false,
+                pilotDamageGroup: 'turn-closed:immediate:end-turn:heat',
+            }),
+        ]);
+    });
+
+    it('marks the chance that destroys a location and ignores damage beyond its structure', () => {
+        const { forceUnit } = createCriticalHeatSinkForceUnit();
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+        const structure = forceUnit.getInternalPoints('LT');
+
+        forceUnit.addInternalHits('LT', structure - 1);
+        forceUnit.addInternalHits('LT', 5);
+        forceUnit.addInternalHits('LT', 1);
+
+        const criticalTriggers = triggers.filter(trigger => trigger.kind === 'critical-hit-chance');
+        expect(forceUnit.turnState().getPendingCriticalChances()).toEqual([
+            jasmine.objectContaining({
+                id: criticalTriggers[0].id,
+            }),
+            jasmine.objectContaining({
+                id: criticalTriggers[1].id,
+                locationDestroyed: true,
+            }),
+        ]);
+        expect(forceUnit.turnState().getPendingCriticalChances()[0].locationDestroyed).toBeUndefined();
     });
 
     it('floods all submerged locations at the unit-specific full-submersion depth', () => {
@@ -1979,19 +2297,19 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.turnState().heatDissipationBalance()).toBe(17);
         expect(forceUnit.turnState().heatProjection().projected).toBe(0);
 
-        forceUnit.endTurn();
+        forceUnit.endTurn({ heatAndDissipationResolution: true });
 
         expect(forceUnit.getHeat().current).toBe(0);
         expect(forceUnit.getHeat().next).toBeUndefined();
     });
 
-    it('settles a persisted dissipation deficit when automations are disabled', () => {
+    it('settles a persisted dissipation deficit when heat automation is no', () => {
         const forceUnit = createForceUnit(createMekUnitWithDissipation(20));
         forceUnit.setHeatData({ current: 15, previous: 15 });
         forceUnit.turnState().moveMode.set('walk');
         forceUnit.turnState().acknowledgeHeatSources(16);
         forceUnit.setHeatsinksOff(7);
-        cbtAutomations.set(false);
+        heatAutomationMode.set('no');
         forceUnit.setHeat(3);
 
         forceUnit.applyHeat();
@@ -2041,66 +2359,11 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         expect(svg.querySelector('#heat-projection-path')).toBe(projectionPath);
 
-        forceUnit.endTurn();
+        forceUnit.endTurn({ heatAndDissipationResolution: true });
         svgService.refreshHeat();
 
         expect(svg.querySelector('#heat-projection-path')).toBeNull();
         expect(svg.querySelector('#projection-arrow')).toBeNull();
-    });
-
-    it('separates a manual heat target from the automated projection UI', () => {
-        const forceUnit = createForceUnit(createEmptyUnit({
-            ...createMekUnit(),
-            heat: 20,
-            dissipation: 0,
-        }));
-        const svg = new DOMParser().parseFromString(`
-            <svg xmlns="http://www.w3.org/2000/svg">
-                <g id="heatDataPanel"><g id="applyHeatButton"></g></g>
-                <g id="heatScale">
-                    ${Array.from({ length: 11 }, (_, value) => `<rect class="heat" heat="${value}" x="0" y="${100 - value * 5}" width="5" height="5"></rect>`).join('')}
-                </g>
-            </svg>
-        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
-        forceUnit.svg.set(svg);
-        forceUnit.setHeatData({ current: 2, previous: 2 });
-        forceUnit.turnState().addFiredHeat(5);
-        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
-
-        svgService.refreshHeat();
-
-        expect(svg.querySelector('#projection-arrow')?.getAttribute('fill')).toBe('none');
-        expect(svg.querySelector('#projection-arrow')?.getAttribute('stroke')).toBe('var(--hot-color)');
-        expect(svg.querySelector('#now-arrow-label')?.textContent).toBe('NOW');
-        expect(svg.querySelector('#now-arrow-label')?.getAttribute('transform')).toContain('rotate(90 ');
-        const calculatedProjectionPath = svg.querySelector('#heat-projection-path');
-        expect(calculatedProjectionPath).not.toBeNull();
-        expect(calculatedProjectionPath?.tagName.toLowerCase()).toBe('path');
-        expect((calculatedProjectionPath?.getAttribute('d')?.match(/\bM\b/g) ?? []).length).toBe(1);
-        expect(svg.querySelectorAll('#heat-projection-path').length).toBe(1);
-        expect(svg.querySelector('#heatDataPanel')?.classList.contains('heatApplicationAvailable')).toBeFalse();
-        const initialProjectionPathData = calculatedProjectionPath?.getAttribute('d');
-
-        forceUnit.setHeat(4);
-        svgService.refreshHeat();
-
-        expect(svg.querySelector('#projection-arrow')).toBeNull();
-        expect(svg.querySelector('#next-arrow')).not.toBeNull();
-        expect(svg.querySelector('#heat-projection-path')).toBe(calculatedProjectionPath);
-        expect(svg.querySelector('#heat-projection-path')?.getAttribute('d')).toBe(initialProjectionPathData);
-        expect(svg.querySelector('#heatDataPanel')?.classList.contains('heatApplicationAvailable')).toBeTrue();
-
-        forceUnit.applyHeat();
-        svgService.refreshHeat();
-
-        expect(forceUnit.getHeat().current).toBe(4);
-        expect(forceUnit.getHeat().next).toBeUndefined();
-        expect(forceUnit.turnState().heatSources().some(source => source.id === 'weapons')).toBeTrue();
-        expect(svg.querySelector('#next-arrow')).toBeNull();
-        expect(svg.querySelector('#projection-arrow')).not.toBeNull();
-        expect(svg.querySelector('#heat-projection-path')).toBe(calculatedProjectionPath);
-        expect(svg.querySelector('#heat-projection-path')?.getAttribute('d')).not.toBe(initialProjectionPathData);
-        expect(svg.querySelector('#heatDataPanel')?.classList.contains('heatApplicationAvailable')).toBeFalse();
     });
 
     it('centers the overflow projection arrow over its body', () => {
@@ -2240,38 +2503,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(svg.querySelector('#heat-projection-path')).toBeNull();
     });
 
-    it('hides calculated heat graphics when CBT automations are disabled', () => {
-        cbtAutomations.set(false);
-        const forceUnit = createForceUnit(createEmptyUnit({
-            ...createMekUnit(),
-            heat: 20,
-            dissipation: 0,
-        }));
-        const svg = new DOMParser().parseFromString(`
-            <svg xmlns="http://www.w3.org/2000/svg">
-                <g id="heatDataPanel"><g id="applyHeatButton"></g></g>
-                <g id="heatScale">
-                    ${Array.from({ length: 11 }, (_, value) => `<rect class="heat" heat="${value}" x="0" y="${100 - value * 5}" width="5" height="5"></rect>`).join('')}
-                </g>
-            </svg>
-        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
-        forceUnit.svg.set(svg);
-        forceUnit.setHeatData({ current: 2, previous: 2 });
-        forceUnit.turnState().addFiredHeat(5);
-        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
-
-        svgService.refreshHeat();
-
-        expect(svg.querySelector('#projection-arrow')).toBeNull();
-        expect(svg.querySelector('#heat-projection-path')).toBeNull();
-        expect(svg.querySelector('#heat-projection-target-marker')).not.toBeNull();
-        expect(svg.querySelector('#heat-projection-target-marker')?.tagName.toLowerCase()).toBe('polygon');
-        expect(svg.querySelector('#heatDataPanel')?.classList.contains('heatApplicationAvailable')).toBeFalse();
-        expect(svg.querySelector('#now-arrow-label')).not.toBeNull();
-    });
-
     it('shows an orange manual marker for selected weapons when committed heat is zero', () => {
-        cbtAutomations.set(false);
+        heatAutomationMode.set('no');
         const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 0));
         const svg = createSelectedHeatScaleSvg();
         initialize(forceUnit, svg);
@@ -2293,7 +2526,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('shows the orange manual marker at zero when sinks fully dissipate selected heat', () => {
-        cbtAutomations.set(false);
+        heatAutomationMode.set('no');
         const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 20));
         const svg = createSelectedHeatScaleSvg();
         initialize(forceUnit, svg);
@@ -2311,7 +2544,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('shows the committed manual marker at zero when sinks fully dissipate committed heat', () => {
-        cbtAutomations.set(false);
+        heatAutomationMode.set('no');
         const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 20));
         const svg = createSelectedHeatScaleSvg();
         initialize(forceUnit, svg);
@@ -2326,7 +2559,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('shows the committed manual marker for pure cooling without a committed heat source', () => {
-        cbtAutomations.set(false);
+        heatAutomationMode.set('no');
         const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 20));
         const svg = createSelectedHeatScaleSvg();
         initialize(forceUnit, svg);
@@ -2340,7 +2573,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('paints an orange selected marker over a committed marker when both target zero', () => {
-        cbtAutomations.set(false);
+        heatAutomationMode.set('no');
         const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 20));
         const svg = createSelectedHeatScaleSvg();
         initialize(forceUnit, svg);
@@ -2362,7 +2595,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('shows committed and selected manual heat markers independently', () => {
-        cbtAutomations.set(false);
+        heatAutomationMode.set('no');
         const forceUnit = createForceUnit(createSelectedHeatUnit(equipment, 0));
         const svg = createSelectedHeatScaleSvg();
         initialize(forceUnit, svg);
@@ -2378,6 +2611,505 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expectHeatMarkerAt(svg, 'heat-projection-target-marker', 2);
         expectHeatMarkerAt(svg, 'heat-selected-weapons-target-marker', 7);
         expect(svg.querySelector('#heat-selected-weapons-target-marker')?.getAttribute('fill')).toBe('orange');
+    });
+
+    it('applies head, heat, drowning, and internal-explosion damage to every crew member aboard', () => {
+        const cases: readonly [string, (unit: CBTForceUnit) => number][] = [
+            ['head hit', unit => unit.applyHeadHitCrewHits('combat:head')],
+            ['heat', unit => unit.applyHeatCrewHits(1, 'heat:end-turn')],
+            ['drowning', unit => unit.applyLifeSupportDrowningCrewHits(1, 'end:drowning')],
+            ['internal explosion', unit => unit.applyInternalExplosionCrewHits(1, 'combat:explosion')],
+        ];
+
+        for (const [label, apply] of cases) {
+            const forceUnit = createForceUnit(createEmptyUnit({
+                type: 'Mek',
+                subtype: 'BattleMek',
+                crewSize: 3,
+            }));
+            const crew = forceUnit.getCrewMembers();
+            crew[1].setState('unconscious');
+
+            expect(apply(forceUnit)).withContext(label).toBe(3);
+            expect(crew.map(member => member.getHits())).withContext(label).toEqual([1, 1, 1]);
+        }
+    });
+
+    it('queues independent consciousness targets for every crew member hit', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            type: 'Mek',
+            subtype: 'BattleMek',
+            crewSize: 3,
+        }));
+        const crew = forceUnit.getCrewMembers();
+        crew[1].setHits(1);
+        crew[2].setHits(2);
+
+        expect(forceUnit.applyHeadHitCrewHits('combat:head')).toBe(3);
+
+        expect(crew.map(member => member.getHits())).toEqual([1, 2, 3]);
+        expect(forceUnit.turnState().getPendingUnitChecks()
+            .filter(check => check.kind === 'consciousness')
+            .map(check => ({ crewId: check.crewId, target: check.target })))
+            .toEqual([
+                { crewId: 0, target: 3 },
+                { crewId: 1, target: 5 },
+                { crewId: 2, target: 7 },
+            ]);
+    });
+
+    it('keeps consciousness recovery independent for each crew member and hit total', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            type: 'Mek',
+            subtype: 'BattleMek',
+            crewSize: 3,
+        }));
+        forceUnit.getCrewMember(0).setHits(1);
+        forceUnit.getCrewMember(1).setHits(3);
+
+        expect(forceUnit.setCrewState(0, 'unconscious')).toBeTrue();
+        expect(forceUnit.setCrewState(1, 'unconscious')).toBeTrue();
+
+        expect(forceUnit.turnState().getPendingUnitChecks()
+            .filter(check => check.kind === 'consciousness-recovery')
+            .map(check => ({ crewId: check.crewId, target: check.target })))
+            .toEqual([
+                { crewId: 0, target: 3 },
+                { crewId: 1, target: 7 },
+            ]);
+
+        expect(forceUnit.setCrewState(0, 'healthy')).toBeTrue();
+        expect(forceUnit.turnState().getPendingUnitChecks()
+            .filter(check => check.kind === 'consciousness-recovery')
+            .map(check => ({ crewId: check.crewId, target: check.target })))
+            .toEqual([{ crewId: 1, target: 7 }]);
+    });
+
+    it('aggregates Core combat and Heat Phase pilot damage at the highest consciousness target', () => {
+        const combatUnit = createForceUnit();
+        combatUnit.applyPilotHits(1, 'combat:test');
+        combatUnit.applyPilotHits(1, 'combat:test');
+
+        expect(combatUnit.turnState().getPendingUnitChecks()).toEqual([
+            jasmine.objectContaining({
+                kind: 'consciousness',
+                pilotDamageGroup: 'combat:test',
+                target: 5,
+            }),
+        ]);
+
+        const heatUnit = createForceUnit();
+        heatUnit.applyHeatCrewHits(2, 'turn-closed:heat:end-turn:test');
+        heatUnit.applyInternalExplosionCrewHits(1, 'turn-closed:heat:end-turn:test');
+
+        expect(heatUnit.turnState().getPendingUnitChecks()).toEqual([
+            jasmine.objectContaining({
+                kind: 'consciousness',
+                pilotDamageGroup: 'turn-closed:heat:end-turn:test',
+                target: 7,
+            }),
+        ]);
+    });
+
+    it('preserves unresolved Heat Phase consciousness work across the turn boundary', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.applyHeatCrewHits(1, 'heat:end-turn:test');
+
+        forceUnit.endTurn();
+
+        expect(forceUnit.turnState().getPendingUnitChecks()).toEqual([
+            jasmine.objectContaining({
+                kind: 'consciousness',
+                pilotDamageGroup: 'turn-closed:heat:end-turn:test',
+                target: 3,
+            }),
+        ]);
+        expect(forceUnit.turnState().pendingUnitCheckCount()).toBe(1);
+    });
+
+    it('defers Core Movement Phase consciousness until the phase boundary', () => {
+        const forceUnit = createForceUnit();
+        spyOn(forceUnit, 'tracksPhaseAndTurn').and.returnValue(true);
+        const automationTrigger = jasmine.createSpy('automationTrigger');
+        const subscription = forceUnit.automationTriggers.subscribe(automationTrigger);
+        expect(forceUnit.turnState().currentPhase()).toBe('M');
+
+        forceUnit.applyPilotHits(1);
+
+        const check = forceUnit.turnState().getPendingUnitChecks()[0];
+        expect(check).toEqual(jasmine.objectContaining({
+            kind: 'consciousness',
+            target: 3,
+        }));
+        expect(check.pilotDamageGroup?.startsWith('combat:')).toBeTrue();
+        expect(forceUnit.turnState().actionablePendingUnitChecks().some(check =>
+            check.kind === 'consciousness')).toBeFalse();
+        expect(forceUnit.turnState().pendingUnitCheckCountAtPhaseEnd()).toBe(1);
+        expect(automationTrigger).not.toHaveBeenCalled();
+        subscription.unsubscribe();
+    });
+
+    it('folds Core seatbelt damage into the phase consciousness target', () => {
+        const forceUnit = createForceUnit();
+        spyOn(forceUnit, 'tracksPhaseAndTurn').and.returnValue(true);
+        const group = forceUnit.turnState().currentPilotDamageGroup();
+        forceUnit.applyPilotHits(1, group);
+        expect(forceUnit.queueFall('psr')).toBeTrue();
+        expect(forceUnit.completePendingFall(forceUnit.getPendingFall()!.id)).toBeTrue();
+        const seatbelt = forceUnit.turnState().getPendingUnitChecks().find(check =>
+            check.kind === 'seatbelt')!;
+
+        forceUnit.applyPilotHits(1, seatbelt.pilotDamageGroup, seatbelt.crewId);
+
+        expect(seatbelt.pilotDamageGroup).toBe(group);
+        expect(forceUnit.turnState().getPendingUnitChecks().filter(check =>
+            check.kind === 'consciousness')).toEqual([
+            jasmine.objectContaining({ pilotDamageGroup: group, target: 5 }),
+        ]);
+        expect(forceUnit.turnState().actionablePendingUnitChecks().some(check =>
+            check.kind === 'consciousness')).toBeFalse();
+    });
+
+    it('applies tabletop pilot damage but queues no consciousness or recovery automation in no mode', () => {
+        automationModes.pilotHitsAndConsciousnessCheck = 'no';
+        const forceUnit = createForceUnit();
+
+        expect(forceUnit.applyPilotHits(1)).toBe(1);
+        expect(forceUnit.getCrewMember(0).getHits()).toBe(1);
+        expect(forceUnit.turnState().getPendingUnitChecks()).toEqual([]);
+
+        expect(forceUnit.setCrewState(0, 'unconscious')).toBeTrue();
+        expect(forceUnit.turnState().getPendingUnitChecks()).toEqual([]);
+    });
+
+    it('uses the roll dialog itself as the ask interaction for consciousness and recovery', () => {
+        automationModes.pilotHitsAndConsciousnessCheck = 'ask';
+        const forceUnit = createForceUnit();
+
+        forceUnit.applyPilotHits(1);
+        expect(forceUnit.turnState().getPendingUnitChecks()).toContain(jasmine.objectContaining({
+            kind: 'consciousness',
+            target: 3,
+        }));
+
+        forceUnit.setCrewState(0, 'unconscious');
+        expect(forceUnit.turnState().getPendingUnitChecks()).toContain(jasmine.objectContaining({
+            kind: 'consciousness-recovery',
+        }));
+    });
+
+    it('makes consciousness recovery actionable during the following turn', () => {
+        const forceUnit = createForceUnit();
+
+        forceUnit.applyPilotHits(1);
+        forceUnit.setCrewState(0, 'unconscious');
+
+        expect(forceUnit.turnState().getPendingUnitChecks()).toContain(jasmine.objectContaining({
+            kind: 'consciousness-recovery',
+            readyTurn: 1,
+        }));
+        expect(forceUnit.turnState().pendingUnitCheckCount()).toBe(0);
+
+        forceUnit.endTurn();
+
+        expect(forceUnit.turnState().getTurnCounter()).toBe(1);
+        expect(forceUnit.turnState().pendingUnitCheckCount()).toBe(1);
+    });
+
+    it('records a fatal sixth pilot hit immediately but resolves death at phase end', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.applyPilotHits(5);
+        forceUnit.setCrewState(0, 'unconscious');
+
+        expect(forceUnit.turnState().getPendingUnitChecks().some(check =>
+            check.kind === 'consciousness-recovery')).toBeTrue();
+
+        expect(forceUnit.applyPilotHits(3)).toBe(1);
+
+        const crew = forceUnit.getCrewMember(0);
+        expect(crew.getState()).toBe('unconscious');
+        expect(crew.getHits()).toBe(DEAD_CREW_HIT_THRESHOLD);
+        expect(forceUnit.serialize().state.crew[0].state).toBe(1);
+        expect(forceUnit.getCondition('abandoned')).toBeFalse();
+        expect(forceUnit.turnState().getPendingUnitChecks().filter(check =>
+            check.kind === 'consciousness' || check.kind === 'consciousness-recovery')).toEqual([]);
+
+        forceUnit.endPhase();
+
+        expect(crew.getState()).toBe('dead');
+        expect(forceUnit.serialize().state.crew[0].state).toBe(2);
+        expect(forceUnit.getCondition('abandoned')).toBeTrue();
+    });
+
+    it('routes tabletop pilot damage through Core consciousness aggregation', () => {
+        const forceUnit = createForceUnit();
+        spyOn(forceUnit, 'tracksPhaseAndTurn').and.returnValue(true);
+        forceUnit.turnState().moveMode.set('stationary');
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+
+        expect(forceUnit.setCrewHits(0, 1)).toBeTrue();
+        expect(forceUnit.setCrewHits(0, 2)).toBeTrue();
+
+        expect(forceUnit.getCrewMember(0).getHits()).toBe(2);
+        expect(forceUnit.turnState().dirtyPhase()).toBeTrue();
+        expect(forceUnit.turnState().getPendingUnitChecks()).toEqual([
+            jasmine.objectContaining({
+                kind: 'consciousness',
+                target: 5,
+                pilotDamageGroup: jasmine.stringMatching(/^combat:/),
+            }),
+        ]);
+        expect(forceUnit.turnState().pendingUnitCheckCount()).toBe(0);
+        expect(forceUnit.turnState().pendingUnitCheckCountAtPhaseEnd()).toBe(1);
+        expect(triggers).toEqual([]);
+    });
+
+    it('routes each tabletop pilot hit through Total Warfare consciousness checks', () => {
+        cbtRules = 'tw';
+        const forceUnit = createForceUnit();
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+
+        expect(forceUnit.setCrewHits(0, 2)).toBeTrue();
+
+        expect(forceUnit.getCrewMember(0).getHits()).toBe(2);
+        expect(forceUnit.turnState().getPendingUnitChecks()).toEqual([
+            jasmine.objectContaining({ kind: 'consciousness', target: 3 }),
+            jasmine.objectContaining({ kind: 'consciousness', target: 5 }),
+        ]);
+        expect(forceUnit.turnState().pendingUnitCheckCount()).toBe(2);
+        expect(triggers).toEqual([{ kind: 'pending-unit-check' }]);
+
+        expect(forceUnit.setCrewHits(0, 1)).toBeTrue();
+
+        expect(forceUnit.turnState().getPendingUnitChecks()).toEqual([
+            jasmine.objectContaining({ kind: 'consciousness', target: 3 }),
+        ]);
+        expect(triggers).toEqual([{ kind: 'pending-unit-check' }]);
+    });
+
+    it('reconciles pending consciousness tiers after a tabletop hit correction', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.applyPilotHits(2);
+        expect(forceUnit.turnState().getPendingUnitChecks().map(check => check.target)).toEqual([5]);
+
+        expect(forceUnit.setCrewHits(0, 1)).toBeTrue();
+
+        expect(forceUnit.turnState().getPendingUnitChecks().map(check => check.target)).toEqual([3]);
+    });
+
+    it('automatically fails an unconscious pilot\'s PSR before committing the phase', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.setCrewState(0, 'unconscious');
+        forceUnit.turnState().addDmgReceived(20);
+
+        expect(forceUnit.turnState().PSRRollsCount()).toBe(1);
+        expect(forceUnit.turnState().actionablePSRRollsCount()).toBe(0);
+
+        forceUnit.endPhase();
+
+        expect(forceUnit.getCondition('prone')).toBeTrue();
+        expect(forceUnit.turnState().PSRRollsCount()).toBe(0);
+        expect(forceUnit.pendingFallCount()).toBe(1);
+        expect(forceUnit.turnState().getPendingUnitChecks()).toEqual([]);
+
+        expect(forceUnit.completePendingFall(forceUnit.getPendingFall()!.id)).toBeTrue();
+        expect(forceUnit.turnState().getPendingUnitChecks()).toContain(jasmine.objectContaining({
+            kind: 'seatbelt',
+            result: { kind: 'automatic', outcome: 'failed' },
+        }));
+    });
+
+    it('keeps crew 0 on PSRs while available and uses the best available alternate only after takeover', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            type: 'Mek',
+            subtype: 'BattleMek',
+            crewSize: 3,
+        }));
+        forceUnit.getCrewMember(0).setSkill('piloting', 6);
+        forceUnit.getCrewMember(1).setSkill('piloting', 5);
+        forceUnit.getCrewMember(2).setSkill('piloting', 3);
+
+        expect(forceUnit.rules.getActivePilotCrewId()).toBe(0);
+        expect(forceUnit.rules.getBasePilotingSkill()).toBe(6);
+
+        forceUnit.getCrewMember(0).setState('unconscious');
+        forceUnit.turnState().addDmgReceived(20);
+
+        expect(forceUnit.rules.getActivePilotCrewId()).toBe(2);
+        expect(forceUnit.rules.getBasePilotingSkill()).toBe(3);
+        expect(forceUnit.turnState().automaticPSRFailure()).toBeFalse();
+        expect(forceUnit.turnState().actionablePSRRollsCount()).toBe(1);
+    });
+
+    it('keeps the TW involuntary shutdown PSR rollable while the Mek is standing', () => {
+        cbtRules = 'tw';
+        const forceUnit = createForceUnit();
+        forceUnit.setCondition('shutdown', true);
+        forceUnit.turnState().setPSRCheckState({ shutdown: true });
+
+        const [shutdownCheck] = forceUnit.turnState().getPSRChecks();
+        expect(shutdownCheck.kind).toBe('shutdown');
+        expect(forceUnit.turnState().PSRRollsCount()).toBe(1);
+        expect(forceUnit.turnState().actionablePSRRollsCount()).toBe(1);
+        expect(forceUnit.turnState().automaticPSRFailure()).toBeFalse();
+
+        expect(forceUnit.turnState().resolvePSRCheck(shutdownCheck.id!, 'success')).toBeTrue();
+        expect(forceUnit.getCondition('prone')).toBeFalse();
+        expect(forceUnit.pendingFallCount()).toBe(0);
+    });
+
+    it('keeps a fall pending until completion, retains its rolls, then releases seatbelt work', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.setCondition('prone', true);
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+
+        expect(forceUnit.queueFall('stand-attempt')).toBeTrue();
+
+        expect(triggers).toEqual([
+            jasmine.objectContaining({
+                kind: 'falling',
+                source: 'stand-attempt',
+                levelsFallen: 0,
+            }),
+        ]);
+        expect(forceUnit.pendingFallCount()).toBe(1);
+        expect(forceUnit.turnState().getPendingUnitChecks()).toEqual([]);
+        const pending = forceUnit.getPendingFall()!;
+
+        expect(forceUnit.setPendingFallRolls(pending.id, 4, [{
+            hitLocationRoll: 7,
+            hitLocationDice: [5, 2],
+            tripodLegRoll: null,
+        }], [4])).toBeTrue();
+        expect(forceUnit.getPendingFall(pending.id)).toEqual(jasmine.objectContaining({
+            orientationRoll: 4,
+            orientationDice: [4],
+            damageRolls: [{
+                hitLocationRoll: 7,
+                hitLocationDice: [5, 2],
+                tripodLegRoll: null,
+            }],
+        }));
+        expect('falling' in forceUnit.serialize().state).toBeFalse();
+
+        expect(forceUnit.completePendingFall(pending.id)).toBeTrue();
+        expect(forceUnit.pendingFallCount()).toBe(0);
+        expect(triggers[triggers.length - 1]).toEqual({ kind: 'pending-unit-check' });
+        expect(forceUnit.turnState().getPendingUnitChecks()).toContain(jasmine.objectContaining({
+            kind: 'seatbelt',
+        }));
+    });
+
+    it('creates one seatbelt check per crew member with independent skills and unconscious failure', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            type: 'Mek',
+            subtype: 'BattleMek',
+            crewSize: 3,
+        }));
+        forceUnit.getCrewMember(0).setSkill('piloting', 5);
+        forceUnit.getCrewMember(1).setSkill('piloting', 4);
+        forceUnit.getCrewMember(1).setState('unconscious');
+        forceUnit.getCrewMember(2).setSkill('piloting', 3);
+
+        expect(forceUnit.queueFall('psr')).toBeTrue();
+        expect(forceUnit.completePendingFall(forceUnit.getPendingFall()!.id)).toBeTrue();
+
+        const seatbelts = forceUnit.turnState().getPendingUnitChecks()
+            .filter(check => check.kind === 'seatbelt');
+        expect(seatbelts).toEqual([
+            jasmine.objectContaining({ crewId: 0, target: 5 }),
+            jasmine.objectContaining({
+                crewId: 1,
+                result: { kind: 'automatic', outcome: 'failed' },
+            }),
+            jasmine.objectContaining({ crewId: 2, target: 3 }),
+        ]);
+        expect(seatbelts[1].target).toBeUndefined();
+    });
+
+    it('does not queue another fall or seatbelt for a PSR while already prone', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.setCondition('prone', true);
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+
+        expect(forceUnit.queueFall('psr')).toBeFalse();
+
+        expect(triggers).toEqual([]);
+        expect(forceUnit.pendingFallCount()).toBe(0);
+        expect(forceUnit.turnState().getPendingUnitChecks()).toEqual([]);
+    });
+
+    it('does not queue falling work when falling automation is no', () => {
+        automationModes.fallingCheck = 'no';
+        const forceUnit = createForceUnit();
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+
+        expect(forceUnit.queueFall('psr')).toBeFalse();
+
+        expect(triggers).toEqual([]);
+        expect(forceUnit.pendingFallCount()).toBe(0);
+    });
+
+    it('does not create a fall or seatbelt check for 20-point damage while prone', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.setCondition('prone', true);
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+
+        forceUnit.turnState().addDmgReceived(19);
+        forceUnit.turnState().addDmgReceived(1);
+        forceUnit.turnState().addDmgReceived(5);
+
+        expect(forceUnit.pendingFallCount()).toBe(0);
+        expect(forceUnit.turnState().PSRRollsCount()).toBe(0);
+        expect(triggers).toEqual([]);
+        expect(forceUnit.turnState().getPendingUnitChecks()).toEqual([]);
+    });
+
+    it('removes a standing 20-point fall PSR when stance is manually changed to prone', () => {
+        const forceUnit = createForceUnit();
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+
+        forceUnit.turnState().addDmgReceived(20);
+        expect(forceUnit.turnState().PSRRollsCount()).toBe(1);
+
+        forceUnit.setCondition('prone', true);
+
+        expect(forceUnit.turnState().PSRRollsCount()).toBe(0);
+        expect(forceUnit.pendingFallCount()).toBe(0);
+        expect(triggers).toEqual([]);
+        expect(forceUnit.turnState().getPendingUnitChecks()).toEqual([]);
+    });
+
+    it('keeps standing 20-point damage on the normal fall-PSR path', () => {
+        const forceUnit = createForceUnit();
+
+        forceUnit.turnState().addDmgReceived(20);
+
+        expect(forceUnit.turnState().getPendingUnitChecks()).toEqual([]);
+        expect(forceUnit.turnState().getPSRChecks()).toContain(jasmine.objectContaining({
+            reason: jasmine.stringMatching(/20/),
+            failureOutcome: 'Fall',
+        }));
+    });
+
+    it('keeps the manual prone state override separate from falling automation', () => {
+        const forceUnit = createForceUnit();
+        const triggers: CBTUnitAutomationTrigger[] = [];
+        forceUnit.automationTriggers.subscribe(trigger => triggers.push(trigger));
+
+        forceUnit.setCondition('prone', true);
+        forceUnit.setCondition('prone', false);
+
+        expect(triggers).toEqual([]);
+        expect(forceUnit.pendingFallCount()).toBe(0);
+        expect(forceUnit.turnState().getPendingUnitChecks()).toEqual([]);
     });
 
     it('clamps turn movement when committed inventory state reduces active run movement bonus', () => {
@@ -2704,6 +3436,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     for (const consolidateImmediately of [false, true]) {
         it(`commits a charged PPC-capacitor explosion across every Mek slot${consolidateImmediately ? ' immediately' : ' at phase end'}`, () => {
             const forceUnit = createForceUnit(createMekUnit());
+            const crew = forceUnit.getCrewMember(0);
+            crew.setHits(DEAD_CREW_HIT_THRESHOLD - 1);
             const { weaponSlots, capacitorSlots, unrelatedSlot } = installChargedPpcPair(forceUnit, true);
             const triggerSlot = consolidateImmediately ? weaponSlots[0] : capacitorSlots[0];
 
@@ -2714,7 +3448,15 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
                 consolidateImmediately,
             );
             expect(result?.applied).toBeTrue();
-            if (!consolidateImmediately) forceUnit.endPhase();
+            expect(crew.getHits()).toBe(consolidateImmediately ? DEAD_CREW_HIT_THRESHOLD : DEAD_CREW_HIT_THRESHOLD - 1);
+            if (consolidateImmediately) {
+                expect(crew.getState()).toBe('healthy');
+            }
+
+            forceUnit.endPhase();
+
+            expect(crew.getHits()).toBe(DEAD_CREW_HIT_THRESHOLD);
+            expect(crew.getState()).toBe('dead');
 
             const committedSlots = [...weaponSlots, ...capacitorSlots]
                 .map(slot => forceUnit.findCurrentCriticalSlot(slot)!);
@@ -2986,8 +3728,46 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(restored.turnState().dmgReceived()).toBe(20);
         expect(restored.turnState().weaponsHeat()).toBe(8);
         expect(restored.turnState().spotting()).toBeTrue();
+        expect(restored.turnState().getTurnCounter()).toBe(forceUnit.turnState().getTurnCounter());
         expect(restored.turnState().getPSRCheckState().legActuators?.get('LL')).toBe(1);
         expect(restored.turnState().getPSRCheckState().hipsHit?.has('RL')).toBeTrue();
+    });
+
+    it('increments and persists the per-unit turn counter on endTurn', () => {
+        const forceUnit = createForceUnit();
+
+        expect(forceUnit.turnState().getTurnCounter()).toBe(0);
+
+        forceUnit.endTurn();
+        forceUnit.endTurn();
+
+        expect(forceUnit.turnState().getTurnCounter()).toBe(2);
+
+        const restored = CBTForceUnit.deserialize(
+            forceUnit.serialize(),
+            new TestCBTForce('Restored Turn Counter Force', dataService, unitInitializer, injector),
+            dataService,
+            unitInitializer,
+            injector,
+        );
+
+        expect(restored.turnState().getTurnCounter()).toBe(2);
+
+        restored.endTurn();
+
+        expect(restored.turnState().getTurnCounter()).toBe(3);
+    });
+
+    it('clears the resumable end-turn checkpoint only when the turn resets', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.turnState().markEndTurnHeatStaged();
+
+        expect(forceUnit.turnState().getEndTurnCheckpoint()).toBe('heat-staged');
+
+        forceUnit.endTurn({ heatAndDissipationResolution: false, phaseAlreadyEnded: true });
+
+        expect(forceUnit.turnState().getTurnCounter()).toBe(1);
+        expect(forceUnit.turnState().getEndTurnCheckpoint()).toBeUndefined();
     });
 
     it('exposes spotting as a transient condition and clears it at end of turn', () => {
@@ -3035,25 +3815,40 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         forceUnit.getCrewMember(0).setHits(DEAD_CREW_HIT_THRESHOLD);
 
+        expect(forceUnit.getCondition('abandoned')).toBeFalse();
+
+        forceUnit.endPhase();
+
         expect(forceUnit.getCondition('abandoned')).toBeTrue();
         expect(forceUnit.getConditions().has('abandoned')).toBeTrue();
         expect(forceUnit.conditions.has('abandoned')).toBeFalse();
         expect(forceUnit.serialize().state.conditions).toBeUndefined();
     });
 
-    it('derives crew death from hits while preserving the underlying crew state', () => {
+    it('stores crew death at phase end and only clears it when hits are reduced', () => {
         const forceUnit = createForceUnit();
         const crewMember = forceUnit.getCrewMember(0);
 
         crewMember.setState('unconscious');
         crewMember.setHits(DEAD_CREW_HIT_THRESHOLD);
 
-        expect(crewMember.getState()).toBe('dead');
+        expect(crewMember.getState()).toBe('unconscious');
         expect(crewMember.serialize().state).toBe(1);
+
+        forceUnit.endPhase();
+
+        expect(crewMember.getState()).toBe('dead');
+        expect(crewMember.serialize().state).toBe(2);
+
+        crewMember.setState('unconscious');
+        crewMember.setState('ejected');
+
+        expect(crewMember.getState()).toBe('dead');
 
         crewMember.setHits(DEAD_CREW_HIT_THRESHOLD - 1);
 
-        expect(crewMember.getState()).toBe('unconscious');
+        expect(crewMember.getState()).toBe('healthy');
+        expect(crewMember.serialize().state).toBe(0);
     });
 
     it('derives crew death from destroyed cockpit', () => {
@@ -3070,6 +3865,10 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const crewMember = forceUnit.getCrewMember(0);
 
         crewMember.setHits(DEAD_CREW_HIT_THRESHOLD);
+
+        expect(crewMember.getState()).toBe('healthy');
+
+        forceUnit.endPhase();
 
         expect(crewMember.getState()).toBe('dead');
     });
@@ -3956,6 +4755,45 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.canPerformEquipmentAction(hatchet, 'physical-attack')).toBeTrue();
     });
 
+    it('prevents an unconscious crew from receiving movement or attack selections', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            ...createMekUnit(),
+            walk: 5,
+            run: 8,
+            run2: 8,
+        }));
+        forceUnit.isLoaded.set(true);
+        const rangedWeapon = new MountedEquipment({
+            owner: forceUnit,
+            id: 'VariableDamageLaser@RA#0',
+            name: 'Variable Damage Laser',
+            equipment: equipment['VariableDamageLaser'],
+        });
+        const punch = new MountedEquipment({
+            owner: forceUnit,
+            id: 'physical:punch',
+            name: 'Punch',
+            intrinsicPhysicalAttack: true,
+        });
+
+        forceUnit.setCrewState(0, 'unconscious');
+
+        expect(forceUnit.canTakeActiveActions()).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(rangedWeapon, 'fire')).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(punch, 'physical-attack')).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(rangedWeapon, 'activate')).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(rangedWeapon, 'change-mode')).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(rangedWeapon, 'configure-network')).toBeFalse();
+        expect(forceUnit.canPerformEquipmentAction(rangedWeapon, 'provide-passive-effect')).toBeTrue();
+        expect(forceUnit.getAvailableMotiveModes(false).map(option => option.mode)).toEqual(['stationary']);
+
+        forceUnit.setCrewState(0, 'healthy');
+
+        expect(forceUnit.canTakeActiveActions()).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(rangedWeapon, 'fire')).toBeTrue();
+        expect(forceUnit.getAvailableMotiveModes(false).some(option => option.mode !== 'stationary')).toBeTrue();
+    });
+
     it('unions current critical and mount installation locations for whole-mount status', () => {
         const forceUnit = createForceUnit();
         forceUnit.locations = {
@@ -4554,32 +5392,6 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(linkedEls.some(el => el.classList.contains('disabledLocation'))).toBeFalse();
         expect(linkedCritGroup.classList.contains('flooded')).toBeTrue();
         expect(linkedCritGroup.classList.contains('disabledLocation')).toBeFalse();
-    });
-
-    it('hides unit condition buttons at runtime when there are no matching controls', () => {
-        const forceUnit = createForceUnit(createEmptyUnit({
-            name: 'AFTest_AERO-1',
-            chassis: 'Test Aero',
-            model: 'AERO-1',
-            type: 'Aero',
-            subtype: 'Aerospace Fighter',
-        }));
-        const svg = new DOMParser().parseFromString(`
-            <svg xmlns="http://www.w3.org/2000/svg">
-                <g id="unit_condition_wrapper" class="unitConditionWrapper">
-                    <g id="unit_condition_button_menu" class="unitConditionButton" condition="menu"><rect></rect><text></text></g>
-                    <g id="unit_condition_button_prone" class="unitConditionButton" condition="prone"><rect></rect><text></text></g>
-                </g>
-            </svg>
-        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
-        forceUnit.svg.set(svg);
-        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
-
-        svgService.refreshConditions();
-
-        expect((svg.getElementById('unit_condition_wrapper') as SVGElement).style.display).toBe('none');
-        expect((svg.getElementById('unit_condition_button_menu') as SVGElement).style.display).toBe('none');
-        expect((svg.getElementById('unit_condition_button_prone') as SVGElement).style.display).toBe('none');
     });
 
     it('hides crew state buttons at runtime when there are no crew state controls', () => {
@@ -5312,4 +6124,5 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.getInventoryControlSnapshot().entryStates.has(weaponEntry.id)).toBeFalse();
         expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeFalse();
     });
+
 });

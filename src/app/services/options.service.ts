@@ -43,16 +43,17 @@ const DEFAULT_OPTIONS: Options = {
     syncZoomBetweenSheets: true,
     trackPhaseAndTurn: true,
     cbtAutomationOptions: {
-        pilotSkillCheck: 'ask',
-        heatAndDissipation: 'no',
-        heatEffects: 'ask',
-        pilotHitsAndConsciousness: 'ask',
-        internalExplosions: 'ask',
-        criticalHitChance: 'ask',
-        breachAndFlood: 'ask',
-        falling: 'ask',
+        pilotSkillCheck: 'no',
+        heatAndDissipationResolution: 'no',
+        heatEffectsCheck: 'no',
+        pilotHitsAndConsciousnessCheck: 'no',
+        internalExplosionsCheck: 'ask',
+        criticalHitChanceCheck: 'no',
+        breachAndFloodCheck: 'yes',
+        fallingCheck: 'no',
     },
     CBTOptionalRules: {
+        floatingCriticals: false,
         forcedWithdrawal: true,
         extremeRange: false,
     },
@@ -188,6 +189,7 @@ function resolveForceGeneratorOptions(saved: Options | null | undefined): ForceG
 function resolveCBTOptionalRules(saved: Options | null | undefined): CBTOptionalRules {
     const defaults = DEFAULT_OPTIONS.CBTOptionalRules;
     return {
+        floatingCriticals: resolveSavedValue(saved?.CBTOptionalRules?.floatingCriticals, defaults.floatingCriticals),
         forcedWithdrawal: resolveSavedValue(saved?.CBTOptionalRules?.forcedWithdrawal, defaults.forcedWithdrawal),
         extremeRange: resolveSavedValue(saved?.CBTOptionalRules?.extremeRange, defaults.extremeRange),
     };
@@ -201,39 +203,39 @@ function resolveCBTAutomationOptions(saved: Options | null | undefined): CBTAuto
             defaults.pilotSkillCheck,
             OPTION_VALUES.automationMode,
         ),
-        heatAndDissipation: resolveSavedValue(
-            saved?.cbtAutomationOptions?.heatAndDissipation,
-            defaults.heatAndDissipation,
+        heatAndDissipationResolution: resolveSavedValue(
+            saved?.cbtAutomationOptions?.heatAndDissipationResolution,
+            defaults.heatAndDissipationResolution,
             OPTION_VALUES.automationMode,
         ),
-        heatEffects: resolveSavedValue(
-            saved?.cbtAutomationOptions?.heatEffects,
-            defaults.heatEffects,
+        heatEffectsCheck: resolveSavedValue(
+            saved?.cbtAutomationOptions?.heatEffectsCheck,
+            defaults.heatEffectsCheck,
             OPTION_VALUES.automationMode,
         ),
-        pilotHitsAndConsciousness: resolveSavedValue(
-            saved?.cbtAutomationOptions?.pilotHitsAndConsciousness,
-            defaults.pilotHitsAndConsciousness,
+        pilotHitsAndConsciousnessCheck: resolveSavedValue(
+            saved?.cbtAutomationOptions?.pilotHitsAndConsciousnessCheck,
+            defaults.pilotHitsAndConsciousnessCheck,
             OPTION_VALUES.automationMode,
         ),
-        internalExplosions: resolveSavedValue(
-            saved?.cbtAutomationOptions?.internalExplosions,
-            defaults.internalExplosions,
+        internalExplosionsCheck: resolveSavedValue(
+            saved?.cbtAutomationOptions?.internalExplosionsCheck,
+            defaults.internalExplosionsCheck,
             OPTION_VALUES.automationMode,
         ),
-        criticalHitChance: resolveSavedValue(
-            saved?.cbtAutomationOptions?.criticalHitChance,
-            defaults.criticalHitChance,
+        criticalHitChanceCheck: resolveSavedValue(
+            saved?.cbtAutomationOptions?.criticalHitChanceCheck,
+            defaults.criticalHitChanceCheck,
             OPTION_VALUES.automationMode,
         ),
-        breachAndFlood: resolveSavedValue(
-            saved?.cbtAutomationOptions?.breachAndFlood,
-            defaults.breachAndFlood,
+        breachAndFloodCheck: resolveSavedValue(
+            saved?.cbtAutomationOptions?.breachAndFloodCheck,
+            defaults.breachAndFloodCheck,
             OPTION_VALUES.automationMode,
         ),
-        falling: resolveSavedValue(
-            saved?.cbtAutomationOptions?.falling,
-            defaults.falling,
+        fallingCheck: resolveSavedValue(
+            saved?.cbtAutomationOptions?.fallingCheck,
+            defaults.fallingCheck,
             OPTION_VALUES.automationMode,
         ),
     };
@@ -268,6 +270,9 @@ function resolveUnitServers(saved: unknown): string[] {
 @Injectable({ providedIn: 'root' })
 export class OptionsService {
     private dbService = inject(DbService);
+    private readonly cbtAutomationOptionsState = signal<CBTAutomationOptions>({
+        ...DEFAULT_OPTIONS.cbtAutomationOptions,
+    });
     readonly initialized = signal(false);
 
     public options = signal<Options>({
@@ -311,6 +316,8 @@ export class OptionsService {
 
     async initOptions() {
         const saved = await this.dbService.getOptions();
+        const cbtAutomationOptions = resolveCBTAutomationOptions(saved);
+        this.cbtAutomationOptionsState.set(cbtAutomationOptions);
         this.options.set({
             colorScheme: resolveSavedValue(saved?.colorScheme, DEFAULT_OPTIONS.colorScheme, OPTION_VALUES.colorScheme),
             pickerStyle: resolveSavedValue(saved?.pickerStyle, DEFAULT_OPTIONS.pickerStyle, OPTION_VALUES.pickerStyle),
@@ -327,7 +334,7 @@ export class OptionsService {
             lastCanvasState: resolveLastCanvasState(saved?.lastCanvasState),
             sidebarLipPosition: typeof saved?.sidebarLipPosition === 'string' ? saved.sidebarLipPosition : undefined,
             trackPhaseAndTurn: resolveSavedValue(saved?.trackPhaseAndTurn, DEFAULT_OPTIONS.trackPhaseAndTurn),
-            cbtAutomationOptions: resolveCBTAutomationOptions(saved),
+            cbtAutomationOptions,
             CBTOptionalRules: resolveCBTOptionalRules(saved),
             CBTRules: resolveSavedValue(saved?.CBTRules, DEFAULT_OPTIONS.CBTRules, OPTION_VALUES.CBTRules),
             ASUseHex: resolveSavedValue(saved?.ASUseHex, DEFAULT_OPTIONS.ASUseHex),
@@ -351,14 +358,41 @@ export class OptionsService {
     }
 
     async setOption<K extends keyof Options>(key: K, value: Options[K]) {
+        if (key === 'cbtAutomationOptions') {
+            await this.setCbtAutomationOptions(value as CBTAutomationOptions);
+            return;
+        }
+
         const updated = { ...this.options(), [key]: value };
         this.options.set(updated);
         await this.dbService.saveOptions(updated);
     }
 
+    async setCbtAutomationMode(key: CBTAutomationKey, value: AutomationMode) {
+        const current = this.cbtAutomationOptionsState();
+        if (current[key] === value) {
+            return;
+        }
+
+        const cbtAutomationOptions = { ...current, [key]: value };
+        await this.setCbtAutomationOptions(cbtAutomationOptions);
+    }
+
+    private async setCbtAutomationOptions(cbtAutomationOptions: CBTAutomationOptions) {
+        this.cbtAutomationOptionsState.set(cbtAutomationOptions);
+
+        // Keep the compatibility snapshot current without invalidating every
+        // consumer of the global options signal for this granular setting.
+        this.options().cbtAutomationOptions = cbtAutomationOptions;
+        await this.dbService.saveOptions({
+            ...this.options(),
+            cbtAutomationOptions,
+        });
+    }
+
     /** Returns the configured mode for one CBT automation. */
     cbtAutomationMode(key: CBTAutomationKey): AutomationMode {
-        return this.options().cbtAutomationOptions[key];
+        return this.cbtAutomationOptionsState()[key];
     }
 
     async updateForceGeneratorOptions(

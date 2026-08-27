@@ -13,8 +13,8 @@ export interface Toast {
     data?: Record<string, unknown>;
 }
 
-const TOAST_DURATION_MS = 3000;
-const MAX_TOASTS = 3;
+const TOAST_DURATION_MS = 4000;
+const MAX_TOASTS = 4;
 
 @Injectable({ providedIn: 'root' })
 export class ToastService {

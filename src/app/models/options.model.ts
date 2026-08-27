@@ -32,13 +32,13 @@ export type AutomationMode = typeof OPTION_VALUES.automationMode[number];
 
 export interface CBTAutomationOptions {
     pilotSkillCheck: AutomationMode;
-    heatAndDissipation: AutomationMode;
-    heatEffects: AutomationMode;
-    pilotHitsAndConsciousness: AutomationMode;
-    internalExplosions: AutomationMode;
-    criticalHitChance: AutomationMode;
-    breachAndFlood: AutomationMode;
-    falling: AutomationMode;
+    heatAndDissipationResolution: AutomationMode;
+    heatEffectsCheck: AutomationMode;
+    pilotHitsAndConsciousnessCheck: AutomationMode;
+    internalExplosionsCheck: AutomationMode;
+    criticalHitChanceCheck: AutomationMode;
+    breachAndFloodCheck: AutomationMode;
+    fallingCheck: AutomationMode;
 }
 
 export type CBTAutomationKey = keyof CBTAutomationOptions;
@@ -76,6 +76,7 @@ export interface ForceGeneratorOptions {
 export type ForceViewerBVPVDisplay = typeof OPTION_VALUES.forceViewerBVPVDisplay[number];
 
 export interface CBTOptionalRules {
+    floatingCriticals: boolean;
     forcedWithdrawal: boolean;
     extremeRange: boolean;
 }

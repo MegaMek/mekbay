@@ -21,11 +21,14 @@ describe('PageTurnSummaryPanelComponent', () => {
         const immobile = signal(false);
         const rulesId = signal<'core2026' | 'tw'>('core2026');
         const moveMode = signal<'stationary' | 'walk' | 'run' | 'jump' | 'UMU' | 'VTOL' | null>(null);
+        const markPhaseStateChanged = jasmine.createSpy('markPhaseStateChanged');
         const turnState = {
             airborne: signal<boolean | null>(false),
             moveMode,
             moveDistance: signal<number | null>(5),
             carefulStand: signal(false),
+            applyMovePSR: signal(true),
+            markPhaseStateChanged,
         };
         const unit = {
             get gameRules() {
@@ -98,6 +101,13 @@ describe('PageTurnSummaryPanelComponent', () => {
 
         expect(component.immobile()).toBeFalse();
         expect(component.onlyStationaryMoveMode()).toBeTrue();
+
+        component.selectMove('stationary');
+
+        expect(moveMode()).toBe('stationary');
+        expect(markPhaseStateChanged).toHaveBeenCalledTimes(1);
+        moveMode.set(null);
+
         fixture.detectChanges();
 
         expect(fixture.nativeElement.querySelectorAll('.move-button').length).toBe(1);
