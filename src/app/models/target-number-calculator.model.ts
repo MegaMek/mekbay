@@ -39,7 +39,7 @@ export type TnTargetUnitType =
     | 'mek-tripod'
     | 'battle-armor'
     | 'vehicle'
-    | 'vtol'
+    | 'vtol-wige'
     | 'infantry'
     | 'protoMek'
     | 'aero'
@@ -57,7 +57,7 @@ export const TN_TARGET_UNIT_TYPE_OPTIONS: readonly TnTargetUnitTypeOption[] = [
     { value: 'mek-tripod', label: 'Mek (Tripod)' },
     { value: 'battle-armor', label: 'Battle Armor' },
     { value: 'vehicle', label: 'Vehicle' },
-    { value: 'vtol', label: 'VTOL' },
+    { value: 'vtol-wige', label: 'VTOL/WiGE' },
     { value: 'infantry', label: 'Infantry' },
     { value: 'protoMek', label: 'ProtoMek' },
     { value: 'aero', label: 'Aero' },
@@ -252,6 +252,7 @@ export type TnTargetModifierId =
     | 'indirect-fire'
     | 'spotter-movement'
     | 'spotter-declared-attack'
+    | 'flak'
     | 'semi-guided'
     | 'narc';
 

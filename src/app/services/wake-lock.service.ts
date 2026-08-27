@@ -4,6 +4,7 @@
 
 import { DestroyRef, Injectable, effect, inject } from '@angular/core';
 import { ForceBuilderService } from './force-builder.service';
+import { LobbyService } from './lobby.service';
 import { LoggerService } from './logger.service';
 
 interface WakeLockSentinelLike {
@@ -17,14 +18,16 @@ interface WakeLockApiLike {
 
 /**
  * 
- * Service to manage a screen wake lock while the force builder has any forces in it.
- * The wake lock is acquired when the first force is added and released when the last force is removed.
+ * Service to manage a screen wake lock while the force builder has any forces in it or the user is in a lobby.
+ * The wake lock is released only when there are no loaded forces and the user is not in a lobby.
  * It is also released when the document becomes hidden and re-acquired when it becomes visible again.
- * This prevents the screen from sleeping while actively building/using a force, but allows normal sleep behavior otherwise.
+ * This prevents the screen from sleeping while actively building/using a force or participating in a lobby,
+ * but allows normal sleep behavior otherwise.
  */
 @Injectable({ providedIn: 'root' })
 export class WakeLockService {
     private forceBuilderService = inject(ForceBuilderService);
+    private lobbyService = inject(LobbyService);
     private logger = inject(LoggerService);
     private destroyRef = inject(DestroyRef);
 
@@ -52,7 +55,7 @@ export class WakeLockService {
         }
 
         effect(() => {
-            this.scheduleSync(this.forceBuilderService.hasForces());
+            this.scheduleSync(this.forceBuilderService.hasForces() || this.lobbyService.hasLobby());
         });
     }
 

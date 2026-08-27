@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
-import { MountedEquipment } from '../models/mounted-equipment.model';
+import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry, type ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryTargetNumberInput } from './inventory-target-number.util';
 import { compileInventoryTargetToHitModifiers, inventoryTargetEffectiveTnModifier, inventoryTargetModifierGroups, inventoryTargetNumberBreakdown, inventoryTargetNumberState, inventoryTargetRangeSelection } from './inventory-target-number.util';
@@ -79,6 +79,46 @@ function aeroInput(
         category: 'ranged',
         display: { min: '—', short: '6', medium: '12', long: '20' },
         target: { id: 'A', letter: 'A', name: 'Target', color: '#000', unitType: targetUnitType, distance, tnModifier: 0 },
+        gunnerySkill: 4,
+        pilotingSkill: 5,
+        attackModifierBreakdown: [],
+        hitResolution: toHitResolution(),
+    };
+}
+
+function flakTargetInput(
+    weapon: WeaponEquipment,
+    targetUnitType: 'aero' | 'vtol-wige' | 'mek-biped',
+    isAirborne: boolean,
+    selectedAmmo: AmmoEquipment | null = null,
+): InventoryTargetNumberInput {
+    const owner = {
+        getUnit: () => ({ type: 'Mek' }),
+        turnState: () => ({ submerged: () => false }),
+    } as never;
+    const entry = new MountedWeapon({
+        owner,
+        id: weapon.internalName,
+        name: weapon.name,
+        equipment: weapon,
+    });
+
+    return {
+        entry,
+        category: 'ranged',
+        display: { min: '—', short: '3', medium: '6', long: '9' },
+        selectedAmmo,
+        damageTypes: entry.getWeaponTypes(selectedAmmo),
+        target: {
+            id: 'A',
+            letter: 'A',
+            name: 'Airborne Target',
+            color: '#000',
+            unitType: targetUnitType,
+            distance: 3,
+            tnModifier: isAirborne && targetUnitType !== 'aero' ? 1 : 0,
+            tnCalculator: { isAirborne },
+        },
         gunnerySkill: 4,
         pilotingSkill: 5,
         attackModifierBreakdown: [],
@@ -206,6 +246,149 @@ function waterPartialCoverInput(
 }
 
 describe('inventory target number rules profiles', () => {
+    it('applies the standard -2 Flak modifier to airborne Aero and VTOL/WiGE targets', () => {
+        const weapon = new WeaponEquipment({
+            id: 'ISSilverBulletGauss',
+            name: 'Silver Bullet Gauss Rifle',
+            type: 'weapon',
+            flags: ['F_BALLISTIC', 'F_DIRECT_FIRE'],
+            weapon: { ammoType: 'SBGAUSS', damage: 'cluster', ranges: [3, 6, 9, 12] },
+        });
+
+        for (const targetUnitType of ['aero', 'vtol-wige'] as const) {
+            const input = flakTargetInput(weapon, targetUnitType, true);
+            expect(input.damageTypes).withContext(targetUnitType).toContain('F');
+
+            for (const gameRules of [CORE_2026_GAME_RULES, TW_GAME_RULES]) {
+                const breakdown = compileInventoryTargetToHitModifiers({
+                    target: input.target!,
+                    entry: input.entry,
+                    gameRules,
+                    effectiveDamageTypes: input.damageTypes,
+                });
+
+                expect(breakdown).withContext(`${gameRules.id}: ${targetUnitType}`).toContain(jasmine.objectContaining({
+                    id: 'flak', label: 'Flak', modifier: -2,
+                }));
+                expect(inventoryTargetEffectiveTnModifier(
+                    input.target!, input.entry, null, gameRules, undefined, input.damageTypes,
+                )).withContext(`${gameRules.id}: ${targetUnitType}`).toBe(input.target!.tnModifier - 2);
+            }
+        }
+    });
+
+    it('does not apply Flak without Type F or to landed and non-aircraft targets', () => {
+        const weapon = new WeaponEquipment({
+            id: 'ISSilverBulletGauss',
+            name: 'Silver Bullet Gauss Rifle',
+            type: 'weapon',
+            weapon: { ammoType: 'SBGAUSS', damage: 'cluster', ranges: [3, 6, 9, 12] },
+        });
+
+        for (const [targetUnitType, isAirborne] of [
+            ['aero', false],
+            ['vtol-wige', false],
+            ['mek-biped', true],
+        ] as const) {
+            const input = flakTargetInput(weapon, targetUnitType, isAirborne);
+            const breakdown = compileInventoryTargetToHitModifiers({
+                target: input.target!,
+                entry: input.entry,
+                effectiveDamageTypes: input.damageTypes,
+            });
+
+            expect(breakdown).withContext(`${targetUnitType}: airborne=${isAirborne}`)
+                .not.toContain(jasmine.objectContaining({ id: 'flak' }));
+        }
+
+        const laserInput = flakTargetInput(new WeaponEquipment({
+            id: 'ISMediumLaser',
+            name: 'Medium Laser',
+            type: 'weapon',
+            flags: ['F_ENERGY', 'F_DIRECT_FIRE'],
+            weapon: { ammoType: 'NA', damage: 5, ranges: [3, 6, 9, 12] },
+        }), 'aero', true);
+        expect(laserInput.damageTypes).not.toContain('F');
+        expect(compileInventoryTargetToHitModifiers({
+            target: laserInput.target!,
+            entry: laserInput.entry,
+            effectiveDamageTypes: laserInput.damageTypes,
+        })).not.toContain(jasmine.objectContaining({ id: 'flak' }));
+    });
+
+    it('recognizes Flak supplied by selected ammunition through the effective weapon types', () => {
+        const weapon = new WeaponEquipment({
+            id: 'ISAC5',
+            name: 'AC/5',
+            type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+            weapon: { ammoType: 'AC', damage: 5, rackSize: 5, ranges: [3, 6, 9, 12] },
+        });
+        const ammo = new AmmoEquipment({
+            id: 'ISAC5FlakAmmo',
+            name: 'AC/5 Flak Ammo',
+            type: 'ammo',
+            ammo: { type: 'AC', rackSize: 5, munitionType: ['M_FLAK'] },
+        });
+        const input = flakTargetInput(weapon, 'aero', true, ammo);
+
+        expect(input.damageTypes).toContain('F');
+        expect(compileInventoryTargetToHitModifiers({
+            target: input.target!,
+            entry: input.entry,
+            selectedAmmo: ammo,
+            effectiveDamageTypes: input.damageTypes,
+        })).toContain(jasmine.objectContaining({ id: 'flak', label: 'Flak', modifier: -2 }));
+    });
+
+    it('combines the LB-X cluster -1 with Flak -2 for a total -3 modifier', () => {
+        const weapon = new WeaponEquipment({
+            id: 'ISLBXAC10',
+            name: 'LB 10-X AC',
+            type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+            weapon: { ammoType: 'AC_LBX', damage: 10, rackSize: 10, ranges: [3, 6, 9, 12] },
+        });
+        const ammo = new AmmoEquipment({
+            id: 'ISLBXAC10ClusterAmmo',
+            name: 'LB 10-X Cluster Ammo',
+            type: 'ammo',
+            ammo: { type: 'AC_LBX', rackSize: 10, munitionType: ['M_CLUSTER'] },
+        });
+        const input = flakTargetInput(weapon, 'aero', true, ammo);
+        const state = inventoryTargetNumberState(input);
+
+        expect(input.damageTypes).toContain('F');
+        expect(ammo.toHitModifier).toBe(-1);
+        expect(state.breakdown?.total).toBe(1);
+        expect(state.breakdown?.lines.filter(line => line.label === 'Flak')).toEqual([
+            jasmine.objectContaining({ value: '-2', nested: true }),
+        ]);
+        expect(state.breakdown?.lines.some(line => line.label?.startsWith('Ammo (') && line.value === '-1')).toBeTrue();
+    });
+
+    it('combines the existing HAG Flak-mode -1 with Flak -2 exactly once', () => {
+        const weapon = new WeaponEquipment({
+            id: 'CLHAG20',
+            name: 'HAG/20',
+            type: 'weapon',
+            flags: ['F_HAG', 'F_GAUSS', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+            weapon: { ammoType: 'HAG', damage: 'cluster', rackSize: 20, ranges: [3, 6, 9, 12] },
+        });
+        const input = flakTargetInput(weapon, 'aero', true);
+        input.damageTypes = ['C', 'F'];
+        input.hitResolution = toHitResolution(-1, [{ label: 'HAG/20 (FLAK)', modifier: -1 }]);
+        const state = inventoryTargetNumberState(input);
+
+        expect(state.breakdown?.total).toBe(1);
+        expect(state.breakdown?.lines.filter(line => line.label === 'Flak')).toEqual([
+            jasmine.objectContaining({ value: '-2', nested: true }),
+        ]);
+        expect(state.breakdown?.lines.filter(line => line.label === 'HAG/20 (FLAK)')).toEqual([
+            jasmine.objectContaining({ value: '-1' }),
+        ]);
+    });
+
     it('adds +1 ECM when C3 improves long range to medium', () => {
         const state = inventoryTargetNumberState(c3LaserInput(15, 12));
 

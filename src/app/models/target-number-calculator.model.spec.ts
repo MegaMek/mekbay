@@ -15,10 +15,16 @@ import {
     TN_CHAMELEON_NULL_SIGNATURE_MODIFIERS,
     TN_NULL_SIGNATURE_MODIFIERS,
     TN_STANDARD_STEALTH_MODIFIERS,
+    TN_TARGET_UNIT_TYPE_OPTIONS,
 } from './target-number-calculator.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
 
 describe('target number calculator rules profiles', () => {
+    it('uses one target category for VTOL and WiGE units', () => {
+        expect(TN_TARGET_UNIT_TYPE_OPTIONS.find(option => option.value === 'vtol-wige'))
+            .toEqual({ value: 'vtol-wige', label: 'VTOL/WiGE' });
+    });
+
     it('applies prone modifiers correctly at adjacent and non-adjacent ranges', () => {
         expect(getTargetProneModifier(1)).toBe(-2);
         expect(getTargetProneModifier(2)).toBe(1);
@@ -335,19 +341,19 @@ describe('target number calculator rules profiles', () => {
 
         expect(breakdown.some(entry => entry.adjustmentGroup === 'target-movement')).toBeFalse();
         expect(getTargetAirborneModifier(true, 'aero')).toBe(0);
-        expect(getTargetAirborneModifier(true, 'vtol')).toBe(1);
+        expect(getTargetAirborneModifier(true, 'vtol-wige')).toBe(1);
     });
 
     it('allows only target kinds that can receive the Large Target modifier', () => {
-        for (const unitType of ['mek-biped', 'mek-quad', 'mek-tripod', 'vehicle', 'vtol', 'aero', 'terrain', 'building'] as const) {
+        for (const unitType of ['mek-biped', 'mek-quad', 'mek-tripod', 'vehicle', 'vtol-wige', 'aero', 'terrain', 'building'] as const) {
             expect(canTnTargetTypeBeLarge(unitType)).withContext(unitType).toBeTrue();
         }
         for (const unitType of ['battle-armor', 'infantry', 'protoMek'] as const) {
             expect(canTnTargetTypeBeLarge(unitType)).withContext(unitType).toBeFalse();
         }
         expect(canTnTargetTypeBeLarge(undefined)).toBeTrue();
-        expect(canApplyTnLargeTargetModifier('vtol', false)).toBeTrue();
-        expect(canApplyTnLargeTargetModifier('vtol', true)).toBeTrue();
+        expect(canApplyTnLargeTargetModifier('vtol-wige', false)).toBeTrue();
+        expect(canApplyTnLargeTargetModifier('vtol-wige', true)).toBeTrue();
         expect(canApplyTnLargeTargetModifier('mek-biped', true)).toBeTrue();
         expect(canApplyTnLargeTargetModifier('aero', false)).toBeTrue();
         expect(canApplyTnLargeTargetModifier('aero', true)).toBeFalse();
@@ -391,7 +397,7 @@ describe('target number calculator rules profiles', () => {
             largeTarget: true,
         }, TW_GAME_RULES);
         const airborne = calculateTargetTnModifierBreakdown({
-            unitType: 'vtol',
+            unitType: 'vtol-wige',
             isAirborne: true,
             largeTarget: true,
         }, TW_GAME_RULES);

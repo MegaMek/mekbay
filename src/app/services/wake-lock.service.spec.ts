@@ -5,6 +5,7 @@
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ForceBuilderService } from './force-builder.service';
+import { LobbyService } from './lobby.service';
 import { LoggerService } from './logger.service';
 import { WakeLockService } from './wake-lock.service';
 
@@ -35,6 +36,7 @@ async function flushWakeLockTasks(): Promise<void> {
 
 describe('WakeLockService', () => {
     const hasForces = signal(false);
+    const hasLobby = signal(false);
     const logger = {
         info: jasmine.createSpy('info'),
         warn: jasmine.createSpy('warn'),
@@ -51,6 +53,7 @@ describe('WakeLockService', () => {
         TestBed.resetTestingModule();
 
         hasForces.set(false);
+        hasLobby.set(false);
         logger.info.calls.reset();
         logger.warn.calls.reset();
         logger.error.calls.reset();
@@ -86,6 +89,10 @@ describe('WakeLockService', () => {
                     useValue: { hasForces },
                 },
                 {
+                    provide: LobbyService,
+                    useValue: { hasLobby },
+                },
+                {
                     provide: LoggerService,
                     useValue: logger,
                 },
@@ -119,6 +126,16 @@ describe('WakeLockService', () => {
         expect(sentinels.length).toBe(1);
     });
 
+    it('acquires a wake lock when the user joins a lobby without loaded forces', async () => {
+        TestBed.inject(WakeLockService);
+
+        hasLobby.set(true);
+        await flushWakeLockTasks();
+
+        expect(requestSpy).toHaveBeenCalledOnceWith('screen');
+        expect(sentinels.length).toBe(1);
+    });
+
     it('releases the wake lock when all forces are unloaded', async () => {
         TestBed.inject(WakeLockService);
 
@@ -128,6 +145,24 @@ describe('WakeLockService', () => {
         await flushWakeLockTasks();
 
         expect(sentinels.length).toBe(1);
+        expect(sentinels[0].release).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the wake lock after forces unload while the user remains in a lobby', async () => {
+        TestBed.inject(WakeLockService);
+
+        hasForces.set(true);
+        await flushWakeLockTasks();
+        hasLobby.set(true);
+        hasForces.set(false);
+        await flushWakeLockTasks();
+
+        expect(sentinels.length).toBe(1);
+        expect(sentinels[0].release).not.toHaveBeenCalled();
+
+        hasLobby.set(false);
+        await flushWakeLockTasks();
+
         expect(sentinels[0].release).toHaveBeenCalledTimes(1);
     });
 

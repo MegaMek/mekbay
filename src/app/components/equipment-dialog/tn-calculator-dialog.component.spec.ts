@@ -106,7 +106,7 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
             expect(component.largeTarget()).withContext(unitType).toBeFalse();
         }
 
-        for (const unitType of ['mek-biped', 'mek-quad', 'mek-tripod', 'vehicle', 'vtol', 'aero', 'terrain', 'building'] as const) {
+        for (const unitType of ['mek-biped', 'mek-quad', 'mek-tripod', 'vehicle', 'vtol-wige', 'aero', 'terrain', 'building'] as const) {
             component.selectUnitType(unitType);
             fixture.detectChanges();
             expect(largeTargetButton().disabled).withContext(unitType).toBeFalse();
@@ -120,7 +120,7 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
             .find((button: Element) => button.textContent?.includes('Jumped / Airborne')) as HTMLButtonElement;
         const airborneBadge = () => airborneButton().querySelector('.modifier-badge')?.textContent?.trim();
 
-        component.selectUnitType('vtol');
+        component.selectUnitType('vtol-wige');
         component.toggleLargeTarget();
         fixture.detectChanges();
 
@@ -379,7 +379,7 @@ describe('TnCalculatorDialogComponent C3 degradation', () => {
             expect(component.stealthDropdownOptions().find(option => option.value === 'stealth-armor')?.label).toBe('Stealth');
         }
 
-        for (const unitType of ['vehicle', 'vtol', 'aero']) {
+        for (const unitType of ['vehicle', 'vtol-wige', 'aero']) {
             component.selectUnitType(unitType);
             expect(optionValues()).toEqual(['none', 'stealth-armor']);
         }
