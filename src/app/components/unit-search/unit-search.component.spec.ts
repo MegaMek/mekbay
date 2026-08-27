@@ -905,6 +905,30 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(scrollToVariantsGroup).toHaveBeenCalledOnceWith('Nova|BM|O');
     });
 
+    it('preserves selected units outside a variant group while drilling down and clearing it', () => {
+        filtersServiceStub.viewMode.set('chassis');
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const atlas = createUnit('Atlas AS7-D', { chassis: 'Atlas', as: { TP: 'BM' } });
+        const nova = createUnit('Nova Prime', { chassis: 'Nova', omni: 1, as: { TP: 'BM' } });
+
+        filteredUnitsSignal.set([atlas, nova]);
+        fixture.detectChanges();
+        component.selectedUnits.set(new Set([atlas.name, nova.name]));
+
+        const atlasGroup = component.groupedUnits().find(group => group.chassis === 'Atlas');
+        expect(atlasGroup).toBeDefined();
+        component.onCompactGroupClick(atlasGroup!);
+        fixture.detectChanges();
+
+        expect([...component.selectedUnits()]).toEqual([atlas.name, nova.name]);
+
+        component.clearVariantGroupFilter();
+        fixture.detectChanges();
+
+        expect([...component.selectedUnits()]).toEqual([atlas.name, nova.name]);
+    });
+
     it('navigates search results with global up and down shortcuts', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;

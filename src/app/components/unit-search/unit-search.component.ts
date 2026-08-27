@@ -778,11 +778,12 @@ export class UnitSearchComponent {
             });
         });
         effect(() => {
+            const filteredNames = new Set(this.filtersService.filteredUnits().map(unit => unit.name));
             const displayedNames = new Set(this.displayedUnits().map(unit => unit.name));
             untracked(() => {
                 const selected = this.selectedUnits();
-                if (![...selected].every(name => displayedNames.has(name))) {
-                    this.selectedUnits.set(new Set([...selected].filter(name => displayedNames.has(name))));
+                if (![...selected].every(name => filteredNames.has(name))) {
+                    this.selectedUnits.set(new Set([...selected].filter(name => filteredNames.has(name))));
                 }
                 const inlineUnit = this.inlinePanelUnit();
                 if (inlineUnit && !displayedNames.has(inlineUnit.name)) {
