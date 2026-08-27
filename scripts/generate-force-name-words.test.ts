@@ -70,36 +70,61 @@ try {
     assert.throws(() => readMulFactionNameGenerators(mmDataRoot, mappingPath, {}), /conflicting name generators/);
     assert.deepEqual(readMulFactionNameGenerators(mmDataRoot, mappingPath, { 1: 'Clan' }), { 1: 'Clan' });
 
-    const bloodnameDirectory = path.join(tempDirectory, 'bloodnames');
-    fs.mkdirSync(bloodnameDirectory);
+    const bloodnameClansDirectory = path.join(mmDataRoot, 'data', 'names', 'bloodnames');
+    const bloodnameDirectory = path.join(mmDataRoot, 'data', 'universe', 'bloodnames');
+    const wolfBloodnameDirectory = path.join(bloodnameDirectory, 'CW');
+    fs.mkdirSync(bloodnameClansDirectory, { recursive: true });
+    fs.mkdirSync(wolfBloodnameDirectory, { recursive: true });
     const validClansXml = '<clans><clan code="CW"><fullName>Clan Wolf</fullName><rivals start="3000">CJF,CSJ</rivals><homeClan/></clan><clan code="CJF"/><clan code="CSJ"/><clan code="CWE" start="3142"><generateAsIf>CW</generateAsIf></clan></clans>';
-    fs.writeFileSync(path.join(bloodnameDirectory, 'clans.xml'), validClansXml);
-    fs.writeFileSync(path.join(bloodnameDirectory, 'bloodnames.xml'), `<bloodnames>
-        <bloodname><name>Kerensky</name><clan>CW</clan><phenotype>MEKWARRIOR</phenotype><limited/><created>3000</created><dormant>3050</dormant><reactivated>3075</reactivated><shared date="3020">CJF,CSJ</shared></bloodname>
-        <bloodname><name>Aero</name><clan>CW</clan><phenotype>AEROSPACE</phenotype></bloodname>
-        <bloodname><name>Elemental</name><clan>CW</clan><phenotype>ELEMENTAL</phenotype></bloodname>
-        <bloodname><name>Proto</name><clan>CW</clan><phenotype>PROTOMEK</phenotype></bloodname>
-        <bloodname><name>Naval</name><clan>CW</clan><phenotype>NAVAL</phenotype></bloodname>
-        <bloodname><name>General</name><clan>CW</clan></bloodname>
-    </bloodnames>`);
-    const bloodnameData = readBloodnameData(bloodnameDirectory);
+    fs.writeFileSync(path.join(bloodnameClansDirectory, 'clans.xml'), validClansXml);
+    const writeBloodname = (fileName: string, content: string): void =>
+        fs.writeFileSync(path.join(wolfBloodnameDirectory, fileName), content);
+    writeBloodname('Kerensky.yml', `clan: CW
+name: Kerensky
+houses:
+  - founder: Andery
+    phenotype: MEKWARRIOR
+    exclusive: true
+    limited: true
+    created: "3000"
+    dormant: "3050"
+    abjured: "3060"
+    reactivated: "3075"
+    postReaving: [CW, CWE]
+    acquired:
+      - { clan: CJF, date: 3010 }
+    shared:
+      - { clan: CSJ, date: 3020 }
+    absorbed: { clan: CJF, date: 3050 }
+  - founder: Nicholas
+    phenotype: AEROSPACE
+`);
+    writeBloodname('Aero.yml', 'clan: CW\nname: Aero\nhouses:\n  - founder: Test\n    phenotype: AEROSPACE\n');
+    writeBloodname('Elemental.yml', 'clan: CW\nname: Elemental\nhouses:\n  - founder: Test\n    phenotype: ELEMENTAL\n');
+    writeBloodname('Proto.yml', 'clan: CW\nname: Proto\nhouses:\n  - founder: Test\n    phenotype: PROTOMEK\n');
+    writeBloodname('Naval.yml', 'clan: CW\nname: Naval\nhouses:\n  - founder: Test\n    phenotype: NAVAL\n');
+    writeBloodname('General.yml', 'clan: CW\nname: General\nhouses:\n  - founder: Test\n');
+    const bloodnameData = readBloodnameData(mmDataRoot);
     assert.equal(bloodnameData.clans.CWE.generationCode, 'CW');
     assert.deepEqual(bloodnameData.clans.CW.rivals.map((rival) => rival.code), ['CJF', 'CSJ']);
-    assert.deepEqual(bloodnameData.bloodnames.map((bloodname) => bloodname.phenotype), ['Mek', 'Aero', 'BA', 'ProtoMek', 'Naval', '*']);
-    assert.deepEqual(bloodnameData.bloodnames[0], {
-        name: 'Kerensky', clan: 'CW', phenotype: 'Mek', exclusive: false, limited: true,
-        start: 3020, inactive: 3060, abjured: 0, reactivated: 3095, postReaving: [],
-        acquired: [{ clan: 'CJF', year: 3020 }, { clan: 'CSJ', year: 3020 }], absorbed: undefined,
+    assert.deepEqual(bloodnameData.bloodnames.map((bloodname) => bloodname.phenotype), ['Aero', 'BA', '*', 'Mek', 'Aero', 'Naval', 'ProtoMek']);
+    assert.equal(bloodnameData.bloodnames.filter((bloodname) => bloodname.name === 'Kerensky').length, 2);
+    assert.deepEqual(bloodnameData.bloodnames.find((bloodname) => bloodname.name === 'Kerensky'), {
+        name: 'Kerensky', clan: 'CW', phenotype: 'Mek', exclusive: true, limited: true,
+        start: 3020, inactive: 3060, abjured: 3060, reactivated: 3095, postReaving: ['CW', 'CWE'],
+        acquired: [{ clan: 'CJF', year: 3020 }, { clan: 'CSJ', year: 3020 }],
+        absorbed: { clan: 'CJF', year: 3050 },
     });
-    fs.writeFileSync(path.join(bloodnameDirectory, 'bloodnames.xml'), '<bloodnames><bloodname><name>Invalid</name><clan>CW</clan><phenotype>UNKNOWN</phenotype></bloodname></bloodnames>');
-    assert.throws(() => readBloodnameData(bloodnameDirectory), /unsupported phenotype UNKNOWN/);
-    fs.writeFileSync(path.join(bloodnameDirectory, 'bloodnames.xml'), '<bloodnames><bloodname><name>Invalid</name><clan>CW</clan><shared>CJF</shared></bloodname></bloodnames>');
-    assert.throws(() => readBloodnameData(bloodnameDirectory), /sharing is missing its date/);
-    fs.writeFileSync(path.join(bloodnameDirectory, 'clans.xml'), '<clans><clan code="CW"/><clan code="CW"/></clans>');
-    assert.throws(() => readBloodnameData(bloodnameDirectory), /Duplicate Bloodname Clan CW/);
-    fs.writeFileSync(path.join(bloodnameDirectory, 'clans.xml'), '<clans><clan code="CW"><generateAsIf>UNKNOWN</generateAsIf></clan></clans>');
-    assert.throws(() => readBloodnameData(bloodnameDirectory), /unknown generation Clan UNKNOWN/);
-    fs.writeFileSync(path.join(bloodnameDirectory, 'clans.xml'), validClansXml);
+    writeBloodname('General.yml', 'clan: CW\nname: Invalid\nhouses:\n  - founder: Test\n    phenotype: UNKNOWN\n');
+    assert.throws(() => readBloodnameData(mmDataRoot), /unsupported phenotype UNKNOWN/);
+    writeBloodname('General.yml', 'clan: CW\nname: Invalid\nhouses:\n  - founder: Test\n    shared: [{ clan: CJF }]\n');
+    assert.throws(() => readBloodnameData(mmDataRoot), /sharing 1 is missing its date/);
+    writeBloodname('General.yml', 'clan: CW\nname: General\nhouses:\n  - founder: Test\n');
+    fs.writeFileSync(path.join(bloodnameClansDirectory, 'clans.xml'), '<clans><clan code="CW"/><clan code="CW"/></clans>');
+    assert.throws(() => readBloodnameData(mmDataRoot), /Duplicate Bloodname Clan CW/);
+    fs.writeFileSync(path.join(bloodnameClansDirectory, 'clans.xml'), '<clans><clan code="CW"><generateAsIf>UNKNOWN</generateAsIf></clan></clans>');
+    assert.throws(() => readBloodnameData(mmDataRoot), /unknown generation Clan UNKNOWN/);
+    fs.writeFileSync(path.join(bloodnameClansDirectory, 'clans.xml'), validClansXml);
 
     const mulFactionsPath = path.join(tempDirectory, 'mulfactions.csv');
     fs.writeFileSync(mulFactionsPath, 'id,name,group\n1,Clan Wolf,HW Clan\n2,General,Inner Sphere\n91,Scorpion Empire,Periphery\n92,Escorpión Imperio,Periphery\n');
