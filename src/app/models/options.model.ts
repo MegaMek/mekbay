@@ -30,18 +30,19 @@ export type ColorScheme = typeof OPTION_VALUES.colorScheme[number];
 export type UnitSearchViewMode = typeof OPTION_VALUES.unitSearchViewMode[number];
 export type AutomationMode = typeof OPTION_VALUES.automationMode[number];
 
-export interface CBTAutomationOptions {
-    pilotSkillCheck: AutomationMode;
-    heatAndDissipationResolution: AutomationMode;
-    heatEffectsCheck: AutomationMode;
-    pilotHitsAndConsciousnessCheck: AutomationMode;
-    internalExplosionsCheck: AutomationMode;
-    criticalHitChanceCheck: AutomationMode;
-    breachAndFloodCheck: AutomationMode;
-    fallingCheck: AutomationMode;
-}
+export const CBT_AUTOMATION_KEYS = [
+    'pilotSkillCheck',
+    'heatAndDissipationResolution',
+    'heatEffectsCheck',
+    'pilotHitsAndConsciousnessCheck',
+    'internalExplosionsCheck',
+    'criticalHitChanceCheck',
+    'breachAndFloodCheck',
+    'fallingCheck',
+] as const;
 
-export type CBTAutomationKey = keyof CBTAutomationOptions;
+export type CBTAutomationKey = typeof CBT_AUTOMATION_KEYS[number];
+export type CBTAutomationOptions = Record<CBTAutomationKey, AutomationMode>;
 
 export interface SkillRangeOption {
     min: number;
