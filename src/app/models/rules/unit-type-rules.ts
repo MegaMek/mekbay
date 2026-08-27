@@ -30,26 +30,94 @@ import type {
     UnitSystemStatusFacts,
 } from '../equipment-status.model';
 
-export type PSRCheckKind = 'shutdown' | 'damaged-leg-actuator-movement' | 'damaged-hip-movement';
+export const PSR_CHECK_KIND = {
+    TORSO_DESTROYED: 'torso-destroyed',
+    SHUTDOWN: 'shutdown',
+    DAMAGE_THRESHOLD: 'damage-threshold',
+    LEG_DESTROYED: 'leg-destroyed',
+    LEG_DAMAGE: 'leg-damage',
+    LEG_ACTUATOR_HIT: 'leg-actuator-hit',
+    HIP_HIT: 'hip-hit',
+    GYRO_HIT: 'gyro-hit',
+    GYRO_DESTROYED: 'gyro-destroyed',
+    DAMAGED_GYRO_MOVEMENT: 'damaged-gyro-movement',
+    DAMAGED_LEG_MOVEMENT: 'damaged-leg-movement',
+    QUAD_TWO_DESTROYED_LEGS_MOVEMENT: 'quad-two-destroyed-legs-movement',
+    DAMAGED_LEG_ACTUATOR_MOVEMENT: 'damaged-leg-actuator-movement',
+    DAMAGED_HIP_MOVEMENT: 'damaged-hip-movement',
+} as const;
 
-export interface PSRCheck {
-    id?: string;
-    fallCheck?: number;
+export type PSRCheckKind = typeof PSR_CHECK_KIND[keyof typeof PSR_CHECK_KIND];
+
+export const PSR_FAILURE_KIND = {
+    FALL: 'fall',
+    RULE_RESOLUTION: 'rule-resolution',
+} as const;
+
+export type PSRFailure =
+    | { readonly kind: typeof PSR_FAILURE_KIND.FALL }
+    | {
+        readonly kind: typeof PSR_FAILURE_KIND.RULE_RESOLUTION;
+        /** Presentation only. Rule behavior is owned by `resolution`. */
+        readonly label: string;
+    };
+
+export const FALL_PSR_FAILURE: { readonly kind: typeof PSR_FAILURE_KIND.FALL } = Object.freeze({
+    kind: PSR_FAILURE_KIND.FALL,
+});
+
+/** Presentation-only modifier contributing to a PSR target. */
+export interface PSRModifier {
     pilotCheck?: number;
-    kind?: PSRCheckKind;
     reason: string;
     modifierReason?: string;
-    failureOutcome?: string;
     loc?: string;
+}
+
+interface PSRCheckBase extends PSRModifier {
+    id?: string;
+    fallCheck?: number;
+    /** Stable rules identity. Never derive this from `reason`. */
+    kind: PSRCheckKind;
+    /** Typed consequence. Presentation text must never drive resolution. */
+    failure: PSRFailure;
+    movementMode?: 'run' | 'jump';
     legFilter?: string;
     ignorePreExistingGyro?: boolean;
-    resolution?: {
+}
+
+export interface FallingPSRCheck extends PSRCheckBase {
+    failure: { readonly kind: typeof PSR_FAILURE_KIND.FALL };
+    resolution?: never;
+}
+
+export interface RuleResolutionPSRCheck extends PSRCheckBase {
+    failure: {
+        readonly kind: typeof PSR_FAILURE_KIND.RULE_RESOLUTION;
+        readonly label: string;
+    };
+    resolution: {
         key: string;
         token: string;
     };
 }
 
-export function sortPSRModifiers(modifiers: readonly PSRCheck[]): PSRCheck[] {
+export type PSRCheck = FallingPSRCheck | RuleResolutionPSRCheck;
+
+export function isFallPSRCheck(check: PSRCheck): check is FallingPSRCheck {
+    return check.failure.kind === PSR_FAILURE_KIND.FALL;
+}
+
+export function psrFailureLabel(check: PSRCheck): string {
+    switch (check.failure.kind) {
+        case PSR_FAILURE_KIND.FALL:
+            return 'Fall';
+        case PSR_FAILURE_KIND.RULE_RESOLUTION:
+            return check.failure.label;
+    }
+}
+
+export function sortPSRModifiers(modifiers: readonly PSRModifier[]): PSRModifier[] {
     return [...modifiers].sort((left, right) => {
         const leftIsNegative = (left.pilotCheck ?? 0) < 0;
         const rightIsNegative = (right.pilotCheck ?? 0) < 0;
@@ -256,7 +324,7 @@ export interface UnitTypeRules {
     readonly controlRollFullLabel: string;
 
     /** Piloting Skill Roll modifiers. Non-Mek types return { modifier: 0, modifiers: [] }. */
-    readonly PSRModifiers: Signal<{ modifier: number; modifiers: PSRCheck[] }>;
+    readonly PSRModifiers: Signal<{ modifier: number; modifiers: PSRModifier[] }>;
 
     /** PSR target roll number (piloting skill + modifiers). Non-Mek types return 0. */
     readonly PSRTargetRoll: Signal<number>;
@@ -439,7 +507,7 @@ export interface UnitTypeRules {
 export abstract class UnitTypeRulesBase implements UnitTypeRules {
     readonly controlRollShortLabel: string;
     readonly controlRollFullLabel: string;
-    readonly PSRModifiers: Signal<{ modifier: number; modifiers: PSRCheck[] }> = signal({ modifier: 0, modifiers: [] });
+    readonly PSRModifiers: Signal<{ modifier: number; modifiers: PSRModifier[] }> = signal({ modifier: 0, modifiers: [] });
     readonly PSRTargetRoll: Signal<number> = signal(0);
     readonly standingUpPSRModifier: number = 0;
     protected readonly ruleModifiers: Signal<UnitRuleModifier[]> = computed(() => [

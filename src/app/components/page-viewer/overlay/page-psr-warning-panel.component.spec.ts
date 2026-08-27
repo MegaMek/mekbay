@@ -8,7 +8,12 @@ import { Overlay } from '@angular/cdk/overlay';
 import { Subject } from 'rxjs';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
-import type { PSRCheck } from '../../../models/rules/unit-type-rules';
+import {
+    FALL_PSR_FAILURE,
+    PSR_CHECK_KIND,
+    PSR_FAILURE_KIND,
+    type PSRCheck,
+} from '../../../models/rules/unit-type-rules';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 import { PagePsrWarningPanelComponent, PSR_WARNING_UNIT, psrRollOutcome, togglePsrWarningOverlay } from './page-psr-warning-panel.component';
 
@@ -53,10 +58,19 @@ describe('psrRollOutcome', () => {
 describe('PagePsrWarningPanelComponent', () => {
     it('stages virtual and physical-dice outcomes until the results are accepted', () => {
         const check: PSRCheck = {
-            id: 'fall-check', fallCheck: 0, loc: 'RL', reason: 'Hip hit', failureOutcome: 'Fall'
+            id: 'fall-check',
+            kind: PSR_CHECK_KIND.HIP_HIT,
+            failure: FALL_PSR_FAILURE,
+            fallCheck: 0,
+            loc: 'RL',
+            reason: 'Hip hit',
         };
         const damageCheck: PSRCheck = {
-            id: 'damage-check', fallCheck: 1, reason: 'Received 20 damage', failureOutcome: 'Fall'
+            id: 'damage-check',
+            kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+            failure: FALL_PSR_FAILURE,
+            fallCheck: 1,
+            reason: 'Received 20 damage',
         };
         const outcomes = new Map<string, 'success' | 'failed'>();
         const resolvePSRCheck = jasmine.createSpy('resolvePSRCheck').and.callFake(
@@ -142,9 +156,10 @@ describe('PagePsrWarningPanelComponent', () => {
     it('keeps a rule-check choice provisional until it is accepted', () => {
         const check: PSRCheck = {
             id: 'torso-check',
+            kind: PSR_CHECK_KIND.TORSO_DESTROYED,
+            failure: { kind: PSR_FAILURE_KIND.RULE_RESOLUTION, label: 'Shutdown' },
             fallCheck: 0,
             reason: 'RISC emergency shutdown',
-            failureOutcome: 'Shutdown',
             resolution: { key: 'risc-shutdown', token: 'token-1' },
         };
         let checks: PSRCheck[] = [check];
@@ -207,7 +222,11 @@ describe('PagePsrWarningPanelComponent', () => {
 
     it('keeps provisional choices when closed and restores them when reopened', () => {
         const check: PSRCheck = {
-            id: 'fall-check', fallCheck: 0, reason: 'Received 20 damage', failureOutcome: 'Fall'
+            id: 'fall-check',
+            kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+            failure: FALL_PSR_FAILURE,
+            fallCheck: 0,
+            reason: 'Received 20 damage',
         };
         const resolvePSRCheck = jasmine.createSpy('resolvePSRCheck');
         const closeManagedOverlay = jasmine.createSpy('closeManagedOverlay');
@@ -271,12 +290,27 @@ describe('PagePsrWarningPanelComponent', () => {
 
     it('locks later Fall checks as failed while preserving independent checks', () => {
         const checks: PSRCheck[] = [
-            { id: 'first-fall', fallCheck: 0, reason: 'First fall check', failureOutcome: 'Fall' },
-            { id: 'second-fall', fallCheck: 1, reason: 'Second fall check', failureOutcome: 'Fall' },
-            { id: 'control', fallCheck: 2, reason: 'Control check', failureOutcome: 'Immobilized' },
-            { id: 'third-fall', fallCheck: 3, reason: 'Third fall check', failureOutcome: 'Fall' },
+            {
+                id: 'first-fall', kind: PSR_CHECK_KIND.GYRO_HIT,
+                failure: FALL_PSR_FAILURE, fallCheck: 0, reason: 'First fall check',
+            },
+            {
+                id: 'second-fall', kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+                failure: FALL_PSR_FAILURE, fallCheck: 1, reason: 'Second fall check',
+            },
+            {
+                id: 'control', kind: PSR_CHECK_KIND.TORSO_DESTROYED,
+                failure: { kind: PSR_FAILURE_KIND.RULE_RESOLUTION, label: 'Immobilized' },
+                fallCheck: 2, reason: 'Control check',
+                resolution: { key: 'control-check', token: 'control-1' },
+            },
+            {
+                id: 'third-fall', kind: PSR_CHECK_KIND.LEG_DESTROYED,
+                failure: FALL_PSR_FAILURE, fallCheck: 3, reason: 'Third fall check',
+            },
         ];
         const resolvePSRCheck = jasmine.createSpy('resolvePSRCheck').and.returnValue(true);
+        const resolveRuleCheck = jasmine.createSpy('resolveRuleCheck');
         const closeManagedOverlay = jasmine.createSpy('closeManagedOverlay');
         const turnState = {
             getPSRChecks: () => checks,
@@ -295,7 +329,8 @@ describe('PagePsrWarningPanelComponent', () => {
             turnState: () => turnState,
             PSRTargetRoll: () => 8,
             PSRModifiers: () => ({ modifiers: [] }),
-            resolveRuleCheck: jasmine.createSpy('resolveRuleCheck'),
+            getRuleCheck: () => undefined,
+            resolveRuleCheck,
         };
 
         TestBed.configureTestingModule({
@@ -337,18 +372,19 @@ describe('PagePsrWarningPanelComponent', () => {
         expect(resolvePSRCheck.calls.allArgs()).toEqual([
             ['first-fall', 'success'],
             ['second-fall', 'failed'],
-            ['control', 'success'],
             ['third-fall', 'failed'],
         ]);
+        expect(resolveRuleCheck).toHaveBeenCalledOnceWith('control-check', 'control-1', 'success');
         expect(closeManagedOverlay).toHaveBeenCalledOnceWith('psrWarning-unit-1');
     });
 
     it('presents an unconscious pilot\'s pending PSR as an automatic failure', () => {
         const check: PSRCheck = {
             id: 'gyro-destroyed',
+            kind: PSR_CHECK_KIND.GYRO_DESTROYED,
+            failure: FALL_PSR_FAILURE,
             fallCheck: 6,
             reason: 'Gyro destroyed',
-            failureOutcome: 'Fall',
         };
         const turnState = {
             getPSRChecks: () => [check],

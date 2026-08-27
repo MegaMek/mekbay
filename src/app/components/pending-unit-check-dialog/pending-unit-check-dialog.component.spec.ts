@@ -8,7 +8,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import type { SerializedPendingUnitCheck } from '../../models/force-serialization';
-import type { PSRCheck } from '../../models/rules/unit-type-rules';
+import { FALL_PSR_FAILURE, PSR_CHECK_KIND, type PSRCheck } from '../../models/rules/unit-type-rules';
 import {
     PendingUnitCheckDialogComponent,
     type PendingUnitCheckDialogData,
@@ -238,9 +238,10 @@ describe('PendingUnitCheckDialogComponent', () => {
             .aggregatedEndPhaseConsciousRolls = false;
         first.psrChecks.set([{
             id: 'psr:one',
+            kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+            failure: FALL_PSR_FAILURE,
             fallCheck: 0,
             reason: '20 or more damage',
-            failureOutcome: 'Fall',
         }]);
         fixture.detectChanges();
 

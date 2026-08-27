@@ -20,7 +20,7 @@ import type {
     SerializedPSRChecks,
     SerializedTurnState,
 } from "./force-serialization";
-import { calculateModifierTotal, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitModifierTotal } from "./rules/unit-type-rules";
+import { calculateModifierTotal, isFallPSRCheck, PSR_CHECK_KIND, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitModifierTotal } from "./rules/unit-type-rules";
 import { deserializeUnitCover, isUnitBuildingLevel, isUnitWaterDepth, resolveUnitBuildingCoverState, resolveUnitWaterState, serializeUnitCover, type UnitCover } from "./unit-cover.model";
 import {
     closePilotDamagePhase,
@@ -189,7 +189,6 @@ export class TurnState {
             return {
                 ...check,
                 id: occurrence === 0 ? baseId : `${baseId}#${occurrence + 1}`,
-                failureOutcome: check.failureOutcome ?? 'Fall',
             };
         });
     });
@@ -248,7 +247,7 @@ export class TurnState {
         const checks = this.unresolvedPSRChecks()
             .filter(check => !this.isPSRCheckAutomaticFailure(check));
         return this.autoFall()
-            ? checks.filter(check => check.failureOutcome !== 'Fall').length
+            ? checks.filter(check => !isFallPSRCheck(check)).length
             : checks.length;
     });
 
@@ -266,7 +265,7 @@ export class TurnState {
             || (unit.getUnit().type === 'Mek'
                 && unit.getCondition('shutdown')
                 && !unit.getCondition('prone')
-                && check.kind !== 'shutdown');
+                && check.kind !== PSR_CHECK_KIND.SHUTDOWN);
     }
 
     getPSROutcome(checkId: string): RuleCheckOutcome | undefined {
@@ -276,11 +275,11 @@ export class TurnState {
     resolvePSRCheck(checkId: string, outcome: RuleCheckOutcome): boolean {
         const check = this.getPSRChecks().find(entry => entry.id === checkId);
         if (!check || check.resolution || this.getPSROutcome(checkId)) return false;
-        const resolvedChecks = outcome === 'failed'
+        const resolvedChecks = outcome === 'failed' && isFallPSRCheck(check)
             ? this.getPSRChecks().filter(entry =>
                 !entry.resolution
                 && entry.id !== undefined
-                && entry.failureOutcome === check.failureOutcome
+                && isFallPSRCheck(entry)
                 && this.getPSROutcome(entry.id) === undefined
             )
             : [check];
@@ -289,7 +288,7 @@ export class TurnState {
             ...Object.fromEntries(resolvedChecks.map(entry => [entry.id!, outcome])),
         }));
         if (outcome === 'failed') {
-            if (check.failureOutcome === 'Fall' && !this.unitState.hasCondition('prone')) {
+            if (isFallPSRCheck(check) && !this.unitState.hasCondition('prone')) {
                 this.unitState.unit.queueFall('psr');
                 this.unitState.unit.setCondition('prone', true);
             }
@@ -372,12 +371,13 @@ export class TurnState {
 
     private psrCheckBaseId(check: PSRCheck): string {
         return [
-            check.reason.replace(/\d+(?:\.\d+)?/g, '#'),
+            'psr',
+            check.kind,
+            check.movementMode ?? '',
             check.loc ?? '',
             check.legFilter ?? '',
-            check.fallCheck ?? '',
-            check.pilotCheck ?? '',
-            check.ignorePreExistingGyro ? 'ignore-gyro' : '',
+            check.resolution?.key ?? '',
+            check.resolution?.token ?? '',
         ].join('|');
     }
 

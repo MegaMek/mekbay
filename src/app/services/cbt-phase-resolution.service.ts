@@ -4,7 +4,7 @@
 
 import { inject, Injectable } from '@angular/core';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import type { PSRCheck } from '../models/rules/unit-type-rules';
+import { isFallPSRCheck, type PSRCheck } from '../models/rules/unit-type-rules';
 import { CBTAutomationToastService } from './cbt-automation-toast.service';
 import { FallingResolutionService } from './falling-resolution.service';
 import { MekCriticalResolutionService } from './mek-critical-resolution.service';
@@ -41,11 +41,11 @@ export function resolvePilotSkillChecksAutomatically(
         // An automatic fall is resolved after any independent checks. This
         // prevents becoming prone from making an unrelated check disappear.
         const check = turnState.autoFall()
-            ? unresolved.find(candidate => candidate.failureOutcome !== 'Fall') ?? unresolved[0]
+            ? unresolved.find(candidate => !isFallPSRCheck(candidate)) ?? unresolved[0]
             : unresolved[0];
         const target = unit.PSRTargetRoll();
         const automaticFailure = turnState.isPSRCheckAutomaticFailure(check)
-            || (turnState.autoFall() && check.failureOutcome === 'Fall');
+            || (turnState.autoFall() && isFallPSRCheck(check));
         const dice = automaticFailure
             ? null
             : [rollD6(random), rollD6(random)] as const;

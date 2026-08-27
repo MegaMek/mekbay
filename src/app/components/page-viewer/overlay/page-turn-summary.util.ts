@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { PSRCheck, UnitHeatSource } from '../../../models/rules/unit-type-rules';
+import type { PSRModifier, UnitHeatSource } from '../../../models/rules/unit-type-rules';
 import type { SelectedInventoryWeaponHeat } from '../../../utils/inventory-control-heat.util';
 import type { MotiveModes } from '../../../models/motiveModes.model';
 import type { ManagedOverlayRef, OverlayManagerService } from '../../../services/overlay-manager.service';
@@ -78,9 +78,9 @@ export function composeTurnSummaryHeatRows(
     return result;
 }
 
-export function displayPsrModifiers(modifiers: readonly PSRCheck[]): Array<PSRCheck & { pilotCheck: number }> {
+export function displayPsrModifiers(modifiers: readonly PSRModifier[]): Array<PSRModifier & { pilotCheck: number }> {
     return modifiers
-        .filter((modifier): modifier is PSRCheck & { pilotCheck: number } =>
+        .filter((modifier): modifier is PSRModifier & { pilotCheck: number } =>
             modifier.pilotCheck !== undefined && modifier.pilotCheck !== 0
         )
         .map(modifier => ({

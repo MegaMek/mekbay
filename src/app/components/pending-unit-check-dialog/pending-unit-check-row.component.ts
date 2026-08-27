@@ -5,6 +5,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, viewChild } from '@angular/core';
 import type { SerializedPendingUnitCheck } from '../../models/force-serialization';
 import { getMekLocationLabel } from '../../models/entity/types';
+import { psrFailureLabel } from '../../models/rules/unit-type-rules';
 import { getPreferredHeatAmmoExplosionCandidates } from '../../utils/heat-effects.util';
 import {
     isAmmoExplosionCheck,
@@ -160,7 +161,8 @@ export class PendingUnitCheckRowComponent {
             const check = this.currentUnitCheck();
             return check ? pendingUnitCheckFailureOutcome(check) : '';
         }
-        return this.currentPsrCheck()?.failureOutcome ?? 'Fall';
+        const check = this.currentPsrCheck();
+        return check ? psrFailureLabel(check) : '';
     });
     readonly target = computed(() => {
         const entry = this.entry();

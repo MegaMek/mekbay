@@ -6,7 +6,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, InjectionToken, I
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import type { PSRCheck } from '../../../models/rules/unit-type-rules';
+import { isFallPSRCheck, psrFailureLabel, type PSRCheck } from '../../../models/rules/unit-type-rules';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
 import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
@@ -172,7 +172,11 @@ export class PagePsrWarningPanelComponent {
         return this.committedOutcome(check) === undefined
             && turnState !== undefined
             && (turnState.isPSRCheckAutomaticFailure(check)
-                || (turnState.autoFall() && check.failureOutcome === 'Fall'));
+                || (turnState.autoFall() && isFallPSRCheck(check)));
+    }
+
+    failureLabel(check: PSRCheck): string {
+        return psrFailureLabel(check);
     }
 
     readonly canAccept = computed(() => {
@@ -255,22 +259,22 @@ export class PagePsrWarningPanelComponent {
             const committed = this.committedOutcome(check);
             if (committed) {
                 states.set(check.id, { outcome: committed, source: 'committed' });
-                if (committed === 'failed' && check.failureOutcome === 'Fall') priorFallFailed = true;
+                if (committed === 'failed' && isFallPSRCheck(check)) priorFallFailed = true;
                 continue;
             }
             if (this.isAutomaticFailure(check)) {
                 states.set(check.id, { outcome: 'failed', source: 'automatic' });
-                if (check.failureOutcome === 'Fall') priorFallFailed = true;
+                if (isFallPSRCheck(check)) priorFallFailed = true;
                 continue;
             }
-            if (priorFallFailed && check.failureOutcome === 'Fall') {
+            if (priorFallFailed && isFallPSRCheck(check)) {
                 states.set(check.id, { outcome: 'failed', source: 'cascade' });
                 continue;
             }
             const outcome = selected[check.id];
             if (!outcome) continue;
             states.set(check.id, { outcome, source: 'selected' });
-            if (outcome === 'failed' && check.failureOutcome === 'Fall') priorFallFailed = true;
+            if (outcome === 'failed' && isFallPSRCheck(check)) priorFallFailed = true;
         }
         return states;
     });

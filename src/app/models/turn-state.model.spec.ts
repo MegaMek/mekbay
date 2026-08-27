@@ -9,7 +9,13 @@ import { type CriticalSlot, type HeatProfile } from './force-serialization';
 import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';
 import { MekRules } from './rules/mek-rules';
-import type { UnitTypeRules } from './rules/unit-type-rules';
+import {
+    FALL_PSR_FAILURE,
+    PSR_CHECK_KIND,
+    PSR_FAILURE_KIND,
+    type PSRCheck,
+    type UnitTypeRules,
+} from './rules/unit-type-rules';
 import type { UnitSummary } from './unit-summary.model';
 import { calculateHeatProjection, TurnState } from './turn-state.model';
 import { Equipment, MiscEquipment } from './equipment.model';
@@ -482,7 +488,7 @@ describe('TurnState', () => {
             const check = turnState.getPSRChecks().find(entry => entry.fallCheck !== undefined)!;
 
             expect(check.id).toBeDefined();
-            expect(check.failureOutcome).toBe('Fall');
+            expect(check.failure).toEqual(FALL_PSR_FAILURE);
             expect(turnState.resolvePSRCheck(check.id!, 'success')).toBeTrue();
             expect(turnState.PSRRollsCount()).toBe(0);
 
@@ -498,7 +504,8 @@ describe('TurnState', () => {
         it('fails every check with the same outcome and applies prone', () => {
             const { turnState } = createTurnStateHarness({ rulesId: 'tw' });
             turnState.setPSRCheckState({ legActuators: new Map([['LL', 2]]) });
-            const checks = turnState.getPSRChecks().filter(entry => entry.reason === 'Leg actuator hit');
+            const checks = turnState.getPSRChecks()
+                .filter(entry => entry.kind === PSR_CHECK_KIND.LEG_ACTUATOR_HIT);
 
             expect(checks.length).toBe(2);
             expect(checks[0].id).not.toBe(checks[1].id);
@@ -510,12 +517,28 @@ describe('TurnState', () => {
             expect(turnState.PSRRollsCount()).toBe(0);
         });
 
-        it('groups unresolved failures by outcome without overwriting resolved checks', () => {
+        it('cascades typed fall failures without overwriting resolved or independent checks', () => {
             const { turnState, rules } = createTurnStateHarness();
             spyOn(rules, 'getPSRChecks').and.returnValue([
-                { reason: 'First fall check', fallCheck: 0, failureOutcome: 'Fall' },
-                { reason: 'Second fall check', fallCheck: 1, failureOutcome: 'Fall' },
-                { reason: 'Control check', fallCheck: 2, failureOutcome: 'Immobilized' },
+                {
+                    kind: PSR_CHECK_KIND.GYRO_HIT,
+                    failure: FALL_PSR_FAILURE,
+                    reason: 'First fall check',
+                    fallCheck: 0,
+                },
+                {
+                    kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+                    failure: FALL_PSR_FAILURE,
+                    reason: 'Second fall check',
+                    fallCheck: 1,
+                },
+                {
+                    kind: PSR_CHECK_KIND.TORSO_DESTROYED,
+                    failure: { kind: PSR_FAILURE_KIND.RULE_RESOLUTION, label: 'Immobilized' },
+                    reason: 'Control check',
+                    fallCheck: 2,
+                    resolution: { key: 'control-check', token: 'control-1' },
+                },
             ]);
             const [firstFall, secondFall, control] = turnState.getPSRChecks();
 
@@ -529,9 +552,25 @@ describe('TurnState', () => {
         it('does not expose fall rolls made moot by an automatic fall', () => {
             const { turnState, rules } = createTurnStateHarness();
             spyOn(rules, 'getPSRChecks').and.returnValue([
-                { reason: 'First fall check', fallCheck: 0, failureOutcome: 'Fall' },
-                { reason: 'Second fall check', fallCheck: 1, failureOutcome: 'Fall' },
-                { reason: 'Control check', fallCheck: 2, failureOutcome: 'Immobilized' },
+                {
+                    kind: PSR_CHECK_KIND.GYRO_HIT,
+                    failure: FALL_PSR_FAILURE,
+                    reason: 'First fall check',
+                    fallCheck: 0,
+                },
+                {
+                    kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+                    failure: FALL_PSR_FAILURE,
+                    reason: 'Second fall check',
+                    fallCheck: 1,
+                },
+                {
+                    kind: PSR_CHECK_KIND.TORSO_DESTROYED,
+                    failure: { kind: PSR_FAILURE_KIND.RULE_RESOLUTION, label: 'Fall' },
+                    reason: 'Control check',
+                    fallCheck: 2,
+                    resolution: { key: 'control-check', token: 'control-1' },
+                },
             ]);
 
             expect(turnState.PSRRollsCount()).toBe(3);
@@ -547,11 +586,23 @@ describe('TurnState', () => {
         it('does not trigger another fall when a fall PSR is resolved while already prone', () => {
             const { turnState, rules } = createTurnStateHarness({ prone: true });
             spyOn(rules, 'getPSRChecks').and.returnValue([
-                { reason: 'Fall check', fallCheck: 0, failureOutcome: 'Fall' },
-                { reason: 'Control check', fallCheck: 1, failureOutcome: 'Immobilized' },
+                {
+                    kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+                    failure: FALL_PSR_FAILURE,
+                    reason: 'Fall check',
+                    fallCheck: 0,
+                },
+                {
+                    kind: PSR_CHECK_KIND.TORSO_DESTROYED,
+                    failure: { kind: PSR_FAILURE_KIND.RULE_RESOLUTION, label: 'Immobilized' },
+                    reason: 'Control check',
+                    fallCheck: 1,
+                    resolution: { key: 'control-check', token: 'control-1' },
+                },
             ]);
 
-            const fallCheck = turnState.getPSRChecks().find(check => check.reason === 'Fall check');
+            const fallCheck = turnState.getPSRChecks()
+                .find(check => check.kind === PSR_CHECK_KIND.DAMAGE_THRESHOLD);
             expect(fallCheck?.id).toBeDefined();
 
             expect(turnState.resolvePSRCheck(fallCheck!.id!, 'failed')).toBeTrue();
@@ -563,8 +614,19 @@ describe('TurnState', () => {
         it('does not offer any PSR to a unit without a conscious pilot', () => {
             const { turnState, rules } = createTurnStateHarness({ crewState: 'unconscious' });
             spyOn(rules, 'getPSRChecks').and.returnValue([
-                { reason: 'Fall check', fallCheck: 0, failureOutcome: 'Fall' },
-                { reason: 'System check', fallCheck: 1, failureOutcome: 'Crippled' },
+                {
+                    kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+                    failure: FALL_PSR_FAILURE,
+                    reason: 'Fall check',
+                    fallCheck: 0,
+                },
+                {
+                    kind: PSR_CHECK_KIND.TORSO_DESTROYED,
+                    failure: { kind: PSR_FAILURE_KIND.RULE_RESOLUTION, label: 'Crippled' },
+                    reason: 'System check',
+                    fallCheck: 1,
+                    resolution: { key: 'system-check', token: 'system-1' },
+                },
             ]);
 
             expect(turnState.automaticPSRFailure()).toBeTrue();
@@ -576,10 +638,18 @@ describe('TurnState', () => {
             const mixed = createTurnStateHarness({ shutdown: true });
             const forcedOnly = createTurnStateHarness({ shutdown: true });
             const prone = createTurnStateHarness({ shutdown: true, prone: true });
-            const shutdown = {
-                kind: 'shutdown', reason: 'Shutdown', fallCheck: 3, failureOutcome: 'Fall',
-            } as const;
-            const later = { reason: 'Received 20 damage', fallCheck: 1, failureOutcome: 'Fall' } as const;
+            const shutdown: PSRCheck = {
+                kind: PSR_CHECK_KIND.SHUTDOWN,
+                failure: FALL_PSR_FAILURE,
+                reason: 'Shutdown',
+                fallCheck: 3,
+            };
+            const later: PSRCheck = {
+                kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+                failure: FALL_PSR_FAILURE,
+                reason: 'Received 20 damage',
+                fallCheck: 1,
+            };
             spyOn(mixed.rules, 'getPSRChecks').and.returnValue([shutdown, later]);
             spyOn(forcedOnly.rules, 'getPSRChecks').and.returnValue([later]);
             spyOn(prone.rules, 'getPSRChecks').and.returnValue([later]);
@@ -591,6 +661,27 @@ describe('TurnState', () => {
             expect(forcedOnly.turnState.automaticPSRFailure()).toBeTrue();
             expect(forcedOnly.turnState.actionablePSRRollsCount()).toBe(0);
             expect(prone.turnState.isPSRCheckAutomaticFailure(later)).toBeFalse();
+        });
+
+        it('keeps persistence identity stable when presentation copy changes', () => {
+            const first = createTurnStateHarness();
+            const second = createTurnStateHarness();
+            const typedCheck = {
+                kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+                failure: FALL_PSR_FAILURE,
+                fallCheck: 1,
+            } as const;
+            spyOn(first.rules, 'getPSRChecks').and.returnValue([{
+                ...typedCheck,
+                reason: 'Received 20 damage',
+            }]);
+            spyOn(second.rules, 'getPSRChecks').and.returnValue([{
+                ...typedCheck,
+                reason: 'Localized or rewritten copy',
+            }]);
+
+            expect(first.turnState.getPSRChecks()[0].id)
+                .toBe(second.turnState.getPSRChecks()[0].id);
         });
 
         it('round-trips turn signals and PSR check state through a plain object', () => {

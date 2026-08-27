@@ -270,9 +270,6 @@ function resolveUnitServers(saved: unknown): string[] {
 @Injectable({ providedIn: 'root' })
 export class OptionsService {
     private dbService = inject(DbService);
-    private readonly cbtAutomationOptionsState = signal<CBTAutomationOptions>({
-        ...DEFAULT_OPTIONS.cbtAutomationOptions,
-    });
     readonly initialized = signal(false);
 
     public options = signal<Options>({
@@ -317,7 +314,6 @@ export class OptionsService {
     async initOptions() {
         const saved = await this.dbService.getOptions();
         const cbtAutomationOptions = resolveCBTAutomationOptions(saved);
-        this.cbtAutomationOptionsState.set(cbtAutomationOptions);
         this.options.set({
             colorScheme: resolveSavedValue(saved?.colorScheme, DEFAULT_OPTIONS.colorScheme, OPTION_VALUES.colorScheme),
             pickerStyle: resolveSavedValue(saved?.pickerStyle, DEFAULT_OPTIONS.pickerStyle, OPTION_VALUES.pickerStyle),
@@ -358,41 +354,23 @@ export class OptionsService {
     }
 
     async setOption<K extends keyof Options>(key: K, value: Options[K]) {
-        if (key === 'cbtAutomationOptions') {
-            await this.setCbtAutomationOptions(value as CBTAutomationOptions);
-            return;
-        }
-
         const updated = { ...this.options(), [key]: value };
         this.options.set(updated);
         await this.dbService.saveOptions(updated);
     }
 
     async setCbtAutomationMode(key: CBTAutomationKey, value: AutomationMode) {
-        const current = this.cbtAutomationOptionsState();
+        const current = this.options().cbtAutomationOptions;
         if (current[key] === value) {
             return;
         }
 
-        const cbtAutomationOptions = { ...current, [key]: value };
-        await this.setCbtAutomationOptions(cbtAutomationOptions);
-    }
-
-    private async setCbtAutomationOptions(cbtAutomationOptions: CBTAutomationOptions) {
-        this.cbtAutomationOptionsState.set(cbtAutomationOptions);
-
-        // Keep the compatibility snapshot current without invalidating every
-        // consumer of the global options signal for this granular setting.
-        this.options().cbtAutomationOptions = cbtAutomationOptions;
-        await this.dbService.saveOptions({
-            ...this.options(),
-            cbtAutomationOptions,
-        });
+        await this.setOption('cbtAutomationOptions', { ...current, [key]: value });
     }
 
     /** Returns the configured mode for one CBT automation. */
     cbtAutomationMode(key: CBTAutomationKey): AutomationMode {
-        return this.cbtAutomationOptionsState()[key];
+        return this.options().cbtAutomationOptions[key];
     }
 
     async updateForceGeneratorOptions(

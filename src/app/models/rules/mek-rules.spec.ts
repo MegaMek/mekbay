@@ -17,7 +17,7 @@ import { EquipmentInteractionRegistryService } from '../../services/equipment-in
 import { UnitInitializerService } from '../../services/unit-initializer.service';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { type ToHitModifierBreakdownEntry } from './game-rules';
-import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from './unit-type-rules';
+import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE, PSR_CHECK_KIND, PSR_FAILURE_KIND } from './unit-type-rules';
 import { MekRules } from './mek-rules';
 import { MascHandler, MASC_ACTIVE_STATE_KEY } from '../../equipment-handlers/masc.handler';
 import { HAG_FLAK_MODE, HAG_MODE_STATE_KEY, HAG_STANDARD_MODE, HagHandler } from '../../equipment-handlers/hag.handler';
@@ -2465,13 +2465,16 @@ describe('MekRules', () => {
             committedDestroyedLocations: ['LT'],
         });
         const successfulCheck = successfulUnit.turnState().getPSRChecks()
-            .find(check => check.reason === 'Torso destroyed');
+            .find(check => check.kind === PSR_CHECK_KIND.TORSO_DESTROYED);
 
         expect(successfulUnit.rules.hasComputedCondition('crippled')).toBeFalse();
         expect(successfulCheck).toBeDefined();
         expect(successfulCheck?.loc).toBe('LT');
         expect(successfulCheck?.pilotCheck).toBe(0);
-        expect(successfulCheck?.failureOutcome).toBe('Crippled');
+        expect(successfulCheck?.failure).toEqual({
+            kind: PSR_FAILURE_KIND.RULE_RESOLUTION,
+            label: 'Crippled',
+        });
         expect(successfulCheck?.resolution).toBeDefined();
         expect(successfulUnit.resolveRuleCheck(
             successfulCheck!.resolution!.key,
@@ -2480,12 +2483,12 @@ describe('MekRules', () => {
         )).toBeTrue();
         expect(successfulUnit.rules.hasComputedCondition('crippled')).toBeFalse();
         expect(successfulUnit.turnState().getPSRChecks().some(check =>
-            check.reason === 'Torso destroyed'
+            check.kind === PSR_CHECK_KIND.TORSO_DESTROYED
         )).toBeFalse();
         successfulUnit.endTurn();
         expect(successfulUnit.rules.hasComputedCondition('crippled')).toBeFalse();
         expect(successfulUnit.turnState().getPSRChecks().some(check =>
-            check.reason === 'Torso destroyed'
+            check.kind === PSR_CHECK_KIND.TORSO_DESTROYED
         )).toBeFalse();
 
         const failedUnit = createForceUnitHarness({
@@ -2493,7 +2496,7 @@ describe('MekRules', () => {
             committedDestroyedLocations: ['RT'],
         });
         const failedCheck = failedUnit.turnState().getPSRChecks()
-            .find(check => check.reason === 'Torso destroyed');
+            .find(check => check.kind === PSR_CHECK_KIND.TORSO_DESTROYED);
 
         expect(failedUnit.resolveRuleCheck(
             failedCheck!.resolution!.key,
@@ -2502,7 +2505,7 @@ describe('MekRules', () => {
         )).toBeTrue();
         expect(failedUnit.rules.hasComputedCondition('crippled')).toBeTrue();
         expect(failedUnit.turnState().getPSRChecks().some(check =>
-            check.reason === 'Torso destroyed'
+            check.kind === PSR_CHECK_KIND.TORSO_DESTROYED
         )).toBeFalse();
         failedUnit.endTurn();
         expect(failedUnit.rules.hasComputedCondition('crippled')).toBeTrue();
@@ -2517,7 +2520,7 @@ describe('MekRules', () => {
 
         expect(forceUnit.rules.hasComputedCondition('crippled')).toBeFalse();
         expect(forceUnit.turnState().getPSRChecks().some(check =>
-            check.reason === 'Torso destroyed'
+            check.kind === PSR_CHECK_KIND.TORSO_DESTROYED
         )).toBeFalse();
 
         optionsService.options.update(current => ({
@@ -2528,7 +2531,7 @@ describe('MekRules', () => {
 
         expect(forceUnit.rules.hasComputedCondition('crippled')).toBeFalse();
         expect(forceUnit.turnState().getPSRChecks().some(check =>
-            check.reason === 'Torso destroyed'
+            check.kind === PSR_CHECK_KIND.TORSO_DESTROYED
         )).toBeTrue();
 
         optionsService.options.update(current => ({
@@ -2539,7 +2542,7 @@ describe('MekRules', () => {
 
         expect(forceUnit.rules.hasComputedCondition('crippled')).toBeFalse();
         expect(forceUnit.turnState().getPSRChecks().some(check =>
-            check.reason === 'Torso destroyed'
+            check.kind === PSR_CHECK_KIND.TORSO_DESTROYED
         )).toBeFalse();
     });
 
@@ -2549,14 +2552,14 @@ describe('MekRules', () => {
             committedDestroyedLocations: ['LT'],
         });
         const firstCheck = forceUnit.turnState().getPSRChecks()
-            .find(check => check.reason === 'Torso destroyed')!;
+            .find(check => check.kind === PSR_CHECK_KIND.TORSO_DESTROYED)!;
 
         forceUnit.setInternalHits('LT', 0);
         expect(forceUnit.getRuleCheck(firstCheck.resolution!.key)).toBeUndefined();
 
         forceUnit.setInternalHits('LT', 1);
         const secondCheck = forceUnit.turnState().getPSRChecks()
-            .find(check => check.reason === 'Torso destroyed')!;
+            .find(check => check.kind === PSR_CHECK_KIND.TORSO_DESTROYED)!;
 
         expect(secondCheck.resolution!.token).not.toBe(firstCheck.resolution!.token);
         expect(forceUnit.resolveRuleCheck(
@@ -2579,20 +2582,20 @@ describe('MekRules', () => {
             committedDestroyedLocations: ['LT'],
         });
         const check = forceUnit.turnState().getPSRChecks()
-            .find(entry => entry.reason === 'Torso destroyed')!;
+            .find(entry => entry.kind === PSR_CHECK_KIND.TORSO_DESTROYED)!;
         forceUnit.resolveRuleCheck(check.resolution!.key, check.resolution!.token, 'success');
 
         forceUnit.setInternalHits('RT', 1);
         expect(forceUnit.rules.hasComputedCondition('crippled')).toBeTrue();
         expect(forceUnit.turnState().getPSRChecks().some(entry =>
-            entry.reason === 'Torso destroyed'
+            entry.kind === PSR_CHECK_KIND.TORSO_DESTROYED
         )).toBeFalse();
 
         forceUnit.setInternalHits('RT', 0);
         expect(forceUnit.rules.hasComputedCondition('crippled')).toBeFalse();
         expect(forceUnit.getRuleCheck(check.resolution!.key)?.token).toBe(check.resolution!.token);
         expect(forceUnit.turnState().getPSRChecks().some(entry =>
-            entry.reason === 'Torso destroyed'
+            entry.kind === PSR_CHECK_KIND.TORSO_DESTROYED
         )).toBeFalse();
     });
 
@@ -2602,13 +2605,13 @@ describe('MekRules', () => {
             committedDestroyedLocations: ['LT'],
         });
         const firstCheck = forceUnit.turnState().getPSRChecks()
-            .find(entry => entry.reason === 'Torso destroyed')!;
+            .find(entry => entry.kind === PSR_CHECK_KIND.TORSO_DESTROYED)!;
         forceUnit.resolveRuleCheck(firstCheck.resolution!.key, firstCheck.resolution!.token, 'success');
 
         forceUnit.setInternalHits('RT', 1);
         forceUnit.setInternalHits('LT', 0);
         const nextCheck = forceUnit.turnState().getPSRChecks()
-            .find(entry => entry.reason === 'Torso destroyed')!;
+            .find(entry => entry.kind === PSR_CHECK_KIND.TORSO_DESTROYED)!;
 
         expect(nextCheck.resolution!.token).not.toBe(firstCheck.resolution!.token);
         expect(forceUnit.getRuleCheck(nextCheck.resolution!.key)?.trigger).toBe('RT');
@@ -2621,7 +2624,7 @@ describe('MekRules', () => {
             committedDestroyedLocations: ['LT'],
         });
         const check = source.turnState().getPSRChecks()
-            .find(entry => entry.reason === 'Torso destroyed')!;
+            .find(entry => entry.kind === PSR_CHECK_KIND.TORSO_DESTROYED)!;
         source.resolveRuleCheck(check.resolution!.key, check.resolution!.token, 'failed');
         const serialized = source.serialize();
 
@@ -2640,7 +2643,7 @@ describe('MekRules', () => {
 
         expect(restored.rules.hasComputedCondition('crippled')).toBeTrue();
         expect(restored.turnState().getPSRChecks().some(entry =>
-            entry.reason === 'Torso destroyed'
+            entry.kind === PSR_CHECK_KIND.TORSO_DESTROYED
         )).toBeFalse();
     });
 
@@ -2659,11 +2662,11 @@ describe('MekRules', () => {
 
         expect(compactUnit.rules.hasComputedCondition('crippled')).toBeFalse();
         expect(compactUnit.turnState().getPSRChecks().some(check =>
-            check.reason === 'Torso destroyed'
+            check.kind === PSR_CHECK_KIND.TORSO_DESTROYED
         )).toBeTrue();
         expect(xlUnit.rules.hasComputedCondition('crippled')).toBeTrue();
         expect(xlUnit.turnState().getPSRChecks().some(check =>
-            check.reason === 'Torso destroyed'
+            check.kind === PSR_CHECK_KIND.TORSO_DESTROYED
         )).toBeFalse();
     });
 
@@ -2675,7 +2678,7 @@ describe('MekRules', () => {
 
         expect(forceUnit.rules.hasComputedCondition('crippled')).toBeTrue();
         expect(forceUnit.turnState().getPSRChecks().some(check =>
-            check.reason === 'Torso destroyed'
+            check.kind === PSR_CHECK_KIND.TORSO_DESTROYED
         )).toBeFalse();
     });
 
@@ -2689,7 +2692,7 @@ describe('MekRules', () => {
 
         expect(forceUnit.rules.hasComputedCondition('crippled')).toBeFalse();
         expect(forceUnit.turnState().getPSRChecks().some(check =>
-            check.reason === 'Torso destroyed'
+            check.kind === PSR_CHECK_KIND.TORSO_DESTROYED
         )).toBeFalse();
     });
 
@@ -3444,7 +3447,7 @@ describe('MekRules', () => {
         expect(runOption()?.psr).toBeTrue();
     });
 
-    it('treats two destroyed Core Quad legs as a hip hit when using Running MP', () => {
+    it('applies hip-hit movement effects to a Core Quad with two destroyed legs', () => {
         const forceUnit = createForceUnitHarness({
             internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
             committedDestroyedLocations: ['RLL', 'FLL'],
@@ -3459,15 +3462,15 @@ describe('MekRules', () => {
             .find(option => option.mode === 'run');
 
         expect(runOption?.psr).toBeFalse();
-        expect(turnState.getPSRChecks()).not.toContain(jasmine.objectContaining({
-            reason: 'Running with damaged hip',
-        }));
+        expect(turnState.getPSRChecks().some(
+            check => check.kind === PSR_CHECK_KIND.QUAD_TWO_DESTROYED_LEGS_MOVEMENT,
+        )).toBeFalse();
 
         turnState.moveDistance.set(1);
 
         expect(forceUnit.getAvailableMotiveModes(false).find(option => option.mode === 'run')?.psr).toBeTrue();
         expect(turnState.getPSRChecks()).toContain(jasmine.objectContaining({
-            reason: 'Running with damaged hip',
+            kind: PSR_CHECK_KIND.QUAD_TWO_DESTROYED_LEGS_MOVEMENT,
         }));
     });
 
@@ -3672,7 +3675,7 @@ describe('MekRules', () => {
         }
     });
 
-    it('keeps the Core Quad two-leg hip-equivalent run trigger to one PSR', () => {
+    it('keeps the Core Quad two-destroyed-leg run trigger to one PSR', () => {
         const forceUnit = createForceUnitHarness({
             internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
             committedDestroyedLocations: ['RLL', 'FLL'],
@@ -3685,7 +3688,9 @@ describe('MekRules', () => {
         turnState.moveMode.set('run');
         turnState.moveDistance.set(1);
 
-        expect(turnState.getPSRChecks().filter(check => check.reason === 'Running with damaged hip').length)
+        expect(turnState.getPSRChecks().filter(
+            check => check.kind === PSR_CHECK_KIND.QUAD_TWO_DESTROYED_LEGS_MOVEMENT,
+        ).length)
             .toBe(1);
     });
 
@@ -3733,9 +3738,12 @@ describe('MekRules', () => {
         expect(oneLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)).toBeNull();
         expect(oneLegQuad.getCommittedDamageMovementModePSRCheck('jump', 1)).toBeNull();
         expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('run', 0)).toBeNull();
-        expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)?.reason).toBe('Running with damaged hip');
-        expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)?.kind).toBeUndefined();
-        expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('jump', 0)?.reason).toBe('Jumping with damaged hip');
+        expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)?.reason)
+            .toBe('Running with two destroyed legs');
+        expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)?.kind)
+            .toBe(PSR_CHECK_KIND.QUAD_TWO_DESTROYED_LEGS_MOVEMENT);
+        expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('jump', 0)?.reason)
+            .toBe('Jumping with two destroyed legs');
         expect(twoLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)?.loc).toBeUndefined();
         expect(threeLegQuad.getCommittedDamageMovementModePSRCheck('run', 0)).toBeNull();
         expect(threeLegQuad.getCommittedDamageMovementModePSRCheck('run', 1)?.reason)
@@ -3767,7 +3775,7 @@ describe('MekRules', () => {
         expect(twDamagedHip.getCommittedDamageMovementModePSRCheck('run', 0)?.reason)
             .toBe('Running with damaged hip');
         expect(twDamagedHip.getCommittedDamageMovementModePSRCheck('run', 0)?.kind)
-            .toBe('damaged-hip-movement');
+            .toBe(PSR_CHECK_KIND.DAMAGED_HIP_MOVEMENT);
     });
 
     it('requires a jump PSR for foot damage without requiring a run PSR', () => {
@@ -3778,7 +3786,7 @@ describe('MekRules', () => {
         expect(rules.getCommittedDamageMovementModePSRCheck('jump', 0)?.reason)
             .toBe('Jumping with damaged leg actuator');
         expect(rules.getCommittedDamageMovementModePSRCheck('jump', 0)?.kind)
-            .toBe('damaged-leg-actuator-movement');
+            .toBe(PSR_CHECK_KIND.DAMAGED_LEG_ACTUATOR_MOVEMENT);
         expect(rules.getCommittedDamageMovementModePSRCheck('run', 1)).toBeNull();
     });
 
@@ -3866,8 +3874,8 @@ describe('MekRules', () => {
             'Gyro hit',
         ]);
         expect(checks.map(check => check.pilotCheck)).toEqual([1, 1, 2]);
-        expect(checks.find(check => check.reason === 'Received 20 damage')?.loc).toBeUndefined();
-        expect(checks.find(check => check.reason === 'Hip hit')?.loc).toBe('LL');
+        expect(checks.find(check => check.kind === PSR_CHECK_KIND.DAMAGE_THRESHOLD)?.loc).toBeUndefined();
+        expect(checks.find(check => check.kind === PSR_CHECK_KIND.LEG_DAMAGE)?.loc).toBe('LL');
         expect(turnState.PSRRollsCount()).toBe(3);
         expect(forceUnit.rules.PSRModifiers().modifier).toBe(4);
     });
@@ -4015,7 +4023,9 @@ describe('MekRules', () => {
             const turnState = forceUnit.turnState();
             turnState.setPSRCheckState({ gyroHit: 1, gyroDestroyed: false });
 
-            expect(turnState.getPSRChecks().some(check => check.reason === 'Gyro hit')).toBeFalse();
+            expect(turnState.getPSRChecks().some(
+                check => check.kind === PSR_CHECK_KIND.GYRO_HIT,
+            )).toBeFalse();
             expect(forceUnit.rules.PSRModifiers()).toEqual(jasmine.objectContaining({ modifier: destroyedCount }));
             expect(forceUnit.rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({
                 pilotCheck: destroyedCount,

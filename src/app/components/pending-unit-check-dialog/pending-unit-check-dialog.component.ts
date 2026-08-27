@@ -5,6 +5,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, viewChildren } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { isFallPSRCheck } from '../../models/rules/unit-type-rules';
 import {
     isConsciousnessCheck,
     isPendingUnitCheckEntry,
@@ -105,14 +106,14 @@ export class PendingUnitCheckDialogComponent {
             const checkId = entry.check.id;
             const isForced = failedControllers.has(entry.unit.id)
                 || entry.unit.turnState().isPSRCheckAutomaticFailure(entry.check)
-                || (entry.unit.turnState().autoFall() && entry.check.failureOutcome === 'Fall')
-                || (failedFallChecks.has(entry.unit.id) && entry.check.failureOutcome === 'Fall');
+                || (entry.unit.turnState().autoFall() && isFallPSRCheck(entry.check))
+                || (failedFallChecks.has(entry.unit.id) && isFallPSRCheck(entry.check));
             if (isForced) forced.add(entryKey);
             const outcome = isForced
                 ? 'failed'
                 : pendingPsrCommittedOutcome(entry.unit, entry.check)
                     ?? (checkId ? entry.unit.psrOutcomeSelections()[checkId] : undefined);
-            if (outcome === 'failed' && entry.check.failureOutcome === 'Fall') {
+            if (outcome === 'failed' && isFallPSRCheck(entry.check)) {
                 failedFallChecks.add(entry.unit.id);
             }
         }

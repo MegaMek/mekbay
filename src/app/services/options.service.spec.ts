@@ -254,6 +254,61 @@ describe('OptionsService', () => {
         });
     });
 
+    it('uses the current CBT automation defaults', async () => {
+        savedOptions = null;
+
+        const service = await createService();
+
+        expect(service.options().cbtAutomationOptions).toEqual({
+            pilotSkillCheck: 'no',
+            heatAndDissipationResolution: 'no',
+            heatEffectsCheck: 'no',
+            pilotHitsAndConsciousnessCheck: 'no',
+            internalExplosionsCheck: 'ask',
+            criticalHitChanceCheck: 'no',
+            breachAndFloodCheck: 'yes',
+            fallingCheck: 'no',
+        });
+    });
+
+    it('restores and validates current CBT automation modes per setting', async () => {
+        savedOptions = {
+            cbtAutomationOptions: {
+                pilotSkillCheck: 'yes',
+                heatAndDissipationResolution: 'ask',
+                heatEffectsCheck: 'sometimes',
+                internalExplosionsCheck: 'no',
+                breachAndFloodCheck: 'ask',
+            },
+        };
+
+        const service = await createService();
+
+        expect(service.options().cbtAutomationOptions).toEqual({
+            pilotSkillCheck: 'yes',
+            heatAndDissipationResolution: 'ask',
+            heatEffectsCheck: 'no',
+            pilotHitsAndConsciousnessCheck: 'no',
+            internalExplosionsCheck: 'no',
+            criticalHitChanceCheck: 'no',
+            breachAndFloodCheck: 'ask',
+            fallingCheck: 'no',
+        });
+    });
+
+    it('updates and persists the canonical CBT automation settings', async () => {
+        savedOptions = null;
+        const service = await createService();
+
+        await service.setCbtAutomationMode('pilotSkillCheck', 'yes');
+
+        expect(service.cbtAutomationMode('pilotSkillCheck')).toBe('yes');
+        expect(service.options().cbtAutomationOptions.pilotSkillCheck).toBe('yes');
+        expect(dbService.saveOptions).toHaveBeenCalledOnceWith(jasmine.objectContaining({
+            cbtAutomationOptions: jasmine.objectContaining({ pilotSkillCheck: 'yes' }),
+        }));
+    });
+
     it('restores structured CBT optional rules', async () => {
         savedOptions = {
             CBTOptionalRules: {

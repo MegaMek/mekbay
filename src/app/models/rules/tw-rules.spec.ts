@@ -15,6 +15,7 @@ import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { OptionsService } from '../../services/options.service';
 import { TWMekRules } from './tw-rules';
 import { MEK_LOCATIONS } from '../entity/types';
+import { FALL_PSR_FAILURE, PSR_CHECK_KIND } from './unit-type-rules';
 
 class TestCBTForce extends CBTForce {
     override emitChanged(): void {
@@ -168,7 +169,7 @@ describe('TWMekRules', () => {
             const checks = turnState.getPSRChecks();
             expect(turnState.autoFall()).withContext(label).toBeFalse();
             expect(checks.length).withContext(label).toBe(1);
-            expect(checks[0].failureOutcome).withContext(label).toBe('Fall');
+            expect(checks[0].failure).withContext(label).toEqual(FALL_PSR_FAILURE);
             expect(turnState.isPSRCheckAutomaticFailure(checks[0])).withContext(label).toBeTrue();
             expect(turnState.actionablePSRRollsCount()).withContext(label).toBe(0);
         }
@@ -446,7 +447,7 @@ describe('TWMekRules', () => {
         expect(turnState.getPSRChecks()).toEqual([jasmine.objectContaining({
             fallCheck: 0,
             pilotCheck: 0,
-            kind: 'damaged-leg-actuator-movement',
+            kind: PSR_CHECK_KIND.DAMAGED_LEG_ACTUATOR_MOVEMENT,
             reason: 'Jumping with damaged leg actuator',
         })]);
         expect(turnState.PSRRollsCount()).toBe(1);
@@ -466,14 +467,16 @@ describe('TWMekRules', () => {
         turnState.moveMode.set('jump');
         turnState.moveDistance.set(1);
         spyOn(forceUnit.rules, 'getCommittedDamageMovementModePSRCheck').and.returnValue({
+            kind: PSR_CHECK_KIND.DAMAGED_LEG_ACTUATOR_MOVEMENT,
+            failure: FALL_PSR_FAILURE,
+            movementMode: 'jump',
             fallCheck: 0,
             pilotCheck: 0,
-            kind: 'damaged-leg-actuator-movement',
             reason: 'Localized movement check label',
         });
 
         expect(turnState.getPSRChecks()).toEqual([jasmine.objectContaining({
-            kind: 'damaged-leg-actuator-movement',
+            kind: PSR_CHECK_KIND.DAMAGED_LEG_ACTUATOR_MOVEMENT,
             reason: 'Localized movement check label',
         })]);
     });

@@ -34,7 +34,7 @@ import { UACFiringModeHandler } from '../equipment-handlers/uac-firing-mode.hand
 import { EquipmentFlag } from './equipment-flags.type';
 import { EquipmentRegistry } from './equipment-lookup';
 import { OptionsService } from '../services/options.service';
-import { formatPilotingDisplay, type ChargeDamage } from './rules/unit-type-rules';
+import { FALL_PSR_FAILURE, formatPilotingDisplay, PSR_CHECK_KIND, type ChargeDamage } from './rules/unit-type-rules';
 import { registerAllHandlers } from '../equipment-handlers';
 import {
     PPC_CAPACITOR_CHARGING_STATE,
@@ -2950,7 +2950,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.turnState().setPSRCheckState({ shutdown: true });
 
         const [shutdownCheck] = forceUnit.turnState().getPSRChecks();
-        expect(shutdownCheck.kind).toBe('shutdown');
+        expect(shutdownCheck.kind).toBe(PSR_CHECK_KIND.SHUTDOWN);
         expect(forceUnit.turnState().PSRRollsCount()).toBe(1);
         expect(forceUnit.turnState().actionablePSRRollsCount()).toBe(1);
         expect(forceUnit.turnState().automaticPSRFailure()).toBeFalse();
@@ -3094,8 +3094,9 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         expect(forceUnit.turnState().getPendingUnitChecks()).toEqual([]);
         expect(forceUnit.turnState().getPSRChecks()).toContain(jasmine.objectContaining({
+            kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+            failure: FALL_PSR_FAILURE,
             reason: jasmine.stringMatching(/20/),
-            failureOutcome: 'Fall',
         }));
     });
 

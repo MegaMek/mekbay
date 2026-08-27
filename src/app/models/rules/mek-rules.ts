@@ -7,7 +7,7 @@ import type { CBTForceUnit, EquipmentAction } from '../cbt-force-unit.model';
 import { isCrewMemberAvailable, type CrewMember } from '../crew-member.model';
 import type { MountedEquipment } from '../mounted-equipment.model';
 import type { CriticalSlot, RuleCheckOutcome } from '../force-serialization';
-import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, NARC_CONDITION_COLOR, sortPSRModifiers, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type ChargeDamage, type LocationConditionControl, type PSRCheck, type PSRCheckKind, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitRuleModifier } from './unit-type-rules';
+import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, FALL_PSR_FAILURE, NARC_CONDITION_COLOR, PSR_CHECK_KIND, PSR_FAILURE_KIND, sortPSRModifiers, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type ChargeDamage, type LocationConditionControl, type PSRCheck, type PSRCheckKind, type PSRModifier, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitRuleModifier } from './unit-type-rules';
 import type { EquipmentStatus, EquipmentStatusFacts } from '../equipment-status.model';
 import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
@@ -36,8 +36,8 @@ import { uuidv7 } from '../../utils/uuid.util';
 type ArmLocation = 'LA' | 'RA';
 
 const LEG_DAMAGE_MOVEMENT_CRITICAL_NAMES: Partial<Record<PSRCheckKind, readonly string[]>> = {
-    'damaged-leg-actuator-movement': ['Leg', 'Foot', 'Hip'],
-    'damaged-hip-movement': ['Hip'],
+    [PSR_CHECK_KIND.DAMAGED_LEG_ACTUATOR_MOVEMENT]: ['Leg', 'Foot', 'Hip'],
+    [PSR_CHECK_KIND.DAMAGED_HIP_MOVEMENT]: ['Hip'],
 };
 
 interface MekArmStatus {
@@ -428,11 +428,12 @@ export class MekRules extends UnitTypeRulesBase {
             && torsoCheck?.trigger === destroyedTorsos[0]
             && torsoCheck.status === 'pending') {
             checks.push({
+                kind: PSR_CHECK_KIND.TORSO_DESTROYED,
                 fallCheck: 0,
                 pilotCheck: 0,
                 loc: destroyedTorsos[0],
                 reason: 'Torso destroyed',
-                failureOutcome: 'Crippled',
+                failure: { kind: PSR_FAILURE_KIND.RULE_RESOLUTION, label: 'Crippled' },
                 resolution: {
                     key: TORSO_CRIPPLE_CHECK_KEY,
                     token: torsoCheck.token,
@@ -453,6 +454,8 @@ export class MekRules extends UnitTypeRulesBase {
             const check = this.destroyedLegPSR(isQuadruped);
             psr.legsDestroyed?.forEach((loc => {
                 checks.push({
+                    kind: PSR_CHECK_KIND.LEG_DESTROYED,
+                    failure: FALL_PSR_FAILURE,
                     fallCheck: check.fallCheck,
                     pilotCheck: check.pilotCheck,
                     loc: loc,
@@ -463,14 +466,17 @@ export class MekRules extends UnitTypeRulesBase {
         } else {
             if (psr.shutdown) {
                 checks.push({
+                    kind: PSR_CHECK_KIND.SHUTDOWN,
+                    failure: FALL_PSR_FAILURE,
                     fallCheck: 3,
                     pilotCheck: 3,
-                    kind: 'shutdown',
                     reason: 'Shutdown'
                 });
             }
             if (turnState.dmgReceived() >= 20) {
                 checks.push({
+                    kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+                    failure: FALL_PSR_FAILURE,
                     fallCheck: 1,
                     pilotCheck: 1,
                     reason: `Received ${turnState.dmgReceived()} damage`
@@ -513,6 +519,8 @@ export class MekRules extends UnitTypeRulesBase {
             psr.legActuators?.forEach((count, loc) => {
                 if (count <= 0) return;
                 checks.push({
+                    kind: PSR_CHECK_KIND.LEG_DAMAGE,
+                    failure: FALL_PSR_FAILURE,
                     fallCheck: count,
                     pilotCheck: count,
                     loc,
@@ -522,6 +530,8 @@ export class MekRules extends UnitTypeRulesBase {
             });
             psr.hipsHit?.forEach(loc => {
                 checks.push({
+                    kind: PSR_CHECK_KIND.LEG_DAMAGE,
+                    failure: FALL_PSR_FAILURE,
                     fallCheck: this.hipPSRModifier,
                     pilotCheck: this.hipPSRModifier,
                     loc,
@@ -538,7 +548,7 @@ export class MekRules extends UnitTypeRulesBase {
             if (!check.loc) continue;
             const existing = checksByLeg.get(check.loc);
             if (!existing) {
-                checksByLeg.set(check.loc, check);
+                checksByLeg.set(check.loc, { ...check, kind: PSR_CHECK_KIND.LEG_DAMAGE });
                 continue;
             }
             checksByLeg.set(check.loc, {
@@ -546,6 +556,7 @@ export class MekRules extends UnitTypeRulesBase {
                 fallCheck: (existing.fallCheck ?? 0) + (check.fallCheck ?? 0),
                 pilotCheck: (existing.pilotCheck ?? 0) + (check.pilotCheck ?? 0),
                 legFilter: existing.legFilter ?? check.legFilter,
+                movementMode: existing.movementMode ?? check.movementMode,
                 reason: this.formatLegActuatorPSRReasons(existing.reason, check.reason),
                 modifierReason: this.formatLegActuatorModifierReason(
                     this.formatLegActuatorPSRReasons(existing.reason, check.reason),
@@ -604,6 +615,8 @@ export class MekRules extends UnitTypeRulesBase {
     protected gyroHitPSRCheck(_gyroHits: number): PSRCheck | null {
         if (this.hasHeavyDutyGyro()) return null;
         return {
+            kind: PSR_CHECK_KIND.GYRO_HIT,
+            failure: FALL_PSR_FAILURE,
             fallCheck: this.gyroHitPSRModifier,
             pilotCheck: this.gyroHitPSRModifier,
             reason: 'Gyro hit',
@@ -614,6 +627,8 @@ export class MekRules extends UnitTypeRulesBase {
     protected destroyedGyroPSRCheck(): PSRCheck | null {
         if (this.hasHeavyDutyGyro()) return null;
         return {
+            kind: PSR_CHECK_KIND.GYRO_DESTROYED,
+            failure: FALL_PSR_FAILURE,
             fallCheck: this.gyroHitPSRModifier,
             pilotCheck: this.gyroHitPSRModifier,
             reason: 'Gyro hit',
@@ -661,7 +676,7 @@ export class MekRules extends UnitTypeRulesBase {
         const isQuadruped = QUAD_LEG_LOCATIONS.some(loc => internalLocations.has(loc));
         const destroyedLegsCount = this.systemsStatus().destroyedLegsCount;
         const damagedLegRequiresCheck = this.damagedLegRequiresMovementCheck(isQuadruped, destroyedLegsCount);
-        const destroyedLegsApplyHipCheck = this.destroyedLegsApplyHipMovementCheck(
+        const twoDestroyedQuadLegsApplyHipEffects = this.twoDestroyedQuadLegsApplyHipMovementEffects(
             isQuadruped,
             destroyedLegsCount,
         );
@@ -671,11 +686,14 @@ export class MekRules extends UnitTypeRulesBase {
                 const check = this.damagedGyroMovementPSRCheck(moveMode);
                 return check ? this.withPSRLocation(check, damagedGyro.loc) : null;
             }
-            if (destroyedLegsApplyHipCheck) {
+            if (twoDestroyedQuadLegsApplyHipEffects) {
                 return {
+                    kind: PSR_CHECK_KIND.QUAD_TWO_DESTROYED_LEGS_MOVEMENT,
+                    failure: FALL_PSR_FAILURE,
+                    movementMode: moveMode,
                     fallCheck: 0,
                     pilotCheck: 0,
-                    reason: 'Jumping with damaged hip',
+                    reason: 'Jumping with two destroyed legs',
                 };
             }
             if (hasDamagedLeg && damagedLegRequiresCheck) {
@@ -685,6 +703,9 @@ export class MekRules extends UnitTypeRulesBase {
                     destroyedLegsCount,
                 );
                 return {
+                    kind: PSR_CHECK_KIND.DAMAGED_LEG_MOVEMENT,
+                    failure: FALL_PSR_FAILURE,
+                    movementMode: moveMode,
                     fallCheck: modifier,
                     pilotCheck: modifier,
                     ...(modifier === 0 && damagedLegLocation && { loc: damagedLegLocation }),
@@ -693,9 +714,11 @@ export class MekRules extends UnitTypeRulesBase {
             }
             if (hasDamagedLegActuators) {
                 return {
+                    kind: PSR_CHECK_KIND.DAMAGED_LEG_ACTUATOR_MOVEMENT,
+                    failure: FALL_PSR_FAILURE,
+                    movementMode: moveMode,
                     fallCheck: 0,
                     pilotCheck: 0,
-                    kind: 'damaged-leg-actuator-movement',
                     reason: 'Jumping with damaged leg actuator'
                 };
             }
@@ -706,17 +729,23 @@ export class MekRules extends UnitTypeRulesBase {
             const gyroMovementCheck = this.damagedGyroMovementPSRCheck(moveMode);
             if (gyroMovementCheck) return this.withPSRLocation(gyroMovementCheck, damagedGyro.loc);
         }
-        if (destroyedLegsApplyHipCheck) {
+        if (twoDestroyedQuadLegsApplyHipEffects) {
             return {
+                kind: PSR_CHECK_KIND.QUAD_TWO_DESTROYED_LEGS_MOVEMENT,
+                failure: FALL_PSR_FAILURE,
+                movementMode: moveMode,
                 fallCheck: 0,
                 pilotCheck: 0,
-                reason: 'Running with damaged hip',
+                reason: 'Running with two destroyed legs',
             };
         }
         if (this.runningWithDestroyedLegRequiresCheck()
             && hasDamagedLeg
             && damagedLegRequiresCheck) {
             return {
+                kind: PSR_CHECK_KIND.DAMAGED_LEG_MOVEMENT,
+                failure: FALL_PSR_FAILURE,
+                movementMode: moveMode,
                 fallCheck: 0,
                 pilotCheck: 0,
                 ...(damagedLegLocation && { loc: damagedLegLocation }),
@@ -731,9 +760,11 @@ export class MekRules extends UnitTypeRulesBase {
             });
             if (hasDamagedHip) {
                 return {
+                    kind: PSR_CHECK_KIND.DAMAGED_HIP_MOVEMENT,
+                    failure: FALL_PSR_FAILURE,
+                    movementMode: moveMode,
                     fallCheck: 0,
                     pilotCheck: 0,
-                    kind: 'damaged-hip-movement',
                     reason: 'Running with damaged hip'
                 };
             }
@@ -745,6 +776,9 @@ export class MekRules extends UnitTypeRulesBase {
         if (this.hasHeavyDutyGyro()) {
             if (moveMode === 'run') return null;
             return {
+                kind: PSR_CHECK_KIND.DAMAGED_GYRO_MOVEMENT,
+                failure: FALL_PSR_FAILURE,
+                movementMode: moveMode,
                 fallCheck: 2,
                 pilotCheck: 2,
                 reason: 'Jumping with damaged HD gyro',
@@ -752,6 +786,9 @@ export class MekRules extends UnitTypeRulesBase {
             };
         }
         return {
+            kind: PSR_CHECK_KIND.DAMAGED_GYRO_MOVEMENT,
+            failure: FALL_PSR_FAILURE,
+            movementMode: moveMode,
             fallCheck: 0,
             pilotCheck: 0,
             reason: `${moveMode === 'jump' ? 'Jumping' : 'Running'} with damaged gyro`,
@@ -778,7 +815,10 @@ export class MekRules extends UnitTypeRulesBase {
         return true;
     }
 
-    protected destroyedLegsApplyHipMovementCheck(isQuadruped: boolean, destroyedLegsCount: number): boolean {
+    protected twoDestroyedQuadLegsApplyHipMovementEffects(
+        isQuadruped: boolean,
+        destroyedLegsCount: number,
+    ): boolean {
         return isQuadruped && destroyedLegsCount === 2;
     }
 
@@ -1185,10 +1225,10 @@ export class MekRules extends UnitTypeRulesBase {
 
     // ── PSR ──────────────────────────────────────────────────────────────────
 
-    override readonly PSRModifiers = computed<{ modifier: number; modifiers: PSRCheck[] }>(() => {
+    override readonly PSRModifiers = computed<{ modifier: number; modifiers: PSRModifier[] }>(() => {
         const ignoreLeg = new Set<string>();
         let preExisting = 0;
-        const modifiers: PSRCheck[] = [];
+        const modifiers: PSRModifier[] = [];
 
         const { config, destroyedLegs } = this.currentLegState();
         const undamagedLegs = destroyedLegs.length === 0;
@@ -1298,7 +1338,7 @@ export class MekRules extends UnitTypeRulesBase {
     protected getPreExistingDestroyedLegPSRModifiers(
         config: MekConfig,
         destroyedLegs: readonly string[],
-    ): PSRCheck[] {
+    ): PSRModifier[] {
         if (config !== 'Quad') {
             const modifier = this.destroyedLegPSR(false).pilotCheck;
             return destroyedLegs.map(loc => ({
@@ -1326,7 +1366,7 @@ export class MekRules extends UnitTypeRulesBase {
     protected getPreExistingLegActuatorPSRModifiers(
         critSlots: readonly CriticalSlot[],
         ignoreLeg: Set<string>,
-    ): { modifier: number; modifiers: PSRCheck[] } {
+    ): { modifier: number; modifiers: PSRModifier[] } {
         const relevantSlots = critSlots.filter(slot => slot.loc
             && LEG_LOCATIONS.has(slot.loc)
             && !ignoreLeg.has(slot.loc)
@@ -1337,7 +1377,7 @@ export class MekRules extends UnitTypeRulesBase {
             slots.push(slot);
             slotsByLocation.set(slot.loc!, slots);
         }
-        const modifiers: PSRCheck[] = [];
+        const modifiers: PSRModifier[] = [];
         for (const [loc, slots] of slotsByLocation) {
             const destroyedHipsCount = slots.filter(slot => this.isNamedCrit(slot, 'Hip')).length;
             const destroyedLegActuatorsCount = slots.filter(slot => this.isNamedCrit(slot, 'Leg')).length;
@@ -1375,7 +1415,7 @@ export class MekRules extends UnitTypeRulesBase {
         }).length;
     }
 
-    protected preExistingGyroPSRModifier(destroyedGyroCount: number): PSRCheck | null {
+    protected preExistingGyroPSRModifier(destroyedGyroCount: number): PSRModifier | null {
         if (destroyedGyroCount === 0) return null;
         if (this.hasHeavyDutyGyro()) {
             return {

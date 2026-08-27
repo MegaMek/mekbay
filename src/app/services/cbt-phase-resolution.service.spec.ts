@@ -4,7 +4,12 @@
 
 import { TestBed } from '@angular/core/testing';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import type { PSRCheck } from '../models/rules/unit-type-rules';
+import {
+    FALL_PSR_FAILURE,
+    isFallPSRCheck,
+    PSR_CHECK_KIND,
+    type PSRCheck,
+} from '../models/rules/unit-type-rules';
 import type { AutomationMode } from '../models/options.model';
 import { CBTPhaseResolutionService } from './cbt-phase-resolution.service';
 import { FallingResolutionService } from './falling-resolution.service';
@@ -178,16 +183,16 @@ describe('CBTPhaseResolutionService', () => {
         harness.mode = 'yes';
         harness.checks = [
             {
-                id: 'shutdown', kind: 'shutdown', reason: 'Shutdown',
-                fallCheck: 3, failureOutcome: 'Fall',
+                id: 'shutdown', kind: PSR_CHECK_KIND.SHUTDOWN,
+                failure: FALL_PSR_FAILURE, reason: 'Shutdown', fallCheck: 3,
             },
             {
-                id: 'damage', reason: 'Received 20 damage',
-                fallCheck: 1, failureOutcome: 'Fall',
+                id: 'damage', kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+                failure: FALL_PSR_FAILURE, reason: 'Received 20 damage', fallCheck: 1,
             },
         ];
         spyOn(harness.unit.turnState(), 'isPSRCheckAutomaticFailure')
-            .and.callFake(check => check.kind !== 'shutdown');
+            .and.callFake(check => check.kind !== PSR_CHECK_KIND.SHUTDOWN);
         spyOn(Math, 'random').and.returnValues(0.99, 0.99);
         resumeFall.and.callFake(async () => {
             harness.pendingFallId = undefined;
@@ -342,7 +347,7 @@ function createHarness(): PhaseHarness {
                 if (harness.outcomes.has(id)) return false;
                 harness.outcomes.set(id, outcome);
                 const check = harness.checks.find(candidate => candidate.id === id);
-                if (outcome === 'failed' && check?.failureOutcome === 'Fall' && !harness.prone) {
+                if (outcome === 'failed' && check && isFallPSRCheck(check) && !harness.prone) {
                     harness.prone = true;
                     harness.pendingFallId = 'fall:psr';
                 }
@@ -385,5 +390,11 @@ function createHarness(): PhaseHarness {
 }
 
 function fallCheck(id: string): PSRCheck {
-    return { id, fallCheck: 0, reason: id, failureOutcome: 'Fall' };
+    return {
+        id,
+        kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+        failure: FALL_PSR_FAILURE,
+        fallCheck: 0,
+        reason: id,
+    };
 }

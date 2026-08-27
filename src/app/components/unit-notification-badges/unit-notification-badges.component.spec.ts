@@ -11,6 +11,7 @@ import type {
     SerializedPendingMekCriticalChance,
     SerializedPendingUnitCheck,
 } from '../../models/force-serialization';
+import { FALL_PSR_FAILURE, PSR_CHECK_KIND } from '../../models/rules/unit-type-rules';
 import { UnitNotificationBadgesComponent } from './unit-notification-badges.component';
 
 describe('UnitNotificationBadgesComponent', () => {
@@ -197,8 +198,9 @@ describe('UnitNotificationBadgesComponent', () => {
             PSRRollsCount: () => psrOutcome() === undefined ? psrCount() : 0,
             getPSRChecks: () => Array.from({ length: psrCount() }, (_, index) => ({
                 id: `psr:${index}`,
+                kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+                failure: FALL_PSR_FAILURE,
                 fallCheck: 1,
-                failureOutcome: 'Fall',
                 reason: `PSR ${index + 1}`,
             })),
             getPSROutcome: () => psrOutcome(),

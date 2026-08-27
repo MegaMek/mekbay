@@ -8,6 +8,7 @@ import { of } from 'rxjs';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { PendingEventInput, SerializedPendingUnitCheck } from '../models/force-serialization';
 import type { AutomationMode } from '../models/options.model';
+import { FALL_PSR_FAILURE, PSR_CHECK_KIND } from '../models/rules/unit-type-rules';
 import type { HeatAmmoExplosionCandidate } from '../utils/heat-effects.util';
 import {
     pendingCheckReviewGroupList,
@@ -45,9 +46,10 @@ describe('UnitCheckResolutionService', () => {
         ]));
         const psrChecks = Array.from({ length: psrCount }, (_value, index) => ({
             id: `psr:${index + 1}`,
+            kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+            failure: FALL_PSR_FAILURE,
             fallCheck: 0,
             reason: `PSR ${index + 1}`,
-            failureOutcome: 'Fall',
         }));
         const psrOutcomes = new Map<string, 'success' | 'failed'>();
         const psrOutcomeSelections = signal<Readonly<Record<string, 'success' | 'failed'>>>({});

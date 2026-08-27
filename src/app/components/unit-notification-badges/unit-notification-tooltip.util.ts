@@ -9,7 +9,7 @@ import type {
     SerializedPendingUnitCheck,
 } from '../../models/force-serialization';
 import { getMekLocationLabel } from '../../models/entity/types';
-import type { PSRCheck } from '../../models/rules/unit-type-rules';
+import { isFallPSRCheck, psrFailureLabel, type PSRCheck } from '../../models/rules/unit-type-rules';
 import {
     pendingUnitCheckOutcome,
     pendingUnitCheckPriority,
@@ -146,21 +146,21 @@ function buildPsrEventTooltip(
         if (check.fallCheck === undefined || check.id === undefined) return false;
         const outcome = turnState.getPSROutcome(check.id);
         if (mode === 'automatic-fall') {
-            return check.failureOutcome === 'Fall'
+            return isFallPSRCheck(check)
                 && (turnState.autoFall() || turnState.isPSRCheckAutomaticFailure(check))
                 && (outcome === undefined || (outcome === 'failed' && !unit.getCondition('prone')));
         }
         return outcome === undefined
             && !turnState.isPSRCheckAutomaticFailure(check)
-            && (!turnState.autoFall() || check.failureOutcome !== 'Fall');
+            && (!turnState.autoFall() || !isFallPSRCheck(check));
     });
     if (pending.length === 0) return null;
 
     return pending.map(check => ({
         label: psrCheckLabel(check),
         value: mode === 'automatic-fall'
-            ? check.failureOutcome ?? 'Fall'
-            : `Target ${unit.PSRTargetRoll()}+ · ${check.failureOutcome ?? 'Fall'}`,
+            ? psrFailureLabel(check)
+            : `Target ${unit.PSRTargetRoll()}+ · ${psrFailureLabel(check)}`,
     }));
 }
 

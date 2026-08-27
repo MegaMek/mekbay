@@ -8,7 +8,14 @@ import { InfantryRules } from './infantry-rules';
 import { MekRules, type MekLegDamageState, type MekLegMovementResult } from './mek-rules';
 import { ProtoMekRules } from './protomek-rules';
 import { VehicleRules } from './vehicle-rules';
-import type { ChargeDamage, PSRCheck, UnitHeatSource } from './unit-type-rules';
+import {
+    FALL_PSR_FAILURE,
+    PSR_CHECK_KIND,
+    type ChargeDamage,
+    type PSRCheck,
+    type PSRModifier,
+    type UnitHeatSource,
+} from './unit-type-rules';
 import type { CriticalSlot, SerializedC3NetworkGroup } from '../force-serialization';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import { C3TaxCalculator } from '../c3-network.model';
@@ -155,6 +162,8 @@ export class TWMekRules extends MekRules {
             psr.legActuators?.forEach((count, loc) => {
                 for (let index = 0; index < count; index++) {
                     checks.push({
+                        kind: PSR_CHECK_KIND.LEG_ACTUATOR_HIT,
+                        failure: FALL_PSR_FAILURE,
                         fallCheck: 1,
                         pilotCheck: 1,
                         loc,
@@ -164,6 +173,8 @@ export class TWMekRules extends MekRules {
             });
             psr.hipsHit?.forEach(loc => {
                 checks.push({
+                    kind: PSR_CHECK_KIND.HIP_HIT,
+                    failure: FALL_PSR_FAILURE,
                     fallCheck: this.hipPSRModifier,
                     pilotCheck: this.hipPSRModifier,
                     loc,
@@ -180,13 +191,13 @@ export class TWMekRules extends MekRules {
     protected override getPreExistingLegActuatorPSRModifiers(
         critSlots: readonly CriticalSlot[],
         ignoreLeg: Set<string>,
-    ): { modifier: number; modifiers: PSRCheck[] } {
+    ): { modifier: number; modifiers: PSRModifier[] } {
         let modifier = 0;
-        const modifiers: PSRCheck[] = [];
+        const modifiers: PSRModifier[] = [];
         const turnState = this.unit.turnState();
         const currentPSR = turnState.getPSRCheckState();
         const activeHipHits = new Set(turnState.getPSRChecks()
-            .filter(check => check.reason === 'Hip hit' && check.loc)
+            .filter(check => check.kind === PSR_CHECK_KIND.HIP_HIT && check.loc)
             .map(check => check.loc!));
         const destroyedHips = critSlots.filter(slot => slot.loc
             && LEG_LOCATIONS.has(slot.loc)
@@ -350,10 +361,17 @@ export class TWMekRules extends MekRules {
             const previouslyDestroyedGyroCount = this.unit.getCritSlots()
                 .filter(slot => !this.unit.isEquipmentOperational(slot) && slot.name?.includes('Gyro')).length;
             if (previouslyDestroyedGyroCount + gyroHits === 1) {
-                return { pilotCheck: 1, reason: 'Gyro hit' };
+                return {
+                    kind: PSR_CHECK_KIND.GYRO_HIT,
+                    failure: FALL_PSR_FAILURE,
+                    pilotCheck: 1,
+                    reason: 'Gyro hit',
+                };
             }
         }
         return {
+            kind: PSR_CHECK_KIND.GYRO_HIT,
+            failure: FALL_PSR_FAILURE,
             fallCheck: this.gyroHitPSRModifier,
             pilotCheck: this.gyroHitPSRModifier,
             reason: 'Gyro hit',
@@ -363,6 +381,8 @@ export class TWMekRules extends MekRules {
 
     protected override destroyedGyroPSRCheck(): PSRCheck {
         return {
+            kind: PSR_CHECK_KIND.GYRO_DESTROYED,
+            failure: FALL_PSR_FAILURE,
             fallCheck: 100,
             pilotCheck: 6,
             reason: 'Gyro destroyed',
@@ -372,6 +392,9 @@ export class TWMekRules extends MekRules {
 
     protected override damagedGyroMovementPSRCheck(moveMode: 'run' | 'jump'): PSRCheck {
         return {
+            kind: PSR_CHECK_KIND.DAMAGED_GYRO_MOVEMENT,
+            failure: FALL_PSR_FAILURE,
+            movementMode: moveMode,
             fallCheck: 0,
             pilotCheck: 0,
             reason: `${moveMode === 'jump' ? 'Jumping' : 'Running'} with damaged gyro`,
@@ -387,7 +410,7 @@ export class TWMekRules extends MekRules {
             .filter(slot => !this.unit.isEquipmentOperational(slot) && slot.name?.includes('Gyro')).length;
     }
 
-    protected override preExistingGyroPSRModifier(destroyedGyroCount: number): PSRCheck | null {
+    protected override preExistingGyroPSRModifier(destroyedGyroCount: number): PSRModifier | null {
         if (destroyedGyroCount === 0) return null;
         if (this.hasHeavyDutyGyro() && destroyedGyroCount === 1) {
             return { pilotCheck: 1, reason: 'Heavy Duty Gyro first damage' };
@@ -410,7 +433,7 @@ export class TWMekRules extends MekRules {
     protected override getPreExistingDestroyedLegPSRModifiers(
         config: MekConfig,
         destroyedLegs: readonly string[],
-    ): PSRCheck[] {
+    ): PSRModifier[] {
         if (config !== 'Quad') return super.getPreExistingDestroyedLegPSRModifiers(config, destroyedLegs);
         if (destroyedLegs.length !== 2) return [];
         return [{
@@ -440,7 +463,10 @@ export class TWMekRules extends MekRules {
         return false;
     }
 
-    protected override destroyedLegsApplyHipMovementCheck(_isQuadruped: boolean, _destroyedLegsCount: number): boolean {
+    protected override twoDestroyedQuadLegsApplyHipMovementEffects(
+        _isQuadruped: boolean,
+        _destroyedLegsCount: number,
+    ): boolean {
         return false;
     }
 

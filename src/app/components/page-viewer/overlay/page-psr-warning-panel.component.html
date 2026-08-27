@@ -23,7 +23,7 @@
                                         <span class="psr-location-value">{{ location }}</span>
                                         <span class="psr-subtitle-separator" aria-hidden="true">&nbsp;—&nbsp;</span>
                                     }
-                                    <span>Failure: <span class="psr-failure-value">{{ check.failureOutcome }}</span></span>
+                                    <span>Failure: <span class="psr-failure-value">{{ failureLabel(check) }}</span></span>
                                 </div>
                             </div>
                             @if (!isAutomaticFailure(check) && outcome(check); as result) {
