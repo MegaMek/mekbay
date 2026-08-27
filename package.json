@@ -16,7 +16,6 @@
     "postbuild": "node scripts/generate-seo-pages.js",
     "build:next": "npm run prerun && ng build --configuration=next",
     "postbuild:next": "npm run postbuild",
-    "test:ratgenerator": "tsx scripts/ratgenerator_build_table.test.ts",
     "test:force-name-words": "tsx scripts/generate-force-name-words.test.ts",
     "test:unit-report-oracles": "tsx scripts/unit-report-oracles.test.ts",
     "test:unit-diagnostics": "tsx scripts/unit-diagnostics.test.ts",
