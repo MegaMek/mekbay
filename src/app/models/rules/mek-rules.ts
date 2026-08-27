@@ -100,6 +100,11 @@ export class MekRules extends UnitTypeRulesBase {
     override readonly standingUpPSRModifier: number = -1;
     protected get gyroHitPSRModifier(): number { return 2; }
     protected get hipPSRModifier(): number { return 1; }
+
+    /** The first hip hit on a CORE quad has only the quad-specific effects. */
+    protected standardHipEffectHitCount(totalHipHits: number, isQuadruped: boolean): number {
+        return Math.max(0, totalHipHits - (isQuadruped ? 1 : 0));
+    }
     protected get lowerArmFireModifier(): number { return 0; }
     protected get footHitsCausePSR(): boolean { return false; }
     protected get shieldBashPunchBonusEnabled(): boolean { return true; }
@@ -528,7 +533,7 @@ export class MekRules extends UnitTypeRulesBase {
                     modifierReason: this.formatLegActuatorModifierReason('Leg Actuator hit', count),
                 });
             });
-            psr.hipsHit?.forEach(loc => {
+            this.currentStandardHipHitLocations(psr.hipsHit).forEach(loc => {
                 checks.push({
                     kind: PSR_CHECK_KIND.LEG_DAMAGE,
                     failure: FALL_PSR_FAILURE,
@@ -567,6 +572,47 @@ export class MekRules extends UnitTypeRulesBase {
         return Array.from(checksByLeg.values());
     }
 
+    private currentStandardHipHitLocations(currentHipHits: ReadonlySet<string> | undefined): string[] {
+        const currentLocations = Array.from(currentHipHits ?? []);
+        if (currentLocations.length === 0) return [];
+
+        const isQuadruped = this.isQuadrupedMek();
+        const committedHipHits = this.unit.getCritSlots().filter(slot => slot.loc
+            && LEG_LOCATIONS.has(slot.loc)
+            && !this.isLegDestroyed(slot.loc, true)
+            && this.isNamedCrit(slot, 'Hip')
+            && this.isCritUnavailable(slot)).length;
+        const previousEffectHits = this.standardHipEffectHitCount(committedHipHits, isQuadruped);
+        const totalEffectHits = this.standardHipEffectHitCount(
+            committedHipHits + currentLocations.length,
+            isQuadruped,
+        );
+        const currentEffectHits = Math.max(0, totalEffectHits - previousEffectHits);
+        return currentEffectHits === 0
+            ? []
+            : currentLocations.slice(currentLocations.length - currentEffectHits);
+    }
+
+    private standardHipEffectSlots(
+        slots: readonly CriticalSlot[],
+        isQuadruped: boolean,
+    ): CriticalSlot[] {
+        const hipSlots = slots
+            .map((slot, index) => ({ slot, index }))
+            .filter(entry => this.isNamedCrit(entry.slot, 'Hip'))
+            .sort((left, right) => {
+                const leftTimestamp = left.slot.destroyed ?? left.slot.destroying ?? Number.MAX_SAFE_INTEGER;
+                const rightTimestamp = right.slot.destroyed ?? right.slot.destroying ?? Number.MAX_SAFE_INTEGER;
+                if (leftTimestamp !== rightTimestamp) return leftTimestamp - rightTimestamp;
+                const leftTurn = left.slot.destroyedTurn ?? Number.MAX_SAFE_INTEGER;
+                const rightTurn = right.slot.destroyedTurn ?? Number.MAX_SAFE_INTEGER;
+                return leftTurn - rightTurn || left.index - right.index;
+            })
+            .map(entry => entry.slot);
+        const effectHits = this.standardHipEffectHitCount(hipSlots.length, isQuadruped);
+        return effectHits === 0 ? [] : hipSlots.slice(hipSlots.length - effectHits);
+    }
+
     protected isLegDamageMovementPSRCheck(
         check: PSRCheck | null,
     ): check is PSRCheck & { kind: PSRCheckKind } {
@@ -580,12 +626,20 @@ export class MekRules extends UnitTypeRulesBase {
             : LEG_DAMAGE_MOVEMENT_CRITICAL_NAMES[check.kind];
         if (!criticalNames) return null;
 
+        const committedHipEffectSlots = new Set(this.standardHipEffectSlots(
+            this.unit.getCritSlots().filter(slot => slot.loc
+                && LEG_LOCATIONS.has(slot.loc)
+                && !this.isLegDestroyed(slot.loc, true)
+                && this.isCritUnavailable(slot)),
+            this.isQuadrupedMek(),
+        ));
         const reasonsByLeg = new Map<string, Set<string>>();
         this.unit.getCritSlots().forEach(slot => {
             if (!slot.loc
                 || !LEG_LOCATIONS.has(slot.loc)
                 || !this.isCritUnavailable(slot)
                 || !criticalNames.some(name => this.isNamedCrit(slot, name))) return;
+            if (this.isNamedCrit(slot, 'Hip') && !committedHipEffectSlots.has(slot)) return;
             const reasons = reasonsByLeg.get(slot.loc) ?? new Set<string>();
             if (this.isNamedCrit(slot, 'Hip')) reasons.add('Hip hit');
             else if (this.isNamedCrit(slot, 'Foot')) reasons.add('Foot hit');
@@ -663,17 +717,23 @@ export class MekRules extends UnitTypeRulesBase {
         const hasDamagedLeg = damagedLegLocations.length > 0;
         const damagedLegLocation = damagedLegLocations.length === 1 ? damagedLegLocations[0] : undefined;
 
-        const hasDamagedLegActuators = critSlots.some(slot => {
-            if (!slot.name || !slot.loc || !this.isCritUnavailable(slot)) return false;
-            if (!LEG_LOCATIONS.has(slot.loc)) return false;
-            if (this.isLegDestroyed(slot.loc, true)) return false;
-            return this.isNamedCrit(slot, 'Leg')
-                || this.isNamedCrit(slot, 'Foot')
-                || this.isNamedCrit(slot, 'Hip');
-        });
-
         const internalLocations = this.systemsStatus().internalLocations;
         const isQuadruped = QUAD_LEG_LOCATIONS.some(loc => internalLocations.has(loc));
+        const relevantCommittedLegActuators = critSlots.filter(slot => slot.loc
+            && LEG_LOCATIONS.has(slot.loc)
+            && !this.isLegDestroyed(slot.loc, true)
+            && this.isCritUnavailable(slot));
+        const committedHipEffectSlots = new Set(this.standardHipEffectSlots(
+            relevantCommittedLegActuators,
+            isQuadruped,
+        ));
+        const hasDamagedLegActuators = relevantCommittedLegActuators.some(slot => {
+            if (!slot.name || !slot.loc || !this.isCritUnavailable(slot)) return false;
+            return this.isNamedCrit(slot, 'Leg')
+                || this.isNamedCrit(slot, 'Foot')
+                || committedHipEffectSlots.has(slot);
+        });
+
         const destroyedLegsCount = this.systemsStatus().destroyedLegsCount;
         const damagedLegRequiresCheck = this.damagedLegRequiresMovementCheck(isQuadruped, destroyedLegsCount);
         const twoDestroyedQuadLegsApplyHipEffects = this.twoDestroyedQuadLegsApplyHipMovementEffects(
@@ -753,11 +813,7 @@ export class MekRules extends UnitTypeRulesBase {
             };
         }
         if (hasDamagedLegActuators) {
-            const hasDamagedHip = critSlots.some(slot => {
-                if (!slot.name || !slot.loc || !this.isCritUnavailable(slot)) return false;
-                if (!LEG_LOCATIONS.has(slot.loc)) return false;
-                return this.isNamedCrit(slot, 'Hip');
-            });
+            const hasDamagedHip = committedHipEffectSlots.size > 0;
             if (hasDamagedHip) {
                 return {
                     kind: PSR_CHECK_KIND.DAMAGED_HIP_MOVEMENT,
@@ -1377,9 +1433,13 @@ export class MekRules extends UnitTypeRulesBase {
             slots.push(slot);
             slotsByLocation.set(slot.loc!, slots);
         }
+        const hipEffectSlots = new Set(this.standardHipEffectSlots(
+            relevantSlots,
+            this.isQuadrupedMek(),
+        ));
         const modifiers: PSRModifier[] = [];
         for (const [loc, slots] of slotsByLocation) {
-            const destroyedHipsCount = slots.filter(slot => this.isNamedCrit(slot, 'Hip')).length;
+            const destroyedHipsCount = slots.filter(slot => hipEffectSlots.has(slot)).length;
             const destroyedLegActuatorsCount = slots.filter(slot => this.isNamedCrit(slot, 'Leg')).length;
             if (destroyedHipsCount > 0) {
                 modifiers.push({
@@ -1961,8 +2021,9 @@ export class MekRules extends UnitTypeRulesBase {
                 walk -= damage.destroyedHipsCount;
             }
         } else if (isQuadruped) {
-            if (damage.destroyedHipsCount !== 0) {
-                walk -= damage.destroyedHipsCount;
+            const standardHipHits = this.standardHipEffectHitCount(damage.destroyedHipsCount, true);
+            if (standardHipHits !== 0) {
+                walk -= standardHipHits;
                 moveImpaired = true;
             }
             if (damage.destroyedLegsCount <= 2) {

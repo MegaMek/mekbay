@@ -3575,6 +3575,92 @@ describe('MekRules', () => {
         }
     });
 
+    it('starts standard CORE quad hip movement and PSR effects with the second hip hit', () => {
+        const locations = ['FLL', 'FRL', 'RLL', 'RRL'];
+
+        for (let hipHits = 0; hipHits <= locations.length; hipHits++) {
+            const standardHipHits = Math.max(0, hipHits - 1);
+            const rules = createRulesHarness({
+                subtype: 'Quad BattleMek',
+                internalLocations: locations,
+                critSlots: locations.slice(0, hipHits).map((loc, index) => ({
+                    ...crit('Hip'),
+                    id: `${loc}-hip`,
+                    loc,
+                    slot: 0,
+                    destroyed: index + 1,
+                })),
+                walk: 5,
+                run: 8,
+            });
+            const movement = rules.movementState();
+            const hipPSRModifier = rules.PSRModifiers().modifiers
+                .filter(modifier => modifier.reason === 'Hip Destroyed')
+                .reduce((total, modifier) => total + (modifier.pilotCheck ?? 0), 0);
+
+            expect(rules.systemsStatus().destroyedHipsCount).withContext(`${hipHits} hip hits`).toBe(hipHits);
+            expect(movement).withContext(`${hipHits} hip hits`).toEqual(jasmine.objectContaining({
+                walk: 5 - standardHipHits,
+                run: Math.round((5 - standardHipHits) * 1.5),
+                moveImpaired: standardHipHits > 0,
+            }));
+            expect(hipPSRModifier).withContext(`${hipHits} hip hits`).toBe(standardHipHits);
+            expect(rules.getCommittedDamageMovementModePSRCheck('run', 1)?.kind)
+                .withContext(`${hipHits} hip hits while running`)
+                .toBe(standardHipHits > 0 ? PSR_CHECK_KIND.DAMAGED_HIP_MOVEMENT : undefined);
+            expect(rules.getCommittedDamageMovementModePSRCheck('jump', 1)?.kind)
+                .withContext(`${hipHits} hip hits while jumping`)
+                .toBe(standardHipHits > 0 ? PSR_CHECK_KIND.DAMAGED_LEG_ACTUATOR_MOVEMENT : undefined);
+        }
+    });
+
+    it('starts current-hit CORE quad hip PSRs with the second hip hit', () => {
+        const locations = ['FLL', 'FRL', 'RLL', 'RRL'];
+
+        for (let hipHits = 1; hipHits <= locations.length; hipHits++) {
+            const forceUnit = createForceUnitHarness({
+                subtype: 'Quad BattleMek',
+                internalLocations: locations,
+                critSlots: locations.slice(0, hipHits).map((loc, index) => ({
+                    ...crit('Hip', false),
+                    id: `${loc}-hip`,
+                    loc,
+                    slot: 0,
+                    destroying: index + 1,
+                })),
+            });
+            forceUnit.getCritSlots().forEach(slot => forceUnit.rules.evaluateCritSlotHit(slot));
+            const hipChecks = forceUnit.turnState().getPSRChecks()
+                .filter(check => check.reason === 'Hip hit');
+
+            expect(hipChecks.length).withContext(`${hipHits} current hip hits`).toBe(hipHits - 1);
+            expect(hipChecks.reduce((total, check) => total + (check.pilotCheck ?? 0), 0))
+                .withContext(`${hipHits} current hip hits`)
+                .toBe(hipHits - 1);
+        }
+    });
+
+    it('applies a CORE quad hip PSR when the first hip was destroyed on an earlier turn', () => {
+        const forceUnit = createForceUnitHarness({
+            subtype: 'Quad BattleMek',
+            internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+            critSlots: [
+                { ...crit('Hip'), id: 'FLL-hip', loc: 'FLL', slot: 0, destroyed: 1 },
+                { ...crit('Hip', false), id: 'FRL-hip', loc: 'FRL', slot: 0, destroying: 2 },
+            ],
+        });
+        const currentHip = forceUnit.getCritSlots().find(slot => slot.loc === 'FRL')!;
+
+        forceUnit.rules.evaluateCritSlotHit(currentHip);
+
+        expect(forceUnit.turnState().getPSRChecks()).toEqual([jasmine.objectContaining({
+            loc: 'FRL',
+            fallCheck: 1,
+            pilotCheck: 1,
+            reason: 'Hip hit',
+        })]);
+    });
+
     it('keeps the fixed Core 1/2 profile when the sole remaining Quad leg has actuator damage', () => {
         const rules = createRulesHarness({
             internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
@@ -3642,6 +3728,50 @@ describe('MekRules', () => {
         });
 
         expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 2, run: 3 }));
+    });
+
+    it('applies every TW Quad hip hit to movement and PSRs from the first hit', () => {
+        const locations = ['RLL', 'FLL', 'RRL', 'FRL'];
+        const expectedMovement = [
+            { walk: 5, run: 8 },
+            { walk: 3, run: 5 },
+            { walk: 2, run: 3 },
+            { walk: 1, run: 2 },
+            { walk: 0, run: 0 },
+        ];
+
+        for (let hipHits = 0; hipHits <= locations.length; hipHits++) {
+            const rules = createRulesHarness({
+                subtype: 'Quad BattleMek',
+                internalLocations: locations,
+                critSlots: locations.slice(0, hipHits).map((loc, index) => ({
+                    ...crit('Hip'),
+                    id: `${loc}-hip`,
+                    loc,
+                    slot: 0,
+                    destroyed: index + 1,
+                })),
+                rulesId: 'tw',
+                walk: 5,
+                run: 8,
+            });
+            const hipPSRModifier = rules.PSRModifiers().modifiers
+                .filter(modifier => modifier.reason === 'Hip Destroyed')
+                .reduce((total, modifier) => total + (modifier.pilotCheck ?? 0), 0);
+
+            expect(rules.movementState()).withContext(`${hipHits} hip hits`)
+                .toEqual(jasmine.objectContaining({
+                    ...expectedMovement[hipHits],
+                    moveImpaired: hipHits > 0,
+                }));
+            expect(hipPSRModifier).withContext(`${hipHits} hip hits`).toBe(hipHits * 2);
+            expect(rules.getCommittedDamageMovementModePSRCheck('run', 1)?.kind)
+                .withContext(`${hipHits} hip hits while running`)
+                .toBe(hipHits > 0 ? PSR_CHECK_KIND.DAMAGED_HIP_MOVEMENT : undefined);
+            expect(rules.getCommittedDamageMovementModePSRCheck('jump', 1)?.kind)
+                .withContext(`${hipHits} hip hits while jumping`)
+                .toBe(hipHits > 0 ? PSR_CHECK_KIND.DAMAGED_LEG_ACTUATOR_MOVEMENT : undefined);
+        }
     });
 
     it('reduces TW ground MP to zero at the terminal hip threshold without making the Mek immobile', () => {
