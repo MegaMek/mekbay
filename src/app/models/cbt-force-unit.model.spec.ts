@@ -1987,6 +1987,28 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.getHeight()).toBe(2);
     });
 
+    it('resolves patchwork armor and hybrid structure from typed location layouts', () => {
+        const forceUnit = createForceUnit({
+            ...createMekUnit(),
+            armorType: 'Patchwork',
+            structureType: 'Hybrid',
+            patchworkLayout: {
+                CT: { type: 0, clan: false },
+                LA: { type: 25, clan: false },
+            },
+            hybridLayout: {
+                CT: { type: 0, clan: false },
+                LA: { type: 5, clan: false },
+            },
+        });
+
+        expect(forceUnit.getArmorTypeAt('CT')).toBe('STANDARD');
+        expect(forceUnit.getArmorTypeAt('LA')).toBe('IMPACT_RESISTANT');
+        expect(forceUnit.hasArmorType('IMPACT_RESISTANT')).toBeTrue();
+        expect(forceUnit.getStructureKindAt('CT')).toBe('standard');
+        expect(forceUnit.getStructureKindAt('LA')).toBe('composite');
+    });
+
     it('automatically floods armorless submerged locations based on posture', () => {
         // Keep posture under this test's explicit control; Core's flooded-leg
         // automatic fall is exercised by the phase-resolution coverage.
@@ -2127,6 +2149,25 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         ]);
         expect(forceUnit.turnState().getPendingCriticalChances()
             .every(chance => !chance.locationDestroyed)).toBeTrue();
+    });
+
+    it('derives phase damage from the typed structure kind', () => {
+        const composite = createCriticalHeatSinkForceUnit().forceUnit;
+        spyOn(composite, 'getStructureKindAt').and.returnValue('composite');
+
+        composite.addInternalHits('LT', 2);
+
+        expect(composite.turnState().dmgReceived()).toBe(1);
+
+        const reinforced = createCriticalHeatSinkForceUnit().forceUnit;
+        spyOn(reinforced, 'getStructureKindAt').and.returnValue('reinforced');
+        reinforced.locations!.internal.set('LT', { loc: 'LT', points: 10 });
+
+        reinforced.addInternalHits('LT', 1);
+        expect(reinforced.turnState().dmgReceived()).toBe(0);
+
+        reinforced.addInternalHits('LT', 1);
+        expect(reinforced.turnState().dmgReceived()).toBe(1);
     });
 
     it('does not queue automatic critical chances when that automation is no', () => {
@@ -2960,7 +3001,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.pendingFallCount()).toBe(0);
     });
 
-    it('keeps a fall pending until completion, retains its rolls, then releases seatbelt work', () => {
+    it('keeps a fall and its exact dice across save/reload until completion', () => {
         const forceUnit = createForceUnit();
         forceUnit.setCondition('prone', true);
         const triggers: CBTUnitAutomationTrigger[] = [];
@@ -2980,20 +3021,32 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const pending = forceUnit.getPendingFall()!;
 
         expect(forceUnit.setPendingFallRolls(pending.id, 4, [{
-            hitLocationRoll: 7,
             hitLocationDice: [5, 2],
             tripodLegRoll: null,
-        }], [4])).toBeTrue();
+        }])).toBeTrue();
         expect(forceUnit.getPendingFall(pending.id)).toEqual(jasmine.objectContaining({
             orientationRoll: 4,
-            orientationDice: [4],
             damageRolls: [{
-                hitLocationRoll: 7,
                 hitLocationDice: [5, 2],
                 tripodLegRoll: null,
             }],
         }));
         expect('falling' in forceUnit.serialize().state).toBeFalse();
+
+        const restored = CBTForceUnit.deserialize(
+            forceUnit.serialize(),
+            new TestCBTForce('Restored Fall Force', dataService, unitInitializer, injector),
+            dataService,
+            unitInitializer,
+            injector,
+        );
+        expect(restored.getPendingFall(pending.id)).toEqual(jasmine.objectContaining({
+            orientationRoll: 4,
+            damageRolls: [{
+                hitLocationDice: [5, 2],
+                tripodLegRoll: null,
+            }],
+        }));
 
         expect(forceUnit.completePendingFall(pending.id)).toBeTrue();
         expect(forceUnit.pendingFallCount()).toBe(0);

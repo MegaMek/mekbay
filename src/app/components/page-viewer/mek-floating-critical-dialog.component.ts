@@ -6,7 +6,11 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject, signal, viewChild } from '@angular/core';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import type { MekHitArc } from '../../models/force-serialization';
-import { resolveMekFallHitLocation } from '../../utils/mek-falling.util';
+import {
+    resolveMekFallHitLocation,
+    twoD6ForTotal,
+    twoD6Total,
+} from '../../utils/mek-falling.util';
 import {
     clusterTableForUnit,
     hitLocationRows,
@@ -17,11 +21,9 @@ import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 export interface MekFloatingCriticalDialogData {
     readonly unit: CBTForceUnit;
     readonly hitArc: MekHitArc;
-    readonly initialLocationRoll?: number;
-    readonly initialRoll?: readonly [number, number];
+    readonly initialDice?: readonly [number, number];
     readonly initialTripodLegRoll?: number;
     readonly onDraftChange?: (
-        locationRoll: number | null,
         dice: readonly [number, number] | null,
         tripodLegRoll: number | null,
     ) => void;
@@ -140,11 +142,15 @@ export class MekFloatingCriticalDialogComponent {
     readonly hitLocationTable: MekHitLocationTable = clusterTableForUnit(this.data.unit.getUnit()).hitLocationTable
         ?? 'biped';
     readonly facingLabel = floatingCriticalFacingLabel(this.data.hitArc);
-    readonly initialDice = validDice(this.data.initialRoll, 2) as readonly [number, number] | null;
+    readonly initialDice = validDice(this.data.initialDice, 2) as readonly [number, number] | null;
     readonly d6Rolls = [1, 2, 3, 4, 5, 6] as const;
     readonly locationRows = hitLocationRows(this.hitLocationTable).map((_row, index) =>
         floatingLocationRow(this.hitLocationTable, index + 2, this.data.hitArc));
-    readonly locationRoll = signal<number | null>(validLocationRoll(this.data.initialLocationRoll));
+    private readonly hitLocationDice = signal<readonly [number, number] | null>(this.initialDice);
+    readonly locationRoll = computed(() => {
+        const dice = this.hitLocationDice();
+        return dice ? twoD6Total(dice) : null;
+    });
     readonly tripodLegRoll = signal<number | null>(validTripodLegRoll(this.data.initialTripodLegRoll));
     readonly isRolling = computed(() => this.roller()?.isRolling() ?? false);
     readonly selectedResult = computed(() => {
@@ -172,23 +178,24 @@ export class MekFloatingCriticalDialogComponent {
     onFinished(event: { readonly results: readonly number[]; readonly sum: number }): void {
         if (event.results.length !== 2 || !validDice(event.results, 2)) return;
         const dice = [event.results[0], event.results[1]] as const;
-        const row = this.locationRows.find(candidate => candidate.roll === event.sum);
+        const row = this.locationRows.find(candidate => candidate.roll === twoD6Total(dice));
         const tripodRoll = row?.requiresTripodLegRoll
             ? Math.floor(Math.random() * 6) + 1
             : null;
-        this.setDraft(event.sum, dice, tripodRoll);
+        this.setDraft(dice, tripodRoll);
     }
 
     selectLocation(row: FloatingCriticalLocationRow): void {
         if (this.isRolling()) return;
-        this.setDraft(row.roll, null, null);
+        const dice = twoD6ForTotal(row.roll);
+        if (dice) this.setDraft(dice, null);
     }
 
     selectTripodLeg(roll: number): void {
         if (!Number.isInteger(roll) || roll < 1 || roll > 6) return;
-        const locationRoll = this.locationRoll();
-        if (locationRoll === null) return;
-        this.setDraft(locationRoll, null, roll);
+        const dice = this.hitLocationDice();
+        if (!dice) return;
+        this.setDraft(dice, roll);
     }
 
     apply(): void {
@@ -206,13 +213,12 @@ export class MekFloatingCriticalDialogComponent {
     }
 
     private setDraft(
-        locationRoll: number,
-        dice: readonly [number, number] | null,
+        dice: readonly [number, number],
         tripodLegRoll: number | null,
     ): void {
-        this.locationRoll.set(locationRoll);
+        this.hitLocationDice.set(dice);
         this.tripodLegRoll.set(tripodLegRoll);
-        this.data.onDraftChange?.(locationRoll, dice, tripodLegRoll);
+        this.data.onDraftChange?.(dice, tripodLegRoll);
     }
 }
 
@@ -234,10 +240,6 @@ function floatingCriticalFacingLabel(hitArc: MekHitArc): string {
     if (hitArc === 'right') return 'Right Side';
     if (hitArc === 'rear') return 'Rear';
     return 'Front';
-}
-
-function validLocationRoll(value: number | undefined): number | null {
-    return value !== undefined && Number.isInteger(value) && value >= 2 && value <= 12 ? value : null;
 }
 
 function validTripodLegRoll(value: number | undefined): number | null {

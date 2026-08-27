@@ -25,6 +25,7 @@ import {
     mekFallDamageGroups,
     resolveMekFallHitLocation,
     resolveMekFallOrientation,
+    twoD6Total,
     type ResolvedMekFallDamageGroup,
 } from '../utils/mek-falling.util';
 import { clusterTableForUnit } from '../utils/record-sheet-reference-table';
@@ -138,13 +139,7 @@ export class FallingResolutionService {
         trigger: FallingAutomationTrigger,
     ): AcceptedFallingDamageDialogResult {
         const pending = unit.getPendingFall(trigger.id);
-        const generatedOrientation = !pending
-            || pending.orientationRoll === null
-            || pending.orientationRoll < 1
-            || pending.orientationRoll > 6;
-        const orientationRoll = generatedOrientation
-            ? this.rollD6()
-            : pending.orientationRoll;
+        const orientationRoll = pending?.orientationRoll ?? this.rollD6();
         const orientation = resolveMekFallOrientation(unit.gameRules.id, orientationRoll);
         const damageGroups = mekFallDamageGroups(mekFallDamage(
             unit.getUnit().tons,
@@ -156,16 +151,9 @@ export class FallingResolutionService {
 
         damageGroups.forEach((damage, index) => {
             const saved = pending?.damageRolls[index];
-            const generatedHitLocation = !saved
-                || saved.hitLocationRoll === null
-                || saved.hitLocationRoll < 2
-                || saved.hitLocationRoll > 12;
-            const hitLocationDice = generatedHitLocation
-                ? [this.rollD6(), this.rollD6()] as const
-                : saved.hitLocationDice ?? null;
-            const hitLocationRoll = generatedHitLocation
-                ? hitLocationDice![0] + hitLocationDice![1]
-                : saved.hitLocationRoll;
+            const hitLocationDice = saved?.hitLocationDice
+                ?? [this.rollD6(), this.rollD6()] as const;
+            const hitLocationRoll = twoD6Total(hitLocationDice);
             const preliminary = resolveMekFallHitLocation(
                 hitLocationTable,
                 orientation.hitArc,
@@ -173,14 +161,9 @@ export class FallingResolutionService {
             );
             const needsTripodLeg = preliminary.location === null
                 && preliminary.tripodLegModifier !== undefined;
-            const generatedTripodLeg = needsTripodLeg
-                && (!saved || saved.tripodLegRoll === null
-                    || saved.tripodLegRoll < 1 || saved.tripodLegRoll > 6);
             const tripodLegRoll = !needsTripodLeg
                 ? null
-                : generatedTripodLeg
-                    ? this.rollD6()
-                    : saved!.tripodLegRoll;
+                : saved?.tripodLegRoll ?? this.rollD6();
             const result = resolveMekFallHitLocation(
                 hitLocationTable,
                 orientation.hitArc,
@@ -192,10 +175,8 @@ export class FallingResolutionService {
             }
 
             damageRolls.push({
-                hitLocationRoll,
                 hitLocationDice,
                 tripodLegRoll,
-                tripodLegDice: generatedTripodLeg ? [tripodLegRoll!] : saved?.tripodLegDice ?? null,
             });
             groups.push({ ...result, damage });
         });
@@ -204,7 +185,6 @@ export class FallingResolutionService {
             trigger.id,
             orientationRoll,
             damageRolls,
-            generatedOrientation ? [orientationRoll] : pending?.orientationDice ?? null,
         );
         return { action: 'accept', orientation, groups };
     }
@@ -230,9 +210,7 @@ export class FallingResolutionService {
             for (const location of applied.locations) {
                 damageByLocation.set(
                     location.location,
-                    (damageByLocation.get(location.location) ?? 0)
-                        + location.armorDamage
-                        + location.internalDamage,
+                    (damageByLocation.get(location.location) ?? 0) + location.appliedDamage,
                 );
             }
             const locations = Array.from(damageByLocation, ([location, damage]) =>

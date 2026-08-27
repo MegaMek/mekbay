@@ -196,15 +196,13 @@ describe('MekCriticalResolutionService', () => {
             },
             setPendingFloatingCriticalLocation: (
                 id: string,
-                locationRoll: number | null,
                 dice: readonly [number, number] | null,
                 tripodLegRoll: number | null,
             ) => updateHit(id, pending => ({
                 ...pending,
                 floatingLocation: {
                     hitArc: pending.floatingLocation!.hitArc,
-                    ...(locationRoll !== null ? { locationRoll } : {}),
-                    ...(dice !== null ? { dice } : {}),
+                    ...(dice !== null ? { hitLocationDice: dice } : {}),
                     ...(tripodLegRoll !== null ? { tripodLegRoll } : {}),
                 },
             })),
@@ -232,6 +230,8 @@ describe('MekCriticalResolutionService', () => {
             turnState: () => turnState,
             getNotificationDisplayName: () => 'Atlas AS7-D',
             getUnit: () => ({ structureType: '', armorType: '', features: [], comp: [] }),
+            getArmorTypeAt: () => 'STANDARD',
+            getStructureKindAt: () => 'standard',
             getCritSlots: () => [],
             getCritSlot: () => null,
             usesFloatingCriticals: () => false,
@@ -603,12 +603,7 @@ describe('MekCriticalResolutionService', () => {
     });
 
     it('persists an exact Hardened Armor facing decision and restores its modifier', async () => {
-        (unit as unknown as { getUnit: () => object }).getUnit = () => ({
-            structureType: '',
-            armorType: 'Hardened',
-            features: [],
-            comp: [],
-        });
+        (unit as unknown as { getArmorTypeAt: () => string }).getArmorTypeAt = () => 'HARDENED';
         const operation = service.queueChance(unit, {
             id: 'chance:hardened',
             location: 'CT',
@@ -717,11 +712,10 @@ describe('MekCriticalResolutionService', () => {
         }));
 
         const floatingData = createDialog.calls.argsFor(1)[1].data;
-        floatingData.onDraftChange(7, [3, 4], null);
+        floatingData.onDraftChange([3, 4], null);
         expect(pendingHits[0].floatingLocation).toEqual({
             hitArc: 'front',
-            locationRoll: 7,
-            dice: [3, 4],
+            hitLocationDice: [3, 4],
         });
 
         closeDialog(1, { action: 'apply', location: 'CT' });
@@ -746,8 +740,7 @@ describe('MekCriticalResolutionService', () => {
             remainingHits: 1,
             floatingLocation: {
                 hitArc: 'rear',
-                locationRoll: 8,
-                dice: [2, 6],
+                hitLocationDice: [2, 6],
             },
         });
 
@@ -755,15 +748,14 @@ describe('MekCriticalResolutionService', () => {
         expect(createDialog.calls.argsFor(0)[0]).toBe(MekFloatingCriticalDialogComponent);
         expect(createDialog.calls.argsFor(0)[1].data).toEqual(jasmine.objectContaining({
             hitArc: 'rear',
-            initialLocationRoll: 8,
-            initialRoll: [2, 6],
+            initialDice: [2, 6],
         }));
         closeDialog(0, undefined);
         await first;
 
         const reopened = service.resume(unit);
         expect(createDialog.calls.argsFor(1)[0]).toBe(MekFloatingCriticalDialogComponent);
-        expect(createDialog.calls.argsFor(1)[1].data.initialRoll).toEqual([2, 6]);
+        expect(createDialog.calls.argsFor(1)[1].data.initialDice).toEqual([2, 6]);
         closeDialog(1, undefined);
         await reopened;
     });

@@ -35,6 +35,13 @@ import { uuidv7 } from '../../utils/uuid.util';
 
 type ArmLocation = 'LA' | 'RA';
 
+interface QuadKickArcState {
+    readonly canKick: boolean;
+    readonly destroyedLegActuatorsCount: number;
+}
+
+type QuadKickArcStates = readonly [front: QuadKickArcState, rear: QuadKickArcState];
+
 const LEG_DAMAGE_MOVEMENT_CRITICAL_NAMES: Partial<Record<PSRCheckKind, readonly string[]>> = {
     [PSR_CHECK_KIND.DAMAGED_LEG_ACTUATOR_MOVEMENT]: ['Leg', 'Foot', 'Hip'],
     [PSR_CHECK_KIND.DAMAGED_HIP_MOVEMENT]: ['Hip'],
@@ -100,6 +107,7 @@ export class MekRules extends UnitTypeRulesBase {
     override readonly standingUpPSRModifier: number = -1;
     protected get gyroHitPSRModifier(): number { return 2; }
     protected get hipPSRModifier(): number { return 1; }
+    protected get usesArcSpecificQuadKickEffects(): boolean { return true; }
 
     /** The first hip hit on a CORE quad has only the quad-specific effects. */
     protected standardHipEffectHitCount(totalHipHits: number, isQuadruped: boolean): number {
@@ -1344,7 +1352,7 @@ export class MekRules extends UnitTypeRulesBase {
                 reason: "Mounts AES in its legs"
             });
         }
-        const hardenedArmor = this.unit.getUnit().armorType === 'Hardened';
+        const hardenedArmor = this.unit.hasArmorType('HARDENED');
         if (hardenedArmor) {
             preExisting += 1; // Hardened armor gives +1 modifier
             modifiers.push({
@@ -1584,7 +1592,7 @@ export class MekRules extends UnitTypeRulesBase {
         if (movement.run === 0) return this.getRunningMinimumMovementDistance();
 
         const runValueCoeff = 1.5 + this.unit.getRunMovementMultiplierBonus(turnState);
-        const armorModifierOnRun = (this.unit.getUnit().armorType === 'Hardened') ? -1 : 0;
+        const armorModifierOnRun = this.hardenedArmorRunModifier();
         return Math.max(0, Math.round(movement.walk * runValueCoeff) + armorModifierOnRun);
     }
 
@@ -1837,7 +1845,7 @@ export class MekRules extends UnitTypeRulesBase {
         const restoredWalk = unit.walk + this.restoredEquipmentWalkMP(mobilityEquipment);
         const restoredRun = Math.max(
             0,
-            Math.round(restoredWalk * 1.5) + (unit.armorType === 'Hardened' ? -1 : 0),
+            Math.round(restoredWalk * 1.5) + this.hardenedArmorRunModifier(),
         );
         const baselineJump = this.equipmentAdjustedJumpBaseline(
             unit.jump,
@@ -2091,7 +2099,7 @@ export class MekRules extends UnitTypeRulesBase {
         // Run MP
         const hasWorkingMASC = systemsStatus.hasMASC && !systemsStatus.destroyedMASC;
         const hasWorkingSupercharger = systemsStatus.hasSupercharger && !systemsStatus.destroyedSupercharger;
-        const armorModifierOnRun = (unit.armorType === 'Hardened') ? -1 : 0;
+        const armorModifierOnRun = this.hardenedArmorRunModifier();
         let runValue: number;
         let maxRunValue: number;
         if (walkValue === 0 || baseMovement.runDisabled) {
@@ -2142,6 +2150,7 @@ export class MekRules extends UnitTypeRulesBase {
         if (!this.unit.isLoaded()) return null;
 
         const systemsStatus = this.systemsStatus();
+        const quadKickArcStates = this.quadKickArcStates();
         const destroyedLA = this.unit.isInternalLocCommittedDestroyed('LA');
         const destroyedRA = this.unit.isInternalLocCommittedDestroyed('RA');
         const locationModifiers = systemsStatus.locationModifiers;
@@ -2149,7 +2158,9 @@ export class MekRules extends UnitTypeRulesBase {
         const chargeDamage = this.chargeDamage();
 
         return {
-            canKick: systemsStatus.destroyedLegsCount === 0 && systemsStatus.destroyedHipsCount === 0,
+            canKick: quadKickArcStates
+                ? quadKickArcStates.some(state => state.canKick)
+                : systemsStatus.destroyedLegsCount === 0 && systemsStatus.destroyedHipsCount === 0,
             kickMod: (systemsStatus.destroyedLegActuatorsCount * 2) + systemsStatus.destroyedFeetCount
                 - (systemsStatus.hasFunctionalLegAES ? 1 : 0),
             canPunch: {
@@ -2177,6 +2188,55 @@ export class MekRules extends UnitTypeRulesBase {
             chargeDamage,
         };
     });
+
+    private hardenedArmorRunModifier(): number {
+        const config = inferMekConfigFromLocations(this.unit.locations?.internal.keys() ?? []);
+        return getMekLegLocations(config).some(location => this.unit.getArmorTypeAt(location) === 'HARDENED')
+            ? -1
+            : 0;
+    }
+
+    /** CORE quad kicks resolve upper/lower actuator damage and hip availability by arc. */
+    private quadKickArcStates(): QuadKickArcStates | null {
+        if (!this.usesArcSpecificQuadKickEffects || !this.isQuadrupedMek()) return null;
+
+        const frontLegs = ['FLL', 'FRL'] as const;
+        const rearLegs = ['RLL', 'RRL'] as const;
+        const allLegs = [...frontLegs, ...rearLegs];
+        const critSlots = this.unit.getCritSlots();
+        const hasDestroyedLeg = (locations: readonly string[]) => locations.some(loc => this.isLegDestroyed(loc, true));
+        const hasUnavailableHip = (locations: readonly string[]) => critSlots.some(slot =>
+            locations.some(loc => slot.loc === loc)
+            && this.isNamedCrit(slot, 'Hip')
+            && this.isCritUnavailable(slot));
+        const destroyedLegActuatorsCount = (locations: readonly string[]) => critSlots.filter(slot =>
+            !!slot.loc
+            && locations.some(loc => slot.loc === loc)
+            && !this.isLegDestroyed(slot.loc, true)
+            && (this.isNamedCrit(slot, 'Upper Leg') || this.isNamedCrit(slot, 'Lower Leg'))
+            && this.isCritUnavailable(slot)).length;
+
+        const frontLegDestroyed = hasDestroyedLeg(frontLegs);
+        const destroyedLegsCount = allLegs.filter(loc => this.isLegDestroyed(loc, true)).length;
+        const hipHitsCount = critSlots.filter(slot => slot.loc
+            && allLegs.some(loc => slot.loc === loc)
+            && !this.isLegDestroyed(slot.loc, true)
+            && this.isNamedCrit(slot, 'Hip')
+            && this.isCritUnavailable(slot)).length;
+        const standardHipEffectPreventsKicking = this.standardHipEffectHitCount(hipHitsCount, true) > 0;
+        const quadLegLossPreventsKicking = destroyedLegsCount >= 2;
+        const cannotKick = standardHipEffectPreventsKicking || quadLegLossPreventsKicking;
+        return [
+            {
+                canKick: !cannotKick && !frontLegDestroyed && !hasUnavailableHip(frontLegs),
+                destroyedLegActuatorsCount: destroyedLegActuatorsCount(frontLegs),
+            },
+            {
+                canKick: !cannotKick && !frontLegDestroyed && !hasDestroyedLeg(rearLegs) && !hasUnavailableHip(rearLegs),
+                destroyedLegActuatorsCount: destroyedLegActuatorsCount(rearLegs),
+            },
+        ];
+    }
 
     override chargeDamage(): ChargeDamage {
         const critSlots = this.unit.getCritSlots();
@@ -2221,7 +2281,13 @@ export class MekRules extends UnitTypeRulesBase {
             location,
             ignoreMyomer,
         );
-        return resolved ? { ...display, damage: resolved.text } : display;
+        const kickHitDisplay = attackType === 'kick' ? this.resolveKickArcHitDisplay(entry) : null;
+        if (!resolved && !kickHitDisplay) return display;
+        return {
+            ...display,
+            ...(resolved && { damage: resolved.text }),
+            ...(kickHitDisplay && { hit: kickHitDisplay.text }),
+        };
     }
 
     resolveInventoryMeleeDamageDisplay(
@@ -2260,6 +2326,30 @@ export class MekRules extends UnitTypeRulesBase {
         const designBaselineDamage = attackType === 'punch'
             ? this.getPunchDesignBaselineDamage(effect.baseDamage, location)
             : effect.baseDamage;
+        const quadKickArcStates = attackType === 'kick' ? this.quadKickArcStates() : null;
+        if (quadKickArcStates) {
+            const arcResults = quadKickArcStates.map(state => state.canKick
+                ? this.computeMeleeDamage(
+                    effect.baseDamage,
+                    attackType,
+                    location,
+                    effect.ignoreMyomer,
+                    state.destroyedLegActuatorsCount,
+                )
+                : null);
+            const arcTexts = arcResults.map(result => result
+                ? (result.damage === result.maxDamage ? `${result.damage}` : `${result.damage} [${result.maxDamage}]`)
+                : '—');
+            const firstAvailableResult = arcResults.find(result => result !== null);
+            return {
+                damage: firstAvailableResult?.damage ?? 0,
+                text: arcTexts[0] === arcTexts[1]
+                    ? arcTexts[0]
+                    : `F:${arcTexts[0]} | R:${arcTexts[1]}`,
+                weakened: quadKickArcStates.some((state, index) =>
+                    !state.canKick || (arcResults[index]?.damage ?? designBaselineDamage) < designBaselineDamage),
+            };
+        }
         const { damage, maxDamage } = this.computeMeleeDamage(
             effect.baseDamage,
             attackType,
@@ -2270,6 +2360,38 @@ export class MekRules extends UnitTypeRulesBase {
             damage,
             text: damage === maxDamage ? `${damage}` : `${damage} [${maxDamage}]`,
             weakened: damage < designBaselineDamage,
+        };
+    }
+
+    /** Front/rear CORE quad kick hit modifiers, front first. Identical values collapse to one. */
+    resolveKickArcHitDisplay(entry: MountedEquipment): { text: string; weakened: boolean } | null {
+        if (!entry.isIntrinsicPhysicalAttack()
+            || (entry.name.toLowerCase() !== 'kick' && entry.name.toLowerCase() !== 'kick [talons]')) return null;
+        const arcStates = this.quadKickArcStates();
+        if (!arcStates) return null;
+
+        const arcDisplays = arcStates.map(state => {
+            if (!state.canKick) return { text: '—', weakened: true };
+            const resolution = this.unit.gameRules.resolveToHit({
+                subject: entry,
+                stateModifiers: [
+                    ...this.getKickToHitModifierBreakdown(state.destroyedLegActuatorsCount),
+                    ...this.getUnitEquipmentToHitModifiers(entry),
+                ],
+            });
+            const value = resolution.value;
+            const text = value === null
+                ? '—'
+                : typeof value === 'number'
+                    ? (value >= 0 ? `+${value}` : value.toString())
+                    : value;
+            return { text, weakened: resolution.weakened };
+        });
+        return {
+            text: arcDisplays[0].text === arcDisplays[1].text
+                ? arcDisplays[0].text
+                : `${arcDisplays[0].text}/${arcDisplays[1].text}`,
+            weakened: arcDisplays.some(display => display.weakened),
         };
     }
 
@@ -2433,25 +2555,9 @@ export class MekRules extends UnitTypeRulesBase {
                     break;
                 case 'kick [talons]':
                 case 'kick':
-                    if (systemsStatus.destroyedLegActuatorsCount > 0) {
-                        hitModifierBreakdown.push({
-                            label: this.countedDestroyedLabel('Leg Actuator', systemsStatus.destroyedLegActuatorsCount),
-                            modifier: systemsStatus.destroyedLegActuatorsCount * 2,
-                            weakened: true
-                        });
-                    }
-                    if (systemsStatus.destroyedFeetCount > 0) {
-                        hitModifierBreakdown.push({
-                            label: this.countedDestroyedLabel('Foot Actuator', systemsStatus.destroyedFeetCount),
-                            modifier: systemsStatus.destroyedFeetCount,
-                            weakened: true
-                        });
-                    }
-                    if (systemsStatus.hasFunctionalLegAES) {
-                        hitModifierBreakdown.push({ label: 'Leg AES', modifier: -1 });
-                    } else if (systemsStatus.hasLegAES) {
-                        hitModifierBreakdown.push({ label: 'Leg AES Destroyed', modifier: 0, weakened: true });
-                    }
+                    hitModifierBreakdown.push(...this.getKickToHitModifierBreakdown(
+                        systemsStatus.destroyedLegActuatorsCount,
+                    ));
                     break;
             }
         } else if (entry.isPhysicalWeapon()) {
@@ -2499,6 +2605,31 @@ export class MekRules extends UnitTypeRulesBase {
             hitModifierBreakdown.push(...this.getMountedTargetingComputerModifiers(tarcompWeapon));
         }
         return [...hitModifierBreakdown, ...this.getUnitEquipmentToHitModifiers(entry)];
+    }
+
+    private getKickToHitModifierBreakdown(destroyedLegActuatorsCount: number): ToHitModifierBreakdownEntry[] {
+        const systemsStatus = this.systemsStatus();
+        const breakdown: ToHitModifierBreakdownEntry[] = [];
+        if (destroyedLegActuatorsCount > 0) {
+            breakdown.push({
+                label: this.countedDestroyedLabel('Leg Actuator', destroyedLegActuatorsCount),
+                modifier: destroyedLegActuatorsCount * 2,
+                weakened: true,
+            });
+        }
+        if (systemsStatus.destroyedFeetCount > 0) {
+            breakdown.push({
+                label: this.countedDestroyedLabel('Foot Actuator', systemsStatus.destroyedFeetCount),
+                modifier: systemsStatus.destroyedFeetCount,
+                weakened: true,
+            });
+        }
+        if (systemsStatus.hasFunctionalLegAES) {
+            breakdown.push({ label: 'Leg AES', modifier: -1 });
+        } else if (systemsStatus.hasLegAES) {
+            breakdown.push({ label: 'Leg AES Destroyed', modifier: 0, weakened: true });
+        }
+        return breakdown;
     }
 
     private addArmActuatorBreakdown(
@@ -2617,12 +2748,14 @@ export class MekRules extends UnitTypeRulesBase {
      * @param attackType   - which melee attack (determines which actuators matter)
      * @param loc          - arm location (for punch/claw)
      * @param ignoreMyomer - true for weapons immune to TSM bonus (e.g. flails)
+     * @param kickActuatorHits - optional arc-specific upper/lower leg actuator count
      */
     computeMeleeDamage(
         baseDamage: number,
         attackType: 'punch' | 'kick' | 'club' | 'physWeapon' | 'claw',
         loc?: string,
-        ignoreMyomer?: boolean
+        ignoreMyomer?: boolean,
+        kickActuatorHits?: number,
     ): { damage: number; maxDamage: number } {
         const ss = this.systemsStatus();
         let damage = baseDamage;
@@ -2642,7 +2775,7 @@ export class MekRules extends UnitTypeRulesBase {
                 if (damage < 1) damage = 1;
             }
         } else if (attackType === 'kick') {
-            for (let i = 0; i < ss.destroyedLegActuatorsCount; i++) {
+            for (let i = 0; i < (kickActuatorHits ?? ss.destroyedLegActuatorsCount); i++) {
                 damage = Math.floor(damage * 0.5);
                 if (damage < 1) damage = 1;
             }

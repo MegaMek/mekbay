@@ -41,7 +41,8 @@ describe('CBTEndTurnService', () => {
         let activePilotCrewId = effects.activePilotCrewId === undefined ? 0 : effects.activePilotCrewId;
         let pendingFalls = 0;
         let checkpoint: 'phase-ended' | 'heat-staged' | undefined;
-        const endTurn = jasmine.createSpy('endTurn');
+        let turnCounter = 0;
+        const endTurn = jasmine.createSpy('endTurn').and.callFake(() => { turnCounter++; });
         const resolveEndTurnHeat = jasmine.createSpy('resolveEndTurnHeat');
         const endPhase = jasmine.createSpy('endPhase').and.callFake(() => {
             if (!automaticFall) return;
@@ -64,6 +65,7 @@ describe('CBTEndTurnService', () => {
             heatSources: () => heatSources,
             heatDissipationBalance: () => consumedDissipation,
             getEndTurnCheckpoint: () => checkpoint,
+            getTurnCounter: () => turnCounter,
             markEndTurnPhaseEnded: () => { checkpoint ??= 'phase-ended'; },
             markEndTurnHeatStaged: () => { checkpoint = 'heat-staged'; },
             advanceDeferredUnitChecks,
@@ -162,6 +164,7 @@ describe('CBTEndTurnService', () => {
         const completion = service.endTurn([first.unit, second.unit]);
         const duplicateCompletion = service.endTurn([first.unit, second.unit]);
         await Promise.resolve();
+        await Promise.resolve();
 
         expect(first.endTurn).not.toHaveBeenCalled();
         expect(second.endTurn).not.toHaveBeenCalled();
@@ -180,6 +183,54 @@ describe('CBTEndTurnService', () => {
             'Unit first — Heat and dissipation: Heat 4 → 8',
             'info',
         );
+    });
+
+    it('queues concurrent requests for different unit snapshots without retargeting them', async () => {
+        const first = createUnit('first', 4, 8);
+        const second = createUnit('second', 2, 6);
+        let finishFirstPhase!: (result: boolean) => void;
+        resolvePhase.and.callFake((units: readonly CBTForceUnit[]) => units[0] === first.unit
+            ? new Promise<boolean>(resolve => finishFirstPhase = resolve)
+            : Promise.resolve(true));
+        resolveAutomation.and.callFake((_key: string, events: readonly AutomationReviewEvent[]) =>
+            Promise.resolve(new Set(events.map(event => event.id))));
+
+        const firstCompletion = service.endTurn([first.unit]);
+        const secondCompletion = service.endTurn([second.unit]);
+        await Promise.resolve();
+
+        expect(resolvePhase).toHaveBeenCalledOnceWith([first.unit]);
+        expect(first.endTurn).not.toHaveBeenCalled();
+        expect(second.endTurn).not.toHaveBeenCalled();
+
+        finishFirstPhase(true);
+        expect(await firstCompletion).toBeTrue();
+        expect(await secondCompletion).toBeTrue();
+        expect(resolvePhase.calls.allArgs()).toEqual([[[first.unit]], [[second.unit]]]);
+        expect(first.endTurn).toHaveBeenCalledTimes(1);
+        expect(second.endTurn).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips units already committed by an overlapping queued request', async () => {
+        const first = createUnit('first', 4, 8);
+        const second = createUnit('second', 2, 6);
+        let finishFirstPhase!: (result: boolean) => void;
+        resolvePhase.and.callFake((units: readonly CBTForceUnit[]) => units[0] === first.unit
+            ? new Promise<boolean>(resolve => finishFirstPhase = resolve)
+            : Promise.resolve(true));
+        resolveAutomation.and.callFake((_key: string, events: readonly AutomationReviewEvent[]) =>
+            Promise.resolve(new Set(events.map(event => event.id))));
+
+        const firstCompletion = service.endTurn([first.unit]);
+        const overlapCompletion = service.endTurn([first.unit, second.unit]);
+        await Promise.resolve();
+        finishFirstPhase(true);
+
+        expect(await firstCompletion).toBeTrue();
+        expect(await overlapCompletion).toBeTrue();
+        expect(resolvePhase.calls.allArgs()).toEqual([[[first.unit]], [[second.unit]]]);
+        expect(first.endTurn).toHaveBeenCalledTimes(1);
+        expect(second.endTurn).toHaveBeenCalledTimes(1);
     });
 
     it('leaves the ended phase resumable when the heat review is cancelled', async () => {

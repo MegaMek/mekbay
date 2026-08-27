@@ -3,14 +3,18 @@
 // Author: Drake
 
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import type { ArmorType } from '../models/entity/types';
 import {
     applyMekFallDamage,
     mekFallDamage,
     mekFallDamageGroups,
     resolveMekFallHitLocation,
     resolveMekFallOrientation,
+    twoD6ForTotal,
+    twoD6Total,
     type ResolvedMekFallDamageGroup,
 } from './mek-falling.util';
+import type { MekStructureKind } from './mek-structure-damage.util';
 
 describe('Mek falling rules', () => {
     it('keeps Core facing while selecting rear only on an orientation roll of 1', () => {
@@ -42,6 +46,13 @@ describe('Mek falling rules', () => {
         expect(mekFallDamageGroups(mekFallDamage(55, 0))).toEqual([5, 1]);
         expect(mekFallDamage(55, 2)).toBe(18);
         expect(mekFallDamageGroups(18)).toEqual([5, 5, 5, 3]);
+    });
+
+    it('derives a 2D6 total from the two persisted dice', () => {
+        expect(twoD6Total([1, 6])).toBe(7);
+        expect(twoD6ForTotal(7)).toEqual([3, 4]);
+        expect(twoD6ForTotal(1)).toBeNull();
+        expect(twoD6ForTotal(13)).toBeNull();
     });
 
     it('uses the selected arc and identifies rear torso armor and table criticals', () => {
@@ -152,7 +163,7 @@ describe('Mek falling rules', () => {
 
     it('halves a group that reaches intact Impact-Resistant Armor, rounding down', () => {
         const harness = createDamageHarness({
-            armorType: 'Impact-Resistant',
+            armorType: 'IMPACT_RESISTANT',
             armor: { CT: 10 },
             internal: { CT: 10 },
         });
@@ -165,7 +176,7 @@ describe('Mek falling rules', () => {
 
     it('keeps the minimum one point when Impact-Resistant Armor halves a one-point group', () => {
         const harness = createDamageHarness({
-            armorType: 'Impact_Resistant',
+            armorType: 'IMPACT_RESISTANT',
             armor: { CT: 10 },
             internal: { CT: 10 },
         });
@@ -174,6 +185,87 @@ describe('Mek falling rules', () => {
 
         expect(harness.armorHits.get('CT')).toBe(1);
         expect(result.appliedDamage).toBe(1);
+    });
+
+    it('re-evaluates patchwork armor when damage transfers to another location', () => {
+        const harness = createDamageHarness({
+            armorTypes: { LA: 'STANDARD', LT: 'IMPACT_RESISTANT' },
+            armor: { LA: 1, LT: 10 },
+            internal: { LA: 0, LT: 10, CT: 10 },
+        });
+
+        const result = applyMekFallDamage(harness.unit, [group('LA', 5)], false);
+
+        expect(harness.armorHits).toEqual(new Map([['LA', 1], ['LT', 2]]));
+        expect(result.appliedDamage).toBe(3);
+    });
+
+    it('applies Ferro-Lamellor and Reflective Armor using physical non-attack rules', () => {
+        const ferro = createDamageHarness({
+            armorType: 'FERRO_LAMELLOR', armor: { CT: 10 }, internal: { CT: 10 },
+        });
+        const reflective = createDamageHarness({
+            armorType: 'REFLECTIVE', armor: { CT: 10 }, internal: { CT: 10 },
+        });
+
+        expect(applyMekFallDamage(ferro.unit, [group('CT', 5)], false).appliedDamage).toBe(4);
+        expect(ferro.armorHits.get('CT')).toBe(4);
+        expect(applyMekFallDamage(reflective.unit, [group('CT', 5)], false).appliedDamage).toBe(10);
+        expect(reflective.armorHits.get('CT')).toBe(10);
+    });
+
+    it('doubles a physical hit even when only one point of Reflective Armor remains', () => {
+        const harness = createDamageHarness({
+            armorType: 'REFLECTIVE', armor: { CT: 1 }, internal: { CT: 10 },
+        });
+
+        const result = applyMekFallDamage(harness.unit, [group('CT', 1)], false);
+
+        expect(harness.armorHits.get('CT')).toBe(1);
+        expect(harness.internalHits.get('CT')).toBeUndefined();
+        expect(result.appliedDamage).toBe(2);
+    });
+
+    it('stores Hardened Armor half-pips as integer armor damage', () => {
+        const harness = createDamageHarness({
+            armorType: 'HARDENED', armor: { CT: 20 }, internal: { CT: 10 },
+        });
+
+        const first = applyMekFallDamage(harness.unit, [group('CT', 1)], false);
+        expect(harness.armorHits.get('CT')).toBe(1);
+        expect(first.appliedDamage).toBe(0);
+
+        const second = applyMekFallDamage(harness.unit, [group('CT', 1)], false);
+        expect(harness.armorHits.get('CT')).toBe(2);
+        expect(second.appliedDamage).toBe(1);
+    });
+
+    it('transfers only whole incoming damage after Hardened Armor is exhausted', () => {
+        const harness = createDamageHarness({
+            armorType: 'HARDENED', armor: { CT: 20 }, internal: { CT: 10 },
+        });
+
+        applyMekFallDamage(harness.unit, [group('CT', 19)], false);
+        const result = applyMekFallDamage(harness.unit, [group('CT', 2)], false);
+
+        expect(harness.armorHits.get('CT')).toBe(20);
+        expect(harness.internalHits.get('CT')).toBe(1);
+        expect(result.appliedDamage).toBe(2);
+    });
+
+    it('destroys odd composite structure without fractional transfer damage', () => {
+        const harness = createDamageHarness({
+            armor: { LA: 0, LT: 10 },
+            internal: { LA: 3, LT: 10, CT: 10 },
+            structureKinds: { LA: 'composite' },
+        });
+
+        const result = applyMekFallDamage(harness.unit, [group('LA', 2)], false);
+
+        expect(harness.internalHits.get('LA')).toBe(3);
+        expect(harness.armorHits.get('LT')).toBeUndefined();
+        expect(result.appliedDamage).toBe(3);
+        expect(result.locations).toHaveSize(1);
     });
 
     it('queues a table critical in addition to applying internal damage', () => {
@@ -218,7 +310,7 @@ describe('Mek falling rules', () => {
 
     it('lets remaining Anti-Penetrative Ablation Armor suppress a table critical', () => {
         const harness = createDamageHarness({
-            armorType: 'Anti_Penetrative_Ablation',
+            armorType: 'ANTI_PENETRATIVE_ABLATION',
             armor: { CT: 10 },
             internal: { CT: 10 },
         });
@@ -247,7 +339,9 @@ function createDamageHarness(options: {
     armor: Readonly<Record<string, number>>;
     internal: Readonly<Record<string, number>>;
     initialInternalHits?: Readonly<Record<string, number>>;
-    armorType?: string;
+    armorType?: ArmorType;
+    armorTypes?: Readonly<Record<string, ArmorType>>;
+    structureKinds?: Readonly<Record<string, MekStructureKind>>;
 }): {
     unit: CBTForceUnit;
     armorHits: Map<string, number>;
@@ -264,12 +358,11 @@ function createDamageHarness(options: {
     const queueMekCriticalChance = jasmine.createSpy('queueMekCriticalChance').and.returnValue(true);
     const unit = {
         locations: { internal: new Map(Object.keys(options.internal).map(location => [location, { loc: location }])) },
-        getUnit: () => ({
-            type: 'Mek',
-            subtype: 'BattleMek',
-            armorType: options.armorType ?? 'Standard Armor',
-            structureType: 'Standard',
-        }),
+        getUnit: () => ({ type: 'Mek', subtype: 'BattleMek' }),
+        getArmorTypeAt: (location: string) => options.armorTypes?.[location]
+            ?? options.armorType
+            ?? 'STANDARD',
+        getStructureKindAt: (location: string) => options.structureKinds?.[location] ?? 'standard',
         getArmorPoints: (location: string, rear = false) => options.armor[armorKey(location, rear)] ?? 0,
         getArmorHits: (location: string, rear = false) => armorHits.get(armorKey(location, rear)) ?? 0,
         addArmorHits: (location: string, hits: number, rear = false) => {

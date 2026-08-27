@@ -18,6 +18,7 @@ import {
     type PendingUnitCheckKind,
     type UnitCheckCause,
 } from './unit-check.model';
+import { isOpenCombatPilotDamageGroup } from '../utils/pilot-damage-group.util';
 
 export {
     PENDING_UNIT_CHECK_KINDS,
@@ -131,12 +132,14 @@ export interface SerializedPendingMekCriticalChanceOrigin {
     readonly throughArmorHitArc?: MekHitArc;
 }
 
-/** Persisted location-table choice awaiting confirmation before slot resolution. */
-export interface SerializedPendingMekFloatingCriticalLocation {
-    readonly hitArc: MekHitArc;
-    readonly locationRoll?: number;
-    readonly dice?: readonly [number, number];
+export interface SerializedMekHitLocationRoll {
+    readonly hitLocationDice?: readonly [number, number];
     readonly tripodLegRoll?: number;
+}
+
+/** Persisted location-table choice awaiting confirmation before slot resolution. */
+export interface SerializedPendingMekFloatingCriticalLocation extends SerializedMekHitLocationRoll {
+    readonly hitArc: MekHitArc;
 }
 
 export type SerializedPendingMekCriticalCaseII =
@@ -163,11 +166,15 @@ export interface SerializedPendingMekCritical extends SerializedPendingMekCritic
 
 export type CBTMekFallSource = 'psr' | 'stand-attempt';
 
+export type SerializedMekFallDamageRoll = SerializedMekHitLocationRoll;
+
 /** A fall remains queued until its damage is accepted or explicitly ignored. */
 export interface SerializedPendingMekFall extends SerializedPendingEventBase {
     readonly type: 'mek-fall';
     readonly source: CBTMekFallSource;
     readonly levelsFallen: number;
+    readonly orientationRoll?: number;
+    readonly damageRolls?: readonly SerializedMekFallDamageRoll[];
 }
 
 export type SerializedPendingCheckResult =
@@ -261,6 +268,8 @@ export type SerializedEndTurnCheckpoint = 'phase-ended' | 'heat-staged';
 
 export interface SerializedTurnState {
     turnCounter?: number;
+    /** Open combat-phase pilot damage event retained across save/reload. */
+    pilotDamageGroup?: string;
     endTurnCheckpoint?: SerializedEndTurnCheckpoint;
     airborne?: boolean;
     moveMode?: MotiveModes;
@@ -682,6 +691,25 @@ function sanitizePendingCriticalChanceFacts(
     };
 }
 
+function sanitizeMekHitLocationRoll(
+    record: Record<string, unknown>,
+): SerializedMekHitLocationRoll | null {
+    const hitLocationDice = record['hitLocationDice'] === undefined
+        ? undefined
+        : sanitizeD6Roll(record['hitLocationDice'], [2]);
+    if (record['hitLocationDice'] !== undefined && !hitLocationDice) return null;
+    const tripodLegRoll = record['tripodLegRoll'] === undefined
+        ? undefined
+        : sanitizePendingInteger(record['tripodLegRoll'], 1, 6);
+    if (record['tripodLegRoll'] !== undefined && tripodLegRoll === undefined) return null;
+    return {
+        ...(hitLocationDice
+            ? { hitLocationDice: hitLocationDice as readonly [number, number] }
+            : {}),
+        ...(tripodLegRoll !== undefined ? { tripodLegRoll } : {}),
+    };
+}
+
 function sanitizePendingFloatingCriticalLocation(
     value: unknown,
 ): SerializedPendingMekFloatingCriticalLocation | null {
@@ -689,23 +717,8 @@ function sanitizePendingFloatingCriticalLocation(
     const record = value as Record<string, unknown>;
     const hitArc = record['hitArc'];
     if (hitArc !== 'front' && hitArc !== 'rear' && hitArc !== 'left' && hitArc !== 'right') return null;
-    const locationRoll = record['locationRoll'] === undefined
-        ? undefined
-        : sanitizePendingInteger(record['locationRoll'], 2, 12);
-    if (record['locationRoll'] !== undefined && locationRoll === undefined) return null;
-    const dice = record['dice'] === undefined ? undefined : sanitizeD6Roll(record['dice'], [2]);
-    if (record['dice'] !== undefined && !dice) return null;
-    if (dice && locationRoll !== dice[0] + dice[1]) return null;
-    const tripodLegRoll = record['tripodLegRoll'] === undefined
-        ? undefined
-        : sanitizePendingInteger(record['tripodLegRoll'], 1, 6);
-    if (record['tripodLegRoll'] !== undefined && tripodLegRoll === undefined) return null;
-    return {
-        hitArc,
-        ...(locationRoll !== undefined ? { locationRoll } : {}),
-        ...(dice ? { dice: dice as readonly [number, number] } : {}),
-        ...(tripodLegRoll !== undefined ? { tripodLegRoll } : {}),
-    };
+    const roll = sanitizeMekHitLocationRoll(record);
+    return roll ? { hitArc, ...roll } : null;
 }
 
 function sanitizePendingCheckResolution(record: Record<string, unknown>): SerializedPendingCheckResolution | null {
@@ -873,15 +886,42 @@ function sanitizePendingEvent(record: Record<string, unknown>): SerializedPendin
             const id = sanitizePendingString(record['id'], 256);
             const levelsFallen = sanitizePendingInteger(record['levelsFallen'], 0, 100);
             const source = record['source'];
-            return id && levelsFallen !== undefined && (source === 'psr' || source === 'stand-attempt')
-                ? { type: 'mek-fall', id, source, levelsFallen }
-                : null;
+            const orientationRoll = record['orientationRoll'] === undefined
+                ? undefined
+                : sanitizePendingInteger(record['orientationRoll'], 1, 6);
+            if (!id || levelsFallen === undefined || (source !== 'psr' && source !== 'stand-attempt')
+                || (record['orientationRoll'] !== undefined && orientationRoll === undefined)) return null;
+            const damageRolls = record['damageRolls'] === undefined
+                ? undefined
+                : sanitizePendingMekFallDamageRolls(record['damageRolls']);
+            if (record['damageRolls'] !== undefined && !damageRolls) return null;
+            return {
+                type: 'mek-fall',
+                id,
+                source,
+                levelsFallen,
+                ...(orientationRoll !== undefined ? { orientationRoll } : {}),
+                ...(damageRolls ? { damageRolls } : {}),
+            };
         }
         case 'unit-check':
             return sanitizePendingUnitCheck(record);
         default:
             return null;
     }
+}
+
+function sanitizePendingMekFallDamageRolls(value: unknown): SerializedMekFallDamageRoll[] | undefined {
+    if (!Array.isArray(value) || value.length > 1024) return undefined;
+    const rolls: SerializedMekFallDamageRoll[] = [];
+    for (const candidate of value) {
+        if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return undefined;
+        const record = candidate as Record<string, unknown>;
+        const roll = sanitizeMekHitLocationRoll(record);
+        if (!roll) return undefined;
+        rolls.push(roll);
+    }
+    return rolls;
 }
 
 function sanitizePendingEvents(value: unknown): SerializedPendingEvent[] | undefined {
@@ -900,6 +940,10 @@ function sanitizePendingEvents(value: unknown): SerializedPendingEvent[] | undef
 
 export const TURN_STATE_SCHEMA = Sanitizer.schema<SerializedTurnState>()
     .custom('turnCounter', sanitizeOptionalNonNegativeInteger)
+    .custom('pilotDamageGroup', (value: unknown) => {
+        const group = sanitizePendingString(value, 80);
+        return isOpenCombatPilotDamageGroup(group) ? group : undefined;
+    })
     .custom('endTurnCheckpoint', (value: unknown) =>
         value === 'phase-ended' || value === 'heat-staged' ? value : undefined)
     .custom('airborne', (value: unknown) => typeof value === 'boolean' ? value : undefined)

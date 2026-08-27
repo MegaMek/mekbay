@@ -154,6 +154,8 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         setCondition,
         queueFall: jasmine.createSpy('queueFall'),
         getUnit: () => ({ type: 'Mek', comp: [], ...options.unit } as UnitSummary),
+        hasArmorType: () => false,
+        getArmorTypeAt: () => 'STANDARD',
         getAvailableMotiveModes: () => [
             { mode: 'stationary' as const, label: 'Stationary' },
             { mode: 'walk' as const, label: 'Walk' },
@@ -904,7 +906,6 @@ describe('TurnState', () => {
             expect(turnState.setPendingCriticalRoll('chance:floating', [2, 3])).toBeFalse();
             expect(turnState.setPendingFloatingCriticalLocation(
                 'chance:floating',
-                10,
                 [4, 6],
             )).toBeTrue();
 
@@ -920,8 +921,7 @@ describe('TurnState', () => {
                 chanceOrigin: { throughArmorHitArc: 'right' },
                 floatingLocation: {
                     hitArc: 'right',
-                    locationRoll: 10,
-                    dice: [4, 6],
+                    hitLocationDice: [4, 6],
                 },
             });
             expect(restored.resolvePendingCriticalHit('chance:floating')).toBeFalse();
@@ -1164,6 +1164,27 @@ describe('TurnState', () => {
             expect(turnState.pendingUnitCheckCountAtPhaseEnd()).toBe(1);
             expect(turnState.getPendingUnitCheck('consciousness:phase-end')?.pilotDamageGroup)
                 .toBe(group);
+        });
+
+        it('restores the active combat pilot-damage group with its pending workflow', () => {
+            const { turnState } = createTurnStateHarness();
+            turnState.moveMode.set('stationary');
+            const group = turnState.currentPilotDamageGroup();
+            expect(turnState.queuePendingUnitCheck({
+                id: 'consciousness:reload',
+                kind: 'consciousness',
+                crewId: 0,
+                pilotDamageGroup: group,
+                target: 5,
+            })).toBeTrue();
+
+            const serialized = turnState.serialize();
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(serialized);
+
+            expect(serialized?.pilotDamageGroup).toBe(group);
+            expect(restored.currentPilotDamageGroup()).toBe(group);
+            expect(restored.getPendingUnitCheck('consciousness:reload')?.pilotDamageGroup).toBe(group);
         });
 
         it('uses immediately actionable consciousness checks without a tracked phase boundary', () => {

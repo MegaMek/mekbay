@@ -61,19 +61,36 @@ export class CBTEndTurnService {
     private readonly automationToasts = inject(CBTAutomationToastService);
     private readonly phaseResolution = inject(CBTPhaseResolutionService);
     private readonly options = inject(OptionsService);
-    private pendingEndTurn: Promise<boolean> | null = null;
+    private endTurnQueue: Promise<void> = Promise.resolve();
+    private readonly pendingEndTurns = new Map<string, Promise<boolean>>();
 
     /** Commits a turn only after its resumable phase, heat, and consequence sequence is complete. */
-    async endTurn(units: readonly CBTForceUnit[]): Promise<boolean> {
-        if (this.pendingEndTurn) return this.pendingEndTurn;
+    endTurn(units: readonly CBTForceUnit[]): Promise<boolean> {
+        const snapshot = Array.from(new Map(units.map(unit => [unit.id, unit])).values())
+            .map(unit => ({ unit, turn: unit.turnState().getTurnCounter() }));
+        if (snapshot.length === 0) return Promise.resolve(false);
 
-        const operation = this.performEndTurn(units);
-        this.pendingEndTurn = operation;
-        try {
-            return await operation;
-        } finally {
-            if (this.pendingEndTurn === operation) this.pendingEndTurn = null;
-        }
+        const key = JSON.stringify(snapshot
+            .map(({ unit, turn }) => [unit.id, turn] as const)
+            .sort(([left], [right]) => left.localeCompare(right)));
+        const pending = this.pendingEndTurns.get(key);
+        if (pending) return pending;
+
+        const queuedAfter = this.endTurnQueue;
+        let operation!: Promise<boolean>;
+        operation = queuedAfter
+            .then(() => {
+                const currentUnits = snapshot
+                    .filter(({ unit, turn }) => unit.turnState().getTurnCounter() === turn)
+                    .map(({ unit }) => unit);
+                return currentUnits.length > 0 ? this.performEndTurn(currentUnits) : true;
+            })
+            .finally(() => {
+                if (this.pendingEndTurns.get(key) === operation) this.pendingEndTurns.delete(key);
+            });
+        this.pendingEndTurns.set(key, operation);
+        this.endTurnQueue = operation.then(() => undefined, () => undefined);
+        return operation;
     }
 
     private async performEndTurn(units: readonly CBTForceUnit[]): Promise<boolean> {

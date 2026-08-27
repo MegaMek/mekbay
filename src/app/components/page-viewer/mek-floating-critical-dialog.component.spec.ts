@@ -40,7 +40,7 @@ describe('MekFloatingCriticalDialogComponent', () => {
 
         fixture.componentInstance.selectLocation(row);
 
-        expect(onDraftChange).toHaveBeenCalledOnceWith(7, null, null);
+        expect(onDraftChange).toHaveBeenCalledOnceWith([3, 4], null);
         expect(fixture.componentInstance.selectedLocation()).toBe('LT');
         expect(close).not.toHaveBeenCalled();
 
@@ -50,9 +50,9 @@ describe('MekFloatingCriticalDialogComponent', () => {
     });
 
     it('persists exact rolled dice and applies their facing-aware location', () => {
-        fixture.componentInstance.onFinished({ results: [5, 5], sum: 10 });
+        fixture.componentInstance.onFinished({ results: [5, 5], sum: 2 });
 
-        expect(onDraftChange).toHaveBeenCalledOnceWith(10, [5, 5], null);
+        expect(onDraftChange).toHaveBeenCalledOnceWith([5, 5], null);
         expect(fixture.componentInstance.selectedLocation()).toBe('RA');
         expect(close).not.toHaveBeenCalled();
 
@@ -77,8 +77,7 @@ describe('MekFloatingCriticalDialogComponent', () => {
     it('restores a pending draft without persisting it again', () => {
         fixture.destroy();
         Object.assign(data, {
-            initialLocationRoll: 8,
-            initialRoll: [2, 6] as const,
+            initialDice: [2, 6] as const,
         });
         fixture = TestBed.createComponent(MekFloatingCriticalDialogComponent);
         fixture.detectChanges();
@@ -106,8 +105,8 @@ describe('MekFloatingCriticalDialogComponent', () => {
 
         expect(fixture.componentInstance.selectedLocation()).toBe('CL');
         expect(onDraftChange.calls.allArgs()).toEqual([
-            [5, null, null],
-            [5, null, 3],
+            [[2, 3], null],
+            [[2, 3], 3],
         ]);
 
         fixture.componentInstance.apply();

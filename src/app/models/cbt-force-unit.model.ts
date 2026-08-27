@@ -8,7 +8,7 @@ import { DataService } from '../services/data.service';
 import { getUnitHeight, type UnitSummary, type UnitHeight } from "./unit-summary.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { MountedAmmo, MountedEquipment, MountedWeapon } from './mounted-equipment.model';
-import { type CriticalSlot, type HeatProfile, type LocationData, type MekHitArc, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, TURN_STATE_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type CBTMekFallSource, type PendingEventInput, type RuleCheckOutcome, type SerializedCrewMember, type SerializedPendingMekFall, type SerializedPendingUnitCheck, type SerializedRuleCheck, committedConditionData, conditionsForSerialization, conditionsHasActive, conditionsHasCommittedActive, conditionsMapFromSerialization, normalizeConditionData, normalizeConditionKey } from './force-serialization';
+import { type CriticalSlot, type HeatProfile, type LocationData, type MekHitArc, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, TURN_STATE_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type CBTMekFallSource, type PendingEventInput, type RuleCheckOutcome, type SerializedCrewMember, type SerializedMekFallDamageRoll, type SerializedPendingMekFall, type SerializedPendingUnitCheck, type SerializedRuleCheck, committedConditionData, conditionsForSerialization, conditionsHasActive, conditionsHasCommittedActive, conditionsMapFromSerialization, normalizeConditionData, normalizeConditionKey } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
 import type { ConditionData } from './force-unit-state.model';
 import type { CBTForce } from './cbt-force.model';
@@ -20,7 +20,7 @@ import { UnitSvgAeroService } from '../services/unit-svg-aero.service';
 import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
 import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
-import { AmmoEquipment, isTorpedoAmmo } from './equipment.model';
+import { AmmoEquipment, ArmorEquipment, isTorpedoAmmo, StructureEquipment } from './equipment.model';
 import type { AmmoEquipment as AmmoEquipmentType } from './equipment.model';
 import type { EquipmentFlag } from './equipment-flags.type';
 import type { WeaponType } from './weapon-types.model';
@@ -32,7 +32,9 @@ import { Sanitizer } from '../utils/sanitizer.util';
 import type { PSRCheck, UnitTypeRules } from './rules/unit-type-rules';
 import { type InventoryControlRuntimeAmmoSelection, type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
 import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
-import { getMekLegLocations, getMekLocationParent, inferMekConfigFromLocations, MEK_REAR_ARMOR_LOCATIONS } from './entity/types';
+import { getMekLegLocations, getMekLocationParent, inferMekConfigFromLocations, MEK_REAR_ARMOR_LOCATIONS, type ArmorType } from './entity/types';
+import { mekStructurePhaseDamage, MEK_STRUCTURE_TYPE, type MekStructureKind } from '../utils/mek-structure-damage.util';
+import { ARMOR_TYPE_FROM_BLK_CODE } from './entity/parsers/blk-codec';
 import {
     createHandlerQueryContext,
     EquipmentInteractionRegistry,
@@ -101,24 +103,24 @@ export interface CBTInternalDamageContext {
 }
 
 export interface CBTMekFallDamageRoll {
-    readonly hitLocationRoll: number | null;
-    readonly hitLocationDice?: readonly [number, number] | null;
+    readonly hitLocationDice: readonly [number, number] | null;
     readonly tripodLegRoll: number | null;
-    readonly tripodLegDice?: readonly [number] | null;
 }
 
-/** Serialized event facts plus nonserialized dialog choices. */
-export interface CBTPendingMekFall extends SerializedPendingMekFall {
+/** Serialized event facts exposed to the dialog with explicit unrolled values. */
+export type CBTPendingMekFall = Omit<
+    SerializedPendingMekFall,
+    'orientationRoll' | 'damageRolls'
+> & {
     readonly orientationRoll: number | null;
-    readonly orientationDice: readonly [number] | null;
     readonly damageRolls: readonly CBTMekFallDamageRoll[];
-}
+};
 
-function normalizeD6Faces(faces: readonly number[] | null | undefined, count: number): readonly number[] | null {
-    return faces?.length === count
-        && faces.every(face => Number.isInteger(face) && face >= 1 && face <= 6)
-        ? [...faces]
-        : null;
+function fallDamageRollForDialog(roll: SerializedMekFallDamageRoll): CBTMekFallDamageRoll {
+    return {
+        hitLocationDice: roll.hitLocationDice ?? null,
+        tripodLegRoll: roll.tripodLegRoll ?? null,
+    };
 }
 
 export type CBTUnitAutomationTrigger =
@@ -158,11 +160,6 @@ export class CBTForceUnit extends ForceUnit {
     readonly psrOutcomeSelections = signal<Readonly<Record<string, RuleCheckOutcome>>>({});
     /** Exact virtual PSR dice retained alongside provisional outcomes. */
     readonly psrDiceSelections = signal<Readonly<Record<string, readonly [number, number]>>>({});
-    private readonly pendingMekFallRolls = signal<Readonly<Record<string, {
-        readonly orientationRoll: number | null;
-        readonly orientationDice: readonly [number] | null;
-        readonly damageRolls: readonly CBTMekFallDamageRoll[];
-    }>>>({});
     readonly pendingFallCount = computed(() => this.turnState().pendingFallCount());
     readonly gameRules: CBTGameRules;
     viewState: ViewportTransform;
@@ -828,8 +825,15 @@ export class CBTForceUnit extends ForceUnit {
         return (locData?.armor ?? 0) + (locData?.pendingArmor ?? 0);
     }
 
-    addArmorHits(loc: string, hits: number, rear?: boolean, consolidateImmediately: boolean = false) {
+    addArmorHits(
+        loc: string,
+        hits: number,
+        rear?: boolean,
+        consolidateImmediately: boolean = false,
+        damageReceived?: number,
+    ) {
         const locKey = rear ? `${loc}-rear` : loc;
+        const previousHits = this.getArmorHits(loc, rear);
         const locations = { ...this.state.locations() };
 
         if (locations[locKey] === undefined) {
@@ -841,11 +845,10 @@ export class CBTForceUnit extends ForceUnit {
         locations[locKey].pendingArmor += hits;
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
         this.markEquipmentLocationsChanged();
-        let hitsForPsr = hits;
-        if (this.getUnit().armorType === 'Hardened') {
-            hitsForPsr = Math.ceil(hitsForPsr / 2);
-        }
-        this.state.turnState().addDmgReceived(hitsForPsr);
+        this.state.turnState().addDmgReceived(damageReceived
+            ?? (this.getArmorTypeAt(loc) === 'HARDENED'
+                ? Math.floor(this.getArmorHits(loc, rear) / 2) - Math.floor(previousHits / 2)
+                : hits));
         if (consolidateImmediately) this.state.consolidateLocations();
         else this.applyUnderwaterBreachAndFlooding();
         this.evaluateDestroyed();
@@ -932,14 +935,26 @@ export class CBTForceUnit extends ForceUnit {
         }
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
         this.markEquipmentLocationsChanged();
-        this.state.turnState().addDmgReceived(hits);
         this._rules.evaluateLegDestroyed(loc, hits);
         this.clearNarcFromCommittedPhysicallyDestroyedLocations();
         this.evaluateDestroyed();
         this.setModified();
         const boundedPreviousHits = Math.min(internalPoints, Math.max(0, previousHits));
         const boundedCurrentHits = Math.min(internalPoints, Math.max(0, this.getInternalHits(loc)));
-        const appliedDamage = Math.max(0, boundedCurrentHits - boundedPreviousHits);
+        const appliedDamage = boundedCurrentHits - boundedPreviousHits;
+        const structureKind = this.getStructureKindAt(loc);
+        const phaseDamage = appliedDamage >= 0
+            ? mekStructurePhaseDamage(
+                appliedDamage,
+                internalPoints - boundedPreviousHits,
+                structureKind,
+            )
+            : -mekStructurePhaseDamage(
+                -appliedDamage,
+                internalPoints - boundedCurrentHits,
+                structureKind,
+            );
+        this.state.turnState().addDmgReceived(phaseDamage);
         // A single assignment is one hit/event, regardless of how many structure pips it marks.
         if (appliedDamage > 0) this.queueMekCriticalChance(loc, {
             ...context,
@@ -1770,7 +1785,6 @@ export class CBTForceUnit extends ForceUnit {
         this.inventoryControl.markAmmoSourcesChanged();
         this.psrOutcomeSelections.set({});
         this.psrDiceSelections.set({});
-        this.pendingMekFallRolls.set({});
         this.state.resetTurnState();
         this.evaluateDestroyed();
         this.setModified();
@@ -1956,6 +1970,42 @@ export class CBTForceUnit extends ForceUnit {
         return count;
     }
 
+    getArmorTypeAt(location: string): ArmorType | null {
+        const patchworkType = this.getUnit().patchworkLayout?.[location]?.type;
+        if (patchworkType !== undefined) return ARMOR_TYPE_FROM_BLK_CODE[patchworkType] ?? null;
+        const armor = this.materialAtLocation(location, (equipment): equipment is ArmorEquipment =>
+            equipment instanceof ArmorEquipment && equipment.armorType !== 'PATCHWORK');
+        return armor ? armor.armorType as ArmorType : null;
+    }
+
+    hasArmorType(type: ArmorType): boolean {
+        return Object.values(this.getUnit().patchworkLayout ?? {})
+            .some(entry => ARMOR_TYPE_FROM_BLK_CODE[entry.type] === type)
+            || this.getUnit().comp.some(component =>
+                component.eq instanceof ArmorEquipment && component.eq.armorType === type);
+    }
+
+    getStructureKindAt(location: string): MekStructureKind {
+        const hybridType = this.getUnit().hybridLayout?.[location]?.type;
+        if (hybridType === MEK_STRUCTURE_TYPE.COMPOSITE) return 'composite';
+        if (hybridType === MEK_STRUCTURE_TYPE.REINFORCED) return 'reinforced';
+        const structure = this.materialAtLocation(location, (equipment): equipment is StructureEquipment =>
+            equipment instanceof StructureEquipment);
+        if (structure?.hasFlag('F_COMPOSITE')) return 'composite';
+        if (structure?.hasFlag('F_REINFORCED')) return 'reinforced';
+        return 'standard';
+    }
+
+    private materialAtLocation<T extends ArmorEquipment | StructureEquipment>(
+        location: string,
+        isMaterial: (equipment: unknown) => equipment is T,
+    ): T | null {
+        const materials = this.getUnit().comp.filter(component => isMaterial(component.eq));
+        const located = materials.find(component => component.l?.split('/').includes(location));
+        const material = located?.eq ?? (materials.length === 1 ? materials[0].eq : undefined);
+        return (material as T | undefined) ?? null;
+    }
+
     resolvePendingCrewDeaths(): void {
         const pending = this.getCrewMembers().filter(crew =>
             crew.getHits() >= DEAD_CREW_HIT_THRESHOLD && crew.getState() !== 'dead');
@@ -2090,24 +2140,20 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     getPendingFalls(): readonly CBTPendingMekFall[] {
-        const drafts = this.pendingMekFallRolls();
         return this.turnState().getPendingFalls().map(pending => ({
             ...pending,
-            orientationRoll: drafts[pending.id]?.orientationRoll ?? null,
-            orientationDice: drafts[pending.id]?.orientationDice ?? null,
-            damageRolls: drafts[pending.id]?.damageRolls ?? [],
+            orientationRoll: pending.orientationRoll ?? null,
+            damageRolls: (pending.damageRolls ?? []).map(fallDamageRollForDialog),
         }));
     }
 
     getPendingFall(id?: string): CBTPendingMekFall | undefined {
         const pending = this.turnState().getPendingFall(id);
         if (!pending) return undefined;
-        const draft = this.pendingMekFallRolls()[pending.id];
         return {
             ...pending,
-            orientationRoll: draft?.orientationRoll ?? null,
-            orientationDice: draft?.orientationDice ?? null,
-            damageRolls: draft?.damageRolls ?? [],
+            orientationRoll: pending.orientationRoll ?? null,
+            damageRolls: (pending.damageRolls ?? []).map(fallDamageRollForDialog),
         };
     }
 
@@ -2115,7 +2161,6 @@ export class CBTForceUnit extends ForceUnit {
         id: string,
         orientationRoll: number | null,
         damageRolls: readonly CBTMekFallDamageRoll[],
-        orientationDice: readonly number[] | null = null,
     ): boolean {
         const pending = this.getPendingFall(id);
         if (!pending) return false;
@@ -2125,18 +2170,10 @@ export class CBTForceUnit extends ForceUnit {
             && orientationRoll <= 6
             ? orientationRoll
             : null;
-        const normalizedOrientationDice = normalizedOrientation !== null
-            ? normalizeD6Faces(orientationDice, 1)
-            : null;
-        const matchingOrientationDice = normalizedOrientationDice?.[0] === normalizedOrientation
-            ? normalizedOrientationDice as readonly [number]
-            : null;
-        const normalizedDamageRolls = damageRolls.map(roll => {
-            const hitLocationRoll = roll.hitLocationRoll !== null
-                && Number.isInteger(roll.hitLocationRoll)
-                && roll.hitLocationRoll >= 2
-                && roll.hitLocationRoll <= 12
-                ? roll.hitLocationRoll
+        const normalizedDamageRolls = damageRolls.map<SerializedMekFallDamageRoll>(roll => {
+            const hitLocationDice = roll.hitLocationDice?.length === 2
+                && roll.hitLocationDice.every(die => Number.isInteger(die) && die >= 1 && die <= 6)
+                ? [...roll.hitLocationDice] as [number, number]
                 : null;
             const tripodLegRoll = roll.tripodLegRoll !== null
                 && Number.isInteger(roll.tripodLegRoll)
@@ -2144,32 +2181,15 @@ export class CBTForceUnit extends ForceUnit {
                 && roll.tripodLegRoll <= 6
                 ? roll.tripodLegRoll
                 : null;
-            const hitLocationDice = hitLocationRoll !== null
-                ? normalizeD6Faces(roll.hitLocationDice ?? null, 2)
-                : null;
-            const tripodLegDice = tripodLegRoll !== null
-                ? normalizeD6Faces(roll.tripodLegDice ?? null, 1)
-                : null;
             return {
-                hitLocationRoll,
-                ...(hitLocationDice && hitLocationDice[0] + hitLocationDice[1] === hitLocationRoll
-                    ? { hitLocationDice: hitLocationDice as readonly [number, number] }
-                    : {}),
-                tripodLegRoll,
-                ...(tripodLegDice?.[0] === tripodLegRoll
-                    ? { tripodLegDice: tripodLegDice as readonly [number] }
-                    : {}),
+                ...(hitLocationDice ? { hitLocationDice } : {}),
+                ...(tripodLegRoll !== null ? { tripodLegRoll } : {}),
             };
         });
-        this.pendingMekFallRolls.update(current => ({
-            ...current,
-            [id]: {
-                orientationRoll: normalizedOrientation,
-                orientationDice: matchingOrientationDice,
-                damageRolls: normalizedDamageRolls,
-            },
-        }));
-        return true;
+        return this.turnState().setPendingFallRolls(id, {
+            ...(normalizedOrientation !== null ? { orientationRoll: normalizedOrientation } : {}),
+            damageRolls: normalizedDamageRolls,
+        });
     }
 
     /**
@@ -2182,22 +2202,13 @@ export class CBTForceUnit extends ForceUnit {
         const checks = this.createFallSeatbeltChecks(pending.levelsFallen);
         const completed = this.turnState().replacePendingFallWithUnitChecks(id, checks);
         if (!completed) return false;
-        this.pendingMekFallRolls.update(current => {
-            const { [id]: _completed, ...remaining } = current;
-            return remaining;
-        });
         if (checks.length > 0) this.automationTriggers.next({ kind: 'pending-unit-check' });
         return true;
     }
 
     /** Removes automation work without treating the fall as resolved. */
     skipPendingFall(id: string): boolean {
-        if (!this.turnState().discardPendingFall(id)) return false;
-        this.pendingMekFallRolls.update(current => {
-            const { [id]: _skipped, ...remaining } = current;
-            return remaining;
-        });
-        return true;
+        return this.turnState().discardPendingFall(id);
     }
 
     /**

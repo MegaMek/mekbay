@@ -3,8 +3,9 @@
 // Author: Drake
 
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { getMekLocationLabel, getTopologyFor, MEK_TORSO_LOCATIONS } from '../models/entity/types';
+import { getMekLocationLabel, getTopologyFor, MEK_TORSO_LOCATIONS, type ArmorType } from '../models/entity/types';
 import type { MekHitArc } from '../models/force-serialization';
+import { fullDoubleDamagePipsRemoved, resolveMekStructureDamage } from './mek-structure-damage.util';
 import {
     hitLocationCellDefinition,
     type MekHitLocationTable,
@@ -47,6 +48,8 @@ export interface AppliedMekFallLocationDamage {
     readonly rear: boolean;
     readonly armorDamage: number;
     readonly internalDamage: number;
+    /** Rule-adjusted damage points consumed at this location. */
+    readonly appliedDamage: number;
 }
 
 export interface AppliedMekFallDamage {
@@ -140,6 +143,16 @@ export function mekFallDamageGroups(damage: number): readonly number[] {
     return groups;
 }
 
+export function twoD6Total(dice: readonly [number, number]): number {
+    return dice[0] + dice[1];
+}
+
+export function twoD6ForTotal(total: number | null): readonly [number, number] | null {
+    return total !== null && Number.isInteger(total) && total >= 2 && total <= 12
+        ? [Math.floor(total / 2), Math.ceil(total / 2)]
+        : null;
+}
+
 /** Resolves one 2D6 hit-location roll, including the extra tripod leg roll. */
 export function resolveMekFallHitLocation(
     table: MekHitLocationTable,
@@ -183,6 +196,12 @@ export function resolveMekFallHitLocation(
     };
 }
 
+export interface MekFallArmorDamageResolution {
+    readonly armorDamage: number;
+    readonly remainingDamage: number;
+    readonly appliedDamage: number;
+}
+
 export function isResolvedMekFallHitLocation(
     result: MekFallHitLocationResult,
 ): result is MekFallHitLocationResult & { readonly location: string; readonly locationLabel: string } {
@@ -196,10 +215,6 @@ export function applyMekFallDamage(
     consolidateImmediately: boolean,
 ): AppliedMekFallDamage {
     const topology = getTopologyFor(unit.locations?.internal.keys() ?? []);
-    const compositeMultiplier = unit.getUnit().structureType?.trim().toLowerCase() === 'composite' ? 2 : 1;
-    const armorType = unit.getUnit().armorType;
-    const impactResistant = isImpactResistantArmor(armorType);
-    const antiPenetrativeAblation = isAntiPenetrativeAblationArmor(armorType);
     const locations: AppliedMekFallLocationDamage[] = [];
     let appliedDamage = 0;
     let headHits = 0;
@@ -213,59 +228,71 @@ export function applyMekFallDamage(
             unit.getArmorPoints(group.location, originalRear)
                 - unit.getArmorHits(group.location, originalRear),
         );
-        let impactReductionApplied = false;
+        const originalArmorType = unit.getArmorTypeAt(group.location);
         const visited = new Set<string>();
-        let groupAppliedDamage = 0;
+        let groupDamaged = false;
 
         while (location && damage > 0 && !visited.has(location)) {
             visited.add(location);
             const rear = group.rear && MEK_TORSO_LOCATIONS.has(location);
             const remainingArmor = Math.max(0, unit.getArmorPoints(location, rear) - unit.getArmorHits(location, rear));
-            if (impactResistant && remainingArmor > 0 && !impactReductionApplied) {
-                damage = Math.max(1, Math.floor(damage / 2));
-                impactReductionApplied = true;
-            }
-
-            const armorDamage = Math.min(damage, remainingArmor);
+            const armorType = unit.getArmorTypeAt(location);
+            const armor = resolveMekFallArmorDamage(
+                damage,
+                remainingArmor,
+                armorType,
+            );
+            const armorDamage = armor.armorDamage;
             if (armorDamage > 0) {
-                unit.addArmorHits(location, armorDamage, rear, consolidateImmediately);
-                damage -= armorDamage;
-                appliedDamage += armorDamage;
-                groupAppliedDamage += armorDamage;
+                unit.addArmorHits(
+                    location,
+                    armorDamage,
+                    rear,
+                    consolidateImmediately,
+                    armor.appliedDamage,
+                );
             }
+            damage = armor.remainingDamage;
+            appliedDamage += armor.appliedDamage;
+            groupDamaged ||= armorDamage > 0;
 
             const remainingInternal = Math.max(
                 0,
                 unit.getInternalPoints(location) - unit.getInternalHits(location),
             );
-            const internalDamage = Math.min(remainingInternal, damage * compositeMultiplier);
+            const structure = resolveMekStructureDamage(
+                damage,
+                remainingInternal,
+                unit.getStructureKindAt(location),
+            );
+            const internalDamage = structure.internalDamage;
             if (internalDamage > 0) {
                 unit.addInternalHits(location, internalDamage, consolidateImmediately, {
-                    hardenedArmorApplies: remainingArmor > 0,
+                    hardenedArmorApplies: armorType === 'HARDENED' && remainingArmor > 0,
                 });
-                const damagePoints = internalDamage / compositeMultiplier;
-                damage = Math.max(0, damage - damagePoints);
-                appliedDamage += damagePoints;
-                groupAppliedDamage += damagePoints;
             }
+            damage = structure.overflowDamage;
+            appliedDamage += structure.phaseDamage;
+            groupDamaged ||= internalDamage > 0;
 
             locations.push({
                 location,
                 rear,
                 armorDamage,
                 internalDamage,
+                appliedDamage: armor.appliedDamage + structure.phaseDamage,
             });
 
             if (damage <= 0) break;
             location = topology[location as keyof typeof topology]?.transfersTo ?? null;
         }
 
-        if (group.location === 'HD' && groupAppliedDamage > 0) headHits++;
-        if (group.critical && groupAppliedDamage > 0
-            && !(antiPenetrativeAblation && originalArmor > 0)) {
+        if (group.location === 'HD' && groupDamaged) headHits++;
+        if (group.critical && groupDamaged
+            && !(originalArmorType === 'ANTI_PENETRATIVE_ABLATION' && originalArmor > 0)) {
             unit.queueMekCriticalChance(group.location, {
                 consolidateImmediately,
-                hardenedArmorApplies: originalArmor > 0,
+                hardenedArmorApplies: originalArmorType === 'HARDENED' && originalArmor > 0,
                 throughArmorHitArc: throughArmorHitArc(group),
             });
         }
@@ -274,33 +301,69 @@ export function applyMekFallDamage(
     return { appliedDamage, headHits, locations };
 }
 
+/** Applies the armor rule for physical non-attack damage at one exact location. */
+export function resolveMekFallArmorDamage(
+    damage: number,
+    remainingArmor: number,
+    armorType: ArmorType | null,
+): MekFallArmorDamageResolution {
+    const incoming = normalizedInteger(damage);
+    const armor = normalizedInteger(remainingArmor);
+    if (incoming === 0 || armor === 0) {
+        return {
+            armorDamage: 0,
+            remainingDamage: incoming,
+            appliedDamage: 0,
+        };
+    }
+
+    if (armorType === 'REFLECTIVE') {
+        const modifiedDamage = incoming * 2;
+        if (armor >= modifiedDamage) {
+            return {
+                armorDamage: modifiedDamage,
+                remainingDamage: 0,
+                appliedDamage: modifiedDamage,
+            };
+        }
+        const absorbedDamage = Math.ceil(armor / 2);
+        return {
+            armorDamage: armor,
+            remainingDamage: Math.max(0, incoming - absorbedDamage),
+            appliedDamage: absorbedDamage * 2,
+        };
+    }
+
+    if (armorType === 'HARDENED') {
+        const absorbedDamage = Math.min(incoming, armor);
+        return {
+            armorDamage: absorbedDamage,
+            remainingDamage: incoming - absorbedDamage,
+            appliedDamage: fullDoubleDamagePipsRemoved(armor, absorbedDamage),
+        };
+    }
+
+    const modifiedDamage = armorType === 'FERRO_LAMELLOR'
+        ? Math.floor(incoming * 4 / 5)
+        : armorType === 'IMPACT_RESISTANT'
+            ? Math.max(1, Math.floor(incoming / 2))
+            : incoming;
+    const armorDamage = Math.min(armor, modifiedDamage);
+    return {
+        armorDamage,
+        remainingDamage: modifiedDamage - armorDamage,
+        appliedDamage: armorDamage,
+    };
+}
+
 function throughArmorHitArc(group: ResolvedMekFallDamageGroup): MekFallHitArc {
     if (group.location === 'LT') return 'left';
     if (group.location === 'RT') return 'right';
     return group.rear ? 'rear' : 'front';
 }
 
-const IMPACT_RESISTANT_ARMOR_NAMES = new Set([
-    'impact-resistant',
-    'impact resistant',
-    'impact_resistant',
-]);
-
-const ANTI_PENETRATIVE_ABLATION_ARMOR_NAMES = new Set([
-    'anti-penetrative-ablation',
-    'anti penetrative ablation',
-    'anti_penetrative_ablation',
-    'anti-penetrative-ablative',
-    'anti penetrative ablative',
-    'anti_penetrative_ablative',
-]);
-
-export function isImpactResistantArmor(armorType: string): boolean {
-    return IMPACT_RESISTANT_ARMOR_NAMES.has(armorType.trim().toLowerCase());
-}
-
-function isAntiPenetrativeAblationArmor(armorType: string): boolean {
-    return ANTI_PENETRATIVE_ABLATION_ARMOR_NAMES.has(armorType.trim().toLowerCase());
+function normalizedInteger(value: number): number {
+    return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
 }
 
 function assertIntegerInRange(value: number, min: number, max: number, label: string): void {

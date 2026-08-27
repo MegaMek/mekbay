@@ -22,6 +22,7 @@ describe('FallingDamageDialogComponent', () => {
             getPendingFall: () => undefined,
             setPendingFallRolls: persistRolls,
             getNotificationDisplayName: () => 'Atlas AS7-D',
+            hasArmorType: () => false,
             getUnit: () => ({
                 type: 'Mek',
                 subtype: 'Biped',

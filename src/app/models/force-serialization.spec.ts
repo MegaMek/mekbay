@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { AS_SERIALIZED_GROUP_SCHEMA, CBT_SERIALIZED_GROUP_SCHEMA, CBT_SERIALIZED_STATE_SCHEMA, C3_NETWORK_GROUP_SCHEMA, CRIT_SLOT_SCHEMA, FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
+import { AS_SERIALIZED_GROUP_SCHEMA, CBT_SERIALIZED_GROUP_SCHEMA, CBT_SERIALIZED_STATE_SCHEMA, C3_NETWORK_GROUP_SCHEMA, CRIT_SLOT_SCHEMA, FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, LOCATION_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { C3NetworkType } from './c3-network.model';
 
@@ -222,6 +222,11 @@ describe('heat state sanitization', () => {
                     id: 'fall:1',
                     source: 'stand-attempt',
                     levelsFallen: 1,
+                    orientationRoll: 4,
+                    damageRolls: [
+                        { hitLocationDice: [5, 2] },
+                        {},
+                    ],
                 },
                 {
                     type: 'mek-critical-chance',
@@ -265,8 +270,7 @@ describe('heat state sanitization', () => {
                     chanceOrigin: { throughArmorHitArc: 'right' },
                     floatingLocation: {
                         hitArc: 'right',
-                        locationRoll: 9,
-                        dice: [4, 5],
+                        hitLocationDice: [4, 5],
                     },
                 },
                 { type: 'unit-check', id: 'check:1', kind: 'heat-shutdown', target: 5 },
@@ -297,7 +301,17 @@ describe('heat state sanitization', () => {
                     target: 6,
                     result: { kind: 'roll', dice: [3, 4] },
                 },
-                { type: 'mek-fall', id: 'fall:1', source: 'stand-attempt', levelsFallen: 1 },
+                {
+                    type: 'mek-fall',
+                    id: 'fall:1',
+                    source: 'stand-attempt',
+                    levelsFallen: 1,
+                    orientationRoll: 4,
+                    damageRolls: [
+                        { hitLocationDice: [5, 2] },
+                        {},
+                    ],
+                },
                 {
                     type: 'mek-critical-chance',
                     id: 'chance:1',
@@ -340,8 +354,7 @@ describe('heat state sanitization', () => {
                     chanceOrigin: { throughArmorHitArc: 'right' },
                     floatingLocation: {
                         hitArc: 'right',
-                        locationRoll: 9,
-                        dice: [4, 5],
+                        hitLocationDice: [4, 5],
                     },
                 },
             ],
@@ -368,15 +381,28 @@ describe('heat state sanitization', () => {
                     location: 'RT',
                     targetLocation: 'RT',
                     remainingHits: 1,
-                    floatingLocation: { hitArc: 'right', locationRoll: 9, dice: [6, 6] },
+                    floatingLocation: { hitArc: 'right', hitLocationDice: [6, 7] },
                 },
                 { type: 'mek-critical-chance', id: 'bad:4', location: 'CT', result: 5 },
                 { type: 'mek-fall', id: 'bad:5', source: 'manual', levelsFallen: 0 },
+                {
+                    type: 'mek-fall', id: 'bad:roll', source: 'psr', levelsFallen: 0,
+                    orientationRoll: 7,
+                },
             ],
             pendingUnitChecks: [{ id: 'legacy:1' }],
             pendingCriticals: [{ id: 'legacy:2' }],
             pendingCriticalChances: [{ id: 'legacy:3' }],
         }, TURN_STATE_SCHEMA)).toEqual({});
+    });
+
+    it('retains only an open typed combat pilot-damage group', () => {
+        expect(Sanitizer.sanitize({ pilotDamageGroup: ' combat:test ' }, TURN_STATE_SCHEMA))
+            .toEqual({ pilotDamageGroup: 'combat:test' });
+        expect(Sanitizer.sanitize({ pilotDamageGroup: 'phase-closed:combat:test' }, TURN_STATE_SCHEMA))
+            .toEqual({});
+        expect(Sanitizer.sanitize({ pilotDamageGroup: 'heat:test' }, TURN_STATE_SCHEMA))
+            .toEqual({});
     });
 
     it('preserves an empty critical-chance origin because its presence is the undo marker', () => {
@@ -398,6 +424,22 @@ describe('heat state sanitization', () => {
                 remainingHits: 1,
                 chanceOrigin: {},
             }],
+        });
+    });
+});
+
+describe('location damage serialization', () => {
+    it('preserves committed and pending material damage in the existing location counters', () => {
+        expect(Sanitizer.sanitize({
+            armor: 2,
+            pendingArmor: 1,
+            internal: 1,
+            pendingInternal: 2,
+        }, LOCATION_SCHEMA)).toEqual({
+            armor: 2,
+            pendingArmor: 1,
+            internal: 1,
+            pendingInternal: 2,
         });
     });
 });

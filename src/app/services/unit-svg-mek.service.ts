@@ -279,6 +279,7 @@ export class UnitSvgMekService extends UnitSvgService {
                 }
 
                 this.renderInventoryEntryState(entry);
+                this.renderKickArcHitModifier(entry);
         });
         this.renderInventoryControlSelection();
     }
@@ -366,6 +367,19 @@ export class UnitSvgMekService extends UnitSvgService {
         );
         if (!resolved) return;
         this.renderRulesAdjustedDamage(entry, damageEl, resolved.weakened, originalText);
+    }
+
+    private renderKickArcHitModifier(entry: MountedEquipment): void {
+        const display = this.mekRules.resolveKickArcHitDisplay(entry);
+        if (!display || !entry.el) return;
+        const hitModRect = entry.el.querySelector(':scope > .hitMod-rect');
+        const hitModText = entry.el.querySelector(':scope > .hitMod-text');
+        if (!hitModRect || !hitModText) return;
+
+        hitModRect.setAttribute('display', 'block');
+        hitModText.setAttribute('display', 'block');
+        hitModText.textContent = display.text;
+        entry.el.classList.toggle('weakenedHitMod', display.weakened);
     }
 
     /** Render rules-specific shield damage without applying physical-weapon or TSM modifiers. */

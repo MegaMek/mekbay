@@ -11,6 +11,7 @@ import type { CriticalSlot } from '../models/force-serialization';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
 import type { WeaponType } from '../models/weapon-types.model';
+import type { ArmorType } from '../models/entity/types';
 import {
     BOMBAST_LASER_CHARGED_STATE,
     BOMBAST_LASER_CHARGE_STATE_KEY,
@@ -29,6 +30,7 @@ import {
     isGaussPoweredDown,
 } from './gauss-power-state.util';
 import type { InventoryControlRules } from './inventory-control.util';
+import type { MekStructureKind } from './mek-structure-damage.util';
 import {
     createHandlerQueryContext,
     EquipmentInteractionRegistry,
@@ -375,7 +377,7 @@ describe('Mek critical-hit workflow', () => {
     });
 
     it('marks two composite structure pips per point of explosion damage after the Core cap', () => {
-        const { unit, internalHits, armorHits } = explodingAmmoUnit(CORE_2026_GAME_RULES, 'Composite');
+        const { unit, internalHits, armorHits } = explodingAmmoUnit(CORE_2026_GAME_RULES, 'composite');
 
         const outcome = applyMekCriticalRoll(unit, 'LT', [1, 1], true);
 
@@ -402,7 +404,7 @@ describe('Mek critical-hit workflow', () => {
             TW_GAME_RULES,
             ['F_GAUSS'],
             'Gauss Rifle',
-            'Composite',
+            'composite',
         );
 
         const outcome = applyMekCriticalRoll(unit, 'LT', [1, 1], true);
@@ -410,6 +412,23 @@ describe('Mek critical-hit workflow', () => {
         expect(outcome?.explosion?.rawDamage).toBe(15);
         expect(internalHits.get('LT')).toBe(12);
         expect(internalHits.get('CT')).toBe(18);
+    });
+
+    it('drops the odd composite remainder instead of transferring fractional explosion damage', () => {
+        const fixture = explodingWeaponUnit(TW_GAME_RULES, ['F_GAUSS'], 'Gauss Rifle', 'composite');
+        fixture.internalHits.set('LT', 1);
+
+        const outcome = applyMekCriticalRoll(fixture.unit, 'LT', [1, 1], true);
+
+        expect(outcome?.explosion?.locations.map(location => ({
+            location: location.location,
+            internalDamage: location.internalDamage,
+        }))).toEqual([
+            { location: 'LT', internalDamage: 11 },
+            { location: 'CT', internalDamage: 18 },
+        ]);
+        expect(fixture.internalHits.get('LT')).toBe(12);
+        expect(fixture.internalHits.get('CT')).toBe(18);
     });
 
     it('lets a legal armored component absorb one hit and take the next critical', () => {
@@ -515,10 +534,10 @@ describe('Mek critical-hit workflow', () => {
             CORE_2026_GAME_RULES,
             [],
             [],
-            'Reinforced',
+            'reinforced',
             undefined,
             {},
-            { armorType: 'Hardened' },
+            { armorType: 'HARDENED' },
         );
         expect(mekCriticalChanceModifiers(core.unit, 'LT')).toEqual([
             { label: 'Reinforced structure', value: -1 },
@@ -534,10 +553,10 @@ describe('Mek critical-hit workflow', () => {
             TW_GAME_RULES,
             [],
             [],
-            'Reinforced',
+            'reinforced',
             undefined,
             {},
-            { armorType: 'Hardened', subtype: 'Industrial Mek' },
+            { armorType: 'HARDENED', subtype: 'Industrial Mek' },
         );
         expect(mekCriticalChanceModifiers(tw.unit, 'LT')).toEqual([
             { label: 'Reinforced structure', value: -1 },
@@ -847,7 +866,7 @@ describe('Mek critical-hit workflow', () => {
     });
 });
 
-function explodingAmmoUnit(gameRules: CBTGameRules, structureType: string | null = null) {
+function explodingAmmoUnit(gameRules: CBTGameRules, structureKind: MekStructureKind | null = null) {
     const ammo = new AmmoEquipment({
         id: 'TestAC10Ammo',
         name: 'AC/10 Ammo',
@@ -866,7 +885,7 @@ function explodingAmmoUnit(gameRules: CBTGameRules, structureType: string | null
         eq: ammo,
     };
     const slots = [slot];
-    return { ...criticalUnit(gameRules, slots, [], structureType), slot, slots };
+    return { ...criticalUnit(gameRules, slots, [], structureKind), slot, slots };
 }
 
 function riscPulseModuleUnit() {
@@ -923,7 +942,7 @@ function explodingWeaponUnit(
     gameRules: CBTGameRules,
     flags: EquipmentFlag[] = ['F_GAUSS'],
     name = 'Gauss Rifle',
-    structureType: string | null = null,
+    structureKind: MekStructureKind | null = null,
 ): {
     readonly unit: CBTForceUnit;
     readonly entry: MountedEquipment;
@@ -953,7 +972,7 @@ function explodingWeaponUnit(
         critSlots: slots,
         states: new Map(),
     });
-    const harness = criticalUnit(gameRules, slots, [entry], structureType);
+    const harness = criticalUnit(gameRules, slots, [entry], structureKind);
     entry.owner = harness.unit;
     return { ...harness, entry };
 }
@@ -1174,11 +1193,11 @@ function criticalUnit(
     gameRules: CBTGameRules,
     slots: CriticalSlot[],
     inventory: MountedEquipment[] = [],
-    structureType: string | null = null,
+    structureKind: MekStructureKind | null = null,
     effectiveWeaponTypes?: (entry: MountedWeapon) => ReadonlySet<WeaponType>,
     inventoryControlRules: InventoryControlRules = {},
     unitData: {
-        readonly armorType?: string;
+        readonly armorType?: ArmorType;
         readonly features?: readonly string[];
         readonly subtype?: 'BattleMek' | 'Industrial Mek' | 'Quad Industrial Mek';
     } = {},
@@ -1238,11 +1257,13 @@ function criticalUnit(
             slots.find(candidate => candidate.loc === snapshot.loc && candidate.slot === snapshot.slot) ?? null,
         getUnit: () => ({
             comp: [],
-            structureType,
-            armorType: unitData.armorType ?? 'Standard',
+            structureType: structureKind,
+            armorType: unitData.armorType ?? 'STANDARD',
             features: unitData.features ?? [],
             subtype: unitData.subtype ?? 'BattleMek',
         }),
+        getStructureKindAt: () => structureKind ?? 'standard',
+        getArmorTypeAt: () => unitData.armorType ?? 'STANDARD',
         getCrewMember: () => ({
             getHits: () => crewHits,
             setHits: (hits: number) => { crewHits = hits; },

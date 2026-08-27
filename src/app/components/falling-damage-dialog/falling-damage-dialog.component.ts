@@ -10,12 +10,13 @@ import type {
     CBTUnitAutomationTrigger,
 } from '../../models/cbt-force-unit.model';
 import {
-    isImpactResistantArmor,
     isResolvedMekFallHitLocation,
     mekFallDamage,
     mekFallDamageGroups,
     resolveMekFallHitLocation,
     resolveMekFallOrientation,
+    twoD6ForTotal,
+    twoD6Total,
     type MekFallHitLocationResult,
     type MekFallOrientation,
     type ResolvedMekFallDamageGroup,
@@ -40,15 +41,14 @@ export type FallingDamageDialogResult = AcceptedFallingDamageDialogResult
     | { readonly action: 'close' };
 
 interface FallingDamageGroupRoll {
-    readonly hitLocationRoll: number | null;
     readonly hitLocationDice: readonly [number, number] | null;
     readonly tripodLegRoll: number | null;
-    readonly tripodLegDice: readonly [number] | null;
 }
 
 interface FallingDamageGroupRow extends FallingDamageGroupRoll {
     readonly index: number;
     readonly damage: number;
+    readonly hitLocationRoll: number | null;
     readonly result: MekFallHitLocationResult | null;
 }
 
@@ -75,15 +75,12 @@ export class FallingDamageDialogComponent {
     readonly hitLocationTable: MekHitLocationTable = clusterTableForUnit(this.data.unit.getUnit()).hitLocationTable
         ?? 'biped';
     readonly orientationRoll = signal<number | null>(this.pending?.orientationRoll ?? null);
-    readonly orientationDice = signal<readonly [number] | null>(this.pending?.orientationDice ?? null);
     private readonly groupRolls = signal<readonly FallingDamageGroupRoll[]>(
         this.damageGroups.map((_damage, index) => {
             const pendingRoll = this.pending?.damageRolls[index];
             return {
-                hitLocationRoll: pendingRoll?.hitLocationRoll ?? null,
                 hitLocationDice: pendingRoll?.hitLocationDice ?? null,
                 tripodLegRoll: pendingRoll?.tripodLegRoll ?? null,
-                tripodLegDice: pendingRoll?.tripodLegDice ?? null,
             };
         }),
     );
@@ -96,19 +93,23 @@ export class FallingDamageDialogComponent {
     });
     readonly groupRows = computed<readonly FallingDamageGroupRow[]>(() => {
         const orientation = this.orientation();
-        return this.groupRolls().map((roll, index) => ({
-            index,
-            damage: this.damageGroups[index],
-            ...roll,
-            result: orientation && roll.hitLocationRoll !== null
-                ? resolveMekFallHitLocation(
-                    this.hitLocationTable,
-                    orientation.hitArc,
-                    roll.hitLocationRoll,
-                    roll.tripodLegRoll ?? undefined,
-                )
-                : null,
-        }));
+        return this.groupRolls().map((roll, index) => {
+            const hitLocationRoll = roll.hitLocationDice ? twoD6Total(roll.hitLocationDice) : null;
+            return {
+                index,
+                damage: this.damageGroups[index],
+                ...roll,
+                hitLocationRoll,
+                result: orientation && hitLocationRoll !== null
+                    ? resolveMekFallHitLocation(
+                        this.hitLocationTable,
+                        orientation.hitArc,
+                        hitLocationRoll,
+                        roll.tripodLegRoll ?? undefined,
+                    )
+                    : null,
+            };
+        });
     });
     readonly allResolved = computed(() => {
         if (!this.orientation()) return false;
@@ -117,27 +118,24 @@ export class FallingDamageDialogComponent {
     readonly sourceMessage = this.data.trigger.source === 'stand-attempt'
         ? 'The stand-up attempt failed, so the Mek falls again.'
         : 'A failed Piloting Skill Roll caused the Mek to fall.';
-    readonly armorNote = isImpactResistantArmor(this.data.unit.getUnit().armorType)
-        ? 'Impact-Resistant Armor halves each group that reaches intact armor, rounding down to a minimum of 1 damage.'
+    readonly armorNote = this.data.unit.hasArmorType('IMPACT_RESISTANT')
+        ? 'Impact-Resistant Armor is resolved against the armor in each struck location.'
         : null;
 
     setOrientationRoll(roll: number | null): void {
         this.orientationRoll.set(validRoll(roll, 1, 6));
-        this.orientationDice.set(null);
         this.persistRolls();
     }
 
     setHitLocationRoll(index: number, roll: number | null): void {
         this.updateGroupRoll(index, {
-            hitLocationRoll: validRoll(roll, 2, 12),
-            hitLocationDice: null,
+            hitLocationDice: twoD6ForTotal(roll),
         });
     }
 
     setTripodLegRoll(index: number, roll: number | null): void {
         this.updateGroupRoll(index, {
             tripodLegRoll: validRoll(roll, 1, 6),
-            tripodLegDice: null,
         });
     }
 
@@ -145,10 +143,9 @@ export class FallingDamageDialogComponent {
         const orientationRoll = rollD6(random);
         const orientation = resolveMekFallOrientation(this.rulesId, orientationRoll);
         this.orientationRoll.set(orientationRoll);
-        this.orientationDice.set([orientationRoll]);
         this.groupRolls.set(this.damageGroups.map(() => {
             const hitLocationDice = [rollD6(random), rollD6(random)] as const;
-            const hitLocationRoll = hitLocationDice[0] + hitLocationDice[1];
+            const hitLocationRoll = twoD6Total(hitLocationDice);
             const preliminary = resolveMekFallHitLocation(
                 this.hitLocationTable,
                 orientation.hitArc,
@@ -156,12 +153,9 @@ export class FallingDamageDialogComponent {
             );
             const needsTripodLeg = preliminary.location === null
                 && preliminary.tripodLegModifier !== undefined;
-            const tripodLegDice = needsTripodLeg ? [rollD6(random)] as const : null;
             return {
-                hitLocationRoll,
                 hitLocationDice,
-                tripodLegRoll: tripodLegDice?.[0] ?? null,
-                tripodLegDice,
+                tripodLegRoll: needsTripodLeg ? rollD6(random) : null,
             };
         }));
         this.persistRolls();
@@ -200,7 +194,6 @@ export class FallingDamageDialogComponent {
             this.data.trigger.id,
             this.orientationRoll(),
             this.groupRolls() satisfies readonly CBTMekFallDamageRoll[],
-            this.orientationDice(),
         );
     }
 }

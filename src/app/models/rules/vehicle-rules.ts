@@ -131,7 +131,7 @@ export class VehicleRules extends UnitTypeRulesBase {
     protected override buildRuleModifiers(): UnitRuleModifier[] {
         const status = this.systemsStatus();
         const modifiers: UnitRuleModifier[] = [];
-        if (this.unit.getUnit().armorType === 'Hardened') {
+        if (this.unit.hasArmorType('HARDENED')) {
             modifiers.push({ label: 'Mounts Hardened Armor', values: { psr: 1 } });
         }
         if (status.commanderHit) {

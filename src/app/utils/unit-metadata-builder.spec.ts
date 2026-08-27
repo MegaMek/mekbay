@@ -208,14 +208,14 @@ describe('UnitMetadataBuilder', () => {
     expect(builder.build(entity).structureType).toBe('Standard');
   });
 
-  it('exports an effective Mek structure as one synthetic component', () => {
+  it('exports hybrid Mek structure distribution outside component inventory', () => {
     const entity = new BipedMekEntity();
     entity.setTonnage(60);
     const endo = new StructureEquipment({
       id: 'IS Endo Steel',
       name: 'Endo Steel',
       type: 'structure',
-      structure: { typeId: 1 },
+      structure: { typeId: 2 },
       tech: { base: 'IS' },
     });
     entity.setUniformStructure(new MountedStructure({
@@ -225,9 +225,19 @@ describe('UnitMetadataBuilder', () => {
     entity.setStructureAt('LA', new MountedStructure({ tonnage: 60, structure: endo }));
 
     const metadata = builder.build(entity);
-    expect(metadata.structureType).toBe('Standard');
+    expect(metadata.structureType).toBe('Hybrid');
+    expect(metadata.hybridLayout).toEqual({
+      HD: { type: 0, clan: false },
+      CT: { type: 0, clan: false },
+      RT: { type: 0, clan: false },
+      LT: { type: 0, clan: false },
+      RA: { type: 0, clan: false },
+      LA: { type: 2, clan: false },
+      RL: { type: 0, clan: false },
+      LL: { type: 0, clan: false },
+    });
     const componentIds = metadata.comp?.filter(component => component.t === 'S').map(component => component.id) ?? [];
-    expect(componentIds).toContain(STANDARD_STRUCTURE_EQUIPMENT.id);
+    expect(componentIds).not.toContain(STANDARD_STRUCTURE_EQUIPMENT.id);
     expect(componentIds).not.toContain(endo.id);
 
     entity.setEquipment([
@@ -240,8 +250,30 @@ describe('UnitMetadataBuilder', () => {
 
     const mountedComponentIds = builder.build(entity).comp
       ?.filter(component => component.t === 'S').map(component => component.id) ?? [];
-    expect(mountedComponentIds).toContain(STANDARD_STRUCTURE_EQUIPMENT.id);
+    expect(mountedComponentIds).not.toContain(STANDARD_STRUCTURE_EQUIPMENT.id);
     expect(mountedComponentIds).not.toContain(endo.id);
+  });
+
+  it('exports patchwork armor distribution outside component inventory', () => {
+    const entity = new BipedMekEntity();
+    const standard = new ArmorEquipment({
+      id: 'Standard Armor', name: 'Standard', type: 'armor', armor: { type: 'STANDARD' },
+    });
+    const impactResistant = new ArmorEquipment({
+      id: 'Impact-Resistant Armor', name: 'Impact-Resistant', type: 'armor',
+      armor: { type: 'IMPACT_RESISTANT' },
+    });
+    entity.setUniformArmor(new MountedArmor({ armor: standard, techBase: 'IS' }));
+    entity.setArmorEquipmentAt('LA', impactResistant);
+
+    const metadata = builder.build(entity);
+    expect(metadata.armorType).toBe('Patchwork');
+    expect(metadata.patchworkLayout?.['LA']).toEqual({ type: 25, clan: false });
+    expect(metadata.patchworkLayout?.['CT']).toEqual({ type: 0, clan: false });
+    const componentIds = metadata.comp?.map(component => component.id) ?? [];
+    expect(componentIds).toContain('Patchwork Armor');
+    expect(componentIds).not.toContain('Standard Armor');
+    expect(componentIds).not.toContain('Impact-Resistant Armor');
   });
 
   it('exports Java weight class display names without changing canonical categories', () => {

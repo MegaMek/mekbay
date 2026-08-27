@@ -59,6 +59,7 @@ interface UnitCheckDefinition {
     readonly usesPilotAutomation: boolean | ((context: UnitCheckContext) => boolean);
     readonly description: (context: UnitCheckContext) => string;
     readonly reviewDescription?: (context: UnitCheckContext) => string;
+    /** Presentation only; check behavior is selected by the typed registry key. */
     readonly failureOutcome: (context: UnitCheckContext) => string;
     readonly successLabel?: string;
     readonly failedLabel?: string;

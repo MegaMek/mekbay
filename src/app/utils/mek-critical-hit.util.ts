@@ -12,6 +12,7 @@ import { getTopologyFor, LEG_LOCATIONS, MEK_TORSO_LOCATIONS } from '../models/en
 import type { CriticalDelayedExplosion } from '../services/equipment-interaction-registry.service';
 import { resolveInventoryControlWeaponDamage } from './inventory-control-damage.util';
 import { getInventoryControlModeAmmoSummary } from './inventory-control.util';
+import { mekStructureDamageCapacity, resolveMekStructureDamage } from './mek-structure-damage.util';
 
 export type MekCriticalChanceResult =
     | { readonly kind: 'none' }
@@ -252,8 +253,7 @@ export function mekCriticalChanceModifiers(
 ): MekCriticalChanceModifier[] {
     const modifiers: MekCriticalChanceModifier[] = [];
     const unitData = unit.getUnit();
-    const structureType = unitData.structureType?.trim().toLowerCase() ?? '';
-    if (structureType.includes('reinforced')) {
+    if (unit.getStructureKindAt(location) === 'reinforced') {
         modifiers.push({ label: 'Reinforced structure', value: -1 });
     }
     if (usesIndustrialMekCriticalChanceTable(unit)) {
@@ -266,7 +266,7 @@ export function mekCriticalChanceModifiers(
         modifiers.push({ label: 'CASE II internal explosion', value: -1 });
     }
     if (context.hardenedArmorApplies !== false
-        && unitData.armorType.trim().toLowerCase().includes('hardened')) {
+        && unit.getArmorTypeAt(location) === 'HARDENED') {
         const facingUnknown = context.hardenedArmorApplies === undefined;
         modifiers.push(facingUnknown
             ? {
@@ -961,8 +961,6 @@ function resolveMekExplosionLocationDamage(
     plan: MekImmediateCriticalExplosion,
 ): MekExplosionLocationDamage[] {
     const topology = getTopologyFor(unit.locations?.internal.keys() ?? []);
-    // Explosion rules resolve damage points; composite structure marks two pips per point.
-    const internalDamageMultiplier = isCompositeStructure(unit) ? 2 : 1;
     const locations: MekExplosionLocationDamage[] = [];
     const visited = new Set<string>();
     let location: string | null = sourceLocation;
@@ -976,28 +974,34 @@ function resolveMekExplosionLocationDamage(
             armorBlowoutPending = true;
         }
         const remainingInternal = Math.max(0, unit.getInternalPoints(location) - unit.getInternalHits(location));
-        const remainingInternalCapacity = remainingInternal / internalDamageMultiplier;
+        const structureKind = unit.getStructureKindAt(location);
         const torso = MEK_TORSO_LOCATIONS.has(location);
         const remainingArmor = Math.max(0, unit.getArmorPoints(location, torso) - unit.getArmorHits(location, torso));
         const resolution = unit.gameRules.resolveMekExplosionDamage({
             damage,
             protection,
-            remainingInternal: remainingInternalCapacity,
+            remainingInternal: mekStructureDamageCapacity(remainingInternal, structureKind),
             remainingArmor,
             originalArmor: unit.getArmorPoints(location, torso),
             torso,
             armorBlowoutPending,
         });
         const armorDamage = Math.min(remainingArmor, resolution.armorDamage);
-        const internalDamage = Math.min(
+        const structureDamage = resolveMekStructureDamage(
+            resolution.internalDamage,
             remainingInternal,
-            resolution.internalDamage * internalDamageMultiplier,
+            structureKind,
         );
 
-        locations.push({ location, internalDamage, armorDamage, armorRear: resolution.armorRear, protection });
+        locations.push({
+            location,
+            internalDamage: structureDamage.internalDamage,
+            armorDamage,
+            armorRear: resolution.armorRear,
+            protection,
+        });
 
-        const appliedInternalDamage = internalDamage / internalDamageMultiplier;
-        const overflow = Math.max(0, resolution.internalDamage - appliedInternalDamage);
+        const overflow = structureDamage.overflowDamage;
         if (overflow === 0 || resolution.stopsTransfer) break;
         location = topology[location as keyof typeof topology]?.transfersTo ?? null;
         damage = overflow;
@@ -1071,10 +1075,6 @@ function applyAutomaticMekCritical(
         slotNumber: slot.slot + 1,
         armoredAbsorption: false,
     };
-}
-
-function isCompositeStructure(unit: CBTForceUnit): boolean {
-    return unit.getUnit().structureType?.trim().toLowerCase() === 'composite';
 }
 
 export function getMekExplosionProtection(unit: CBTForceUnit, location: string): MekExplosionProtection {

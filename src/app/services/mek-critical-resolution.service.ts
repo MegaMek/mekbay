@@ -38,7 +38,7 @@ import {
     type MekCriticalChanceResult,
     type MekCriticalHitOptions,
 } from '../utils/mek-critical-hit.util';
-import { resolveMekFallHitLocation } from '../utils/mek-falling.util';
+import { resolveMekFallHitLocation, twoD6Total } from '../utils/mek-falling.util';
 import { clusterTableForUnit } from '../utils/record-sheet-reference-table';
 import { isConsciousnessCheck } from '../utils/unit-check.util';
 import { uuidv7 } from '../utils/uuid.util';
@@ -334,13 +334,11 @@ export class MekCriticalResolutionService {
                             data: <MekFloatingCriticalDialogData>{
                                 unit,
                                 hitArc: floating.hitArc,
-                                initialLocationRoll: floating.locationRoll,
-                                initialRoll: floating.dice,
+                                initialDice: floating.hitLocationDice,
                                 initialTripodLegRoll: floating.tripodLegRoll,
-                                onDraftChange: (locationRoll, dice, tripodLegRoll) =>
+                                onDraftChange: (dice, tripodLegRoll) =>
                                     turnState.setPendingFloatingCriticalLocation(
                                         pending.id,
-                                        locationRoll,
                                         dice,
                                         tripodLegRoll,
                                     ),
@@ -520,11 +518,8 @@ export class MekCriticalResolutionService {
     ): boolean {
         const floating = pending.floatingLocation;
         if (!floating) return false;
-        const generatedDice = floating.locationRoll === undefined
-            ? [this.rollD6(), this.rollD6()] as const
-            : null;
-        const locationRoll = floating.locationRoll
-            ?? generatedDice![0] + generatedDice![1];
+        const dice = floating.hitLocationDice ?? [this.rollD6(), this.rollD6()] as const;
+        const locationRoll = twoD6Total(dice);
         const table = clusterTableForUnit(unit.getUnit()).hitLocationTable ?? 'biped';
         const preliminary = resolveMekFallHitLocation(table, floating.hitArc, locationRoll);
         const needsTripodLeg = preliminary.location === null
@@ -542,8 +537,7 @@ export class MekCriticalResolutionService {
 
         unit.turnState().setPendingFloatingCriticalLocation(
             pending.id,
-            locationRoll,
-            generatedDice ?? floating.dice ?? null,
+            dice,
             tripodLegRoll,
         );
         const targetLocation = mekCriticalRollLocation(unit, result.location);

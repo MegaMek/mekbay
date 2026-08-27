@@ -611,6 +611,30 @@ describe('MekRules', () => {
         expect(createRulesHarness({ rulesId: 'tw' }).standingUpPSRModifier).toBe(0);
     });
 
+    it('waives the Patchwork Hardened Running MP penalty when no leg uses it', () => {
+        const torsoOnly = createForceUnitHarness({ walk: 6, run: 9 });
+        torsoOnly.getUnit().armorType = 'Patchwork';
+        torsoOnly.getUnit().patchworkLayout = {
+            CT: { type: 4, clan: false },
+            LL: { type: 0, clan: false },
+            RL: { type: 0, clan: false },
+        };
+        const hardenedLeg = createForceUnitHarness({ walk: 6, run: 8 });
+        hardenedLeg.getUnit().armorType = 'Patchwork';
+        hardenedLeg.getUnit().patchworkLayout = {
+            CT: { type: 0, clan: false },
+            LL: { type: 4, clan: false },
+            RL: { type: 0, clan: false },
+        };
+
+        expect((torsoOnly.rules as MekRules).movementState()?.run).toBe(9);
+        expect((hardenedLeg.rules as MekRules).movementState()?.run).toBe(8);
+        expect(torsoOnly.rules.PSRModifiers().modifiers)
+            .toContain(jasmine.objectContaining({ reason: 'Mounts Hardened Armor', pilotCheck: 1 }));
+        expect(hardenedLeg.rules.PSRModifiers().modifiers)
+            .toContain(jasmine.objectContaining({ reason: 'Mounts Hardened Armor', pilotCheck: 1 }));
+    });
+
     it('removes a broken targeting computer modifier from direct-fire weapons at every range', () => {
         const activeForceUnit = createForceUnitHarness({ critSlots: [crit('Targeting Computer', false)] });
         const destroyedForceUnit = createForceUnitHarness({ critSlots: [crit('Targeting Computer')] });
@@ -1358,6 +1382,175 @@ describe('MekRules', () => {
             { label: 'Foot Actuator Destroyed', modifier: 1, weakened: true },
             { label: 'Leg AES', modifier: -1 }
         ]);
+    });
+
+    it('displays different CORE quad kick values in front/rear order', () => {
+        const forceUnit = createForceUnitHarness({
+            subtype: 'Quad BattleMek',
+            internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+            critSlots: [{ ...crit('Upper Leg Actuator'), loc: 'RLL' }],
+        });
+        const rules = forceUnit.rules as MekRules;
+        const kick = new MountedEquipment({
+            owner: forceUnit,
+            id: 'kick',
+            name: 'kick',
+            intrinsicPhysicalAttack: true,
+        });
+        const display = rules.applyInventoryControlDisplayEffects(kick, {
+            name: 'Kick', location: '—', heat: '—', damage: '10', hit: '+1',
+            min: '—', short: '—', medium: '—', long: '—',
+        });
+
+        expect(display.damage).toBe('F:10 | R:5');
+        expect(display.hit).toBe('-1/+1');
+        expect(rules.resolveKickArcHitDisplay(kick)).toEqual({ text: '-1/+1', weakened: true });
+        expect(rules.canPerformEquipmentAction(kick, 'physical-attack')).toBeTrue();
+    });
+
+    it('applies CORE quad foot damage to both kick arcs while keeping leg actuator damage local', () => {
+        const forceUnit = createForceUnitHarness({
+            subtype: 'Quad BattleMek',
+            internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+            critSlots: [
+                { ...crit('Foot Actuator'), loc: 'FLL' },
+                { ...crit('Lower Leg Actuator'), loc: 'RLL' },
+            ],
+        });
+        const rules = forceUnit.rules as MekRules;
+        const kick = new MountedEquipment({
+            owner: forceUnit,
+            id: 'kick',
+            name: 'kick',
+            intrinsicPhysicalAttack: true,
+        });
+        const display = rules.applyInventoryControlDisplayEffects(kick, {
+            name: 'Kick', location: '—', heat: '—', damage: '10', hit: '+2',
+            min: '—', short: '—', medium: '—', long: '—',
+        });
+
+        expect(display.damage).toBe('F:10 | R:5');
+        expect(display.hit).toBe('+0/+2');
+    });
+
+    it('uses a dash for a CORE quad kick arc disabled by a hip hit', () => {
+        const forceUnit = createForceUnitHarness({
+            subtype: 'Quad BattleMek',
+            internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+            critSlots: [{ ...crit('Hip'), loc: 'FLL' }],
+        });
+        const rules = forceUnit.rules as MekRules;
+        const kick = new MountedEquipment({
+            owner: forceUnit,
+            id: 'kick',
+            name: 'kick',
+            intrinsicPhysicalAttack: true,
+        });
+        const display = rules.applyInventoryControlDisplayEffects(kick, {
+            name: 'Kick', location: '—', heat: '—', damage: '10', hit: '-1',
+            min: '—', short: '—', medium: '—', long: '—',
+        });
+
+        expect(display.damage).toBe('F:— | R:10');
+        expect(display.hit).toBe('—/-1');
+        expect(rules.canPerformEquipmentAction(kick, 'physical-attack')).toBeTrue();
+    });
+
+    it('labels a disabled rear CORE quad kick arc', () => {
+        const forceUnit = createForceUnitHarness({
+            subtype: 'Quad BattleMek',
+            internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+            critSlots: [{ ...crit('Hip'), loc: 'RLL' }],
+        });
+        const rules = forceUnit.rules as MekRules;
+        const kick = new MountedEquipment({
+            owner: forceUnit,
+            id: 'kick',
+            name: 'kick',
+            intrinsicPhysicalAttack: true,
+        });
+        const display = rules.applyInventoryControlDisplayEffects(kick, {
+            name: 'Kick', location: '—', heat: '—', damage: '10', hit: '-1',
+            min: '—', short: '—', medium: '—', long: '—',
+        });
+
+        expect(display.damage).toBe('F:10 | R:—');
+        expect(rules.canPerformEquipmentAction(kick, 'physical-attack')).toBeTrue();
+    });
+
+    it('disables CORE quad kicks once a second hip hit adds the standard hip effect', () => {
+        const forceUnit = createForceUnitHarness({
+            subtype: 'Quad BattleMek',
+            internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+            critSlots: [
+                { ...crit('Hip'), id: 'FLL-hip', loc: 'FLL' },
+                { ...crit('Hip'), id: 'FRL-hip', loc: 'FRL' },
+            ],
+        });
+        const rules = forceUnit.rules as MekRules;
+        const kick = new MountedEquipment({
+            owner: forceUnit,
+            id: 'kick',
+            name: 'kick',
+            intrinsicPhysicalAttack: true,
+        });
+        const display = rules.applyInventoryControlDisplayEffects(kick, {
+            name: 'Kick', location: '—', heat: '—', damage: '10', hit: '+3',
+            min: '—', short: '—', medium: '—', long: '—',
+        });
+
+        expect(display.damage).toBe('—');
+        expect(display.hit).toBe('—');
+        expect(rules.canPerformEquipmentAction(kick, 'physical-attack')).toBeFalse();
+    });
+
+    it('collapses equal CORE quad kick arc values to one value', () => {
+        const forceUnit = createForceUnitHarness({
+            subtype: 'Quad BattleMek',
+            internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+            critSlots: [
+                { ...crit('Lower Leg Actuator'), loc: 'FLL' },
+                { ...crit('Upper Leg Actuator'), loc: 'RLL' },
+            ],
+        });
+        const rules = forceUnit.rules as MekRules;
+        const kick = new MountedEquipment({
+            owner: forceUnit,
+            id: 'kick',
+            name: 'kick',
+            intrinsicPhysicalAttack: true,
+        });
+        const display = rules.applyInventoryControlDisplayEffects(kick, {
+            name: 'Kick', location: '—', heat: '—', damage: '10', hit: '+3',
+            min: '—', short: '—', medium: '—', long: '—',
+        });
+
+        expect(display.damage).toBe('5');
+        expect(display.hit).toBe('+1');
+    });
+
+    it('keeps TW quad kick actuator effects global and single-valued', () => {
+        const forceUnit = createForceUnitHarness({
+            rulesId: 'tw',
+            subtype: 'Quad BattleMek',
+            internalLocations: ['FLL', 'FRL', 'RLL', 'RRL'],
+            critSlots: [{ ...crit('Upper Leg Actuator'), loc: 'RLL' }],
+        });
+        const rules = forceUnit.rules as MekRules;
+        const kick = new MountedEquipment({
+            owner: forceUnit,
+            id: 'kick',
+            name: 'kick',
+            intrinsicPhysicalAttack: true,
+        });
+        const display = rules.applyInventoryControlDisplayEffects(kick, {
+            name: 'Kick', location: '—', heat: '—', damage: '10', hit: '+0',
+            min: '—', short: '—', medium: '—', long: '—',
+        });
+
+        expect(display.damage).toBe('5');
+        expect(display.hit).toBe('+0');
+        expect(rules.resolveKickArcHitDisplay(kick)).toBeNull();
     });
 
     it('identifies mounted physical weapon actuator modifiers without a generic fallback', () => {
@@ -3455,8 +3648,13 @@ describe('MekRules', () => {
             run: 6,
         });
         const turnState = forceUnit.turnState();
+        const rules = forceUnit.rules as MekRules;
         turnState.moveMode.set('run');
         turnState.moveDistance.set(0);
+
+        expect(rules.systemsStatus().destroyedHipsCount).toBe(0);
+        expect(rules.movementState()?.walk).toBe(2);
+        expect(rules.PSRModifiers().modifier).toBe(2);
 
         const runOption = forceUnit.getAvailableMotiveModes(false)
             .find(option => option.mode === 'run');
@@ -3631,7 +3829,7 @@ describe('MekRules', () => {
             });
             forceUnit.getCritSlots().forEach(slot => forceUnit.rules.evaluateCritSlotHit(slot));
             const hipChecks = forceUnit.turnState().getPSRChecks()
-                .filter(check => check.reason === 'Hip hit');
+                .filter(check => check.kind === PSR_CHECK_KIND.LEG_DAMAGE);
 
             expect(hipChecks.length).withContext(`${hipHits} current hip hits`).toBe(hipHits - 1);
             expect(hipChecks.reduce((total, check) => total + (check.pilotCheck ?? 0), 0))

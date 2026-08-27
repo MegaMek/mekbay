@@ -134,6 +134,8 @@ function explodingAmmoUnit(automationMode: 'yes' | 'ask' = 'ask'): {
         getEquipmentRegistry: () => EMPTY_EQUIPMENT_REGISTRY,
         getInventoryControlRules: () => ({}),
         getUnit: () => ({ structureType: '', armorType: 'Standard', features: [], comp: [] }),
+        getArmorTypeAt: () => 'STANDARD',
+        getStructureKindAt: () => 'standard',
         getCrewMember: () => ({
             getHits: () => pilotHits,
             setHits: (hits: number) => { pilotHits = hits; },

@@ -557,12 +557,18 @@ export class TurnState {
         if (this.spotting()) turnState.spotting = true;
         if (this.equipmentStateChanged()) turnState.equipmentStateChanged = true;
 
+        if (this.pendingEvents().some(event =>
+            'pilotDamageGroup' in event && event.pilotDamageGroup === this.pilotDamageGroup)) {
+            turnState.pilotDamageGroup = this.pilotDamageGroup;
+        }
+
         return Object.keys(turnState).length > 0 ? turnState : undefined;
     }
 
     update(data: SerializedTurnState | undefined) {
         this.withSuppressedModified(() => {
             this.turnCounter = data?.turnCounter ?? this.turnCounter;
+            this.pilotDamageGroup = data?.pilotDamageGroup ?? createPilotDamageGroup('combat');
             this.endTurnCheckpoint.set(data?.endTurnCheckpoint);
             this.airborne.set(data?.airborne ?? null);
             this.moveMode.set(data?.moveMode ?? null);
@@ -999,24 +1005,19 @@ export class TurnState {
 
     setPendingFloatingCriticalLocation(
         id: string,
-        locationRoll: number | null,
-        dice: readonly number[] | null = null,
+        dice: readonly number[] | null,
         tripodLegRoll: number | null = null,
     ): boolean {
         const pending = this.getPendingCriticalHit(id);
         const floating = pending?.floatingLocation;
         if (!pending || !floating) return false;
-        if (locationRoll !== null
-            && (!Number.isInteger(locationRoll) || locationRoll < 2 || locationRoll > 12)) return false;
         if (dice !== null && (dice.length !== 2
-            || dice.some(die => !Number.isInteger(die) || die < 1 || die > 6)
-            || locationRoll !== dice[0] + dice[1])) return false;
+            || dice.some(die => !Number.isInteger(die) || die < 1 || die > 6))) return false;
         if (tripodLegRoll !== null
             && (!Number.isInteger(tripodLegRoll) || tripodLegRoll < 1 || tripodLegRoll > 6)) return false;
         const next: SerializedPendingMekFloatingCriticalLocation = {
             hitArc: floating.hitArc,
-            ...(locationRoll !== null ? { locationRoll } : {}),
-            ...(dice !== null ? { dice: [dice[0], dice[1]] as const } : {}),
+            ...(dice !== null ? { hitLocationDice: [dice[0], dice[1]] as const } : {}),
             ...(tripodLegRoll !== null ? { tripodLegRoll } : {}),
         };
         this.pendingEvents.update(current => current.map(event =>
@@ -1140,6 +1141,24 @@ export class TurnState {
 
     queuePendingFall(pending: PendingEventInput<SerializedPendingMekFall>): boolean {
         return this.queuePendingEvent({ type: 'mek-fall', ...pending });
+    }
+
+    setPendingFallRolls(
+        id: string,
+        rolls: Pick<SerializedPendingMekFall, 'orientationRoll' | 'damageRolls'>,
+    ): boolean {
+        const pending = this.getPendingFall(id);
+        if (!pending) return false;
+        this.pendingEvents.update(current => current.map(event => {
+            if (event.id !== id || event.type !== 'mek-fall') return event;
+            const {
+                orientationRoll: _orientationRoll,
+                damageRolls: _damageRolls,
+                ...facts
+            } = event;
+            return { ...facts, ...rolls };
+        }));
+        return true;
     }
 
     discardPendingFall(id: string): boolean {

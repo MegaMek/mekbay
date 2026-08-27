@@ -353,6 +353,7 @@ export class TWMekRules extends MekRules {
 
     protected override get gyroHitPSRModifier(): number { return 3; }
     protected override get hipPSRModifier(): number { return 2; }
+    protected override get usesArcSpecificQuadKickEffects(): boolean { return false; }
 
     /** BMM/TW applies the standard hip effects to a quad starting with its first hit. */
     protected override standardHipEffectHitCount(totalHipHits: number, _isQuadruped: boolean): number {

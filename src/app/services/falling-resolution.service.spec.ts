@@ -66,7 +66,7 @@ describe('FallingResolutionService', () => {
                 },
             },
         );
-        expect(harness.addArmorHits).toHaveBeenCalledWith('HD', 5, false, false);
+        expect(harness.addArmorHits).toHaveBeenCalledWith('HD', 5, false, false, 5);
         expect(harness.applyHeadHitCrewHits).toHaveBeenCalledTimes(1);
         expect(harness.completePendingFall).toHaveBeenCalledOnceWith('fall:1');
         expect(showToast).toHaveBeenCalledWith(
@@ -136,7 +136,7 @@ describe('FallingResolutionService', () => {
         closed.complete();
         await operation;
 
-        expect(harness.addArmorHits).toHaveBeenCalledOnceWith('HD', 5, false, false);
+        expect(harness.addArmorHits).toHaveBeenCalledOnceWith('HD', 5, false, false, 5);
         expect(resolveAutomation.calls.allArgs().map(args => args[0])).toEqual([
             'pilotHitsAndConsciousnessCheck',
         ]);
@@ -184,7 +184,7 @@ describe('FallingResolutionService', () => {
         closed.complete();
         await operation;
 
-        expect(harness.addArmorHits).toHaveBeenCalledOnceWith('HD', 5, false, false);
+        expect(harness.addArmorHits).toHaveBeenCalledOnceWith('HD', 5, false, false, 5);
         expect(harness.applyHeadHitCrewHits).not.toHaveBeenCalled();
         expect(harness.completePendingFall).toHaveBeenCalledOnceWith('fall:1');
     });
@@ -300,14 +300,12 @@ function createUnit(
         source: 'psr' | 'stand-attempt';
         levelsFallen: number;
         orientationRoll: number | null;
-        orientationDice: readonly [number] | null;
         damageRolls: CBTMekFallDamageRoll[];
     }> = [{
         id: 'fall:1',
         source: 'psr' as const,
         levelsFallen: 0,
         orientationRoll: null,
-        orientationDice: null,
         damageRolls: [],
     }];
     const completePendingFall = jasmine.createSpy('completePendingFall').and.callFake((id: string) => {
@@ -345,12 +343,10 @@ function createUnit(
             id: string,
             orientationRoll: number,
             damageRolls: readonly CBTMekFallDamageRoll[],
-            orientationDice: readonly [number] | null,
         ) => {
             const pending = pendingFalls.find(candidate => candidate.id === id);
             if (!pending) return false;
             pending.orientationRoll = orientationRoll;
-            pending.orientationDice = orientationDice;
             pending.damageRolls = [...damageRolls];
             return true;
         },
@@ -358,10 +354,14 @@ function createUnit(
         skipPendingFall,
         getArmorPoints: (location: string) => location === 'HD' ? 9 : 10,
         getArmorHits: (location: string) => armorHits.get(location) ?? 0,
+        getArmorTypeAt: () => 'STANDARD',
+        hasArmorType: () => false,
         addArmorHits,
         getInternalPoints: () => 10,
         getInternalHits: () => 0,
+        getStructureKindAt: () => 'standard',
         addInternalHits: jasmine.createSpy('addInternalHits'),
+        queueMekCriticalChance: jasmine.createSpy('queueMekCriticalChance'),
         applyHeadHitCrewHits,
     } as unknown as CBTForceUnit;
     return { unit, addArmorHits, applyHeadHitCrewHits, completePendingFall, skipPendingFall };
