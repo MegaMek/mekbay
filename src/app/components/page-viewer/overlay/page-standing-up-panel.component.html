@@ -89,7 +89,8 @@
         [compactOverlayResult]="true"
         [overlayResult]="rolledResult()"
         [overlayResultTone]="rolledResultTone()"
-        overlayCloseHint="Click to return to standing up"
+        [overlayCloseHint]="rollOverlayCloseHint()"
         (finished)="onRollFinished($event)"
+        (overlayClosed)="onRollOverlayClosed()"
     />
 }

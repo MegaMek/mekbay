@@ -10,7 +10,7 @@
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    padding: 8px;
+    padding: 0;
     gap: 8px;
     transition: opacity 0.2s;
     max-height: 80dvh;
@@ -20,6 +20,7 @@
 
 .header {
     flex: 0 0 auto;
+    padding: 8px 8px 0;
     font-weight: bold;
     text-align: center;
 }
@@ -27,9 +28,9 @@
 .body {
     flex: 1 1 auto;
     min-height: 0;
+    padding: 0 8px;
     overflow-x: hidden;
     overflow-y: auto;
-    color: var(--text-color-secondary);
 }
 
 .psr-list {
@@ -55,6 +56,10 @@
 .psr-item.failed,
 .psr-item.automatic-failure {
     border-left-color: var(--danger);
+}
+
+.psr-item.cascade-failure {
+    opacity: 0.65;
 }
 
 .psr-check-header {
@@ -127,6 +132,11 @@
     color: var(--danger);
 }
 
+.psr-saved-dice {
+    flex-shrink: 0;
+    pointer-events: none;
+}
+
 .psr-resolution-actions {
     display: grid;
     grid-template-columns: 24px 1fr 1fr;
@@ -134,29 +144,8 @@
     margin-top: 8px;
 }
 
-.random-button {
-    width: 24px;
-    min-width: 24px;
-    height: 32px;
-    padding: 0;
-    border: none;
-    background: transparent url('/images/random.svg') center / 20px 20px no-repeat;
-    cursor: pointer;
-    opacity: 0.8;
-    transition: opacity 0.2s ease-in-out;
-}
-
-.random-button:hover,
-.random-button:focus-visible {
-    opacity: 1;
-}
-
-.random-button:disabled {
-    cursor: not-allowed;
-    opacity: 0.35;
-}
-
-.psr-automatic-failure {
+.psr-automatic-failure,
+.psr-cascade-failure {
     margin-top: 8px;
     padding-left: 32px;
     color: var(--danger);
@@ -227,6 +216,7 @@
     flex: 0 0 auto;
     display: grid;
     grid-template-columns: minmax(0, 1fr) var(--roll-value-width);
+    margin: 0 8px;
     background: var(--background-input);
     min-height: 42px;
     color: var(--text-color);
@@ -254,8 +244,11 @@
     flex: 0 0 auto;
     display: flex;
     justify-content: center;
+    gap: 8px;
+    padding: 0 8px 8px;
 
     .bt-button {
-        width: 100%;
+        flex: 1 1 0;
+        min-width: 0;
     }
 }

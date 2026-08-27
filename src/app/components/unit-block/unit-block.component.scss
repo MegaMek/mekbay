@@ -43,6 +43,12 @@
         align-items: center;
         position: relative;
         z-index: 2;
+
+        .compact-notification-row {
+            width: 100%;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
     }
 
     &.destroyed {
@@ -198,6 +204,21 @@
     .unit-alias,
     .chassis {
         font-weight: bold;
+    }
+
+    .unit-name-line {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 4px;
+        line-height: 1.2;
+
+        .unit-alias,
+        .chassis {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
     }
 
     .unit-role {

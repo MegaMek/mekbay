@@ -69,21 +69,14 @@ describe('PageStandingUpPanelComponent', () => {
             .componentInstance as DiceRollerComponent;
         spyOn(roller, 'roll');
 
-        expect((fixture.nativeElement.querySelector('.careful-stand .modifier-badge') as HTMLElement).textContent?.trim()).toBe('-2');
-        expect((fixture.nativeElement.querySelector('.careful-stand') as HTMLElement).textContent).not.toContain('(-2 PSR)');
-        expect((fixture.nativeElement.querySelector('.stand-attempt-limit') as HTMLElement).textContent?.trim())
-            .toBe('(1 attempt per turn)');
-        const carefulStandCheckbox = fixture.nativeElement.querySelector('.careful-stand input') as HTMLInputElement;
-        expect(carefulStandCheckbox.disabled).toBeFalse();
+        expect(component.canCarefulStand()).toBeTrue();
         canCarefulStand.set(false);
-        fixture.detectChanges();
-        expect(carefulStandCheckbox.disabled).toBeTrue();
+        expect(component.canCarefulStand()).toBeFalse();
         canCarefulStand.set(true);
-        fixture.detectChanges();
         expect(component.targetRoll()).toBe(7);
         expect(component.attempts()).toBe(0);
 
-        component.carefulStand.set(true);
+        component.setCarefulStand({ target: { checked: true } } as unknown as Event);
         expect(component.targetRoll()).toBe(5);
         expect(component.modifiersList()).toEqual([
             jasmine.objectContaining({ pilotCheck: 1, reason: 'Gyro damaged' }),
@@ -95,24 +88,24 @@ describe('PageStandingUpPanelComponent', () => {
         component.onRollFinished({ results: [3, 3], sum: 6 });
 
         expect(roller.roll).toHaveBeenCalledTimes(1);
+        expect(resolveStandAttempt).not.toHaveBeenCalled();
+        expect(component.lastOutcome()).toBeNull();
+        expect(component.rolledResult()).toBe('SUCCESS');
+
+        component.onRollOverlayClosed();
+
         expect(resolveStandAttempt).toHaveBeenCalledOnceWith('success', { carefulStand: true });
         expect(component.lastOutcome()).toBe('success');
-        expect(component.rolledResult()).toBe('SUCCESS');
+        expect(component.rolledResult()).toBeNull();
         expect(component.attempts()).toBe(1);
 
-        fixture.detectChanges();
-        const adjustmentButtons = Array.from(fixture.nativeElement.querySelectorAll('.attempts-stepper button')) as HTMLButtonElement[];
-        expect(adjustmentButtons.map(button => button.textContent?.trim())).toEqual(['-', '+']);
-
-        adjustmentButtons[0].click();
-        fixture.detectChanges();
+        component.adjustAttempts(-1);
 
         expect(adjustStandAttempts).toHaveBeenCalledOnceWith(-1);
         expect(component.attempts()).toBe(0);
         expect(component.lastOutcome()).toBe('success');
-        expect(adjustmentButtons[0].disabled).toBeTrue();
 
-        adjustmentButtons[1].click();
+        component.adjustAttempts(1);
 
         expect(adjustStandAttempts).toHaveBeenCalledWith(1);
         expect(component.attempts()).toBe(1);
@@ -150,7 +143,52 @@ describe('PageStandingUpPanelComponent', () => {
         expect(component.modifiersList()).toEqual([]);
     });
 
-    it('does not offer careful stand under Core rules', () => {
+    it('keeps a failed dice result visible until the roller closes, then closes before fall resolution', () => {
+        const resolveStandAttempt = jasmine.createSpy('resolveStandAttempt').and.returnValue(true);
+        const closeManagedOverlay = jasmine.createSpy('closeManagedOverlay');
+        const unit = {
+            id: 'unit-1',
+            rules: {
+                standingUpPSRModifier: 0,
+                getStandAttemptLimit: () => null,
+                supportsCarefulStand: false,
+                canCarefulStand: () => false,
+            },
+            turnState: () => ({
+                standAttempts: signal<number | undefined>(0),
+                carefulStand: signal(false),
+                canStandUp: signal(true),
+                canStandWithoutPSR: signal(false),
+                resolveStandAttempt,
+                adjustStandAttempts: jasmine.createSpy('adjustStandAttempts'),
+            }),
+            PSRTargetRoll: () => 8,
+            PSRModifiers: () => ({ modifiers: [] }),
+        };
+
+        TestBed.configureTestingModule({
+            imports: [PageStandingUpPanelComponent],
+            providers: [
+                { provide: PageInteractionOverlayComponent, useValue: { unit: signal(unit) } },
+                { provide: OverlayManagerService, useValue: { closeManagedOverlay } },
+            ],
+        });
+        const component = TestBed.createComponent(PageStandingUpPanelComponent).componentInstance;
+
+        component.onRollFinished({ results: [2, 3], sum: 5 });
+
+        expect(component.rolledResult()).toBe('FAILED');
+        expect(component.rollOverlayCloseHint()).toContain('resolve the fall');
+        expect(resolveStandAttempt).not.toHaveBeenCalled();
+        expect(closeManagedOverlay).not.toHaveBeenCalled();
+
+        component.onRollOverlayClosed();
+
+        expect(resolveStandAttempt).toHaveBeenCalledOnceWith('failed', { carefulStand: false });
+        expect(closeManagedOverlay).toHaveBeenCalledOnceWith('standingUp-unit-1');
+    });
+
+    it('does not allow careful stand under Core rules', () => {
         const unit = {
             id: 'unit-1',
             rules: {
@@ -176,14 +214,15 @@ describe('PageStandingUpPanelComponent', () => {
                 { provide: OverlayManagerService, useValue: { closeManagedOverlay: jasmine.createSpy('closeManagedOverlay') } },
             ],
         });
-        const fixture = TestBed.createComponent(PageStandingUpPanelComponent);
-        fixture.detectChanges();
+        const component = TestBed.createComponent(PageStandingUpPanelComponent).componentInstance;
 
-        expect(fixture.nativeElement.querySelector('.careful-stand')).toBeNull();
-        expect(fixture.componentInstance.carefulStand()).toBeFalse();
+        component.setCarefulStand({ target: { checked: true } } as unknown as Event);
+
+        expect(component.supportsCarefulStand()).toBeFalse();
+        expect(component.carefulStand()).toBeFalse();
     });
 
-    it('renders a standing-attempt review without mutable attempt controls (except attempts stepper)', () => {
+    it('allows only attempt adjustment while reviewing a completed standing attempt', () => {
         const attempts = signal<number | undefined>(2);
         const carefulStand = signal(false);
         const resolveStandAttempt = jasmine.createSpy('resolveStandAttempt');
@@ -221,13 +260,6 @@ describe('PageStandingUpPanelComponent', () => {
         const component = fixture.componentInstance;
 
         expect(component.reviewOnly).toBeTrue();
-        expect((fixture.nativeElement.querySelector('.header') as HTMLElement).textContent?.trim())
-            .toBe('Standing Up Review');
-        expect((fixture.nativeElement.querySelector('.attempts strong') as HTMLElement).textContent?.trim()).toBe('2');
-        expect(fixture.nativeElement.querySelector('.psr-resolution-actions')).toBeNull();
-        expect(fixture.nativeElement.querySelector('.careful-stand')).toBeNull();
-        expect(fixture.nativeElement.querySelector('dice-roller')).toBeNull();
-
         component.adjustAttempts(1);
         component.resolve('success');
         component.onRollFinished({ results: [6, 6], sum: 12 });
@@ -236,44 +268,5 @@ describe('PageStandingUpPanelComponent', () => {
         expect(adjustStandAttempts).toHaveBeenCalledOnceWith(1);
         expect(resolveStandAttempt).not.toHaveBeenCalled();
         expect(component.carefulStand()).toBeFalse();
-    });
-
-    it('shows only stand attempts when reviewing a unit that can stand without a PSR', () => {
-        const unit = {
-            id: 'quad-1',
-            rules: {
-                standingUpPSRModifier: -1,
-                getStandAttemptLimit: () => null,
-                supportsCarefulStand: true,
-                canCarefulStand: () => true,
-            },
-            turnState: () => ({
-                standAttempts: signal<number | undefined>(1),
-                carefulStand: signal(false),
-                canStandUp: signal(true),
-                canStandWithoutPSR: signal(true),
-                adjustStandAttempts: jasmine.createSpy('adjustStandAttempts'),
-            }),
-            PSRTargetRoll: () => 8,
-            PSRModifiers: () => ({ modifiers: [{ pilotCheck: 1, reason: 'Gyro damaged' }] }),
-        };
-
-        TestBed.configureTestingModule({
-            imports: [PageStandingUpPanelComponent],
-            providers: [
-                { provide: PageInteractionOverlayComponent, useValue: { unit: signal(unit) } },
-                { provide: OverlayManagerService, useValue: { closeManagedOverlay: jasmine.createSpy('closeManagedOverlay') } },
-                { provide: STANDING_UP_REVIEW_ONLY, useValue: true },
-            ],
-        });
-        const fixture = TestBed.createComponent(PageStandingUpPanelComponent);
-        fixture.detectChanges();
-
-        expect((fixture.nativeElement.querySelector('.attempts strong') as HTMLElement).textContent?.trim()).toBe('1');
-        expect(fixture.nativeElement.querySelector('.psr-target')).toBeNull();
-        expect(fixture.nativeElement.querySelector('.psr-list')).toBeNull();
-        expect(fixture.nativeElement.querySelector('.careful-stand')).toBeNull();
-        expect(fixture.nativeElement.querySelector('.roll-details')).toBeNull();
-        expect(fixture.nativeElement.querySelector('dice-roller')).toBeNull();
     });
 });

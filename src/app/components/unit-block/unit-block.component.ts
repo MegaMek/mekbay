@@ -20,6 +20,7 @@ import { GameSystem } from '../../models/common.model';
 import { formatMovement, formatMovementWithAlternate } from '../../utils/as-common.util';
 import { getUnitConditionDefinition, unitConditionSortIndex } from '../../models/rules/unit-type-rules';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import { UnitNotificationBadgesComponent } from '../unit-notification-badges/unit-notification-badges.component';
 
 interface UnitConditionDisplay {
     key: string;
@@ -39,7 +40,14 @@ export interface UnitBlockPilotEditEvent {
 @Component({
     selector: 'unit-block',
     standalone: true,
-    imports: [CdkMenuModule, FormatTonsPipe, UnitIconComponent, TooltipDirective, UpperCasePipe],
+    imports: [
+        CdkMenuModule,
+        FormatTonsPipe,
+        UnitIconComponent,
+        UnitNotificationBadgesComponent,
+        TooltipDirective,
+        UpperCasePipe,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './unit-block.component.html',
     styleUrls: ['./unit-block.component.scss'],
@@ -128,6 +136,12 @@ export class UnitBlockComponent {
             return unit.turnState().dirtyPhase();
         }
         return false;
+    });
+
+    notificationUnit = computed<CBTForceUnit | null>(() => {
+        if (!this.optionsService.options().trackPhaseAndTurn) return null;
+        const unit = this.forceUnit();
+        return unit instanceof CBTForceUnit ? unit : null;
     });
 
     activeConditions = computed<UnitConditionDisplay[]>(() => {

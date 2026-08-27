@@ -3,23 +3,24 @@
 // Author: Drake
 
 import { computed, createEnvironmentInjector, effect, type EffectRef, EnvironmentInjector, type Injector, isDevMode, runInInjectionContext, signal, type Signal, untracked, type WritableSignal } from '@angular/core';
+import { Subject } from 'rxjs';
 import { DataService } from '../services/data.service';
 import { getUnitHeight, type UnitSummary, type UnitHeight } from "./unit-summary.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { MountedAmmo, MountedEquipment, MountedWeapon } from './mounted-equipment.model';
-import { type CriticalSlot, type HeatProfile, type LocationData, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, TURN_STATE_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type RuleCheckOutcome, type SerializedCrewMember, type SerializedRuleCheck, committedConditionData, conditionsForSerialization, conditionsHasActive, conditionsHasCommittedActive, conditionsMapFromSerialization, normalizeConditionData, normalizeConditionKey } from './force-serialization';
+import { type CriticalSlot, type HeatProfile, type LocationData, type MekHitArc, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, TURN_STATE_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type CBTMekFallSource, type PendingEventInput, type RuleCheckOutcome, type SerializedCrewMember, type SerializedMekFallDamageRoll, type SerializedPendingMekFall, type SerializedPendingUnitCheck, type SerializedRuleCheck, committedConditionData, conditionsForSerialization, conditionsHasActive, conditionsHasCommittedActive, conditionsMapFromSerialization, normalizeConditionData, normalizeConditionKey } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
 import type { ConditionData } from './force-unit-state.model';
 import type { CBTForce } from './cbt-force.model';
 import { UnitSvgService } from '../services/unit-svg.service';
-import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type SkillType } from './crew-member.model';
+import { CrewMember, DEAD_CREW_HIT_THRESHOLD, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, getConsciousnessTarget, isCrewMemberAboard, isCrewMemberAvailable, type CrewMemberState, type SkillType } from './crew-member.model';
 import { CBTForceUnitState } from './cbt-force-unit-state.model';
 import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { UnitSvgAeroService } from '../services/unit-svg-aero.service';
 import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
 import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
-import { AmmoEquipment, isTorpedoAmmo } from './equipment.model';
+import { AmmoEquipment, ArmorEquipment, isTorpedoAmmo, StructureEquipment } from './equipment.model';
 import type { AmmoEquipment as AmmoEquipmentType } from './equipment.model';
 import type { EquipmentFlag } from './equipment-flags.type';
 import type { WeaponType } from './weapon-types.model';
@@ -28,10 +29,13 @@ import { unitHasActiveC3DisruptingStealth } from './stealth-equipment.model';
 import { getMotiveModeLabel, getMotiveModesOptionsByUnit, type MotiveModeOption, type MotiveModes } from './motiveModes.model';
 import type { TurnState } from './turn-state.model';
 import { Sanitizer } from '../utils/sanitizer.util';
-import type { UnitTypeRules } from './rules/unit-type-rules';
+import type { PSRCheck, UnitTypeRules } from './rules/unit-type-rules';
 import { type InventoryControlRuntimeAmmoSelection, type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
 import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
-import { getMekLegLocations, getMekLocationParent, inferMekConfigFromLocations, MEK_REAR_ARMOR_LOCATIONS } from './entity/types';
+import { getMekLegLocations, getMekLocationParent, inferMekConfigFromLocations, MEK_REAR_ARMOR_LOCATIONS, type ArmorType } from './entity/types';
+import { mekStructureDamageReceived, MEK_STRUCTURE_TYPE, type MekStructureKind } from '../utils/mek-structure-damage.util';
+import { resolveMekFallArmorDamage, type MekFallArmorDamageResolution } from '../utils/mek-falling.util';
+import { ARMOR_TYPE_FROM_BLK_CODE } from './entity/parsers/blk-codec';
 import {
     createHandlerQueryContext,
     EquipmentInteractionRegistry,
@@ -42,14 +46,21 @@ import {
 import type { UnitHeatSource } from './rules/unit-type-rules';
 import { resolveInventoryControlSelectedAmmoType, type InventoryControlDisplayData, type InventoryControlDisplayEffectOptions, type InventoryControlRules } from '../utils/inventory-control.util';
 import { ToastService } from '../services/toast.service';
-import { DialogsService } from '../services/dialogs.service';
+import { CBTAutomationToastService } from '../services/cbt-automation-toast.service';
 import { getBattleArmorTrooperNumber, normalizeBattleArmorTrooperLocation } from './battle-armor-location.model';
 import { CBTGameRulesService } from '../services/cbt-game-rules.service';
-import type { C3DegradationSource, C3TargetingResolution, CBTGameRules } from './rules/game-rules';
+import type { C3DegradationSource, C3TargetingResolution, CBTGameRules, MekExplosionProtection } from './rules/game-rules';
 import { OptionsService } from '../services/options.service';
+import type { AutomationMode, CBTAutomationKey } from './options.model';
 import { resolveSelectedInventoryWeaponHeat } from '../utils/inventory-control-heat.util';
 import { parseInventoryComponentReference } from './inventory-component-reference.model';
 import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-control-physical-damage.util';
+import { uuidv7 } from '../utils/uuid.util';
+import {
+    createPilotDamageGroup,
+    isHeatPilotDamageGroup,
+    isImmediatePilotDamageGroup,
+} from '../utils/pilot-damage-group.util';
 import {
     combineEquipmentStatuses,
     type CriticalSlotStatusFacts,
@@ -58,6 +69,13 @@ import {
 } from './equipment-status.model';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from './rules/unit-type-rules';
 import type { HeatDissipationState } from './rules/heat-management';
+import { getMekLocationLabel } from './entity/types/mek';
+import { UNIT_CHECK_KIND } from './unit-check.model';
+import {
+    isConsciousnessCheck,
+    isConsciousnessRecoveryCheck,
+    isConsciousnessSequenceCheck,
+} from '../utils/unit-check.util';
 
 export type EquipmentStatusSource = MountedEquipment | CriticalSlot;
 export type EquipmentAction =
@@ -69,6 +87,91 @@ export type EquipmentAction =
     | 'configure-network';
 export type EquipmentStateEdit = 'enable' | 'disable' | 'repair' | 'apply-damage';
 
+export interface CBTEndTurnAutomationDecisions {
+    heatAndDissipationResolution?: boolean;
+    /** The end-turn coordinator has already completed this unit's phase. */
+    phaseAlreadyEnded?: boolean;
+}
+
+export interface CBTInternalDamageContext {
+    /** Present only for internal-explosion damage; records the protection used to resolve it. */
+    readonly explosionProtection?: MekExplosionProtection;
+    /** Whether Hardened Armor remained in the exact facing/location when this hit reached structure. */
+    readonly hardenedArmorApplies?: boolean;
+    /** Critical explosions retain the pilot-damage event that produced the internal hit. */
+    readonly pilotDamageGroup?: string;
+    /** The first composite pip shares a damage point already counted in the previous location. */
+    readonly sharedCompositePip?: boolean;
+    /** This hit already damaged armor in the same location and initiated its hull-breach resolution. */
+    readonly armorDamagedBySameHit?: boolean;
+    /** Hit-table arc for a possible through-armor critical. */
+    readonly throughArmorHitArc?: MekHitArc;
+}
+
+export interface CBTModularArmorState {
+    readonly hits: number;
+    readonly points: number;
+    readonly remaining: number;
+}
+
+export interface CBTMekFallDamageRoll {
+    readonly hitLocationDice: readonly [number, number] | null;
+    readonly tripodLegRoll: number | null;
+}
+
+export interface CBTHullBreachCheckResolution {
+    readonly dice: readonly [number, number];
+    readonly total: number;
+    readonly breached: boolean;
+}
+
+/** Serialized event facts exposed to the dialog with explicit unrolled values. */
+export type CBTPendingMekFall = Omit<
+    SerializedPendingMekFall,
+    'orientationRoll' | 'damageRolls'
+> & {
+    readonly orientationRoll: number | null;
+    readonly damageRolls: readonly CBTMekFallDamageRoll[];
+};
+
+function fallDamageRollForDialog(roll: SerializedMekFallDamageRoll): CBTMekFallDamageRoll {
+    return {
+        hitLocationDice: roll.hitLocationDice ?? null,
+        tripodLegRoll: roll.tripodLegRoll ?? null,
+    };
+}
+
+function rollD6(random: () => number): number {
+    return Math.floor(random() * 6) + 1;
+}
+
+export type CBTUnitAutomationTrigger =
+    | {
+        readonly kind: 'critical-hit-chance';
+        readonly id: string;
+    }
+    | {
+        readonly kind: 'pending-unit-check';
+    }
+    | {
+        readonly kind: 'falling';
+        readonly id: string;
+        readonly source: CBTMekFallSource;
+        readonly levelsFallen: number;
+    }
+    | {
+        readonly kind: 'breach-and-flood';
+        readonly id: string;
+        readonly locations: readonly string[];
+        readonly commit: boolean;
+    }
+    | {
+        readonly kind: 'hull-breach-check';
+        readonly id: string;
+        readonly location: string;
+        readonly commit: boolean;
+    };
+
 export class CBTForceUnit extends ForceUnit {
     override get force(): CBTForce { return super.force as CBTForce; }
     override set force(value: CBTForce) { super.force = value; }
@@ -78,7 +181,14 @@ export class CBTForceUnit extends ForceUnit {
     private svgServiceInjector: EnvironmentInjector | null = null;
     private optionalRulesEffect: EffectRef | null = null;
     private readonly unknownEquipmentInstallationLocationIds = new Set<string>();
+    private readonly reviewedFloodLocations = new Set<string>();
     private _rules!: UnitTypeRules;
+    readonly automationTriggers = new Subject<CBTUnitAutomationTrigger>();
+    /** Provisional PSR choices retained across dialog instances; intentionally not serialized. */
+    readonly psrOutcomeSelections = signal<Readonly<Record<string, RuleCheckOutcome>>>({});
+    /** Exact virtual PSR dice retained alongside provisional outcomes. */
+    readonly psrDiceSelections = signal<Readonly<Record<string, readonly [number, number]>>>({});
+    readonly pendingFallCount = computed(() => this.turnState().pendingFallCount());
     readonly gameRules: CBTGameRules;
     viewState: ViewportTransform;
     locations?: {
@@ -147,8 +257,12 @@ export class CBTForceUnit extends ForceUnit {
         return getUnitHeight(this.getUnit(), this.getCondition('prone'));
     }
 
-    useAutomations(): boolean {
-        return this.injector.get(OptionsService, null, { optional: true })?.options().cbtAutomations ?? true;
+    automationMode(key: CBTAutomationKey): AutomationMode {
+        return this.injector.get(OptionsService).cbtAutomationMode(key);
+    }
+
+    tracksPhaseAndTurn(): boolean {
+        return this.injector.get(OptionsService).options().trackPhaseAndTurn;
     }
 
     allowsExtremeRangeAttacks(): boolean {
@@ -157,6 +271,10 @@ export class CBTForceUnit extends ForceUnit {
 
     usesForcedWithdrawal(): boolean {
         return this.injector.get(OptionsService, null, { optional: true })?.options().CBTOptionalRules?.forcedWithdrawal ?? true;
+    }
+
+    usesFloatingCriticals(): boolean {
+        return this.injector.get(OptionsService, null, { optional: true })?.options().CBTOptionalRules?.floatingCriticals ?? false;
     }
 
     private getEquipmentInteractionRegistry(): EquipmentInteractionRegistry {
@@ -735,7 +853,64 @@ export class CBTForceUnit extends ForceUnit {
         return (locData?.armor ?? 0) + (locData?.pendingArmor ?? 0);
     }
 
-    addArmorHits(loc: string, hits: number, rear?: boolean, consolidateImmediately: boolean = false) {
+    addArmorHits(
+        loc: string,
+        hits: number,
+        rear?: boolean,
+        consolidateImmediately: boolean = false,
+    ): number {
+        const armorPoints = this.getArmorPoints(loc, rear);
+        const previousHits = Math.min(armorPoints, Math.max(0, this.getArmorHits(loc, rear)));
+        const currentHits = Math.min(armorPoints, Math.max(0, previousHits + hits));
+        const damageReceived = this.getArmorTypeAt(loc) === 'HARDENED'
+            ? Math.floor(currentHits / 2) - Math.floor(previousHits / 2)
+            : currentHits - previousHits;
+        this.recordArmorHits(
+            loc,
+            hits,
+            rear,
+            consolidateImmediately,
+            damageReceived,
+            damageReceived > 0,
+        );
+        return damageReceived;
+    }
+
+    /** Applies one physical non-attack hit using the selected ruleset and records its exact phase damage. */
+    applyMekFallArmorDamage(
+        loc: string,
+        damage: number,
+        rear: boolean,
+        consolidateImmediately: boolean,
+    ): MekFallArmorDamageResolution {
+        const remainingArmor = Math.max(0, this.getArmorPoints(loc, rear) - this.getArmorHits(loc, rear));
+        const resolution = resolveMekFallArmorDamage(
+            this.gameRules.id,
+            damage,
+            remainingArmor,
+            this.getArmorTypeAt(loc),
+        );
+        if (resolution.armorDamage > 0) {
+            this.recordArmorHits(
+                loc,
+                resolution.armorDamage,
+                rear,
+                consolidateImmediately,
+                resolution.appliedDamage,
+                resolution.appliedDamage > 0,
+            );
+        }
+        return resolution;
+    }
+
+    private recordArmorHits(
+        loc: string,
+        hits: number,
+        rear: boolean | undefined,
+        consolidateImmediately: boolean,
+        damageReceived: number,
+        armorDamageApplied: boolean,
+    ): void {
         const locKey = rear ? `${loc}-rear` : loc;
         const locations = { ...this.state.locations() };
 
@@ -748,12 +923,10 @@ export class CBTForceUnit extends ForceUnit {
         locations[locKey].pendingArmor += hits;
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
         this.markEquipmentLocationsChanged();
-        let hitsForPsr = hits;
-        if (this.getUnit().armorType === 'Hardened') {
-            hitsForPsr = Math.ceil(hitsForPsr / 2);
-        }
-        this.state.turnState().addDmgReceived(hitsForPsr);
+        this.state.turnState().addDmgReceived(damageReceived);
         if (consolidateImmediately) this.state.consolidateLocations();
+        else this.applyUnderwaterBreachAndFlooding();
+        if (armorDamageApplied) this.applyUnderwaterHullBreachCheck(loc, consolidateImmediately);
         this.evaluateDestroyed();
         this.setModified();
     }
@@ -768,8 +941,46 @@ export class CBTForceUnit extends ForceUnit {
         locations[locKey].pendingArmor = undefined;
         this.state.locations.set({ ...this.state.locations(), [locKey]: locations[locKey] });
         this.markEquipmentLocationsChanged();
+        this.applyUnderwaterBreachAndFlooding(true);
         this.evaluateDestroyed();
         this.setModified();
+    }
+
+    getModularArmorState(loc: string): CBTModularArmorState {
+        let hits = 0;
+        let points = 0;
+        for (const slot of this.getCritSlots()) {
+            if (slot.loc !== loc || slot.destroyed || !slot.eq?.flags?.has('F_MODULAR_ARMOR')) continue;
+            points += 10;
+            hits += Math.min(10, Math.max(0, slot.consumed ?? 0));
+        }
+        return { hits, points, remaining: points - hits };
+    }
+
+    /** Applies or repairs modular armor and returns the signed record change actually made. */
+    addModularArmorHits(loc: string, hits: number): number {
+        if (!Number.isFinite(hits)) return 0;
+        let remaining = Math.abs(Math.trunc(hits));
+        if (remaining === 0) return 0;
+        const applyingDamage = hits > 0;
+        const crits = [...this.getCritSlots()];
+
+        for (let index = 0; index < crits.length && remaining > 0; index++) {
+            const slot = crits[index];
+            if (slot.loc !== loc || slot.destroyed || !slot.eq?.flags?.has('F_MODULAR_ARMOR')) continue;
+            const consumed = Math.min(10, Math.max(0, slot.consumed ?? 0));
+            const change = Math.min(remaining, applyingDamage ? 10 - consumed : consumed);
+            if (change === 0) continue;
+            crits[index] = { ...slot, consumed: consumed + (applyingDamage ? change : -change) };
+            remaining -= change;
+        }
+
+        const applied = Math.abs(Math.trunc(hits)) - remaining;
+        if (applied === 0) return 0;
+        const signedApplied = applyingDamage ? applied : -applied;
+        this.setCritSlots(crits);
+        this.state.turnState().addDmgReceived(signedApplied);
+        return signedApplied;
     }
 
     getInternalPoints(loc: string): number {
@@ -781,7 +992,53 @@ export class CBTForceUnit extends ForceUnit {
         return (locData?.internal ?? 0) + (locData?.pendingInternal ?? 0);
     }
 
-    addInternalHits(loc: string, hits: number, consolidateImmediately: boolean = false) {
+    /** Queues one rules-generated critical chance unless that automation is disabled. */
+    queueMekCriticalChance(
+        location: string,
+        options: CBTInternalDamageContext & {
+            readonly locationDestroyed?: boolean;
+            readonly consolidateImmediately?: boolean;
+        } = {},
+    ): boolean {
+        if (this.getUnit().type !== 'Mek'
+            || !location
+            || this.automationMode('criticalHitChanceCheck') === 'no') return false;
+        const id = uuidv7();
+        const queued = this.turnState().queuePendingCriticalChance({
+            id,
+            location,
+            ...(options.locationDestroyed ? { locationDestroyed: true } : {}),
+            ...(options.consolidateImmediately ? { consolidateImmediately: true } : {}),
+            ...(options.explosionProtection !== undefined
+                ? { explosionProtection: options.explosionProtection }
+                : {}),
+            ...(options.hardenedArmorApplies !== undefined
+                ? { hardenedArmorApplies: options.hardenedArmorApplies }
+                : {}),
+            ...(options.throughArmorHitArc !== undefined
+                ? { throughArmorHitArc: options.throughArmorHitArc }
+                : {}),
+            pilotDamageGroup: options.pilotDamageGroup
+                ?? this.turnState().currentPilotDamageGroup(),
+        });
+        if (queued) this.automationTriggers.next({ kind: 'critical-hit-chance', id });
+        return queued;
+    }
+
+    addInternalHits(
+        loc: string,
+        hits: number,
+        consolidateImmediately: boolean = false,
+        context: CBTInternalDamageContext = {},
+    ): number {
+        const previousHits = this.getInternalHits(loc);
+        const internalPoints = this.getInternalPoints(loc);
+        const structureKind = this.getStructureKindAt(loc);
+        const previousDamageReceived = mekStructureDamageReceived(
+            internalPoints,
+            Math.min(internalPoints, Math.max(0, previousHits)),
+            structureKind,
+        );
         const locations = { ...this.state.locations() };
         if (locations[loc] === undefined) {
             locations[loc] = {};
@@ -797,11 +1054,44 @@ export class CBTForceUnit extends ForceUnit {
         }
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
         this.markEquipmentLocationsChanged();
-        this.state.turnState().addDmgReceived(hits);
         this._rules.evaluateLegDestroyed(loc, hits);
         this.clearNarcFromCommittedPhysicallyDestroyedLocations();
         this.evaluateDestroyed();
         this.setModified();
+        const boundedPreviousHits = Math.min(internalPoints, Math.max(0, previousHits));
+        const boundedCurrentHits = Math.min(internalPoints, Math.max(0, this.getInternalHits(loc)));
+        const appliedDamage = boundedCurrentHits - boundedPreviousHits;
+        // Core counts every Composite structure pip destroyed by an internal explosion toward the damage PSR.
+        const countsExplosionPips = this.gameRules.id === 'core2026'
+            && context.explosionProtection !== undefined
+            && structureKind === 'composite';
+        let phaseDamage = countsExplosionPips
+            ? appliedDamage
+            : mekStructureDamageReceived(internalPoints, boundedCurrentHits, structureKind) - previousDamageReceived;
+        if (!countsExplosionPips
+            && context.sharedCompositePip
+            && structureKind === 'composite'
+            && appliedDamage > 0) {
+            phaseDamage -= mekStructureDamageReceived(
+                internalPoints,
+                Math.min(boundedCurrentHits, boundedPreviousHits + 1),
+                structureKind,
+            ) - previousDamageReceived;
+        }
+        this.state.turnState().addDmgReceived(phaseDamage);
+        // A single assignment is one hit/event, regardless of how many structure pips it marks.
+        if (appliedDamage > 0) {
+            if (!context.armorDamagedBySameHit) {
+                this.applyUnderwaterBreachAndFlooding(consolidateImmediately);
+                this.applyUnderwaterHullBreachCheck(loc, consolidateImmediately);
+            }
+            this.queueMekCriticalChance(loc, {
+                ...context,
+                locationDestroyed: boundedCurrentHits >= internalPoints,
+                consolidateImmediately,
+            });
+        }
+        return phaseDamage;
     }
 
     setInternalHits(loc: string, hits: number) {
@@ -853,6 +1143,8 @@ export class CBTForceUnit extends ForceUnit {
         this.writeLocationConditions(loc, conditions);
         if (normalizedCondition === 'blown-off') {
             this._rules.evaluateLegDestroyed(loc, active ? 1 : -1);
+        } else if (normalizedCondition === 'flooded') {
+            this._rules.evaluateLocationFlooded(loc, active);
         }
     }
 
@@ -902,31 +1194,144 @@ export class CBTForceUnit extends ForceUnit {
         return location.split('/').some(loc => legLocations.has(loc.trim()));
     }
 
+    private isFloodableLocation(location: string): boolean {
+        const internalLocations = this.locations?.internal;
+        if (!internalLocations?.has(location) || this.getLocationCondition(location, 'blown-off')) return false;
+        const structurallyDestroyed = this.isInternalLocStructurallyDestroyed(location);
+        // A location destroyed only through its parent is detached. A location whose own
+        // structure is destroyed remains eligible when its armor also satisfies the rule.
+        return structurallyDestroyed || !this.isInternalLocPhysicallyDestroyed(location);
+    }
+
+    private isLocationArmorDepletedForFlooding(location: string, commit: boolean): boolean {
+        const armorLocations = this.locations?.armor;
+        if (!armorLocations) return false;
+        const armorByFacing = new Map(
+            Array.from(armorLocations.values())
+                .filter(armor => armor.loc === location)
+                .map(armor => [armor.rear, armor] as const),
+        );
+        const armorFacings = MEK_REAR_ARMOR_LOCATIONS.has(location) ? [false, true] : [false];
+        return armorFacings.some(rear => {
+            const armor = armorByFacing.get(rear);
+            const armorHits = commit
+                ? this.getCommittedArmorHits(location, rear)
+                : this.getArmorHits(location, rear);
+            return !armor || armorHits >= this.getArmorPoints(location, rear);
+        });
+    }
+
+    /** Initiates the per-damaging-hit hull-breach check for an armored submerged location. */
+    applyUnderwaterHullBreachCheck(location: string, commit = false): void {
+        const mode = this.automationMode('breachAndFloodCheck');
+        if (mode === 'no'
+            || this.getUnit().type !== 'Mek'
+            || !this.isLocationSubmerged(location)
+            || !this.isFloodableLocation(location)
+            || this.getLocationCondition(location, 'flooded')
+            || this.isLocationArmorDepletedForFlooding(location, commit)) return;
+
+        if (mode === 'yes') {
+            this.resolveUnderwaterHullBreachCheck(location, commit);
+            return;
+        }
+        if (!this.automationTriggers.observed) return;
+        this.automationTriggers.next({
+            kind: 'hull-breach-check',
+            id: uuidv7(),
+            location,
+            commit,
+        });
+    }
+
+    /** Rolls and applies one previously established hull-breach check. */
+    resolveUnderwaterHullBreachCheck(
+        location: string,
+        commit = false,
+        random: () => number = Math.random,
+    ): CBTHullBreachCheckResolution | null {
+        if (this.getUnit().type !== 'Mek'
+            || !this.isFloodableLocation(location)
+            || this.getLocationCondition(location, 'flooded')) return null;
+
+        const dice = [rollD6(random), rollD6(random)] as const;
+        const total = dice[0] + dice[1];
+        const breached = this.gameRules.hullBreachCheckSucceeds(total);
+        if (breached) this.setLocationCondition(location, 'flooded', true, commit);
+
+        const locationLabel = getMekLocationLabel(location) ?? location;
+        const breachRange = this.gameRules.getHullBreachCheckRangeLabel();
+        this.injector.get(CBTAutomationToastService).show(
+            this,
+            `Hull breach check: ${locationLabel} ${breached ? 'breached and flooded' : 'held'} (${total} on 2D6; breach on ${breachRange})`,
+            breached ? 'error' : 'success',
+        );
+        return { dice, total, breached };
+    }
+
     applyUnderwaterBreachAndFlooding(commit = false): void {
         const internalLocations = this.locations?.internal;
         const armorLocations = this.locations?.armor;
         const submerged = this.turnState().submerged();
         const partiallyUnderwater = this.turnState().partiallyUnderwater();
-        if (this.getUnit().type !== 'Mek' || (!submerged && !partiallyUnderwater) || !internalLocations || !armorLocations) return;
+        if (this.getUnit().type !== 'Mek' || !internalLocations || !armorLocations) {
+            this.reviewedFloodLocations.clear();
+            return;
+        }
+        if (!submerged && !partiallyUnderwater) {
+            this.reviewedFloodLocations.clear();
+            return;
+        }
 
         const submergedLocations = submerged
             ? Array.from(internalLocations.keys())
             : getMekLegLocations(inferMekConfigFromLocations(internalLocations.keys()));
+        const eligibleLocations: string[] = [];
         for (const loc of submergedLocations) {
-            if (!internalLocations.has(loc) || this.isInternalLocPhysicallyDestroyed(loc)) continue;
-            // Armor metadata is sparse, so a missing front/rear entry means that facing is exposed.
-            const armorByFacing = new Map(
-                Array.from(armorLocations.values())
-                    .filter(armor => armor.loc === loc)
-                    .map(armor => [armor.rear, armor] as const),
-            );
-            const armorFacings = MEK_REAR_ARMOR_LOCATIONS.has(loc) ? [false, true] : [false];
-            const armorBreached = armorFacings.some(rear => {
-                const armor = armorByFacing.get(rear);
-                return !armor || this.getCommittedArmorHits(loc, rear) >= this.getArmorPoints(loc, rear);
-            });
-            if (armorBreached) this.setLocationCondition(loc, 'flooded', true, commit);
+            if (!this.isFloodableLocation(loc)) continue;
+            if (this.isLocationArmorDepletedForFlooding(loc, commit)
+                && !this.getLocationCondition(loc, 'flooded')) eligibleLocations.push(loc);
         }
+
+        const eligible = new Set(eligibleLocations);
+        for (const loc of this.reviewedFloodLocations) {
+            if (!eligible.has(loc)) this.reviewedFloodLocations.delete(loc);
+        }
+
+        const mode = this.automationMode('breachAndFloodCheck');
+        if (mode !== 'ask') this.reviewedFloodLocations.clear();
+        if (mode === 'yes') {
+            for (const loc of eligibleLocations) this.setLocationCondition(loc, 'flooded', true, commit);
+            if (eligibleLocations.length > 0) {
+                const locations = eligibleLocations
+                    .map(loc => getMekLocationLabel(loc) ?? loc)
+                    .join(', ');
+                this.injector.get(CBTAutomationToastService).show(
+                    this,
+                    `Breach and flooding: ${locations} flooded`,
+                    'error',
+                );
+            }
+            return;
+        }
+        if (mode === 'no') return;
+
+        const reviewLocations = eligibleLocations.filter(loc => !this.reviewedFloodLocations.has(loc));
+        if (reviewLocations.length === 0) return;
+        // A review is not pending until a viewer can actually receive it. This keeps
+        // an unvisited unit retryable when its sheet is opened later.
+        if (!this.automationTriggers.observed) return;
+        reviewLocations.forEach(loc => this.reviewedFloodLocations.add(loc));
+        this.automationTriggers.next({
+            kind: 'breach-and-flood',
+            id: uuidv7(),
+            locations: reviewLocations,
+            commit,
+        });
+    }
+
+    deferUnderwaterBreachAndFloodingReview(locations: readonly string[]): void {
+        for (const location of locations) this.reviewedFloodLocations.delete(location);
     }
 
     isArmorLocDestroyed(loc: string, rear: boolean = false): boolean {
@@ -1065,6 +1470,12 @@ export class CBTForceUnit extends ForceUnit {
             || (!entry.isRepairing() && this.getEquipmentStatus(entry) === 'destroyed');
     }
 
+    canTakeActiveActions(): boolean {
+        return !this.destroyed
+            && !this.getCondition('shutdown')
+            && (this.rules.isRemoteDrone() || this.rules.getActivePilotCrewId() !== null);
+    }
+
     canPerformEquipmentAction(entry: MountedEquipment, action: EquipmentAction): boolean {
         if (this.hasActiveC3DisruptingStealth()
             && (entry.equipment?.flags.has('F_BAP') || entry.equipment?.flags.has('F_BLOODHOUND'))
@@ -1077,6 +1488,7 @@ export class CBTForceUnit extends ForceUnit {
         } else if (!this.isEquipmentOperational(entry) || this.destroyed || this.getCondition('shutdown')) {
             return false;
         }
+        if (action !== 'provide-passive-effect' && !this.canTakeActiveActions()) return false;
         if (action === 'physical-attack' && this.isPhysicalActionUnavailable(entry)) return false;
         if (action === 'fire' && !this.isInventoryWeaponUsableInWater(entry, this.getInventoryControlSelectedAmmo(entry))) return false;
         return this.rules.canPerformEquipmentAction(entry, action);
@@ -1564,6 +1976,8 @@ export class CBTForceUnit extends ForceUnit {
         });
         this.state.inventory.set([...inventory]);
         this.inventoryControl.markAmmoSourcesChanged();
+        this.psrOutcomeSelections.set({});
+        this.psrDiceSelections.set({});
         this.state.resetTurnState();
         this.evaluateDestroyed();
         this.setModified();
@@ -1590,7 +2004,9 @@ export class CBTForceUnit extends ForceUnit {
                 options.push({ mode, label: getMotiveModeLabel(mode, unit, airborne) });
             }
         }
+        const cannotMove = this.getCondition('immobile') || !this.canTakeActiveActions();
         return options
+            .filter(option => option.mode === 'stationary' || !cannotMove)
             .filter(option => this._rules.isMotiveModeAvailable(option.mode))
             .map(option => ({
                 ...option,
@@ -1609,7 +2025,10 @@ export class CBTForceUnit extends ForceUnit {
 
     endPhase() {
         this.dispatchBeforeEquipmentStateCommit();
+        this.resolvePendingCrewDeaths();
         this.state.endPhase();
+        this.psrOutcomeSelections.set({});
+        this.psrDiceSelections.set({});
         this.inventoryControl.markAmmoSourcesChanged();
         this.phaseTrigger.update(v => v + 1); // Trigger change detection
     }
@@ -1634,22 +2053,402 @@ export class CBTForceUnit extends ForceUnit {
         const heat = this.getHeat();
         if (heat.next === undefined) return;
         this.state.consolidateHeat();
-        if (!this.useAutomations()) {
+        if (this.automationMode('heatAndDissipationResolution') === 'no') {
             this.turnState().settleHeatDissipationDeficit();
         }
     }
 
-    private resolveEndTurnHeat(): void {
+    /** Applies projected end-turn heat without committing or resetting the turn. */
+    resolveEndTurnHeat(): void {
         const projection = this.turnState().heatProjection();
         this.setHeat(projection.projected);
         this.state.consolidateHeat();
         this.turnState().acknowledgeHeatSources(projection.consumedDissipation);
     }
-    
-    public endTurn() {
+
+    hasPendingEndTurnHeat(): boolean {
+        return this.turnState().hasPendingHeatResolution();
+    }
+
+    /**
+     * Sets the crew-damage track from the record sheet. Increasing an eligible
+     * warrior's damage is still a real pilot hit; decreasing it is a tabletop
+     * correction and only reconciles already-pending work.
+     */
+    setCrewHits(crewId: number, hits: number): boolean {
+        const crew = this.getCrewMember(crewId);
+        if (!crew || !Number.isFinite(hits)) return false;
+        const nextHits = Math.min(DEAD_CREW_HIT_THRESHOLD, Math.max(0, Math.trunc(hits)));
+        const currentHits = crew.getHits();
+        if (nextHits === currentHits) return false;
+
+        const unitType = this.getUnit().type;
+        const usesConsciousness = unitType === 'Mek' || unitType === 'ProtoMek' || unitType === 'Aero';
+        if (usesConsciousness && nextHits > currentHits) {
+            return this.applyPilotHits(nextHits - currentHits, undefined, crewId) > 0;
+        }
+
+        crew.setHits(nextHits);
+        this.turnState().markPhaseStateChanged();
+        this.turnState().refreshPendingUnitCheckTargets();
+        return true;
+    }
+
+    applyPilotHits(hits: number, group?: string, crewId = 0): number {
+        return this.applyPilotHitsForGroup(hits, group ?? this.turnState().currentPilotDamageGroup(), crewId);
+    }
+
+    applyLifeSupportDrowningCrewHits(hits: number, group?: string): number {
+        const immediateGroup = isImmediatePilotDamageGroup(group)
+            ? group!
+            : createPilotDamageGroup('immediate', group);
+        return this.applyCrewHits(hits, immediateGroup);
+    }
+
+    private applyPilotHitsForGroup(
+        hits: number,
+        group: string,
+        crewId: number,
+    ): number {
+        const requestedHits = Number.isFinite(hits) ? Math.max(0, Math.trunc(hits)) : 0;
+        const crew = this.getCrewMember(crewId);
+        if (!crew || requestedHits === 0 || !isCrewMemberAboard(crew.getState())) return 0;
+
+        const previousHits = crew.getHits();
+        const count = Math.min(requestedHits, DEAD_CREW_HIT_THRESHOLD - previousHits);
+        if (count === 0) return 0;
+        const fatal = previousHits + count >= DEAD_CREW_HIT_THRESHOLD;
+        crew.setHits(previousHits + count);
+        this.turnState().markPhaseStateChanged();
+        if (fatal) {
+            this.turnState().discardPendingUnitChecks(check =>
+                isConsciousnessSequenceCheck(check) && check.crewId === crewId);
+            return count;
+        }
+        if (crew.getState() !== 'healthy') return count;
+        if (this.automationMode('pilotHitsAndConsciousnessCheck') === 'no') return count;
+
+        if (this.gameRules.aggregatedEndPhaseConsciousRolls) {
+            // Core makes one roll for all pilot damage in the phase. Replace
+            // the pending roll so its target reflects the highest number
+            // reached by actual damage.
+            const existing = this.turnState().getPendingUnitChecks().find(check =>
+                isConsciousnessCheck(check)
+                && check.pilotDamageGroup === group
+                && check.crewId === crewId);
+            if (existing) this.turnState().discardPendingUnitCheck(existing.id);
+            if (this.queueConsciousnessCheck(group, crewId, existing?.id)) {
+                const actionable = this.turnState().actionablePendingUnitChecks().some(check =>
+                    isConsciousnessCheck(check)
+                    && check.pilotDamageGroup === group
+                    && check.crewId === crewId);
+                if (actionable) this.automationTriggers.next({ kind: 'pending-unit-check' });
+            }
+            return count;
+        }
+
+        let queued = false;
+        for (let offset = 1; offset <= count; offset++) {
+            const target = getConsciousnessTarget(previousHits + offset);
+            if (target === null) break;
+            queued = this.turnState().queuePendingUnitCheck({
+                id: uuidv7(),
+                kind: UNIT_CHECK_KIND.CONSCIOUSNESS,
+                pilotDamageGroup: group,
+                crewId,
+                target,
+            }) || queued;
+        }
+        if (queued) this.automationTriggers.next({ kind: 'pending-unit-check' });
+        return count;
+    }
+
+    getArmorTypeAt(location: string): ArmorType | null {
+        const patchworkType = this.getUnit().patchworkLayout?.[location]?.type;
+        if (patchworkType !== undefined) return ARMOR_TYPE_FROM_BLK_CODE[patchworkType] ?? null;
+        const armor = this.materialAtLocation(location, (equipment): equipment is ArmorEquipment =>
+            equipment instanceof ArmorEquipment && equipment.armorType !== 'PATCHWORK');
+        return armor ? armor.armorType as ArmorType : null;
+    }
+
+    hasArmorType(type: ArmorType): boolean {
+        return Object.values(this.getUnit().patchworkLayout ?? {})
+            .some(entry => ARMOR_TYPE_FROM_BLK_CODE[entry.type] === type)
+            || this.getUnit().comp.some(component =>
+                component.eq instanceof ArmorEquipment && component.eq.armorType === type);
+    }
+
+    getStructureKindAt(location: string): MekStructureKind {
+        const hybridType = this.getUnit().hybridLayout?.[location]?.type;
+        if (hybridType === MEK_STRUCTURE_TYPE.COMPOSITE) return 'composite';
+        if (hybridType === MEK_STRUCTURE_TYPE.REINFORCED) return 'reinforced';
+        const structure = this.materialAtLocation(location, (equipment): equipment is StructureEquipment =>
+            equipment instanceof StructureEquipment);
+        if (structure?.hasFlag('F_COMPOSITE')) return 'composite';
+        if (structure?.hasFlag('F_REINFORCED')) return 'reinforced';
+        return 'standard';
+    }
+
+    private materialAtLocation<T extends ArmorEquipment | StructureEquipment>(
+        location: string,
+        isMaterial: (equipment: unknown) => equipment is T,
+    ): T | null {
+        const materials = this.getUnit().comp.filter(component => isMaterial(component.eq));
+        const located = materials.find(component => component.l?.split('/').includes(location));
+        const material = located?.eq ?? (materials.length === 1 ? materials[0].eq : undefined);
+        return (material as T | undefined) ?? null;
+    }
+
+    resolvePendingCrewDeaths(): void {
+        const pending = this.getCrewMembers().filter(crew =>
+            crew.getHits() >= DEAD_CREW_HIT_THRESHOLD && crew.getState() !== 'dead');
+        if (pending.length === 0) return;
+        pending.forEach(crew => crew.setState('dead'));
+        if (this.rules.getActivePilotCrewId() === null
+            && this.getUnit().type === 'Aero'
+            && this.turnState().airborne() !== false) {
+            this.setCondition('out-of-control', true);
+        }
+    }
+
+    private queueConsciousnessCheck(
+        group: string,
+        crewId: number,
+        id = uuidv7(),
+    ): boolean {
+        if (this.automationMode('pilotHitsAndConsciousnessCheck') === 'no') return false;
+        const target = this.getCrewMember(crewId)?.getConsciousnessTarget();
+        if (target === null || target === undefined) return false;
+        return this.turnState().queuePendingUnitCheck({
+            id,
+            kind: UNIT_CHECK_KIND.CONSCIOUSNESS,
+            pilotDamageGroup: group,
+            crewId,
+            target,
+        });
+    }
+
+    setCrewState(
+        crewId: number,
+        state: Exclude<CrewMemberState, 'dead'>,
+        recoveryDelay = 1,
+    ): boolean {
+        const crew = this.getCrewMember(crewId);
+        if (!crew || crew.getState() === 'dead' || crew.getState() === state) return false;
+
+        crew.setState(state);
+        this.turnState().markPhaseStateChanged();
+        if (state === 'unconscious') {
+            this.turnState().discardPendingUnitChecks(check =>
+                isConsciousnessCheck(check) && check.crewId === crewId);
+            this.queueConsciousnessRecovery(crewId, recoveryDelay);
+        } else {
+            this.turnState().discardPendingUnitChecks(check =>
+                isConsciousnessSequenceCheck(check) && check.crewId === crewId);
+        }
+        return true;
+    }
+
+    queueConsciousnessRecovery(
+        crewId: number,
+        delay: number,
+        replacingCheckId?: string,
+    ): boolean {
+        if (this.automationMode('pilotHitsAndConsciousnessCheck') === 'no') return false;
+        const crew = this.getCrewMember(crewId);
+        const target = crew?.getConsciousnessTarget();
+        if (!crew || crew.getState() !== 'unconscious' || target === null) return false;
+        if (this.turnState().getPendingUnitChecks().some(check =>
+            check.id !== replacingCheckId
+            && isConsciousnessRecoveryCheck(check)
+            && check.crewId === crewId)) return false;
+
+        return this.turnState().queuePendingUnitCheck({
+            id: uuidv7(),
+            kind: UNIT_CHECK_KIND.CONSCIOUSNESS_RECOVERY,
+            crewId,
+            target,
+            readyTurn: this.turnState().getTurnCounter() + Math.max(1, Math.trunc(delay)),
+        });
+    }
+
+    applyHeatCrewHits(hits: number, group?: string): number {
+        const heatGroup = isHeatPilotDamageGroup(group)
+            ? group!
+            : createPilotDamageGroup('heat', group);
+        return this.applyCrewHits(hits, heatGroup);
+    }
+
+    /** One damaging head hit injures every crew member still aboard the unit. */
+    applyHeadHitCrewHits(group?: string): number {
+        return this.applyCrewHits(this.rules.headHitPilotHits(), group);
+    }
+
+    /** Internal explosions injure every crew member still aboard the unit. */
+    applyInternalExplosionCrewHits(hits: number, group?: string): number {
+        return this.applyCrewHits(hits, group);
+    }
+
+    private applyCrewHits(hits: number, group?: string): number {
+        return this.getCrewMembers().reduce(
+            (total, crew) => total + this.applyPilotHits(hits, group, crew.getId()),
+            0,
+        );
+    }
+
+    private createFallSeatbeltChecks(levelsFallen: number): PendingEventInput<SerializedPendingUnitCheck>[] {
+        if (this.automationMode('pilotHitsAndConsciousnessCheck') === 'no') return [];
+        const normalizedLevels = Number.isFinite(levelsFallen)
+            ? Math.max(0, Math.trunc(levelsFallen))
+            : 0;
+        const levelModifier = this.gameRules.id === 'core2026'
+            ? normalizedLevels
+            : Math.max(0, normalizedLevels - 1);
+        const psr = this.PSRModifiers();
+        const modifierTotal = levelModifier + (this.gameRules.id === 'core2026'
+            ? 0
+            : psr.modifiers.reduce((total, modifier) => total + (modifier.pilotCheck ?? 0), 0));
+        const group = this.turnState().currentPilotDamageGroup();
+        const checks: PendingEventInput<SerializedPendingUnitCheck>[] = [];
+        for (const crew of this.getCrewMembers()) {
+            const crewState = crew.getState();
+            if (!isCrewMemberAboard(crewState)) continue;
+
+            const target = crew.getSkill('piloting') + modifierTotal;
+            const automaticFailure = !isCrewMemberAvailable(crewState)
+                || this.getCondition('shutdown')
+                || this.getCondition('immobile')
+                || target > 12;
+            checks.push({
+                id: uuidv7(),
+                kind: UNIT_CHECK_KIND.SEATBELT,
+                pilotDamageGroup: group,
+                crewId: crew.getId(),
+                ...(automaticFailure
+                    ? { result: { kind: 'automatic' as const, outcome: 'failed' as const } }
+                    : { target }),
+            });
+        }
+        return checks;
+    }
+
+    getPendingFalls(): readonly CBTPendingMekFall[] {
+        return this.turnState().getPendingFalls().map(pending => ({
+            ...pending,
+            orientationRoll: pending.orientationRoll ?? null,
+            damageRolls: (pending.damageRolls ?? []).map(fallDamageRollForDialog),
+        }));
+    }
+
+    getPendingFall(id?: string): CBTPendingMekFall | undefined {
+        const pending = this.turnState().getPendingFall(id);
+        if (!pending) return undefined;
+        return {
+            ...pending,
+            orientationRoll: pending.orientationRoll ?? null,
+            damageRolls: (pending.damageRolls ?? []).map(fallDamageRollForDialog),
+        };
+    }
+
+    setPendingFallRolls(
+        id: string,
+        orientationRoll: number | null,
+        damageRolls: readonly CBTMekFallDamageRoll[],
+    ): boolean {
+        const pending = this.getPendingFall(id);
+        if (!pending) return false;
+        const normalizedOrientation = orientationRoll !== null
+            && Number.isInteger(orientationRoll)
+            && orientationRoll >= 1
+            && orientationRoll <= 6
+            ? orientationRoll
+            : null;
+        const normalizedDamageRolls = damageRolls.map<SerializedMekFallDamageRoll>(roll => {
+            const hitLocationDice = roll.hitLocationDice?.length === 2
+                && roll.hitLocationDice.every(die => Number.isInteger(die) && die >= 1 && die <= 6)
+                ? [...roll.hitLocationDice] as [number, number]
+                : null;
+            const tripodLegRoll = roll.tripodLegRoll !== null
+                && Number.isInteger(roll.tripodLegRoll)
+                && roll.tripodLegRoll >= 1
+                && roll.tripodLegRoll <= 6
+                ? roll.tripodLegRoll
+                : null;
+            return {
+                ...(hitLocationDice ? { hitLocationDice } : {}),
+                ...(tripodLegRoll !== null ? { tripodLegRoll } : {}),
+            };
+        });
+        return this.turnState().setPendingFallRolls(id, {
+            ...(normalizedOrientation !== null ? { orientationRoll: normalizedOrientation } : {}),
+            damageRolls: normalizedDamageRolls,
+        });
+    }
+
+    /**
+     * Completes one actual fall and only then releases its seatbelt check.
+     * Closing the fall dialog deliberately does not call this method.
+     */
+    completePendingFall(id: string): boolean {
+        const pending = this.getPendingFall(id);
+        if (!pending) return false;
+        const checks = this.createFallSeatbeltChecks(pending.levelsFallen);
+        const completed = this.turnState().replacePendingFallWithUnitChecks(id, checks);
+        if (!completed) return false;
+        if (checks.length > 0) this.automationTriggers.next({ kind: 'pending-unit-check' });
+        return true;
+    }
+
+    /** Removes automation work without treating the fall as resolved. */
+    skipPendingFall(id: string): boolean {
+        return this.turnState().discardPendingFall(id);
+    }
+
+    /**
+     * Starts a pending falling workflow. A prone Mek cannot fall from
+     * another PSR, while a failed stand attempt is still a fall. Manually
+     * toggling prone remains a state-only override.
+     */
+    queueFall(source: CBTMekFallSource, levelsFallen = 0): boolean {
+        if (source === 'psr' && this.getCondition('prone')) return false;
+        if (this.automationMode('fallingCheck') === 'no') return false;
+        const normalizedLevels = Number.isFinite(levelsFallen)
+            ? Math.max(0, Math.trunc(levelsFallen))
+            : 0;
+        const pending: PendingEventInput<SerializedPendingMekFall> = {
+            id: uuidv7(),
+            source,
+            levelsFallen: normalizedLevels,
+        };
+        if (!this.turnState().queuePendingFall(pending)) return false;
+        this.automationTriggers.next({
+            kind: 'falling',
+            id: pending.id,
+            source: pending.source,
+            levelsFallen: pending.levelsFallen,
+        });
+        return true;
+    }
+
+    public endTurn(automationDecisions: CBTEndTurnAutomationDecisions = {}) {
         const endsForceTurn = !this.force.units().some(unit => unit !== this && unit.turnState().dirty());
-        if (this.useAutomations() && (this.getHeat().next !== undefined || this.turnState().hasPendingHeatResolution())) {
+        const heatAutomationMode = this.automationMode('heatAndDissipationResolution');
+        const resolveHeat = heatAutomationMode === 'yes'
+            ? automationDecisions.heatAndDissipationResolution !== false
+            : heatAutomationMode === 'ask' && automationDecisions.heatAndDissipationResolution === true;
+        if (resolveHeat && this.hasPendingEndTurnHeat()) {
+            const previousHeat = this.getHeat().current;
             this.resolveEndTurnHeat();
+            if (heatAutomationMode === 'yes') {
+                this.injector.get(CBTAutomationToastService).show(
+                    this,
+                    `Heat and dissipation: Heat ${previousHeat} → ${this.getHeat().current}`,
+                    'info',
+                );
+            }
+        } else if (heatAutomationMode !== 'no' && this.getHeat().next !== undefined) {
+            // A manual arrow is only committed by APPLY HEAT while automation is active.
+            this.setHeatData({ ...this.getHeat(), next: undefined });
         }
         this.clearInventoryControlSelection();
         // deselect all inventory items
@@ -1664,11 +2463,14 @@ export class CBTForceUnit extends ForceUnit {
         const equipmentRegistry = this.injector.get(EquipmentInteractionRegistryService).getRegistry();
         const notifications = this.injector.get(ToastService);
         this.forEachCurrentInventoryEntry(entry => equipmentRegistry.onEndTurn(entry, notifications));
-        this.state.endTurn();
+        this.resolvePendingCrewDeaths();
+        this.state.endTurn(automationDecisions.phaseAlreadyEnded === true);
         if (endsForceTurn) this.force.clearExpiredManualTargetTags(this);
         this.inventoryControl.markAmmoSourcesChanged();
         this.phaseTrigger.update(v => v + 1); // Trigger change detection
-        this.state.resetTurnState(this.turnState().getTurnCounter() + 1);
+        this.psrOutcomeSelections.set({});
+        this.psrDiceSelections.set({});
+        this.state.resetTurnState(this.turnState().getTurnCounter() + 1, true);
     }
 
     private _hasDirectInventory: boolean | null = null;

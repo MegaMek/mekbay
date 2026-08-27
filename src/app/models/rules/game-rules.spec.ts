@@ -300,6 +300,23 @@ function coreTagBvContext(options: {
 }
 
 describe('game rules', () => {
+    it('declares whether consciousness rolls accumulate phase damage', () => {
+        expect(CORE_2026_GAME_RULES.aggregatedEndPhaseConsciousRolls).toBeTrue();
+        expect(TW_GAME_RULES.aggregatedEndPhaseConsciousRolls).toBeFalse();
+    });
+
+    it('owns the ruleset-specific hull-breach result and label', () => {
+        expect(CORE_2026_GAME_RULES.getHullBreachCheckRangeLabel()).toBe('2–4');
+        expect(CORE_2026_GAME_RULES.hullBreachCheckSucceeds(2)).toBeTrue();
+        expect(CORE_2026_GAME_RULES.hullBreachCheckSucceeds(4)).toBeTrue();
+        expect(CORE_2026_GAME_RULES.hullBreachCheckSucceeds(5)).toBeFalse();
+
+        expect(TW_GAME_RULES.getHullBreachCheckRangeLabel()).toBe('10+');
+        expect(TW_GAME_RULES.hullBreachCheckSucceeds(9)).toBeFalse();
+        expect(TW_GAME_RULES.hullBreachCheckSucceeds(10)).toBeTrue();
+        expect(TW_GAME_RULES.hullBreachCheckSucceeds(12)).toBeTrue();
+    });
+
     describe('escalating failure targets', () => {
         it('uses the standardized numeric Core sequence for every checked component', () => {
             const standard = [3, 5, 7, 10, 11] as const;

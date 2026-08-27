@@ -25,6 +25,7 @@ import type { ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import { isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, selectedRiscLaserMode } from '../equipment-handlers/risc-laser-pulse-module.handler';
 import { getSvgTextLines, measureSvgTextCanvas, writeSvgTextLines } from '../utils/svg-text.util';
+import { buildHeatSummaryRows } from '../utils/heat-summary.util';
 
 const INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY = '--inventory-control-selection-color';
 const HEAT_PROJECTION_ORIGINAL_OVERFLOW_STROKE = 'data-heat-projection-original-stroke';
@@ -632,8 +633,8 @@ export class UnitSvgService {
         const projection = this.unit.turnState().heatProjection();
         const manualTarget = heat.next;
         const hasUserTarget = manualTarget !== undefined;
-        const automationsEnabled = this.unit.useAutomations();
-        const showProjection = automationsEnabled
+        const heatAutomationMode = this.unit.automationMode('heatAndDissipationResolution');
+        const showProjection = heatAutomationMode !== 'no'
             && !hasUserTarget
             && this.unit.turnState().hasPendingHeatResolution();
         const heatDataPanel = svg.querySelector('#heatDataPanel');
@@ -816,10 +817,14 @@ export class UnitSvgService {
             svg.querySelector('#projection-arrow')?.remove();
         }
         if (!this.unit.readOnly()) {
-            if (automationsEnabled) {
+            if (heatAutomationMode !== 'no') {
                 svg.querySelector('#heat-projection-target-marker')?.remove();
                 svg.querySelector('#heat-selected-weapons-target-marker')?.remove();
-                this.updateHeatProjectionPreview(heat);
+                if (hasUserTarget) {
+                    this.clearHeatProjectionPreview(heatScale);
+                } else {
+                    this.updateHeatProjectionPreview(heat);
+                }
             } else {
                 this.clearHeatProjectionPreview(heatScale);
                 this.updateManualHeatProjectionMarkers(heatScale, heat);
@@ -1792,29 +1797,19 @@ export class UnitSvgService {
     ): void {
         const heatSourcesText = svg.getElementById('damagedEngineHeatText') as SVGTextElement | null;
         if (!heatSourcesText) return;
-
-        const positiveSources = sources.filter(source => source.value > 0 && source.id !== 'heat-dissipation-deficit');
-        const normalizedBalance = Number.isFinite(dissipationBalance) ? dissipationBalance : 0;
-        const normalizedConsumption = Number.isFinite(consumedDissipation) ? Math.max(0, consumedDissipation) : 0;
-        const hasResidualAfterClipping = normalizedBalance > 0
-            && normalizedConsumption < normalizedBalance
-            && projectedHeat === 0;
-        const dissipationLabelSuffix = hasResidualAfterClipping ? ` (-${normalizedBalance})` : '';
-        const dissipationText = hasResidualAfterClipping
-            ? `-${normalizedConsumption}`
-            : `${normalizedBalance > 0 ? '-' : '+'}${Math.abs(normalizedBalance)}`;
-        const showDissipation = normalizedBalance < 0
-            || (normalizedBalance > 0 && normalizedConsumption > 0);
-        const lines: Array<{ text: string; fill?: string }> = [
-            ...positiveSources.map(source => ({
-                text: `${this.heatSourceSummaryLabel(source)}: ${this.formatSignedModifier(source.value)}`,
-                fill: source.inventorySelection ? 'orange' : undefined,
-            })),
-            ...(showDissipation ? [{
-                text: `Sink${dissipationLabelSuffix}: ${dissipationText}`,
-                fill: normalizedBalance > 0 ? '#2070d1' : '#f00',
-            }] : []),
-        ];
+        const lines = buildHeatSummaryRows(
+            sources,
+            dissipationBalance,
+            consumedDissipation,
+            projectedHeat,
+        ).map(row => ({
+            text: `${row.label}: ${this.formatSignedModifier(row.value)}`,
+            fill: row.inventorySelection
+                ? 'orange'
+                : row.kind === 'sink'
+                    ? (row.value < 0 ? '#2070d1' : '#f00')
+                    : undefined,
+        }));
         if (lines.length === 0) {
             heatSourcesText.textContent = '';
             heatSourcesText.setAttribute('display', 'none');
@@ -1837,11 +1832,6 @@ export class UnitSvgService {
             line.textContent = summaryLine.text;
             heatSourcesText.appendChild(line);
         });
-    }
-
-    private heatSourceSummaryLabel(source: UnitHeatSource): string {
-        if (source.id === 'damaged-engine') return 'Engine';
-        return source.label;
     }
 
     private updateHeatProjectionPreview(heat: HeatProfile): void {

@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { provideZonelessChangeDetection } from '@angular/core';
+import { Overlay } from '@angular/cdk/overlay';
+import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import type { CrewMemberState } from '../../models/crew-member.model';
 import type { CrewStateDefinition } from '../../models/rules/unit-type-rules';
 import { VEHICLE_CREW_STATE_DISPLAYS } from '../../models/rules/vehicle-rules';
 import { OptionsService } from '../../services/options.service';
+import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { UnitBlockComponent } from './unit-block.component';
 
 describe('UnitBlockComponent', () => {
@@ -17,10 +19,16 @@ describe('UnitBlockComponent', () => {
             imports: [UnitBlockComponent],
             providers: [
                 provideZonelessChangeDetection(),
-                { provide: OptionsService, useValue: { options: () => ({}) } },
+                {
+                    provide: OptionsService,
+                    useValue: { options: () => ({ trackPhaseAndTurn: true, unitDisplayName: 'chassisModel' }) },
+                },
+                { provide: Overlay, useValue: {} },
+                {
+                    provide: SpriteStorageService,
+                    useValue: { loading: signal(false) },
+                },
             ],
-        }).overrideComponent(UnitBlockComponent, {
-            set: { template: '' },
         });
     });
 
@@ -53,4 +61,5 @@ describe('UnitBlockComponent', () => {
             { key: 'location-narc', label: 'NARC', color: '#f00' },
         ]);
     });
+
 });

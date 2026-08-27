@@ -1206,14 +1206,14 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinitionSource[] = [
         name: 'Aerospace Superiority',
         description: 'An air-superiority formation balancing speed, firepower, and armor to defeat opposing aerospace units.',
         classic: {
-            effectDescription: 'Before the scenario, assign up to two of Blood Stalker, Hot Dog, and Ride the Wash—in any combination—to up to half the units.',
+            effectDescription: 'Before the scenario, assign up to two of Blood Stalker, Hot Dog, and Ride the Wash, in any combination, to up to half the units.',
             effectGroups: [{ abilityIds: ['blood_stalker', 'ride_the_wash', 'hot_dog'], selection: 'choose-each', distribution: 'up-to-50-percent', maxPerUnit: 2 }],
             minUnits: 6,
             rulesRef: [{ book: Rulebook.CO, page: 67 }],
             requirements: 'Minimum 6 units. All must be aerospace or conventional fighters. More than 50% must have the Interceptor or Fast Dogfighter role.',
         },
         alphaStrike: {
-            effectDescription: 'Before the scenario, assign up to two of Blood Stalker, Hot Dog, and Ride the Wash—in any combination—to up to half the units.',
+            effectDescription: 'Before the scenario, assign up to two of Blood Stalker, Hot Dog, and Ride the Wash, in any combination, to up to half the units.',
             effectGroups: [{ abilityIds: ['blood_stalker', 'ride_the_wash', 'hot_dog'], selection: 'choose-each', distribution: 'up-to-50-percent', maxPerUnit: 2 }],
             minUnits: 6,
             rulesRef: [{ book: Rulebook.ASCE, page: 122 }],

@@ -65,6 +65,10 @@ export function unitWaterDepthNumber(depth: UnitWaterDepth): 1 | 2 | 3 {
     return WATER_DEPTH_NUMBER[depth];
 }
 
+export function unitCoverWaterDepth(cover: UnitCover | undefined): 0 | 1 | 2 | 3 {
+    return isUnitWaterDepth(cover) ? unitWaterDepthNumber(cover) : 0;
+}
+
 export function isUnitBuildingLevel(cover: unknown): cover is UnitBuildingLevel {
     return cover === 'building-1' || cover === 'building-2' || cover === 'building-3';
 }

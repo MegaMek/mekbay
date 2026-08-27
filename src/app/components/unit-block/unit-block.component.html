@@ -1,5 +1,6 @@
 @let unitDisplayName = optionsService.options().unitDisplayName;
 @let fu = forceUnit();
+@let badgeUnit = notificationUnit();
 @if (compactMode()) {
 <div class="unit-square compact-mode" [class.destroyed]="fu?.destroyed" [class.missing]="!unit()">
     @if (dirty()) {
@@ -46,6 +47,9 @@
             </button>
             }
         </div>
+        @if (badgeUnit) {
+        <unit-notification-badges class="compact-notification-row" [unit]="badgeUnit" />
+        }
     </div>
 </div>
 } @else {
@@ -156,17 +160,22 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                 <div class="spanner"></div>
             </div>
             <div class="primary-info">
-                @if (unitDisplayName === 'chassisModel'
-                || unitDisplayName === 'both'
-                || !alias) {
-                <span class="chassis">{{ chassis }}</span>
-                @if (unitDisplayName === 'both' && alias) {
-                <span class="unit-alias thin"> ({{ alias }})</span>
-                }
-                }
-                @if (unitDisplayName === 'alias') {
-                <div class="unit-alias">{{ alias }}</div>
-                }
+                <div class="unit-name-line">
+                    @if (unitDisplayName === 'chassisModel'
+                    || unitDisplayName === 'both'
+                    || !alias) {
+                    <span class="chassis">{{ chassis }}</span>
+                    @if (unitDisplayName === 'both' && alias) {
+                    <span class="unit-alias thin"> ({{ alias }})</span>
+                    }
+                    }
+                    @if (unitDisplayName === 'alias') {
+                    <span class="unit-alias">{{ alias }}</span>
+                    }
+                    @if (badgeUnit) {
+                    <unit-notification-badges [unit]="badgeUnit" />
+                    }
+                </div>
             </div>
             <div class="third-info">
                 <div class="info-area">

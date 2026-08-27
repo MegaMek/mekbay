@@ -159,6 +159,7 @@
                 class="bt-button spotting-button"
                 [class.selected]="spotting()"
                 [attr.aria-pressed]="spotting()"
+                [disabled]="!canSpot()"
                 (click)="toggleSpotting()"
             >
                 <span>Spotting</span>

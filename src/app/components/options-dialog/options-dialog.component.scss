@@ -361,6 +361,64 @@
   width: min(360px, 48%);
 }
 
+.automation-options {
+  display: flex;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.automation-option-label {
+  flex: 1 1 auto;
+}
+
+.automation-mode-switch {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+.automation-mode-choice {
+  padding: 5px;
+  border: 0;
+  border-right: 1px solid var(--border-color);
+  background: var(--background-color-menu);
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.automation-mode-choice:last-child {
+  border-right: 0;
+}
+
+.automation-mode-choice:hover:not(.selected),
+.automation-mode-choice:focus-visible:not(.selected) {
+  background: var(--background-highlight);
+  color: var(--text-color);
+}
+
+.automation-mode-choice.selected {
+  background: var(--bt-yellow);
+  color: #111;
+  font-weight: 600;
+}
+
+.options-desktop-shell .automation-mode-switch {
+  width: min(360px, 30%);
+  flex: 0 0 auto;
+}
+
+.options-mobile-detail .automation-mode-switch {
+  width: 100%;
+}
+
 .account-summary-row {
   display: flex;
   align-items: baseline;

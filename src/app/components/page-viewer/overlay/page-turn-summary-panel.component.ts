@@ -24,6 +24,7 @@ import { orderedModifierTooltipLines } from '../../../utils/hit-target-tooltip.u
 import { toggleStandingUpOverlay } from './page-standing-up-panel.component';
 import { isUnitBuildingLevel, isUnitWaterDepth, type UnitCover } from '../../../models/unit-cover.model';
 import { CoverLevelPickerComponent } from '../../cover-level-picker/cover-level-picker.component';
+import { CBTEndTurnService } from '../../../services/cbt-end-turn.service';
 
 interface EquipmentTrackControlRow {
     entry: MountedEquipment;
@@ -72,6 +73,7 @@ export class PageTurnSummaryPanelComponent {
     private readonly toastService = inject(ToastService);
     private readonly dialogsService = inject(DialogsService);
     private readonly dataService = inject(DataService);
+    private readonly cbtEndTurnService = inject(CBTEndTurnService);
     readonly unit = this.parent.unit;
     readonly force = this.parent.force;
     readonly endTurnForAllButtonVisible = input<boolean>(false);
@@ -224,6 +226,8 @@ export class PageTurnSummaryPanelComponent {
         return unit.turnState().spotting();
     });
 
+    readonly canSpot = computed(() => this.unit()?.canTakeActiveActions() ?? false);
+
     readonly cover = computed(() => this.unit()?.turnState().cover());
     readonly waterDepth = computed(() => {
         const cover = this.cover();
@@ -297,8 +301,9 @@ export class PageTurnSummaryPanelComponent {
         this.overlayManager.closeManagedOverlay(`turnSummary-${unitId}`);
     }
 
-    endTurn(): void {
-        this.unit()?.endTurn();
+    async endTurn(): Promise<void> {
+        const unit = this.unit();
+        if (unit) await this.cbtEndTurnService.endTurn([unit]);
     }
 
     openPsrWarning(event: MouseEvent): void {
@@ -327,6 +332,7 @@ export class PageTurnSummaryPanelComponent {
         turnState.moveMode.set(null);
         turnState.moveDistance.set(null);
         turnState.applyMovePSR.set(true);
+        turnState.markPhaseStateChanged();
     }
 
     readonly moveModes = computed<MotiveModeOption[]>(() => {
@@ -376,11 +382,12 @@ export class PageTurnSummaryPanelComponent {
             turnState.moveDistance.set(mode === 'stationary' ? null : turnState.minDistanceCurrentMoveMode());
         }
         turnState.applyMovePSR.set(true);
+        turnState.markPhaseStateChanged();
     }
 
     toggleSpotting(): void {
         const unit = this.unit();
-        if (!unit) return;
+        if (!unit || !unit.canTakeActiveActions()) return;
         const turnState = unit.turnState();
         turnState.spotting.set(!turnState.spotting());
     }
@@ -477,6 +484,7 @@ export class PageTurnSummaryPanelComponent {
         if (!unit) return;
         this.setMoveDistance(value, false);
         unit.turnState().markModified();
+        unit.turnState().markPhaseStateChanged();
     }
 
     private buildModifierTooltip(title: string, entries: UnitModifierBreakdownEntry[]): TooltipLine[] {

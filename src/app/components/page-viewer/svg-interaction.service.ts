@@ -8,7 +8,7 @@ import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DialogsService, type DialogRef } from '../../services/dialogs.service';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, type Subscription } from 'rxjs';
 import type { SkillType } from '../../models/crew-member.model';
 import type { MountedEquipment } from '../../models/mounted-equipment.model';
 import type { CriticalSlot } from '../../models/force-serialization';
@@ -24,7 +24,7 @@ import { createHandlerCommandContext, createHandlerQueryContext, EquipmentIntera
 import type { HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
-import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import type { CBTForceUnit, CBTUnitAutomationTrigger } from '../../models/cbt-force-unit.model';
 import { type ChoicePickerStyle, PickerFactoryService } from '../../services/picker-factory.service';
 import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData, EquipmentDialogTab } from '../equipment-dialog/equipment-dialog.model';
@@ -43,11 +43,18 @@ import { ClusterTableDialogComponent } from '../cluster-table-dialog/cluster-tab
 import { hasUnitDefaultReferenceTables } from '../../utils/reference-table-definition';
 import { clusterTableForUnit } from '../../utils/record-sheet-reference-table';
 import { isCenterPanelTarget, isPointInCenterPanel, resolveCenterPanelCursorElements } from '../../utils/record-sheet-center-panel.util';
-import { MekCriticalChanceDialogComponent, type MekCriticalChanceDialogData } from './mek-critical-chance-dialog.component';
-import { MekCriticalRollDialogComponent, type MekCriticalRollDialogData } from './mek-critical-roll-dialog.component';
-import { applyMekBlowOff, canApplyMekCriticalHitToSlot, mekCriticalChanceCanBlowOff, mekCriticalChanceModifiers, type MekCriticalChanceResult } from '../../utils/mek-critical-hit.util';
+import { canApplyMekCriticalHitToSlot } from '../../utils/mek-critical-hit.util';
 import { uidTranslations } from '../../models/common.model';
 import type { MekRules } from '../../models/rules/mek-rules';
+import { CBTAutomationService } from '../../services/cbt-automation.service';
+import { CBTAutomationToastService } from '../../services/cbt-automation-toast.service';
+import { MekCriticalHitAutomationService } from '../../services/mek-critical-hit-automation.service';
+import { MekCriticalResolutionService } from '../../services/mek-critical-resolution.service';
+import { UnitCheckResolutionService } from '../../services/unit-check-resolution.service';
+import { FallingResolutionService } from '../../services/falling-resolution.service';
+import { CBTPhaseResolutionService } from '../../services/cbt-phase-resolution.service';
+import type { AutomationReviewEvent } from '../../models/automation-review.model';
+import { uuidv7 } from '../../utils/uuid.util';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 type HeatMarkerData = { el: SVGElement | null, heat: number; baselineHeat: number };
@@ -79,7 +86,7 @@ const SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-conditions-dropdown';
 const SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY = 'svg-crew-state-dropdown';
 const SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-location-conditions-dropdown';
 const CRITICAL_CHANCE_ACTION = 'critical-chance';
-const CRITICAL_ROLL_ACTION = 'critical-roll';
+const CRITICAL_HIT_ACTION = 'critical-hit';
 const EQUIPMENT_HOVER_SECONDARY_CLASS = 'equipment-hover-secondary';
 const ARMOR_OVERFLOW_CHOICE_COLORS = {
     normal: '#8B0000',
@@ -113,6 +120,13 @@ export class SvgInteractionService {
     private equipmentRegistryService = inject(EquipmentInteractionRegistryService);
     private pageViewerState = inject(PageViewerStateService);
     private pickerFactory = inject(PickerFactoryService);
+    private automations = inject(CBTAutomationService);
+    private automationToasts = inject(CBTAutomationToastService);
+    private criticalHitAutomation = inject(MekCriticalHitAutomationService);
+    private criticalResolution = inject(MekCriticalResolutionService);
+    private unitCheckResolution = inject(UnitCheckResolutionService);
+    private fallingResolution = inject(FallingResolutionService);
+    private phaseResolution = inject(CBTPhaseResolutionService);
 
     // Zoom-pan service passed via initialize()
     private zoomPanService!: ZoomPanServiceInterface;
@@ -134,6 +148,8 @@ export class SvgInteractionService {
     private interactionAbortController: AbortController | null = null;
     private activeHeatDrag: ActiveHeatDrag | null = null;
     private centerPanelDialogRef: DialogRef | null = null;
+    private unitAutomationSubscription: Subscription | null = null;
+    private automationQueue: Promise<void> = Promise.resolve();
 
     private currentHighlightedElement: SVGElement | null = null;
 
@@ -216,7 +232,15 @@ export class SvgInteractionService {
     }
 
     updateUnit(unit: CBTForceUnit | null) {
+        this.unitAutomationSubscription?.unsubscribe();
+        this.unitAutomationSubscription = null;
         this.unit.set(unit);
+        if (unit) {
+            this.unitAutomationSubscription = unit.automationTriggers.subscribe(trigger => {
+                this.scheduleAutomation(unit, trigger);
+            });
+            unit.applyUnderwaterBreachAndFlooding();
+        }
     }
 
     setupInteractions(svg: SVGSVGElement) {
@@ -632,6 +656,11 @@ export class SvgInteractionService {
             const rear = !!svgEl.getAttribute('rear');
             let consumedModularArmorPoints = 0;
             let availableModularArmorPoints = 0;
+            const refreshModularArmor = () => {
+                const modularArmor = this.unit()?.getModularArmorState(loc);
+                consumedModularArmorPoints = modularArmor?.hits ?? 0;
+                availableModularArmorPoints = modularArmor?.remaining ?? 0;
+            };
             let pipsCount = isStructure ? this.unit()?.getInternalPoints(loc) : this.unit()?.getArmorPoints(loc, rear);
             if (!pipsCount) {
                 pipsCount = 0;
@@ -675,14 +704,7 @@ export class SvgInteractionService {
 
                 if (!isStructure && !isShield) {
                     // We recalculate modular armor status, in case we added/removed some crits (destroyed or repaired)
-                    consumedModularArmorPoints = 0;
-                    availableModularArmorPoints = 0;
-                    this.unit()?.getCritSlotsAsMatrix()[loc]?.forEach(critSlot => {
-                        if (!critSlot.eq?.flags?.has('F_MODULAR_ARMOR')) return;
-                        if (critSlot.destroyed) return;
-                        consumedModularArmorPoints += critSlot.consumed || 0;
-                        availableModularArmorPoints += 10 - consumedModularArmorPoints;
-                    });
+                    refreshModularArmor();
                 }
 
                 const allowedValues = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, -1, -2, -3, -4, -5, -10, -20];
@@ -735,43 +757,32 @@ export class SvgInteractionService {
                 const remainingInternalPoints = Math.max(0, internalPoints - (this.unit()?.getInternalHits(loc) ?? 0));
                 const endValue = remainingArmorPoints + remainingInternalPoints;
 
-                const applyArmorChange = (value: number) => {
-                    this.removePicker();
-                    const unit = this.unit();
-                    if (!unit) return;
+                const commitArmorChange = (unit: CBTForceUnit, value: number, applyHeadHit: boolean) => {
+                    if (applyHeadHit) {
+                        const appliedPilotHits = unit.applyHeadHitCrewHits();
+                        if (unit.automationMode('pilotHitsAndConsciousnessCheck') === 'yes') {
+                            this.automationToasts.show(
+                                unit,
+                                `Pilot hit from head damage in ${getMekLocationLabel(loc) ?? loc}: ${appliedPilotHits > 0 ? `${appliedPilotHits} applied` : 'none applied'}`,
+                                appliedPilotHits > 0 ? 'error' : 'info',
+                            );
+                        }
+                    }
                     if (isStructure) {
                         unit.addInternalHits(loc, value, this.consolidateImmediately);
                     } else {
                         let valueToApply = value;
-                                // We remove/add first from/to the modular armor, if any
-                                if (availableModularArmorPoints > 0 && valueToApply > 0) {
-                                    unit.getCritSlotsAsMatrix()[loc]?.forEach(critSlot => {
-                                        if (valueToApply == 0) return;
-                                        if (!critSlot.eq?.flags?.has('F_MODULAR_ARMOR')) return;
-                                        if (critSlot.destroyed) return;
-                                        const canApply = Math.min(valueToApply, 10 - (critSlot.consumed || 0));
-                                        critSlot.consumed = (critSlot.consumed || 0) + canApply;
-                                        valueToApply -= canApply;
-                                        availableModularArmorPoints -= canApply;
-                                        consumedModularArmorPoints += canApply;
-                                        unit.setCritSlot(critSlot);
-                                    });
-                                } else if (consumedModularArmorPoints > 0 && valueToApply < 0) {
-                                    unit.getCritSlotsAsMatrix()[loc]?.forEach(critSlot => {
-                                        const armorPointsToRepair = Math.min(-valueToApply, unit.getArmorHits(loc, rear));
-                                        unit.addArmorHits(loc, -armorPointsToRepair, rear, this.consolidateImmediately);
-                                        valueToApply += armorPointsToRepair;
-                                        if (valueToApply == 0) return;
-                                        if (!critSlot.eq?.flags?.has('F_MODULAR_ARMOR')) return;
-                                        if (critSlot.destroyed) return;
-                                        const canApply = Math.min(-valueToApply, critSlot.consumed || 0);
-                                        critSlot.consumed = (critSlot.consumed || 0) - canApply;
-                                        valueToApply += canApply;
-                                        availableModularArmorPoints += canApply;
-                                        consumedModularArmorPoints -= canApply;
-                                        this.unit()?.setCritSlot(critSlot);
-                                    });
-                                }
+                        // Apply damage to modular armor first, and restore it last when repairing.
+                        if (availableModularArmorPoints > 0 && valueToApply > 0) {
+                            valueToApply -= unit.addModularArmorHits(loc, valueToApply);
+                        } else if (consumedModularArmorPoints > 0 && valueToApply < 0) {
+                            const armorPointsToRepair = Math.min(-valueToApply, unit.getArmorHits(loc, rear));
+                            unit.addArmorHits(loc, -armorPointsToRepair, rear, this.consolidateImmediately);
+                            valueToApply += armorPointsToRepair;
+                            if (valueToApply < 0) {
+                                valueToApply -= unit.addModularArmorHits(loc, valueToApply);
+                            }
+                        }
                         if (valueToApply != 0) {
                             if (valueToApply > 0 && !isShield && internalPoints > 0) {
                                 const ordinaryArmorRemaining = Math.max(0, pipsCount - unit.getArmorHits(loc, rear));
@@ -781,17 +792,36 @@ export class SvgInteractionService {
                                     unit.addArmorHits(loc, armorDamage, rear, this.consolidateImmediately);
                                 }
                                 if (internalDamage > 0) {
-                                    unit.addInternalHits(loc, internalDamage, this.consolidateImmediately);
+                                    unit.addInternalHits(loc, internalDamage, this.consolidateImmediately, {
+                                        hardenedArmorApplies: ordinaryArmorRemaining > 0,
+                                        ...(armorDamage > 0 ? { armorDamagedBySameHit: true } : {}),
+                                    });
                                 }
                             } else {
                                 unit.addArmorHits(loc, valueToApply, rear, this.consolidateImmediately);
                             }
                         }
+                        refreshModularArmor();
                     }
                     if (loc === 'RO' && value !== 0) {
                         this.applyVtolRotorHitDelta(unit, value > 0 ? 1 : -1, svg.getElementById('rotor_hits_group') as SVGElement | null);
                     }
                     showArmorToast(value);
+                };
+
+                const applyArmorChange = (value: number) => {
+                    this.removePicker();
+                    const unit = this.unit();
+                    if (!unit) return;
+                    if (loc !== 'HD' || value <= 0) {
+                        commitArmorChange(unit, value, false);
+                        return;
+                    }
+                    this.queueAutomation(async () => {
+                        const applyHeadHit = await this.reviewHeadHitPilotHit(unit);
+                        if (applyHeadHit === null) return;
+                        commitArmorChange(unit, value, applyHeadHit);
+                    });
                 };
 
                 // Use numeric picker for continuous range
@@ -1185,8 +1215,24 @@ export class SvgInteractionService {
                             }
                         } else if (choice.value == 'Hit') {
                             if (!canApplyMekCriticalHitToSlot(unit, critSlot)) return;
-                            unit.applyHitToCritSlot(critSlot, 1, this.consolidateImmediately);
+                            const resolution = await this.criticalHitAutomation.applySlot(
+                                unit,
+                                critSlot,
+                                this.consolidateImmediately,
+                            );
+                            if (resolution.cancelled || !resolution.outcome?.applied) return;
                             this.toastService.showToast(`Critical Hit on ${labelText}`, 'error');
+                            if (resolution.outcome.explosion) {
+                                this.toastService.showToast(
+                                    `${resolution.outcome.explosion.equipment} explodes for ${resolution.outcome.explosion.rawDamage} damage`,
+                                    'error',
+                                );
+                            } else if (resolution.outcome.pendingExplosion) {
+                                this.toastService.showToast(
+                                    `${resolution.outcome.pendingExplosion.equipment} explosion pending (${resolution.outcome.pendingExplosion.rawDamage} damage)`,
+                                    'error',
+                                );
+                            }
                         } else if (choice.value == 'Repair') {
                             unit.applyHitToCritSlot(critSlot, -1, this.consolidateImmediately);
                             this.toastService.showToast(`Repaired ${labelText}`, 'success');
@@ -1643,7 +1689,7 @@ export class SvgInteractionService {
         updateChoices();
 
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
-            if (state === CRITICAL_CHANCE_ACTION || state === CRITICAL_ROLL_ACTION) {
+            if (state === CRITICAL_CHANCE_ACTION || state === CRITICAL_HIT_ACTION) {
                 this.overlayManager.closeManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY);
                 if (state === CRITICAL_CHANCE_ACTION) {
                     this.openMekCriticalChanceDialog(unit, loc);
@@ -1699,42 +1745,125 @@ export class SvgInteractionService {
             ...conditions,
             { key: 'critical-actions-break', label: '', color: '', active: false, isBreak: true },
             { key: CRITICAL_CHANCE_ACTION, label: 'Critical Chance', color: '#444', active: false, action: true },
-            { key: CRITICAL_ROLL_ACTION, label: 'Critical Roll', color: '#444', active: false, action: true },
+            { key: CRITICAL_HIT_ACTION, label: 'Critical Hit', color: '#444', active: false, action: true },
         ];
     }
 
-    private openMekCriticalChanceDialog(unit: CBTForceUnit, location: string): void {
-        const ref = this.dialogsService.createDialog<MekCriticalChanceResult | undefined>(MekCriticalChanceDialogComponent, {
-            data: {
-                locationLabel: getMekLocationLabel(location) ?? location,
-                canBlowOff: mekCriticalChanceCanBlowOff(location),
-                modifiers: mekCriticalChanceModifiers(unit, location),
-            } as MekCriticalChanceDialogData,
-        });
-        ref.closed.subscribe(result => {
-            if (!result || result.kind === 'none') return;
-            if (result.kind === 'blown-off') {
-                const blowOff = applyMekBlowOff(unit, location, this.consolidateImmediately);
-                if (blowOff.kind === 'absorbed') {
-                    this.toastService.showToast(`Armored ${blowOff.equipment} absorbs the blow-off result`, 'info');
-                } else {
-                    this.toastService.showToast(`${getMekLocationLabel(location) ?? location} blown off`, 'error');
-                }
-                return;
-            }
-            this.openMekCriticalRollDialog(unit, location, result.count);
+    private scheduleAutomation(unit: CBTForceUnit, trigger: CBTUnitAutomationTrigger): void {
+        // Events emitted while END PHASE is draining are already represented in
+        // the unit queue and belong to that awaited workflow. Breach reviews are
+        // transient, so they must still be delivered rather than silently lost.
+        const phaseOwned = trigger.kind !== 'breach-and-flood'
+            && trigger.kind !== 'hull-breach-check';
+        if (phaseOwned && this.phaseResolution.isResolving(unit)) return;
+
+        let task: () => Promise<unknown>;
+        if (trigger.kind === 'critical-hit-chance') {
+            task = () => this.criticalResolution.resumeChance(unit, trigger.id);
+        } else if (trigger.kind === 'pending-unit-check') {
+            task = () => this.unitCheckResolution.open([unit]);
+        } else if (trigger.kind === 'falling') {
+            task = () => this.fallingResolution.open(unit, trigger, this.consolidateImmediately);
+        } else if (trigger.kind === 'hull-breach-check') {
+            task = () => this.handleHullBreachCheckTrigger(unit, trigger);
+        } else {
+            task = () => this.handleBreachAndFloodTrigger(unit, trigger);
+        }
+
+        this.queueAutomation(async () => {
+            // END PHASE may have started after the trigger was scheduled.
+            if (phaseOwned && this.phaseResolution.isResolving(unit)) return;
+            await task();
         });
     }
 
-    private openMekCriticalRollDialog(unit: CBTForceUnit, location: string, requiredHits?: number): void {
-        this.dialogsService.createDialog<void>(MekCriticalRollDialogComponent, {
-            data: {
-                unit,
-                location,
-                requiredHits,
-                consolidateImmediately: this.consolidateImmediately,
-            } as MekCriticalRollDialogData,
+    private queueAutomation(task: () => Promise<void>): void {
+        this.automationQueue = this.automationQueue.then(task).catch(error => {
+            console.error('CBT automation failed', error);
         });
+    }
+
+    private async reviewHeadHitPilotHit(unit: CBTForceUnit): Promise<boolean | null> {
+        const event: AutomationReviewEvent = {
+            id: uuidv7(),
+            subject: unit.getNotificationDisplayName(),
+            event: 'Head hit',
+            description: 'Apply the resulting pilot hit',
+            effects: ['Queue any required Consciousness Roll'],
+        };
+        const accepted = await this.automations.resolve('pilotHitsAndConsciousnessCheck', [event], {
+            title: 'Review Pilot Hit',
+            message: 'Choose whether to apply the pilot hit caused by this head hit.',
+        });
+        return accepted === null ? null : accepted.has(event.id);
+    }
+
+    private async handleBreachAndFloodTrigger(
+        unit: CBTForceUnit,
+        trigger: Extract<CBTUnitAutomationTrigger, { readonly kind: 'breach-and-flood' }>,
+    ): Promise<void> {
+        const events: AutomationReviewEvent[] = trigger.locations.map(location => ({
+            id: `${trigger.id}:${location}`,
+            subject: unit.getNotificationDisplayName(),
+            event: 'Breach and flood',
+            description: `${getMekLocationLabel(location) ?? location} is exposed while submerged`,
+        }));
+        let accepted: ReadonlySet<string> | null;
+        try {
+            accepted = await this.automations.resolve('breachAndFloodCheck', events, {
+                title: 'Review Breach and Flooding',
+            });
+        } catch (error) {
+            unit.deferUnderwaterBreachAndFloodingReview(trigger.locations);
+            throw error;
+        }
+        if (accepted === null) {
+            unit.deferUnderwaterBreachAndFloodingReview(trigger.locations);
+            return;
+        }
+
+        for (const [index, event] of events.entries()) {
+            if (!accepted.has(event.id)) continue;
+            const location = trigger.locations[index];
+            unit.setLocationCondition(location, 'flooded', true, trigger.commit);
+        }
+    }
+
+    private async handleHullBreachCheckTrigger(
+        unit: CBTForceUnit,
+        trigger: Extract<CBTUnitAutomationTrigger, { readonly kind: 'hull-breach-check' }>,
+    ): Promise<void> {
+        const locationLabel = getMekLocationLabel(trigger.location) ?? trigger.location;
+        const breachRange = unit.gameRules.getHullBreachCheckRangeLabel();
+        const event: AutomationReviewEvent = {
+            id: trigger.id,
+            subject: unit.getNotificationDisplayName(),
+            event: 'Hull breach check',
+            description: `${locationLabel} took damage while submerged`,
+            effects: [`Roll 2D6; the location breaches and floods on ${breachRange}.`],
+        };
+        const accepted = await this.automations.resolve('breachAndFloodCheck', [event], {
+            title: 'Review Hull Breach Check',
+            message: 'Choose whether to roll and resolve this hull breach check.',
+        });
+        if (accepted?.has(event.id)) {
+            unit.resolveUnderwaterHullBreachCheck(trigger.location, trigger.commit);
+        }
+    }
+
+    private openMekCriticalChanceDialog(
+        unit: CBTForceUnit,
+        location: string,
+        consolidateImmediately = this.consolidateImmediately,
+    ): Promise<void> {
+        return this.criticalResolution.openManualChance(unit, location, consolidateImmediately);
+    }
+
+    private openMekCriticalRollDialog(
+        unit: CBTForceUnit,
+        location: string,
+    ): Promise<void> {
+        return this.criticalResolution.openManual(unit, location, this.consolidateImmediately);
     }
 
     private openEquipmentDialog(unit: CBTForceUnit, initialTab: EquipmentDialogTab): void {
@@ -1985,15 +2114,17 @@ export class SvgInteractionService {
                 const hitValue = parseInt(svgEl.getAttribute('hit') || '0');
                 const member = unit.getCrewMember(crewId);
                 const currentHits = member.getHits();
+                let nextHits: number;
                 if (currentHits > hitValue) {
                     // if there are slots above, we act as a slider
-                    member.setHits(Math.max(0, hitValue));
+                    nextHits = hitValue;
                 } else if (currentHits === hitValue) {
                     // else we toggle the hit value of this slot
-                    member.setHits(Math.max(0, currentHits - 1));
+                    nextHits = currentHits - 1;
                 } else {
-                    member.setHits(Math.max(0, hitValue));
+                    nextHits = hitValue;
                 }
+                unit.setCrewHits(crewId, nextHits);
             }, signal);
         });
     }
@@ -2104,7 +2235,7 @@ export class SvgInteractionService {
             } else {
                 const crewMember = unit.getCrewMember(crewId);
                 const selectedState = state as CrewStateControlKey;
-                crewMember.setState(crewMember.getState() === selectedState ? 'healthy' : selectedState);
+                unit.setCrewState(crewId, crewMember.getState() === selectedState ? 'healthy' : selectedState);
             }
             if (componentRef.instance.closeOnSelect()) {
                 this.overlayManager.closeManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY);
@@ -2402,6 +2533,8 @@ export class SvgInteractionService {
 
     cleanup() {
         this.endHeatDrag();
+        this.unitAutomationSubscription?.unsubscribe();
+        this.unitAutomationSubscription = null;
         this.centerPanelDialogRef?.close();
         this.centerPanelDialogRef = null;
         if (this.heatMarkerEffectRef) {

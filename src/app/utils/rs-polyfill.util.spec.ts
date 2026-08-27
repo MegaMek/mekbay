@@ -5,6 +5,31 @@
 import { RsPolyfillUtil } from './rs-polyfill.util';
 
 describe('RsPolyfillUtil', () => {
+    it('doubles record capacity only at typed Hardened Armor and Reinforced Structure locations', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = `
+            <circle class="pip armor" loc="CT"></circle>
+            <circle class="pip armor" loc="LA"></circle>
+            <circle class="pip structure" loc="CT"></circle>
+            <circle class="pip structure" loc="LA"></circle>
+        `;
+        const forceUnit = {
+            getArmorTypeAt: (location: string) => location === 'CT' ? 'HARDENED' : 'STANDARD',
+            getStructureKindAt: (location: string) => location === 'CT' ? 'reinforced' : 'composite',
+        };
+        const adjust = (RsPolyfillUtil as unknown as {
+            adjustArmorPips: (unit: typeof forceUnit, svg: SVGSVGElement) => void;
+        }).adjustArmorPips.bind(RsPolyfillUtil);
+
+        adjust(forceUnit, svg);
+        adjust(forceUnit, svg);
+
+        expect(svg.querySelectorAll('.pip.armor[loc="CT"]').length).toBe(2);
+        expect(svg.querySelectorAll('.pip.armor[loc="LA"]').length).toBe(1);
+        expect(svg.querySelectorAll('.pip.structure[loc="CT"]').length).toBe(2);
+        expect(svg.querySelectorAll('.pip.structure[loc="LA"]').length).toBe(1);
+    });
+
     it('adds an idempotent native SVG inversion filter for iOS night mode', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const addFilter = (RsPolyfillUtil as unknown as {

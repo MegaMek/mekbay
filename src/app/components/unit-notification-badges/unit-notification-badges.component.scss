@@ -1,0 +1,168 @@
+:host {
+    display: inline-flex;
+    min-width: 0;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 3px;
+    vertical-align: middle;
+}
+
+:host(.empty) {
+    display: none;
+}
+
+.unit-notification-badge {
+    display: inline-flex;
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    align-items: center;
+    justify-content: center;
+    outline: none;
+    pointer-events: auto;
+    cursor: help;
+
+    &:focus-visible {
+        box-shadow: 0 0 0 2px var(--bt-yellow);
+    }
+
+    svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+    }
+
+    text {
+        pointer-events: none;
+        font-size: 8px;
+        font-weight: bold;
+    }
+}
+
+.fall-warning {
+    .fall-background {
+        fill: #f00;
+    }
+
+    .fall-symbol {
+        fill: #fff;
+    }
+}
+
+.pending-events-warning.fall-warning {
+    position: relative;
+}
+
+.fall-event-count {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    display: flex;
+    min-width: 10px;
+    height: 10px;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    padding-inline: 2px;
+    border: 0.5px solid #fff;
+    border-radius: 999px;
+    background: #000;
+    color: #fff;
+    font-size: 7px;
+    font-weight: bold;
+    line-height: 1;
+}
+
+.psr-warning {
+    path {
+        fill: var(--damage-color);
+    }
+
+    text {
+        fill: #000;
+    }
+}
+
+.critical-chance-warning,
+.critical-hit-warning,
+.unit-check-warning {
+    polygon,
+    rect {
+        stroke: #fff;
+        stroke-width: 0.5;
+    }
+
+    text {
+        fill: #fff;
+    }
+}
+
+.critical-chance-warning rect {
+    fill: #e88720;
+}
+
+.critical-hit-warning polygon {
+    fill: var(--danger);
+}
+
+.unit-check-warning {
+    polygon {
+        fill: var(--bt-yellow);
+    }
+
+    text {
+        fill: #000;
+    }
+}
+
+:host(.overlay) {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    pointer-events: auto;
+}
+
+:host(.overlay) .unit-notification-badge {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+}
+
+:host(.overlay) .fall-event-count {
+    right: -4px;
+    bottom: -4px;
+    min-width: 18px;
+    height: 18px;
+    padding-inline: 3px;
+    border-width: 1px;
+    font-size: 11px;
+}
+
+:host(.overlay.interactive) .unit-notification-badge {
+    opacity: 0.8;
+    cursor: pointer;
+    transition: opacity 0.2s;
+
+    &:hover {
+        opacity: 1;
+    }
+}
+
+@media (min-width: 480px) and (min-height: 480px) {
+    :host(.overlay) {
+        gap: 10px;
+    }
+
+    :host(.overlay) .unit-notification-badge {
+        width: 46px;
+        height: 46px;
+        flex-basis: 46px;
+    }
+
+    :host(.overlay) .fall-event-count {
+        min-width: 20px;
+        height: 20px;
+        font-size: 12px;
+    }
+}

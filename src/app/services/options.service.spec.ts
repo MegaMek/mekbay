@@ -82,7 +82,6 @@ describe('OptionsService', () => {
             megaMekAvailabilityFiltersUseAllScopedOptions: 1,
             recordSheetDoubleTapZoomReset: 'always',
             trackPhaseAndTurn: 'true',
-            cbtAutomations: 1,
             CBTRules: 'basic',
             ASUseHex: 'false',
             c3NetworkConnectionsAboveNodes: 0,
@@ -114,7 +113,6 @@ describe('OptionsService', () => {
             megaMekAvailabilityFiltersUseAllScopedOptions: true,
             recordSheetDoubleTapZoomReset: 'contextual',
             trackPhaseAndTurn: true,
-            cbtAutomations: false,
             CBTRules: 'tw',
             ASUseHex: false,
             c3NetworkConnectionsAboveNodes: false,
@@ -190,6 +188,7 @@ describe('OptionsService', () => {
         expect(service.options().CBTOptionalRules).toEqual({
             forcedWithdrawal: true,
             extremeRange: false,
+            floatingCriticals: false,
         });
         expect(service.options().lastCanvasState).toBeUndefined();
         expect(service.options().sidebarLipPosition).toBeUndefined();
@@ -243,14 +242,6 @@ describe('OptionsService', () => {
         });
     });
 
-    it('restores a disabled CBT automations preference', async () => {
-        savedOptions = { cbtAutomations: false };
-
-        const service = await createService();
-
-        expect(service.options().cbtAutomations).toBeFalse();
-    });
-
     it('uses CBT optional-rule defaults', async () => {
         savedOptions = null;
 
@@ -259,7 +250,63 @@ describe('OptionsService', () => {
         expect(service.options().CBTOptionalRules).toEqual({
             forcedWithdrawal: true,
             extremeRange: false,
+            floatingCriticals: false,
         });
+    });
+
+    it('uses the current CBT automation defaults', async () => {
+        savedOptions = null;
+
+        const service = await createService();
+
+        expect(service.options().cbtAutomationOptions).toEqual({
+            pilotSkillCheck: 'no',
+            heatAndDissipationResolution: 'no',
+            heatEffectsCheck: 'no',
+            pilotHitsAndConsciousnessCheck: 'no',
+            internalExplosionsCheck: 'ask',
+            criticalHitChanceCheck: 'no',
+            breachAndFloodCheck: 'no',
+            fallingCheck: 'no',
+        });
+    });
+
+    it('restores and validates current CBT automation modes per setting', async () => {
+        savedOptions = {
+            cbtAutomationOptions: {
+                pilotSkillCheck: 'yes',
+                heatAndDissipationResolution: 'ask',
+                heatEffectsCheck: 'sometimes',
+                internalExplosionsCheck: 'no',
+                breachAndFloodCheck: 'ask',
+            },
+        };
+
+        const service = await createService();
+
+        expect(service.options().cbtAutomationOptions).toEqual({
+            pilotSkillCheck: 'yes',
+            heatAndDissipationResolution: 'ask',
+            heatEffectsCheck: 'no',
+            pilotHitsAndConsciousnessCheck: 'no',
+            internalExplosionsCheck: 'no',
+            criticalHitChanceCheck: 'no',
+            breachAndFloodCheck: 'ask',
+            fallingCheck: 'no',
+        });
+    });
+
+    it('updates and persists the canonical CBT automation settings', async () => {
+        savedOptions = null;
+        const service = await createService();
+
+        await service.setCbtAutomationMode('pilotSkillCheck', 'yes');
+
+        expect(service.cbtAutomationMode('pilotSkillCheck')).toBe('yes');
+        expect(service.options().cbtAutomationOptions.pilotSkillCheck).toBe('yes');
+        expect(dbService.saveOptions).toHaveBeenCalledOnceWith(jasmine.objectContaining({
+            cbtAutomationOptions: jasmine.objectContaining({ pilotSkillCheck: 'yes' }),
+        }));
     });
 
     it('restores structured CBT optional rules', async () => {
@@ -267,6 +314,7 @@ describe('OptionsService', () => {
             CBTOptionalRules: {
                 forcedWithdrawal: false,
                 extremeRange: true,
+                floatingCriticals: true,
             },
         };
 
@@ -275,6 +323,7 @@ describe('OptionsService', () => {
         expect(service.options().CBTOptionalRules).toEqual({
             forcedWithdrawal: false,
             extremeRange: true,
+            floatingCriticals: true,
         });
     });
 

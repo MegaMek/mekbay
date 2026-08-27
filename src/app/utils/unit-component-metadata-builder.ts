@@ -161,12 +161,10 @@ function addMekSystem(
   });
 }
 
-/** Exports the entity-selected internal structure once, independently of critical-slot mounts. */
+/** Exports one uniform structure independently of critical-slot mounts. */
 function addSyntheticStructure(components: Map<string, ExportComponent>, entity: BaseEntity): void {
-  const structure = entity.uniformStructureMaterial()?.structure
-    ?? entity.structureByLocation().get(entity.locationOrder[0])?.structure;
+  const structure = entity.uniformStructureMaterial()?.structure;
   if (!structure) return;
-
   components.set(`${structure.id}__structure`, {
     ...baseComponent(structure, 1, -1, undefined, 'S', criticals(structure, entity)),
     n: withMaterialSuffix(structure.shortName, 'Structure'),
@@ -187,19 +185,15 @@ function addSyntheticArmor(components: Map<string, ExportComponent>, entity: Bas
       ...baseComponent(patchwork, 1, -1, undefined, 'S', criticals(patchwork, entity)),
       n: withMaterialSuffix(patchwork.shortName, 'Armor'),
     });
+    return;
   }
 
-  const materials = new Map<string, ArmorEquipment>();
-  for (const mountedArmor of armorByLocation.values()) {
-    const key = `${mountedArmor.armor.id}:${mountedArmor.techBase}`;
-    materials.set(key, mountedArmor.armor);
-  }
-  for (const [key, armor] of materials) {
-    components.set(`${armor.id}__armor_${key}`, {
-      ...baseComponent(armor, 1, -1, undefined, 'S', criticals(armor, entity)),
-      n: withMaterialSuffix(armor.shortName, 'Armor'),
-    });
-  }
+  const armor = entity.uniformArmor()?.armor;
+  if (!armor) return;
+  components.set(`${armor.id}__armor`, {
+    ...baseComponent(armor, 1, -1, undefined, 'S', criticals(armor, entity)),
+    n: withMaterialSuffix(armor.shortName, 'Armor'),
+  });
 }
 
 function withMaterialSuffix(name: string, suffix: 'Armor' | 'Structure'): string {

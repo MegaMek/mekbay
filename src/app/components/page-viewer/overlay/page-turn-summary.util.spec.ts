@@ -4,7 +4,7 @@
 
 import { Subject } from 'rxjs';
 import type { ManagedOverlayRef, OverlayManagerService } from '../../../services/overlay-manager.service';
-import { composeTurnSummaryHeatRows, countActionablePsrChecks, displayPsrModifiers, isMoveModeDisabledWhileProne, openTurnSummaryChildOverlay } from './page-turn-summary.util';
+import { composeTurnSummaryHeatRows, displayPsrModifiers, isMoveModeDisabledWhileProne, openTurnSummaryChildOverlay } from './page-turn-summary.util';
 
 describe('openTurnSummaryChildOverlay', () => {
     it('blocks the parent summary until the child overlay closes', () => {
@@ -38,29 +38,11 @@ describe('openTurnSummaryChildOverlay', () => {
         expect(overlayManager.unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-1');
     });
 });
-
 describe('isMoveModeDisabledWhileProne', () => {
     it('disables only jump while prone without changing its selected state', () => {
         expect(isMoveModeDisabledWhileProne('jump', true)).toBeTrue();
         expect(isMoveModeDisabledWhileProne('jump', false)).toBeFalse();
         expect(isMoveModeDisabledWhileProne('run', true)).toBeFalse();
-    });
-});
-
-describe('countActionablePsrChecks', () => {
-    const fallCheck = { failureOutcome: 'Fall' };
-    const crippleCheck = { failureOutcome: 'Crippled' };
-
-    it('shows all checks when the unit is not automatically falling', () => {
-        expect(countActionablePsrChecks([fallCheck, crippleCheck], false)).toBe(2);
-    });
-
-    it('hides the warning when autofall already represents every check', () => {
-        expect(countActionablePsrChecks([fallCheck, fallCheck], true)).toBe(0);
-    });
-
-    it('keeps non-fall checks actionable during autofall', () => {
-        expect(countActionablePsrChecks([fallCheck, crippleCheck], true)).toBe(1);
     });
 });
 

@@ -183,6 +183,7 @@ export function separateHeatFireModifier(resolution: ToHitResolution): ToHitHeat
 
 export abstract class CBTGameRules {
     abstract readonly id: 'core2026' | 'tw';
+    abstract readonly aggregatedEndPhaseConsciousRolls: boolean;
     abstract readonly c3DegradationLabel: C3DegradationLabel;
     abstract readonly escalatingFailureTargets: readonly number[];
     abstract readonly radicalHeatSinkFailureTargets: readonly number[];
@@ -213,6 +214,8 @@ export abstract class CBTGameRules {
     abstract getExplosiveWeaponDamage(weapon: WeaponEquipment, mountedCriticalSlots: number): number;
     abstract resolveMekExplosionDamage(context: MekExplosionDamageContext): MekExplosionDamageResolution;
     abstract getMekExplosionProtectionNote(protection: MekExplosionProtection): string | null;
+    abstract hullBreachCheckSucceeds(total: number): boolean;
+    abstract getHullBreachCheckRangeLabel(): string;
     protected abstract canFireTorpedoesIndirectly(context: IndirectFireContext): boolean;
 
     /** Resolves immediate Mek explosion effects after handler-owned delayed cases are excluded. */
@@ -473,6 +476,7 @@ export abstract class CBTGameRules {
 
 export class GameRules extends CBTGameRules {
     readonly id = 'core2026' as const;
+    readonly aggregatedEndPhaseConsciousRolls = true;
     readonly c3DegradationLabel = 'DEGRADED' as const;
     readonly physicalBaseHitModifiers = {
         punch: -1,
@@ -521,6 +525,14 @@ export class GameRules extends CBTGameRules {
         { munitionType: 'M_ARMOR_PIERCING', shotsMultiplier: 0.8 },
         { munitionType: 'M_AX_HEAD', shotsMultiplier: 1, baseAmmoBvMultiplier: 1 },
     ];
+
+    override hullBreachCheckSucceeds(total: number): boolean {
+        return total >= 2 && total <= 4;
+    }
+
+    override getHullBreachCheckRangeLabel(): string {
+        return '2–4';
+    }
 
     override resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
         return { target, degradationSource };
@@ -576,7 +588,7 @@ export class GameRules extends CBTGameRules {
             return 'Caps internal damage at 10; if the location survives, up to 10 excess damage vents through its armor. Damage never transfers.';
         }
         if (protection === 'case-ii') {
-            return 'Caps internal damage at 1; if the location survives, up to 10 excess damage vents through its armor. Damage never transfers; each resulting critical hit is ignored on 8+.';
+            return 'Caps internal damage at 1; if the location survives, up to 10 excess damage vents through its armor. Damage never transfers; the resulting critical hit check has a −1 modifier.';
         }
         return null;
     }
@@ -601,6 +613,7 @@ export class GameRules extends CBTGameRules {
 
 export class TWGameRules extends CBTGameRules {
     readonly id = 'tw' as const;
+    readonly aggregatedEndPhaseConsciousRolls = false;
     readonly c3DegradationLabel = 'JAMMED' as const;
     readonly physicalBaseHitModifiers = {
         punch: 0,
@@ -653,6 +666,14 @@ export class TWGameRules extends CBTGameRules {
         { munitionType: 'M_ARMOR_PIERCING', shotsMultiplier: 0.5 },
         { munitionType: 'M_AX_HEAD', shotsMultiplier: 0.5, baseAmmoBvMultiplier: 2 },
     ];
+
+    override hullBreachCheckSucceeds(total: number): boolean {
+        return total >= 10 && total <= 12;
+    }
+
+    override getHullBreachCheckRangeLabel(): string {
+        return '10+';
+    }
 
     override resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
         return {
