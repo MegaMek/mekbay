@@ -266,7 +266,7 @@ describe('OptionsService', () => {
             pilotHitsAndConsciousnessCheck: 'no',
             internalExplosionsCheck: 'ask',
             criticalHitChanceCheck: 'no',
-            breachAndFloodCheck: 'yes',
+            breachAndFloodCheck: 'no',
             fallingCheck: 'no',
         });
     });

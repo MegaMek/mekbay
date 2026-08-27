@@ -432,6 +432,39 @@ describe('Mek critical-hit workflow', () => {
         expect(internalHits.get('CT')).toBe(18);
     });
 
+    it('resolves TW CASE II against printed Hardened Armor points', () => {
+        const fixture = explodingWeaponUnit(TW_GAME_RULES);
+        fixture.unit.getCritSlots().forEach(slot => { slot.loc = 'LA'; });
+        const caseII = new MiscEquipment({
+            id: 'ISCASEII',
+            name: 'CASE II',
+            type: 'misc',
+            flags: ['F_CASE_II'],
+        });
+        fixture.unit.getCritSlots().push({
+            id: 'caseii@LA',
+            name: caseII.name,
+            loc: 'LA',
+            slot: 5,
+            eq: caseII,
+        });
+        const getArmorPoints = fixture.unit.getArmorPoints;
+        spyOn(fixture.unit, 'getArmorTypeAt').and.callFake(location =>
+            location === 'LA' ? 'HARDENED' : 'STANDARD');
+        spyOn(fixture.unit, 'getArmorPoints').and.callFake((location, rear) =>
+            location === 'LA' && !rear ? 18 : getArmorPoints(location, rear));
+
+        const outcome = applyMekCriticalRoll(fixture.unit, 'LA', [1, 1], true);
+
+        expect(outcome?.explosion?.locations[0]).toEqual(jasmine.objectContaining({
+            location: 'LA',
+            internalDamage: 1,
+            armorDamage: 10,
+            protection: 'case-ii',
+        }));
+        expect(fixture.armorHits.get('LA')).toBe(10);
+    });
+
     it('drops the odd composite remainder instead of transferring fractional explosion damage', () => {
         const fixture = explodingWeaponUnit(TW_GAME_RULES, ['F_GAUSS'], 'Gauss Rifle', 'composite');
         fixture.internalHits.set('LT', 1);
@@ -965,6 +998,7 @@ function explodingWeaponUnit(
     readonly unit: CBTForceUnit;
     readonly entry: MountedEquipment;
     readonly internalHits: Map<string, number>;
+    readonly armorHits: Map<string, number>;
 } {
     const weapon = new WeaponEquipment({
         id: 'TestGauss',

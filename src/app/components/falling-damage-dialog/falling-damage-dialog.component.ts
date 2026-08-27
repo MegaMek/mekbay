@@ -13,6 +13,7 @@ import { unitCoverWaterDepth } from '../../models/unit-cover.model';
 import {
     isResolvedMekFallHitLocation,
     resolvedMekFallDamageGroups,
+    rollMekFallDice,
     resolveMekFallDamage,
     resolveMekFallHitLocation,
     resolveMekFallOrientation,
@@ -147,24 +148,9 @@ export class FallingDamageDialogComponent {
     }
 
     rollAllResults(random: () => number = Math.random): void {
-        const orientationRoll = rollD6(random);
-        const orientation = resolveMekFallOrientation(this.rulesId, orientationRoll);
-        this.orientationRoll.set(orientationRoll);
-        this.groupRolls.set(this.damageGroups.map(() => {
-            const hitLocationDice = [rollD6(random), rollD6(random)] as const;
-            const hitLocationRoll = twoD6Total(hitLocationDice);
-            const preliminary = resolveMekFallHitLocation(
-                this.hitLocationTable,
-                orientation.hitArc,
-                hitLocationRoll,
-            );
-            const needsTripodLeg = preliminary.location === null
-                && preliminary.tripodLegModifier !== undefined;
-            return {
-                hitLocationDice,
-                tripodLegRoll: needsTripodLeg ? rollD6(random) : null,
-            };
-        }));
+        const rolled = rollMekFallDice(this.rulesId, this.hitLocationTable, this.damageGroups.length, { random });
+        this.orientationRoll.set(rolled.orientationRoll);
+        this.groupRolls.set(rolled.damageRolls);
         this.persistRolls();
     }
 
@@ -207,8 +193,4 @@ export class FallingDamageDialogComponent {
 
 function validRoll(value: number | null, min: number, max: number): number | null {
     return value !== null && Number.isInteger(value) && value >= min && value <= max ? value : null;
-}
-
-function rollD6(random: () => number): number {
-    return Math.floor(random() * 6) + 1;
 }

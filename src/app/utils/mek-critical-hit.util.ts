@@ -982,17 +982,21 @@ function resolveMekExplosionLocationDamage(
         sharedCompositePip = false;
         const structureKind = unit.getStructureKindAt(location);
         const torso = MEK_TORSO_LOCATIONS.has(location);
-        const remainingArmor = Math.max(0, unit.getArmorPoints(location, torso) - unit.getArmorHits(location, torso));
+        const armorPoints = unit.getArmorPoints(location, torso);
+        const remainingArmor = Math.max(0, armorPoints - unit.getArmorHits(location, torso));
+        const armorPipsPerPoint = unit.gameRules.id === 'tw'
+            && protection === 'case-ii'
+            && unit.getArmorTypeAt(location) === 'HARDENED' ? 2 : 1;
         const resolution = unit.gameRules.resolveMekExplosionDamage({
             damage,
             protection,
             remainingInternal: mekStructureDamageCapacity(remainingInternal - sharedInternalDamage, structureKind),
-            remainingArmor,
-            originalArmor: unit.getArmorPoints(location, torso),
+            remainingArmor: Math.ceil(remainingArmor / armorPipsPerPoint),
+            originalArmor: Math.ceil(armorPoints / armorPipsPerPoint),
             torso,
             armorBlowoutPending,
         });
-        const armorDamage = Math.min(remainingArmor, resolution.armorDamage);
+        const armorDamage = Math.min(remainingArmor, resolution.armorDamage * armorPipsPerPoint);
         const structureDamage = resolveMekStructureDamage(
             resolution.internalDamage,
             remainingInternal - sharedInternalDamage,

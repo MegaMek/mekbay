@@ -16,17 +16,15 @@ import {
     type FallingNoticeDialogData,
 } from '../components/falling-notice-dialog/falling-notice-dialog.component';
 import type { AutomationReviewEvent } from '../models/automation-review.model';
-import type { CBTForceUnit, CBTMekFallDamageRoll } from '../models/cbt-force-unit.model';
+import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { getMekLocationLabel } from '../models/entity/types';
 import { unitCoverWaterDepth } from '../models/unit-cover.model';
 import {
     applyMekFallDamage,
     isResolvedMekFallHitLocation,
     resolvedMekFallDamageGroups,
+    rollMekFallDice,
     resolveMekFallDamage,
-    resolveMekFallHitLocation,
-    resolveMekFallOrientation,
-    twoD6Total,
     type ResolvedMekFallDamageGroup,
 } from '../utils/mek-falling.util';
 import { clusterTableForUnit } from '../utils/record-sheet-reference-table';
@@ -140,8 +138,6 @@ export class FallingResolutionService {
         trigger: FallingAutomationTrigger,
     ): AcceptedFallingDamageDialogResult {
         const pending = unit.getPendingFall(trigger.id);
-        const orientationRoll = pending?.orientationRoll ?? this.rollD6();
-        const orientation = resolveMekFallOrientation(unit.gameRules.id, orientationRoll);
         const damageGroups = resolvedMekFallDamageGroups(resolveMekFallDamage(
             unit.gameRules.id,
             unit.getUnit().tons,
@@ -149,47 +145,23 @@ export class FallingResolutionService {
             unitCoverWaterDepth(unit.turnState().cover()),
         ));
         const hitLocationTable = clusterTableForUnit(unit.getUnit()).hitLocationTable ?? 'biped';
-        const damageRolls: CBTMekFallDamageRoll[] = [];
-        const groups: ResolvedMekFallDamageGroup[] = [];
-
-        damageGroups.forEach((damage, index) => {
-            const saved = pending?.damageRolls[index];
-            const hitLocationDice = saved?.hitLocationDice
-                ?? [this.rollD6(), this.rollD6()] as const;
-            const hitLocationRoll = twoD6Total(hitLocationDice);
-            const preliminary = resolveMekFallHitLocation(
-                hitLocationTable,
-                orientation.hitArc,
-                hitLocationRoll,
-            );
-            const needsTripodLeg = preliminary.location === null
-                && preliminary.tripodLegModifier !== undefined;
-            const tripodLegRoll = !needsTripodLeg
-                ? null
-                : saved?.tripodLegRoll ?? this.rollD6();
-            const result = resolveMekFallHitLocation(
-                hitLocationTable,
-                orientation.hitArc,
-                hitLocationRoll,
-                tripodLegRoll ?? undefined,
-            );
+        const rolled = rollMekFallDice(unit.gameRules.id, hitLocationTable, damageGroups.length, {
+            orientationRoll: pending?.orientationRoll,
+            damageRolls: pending?.damageRolls,
+        });
+        const groups = rolled.hitLocations.map<ResolvedMekFallDamageGroup>((result, index) => {
             if (!isResolvedMekFallHitLocation(result)) {
                 throw new Error('Automatic falling resolution did not produce a hit location.');
             }
-
-            damageRolls.push({
-                hitLocationDice,
-                tripodLegRoll,
-            });
-            groups.push({ ...result, damage });
+            return { ...result, damage: damageGroups[index] };
         });
 
         unit.setPendingFallRolls(
             trigger.id,
-            orientationRoll,
-            damageRolls,
+            rolled.orientationRoll,
+            rolled.damageRolls,
         );
-        return { action: 'accept', orientation, groups };
+        return { action: 'accept', orientation: rolled.orientation, groups };
     }
 
     private async applyAcceptedFall(
@@ -244,10 +216,6 @@ export class FallingResolutionService {
             );
         }
         unit.completePendingFall(trigger.id);
-    }
-
-    private rollD6(): number {
-        return Math.floor(Math.random() * 6) + 1;
     }
 
     private async reviewHeadHits(unit: CBTForceUnit, count: number): Promise<number | null> {
