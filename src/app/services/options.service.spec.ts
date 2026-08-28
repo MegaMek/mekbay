@@ -189,6 +189,7 @@ describe('OptionsService', () => {
             forcedWithdrawal: true,
             extremeRange: false,
             floatingCriticals: false,
+            sprinting: false,
         });
         expect(service.options().lastCanvasState).toBeUndefined();
         expect(service.options().sidebarLipPosition).toBeUndefined();
@@ -251,6 +252,7 @@ describe('OptionsService', () => {
             forcedWithdrawal: true,
             extremeRange: false,
             floatingCriticals: false,
+            sprinting: false,
         });
     });
 
@@ -315,6 +317,7 @@ describe('OptionsService', () => {
                 forcedWithdrawal: false,
                 extremeRange: true,
                 floatingCriticals: true,
+                sprinting: true,
             },
         };
 
@@ -324,6 +327,7 @@ describe('OptionsService', () => {
             forcedWithdrawal: false,
             extremeRange: true,
             floatingCriticals: true,
+            sprinting: true,
         });
     });
 

@@ -56,6 +56,7 @@ const DEFAULT_OPTIONS: Options = {
         floatingCriticals: false,
         forcedWithdrawal: true,
         extremeRange: false,
+        sprinting: false,
     },
     allowMultipleActiveSheets: false,
     CBTRules: 'tw',
@@ -192,6 +193,7 @@ function resolveCBTOptionalRules(saved: Options | null | undefined): CBTOptional
         floatingCriticals: resolveSavedValue(saved?.CBTOptionalRules?.floatingCriticals, defaults.floatingCriticals),
         forcedWithdrawal: resolveSavedValue(saved?.CBTOptionalRules?.forcedWithdrawal, defaults.forcedWithdrawal),
         extremeRange: resolveSavedValue(saved?.CBTOptionalRules?.extremeRange, defaults.extremeRange),
+        sprinting: resolveSavedValue(saved?.CBTOptionalRules?.sprinting, defaults.sprinting),
     };
 }
 

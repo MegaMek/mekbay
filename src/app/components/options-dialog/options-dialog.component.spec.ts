@@ -106,6 +106,7 @@ describe('OptionsDialogComponent', () => {
                     forcedWithdrawal: true,
                     extremeRange: false,
                     floatingCriticals: true,
+                    sprinting: false,
                 },
             }),
             setOption,
@@ -120,6 +121,7 @@ describe('OptionsDialogComponent', () => {
             forcedWithdrawal: false,
             extremeRange: false,
             floatingCriticals: true,
+            sprinting: false,
         });
     });
 

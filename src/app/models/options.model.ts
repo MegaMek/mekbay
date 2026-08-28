@@ -80,6 +80,7 @@ export interface CBTOptionalRules {
     floatingCriticals: boolean;
     forcedWithdrawal: boolean;
     extremeRange: boolean;
+    sprinting: boolean;
 }
 
 export interface Options {

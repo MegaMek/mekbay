@@ -573,12 +573,12 @@
                     </select>
                 </div>
                 <div class="option-row">
-                    <label for="CBTForcedWithdrawal">Forced withdrawal (Cripple):</label>
-                    <select id="CBTForcedWithdrawal" class="bt-select"
-                        [value]="optionsService.options().CBTOptionalRules.forcedWithdrawal"
-                        (change)="onCBTOptionalRuleChange('forcedWithdrawal', $event)">
-                        <option value="true">Enabled (default)</option>
-                        <option value="false">Disabled</option>
+                    <label for="CBTOptionalSprinting">Sprinting (Meks only):</label>
+                    <select id="CBTOptionalSprinting" class="bt-select"
+                        [value]="optionsService.options().CBTOptionalRules.sprinting"
+                        (change)="onCBTOptionalRuleChange('sprinting', $event)">
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled (default)</option>
                     </select>
                 </div>
                 <div class="option-row">
@@ -588,6 +588,15 @@
                         (change)="onCBTOptionalRuleChange('extremeRange', $event)">
                         <option value="true">Enabled</option>
                         <option value="false">Disabled (default)</option>
+                    </select>
+                </div>
+                <div class="option-row">
+                    <label for="CBTForcedWithdrawal">Forced withdrawal (Cripple):</label>
+                    <select id="CBTForcedWithdrawal" class="bt-select"
+                        [value]="optionsService.options().CBTOptionalRules.forcedWithdrawal"
+                        (change)="onCBTOptionalRuleChange('forcedWithdrawal', $event)">
+                        <option value="true">Enabled (default)</option>
+                        <option value="false">Disabled</option>
                     </select>
                 </div>
             </div>
