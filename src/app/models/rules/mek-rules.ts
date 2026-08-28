@@ -445,7 +445,7 @@ export class MekRules extends UnitTypeRulesBase {
                 fallCheck: 0,
                 pilotCheck: 0,
                 loc: destroyedTorsos[0],
-                reason: 'Torso destroyed',
+                reason: 'Crippling destruction',
                 failure: { kind: PSR_FAILURE_KIND.RULE_RESOLUTION, label: 'Crippled' },
                 resolution: {
                     key: TORSO_CRIPPLE_CHECK_KEY,
