@@ -909,6 +909,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
                         CBTOptionalRules: {
                             forcedWithdrawal: true,
                             extremeRange: extremeRange(),
+                            sprinting: false,
                         },
                     }),
                 } },

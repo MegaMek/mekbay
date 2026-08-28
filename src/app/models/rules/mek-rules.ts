@@ -459,6 +459,8 @@ export class MekRules extends UnitTypeRulesBase {
         // in this method avoids a fall, so an already-prone Mek skips it.
         if (prone) return checks;
 
+        checks.push(...this.sprintingMovementEnhancerPSRChecks(turnState));
+
         if (psr.gyroDestroyed) {
             const destroyedGyroCheck = this.destroyedGyroPSRCheck();
             if (destroyedGyroCheck) checks.push(this.withPSRLocation(destroyedGyroCheck, this.getGyroDamageLocation()));
@@ -510,6 +512,25 @@ export class MekRules extends UnitTypeRulesBase {
             }
         }
         return checks;
+    }
+
+    private sprintingMovementEnhancerPSRChecks(turnState: TurnState): PSRCheck[] {
+        if (turnState.effectiveMoveMode() !== 'sprint') return [];
+
+        const activeEnhancerCount = Math.max(0, Math.round(
+            this.unit.getRunMovementMultiplierBonus(turnState) * 2,
+        ));
+        const enhancerLabels = activeEnhancerCount === 1
+            ? ['MASC or supercharger']
+            : ['MASC', 'supercharger'];
+        return enhancerLabels.slice(0, activeEnhancerCount).map(enhancer => ({
+            kind: PSR_CHECK_KIND.SPRINTING_WITH_MOVEMENT_ENHANCER,
+            failure: FALL_PSR_FAILURE,
+            movementMode: 'sprint',
+            fallCheck: 0,
+            pilotCheck: 0,
+            reason: `Sprinting with ${enhancer}`,
+        }));
     }
 
     private getGyroDamageLocation(): string | undefined {
@@ -705,12 +726,16 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     override getCommittedDamageMovementModePSRCheck(moveMode: MotiveModes | null, moveDistance?: number | null): PSRCheck | null {
-        if (moveMode !== 'run' && moveMode !== 'jump') return null;
+        if (moveMode !== 'run' && moveMode !== 'sprint' && moveMode !== 'jump') return null;
         if (moveDistance === null) return null;
-        if (moveMode === 'run'
+        if ((moveMode === 'run' || moveMode === 'sprint')
             && moveDistance !== undefined
             && moveDistance < 1
             && this.runningDamageCheckRequiresHexMovement()) return null;
+
+        const movementLabel = moveMode === 'jump'
+            ? 'Jumping'
+            : moveMode === 'sprint' ? 'Sprinting' : 'Running';
 
         const critSlots = this.unit.getCritSlots();
         const damagedGyro = critSlots.find(slot => this.isCritUnavailable(slot) && this.isNamedCrit(slot, 'Gyro'));
@@ -761,7 +786,7 @@ export class MekRules extends UnitTypeRulesBase {
                     movementMode: moveMode,
                     fallCheck: 0,
                     pilotCheck: 0,
-                    reason: 'Jumping with two destroyed legs',
+                    reason: `${movementLabel} with two destroyed legs`,
                 };
             }
             if (hasDamagedLeg && damagedLegRequiresCheck) {
@@ -777,7 +802,7 @@ export class MekRules extends UnitTypeRulesBase {
                     fallCheck: modifier,
                     pilotCheck: modifier,
                     ...(modifier === 0 && damagedLegLocation && { loc: damagedLegLocation }),
-                    reason: 'Jumping with damaged leg'
+                    reason: `${movementLabel} with damaged leg`
                 };
             }
             if (hasDamagedLegActuators) {
@@ -787,7 +812,7 @@ export class MekRules extends UnitTypeRulesBase {
                     movementMode: moveMode,
                     fallCheck: 0,
                     pilotCheck: 0,
-                    reason: 'Jumping with damaged leg actuator'
+                    reason: `${movementLabel} with damaged leg actuator`
                 };
             }
             return null;
@@ -804,7 +829,7 @@ export class MekRules extends UnitTypeRulesBase {
                 movementMode: moveMode,
                 fallCheck: 0,
                 pilotCheck: 0,
-                reason: 'Running with two destroyed legs',
+                reason: `${movementLabel} with two destroyed legs`,
             };
         }
         if (this.runningWithDestroyedLegRequiresCheck()
@@ -817,7 +842,7 @@ export class MekRules extends UnitTypeRulesBase {
                 fallCheck: 0,
                 pilotCheck: 0,
                 ...(damagedLegLocation && { loc: damagedLegLocation }),
-                reason: 'Running with damaged leg'
+                reason: `${movementLabel} with damaged leg`
             };
         }
         if (hasDamagedLegActuators) {
@@ -829,16 +854,16 @@ export class MekRules extends UnitTypeRulesBase {
                     movementMode: moveMode,
                     fallCheck: 0,
                     pilotCheck: 0,
-                    reason: 'Running with damaged hip'
+                    reason: `${movementLabel} with damaged hip`
                 };
             }
         }
         return null;
     }
 
-    protected damagedGyroMovementPSRCheck(moveMode: 'run' | 'jump'): PSRCheck | null {
+    protected damagedGyroMovementPSRCheck(moveMode: 'run' | 'sprint' | 'jump'): PSRCheck | null {
         if (this.hasHeavyDutyGyro()) {
-            if (moveMode === 'run') return null;
+            if (moveMode !== 'jump') return null;
             return {
                 kind: PSR_CHECK_KIND.DAMAGED_GYRO_MOVEMENT,
                 failure: FALL_PSR_FAILURE,
@@ -855,7 +880,7 @@ export class MekRules extends UnitTypeRulesBase {
             movementMode: moveMode,
             fallCheck: 0,
             pilotCheck: 0,
-            reason: `${moveMode === 'jump' ? 'Jumping' : 'Running'} with damaged gyro`,
+            reason: `${moveMode === 'jump' ? 'Jumping' : moveMode === 'sprint' ? 'Sprinting' : 'Running'} with damaged gyro`,
         };
     }
 
@@ -864,7 +889,7 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     protected destroyedLegMovementPSRModifier(
-        _moveMode: 'run' | 'jump',
+        _moveMode: 'run' | 'sprint' | 'jump',
         _isQuadruped: boolean,
         _destroyedLegsCount: number,
     ): number {
@@ -1001,9 +1026,10 @@ export class MekRules extends UnitTypeRulesBase {
         } else if (moveMode === 'walk') {
             if (superCooledMyomerActive) return 0;
             return hasXXLEngine ? 4 : 1;
-        } else if (moveMode === 'run') {
+        } else if (moveMode === 'run' || moveMode === 'sprint') {
             if (superCooledMyomerActive) return 0;
-            return hasXXLEngine ? 6 : 2;
+            const runningHeat = hasXXLEngine ? 6 : 2;
+            return moveMode === 'sprint' ? Math.floor(runningHeat * 1.5) : runningHeat;
         } else if (moveMode === 'jump') {
             const distance = turnState.moveDistance() || 0;
             return this.computeJumpHeat(distance, hasXXLEngine);
@@ -1323,6 +1349,13 @@ export class MekRules extends UnitTypeRulesBase {
         let ignorePreExistingGyro = false;
         let currentModifiers = 0;
         const turnState = this.unit.turnState();
+        if (turnState.effectiveMoveMode() === 'sprint') {
+            currentModifiers += 2;
+            modifiers.push({
+                pilotCheck: 2,
+                reason: 'Sprinting',
+            });
+        }
         const phasePSRs = turnState.getPSRChecks();
         phasePSRs.forEach((check) => {
             if (check.pilotCheck === undefined) return; // No fall check, skip
@@ -1502,10 +1535,28 @@ export class MekRules extends UnitTypeRulesBase {
         return this.getBasePilotingSkill() + modifiers.modifier;
     });
 
+    private hasTwoWorkingHipActuators(): boolean {
+        const internalLocations = this.unit.locations?.internal;
+        if (!internalLocations) return false;
+
+        const config = inferMekConfigFromLocations(internalLocations.keys());
+        const unavailableHipLocations = new Set(this.unit.getCritSlots()
+            .filter(slot => slot.loc
+                && this.isNamedCrit(slot, 'Hip')
+                && this.isCritUnavailable(slot))
+            .map(slot => slot.loc as string));
+        const workingHips = getMekLegLocations(config).filter(location =>
+            internalLocations.has(location)
+            && !this.isLegDestroyed(location)
+            && !unavailableHipLocations.has(location));
+        return workingHips.length >= 2;
+    }
+
     override getMaxDistanceForMoveMode(moveMode: MotiveModes): number | null {
         const movement = this.movementState();
         if (moveMode === 'walk') return movement?.maxWalk ?? 0;
         if (moveMode === 'run') return movement?.maxRun ?? 0;
+        if (moveMode === 'sprint') return (movement?.walk ?? 0) * 2;
         if (moveMode === 'jump') return movement?.jump ?? 0;
         if (moveMode === 'UMU') return movement?.UMU ?? 0;
         return null;
@@ -1517,6 +1568,11 @@ export class MekRules extends UnitTypeRulesBase {
         if (moveMode === 'walk') return (movement?.walk ?? 0) > 0;
         if (moveMode === 'run') {
             return (movement?.run ?? 0) > 0 || this.getRunningMinimumMovementDistance() > 0;
+        }
+        if (moveMode === 'sprint') {
+            return this.unit.usesSprinting()
+                && (movement?.walk ?? 0) > 0
+                && this.hasTwoWorkingHipActuators();
         }
         if (moveMode === 'jump') return (movement?.jump ?? 0) > 0;
         if (moveMode === 'UMU') return (movement?.UMU ?? 0) > 0;
@@ -1586,17 +1642,20 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     override getEffectiveMaxDistanceForMoveMode(moveMode: MotiveModes, turnState: TurnState): number | null {
-        if (moveMode !== 'run') return this.getMaxDistanceForMoveMode(moveMode);
+        if (moveMode !== 'run' && moveMode !== 'sprint') return this.getMaxDistanceForMoveMode(moveMode);
         const movement = this.movementState();
         if (!movement) return 0;
-        if (movement.run === 0) return this.getRunningMinimumMovementDistance();
+        if (moveMode === 'run' && movement.run === 0) return this.getRunningMinimumMovementDistance();
+        if (movement.walk === 0) return 0;
 
-        const runValueCoeff = 1.5 + this.unit.getRunMovementMultiplierBonus(turnState);
-        const armorModifierOnRun = this.hardenedArmorRunModifier();
-        return Math.max(0, Math.round(movement.walk * runValueCoeff) + armorModifierOnRun);
+        const movementValueCoeff = (moveMode === 'sprint' ? 2 : 1.5)
+            + this.unit.getRunMovementMultiplierBonus(turnState);
+        const armorModifier = moveMode === 'run' ? this.hardenedArmorRunModifier() : 0;
+        return Math.max(0, Math.round(movement.walk * movementValueCoeff) + armorModifier);
     }
 
     override getAttackMovementModifier(moveMode: MotiveModes | null | undefined, airborne: boolean = false): number {
+        if (moveMode === 'sprint') return 0;
         const baseUnit = this.unit.getUnit();
         // LAM have different movement modifiers when airborne
         if (baseUnit.subtype === 'Land-Air BattleMek' && airborne) { 
@@ -1729,6 +1788,9 @@ export class MekRules extends UnitTypeRulesBase {
 
     override getDefenseModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
         const entries = [...super.getDefenseModifierBreakdown(turnState)];
+        if (turnState.effectiveMoveMode() === 'sprint') {
+            entries.push({ label: 'Sprinting', modifier: -1 });
+        }
         if (turnState.unitState.hasCondition('prone')) {
             entries.push({
                 label: 'Prone',
@@ -2465,6 +2527,8 @@ export class MekRules extends UnitTypeRulesBase {
     });
 
     override canPerformEquipmentAction(entry: MountedEquipment, action: EquipmentAction): boolean {
+        if ((action === 'fire' || action === 'physical-attack')
+            && this.unit.turnState().effectiveMoveMode() === 'sprint') return false;
         if (action === 'fire') return this.fireControl()?.canFire ?? true;
         if (action !== 'physical-attack') return true;
         if (entry.equipment?.hasFlag('F_SHIELD') && !this.standaloneShieldDamageEnabled) return false;

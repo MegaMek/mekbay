@@ -31,7 +31,7 @@
         }
 
         @if (canSwitchAirborneMode() === false || airborne() !== null) {
-            <div class="summary-row">
+            <div class="summary-row move-mode-row" [class.crowded]="moveModes().length > 4">
                 @for (moveMode of moveModes(); track moveMode.mode) {
                     @let mode = moveMode.mode;
                     <button

@@ -93,5 +93,5 @@ export function isMoveModeDisabledWhileProne(
     mode: MotiveModes,
     prone: boolean,
 ): boolean {
-    return mode === 'jump' && prone;
+    return (mode === 'jump' || mode === 'sprint') && prone;
 }

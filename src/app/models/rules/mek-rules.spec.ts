@@ -65,6 +65,7 @@ function createRulesHarness(options: {
     subtype?: UnitSubtype;
     rulesId?: 'core2026' | 'tw';
     forcedWithdrawal?: boolean;
+    sprinting?: boolean;
     components?: UnitComponent[];
 } = {}): MekRules {
     return createForceUnitHarness(options).rules as MekRules;
@@ -139,6 +140,7 @@ function createForceUnitHarness(options: {
     subtype?: UnitSubtype;
     rulesId?: 'core2026' | 'tw';
     forcedWithdrawal?: boolean;
+    sprinting?: boolean;
     components?: UnitComponent[];
 } = {}): CBTForceUnit {
     optionsService.options.update(current => ({
@@ -147,6 +149,7 @@ function createForceUnitHarness(options: {
         CBTOptionalRules: {
             ...current.CBTOptionalRules,
             forcedWithdrawal: options.forcedWithdrawal ?? true,
+            sprinting: options.sprinting ?? false,
         },
     }));
     const crewStates = options.crewStates ?? ['healthy'];
@@ -597,6 +600,95 @@ describe('MekRules', () => {
         registry.register(new MascHandler());
         registry.register(new HagHandler());
         registry.register(new VibrobladeHandler());
+    });
+
+    it('offers Sprint after Run only when the optional rule is enabled', () => {
+        const disabled = createForceUnitHarness({ sprinting: false });
+        expect(disabled.getAvailableMotiveModes(false).map(option => option.mode))
+            .not.toContain('sprint');
+
+        const enabled = createForceUnitHarness({ sprinting: true });
+        const enabledModes = enabled.getAvailableMotiveModes(false).map(option => option.mode);
+        expect(enabledModes).toContain('sprint');
+        expect(enabledModes.indexOf('sprint')).toBe(enabledModes.indexOf('run') + 1);
+    });
+
+    it('requires two working hip actuators to Sprint', () => {
+        const oneWorkingHip = createForceUnitHarness({
+            sprinting: true,
+            critSlots: [legActuatorCrit('hip', 'Hip', 'LL')],
+        });
+
+        expect(oneWorkingHip.getAvailableMotiveModes(false).map(option => option.mode))
+            .not.toContain('sprint');
+        expect(oneWorkingHip.rules.isMotiveModeAvailable('sprint')).toBeFalse();
+    });
+
+    it('uses twice current Walking MP for Sprint and stacks active movement enhancers', () => {
+        const forceUnit = createForceUnitHarness({
+            sprinting: true,
+            walk: 6,
+            critSlots: [crit('MASC', false), crit('Supercharger', false)],
+        });
+        forceUnit.setInventory([
+            miscEntry(forceUnit, miscEquipment('MASC', 'MASC', ['F_MASC'])),
+            miscEntry(forceUnit, miscEquipment('Supercharger', 'Supercharger', ['F_MASC', 'S_SUPERCHARGER'])),
+        ]);
+        const [masc, supercharger] = forceUnit.getInventory();
+        const rules = forceUnit.rules as MekRules;
+        const turnState = forceUnit.turnState();
+        turnState.moveMode.set('sprint');
+        const enhancerChecks = () => rules.getPSRChecks(turnState).filter(check =>
+            check.kind === PSR_CHECK_KIND.SPRINTING_WITH_MOVEMENT_ENHANCER);
+
+        expect(rules.getMaxDistanceForMoveMode('sprint')).toBe(12);
+        expect(rules.getEffectiveMaxDistanceForMoveMode('sprint', turnState)).toBe(12);
+        expect(enhancerChecks()).toEqual([]);
+
+        masc.setState(MASC_ACTIVE_STATE_KEY, 'true');
+        expect(rules.getEffectiveMaxDistanceForMoveMode('sprint', turnState)).toBe(15);
+        expect(enhancerChecks()).toEqual([
+            jasmine.objectContaining({
+                movementMode: 'sprint',
+                pilotCheck: 0,
+                reason: 'Sprinting with MASC or supercharger',
+            }),
+        ]);
+
+        supercharger.setState(MASC_ACTIVE_STATE_KEY, 'true');
+        expect(rules.getEffectiveMaxDistanceForMoveMode('sprint', turnState)).toBe(18);
+        expect(enhancerChecks().map(check => check.reason)).toEqual([
+            'Sprinting with MASC',
+            'Sprinting with supercharger',
+        ]);
+    });
+
+    it('applies Sprint heat, piloting, defense, and attack restrictions', () => {
+        const forceUnit = createForceUnitHarness({ sprinting: true });
+        const turnState = forceUnit.turnState();
+        turnState.moveMode.set('sprint');
+        turnState.moveDistance.set(5);
+        const rules = forceUnit.rules as MekRules;
+
+        expect(rules.heatSources(turnState).find(source => source.id === 'movement')?.value).toBe(3);
+        expect(rules.PSRModifiers().modifiers).toContain(jasmine.objectContaining({
+            pilotCheck: 2,
+            reason: 'Sprinting',
+        }));
+        expect(rules.getDefenseModifierBreakdown(turnState)).toContain(jasmine.objectContaining({
+            label: 'Sprinting',
+            modifier: -1,
+        }));
+        expect(rules.canPerformEquipmentAction(directFireWeaponEntry(forceUnit), 'fire')).toBeFalse();
+        expect(rules.canPerformEquipmentAction(punchEntry(forceUnit), 'physical-attack')).toBeFalse();
+    });
+
+    it('rounds down the extra Sprint heat generated by an XXL engine', () => {
+        const forceUnit = createForceUnitHarness({ sprinting: true, engine: 'XXL (IS)' });
+        forceUnit.turnState().moveMode.set('sprint');
+
+        expect(forceUnit.rules.heatSources(forceUnit.turnState())
+            .find(source => source.id === 'movement')?.value).toBe(9);
     });
 
     it('keeps Mek immobile false by default when crew are functional', () => {

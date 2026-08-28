@@ -39,9 +39,11 @@ describe('openTurnSummaryChildOverlay', () => {
     });
 });
 describe('isMoveModeDisabledWhileProne', () => {
-    it('disables only jump while prone without changing its selected state', () => {
+    it('disables jump and sprint while prone', () => {
         expect(isMoveModeDisabledWhileProne('jump', true)).toBeTrue();
         expect(isMoveModeDisabledWhileProne('jump', false)).toBeFalse();
+        expect(isMoveModeDisabledWhileProne('sprint', true)).toBeTrue();
+        expect(isMoveModeDisabledWhileProne('sprint', false)).toBeFalse();
         expect(isMoveModeDisabledWhileProne('run', true)).toBeFalse();
     });
 });

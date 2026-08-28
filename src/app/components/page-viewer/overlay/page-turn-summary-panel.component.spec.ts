@@ -15,12 +15,16 @@ import { ToastService } from '../../../services/toast.service';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 import { STANDING_UP_REVIEW_ONLY } from './page-standing-up-panel.component';
 import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';
+import type { MotiveModeOption, MotiveModes } from '../../../models/motiveModes.model';
 
 describe('PageTurnSummaryPanelComponent', () => {
     it('distinguishes an Immobile unit from one with only Stationary available', () => {
         const immobile = signal(false);
         const rulesId = signal<'core2026' | 'tw'>('core2026');
-        const moveMode = signal<'stationary' | 'walk' | 'run' | 'jump' | 'UMU' | 'VTOL' | null>(null);
+        const moveMode = signal<MotiveModes | null>(null);
+        const availableMotiveModes = signal<MotiveModeOption[]>([
+            { mode: 'stationary', label: 'Stationary', psr: false },
+        ]);
         const markPhaseStateChanged = jasmine.createSpy('markPhaseStateChanged');
         const turnState = {
             airborne: signal<boolean | null>(false),
@@ -47,7 +51,7 @@ describe('PageTurnSummaryPanelComponent', () => {
                 getAttackMovementModifier: () => 0,
                 getCommittedDamageMovementModePSRCheck: () => null,
             },
-            getAvailableMotiveModes: () => [{ mode: 'stationary', label: 'Stationary', psr: false }],
+            getAvailableMotiveModes: () => availableMotiveModes(),
             turnState: () => turnState,
         };
 
@@ -112,6 +116,7 @@ describe('PageTurnSummaryPanelComponent', () => {
 
         expect(fixture.nativeElement.querySelectorAll('.move-button').length).toBe(1);
         expect(fixture.nativeElement.querySelector('.move-button.stationary-only')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('.move-mode-row.crowded')).toBeNull();
         expect(fixture.nativeElement.querySelector('.immobile-status')).toBeNull();
 
         immobile.set(true);
@@ -142,6 +147,65 @@ describe('PageTurnSummaryPanelComponent', () => {
         expect(fixture.nativeElement.querySelector('.move-button.selected')?.textContent.trim()).toBe('Run');
         expect(fixture.nativeElement.querySelector('hex-slider')).not.toBeNull();
         expect(fixture.nativeElement.querySelector('.hex.danger')?.textContent.trim()).toBe('5');
+
+        availableMotiveModes.set([
+            { mode: 'stationary', label: 'Stationary' },
+            { mode: 'walk', label: 'Walk' },
+            { mode: 'run', label: 'Run' },
+            { mode: 'sprint', label: 'Sprint' },
+            { mode: 'jump', label: 'Jump' },
+        ]);
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelector('.move-mode-row.crowded')).not.toBeNull();
+        expect(fixture.nativeElement.querySelectorAll('.move-mode-row .move-button').length).toBe(5);
+    });
+
+    it('clears attacks and spotting when Sprint is selected', () => {
+        const moveMode = signal<MotiveModes | null>(null);
+        const spotting = signal(true);
+        const clearInventoryControlSelection = jasmine.createSpy('clearInventoryControlSelection');
+        const markPhaseStateChanged = jasmine.createSpy('markPhaseStateChanged');
+        const turnState = {
+            moveMode,
+            effectiveMoveMode: () => moveMode(),
+            moveDistance: signal<number | null>(null),
+            minDistanceCurrentMoveMode: () => 0,
+            carefulStand: signal(false),
+            spotting,
+            applyMovePSR: signal(true),
+            markPhaseStateChanged,
+        };
+        const unit = {
+            canTakeActiveActions: () => true,
+            clearInventoryControlSelection,
+            turnState: () => turnState,
+        };
+
+        TestBed.configureTestingModule({
+            imports: [PageTurnSummaryPanelComponent],
+            providers: [
+                { provide: PageInteractionOverlayComponent, useValue: { unit: signal(unit), force: signal(null) } },
+                { provide: OverlayManagerService, useValue: { closeManagedOverlay: () => undefined } },
+                { provide: Overlay, useValue: {} },
+                { provide: EquipmentInteractionRegistryService, useValue: { getRegistry: () => ({}) } },
+                { provide: ToastService, useValue: {} },
+                { provide: DialogsService, useValue: {} },
+                { provide: DataService, useValue: {} },
+            ],
+        });
+        const component = TestBed.createComponent(PageTurnSummaryPanelComponent).componentInstance;
+        Object.assign(component, { prone: () => false });
+
+        expect(component.canSpot()).toBeTrue();
+
+        component.selectMove('sprint');
+
+        expect(moveMode()).toBe('sprint');
+        expect(spotting()).toBeFalse();
+        expect(component.canSpot()).toBeFalse();
+        expect(clearInventoryControlSelection).toHaveBeenCalledTimes(1);
+        expect(markPhaseStateChanged).toHaveBeenCalledTimes(1);
     });
 
     it('reports spent stand-attempt MP and reopens the standing dialog without changing the attempt', () => {

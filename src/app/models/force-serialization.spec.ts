@@ -124,6 +124,13 @@ describe('heat state sanitization', () => {
             .toEqual({ id: 'crit' });
     });
 
+    it('preserves Sprint as a canonical turn movement mode', () => {
+        expect(Sanitizer.sanitize({ moveMode: 'sprint' }, TURN_STATE_SCHEMA))
+            .toEqual({ moveMode: 'sprint' });
+        expect(Sanitizer.sanitize({ moveMode: 'dash' }, TURN_STATE_SCHEMA))
+            .toEqual({});
+    });
+
     it('accepts only resumable end-turn checkpoints', () => {
         expect(Sanitizer.sanitize({ endTurnCheckpoint: 'phase-ended' }, TURN_STATE_SCHEMA))
             .toEqual({ endTurnCheckpoint: 'phase-ended' });

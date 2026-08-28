@@ -269,6 +269,10 @@ export class CBTForceUnit extends ForceUnit {
         return this.injector.get(OptionsService, null, { optional: true })?.options().CBTOptionalRules?.extremeRange ?? false;
     }
 
+    usesSprinting(): boolean {
+        return this.injector.get(OptionsService, null, { optional: true })?.options().CBTOptionalRules?.sprinting ?? false;
+    }
+
     usesForcedWithdrawal(): boolean {
         return this.injector.get(OptionsService, null, { optional: true })?.options().CBTOptionalRules?.forcedWithdrawal ?? true;
     }

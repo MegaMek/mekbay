@@ -226,7 +226,11 @@ export class PageTurnSummaryPanelComponent {
         return unit.turnState().spotting();
     });
 
-    readonly canSpot = computed(() => this.unit()?.canTakeActiveActions() ?? false);
+    readonly canSpot = computed(() => {
+        const unit = this.unit();
+        return unit?.canTakeActiveActions() === true
+            && unit.turnState().moveMode() !== 'sprint';
+    });
 
     readonly cover = computed(() => this.unit()?.turnState().cover());
     readonly waterDepth = computed(() => {
@@ -380,6 +384,10 @@ export class PageTurnSummaryPanelComponent {
         } else {
             turnState.moveMode.set(mode);
             turnState.moveDistance.set(mode === 'stationary' ? null : turnState.minDistanceCurrentMoveMode());
+            if (mode === 'sprint') {
+                turnState.spotting.set(false);
+                unit.clearInventoryControlSelection();
+            }
         }
         turnState.applyMovePSR.set(true);
         turnState.markPhaseStateChanged();
@@ -387,7 +395,7 @@ export class PageTurnSummaryPanelComponent {
 
     toggleSpotting(): void {
         const unit = this.unit();
-        if (!unit || !unit.canTakeActiveActions()) return;
+        if (!unit || !this.canSpot()) return;
         const turnState = unit.turnState();
         turnState.spotting.set(!turnState.spotting());
     }

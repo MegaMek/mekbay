@@ -396,14 +396,14 @@ export class TWMekRules extends MekRules {
         };
     }
 
-    protected override damagedGyroMovementPSRCheck(moveMode: 'run' | 'jump'): PSRCheck {
+    protected override damagedGyroMovementPSRCheck(moveMode: 'run' | 'sprint' | 'jump'): PSRCheck {
         return {
             kind: PSR_CHECK_KIND.DAMAGED_GYRO_MOVEMENT,
             failure: FALL_PSR_FAILURE,
             movementMode: moveMode,
             fallCheck: 0,
             pilotCheck: 0,
-            reason: `${moveMode === 'jump' ? 'Jumping' : 'Running'} with damaged gyro`,
+            reason: `${moveMode === 'jump' ? 'Jumping' : moveMode === 'sprint' ? 'Sprinting' : 'Running'} with damaged gyro`,
         };
     }
 
@@ -450,7 +450,7 @@ export class TWMekRules extends MekRules {
     }
 
     protected override destroyedLegMovementPSRModifier(
-        moveMode: 'run' | 'jump',
+        moveMode: 'run' | 'sprint' | 'jump',
         isQuadruped: boolean,
         destroyedLegsCount: number,
     ): number {

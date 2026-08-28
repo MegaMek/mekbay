@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { MotiveModes } from '../models/motiveModes.model';
 import {
     getTurnMovementIndicator,
     type TurnMovementColor,
-    type TurnMovementMode,
 } from './turn-movement-indicator.util';
 
 describe('getTurnMovementIndicator', () => {
@@ -15,7 +15,7 @@ describe('getTurnMovementIndicator', () => {
     });
 
     it('maps standard movement modes to their colors and letters', () => {
-        const cases: ReadonlyArray<readonly [TurnMovementMode, TurnMovementColor, string]> = [
+        const cases: ReadonlyArray<readonly [MotiveModes, TurnMovementColor, string]> = [
             ['stationary', 'stationary', 'S'],
             ['walk', 'walk', 'W'],
             ['run', 'run', 'R'],

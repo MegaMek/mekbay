@@ -45,6 +45,7 @@ export const PSR_CHECK_KIND = {
     QUAD_TWO_DESTROYED_LEGS_MOVEMENT: 'quad-two-destroyed-legs-movement',
     DAMAGED_LEG_ACTUATOR_MOVEMENT: 'damaged-leg-actuator-movement',
     DAMAGED_HIP_MOVEMENT: 'damaged-hip-movement',
+    SPRINTING_WITH_MOVEMENT_ENHANCER: 'sprinting-with-movement-enhancer',
 } as const;
 
 export type PSRCheckKind = typeof PSR_CHECK_KIND[keyof typeof PSR_CHECK_KIND];
@@ -81,7 +82,7 @@ interface PSRCheckBase extends PSRModifier {
     kind: PSRCheckKind;
     /** Typed consequence. Presentation text must never drive resolution. */
     failure: PSRFailure;
-    movementMode?: 'run' | 'jump';
+    movementMode?: 'run' | 'sprint' | 'jump';
     legFilter?: string;
     ignorePreExistingGyro?: boolean;
 }
