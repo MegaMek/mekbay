@@ -371,8 +371,11 @@
 
 .group-bv {
     font-size: 0.85rem;
-    font-weight: bold;
     color: var(--text-color);
+
+    .value {
+        font-weight: bold;
+    }
 }
 
 .group-units {
@@ -679,8 +682,11 @@
 
 .table-group-bv {
     font-size: 0.85rem;
-    font-weight: bold;
     color: var(--text-color);
+
+    .value {
+        font-weight: bold;
+    }
 }
 
 /* Table cell content styles */

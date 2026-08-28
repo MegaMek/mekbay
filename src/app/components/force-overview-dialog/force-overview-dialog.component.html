@@ -160,7 +160,10 @@
                             }
                         </div>
                         <div class="table-group-footer">
-                            <span class="table-group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ displayedBvPv(row.group.units()) }}</span>
+                            <span class="table-group-bv">
+                                <span class="muted">{{ totalTons(row.group.units()) | formatTons }} tons · </span>
+                                <span class="value">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ displayedBvPv(row.group.units()) }}</span>
+                            </span>
                         </div>
                     </div>
                     }
@@ -258,7 +261,10 @@
                             }
                         </div>
                         <div class="group-footer">
-                            <span class="group-bv">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ displayedBvPv(group.units()) }}</span>
+                            <span class="group-bv">
+                                <span class="muted">{{ totalTons(group.units()) | formatTons }} tons · </span>
+                                <span class="value">{{ isAlphaStrike() ? 'PV' : 'BV' }}: {{ displayedBvPv(group.units()) }}</span>
+                            </span>
                         </div>
                     </div>
                     @let units = group.units();

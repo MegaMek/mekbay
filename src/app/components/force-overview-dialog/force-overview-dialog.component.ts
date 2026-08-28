@@ -37,6 +37,7 @@ import { LongPressDirective } from '../../directives/long-press.directive';
 import { FORCE_NOTE_MAX_LENGTH } from '../../models/force-serialization';
 import { naturalCompare } from '../../utils/sort.util';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import {
     buildUnitDataTableColumns,
     formatAlphaStrikeUnitMovement,
@@ -98,6 +99,7 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
         DataTableComponent,
         TooltipDirective,
         LongPressDirective,
+        FormatTonsPipe,
     ],
     host: {
         class: 'fullscreen-dialog-host fullheight tv-fade'
@@ -291,6 +293,10 @@ export class ForceOverviewDialogComponent {
             units.reduce((total, unit) => total + unit.getPreSkillBv(), 0),
             this.optionsService.options().forceViewerBVPVDisplay,
         );
+    }
+
+    totalTons(units: readonly ForceUnit[]): number {
+        return units.reduce((total, unit) => total + unit.getUnit().tons, 0);
     }
 
     displayedUnitBvPv(unit: ForceUnit): string {
