@@ -818,7 +818,7 @@ export class ForceOverviewDialogComponent {
     connectedDropLists = computed(() => {
         const ids: string[] = [];
         for (const g of this.data.force.groups()) {
-            ids.push(`group-${g.id}`);
+            ids.push(`overview-group-${g.id}`);
         }
         if (this.newGroupDropzone()?.nativeElement) {
             ids.push('new-group-dropzone');
@@ -833,7 +833,7 @@ export class ForceOverviewDialogComponent {
         const force = this.data.force;
         const groups = force.groups();
 
-        const groupIdFromContainer = (id?: string) => id && id.startsWith('group-') ? id.substring('group-'.length) : null;
+        const groupIdFromContainer = (id?: string) => id && id.startsWith('overview-group-') ? id.substring('overview-group-'.length) : null;
 
         const fromGroupId = groupIdFromContainer(event.previousContainer?.id);
         const toGroupId = groupIdFromContainer(event.container?.id);
@@ -871,9 +871,9 @@ export class ForceOverviewDialogComponent {
         if (!newGroup) return;
 
         const prevId = event.previousContainer?.id;
-        if (!prevId || !prevId.startsWith('group-')) return;
+        if (!prevId || !prevId.startsWith('overview-group-')) return;
 
-        const sourceGroupId = prevId.substring('group-'.length);
+        const sourceGroupId = prevId.substring('overview-group-'.length);
         const sourceGroup = force.groups().find(g => g.id === sourceGroupId);
         if (!sourceGroup) return;
 
