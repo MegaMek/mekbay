@@ -51,11 +51,15 @@
     --undamaged-night-highlight-color: #300;
     --damaged-highlight-color: rgb(255, 105, 105);
 
-    --phase-move: #666;
-    --phase-ranged: #9191ff;
-    --phase-physical: #cfcc00;
-    --phase-heat: #dd7d00;
-    --phase-pending-effects: #d00;
+    --move-unassigned: #475569;
+    --move-stationary: #666;
+    --move-walk: #eee;
+    --move-run: #222;
+    --move-jump: #c00;
+    --move-sprint: #dd0;
+    --move-on-dark: #fff;
+    --move-on-light: #111;
+
     --hot-color: #f00;
     --cold-color: #0081FF;
 

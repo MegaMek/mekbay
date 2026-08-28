@@ -32,6 +32,30 @@ describe('UnitBlockComponent', () => {
         });
     });
 
+    it('tracks phase-dirty state independently from assigned movement', () => {
+        const dirtyPhase = signal(false);
+        const moveMode = signal<'walk' | null>(null);
+        const forceUnit = Object.create(CBTForceUnit.prototype) as CBTForceUnit;
+        Object.assign(forceUnit, {
+            turnState: () => ({ dirtyPhase, moveMode }),
+        });
+
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', forceUnit);
+
+        expect(fixture.componentInstance.dirty()).toBeFalse();
+        expect(fixture.componentInstance.movementIndicator()).toBeNull();
+
+        moveMode.set('walk');
+        expect(fixture.componentInstance.dirty()).toBeFalse();
+        expect(fixture.componentInstance.movementIndicator()).toEqual({ color: 'walk', letter: 'W' });
+
+        dirtyPhase.set(true);
+        moveMode.set(null);
+        expect(fixture.componentInstance.dirty()).toBeTrue();
+        expect(fixture.componentInstance.movementIndicator()).toBeNull();
+    });
+
     it('includes crew state and one aggregated NARC badge alongside unit conditions', () => {
         const forceUnit = Object.create(CBTForceUnit.prototype) as CBTForceUnit;
         const crewStates: CrewMemberState[] = ['stunned', 'stunned'];

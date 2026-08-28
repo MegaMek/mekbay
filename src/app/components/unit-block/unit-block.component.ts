@@ -21,6 +21,7 @@ import { formatMovement, formatMovementWithAlternate } from '../../utils/as-comm
 import { getUnitConditionDefinition, unitConditionSortIndex } from '../../models/rules/unit-type-rules';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 import { UnitNotificationBadgesComponent } from '../unit-notification-badges/unit-notification-badges.component';
+import { getTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
 
 interface UnitConditionDisplay {
     key: string;
@@ -105,37 +106,19 @@ export class UnitBlockComponent {
             return false;
         } else
         if (unit instanceof CBTForceUnit) {
-            return unit.turnState().dirty();
-        }
-        return false;
-    });
-
-    unitPhase = computed<string>(() => {
-        const unit = this.forceUnit();
-        if (!unit) return '';
-        if (unit instanceof ASForceUnit) {
-            return '';
-        } else
-        if (unit instanceof CBTForceUnit) {
-            const phase = unit.turnState().currentPhase();
-            return phase || '';
-        }
-        return '';
-    });
-
-    hasPendingEffects = computed<boolean>(() => {
-        if (!this.optionsService.options().trackPhaseAndTurn) {
-            return false;
-        }
-        const unit = this.forceUnit();
-        if (!unit) return false;
-        if (unit instanceof ASForceUnit) {
-            return false;
-        } else
-        if (unit instanceof CBTForceUnit) {
             return unit.turnState().dirtyPhase();
         }
         return false;
+    });
+
+    movementIndicator = computed(() => {
+        if (!this.optionsService.options().trackPhaseAndTurn) {
+            return null;
+        }
+        const unit = this.forceUnit();
+        return unit instanceof CBTForceUnit
+            ? getTurnMovementIndicator(unit.turnState().moveMode())
+            : null;
     });
 
     notificationUnit = computed<CBTForceUnit | null>(() => {

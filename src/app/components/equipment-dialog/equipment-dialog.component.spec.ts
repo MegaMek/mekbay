@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 
@@ -57,7 +58,6 @@ function createUnit(id: string, entries: MountedEquipment[] = []): CBTForceUnit 
         dirty: () => false,
         autoFall: () => false,
         PSRRollsCount: () => 0,
-        currentPhase: () => ''
     });
     spyOn(harness.unit, 'setHeat').and.callThrough();
     spyOn(harness.unit, 'setInventoryEntry').and.callThrough();
@@ -148,6 +148,23 @@ describe('EquipmentDialogComponent', () => {
         expect(registration.handle(new KeyboardEvent('keydown', { key: 'ArrowLeft' }))).toBeTrue();
         expect(component.unit()).toBe(first);
         expect(registration.handle(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true }))).toBeFalse();
+    });
+
+    it('shows M until movement is selected, then shows its letter and color', () => {
+        const unit = createUnit('unit-a');
+        const moveMode = signal<'walk' | null>(null);
+        Object.assign(unit.turnState(), { moveMode });
+        const { fixture } = createDialog({ unit, context: createContext() });
+        const movementSvg = fixture.nativeElement.querySelector('.turn-tracker-title-button svg') as SVGElement;
+
+        expect(movementSvg.querySelector('text')?.textContent?.trim()).toBe('M');
+        expect(movementSvg.classList.contains('walk')).toBeFalse();
+
+        moveMode.set('walk');
+        fixture.detectChanges();
+
+        expect(movementSvg.querySelector('text')?.textContent?.trim()).toBe('W');
+        expect(movementSvg.classList.contains('walk')).toBeTrue();
     });
 
     it('renders selected weapon actions beside dismiss in the dialog footer', () => {

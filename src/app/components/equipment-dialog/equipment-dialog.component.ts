@@ -17,6 +17,7 @@ import type { EquipmentDialogData, EquipmentDialogTab } from './equipment-dialog
 import { PageInteractionOverlayComponent } from '../page-viewer/overlay/page-interaction-overlay.component';
 import { PageTurnSummaryPanelComponent } from '../page-viewer/overlay/page-turn-summary-panel.component';
 import { WeaponTargetsOverlayController } from './weapon-targets-overlay.controller';
+import { getTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
 
 const WEAPON_TARGETS_OVERLAY_KEY = 'weapon-equipment-targets';
 const WEAPON_TARGET_CHOICE_OVERLAY_KEY = 'weapon-equipment-target-choice';
@@ -58,6 +59,9 @@ export class EquipmentDialogComponent {
     readonly unitIndex = signal(this.initialUnitIndex());
     readonly unitList = computed(() => this.resolveUnitList());
     readonly unit = computed(() => this.unitList()[this.unitIndex()] ?? this.requiredUnit());
+    readonly turnSummaryMovement = computed(() =>
+        getTurnMovementIndicator(this.unit().turnState().moveMode())
+    );
     readonly targets = computed(() => {
         this.unit().getInventoryControlTargetsMap();
         return this.unit().getInventoryControlTargets();
@@ -110,10 +114,6 @@ export class EquipmentDialogComponent {
         this.activeTab.set(tab);
     }
 
-    turnSummaryDirty(): boolean {
-        return this.unit().turnState().dirty();
-    }
-
     turnSummaryFalling(): boolean {
         return this.unit().turnState().autoFall();
     }
@@ -124,10 +124,6 @@ export class EquipmentDialogComponent {
 
     turnSummaryPsrCount(): number {
         return this.unit().turnState().PSRRollsCount();
-    }
-
-    turnSummaryPhase(): string {
-        return this.unit().turnState().currentPhase();
     }
 
     openTurnSummary(event: MouseEvent): void {

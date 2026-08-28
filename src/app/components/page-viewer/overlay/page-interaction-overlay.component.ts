@@ -38,6 +38,7 @@ import {
     type UnitNotificationActivation,
 } from '../../unit-notification-badges/unit-notification-badges.component';
 import { WeaponTargetsOverlayController } from '../../equipment-dialog/weapon-targets-overlay.controller';
+import { getTurnMovementIndicator } from '../../../utils/turn-movement-indicator.util';
 
 const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
 
@@ -95,22 +96,16 @@ export class PageInteractionOverlayComponent {
         return this.host.nativeElement;
     }
 
-    dirty = computed(() => {
-        const unit = this.unit();
-        if (!unit) return false;
-        return unit.turnState().dirty();
-    });
-
     dirtyPhase = computed(() => {
         const unit = this.unit();
         if (!unit) return false;
         return unit.turnState().dirtyPhase();
     });
 
-    currentPhase = computed(() => {
+    movementIndicator = computed(() => {
         const unit = this.unit();
-        if (!unit) return '';
-        return unit.turnState().currentPhase();
+        if (!unit) return null;
+        return getTurnMovementIndicator(unit.turnState().moveMode());
     });
 
     endTurnButtonVisible = computed(() => {

@@ -1,17 +1,20 @@
 @let unitDisplayName = optionsService.options().unitDisplayName;
 @let fu = forceUnit();
 @let badgeUnit = notificationUnit();
+@let movement = movementIndicator();
 @if (compactMode()) {
 <div class="unit-square compact-mode" [class.destroyed]="fu?.destroyed" [class.missing]="!unit()">
     @if (dirty()) {
-        @let phase = unitPhase();
-        <div class="dirty-state" 
-        [class.move]="phase === 'M'"
-        [class.ranged]="phase === 'W'"
-        [class.physical]="phase === 'P'"
-        [class.heat]="phase === 'H'"
-        [class.pending-effects]="hasPendingEffects()"
-        ></div>
+        <div class="dirty-state"></div>
+    }
+    @if (movement) {
+        <div class="move-badge"
+            [class.stationary]="movement.color === 'stationary'"
+            [class.walk]="movement.color === 'walk'"
+            [class.run]="movement.color === 'run'"
+            [class.jump]="movement.color === 'jump'"
+            [class.sprint]="movement.color === 'sprint'"
+            aria-hidden="true">{{ movement.letter }}</div>
     }
     @if (isCommander()) {
         <div class="group-commander-indicator" aria-hidden="true">
@@ -36,33 +39,35 @@
         @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
         <div class="unit-alias">{{ fu?.alias() }}</div>
         }
-        <div class="pilot-info-list">
-            @if (isAlphaStrike()) {
-            <button type="button" class="pilot-info info-slot numeric slim interactive">
-                <span class="value">{{ alphaStrikePilotSkill() }}</span>
-            </button>
-            } @else {
-            <button type="button" class="pilot-info info-slot numeric slim interactive">
-                <span class="value">{{ fu?.getPilotStats() }}</span>
-            </button>
-            }
-        </div>
         @if (badgeUnit) {
         <unit-notification-badges class="compact-notification-row" [unit]="badgeUnit" />
+        }
+    </div>
+    <div class="pilot-info-list">
+        @if (isAlphaStrike()) {
+        <button type="button" class="pilot-info info-slot numeric slim interactive">
+            <span class="value">{{ alphaStrikePilotSkill() }}</span>
+        </button>
+        } @else {
+        <button type="button" class="pilot-info info-slot numeric slim interactive">
+            <span class="value">{{ fu?.getPilotStats() }}</span>
+        </button>
         }
     </div>
 </div>
 } @else {
 <div class="unit-card" [class.destroyed]="fu?.destroyed" [class.missing]="!unit()">
     @if (dirty()) {
-        @let phase = unitPhase();
-        <div class="dirty-state" 
-        [class.move]="phase === 'M'"
-        [class.ranged]="phase === 'W'"
-        [class.physical]="phase === 'P'"
-        [class.heat]="phase === 'H'"
-        [class.pending-effects]="hasPendingEffects()"
-        ></div>
+        <div class="dirty-state"></div>
+    }
+    @if (movement) {
+        <div class="move-badge"
+            [class.stationary]="movement.color === 'stationary'"
+            [class.walk]="movement.color === 'walk'"
+            [class.run]="movement.color === 'run'"
+            [class.jump]="movement.color === 'jump'"
+            [class.sprint]="movement.color === 'sprint'"
+            aria-hidden="true">{{ movement.letter }}</div>
     }
     @if (isCommander()) {
         <div class="group-commander-indicator" aria-hidden="true">
