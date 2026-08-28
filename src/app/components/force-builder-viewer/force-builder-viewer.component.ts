@@ -27,6 +27,7 @@ import { TooltipDirective } from '../../directives/tooltip.directive';
 import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
+import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 
 
 
@@ -34,7 +35,7 @@ import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util'
     selector: 'force-builder-viewer',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, DragDropModule, UnitBlockComponent, TooltipDirective],
+    imports: [CommonModule, DragDropModule, UnitBlockComponent, TooltipDirective, FormatTonsPipe],
     templateUrl: './force-builder-viewer.component.html',
     styleUrls: ['./force-builder-viewer.component.scss']
 })
@@ -126,6 +127,10 @@ export class ForceBuilderViewerComponent {
             units.reduce((total, unit) => total + unit.getPreSkillBv(), 0),
             mode,
         );
+    }
+
+    totalTons(units: readonly ForceUnit[]): number {
+        return units.reduce((total, unit) => total + unit.getUnit().tons, 0);
     }
 
     // --- Collapsed/Expanded State ---
