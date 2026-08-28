@@ -131,10 +131,12 @@
             fill: var(--turn-movement-fill);
             stroke: var(--turn-movement-foreground);
             stroke-width: 1;
+            stroke-linejoin: miter;
+            stroke-miterlimit: 10;
+            vector-effect: non-scaling-stroke;
             transform: scale(1.13);
             transform-box: fill-box;
             transform-origin: center;
-            paint-order: stroke fill;
         }
 
         text {
