@@ -24,7 +24,7 @@
                 </div>
             </div>
             <div class="collection-summary">
-                <span>{{ filteredRows().length }}/{{ allRows().length }} entries</span>
+                <span>{{ filteredRows().length }}/{{ filterableRows().length }} entries</span>
                 @if (selectedHeaderTag()) {
                     <span>{{ selectedHeaderTagQuantityTotal() }} total sum</span>
                 }
@@ -139,6 +139,22 @@
             </div>
 
             @for (row of filteredRows(); track row.key) {
+                @if (row.key === firstUntaggedRowKey() && showUntaggedSeparator()) {
+                    <div class="untagged-separator">
+                        <label class="untagged-select-all-control" title="Select all visible untagged units">
+                            <input
+                                type="checkbox"
+                                class="bt-checkbox"
+                                [checked]="allVisibleUntaggedSelected()"
+                                (change)="toggleAllVisibleUntagged($event)"
+                                aria-label="Select all visible untagged units"
+                            />
+                        </label>
+                        <span class="untagged-separator-label" role="separator" aria-label="Untagged units">
+                            <span>UNTAGGED UNITS</span>
+                        </span>
+                    </div>
+                }
                 <div class="collection-row" role="row" [class.selected]="isRowSelected(row)">
                     <label class="row-select">
                         <input
@@ -176,28 +192,30 @@
                     @if (showOrganizationQuantityColumn()) {
                         <div class="organization-quantity-cell">{{ getOrganizationRowQuantity(row) }}</div>
                     }
-                    <div class="tag-list">
-                        @for (tag of row.tags; track tag.removalKey) {
-                            <div class="tag-chip" [class.pending-removal]="tag.pendingRemoval">
-                                <span class="tag-label">{{ tag.tag }}</span>
-                                <input
-                                    type="number"
-                                    class="tag-quantity"
-                                    min="1"
-                                    step="1"
-                                    [value]="tag.quantity"
-                                    [disabled]="tag.pendingRemoval"
-                                    (change)="onRowQuantityInput(row, tag, $event)"
-                                    aria-label="Quantity"
-                                />
-                                @if (tag.pendingRemoval) {
-                                    <button type="button" class="tag-restore" (click)="restoreTag(row, tag)" aria-label="Restore tag">RESTORE</button>
-                                } @else {
-                                    <button type="button" class="tag-remove" (click)="removeTag(row, tag)" aria-label="Remove tag">X</button>
-                                }
-                            </div>
-                        }
-                    </div>
+                    @if (row.tags.length > 0) {
+                        <div class="tag-list">
+                            @for (tag of row.tags; track tag.removalKey) {
+                                <div class="tag-chip" [class.pending-removal]="tag.pendingRemoval">
+                                    <span class="tag-label">{{ tag.tag }}</span>
+                                    <input
+                                        type="number"
+                                        class="tag-quantity"
+                                        min="1"
+                                        step="1"
+                                        [value]="tag.quantity"
+                                        [disabled]="tag.pendingRemoval"
+                                        (change)="onRowQuantityInput(row, tag, $event)"
+                                        aria-label="Quantity"
+                                    />
+                                    @if (tag.pendingRemoval) {
+                                        <button type="button" class="tag-restore" (click)="restoreTag(row, tag)" aria-label="Restore tag">RESTORE</button>
+                                    } @else {
+                                        <button type="button" class="tag-remove" (click)="removeTag(row, tag)" aria-label="Remove tag">X</button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
             } @empty {
                 <div class="empty-state">{{ getCollectionEmptyStateMessage() }}</div>
