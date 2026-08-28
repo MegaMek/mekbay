@@ -515,7 +515,7 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     private sprintingMovementEnhancerPSRChecks(turnState: TurnState): PSRCheck[] {
-        if (turnState.effectiveMoveMode() !== 'sprint') return [];
+        if (!turnState.applyMovePSR() || turnState.effectiveMoveMode() !== 'sprint') return [];
 
         const activeEnhancerCount = Math.max(0, Math.round(
             this.unit.getRunMovementMultiplierBonus(turnState) * 2,
@@ -1572,6 +1572,7 @@ export class MekRules extends UnitTypeRulesBase {
         if (moveMode === 'sprint') {
             return this.unit.usesSprinting()
                 && (movement?.walk ?? 0) > 0
+                && (movement?.run ?? 0) > 0
                 && this.hasTwoWorkingHipActuators();
         }
         if (moveMode === 'jump') return (movement?.jump ?? 0) > 0;
@@ -1646,6 +1647,7 @@ export class MekRules extends UnitTypeRulesBase {
         const movement = this.movementState();
         if (!movement) return 0;
         if (moveMode === 'run' && movement.run === 0) return this.getRunningMinimumMovementDistance();
+        if (moveMode === 'sprint' && movement.run === 0) return 0;
         if (movement.walk === 0) return 0;
 
         const movementValueCoeff = (moveMode === 'sprint' ? 2 : 1.5)

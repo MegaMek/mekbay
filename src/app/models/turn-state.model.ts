@@ -589,6 +589,30 @@ export class TurnState {
             this.spotting.set(data?.spotting ?? false);
             this.equipmentStateChanged.set(data?.equipmentStateChanged ?? false);
         });
+        this.reconcileRestoredMoveMode();
+    }
+
+    /** Revalidates persisted Sprint state once enough unit state is available. */
+    reconcileRestoredMoveMode(): void {
+        if (this.moveMode() !== 'sprint') return;
+
+        const forceUnit = this.unitState.unit;
+        if (!forceUnit.isLoaded() || !forceUnit.isOptionsInitialized()) return;
+
+        const airborne = this.airborne() === true;
+        const sprintAvailable = forceUnit.getAvailableMotiveModes(airborne)
+            .some(option => option.mode === 'sprint');
+
+        this.withSuppressedModified(() => {
+            if (!sprintAvailable) {
+                this.moveMode.set(null);
+                this.moveDistance.set(null);
+                return;
+            }
+
+            // A valid Sprint and spotting can never coexist, including in restored data.
+            this.spotting.set(false);
+        });
     }
 
     getTurnCounter(): number {

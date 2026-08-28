@@ -243,8 +243,13 @@ export class CBTForceUnit extends ForceUnit {
         const optionsService = this.injector.get(OptionsService, null, { optional: true });
         if (optionsService) {
             this.optionalRulesEffect = effect(() => {
+                const optionsInitialized = this.isOptionsInitialized();
                 optionsService.options().CBTOptionalRules?.forcedWithdrawal;
-                if (this.isLoaded()) untracked(() => this.reconcileRuleChecks());
+                optionsService.options().CBTOptionalRules?.sprinting;
+                if (this.isLoaded()) untracked(() => {
+                    this.reconcileRuleChecks();
+                    if (optionsInitialized) this.turnState().reconcileRestoredMoveMode();
+                });
             }, { injector: this.injector, manualCleanup: true });
         }
         this.turnState().capturePassiveHeatSourceBaseline();
@@ -271,6 +276,13 @@ export class CBTForceUnit extends ForceUnit {
 
     usesSprinting(): boolean {
         return this.injector.get(OptionsService, null, { optional: true })?.options().CBTOptionalRules?.sprinting ?? false;
+    }
+
+    isOptionsInitialized(): boolean {
+        const optionsService = this.injector.get(OptionsService, null, { optional: true });
+        return typeof optionsService?.initialized === 'function'
+            ? optionsService.initialized()
+            : true;
     }
 
     usesForcedWithdrawal(): boolean {
@@ -450,6 +462,7 @@ export class CBTForceUnit extends ForceUnit {
                 throw new Error(`Unit "${this.unit.name}" loaded but SVG is missing`);
             }
             this.isLoaded.set(true);
+            this.turnState().reconcileRestoredMoveMode();
             if (isDevMode()) this.reportUnknownDirectInventoryInstallationLocations();
             this.reconcileRuleChecks();
         } finally {

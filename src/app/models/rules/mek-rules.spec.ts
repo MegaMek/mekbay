@@ -661,6 +661,72 @@ describe('MekRules', () => {
             'Sprinting with MASC',
             'Sprinting with supercharger',
         ]);
+
+        forceUnit.endPhase();
+
+        expect(turnState.applyMovePSR()).toBeFalse();
+        expect(enhancerChecks()).toEqual([]);
+    });
+
+    it('rejects restored Sprint state when the option or current eligibility disallows it', () => {
+        optionsService.initialized.set(false);
+        const disabled = createForceUnitHarness({ sprinting: false });
+        disabled.turnState().update({ moveMode: 'sprint', moveDistance: 4 });
+        expect(disabled.turnState().moveMode()).toBe('sprint');
+        expect(disabled.turnState().moveDistance()).toBe(4);
+
+        optionsService.initialized.set(true);
+        disabled.turnState().reconcileRestoredMoveMode();
+
+        expect(disabled.turnState().moveMode()).toBeNull();
+        expect(disabled.turnState().moveDistance()).toBeNull();
+
+        const damagedHip = createForceUnitHarness({
+            sprinting: true,
+            critSlots: [legActuatorCrit('hip', 'Hip', 'LL')],
+        });
+        damagedHip.turnState().update({ moveMode: 'sprint', moveDistance: 4 });
+        expect(damagedHip.turnState().moveMode()).toBeNull();
+        expect(damagedHip.turnState().moveDistance()).toBeNull();
+
+        const airborne = createForceUnitHarness({ sprinting: true });
+        airborne.turnState().update({ airborne: true, moveMode: 'sprint', moveDistance: 4 });
+        expect(airborne.turnState().moveMode()).toBeNull();
+        expect(airborne.turnState().moveDistance()).toBeNull();
+    });
+
+    it('retains eligible restored Sprint state but removes incompatible spotting', () => {
+        optionsService.initialized.set(true);
+        const forceUnit = createForceUnitHarness({ sprinting: true });
+
+        forceUnit.turnState().update({
+            moveMode: 'sprint',
+            moveDistance: 4,
+            spotting: true,
+        });
+
+        expect(forceUnit.turnState().moveMode()).toBe('sprint');
+        expect(forceUnit.turnState().moveDistance()).toBe(4);
+        expect(forceUnit.turnState().spotting()).toBeFalse();
+    });
+
+    it('does not allow a TW Quad with two destroyed legs to Sprint', () => {
+        const forceUnit = createForceUnitHarness({
+            sprinting: true,
+            rulesId: 'tw',
+            subtype: 'Quad BattleMek',
+            internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'],
+            committedDestroyedLocations: ['RLL', 'FLL'],
+            walk: 5,
+            run: 8,
+        });
+        const rules = forceUnit.rules as MekRules;
+
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 1, run: 0 }));
+        expect(rules.isMotiveModeAvailable('sprint')).toBeFalse();
+        expect(forceUnit.getAvailableMotiveModes(false).map(option => option.mode))
+            .not.toContain('sprint');
+        expect(rules.getEffectiveMaxDistanceForMoveMode('sprint', forceUnit.turnState())).toBe(0);
     });
 
     it('applies Sprint heat, piloting, defense, and attack restrictions', () => {
