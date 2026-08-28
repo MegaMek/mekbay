@@ -130,8 +130,8 @@ export function resolveMekFallOrientation(rulesId: MekFallRulesId, roll: number)
             hitArc: rear ? 'rear' : 'front',
             hitArcLabel: rear ? 'Rear' : 'Front',
             rulesExplanation: rear
-                ? 'The Mek keeps its existing facing; a roll of 1 applies all fall damage to the rear.'
-                : 'The Mek keeps its existing facing; a roll of 2–6 applies all fall damage to the front.',
+                ? 'The Mek keeps its existing facing; all fall damage to the rear.'
+                : 'The Mek keeps its existing facing; all fall damage to the front.',
         };
     }
     return { roll, ...TW_ORIENTATION[roll] };
