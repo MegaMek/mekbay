@@ -15,12 +15,20 @@
             <p class="fall-armor-note">{{ armorNote }}</p>
         }
 
+        <button type="button" class="bt-button primary fall-roll-all"
+            aria-label="Roll orientation and all hit locations"
+            title="Roll orientation and all hit locations"
+            (click)="rollAllResults()">
+            <span class="fall-roll-icon" aria-hidden="true"></span>
+            <span>ROLL ALL RESULTS</span>
+        </button>
+
         <section class="fall-step">
             <div class="step-heading">
-                <button type="button" class="random-button"
-                    aria-label="Roll orientation and all hit locations"
-                    title="Roll all fall results"
-                    (click)="rollAllResults()"></button>
+                <button type="button" class="random-button orientation-roll-button"
+                    aria-label="Roll orientation"
+                    title="Roll orientation"
+                    (click)="rollOrientation()"></button>
                 <div><strong>Orientation</strong><span>Determine facing and the damage arc.</span></div>
             </div>
             <div class="roll-picker">
@@ -43,10 +51,11 @@
 
         <section class="fall-step">
             <div class="step-heading">
-                <button type="button" class="random-button"
-                    aria-label="Roll orientation and all hit locations"
-                    title="Roll all fall results"
-                    (click)="rollAllResults()"></button>
+                <button type="button" class="random-button locations-roll-button"
+                    aria-label="Roll all hit locations"
+                    [disabled]="orientationRoll() === null"
+                    [title]="orientationRoll() === null ? 'Choose or roll orientation first' : 'Roll all hit locations'"
+                    (click)="rollHitLocations()"></button>
                 <div><strong>Hit locations</strong><span>Resolve each damage group separately.</span></div>
             </div>
             <div class="damage-groups">

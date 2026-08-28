@@ -74,4 +74,45 @@ describe('FallingDamageDialogComponent', () => {
         expect(fixture.componentInstance.groupRows().map(row => row.hitLocationRoll)).toEqual([8, 2]);
         expect(random).toHaveBeenCalledTimes(10);
     });
+
+    it('rolls only orientation from the orientation section button', () => {
+        fixture.componentInstance.setOrientationRoll(3);
+        fixture.componentInstance.setHitLocationRoll(0, 5);
+        fixture.componentInstance.setHitLocationRoll(1, 9);
+        persistRolls.calls.reset();
+        spyOn(Math, 'random').and.returnValue(0.999);
+
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>('.orientation-roll-button')!.click();
+
+        expect(fixture.componentInstance.orientationRoll()).toBe(6);
+        expect(fixture.componentInstance.groupRows().map(row => row.hitLocationRoll)).toEqual([5, 9]);
+        expect(persistRolls).toHaveBeenCalledTimes(1);
+    });
+
+    it('rolls only hit locations from the hit-locations section button', () => {
+        fixture.componentInstance.setOrientationRoll(4);
+        fixture.componentInstance.setHitLocationRoll(0, 5);
+        fixture.componentInstance.setHitLocationRoll(1, 9);
+        fixture.detectChanges();
+        persistRolls.calls.reset();
+        const random = spyOn(Math, 'random').and.returnValues(0, 0, 0.999, 0.999);
+
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>('.locations-roll-button')!.click();
+
+        expect(fixture.componentInstance.orientationRoll()).toBe(4);
+        expect(fixture.componentInstance.groupRows().map(row => row.hitLocationRoll)).toEqual([2, 12]);
+        expect(random).toHaveBeenCalledTimes(4);
+        expect(persistRolls).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows a labeled roll-all button before the Orientation section', () => {
+        const element = fixture.nativeElement as HTMLElement;
+        const rollAll = element.querySelector<HTMLButtonElement>('.fall-roll-all')!;
+        const orientationHeading = element.querySelector<HTMLElement>('.fall-step');
+
+        expect(rollAll.textContent).toContain('ROLL ALL RESULTS');
+        expect(rollAll.nextElementSibling).toBe(orientationHeading);
+    });
 });

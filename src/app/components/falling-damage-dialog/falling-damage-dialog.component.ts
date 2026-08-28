@@ -147,6 +147,23 @@ export class FallingDamageDialogComponent {
         });
     }
 
+    rollOrientation(random: () => number = Math.random): void {
+        const rolled = rollMekFallDice(this.rulesId, this.hitLocationTable, 0, { random });
+        this.orientationRoll.set(rolled.orientationRoll);
+        this.persistRolls();
+    }
+
+    rollHitLocations(random: () => number = Math.random): void {
+        const orientationRoll = this.orientationRoll();
+        if (orientationRoll === null) return;
+        const rolled = rollMekFallDice(this.rulesId, this.hitLocationTable, this.damageGroups.length, {
+            orientationRoll,
+            random,
+        });
+        this.groupRolls.set(rolled.damageRolls);
+        this.persistRolls();
+    }
+
     rollAllResults(random: () => number = Math.random): void {
         const rolled = rollMekFallDice(this.rulesId, this.hitLocationTable, this.damageGroups.length, { random });
         this.orientationRoll.set(rolled.orientationRoll);

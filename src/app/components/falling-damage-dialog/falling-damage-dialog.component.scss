@@ -11,6 +11,21 @@
     background-size: 32px;
 }
 
+.fall-roll-all {
+    display: flex;
+    width: 100%;
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.fall-roll-icon {
+    width: 24px;
+    height: 24px;
+    background: url('/images/random.svg') center / contain no-repeat;
+}
+
 .falling-body {
     display: grid;
     gap: 10px;
