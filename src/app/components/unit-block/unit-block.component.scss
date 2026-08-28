@@ -50,6 +50,14 @@
             flex-wrap: wrap;
             justify-content: center;
         }
+
+        .unit-chassis {
+            text-shadow: 
+                -0.7px 0 0 black, 
+                0.7px 0 0 black, 
+                0 -0.7px 0 black, 
+                0 0.7px 0 black;
+        }
     }
 
     &.destroyed {
@@ -496,6 +504,19 @@
     font-weight: 800;
     line-height: 1;
     pointer-events: none;
+
+    &::before {
+        position: absolute;
+        inset: 0;
+        content: '';
+        background: linear-gradient(
+            135deg,
+            transparent 50%,
+            var(--border-color) 50%,
+            var(--border-color) calc(50% + 1px),
+            transparent calc(50% + 1px)
+        );
+    }
 
     &.stationary {
         background-color: var(--move-stationary);
