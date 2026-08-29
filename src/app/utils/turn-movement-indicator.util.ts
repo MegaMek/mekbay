@@ -12,11 +12,11 @@ export interface TurnMovementIndicator {
 }
 
 const TURN_MOVEMENT_INDICATORS: Readonly<Record<MotiveModes, TurnMovementIndicator>> = {
-    stationary: { color: 'stationary', letter: 'S' },
+    stationary: { color: 'stationary', letter: 'St' },
     walk: { color: 'walk', letter: 'W' },
     run: { color: 'run', letter: 'R' },
     jump: { color: 'jump', letter: 'J' },
-    sprint: { color: 'sprint', letter: 'Sp' },
+    sprint: { color: 'sprint', letter: 'S' },
     // These special modes use the jump movement category in the turn-state UI.
     UMU: { color: 'jump', letter: 'U' },
     VTOL: { color: 'jump', letter: 'V' },
@@ -24,6 +24,12 @@ const TURN_MOVEMENT_INDICATORS: Readonly<Record<MotiveModes, TurnMovementIndicat
 
 export function getTurnMovementIndicator(
     mode: MotiveModes | null | undefined,
+    defenderModifier: number,
 ): TurnMovementIndicator | null {
-    return mode === null || mode === undefined ? null : TURN_MOVEMENT_INDICATORS[mode];
+    if (mode === null || mode === undefined) return null;
+
+    const indicator = TURN_MOVEMENT_INDICATORS[mode];
+    return mode === 'stationary'
+        ? indicator
+        : { ...indicator, letter: `${indicator.letter}${defenderModifier}` };
 }

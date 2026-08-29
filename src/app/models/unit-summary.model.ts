@@ -54,6 +54,23 @@ export type UnitEngineType =
     | 'Solar'
     | 'External';
 
+const FUSION_UNIT_ENGINE_TYPES: ReadonlySet<UnitEngineType> = new Set([
+    'Fusion',
+    'XL (IS)',
+    'XL (Clan)',
+    'XXL (IS)',
+    'XXL (Clan)',
+    'Light',
+    'Compact',
+]);
+
+/** Whether exported unit metadata describes a fusion-family engine. */
+export function isFusionUnitEngine(
+    engine: UnitEngineType | null | undefined,
+): engine is UnitEngineType {
+    return engine !== null && engine !== undefined && FUSION_UNIT_ENGINE_TYPES.has(engine);
+}
+
 export const CBT_WEIGHT_CLASS_ORDINALS = new Map<WeightClass, number>(
     CBT_WEIGHT_CLASSES.map((weightClass, index) => [weightClass, index] as const)
 );

@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Overlay } from '@angular/cdk/overlay';
-import { provideZonelessChangeDetection, signal } from '@angular/core';
+import { provideZonelessChangeDetection, signal, type WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import { CBTEndTurnService } from '../../../services/cbt-end-turn.service';
@@ -25,15 +25,20 @@ describe('PageInteractionOverlayComponent pending work', () => {
     let resolvePhase: jasmine.Spy;
     let closeAllManagedOverlays: jasmine.Spy;
     let unit: CBTForceUnit;
+    let moveMode: WritableSignal<'jump' | null>;
+    let defenderModifier: WritableSignal<number>;
 
     beforeEach(async () => {
         resumePendingChain = jasmine.createSpy('resumePendingChain').and.resolveTo(true);
         resolvePhase = jasmine.createSpy('endPhase').and.resolveTo(true);
         closeAllManagedOverlays = jasmine.createSpy('closeAllManagedOverlays');
+        moveMode = signal(null);
+        defenderModifier = signal(0);
         const turnState = {
             dirty: () => false,
             dirtyPhase: () => false,
-            moveMode: () => null,
+            moveMode,
+            getTotalTargetModifierAsDefender: () => ({ modifier: defenderModifier() }),
             autoFall: () => false,
             actionablePSRRollsCount: () => 0,
             PSRRollsCount: () => 0,
@@ -103,5 +108,15 @@ describe('PageInteractionOverlayComponent pending work', () => {
 
         expect(event.stopPropagation).toHaveBeenCalledTimes(1);
         expect(resolvePhase).toHaveBeenCalledOnceWith(unit);
+    });
+
+    it('shows the defender modifier with assigned movement', () => {
+        moveMode.set('jump');
+        defenderModifier.set(4);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.movementIndicator()).toEqual({ color: 'jump', letter: 'J4' });
+        const label = fixture.nativeElement.querySelector('.turn-tracker-button text') as SVGTextElement;
+        expect(label.textContent?.trim()).toBe('J4');
     });
 });

@@ -35,9 +35,14 @@ describe('UnitBlockComponent', () => {
     it('tracks phase-dirty state independently from assigned movement', () => {
         const dirtyPhase = signal(false);
         const moveMode = signal<'walk' | null>(null);
+        const defenderModifier = signal(4);
         const forceUnit = Object.create(CBTForceUnit.prototype) as CBTForceUnit;
         Object.assign(forceUnit, {
-            turnState: () => ({ dirtyPhase, moveMode }),
+            turnState: () => ({
+                dirtyPhase,
+                moveMode,
+                getTotalTargetModifierAsDefender: () => ({ modifier: defenderModifier() }),
+            }),
         });
 
         const fixture = TestBed.createComponent(UnitBlockComponent);
@@ -48,7 +53,10 @@ describe('UnitBlockComponent', () => {
 
         moveMode.set('walk');
         expect(fixture.componentInstance.dirty()).toBeFalse();
-        expect(fixture.componentInstance.movementIndicator()).toEqual({ color: 'walk', letter: 'W' });
+        expect(fixture.componentInstance.movementIndicator()).toEqual({ color: 'walk', letter: 'W4' });
+
+        defenderModifier.set(2);
+        expect(fixture.componentInstance.movementIndicator()).toEqual({ color: 'walk', letter: 'W2' });
 
         dirtyPhase.set(true);
         moveMode.set(null);

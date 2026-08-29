@@ -111,9 +111,13 @@ export class UnitBlockComponent {
             return null;
         }
         const unit = this.forceUnit();
-        return unit instanceof CBTForceUnit
-            ? getTurnMovementIndicator(unit.turnState().moveMode())
-            : null;
+        if (!(unit instanceof CBTForceUnit)) return null;
+
+        const turnState = unit.turnState();
+        return getTurnMovementIndicator(
+            turnState.moveMode(),
+            turnState.getTotalTargetModifierAsDefender().modifier,
+        );
     });
 
     notificationUnit = computed<CBTForceUnit | null>(() => {

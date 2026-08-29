@@ -105,7 +105,11 @@ export class PageInteractionOverlayComponent {
     movementIndicator = computed(() => {
         const unit = this.unit();
         if (!unit) return null;
-        return getTurnMovementIndicator(unit.turnState().moveMode());
+        const turnState = unit.turnState();
+        return getTurnMovementIndicator(
+            turnState.moveMode(),
+            turnState.getTotalTargetModifierAsDefender().modifier,
+        );
     });
 
     endTurnButtonVisible = computed(() => {
