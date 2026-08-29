@@ -35,6 +35,25 @@ export const CBT_WEIGHT_CLASSES = [
 
 export type WeightClass = typeof CBT_WEIGHT_CLASSES[number];
 
+/** Engine type names exported by MegaMekLab's SVGMassPrinter. */
+export type UnitEngineType =
+    | 'ICE'
+    | 'Fusion'
+    | 'XL (IS)'
+    | 'XL (Clan)'
+    | 'XXL (IS)'
+    | 'XXL (Clan)'
+    | 'Fuel Cell'
+    | 'Light'
+    | 'Compact'
+    | 'Fission'
+    | 'None'
+    | 'MagLev'
+    | 'Steam'
+    | 'Battery'
+    | 'Solar'
+    | 'External';
+
 export const CBT_WEIGHT_CLASS_ORDINALS = new Map<WeightClass, number>(
     CBT_WEIGHT_CLASSES.map((weightClass, index) => [weightClass, index] as const)
 );
@@ -141,7 +160,7 @@ export interface UnitSummary {
     type: UnitType;
     subtype: UnitSubtype;
     omni: number;
-    engine: string;
+    engine: UnitEngineType | null;
     engineRating: number;
     engineHS: number; // Number of HeatSinks on the engine
     engineHSType: string | null; // Type of HeatSinks on the engine: "Heat Sink", "Double Heat Sink", "Laser Heat Sink", etc...

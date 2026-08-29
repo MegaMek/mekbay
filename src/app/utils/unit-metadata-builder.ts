@@ -195,12 +195,13 @@ export class UnitMetadataBuilder {
     }
   }
 
-  private buildEngineName(entity: BaseEntity): any {
+  private buildEngineName(entity: BaseEntity): UnitSummary['engine'] {
     if (!this.exportsEngine(entity)) return null;
 
     const engine = entity.mountedEngine();
     const type = engine.type();
-    return type === 'XL' || type === 'XXL' ? `${type} (${engine.techBase})` : type;
+    if (type === 'XL' || type === 'XXL') return `${type} (${engine.techBase})`;
+    return type === 'Maglev' ? 'MagLev' : type;
   }
 
   private exportsEngine(entity: BaseEntity): boolean {

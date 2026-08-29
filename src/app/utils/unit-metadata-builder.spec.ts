@@ -152,6 +152,25 @@ describe('UnitMetadataBuilder', () => {
     expect(builder.build(entity).offSpeedFactor).toBe(1.12);
   });
 
+  it('exports canonical SVGMassPrinter engine names', () => {
+    const entity = new BipedMekEntity();
+    const cases = [
+      ['Fusion', 'IS', 'Fusion'],
+      ['XL', 'IS', 'XL (IS)'],
+      ['XL', 'Clan', 'XL (Clan)'],
+      ['XXL', 'IS', 'XXL (IS)'],
+      ['XXL', 'Clan', 'XXL (Clan)'],
+      ['Maglev', 'IS', 'MagLev'],
+    ] as const;
+
+    for (const [type, techBase, expected] of cases) {
+      entity.mountedEngine.set(new MountedEngine({ type, rating: 250, techBase }));
+      expect(builder.build(entity).engine).withContext(type).toBe(expected);
+    }
+
+    expect(builder.build(new DropShipEntity()).engine).toBeNull();
+  });
+
   it('uses BV jump conditions for TSM Meks with modular armor', () => {
     const entity = new BipedMekEntity();
     entity.originalWalkMP.set(5);
